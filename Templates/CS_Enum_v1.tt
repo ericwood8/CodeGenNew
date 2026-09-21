@@ -6,6 +6,13 @@
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
 <#
+    // ==========================================================================================
+    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // lists of tables). Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string enumNamespace = "TimeEntry.Common.Enums";
+    // ==========================================================================================
+
     // ------------------------------------------------------------------------------------------
     // CS_Enum_v1.tt
     // Generates: <TableName>.cs   (see OutputName in CS_Enum_v1.tt.config)
@@ -18,18 +25,16 @@
     //   - the enum's name is the table's name;
     //   - each member's VALUE is the primary key (a single int/smallint/tinyint/bigint column; the enum's underlying type
     //     follows the key's type, and is left off for int);
-    //   - each member's NAME is the row's name column -- the column called "Name", else the best display column from
-    //     SpecialLogicColumns.config (SY_Role has RoleName) -- with the spaces and punctuation taken out and each word
+    //   - each member's NAME is the row's name column -- the column called "Name", else "<Table>Name" (Company has
+    //     CompanyName, SY_Role has RoleName), else the best display column from SpecialLogicColumns.config, else any text
+    //     column ending in "Name" -- with the spaces and punctuation taken out and each word
     //     starting with a capital: "Paid time off" -> PaidTimeOff, "Family and Medical Leave Act" ->
     //     FamilyAndMedicalLeaveAct. A name that would not be a legal C# identifier (starts with a digit, or
     //     repeats an earlier member) is made legal (_2Fast, Name_3). Every member starts with a capital, so a C# keyword never clashes.
-    //   Rows come out in key order. A table with no rows gives an empty enum -- regenerate after the data is loaded.
+    //   Rows come out in key order. An EMPTY table is refused (an enum with no members is useless): load the data, then generate.
     //
     // Only what the DATA says is generated. A member the developers abbreviated by hand (OvertimeType.RegularOT for
     // "Regular overtime") comes out as RegularOvertime, so regenerating over a hand-tuned enum renames it.
-    //
-    // Project-specific name -- edit here if the project changes:
-    string enumNamespace = "TimeEntry.Common.Enums";
     // ------------------------------------------------------------------------------------------
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
@@ -42,17 +47,26 @@
         _ => null
     };
 
-    // the column that names each row: "Name", else the display column ranked best by SpecialLogicColumns.config
-    var nameColumn = Model.Columns.FirstOrDefault(c => c.IsStringColumn && c.Name.Equals("Name", StringComparison.OrdinalIgnoreCase))
-                     ?? Model.Columns.Where(c => c.IsStringColumn && c.IsDisplayColumn).OrderBy(c => c.DisplayRank).FirstOrDefault();
+    // the column that names each row, first match wins: a text column called "Name"; then "<Table>Name" (Company ->
+    // CompanyName; a leading "E_" / "SY_" on the table name is ignored, so SY_Role -> RoleName); then the display column
+    // ranked best by SpecialLogicColumns.config; then any text column whose name ends in "Name"
+    string tableStem = System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(Model.TableName, "^E_", ""), "^SY_", "");
+    ColumnModel TextColumnNamed(string name) => Model.Columns.FirstOrDefault(c => c.IsStringColumn && c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+    var nameColumn = TextColumnNamed("Name")
+                     ?? TextColumnNamed(Model.TableName + "Name")
+                     ?? TextColumnNamed(tableStem + "Name")
+                     ?? Model.Columns.Where(c => c.IsStringColumn && c.IsDisplayColumn).OrderBy(c => c.DisplayRank).FirstOrDefault()
+                     ?? Model.Columns.FirstOrDefault(c => c.IsStringColumn && c.Name.EndsWith("Name", StringComparison.OrdinalIgnoreCase));
 
     var problems = new List<string>();
     if (keyColumn is null || underlying is null)
         problems.Add("it needs a single integer primary key (int, smallint, tinyint or bigint) to use as each member's value");
     if (nameColumn is null)
-        problems.Add("it has no name column (a text column called Name, or one matching a DisplayColumn pattern) to name the members");
+        problems.Add("it has no name column (a text column called Name, <Table>Name, or one matching a DisplayColumn pattern) to name the members");
     if (!Model.HasRowData)
         problems.Add("its rows were not read (the template's .tt.config must say NeedsRowData=true)");
+    else if (Model.Rows.Count == 0)
+        problems.Add("the table is empty, and an enum's members ARE its rows -- load the data first, then generate again");
     if (problems.Count > 0)
         Error($"CS_Enum cannot generate an enum from [{Model.SchemaName}].[{Model.TableName}]: " + string.Join("; ", problems) + ".");
 

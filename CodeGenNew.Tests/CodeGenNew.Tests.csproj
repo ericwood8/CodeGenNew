@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MSTest" Version="4.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The engine and models under test. The CLI is referenced only for its embedded copies of the shipped templates
+         (the seeder tests read them through the assembly), not to run it. -->
+    <ProjectReference Include="..\CodeGenNew.Core\CodeGenNew.Core.csproj" />
+    <ProjectReference Include="..\CodeGenNew.TemplateEngine\CodeGenNew.TemplateEngine.csproj" />
+    <ProjectReference Include="..\CodeGenNew.Cli\CodeGenNew.Cli.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+</Project>

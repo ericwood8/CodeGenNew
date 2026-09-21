@@ -430,3 +430,7 @@ FodyWeavers.xsd
 
 # Official VS Code C# Dev Kit Extension exclusion
 #*.lscache
+
+# --- CodeGenNew ---
+# Whatever the tool generates for a developer's own tables and databases (the default output folder) is not part of the source.
+/Output/*

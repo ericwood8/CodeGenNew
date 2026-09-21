@@ -7,6 +7,24 @@
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
 <#
+    // ==========================================================================================
+    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // lists of tables). Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string entityNamespace = "TimeEntry.Common.Entities";
+    string baseEntity = "BaseEntity";
+    string baseNameActiveEntity = "BaseNameActiveEntity";
+    // Namespaces the generated file must "using" (for example "MyApp.Entities"; leave empty when the project supplies them through
+    // global usings, as TimeEntryServer does). Each entry becomes a using line in the generated file.
+    string[] usings = { };
+    // Tables a foreign key can point to WITHOUT a navigation property: they are C# enums (TimeEntry.Common\Enums) or have no entity class.
+    string[] noNavigationTables =
+    {
+        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
+        "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role"
+    };
+    // ==========================================================================================
+
     // ------------------------------------------------------------------------------------------
     // CS_Entity_v1.tt
     // Generates: <TableName>.cs   (see OutputName in CS_Entity_v1.tt.config)
@@ -52,16 +70,6 @@
     //     other columns, or a column the class deliberately makes optional although the table says NOT NULL.
     //   Nor does it write the entity's DbSet in TimeEntryContext or the Enums.
     //
-    // Project-specific names -- edit here if the project changes:
-    string entityNamespace = "TimeEntry.Common.Entities";
-    string baseEntity = "BaseEntity";
-    string baseNameActiveEntity = "BaseNameActiveEntity";
-    // Tables a foreign key can point to WITHOUT a navigation property: they are C# enums (TimeEntry.Common\Enums) or have no entity class.
-    string[] noNavigationTables =
-    {
-        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
-        "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role"
-    };
     // ------------------------------------------------------------------------------------------
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
@@ -235,9 +243,12 @@
         }
 
         // ---- assemble
-        if (usesSchema)
+        var headUsings = usings.ToList();
+        if (usesSchema && !headUsings.Contains("System.ComponentModel.DataAnnotations.Schema"))
+            headUsings.Insert(0, "System.ComponentModel.DataAnnotations.Schema");
+        if (headUsings.Count > 0)
         {
-            L("using System.ComponentModel.DataAnnotations.Schema;");
+            foreach (string u in headUsings) L($"using {u};");
             L();
         }
         L($"namespace {entityNamespace};");

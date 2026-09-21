@@ -7,4 +7,5 @@
   <Project Path="CodeGenNew.Core/CodeGenNew.Core.csproj" />
   <Project Path="CodeGenNew.SchemaIntrospection/CodeGenNew.SchemaIntrospection.csproj" />
   <Project Path="CodeGenNew.TemplateEngine/CodeGenNew.TemplateEngine.csproj" />
+  <Project Path="CodeGenNew.Tests/CodeGenNew.Tests.csproj" />
 </Solution>

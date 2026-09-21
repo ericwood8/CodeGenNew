@@ -6,6 +6,32 @@
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
 <#
+    // ==========================================================================================
+    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // lists of tables). Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    // Folders under the Angular app root (where -o points) that the generated files go in.
+    string modelsFolder = "models";
+    // Tables that have no API (C# enums, other *Type lookup tables, tables with no entity): no model is written for them.
+    string[] noApiTables =
+    {
+        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
+        "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
+    };
+    // A foreign key to one of these stays a plain column: no navigation property.
+    string[] noNavigationTables =
+    {
+        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
+        "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role"
+    };
+    // Interfaces that live in another table's model file: table -> file name (without .ts).
+    var modelFileOf = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["DepartmentTeam"] = "department",
+        ["ProjectTask"] = "project"
+    };
+    // ==========================================================================================
+
     // ------------------------------------------------------------------------------------------
     // TS_Model_v1.tt
     // Generates: models/<table>.ts   (an Angular TypeScript interface; the path is written by the template itself, see
@@ -38,25 +64,6 @@
     // Not written: DisplayName / validation attributes, or extra fields a screen adds to a row (TimeSheetDetail's
     // projectName); an interface that needs those stays hand-maintained.
     //
-    // Project-specific names -- edit here if the project changes:
-    // Tables that have no API (C# enums, other *Type lookup tables, tables with no entity): no model is written for them.
-    string[] noApiTables =
-    {
-        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
-        "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
-    };
-    // A foreign key to one of these stays a plain column: no navigation property.
-    string[] noNavigationTables =
-    {
-        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
-        "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role"
-    };
-    // Interfaces that live in another table's model file: table -> file name (without .ts).
-    var modelFileOf = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["DepartmentTeam"] = "department",
-        ["ProjectTask"] = "project"
-    };
     // ------------------------------------------------------------------------------------------
 
     string BaseName(string table) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(table, "^E_", ""), "^SY_", "");
@@ -115,7 +122,7 @@
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
 
-        L($"@@@FILE models/{baseName.ToLowerInvariant()}.ts@@@");
+        L($"@@@FILE {modelsFolder}/{baseName.ToLowerInvariant()}.ts@@@");
 
         // imports: one line per model file, collecting every interface it must supply (a table can have two roles to the same parent)
         string ownFile = baseName.ToLowerInvariant();
