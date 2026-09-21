@@ -5,7 +5,7 @@ using Microsoft.UI.Xaml.Media;
 namespace CodeGenNew.App.Services;
 
 /// <summary>
-/// Applies the project-wide dialog conventions from Bugs3.txt items 1-4 to any ContentDialog, standard
+/// Applies the project-wide dialog conventions (access keys, Escape/Enter behavior, default-button focus) to any ContentDialog, standard
 /// footer buttons or ad-hoc ones alike:
 ///   - Access keys (Alt+letter) on the standard Primary/Secondary/Close footer buttons, reached by name
 ///     through the visual tree since ContentDialog only exposes those buttons as template parts, not as

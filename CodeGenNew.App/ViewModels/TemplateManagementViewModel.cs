@@ -8,7 +8,7 @@ namespace CodeGenNew.App.ViewModels;
 
 /// <summary> Backs the Template Management screen (Docs/specs.md section 9.3) -- a file-management
 /// grid over Templates\*.tt, not an embedded editor; editing template content happens in whatever
-/// external editor the developer already uses (Bugs3.txt items 12, 13). </summary>
+/// external editor the developer already uses. </summary>
 public partial class TemplateManagementViewModel : ObservableObject
 {
     private readonly AppSettingsService _settings;

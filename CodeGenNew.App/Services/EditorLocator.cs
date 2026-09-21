@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace CodeGenNew.App.Services;
 
-/// <summary> Finds and launches the developer's preferred text editor (Bugs3.txt item 13) rather than
+/// <summary> Finds and launches the developer's preferred text editor rather than
 /// relying on Windows' file-association prompt for .tt/.sql files, which may not be set up at all. </summary>
 public static class EditorLocator
 {

@@ -82,7 +82,7 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary> Reloads the table list (and re-collapses/reloads any expanded columns) from the
-    /// connected database -- Bugs1.txt item 5. Disabled via CanRefresh until a connection exists. </summary>
+    /// connected database. Disabled via CanRefresh until a connection exists. </summary>
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task RefreshAsync()
     {

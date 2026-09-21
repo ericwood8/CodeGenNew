@@ -21,7 +21,7 @@ public class TemplateResult
 /// runtime's own directory. That's correct for a normal framework-dependent app (whose runtime directory
 /// is the shared framework under Program Files\dotnet\shared\...) but breaks for a self-contained
 /// deployment (whose "runtime directory" is just its own output folder), producing a nonsensical path and
-/// failing with "The system cannot find the file specified." (Bugs2.txt item 5) -- which is why
+/// failing with "The system cannot find the file specified." -- which is why
 /// CodeGenNew.App is framework-dependent (SelfContained=false in its csproj) even though the Windows App
 /// SDK's own native runtime is still bundled (WindowsAppSDKSelfContained=true). Fine for "a developer's
 /// own box" (README) -- that box already has the .NET SDK installed, or this project wouldn't build.

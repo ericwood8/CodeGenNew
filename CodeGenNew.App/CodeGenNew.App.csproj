@@ -19,7 +19,7 @@
          framework-dependent app (runtime directory = the shared framework under Program Files\dotnet\
          shared\...) but wrong for a self-contained one (runtime directory = this app's own output
          folder), producing a nonsensical path and failing with "The system cannot find the file
-         specified." (Bugs2.txt item 5). Fine for "a developer's own box" (README): that box already has
+         specified." Fine for "a developer's own box" (README): that box already has
          the .NET SDK installed, or this project wouldn't build. -->
     <SelfContained>false</SelfContained>
     <Nullable>enable</Nullable>
@@ -46,7 +46,7 @@
   </ItemGroup>
 
   <!-- Docs/specs.md section 3: Templates\*.tt(.config) and SpecialLogicColumns.config are embedded as a
-       factory-default seed (Bugs3.txt items 5-7, 9). DefaultAssetSeeder materializes them as real,
+       factory-default seed. DefaultAssetSeeder materializes them as real,
        editable files next to the EXE the first time they're missing, and never overwrites an existing
        (possibly customized) one. Images are embedded outright (item 8) and never touch disk at all;
        IconProvider loads them straight from the assembly. Settings.json lives under %LocalAppData%

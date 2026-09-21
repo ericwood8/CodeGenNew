@@ -140,7 +140,7 @@ public class SqlServerSchemaProvider
         var (hasSoftDelete, deletedCol, deletedDateCol) = EvaluatePair(rules, "SoftDelete", columnNames, columns);
 
         // Exact-name only (not a SpecialLogicColumns.config pattern rule -- that engine only matches one
-        // column per side, and this needs two per side). Bugs2.txt item 11.
+        // column per side, and this needs two per side).
         ColumnModel? FindExact(string name) => columns.FirstOrDefault(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
         var inDateCol = FindExact("DateIn");
         var inTimeCol = FindExact("TimeIn");

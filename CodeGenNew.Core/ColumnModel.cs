@@ -86,7 +86,7 @@ public class ColumnModel
 
     /// <summary> Matches SpecialLogicColumns.config category "AdminFlagColumn" -- e.g. IsAdmin. Excluded
     /// from Insert parameters and hardcoded to "not admin" (0/False), regardless of caller input, so a
-    /// newly inserted row is never born with admin rights (Bugs2.txt item 12). </summary>
+    /// newly inserted row is never born with admin rights. </summary>
     public bool IsAdminFlagColumn { get; init; }
 
     /// <summary> Hungarian-prefixed SQL parameter name, e.g. "@pstrDescription", "@plngID". See Docs/specs.md Appendix A. </summary>

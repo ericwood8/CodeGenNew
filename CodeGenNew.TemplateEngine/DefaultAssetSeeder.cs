@@ -5,7 +5,7 @@ namespace CodeGenNew.TemplateEngine;
 
 public enum SeedOutcome
 {
-    /// <summary> File was missing and was created from the embedded default. Silent by design (Bugs3.txt items 5-7). </summary>
+    /// <summary> File was missing and was created from the embedded default. Silent by design. </summary>
     Created,
 
     /// <summary> File was an unmodified copy of an older shipped version and was replaced by the newer one. </summary>
@@ -19,8 +19,8 @@ public enum SeedOutcome
 public sealed record SeedNotice(string FileName, SeedOutcome Outcome, string Message);
 
 /// <summary>
-/// Makes both CodeGenNew.App and CodeGenNew.Cli "copy the EXE and go" deployable (Bugs3.txt items 5-7,
-/// 9): the Templates/*.tt(.config) files and SpecialLogicColumns.config are embedded resources baked
+/// Makes both CodeGenNew.App and CodeGenNew.Cli "copy the EXE and go" deployable:
+/// the Templates/*.tt(.config) files and SpecialLogicColumns.config are embedded resources baked
 /// into each project's own assembly as a factory-default seed, and this class materializes them as real,
 /// editable files on disk. Templates/Output directories are created the same way.
 ///

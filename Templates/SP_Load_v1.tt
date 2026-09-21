@@ -13,7 +13,7 @@
     // tables (status codes, enum tables, a chart of accounts) that a fresh database needs. Read-only against the
     // source database, like every template; the generated procedure is for you to review and run.
     //
-    // Design notes (differences from the original Examples\SeedDataLoad.txt, on purpose):
+    // Design notes (differences from the original hand-written seed-data load procedure, on purpose):
     //   - Re-runnable. Each row is INSERTed only IF NOT EXISTS for its primary key, so running the procedure
     //     twice, or against a database that already holds some of the rows, does not duplicate or fail.
     //     Existing rows are never updated: a seed load must not overwrite data someone has since customized.

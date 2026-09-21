@@ -36,13 +36,13 @@
     //     NULL when omitted -- a caller who wants a true NULL can still pass it explicitly (a SQL
     //     Server parameter default only applies when the argument is omitted entirely, not when it's
     //     explicitly passed as NULL), so no expressiveness is lost. Money columns default to 0 for the
-    //     same reason (Bugs2.txt item 13). Everything else still defaults to NULL.
+    //     same reason. Everything else still defaults to NULL.
     //   - AdminFlagColumn match (e.g. IsAdmin): a newly inserted row should never be born an admin --
     //     excluded from parameters and hardcoded to "not admin" (0, or 'False' for a string-typed
-    //     column) regardless of caller input (Bugs2.txt item 12).
+    //     column) regardless of caller input.
     //   - StartEndDate pair (e.g. StartDate/EndDate, DateOpened/DateClosed) and the exact-named
     //     DateIn/TimeIn/DateOut/TimeOut quartet (e.g. the CMS table): when both sides are supplied,
-    //     rejects the insert with RAISERROR if the range is backwards (Bugs2.txt items 10, 11, 14).
+    //     rejects the insert with RAISERROR if the range is backwards.
     //
     // This template does not require a primary key (SP_Insert.tt.config: RequiresPrimaryKey=false) --
     // a table can be inserted into without one -- but only applies to tables, not views (TableOnly=true).

@@ -7,7 +7,7 @@ namespace CodeGenNew.App.Services;
 /// Wraps the native Win32 SHBrowseForFolder folder-picker (with BIF_NEWDIALOGSTYLE, so it's the normal
 /// modern resizable dialog, not the old tiny fixed one). Used instead of
 /// Windows.Storage.Pickers.FolderPicker, which has no way to open at a specific starting directory (only
-/// a fixed PickerLocationId enum) -- Bugs1.txt item 1. System.Windows.Forms.FolderBrowserDialog would be
+/// a fixed PickerLocationId enum). System.Windows.Forms.FolderBrowserDialog would be
 /// simpler but UseWindowsForms conflicts with the Windows App SDK's own XAML "Page" build items in this
 /// project (MC6000 "must include PresentationCore, PresentationFramework"), so this goes straight to the
 /// Win32 API instead.

@@ -53,7 +53,7 @@ public sealed partial class TemplateManagementDialog : ContentDialog
         row.ConfirmingDelete = true;
     }
 
-    // Double-clicking a row is a second, more discoverable way to Edit it (Bugs4.txt item 3). Ignored when the
+    // Double-clicking a row is a second, more discoverable way to Edit it. Ignored when the
     // double-tap landed on one of the row's own buttons/checkboxes, which have their own meaning.
     private void OnRowDoubleTapped(object sender, Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs e)
     {

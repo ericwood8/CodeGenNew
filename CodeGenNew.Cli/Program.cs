@@ -38,7 +38,7 @@ public static class Program
 
         // Silently create Templates\/Output\ if missing and seed default templates/config from the
         // embedded copies baked into this exe -- never overwrites an existing (possibly customized)
-        // file (Bugs3.txt items 5-7, 9).
+        // file.
         foreach (var notice in DefaultAssetSeeder.EnsureDefaultAssets(templatesDirectory, specialLogicColumnsConfigPath, outputDirectory, typeof(Program).Assembly)
                      .Where(n => n.Outcome != SeedOutcome.Created)) // creating a missing file stays silent
         {

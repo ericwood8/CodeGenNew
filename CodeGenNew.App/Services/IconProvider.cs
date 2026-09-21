@@ -6,8 +6,8 @@ namespace CodeGenNew.App.Services;
 
 /// <summary>
 /// Maps app state to the shipped icon images (Docs/specs.md section 9.4 / section 1's "use the provided
-/// icons" ask). Images are embedded resources baked into this assembly (Bugs3.txt item 8 -- "self-
-/// sufficient enough that copying the EXE is about all that is needed"), loaded via
+/// icons" ask). Images are embedded resources baked into this assembly (the app is meant to be self-
+/// sufficient enough that copying the EXE is about all that is needed), loaded via
 /// Assembly.GetManifestResourceStream rather than a loose file on disk. Looked at each PNG to decide its
 /// role rather than guessing from the filename alone:
 ///   - database.png: plain database cylinder -> the TreeView's root (connected database) node.
@@ -19,8 +19,8 @@ namespace CodeGenNew.App.Services;
 ///   - DataSource.png (cylinder + plug): the "Connect" action.
 ///   - Refresh.png: the "Refresh" action.
 ///   - UIs.png: the "Manage Templates"/"Templates" action (closest available fit).
-///   - columns.png: columns under an expanded table (Bugs2.txt item 3).
-///   - pk.png: primary-key columns under an expanded table (Bugs2.txt item 9).
+///   - columns.png: columns under an expanded table.
+///   - pk.png: primary-key columns under an expanded table.
 /// "New database.png" and "network-server-database.png" have no matching v1 feature yet and are left unused.
 /// </summary>
 public class IconProvider

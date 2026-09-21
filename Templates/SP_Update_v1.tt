@@ -8,7 +8,7 @@
     // SP_Update_v1.tt
     // Generates: <TableName>_Update.sql
     //
-    // Behavior (matches the worked example in Docs/specs.md and the original CodeGen.docx spec):
+    // Behavior (matches the worked example in Docs/specs.md and the original generator's specification):
     //   - Every column becomes a VarChar parameter, regardless of its real SQL type (this is a
     //     deliberate, established convention from the author's prior generators -- NOT a data-type
     //     mismatch bug). Passing NULL for a parameter means "do not update this column."
@@ -43,8 +43,7 @@
     //     ELSE IF branch when neither inactivation trigger is supplied.
     //   - StartEndDate pair (e.g. StartDate/EndDate, DateOpened/DateClosed) and the exact-named
     //     DateIn/TimeIn/DateOut/TimeOut quartet (e.g. the CMS table): when the caller supplies BOTH
-    //     sides of a pair in the same call, rejects the update with RAISERROR if the range is backwards
-    //     (Bugs2.txt items 10, 11, 14). Only checked when both sides are supplied together -- since NULL
+    //     sides of a pair in the same call, rejects the update with RAISERROR if the range is backwards. Only checked when both sides are supplied together -- since NULL
     //     means "don't touch this column" here, validating a partial update (only one side supplied)
     //     against whatever's already in the row would need an extra SELECT this template doesn't do;
     //     review generated output for that case if it matters for a given table.

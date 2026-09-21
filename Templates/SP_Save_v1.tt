@@ -38,7 +38,7 @@
     //     text/ntext parameters are left alone (LTRIM/RTRIM do not accept them).
     //     Quotes are deliberately NOT doubled and LIKE wildcards are NOT escaped: these are real bound
     //     parameters in static SQL, so escaping would store O''Brien / 50[%] in the table. That is also why
-    //     dbo.uf_FixString (from Examples\SaveSP.txt) is not used -- it is meant for dynamic SQL / LIKE
+    //     dbo.uf_FixString (a helper in the original save procedure) is not used -- it is meant for dynamic SQL / LIKE
     //     patterns only, and it also converts NVARCHAR to VARCHAR (lossy) and adds a scalar-UDF call per
     //     string parameter. SP_Update.tt does its own quote-doubling where it really builds dynamic SQL.
     //   - Computed and rowversion/timestamp columns are skipped (cannot be assigned). An identity column

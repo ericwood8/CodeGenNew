@@ -17,7 +17,7 @@
     // in priority order), applied to this table and, via SP_Lookup_v1.tt.config's NeedsReferencedDisplayColumns,
     // to each referenced table. A table matching none contributes its first ordinary string column instead.
     //
-    // Written to avoid the defects of the original generator's output (Examples\LookupSP.txt):
+    // Written to avoid the defects of the original generator's output (its sample lookup procedure):
     //   - Every output column has a UNIQUE name. The original returned a dozen columns all called "ID", which a
     //     caller cannot tell apart. Here a foreign key's ID is the base table's own FK column, under its own name
     //     (AccountType1099EnumID); a foreign row's display value is named after its ROLE (AccountType1099).

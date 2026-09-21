@@ -10,7 +10,7 @@ public class AppSettings
     public LastConnectionSettings LastConnection { get; set; } = new();
 
     /// <summary> Full path to the developer's preferred text editor, auto-detected on first run
-    /// (Bugs3.txt item 13) and used to open template/generated files directly rather than relying on
+    /// and used to open template/generated files directly rather than relying on
     /// Windows' file-association prompt for .tt/.sql files. </summary>
     public string PreferredEditorPath { get; set; } = "";
 }

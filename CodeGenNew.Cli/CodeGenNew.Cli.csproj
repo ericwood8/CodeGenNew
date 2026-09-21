@@ -18,7 +18,7 @@
   <!-- Settings.json lives next to the EXE (repo-root copy is the canonical, hand-edited source during
        development; this copies it alongside the built exe so a dev-time `dotnet run`/built binary finds
        it). Templates\*.tt(.config) and SpecialLogicColumns.config are instead embedded as a
-       factory-default seed (Bugs3.txt items 5-7, 9). DefaultAssetSeeder (called from Program.cs)
+       factory-default seed. DefaultAssetSeeder (called from Program.cs)
        materializes them as real, editable files next to the EXE the first time they're missing, and
        never overwrites an existing (possibly customized) one. -->
   <ItemGroup>

@@ -20,7 +20,7 @@ public sealed partial class MainWindow : Window
         Title = "CodeGenNew";
     }
 
-    // Bugs3.txt item 4: cursor focus starts on the top menu's first button.
+    // Cursor focus starts on the top menu's first button.
     private void OnCommandBarLoaded(object sender, RoutedEventArgs e) =>
         FirstCommandBarButton.Focus(FocusState.Programmatic);
 
@@ -130,9 +130,9 @@ public sealed partial class MainWindow : Window
             Title = failed ? "Generation Failed" : "Done",
             Content = message,
             // On success the close button opens the generated file in the developer's editor instead of
-            // just dismissing (Bugs3.txt item 10).
+            // just dismissing.
             CloseButtonText = failed ? "OK" : "Open File",
-            // So the developer can paste the error into a bug report without retyping it (Bugs2.txt item 6).
+            // So the developer can paste the error into a bug report without retyping it.
             SecondaryButtonText = failed ? "Copy" : ""
         };
         ContentDialogUx.Apply(dialog, secondaryAccessKey: failed ? "C" : null, closeAccessKey: "O");

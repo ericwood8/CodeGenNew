@@ -11,7 +11,7 @@
     //
     // Behind a "Clone" button on a grid row: copies the chosen row into a NEW row so the person does not have to
     // retype a table's worth of identical values, and hands back the new row's key. (The idea and the parameter
-    // names @CopyFrom<Key> / @New<Key> come from Examples\CloneRowSP.txt.)
+    // names @CopyFrom<Key> / @New<Key> come from the original clone procedure.)
     //
     // How it copies -- a single  INSERT INTO t (explicit columns) SELECT ... FROM t WHERE <key>  -- differs from the
     // original (a #TMP table filled with SELECT *, ALTER TABLE ... DROP COLUMN ID, then a positional

@@ -10,7 +10,7 @@ namespace CodeGenNew.App.Services;
 /// Settings.json itself lives under %LocalAppData%\CodeGenNew, not next to the exe -- the exe's own
 /// folder is a build output directory that gets overwritten by CopyToOutputDirectory on every rebuild
 /// (and can differ between how the app was last built/launched, e.g. bin\x64\Debug vs bin\Debug), which
-/// was silently wiping the saved last-used connection between runs (Bugs2.txt item 2). Templates/Output/
+/// was silently wiping the saved last-used connection between runs. Templates/Output/
 /// config paths are still resolved relative to the exe's own BaseDirectory, since those do travel with
 /// the build output on purpose. </summary>
 public class AppSettingsService
@@ -36,10 +36,10 @@ public class AppSettingsService
 
         // Silently create Templates\/Output\ if missing and seed default templates/config from the
         // embedded copies baked into this exe -- never overwrites an existing (possibly customized)
-        // file (Bugs3.txt items 5-7, 9).
+        // file.
         DefaultAssetSeeder.EnsureDefaultAssets(TemplatesDirectory, SpecialLogicColumnsConfigPath, OutputDirectory, typeof(AppSettingsService).Assembly);
 
-        // Detect the developer's editor once, on first run, and remember it (Bugs3.txt item 13).
+        // Detect the developer's editor once, on first run, and remember it.
         if (string.IsNullOrEmpty(Current.PreferredEditorPath))
         {
             string? detected = EditorLocator.FindPreferredEditor();
@@ -65,8 +65,7 @@ public class AppSettingsService
     /// <summary> The way to change and persist a setting: re-reads Settings.json as it is on disk RIGHT NOW, applies
     /// <paramref name="change"/> to that, and writes it back. Saving the whole in-memory copy (Save) would let a
     /// second running instance, or one started before another saved, silently overwrite settings it never touched
-    /// -- e.g. an instance that only changed the output folder writing back its stale, blank connection
-    /// (Bugs4.txt item 5). Returns null on success, otherwise a message describing why it could not be saved. </summary>
+    /// -- e.g. an instance that only changed the output folder writing back its stale, blank connection. Returns null on success, otherwise a message describing why it could not be saved. </summary>
     public string? Update(Action<AppSettings> change)
     {
         try

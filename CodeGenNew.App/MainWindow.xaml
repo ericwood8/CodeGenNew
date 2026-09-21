@@ -58,7 +58,7 @@
                 <!-- Grid.Row="*" (not a StackPanel) so the TreeView is given a bounded height and can
                      scroll internally. Inside an unbounded StackPanel it just kept growing past the
                      visible viewport, and tables below a certain point were only reachable by resizing
-                     the window (Bugs1.txt item 8). -->
+                     the window. -->
                 <TreeView Grid.Row="1" x:Name="SchemaTreeView" ItemsSource="{x:Bind ViewModel.Tables}"
                           SelectionChanged="OnTreeSelectionChanged">
                     <TreeView.ItemTemplate>
@@ -78,7 +78,7 @@
 
                                     <!-- Columns are plain read-only text inside the table's own row,
                                          not separate TreeView nodes, so they can never be selected or
-                                         right-clicked (Bugs1.txt item 9). -->
+                                         right-clicked. -->
                                     <ItemsControl ItemsSource="{x:Bind Columns}" Margin="30,0,0,0"
                                                   Visibility="{x:Bind IsExpanded, Mode=OneWay}"
                                                   IsTabStop="False" IsRightTapEnabled="False">

@@ -7,7 +7,7 @@
     CloseButtonText="Cancel"
     DefaultButton="Primary">
 
-    <!-- Wider dialog and path field (Bugs4.txt item 4): a ContentDialog is capped at ~550px by default, which
+    <!-- Wider dialog and path field: a ContentDialog is capped at ~550px by default, which
          truncated any realistic path. -->
     <ContentDialog.Resources>
         <x:Double x:Key="ContentDialogMaxWidth">1400</x:Double>

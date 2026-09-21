@@ -51,8 +51,8 @@ public class TableModel
     public ColumnModel? IsDeletedColumn { get; init; }
     public ColumnModel? DeletedDateColumn { get; init; }
 
-    /// <summary> Set when the table has all four exact columns DateIn/TimeIn/DateOut/TimeOut (Bugs2.txt
-    /// item 11, e.g. the CMS table) -- a separate-date-and-time variant of HasStartEndDatePair that the
+    /// <summary> Set when the table has all four exact columns DateIn/TimeIn/DateOut/TimeOut
+    /// (e.g. the CMS table) -- a separate-date-and-time variant of HasStartEndDatePair that the
     /// pattern-based SpecialLogicColumns.config rules can't express (it needs two columns per side, not
     /// one), so it's detected directly by exact column name instead. </summary>
     public bool HasInOutDateTimePair { get; init; }
