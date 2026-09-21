@@ -1,0 +1,86 @@
+1) Q: "Given the research, do you want to adopt T4 (Mono.TextTemplating, precompiled) 
+as the underlying template engine."
+
+A: Yes. I have installed Mono.TextTemplating so "You can invoke the tool using the 
+following command: t4".:
+https://www.nuget.org/packages/dotnet-t4/
+
+Mono.TextTemplating:
+https://github.com/mono/t4
+
+Uses Mono templates and shows how to create TTs, but does not go to a true database
+nor has screens. However, I suggest it is worthy of a look.: 
+https://github.com/nogic1008/T4Sample
+
+2) A: So the rich text field would now only have the Mono T4 template text in it. 
+Might as well use T4's file convention of a .tt extension for templates. 
+
+3) Q: Should V1's "Update SP" and V2's "Fluent API in CS" be hard-coded, built-in 
+generators in C#.
+  
+A: The old idea of hardcoding lines of C# is dead now with us Mono T4. So they 
+will be Mono T4 compliant templates. So I am thinking now: 
+   1) the Menu Option name equals Template File Name so that the file name is 
+TemplateFileName.tt . 
+   2) That the TT files hold the templates.
+   3) that we have a template directory where we dynamically create the menu 
+options from the filenames found in the directory. See registry question 12.
+   4) then based on picked menu option, we get the corresponding file name and
+use its template.    
+
+4) Q: For settings (last output directory, last connection fields) and templates  
+A: plain JSON/local files.
+
+5) Q: Encryption A: Not sure. I want this more portable so I could copy and take 
+to work computer. Probably just a config file entry that is encrypted.
+
+6) A: Single last-used one but needs to fill in the potential multiple fields.
+
+7) A: Treat the rest of that document purely as a future-roadmap reference, with 
+only those three wired into V1/V2 logic now.
+
+8) A: I like the idea of text based configuration file for this. Maybe each line in
+the config file holds a row of pipe-delimited options?
+
+9) Q1: Table_no_pk.png / table_no_unique.png suggest distinct icons for tables missing 
+a PK or unique index. A1: Tables just show a different icon (informational).
+Yes.
+
+Q2: disabled/unselectable in the tree since Update SP generation needs a PK?
+A2: No. Reason - we will have "Insert SP" or "Select SP" that does not need a PK.
+
+10) Q: Reserved-word red-highlighting — A: Great question. SQL Server reserved 
+words and C# reserved keywords. 
+
+11) Q: Should V1 also handle composite keys or GUID PKs, or explicitly skip/error 
+on those until later? A: Yes. Handle all types of keys including GUID PKS. So
+no single PK variable, but rather a list and you need to hold data type as a 
+PK entity property.
+
+12) Q: Should right-click menu generators be built as a plugin-style registry. 
+A: Yes. I love plugin-style flexibility because there will be multiple templates
+eventually. See registry question 3.
+
+13) Q: Scaffold shared base classes?  A: Yes, scaffold. I want to change my
+spec about the Template Screen.  Step 5 is revised to be "Have a Shared Base code
+grid that is small. The developer can pick (multiple times) using a file dialog 
+an existing Shared Base code file. The grid fills up with rows of Shared code
+required. These rows are optional and usually will be empty.". The old Step 5
+will become Step 6.
+
+14) Q: Omit views?  A: Yes, omit views until V2.
+
+15) Q: Split code base?  A: I guess the codegen engine is now Mono.TextTemplating . 
+Correct? But yes, try to split things so the DB Connection screen is as modular 
+as possible. As for specifically class library, I am fine with a separate DB 
+Connection class library project within the overall solution OR any other way to 
+make things adjustable when we eventually start handling other DBs.
+
+16) Q: Pin to certain Dot.Net version? A: Great question. I guess .NET 10 LTS .    
+Testing will prove if Windows App SDK 2.4.0 works with it.  If not, then we will
+have to downgrade since we need Windows App SDK 2.4.0 to work.
+
+17) Q: Git init?  A: Hold off until we're past planning. I want to keep local
+since I am only one developer, until we have something that is definately working. 
+But you are correct that I have not Git Init the folder. 
+

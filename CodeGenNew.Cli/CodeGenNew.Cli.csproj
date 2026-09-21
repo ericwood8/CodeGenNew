@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\CodeGenNew.Core\CodeGenNew.Core.csproj" />
+    <ProjectReference Include="..\CodeGenNew.Connections\CodeGenNew.Connections.csproj" />
+    <ProjectReference Include="..\CodeGenNew.SchemaIntrospection\CodeGenNew.SchemaIntrospection.csproj" />
+    <ProjectReference Include="..\CodeGenNew.TemplateEngine\CodeGenNew.TemplateEngine.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>codegen</AssemblyName>
+  </PropertyGroup>
+
+  <!-- Settings.json lives next to the EXE (repo-root copy is the canonical, hand-edited source during
+       development; this copies it alongside the built exe so a dev-time `dotnet run`/built binary finds
+       it). Templates\*.tt(.config) and SpecialLogicColumns.config are instead embedded as a
+       factory-default seed (Bugs3.txt items 5-7, 9). DefaultAssetSeeder (called from Program.cs)
+       materializes them as real, editable files next to the EXE the first time they're missing, and
+       never overwrites an existing (possibly customized) one. -->
+  <ItemGroup>
+    <None Include="..\Settings.json" Link="Settings.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- WithCulture=false on both: MSBuild's AssignCulture task otherwise reads the "tt" in
+         "SP_Insert.tt.config" as the ISO culture code for Tatar and silently ships that file off into a
+         "tt\" satellite resource assembly instead of embedding it in the main one. -->
+    <EmbeddedResource Include="..\SpecialLogicColumns.config" Link="SpecialLogicColumns.config" WithCulture="false" />
+    <EmbeddedResource Include="..\Templates\**\*.*" LinkBase="Templates" WithCulture="false" />
+  </ItemGroup>
+
+</Project>

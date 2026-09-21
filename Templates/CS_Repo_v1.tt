@@ -1,0 +1,122 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ------------------------------------------------------------------------------------------
+    // CS_Repo_v1.tt
+    // Generates: <TableName>Repo.cs   (see OutputName in CS_Repo_v1.tt.config)
+    //
+    // A repository class in the style of TimeEntryServer's TimeEntry.Common\Repositories\HolidayRepo.cs:
+    //
+    //     public class HolidayRepo : GenericRepo<Holiday>
+    //     {
+    //         public HolidayRepo(TimeEntryContext context) : base(context) { }
+    //         ... extra queries ...
+    //     }
+    //
+    // The shared plumbing (GenericRepo<T> / NameActiveRepo<T> and their interfaces) is written by hand once and is not
+    // per-table, so this template only writes the thin per-table class on top of it:
+    //   - Base class: a table with a NOT NULL text column called Name AND a NOT NULL bit column called IsActive uses
+    //     NameActiveRepo<Entity> (which brings GetByName, GetAllActive and the duplicate-name check); any other table uses
+    //     GenericRepo<Entity>. This is the same test CS_Entity uses to choose BaseNameActiveEntity / BaseEntity, and the
+    //     entity has to derive from the matching base for the repo to compile.
+    //   - Extra queries, only where the COLUMNS alone say what to write:
+    //       * a name/active table that hangs off exactly one parent through a NOT NULL int foreign key (a "child" table:
+    //         DepartmentTeam -> Department) gets  GetAllOf<Parent>(int id)  -- its active rows for that parent, by name;
+    //       * a table with a NOT NULL text Name that is NOT name/active-based gets  GetByName(string name)  -- names starting
+    //         with the text (Holiday).
+    //   - No entity, no repo: a table listed in noRepositoryTables (the ones that are C# enums, the *Type lookup tables, and
+    //     tables with no entity class) stops with an error instead of writing a class that cannot compile.
+    //
+    // What it does NOT do, so a repository that needs any of these stays hand-maintained: queries that Include navigation
+    // properties (GetAllIncludeTeams, GetAllIncludeDropdowns) -- the entity's navigations are the developers' choice, and a
+    // guess would not compile; lookups by a hand-picked column or order (GetAllOfTimesheet ordered by project).
+    //
+    // Project-specific names -- edit here if the project changes:
+    string repositoryNamespace = "TimeEntry.Common.Repositories";
+    string contextType = "TimeEntryContext";
+    // Tables that get no repository: C# enums, other *Type lookup tables, and tables with no entity class.
+    string[] noRepositoryTables =
+    {
+        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
+        "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
+    };
+    // ------------------------------------------------------------------------------------------
+
+    if (noRepositoryTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase))
+    {
+        Error($"CS_Repo writes no repository for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noRepositoryTables "
+              + "(an enum, a *Type lookup table, or a table with no entity class).");
+    }
+    else
+    {
+        string entity = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
+
+        var nameColumn = Model.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
+        var activeColumn = Model.Columns.FirstOrDefault(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive");
+        bool nameActive = nameColumn is not null && activeColumn is not null;
+        string baseRepo = nameActive ? "NameActiveRepo" : "GenericRepo";
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+
+        var methods = new List<string[]>();
+
+        if (nameActive)
+        {
+            // a child table: exactly one single-column foreign key to a table that has an entity (foreign keys to enum tables do not count)
+            var childKeys = Model.ForeignKeys
+                .Where(f => f.ReferencingColumns.Count == 1
+                            && !noRepositoryTables.Contains(f.ReferencedTable, StringComparer.OrdinalIgnoreCase))
+                .Select(f => Model.Columns.First(c => c.Name.Equals(f.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            if (childKeys.Count == 1
+                && childKeys[0].SqlType == SqlDbType.Int && !childKeys[0].IsNullable && !childKeys[0].IsPrimaryKey)
+            {
+                var fkColumn = childKeys[0];
+                string parent = fkColumn.Name.EndsWith("Id", StringComparison.Ordinal) && fkColumn.Name.Length > 2 ? fkColumn.Name[..^2] : fkColumn.Name;
+                methods.Add(new[]
+                {
+                    $"    public async Task<List<{entity}>> GetAllOf{parent}(int id)",
+                    "    {",
+                    "        return await _dbSet",
+                    $"            .Where(t => t.{fkColumn.Name}.Equals(id) && t.IsActive) // only fetch active",
+                    "            .OrderBy(d => d.Name) // order by name",
+                    "            .ToListAsync();",
+                    "    }"
+                });
+            }
+        }
+        else if (Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name"))
+        {
+            methods.Add(new[]
+            {
+                $"    public async Task<List<{entity}>> GetByName(string name)",
+                "    {",
+                "        return await _dbSet",
+                "            .Where(d => d.Name.StartsWith(name))",
+                "            .ToListAsync();",
+                "    }"
+            });
+        }
+
+        L($"namespace {repositoryNamespace};");
+        L();
+        L($"public class {Model.TableName}Repo : {baseRepo}<{entity}>");
+        L("{");
+        L($"    public {Model.TableName}Repo({contextType} context) : base(context)");
+        L("    {");
+        L("    }");
+        foreach (var method in methods)
+        {
+            L();
+            foreach (string line in method) L(line);
+        }
+        L("}");
+        Write(o.ToString());
+    }
+#>

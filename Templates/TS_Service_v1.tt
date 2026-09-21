@@ -1,0 +1,118 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ------------------------------------------------------------------------------------------
+    // TS_Service_v1.tt
+    // Generates: services/<table>.service.ts   (an Angular injectable; the path is written by the template itself, see
+    // GeneratedFiles -- point the output folder at the Angular app's src/app folder)
+    //
+    // The HttpClient wrapper for one table's API, in the style of TimeEntryUI's src\app\services\holiday.service.ts, with the
+    // same method names on every service so a component never has to remember which one this table uses:
+    //
+    //     getAll(): Observable<Holiday[]>              GET    api/holidays
+    //     getById(id): Observable<Holiday>             GET    api/holidays/{id}
+    //     create(holiday): Observable<Holiday>         POST   api/holidays
+    //     update(id, holiday): Observable<Holiday>     PUT    api/holidays/{id}
+    //     delete(id): Observable<void>                 DELETE api/holidays/{id}
+    //     findByName(name): Observable<Holiday[]>      GET    api/holidays/{name}      (only a table with a text Name column)
+    //
+    //   - Names: class <Table>Service in services/<table>.service.ts, the table name without its "E_" / "SY_" prefix
+    //     (E_TimeSheet -> TimeSheetService, services/timesheet.service.ts); the interface is imported from models/<table>.ts.
+    //   - URL: "api/" + the lower-cased name + "s" -- what BaseApi.BreakIntoStrings registers on the server (the Angular dev
+    //     proxy turns "api/..." into the server's own route).
+    //   - findByName exists on the server for the name-based tables, so it is generated for every table with a text column
+    //     called Name; the plain (API_Crud) tables have none.
+    //
+    // Not written: calls for extra routes a hand-written API adds (DepartmentService.getTeams, TimeSheetDetailService's
+    // "by timesheet" call); a service that needs those stays hand-maintained.
+    //
+    // Project-specific names -- edit here if the project changes:
+    string apiPrefix = "api";
+    // Tables that have no API (C# enums, other *Type lookup tables, tables with no entity): no service is written for them.
+    string[] noApiTables =
+    {
+        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
+        "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
+    };
+    // ------------------------------------------------------------------------------------------
+
+    string BaseName(string table) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(table, "^E_", ""), "^SY_", "");
+    string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
+    string Words(string s) => System.Text.RegularExpressions.Regex.Replace(s, "(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ");
+
+    var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
+    if (noApiTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase))
+    {
+        Error($"TS_Service writes no service for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so it has no API to call.");
+    }
+    else if (keyColumn is null || keyColumn.SqlType != SqlDbType.Int)
+    {
+        Error($"TS_Service needs a table with a single int primary key (the routes are {{id:int}}), but [{Model.SchemaName}].[{Model.TableName}] has "
+              + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
+    }
+    else
+    {
+        string baseName = BaseName(Model.TableName);
+        string stem = baseName.ToLowerInvariant();
+        string variable = LowerFirst(baseName);
+        string lowerWords = Words(baseName).ToLowerInvariant();
+        bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name");
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+
+        L($"@@@FILE services/{stem}.service.ts@@@");
+        L("import { Injectable } from '@angular/core';");
+        L("import { HttpClient } from '@angular/common/http';");
+        L("import { Observable } from 'rxjs';");
+        L($"import {{ {baseName} }} from '../models/{stem}';");
+        L();
+        L("@Injectable({");
+        L("    providedIn: 'root',");
+        L("})");
+        L($"export class {baseName}Service {{");
+        L($"    private apiUrl = '{apiPrefix}/{stem}s'; // Replace with your API URL");
+        L();
+        L("    constructor(private http: HttpClient) { }");
+        L();
+        L($"    // Get all {lowerWords}s");
+        L($"    getAll(): Observable<{baseName}[]> {{");
+        L($"        return this.http.get<{baseName}[]>(this.apiUrl);");
+        L("    }");
+        L();
+        L($"    // Get a {lowerWords} by ID");
+        L($"    getById(id: number): Observable<{baseName}> {{");
+        L($"        return this.http.get<{baseName}>(`${{this.apiUrl}}/${{id}}`);");
+        L("    }");
+        L();
+        L($"    // Create a new {lowerWords}");
+        L($"    create({variable}: {baseName}): Observable<{baseName}> {{");
+        L($"        return this.http.post<{baseName}>(this.apiUrl, {variable});");
+        L("    }");
+        L();
+        L($"    // Update a {lowerWords}");
+        L($"    update(id: number, {variable}: {baseName}): Observable<{baseName}> {{");
+        L($"        return this.http.put<{baseName}>(`${{this.apiUrl}}/${{id}}`, {variable});");
+        L("    }");
+        L();
+        L($"    // Delete a {lowerWords}");
+        L("    delete(id: number): Observable<void> {");
+        L("        return this.http.delete<void>(`${this.apiUrl}/${id}`);");
+        L("    }");
+        if (hasName)
+        {
+            L();
+            L("    // Find by Name");
+            L($"    findByName(name: string): Observable<{baseName}[]> {{");
+            L($"        return this.http.get<{baseName}[]>(`${{this.apiUrl}}/${{name}}`);");
+            L("    }");
+        }
+        L("}");
+        Write(o.ToString());
+    }
+#>

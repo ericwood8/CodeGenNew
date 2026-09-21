@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>CodeGenNew.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <!-- .NET's own SelfContained (a separate knob from WindowsAppSDKSelfContained above, which still
+         bundles the Windows App SDK's own native/XAML runtime) is deliberately false. Mono.TextTemplating
+         compiles generated templates by shelling out to a "dotnet"-hosted csc, located by walking a fixed
+         number of parent directories up from the current runtime's own directory: correct for a normal
+         framework-dependent app (runtime directory = the shared framework under Program Files\dotnet\
+         shared\...) but wrong for a self-contained one (runtime directory = this app's own output
+         folder), producing a nonsensical path and failing with "The system cannot find the file
+         specified." (Bugs2.txt item 5). Fine for "a developer's own box" (README): that box already has
+         the .NET SDK installed, or this project wouldn't build. -->
+    <SelfContained>false</SelfContained>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>CodeGenNew</AssemblyName>
+    <!-- MVVMTK0045 recommends [ObservableProperty] partial properties over backing fields for Native
+         AOT/trimmed WinRT scenarios. Tried it here; the CommunityToolkit.Mvvm 8.4.0 generator did not
+         produce a matching implementation part in this WinUI3 project (CS9248 on every property) even
+         with LangVersion forced to latest, so this reverted to the classic backing-field style, which
+         builds and runs correctly. -->
+    <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CodeGenNew.Core\CodeGenNew.Core.csproj" />
+    <ProjectReference Include="..\CodeGenNew.Connections\CodeGenNew.Connections.csproj" />
+    <ProjectReference Include="..\CodeGenNew.SchemaIntrospection\CodeGenNew.SchemaIntrospection.csproj" />
+    <ProjectReference Include="..\CodeGenNew.TemplateEngine\CodeGenNew.TemplateEngine.csproj" />
+  </ItemGroup>
+
+  <!-- Docs/specs.md section 3: Templates\*.tt(.config) and SpecialLogicColumns.config are embedded as a
+       factory-default seed (Bugs3.txt items 5-7, 9). DefaultAssetSeeder materializes them as real,
+       editable files next to the EXE the first time they're missing, and never overwrites an existing
+       (possibly customized) one. Images are embedded outright (item 8) and never touch disk at all;
+       IconProvider loads them straight from the assembly. Settings.json lives under %LocalAppData%
+       instead (see AppSettingsService), not here. -->
+  <ItemGroup>
+    <!-- WithCulture=false everywhere here: MSBuild's AssignCulture task otherwise reads the "tt" in
+         "SP_Insert.tt.config" as the ISO culture code for Tatar and silently ships that file off into a
+         "tt\" satellite resource assembly instead of embedding it in the main one. -->
+    <EmbeddedResource Include="..\SpecialLogicColumns.config" Link="SpecialLogicColumns.config" WithCulture="false" />
+    <EmbeddedResource Include="..\Templates\**\*.*" LinkBase="Templates" WithCulture="false" />
+    <EmbeddedResource Include="..\Images\**\*.*" LinkBase="Images" WithCulture="false" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,140 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ------------------------------------------------------------------------------------------
+    // TS_Model_v1.tt
+    // Generates: models/<table>.ts   (an Angular TypeScript interface; the path is written by the template itself, see
+    // GeneratedFiles -- point the output folder at the Angular app's src/app folder)
+    //
+    // The shape of one row as the API sends and receives it, in the style of TimeEntryUI's src\app\models\holiday.ts:
+    //
+    //     export interface Holiday {
+    //         holidayId?: number; // Optional for new ones
+    //         sY_IsoCountry_Alpha3Code: string;
+    //         date: string;
+    //         name: string;
+    //     }
+    //
+    //   - File / interface name: the table name without its "E_" or "SY_" prefix (E_TimeSheet -> models/timesheet.ts,
+    //     interface TimeSheet), the same rule BaseApi uses for the API's route.
+    //   - Property names: exactly what ASP.NET Core's JSON camel-casing produces from the column name (System.Text.Json
+    //     lower-cases the leading capitals up to the last one that starts a word), so the interface matches the JSON the
+    //     server really sends: HolidayId -> holidayId, IsActive -> isActive, but SY_IsoCountry_Alpha3Code ->
+    //     sY_IsoCountry_Alpha3Code and E_TimeSheetId -> e_TimeSheetId.
+    //   - Types: number (all numeric and money columns), boolean (bit), string (text, uniqueidentifier and DATES). A date is
+    //     a string because JSON has no date type -- the server sends "2025-12-25T00:00:00" and takes the same back -- so
+    //     typing it Date would lie about what a row holds.
+    //   - Optional ("?"): the primary key (a new row has none yet) and every column that allows NULL. NOT NULL columns are
+    //     required, matching the C# entity's "required" properties, which the API refuses to bind without.
+    //   - One optional navigation property per single-column foreign key (employee?: Employee), named for the FK's role, of
+    //     the parent's interface, imported from its model file -- unless the parent is an enum / lookup table listed in
+    //     noNavigationTables, in which case the foreign key stays a plain number/string.
+    //
+    // Not written: DisplayName / validation attributes, or extra fields a screen adds to a row (TimeSheetDetail's
+    // projectName); an interface that needs those stays hand-maintained.
+    //
+    // Project-specific names -- edit here if the project changes:
+    // Tables that have no API (C# enums, other *Type lookup tables, tables with no entity): no model is written for them.
+    string[] noApiTables =
+    {
+        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
+        "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
+    };
+    // A foreign key to one of these stays a plain column: no navigation property.
+    string[] noNavigationTables =
+    {
+        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
+        "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role"
+    };
+    // Interfaces that live in another table's model file: table -> file name (without .ts).
+    var modelFileOf = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["DepartmentTeam"] = "department",
+        ["ProjectTask"] = "project"
+    };
+    // ------------------------------------------------------------------------------------------
+
+    string BaseName(string table) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(table, "^E_", ""), "^SY_", "");
+    string Camel(string name)
+    {
+        if (string.IsNullOrEmpty(name) || !char.IsUpper(name[0])) return name;
+        var chars = name.ToCharArray();
+        for (int i = 0; i < chars.Length; i++)
+        {
+            if (i == 1 && !char.IsUpper(chars[i])) break;
+            bool hasNext = i + 1 < chars.Length;
+            if (i > 0 && hasNext && !char.IsUpper(chars[i + 1])) break;
+            chars[i] = char.ToLowerInvariant(chars[i]);
+        }
+        return new string(chars);
+    }
+    string TsType(ColumnModel c) => c.SqlType switch
+    {
+        SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt or SqlDbType.Decimal or SqlDbType.Money
+            or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real => "number",
+        SqlDbType.Bit => "boolean",
+        _ => "string"
+    };
+
+    var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
+    if (noApiTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase))
+    {
+        Error($"TS_Model writes no model for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so the app never receives a row of it.");
+    }
+    else if (keyColumn is null)
+    {
+        Error($"TS_Model needs a table with a single primary key, but [{Model.SchemaName}].[{Model.TableName}] has "
+              + (Model.PrimaryKeyColumns.Count == 0 ? "none." : "a composite primary key (" + string.Join(", ", Model.PrimaryKeyColumns.Select(c => c.Name)) + ")."));
+    }
+    else
+    {
+        string baseName = BaseName(Model.TableName);
+        var fkByColumn = Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1)
+            .ToDictionary(f => f.ReferencingColumns[0], f => f, StringComparer.OrdinalIgnoreCase);
+
+        // navigation properties: one per foreign key whose parent is not an enum/lookup table
+        var takenNames = new HashSet<string>(Model.Columns.Select(c => Camel(c.Name)), StringComparer.Ordinal);
+        var navigations = new List<(string Property, string Type, string File)>();
+        foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && fkByColumn.ContainsKey(c.Name)))
+        {
+            var fk = fkByColumn[c.Name];
+            if (noNavigationTables.Contains(fk.ReferencedTable, StringComparer.OrdinalIgnoreCase)) continue;
+            string role = c.Name.Length > 2 && c.Name.EndsWith("Id", StringComparison.Ordinal) ? c.Name[..^2] : c.Name + "Ref";
+            string property = Camel(role);
+            if (!takenNames.Add(property)) continue;
+            string type = BaseName(fk.ReferencedTable);
+            string file = modelFileOf.TryGetValue(fk.ReferencedTable, out var f) ? f : type.ToLowerInvariant();
+            navigations.Add((property, type, file));
+        }
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+
+        L($"@@@FILE models/{baseName.ToLowerInvariant()}.ts@@@");
+
+        // imports: one line per model file, collecting every interface it must supply (a table can have two roles to the same parent)
+        string ownFile = baseName.ToLowerInvariant();
+        var imports = navigations.Where(n => n.File != ownFile).GroupBy(n => n.File)
+            .Select(g => (File: g.Key, Types: g.Select(n => n.Type).Distinct().OrderBy(t => t, StringComparer.Ordinal).ToList()))
+            .OrderBy(g => g.File, StringComparer.Ordinal).ToList();
+        foreach (var import in imports)
+            L($"import {{ {string.Join(", ", import.Types)} }} from \"./{import.File}\";");
+        if (imports.Count > 0) L();
+
+        L($"export interface {baseName} {{");
+        foreach (var c in Model.Columns)
+        {
+            bool optional = c.IsPrimaryKey || c.IsNullable;
+            L($"    {Camel(c.Name)}{(optional ? "?" : "")}: {TsType(c)};{(c.IsPrimaryKey ? " // Optional for new ones" : "")}");
+        }
+        foreach (var n in navigations)
+            L($"    {n.Property}?: {n.Type};");
+        L("}");
+        Write(o.ToString());
+    }
+#>

@@ -1,0 +1,92 @@
+CREATE OR ALTER PROCEDURE [dbo].[NameBase_Insert]
+(
+@pstrSortName varchar(60) = '',
+@pstrName varchar(60) = '',
+@pstrNumber varchar(50) = '',
+@pblnIs1099Required bit = NULL,
+@pblnIsCustomer bit = NULL,
+@plngNameBaseCustomerID int = NULL,
+@pblnIsEmployee bit = NULL,
+@plngNameBaseEmployeeID int = NULL,
+@pblnIsOwner bit = NULL,
+@plngOwnerID int = NULL,
+@pblnIsVendor bit = NULL,
+@plngVendorOptionsID int = NULL,
+@pblnIsBank bit = NULL,
+@plngNameBaseBankID int = NULL,
+@pblnIsCompany bit = NULL,
+@plngCompanyID int = NULL,
+@plngSYIRSEntityCodeID int = NULL,
+@plngRegularPayTypeEnumID int = NULL,
+@plngCheckStubDetailEnumID int = NULL,
+@pblnIsPrintable bit = NULL,
+@pbinEncryptedFederalIdNumber varbinary(128) = NULL,
+@pstrWebAddress varchar(50) = '',
+@pstrCreateUser varchar(50) = '',
+@pstrNoteText varchar(MAX) = ''
+)
+AS
+BEGIN
+	INSERT INTO [dbo].[NameBase]
+	(
+		[SortName],
+		[Name],
+		[Number],
+		[Is1099Required],
+		[IsCustomer],
+		[NameBaseCustomerID],
+		[IsEmployee],
+		[NameBaseEmployeeID],
+		[IsOwner],
+		[OwnerID],
+		[IsVendor],
+		[VendorOptionsID],
+		[IsBank],
+		[NameBaseBankID],
+		[IsCompany],
+		[CompanyID],
+		[SYIRSEntityCodeID],
+		[RegularPayTypeEnumID],
+		[CheckStubDetailEnumID],
+		[IsPrintable],
+		[EncryptedFederalIdNumber],
+		[WebAddress],
+		[CreateUser],
+		[NoteText],
+		[CreateDate],
+		[LastDateChanged],
+		[IsInactive]
+	)
+	VALUES
+	(
+		LTRIM(RTRIM(@pstrSortName)),
+		LTRIM(RTRIM(@pstrName)),
+		LTRIM(RTRIM(@pstrNumber)),
+		@pblnIs1099Required,
+		@pblnIsCustomer,
+		@plngNameBaseCustomerID,
+		@pblnIsEmployee,
+		@plngNameBaseEmployeeID,
+		@pblnIsOwner,
+		@plngOwnerID,
+		@pblnIsVendor,
+		@plngVendorOptionsID,
+		@pblnIsBank,
+		@plngNameBaseBankID,
+		@pblnIsCompany,
+		@plngCompanyID,
+		@plngSYIRSEntityCodeID,
+		@plngRegularPayTypeEnumID,
+		@plngCheckStubDetailEnumID,
+		@pblnIsPrintable,
+		@pbinEncryptedFederalIdNumber,
+		LTRIM(RTRIM(@pstrWebAddress)),
+		LTRIM(RTRIM(@pstrCreateUser)),
+		LTRIM(RTRIM(@pstrNoteText)),
+		GETDATE(),
+		GETDATE(),
+		0
+	);
+
+	SELECT CAST(SCOPE_IDENTITY() AS int) AS [ID];
+END

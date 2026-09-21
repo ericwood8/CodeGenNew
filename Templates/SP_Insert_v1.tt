@@ -1,0 +1,178 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ------------------------------------------------------------------------------------------
+    // SP_Insert_v1.tt
+    // Generates: <TableName>_Insert.sql
+    //
+    // Design notes (deliberately different from SP_Update.tt):
+    //   - Uses ordinary, properly-typed SQL parameters (each column's real SqlTypeDeclaration) and a
+    //     plain parameterized INSERT -- NOT the VarChar-for-everything/dynamic-SQL-string convention
+    //     SP_Update.tt uses. Insert doesn't need Update's "NULL means don't touch this column"
+    //     semantics (every insert supplies a real row), so there's no reason to give up real typing
+    //     and real (injection-safe-by-construction) parameters here.
+    //   - Computed columns are excluded (cannot be assigned to).
+    //   - A single IDENTITY primary key column is excluded from parameters (the database assigns it);
+    //     the generated procedure returns it via SCOPE_IDENTITY(). A composite or non-identity primary
+    //     key (e.g. a caller-supplied GUID) is instead a required parameter -- there is nothing to
+    //     auto-generate, so the caller must supply it.
+    //   - Audit date columns (SpecialLogicColumns.config): a CreateDateColumn or LastChangedDateColumn
+    //     match is set to GETDATE() automatically and is not a parameter. A ModifiedDateColumn match
+    //     is excluded from the INSERT entirely (nothing to modify yet on a brand-new row) and is left
+    //     at whatever the column's own database default is (typically NULL).
+    //   - Active/Inactive (HasActiveInactivePair): a newly inserted row should never be born inactive.
+    //     The active-flag column is excluded from parameters and hardcoded instead -- 1 for an
+    //     "IsActive"/"Active"-style column, 0 for an "IsInactive"-style column (opposite polarity,
+    //     name contains "Inactive"), so either way the row is active by default. The companion
+    //     InactiveDate column, and any InactiveReasonColumn match (e.g. InactiveReasonNoteText), are
+    //     excluded from the INSERT entirely and left NULL -- there's nothing to explain yet.
+    //   - String parameters are trimmed (LTRIM/RTRIM) on the way in, per the project's "trim strings"
+    //     rule; no manual quote-escaping is needed since these are real bound parameters, not
+    //     concatenated SQL text.
+    //   - String-family parameters (char/nchar/varchar/nvarchar/text/ntext) default to '' rather than
+    //     NULL when omitted -- a caller who wants a true NULL can still pass it explicitly (a SQL
+    //     Server parameter default only applies when the argument is omitted entirely, not when it's
+    //     explicitly passed as NULL), so no expressiveness is lost. Money columns default to 0 for the
+    //     same reason (Bugs2.txt item 13). Everything else still defaults to NULL.
+    //   - AdminFlagColumn match (e.g. IsAdmin): a newly inserted row should never be born an admin --
+    //     excluded from parameters and hardcoded to "not admin" (0, or 'False' for a string-typed
+    //     column) regardless of caller input (Bugs2.txt item 12).
+    //   - StartEndDate pair (e.g. StartDate/EndDate, DateOpened/DateClosed) and the exact-named
+    //     DateIn/TimeIn/DateOut/TimeOut quartet (e.g. the CMS table): when both sides are supplied,
+    //     rejects the insert with RAISERROR if the range is backwards (Bugs2.txt items 10, 11, 14).
+    //
+    // This template does not require a primary key (SP_Insert.tt.config: RequiresPrimaryKey=false) --
+    // a table can be inserted into without one -- but only applies to tables, not views (TableOnly=true).
+
+    var insertableColumns = Model.Columns
+        .Where(c => !c.IsComputed && !c.IsModifiedDateColumn && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn)
+        .Where(c => c != Model.InactiveDateColumn)
+        .ToList();
+
+    bool HasSingleIdentityPrimaryKey = Model.PrimaryKeyColumns.Count == 1 && Model.PrimaryKeyColumns[0].IsIdentity;
+    var identityColumn = HasSingleIdentityPrimaryKey ? Model.PrimaryKeyColumns[0] : null;
+
+    var parameterColumns = insertableColumns
+        .Where(c => c != identityColumn && !c.IsCreateDateColumn && !c.IsLastChangedDateColumn && c != Model.ActiveColumn)
+        .ToList();
+
+    var autoTouchedOnInsertColumns = Model.Columns.Where(c => c.IsCreateDateColumn || c.IsLastChangedDateColumn).ToList();
+
+    string ValueExpression(ColumnModel c) =>
+        c.IsStringColumn ? $"LTRIM(RTRIM({c.ParameterName}))" : c.ParameterName;
+
+    // A newly inserted row is always active, and never an admin: hardcode these rather than taking them
+    // as parameters.
+    var hardcodedInsertColumns = new List<(string Name, string Value)>();
+    if (Model.HasActiveInactivePair && Model.ActiveColumn is not null)
+    {
+        bool isNegativePolarity = Model.ActiveColumn.Name.Contains("Inactive", StringComparison.OrdinalIgnoreCase);
+        hardcodedInsertColumns.Add((Model.ActiveColumn.Name, isNegativePolarity ? "0" : "1"));
+    }
+    foreach (var adminCol in Model.Columns.Where(c => c.IsAdminFlagColumn))
+        hardcodedInsertColumns.Add((adminCol.Name, adminCol.IsStringColumn ? "'False'" : "0"));
+
+    // One combined (columnName, valueExpression) list drives both the INSERT column list and the
+    // VALUES list, so the two can never drift out of sync and comma placement only has to be computed once.
+    var insertPairs = parameterColumns.Select(c => (Name: c.Name, Value: ValueExpression(c)))
+        .Concat(autoTouchedOnInsertColumns.Select(c => (Name: c.Name, Value: "GETDATE()")))
+        .Concat(hardcodedInsertColumns)
+        .ToList();
+#>
+CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Insert]
+(
+<#
+    for (int i = 0; i < parameterColumns.Count; i++)
+    {
+        var c = parameterColumns[i];
+        // Non-identity primary key columns are required (no default). String columns default to '' and
+        // money columns default to 0 rather than NULL -- a caller who wants a true NULL can still pass
+        // it explicitly; this just makes the friendlier default apply when the argument is omitted
+        // entirely. Everything else (numeric/date/bit/etc.) defaults to NULL.
+        string defaultClause = c.IsPrimaryKey ? "" : (c.IsStringColumn ? " = ''" : (c.IsMoneyColumn ? " = 0" : " = NULL"));
+        string comma = (i < parameterColumns.Count - 1) ? "," : "";
+#>
+<#= c.ParameterName #> <#= c.SqlTypeDeclaration #><#= defaultClause #><#= comma #>
+<#
+    }
+#>
+)
+AS
+BEGIN
+<#
+    if (Model.HasStartEndDatePair && Model.StartDateColumn is not null && Model.EndDateColumn is not null)
+    {
+        var startCol = Model.StartDateColumn;
+        var endCol = Model.EndDateColumn;
+#>
+	IF (<#= startCol.ParameterName #> IS NOT NULL AND <#= endCol.ParameterName #> IS NOT NULL
+	    AND CAST(<#= startCol.ParameterName #> AS DATETIME) > CAST(<#= endCol.ParameterName #> AS DATETIME))
+	BEGIN
+		RAISERROR('[<#= startCol.Name #>] must not be later than [<#= endCol.Name #>].', 16, 1);
+		RETURN;
+	END
+
+<#
+    }
+    if (Model.HasInOutDateTimePair && Model.InDateColumn is not null && Model.InTimeColumn is not null && Model.OutDateColumn is not null && Model.OutTimeColumn is not null)
+    {
+        var inDate = Model.InDateColumn;
+        var inTime = Model.InTimeColumn;
+        var outDate = Model.OutDateColumn;
+        var outTime = Model.OutTimeColumn;
+#>
+	IF (<#= inDate.ParameterName #> IS NOT NULL AND <#= inTime.ParameterName #> IS NOT NULL AND <#= outDate.ParameterName #> IS NOT NULL AND <#= outTime.ParameterName #> IS NOT NULL
+	    AND (CAST(<#= inDate.ParameterName #> AS DATETIME) > CAST(<#= outDate.ParameterName #> AS DATETIME)
+	         OR (CAST(<#= inDate.ParameterName #> AS DATETIME) = CAST(<#= outDate.ParameterName #> AS DATETIME)
+	             AND CAST(<#= inTime.ParameterName #> AS TIME) > CAST(<#= outTime.ParameterName #> AS TIME))))
+	BEGIN
+		RAISERROR('[<#= inDate.Name #>]/[<#= inTime.Name #>] must not be later than [<#= outDate.Name #>]/[<#= outTime.Name #>].', 16, 1);
+		RETURN;
+	END
+
+<#
+    }
+#>
+	INSERT INTO [<#= Model.SchemaName #>].[<#= Model.TableName #>]
+	(
+<#
+    for (int i = 0; i < insertPairs.Count; i++)
+    {
+        string comma = (i < insertPairs.Count - 1) ? "," : "";
+#>
+		[<#= insertPairs[i].Name #>]<#= comma #>
+<#
+    }
+#>
+	)
+	VALUES
+	(
+<#
+    for (int i = 0; i < insertPairs.Count; i++)
+    {
+        string comma = (i < insertPairs.Count - 1) ? "," : "";
+#>
+		<#= insertPairs[i].Value #><#= comma #>
+<#
+    }
+#>
+	);
+
+<#
+    if (HasSingleIdentityPrimaryKey)
+    {
+#>
+	SELECT CAST(SCOPE_IDENTITY() AS <#= identityColumn.SqlTypeDeclaration #>) AS [<#= identityColumn.Name #>];
+<#
+    }
+    else
+    {
+#>
+	SELECT @@ROWCOUNT AS RowsInserted;
+<#
+    }
+#>
+END

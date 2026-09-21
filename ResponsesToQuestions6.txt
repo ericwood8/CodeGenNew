@@ -1,0 +1,5 @@
+1) Q: Submenu    A: Yes.
+2) Q: .tt.config format  A: Yes to plain key/value format and Yes to default both 
+to true.
+3) Q: Are columns.png and FKs.png dead?   A: Yes. I deleted.
+4) Q: Spec Doc  A: Yes. 

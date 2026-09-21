@@ -1,0 +1,282 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ------------------------------------------------------------------------------------------
+    // SP_Save_v1.tt
+    // Generates: <TableName>_Save.sql
+    //
+    // A Save is a blend of Insert and Update ("AddUpdate"): if a row with the supplied primary key exists it
+    // is updated, otherwise a new row is inserted. Upside: one procedure to call, and any special business
+    // logic lives in ONE place instead of being duplicated across _Insert and _Update. Downside: it cannot
+    // be optimized per operation the way separate Insert/Update procedures can (e.g. Update's "NULL means
+    // don't touch" trick), so the caller must ALWAYS pass the entire record -- see "no defaults" below.
+    //
+    // Design notes:
+    //   - Insert-or-update strategy: an EXISTS lookup by primary key (single OR composite), NOT "attempt the
+    //     UPDATE and fail over to INSERT on error". Reasons: (1) no error- or @@ROWCOUNT-driven control flow
+    //     (an INSTEAD OF trigger can make @@ROWCOUNT lie; an error inside a transaction can doom it);
+    //     (2) a composite key is just more AND terms; (3) intent is obvious when reading the output.
+    //     The lookup uses WITH (UPDLOCK, HOLDLOCK) inside the transaction, so two concurrent Saves of the
+    //     same not-yet-existing key serialize instead of both deciding "insert" and one dying on a
+    //     primary key violation.
+    //   - Ordinary, properly-typed parameters (like SP_Insert.tt, unlike SP_Update.tt). NO parameter has a
+    //     default value, deliberately: on the update path an omitted parameter would silently overwrite the
+    //     column with NULL. Forgetting a parameter is therefore a loud "expects parameter" error, not
+    //     silent data loss. The one exception is an identity primary key: it is `= NULL OUTPUT` -- pass NULL
+    //     (or omit it) to insert; the new id comes back in the same parameter.
+    //   - Identity primary key: if the supplied id is NULL OR no such row exists, a new row is inserted and
+    //     the new id (SCOPE_IDENTITY(), not @@IDENTITY, which a trigger can hijack) is returned in the
+    //     OUTPUT parameter. A composite or non-identity primary key is a required input; nothing is
+    //     generated for it.
+    //   - Strings: trimmed ONCE at the top of the procedure (SET @p = LTRIM(RTRIM(@p))), so the UPDATE and
+    //     INSERT branches both just use the parameter. A NOT NULL string column has NULL turned into ''
+    //     (so an "accidentally NOT NULL" column cannot fail on a NULL); a nullable one keeps its NULL.
+    //     text/ntext parameters are left alone (LTRIM/RTRIM do not accept them).
+    //     Quotes are deliberately NOT doubled and LIKE wildcards are NOT escaped: these are real bound
+    //     parameters in static SQL, so escaping would store O''Brien / 50[%] in the table. That is also why
+    //     dbo.uf_FixString (from Examples\SaveSP.txt) is not used -- it is meant for dynamic SQL / LIKE
+    //     patterns only, and it also converts NVARCHAR to VARCHAR (lossy) and adds a scalar-UDF call per
+    //     string parameter. SP_Update.tt does its own quote-doubling where it really builds dynamic SQL.
+    //   - Computed and rowversion/timestamp columns are skipped (cannot be assigned). An identity column
+    //     that is not part of the primary key is skipped too.
+    //   - Audit date columns (SpecialLogicColumns.config), never caller-supplied: CreateDateColumn is set to
+    //     GETDATE() on insert only and never touched on update; ModifiedDateColumn is set to GETDATE() on
+    //     update only; LastChangedDateColumn is set to GETDATE() on both.
+    //   - CreateUserColumn (e.g. CreateUser): a normal parameter, written on INSERT only. It is left out of the
+    //     UPDATE's SET list so an existing row's creator is never overwritten by a later Save.
+    //   - Active/Inactive (HasActiveInactivePair): on INSERT the row is always born active (flag hardcoded,
+    //     InactiveDate and InactiveReason columns left NULL, whatever the caller passed). On UPDATE the whole
+    //     record is passed, so InactiveDate/reason/flag are honored -- except that a non-empty InactiveDate or
+    //     reason forces the flag to its inactive value. That is one CASE expression, i.e. exactly one
+    //     assignment to the flag: SQL Server rejects assigning a column twice in one SET (error 264).
+    //   - AdminFlagColumn (e.g. IsAdmin): on INSERT hardcoded to "not admin" regardless of the parameter, like
+    //     SP_Insert.tt. On UPDATE it is set from the parameter, like SP_Update.tt.
+    //   - StartEndDate pair and the DateIn/TimeIn/DateOut/TimeOut quartet: validated once, up front, for
+    //     both paths (THROW when the range is backwards), only when both sides are supplied.
+    //   - Transaction: joins the caller's transaction if there is one, otherwise starts and owns its own.
+    //     SET XACT_ABORT ON + TRY/CATCH; errors are re-raised with THROW (the procedure does not swallow
+    //     them). Nothing here depends on spLogError/spLogPath -- add an EXEC in the CATCH if you want one.
+    //   - Returns 0 on success (errors are raised, not returned). Row count is reported (NOCOUNT OFF).
+    //
+    // Requires a primary key (SP_Save.tt.config: RequiresPrimaryKey=true); tables only (TableOnly=true).
+
+    bool IsTextLob(ColumnModel c) => c.SqlType is SqlDbType.Text or SqlDbType.NText;
+    bool IsRowVersion(ColumnModel c) =>
+        c.SqlTypeDeclaration.Equals("timestamp", StringComparison.OrdinalIgnoreCase) ||
+        c.SqlTypeDeclaration.Equals("rowversion", StringComparison.OrdinalIgnoreCase);
+
+    // A single identity key (or an identity column inside a composite key) is the OUTPUT parameter.
+    var identityKey = Model.PrimaryKeyColumns.FirstOrDefault(c => c.IsIdentity);
+
+    var parameterColumns = Model.Columns
+        .Where(c => !c.IsComputed && !IsRowVersion(c)
+                    && !c.IsCreateDateColumn && !c.IsModifiedDateColumn && !c.IsLastChangedDateColumn
+                    && (!c.IsIdentity || c.IsPrimaryKey))
+        .ToList();
+
+    var pkColumns = Model.PrimaryKeyColumns;
+    string whereClause = string.Join(" AND ", pkColumns.Select(pk => $"[{pk.Name}] = {pk.ParameterName}"));
+
+    bool hasActivePair = Model.HasActiveInactivePair && Model.ActiveColumn is not null;
+    var activeCol = hasActivePair ? Model.ActiveColumn : null;
+
+    // Literal for "inactive"/"active" in the active-flag column's own polarity (IsInactive-style is inverted).
+    bool activeIsNegativePolarity = activeCol is not null && activeCol.Name.Contains("Inactive", StringComparison.OrdinalIgnoreCase);
+    string Literal(ColumnModel c, string value) => c.IsStringColumn ? $"'{value}'" : value;
+    string inactiveLiteral = activeCol is null ? "" : Literal(activeCol, activeIsNegativePolarity ? "1" : "0");
+    string activeLiteral = activeCol is null ? "" : Literal(activeCol, activeIsNegativePolarity ? "0" : "1");
+
+    // "Was a value supplied?" for the inactivation triggers. Whole record is passed on Save, so an empty
+    // string counts as "not supplied" (a NOT NULL reason column is trimmed to '' above).
+    string Supplied(ColumnModel c) => c.IsStringColumn ? $"DATALENGTH({c.ParameterName}) > 0" : $"{c.ParameterName} IS NOT NULL";
+    var inactivationTriggers = new List<ColumnModel>();
+    if (hasActivePair && Model.InactiveDateColumn is not null)
+        inactivationTriggers.Add(Model.InactiveDateColumn);
+    if (hasActivePair)
+        inactivationTriggers.AddRange(Model.Columns.Where(c => c.IsInactiveReasonColumn && parameterColumns.Contains(c)));
+
+    // ---- UPDATE: (column, value) pairs. Everything but the primary key; the active flag via CASE.
+    var updatePairs = new List<(string Name, string Value)>();
+    foreach (var c in parameterColumns.Where(c => !c.IsPrimaryKey && !c.IsCreateUserColumn))
+    {
+        if (c == activeCol)
+        {
+            updatePairs.Add((c.Name, inactivationTriggers.Count > 0
+                ? $"CASE WHEN {string.Join(" OR ", inactivationTriggers.Select(Supplied))} THEN {inactiveLiteral} ELSE {c.ParameterName} END"
+                : c.ParameterName));
+        }
+        else
+        {
+            updatePairs.Add((c.Name, c.ParameterName));
+        }
+    }
+    foreach (var c in Model.Columns.Where(c => !c.IsComputed && (c.IsModifiedDateColumn || c.IsLastChangedDateColumn)))
+        updatePairs.Add((c.Name, "GETDATE()"));
+
+    // ---- INSERT: (column, value) pairs, mirroring SP_Insert.tt.
+    var insertPairs = parameterColumns
+        .Where(c => c != identityKey && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn
+                    && c != Model.InactiveDateColumn && c != activeCol)
+        .Select(c => (Name: c.Name, Value: c.ParameterName))
+        .ToList();
+    foreach (var c in Model.Columns.Where(c => !c.IsComputed && (c.IsCreateDateColumn || c.IsLastChangedDateColumn)))
+        insertPairs.Add((c.Name, "GETDATE()"));
+    if (activeCol is not null)
+        insertPairs.Add((activeCol.Name, activeLiteral));
+    foreach (var c in Model.Columns.Where(c => c.IsAdminFlagColumn && !c.IsComputed))
+        insertPairs.Add((c.Name, c.IsStringColumn ? "'False'" : "0"));
+#>
+CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Save]
+-- Inserts the row if the primary key is not found, otherwise updates it.
+-- ** Always pass the entire record: on update, every column below is overwritten with what you pass. **
+(
+<#
+    for (int i = 0; i < parameterColumns.Count; i++)
+    {
+        var c = parameterColumns[i];
+        string suffix = c == identityKey ? " = NULL OUTPUT" : "";
+        string comma = (i < parameterColumns.Count - 1) ? "," : "";
+#>
+<#= c.ParameterName #> <#= c.SqlTypeDeclaration #><#= suffix #><#= comma #>
+<#
+    }
+#>
+)
+AS
+BEGIN
+	SET NOCOUNT OFF;
+	SET XACT_ABORT ON;
+
+<#
+    // Trim strings once, up front.
+    var trimColumns = parameterColumns.Where(c => c.IsStringColumn && !IsTextLob(c)).ToList();
+    foreach (var c in trimColumns)
+    {
+        string trimmed = $"LTRIM(RTRIM({c.ParameterName}))";
+        string expression = c.IsNullable ? trimmed : $"ISNULL({trimmed}, '')";
+#>
+	SET <#= c.ParameterName #> = <#= expression #>;
+<#
+    }
+    if (trimColumns.Count > 0)
+    {
+#>
+
+<#
+    }
+    if (Model.HasStartEndDatePair && Model.StartDateColumn is not null && Model.EndDateColumn is not null
+        && parameterColumns.Contains(Model.StartDateColumn) && parameterColumns.Contains(Model.EndDateColumn))
+    {
+        var startCol = Model.StartDateColumn;
+        var endCol = Model.EndDateColumn;
+#>
+	IF (<#= startCol.ParameterName #> IS NOT NULL AND <#= endCol.ParameterName #> IS NOT NULL
+	    AND CAST(<#= startCol.ParameterName #> AS DATETIME) > CAST(<#= endCol.ParameterName #> AS DATETIME))
+		THROW 50000, '[<#= startCol.Name #>] must not be later than [<#= endCol.Name #>].', 1;
+
+<#
+    }
+    if (Model.HasInOutDateTimePair && Model.InDateColumn is not null && Model.InTimeColumn is not null && Model.OutDateColumn is not null && Model.OutTimeColumn is not null)
+    {
+        var inDate = Model.InDateColumn;
+        var inTime = Model.InTimeColumn;
+        var outDate = Model.OutDateColumn;
+        var outTime = Model.OutTimeColumn;
+#>
+	IF (<#= inDate.ParameterName #> IS NOT NULL AND <#= inTime.ParameterName #> IS NOT NULL AND <#= outDate.ParameterName #> IS NOT NULL AND <#= outTime.ParameterName #> IS NOT NULL
+	    AND (CAST(<#= inDate.ParameterName #> AS DATETIME) > CAST(<#= outDate.ParameterName #> AS DATETIME)
+	         OR (CAST(<#= inDate.ParameterName #> AS DATETIME) = CAST(<#= outDate.ParameterName #> AS DATETIME)
+	             AND CAST(<#= inTime.ParameterName #> AS TIME) > CAST(<#= outTime.ParameterName #> AS TIME))))
+		THROW 50000, '[<#= inDate.Name #>]/[<#= inTime.Name #>] must not be later than [<#= outDate.Name #>]/[<#= outTime.Name #>].', 1;
+
+<#
+    }
+#>
+	-- Join the caller's transaction if there is one; otherwise own this one.
+	DECLARE @blnOwnsTransaction BIT = CASE WHEN @@TRANCOUNT = 0 THEN 1 ELSE 0 END;
+
+	BEGIN TRY
+		IF @blnOwnsTransaction = 1
+			BEGIN TRANSACTION;
+
+<#
+    string existsCheck = $"SELECT 1 FROM [{Model.SchemaName}].[{Model.TableName}] WITH (UPDLOCK, HOLDLOCK) WHERE {whereClause}";
+    if (updatePairs.Count > 0)
+    {
+#>
+		IF EXISTS (<#= existsCheck #>)
+		BEGIN
+			UPDATE [<#= Model.SchemaName #>].[<#= Model.TableName #>] SET
+<#
+        for (int i = 0; i < updatePairs.Count; i++)
+        {
+            string comma = (i < updatePairs.Count - 1) ? "," : "";
+#>
+				[<#= updatePairs[i].Name #>] = <#= updatePairs[i].Value #><#= comma #>
+<#
+        }
+#>
+			WHERE <#= whereClause #>;
+		END
+		ELSE
+<#
+    }
+    else
+    {
+        // Every column is part of the key: nothing to update, so only insert when the key is missing.
+#>
+		IF NOT EXISTS (<#= existsCheck #>)
+<#
+    }
+#>
+		BEGIN
+			INSERT INTO [<#= Model.SchemaName #>].[<#= Model.TableName #>]
+			(
+<#
+    for (int i = 0; i < insertPairs.Count; i++)
+    {
+        string comma = (i < insertPairs.Count - 1) ? "," : "";
+#>
+				[<#= insertPairs[i].Name #>]<#= comma #>
+<#
+    }
+#>
+			)
+			VALUES
+			(
+<#
+    for (int i = 0; i < insertPairs.Count; i++)
+    {
+        string comma = (i < insertPairs.Count - 1) ? "," : "";
+#>
+				<#= insertPairs[i].Value #><#= comma #>
+<#
+    }
+#>
+			);
+<#
+    if (identityKey is not null)
+    {
+#>
+
+			SET <#= identityKey.ParameterName #> = CAST(SCOPE_IDENTITY() AS <#= identityKey.SqlTypeDeclaration #>); -- learn the id of the new row
+<#
+    }
+#>
+		END
+
+		IF @blnOwnsTransaction = 1
+			COMMIT TRANSACTION;
+
+		RETURN 0;
+	END TRY
+	BEGIN CATCH
+		IF @blnOwnsTransaction = 1 AND @@TRANCOUNT > 0
+			ROLLBACK TRANSACTION;
+		THROW;
+	END CATCH;
+END

@@ -1,0 +1,425 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ------------------------------------------------------------------------------------------
+    // TS_Component_v1.tt
+    // Generates the four files of an Angular component, in the folder components/<table>/ (the paths are written by the
+    // template itself, see GeneratedFiles -- point the output folder at the Angular app's src/app folder):
+    //     <table>.component.css        empty, as in TimeEntryUI (styling comes from the global styles)
+    //     <table>.component.html       the grid, search box and add/edit form
+    //     <table>.component.spec.ts    the standard "should create" test
+    //     <table>.component.ts         the standalone component
+    // in the style of TimeEntryUI's src\app\components\holiday\holiday.component.*: a grid of the table's rows with Edit and
+    // Delete buttons, an "Add New" button, a search-by-name box (only when the table has a text Name column) and an add/edit
+    // form that opens under the grid.
+    //
+    //   - Names: the table name without its "E_" / "SY_" prefix, lower-cased for the folder, files and selector
+    //     (E_TimeSheet -> components/timesheet/timesheet.component.ts, selector app-timesheet, class TimeSheetComponent). It uses
+    //     <Table>Service (TS_Service) and the <Table> interface (TS_Model), so generate those first.
+    //   - Grid and form: one column / one field per column of the table except the key, computed and identity columns, and
+    //     foreign keys to the display-style table SY_Display; "Name" comes first, the rest in table order. The control follows
+    //     the type: text box (a text area from 100 characters up, which the grid leaves out), number box, checkbox for bit, date
+    //     box for date/datetime, and a drop-down for a foreign key.
+    //   - Foreign keys: a drop-down of the parent's rows, loaded from the parent's service (its getAll), showing the parent's
+    //     display column (the one CodeGenNew picks for a Lookup: Name, ShortDescr ...); the grid shows the same name instead of
+    //     the id. A parent that is an enum/lookup table, or whose screen needs cascading drop-downs, is listed in
+    //     noLookupParents and its foreign key stays a plain number box.
+    //   - Dates: the API sends and takes "2025-12-25T00:00:00" strings; the date box wants "2025-12-25", so edit() trims the
+    //     time off and the grid formats with the date pipe. A new row starts today, a new number at 0, a new text at "", a new
+    //     bit at its database default.
+    //   - Errors: alert(), as in the other screens: 400 = bad value (the API's own rejection), 404 = gone, delete's 400 = "in use".
+    //
+    // Not written, so a screen that needs any of these stays hand-maintained: a detail grid (Department's teams, Project's
+    // tasks, TimeSheet's lines), drop-downs that depend on each other (Employee's team follows its department), fields that
+    // are computed on screen, and the route / sidebar entry / app.config line that show the screen (ComponentChecklist.txt
+    // steps 4-6).
+    //
+    // Project-specific names -- edit here if the project changes:
+    // Tables that have no API (C# enums, other *Type lookup tables, tables with no entity): no screen is written for them.
+    string[] noApiTables =
+    {
+        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
+        "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
+    };
+    // A foreign key to one of these is a plain number/text box, not a drop-down.
+    string[] noLookupParents =
+    {
+        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
+        "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role", "DepartmentTeam", "ProjectTask"
+    };
+    // A foreign key to this table is left off the screen (a styling id no one edits).
+    string hiddenParent = "SY_Display";
+    // Parents whose interface lives in another table's model file: table -> file name (without .ts).
+    var modelFileOf = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["DepartmentTeam"] = "department",
+        ["ProjectTask"] = "project"
+    };
+    // ------------------------------------------------------------------------------------------
+
+    string BaseName(string table) => Regex.Replace(Regex.Replace(table, "^E_", ""), "^SY_", "");
+    string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
+    string UpperFirst(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
+    string Words(string s) => Regex.Replace(s.Replace('_', ' '), "(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ").Trim();
+    string Camel(string name)
+    {
+        if (string.IsNullOrEmpty(name) || !char.IsUpper(name[0])) return name;
+        var chars = name.ToCharArray();
+        for (int i = 0; i < chars.Length; i++)
+        {
+            if (i == 1 && !char.IsUpper(chars[i])) break;
+            bool hasNext = i + 1 < chars.Length;
+            if (i > 0 && hasNext && !char.IsUpper(chars[i + 1])) break;
+            chars[i] = char.ToLowerInvariant(chars[i]);
+        }
+        return new string(chars);
+    }
+    bool IsDate(ColumnModel c) => c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
+    bool IsNumber(ColumnModel c) => c.SqlType is SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt
+        or SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real;
+    bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
+    int Chars(ColumnModel c) => c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
+    bool IsMultiline(ColumnModel c) => IsText(c) && Chars(c) >= 100;
+    string Label(string columnName)
+    {
+        string s = Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", "");
+        return Words(s);
+    }
+
+    var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
+    if (noApiTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase))
+    {
+        Error($"TS_Component writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
+    }
+    else if (keyColumn is null || keyColumn.SqlType != SqlDbType.Int)
+    {
+        Error($"TS_Component needs a table with a single int primary key (the routes are {{id:int}}), but [{Model.SchemaName}].[{Model.TableName}] has "
+              + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
+    }
+    else
+    {
+        string baseName = BaseName(Model.TableName);
+        string stem = baseName.ToLowerInvariant();
+        string variable = LowerFirst(baseName);        // holiday
+        string listName = variable + "s";              // holidays
+        string keyProp = Camel(keyColumn.Name);        // holidayId
+        string title = Words(baseName);                // Time Sheet
+        bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name");
+
+        var fkByColumn = Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1)
+            .ToDictionary(f => f.ReferencingColumns[0], f => f, StringComparer.OrdinalIgnoreCase);
+
+        // ---- the columns on the screen: Name first, then table order
+        var shown = Model.Columns
+            .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity
+                        && !(fkByColumn.TryGetValue(c.Name, out var hfk) && hfk.ReferencedTable.Equals(hiddenParent, StringComparison.OrdinalIgnoreCase)))
+            .OrderBy(c => c.Name == "Name" ? 0 : 1).ThenBy(c => c.OrdinalPosition)
+            .ToList();
+
+        // ---- lookups: one list + one "name of" method per distinct parent table
+        ForeignKeyModel LookupOf(ColumnModel c) =>
+            fkByColumn.TryGetValue(c.Name, out var fk)
+            && !noLookupParents.Contains(fk.ReferencedTable, StringComparer.OrdinalIgnoreCase)
+            && fk.ReferencedDisplayColumns.Count > 0
+                ? fk : null;
+        var parents = shown.Select(c => LookupOf(c)).Where(fk => fk is not null)
+            .GroupBy(fk => fk.ReferencedTable, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+            .Select(fk =>
+            {
+                string parentBase = BaseName(fk.ReferencedTable);
+                bool self = fk.ReferencedTable.Equals(Model.TableName, StringComparison.OrdinalIgnoreCase);
+                return new
+                {
+                    Table = fk.ReferencedTable,
+                    Type = parentBase,
+                    ModelFile = modelFileOf.TryGetValue(fk.ReferencedTable, out var mf) ? mf : parentBase.ToLowerInvariant(),
+                    Service = parentBase + "Service",
+                    ServiceVar = LowerFirst(parentBase) + "Service",
+                    ServiceFile = parentBase.ToLowerInvariant() + ".service",
+                    List = LowerFirst(parentBase) + "s",
+                    NameMethod = LowerFirst(parentBase) + "Name",
+                    KeyProp = Camel(fk.ReferencedColumns[0]),
+                    DisplayProp = Camel(fk.ReferencedDisplayColumns[0]),
+                    Self = self
+                };
+            }).ToList();
+        var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
+
+        // ---- naming on the page
+        string Id(ColumnModel c) => variable + UpperFirst(Camel(c.Name));   // holidayName
+        string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
+        string LabelOf(ColumnModel c) => c.SqlType == SqlDbType.Bit ? Regex.Replace(Label(c.Name), "^Is ", "") + "?" : Label(c.Name);
+        var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
+
+        var css = new StringBuilder(); // stays empty
+        var html = new StringBuilder();
+        var spec = new StringBuilder();
+        var ts = new StringBuilder();
+        void H(string s = "") => html.Append(s).Append('\n');
+        void T(string s = "") => ts.Append(s).Append('\n');
+
+        // ================= html
+        H("<main class=\"main\">");
+        H("    <div class=\"content\">");
+        H("      <div class=\"left-side\">");
+        H("<div>");
+        H("    <!-- Heading -->");
+        H($"    <h1>{title}s</h1>");
+        H($"    <button (click)=\"add()\" class=\"btn\">Add New {title}</button>");
+        if (hasName)
+        {
+            H();
+            H("    <!-- Search -->");
+            H("    <div class=\"form-group form-group-search dept\">");
+            H("        <input type=\"text\" class=\"form-control\" placeholder=\"Search by Name\" [(ngModel)]=\"searchText\" />");
+            H("        <button class=\"btn btn-outline-secondary\" type=\"button\" (click)=\"search()\"> Search </button>");
+            H("    </div>");
+        }
+        H();
+        H("    <!-- Grid -->");
+        H("    <table>");
+        H("        <thead>");
+        H("            <tr>");
+        foreach (var c in gridColumns)
+            H($"                <th>{LabelOf(c)}</th>");
+        H("                <th>Actions</th>");
+        H("            </tr>");
+        H("        </thead>");
+        H("        <tbody>");
+        H($"            <tr *ngFor=\"let {variable} of {listName}\">");
+        foreach (var c in gridColumns)
+        {
+            string prop = $"{variable}.{Camel(c.Name)}";
+            var lookup = LookupOf(c);
+            string cell;
+            if (lookup is not null) cell = $"{{{{ {parentOf[lookup.ReferencedTable].NameMethod}({prop}) }}}}";
+            else if (c.SqlType == SqlDbType.Bit) cell = $"{{{{ {prop} ? \"Yes\" : \"No\" }}}}";
+            else if (IsDate(c)) cell = $"{{{{ {prop} | date:'MM/dd/yyyy' }}}}";
+            else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{{ {prop} | number:'1.2-2' }}}}";
+            else cell = $"{{{{ {prop} }}}}";
+            H($"                <td>{cell}</td>");
+        }
+        H("                <td>");
+        H($"                    <button (click)=\"edit({variable})\" class=\"btn-action\">Edit</button>");
+        H($"                    <button (click)=\"delete({variable}.{keyProp}!)\" class=\"btn-action delete\">Delete</button>");
+        H("                </td>");
+        H("            </tr>");
+        H("        </tbody>");
+        H("    </table>");
+        H();
+        H("    <!-- Add/Edit Form -->");
+        H("    <div *ngIf=\"selectedRow\" class=\"form-container\">");
+        H($"        <h2>{{{{selectedRow.{keyProp} ? 'Edit' : 'Add'}}}} {title}</h2>");
+        H($"        <form id=\"{variable}Form\" (ngSubmit)=\"submit(selectedRow)\">");
+        foreach (var c in shown)
+        {
+            string id = Id(c);
+            string model = $"selectedRow.{Camel(c.Name)}";
+            string req = c.IsNullable ? "" : " required";
+            var lookup = LookupOf(c);
+            H("            <div class=\"form-group\">");
+            H($"                <label for=\"{id}\">{LabelOf(c)}</label>");
+            if (lookup is not null)
+            {
+                var p = parentOf[lookup.ReferencedTable];
+                H($"                <select id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
+                if (c.IsNullable) H("                    <option [ngValue]=\"null\"></option>");
+                H($"                    <option *ngFor=\"let p of {p.List}\" [ngValue]=\"p.{p.KeyProp}\">{{{{p.{p.DisplayProp}}}}}</option>");
+                H("                </select>");
+            }
+            else if (c.SqlType == SqlDbType.Bit)
+            {
+                H($"                <input type=\"checkbox\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\">");
+            }
+            else if (IsDate(c))
+            {
+                H($"                <input type=\"date\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
+            }
+            else if (IsNumber(c))
+            {
+                string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? " step=\"" + "0." + new string('0', c.Scale!.Value - 1) + "1\""
+                            : c.SqlType is SqlDbType.Money or SqlDbType.SmallMoney ? " step=\"0.01\""
+                            : c.SqlType is SqlDbType.Float or SqlDbType.Real ? " step=\"any\"" : "";
+                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{step} placeholder=\"{PlaceholderFor(c)}\"{req}>");
+            }
+            else if (IsMultiline(c))
+            {
+                H($"                <textarea id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\" maxlength=\"{Chars(c)}\" placeholder=\"{PlaceholderFor(c)}\"{req}></textarea>");
+            }
+            else
+            {
+                string max = IsText(c) && Chars(c) > 0 ? $" maxlength=\"{Chars(c)}\"" : "";
+                H($"                <input type=\"text\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{max} placeholder=\"{PlaceholderFor(c)}\"{req}>");
+            }
+            H("            </div>");
+        }
+        H();
+        H("            <button type=\"submit\" class=\"btn\">Submit</button>");
+        H("            <button type=\"button\" (click)=\"cancel()\" class=\"btn btn-outline\">Cancel</button>");
+        H("        </form>");
+        H("    </div>");
+        H("</div>");
+        H("</div>");
+        H("</div>");
+        H("</main>");
+
+        // ================= spec
+        string cls = baseName + "Component";
+        spec.Append("import { ComponentFixture, TestBed } from '@angular/core/testing';\nimport { provideHttpClient } from '@angular/common/http';\nimport { provideHttpClientTesting } from '@angular/common/http/testing';\n\n");
+        spec.Append($"import {{ {cls} }} from './{stem}.component';\n\n");
+        spec.Append($"describe('{cls}', () => {{\n  let component: {cls};\n  let fixture: ComponentFixture<{cls}>;\n\n");
+        // the screen's service needs an HttpClient; the testing one never touches the network
+        spec.Append($"  beforeEach(async () => {{\n    await TestBed.configureTestingModule({{\n      imports: [{cls}],\n      providers: [provideHttpClient(), provideHttpClientTesting()]\n    }})\n    .compileComponents();\n\n");
+        spec.Append($"    fixture = TestBed.createComponent({cls});\n    component = fixture.componentInstance;\n    fixture.detectChanges();\n  }});\n\n");
+        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n});\n");
+
+        // ================= ts
+        T("import { Component } from '@angular/core';");
+        T($"import {{ {baseName} }} from '../../models/{stem}';");
+        T($"import {{ {baseName}Service }} from '../../services/{stem}.service';");
+        foreach (var p in parents.Where(p => !p.Self))
+        {
+            T($"import {{ {p.Type} }} from '../../models/{p.ModelFile}';");
+            T($"import {{ {p.Service} }} from '../../services/{p.ServiceFile}';");
+        }
+        T("import { CommonModule } from '@angular/common';");
+        T("import { FormsModule } from '@angular/forms';");
+        T();
+        T("@Component({");
+        T($"  selector: 'app-{stem}',");
+        T("  standalone: true,");
+        T("  imports: [ CommonModule, FormsModule ],");
+        T($"  templateUrl: './{stem}.component.html',");
+        T($"  styleUrl: './{stem}.component.css'");
+        T("})");
+        T($"export class {cls} {{");
+        T($"  {listName}: {baseName}[] = [];");
+        foreach (var p in parents.Where(p => !p.Self))
+            T($"  {p.List}: {p.Type}[] = [];");
+        T($"  selectedRow: {baseName} | null = null;");
+        if (hasName) T("  searchText = '';");
+        T();
+        var ctorArgs = new List<string> { $"private {variable}Service: {baseName}Service" };
+        ctorArgs.AddRange(parents.Where(p => !p.Self).Select(p => $"private {p.ServiceVar}: {p.Service}"));
+        T($"  constructor({string.Join(", ", ctorArgs)}) {{ }}");
+        T();
+        T("  ngOnInit(): void {");
+        T("    this.load();");
+        foreach (var p in parents.Where(p => !p.Self))
+            T($"    this.{p.ServiceVar}.getAll().subscribe((data) => {{ this.{p.List} = data; }});");
+        T("  }");
+        T();
+        T("  private load(): void {");
+        T($"    this.{variable}Service.getAll().subscribe((data) => {{ this.{listName} = data; }});");
+        T("  }");
+        T();
+        T($"  submit({variable}: {baseName}): void {{");
+        T($"    if ({variable}.{keyProp}) {{");
+        T($"      this.{variable}Service.update({variable}.{keyProp}, {variable}).subscribe({{");
+        T("        next: () => {");
+        T("          console.log(\"Updated successfully!\");");
+        T("          this.load();");
+        T("        },");
+        T("        error: (error) => this.showError(\"updating\", error)");
+        T("      });");
+        T("    }");
+        T("    else {");
+        T($"      {variable}.{keyProp} = 0;");
+        T($"      this.{variable}Service.create({variable}).subscribe({{");
+        T("        next: () => { this.load(); },");
+        T("        error: (error) => this.showError(\"adding\", error)");
+        T("      });");
+        T("    }");
+        T("    this.selectedRow = null;");
+        T("  }");
+        T();
+        T("  delete(id: number): void {");
+        T("    if (confirm(\"Are you sure you want to delete this?\")) {");
+        T($"      this.{variable}Service.delete(id).subscribe({{");
+        T("        next: () => {");
+        T("          console.log(\"Deleted successfully!\");");
+        T($"          this.{listName} = this.{listName}.filter((p) => p.{keyProp} !== id);");
+        T("        },");
+        T("        error: (error) => {");
+        T("          if (error.status == 400) { alert(\"It cannot be deleted because it is in use!\"); }");
+        T("          else if (error.status == 404) { alert(\"It no longer exists!\"); this.load(); }");
+        T("          else { alert(\"Problem while deleting! \" + error.message); }");
+        T("        }");
+        T("      });");
+        T("    }");
+        T("  }");
+        T();
+        // add(): every required property gets a starting value
+        var adds = new List<string>();
+        foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && !c.IsNullable && !c.IsComputed && !c.IsIdentity))
+        {
+            string value;
+            if (c.SqlType == SqlDbType.Bit) value = c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1" ? "true" : "false";
+            else if (IsDate(c)) value = "new Date().toISOString().substring(0, 10)";
+            else if (IsNumber(c)) value = "0";
+            else value = "''";
+            adds.Add($"{Camel(c.Name)}: {value}");
+        }
+        T("  add(): void {");
+        T(adds.Count == 0 ? "    this.selectedRow = { };" : $"    this.selectedRow = {{ {string.Join(", ", adds)} }};");
+        T("  }");
+        T();
+        T($"  edit({variable}: {baseName}): void {{");
+        T($"    this.selectedRow = {{ ...{variable} }};");
+        var dateColumns = shown.Where(IsDate).ToList();
+        if (dateColumns.Count > 0)
+        {
+            T("    // the date box wants yyyy-MM-dd; the API sends a full timestamp");
+            foreach (var c in dateColumns)
+            {
+                string prop = $"this.selectedRow.{Camel(c.Name)}";
+                if (c.IsNullable) T($"    if ({prop}) {{ {prop} = {prop}.substring(0, 10); }}");
+                else T($"    {prop} = {prop}.substring(0, 10);");
+            }
+        }
+        T("  }");
+        T();
+        T("  cancel(): void {");
+        T("    this.selectedRow = null;");
+        T("  }");
+        if (hasName)
+        {
+            T();
+            T("  search(): void {");
+            T("    this.selectedRow = null;");
+            T($"    this.{variable}Service.findByName(this.searchText).subscribe({{");
+            T($"      next: (data) => {{ this.{listName} = data; }},");
+            T("      error: (e) => console.error(e)");
+            T("    });");
+            T("  }");
+        }
+        foreach (var p in parents)
+        {
+            T();
+            T($"  // the name to show in place of a {p.Type} id");
+            T($"  {p.NameMethod}(id?: number): string {{");
+            T($"    return this.{p.List}.find((p) => p.{p.KeyProp} === id)?.{p.DisplayProp} ?? '';");
+            T("  }");
+        }
+        T();
+        T("  private showError(action: string, error: any): void {");
+        T($"    if (error.status == 400) {{ alert(\"{(hasName ? "Name is bad or has special characters!" : "Some of the values are not acceptable!")}\"); }}");
+        T($"    else if (error.status == 404) {{ alert(\"This {Words(baseName).ToLowerInvariant()} no longer exists!\"); this.load(); }}");
+        T("    else { alert(\"Problem while \" + action + \"! \" + error.message); }");
+        T("  }");
+        T("}");
+
+        var o = new StringBuilder();
+        o.Append($"@@@FILE components/{stem}/{stem}.component.css@@@\n");
+        o.Append($"@@@FILE components/{stem}/{stem}.component.html@@@\n").Append(html);
+        o.Append($"@@@FILE components/{stem}/{stem}.component.spec.ts@@@\n").Append(spec);
+        o.Append($"@@@FILE components/{stem}/{stem}.component.ts@@@\n").Append(ts);
+        Write(o.ToString());
+    }
+#>

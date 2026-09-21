@@ -1,0 +1,83 @@
+            this.subSettingToolStripMenuItem.Text = "Settings";
+            this.prerequisitesToolStripMenuItem.Text = "&Prerequisites";
+            this.foreignKeyViewToolStripMenuItem.Text = "Code Gen Prerequisites - &Foreign Key View";
+            this.uniqueColumnViewToolStripMenuItem.Text = "Code Gen Prerequisites - &Unique Column View";
+            // 
+            this.errorEventsTableToolStripMenuItem.Text = "SQL Prerequisites - &Error Events Table";
+            this.storedProcedurePathTableToolStripMenuItem.Text = "SQL Prerequisites - &Stored Procedure Path Table";
+            this.spLogErrorToolStripMenuItem.Text = "SQL Prerequisites - &spLogError";
+            this.spLogPathToolStripMenuItem.Text = "SQL Prerequisites - &spLogPath";
+            this.errorSPsToolStripMenuItem.Text = "SQL Prerequisites - &Error SPs";
+            this.sQLPrerequisitesSpCanDeleteToolStripMenuItem.Text = "SQL Prerequisites - spCanDelete";
+            // 
+            this.sqlAddToolStripMenuItem.Text = "&Sql Server";
+            this.selectViewToolStripMenuItem.Text = "View from Table";
+            this.multiLinkedViewToolStripMenuItem.Text = "Multi Linked View from Table";
+            this.multiUnlinkedViewToolStripMenuItem.Text = "Multi Unlinked View from Table";
+            this.recordCountFunctionToolStripMenuItem.Text = "&Record Count Function";
+            this.insertStatementsToolStripMenuItem1.Text = "Load SP...";
+            this.filteredSelectStoredProcedureToolStripMenuItem.Text = "Filtered &Select SP";
+            this.lookupToolStripMenuItem.Text = "Lookup SP";
+            this.addSaveStoredProcedureToolStripMenuItem.Text = "&Save SP";
+            this.addUpdateStoredProcedureToolStripMenuItem.Text = "&Update SP";
+            this.deleteStoredProcedureToolStripMenuItem.Text = "&Delete SP (Single table)";
+            this.deleteBridgeTableSPToolStripMenuItem.Text = "Delete Bridge Table SP";
+            this.markDeleteStoredProcedureToolStripMenuItem.Text = "&Mark Delete SP";
+            this.cloneToolStripMenuItem.Text = "&Clone SP";
+            this.multiLookupToolStripMenuItem.Text = "MultiLookup SP";
+            this.addImportStoredProcedureToolStripMenuItem.Text = "&Import SP";
+            this.addDerivedSaveSPToolStripMenuItem.Text = "Derived Save SP";
+            // 
+            this.cServerCodeToolStripMenuItem.Text = "C# for Ser&ver";
+            this.tableCSharpToolStripMenuItem2.Text = "All valid C# options";
+            this.generatePOCOToolStripMenuItem.Text = "Data Layer - Generate POCO";
+            this.LogicToolStripMenuItem.Text = "Business Logic";
+            this.TsmiService.Text = "Service";
+            this.TsmiServiceInterface.Text = "Service Interface";
+
+            this.cClientCodeToolStripMenuItem.Text = "&C# for Client";
+            this.generateVMDetailToolStripMenuItem.Text = "View Model - Detail";
+            this.generateVMBaseToolStripMenuItem.Text = "View Model - Base";
+            this.VMDetailEditToolStripMenuItem.Text = "Edit View Model - Detail";
+            this.VMBaseEditToolStripMenuItem.Text = "Edit View Model - Base";
+            this.gridXAMLToolStripMenuItem.Text = "Screen - GridXAML";
+            this.textEditXAMLToolStripMenuItem.Text = "Screen - TextEditXAML";
+            this.editFormXAMLToolStripMenuItem.Text = "Screen - EditFormXAML";
+
+            this.cEFCodeToolStripMenuItem.Text = "C# for Petrosync";
+            this.efModelToolStripMenuItem.Text = "&Model";
+            this.efMappingToolStripMenuItem.Text = "Ma&pping";
+            this.efRepositoryToolStripMenuItem.Text = "&Repository";
+            this.efViewModelToolStripMenuItem.Text = "&View Model";
+
+            this.cForProvidenceToolStripMenuItem.Text = "C# for Providence";
+            this.dataAnnotationToolStripMenuItem.Text = "Data Annotation";
+            this.gridVMToolStripMenuItem.Text = "Collection VM";
+            this.collectionPVMToolStripMenuItem.Text = "Collection PVM";
+            this.rOCollectionVMToolStripMenuItem.Text = "ReadOnly Collection Screen";
+            this.collectionScreenToolStripMenuItem.Text = "Collection Screen (with tabs)";
+            this.collectionCodeBehindToolStripMenuItem.Text = "Collection CodeBehind";
+            this.editableSectionToolStripMenuItem.Text = "Editable Section";
+            this.readOnlySingleScreenToolStripMenuItem.Text = "ReadOnly Section";
+            this.singleVMToolStripMenuItem.Text = "Single VM";
+            this.singleScreenToolStripMenuItem.Text = "Single Screen (with tabs)";
+            this.singleCodeBehindToolStripMenuItem.Text = "Single CodeBehind";
+            this.gridScreenToolStripMenuItem.Text = "3 Grid Collection Screen";
+            this.gridPVMToolStripMenuItem.Text = "3 Grid Collection PVM";
+            this.filterSettingsToolStripMenuItem.Text = "Filter Settings";
+            this.settingsDesignerToolStripMenuItem.Text = "Settings Designer";
+            this.repositoryFilesToolStripMenuItem.Text = "Repository Files";
+
+            this.hTML5ForProvidenceToolStripMenuItem.Text = "HTML5 for Providence";
+            this.jSViewModel.Text = "JS ViewModel";
+            this.hTMLToolStripMenuItem.Text = "Screen.html";
+            this.dataJsToolStripMenuItem.Text = "Data.Js";
+            this.lookupJsToolStripMenuItem.Text = "Lookup.Js";
+            this.enumJsToolStripMenuItem.Text = "Enum.Js";
+            this.LookupDictionaryToolStripMenuItem.Text = "Dictionary.Js (only id and description)";
+            this.dictionaryJsallColumns.Text = "Dictionary.Js (all columns, id as in data)";
+            this.dictonaryJsallColumnsIdSequential.Text = "Dictonary.Js (all columns, id sequential)";
+
+            this.webServiceForProvidenceToolStripMenuItem.Text = "Web Service for Providence";
+            this.cControllerToolStripMenuItem.Text = "C# Controller";
+            this.webApiConfigToolStripMenuItem.Text = "WebApiConfig";

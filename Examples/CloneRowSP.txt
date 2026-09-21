@@ -1,0 +1,43 @@
+USE ProvidenceOgas
+GO
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+
+CREATE PROCEDURE Account_Clone 
+(@CopyFromID INT,
+  @NewID INT OUTPUT -- Returns the new ID
+)
+AS
+BEGIN
+    -- Purpose: Copies all the data from a chosen row to another new row.
+    --   Assumes primary key has identity column.
+    BEGIN TRANSACTION;
+    BEGIN TRY
+    IF EXISTS(SELECT * FROM #TMP)
+        DROP TABLE #TMP;
+
+    SELECT * INTO #TMP
+    FROM Account 
+    WHERE ID=@CopyFromID;
+
+    ALTER TABLE #TMP DROP COLUMN ID;
+
+    INSERT INTO Account 
+    	SELECT * FROM #TMP;
+
+    SET @@NewID = @@IDENTITY;  -- learn the id of the newly inserted record
+
+      COMMIT TRANSACTION;
+      RETURN 0; -- Return 0 as answer to SP if all was good.
+    END TRY
+    BEGIN CATCH
+      -- NOTE - SQL Server returns the error number as answer to SP
+      ROLLBACK TRANSACTION;
+      EXECUTE dbo.spLogError; -- Logs error to table
+      THROW;
+    END CATCH;
+END
+GO
+

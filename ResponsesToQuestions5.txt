@@ -1,0 +1,30 @@
+1) For SQL defaults with weird patterns, just don't set to anything. The default
+column is only used for rare setting values in templates. Don't worry about edge 
+cases too much on this rarely used item.  
+
+2) Yes. Good catch. Skip computed columns. Detect via sys.computed_columns. 
+Expose IsComputed/ComputedDefinition on ColumnModel . Exclude from any generated 
+INSERT/UPDATE parameter lists.
+
+3) Yes. blank is a per-column classification rule.
+
+4) Just illustrating the wildcard syntax.
+
+5) SpecialLogicColumns.config sounds like a clear name for the file.
+
+6) Q: Confirm: blank = case-sensitive matching, IgnoreCase = case-insensitive, 
+and it's a comma-separated slot for future flags beyond just IgnoreCase? A: Yes.
+
+7) Q: Capture all on model now?  A: No. More I am thinking on it, we will just 
+expand we need or forced to.
+
+8) You will need to know the PK which you usually will find via the index info.
+So you might need to know the indexes to find the PK. 
+   The old Code Gen version in the TreeViewUI after clicking the table, displayed 
+each column and index and FK under the table. I do not want to do this for 
+indexes and FKs, because I allowed right-clicking on these and getting a context 
+sensitive list that was never really used by users.
+
+ 
+ 
+

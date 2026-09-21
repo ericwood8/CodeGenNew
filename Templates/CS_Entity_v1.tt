@@ -1,0 +1,251 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ------------------------------------------------------------------------------------------
+    // CS_Entity_v1.tt
+    // Generates: <TableName>.cs   (see OutputName in CS_Entity_v1.tt.config)
+    //
+    // An Entity Framework entity class in the style of TimeEntryServer's TimeEntry.Common\Entities\E_DonateLeave.cs:
+    //
+    //     public class E_DonateLeave : BaseEntity
+    //     {
+    //         #region Omitted                       <- the columns a grid does not show: the key and the foreign keys
+    //             [Key] ... DonateLeaveId
+    //             [ForeignKey(nameof(DonateFrom_Employee))] ... DonateFrom_EmployeeId
+    //         #endregion Omitted
+    //         // entities                           <- one navigation property per foreign key
+    //         public Employee? DonateFrom_Employee { get; set; }
+    //         ... then one property per remaining column, with its Display/DataType/StringLength attributes
+    //     }
+    //
+    // How each part is decided:
+    //   - Name: the entity class is named exactly like the table, each property like its column.
+    //   - Base class: a table with a NOT NULL text column called Name AND a NOT NULL bit column called IsActive derives from
+    //     BaseNameActiveEntity (which already declares those two properties, so they are not repeated); any other table
+    //     derives from BaseEntity.
+    //   - Key: the single primary key column gets [Key]. (A composite key cannot be expressed with attributes -- it needs
+    //     Fluent API in the DbContext -- so such a table stops with an error.)
+    //   - Foreign keys: each single-column foreign key is listed in "Omitted", and gets a navigation property named for its
+    //     ROLE -- the column name without its trailing "Id" (DonateFrom_EmployeeId -> DonateFrom_Employee, ManagerId ->
+    //     Manager) -- of the referenced table's type, always nullable ("Employee?"; the FK column itself says whether the
+    //     row is required) with [ForeignKey(nameof(<role>))] on the FK column. A foreign key to a table listed in
+    //     noNavigationTables below (an enum, or a table with no entity class) stays a plain int/string column.
+    //   - Other columns: C# type from the SQL type; "required" when NOT NULL (it becomes "T?" / "string?" when nullable);
+    //     Display(Name/Description) from the column name split into words ("WhenDonated" -> "When Donated", a bit column's
+    //     "Is" prefix dropped); dates get DisplayFormat + DataType.Date; decimal/numeric get DisplayFormat and Precision(p, s);
+    //     money gets DataType.Currency and Column(TypeName = "money"); text gets StringLength(chars), and DataType.MultilineText
+    //     (with Display Order = -1, so a grid hides it) from 100 characters up, DataType.PhoneNumber if the name says Phone;
+    //     a bit column with a database default starts at that default ("= false").
+    //   - A table with a text column called Name that is NOT name/active-based gets "public override string? ToString() => Name;".
+    //
+    // What it does NOT do, so an entity that needs any of these stays hand-maintained:
+    //   - collection navigation properties (List<Child>? Teams) -- their names are the developers' choice;
+    //   - the reverse navigation of a one-to-many that the parent already lists (adding both sides makes serializing the
+    //     parent loop forever);
+    //   - enum-typed properties, [Range]/[RegularExpression]/[Required] validation, hand-picked display names, ToString on
+    //     other columns, or a column the class deliberately makes optional although the table says NOT NULL.
+    //   Nor does it write the entity's DbSet in TimeEntryContext or the Enums.
+    //
+    // Project-specific names -- edit here if the project changes:
+    string entityNamespace = "TimeEntry.Common.Entities";
+    string baseEntity = "BaseEntity";
+    string baseNameActiveEntity = "BaseNameActiveEntity";
+    // Tables a foreign key can point to WITHOUT a navigation property: they are C# enums (TimeEntry.Common\Enums) or have no entity class.
+    string[] noNavigationTables =
+    {
+        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
+        "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role"
+    };
+    // ------------------------------------------------------------------------------------------
+
+    var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
+    if (keyColumn is null)
+    {
+        Error($"CS_Entity needs a table with a single primary key, but [{Model.SchemaName}].[{Model.TableName}] has "
+              + (Model.PrimaryKeyColumns.Count == 0 ? "none." : "a composite primary key (" + string.Join(", ", Model.PrimaryKeyColumns.Select(c => c.Name)) + ")."));
+    }
+    else
+    {
+        // ---- naming helpers
+        string Id(ColumnModel c) => c.IsCSharpReservedWordName ? "@" + c.Name : c.Name;
+        string Words(string name, bool isBit)
+        {
+            string s = name;
+            if (isBit && Regex.IsMatch(s, "^Is[A-Z]")) s = s.Substring(2);
+            s = s.Replace('_', ' ');
+            s = Regex.Replace(s, "(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ");
+            return Regex.Replace(s, " +", " ").Trim();
+        }
+        string Str(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+
+        // ---- base class
+        var nameColumn = Model.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
+        var activeColumn = Model.Columns.FirstOrDefault(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive");
+        bool nameActive = nameColumn is not null && activeColumn is not null;
+        string baseClass = nameActive ? baseNameActiveEntity : baseEntity;
+
+        // ---- foreign keys: single-column ones only
+        var fkByColumn = new Dictionary<string, ForeignKeyModel>(StringComparer.OrdinalIgnoreCase);
+        foreach (var fk in Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1))
+            fkByColumn[fk.ReferencingColumns[0]] = fk;
+
+        var navigations = new List<(ColumnModel Column, string Role, string Type)>();
+        var takenNames = new HashSet<string>(Model.Columns.Select(c => c.Name), StringComparer.OrdinalIgnoreCase) { Model.TableName };
+        foreach (var c in Model.Columns.Where(c => fkByColumn.ContainsKey(c.Name) && !c.IsPrimaryKey))
+        {
+            var fk = fkByColumn[c.Name];
+            if (noNavigationTables.Contains(fk.ReferencedTable, StringComparer.OrdinalIgnoreCase)) continue;
+            string role = c.Name.Length > 2 && c.Name.EndsWith("Id", StringComparison.Ordinal) ? c.Name[..^2] : c.Name + "Ref";
+            // a referenced table named like this one would make a property of the class's own type; a role that repeats
+            // another name cannot be a second property -- leave both as plain columns
+            if (role.Length == 0 || !takenNames.Add(role)) continue;
+            navigations.Add((c, role, fk.ReferencedTable));
+        }
+        var navByColumn = navigations.ToDictionary(n => n.Column.Name, n => n, StringComparer.OrdinalIgnoreCase);
+
+        // ---- C# type of a column
+        string ClrType(ColumnModel c)
+        {
+            string t = c.SqlType switch
+            {
+                SqlDbType.Int => "int",
+                SqlDbType.BigInt => "long",
+                SqlDbType.SmallInt => "short",
+                SqlDbType.TinyInt => "byte",
+                SqlDbType.Bit => "bool",
+                SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => "decimal",
+                SqlDbType.Float => "double",
+                SqlDbType.Real => "float",
+                SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime => "DateTime",
+                SqlDbType.DateTimeOffset => "DateTimeOffset",
+                SqlDbType.Time => "TimeSpan",
+                SqlDbType.UniqueIdentifier => "Guid",
+                SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => "string",
+                SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => "byte[]",
+                _ => "object"
+            };
+            return c.IsNullable ? t + "?" : t;
+        }
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+        var body = new StringBuilder();
+        void B(string s = "") => body.Append(s).Append('\n');
+        bool usesSchema = false; // System.ComponentModel.DataAnnotations.Schema: [ForeignKey], [Column]
+
+        // ---- Omitted: the key, then the foreign keys, in column order
+        B("    #region Omitted");
+        bool firstOmitted = true;
+        foreach (var c in Model.Columns.Where(c => c.IsPrimaryKey || fkByColumn.ContainsKey(c.Name)))
+        {
+            if (!firstOmitted) B();
+            firstOmitted = false;
+            if (c.IsPrimaryKey)
+            {
+                B("    [Key]");
+                B("    [Display(Order = -1, AutoGenerateField = true)]");
+            }
+            else
+            {
+                if (navByColumn.TryGetValue(c.Name, out var nav))
+                {
+                    B($"    [ForeignKey(nameof({nav.Role}))]");
+                    usesSchema = true;
+                }
+                B("    [Display(Order = -1, AutoGenerateField = false)]");
+            }
+            B($"    public {(c.IsNullable ? "" : "required ")}{ClrType(c)} {Id(c)} {{ get; set; }}");
+        }
+        B("    #endregion Omitted");
+
+        // ---- navigation properties
+        if (navigations.Count > 0)
+        {
+            B();
+            B("    // entities");
+            foreach (var n in navigations)
+                B($"    public {n.Type}? {n.Role} {{ get; set; }}");
+        }
+
+        // ---- the rest of the columns
+        foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && !fkByColumn.ContainsKey(c.Name) && !(nameActive && (c == nameColumn || c == activeColumn))))
+        {
+            B();
+            bool isBit = c.SqlType == SqlDbType.Bit;
+            string words = Str(Words(c.Name, isBit));
+            int chars = c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
+            bool isText = c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
+            bool multiline = isText && chars >= 100;
+
+            B($"    [Display({(multiline ? "Order = -1, " : "")}Name = \"{words}\", Description = \"{words}\")]");
+            if (c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime)
+            {
+                B("    [DisplayFormat(DataFormatString = \"{0:MM/dd/yyyy}\")]");
+                B("    [DataType(DataType.Date)]");
+            }
+            else if (c.SqlType is SqlDbType.Money or SqlDbType.SmallMoney)
+            {
+                B("    [DisplayFormat(ApplyFormatInEditMode = true)]");
+                B("    [DataType(DataType.Currency)]");
+                B($"    [Column(TypeName = \"{(c.SqlType == SqlDbType.Money ? "money" : "smallmoney")}\")]");
+                usesSchema = true;
+            }
+            else if (c.SqlType == SqlDbType.Decimal)
+            {
+                int scale = c.Scale ?? 0;
+                B($"    [DisplayFormat(ApplyFormatInEditMode = true, DataFormatString = \"#0{(scale > 0 ? "." + new string('0', scale) : "")}\")]");
+                B($"    [Precision({c.Precision ?? 18}, {scale})]");
+            }
+            else if (isText)
+            {
+                if (chars > 0) B($"    [StringLength({chars})]");
+                if (multiline) B("    [DataType(DataType.MultilineText)]");
+                else if (c.Name.Contains("Phone", StringComparison.OrdinalIgnoreCase)) B("    [DataType(DataType.PhoneNumber)]");
+            }
+            else if (c.SqlType == SqlDbType.Timestamp)
+            {
+                B("    [Timestamp]");
+            }
+
+            if (c.IsComputed) { B("    [DatabaseGenerated(DatabaseGeneratedOption.Computed)]"); usesSchema = true; }
+            else if (c.IsIdentity) { B("    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]"); usesSchema = true; }
+
+            string initializer = "";
+            if (isBit && c.DatabaseDefaultSql is not null)
+            {
+                string d = c.DatabaseDefaultSql.Trim('(', ')', ' ');
+                if (d == "1") initializer = " = true;";
+                else if (d == "0") initializer = " = false;";
+            }
+            bool needsRequired = !c.IsNullable && !c.IsComputed && !c.IsIdentity && c.SqlType != SqlDbType.Timestamp;
+            B($"    public {(needsRequired ? "required " : "")}{ClrType(c)} {Id(c)} {{ get; set; }}{initializer}");
+        }
+
+        // ---- ToString on a table that has a plain "Name"
+        if (!nameActive && Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"))
+        {
+            B();
+            B("    public override string? ToString() => Name;");
+        }
+
+        // ---- assemble
+        if (usesSchema)
+        {
+            L("using System.ComponentModel.DataAnnotations.Schema;");
+            L();
+        }
+        L($"namespace {entityNamespace};");
+        L();
+        L($"public class {(Model.IsCSharpReservedWordName ? "@" : "")}{Model.TableName} : {baseClass}");
+        L("{");
+        o.Append(body);
+        L("}");
+        Write(o.ToString());
+    }
+#>

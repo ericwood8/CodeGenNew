@@ -1,0 +1,67 @@
+1) Q: fixed subfolder or user chosen? A: fixed subfolder next to the app (e.g. 
+.\Templates\, shipped with default .tt files for Update SP etc. on first run).
+Yes, I want shipped with default .tt files . You can hardcode .\Templates\ and
+create folder if not exist when user saves the template.
+
+2) Q: File management screen or rich text? A: I am fine with file-management 
+screen (grid of .tt files with New/Rename/Delete/"Open in default editor" buttons) 
+and let the developer edit .tt content in VS Code/Notepad++/whatever they already 
+use.  The template's name (in front of the .tt extension) will be what you have 
+to have a list of for strings for your right-click menu options.
+
+3) Q: Alphabetical order on template menu options? A: Alphabetical order should 
+be able to handle groupings I guess. Reason: I envision where templates of similar 
+types being grouped together. Imagine CS_API.tt, CS_POCO.tt, JS_Grid.tt, SP_Create.tt, 
+SP_Delete.tt, SP_Insert.tt, SP_Update.tt. 
+
+4 and 5) Q: Is the list of "Shared Base code" files a per-template setting (chosen once 
+while creating/editing TemplateFileName.tt, then reused every time that template 
+runs), stored as metadata next to the template (e.g. TemplateFileName.tt.json)?
+         Q: Should the generator assume these already exist in the target project?
+
+4 and 5) A:
+   Great questions. 
+   Option 1: CS_API.tt.json that contains a list of file names and their paths 
+that are shared code. The shared code might be in various other directories.
+   Option 2: maybe we require the shared files in the templates directory: 
+CS_API.tt.GenericRepo.cs, CS_API.tt.BaseApi.cs, CS_API.tt.TimeEntryContext.cs, 
+CS_API.tt.BaseEntity.cs and CS_API.tt.DeleteTableResult.cs .
+   Option 3: Do not track Shared code. Remove this feature. Assume developer's 
+responsibility of file existance of shared file or one could not compile.
+   I think I am leaning to Option 3 now. Sorry about the redirection. Do you have
+a strong opinion on option 1 or 2 as opposed to option 3?      
+
+6 and 7) Discussion - How do you envision the TT generation? 
+  Option 1: Is the mono TT required to be installed and creates the XXXXXX.cs.generated 
+file? Then your engine reads the XXXXXX.cs.generated and then modifies it for any
+special logic stuff that is not easy to do in mono TT.
+  Option 2: We don't need mono TT except for the template format rules that we 
+will follow. Your engine reads the XXXXXX.tt template and creates XXXXXX.cs.generated 
+dealing with all that mono TT does and any special logic stuff that is not easy 
+to do in mono TT.
+   
+6) Q: I plan to build one shared "TableModel" class. Expose the special-logic 
+booleans/values pre-computed (e.g. HasIsActiveInactivePair, StartDateColumn/EndDateColumn)?
+   A: Yes. Definitely. If you want, I can probably find a "TableModel" class with
+lots of these pre-computed output properties from prior hard-coded code generators.
+    
+7) Q: Pre-compute parameters. A: Yes.
+
+8) Q: Different templates will have different requirements. Should templates 
+declare their needs upfront?  A: Great question. We would need to have the template
+screen have checkboxes for the various menu restrictions with the default value 
+as checked.
+
+9) A: portable passphrase-based encryption
+
+10) A: Let us support both - Windows Integrated Auth and SQL Login.
+
+11) Q: plain self-contained unpackaged EXE? A: Yes. plain self-contained unpackaged 
+EXE just read/write plain files next to the EXE for settings.
+
+12) A: Your format looks good. Add want comment in code when writing to the file.
+
+13) Q: DB Connection library A: separate concern/interface
+
+
+ 

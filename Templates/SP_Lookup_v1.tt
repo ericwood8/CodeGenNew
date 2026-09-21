@@ -1,0 +1,232 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ------------------------------------------------------------------------------------------
+    // SP_Lookup_v1.tt
+    // Generates: <TableName>_Lookup.sql
+    //
+    // A Lookup procedure returns, for every row of the table, just enough to RECOGNIZE it: the row's ID and its
+    // critical display columns, and for every foreign key the referenced row's ID and ITS critical display
+    // columns -- so a list or drop-down can show "Account 0110-000 PROSPECTS INVENTORY, Balance Type: Asset"
+    // without the caller joining anything itself.
+    //
+    // Which columns are "display columns" comes from SpecialLogicColumns.config's DisplayColumn rule (patterns
+    // in priority order), applied to this table and, via SP_Lookup_v1.tt.config's NeedsReferencedDisplayColumns,
+    // to each referenced table. A table matching none contributes its first ordinary string column instead.
+    //
+    // Written to avoid the defects of the original generator's output (Examples\LookupSP.txt):
+    //   - Every output column has a UNIQUE name. The original returned a dozen columns all called "ID", which a
+    //     caller cannot tell apart. Here a foreign key's ID is the base table's own FK column, under its own name
+    //     (AccountType1099EnumID); a foreign row's display value is named after its ROLE (AccountType1099).
+    //   - A foreign key's ROLE comes from the FK column's name: a trailing EnumID or ID is dropped, and so is a
+    //     "_<ReferencedTable>" tail. AccountType1099EnumID -> AccountType1099; OwnerID -> Owner;
+    //     ContraAccount_AccountID -> ContraAccount. The role is used as the table alias, so the SAME table joined
+    //     several times (SYEnum, once per enum column) gets a distinct alias each time, and a table that
+    //     references ITSELF (ContraAccount_AccountID -> Account) is joined under its role (ContraAccount), never
+    //     under its own name -- the original wrote "Account AS Account", which compared the table to itself and
+    //     emitted an empty "Account. AS Account" column. A role that still collides gets a numeric suffix.
+    //     A referenced table with several display columns names them <Role><Column>, with the referenced table's
+    //     name trimmed from the column's front (ContraAccount + AccountNumber -> ContraAccountNumber).
+    //   - LEFT JOIN wherever the foreign key column is nullable, INNER JOIN only when it is NOT NULL. The original
+    //     INNER JOINed everything, which silently drops every row whose optional foreign key is NULL (most of
+    //     the Account rows in the seed data). Composite foreign keys join on all of their columns.
+    //   - A referenced table with no display column adds no join (the foreign key's ID is still returned).
+    //   - Foreign keys are listed alphabetically by role, the row's own columns first.
+    //   - ORDER BY is the row's best-ranked display column (the earliest DisplayColumn pattern that matched --
+    //     ShortDescr for Account), then the primary key so equal descriptions come back in a stable order.
+    //   - If the table has an active/inactive flag (the "consider adding an active flag" note in the original),
+    //     only active rows are returned unless the caller passes @blnIncludeInactive = 1; the flag itself is
+    //     returned so a screen can grey out inactive rows. (Referenced rows are never filtered: an existing row
+    //     must still show what it points at, even if that has since been made inactive.)
+    //
+    // Kept from the original: it takes no filter parameters, and it raises error 55508 ("No <Table> found for
+    // <procedure>.") when there is nothing to return.
+    //
+    // Requires a primary key (the ID) and a table, not a view.
+
+    if (Model.ForeignKeys.Count > 0 && !Model.HasReferencedDisplayColumns)
+        throw new System.InvalidOperationException("SP_Lookup needs the foreign-keyed tables' display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
+
+    string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
+    string baseTable = $"{Q(Model.SchemaName)}.{Q(Model.TableName)}";
+    string BaseCol(ColumnModel c) => $"{Q(Model.TableName)}.{Q(c.Name)}"; // the base table is referenced by its own name
+
+    // Returns wanted, or wanted2, wanted3... when already taken (case-insensitive), and records the result.
+    string Unique(HashSet<string> used, string wanted)
+    {
+        string candidate = wanted;
+        for (int n = 2; !used.Add(candidate); n++)
+            candidate = wanted + n;
+        return candidate;
+    }
+
+    string Role(ForeignKeyModel fk)
+    {
+        if (fk.ReferencingColumns.Count != 1)
+            return fk.ReferencedTable;
+
+        string name = fk.ReferencingColumns[0];
+        foreach (string suffix in new[] { "EnumID", "ID" })
+        {
+            if (name.Length > suffix.Length && name.EndsWith(suffix, System.StringComparison.OrdinalIgnoreCase))
+            {
+                name = name[..^suffix.Length];
+                break;
+            }
+        }
+
+        string tail = "_" + fk.ReferencedTable;
+        if (name.Length > tail.Length && name.EndsWith(tail, System.StringComparison.OrdinalIgnoreCase))
+            name = name[..^tail.Length];
+
+        name = name.TrimEnd('_');
+        return name.Length > 0 ? name : fk.ReferencedTable;
+    }
+
+    string TrimTablePrefix(string column, string table) =>
+        column.Length > table.Length && column.StartsWith(table, System.StringComparison.OrdinalIgnoreCase) ? column[table.Length..] : column;
+
+    var selectItems = new List<string>();
+    var outputNames = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+    var baseSelected = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+
+    // A column of the base table, returned under its own name (once, however many reasons there are to include it).
+    void AddBaseColumn(ColumnModel c)
+    {
+        if (!baseSelected.Add(c.Name))
+            return;
+        outputNames.Add(c.Name);
+        selectItems.Add(BaseCol(c));
+    }
+
+    var activeColumn = Model.HasActiveInactivePair ? Model.ActiveColumn : null;
+
+    // 1) The row itself: ID(s), display columns, and the active flag so a caller can tell inactive rows apart.
+    foreach (var c in Model.PrimaryKeyColumns)
+        AddBaseColumn(c);
+    foreach (var c in Model.DisplayColumns)
+        AddBaseColumn(c);
+    if (activeColumn is not null)
+        AddBaseColumn(activeColumn);
+
+    // 2) Each foreign key: its ID (our own FK column) and, when the referenced table has display columns, a join.
+    var tableAliases = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase) { Model.TableName };
+    var foreignKeys = new List<(string Role, ForeignKeyModel Fk, List<ColumnModel> Columns)>();
+    var seenForeignKeys = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+    foreach (var fk in Model.ForeignKeys)
+    {
+        var fkColumns = fk.ReferencingColumns
+            .Select(name => Model.Columns.FirstOrDefault(c => c.Name.Equals(name, System.StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+        if (fkColumns.Any(c => c is null))
+            continue; // a column the model does not carry (e.g. a replication column)
+
+        string signature = string.Join(",", fk.ReferencingColumns) + ">" + fk.ReferencedSchema + "." + fk.ReferencedTable;
+        if (!seenForeignKeys.Add(signature))
+            continue; // the same relationship declared twice
+
+        foreignKeys.Add((Unique(tableAliases, Role(fk)), fk, fkColumns!));
+    }
+
+    var joins = new List<string>();
+    foreach (var (role, fk, fkColumns) in foreignKeys.OrderBy(f => f.Role, System.StringComparer.OrdinalIgnoreCase))
+    {
+        foreach (var c in fkColumns)
+            AddBaseColumn(c);
+
+        // The join key is already returned as our FK column, so it is not repeated as a display column.
+        var displayColumns = fk.ReferencedDisplayColumns
+            .Where(name => !fk.ReferencedColumns.Contains(name, System.StringComparer.OrdinalIgnoreCase))
+            .ToList();
+        if (displayColumns.Count == 0)
+            continue;
+
+        foreach (string displayColumn in displayColumns)
+        {
+            string wanted = displayColumns.Count == 1 ? role : role + TrimTablePrefix(displayColumn, fk.ReferencedTable);
+            selectItems.Add($"{Q(role)}.{Q(displayColumn)} AS {Q(Unique(outputNames, wanted))}");
+        }
+
+        bool optional = fkColumns.Any(c => c.IsNullable);
+        string on = string.Join(" AND ", fk.ReferencedColumns.Select((referenced, i) => $"{Q(role)}.{Q(referenced)} = {BaseCol(fkColumns[i])}"));
+        joins.Add($"{(optional ? "LEFT JOIN" : "INNER JOIN")} {Q(fk.ReferencedSchema)}.{Q(fk.ReferencedTable)} AS {Q(role)} ON {on}");
+    }
+
+    // 3) Order by the best display column, then by key.
+    var sortColumn = Model.DisplayColumns
+        .OrderBy(c => c.DisplayRank ?? int.MaxValue).ThenBy(c => c.OrdinalPosition)
+        .FirstOrDefault();
+    var orderBy = new List<string>();
+    if (sortColumn is not null)
+        orderBy.Add(BaseCol(sortColumn) + " ASC");
+    foreach (var pk in Model.PrimaryKeyColumns.Where(pk => pk != sortColumn))
+        orderBy.Add(BaseCol(pk) + " ASC");
+
+    // 4) Active rows only, unless asked otherwise.
+    string activeFilter = "";
+    if (activeColumn is not null)
+    {
+        bool negativePolarity = activeColumn.Name.Contains("Inactive", System.StringComparison.OrdinalIgnoreCase);
+        string activeValue = negativePolarity ? "0" : "1";
+        if (activeColumn.IsStringColumn)
+            activeValue = $"'{activeValue}'";
+        string test = activeColumn.IsNullable
+            ? $"ISNULL({BaseCol(activeColumn)}, {activeValue}) = {activeValue}"
+            : $"{BaseCol(activeColumn)} = {activeValue}";
+        activeFilter = $"(@blnIncludeInactive = 1 OR {test})";
+    }
+
+    string tableNameForMessage = Model.TableName.Replace("'", "''");
+#>
+CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Lookup]
+<#
+    if (activeColumn is not null)
+    {
+#>
+-- Returns only active rows unless @blnIncludeInactive = 1.
+(
+@blnIncludeInactive BIT = 0
+)
+<#
+    }
+#>
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	SELECT
+<#
+    for (int i = 0; i < selectItems.Count; i++)
+    {
+#>
+		<#= i == 0 ? " " : "," #><#= selectItems[i] #>
+<#
+    }
+#>
+	FROM <#= baseTable #>
+<#
+    foreach (string join in joins)
+    {
+#>
+	<#= join #>
+<#
+    }
+    if (activeFilter.Length > 0)
+    {
+#>
+	WHERE <#= activeFilter #>
+<#
+    }
+#>
+	ORDER BY <#= string.Join(", ", orderBy) #>;
+
+	IF (@@ROWCOUNT = 0)
+	BEGIN
+		DECLARE @ErrorMessage VARCHAR(200);
+		SET @ErrorMessage = 'No <#= tableNameForMessage #> found for ' + OBJECT_NAME(@@PROCID) + '.';
+		THROW 55508, @ErrorMessage, 1;
+	END
+END

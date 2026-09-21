@@ -1,0 +1,73 @@
+USE ProvidenceOgas
+GO
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+
+
+--  Lookup for Account
+-- ** Might consider adding an active flag to Account **
+
+CREATE PROCEDURE [dbo].[Account_Lookup] 
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT Account.[ID] AS ID 
+      ,Account.AccountNumber AS AccountNumber
+      ,AccountType1099.[ID] AS ID 
+      ,AccountType1099.ShortDescr AS AccountType1099 
+      ,AFEAccountCasingPointType.[ID] AS ID 
+      ,AFEAccountCasingPointType.ShortDescr AS AFEAccountCasingPointType 
+      ,AFEAccountType.[ID] AS ID 
+      ,AFEAccountType.ShortDescr AS AFEAccountType 
+      ,AFEExpenseType.[ID] AS ID 
+      ,AFEExpenseType.ShortDescr AS AFEExpenseType 
+      ,BalanceType.[ID] AS ID 
+      ,BalanceType.ShortDescr AS BalanceType 
+      ,Account.[ID] AS ID 
+      ,Account. AS Account 
+      ,DepletionAccountType.[ID] AS ID 
+      ,DepletionAccountType.ShortDescr AS DepletionAccountType 
+      ,DepreciationAssetType.[ID] AS ID 
+      ,DepreciationAssetType.ShortDescr AS DepreciationAssetType 
+      ,FinancialCode.[ID] AS ID 
+      ,FinancialCode.ShortDescr AS FinancialCode 
+      ,JIBCashFlowCategory.[ID] AS ID 
+      ,JIBCashFlowCategory.ShortDescr AS JIBCashFlowCategory 
+      ,LeaseOperatingStatement.[ID] AS ID 
+      ,LeaseOperatingStatement.ShortDescr AS LeaseOperatingStatement 
+      ,PropertyType.[ID] AS ID 
+      ,PropertyType.ShortDescr AS PropertyType 
+      ,RDCashFlowCategory.[ID] AS ID 
+      ,RDCashFlowCategory.ShortDescr AS RDCashFlowCategory 
+      ,WellcostAllocation.[ID] AS ID 
+      ,WellcostAllocation.ShortDescr AS WellcostAllocation 
+      ,Account.AccountNumber AS ContraAccountNumber
+      ,Account.ShortDescr AS ContraAccountName
+    FROM [dbo].Account 
+    INNER JOIN SYEnum AS AccountType1099 ON AccountType1099.EnumID = Account.AccountType1099EnumID
+    INNER JOIN SYEnum AS AFEAccountCasingPointType ON AFEAccountCasingPointType.EnumID = Account.AFEAccountCasingPointTypeEnumID
+    INNER JOIN SYEnum AS AFEAccountType ON AFEAccountType.EnumID = Account.AFEAccountTypeEnumID
+    INNER JOIN SYEnum AS AFEExpenseType ON AFEExpenseType.EnumID = Account.AFEExpenseTypeEnumID
+    INNER JOIN SYEnum AS BalanceType ON BalanceType.EnumID = Account.BalanceTypeEnumID
+    INNER JOIN Account AS Account ON Account.ID = Account.ContraAccount_AccountID
+    INNER JOIN SYEnum AS DepletionAccountType ON DepletionAccountType.EnumID = Account.DepletionAccountTypeEnumID
+    INNER JOIN SYEnum AS DepreciationAssetType ON DepreciationAssetType.EnumID = Account.DepreciationAssetTypeEnumID
+    INNER JOIN SYEnum AS FinancialCode ON FinancialCode.EnumID = Account.FinancialCodeEnumID
+    INNER JOIN SYEnum AS JIBCashFlowCategory ON JIBCashFlowCategory.EnumID = Account.JIBCashFlowCategoryEnumID
+    INNER JOIN SYEnum AS LeaseOperatingStatement ON LeaseOperatingStatement.EnumID = Account.LeaseOperatingStatementEnumID
+    INNER JOIN SYEnum AS PropertyType ON PropertyType.EnumID = Account.PropertyTypeEnumID
+    INNER JOIN SYEnum AS RDCashFlowCategory ON RDCashFlowCategory.EnumID = Account.RDCashFlowCategoryEnumID
+    INNER JOIN SYEnum AS WellcostAllocation ON WellcostAllocation.EnumID = Account.WellcostAllocationEnumID
+    ORDER BY Account.ShortDescr ASC;
+
+    IF (@@ROWCOUNT = 0)
+    BEGIN
+        DECLARE @ErrorMessage VARCHAR(200);
+        SET @ErrorMessage = 'No Account found for ' + OBJECT_NAME(@@PROCID) + '.';
+        THROW 55508, @ErrorMessage, 1;
+    END
+END
+GO

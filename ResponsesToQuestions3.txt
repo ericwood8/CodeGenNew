@@ -1,0 +1,49 @@
+In C:\EricWork\Avatar Code\AvatarCodeGenerator\AvatarCodeGenerator\Avatar.CodeGen\
+is Avatar.CodeGen.sln which is a .NET 4.8 framework application written in C#.
+Obviously it was restricted to earlier .NET and C# versions. I verified it is 
+currently compilable. 
+  I do not want to show indexes like I did in this version. We don't need to show
+columns and FKs in v1 or v2. I don't want to show child tables that I put under 
+FKs. 
+
+1) Q: Prior hard-coded code generator.  
+A:  In the Avatar.CodeGen.SqlServer.DataLayer folder underneath is Table.cs and 
+Column.cs which you wanted to look at. Remember that this is a mature system with 
+probably 30 hard-coded code generation options available. Table.cs has a bunch 
+of public methods that are hard-coded code generation which you will NOT need. 
+Table.cs has a bunch of properties that will be useful to you such as HasActiveState.
+Ignore ChildTable.cs for reasons I gave above.
+
+2) Q: menu-restriction checkboxes on templates A: Let us start with "Requires 
+Primary Key" and "Table only (hide for Views)".  Table.cs has 
+IsColumnForeignKeyOnTable function and about 6 other functions that follow that
+govern visibility or were considered critical in the old system.
+
+3) Q: Where store template's restriction checkboxes values? A: maybe 
+XXXXXX.tt.config in template directory.
+
+4) Q: Nested submenus?  A: Yes. That will be cool. I have done nested submenus
+in prior hard-coded code generators.
+
+5) Q: Passphrase-based encryption? A: Actually for portability let us just always
+ask for the password in the DB connection dialog and not preload it. We will 
+stored the connection string in the clear, so no need for encryption.  This will
+make things simple.  
+
+6) Q: Proposed solution layout? A: Looks like a good solution layout.
+
+
+In the Avatar.CodeGen.SqlServer.DataLayer folder underneath in the CodeGen project,
+I want you to reuse IsSystemTable method found in TableTools.cs to show tables other
+than these in the TreeView. The entire rest of TableTools.cs is too company 
+specific to be of any use.
+
+In C:\EricWork\Avatar Code\Avatar.Common.Extension\Avatar.Common.Extension\MethodExtensionSolution\MethodExtensionProject\ExtensionMethods
+reuse what you want, especially useful will be DataColumn and String . DataRow 
+and DataTable are not worth while.
+
+When you reuse code, do not copy entire CS files, but rather just the specific
+methods or properties that you need to get the job done.
+ 
+
+ 

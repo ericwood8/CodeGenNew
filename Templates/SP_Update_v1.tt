@@ -1,0 +1,213 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ------------------------------------------------------------------------------------------
+    // SP_Update_v1.tt
+    // Generates: <TableName>_Update.sql
+    //
+    // Behavior (matches the worked example in Docs/specs.md and the original CodeGen.docx spec):
+    //   - Every column becomes a VarChar parameter, regardless of its real SQL type (this is a
+    //     deliberate, established convention from the author's prior generators -- NOT a data-type
+    //     mismatch bug). Passing NULL for a parameter means "do not update this column."
+    //   - Computed columns are skipped entirely (cannot be assigned to).
+    //   - The primary key column(s) are still declared as parameters (needed for the WHERE clause)
+    //     but are excluded from the dynamically-built SET clause.
+    //   - String/VarChar-typed columns get LTRIM/RTRIM applied and embedded single quotes doubled
+    //     (standard T-SQL escaping) before being concatenated into the dynamic SQL text, per the
+    //     "trim strings" and "strip bad characters" rules in the original spec.
+    //   - Composite primary keys are supported: the WHERE clause AND-joins every PK column.
+    //   - Deviation from the original single-PK worked example: this generalized version returns
+    //     1 on success / 0 on failure, rather than echoing back the (single) ID parameter, since a
+    //     composite key has no single value to echo.
+    //   - Uses CREATE OR ALTER PROCEDURE (not ALTER PROCEDURE) so it deploys whether or not the
+    //     procedure already exists -- required for the CLI's --verify mode (Docs/specs.md section 10.1).
+    //   - Audit date columns (SpecialLogicColumns.config categories CreateDateColumn/ModifiedDateColumn/
+    //     LastChangedDateColumn, e.g. CreateDate/ModifiedDate/LastDateChanged) are excluded from the
+    //     parameter list entirely -- they are never caller-supplied. ModifiedDateColumn and
+    //     LastChangedDateColumn matches are both set to GETDATE() unconditionally on every update
+    //     (LastChangedDateColumn is a blend: the Insert template, when built, will also set it
+    //     alongside CreateDate). A CreateDateColumn match is never touched by Update logic at all.
+    //   - CreateUserColumn match (e.g. CreateUser) is likewise excluded from the parameter list: who created
+    //     a row never changes, so Update must not be able to overwrite it (Insert and Save still take it).
+    //   - Active/Inactive (HasActiveInactivePair): if the caller supplies a value for InactiveDate
+    //     and/or any InactiveReasonColumn match (e.g. InactiveReasonNoteText), the active-flag column
+    //     is forced to its "inactive" value (0 for IsActive/Active-style, 1 for IsInactive-style) --
+    //     regardless of whatever value, if any, was explicitly passed for the flag itself. The active
+    //     flag is therefore excluded from the normal per-column loop and handled by a single
+    //     IF/ELSE IF instead: SQL Server rejects assigning the same column twice in one UPDATE's SET
+    //     clause (error 264) -- confirmed by testing -- so there can only ever be one assignment to it,
+    //     never two. The flag can still be set independently (e.g. to reactivate a record) via the
+    //     ELSE IF branch when neither inactivation trigger is supplied.
+    //   - StartEndDate pair (e.g. StartDate/EndDate, DateOpened/DateClosed) and the exact-named
+    //     DateIn/TimeIn/DateOut/TimeOut quartet (e.g. the CMS table): when the caller supplies BOTH
+    //     sides of a pair in the same call, rejects the update with RAISERROR if the range is backwards
+    //     (Bugs2.txt items 10, 11, 14). Only checked when both sides are supplied together -- since NULL
+    //     means "don't touch this column" here, validating a partial update (only one side supplied)
+    //     against whatever's already in the row would need an extra SELECT this template doesn't do;
+    //     review generated output for that case if it matters for a given table.
+    //
+    // This template requires a primary key (see SP_Update.tt.config: RequiresPrimaryKey=true) and
+    // only applies to tables, not views (TableOnly=true).
+
+    var updatableColumns = Model.Columns
+        .Where(c => !c.IsComputed && !c.IsCreateDateColumn && !c.IsCreateUserColumn && !c.IsModifiedDateColumn && !c.IsLastChangedDateColumn)
+        .ToList();
+    // The active-flag column stays a parameter (so a caller can still reactivate a record) but is
+    // excluded from the automatic per-column SET loop below -- it's handled by a single IF/ELSE IF
+    // instead, since it can be driven by either its own parameter or the inactivation triggers, never both.
+    var setClauseColumns = updatableColumns.Where(c => !c.IsPrimaryKey && c != Model.ActiveColumn).ToList();
+    var autoTouchedOnUpdateColumns = Model.Columns.Where(c => c.IsModifiedDateColumn || c.IsLastChangedDateColumn).ToList();
+
+    // Columns that, when supplied on Update, imply the row should become inactive.
+    var inactivationTriggerColumns = new List<ColumnModel>();
+    if (Model.InactiveDateColumn is not null)
+        inactivationTriggerColumns.Add(Model.InactiveDateColumn);
+    inactivationTriggerColumns.AddRange(Model.Columns.Where(c => c.IsInactiveReasonColumn));
+
+    bool hasInactivationForcing = Model.HasActiveInactivePair && Model.ActiveColumn is not null && inactivationTriggerColumns.Count > 0;
+    string InactivatedLiteral(ColumnModel c) => c.Name.Contains("Inactive", StringComparison.OrdinalIgnoreCase) ? "1" : "0";
+
+    string VarCharLength(ColumnModel c)
+    {
+        if (c.IsStringColumn && c.MaxLength.HasValue && c.MaxLength.Value > 0)
+            return c.MaxLength.Value.ToString();
+        if (c.IsDateColumn)
+            return "40";
+        if (c.IsMoneyColumn || c.IsNumericColumn)
+            return "38";
+        if (c.IsBooleanColumn)
+            return "1";
+        return "20"; // int / guid / fallback
+    }
+#>
+CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Update]
+(
+<#
+    for (int i = 0; i < updatableColumns.Count; i++)
+    {
+        var c = updatableColumns[i];
+        string comma = (i < updatableColumns.Count - 1) ? "," : "";
+#>
+<#= c.ParameterName #> VarChar(<#= VarCharLength(c) #>) = NULL<#= comma #>
+<#
+    }
+#>
+)
+AS
+	DECLARE @strUpdate varchar(8000);
+	DECLARE @strSetStatement varchar(8000);
+
+	DECLARE @lngReturn int;
+	SET @strSetStatement = '';
+<#
+    foreach (var adc in autoTouchedOnUpdateColumns)
+    {
+#>
+	SET @strSetStatement = @strSetStatement + ' [<#= adc.Name #>] = GETDATE(),';
+<#
+    }
+#>
+
+<#
+    if (Model.HasStartEndDatePair && Model.StartDateColumn is not null && Model.EndDateColumn is not null)
+    {
+        var startCol = Model.StartDateColumn;
+        var endCol = Model.EndDateColumn;
+#>
+	IF (<#= startCol.ParameterName #> IS NOT NULL AND <#= endCol.ParameterName #> IS NOT NULL
+	    AND CAST(<#= startCol.ParameterName #> AS DATETIME) > CAST(<#= endCol.ParameterName #> AS DATETIME))
+	BEGIN
+		RAISERROR('[<#= startCol.Name #>] must not be later than [<#= endCol.Name #>].', 16, 1);
+		RETURN 0;
+	END
+<#
+    }
+    if (Model.HasInOutDateTimePair && Model.InDateColumn is not null && Model.InTimeColumn is not null && Model.OutDateColumn is not null && Model.OutTimeColumn is not null)
+    {
+        var inDate = Model.InDateColumn;
+        var inTime = Model.InTimeColumn;
+        var outDate = Model.OutDateColumn;
+        var outTime = Model.OutTimeColumn;
+#>
+	IF (<#= inDate.ParameterName #> IS NOT NULL AND <#= inTime.ParameterName #> IS NOT NULL AND <#= outDate.ParameterName #> IS NOT NULL AND <#= outTime.ParameterName #> IS NOT NULL
+	    AND (CAST(<#= inDate.ParameterName #> AS DATETIME) > CAST(<#= outDate.ParameterName #> AS DATETIME)
+	         OR (CAST(<#= inDate.ParameterName #> AS DATETIME) = CAST(<#= outDate.ParameterName #> AS DATETIME)
+	             AND CAST(<#= inTime.ParameterName #> AS TIME) > CAST(<#= outTime.ParameterName #> AS TIME))))
+	BEGIN
+		RAISERROR('[<#= inDate.Name #>]/[<#= inTime.Name #>] must not be later than [<#= outDate.Name #>]/[<#= outTime.Name #>].', 16, 1);
+		RETURN 0;
+	END
+<#
+    }
+#>
+
+<#
+    var pkCheckColumn = Model.PrimaryKeyColumns.First();
+#>
+	IF <#= pkCheckColumn.ParameterName #> IS NOT NULL
+	BEGIN
+	    SET @strUpdate = 'UPDATE [<#= Model.TableName #>] SET ';
+<#
+    foreach (var c in setClauseColumns)
+    {
+        if (c.IsStringColumn)
+        {
+#>
+	    IF <#= c.ParameterName #> IS NOT NULL
+	        SET @strSetStatement = @strSetStatement + ' [<#= c.Name #>] = ''' + REPLACE(RTRIM(LTRIM(<#= c.ParameterName #>)), '''', '''''') + ''',';
+<#
+        }
+        else
+        {
+#>
+	    IF <#= c.ParameterName #> IS NOT NULL
+	        SET @strSetStatement = @strSetStatement + ' [<#= c.Name #>] = ''' + <#= c.ParameterName #> + ''',';
+<#
+        }
+    }
+#>
+<#
+    if (Model.HasActiveInactivePair && Model.ActiveColumn is not null)
+    {
+        var activeCol = Model.ActiveColumn;
+        bool activeColIsString = activeCol.IsStringColumn;
+        string ownValueExpression = activeColIsString
+            ? $"REPLACE(RTRIM(LTRIM({activeCol.ParameterName})), '''', '''''')"
+            : activeCol.ParameterName;
+        if (hasInactivationForcing)
+        {
+            string triggerCondition = string.Join(" OR ", inactivationTriggerColumns.Select(c => $"{c.ParameterName} IS NOT NULL"));
+#>
+	    IF <#= triggerCondition #>
+	        SET @strSetStatement = @strSetStatement + ' [<#= activeCol.Name #>] = ''<#= InactivatedLiteral(activeCol) #>'',';
+	    ELSE IF <#= activeCol.ParameterName #> IS NOT NULL
+	        SET @strSetStatement = @strSetStatement + ' [<#= activeCol.Name #>] = ''' + <#= ownValueExpression #> + ''',';
+<#
+        }
+        else
+        {
+#>
+	    IF <#= activeCol.ParameterName #> IS NOT NULL
+	        SET @strSetStatement = @strSetStatement + ' [<#= activeCol.Name #>] = ''' + <#= ownValueExpression #> + ''',';
+<#
+        }
+    }
+#>
+	    IF LEN(@strSetStatement) > 0
+	    BEGIN
+	        IF RIGHT(@strSetStatement, 1) = ','
+	            SET @strSetStatement = LEFT(@strSetStatement, LEN(@strSetStatement) - 1);
+
+	        SET @strUpdate = @strUpdate + @strSetStatement + ' WHERE (<#= string.Join(" AND ", Model.PrimaryKeyColumns.Select(pk => $"[{pk.Name}] = ' + {pk.ParameterName} + '")) #>)';
+	        EXEC (@strUpdate);
+
+	        IF @@ERROR = 0
+	            SELECT @lngReturn = 1;
+	        ELSE
+	            SELECT @lngReturn = 0;
+	    END
+	END
+RETURN IsNull(@lngReturn, 0);

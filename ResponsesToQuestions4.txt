@@ -1,0 +1,51 @@
+Reuse SetColumnDefault() and IsAuditColumn() methods found in ColumnTools.cs found in 
+Avatar.CodeGen.SqlServer.DataLayer folder found in 
+C:\EricWork\Avatar Code\AvatarCodeGenerator\AvatarCodeGenerator\Avatar.CodeGen\  .
+Nothing else in ColumnTools.cs seems useful.
+
+1) Q: Table.cs's grid/single-view metadata properties? A: Yes. Out-of-scope. You
+could overrule the caption for a column or table name via a manual addition of a 
+custom sys.extended_properties . I don't want to do this. Too custom in our 
+application.
+
+2) Q: Keep only IsSelfReferencing, IsForeignKeyMulti? A: Yes. 
+
+3) Q: Richer column detection? A: Yes. However, you might not need the Type upfront
+if you do wildcards.  
+
+You could handle * for wildcard with * at end as StartsWith() and * at front as 
+EndsWith() and * in middle as Contains(). No wildcard as EXACT match only. If 
+IgnoreCase as special and * in middle as ContainsIgnoreCase().
+
+category|flagcolumn(s)|companioncolumn(s)|special
+IsActiveFlag|IsActive,Active|InactiveDate,InactivatedAt|
+StartEndDate|Start*,Begin*,Hire*,Origin*,Open*|Stop*,End*,Termination*,Final*,Close*|
+IsEmailColumn|*Email*| |IgnoreCase
+IsUrlColumn|*Url*,*Uri*,*Website*,*Webpage*,*Webaddress*| |IgnoreCase
+
+4) Q: System.Data.SqlDbType or custom?  A: System.Data.SqlDbType
+Q: Helper methods?  A: Yes, but you will need to modify.
+
+5) Q: How much of String extensions? A: Just those specific methods and any others 
+you find yourself needing. Definitely not the whole 1700+ line file. 
+
+6) Q: skip parent-prefix stripping? A: Yes. Skip parent-prefix stripping. Was 
+company specific code.
+
+7) Q: soft-delete (IsDeleted/DelDate) be added as a fourth wired-up special-logic 
+behavior A: Yes. Soft-Deletes are common worldwide.
+
+Note1: Feel free to group reused methods into your own mixture of CS files as 
+you see fit and makes things readable. 
+
+Note2: Overall for the project think about making things flexible with the idea
+that the templating for lots of different languages and needs.
+
+Note3: I want as much information about the selected table and its columns to be 
+exposed as the database will give us that we are likely to use. I want to 
+understand the database default (a default constraint against the column) if the 
+database builder gave us one so we set the value properly in our eventual C# POCO 
+or other template. Exceptions: I do NOT want extended properties, permissions, 
+change tracking, etc.
+
+     

@@ -1,0 +1,195 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ------------------------------------------------------------------------------------------
+    // API_Crud_v1.tt
+    // Generates: <TableName>Api.cs   (see OutputName in API_Crud_v1.tt.config)
+    //
+    // A minimal-API class for one table, in the style of TimeEntryServer's TimeEntry.ApiService\Apis\E_DonateLeaveApi.cs:
+    // five endpoints registered from Register(), each a static handler over the table's repository (<Entity>Repo, from CS_Repo):
+    //     GET    /<plural>          all rows
+    //     GET    /<plural>/{id}     one row                 (404 when there is no such row)
+    //     POST   /<plural>          create                  (201 with a Location header)
+    //     PUT    /<plural>/{id}     update                  (400 when the id in the URL and the id in the body disagree,
+    //                                                          404 when there is no such row)
+    //     DELETE /<plural>/{id}     delete                  (404 = no such row, 400 = row is in use by another table)
+    // The route names come from BaseApi.BreakIntoStrings (an "E_" / "SY_" prefix is dropped, the rest is lower-cased and
+    // pluralised with an "s"), so this template never spells a route out.
+    //
+    // What comes from the table:
+    //   - the entity class is assumed to be named exactly like the table, and its key property like the key column
+    //     (TimeEntry.Common\Entities\E_DonateLeave.cs / DonateLeaveId);
+    //   - GetAll's ordering: the first NOT NULL date column (date, datetime, datetime2, smalldatetime) that is not an
+    //     audit column, newest first -- GenericRepo.GetAllOrderByDescending only takes a non-nullable DateTime.
+    //     A table with no such column gets a plain GetAll() instead. Change the line in the generated file if another
+    //     column suits the screen better.
+    //
+    // What it does NOT do: the entity, its DbSet in TimeEntryContext and the line in ApiRegisterExtension.cs that calls
+    // Register() are written by hand. Nor does it write business rules (validation, defaults, name/duplicate checks); a
+    // table that needs them keeps a hand-maintained API class -- generate this one only for the plain shape.
+    //
+    // The handlers use <Table>Repo (generate it with CS_Repo), which must sit on GenericRepo: GetAll, GetAllOrderByDescending and
+    // the delete check live there. A name/active table (a NOT NULL text Name plus a NOT NULL bit IsActive -- NameActiveRepo)
+    // has no GetAll and does its own duplicate-name and trimming work in its API, so it stops with an error and stays
+    // hand-maintained. So does a table with no repository (enum / *Type lookup tables, tables with no entity).
+    // Requires a table with a single int primary key (routes are {id:int}). Anything else stops with an error.
+    //
+    // Project-specific names -- edit here if the project changes:
+    string apiNamespace = "TimeEntry.ApiService.Apis";
+    string contextType = "TimeEntryContext";
+    // Tables that have no repository (and so no API): C# enums, other *Type lookup tables, tables with no entity class.
+    string[] noRepositoryTables =
+    {
+        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
+        "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
+    };
+    // ------------------------------------------------------------------------------------------
+
+    var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
+    bool supported = keyColumn is not null && keyColumn.SqlType == SqlDbType.Int
+                     && !noRepositoryTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase);
+    if (noRepositoryTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase))
+    {
+        Error($"API_Crud writes no API for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noRepositoryTables (an enum, a *Type lookup table, or a table with no entity class), so it has no repository for the handlers to use.");
+    }
+    else if (Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name")
+             && Model.Columns.Any(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive"))
+    {
+        supported = false;
+        Error($"API_Crud is for plain tables. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its API needs duplicate-name checks and trimming; write that API by hand.");
+    }
+    else if (!supported)
+    {
+        Error($"API_Crud needs a table with a single int primary key, but [{Model.SchemaName}].[{Model.TableName}] has "
+              + (Model.PrimaryKeyColumns.Count == 0 ? "no primary key." : Model.PrimaryKeyColumns.Count > 1
+                    ? "a composite primary key (" + string.Join(", ", Model.PrimaryKeyColumns.Select(c => c.Name)) + ")."
+                    : $"a {Model.PrimaryKeyColumns[0].SqlTypeDeclaration} primary key."));
+    }
+
+    string entity = Model.TableName;
+    string keyProperty = keyColumn?.Name ?? "";
+
+    // ---- the column GetAll sorts by (see above)
+    bool IsSortableDate(ColumnModel c) =>
+        c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
+    var sortColumn = Model.Columns
+        .Where(c => IsSortableDate(c) && !c.IsNullable && !c.IsComputed && !c.IsAuditColumn
+                    && !c.IsCreateDateColumn && !c.IsModifiedDateColumn && !c.IsLastChangedDateColumn)
+        .OrderBy(c => c.OrdinalPosition)
+        .FirstOrDefault();
+
+    if (supported)
+    {
+#>
+namespace <#= apiNamespace #>;
+
+using static Microsoft.AspNetCore.Http.TypedResults;
+
+public class <#= entity #>Api<T> : BaseApi<T> where T : class
+{
+    public override void Register(WebApplication app)
+    {
+        BreakIntoStrings(out string singular, out string plural, out string _apiSubDir);
+
+        // Get all
+        app.MapGet(_apiSubDir, GetAll)
+       .WithName($"Get{plural}")
+       .WithOpenApi()
+       .Produces<IEnumerable<T>>()
+       .ProducesProblem(404)
+       .ProducesProblem(500);
+
+        // Get by ID
+        app.MapGet(_apiSubDir + "/{id:int}", GetById)
+        .WithName($"Get{singular}ById")
+        .WithOpenApi()
+        .Produces<T>()
+        .ProducesProblem(404)
+        .ProducesProblem(500);
+
+        // Create new
+        app.MapPost(_apiSubDir, CreateRow)
+        .WithName($"Create{singular}")
+        .WithOpenApi()
+        .ProducesProblem(500);
+
+        // Update existing
+        app.MapPut(_apiSubDir + "/{id:int}", UpdateRow)
+        .WithName($"Update{singular}")
+        .WithOpenApi()
+        .ProducesProblem(400)
+        .ProducesProblem(404)
+        .ProducesProblem(500);
+
+        // Delete
+        app.MapDelete(_apiSubDir + "/{id:int}", DeleteRow)
+        .WithName($"Delete{singular}")
+        .WithOpenApi()
+        .ProducesProblem(404)
+        .ProducesProblem(500);
+    }
+
+    private static async Task<IResult> GetAll([FromServices] <#= contextType #> context)
+    {
+        <#= entity #>Repo repo = new(context);
+<#
+        if (sortColumn is not null)
+        {
+#>
+        var rows = await repo.GetAllOrderByDescending(c => c.<#= sortColumn.Name #>);
+<#
+        }
+        else
+        {
+#>
+        var rows = await repo.GetAll();
+<#
+        }
+#>
+        return Ok(rows);
+    }
+
+    private static async Task<IResult> GetById([FromServices] <#= contextType #> context, int id)
+    {
+        <#= entity #>Repo repo = new(context);
+        var row = await repo.GetByIdAsync(id);
+        return row != null ? Results.Ok(row) : Results.NotFound();
+    }
+
+    private static async Task<IResult> CreateRow([FromServices] <#= contextType #> context, [FromBody] <#= entity #> newRow)
+    {
+        <#= entity #>Repo repo = new(context);
+        await repo.AddAsync(newRow);
+        return Results.Created($"/api{_apiSubDir}/{newRow.<#= keyProperty #>}", newRow);
+    }
+
+    private static async Task<IResult> UpdateRow([FromServices] <#= contextType #> context, int id, [FromBody] <#= entity #> updatedRow)
+    {
+        if (updatedRow.<#= keyProperty #> != id)
+            return Results.BadRequest(); // 400 error if the id in the URL and the id in the body disagree
+
+        <#= entity #>Repo repo = new(context);
+        if (!await repo.ExistsAsync(id))
+            return Results.NotFound(); // 404 error if there is no row with that id
+        var postUpdate = await repo.UpdateAsync(id, updatedRow);
+        return Results.Ok(postUpdate);
+    }
+
+    private static async Task<IResult> DeleteRow([FromServices] <#= contextType #> context, int id)
+    {
+        <#= entity #>Repo repo = new(context);
+        var successNum = await repo.DeleteAsync("<#= entity #>", id);
+        if (successNum == 0)
+            return Results.Ok();
+        else if (successNum == -1)
+            return Results.NotFound(); // cannot delete because does not exist
+        else
+            return Results.BadRequest(); // cannot delete because "in use"
+    }
+}
+<#
+    }
+#>

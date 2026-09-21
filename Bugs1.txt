@@ -1,0 +1,51 @@
+BUGS:
+
+1) Browse button - starts in C:\ root rather than directory it is pointing to.
+2) I clicked on Save button on LocationDialog and got crash on line 61: 
+"System.Runtime.InteropServices.COMException: 'An async operation was not properly started.
+Only a single ContentDialog can be open at any time.'"
+
+Fix Options: 1) Cancel closing, complete deferral, then show the confirm after 
+handler finishes (DispatcherQueue) and close dialog if confirmed.
+2) Hide/Close current dialog first, then do confirm dialog and act on result.
+3) Avoid a nested ContentDialog - ask/confirm inline in the original dialog or
+auto-create the directory.
+
+Code Pilot suggested for Fix1:
+ var result = await confirm.ShowAsync();
+ if (result == ContentDialogResult.Primary && vm.TryCreateDirectory())
+ {
+     // Created successfully — allow original action to complete (original dialog already closed)
+ }
+ else
+ {
+     // User cancelled or creation failed — re-open the original dialog so user can fix input
+     await self.ShowAsync();
+ }
+ 
+
+3) Ugly no line surrounding or seperating grid on Managing Templates dialog.
+4) I clicked on Save button on Templates Manager Dialog and got crash on line 74: 
+"System.Runtime.InteropServices.COMException: 'An async operation was not properly started.
+Only a single ContentDialog can be open at any time.'"
+
+5) Is the Refresh button on top, suppose to be refreshing the Treeview below?
+(Not clear what it is refresh to.)
+
+6) Clicking a template such as "SP_DELETE", "SP_UPDATE", or "SP_INSERT" on 
+AccountRef table found in AvatarPulse, got Generation Failed popup error. 
+"Generation Failed: Could not locate .NET root directory from running app. It 
+can be set explicitly via the 'DOTNET_ROOT' environment variable."
+
+7) Overall, everything looks ugly and is devoid of color.
+
+8) Cannot scroll down or down arrow on tables beyond AFEWIApprovalLarge table in 
+ProvidenceOgas database to advance things.  The tables only become visible on
+resizing.
+
+9) Maybe to help its appearance, just make the tables show the columns underneath.
+However, do not allow right-clicking if they highlight a column.
+
+
+
+

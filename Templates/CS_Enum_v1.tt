@@ -1,0 +1,103 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ------------------------------------------------------------------------------------------
+    // CS_Enum_v1.tt
+    // Generates: <TableName>.cs   (see OutputName in CS_Enum_v1.tt.config)
+    //
+    // Turns a small lookup table (ClearanceType, SY_Role ...) into a C# enum whose members are the table's ROWS, so code can
+    // say SY_RequestStatusType.Pending instead of a magic 1. It reads the table's data (NeedsRowData=true, section 5.3):
+    //     Id  Name                 ->   public enum ClearanceType { PublicTrust = 1, Secret = 2, TopSecret = 3 }
+    //     1   Public Trust
+    //     ...
+    //   - the enum's name is the table's name;
+    //   - each member's VALUE is the primary key (a single int/smallint/tinyint/bigint column; the enum's underlying type
+    //     follows the key's type, and is left off for int);
+    //   - each member's NAME is the row's name column -- the column called "Name", else the best display column from
+    //     SpecialLogicColumns.config (SY_Role has RoleName) -- with the spaces and punctuation taken out and each word
+    //     starting with a capital: "Paid time off" -> PaidTimeOff, "Family and Medical Leave Act" ->
+    //     FamilyAndMedicalLeaveAct. A name that would not be a legal C# identifier (starts with a digit, or
+    //     repeats an earlier member) is made legal (_2Fast, Name_3). Every member starts with a capital, so a C# keyword never clashes.
+    //   Rows come out in key order. A table with no rows gives an empty enum -- regenerate after the data is loaded.
+    //
+    // Only what the DATA says is generated. A member the developers abbreviated by hand (OvertimeType.RegularOT for
+    // "Regular overtime") comes out as RegularOvertime, so regenerating over a hand-tuned enum renames it.
+    //
+    // Project-specific name -- edit here if the project changes:
+    string enumNamespace = "TimeEntry.Common.Enums";
+    // ------------------------------------------------------------------------------------------
+
+    var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
+    string underlying = keyColumn?.SqlType switch
+    {
+        SqlDbType.Int => "",
+        SqlDbType.SmallInt => "short",
+        SqlDbType.TinyInt => "byte",
+        SqlDbType.BigInt => "long",
+        _ => null
+    };
+
+    // the column that names each row: "Name", else the display column ranked best by SpecialLogicColumns.config
+    var nameColumn = Model.Columns.FirstOrDefault(c => c.IsStringColumn && c.Name.Equals("Name", StringComparison.OrdinalIgnoreCase))
+                     ?? Model.Columns.Where(c => c.IsStringColumn && c.IsDisplayColumn).OrderBy(c => c.DisplayRank).FirstOrDefault();
+
+    var problems = new List<string>();
+    if (keyColumn is null || underlying is null)
+        problems.Add("it needs a single integer primary key (int, smallint, tinyint or bigint) to use as each member's value");
+    if (nameColumn is null)
+        problems.Add("it has no name column (a text column called Name, or one matching a DisplayColumn pattern) to name the members");
+    if (!Model.HasRowData)
+        problems.Add("its rows were not read (the template's .tt.config must say NeedsRowData=true)");
+    if (problems.Count > 0)
+        Error($"CS_Enum cannot generate an enum from [{Model.SchemaName}].[{Model.TableName}]: " + string.Join("; ", problems) + ".");
+
+    string MemberName(string text)
+    {
+        var sb = new StringBuilder();
+        bool startOfWord = true;
+        foreach (char ch in text)
+        {
+            if (!char.IsLetterOrDigit(ch)) { startOfWord = true; continue; }
+            sb.Append(startOfWord ? char.ToUpperInvariant(ch) : ch);
+            startOfWord = false;
+        }
+        string name = sb.ToString();
+        if (name.Length == 0) name = "Member";
+        if (char.IsDigit(name[0])) name = "_" + name;
+        return name;
+    }
+
+    var members = new List<(string Name, string Value)>();
+    if (problems.Count == 0)
+    {
+        int keyIndex = Model.Columns.IndexOf(keyColumn);
+        int nameIndex = Model.Columns.IndexOf(nameColumn);
+        var used = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in Model.Rows)
+        {
+            if (row[keyIndex] is null) continue;
+            string value = Convert.ToString(row[keyIndex], System.Globalization.CultureInfo.InvariantCulture);
+            string name = MemberName(Convert.ToString(row[nameIndex], System.Globalization.CultureInfo.InvariantCulture) ?? "");
+            if (!used.Add(name))
+            {
+                name = name + "_" + value;
+                used.Add(name);
+            }
+            members.Add((name, value));
+        }
+
+        var o = new StringBuilder();
+        o.Append("namespace ").Append(enumNamespace).Append(";\n\n");
+        o.Append("public enum ").Append(Model.IsCSharpReservedWordName ? "@" : "").Append(Model.TableName).Append(underlying.Length > 0 ? " : " + underlying : "").Append('\n');
+        o.Append("{\n");
+        for (int i = 0; i < members.Count; i++)
+            o.Append("    ").Append(members[i].Name).Append(" = ").Append(members[i].Value).Append(i < members.Count - 1 ? "," : "").Append('\n');
+        o.Append("}\n");
+        Write(o.ToString());
+    }
+#>

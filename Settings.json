@@ -1,0 +1,12 @@
+{
+  "OutputDirectory": "Output",
+  "TemplatesDirectory": "Templates",
+  "SpecialLogicColumnsConfigPath": "SpecialLogicColumns.config",
+  "SpCanDeleteVerificationConfigPath": "SpCanDeleteVerification.config",
+  "LastConnection": {
+    "AuthMode": "SqlLogin",
+    "ServerName": "",
+    "DatabaseName": "",
+    "UserName": ""
+  }
+}

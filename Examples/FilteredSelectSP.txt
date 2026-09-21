@@ -1,0 +1,139 @@
+USE ProvidenceOgas
+GO
+SET ANSI_NULLS ON;
+GO
+SET QUOTED_IDENTIFIER ON;
+GO
+
+CREATE PROCEDURE Account_Select 
+(
+@ID INT = -1,
+   @AccountNumber VARCHAR(10) = '',
+   @ShortDescr VARCHAR(50) = '',
+   @BalanceTypeEnumID INT = NULL,
+   @FinancialCodeEnumID INT = NULL,
+   @JIBCashFlowCategoryEnumID INT = NULL,
+   @RDCashFlowCategoryEnumID INT = NULL,
+   @IsBillable BIT = NULL,
+   @ContraAccount_AccountID INT = NULL,
+   @IsAFEAccount BIT = NULL,
+   @AFEAccountTypeEnumID INT = NULL,
+   @AFEAccountCasingPointTypeEnumID INT = NULL,
+   @AFEExpenseTypeEnumID INT = NULL,
+   @WellcostAllocationEnumID INT = NULL,
+   @PropertyTypeEnumID INT = NULL,
+   @DepletionAccountTypeEnumID INT = NULL,
+   @AccountType1099EnumID INT = NULL,
+   @DepreciationAssetTypeEnumID INT = NULL,
+   @LeaseOperatingStatementEnumID INT = NULL,
+   @NoteText TEXT = '' 
+)
+AS
+BEGIN
+    --  Purpose: Do a select based on criteria given. 
+    --  Does not handle filtering on encrypted fields. 
+    --  Example Call: 
+    --    Specific Record: EXEC NameBase_Select @ID=3 
+    --     All Records: EXEC NameBase_Select @ID=-1 
+    --     Select on Criteria: EXEC NameBase_Select @ID=-2, @Number='BOTELLOL' 
+    SET QUOTED_IDENTIFIER ON;
+
+    DECLARE @strSQL VARCHAR(8000),
+            @strWhereClause VARCHAR(2048),
+            @ALL_RECORDS INT,
+            @FIND_STYLE INT;
+    SET @ALL_RECORDS = -1; -- Default way of doing things
+    SET @FIND_STYLE = -2;
+
+    SET @strWhereClause = ''; 
+
+    IF (@ID > 0)
+      EXEC BuildWhereClause 'Account', 'ID', @ID, @strWhereClause, @strWhereClause OUTPUT;
+    ELSE IF (@ID = @FIND_STYLE)
+    BEGIN
+        IF LEN(@AccountNumber) > 0
+          EXEC BuildWhereClause 'Account', 'AccountNumber', @AccountNumber, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF LEN(@ShortDescr) > 0
+          EXEC BuildWhereClause 'Account', 'ShortDescr', @ShortDescr, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @BalanceTypeEnumID IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'BalanceTypeEnumID', @BalanceTypeEnumID, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @FinancialCodeEnumID IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'FinancialCodeEnumID', @FinancialCodeEnumID, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @JIBCashFlowCategoryEnumID IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'JIBCashFlowCategoryEnumID', @JIBCashFlowCategoryEnumID, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @RDCashFlowCategoryEnumID IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'RDCashFlowCategoryEnumID', @RDCashFlowCategoryEnumID, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @IsBillable IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'IsBillable', @IsBillable, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @ContraAccount_AccountID IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'ContraAccount_AccountID', @ContraAccount_AccountID, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @IsAFEAccount IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'IsAFEAccount', @IsAFEAccount, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @AFEAccountTypeEnumID IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'AFEAccountTypeEnumID', @AFEAccountTypeEnumID, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @AFEAccountCasingPointTypeEnumID IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'AFEAccountCasingPointTypeEnumID', @AFEAccountCasingPointTypeEnumID, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @AFEExpenseTypeEnumID IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'AFEExpenseTypeEnumID', @AFEExpenseTypeEnumID, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @WellcostAllocationEnumID IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'WellcostAllocationEnumID', @WellcostAllocationEnumID, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @PropertyTypeEnumID IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'PropertyTypeEnumID', @PropertyTypeEnumID, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @DepletionAccountTypeEnumID IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'DepletionAccountTypeEnumID', @DepletionAccountTypeEnumID, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @AccountType1099EnumID IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'AccountType1099EnumID', @AccountType1099EnumID, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @DepreciationAssetTypeEnumID IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'DepreciationAssetTypeEnumID', @DepreciationAssetTypeEnumID, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF @LeaseOperatingStatementEnumID IS NOT NULL
+          EXEC BuildWhereClause 'Account', 'LeaseOperatingStatementEnumID', @LeaseOperatingStatementEnumID, @strWhereClause, @strWhereClause OUTPUT;
+
+        IF LEN(@NoteText) > 0
+          EXEC BuildWhereClause 'Account', 'NoteText', @NoteText, @strWhereClause, @strWhereClause OUTPUT;
+
+    END
+
+    SET @strSQL = 'SELECT 
+       Account.ID AS ID
+       ,Account.AccountNumber AS AccountNumber
+       ,Account.ShortDescr AS ShortDescr
+       ,Account.BalanceTypeEnumID AS BalanceTypeEnumID
+       ,Account.FinancialCodeEnumID AS FinancialCodeEnumID
+       ,Account.JIBCashFlowCategoryEnumID AS JIBCashFlowCategoryEnumID
+       ,Account.RDCashFlowCategoryEnumID AS RDCashFlowCategoryEnumID
+       ,Account.IsBillable AS IsBillable
+       ,Account.ContraAccount_AccountID AS ContraAccount_AccountID
+       ,Account.IsAFEAccount AS IsAFEAccount
+       ,Account.AFEAccountTypeEnumID AS AFEAccountTypeEnumID
+       ,Account.AFEAccountCasingPointTypeEnumID AS AFEAccountCasingPointTypeEnumID
+       ,Account.AFEExpenseTypeEnumID AS AFEExpenseTypeEnumID
+       ,Account.WellcostAllocationEnumID AS WellcostAllocationEnumID
+       ,Account.PropertyTypeEnumID AS PropertyTypeEnumID
+       ,Account.DepletionAccountTypeEnumID AS DepletionAccountTypeEnumID
+       ,Account.AccountType1099EnumID AS AccountType1099EnumID
+       ,Account.DepreciationAssetTypeEnumID AS DepreciationAssetTypeEnumID
+       ,Account.LeaseOperatingStatementEnumID AS LeaseOperatingStatementEnumID
+       ,Account.NoteText AS NoteText
+    FROM Account ' + @strWhereClause + ';'
+
+    EXECUTE (@strSQL);  -- Parentheses are required
+
+END
+GO

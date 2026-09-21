@@ -1,0 +1,223 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ------------------------------------------------------------------------------------------
+    // SP_Clone_v1.tt
+    // Generates: <TableName>_Clone.sql
+    //
+    // Behind a "Clone" button on a grid row: copies the chosen row into a NEW row so the person does not have to
+    // retype a table's worth of identical values, and hands back the new row's key. (The idea and the parameter
+    // names @CopyFrom<Key> / @New<Key> come from Examples\CloneRowSP.txt.)
+    //
+    // How it copies -- a single  INSERT INTO t (explicit columns) SELECT ... FROM t WHERE <key>  -- differs from the
+    // original (a #TMP table filled with SELECT *, ALTER TABLE ... DROP COLUMN ID, then a positional
+    // INSERT ... SELECT *) on purpose:
+    //   - Columns are named, so computed and rowversion/timestamp columns (which cannot be inserted) are simply
+    //     left out, and a column added or reordered later cannot silently shift values into the wrong column.
+    //   - No temp table. (The original's IF EXISTS(SELECT * FROM #TMP) raised "invalid object name" when #TMP did not
+    //     exist yet, and "SET @@NewID" is not valid T-SQL. New ids come from SCOPE_IDENTITY(), not @@IDENTITY,
+    //     which a trigger can hijack.)
+    //   - Every column the row is not supposed to carry over is handled deliberately (below), instead of a blind copy.
+    //
+    // What the copy is: an exact copy of the source row's values EXCEPT --
+    //   - The primary key. It is what makes the row a different row:
+    //       * an IDENTITY key is assigned by the database and returned in @New<Key> OUTPUT;
+    //       * a single uniqueidentifier key gets NEWID(), also returned in @New<Key> OUTPUT;
+    //       * any other key (a composite key, or a natural key such as a code) has nothing to generate: the caller
+    //         passes the new value(s) in required @New<Key> parameters.
+    //   - Audit columns (SpecialLogicColumns.config), as for a brand-new row: CreateDateColumn and
+    //     LastChangedDateColumn become GETDATE() (the clone is not created when the source was); ModifiedDateColumn is
+    //     left NULL; CreateUserColumn is a parameter (who is cloning it -- the source's creator is not the clone's),
+    //     defaulting to '' like SP_Insert.
+    //   - Active/Inactive: cloning an inactive row makes an ACTIVE row; InactiveDate and any InactiveReason columns are
+    //     left NULL.  Admin flag: the clone is never an admin, whatever the source is (same reasoning as SP_Insert).
+    //     Soft delete: the clone is not deleted; its deleted-date is left NULL.
+    //   - Columns in a UNIQUE index/constraint (an account number, say): a copy that kept the source's value could
+    //     never be saved. Each gets an optional override parameter (same name as in SP_Insert/SP_Update, = NULL):
+    //     pass a value to give the clone its own, or omit it to copy the source's -- which is right when the unique
+    //     index is composite and something else in it already differs, and otherwise fails with SQL Server's own
+    //     duplicate-key error (the whole clone rolls back). An override cannot be NULL (NULL means "copy").
+    //
+    // Failure handling: joins the caller's transaction or owns its own (XACT_ABORT ON, errors re-raised with THROW);
+    // a source key that matches no row raises error 55509 (next to the Lookup's 55508). Returns 0 on success.
+    // Nothing here depends on spLogPath/spLogError.
+    //
+    // Requires a primary key (that is how the source row is named); tables only.
+
+    bool IsTextLob(ColumnModel c) => c.SqlType is SqlDbType.Text or SqlDbType.NText;
+    bool IsRowVersion(ColumnModel c) =>
+        c.SqlTypeDeclaration.Equals("timestamp", System.StringComparison.OrdinalIgnoreCase) ||
+        c.SqlTypeDeclaration.Equals("rowversion", System.StringComparison.OrdinalIgnoreCase);
+    string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
+
+    string table = $"{Q(Model.SchemaName)}.{Q(Model.TableName)}";
+    var pkColumns = Model.PrimaryKeyColumns;
+
+    // ---- the new key: how each primary key column gets its value in the clone
+    bool singleGuidKey = pkColumns.Count == 1 && pkColumns[0].SqlType == SqlDbType.UniqueIdentifier && !pkColumns[0].IsIdentity;
+    bool IsGeneratedKey(ColumnModel c) => c.IsIdentity || (singleGuidKey && c == pkColumns[0]);
+    string CopyFromParameter(ColumnModel c) => "@CopyFrom" + c.Name;
+    string NewKeyParameter(ColumnModel c) => "@New" + c.Name;
+
+    // ---- special-logic columns
+    bool hasActivePair = Model.HasActiveInactivePair && Model.ActiveColumn is not null;
+    var activeColumn = hasActivePair ? Model.ActiveColumn : null;
+    var inactiveDateColumn = hasActivePair ? Model.InactiveDateColumn : null;
+    bool activeNegative = activeColumn is not null && activeColumn.Name.Contains("Inactive", System.StringComparison.OrdinalIgnoreCase);
+    string Literal(ColumnModel c, string value) => c.IsStringColumn ? $"'{value}'" : value;
+
+    // Columns a clone handles by rule rather than by copying (or overriding) the source's value.
+    bool IsRuleColumn(ColumnModel c) =>
+        c.IsCreateDateColumn || c.IsLastChangedDateColumn || c.IsModifiedDateColumn || c.IsCreateUserColumn
+        || c.IsInactiveReasonColumn || c.IsAdminFlagColumn || c == activeColumn || c == inactiveDateColumn
+        || (Model.HasSoftDelete && (c == Model.IsDeletedColumn || c == Model.DeletedDateColumn));
+
+    var copyable = Model.Columns.Where(c => !c.IsComputed && !IsRowVersion(c) && !c.IsIdentity).ToList();
+    var createUserColumns = copyable.Where(c => c.IsCreateUserColumn).ToList();
+    var overrideColumns = copyable
+        .Where(c => c.IsInUniqueIndex && !c.IsPrimaryKey && !IsRuleColumn(c) && !IsTextLob(c))
+        .ToList();
+
+    string Trimmed(ColumnModel c, string expression) =>
+        c.IsStringColumn && !IsTextLob(c) ? $"LTRIM(RTRIM({expression}))" : expression;
+
+    // ---- INSERT column/value pairs (a single list drives both halves so they cannot drift apart)
+    var pairs = new List<(string Name, string Value)>();
+    foreach (var c in copyable)
+    {
+        string source = $"[src].{Q(c.Name)}";
+        if (c.IsPrimaryKey)
+            pairs.Add((c.Name, Trimmed(c, NewKeyParameter(c))));
+        else if (c.IsCreateDateColumn || c.IsLastChangedDateColumn)
+            pairs.Add((c.Name, "GETDATE()"));
+        else if (c.IsModifiedDateColumn || c.IsInactiveReasonColumn || c == inactiveDateColumn
+                 || (Model.HasSoftDelete && c == Model.DeletedDateColumn))
+            continue; // a new row has nothing to put here: left at the column's default (normally NULL)
+        else if (c == activeColumn)
+            pairs.Add((c.Name, Literal(c, activeNegative ? "0" : "1")));
+        else if (c.IsAdminFlagColumn)
+            pairs.Add((c.Name, c.IsStringColumn ? "'False'" : "0"));
+        else if (Model.HasSoftDelete && c == Model.IsDeletedColumn)
+            pairs.Add((c.Name, c.IsStringColumn ? "'False'" : "0"));
+        else if (c.IsCreateUserColumn)
+            pairs.Add((c.Name, Trimmed(c, c.ParameterName)));
+        else if (overrideColumns.Contains(c))
+            pairs.Add((c.Name, $"ISNULL({Trimmed(c, c.ParameterName)}, {source})"));
+        else
+            pairs.Add((c.Name, source));
+    }
+
+    string keyMatch = string.Join(" AND ", pkColumns.Select(pk => $"[src].{Q(pk.Name)} = {CopyFromParameter(pk)}"));
+    string keyDescription = string.Join(" + ', ' + ", pkColumns.Select(pk => $"'{pk.Name.Replace("'", "''")} = ' + ISNULL(CONVERT(VARCHAR(100), {CopyFromParameter(pk)}), 'NULL')"));
+
+    // ---- parameters, in the order a caller reads them: which row, the new key, then optional extras
+    var parameters = new List<string>();
+    foreach (var pk in pkColumns)
+        parameters.Add($"{CopyFromParameter(pk)} {pk.SqlTypeDeclaration}");
+    foreach (var pk in pkColumns)
+        parameters.Add(IsGeneratedKey(pk)
+            ? $"{NewKeyParameter(pk)} {pk.SqlTypeDeclaration} = NULL OUTPUT"   // -- the new row's key comes back here
+            : $"{NewKeyParameter(pk)} {pk.SqlTypeDeclaration}");                // -- required: nothing to generate it from
+    foreach (var c in createUserColumns)
+        parameters.Add($"{c.ParameterName} {c.SqlTypeDeclaration} = {(c.IsStringColumn ? "''" : "NULL")}");
+    foreach (var c in overrideColumns)
+        parameters.Add($"{c.ParameterName} {c.SqlTypeDeclaration} = NULL");
+#>
+CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Clone]
+-- Copies the <#= Model.TableName #> row named by @CopyFrom... into a new row and returns the new key.
+(
+<#
+    for (int i = 0; i < parameters.Count; i++)
+    {
+#>
+<#= parameters[i] #><#= i < parameters.Count - 1 ? "," : "" #>
+<#
+    }
+#>
+)
+AS
+BEGIN
+	SET NOCOUNT ON;
+	SET XACT_ABORT ON;
+
+<#
+    foreach (var pk in pkColumns.Where(pk => IsGeneratedKey(pk) && !pk.IsIdentity))
+    {
+#>
+	SET <#= NewKeyParameter(pk) #> = NEWID(); -- a new key for the new row
+<#
+    }
+#>
+	-- Join the caller's transaction if there is one; otherwise own this one.
+	DECLARE @blnOwnsTransaction BIT = CASE WHEN @@TRANCOUNT = 0 THEN 1 ELSE 0 END;
+
+	BEGIN TRY
+		IF @blnOwnsTransaction = 1
+			BEGIN TRANSACTION;
+
+		IF NOT EXISTS (SELECT 1 FROM <#= table #> AS [src] WITH (UPDLOCK, HOLDLOCK) WHERE <#= keyMatch #>)
+		BEGIN
+			DECLARE @ErrorMessage VARCHAR(400);
+			SET @ErrorMessage = 'No <#= Model.TableName.Replace("'", "''") #> found to clone (' + <#= keyDescription #> + ').';
+			THROW 55509, @ErrorMessage, 1;
+		END
+
+<#
+    if (pairs.Count == 0)
+    {
+#>
+		-- Nothing but the identity key to give the new row.
+		INSERT INTO <#= table #> DEFAULT VALUES;
+<#
+    }
+    else
+    {
+#>
+		INSERT INTO <#= table #>
+		(
+<#
+        for (int i = 0; i < pairs.Count; i++)
+        {
+#>
+			<#= Q(pairs[i].Name) #><#= i < pairs.Count - 1 ? "," : "" #>
+<#
+        }
+#>
+		)
+		SELECT
+<#
+        for (int i = 0; i < pairs.Count; i++)
+        {
+#>
+			<#= pairs[i].Value #><#= i < pairs.Count - 1 ? "," : "" #>
+<#
+        }
+#>
+		FROM <#= table #> AS [src]
+		WHERE <#= keyMatch #>;
+<#
+    }
+    foreach (var pk in pkColumns.Where(pk => pk.IsIdentity))
+    {
+#>
+
+		SET <#= NewKeyParameter(pk) #> = CAST(SCOPE_IDENTITY() AS <#= pk.SqlTypeDeclaration #>); -- learn the id of the new row
+<#
+    }
+#>
+
+		IF @blnOwnsTransaction = 1
+			COMMIT TRANSACTION;
+
+		RETURN 0;
+	END TRY
+	BEGIN CATCH
+		IF @blnOwnsTransaction = 1 AND @@TRANCOUNT > 0
+			ROLLBACK TRANSACTION;
+		THROW;
+	END CATCH;
+END
