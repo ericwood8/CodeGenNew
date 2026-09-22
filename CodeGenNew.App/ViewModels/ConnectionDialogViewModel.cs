@@ -2,6 +2,7 @@ using CodeGenNew.Connections;
 using CodeGenNew.Core;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI.Xaml.Controls;
 
 namespace CodeGenNew.App.ViewModels;
 
@@ -27,6 +28,13 @@ public partial class ConnectionDialogViewModel : ObservableObject
 
     [ObservableProperty]
     private string _statusMessage = "";
+
+    [ObservableProperty]
+    private InfoBarSeverity _statusSeverity = InfoBarSeverity.Informational;
+
+    public bool HasStatusMessage => !string.IsNullOrEmpty(StatusMessage);
+
+    partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasStatusMessage));
 
     [ObservableProperty]
     private bool _isBusy;
@@ -65,22 +73,26 @@ public partial class ConnectionDialogViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(ServerName) || string.IsNullOrWhiteSpace(DatabaseName))
         {
             StatusMessage = "Server and database are required.";
+            StatusSeverity = InfoBarSeverity.Error;
             LastTestSucceeded = false;
             return;
         }
 
         IsBusy = true;
         StatusMessage = "Testing connection...";
+        StatusSeverity = InfoBarSeverity.Informational;
         try
         {
             bool success = await SqlServerConnectionFactory.TestConnectionAsync(BuildRequest());
             LastTestSucceeded = success;
             StatusMessage = success ? "Connection succeeded." : "Connection failed -- check the details and try again.";
+            StatusSeverity = success ? InfoBarSeverity.Success : InfoBarSeverity.Error;
         }
         catch (Exception ex)
         {
             LastTestSucceeded = false;
             StatusMessage = $"Connection failed: {ex.Message}";
+            StatusSeverity = InfoBarSeverity.Error;
         }
         finally
         {

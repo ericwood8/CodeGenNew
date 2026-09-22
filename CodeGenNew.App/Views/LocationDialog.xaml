@@ -23,6 +23,9 @@
             <TextBox Grid.Column="0" Text="{x:Bind ViewModel.OutputDirectory, Mode=TwoWay}" />
             <Button Grid.Column="1" Content="Browse..." AccessKey="B" Click="OnBrowseClick" ToolTipService.ToolTip="Browse for a folder (Alt+B)" />
         </Grid>
-        <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" TextWrapping="Wrap" />
+        <InfoBar IsOpen="{x:Bind ViewModel.HasStatusMessage, Mode=OneWay}"
+                 IsClosable="False"
+                 Severity="Error"
+                 Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" />
     </StackPanel>
 </ContentDialog>

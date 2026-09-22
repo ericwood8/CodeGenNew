@@ -88,6 +88,10 @@
             </Border>
         </ScrollViewer>
 
-        <TextBlock Grid.Row="2" Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" TextWrapping="Wrap" Margin="0,8,0,0" />
+        <InfoBar Grid.Row="2" Margin="0,8,0,0"
+                 IsOpen="{x:Bind ViewModel.HasStatusMessage, Mode=OneWay}"
+                 IsClosable="False"
+                 Severity="Error"
+                 Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" />
     </Grid>
 </ContentDialog>

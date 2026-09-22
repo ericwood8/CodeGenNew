@@ -22,7 +22,10 @@
         <PasswordBox x:Name="PasswordBoxControl" Header="Password" Visibility="Collapsed"
                      PasswordChanged="OnPasswordChanged" />
 
-        <TextBlock Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" TextWrapping="Wrap" />
+        <InfoBar IsOpen="{x:Bind ViewModel.HasStatusMessage, Mode=OneWay}"
+                 IsClosable="False"
+                 Severity="{x:Bind ViewModel.StatusSeverity, Mode=OneWay}"
+                 Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" />
         <ProgressRing IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" Width="24" Height="24" HorizontalAlignment="Left" />
     </StackPanel>
 </ContentDialog>

@@ -22,6 +22,10 @@ public partial class TemplateManagementViewModel : ObservableObject
     [ObservableProperty]
     private string _statusMessage = "";
 
+    public bool HasStatusMessage => !string.IsNullOrEmpty(StatusMessage);
+
+    partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasStatusMessage));
+
     public TemplateManagementViewModel(AppSettingsService settings)
     {
         _settings = settings;
@@ -32,6 +36,7 @@ public partial class TemplateManagementViewModel : ObservableObject
     [RelayCommand]
     public void Refresh()
     {
+        StatusMessage = "";
         Templates.Clear();
         Directory.CreateDirectory(_templatesDirectory);
         foreach (var template in TemplateCatalog.DiscoverAll(_templatesDirectory)) // old versions included, so they can be seen and deleted

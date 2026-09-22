@@ -124,11 +124,22 @@ public sealed partial class MainWindow : Window
                 : $"Wrote {outputFilePath}.\n\n")
               + "CodeGenNew never modifies the target database -- review the file(s) and apply them yourself if you're happy with them.";
 
+        // An InfoBar inside the dialog gets the shape-coded severity icon for free (see the winui3 skill)
+        // instead of a plain text block, while the ContentDialog itself still carries the OK/Copy/Open-File
+        // button flow.
+        var infoBar = new InfoBar
+        {
+            IsOpen = true,
+            IsClosable = false,
+            Severity = failed ? InfoBarSeverity.Error : InfoBarSeverity.Success,
+            Title = failed ? "Generation Failed" : "Done",
+            Message = message
+        };
+
         var dialog = new ContentDialog
         {
             XamlRoot = Content.XamlRoot,
-            Title = failed ? "Generation Failed" : "Done",
-            Content = message,
+            Content = infoBar,
             // On success the close button opens the generated file in the developer's editor instead of
             // just dismissing.
             CloseButtonText = failed ? "OK" : "Open File",

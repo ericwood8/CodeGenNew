@@ -11,6 +11,10 @@ public partial class LocationDialogViewModel : ObservableObject
     [ObservableProperty]
     private string _statusMessage = "";
 
+    public bool HasStatusMessage => !string.IsNullOrEmpty(StatusMessage);
+
+    partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasStatusMessage));
+
     /// <summary> Validates the path, returning a prompt message if it doesn't exist yet (caller asks the
     /// developer whether to create it) or null if the path is already valid. </summary>
     public string? ValidateAndGetCreatePrompt()
