@@ -166,7 +166,7 @@ internal static class Sample
     ],
     rows: [[1, "Admin"], [2, "Human Resources"], [3, "Time off in lieu"]]);
 
-    /// <summary> Like AvatarPulse's AccountRef: a uniqueidentifier key the database assigns, and two nullable text columns. </summary>
+    /// <summary> A table keyed by a database-assigned uniqueidentifier, plus two nullable text columns. </summary>
     public static TableModel AccountRef() => Table("AccountRef",
     [
         Column("ListID", SqlDbType.VarChar, nullable: true, characters: 100, ordinal: 1),

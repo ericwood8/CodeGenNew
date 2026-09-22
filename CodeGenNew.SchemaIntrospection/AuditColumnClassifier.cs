@@ -1,6 +1,7 @@
 namespace CodeGenNew.SchemaIntrospection;
 
-/// <summary> Ported from Avatar.CodeGen.SqlServer.DataLayer.ColumnTools.IsAuditColumn. </summary>
+/// <summary> Name-pattern match for audit/tracking columns, used to exclude them from DisplayColumnSelector
+/// (Docs/specs.md section 6). </summary>
 public static class AuditColumnClassifier
 {
     public static bool IsAuditColumn(string columnName) =>

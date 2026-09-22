@@ -2,8 +2,9 @@ using System.Data;
 
 namespace CodeGenNew.SchemaIntrospection;
 
-/// <summary> Retargets Avatar.CodeGen.SqlServer.DataLayer.Column's type-classification pattern from its old
-/// custom SqlDataType enum onto System.Data.SqlDbType (per Docs/specs.md section 13, round-5 Q4). </summary>
+/// <summary> Groups a SQL Server type name onto System.Data.SqlDbType and the coarser type-family flags
+/// (integer/money/string/date/boolean) the rest of the generator classifies columns by (per Docs/specs.md
+/// section 13, round-5 Q4). </summary>
 public static class SqlTypeClassifier
 {
     public static SqlDbType MapSqlTypeName(string sqlTypeName) => sqlTypeName.ToLowerInvariant() switch

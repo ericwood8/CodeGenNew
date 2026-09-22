@@ -5,7 +5,7 @@ namespace CodeGenNew.SchemaIntrospection;
 
 /// <summary>
 /// Resolves ColumnModel.SuggestedCSharpDefaultValueLiteral: prefer translating the real database DEFAULT
-/// constraint, fall back to the ported heuristic (Avatar.CodeGen.SqlServer.DataLayer.ColumnTools.SetColumnDefault)
+/// constraint, fall back to a naming-convention heuristic (e.g. a column named "IsActive" defaults to true)
 /// only when there is no database default at all. Per Docs/specs.md round-5 Q1: this is a rarely-used,
 /// low-priority convenience value -- an unparseable database default simply yields no suggestion, never an error.
 /// </summary>

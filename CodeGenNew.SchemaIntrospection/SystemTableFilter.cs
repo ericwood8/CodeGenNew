@@ -1,8 +1,9 @@
 namespace CodeGenNew.SchemaIntrospection;
 
-/// <summary> Ported and broadened from Avatar.CodeGen.SqlServer.DataLayer.TableTools.IsSystemTable
-/// (Docs/specs.md section 9.4). Not exercised by the CLI's single-table generate path, but used by the
-/// TreeView (CodeGenNew.App) to exclude system/framework tables from the node list. </summary>
+/// <summary> Recognizes framework/replication/scaffolding tables by name so they can be excluded from a
+/// table list a person is meant to pick a real table from (Docs/specs.md section 9.4). Not exercised by
+/// the CLI's single-table generate path, but used by the TreeView (CodeGenNew.App) to exclude
+/// system/framework tables from the node list. </summary>
 public static class SystemTableFilter
 {
     private static readonly string[] ExactNames =

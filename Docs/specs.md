@@ -1,12 +1,12 @@
 # CodeGenNew — Specification (v1)
 
-This document is the single go-forward specification for CodeGenNew, replacing the original generator specification, the special-logic column notes, and the notes from six rounds of design Q&A. It reflects six rounds of Q&A plus review of the prior hard-coded generator (`Avatar.CodeGen`) at `C:\EricWork\Avatar Code\AvatarCodeGenerator\`.
+This document is the single go-forward specification for CodeGenNew, replacing the original generator specification, the special-logic column notes, and the notes from six rounds of design Q&A. It reflects six rounds of Q&A plus review of the author's prior hand-rolled generator, a much larger, project-specific tool built the same way (SQL Server metadata + name-pattern rules → generated code) but without a real templating engine.
 
 ## 1. Purpose & Goals
 
 A C# WinUI 3 Windows desktop application, for a developer's own box, that connects to a database-first SQL Server database and generates code files (SQL stored procedures first, then C# APIs, POCOs, JS grids, etc. over time) via a right-click menu on a table in a TreeView. Replaces the author's prior manual "write lines to a text file with substitutions and smart loops" code generators with a T4-based templating engine, while keeping the tool itself simple, portable, and easy to extend with new template types over time.
 
-Non-goals for v1: this is not a general ORM, not a database migration tool, and not trying to replicate the full feature set of the (much larger, company-specific) prior `Avatar.CodeGen` system.
+Non-goals for v1: this is not a general ORM, not a database migration tool, and not trying to replicate the full feature set of the much larger, project-specific prior generator.
 
 ### 1.1 Non-Negotiable Safety Principle: Read-Only Against Everything External
 
@@ -218,18 +218,17 @@ public class ColumnModel
     public string SuggestedCSharpDefaultValueLiteral { get; init; } // translated from DatabaseDefaultSql when recognizable
                                                                       // (numeric/string literal, getdate()->DateTime.Now,
                                                                       // getutcdate()->DateTime.UtcNow, newid()->Guid.NewGuid());
-                                                                      // else the ported heuristic (SetColumnDefault); null if neither applies.
+                                                                      // else the naming-convention heuristic; null if neither applies.
                                                                       // This is a rarely-used, best-effort value — not guaranteed.
 
-    // Type classification (ported/adapted from Avatar.CodeGen.SqlServer.DataLayer.Column, retargeted from
-    // the old custom SqlDataType enum onto System.Data.SqlDbType)
+    // Type classification, grouped onto System.Data.SqlDbType
     public bool IsIntegerColumn { get; init; }
     public bool IsNumericColumn { get; init; }   // decimal/float/real, non-money
     public bool IsMoneyColumn { get; init; }
     public bool IsStringColumn { get; init; }
     public bool IsDateColumn { get; init; }
     public bool IsBooleanColumn { get; init; }
-    public bool IsAuditColumn { get; init; }  // ported from ColumnTools.IsAuditColumn (name-pattern match, not config-driven)
+    public bool IsAuditColumn { get; init; }  // name-pattern match, not config-driven (AuditColumnClassifier)
     public bool IsCreateDateColumn { get; init; }   // SpecialLogicColumns.config category "CreateDateColumn"; never touched by generated Update logic
     public bool IsInUniqueIndex { get; init; }      // in a UNIQUE index/constraint other than the PK; SP_Clone gives such a column an override parameter
     public bool IsCreateUserColumn { get; init; }   // category "CreateUserColumn" (e.g. CreateUser); a parameter on Insert/Save, excluded from Update
@@ -393,7 +392,7 @@ Simplified from the original "rich text field" design (per round 2) into a **fil
 - **TreeView reality check**: WinUI 3's `TreeView` does not support a literal `<TreeViewItem>` as direct XAML content, nor `TreeViewItem.ItemTemplate` — the original plan (a single expandable "database" root node containing table children, all via one data-bound hierarchy) doesn't fit that API. Built instead as a bold header (icon + `Server \ Database` label, updated via `MainViewModel.DatabaseLabel`) directly above a **flat, `ItemsSource`-bound `TreeView`** listing tables (`TreeView.ItemTemplate` keyed to `TableNodeViewModel`, using ordinary `x:Bind`). Same visual/functional outcome the spec called for (a labeled, iconified, single-selection list of tables under a clearly-shown database) without fighting the control's real hierarchical-template model for a tree that only ever has one root anyway.
 - Root label icon = `database.png`; single-selection; no reordering.
 - Children = tables (views excluded until v2), from `SqlServerSchemaProvider.ListTablesAsync()` — a lightweight, read-only query (table name + whether it has a PK + whether it has any unique index) kept deliberately cheap since it runs for every table up front, unlike the full `TableModel` build which only happens for the one table actually selected for generation.
-- System tables filtered via `SystemTableFilter.IsSystemTable` (ported/broadened from `Avatar.CodeGen.SqlServer.DataLayer.TableTools.IsSystemTable`, §14).
+- System tables filtered via `SystemTableFilter.IsSystemTable`, a name-pattern list broadened from the author's prior generator's own system-table filter (§14).
 - Table names colliding with a SQL Server or C# reserved word render in red (`TableNodeViewModel.TextBrush`, resolved once against `Application.Current.Resources["TextFillColorPrimaryBrush"]` so it still respects the current theme for the non-colliding case).
 - **Icon selection is a 3-tier priority** matching the three shipped table icons (looked at each PNG rather than guessing from its filename — see `IconProvider`'s doc comment): has a primary key → `table.png`; no PK but some other unique index exists → `table _no_pk.png`; no PK and no unique index at all → `table_no_unique.png`. Never disabled regardless of tier, since not every template requires a PK (`SP_Insert.tt` doesn't).
 - No child nodes for columns, foreign keys, or indexes under a table (deliberately dropped from the prior system's UI — the equivalent right-click-for-more feature there went unused).
@@ -475,20 +474,19 @@ codegen.exe -S SERVER_NAME -E -d databaseName -t tableName -T SP_Update.tt
 - Encrypted/portable-passphrase connection secrets — dropped in favor of always prompting for password.
 - Showing columns/FKs/indexes as their own TreeView nodes.
 
-## 14. Reused / Ported Reference Code
+## 14. Design Lineage: Concepts Carried Over From the Author's Prior Generator
 
-Source: `C:\EricWork\Avatar Code\AvatarCodeGenerator\AvatarCodeGenerator\Avatar.CodeGen\` and `C:\EricWork\Avatar Code\Avatar.Common.Extension\...\ExtensionMethods\`. Per the author's instruction, **specific methods/properties are ported, not whole files**, regrouped into whatever `CodeGenNew` files make sense:
+CodeGenNew is a clean-room rewrite (T4-based, no shared code) of ideas the author had already worked out in an earlier, much larger, project-specific hand-rolled generator. A handful of concepts and small, generic name-pattern/type-classification helpers were deliberately re-derived here because they'd already proven themselves — not carried over as code:
 
-| Source | What's reused |
+| Concept | What was re-derived here |
 |---|---|
-| `Avatar.CodeGen.SqlServer.DataLayer\Table.cs` | Concept/shape of a rich, cached "table model" object (`HasActiveState`-style pattern); `IsColumnForeignKeyOnTable`; `IsSelfReferencing`; `IsForeignKeyMulti`. Grid/single-view/Tabs/Groups/Caption members explicitly **not** ported. |
-| `Avatar.CodeGen.SqlServer.DataLayer\Column.cs` | Type-classification pattern (`IsIntegerColumn`, `IsMoneyColumn`, `IsStringColumn`, `IsDateColumn`, etc.), retargeted from the old custom `SqlDataType` enum onto `System.Data.SqlDbType`; `IsStartDate`/`IsEndDate` prefix-matching approach (generalized into the wildcard config format, §5.2). |
-| `Avatar.CodeGen.SqlServer.DataLayer\TableTools.cs` | `IsSystemTable` (ported/broadened, see §9.4). Rest of file is company-specific and not used. |
-| `Avatar.CodeGen.SqlServer.DataLayer\ColumnTools.cs` | `SetColumnDefault` (heuristic fallback default, used only when there's no real DB default constraint) and `IsAuditColumn`. |
-| `Avatar.Common.Extension\...\ExtensionMethods.String.cs` | `IsSqlReservedWord`, `ToPlural`, `ToSingular`, `StripTablePrefixes`, `ToUserFriendly`, and any other individual methods found necessary during implementation. Not the whole 1700+ line file. |
-| `Avatar.Common.Extension\...\ExtensionMethods.DataColumn.cs` | Reviewed; nothing beyond what's already covered elsewhere was needed. |
+| Rich, cached "table model" object | The general shape (a `TableModel` built once per table, holding columns, keys, foreign keys, and precomputed flags rather than re-querying/re-scanning repeatedly) plus specific checks: is a column part of a foreign key, is a table self-referencing, is a foreign key composite. Any UI-bound concerns (grid/detail-view/tab/group/caption metadata) were deliberately left out — out of scope for this generator. |
+| Column type classification | Grouping a database type name into coarse families (integer/money/string/date/boolean) that generation logic branches on, and a prefix-matching approach for "this looks like a start date / end date" column — generalized here into the wildcard pattern config format (§5.2) instead of hardcoded prefixes. |
+| System/framework table filtering | A name-pattern list (exact names, prefixes, a `_tracking` suffix) for recognizing replication/scaffolding tables that shouldn't show up in a table picker (§9.4). |
+| Column default heuristic | A naming-convention fallback for suggesting a C# default value when a column has no real database DEFAULT constraint (e.g. a boolean column named `IsActive` defaults to `true`). |
+| String helpers | Small, generic utilities with no project-specific logic: is this name a SQL Server reserved word, pluralize/singularize a word, strip a known table-name prefix, turn an identifier into a human-readable label. |
 
-`ChildTable.cs` and `DataRow`/`DataTable` extension methods were explicitly excluded per the author (not useful here / company-specific).
+Left out entirely as not useful for a generic, portable tool: anything tied to a specific project's schema or business rules, and UI-layer concerns (grids, detail views, tabs) that belong in a consuming application, not a code generator.
 
 ## 15. Open Risks / To-Verify (first implementation tasks)
 

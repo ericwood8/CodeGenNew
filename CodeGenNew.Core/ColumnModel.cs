@@ -41,8 +41,7 @@ public class ColumnModel
     /// </summary>
     public string? SuggestedCSharpDefaultValueLiteral { get; init; }
 
-    // Type classification (ported/adapted from Avatar.CodeGen.SqlServer.DataLayer.Column,
-    // retargeted from the old custom SqlDataType enum onto System.Data.SqlDbType).
+    // Type classification, grouped onto System.Data.SqlDbType.
     public bool IsIntegerColumn { get; init; }
     public bool IsNumericColumn { get; init; }
     public bool IsMoneyColumn { get; init; }
@@ -50,8 +49,8 @@ public class ColumnModel
     public bool IsDateColumn { get; init; }
     public bool IsBooleanColumn { get; init; }
 
-    /// <summary> Ported from Avatar.CodeGen.SqlServer.DataLayer.ColumnTools.IsAuditColumn: name-pattern match for
-    /// create/modify/delete/activate/inactivate tracking columns (e.g. CreateDate, ModifiedBy, InactivatedDate). </summary>
+    /// <summary> Name-pattern match for create/modify/delete/activate/inactivate tracking columns
+    /// (e.g. CreateDate, ModifiedBy, InactivatedDate). </summary>
     public bool IsAuditColumn { get; init; }
 
     /// <summary> Matches SpecialLogicColumns.config category "CreateDateColumn" -- e.g. CreateDate, CreatedDate.
