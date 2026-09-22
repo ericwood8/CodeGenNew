@@ -47,8 +47,8 @@
         c.SqlTypeDeclaration.Equals("timestamp", System.StringComparison.OrdinalIgnoreCase) ||
         c.SqlTypeDeclaration.Equals("rowversion", System.StringComparison.OrdinalIgnoreCase);
 
-    // Loaded columns: everything assignable, minus an unwanted modified-date column.
-    var loadColumns = Model.Columns.Where(c => !c.IsComputed && !IsRowVersion(c) && !c.IsModifiedDateColumn).ToList();
+    // Loaded columns: everything assignable, minus an unwanted modified-date/modified-user column.
+    var loadColumns = Model.Columns.Where(c => !c.IsComputed && !IsRowVersion(c) && !c.IsModifiedDateColumn && !c.IsModifiedUserColumn).ToList();
     var identityColumn = loadColumns.FirstOrDefault(c => c.IsIdentity);
 
     string columnList = string.Join(", ", loadColumns.Select(c => $"[{c.Name}]"));

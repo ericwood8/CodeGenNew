@@ -20,9 +20,10 @@
     //     key (e.g. a caller-supplied GUID) is instead a required parameter -- there is nothing to
     //     auto-generate, so the caller must supply it.
     //   - Audit date columns (SpecialLogicColumns.config): a CreateDateColumn or LastChangedDateColumn
-    //     match is set to GETDATE() automatically and is not a parameter. A ModifiedDateColumn match
-    //     is excluded from the INSERT entirely (nothing to modify yet on a brand-new row) and is left
-    //     at whatever the column's own database default is (typically NULL).
+    //     match is set to GETDATE() automatically and is not a parameter. A ModifiedDateColumn or
+    //     ModifiedUserColumn match (e.g. ModifiedBy, UpdatedBy) is excluded from the INSERT entirely
+    //     (nothing to modify yet on a brand-new row) and is left at whatever the column's own database
+    //     default is (typically NULL).
     //   - Active/Inactive (HasActiveInactivePair): a newly inserted row should never be born inactive.
     //     The active-flag column is excluded from parameters and hardcoded instead -- 1 for an
     //     "IsActive"/"Active"-style column, 0 for an "IsInactive"-style column (opposite polarity,
@@ -48,7 +49,7 @@
     // a table can be inserted into without one -- but only applies to tables, not views (TableOnly=true).
 
     var insertableColumns = Model.Columns
-        .Where(c => !c.IsComputed && !c.IsModifiedDateColumn && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn)
+        .Where(c => !c.IsComputed && !c.IsModifiedDateColumn && !c.IsModifiedUserColumn && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn)
         .Where(c => c != Model.InactiveDateColumn)
         .ToList();
 

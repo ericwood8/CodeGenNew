@@ -30,8 +30,9 @@
     //       * any other key (a composite key, or a natural key such as a code) has nothing to generate: the caller
     //         passes the new value(s) in required @New<Key> parameters.
     //   - Audit columns (SpecialLogicColumns.config), as for a brand-new row: CreateDateColumn and
-    //     LastChangedDateColumn become GETDATE() (the clone is not created when the source was); ModifiedDateColumn is
-    //     left NULL; CreateUserColumn is a parameter (who is cloning it -- the source's creator is not the clone's),
+    //     LastChangedDateColumn become GETDATE() (the clone is not created when the source was); ModifiedDateColumn and
+    //     ModifiedUserColumn (e.g. ModifiedBy, UpdatedBy) are left NULL -- a fresh clone has no prior editor either;
+    //     CreateUserColumn is a parameter (who is cloning it -- the source's creator is not the clone's),
     //     defaulting to '' like SP_Insert.
     //   - Active/Inactive: cloning an inactive row makes an ACTIVE row; InactiveDate and any InactiveReason columns are
     //     left NULL.  Admin flag: the clone is never an admin, whatever the source is (same reasoning as SP_Insert).
@@ -72,7 +73,7 @@
 
     // Columns a clone handles by rule rather than by copying (or overriding) the source's value.
     bool IsRuleColumn(ColumnModel c) =>
-        c.IsCreateDateColumn || c.IsLastChangedDateColumn || c.IsModifiedDateColumn || c.IsCreateUserColumn
+        c.IsCreateDateColumn || c.IsLastChangedDateColumn || c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsCreateUserColumn
         || c.IsInactiveReasonColumn || c.IsAdminFlagColumn || c == activeColumn || c == inactiveDateColumn
         || (Model.HasSoftDelete && (c == Model.IsDeletedColumn || c == Model.DeletedDateColumn));
 
@@ -94,7 +95,7 @@
             pairs.Add((c.Name, Trimmed(c, NewKeyParameter(c))));
         else if (c.IsCreateDateColumn || c.IsLastChangedDateColumn)
             pairs.Add((c.Name, "GETDATE()"));
-        else if (c.IsModifiedDateColumn || c.IsInactiveReasonColumn || c == inactiveDateColumn
+        else if (c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsInactiveReasonColumn || c == inactiveDateColumn
                  || (Model.HasSoftDelete && c == Model.DeletedDateColumn))
             continue; // a new row has nothing to put here: left at the column's default (normally NULL)
         else if (c == activeColumn)

@@ -48,6 +48,8 @@
     //     update only; LastChangedDateColumn is set to GETDATE() on both.
     //   - CreateUserColumn (e.g. CreateUser): a normal parameter, written on INSERT only. It is left out of the
     //     UPDATE's SET list so an existing row's creator is never overwritten by a later Save.
+    //   - ModifiedUserColumn (e.g. ModifiedBy, UpdatedBy): the mirror image -- a normal parameter, but left out
+    //     of the INSERT column list (nothing to modify yet on a brand-new row) and written on UPDATE only.
     //   - Active/Inactive (HasActiveInactivePair): on INSERT the row is always born active (flag hardcoded,
     //     InactiveDate and InactiveReason columns left NULL, whatever the caller passed). On UPDATE the whole
     //     record is passed, so InactiveDate/reason/flag are honored -- except that a non-empty InactiveDate or
@@ -119,7 +121,7 @@
 
     // ---- INSERT: (column, value) pairs, mirroring SP_Insert.tt.
     var insertPairs = parameterColumns
-        .Where(c => c != identityKey && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn
+        .Where(c => c != identityKey && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn && !c.IsModifiedUserColumn
                     && c != Model.InactiveDateColumn && c != activeCol)
         .Select(c => (Name: c.Name, Value: c.ParameterName))
         .ToList();

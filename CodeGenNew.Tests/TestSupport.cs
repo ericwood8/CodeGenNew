@@ -56,7 +56,8 @@ internal static class Sample
 {
     public static ColumnModel Column(
         string name, SqlDbType type, bool nullable = false, bool primaryKey = false, bool identity = false,
-        int? characters = null, int? precision = null, int? scale = null, string? defaultSql = null, int ordinal = 0)
+        int? characters = null, int? precision = null, int? scale = null, string? defaultSql = null, int ordinal = 0,
+        bool modifiedUserColumn = false)
     {
         bool isText = type is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
         bool isUnicode = type is SqlDbType.NChar or SqlDbType.NVarChar;
@@ -87,6 +88,7 @@ internal static class Sample
             IsStringColumn = isText || type is SqlDbType.Text or SqlDbType.NText,
             IsDateColumn = type is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime,
             IsBooleanColumn = type == SqlDbType.Bit,
+            IsModifiedUserColumn = modifiedUserColumn,
             ParameterName = "@p" + name
         };
     }
@@ -184,5 +186,13 @@ internal static class Sample
     [
         Column("LeftId", SqlDbType.Int, primaryKey: true, ordinal: 1),
         Column("RightId", SqlDbType.Int, primaryKey: true, ordinal: 2)
+    ]);
+
+    /// <summary> A table with a ModifiedUserColumn match (e.g. ModifiedBy/UpdatedBy): who last edited the row. </summary>
+    public static TableModel WithModifiedByColumn() => Table("Ticket",
+    [
+        Column("TicketId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Column("Subject", SqlDbType.NVarChar, characters: 100, ordinal: 2),
+        Column("ModifiedBy", SqlDbType.NVarChar, nullable: true, characters: 50, ordinal: 3, modifiedUserColumn: true)
     ]);
 }

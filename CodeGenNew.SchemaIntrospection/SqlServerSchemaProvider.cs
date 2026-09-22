@@ -334,6 +334,7 @@ public class SqlServerSchemaProvider
             DisplayRank = IsDisplayEligibleType(sqlType) ? RankInCategory(rules, "DisplayColumn", raw.Name) : null,
             IsCreateUserColumn = MatchesCategory(rules, "CreateUserColumn", raw.Name),
             IsModifiedDateColumn = MatchesCategory(rules, "ModifiedDateColumn", raw.Name),
+            IsModifiedUserColumn = MatchesCategory(rules, "ModifiedUserColumn", raw.Name),
             IsLastChangedDateColumn = MatchesCategory(rules, "LastChangedDateColumn", raw.Name),
             IsInactiveReasonColumn = MatchesCategory(rules, "InactiveReasonColumn", raw.Name),
             IsAdminFlagColumn = MatchesCategory(rules, "AdminFlagColumn", raw.Name),

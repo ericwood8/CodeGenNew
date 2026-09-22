@@ -74,6 +74,12 @@ public class ColumnModel
     /// Excluded from Update parameters; generated Update logic sets it to GETDATE() unconditionally instead. </summary>
     public bool IsModifiedDateColumn { get; init; }
 
+    /// <summary> Matches SpecialLogicColumns.config category "ModifiedUserColumn" -- e.g. ModifiedBy, UpdatedBy.
+    /// The Update-side mirror of IsCreateUserColumn: a normal caller-supplied parameter on Update (who is
+    /// editing the row), excluded from Insert/Save's insert branch/Load/Clone entirely since a brand-new or
+    /// freshly-cloned/seeded row has no prior editor. </summary>
+    public bool IsModifiedUserColumn { get; init; }
+
     /// <summary> Matches SpecialLogicColumns.config category "LastChangedDateColumn" -- e.g. LastDateChanged.
     /// A blend of create/modify: on Insert it's set alongside CreateDate; on Update it's set alongside
     /// ModifiedDate. Excluded from Update parameters; generated Update logic sets it to GETDATE()

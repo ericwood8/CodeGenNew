@@ -32,6 +32,9 @@
     //     alongside CreateDate). A CreateDateColumn match is never touched by Update logic at all.
     //   - CreateUserColumn match (e.g. CreateUser) is likewise excluded from the parameter list: who created
     //     a row never changes, so Update must not be able to overwrite it (Insert and Save still take it).
+    //   - ModifiedUserColumn match (e.g. ModifiedBy, UpdatedBy) is the mirror image and needs no special
+    //     handling here: it is a normal caller-supplied parameter, same as any other column (the caller says
+    //     who is editing). It is Insert/Save's insert branch/Load/Clone that exclude it, not Update.
     //   - Active/Inactive (HasActiveInactivePair): if the caller supplies a value for InactiveDate
     //     and/or any InactiveReasonColumn match (e.g. InactiveReasonNoteText), the active-flag column
     //     is forced to its "inactive" value (0 for IsActive/Active-style, 1 for IsInactive-style) --

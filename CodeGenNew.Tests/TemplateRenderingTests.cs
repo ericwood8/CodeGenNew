@@ -67,6 +67,45 @@ public class TemplateRenderingTests
         Expect.Contains(sql, "N'Human Resources'");
     }
 
+    // ------------------------------------------------------------------ ModifiedUserColumn (e.g. ModifiedBy, UpdatedBy)
+
+    [TestMethod]
+    public async Task A_modified_user_column_is_left_out_of_insert_but_is_a_normal_update_parameter()
+    {
+        var table = Sample.WithModifiedByColumn();
+
+        string insertSql = await Render("SP_Insert_v1.tt", table);
+        Expect.DoesNotContain(insertSql, "ModifiedBy");
+
+        string updateSql = await Render("SP_Update_v1.tt", table);
+        Expect.Contains(updateSql, "@pModifiedBy");
+    }
+
+    [TestMethod]
+    public async Task A_modified_user_column_is_only_written_by_saves_update_branch()
+    {
+        string sql = await Render("SP_Save_v1.tt", Sample.WithModifiedByColumn());
+
+        // Split on the UPDATE/INSERT branches themselves rather than the first "ELSE" in the file: SP_Save's
+        // own transaction-ownership boilerplate ("CASE WHEN @@TRANCOUNT = 0 THEN 1 ELSE 0 END") has an ELSE
+        // of its own, ahead of the branches this test actually cares about.
+        int updateStart = sql.IndexOf("UPDATE [dbo].[Ticket] SET", StringComparison.Ordinal);
+        int insertStart = sql.IndexOf("INSERT INTO [dbo].[Ticket]", StringComparison.Ordinal);
+        Assert.IsGreaterThan(0, updateStart, "expected an UPDATE branch");
+        Assert.IsGreaterThan(updateStart, insertStart, "expected the INSERT branch after the UPDATE branch");
+
+        Expect.Contains(sql[updateStart..insertStart], "[ModifiedBy]"); // the UPDATE SET list
+        Expect.DoesNotContain(sql[insertStart..], "[ModifiedBy]"); // not in the INSERT column/VALUES lists
+    }
+
+    [TestMethod]
+    public async Task A_modified_user_column_is_left_null_by_clone()
+    {
+        string sql = await Render("SP_Clone_v1.tt", Sample.WithModifiedByColumn());
+
+        Expect.DoesNotContain(sql, "[ModifiedBy]");
+    }
+
     // ------------------------------------------------------------------ API_Crud
 
     [TestMethod]
