@@ -5,6 +5,10 @@ using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
+using Windows.UI;
 
 namespace CodeGenNew.App.ViewModels;
 
@@ -15,6 +19,12 @@ public partial class MainViewModel : ObservableObject
 {
     private readonly AppSettingsService _settings;
     private ConnectionRequest? _connectionRequest;
+
+    // Nocturne theme's error red (Themes/NocturneTheme.xaml), not a harsh pure red -- stays legible and
+    // accessible against the dark background.
+    private static readonly SolidColorBrush WarningBrush = new(Color.FromArgb(255, 242, 103, 122));
+    private static readonly Brush DefaultStatusBrush = (Application.Current.Resources["TextFillColorPrimaryBrush"] as Brush)
+        ?? new SolidColorBrush(Colors.White);
 
     public IconProvider Icons { get; }
     public ObservableCollection<TableNodeViewModel> Tables { get; } = [];
@@ -30,6 +40,14 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private string _statusMessage = "Connect to a database to get started.";
+
+    /// <summary> Red only for the "spCanDelete was not found" warning appended in ConnectAsync; every
+    /// other status message (progress, success, errors already worded as such) keeps the normal text color. </summary>
+    public Brush StatusBrush => StatusMessage.Contains("spCanDelete was not found", StringComparison.OrdinalIgnoreCase)
+        ? WarningBrush
+        : DefaultStatusBrush;
+
+    partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(StatusBrush));
 
     [ObservableProperty]
     private TableNodeViewModel? _selectedTable;

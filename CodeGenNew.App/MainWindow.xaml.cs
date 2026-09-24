@@ -139,6 +139,7 @@ public sealed partial class MainWindow : Window
         var dialog = new ContentDialog
         {
             XamlRoot = Content.XamlRoot,
+            RequestedTheme = ElementTheme.Dark,
             Content = infoBar,
             // On success the close button opens the generated file in the developer's editor instead of
             // just dismissing.

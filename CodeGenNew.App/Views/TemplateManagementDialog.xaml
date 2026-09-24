@@ -3,9 +3,13 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:vm="using:CodeGenNew.App.ViewModels"
-    Title="Templates"
     PrimaryButtonText="Close"
-    DefaultButton="Primary">
+    DefaultButton="Primary"
+    RequestedTheme="Dark">
+
+    <ContentDialog.Title>
+        <TextBlock Text="Templates" FontFamily="{ThemeResource NocturneDisplayFontFamily}" FontWeight="SemiBold" />
+    </ContentDialog.Title>
 
     <!-- A ContentDialog is capped at ~550px wide by default, which cut the row off: the
          second checkbox lost everything after its first letter and the Edit/Rename/Delete buttons were out of
@@ -72,7 +76,9 @@
                                             <ColumnDefinition Width="90" />
                                             <ColumnDefinition Width="150" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="{x:Bind DisplayName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind SupersededTip}" />
+                                        <TextBlock Grid.Column="0" Text="{x:Bind DisplayName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   FontFamily="{ThemeResource NocturneMonoFontFamily}"
+                                                   ToolTipService.ToolTip="{x:Bind SupersededTip}" />
                                         <CheckBox Grid.Column="1" Content="Requires Primary Key" IsChecked="{x:Bind RequiresPrimaryKey, Mode=TwoWay}" />
                                         <CheckBox Grid.Column="2" Content="Table Only" IsChecked="{x:Bind TableOnly, Mode=TwoWay}" />
                                         <Button Grid.Column="3" Content="Edit" Tag="{x:Bind}" Click="OnOpenClick"

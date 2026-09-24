@@ -1,0 +1,92 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- The app is forced to ElementTheme.Dark everywhere (MainWindow's root Grid and every
+         ContentDialog), so only the "Dark" theme dictionary is populated; there is no light
+         variant to fall back to. Merged after XamlControlsResources in App.xaml so these keys
+         win over the stock Fluent ones for the same names. -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Dark">
+
+            <!-- Accent ramp: a periwinkle/indigo "moonlight" accent in place of the OS accent color.
+                 Feeds every stock control that reads SystemAccentColor* (buttons, checkboxes, radio
+                 buttons, ProgressRing/ProgressBar, hyperlinks, the ContentDialog primary button). -->
+            <Color x:Key="SystemAccentColor">#FF8FA1FF</Color>
+            <Color x:Key="SystemAccentColorLight1">#FFA6B4FF</Color>
+            <Color x:Key="SystemAccentColorLight2">#FFBFC9FF</Color>
+            <Color x:Key="SystemAccentColorLight3">#FFD8DEFF</Color>
+            <Color x:Key="SystemAccentColorDark1">#FF7A8DE6</Color>
+            <Color x:Key="SystemAccentColorDark2">#FF6577C0</Color>
+            <Color x:Key="SystemAccentColorDark3">#FF4F5F99</Color>
+
+            <!-- Explicit accent-derived brushes: set directly rather than left to auto-derive from the
+                 ramp above, since the stock derivation lives inside XamlControlsResources' own
+                 StaticResource lookups (resolved at that dictionary's own parse time, not against ours). -->
+            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#FF8FA1FF" />
+            <SolidColorBrush x:Key="AccentFillColorSecondaryBrush" Color="#FFA6B4FF" />
+            <SolidColorBrush x:Key="AccentFillColorTertiaryBrush" Color="#FF7A8DE6" />
+            <SolidColorBrush x:Key="AccentFillColorDisabledBrush" Color="#FF3A4157" />
+            <SolidColorBrush x:Key="AccentTextFillColorPrimaryBrush" Color="#FFA6B4FF" />
+            <SolidColorBrush x:Key="AccentTextFillColorSecondaryBrush" Color="#FF8FA1FF" />
+            <SolidColorBrush x:Key="AccentTextFillColorTertiaryBrush" Color="#FF7A8DE6" />
+            <SolidColorBrush x:Key="TextOnAccentFillColorPrimaryBrush" Color="#FF12131C" />
+            <SolidColorBrush x:Key="TextOnAccentFillColorSecondaryBrush" Color="#FF12131C" />
+            <SolidColorBrush x:Key="TextOnAccentFillColorDisabledBrush" Color="#FF6C7390" />
+
+            <!-- Window / page background. -->
+            <SolidColorBrush x:Key="ApplicationPageBackgroundThemeBrush" Color="#FF10121A" />
+            <SolidColorBrush x:Key="SolidBackgroundFillColorBaseBrush" Color="#FF10121A" />
+            <SolidColorBrush x:Key="SolidBackgroundFillColorSecondaryBrush" Color="#FF181B26" />
+            <SolidColorBrush x:Key="SolidBackgroundFillColorTertiaryBrush" Color="#FF1F2330" />
+
+            <!-- Card surfaces: the toolbar, the table-tree card, and the template grid's header row
+                 already bind to these three names directly in MainWindow.xaml / TemplateManagementDialog.xaml. -->
+            <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#FF181B26" />
+            <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#FF1F2330" />
+            <SolidColorBrush x:Key="CardBackgroundFillColorTertiaryBrush" Color="#FF232838" />
+            <SolidColorBrush x:Key="CardStrokeColorDefaultBrush" Color="#FF2A2F3F" />
+            <SolidColorBrush x:Key="CardStrokeColorDefaultSolidBrush" Color="#FF2A2F3F" />
+
+            <!-- Ordinary control surfaces: TextBox/PasswordBox fill, RadioButton/CheckBox/ListView rows. -->
+            <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#FF181B26" />
+            <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#FF1F2330" />
+            <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#FF232838" />
+            <SolidColorBrush x:Key="ControlFillColorInputActiveBrush" Color="#FF181B26" />
+            <SolidColorBrush x:Key="ControlFillColorDisabledBrush" Color="#FF181B26" />
+            <SolidColorBrush x:Key="ControlStrokeColorDefaultBrush" Color="#FF3A4157" />
+            <SolidColorBrush x:Key="ControlStrokeColorSecondaryBrush" Color="#FF2A2F3F" />
+            <SolidColorBrush x:Key="ControlStrongStrokeColorDefaultBrush" Color="#FF3A4157" />
+
+            <!-- Hover / pressed overlays used by AppBarButton, ListViewItem, TreeViewItem and the
+                 "subtle"-styled buttons, tinted with the accent instead of stock neutral gray. -->
+            <SolidColorBrush x:Key="SubtleFillColorTransparentBrush" Color="#00000000" />
+            <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#248FA1FF" />
+            <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="#338FA1FF" />
+            <SolidColorBrush x:Key="SubtleFillColorDisabledBrush" Color="#00000000" />
+
+            <!-- Body text. -->
+            <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#FFEDEFF7" />
+            <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#FFA6ACC2" />
+            <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#FF6C7390" />
+            <SolidColorBrush x:Key="TextFillColorDisabledBrush" Color="#FF4A4F63" />
+
+            <!-- ContentDialog (Connect / Output Location / Templates / generation-result dialogs). -->
+            <SolidColorBrush x:Key="ContentDialogBackground" Color="#FF232838" />
+            <SolidColorBrush x:Key="ContentDialogForeground" Color="#FFEDEFF7" />
+            <SolidColorBrush x:Key="ContentDialogBorderBrush" Color="#FF3A4157" />
+
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <!-- Fonts are theme-independent (same in light or dark), so these sit outside ThemeDictionaries.
+         Sora and IBM Plex Sans ship as variable fonts (one file, weight varied via FontWeight); IBM
+         Plex Mono only needs its Regular static instance here, so that one file is referenced directly. -->
+    <FontFamily x:Key="NocturneDisplayFontFamily">ms-appx:///Assets/Fonts/Sora[wght].ttf#Sora</FontFamily>
+    <FontFamily x:Key="NocturneBodyFontFamily">ms-appx:///Assets/Fonts/IBMPlexSans[wdth,wght].ttf#IBM Plex Sans</FontFamily>
+    <FontFamily x:Key="NocturneMonoFontFamily">ms-appx:///Assets/Fonts/IBMPlexMono-Regular.ttf#IBM Plex Mono</FontFamily>
+
+    <!-- Overrides the stock Fluent default ("Segoe UI Variable") everywhere a control's own style reads
+         it: Button, TextBox, TreeView/ListView rows, InfoBar, ContentDialog title and body, etc. -->
+    <FontFamily x:Key="ContentControlThemeFontFamily">ms-appx:///Assets/Fonts/IBMPlexSans[wdth,wght].ttf#IBM Plex Sans</FontFamily>
+</ResourceDictionary>

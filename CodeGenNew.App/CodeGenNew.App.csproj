@@ -49,8 +49,9 @@
        factory-default seed. DefaultAssetSeeder materializes them as real,
        editable files next to the EXE the first time they're missing, and never overwrites an existing
        (possibly customized) one. Images are embedded outright (item 8) and never touch disk at all;
-       IconProvider loads them straight from the assembly. Settings.json lives under %LocalAppData%
-       instead (see AppSettingsService), not here. -->
+       IconProvider loads them straight from the assembly. Fonts are embedded too, but FontAssetSeeder does
+       write them to disk (Assets\Fonts\), since XAML's FontFamily needs a real file. Settings.json lives
+       under %LocalAppData% instead (see AppSettingsService), not here. -->
   <ItemGroup>
     <!-- WithCulture=false everywhere here: MSBuild's AssignCulture task otherwise reads the "tt" in
          "SP_Insert.tt.config" as the ISO culture code for Tatar and silently ships that file off into a
@@ -58,6 +59,17 @@
     <EmbeddedResource Include="..\SpecialLogicColumns.config" Link="SpecialLogicColumns.config" WithCulture="false" />
     <EmbeddedResource Include="..\Templates\**\*.*" LinkBase="Templates" WithCulture="false" />
     <EmbeddedResource Include="..\Images\**\*.*" LinkBase="Images" WithCulture="false" />
+    <!-- Nocturne theme fonts (Themes/NocturneTheme.xaml). Embedded like Images above, not loose Content:
+         the .ttf bytes live inside the assembly and FontAssetSeeder writes them out to Assets\Fonts\ next
+         to the exe on first run (same "copy the exe and go" story as DefaultAssetSeeder, just simpler,
+         since nobody hand-edits a font file: an unconditional overwrite-if-different, no
+         customization-preserving diff needed). XAML's ms-appx:///...#FamilyName still needs that real file
+         on disk; there is no supported way to point FontFamily straight at an in-memory resource stream.
+         The SDK's own default globs also pick up anything under an "Assets\" folder as Content
+         (Windows App SDK convention, for packaged apps' asset layout), so that is explicitly removed
+         below, keeping the .ttf bytes only inside the assembly, not also as a loose build-time copy. -->
+    <Content Remove="Assets\Fonts\*.ttf" />
+    <EmbeddedResource Include="Assets\Fonts\*.ttf" LinkBase="Fonts" WithCulture="false" />
   </ItemGroup>
 
 </Project>
