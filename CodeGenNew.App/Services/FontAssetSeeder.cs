@@ -1,5 +1,5 @@
 using System.Reflection;
-using System.Security.Cryptography;
+using CodeGenNew.Core;
 
 namespace CodeGenNew.App.Services;
 
@@ -27,7 +27,7 @@ public static class FontAssetSeeder
         {
             // Embedded under LinkBase "Fonts", e.g. "CodeGenNew.Fonts.Sora[wght].ttf".
             int marker = resourceName.IndexOf(".Fonts.", StringComparison.OrdinalIgnoreCase);
-            if (marker < 0 || !resourceName.EndsWith(".ttf", StringComparison.OrdinalIgnoreCase))
+            if (marker < 0 || !resourceName.EndsWithIgnoreCase(".ttf"))
                 continue;
 
             string fileName = resourceName[(marker + ".Fonts.".Length)..];
@@ -41,12 +41,10 @@ public static class FontAssetSeeder
             stream.CopyTo(buffer);
             byte[] shipped = buffer.ToArray();
 
-            if (File.Exists(destinationPath) && Hash(File.ReadAllBytes(destinationPath)).Equals(Hash(shipped), StringComparison.OrdinalIgnoreCase))
+            if (File.Exists(destinationPath) && File.ReadAllBytes(destinationPath).Sha256Hex().EqualsIgnoreCase(shipped.Sha256Hex()))
                 continue; // already up to date.
 
             File.WriteAllBytes(destinationPath, shipped);
         }
     }
-
-    private static string Hash(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
 }

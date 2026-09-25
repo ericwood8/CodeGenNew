@@ -10,7 +10,7 @@ public static class DisplayColumnSelector
     /// the real description next to it. If nothing matches, falls back to the first ordinary string column so a
     /// table always contributes something recognizable when it has any text; if it has none, returns empty. </summary>
     /// <param name="foreignKeyColumns"> Names of this table's columns that take part in a foreign key. </param>
-    public static List<ColumnModel> Select(IReadOnlyList<ColumnModel> columns, IReadOnlyCollection<string> foreignKeyColumns)
+    public static List<ColumnModel> SelectDisplayColumns(this IReadOnlyList<ColumnModel> columns, IReadOnlyCollection<string> foreignKeyColumns)
     {
         bool IsKey(ColumnModel c) =>
             c.IsPrimaryKey || foreignKeyColumns.Contains(c.Name, StringComparer.OrdinalIgnoreCase);

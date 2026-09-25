@@ -10,7 +10,7 @@ See **[Docs/specs.md](Docs/specs.md)** for the full specification: architecture,
 
 ## What it generates
 
-Fourteen templates ship in `Templates\`. A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
+Twenty-two templates ship in `Templates\`. A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
 
 | Group | Template | Writes |
 |---|---|---|
@@ -18,13 +18,21 @@ Fourteen templates ship in `Templates\`. A table's right-click menu (or the CLI'
 | `SP` | `SP_Lookup` | ID + display columns of a row and of every table it points to, so a drop-down needs no joins. |
 | `SP` | `SP_Clone` | Copies a row into a new one and returns the new key (a grid's "Clone" button). |
 | `SP` | `SP_Load` | Reads the table's **rows** and writes a re-runnable procedure that loads the same rows into another database (seed data). |
+| `SP` | `SP_Junction` | `Table_Junction.sql` — List/Link/Unlink for a many-to-many **junction table** (only offered when `TableModel.IsJunctionTable` is true). |
 | `API` | `API_Crud` | `TableApi.cs` — a minimal-API class: get all, get by id, create, update, delete, each over the table's repository. |
+| `API` | `API_Junction` | `TableJunctionApi.cs` — HTTP endpoints over `SP_Junction`'s three procedures, called straight through the `DbContext` (no repository) — the HTTP companion `TS_JunctionComponent` needs (also junction-only). |
 | `CS` | `CS_Entity` | `Table.cs` — an EF Core entity: key, foreign keys, navigation properties, attributes. |
 | `CS` | `CS_Enum` | `Table.cs` — a C# enum whose members are the **rows** of a small lookup table. |
 | `CS` | `CS_Repo` | `TableRepo.cs` — the thin repository class over your shared generic repository. |
 | `TS` | `TS_Model` | `models/table.ts` — an Angular interface matching the JSON the API really sends. |
 | `TS` | `TS_Service` | `services/table.service.ts` — the `HttpClient` wrapper with the same method names on every table. |
 | `TS` | `TS_Component` | Four files in `components/table/` — CSS, HTML, spec and TypeScript for a grid + add/edit form screen. |
+| `TS` | `TS_JunctionComponent` | Four files in `components/table-junction/` — a two-`<select multiple>` shuttle-control screen calling `API_Junction` (also junction-only). |
+| `TS` | `TS_DetailMasterComponent` | Four files in `components/table-detail-master/` — `TS_Component`'s own grid + form plus one read-only grid per child table (only offered when there's at least one). |
+| `WinUI3` | `WinUI3_JunctionEditor` | Three files (View, code-behind, ViewModel) — the same shuttle-control idea as a desktop `ContentDialog`, calling `SP_Junction` directly through EF Core (also junction-only). |
+| `WinUI3` | `WinUI3_MasterScreen` | Three files — a `Page` listing every row (grid + Add/Edit/Delete), calling `TableRepo` (`CS_Repo`) directly. |
+| `WinUI3` | `WinUI3_DetailScreen` | Three files — a `ContentDialog` add/edit form, one field per column, drop-downs for foreign keys. |
+| `WinUI3` | `WinUI3_DetailMasterScreen` | `WinUI3_DetailScreen`'s form plus one read-only child grid per table in `TableModel.ChildForeignKeys` (only offered when there's at least one). |
 
 Templates carry a version in the file name (`SP_Save_v1.tt`). The menu shows only the newest version of each; older ones stay on disk. Files you customize are never overwritten by an update — the new shipped copy is written beside yours as `<name>.new`.
 
@@ -129,7 +137,17 @@ CLI argument parsing is hand-rolled rather than pulling in a library, given the 
 
 ## Status
 
-v1 is working: the desktop app, the CLI and the fourteen templates were each verified against a real database, and the generated code was compiled (and, for the Angular files, run) in the sample project. Only SQL Server is supported; only tables (not views).
+v1 is working: the desktop app, the CLI and fourteen of the twenty-two templates were each verified against a real database, and the generated code was compiled (and, for the Angular files, run) in the sample project. The junction-table family (`TableModel.IsJunctionTable`, added after the real `ProvidenceOgas.dbo.NameBaseGroupXref` table turned out to use a surrogate identity key rather than the composite-key shape first assumed) was verified per template: `SP_Junction` was deployed and exercised (List/Link/Unlink, including duplicate-link idempotency) against that real table via a disposable scratch copy; `API_Junction` was dropped into the real TimeEntryServer project and built there (0 errors) before being removed again; `TS_JunctionComponent` was dropped into the real TimeEntryUI project, where `ng test` compiled and ran it for real (13/13 passing) before being removed again. `WinUI3_JunctionEditor`'s output was rendered against the same real table and hand-reviewed, but not compiled in a live WinUI3 project — there is no existing WinUI3 desktop client in this ecosystem to drop it into.
+
+The desktop CRUD-screen family (`TableModel.ChildForeignKeys`, `WinUI3_MasterScreen`, `WinUI3_DetailScreen`, `WinUI3_DetailMasterScreen`) was generated live against `ERICSMINIPC\ProvidenceOgas.dbo.Products` — a table whose `DOIProductTypeID`/`RDProductTypeID` columns each carry two separate foreign-key constraints to the same parent, which surfaced and fixed a duplicate-key crash in all three templates' column-lookup logic before this table was used as the test case — and against `Products`' 12 real child tables for `WinUI3_DetailMasterScreen`'s per-child grid (whose columns are discovered at run time via EF Core's own entity metadata, not known when the file is generated — see specs.md §11). Like `WinUI3_JunctionEditor`, none of the three were compiled in a live WinUI3 project.
+
+`TS_DetailMasterComponent` (the Angular counterpart of `WinUI3_DetailMasterScreen`) was generated live against the real `TimeEntry` database's `E_TimeSheet`/`E_TimeSheetDetail` pair and dropped into the real TimeEntryUI project, where `ng test` compiled and ran it for real (12/12 passing) — but only after temporarily setting aside the hand-maintained `components/timesheet/` and swapping in a freshly-generated `timesheet.ts` model: the real, hand-written model types its date column as `Date`, not the `string` every `TS_*` template assumes (`Docs/specs.md` §11), a pre-existing mismatch this exercise surfaced rather than something the new template caused. Both were restored afterward and `git status` confirmed clean.
+
+Every `TS_*` template was then run twice more against a fresh ~50 real tables total, sampled from 16 of the ~35 databases on the dev SQL Server (legacy schemas spanning `dbo` and non-`dbo` schemas, composite keys, natural `varchar`/`char` keys, reserved-word table names, several with junctions and child tables) — no crashes across either round, but several tables' menu options were only refused once generation was attempted (a composite or natural-key table offered `TS_Service`/`TS_Component`/etc. that could never work for it). Fixed by a new per-template `RequiredPrimaryKeyShape` restriction (`TableModel`/`TableSummary.PrimaryKeyShape`, `Docs/specs.md` §5.3) so the menu (and the CLI) now leave a wrongly-shaped table's key off the option list entirely, applied to every `TS_*`/`API_Crud`/WinUI3 template that needs a specific key shape.
+
+A related mismatch was found by inspecting a real hand-maintained API rather than generating against one: `TS_Service`/`TS_Component`/`TS_DetailMasterComponent` always generate a `getAll()` call, but a "name/active" table's real backend (`API_Crud.tt` has always refused to generate one, since it needs duplicate-name checks) is hand-maintained and, confirmed against the real `TimeEntry` database's `DepartmentTeamApi.cs`, commonly has **no plain `getAll()` route at all** — only a parent-scoped one. Fixed the same way: a new `RequiresNotNameActiveTable` restriction (`TableModel`/`TableSummary.IsNameActiveTable`, one canonical rule replacing four identical inline copies across `API_Crud.tt`/`CS_Entity.tt`/`CS_Repo.tt`/the WinUI3 family), applied to every template that assumes a plain `getAll()`-shaped backend — `TS_Service`, `TS_Component`, `TS_DetailMasterComponent`, `API_Crud`, and the WinUI3 CRUD-screen family all now leave a name/active table's option off the menu, verified live against the real `DepartmentTeam` table.
+
+Only SQL Server is supported; only tables (not views).
 
 ## License
 

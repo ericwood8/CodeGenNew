@@ -8,7 +8,7 @@ namespace CodeGenNew.App.ViewModels;
 
 /// <summary> Backs the Connection screen (Docs/specs.md section 9.1). Password is held only in memory
 /// for the lifetime of this dialog/session -- never written to Settings.json. </summary>
-public partial class ConnectionDialogViewModel : ObservableObject
+public partial class ConnectionDialogViewModel : StatusMessageViewModel
 {
     [ObservableProperty]
     private string _serverName = "";
@@ -27,14 +27,7 @@ public partial class ConnectionDialogViewModel : ObservableObject
     public string Password { get; set; } = "";
 
     [ObservableProperty]
-    private string _statusMessage = "";
-
-    [ObservableProperty]
     private InfoBarSeverity _statusSeverity = InfoBarSeverity.Informational;
-
-    public bool HasStatusMessage => !string.IsNullOrEmpty(StatusMessage);
-
-    partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasStatusMessage));
 
     [ObservableProperty]
     private bool _isBusy;
@@ -83,7 +76,7 @@ public partial class ConnectionDialogViewModel : ObservableObject
         StatusSeverity = InfoBarSeverity.Informational;
         try
         {
-            bool success = await SqlServerConnectionFactory.TestConnectionAsync(BuildRequest());
+            bool success = await BuildRequest().TestConnectionAsync();
             LastTestSucceeded = success;
             StatusMessage = success ? "Connection succeeded." : "Connection failed -- check the details and try again.";
             StatusSeverity = success ? InfoBarSeverity.Success : InfoBarSeverity.Error;

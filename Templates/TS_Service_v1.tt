@@ -66,6 +66,10 @@
         Error($"TS_Service needs a table with a single int or uniqueidentifier primary key (the routes take the id as {{id:int}} or {{id:guid}}), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
     }
+    else if (Model.IsNameActiveTable)
+    {
+        Error($"TS_Service assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all -- see TimeEntryServer's real DepartmentTeamApi.cs); write this service by hand.");
+    }
     else
     {
         string baseName = BaseName(Model.TableName);

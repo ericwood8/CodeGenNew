@@ -3,9 +3,8 @@ using CodeGenNew.App.Services;
 using CodeGenNew.SchemaIntrospection;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace CodeGenNew.App.ViewModels;
@@ -17,8 +16,6 @@ namespace CodeGenNew.App.ViewModels;
 public partial class TableNodeViewModel : ObservableObject
 {
     private static readonly SolidColorBrush ReservedWordBrush = new(Colors.Red);
-    private static readonly Brush DefaultBrush = (Application.Current.Resources["TextFillColorPrimaryBrush"] as Brush)
-        ?? new SolidColorBrush(Colors.Black);
 
     private readonly IconProvider _icons;
     private readonly Func<TableSummary, CancellationToken, Task<List<ColumnSummary>>> _loadColumns;
@@ -33,7 +30,7 @@ public partial class TableNodeViewModel : ObservableObject
     /// <summary> Table/column names colliding with a SQL Server or C# reserved word are shown in red. </summary>
     public bool IsReservedWordCollision => Summary.IsReservedWordName || Summary.IsCSharpReservedWordName;
 
-    public Brush TextBrush => IsReservedWordCollision ? ReservedWordBrush : DefaultBrush;
+    public Brush TextBrush => IsReservedWordCollision ? ReservedWordBrush : ThemeBrushes.DefaultText;
 
     public BitmapImage Icon { get; }
 

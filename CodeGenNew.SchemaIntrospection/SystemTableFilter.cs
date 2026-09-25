@@ -1,3 +1,5 @@
+using CodeGenNew.Core;
+
 namespace CodeGenNew.SchemaIntrospection;
 
 /// <summary> Recognizes framework/replication/scaffolding tables by name so they can be excluded from a
@@ -18,8 +20,8 @@ public static class SystemTableFilter
         "conflict_", "MSpeer_", "MSpub_", "MSreplication_", "MSsubscription_", "sysarticle", "aspnet_"
     ];
 
-    public static bool IsSystemTable(string tableName) =>
-        ExactNames.Any(n => tableName.Equals(n, StringComparison.OrdinalIgnoreCase))
-        || Prefixes.Any(p => tableName.StartsWith(p, StringComparison.OrdinalIgnoreCase))
-        || tableName.EndsWith("_tracking", StringComparison.OrdinalIgnoreCase);
+    public static bool IsSystemTable(this string tableName) =>
+        ExactNames.Any(n => tableName.EqualsIgnoreCase(n))
+        || Prefixes.Any(tableName.StartsWithIgnoreCase)
+        || tableName.EndsWithIgnoreCase("_tracking");
 }

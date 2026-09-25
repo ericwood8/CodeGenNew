@@ -4,7 +4,7 @@ namespace CodeGenNew.Connections;
 
 public static class SqlServerConnectionFactory
 {
-    public static string BuildConnectionString(ConnectionRequest request)
+    public static string BuildConnectionString(this ConnectionRequest request)
     {
         if (request.Provider != DatabaseProvider.SqlServer)
             throw new NotSupportedException($"Provider '{request.Provider}' is not implemented yet. Only SqlServer is supported in v1.");
@@ -32,12 +32,12 @@ public static class SqlServerConnectionFactory
         return builder.ConnectionString;
     }
 
-    public static SqlConnection CreateConnection(ConnectionRequest request) =>
-        new(BuildConnectionString(request));
+    public static SqlConnection CreateConnection(this ConnectionRequest request) =>
+        new(request.BuildConnectionString());
 
-    public static async Task<bool> TestConnectionAsync(ConnectionRequest request, CancellationToken cancellationToken = default)
+    public static async Task<bool> TestConnectionAsync(this ConnectionRequest request, CancellationToken cancellationToken = default)
     {
-        await using var connection = CreateConnection(request);
+        await using var connection = request.CreateConnection();
         try
         {
             await connection.OpenAsync(cancellationToken);

@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace CodeGenNew.Core;
 
 /// <summary> Maps directly to Settings.json (Docs/specs.md section 5.1). Password is never part of this -- always re-prompted. </summary>
@@ -13,6 +15,20 @@ public class AppSettings
     /// and used to open template/generated files directly rather than relying on
     /// Windows' file-association prompt for .tt/.sql files. </summary>
     public string PreferredEditorPath { get; set; } = "";
+
+    private static readonly JsonSerializerOptions ReadOptions = new() { PropertyNameCaseInsensitive = true };
+
+    /// <summary> Reads Settings.json from <paramref name="path"/>, or a fresh default instance when the
+    /// file doesn't exist yet (first run) or fails to parse -- shared by CodeGenNew.App's
+    /// AppSettingsService and the CLI's Program, which both used to read this file identically by hand. </summary>
+    public static AppSettings Load(string path)
+    {
+        if (!File.Exists(path))
+            return new AppSettings();
+
+        string json = File.ReadAllText(path);
+        return JsonSerializer.Deserialize<AppSettings>(json, ReadOptions) ?? new AppSettings();
+    }
 }
 
 public class LastConnectionSettings

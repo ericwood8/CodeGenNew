@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.RegularExpressions;
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 
@@ -65,6 +66,402 @@ public class TemplateRenderingTests
 
         Expect.Contains(sql, "CREATE OR ALTER PROCEDURE [dbo].[SY_Role_Load]");
         Expect.Contains(sql, "N'Human Resources'");
+    }
+
+    // ------------------------------------------------------------------ SP_Junction (many-to-many junction tables)
+
+    [TestMethod]
+    public async Task SP_Junction_refuses_a_table_that_is_not_a_junction_table()
+    {
+        string message = await Refusal("SP_Junction_v1.tt", Sample.DonateLeave());
+
+        StringAssert.Contains(message, "IsJunctionTable");
+    }
+
+    [TestMethod]
+    public async Task SP_Junction_writes_list_link_and_unlink_for_the_surrogate_key_shape()
+    {
+        // The real-world shape (ProvidenceOgas.dbo.NameBaseGroupXref): ID is the PK, NameBaseID/GroupID are
+        // plain FK columns -- confirmed against a live database, 2026-09-25.
+        string sql = await Render("SP_Junction_v1.tt", Sample.JunctionWithSurrogateKey());
+
+        Expect.Contains(sql, "CREATE OR ALTER PROCEDURE [dbo].[NameBaseGroupXref_List]");
+        Expect.Contains(sql, "CREATE OR ALTER PROCEDURE [dbo].[NameBaseGroupXref_Link]");
+        Expect.Contains(sql, "CREATE OR ALTER PROCEDURE [dbo].[NameBaseGroupXref_Unlink]");
+        Expect.Contains(sql, "@AnchorNameBaseID int");
+        Expect.Contains(sql, "@TargetGroupID int");
+        Expect.Contains(sql, "[t].[ID] AS TargetId");
+        Expect.Contains(sql, "[t].[ShortDescr]"); // Groups' display column
+        Expect.Contains(sql, "ORDER BY [t].[ShortDescr]");
+        // CreateDate/CreateUser are audit columns on this fixture: Link should set/accept them, not treat
+        // them as a third "structural" association column.
+        Expect.Contains(sql, "GETDATE()");
+        Expect.Contains(sql, "@CreateUser varchar(50) = NULL");
+    }
+
+    [TestMethod]
+    public async Task SP_Junction_writes_list_link_and_unlink_for_the_composite_key_shape()
+    {
+        string sql = await Render("SP_Junction_v1.tt", Sample.CompositeKeyJunction());
+
+        Expect.Contains(sql, "CREATE OR ALTER PROCEDURE [dbo].[UserRole_List]");
+        Expect.Contains(sql, "CREATE OR ALTER PROCEDURE [dbo].[UserRole_Link]");
+        Expect.Contains(sql, "CREATE OR ALTER PROCEDURE [dbo].[UserRole_Unlink]");
+        Expect.Contains(sql, "@AnchorUserId int");
+        Expect.Contains(sql, "@TargetRoleId int");
+        // No audit columns on this fixture, so Link's parameter list is exactly the two association columns.
+        Expect.DoesNotContain(sql, "@CreateUser");
+    }
+
+    [TestMethod]
+    public async Task SP_Junction_link_only_inserts_when_the_pair_does_not_already_exist()
+    {
+        string sql = await Render("SP_Junction_v1.tt", Sample.JunctionWithSurrogateKey());
+
+        Expect.Contains(sql, "IF NOT EXISTS (");
+        Expect.Contains(sql, "INSERT INTO [dbo].[NameBaseGroupXref]");
+    }
+
+    // ------------------------------------------------------------------ WinUI3_JunctionEditor
+
+    [TestMethod]
+    public async Task WinUI3_JunctionEditor_refuses_a_table_that_is_not_a_junction_table()
+    {
+        string message = await Refusal("WinUI3_JunctionEditor_v1.tt", Sample.DonateLeave());
+
+        StringAssert.Contains(message, "IsJunctionTable");
+    }
+
+    [TestMethod]
+    public async Task WinUI3_JunctionEditor_writes_view_codebehind_and_viewmodel()
+    {
+        var files = GeneratedFiles.Split(await Render("WinUI3_JunctionEditor_v1.tt", Sample.JunctionWithSurrogateKey()));
+
+        Expect.Contains(string.Join("|", files.Select(f => f.RelativePath)), "Views/NameBaseGroupXrefJunctionEditor.xaml");
+        var xaml = files.Single(f => f.RelativePath.EndsWith(".xaml")).Content;
+        var codeBehind = files.Single(f => f.RelativePath.EndsWith(".xaml.cs")).Content;
+        var viewModel = files.Single(f => f.RelativePath.EndsWith("JunctionEditorViewModel.cs")).Content;
+
+        Expect.Contains(xaml, "x:Class=\"TimeEntry.Desktop.Views.NameBaseGroupXrefJunctionEditor\"");
+        Expect.Contains(xaml, "Title=\"Groups for this NameBase\"");
+        Expect.Contains(xaml, "ItemsSource=\"{x:Bind ViewModel.Available}\"");
+        Expect.Contains(xaml, "ItemsSource=\"{x:Bind ViewModel.Selected}\"");
+
+        Expect.Contains(codeBehind, "public sealed partial class NameBaseGroupXrefJunctionEditor : ContentDialog");
+        Expect.Contains(codeBehind, "AvailableList.SelectedItems.Cast<JunctionListItem>()");
+
+        Expect.Contains(viewModel, "public string? ShortDescr { get; set; }"); // Groups' display column
+        Expect.Contains(viewModel, "public int TargetId { get; set; }");
+        Expect.Contains(viewModel, "public NameBaseGroupXrefJunctionEditorViewModel(TimeEntryContext context, int anchorId)");
+        Expect.Contains(viewModel, "SqlQueryRaw<JunctionListItem>(\"EXEC [dbo].[NameBaseGroupXref_List] @AnchorNameBaseID\"");
+        Expect.Contains(viewModel, "$\"EXEC [dbo].[NameBaseGroupXref_Link] {_anchorId}, {item.TargetId}\"");
+        Expect.Contains(viewModel, "$\"EXEC [dbo].[NameBaseGroupXref_Unlink] {_anchorId}, {item.TargetId}\"");
+    }
+
+    [TestMethod]
+    public async Task WinUI3_JunctionEditor_moves_items_between_available_and_selected_on_link_and_unlink()
+    {
+        string viewModel = GeneratedFiles.Split(await Render("WinUI3_JunctionEditor_v1.tt", Sample.JunctionWithSurrogateKey()))
+            .Single(f => f.RelativePath.EndsWith("JunctionEditorViewModel.cs")).Content;
+
+        Expect.Contains(viewModel, "if (Available.Remove(item))");
+        Expect.Contains(viewModel, "Selected.Add(item);");
+        Expect.Contains(viewModel, "if (Selected.Remove(item))");
+        Expect.Contains(viewModel, "Available.Add(item);");
+    }
+
+    // ------------------------------------------------------------------ WinUI3_DetailScreen
+
+    [TestMethod]
+    public async Task WinUI3_DetailScreen_refuses_a_composite_or_non_int_primary_key()
+    {
+        string message = await Refusal("WinUI3_DetailScreen_v1.tt", Sample.CompositeKey());
+
+        StringAssert.Contains(message, "single int primary key");
+    }
+
+    [TestMethod]
+    public async Task WinUI3_DetailScreen_refuses_a_name_active_table()
+    {
+        string message = await Refusal("WinUI3_DetailScreen_v1.tt", Sample.DepartmentTeam());
+
+        StringAssert.Contains(message, "NameActiveRepo");
+    }
+
+    [TestMethod]
+    public async Task WinUI3_DetailScreen_writes_dialog_codebehind_and_viewmodel()
+    {
+        var files = GeneratedFiles.Split(await Render("WinUI3_DetailScreen_v1.tt", Sample.DonateLeave()))
+            .ToDictionary(f => Path.GetFileName(f.RelativePath));
+
+        Assert.HasCount(3, files);
+        string xaml = files["E_DonateLeaveDetailDialog.xaml"].Content;
+        string codeBehind = files["E_DonateLeaveDetailDialog.xaml.cs"].Content;
+        string viewModel = files["E_DonateLeaveDetailViewModel.cs"].Content;
+
+        Expect.Contains(xaml, "x:Class=\"TimeEntry.Desktop.Views.E_DonateLeaveDetailDialog\"");
+        Expect.Contains(xaml, "SelectedValue=\"{x:Bind ViewModel.DonateFrom_EmployeeId, Mode=TwoWay}\"");
+        Expect.Contains(xaml, "SelectedValue=\"{x:Bind ViewModel.DonateTo_EmployeeId, Mode=TwoWay}\"");
+        Expect.Contains(xaml, "Text=\"{x:Bind ViewModel.WhenDonated, Mode=TwoWay}\"");
+        Expect.Contains(xaml, "Text=\"{x:Bind ViewModel.Note, Mode=TwoWay}\"");
+
+        Expect.Contains(codeBehind, "public sealed partial class E_DonateLeaveDetailDialog : ContentDialog");
+        Expect.Contains(codeBehind, "public E_DonateLeaveDetailDialog(TimeEntryContext context, E_DonateLeave? editing = null)");
+
+        Expect.Contains(viewModel, "private readonly E_DonateLeaveRepo _repo;");
+        Expect.Contains(viewModel, "public ObservableCollection<E_DonateLeaveDetailLookupOption> EmployeeOptions { get; } = [];");
+        Expect.Contains(viewModel, "private int? _donateFrom_EmployeeId;");
+        Expect.Contains(viewModel, "private string? _note;");
+        Expect.DoesNotContain(viewModel, "EmployeeRepo"); // lookup options come straight from the DbContext
+    }
+
+    [TestMethod]
+    public async Task WinUI3_DetailScreen_save_validates_required_fields_and_parses_the_rest()
+    {
+        string viewModel = GeneratedFiles.Split(await Render("WinUI3_DetailScreen_v1.tt", Sample.DonateLeave()))
+            .Single(f => f.RelativePath.EndsWith("DetailViewModel.cs")).Content;
+
+        Expect.Contains(viewModel, "if (DonateFrom_EmployeeId is null) { ErrorMessage = \"Donate From Employee is required.\"; return false; }");
+        Expect.Contains(viewModel, "if (!int.TryParse(HoursDonated, out var HoursDonatedValue)) { ErrorMessage = \"Hours Donated is not a valid number.\"; return false; }");
+        Expect.Contains(viewModel, "if (!DateTime.TryParse(WhenDonated, out var WhenDonatedValue)) { ErrorMessage = \"When Donated is not a valid date.\"; return false; }");
+        Expect.Contains(viewModel, "entity.Note = string.IsNullOrWhiteSpace(Note) ? null : Note;"); // nullable text
+        Expect.Contains(viewModel, "await _repo.AddAsync(entity);");
+        Expect.Contains(viewModel, "await _repo.UpdateAsync(entity.DonateLeaveId, entity);");
+    }
+
+    // ------------------------------------------------------------------ WinUI3_MasterScreen
+
+    [TestMethod]
+    public async Task WinUI3_MasterScreen_refuses_a_name_active_table()
+    {
+        string message = await Refusal("WinUI3_MasterScreen_v1.tt", Sample.DepartmentTeam());
+
+        StringAssert.Contains(message, "NameActiveRepo");
+    }
+
+    [TestMethod]
+    public async Task WinUI3_MasterScreen_writes_a_grid_page_matching_the_detail_screens_fields()
+    {
+        var files = GeneratedFiles.Split(await Render("WinUI3_MasterScreen_v1.tt", Sample.DonateLeave()))
+            .ToDictionary(f => Path.GetFileName(f.RelativePath));
+
+        Assert.HasCount(3, files);
+        string xaml = files["E_DonateLeaveListPage.xaml"].Content;
+        string codeBehind = files["E_DonateLeaveListPage.xaml.cs"].Content;
+        string viewModel = files["E_DonateLeaveListViewModel.cs"].Content;
+
+        Expect.Contains(xaml, "x:Class=\"TimeEntry.Desktop.Views.E_DonateLeaveListPage\"");
+        Expect.Contains(xaml, "Text=\"Donate From Employee\"");
+        Expect.Contains(xaml, "ItemsSource=\"{x:Bind ViewModel.Rows}\"");
+        Expect.Contains(xaml, "Text=\"{x:Bind Cells[0]}\"");
+
+        Expect.Contains(codeBehind, "public sealed partial class E_DonateLeaveListPage : Page");
+        Expect.Contains(codeBehind, "new E_DonateLeaveDetailDialog(_context)");
+        Expect.Contains(codeBehind, "new E_DonateLeaveDetailDialog(_context, entity)");
+
+        Expect.Contains(viewModel, "public class E_DonateLeaveListRow");
+        Expect.Contains(viewModel, "var employeeNames = await _context.Set<Employee>().ToDictionaryAsync(r => r.EmployeeId, r => r.Name?.ToString() ?? \"\");");
+        Expect.Contains(viewModel, "cells.Add(employeeNames.TryGetValue(e.DonateFrom_EmployeeId, out var donateFrom_EmployeeIdName) ? donateFrom_EmployeeIdName : e.DonateFrom_EmployeeId.ToString());");
+        Expect.Contains(viewModel, "int result = await _repo.DeleteAsync(\"E_DonateLeave\", id);");
+    }
+
+    // ------------------------------------------------------------------ WinUI3_DetailMasterScreen
+
+    [TestMethod]
+    public async Task WinUI3_DetailMasterScreen_refuses_a_table_with_no_child_tables()
+    {
+        string message = await Refusal("WinUI3_DetailMasterScreen_v1.tt", Sample.DonateLeave());
+
+        StringAssert.Contains(message, "foreign key pointing back at");
+    }
+
+    [TestMethod]
+    public async Task WinUI3_DetailMasterScreen_refuses_a_composite_or_non_int_primary_key()
+    {
+        var table = Sample.Table("Parent",
+            [Sample.Column("LeftId", SqlDbType.Int, primaryKey: true, ordinal: 1), Sample.Column("RightId", SqlDbType.Int, primaryKey: true, ordinal: 2)],
+            childForeignKeys: [Sample.ChildForeignKey("Child", "ParentId", "LeftId")]);
+
+        string message = await Refusal("WinUI3_DetailMasterScreen_v1.tt", table);
+
+        StringAssert.Contains(message, "single int primary key");
+    }
+
+    [TestMethod]
+    public async Task WinUI3_DetailMasterScreen_writes_the_form_plus_one_grid_per_child_table()
+    {
+        var files = GeneratedFiles.Split(await Render("WinUI3_DetailMasterScreen_v1.tt", Sample.DepartmentWithTeams()))
+            .ToDictionary(f => Path.GetFileName(f.RelativePath));
+
+        Assert.HasCount(3, files);
+        string xaml = files["DepartmentDetailMasterDialog.xaml"].Content;
+        string codeBehind = files["DepartmentDetailMasterDialog.xaml.cs"].Content;
+        string viewModel = files["DepartmentDetailMasterViewModel.cs"].Content;
+
+        Expect.Contains(xaml, "x:Class=\"TimeEntry.Desktop.Views.DepartmentDetailMasterDialog\"");
+        Expect.Contains(xaml, "Text=\"{x:Bind ViewModel.Name, Mode=TwoWay}\"");
+        Expect.Contains(xaml, "Text=\"Department Team\""); // the child table's grid title
+        Expect.Contains(xaml, "ItemsSource=\"{x:Bind ViewModel.departmentTeamColumnHeaders}\"");
+        Expect.Contains(xaml, "ItemsSource=\"{x:Bind ViewModel.departmentTeamRows}\"");
+
+        Expect.Contains(codeBehind, "public sealed partial class DepartmentDetailMasterDialog : ContentDialog");
+
+        Expect.Contains(viewModel, "public class DepartmentChildGridRow");
+        Expect.Contains(viewModel, "public ObservableCollection<string> departmentTeamColumnHeaders { get; } = [];");
+        Expect.Contains(viewModel, "public ObservableCollection<DepartmentChildGridRow> departmentTeamRows { get; } = [];");
+        Expect.Contains(viewModel, "var entityType = _context.Model.FindEntityType(typeof(DepartmentTeam))!;");
+        Expect.Contains(viewModel, "EF.Property<int>(c, \"DepartmentId\") == _editing!.DepartmentId");
+        Expect.Contains(viewModel, "if (_editing is null)\n            return; // no child rows to show until this Department has been saved once");
+    }
+
+    // ------------------------------------------------------------------ TS_DetailMasterComponent
+
+    [TestMethod]
+    public async Task TS_DetailMasterComponent_refuses_a_table_with_no_child_tables()
+    {
+        string message = await Refusal("TS_DetailMasterComponent_v1.tt", Sample.DonateLeave());
+
+        StringAssert.Contains(message, "foreign key pointing back at");
+    }
+
+    [TestMethod]
+    public async Task TS_DetailMasterComponent_refuses_a_composite_primary_key()
+    {
+        var table = Sample.Table("Parent",
+            [Sample.Column("LeftId", SqlDbType.Int, primaryKey: true, ordinal: 1), Sample.Column("RightId", SqlDbType.Int, primaryKey: true, ordinal: 2)],
+            childForeignKeys: [Sample.ChildForeignKey("Child", "ParentId", "LeftId")]);
+
+        string message = await Refusal("TS_DetailMasterComponent_v1.tt", table);
+
+        StringAssert.Contains(message, "single int or uniqueidentifier primary key");
+    }
+
+    [TestMethod]
+    public async Task TS_DetailMasterComponent_writes_the_grid_form_plus_one_child_grid_per_child_table()
+    {
+        var files = GeneratedFiles.Split(await Render("TS_DetailMasterComponent_v1.tt", Sample.DepartmentWithTeams()))
+            .ToDictionary(f => Path.GetFileName(f.RelativePath));
+
+        Assert.HasCount(4, files);
+        string html = files["department-detail-master.component.html"].Content;
+        string ts = files["department-detail-master.component.ts"].Content;
+        string spec = files["department-detail-master.component.spec.ts"].Content;
+
+        Expect.Contains(html, "<h1>Departments</h1>");
+        Expect.Contains(html, "Department Team");
+        Expect.Contains(html, "*ngIf=\"selectedRow.departmentId; else saveDepartmentTeamFirst\"");
+        Expect.Contains(html, "*ngFor=\"let col of departmentTeamColumns\"");
+        Expect.Contains(html, "*ngFor=\"let row of departmentTeamRows\"");
+        Expect.Contains(html, "Save this Department first to see its Department Team rows.");
+
+        Expect.Contains(ts, "export class DepartmentDetailMasterComponent {");
+        Expect.Contains(ts, "departmentTeamRows: any[] = [];");
+        Expect.Contains(ts, "departmentTeamColumns: string[] = [];");
+        Expect.Contains(ts, "import { HttpClient } from '@angular/common/http';");
+        Expect.Contains(ts, "private http: HttpClient");
+        Expect.Contains(ts, "this.loadDepartmentTeam(department.departmentId!);");
+        Expect.Contains(ts, "private loadDepartmentTeam(parentId: number): void {");
+        Expect.Contains(ts, "this.http.get<any[]>('api/departmentteams').subscribe({");
+        Expect.Contains(ts, "this.departmentTeamRows = rows.filter((r: any) => r['departmentId'] === parentId);");
+        Expect.DoesNotContain(ts, "import { DepartmentTeam }"); // no dependency on the child's own model/service
+        Expect.DoesNotContain(ts, "DepartmentTeamService");
+
+        Expect.Contains(spec, "import { DepartmentDetailMasterComponent } from './department-detail-master.component';");
+    }
+
+    // ------------------------------------------------------------------ Cross-template consistency: a component's
+    // lookup drop-down calls this.<parent>Service.<method>() by NAME (it never sees TS_Service's own render), so
+    // nothing catches the two templates drifting apart except a test that renders both and compares them directly.
+    // TS_JunctionComponent/TS_DetailMasterComponent's own child-grid fetch is deliberately exempt (see
+    // Docs/specs.md section 11): it calls the API directly instead of assuming a parent service's shape at all.
+
+    private static string CalledServiceMethod(string componentTs, string serviceVar)
+    {
+        var match = Regex.Match(componentTs, $@"this\.{Regex.Escape(serviceVar)}\.(\w+)\(\)\.subscribe");
+        Assert.IsTrue(match.Success, $"expected a this.{serviceVar}.<method>().subscribe(...) call for the lookup list");
+        return match.Groups[1].Value;
+    }
+
+    [TestMethod]
+    public async Task TS_Component_calls_the_method_TS_Service_actually_generates_for_a_lookup_parent()
+    {
+        string parentServiceTs = await Render("TS_Service_v1.tt", Sample.Employee());
+        string componentTs = GeneratedFiles.Split(await Render("TS_Component_v1.tt", Sample.DonateLeave()))
+            .Single(f => f.RelativePath.EndsWith(".component.ts")).Content;
+
+        string calledMethod = CalledServiceMethod(componentTs, "employeeService");
+
+        Expect.Contains(parentServiceTs, $"{calledMethod}(): Observable<Employee[]>");
+    }
+
+    [TestMethod]
+    public async Task TS_DetailMasterComponent_calls_the_method_TS_Service_actually_generates_for_a_lookup_parent()
+    {
+        string parentServiceTs = await Render("TS_Service_v1.tt", Sample.Employee());
+        string componentTs = GeneratedFiles.Split(await Render("TS_DetailMasterComponent_v1.tt", Sample.TimeSheetWithEmployeeAndDetail()))
+            .Single(f => f.RelativePath.EndsWith(".component.ts")).Content;
+
+        string calledMethod = CalledServiceMethod(componentTs, "employeeService");
+
+        Expect.Contains(parentServiceTs, $"{calledMethod}(): Observable<Employee[]>");
+    }
+
+    // ------------------------------------------------------------------ API_Junction
+
+    [TestMethod]
+    public async Task API_Junction_refuses_a_table_that_is_not_a_junction_table()
+    {
+        string message = await Refusal("API_Junction_v1.tt", Sample.DonateLeave());
+
+        StringAssert.Contains(message, "IsJunctionTable");
+    }
+
+    [TestMethod]
+    public async Task API_Junction_registers_list_link_and_unlink_routes_over_the_context_directly()
+    {
+        string cs = await Render("API_Junction_v1.tt", Sample.JunctionWithSurrogateKey());
+
+        Expect.Contains(cs, "namespace TimeEntry.ApiService.Apis;");
+        Expect.Contains(cs, "public class NameBaseGroupXrefJunctionApi<T> : BaseApi<T> where T : class");
+        Expect.Contains(cs, "MapGet(_apiSubDir + \"/junction/{anchorId}\", GetJunctionList)");
+        Expect.Contains(cs, "MapPost(_apiSubDir + \"/junction/link\", Link)");
+        Expect.Contains(cs, "MapPost(_apiSubDir + \"/junction/unlink\", Unlink)");
+        Expect.Contains(cs, "public string? ShortDescr { get; set; }"); // Groups' display column
+        Expect.Contains(cs, "public record NameBaseGroupXrefJunctionLinkRequest(int AnchorId, int TargetId);");
+        // No repo: the handlers call the DbContext directly, same as the WinUI3 ViewModel.
+        Expect.DoesNotContain(cs, "Repo repo");
+    }
+
+    // ------------------------------------------------------------------ TS_JunctionComponent
+
+    [TestMethod]
+    public async Task TS_JunctionComponent_refuses_a_table_that_is_not_a_junction_table()
+    {
+        string message = await Refusal("TS_JunctionComponent_v1.tt", Sample.DonateLeave());
+
+        StringAssert.Contains(message, "IsJunctionTable");
+    }
+
+    [TestMethod]
+    public async Task TS_JunctionComponent_writes_the_four_files_with_a_shuttle_control()
+    {
+        var files = GeneratedFiles.Split(await Render("TS_JunctionComponent_v1.tt", Sample.JunctionWithSurrogateKey()))
+            .ToDictionary(f => Path.GetFileName(f.RelativePath));
+
+        Assert.HasCount(4, files);
+        Expect.Contains(files["namebasegroupxref-junction.component.html"].Content, "[(ngModel)]=\"availableSelectionIds\"");
+        Expect.Contains(files["namebasegroupxref-junction.component.html"].Content, "[(ngModel)]=\"selectedSelectionIds\"");
+
+        string ts = files["namebasegroupxref-junction.component.ts"].Content;
+        Expect.Contains(ts, "export class NameBaseGroupXrefJunctionComponent implements OnInit");
+        Expect.Contains(ts, "@Input({ required: true }) anchorId!: number;");
+        Expect.Contains(ts, "shortDescr?: string;"); // Groups' display column, camelCased like TS_Model
+        Expect.Contains(ts, "private apiUrl = 'api/namebasegroupxrefs/junction';");
+        Expect.Contains(ts, "this.http.get<NameBaseGroupXrefJunctionItem[]>(`${this.apiUrl}/${this.anchorId}`)");
+        Expect.Contains(ts, "this.http.post(`${this.apiUrl}/link`, { anchorId: this.anchorId, targetId: item.targetId })");
+        Expect.Contains(ts, "this.http.post(`${this.apiUrl}/unlink`, { anchorId: this.anchorId, targetId: item.targetId })");
+
+        Expect.Contains(files["namebasegroupxref-junction.component.spec.ts"].Content, "provideHttpClient(), provideHttpClientTesting()");
     }
 
     // ------------------------------------------------------------------ ModifiedUserColumn (e.g. ModifiedBy, UpdatedBy)
@@ -463,6 +860,31 @@ public class TemplateRenderingTests
         StringAssert.Contains(await Refusal("TS_Component_v1.tt", Sample.CompositeKey()), "composite primary key");
     }
 
+    // ------------------------------------------------------------------ name/active tables (Name + IsActive):
+    // their real API is always hand-maintained and commonly has no plain getAll() at all (see TS_Service.tt's
+    // header comment and Docs/specs.md section 5.3's RequiresNotNameActiveTable), so every template that
+    // assumes a plain getAll()-style backend refuses one, matching API_Crud.tt's own long-standing refusal.
+
+    [TestMethod]
+    public async Task TS_Service_refuses_a_name_active_table()
+    {
+        StringAssert.Contains(await Refusal("TS_Service_v1.tt", Sample.DepartmentTeam()), "NameActiveRepo");
+    }
+
+    [TestMethod]
+    public async Task TS_Component_refuses_a_name_active_table()
+    {
+        StringAssert.Contains(await Refusal("TS_Component_v1.tt", Sample.DepartmentTeam()), "NameActiveRepo");
+    }
+
+    [TestMethod]
+    public async Task TS_DetailMasterComponent_refuses_a_name_active_table_even_though_it_has_child_tables()
+    {
+        // Has children (so it would otherwise pass) -- confirms the name/active check is actually reached,
+        // not shadowed by an earlier refusal.
+        StringAssert.Contains(await Refusal("TS_DetailMasterComponent_v1.tt", Sample.NameActiveTableWithChildren()), "NameActiveRepo");
+    }
+
     // ------------------------------------------------------------------ TS_Component
 
     [TestMethod]
@@ -535,6 +957,14 @@ public class TemplateRenderingTests
         Expect.Contains(ts, "started: new Date().toISOString().substring(0, 10)");
         Expect.Contains(ts, "isOpen: true");
         Expect.Contains(ts, "count: 0");
+    }
+
+    [TestMethod]
+    public async Task A_column_covered_by_two_foreign_keys_to_the_same_parent_does_not_crash_the_component()
+    {
+        var files = GeneratedFiles.Split(await Render("TS_Component_v1.tt", Sample.DuplicateForeignKeyColumn()));
+
+        Assert.IsTrue(files.Any(f => f.RelativePath.EndsWith("product.component.ts")));
     }
 
     [TestMethod]

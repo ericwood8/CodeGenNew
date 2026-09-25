@@ -1,16 +1,18 @@
+using CodeGenNew.Core;
+
 namespace CodeGenNew.SchemaIntrospection;
 
 /// <summary> Name-pattern match for audit/tracking columns, used to exclude them from DisplayColumnSelector
 /// (Docs/specs.md section 6). </summary>
 public static class AuditColumnClassifier
 {
-    public static bool IsAuditColumn(string columnName) =>
-        columnName.StartsWith("Create", StringComparison.OrdinalIgnoreCase) ||
-        (columnName.Contains("Modif", StringComparison.OrdinalIgnoreCase) && !columnName.Equals("IsBeingModified", StringComparison.OrdinalIgnoreCase)) ||
-        columnName.Contains("Change", StringComparison.OrdinalIgnoreCase) ||
-        columnName.StartsWith("Delete", StringComparison.OrdinalIgnoreCase) ||
-        columnName.StartsWith("Update", StringComparison.OrdinalIgnoreCase) ||
-        columnName.StartsWith("Inactiv", StringComparison.OrdinalIgnoreCase) ||
-        columnName.StartsWith("Activ", StringComparison.OrdinalIgnoreCase) ||
-        columnName.Equals("BadAddressDate", StringComparison.OrdinalIgnoreCase);
+    public static bool IsAuditColumn(this string columnName) =>
+        columnName.StartsWithIgnoreCase("Create") ||
+        (columnName.ContainsIgnoreCase("Modif") && !columnName.EqualsIgnoreCase("IsBeingModified")) ||
+        columnName.ContainsIgnoreCase("Change") ||
+        columnName.StartsWithIgnoreCase("Delete") ||
+        columnName.StartsWithIgnoreCase("Update") ||
+        columnName.StartsWithIgnoreCase("Inactiv") ||
+        columnName.StartsWithIgnoreCase("Activ") ||
+        columnName.EqualsIgnoreCase("BadAddressDate");
 }

@@ -1,12 +1,11 @@
 using System.Collections.ObjectModel;
 using CodeGenNew.App.Services;
 using CodeGenNew.Connections;
+using CodeGenNew.Core;
 using CodeGenNew.SchemaIntrospection;
 using CodeGenNew.TemplateEngine;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.UI;
-using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
 
@@ -23,8 +22,6 @@ public partial class MainViewModel : ObservableObject
     // Nocturne theme's error red (Themes/NocturneTheme.xaml), not a harsh pure red -- stays legible and
     // accessible against the dark background.
     private static readonly SolidColorBrush WarningBrush = new(Color.FromArgb(255, 242, 103, 122));
-    private static readonly Brush DefaultStatusBrush = (Application.Current.Resources["TextFillColorPrimaryBrush"] as Brush)
-        ?? new SolidColorBrush(Colors.White);
 
     public IconProvider Icons { get; }
     public ObservableCollection<TableNodeViewModel> Tables { get; } = [];
@@ -43,9 +40,9 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary> Red only for the "spCanDelete was not found" warning appended in ConnectAsync; every
     /// other status message (progress, success, errors already worded as such) keeps the normal text color. </summary>
-    public Brush StatusBrush => StatusMessage.Contains("spCanDelete was not found", StringComparison.OrdinalIgnoreCase)
+    public Brush StatusBrush => StatusMessage.ContainsIgnoreCase("spCanDelete was not found")
         ? WarningBrush
-        : DefaultStatusBrush;
+        : ThemeBrushes.DefaultText;
 
     partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(StatusBrush));
 
@@ -77,7 +74,7 @@ public partial class MainViewModel : ObservableObject
 
             StatusMessage = $"Loaded {Tables.Count} table(s).";
 
-            await using var probeConnection = SqlServerConnectionFactory.CreateConnection(request);
+            await using var probeConnection = request.CreateConnection();
             await probeConnection.OpenAsync();
             var (status, wasCached) = await SpCanDeleteVerifier.GetOrVerifyAsync(
                 probeConnection, request.ServerName, request.DatabaseName, _settings.SpCanDeleteVerificationConfigPath);
@@ -124,7 +121,7 @@ public partial class MainViewModel : ObservableObject
     /// <summary> Templates applicable to this table's shape, for building its right-click menu (section 8). </summary>
     public List<TemplateInfo> GetApplicableTemplates(TableNodeViewModel table) =>
         TemplateCatalog.Discover(_settings.TemplatesDirectory)
-            .Where(t => t.AppliesTo(table.Summary.HasPrimaryKey, isView: false))
+            .Where(t => t.AppliesTo(table.Summary.HasPrimaryKey, isView: false, table.Summary.IsJunctionTable, table.Summary.HasChildForeignKeys, table.Summary.PrimaryKeyShape, table.Summary.IsNameActiveTable))
             .ToList();
 
     /// <summary> Every file the last successful RunTemplateAsync wrote (most templates write one; the TS_ templates several). </summary>

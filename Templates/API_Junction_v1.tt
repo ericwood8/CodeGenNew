@@ -1,0 +1,137 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string apiNamespace = "TimeEntry.ApiService.Apis";
+    string contextType = "TimeEntryContext";
+    string[] usings = { };
+    // ==========================================================================================
+
+    // ------------------------------------------------------------------------------------------
+    // API_Junction_v1.tt
+    // Generates: <TableName>JunctionApi.cs   (see OutputName in API_Junction_v1.tt.config)
+    //
+    // The HTTP companion to SP_Junction.tt for a many-to-many junction table (TableModel.IsJunctionTable,
+    // RequiresJunctionTable=true) -- what WinUI3_JunctionEditor.tt's ViewModel reaches directly via EF Core
+    // (it's in the same process as the database), a browser-based screen (TS_JunctionComponent.tt) cannot,
+    // so this exposes the same three operations over HTTP instead:
+    //     GET  /<plural>/junction/{anchorId}          every target row + IsSelected  (calls <Table>_List)
+    //     POST /<plural>/junction/link                { anchorId, targetId }          (calls <Table>_Link)
+    //     POST /<plural>/junction/unlink               { anchorId, targetId }          (calls <Table>_Unlink)
+    //
+    // Like API_Crud.tt, handlers are static methods over BaseApi<T>'s route-naming helper
+    // (BreakIntoStrings), registered from Register(). Unlike API_Crud.tt, there is no <Table>Repo to go
+    // through -- a junction table's only real operations ARE List/Link/Unlink, so the handlers call the
+    // three SP_Junction.tt procedures directly through the injected DbContext
+    // (Database.SqlQueryRaw<T>/ExecuteSqlInterpolatedAsync), the same way WinUI3_JunctionEditor.tt's
+    // ViewModel does -- one fewer generated class, and one less thing for the two templates' conventions to
+    // drift apart on.
+    //
+    // Display columns are read as plain strings: SP_Junction.tt CASTs them to NVARCHAR in its SELECT list
+    // specifically so this DTO never needs to know a display column's real SQL type.
+    //
+    // Requires a primary key and TableModel.IsJunctionTable (RequiresJunctionTable=true), and the target
+    // table's display columns (NeedsReferencedDisplayColumns=true), the same restrictions SP_Junction.tt
+    // itself has -- generate that first.
+
+    if (!Model.IsJunctionTable)
+        Error($"API_Junction cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it is not a many-to-many junction table -- TableModel.IsJunctionTable is false.");
+    if (!Model.HasReferencedDisplayColumns)
+        Error("API_Junction needs the target table's display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
+
+    string CSharpType(System.Data.SqlDbType type) => type switch
+    {
+        System.Data.SqlDbType.Int => "int",
+        System.Data.SqlDbType.BigInt => "long",
+        System.Data.SqlDbType.SmallInt => "short",
+        System.Data.SqlDbType.TinyInt => "byte",
+        System.Data.SqlDbType.UniqueIdentifier => "Guid",
+        System.Data.SqlDbType.Char or System.Data.SqlDbType.VarChar or System.Data.SqlDbType.NChar or System.Data.SqlDbType.NVarChar => "string",
+        _ => "int"
+    };
+
+    var anchorFk = Model.JunctionForeignKeys[0];
+    var targetFk = Model.JunctionForeignKeys[1];
+    var anchorColumn = Model.Columns.First(c => c.Name.Equals(anchorFk.ReferencingColumns[0], System.StringComparison.OrdinalIgnoreCase));
+    var targetColumn = Model.Columns.First(c => c.Name.Equals(targetFk.ReferencingColumns[0], System.StringComparison.OrdinalIgnoreCase));
+    string anchorType = CSharpType(anchorColumn.SqlType);
+    string targetType = CSharpType(targetColumn.SqlType);
+    string entity = Model.TableName;
+    var displayColumns = targetFk.ReferencedDisplayColumns;
+
+    string usingLines = string.Concat(usings.Select(u => $"using {u};\n"));
+#>
+namespace <#= apiNamespace #>;
+
+<#= usingLines #>using Microsoft.EntityFrameworkCore;
+using static Microsoft.AspNetCore.Http.TypedResults;
+
+/// <summary> One row of <#= entity #>_List's result set. Display columns are plain strings -- see
+/// <#= entity #>_List's CAST in SP_Junction.tt's output for why. </summary>
+public class <#= entity #>JunctionItem
+{
+<#
+    for (int i = 0; i < displayColumns.Count; i++)
+    {
+#>
+    public string? <#= displayColumns[i] #> { get; set; }
+<#
+    }
+#>
+    public <#= targetType #> TargetId { get; set; }
+    public bool IsSelected { get; set; }
+}
+
+public record <#= entity #>JunctionLinkRequest(<#= anchorType #> AnchorId, <#= targetType #> TargetId);
+
+public class <#= entity #>JunctionApi<T> : BaseApi<T> where T : class
+{
+    public override void Register(WebApplication app)
+    {
+        BreakIntoStrings(out string _singular, out string plural, out string _apiSubDir);
+
+        app.MapGet(_apiSubDir + "/junction/{anchorId}", GetJunctionList)
+        .WithName($"Get{plural}JunctionList")
+        .WithOpenApi()
+        .Produces<IEnumerable<<#= entity #>JunctionItem>>()
+        .ProducesProblem(500);
+
+        app.MapPost(_apiSubDir + "/junction/link", Link)
+        .WithName($"Link{plural}Junction")
+        .WithOpenApi()
+        .ProducesProblem(500);
+
+        app.MapPost(_apiSubDir + "/junction/unlink", Unlink)
+        .WithName($"Unlink{plural}Junction")
+        .WithOpenApi()
+        .ProducesProblem(500);
+    }
+
+    private static async Task<IResult> GetJunctionList([FromServices] <#= contextType #> context, <#= anchorType #> anchorId)
+    {
+        var rows = await context.Database
+            .SqlQueryRaw<<#= entity #>JunctionItem>("EXEC [<#= Model.SchemaName #>].[<#= entity #>_List] @Anchor<#= anchorColumn.Name #>",
+                new Microsoft.Data.SqlClient.SqlParameter("@Anchor<#= anchorColumn.Name #>", anchorId))
+            .ToListAsync();
+        return Ok(rows);
+    }
+
+    private static async Task<IResult> Link([FromServices] <#= contextType #> context, [FromBody] <#= entity #>JunctionLinkRequest request)
+    {
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"EXEC [<#= Model.SchemaName #>].[<#= entity #>_Link] {request.AnchorId}, {request.TargetId}");
+        return Ok();
+    }
+
+    private static async Task<IResult> Unlink([FromServices] <#= contextType #> context, [FromBody] <#= entity #>JunctionLinkRequest request)
+    {
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"EXEC [<#= Model.SchemaName #>].[<#= entity #>_Unlink] {request.AnchorId}, {request.TargetId}");
+        return Ok();
+    }
+}

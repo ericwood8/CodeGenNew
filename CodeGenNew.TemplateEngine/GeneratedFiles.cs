@@ -1,6 +1,6 @@
 namespace CodeGenNew.TemplateEngine;
 
-/// <summary> Turns a template's output into files on disk. Most templates produce ONE file, named by OutputFileNaming.
+/// <summary> Turns a template's output into files on disk. Most templates produce ONE file, named by TemplateInfo.BuildFileName.
 /// A template that must produce several -- or a file inside sub-folders, as the Angular TS_ templates do -- says so itself by
 /// writing a marker line before each file:
 ///
@@ -68,7 +68,7 @@ public static class GeneratedFiles
         if (!HasMarkers(generatedText))
         {
             Directory.CreateDirectory(outputDirectory);
-            string single = Path.Combine(outputDirectory, OutputFileNaming.BuildFileName(template, tableName));
+            string single = Path.Combine(outputDirectory, template.BuildFileName(tableName));
             await File.WriteAllTextAsync(single, generatedText, cancellationToken);
             written.Add(single);
             return written;

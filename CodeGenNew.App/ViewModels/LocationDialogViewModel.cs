@@ -3,17 +3,10 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace CodeGenNew.App.ViewModels;
 
 /// <summary> Backs the Location screen (Docs/specs.md section 9.2). </summary>
-public partial class LocationDialogViewModel : ObservableObject
+public partial class LocationDialogViewModel : StatusMessageViewModel
 {
     [ObservableProperty]
     private string _outputDirectory = "";
-
-    [ObservableProperty]
-    private string _statusMessage = "";
-
-    public bool HasStatusMessage => !string.IsNullOrEmpty(StatusMessage);
-
-    partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasStatusMessage));
 
     /// <summary> Validates the path, returning a prompt message if it doesn't exist yet (caller asks the
     /// developer whether to create it) or null if the path is already valid. </summary>

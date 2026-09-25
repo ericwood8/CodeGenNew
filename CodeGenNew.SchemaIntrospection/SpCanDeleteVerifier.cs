@@ -1,3 +1,4 @@
+using CodeGenNew.Core;
 using Microsoft.Data.SqlClient;
 
 namespace CodeGenNew.SchemaIntrospection;
@@ -40,8 +41,8 @@ public static class SpCanDeleteVerifier
         CancellationToken cancellationToken = default)
     {
         var cached = LoadEntries(configPath).FirstOrDefault(e =>
-            e.ServerName.Equals(serverName, StringComparison.OrdinalIgnoreCase) &&
-            e.DatabaseName.Equals(databaseName, StringComparison.OrdinalIgnoreCase));
+            e.ServerName.EqualsIgnoreCase(serverName) &&
+            e.DatabaseName.EqualsIgnoreCase(databaseName));
 
         if (cached is not null)
             return (cached.Status, true);
@@ -61,18 +62,18 @@ public static class SpCanDeleteVerifier
             while (await reader.ReadAsync(cancellationToken))
             {
                 parameters.Add((
-                    reader.GetString(reader.GetOrdinal("ParamName")),
-                    reader.GetString(reader.GetOrdinal("TypeName")),
-                    reader.GetBoolean(reader.GetOrdinal("IsOutput"))));
+                    reader.GetString("ParamName"),
+                    reader.GetString("TypeName"),
+                    reader.GetBoolean("IsOutput")));
             }
         }
 
         bool matches = parameters.Count == 2
-            && parameters[0].Name.Equals(ExpectedParam1Name, StringComparison.OrdinalIgnoreCase)
-            && parameters[0].Type.Equals(ExpectedParam1Type, StringComparison.OrdinalIgnoreCase)
+            && parameters[0].Name.EqualsIgnoreCase(ExpectedParam1Name)
+            && parameters[0].Type.EqualsIgnoreCase(ExpectedParam1Type)
             && !parameters[0].IsOutput
-            && parameters[1].Name.Equals(ExpectedParam2Name, StringComparison.OrdinalIgnoreCase)
-            && parameters[1].Type.Equals(ExpectedParam2Type, StringComparison.OrdinalIgnoreCase)
+            && parameters[1].Name.EqualsIgnoreCase(ExpectedParam2Name)
+            && parameters[1].Type.EqualsIgnoreCase(ExpectedParam2Type)
             && !parameters[1].IsOutput;
 
         return matches ? SpCanDeleteStatus.Verified : SpCanDeleteStatus.NotFoundOrWrongSignature;

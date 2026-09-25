@@ -1,4 +1,5 @@
 using System.Reflection;
+using CodeGenNew.Core;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Storage.Streams;
 
@@ -57,7 +58,7 @@ public class IconProvider
 
         // Match on ".<file name>" so "table.png" cannot also match "database_table.png" (whichever came first in the
         // manifest used to win, giving tables the wrong icon).
-        string? resourceName = ResourceNames.FirstOrDefault(n => n.EndsWith("." + fileName, StringComparison.OrdinalIgnoreCase));
+        string? resourceName = ResourceNames.FirstOrDefault(n => n.EndsWithIgnoreCase("." + fileName));
         if (resourceName is not null)
             _ = LoadAsync(image, resourceName);
 

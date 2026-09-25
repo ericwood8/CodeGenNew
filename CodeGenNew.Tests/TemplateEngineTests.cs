@@ -1,12 +1,12 @@
 using System.Reflection;
-using System.Security.Cryptography;
 using System.Text;
+using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 
 namespace CodeGenNew.Tests;
 
 [TestClass]
-public class OutputFileNamingTests
+public class TemplateInfoBuildFileNameTests
 {
     private static TemplateInfo Template(string name, string? outputName = null) => new()
     {
@@ -24,19 +24,19 @@ public class OutputFileNamingTests
     [DataRow("Other_Thing", "Holiday", "Holiday_Thing.txt")]
     public void The_extension_follows_the_submenu_group(string template, string table, string expected)
     {
-        Assert.AreEqual(expected, OutputFileNaming.BuildFileName(Template(template), table));
+        Assert.AreEqual(expected, Template(template).BuildFileName(table));
     }
 
     [TestMethod]
     public void OutputName_replaces_the_whole_name_and_fills_in_the_table()
     {
-        Assert.AreEqual("E_DonateLeaveApi.cs", OutputFileNaming.BuildFileName(Template("API_Crud", "{Table}Api.cs"), "E_DonateLeave"));
+        Assert.AreEqual("E_DonateLeaveApi.cs", Template("API_Crud", "{Table}Api.cs").BuildFileName("E_DonateLeave"));
     }
 
     [TestMethod]
     public void OutputName_can_never_be_a_path()
     {
-        Assert.AreEqual("x.cs", OutputFileNaming.BuildFileName(Template("API_Crud", "../../{Table}.cs"), "x"));
+        Assert.AreEqual("x.cs", Template("API_Crud", "../../{Table}.cs").BuildFileName("x"));
     }
 }
 
@@ -79,6 +79,190 @@ public class TemplateConfigTests
         Assert.IsTrue(TemplateConfig.Load(Repo.Template("TS_Component_v1.tt.config")).NeedsReferencedDisplayColumns);
         Assert.AreEqual("{Table}Api.cs", TemplateConfig.Load(Repo.Template("API_Crud_v1.tt.config")).OutputName);
         Assert.AreEqual("{Table}Repo.cs", TemplateConfig.Load(Repo.Template("CS_Repo_v1.tt.config")).OutputName);
+    }
+
+    [TestMethod]
+    public void RequiredPrimaryKeyShape_is_read_and_unknown_values_are_treated_as_unset()
+    {
+        using var temp = new TempFolder();
+
+        Assert.AreEqual(PrimaryKeyRequirement.SingleInt, TemplateConfig.Load(temp.File("a.tt.config", "RequiredPrimaryKeyShape=SingleInt\n")).RequiredPrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyRequirement.SingleIntOrGuid, TemplateConfig.Load(temp.File("b.tt.config", "RequiredPrimaryKeyShape=singleintorguid\n")).RequiredPrimaryKeyShape);
+        Assert.IsNull(TemplateConfig.Load(temp.File("c.tt.config", "RequiredPrimaryKeyShape=NotARealShape\n")).RequiredPrimaryKeyShape);
+        Assert.IsNull(TemplateConfig.Load(temp.File("d.tt.config", "TableOnly=true\n")).RequiredPrimaryKeyShape);
+    }
+
+    [TestMethod]
+    public void PrimaryKeyShapeSatisfies_matches_each_tier()
+    {
+        var singleColumn = new TemplateConfig { RequiredPrimaryKeyShape = PrimaryKeyRequirement.SingleColumn };
+        var singleIntOrGuid = new TemplateConfig { RequiredPrimaryKeyShape = PrimaryKeyRequirement.SingleIntOrGuid };
+        var singleInt = new TemplateConfig { RequiredPrimaryKeyShape = PrimaryKeyRequirement.SingleInt };
+        var unrestricted = new TemplateConfig();
+
+        foreach (var shape in new[] { PrimaryKeyShape.SingleInt, PrimaryKeyShape.SingleUniqueIdentifier, PrimaryKeyShape.SingleOther })
+            Assert.IsTrue(singleColumn.PrimaryKeyShapeSatisfies(shape), shape.ToString());
+        Assert.IsFalse(singleColumn.PrimaryKeyShapeSatisfies(PrimaryKeyShape.Composite));
+        Assert.IsFalse(singleColumn.PrimaryKeyShapeSatisfies(PrimaryKeyShape.None));
+
+        Assert.IsTrue(singleIntOrGuid.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleInt));
+        Assert.IsTrue(singleIntOrGuid.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleUniqueIdentifier));
+        Assert.IsFalse(singleIntOrGuid.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleOther));
+        Assert.IsFalse(singleIntOrGuid.PrimaryKeyShapeSatisfies(PrimaryKeyShape.Composite));
+
+        Assert.IsTrue(singleInt.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleInt));
+        Assert.IsFalse(singleInt.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleUniqueIdentifier));
+        Assert.IsFalse(singleInt.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleOther));
+
+        foreach (var shape in Enum.GetValues<PrimaryKeyShape>())
+            Assert.IsTrue(unrestricted.PrimaryKeyShapeSatisfies(shape), shape.ToString());
+    }
+
+    [TestMethod]
+    public void The_shipped_configs_restrict_the_key_shape_they_actually_need()
+    {
+        Assert.AreEqual(PrimaryKeyRequirement.SingleColumn, TemplateConfig.Load(Repo.Template("TS_Model_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyRequirement.SingleIntOrGuid, TemplateConfig.Load(Repo.Template("TS_Service_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyRequirement.SingleIntOrGuid, TemplateConfig.Load(Repo.Template("TS_Component_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyRequirement.SingleIntOrGuid, TemplateConfig.Load(Repo.Template("TS_DetailMasterComponent_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyRequirement.SingleInt, TemplateConfig.Load(Repo.Template("API_Crud_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyRequirement.SingleInt, TemplateConfig.Load(Repo.Template("WinUI3_MasterScreen_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyRequirement.SingleInt, TemplateConfig.Load(Repo.Template("WinUI3_DetailScreen_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyRequirement.SingleInt, TemplateConfig.Load(Repo.Template("WinUI3_DetailMasterScreen_v1.tt.config")).RequiredPrimaryKeyShape);
+        // Junction/child-grid data access goes by the two FK columns or the child's own FK, never the table's
+        // own primary key shape, so these are deliberately unrestricted.
+        Assert.IsNull(TemplateConfig.Load(Repo.Template("SP_Junction_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.IsNull(TemplateConfig.Load(Repo.Template("WinUI3_JunctionEditor_v1.tt.config")).RequiredPrimaryKeyShape);
+    }
+
+    [TestMethod]
+    public void RequiresNotNameActiveTable_is_read()
+    {
+        using var temp = new TempFolder();
+
+        Assert.IsTrue(TemplateConfig.Load(temp.File("a.tt.config", "RequiresNotNameActiveTable=true\n")).RequiresNotNameActiveTable);
+        Assert.IsFalse(TemplateConfig.Load(temp.File("b.tt.config", "TableOnly=true\n")).RequiresNotNameActiveTable);
+    }
+
+    [TestMethod]
+    public void The_shipped_configs_that_assume_a_plain_getAll_style_backend_refuse_name_active_tables()
+    {
+        Assert.IsTrue(TemplateConfig.Load(Repo.Template("TS_Service_v1.tt.config")).RequiresNotNameActiveTable);
+        Assert.IsTrue(TemplateConfig.Load(Repo.Template("TS_Component_v1.tt.config")).RequiresNotNameActiveTable);
+        Assert.IsTrue(TemplateConfig.Load(Repo.Template("TS_DetailMasterComponent_v1.tt.config")).RequiresNotNameActiveTable);
+        Assert.IsTrue(TemplateConfig.Load(Repo.Template("API_Crud_v1.tt.config")).RequiresNotNameActiveTable);
+        Assert.IsTrue(TemplateConfig.Load(Repo.Template("WinUI3_MasterScreen_v1.tt.config")).RequiresNotNameActiveTable);
+        Assert.IsTrue(TemplateConfig.Load(Repo.Template("WinUI3_DetailScreen_v1.tt.config")).RequiresNotNameActiveTable);
+        Assert.IsTrue(TemplateConfig.Load(Repo.Template("WinUI3_DetailMasterScreen_v1.tt.config")).RequiresNotNameActiveTable);
+        // TS_Model has no API dependency at all (it's just the interface shape); junction/child-grid
+        // templates go through their own dedicated endpoints, not a plain getAll() -- neither is restricted.
+        Assert.IsFalse(TemplateConfig.Load(Repo.Template("TS_Model_v1.tt.config")).RequiresNotNameActiveTable);
+        Assert.IsFalse(TemplateConfig.Load(Repo.Template("TS_JunctionComponent_v1.tt.config")).RequiresNotNameActiveTable);
+        Assert.IsFalse(TemplateConfig.Load(Repo.Template("WinUI3_JunctionEditor_v1.tt.config")).RequiresNotNameActiveTable);
+    }
+}
+
+[TestClass]
+public class TemplateConfigRefuseTests
+{
+    // Refuse(TableModel) is what the CLI's own pre-check calls (Program.cs used to run these five checks by
+    // hand, one per restriction); AppliesTo/PrimaryKeyShapeSatisfies above already cover the underlying
+    // rules, so these just prove Refuse explains each one in a way a person reads sensibly.
+
+    [TestMethod]
+    public void Refuse_explains_a_missing_primary_key()
+    {
+        var config = new TemplateConfig { RequiresPrimaryKey = true };
+        var table = Sample.Table("Thing", [Sample.Column("Label", System.Data.SqlDbType.NVarChar)]); // no PK
+
+        StringAssert.Contains(config.Refuse(table)!, "requires a primary key");
+    }
+
+    [TestMethod]
+    public void Refuse_explains_a_non_junction_table()
+    {
+        var config = new TemplateConfig { RequiresJunctionTable = true };
+
+        StringAssert.Contains(config.Refuse(Sample.DonateLeave())!, "junction/bridge table");
+    }
+
+    [TestMethod]
+    public void Refuse_explains_a_table_with_no_children()
+    {
+        var config = new TemplateConfig { RequiresChildTables = true };
+
+        StringAssert.Contains(config.Refuse(Sample.DonateLeave())!, "foreign key pointing back at it");
+    }
+
+    [TestMethod]
+    public void Refuse_explains_a_wrong_primary_key_shape()
+    {
+        var config = new TemplateConfig { RequiredPrimaryKeyShape = PrimaryKeyRequirement.SingleInt };
+
+        StringAssert.Contains(config.Refuse(Sample.NaturalKey())!, "SingleInt primary key");
+    }
+
+    [TestMethod]
+    public void Refuse_explains_a_name_active_table()
+    {
+        var config = new TemplateConfig { RequiresNotNameActiveTable = true };
+
+        StringAssert.Contains(config.Refuse(Sample.DepartmentTeam())!, "NameActiveRepo");
+    }
+
+    [TestMethod]
+    public void Refuse_is_null_when_every_restriction_is_satisfied()
+    {
+        Assert.IsNull(new TemplateConfig().Refuse(Sample.DonateLeave()));
+    }
+}
+
+[TestClass]
+public class TemplateInfoAppliesToTests
+{
+    private static TemplateInfo Template(PrimaryKeyRequirement? shape) => new()
+    {
+        FilePath = "X.tt",
+        Name = "X",
+        Config = new TemplateConfig { RequiredPrimaryKeyShape = shape }
+    };
+
+    [TestMethod]
+    public void A_template_that_needs_a_single_int_or_guid_key_does_not_apply_to_a_composite_or_natural_key_table()
+    {
+        var t = Template(PrimaryKeyRequirement.SingleIntOrGuid);
+
+        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: PrimaryKeyShape.SingleInt));
+        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: PrimaryKeyShape.SingleUniqueIdentifier));
+        Assert.IsFalse(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: PrimaryKeyShape.Composite));
+        Assert.IsFalse(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: PrimaryKeyShape.SingleOther));
+    }
+
+    [TestMethod]
+    public void A_template_with_no_key_shape_restriction_applies_regardless_of_shape()
+    {
+        var t = Template(shape: null);
+
+        foreach (var shape in Enum.GetValues<PrimaryKeyShape>())
+            Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: shape), shape.ToString());
+    }
+
+    [TestMethod]
+    public void A_template_that_requires_not_name_active_does_not_apply_to_a_name_active_table()
+    {
+        var t = new TemplateInfo { FilePath = "X.tt", Name = "X", Config = new TemplateConfig { RequiresNotNameActiveTable = true } };
+
+        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, isNameActiveTable: false));
+        Assert.IsFalse(t.AppliesTo(tableHasPrimaryKey: true, isView: false, isNameActiveTable: true));
+    }
+
+    [TestMethod]
+    public void A_template_that_does_not_require_not_name_active_applies_either_way()
+    {
+        var t = new TemplateInfo { FilePath = "X.tt", Name = "X", Config = new TemplateConfig() };
+
+        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, isNameActiveTable: false));
+        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, isNameActiveTable: true));
     }
 }
 
@@ -157,10 +341,11 @@ public class TemplateCatalogTests
         var offered = TemplateCatalog.Discover(Repo.TemplatesDirectory);
 
         var groups = offered.GroupBy(t => t.SubmenuGroup).ToDictionary(g => g.Key!, g => g.Count());
-        Assert.AreEqual(7, groups["SP"]);
-        Assert.AreEqual(1, groups["API"]);
+        Assert.AreEqual(8, groups["SP"]);
+        Assert.AreEqual(2, groups["API"]);
         Assert.AreEqual(3, groups["CS"]);
-        Assert.AreEqual(3, groups["TS"]);
+        Assert.AreEqual(5, groups["TS"]);
+        Assert.AreEqual(4, groups["WinUI3"]);
         Assert.IsTrue(offered.All(t => !t.IsSuperseded));
     }
 }
@@ -171,7 +356,7 @@ public class DefaultAssetSeederTests
     // The CLI assembly carries the embedded copies of every shipped template; the seeder is handed it, as at run time.
     private static Assembly Shipped => typeof(CodeGenNew.Cli.Program).Assembly;
 
-    private static string Hash(string text) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
+    private static string Hash(string text) => Encoding.UTF8.GetBytes(text).Sha256Hex();
 
     private static IReadOnlyList<SeedNotice> Seed(TempFolder temp) =>
         DefaultAssetSeeder.EnsureDefaultAssets(

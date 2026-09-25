@@ -1,3 +1,4 @@
+using CodeGenNew.Core;
 using CodeGenNew.SchemaIntrospection;
 
 namespace CodeGenNew.Tests;
@@ -19,16 +20,16 @@ public class SpecialLogicColumnsConfigTests
     /// against its FlagPatterns instead. </summary>
     private static bool MatchesColumn(string category, string columnName)
     {
-        var rule = Rules.Single(r => r.Category.Equals(category, StringComparison.OrdinalIgnoreCase));
+        var rule = Rules.Single(r => r.Category.EqualsIgnoreCase(category));
         return rule.IsPairRule
-            ? rule.FlagPatterns.Any(p => SpecialLogicColumnsConfig.MatchesPattern(columnName, p, rule.IgnoreCase))
-            : SpecialLogicColumnsConfig.MatchesColumnRule(rule, columnName);
+            ? rule.FlagPatterns.Any(p => columnName.MatchesPattern(p, rule.IgnoreCase))
+            : rule.MatchesColumnRule(columnName);
     }
 
     private static (string? Flag, string? Companion) MatchesPair(string category, params string[] columnNames)
     {
-        var rule = Rules.Single(r => r.Category.Equals(category, StringComparison.OrdinalIgnoreCase) && r.IsPairRule);
-        var match = SpecialLogicColumnsConfig.EvaluatePairRule(rule, columnNames);
+        var rule = Rules.Single(r => r.Category.EqualsIgnoreCase(category) && r.IsPairRule);
+        var match = rule.EvaluatePairRule(columnNames);
         return match is null ? (null, null) : (match.Value.FlagColumn, match.Value.CompanionColumn);
     }
 
@@ -85,15 +86,15 @@ public class SpecialLogicColumnsConfigTests
         // config-authoring invariant, not something the matching code enforces -- this test is the guard.
         foreach (var rule in Rules.Where(r => !r.IsPairRule))
         {
-            if (!rule.Category.Equals("ModifiedDateColumn", StringComparison.OrdinalIgnoreCase))
+            if (!rule.Category.EqualsIgnoreCase("ModifiedDateColumn"))
                 continue;
 
-            var modifiedUserRule = Rules.Single(r => r.Category.Equals("ModifiedUserColumn", StringComparison.OrdinalIgnoreCase));
+            var modifiedUserRule = Rules.Single(r => r.Category.EqualsIgnoreCase("ModifiedUserColumn"));
             foreach (string pattern in rule.FlagPatterns)
             {
                 // A representative column name for this pattern (strip wildcards) must not also match ModifiedUserColumn.
                 string sample = pattern.Trim('*');
-                Assert.IsFalse(SpecialLogicColumnsConfig.MatchesColumnRule(modifiedUserRule, sample),
+                Assert.IsFalse(modifiedUserRule.MatchesColumnRule(sample),
                     $"ModifiedDateColumn pattern '{pattern}' collides with ModifiedUserColumn");
             }
         }
@@ -106,4 +107,19 @@ public class SpecialLogicColumnsConfigTests
         Assert.IsTrue(MatchesColumn("DisplayColumn", "LegalDescription"));
         Assert.IsTrue(MatchesColumn("DisplayColumn", "Label"));
     }
+
+    [TestMethod]
+    [DataRow("PhotoFilePath")]
+    [DataRow("LogoFile")]           // e.g. Company.APCheckLogoFile
+    [DataRow("SignatureFile")]
+    [DataRow("AttachmentFileName")]
+    [DataRow("EmailAttachment")]
+    public void FilePathColumn_matches_common_file_reference_spellings(string columnName) =>
+        Assert.IsTrue(MatchesColumn("FilePathColumn", columnName));
+
+    [TestMethod]
+    [DataRow("FileSize")]   // an int, not a path -- must not falsely match
+    [DataRow("ProfileId")]  // contains "file" only as a substring of "Profile", not as its own word
+    public void FilePathColumn_does_not_match_unrelated_columns(string columnName) =>
+        Assert.IsFalse(MatchesColumn("FilePathColumn", columnName));
 }

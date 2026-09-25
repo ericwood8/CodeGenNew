@@ -1,0 +1,198 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string componentsFolder = "components";
+    string apiPrefix = "api";
+    // ==========================================================================================
+
+    // ------------------------------------------------------------------------------------------
+    // TS_JunctionComponent_v1.tt
+    // Generates the four files of an Angular standalone component, in components/<table>-junction/ (the
+    // paths are written by the template itself, see GeneratedFiles):
+    //     <table>-junction.component.css    empty, as TS_Component.tt's CSS is
+    //     <table>-junction.component.html   the two-list shuttle control
+    //     <table>-junction.component.spec.ts  the standard "should create" test
+    //     <table>-junction.component.ts     the standalone component
+    //
+    // The Angular counterpart to WinUI3_JunctionEditor.tt for a many-to-many junction table
+    // (TableModel.IsJunctionTable, RequiresJunctionTable=true): two <select multiple> lists ("Available"/
+    // "Selected") with >>/>/</<< buttons, calling API_Junction.tt's three endpoints directly via
+    // HttpClient (no separate TS_Service-style service class -- unlike a plain table's five-method CRUD
+    // service, a junction has only List/Link/Unlink, and folding them straight into the component matches
+    // the "plain component shape" decision already made for TS_Component.tt). Each button click commits
+    // immediately (one HTTP call per moved row) rather than batching for a separate Save button, the same
+    // choice WinUI3_JunctionEditor.tt made.
+    //
+    // Like TS_Component.tt: the table name without its "E_"/"SY_" prefix names the selector/class/files
+    // (E_TimeSheet -> components/timesheet-junction/timesheet-junction.component.ts, class
+    // TimeSheetJunctionComponent). anchorId is an @Input() -- this component is meant to be embedded in
+    // whatever screen already has the anchor row selected (e.g. a generated detail screen, once a
+    // WinUI3/Angular detail-screen template exists), not routed to on its own.
+    //
+    // Requires TableModel.IsJunctionTable (RequiresJunctionTable=true) and the target table's display
+    // columns (NeedsReferencedDisplayColumns=true), the same restrictions SP_Junction.tt/API_Junction.tt
+    // have -- generate those first.
+
+    string BaseName(string table) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(table, "^E_", ""), "^SY_", "");
+    string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
+
+    if (!Model.IsJunctionTable)
+        Error($"TS_JunctionComponent cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it is not a many-to-many junction table -- TableModel.IsJunctionTable is false.");
+    if (!Model.HasReferencedDisplayColumns)
+        Error("TS_JunctionComponent needs the target table's display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
+
+    string CSharpToTs(SqlDbType type) => type == SqlDbType.UniqueIdentifier ? "string" : "number";
+
+    var anchorFk = Model.JunctionForeignKeys[0];
+    var targetFk = Model.JunctionForeignKeys[1];
+    var anchorColumn = Model.Columns.First(c => c.Name.Equals(anchorFk.ReferencingColumns[0], System.StringComparison.OrdinalIgnoreCase));
+    var targetColumn = Model.Columns.First(c => c.Name.Equals(targetFk.ReferencingColumns[0], System.StringComparison.OrdinalIgnoreCase));
+    string anchorTs = CSharpToTs(anchorColumn.SqlType);
+    string targetTs = CSharpToTs(targetColumn.SqlType);
+    string targetRole = targetFk.ReferencedTable;
+
+    string baseName = BaseName(Model.TableName);
+    string stem = baseName.ToLowerInvariant();
+    string cls = baseName + "JunctionComponent";
+    var displayColumns = targetFk.ReferencedDisplayColumns.Select(LowerFirst).ToList(); // camelCase, matching TS_Model's JSON-casing convention
+
+    var css = new StringBuilder();
+    var html = new StringBuilder();
+    var spec = new StringBuilder();
+    var ts = new StringBuilder();
+    void H(string s = "") => html.Append(s).Append('\n');
+    void T(string s = "") => ts.Append(s).Append('\n');
+
+    // ================= html
+    H("<div class=\"main\">");
+    H($"  <h1>{targetRole}</h1>");
+    H("  <div class=\"shuttle-control\">");
+    H("    <div class=\"shuttle-list\">");
+    H("      <label>Available</label>");
+    H("      <select multiple class=\"form-control\" size=\"10\" [(ngModel)]=\"availableSelectionIds\">");
+    H("        <option *ngFor=\"let item of available\" [ngValue]=\"item.targetId\">{{ displayText(item) }}</option>");
+    H("      </select>");
+    H("    </div>");
+    H("    <div class=\"shuttle-buttons\">");
+    H("      <button class=\"btn\" (click)=\"addAll()\" title=\"Add all\">&gt;&gt;</button>");
+    H("      <button class=\"btn\" (click)=\"addSelected()\" title=\"Add selected\">&gt;</button>");
+    H("      <button class=\"btn\" (click)=\"removeSelected()\" title=\"Remove selected\">&lt;</button>");
+    H("      <button class=\"btn\" (click)=\"removeAll()\" title=\"Remove all\">&lt;&lt;</button>");
+    H("    </div>");
+    H("    <div class=\"shuttle-list\">");
+    H("      <label>Selected</label>");
+    H("      <select multiple class=\"form-control\" size=\"10\" [(ngModel)]=\"selectedSelectionIds\">");
+    H("        <option *ngFor=\"let item of selected\" [ngValue]=\"item.targetId\">{{ displayText(item) }}</option>");
+    H("      </select>");
+    H("    </div>");
+    H("  </div>");
+    H("</div>");
+
+    // ================= ts
+    T("import { Component, Input, OnInit } from '@angular/core';");
+    T("import { HttpClient } from '@angular/common/http';");
+    T("import { CommonModule } from '@angular/common';");
+    T("import { FormsModule } from '@angular/forms';");
+    T();
+    T($"export interface {baseName}JunctionItem {{");
+    T($"  targetId: {targetTs};");
+    T("  isSelected: boolean;");
+    foreach (string d in displayColumns)
+        T($"  {d}?: string;");
+    T("}");
+    T();
+    T("@Component({");
+    T($"  selector: 'app-{stem}-junction',");
+    T("  standalone: true,");
+    T("  imports: [ CommonModule, FormsModule ],");
+    T($"  templateUrl: './{stem}-junction.component.html',");
+    T($"  styleUrl: './{stem}-junction.component.css'");
+    T("})");
+    T($"export class {cls} implements OnInit {{");
+    T($"  @Input({{ required: true }}) anchorId!: {anchorTs};");
+    T();
+    T($"  available: {baseName}JunctionItem[] = [];");
+    T($"  selected: {baseName}JunctionItem[] = [];");
+    T($"  availableSelectionIds: {targetTs}[] = [];");
+    T($"  selectedSelectionIds: {targetTs}[] = [];");
+    T();
+    T($"  private apiUrl = '{apiPrefix}/{stem}s/junction'; // Replace with your API URL");
+    T();
+    T("  constructor(private http: HttpClient) { }");
+    T();
+    T("  ngOnInit(): void {");
+    T("    this.load();");
+    T("  }");
+    T();
+    T("  private load(): void {");
+    T($"    this.http.get<{baseName}JunctionItem[]>(`${{this.apiUrl}}/${{this.anchorId}}`).subscribe((rows) => {{");
+    T("      this.available = rows.filter((r) => !r.isSelected);");
+    T("      this.selected = rows.filter((r) => r.isSelected);");
+    T("    });");
+    T("  }");
+    T();
+    T($"  displayText(item: {baseName}JunctionItem): string {{");
+    T($"    return [{string.Join(", ", displayColumns.Select(d => $"item.{d}"))}].filter((v) => !!v).join(' ');");
+    T("  }");
+    T();
+    T("  addSelected(): void {");
+    T("    this.link(this.available.filter((r) => this.availableSelectionIds.includes(r.targetId)));");
+    T("  }");
+    T();
+    T("  addAll(): void {");
+    T("    this.link(this.available);");
+    T("  }");
+    T();
+    T("  removeSelected(): void {");
+    T("    this.unlink(this.selected.filter((r) => this.selectedSelectionIds.includes(r.targetId)));");
+    T("  }");
+    T();
+    T("  removeAll(): void {");
+    T("    this.unlink(this.selected);");
+    T("  }");
+    T();
+    T($"  private link(items: {baseName}JunctionItem[]): void {{");
+    T("    for (const item of items) {");
+    T("      this.http.post(`${this.apiUrl}/link`, { anchorId: this.anchorId, targetId: item.targetId }).subscribe(() => {");
+    T("        this.available = this.available.filter((r) => r !== item);");
+    T("        this.selected = [...this.selected, item];");
+    T("      });");
+    T("    }");
+    T("    this.availableSelectionIds = [];");
+    T("  }");
+    T();
+    T($"  private unlink(items: {baseName}JunctionItem[]): void {{");
+    T("    for (const item of items) {");
+    T("      this.http.post(`${this.apiUrl}/unlink`, { anchorId: this.anchorId, targetId: item.targetId }).subscribe(() => {");
+    T("        this.selected = this.selected.filter((r) => r !== item);");
+    T("        this.available = [...this.available, item];");
+    T("      });");
+    T("    }");
+    T("    this.selectedSelectionIds = [];");
+    T("  }");
+    T("}");
+
+    // ================= spec
+    spec.Append("import { ComponentFixture, TestBed } from '@angular/core/testing';\nimport { provideHttpClient } from '@angular/common/http';\nimport { provideHttpClientTesting } from '@angular/common/http/testing';\n\n");
+    spec.Append($"import {{ {cls} }} from './{stem}-junction.component';\n\n");
+    spec.Append($"describe('{cls}', () => {{\n  let component: {cls};\n  let fixture: ComponentFixture<{cls}>;\n\n");
+    spec.Append($"  beforeEach(async () => {{\n    await TestBed.configureTestingModule({{\n      imports: [{cls}],\n      providers: [provideHttpClient(), provideHttpClientTesting()]\n    }})\n    .compileComponents();\n\n");
+    spec.Append($"    fixture = TestBed.createComponent({cls});\n    component = fixture.componentInstance;\n    component.anchorId = {(anchorTs == "string" ? "'00000000-0000-0000-0000-000000000000'" : "0")};\n    fixture.detectChanges();\n  }});\n\n");
+    spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n});\n");
+
+    var o = new StringBuilder();
+    o.Append($"@@@FILE {componentsFolder}/{stem}-junction/{stem}-junction.component.css@@@\n");
+    o.Append($"@@@FILE {componentsFolder}/{stem}-junction/{stem}-junction.component.html@@@\n").Append(html);
+    o.Append($"@@@FILE {componentsFolder}/{stem}-junction/{stem}-junction.component.spec.ts@@@\n").Append(spec);
+    o.Append($"@@@FILE {componentsFolder}/{stem}-junction/{stem}-junction.component.ts@@@\n").Append(ts);
+    Write(o.ToString());
+#>

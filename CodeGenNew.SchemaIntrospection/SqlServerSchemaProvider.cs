@@ -22,40 +22,209 @@ public class SqlServerSchemaProvider
             s.name AS SchemaName,
             t.name AS TableName,
             CASE WHEN EXISTS (SELECT 1 FROM sys.indexes i WHERE i.object_id = t.object_id AND i.is_primary_key = 1) THEN 1 ELSE 0 END AS HasPrimaryKey,
-            CASE WHEN EXISTS (SELECT 1 FROM sys.indexes i WHERE i.object_id = t.object_id AND i.is_unique = 1) THEN 1 ELSE 0 END AS HasUniqueIndex
+            CASE WHEN EXISTS (SELECT 1 FROM sys.indexes i WHERE i.object_id = t.object_id AND i.is_unique = 1) THEN 1 ELSE 0 END AS HasUniqueIndex,
+            (SELECT COUNT(*) FROM sys.index_columns pkc
+             INNER JOIN sys.indexes pk ON pk.object_id = pkc.object_id AND pk.index_id = pkc.index_id
+             WHERE pk.object_id = t.object_id AND pk.is_primary_key = 1) AS PrimaryKeyColumnCount,
+            (SELECT TOP 1 ty.name FROM sys.index_columns pkc
+             INNER JOIN sys.indexes pk ON pk.object_id = pkc.object_id AND pk.index_id = pkc.index_id
+             INNER JOIN sys.columns c ON c.object_id = pkc.object_id AND c.column_id = pkc.column_id
+             INNER JOIN sys.types ty ON ty.user_type_id = c.user_type_id
+             WHERE pk.object_id = t.object_id AND pk.is_primary_key = 1) AS PrimaryKeyColumnTypeName
         FROM sys.tables t
         INNER JOIN sys.schemas s ON s.schema_id = t.schema_id
         ORDER BY s.name, t.name;
         """;
 
+    // A single primary key column's SQL type name -> PrimaryKeyShape, matching TableModel.PrimaryKeyShape's
+    // own rule exactly (only reachable with pkColumnCount == 1, so a null/other type name means "some other,
+    // natural-key type" rather than "no primary key").
+    private static PrimaryKeyShape ClassifyPrimaryKeyShape(int pkColumnCount, string? pkColumnTypeName) => pkColumnCount switch
+    {
+        0 => PrimaryKeyShape.None,
+        > 1 => PrimaryKeyShape.Composite,
+        _ => pkColumnTypeName switch
+        {
+            "uniqueidentifier" => PrimaryKeyShape.SingleUniqueIdentifier,
+            "int" or "bigint" or "smallint" or "tinyint" => PrimaryKeyShape.SingleInt,
+            _ => PrimaryKeyShape.SingleOther
+        }
+    };
+
     /// <summary> Lists user tables (system/framework tables filtered out via SystemTableFilter) for the
     /// TreeView. Read-only; a full TableModel is only built for the one table actually selected. </summary>
     public async Task<List<TableSummary>> ListTablesAsync(CancellationToken cancellationToken = default)
     {
-        await using var connection = SqlServerConnectionFactory.CreateConnection(_connectionRequest);
+        await using var connection = _connectionRequest.CreateConnection();
         await connection.OpenAsync(cancellationToken);
+
+        var junctionTables = await DetermineJunctionTablesAsync(connection, cancellationToken);
+        var tablesWithChildren = await DetermineTablesWithChildForeignKeysAsync(connection, cancellationToken);
+        var nameActiveTables = await DetermineNameActiveTablesAsync(connection, cancellationToken);
 
         var results = new List<TableSummary>();
         await using var command = new SqlCommand(ListTablesQuery, connection);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            string tableName = reader.GetString(reader.GetOrdinal("TableName"));
-            if (SystemTableFilter.IsSystemTable(tableName))
+            string tableName = reader.GetString("TableName");
+            if (tableName.IsSystemTable())
                 continue;
+
+            string schemaName = reader.GetString("SchemaName");
+            int pkColumnCount = reader.GetInt32("PrimaryKeyColumnCount");
+            string? pkColumnTypeName = reader.GetNullableString("PrimaryKeyColumnTypeName");
 
             results.Add(new TableSummary
             {
-                SchemaName = reader.GetString(reader.GetOrdinal("SchemaName")),
+                SchemaName = schemaName,
                 TableName = tableName,
-                HasPrimaryKey = reader.GetInt32(reader.GetOrdinal("HasPrimaryKey")) == 1,
-                HasUniqueIndex = reader.GetInt32(reader.GetOrdinal("HasUniqueIndex")) == 1,
-                IsReservedWordName = ReservedWordChecker.IsSqlReservedWord(tableName),
-                IsCSharpReservedWordName = ReservedWordChecker.IsCSharpReservedWord(tableName)
+                HasPrimaryKey = reader.GetInt32("HasPrimaryKey") == 1,
+                HasUniqueIndex = reader.GetInt32("HasUniqueIndex") == 1,
+                IsJunctionTable = junctionTables.Contains((schemaName, tableName)),
+                HasChildForeignKeys = tablesWithChildren.Contains((schemaName, tableName)),
+                PrimaryKeyShape = ClassifyPrimaryKeyShape(pkColumnCount, pkColumnTypeName),
+                IsNameActiveTable = nameActiveTables.Contains((schemaName, tableName)),
+                IsReservedWordName = tableName.IsSqlReservedWord(),
+                IsCSharpReservedWordName = tableName.IsCSharpReservedWord()
             });
         }
 
         return results;
+    }
+
+    // Bulk equivalent of TableModel.IsJunctionTable's JunctionCandidateColumns/IsJunctionTable rule, computed
+    // for every table in two catalog-only queries (no per-table round trips) instead of building a full
+    // TableModel per table. Reuses AuditColumnClassifier directly rather than re-expressing its name
+    // patterns in T-SQL, so the two can never drift apart.
+    private const string AllColumnsForJunctionCheckQuery = """
+        SELECT OBJECT_SCHEMA_NAME(c.object_id) AS SchemaName, OBJECT_NAME(c.object_id) AS TableName, c.name AS ColumnName,
+               c.is_identity AS IsIdentity,
+               CASE WHEN pk.column_id IS NOT NULL THEN 1 ELSE 0 END AS IsPrimaryKey,
+               CASE WHEN cc.object_id IS NOT NULL THEN 1 ELSE 0 END AS IsComputed
+        FROM sys.columns c
+        INNER JOIN sys.tables t ON t.object_id = c.object_id
+        LEFT JOIN sys.computed_columns cc ON cc.object_id = c.object_id AND cc.column_id = c.column_id
+        LEFT JOIN (
+            SELECT ic.object_id, ic.column_id
+            FROM sys.indexes i
+            INNER JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+            WHERE i.is_primary_key = 1
+        ) pk ON pk.object_id = c.object_id AND pk.column_id = c.column_id;
+        """;
+
+    private const string AllSingleColumnForeignKeysQuery = """
+        SELECT OBJECT_SCHEMA_NAME(fkc.parent_object_id) AS SchemaName, OBJECT_NAME(fkc.parent_object_id) AS TableName, cpar.name AS ColumnName
+        FROM sys.foreign_key_columns fkc
+        INNER JOIN sys.columns cpar ON cpar.object_id = fkc.parent_object_id AND cpar.column_id = fkc.parent_column_id
+        WHERE (SELECT COUNT(*) FROM sys.foreign_key_columns fkc2 WHERE fkc2.constraint_object_id = fkc.constraint_object_id) = 1;
+        """;
+
+    private static async Task<HashSet<(string Schema, string Table)>> DetermineJunctionTablesAsync(SqlConnection connection, CancellationToken cancellationToken)
+    {
+        var columnsByTable = new Dictionary<(string Schema, string Table), List<(string Name, bool IsIdentity, bool IsPrimaryKey, bool IsComputed)>>();
+        await using (var command = new SqlCommand(AllColumnsForJunctionCheckQuery, connection))
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var key = (reader.GetString("SchemaName"), reader.GetString("TableName"));
+                if (!columnsByTable.TryGetValue(key, out var list))
+                    columnsByTable[key] = list = [];
+                list.Add((reader.GetString("ColumnName"),
+                          reader.GetBoolean("IsIdentity"),
+                          reader.GetInt32("IsPrimaryKey") == 1,
+                          reader.GetInt32("IsComputed") == 1));
+            }
+        }
+
+        var singleColumnFkColumnsByTable = new Dictionary<(string Schema, string Table), HashSet<string>>();
+        await using (var command = new SqlCommand(AllSingleColumnForeignKeysQuery, connection))
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var key = (reader.GetString("SchemaName"), reader.GetString("TableName"));
+                if (!singleColumnFkColumnsByTable.TryGetValue(key, out var set))
+                    singleColumnFkColumnsByTable[key] = set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                set.Add(reader.GetString("ColumnName"));
+            }
+        }
+
+        var junctionTables = new HashSet<(string Schema, string Table)>();
+        foreach (var (key, columns) in columnsByTable)
+        {
+            var candidates = columns
+                .Where(c => !c.IsComputed && !c.Name.IsAuditColumn() && !(c.IsIdentity && c.IsPrimaryKey))
+                .ToList();
+            if (candidates.Count != 2)
+                continue;
+
+            if (singleColumnFkColumnsByTable.TryGetValue(key, out var fkColumns) &&
+                candidates.All(c => fkColumns.Contains(c.Name)))
+                junctionTables.Add(key);
+        }
+
+        return junctionTables;
+    }
+
+    // Every table referenced by at least one foreign key, i.e. every table that is a PARENT of some other
+    // table (TableModel.HasAtLeastOneChildForeignKey's bulk equivalent) -- one catalog-only query, no
+    // per-table round trips, reused across every row of ListTablesAsync the same way DetermineJunctionTablesAsync is.
+    private const string AllReferencedTablesQuery = """
+        SELECT DISTINCT OBJECT_SCHEMA_NAME(fk.referenced_object_id) AS SchemaName, OBJECT_NAME(fk.referenced_object_id) AS TableName
+        FROM sys.foreign_keys fk;
+        """;
+
+    private static async Task<HashSet<(string Schema, string Table)>> DetermineTablesWithChildForeignKeysAsync(SqlConnection connection, CancellationToken cancellationToken)
+    {
+        var tables = new HashSet<(string Schema, string Table)>();
+        await using var command = new SqlCommand(AllReferencedTablesQuery, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            tables.Add((reader.GetString("SchemaName"), reader.GetString("TableName")));
+        return tables;
+    }
+
+    // Bulk equivalent of TableModel.IsNameActiveTable: a NOT NULL text column named exactly "Name" and a NOT
+    // NULL bit column named exactly "IsActive" -- an exact-name structural test (like the junction-table
+    // detection above), not a SpecialLogicColumns.config pattern rule, matching how every existing inline
+    // check of this shape was always written (API_Crud.tt, CS_Entity.tt, CS_Repo.tt, the WinUI3 CRUD-screen
+    // family). One catalog query, grouped in-memory, rather than a per-table round trip.
+    private const string AllNameActiveCandidateColumnsQuery = """
+        SELECT OBJECT_SCHEMA_NAME(c.object_id) AS SchemaName, OBJECT_NAME(c.object_id) AS TableName, c.name AS ColumnName,
+               ty.name AS SqlTypeName, c.is_nullable AS IsNullable
+        FROM sys.columns c
+        INNER JOIN sys.tables t ON t.object_id = c.object_id
+        INNER JOIN sys.types ty ON ty.user_type_id = c.user_type_id
+        WHERE c.name IN ('Name', 'IsActive');
+        """;
+
+    private static async Task<HashSet<(string Schema, string Table)>> DetermineNameActiveTablesAsync(SqlConnection connection, CancellationToken cancellationToken)
+    {
+        var hasNotNullName = new HashSet<(string Schema, string Table)>();
+        var hasNotNullIsActiveBit = new HashSet<(string Schema, string Table)>();
+
+        await using var command = new SqlCommand(AllNameActiveCandidateColumnsQuery, connection);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var key = (reader.GetString("SchemaName"), reader.GetString("TableName"));
+            string columnName = reader.GetString("ColumnName");
+            string sqlTypeName = reader.GetString("SqlTypeName");
+            bool isNullable = reader.GetBoolean("IsNullable");
+            if (isNullable)
+                continue;
+
+            bool isStringType = sqlTypeName is "char" or "nchar" or "varchar" or "nvarchar" or "text" or "ntext";
+            if (columnName == "Name" && isStringType)
+                hasNotNullName.Add(key);
+            else if (columnName == "IsActive" && sqlTypeName == "bit")
+                hasNotNullIsActiveBit.Add(key);
+        }
+
+        hasNotNullName.IntersectWith(hasNotNullIsActiveBit);
+        return hasNotNullName;
     }
 
     private const string ColumnSummariesQuery = """
@@ -81,7 +250,7 @@ public class SqlServerSchemaProvider
     /// BuildTableModelAsync's full column metadata since nothing here drives code generation. </summary>
     public async Task<List<ColumnSummary>> ListColumnSummariesAsync(string schemaName, string tableName, CancellationToken cancellationToken = default)
     {
-        await using var connection = SqlServerConnectionFactory.CreateConnection(_connectionRequest);
+        await using var connection = _connectionRequest.CreateConnection();
         await connection.OpenAsync(cancellationToken);
 
         var results = new List<ColumnSummary>();
@@ -91,16 +260,16 @@ public class SqlServerSchemaProvider
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            string columnName = reader.GetString(reader.GetOrdinal("ColumnName"));
-            if (SystemColumnFilter.IsSystemColumn(columnName))
+            string columnName = reader.GetString("ColumnName");
+            if (columnName.IsSystemColumn())
                 continue;
 
             results.Add(new ColumnSummary
             {
                 Name = columnName,
-                SqlTypeName = reader.GetString(reader.GetOrdinal("SqlTypeName")),
-                IsNullable = reader.GetBoolean(reader.GetOrdinal("IsNullable")),
-                IsPrimaryKey = reader.GetInt32(reader.GetOrdinal("IsPrimaryKey")) == 1
+                SqlTypeName = reader.GetString("SqlTypeName"),
+                IsNullable = reader.GetBoolean("IsNullable"),
+                IsPrimaryKey = reader.GetInt32("IsPrimaryKey") == 1
             });
         }
 
@@ -120,12 +289,13 @@ public class SqlServerSchemaProvider
         string schemaName, string tableName, bool includeRowData = false, bool includeReferencedDisplayColumns = false,
         CancellationToken cancellationToken = default)
     {
-        await using var connection = SqlServerConnectionFactory.CreateConnection(_connectionRequest);
+        await using var connection = _connectionRequest.CreateConnection();
         await connection.OpenAsync(cancellationToken);
 
         string fullName = $"[{schemaName}].[{tableName}]";
         var rawColumns = await ReadColumnsAsync(connection, fullName, cancellationToken);
         var foreignKeys = await ReadForeignKeysAsync(connection, fullName, cancellationToken);
+        var childForeignKeys = await ReadChildForeignKeysAsync(connection, fullName, cancellationToken);
 
         var rules = SpecialLogicColumnsConfig.Load(_specialLogicColumnsConfigPath);
         if (includeReferencedDisplayColumns)
@@ -141,7 +311,7 @@ public class SqlServerSchemaProvider
 
         // Exact-name only (not a SpecialLogicColumns.config pattern rule -- that engine only matches one
         // column per side, and this needs two per side).
-        ColumnModel? FindExact(string name) => columns.FirstOrDefault(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+        ColumnModel? FindExact(string name) => columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(name));
         var inDateCol = FindExact("DateIn");
         var inTimeCol = FindExact("TimeIn");
         var outDateCol = FindExact("DateOut");
@@ -157,15 +327,16 @@ public class SqlServerSchemaProvider
             SchemaName = schemaName,
             TableName = tableName,
             QuotedName = fullName,
-            IsReservedWordName = ReservedWordChecker.IsSqlReservedWord(tableName),
-            IsCSharpReservedWordName = ReservedWordChecker.IsCSharpReservedWord(tableName),
+            IsReservedWordName = tableName.IsSqlReservedWord(),
+            IsCSharpReservedWordName = tableName.IsCSharpReservedWord(),
             Columns = columns,
             PrimaryKeyColumns = primaryKeyColumns,
-            DisplayColumns = DisplayColumnSelector.Select(columns, foreignKeys.SelectMany(fk => fk.ReferencingColumns).ToList()),
+            DisplayColumns = columns.SelectDisplayColumns(foreignKeys.SelectMany(fk => fk.ReferencingColumns).ToList()),
             HasReferencedDisplayColumns = includeReferencedDisplayColumns,
             HasRowData = includeRowData,
             Rows = rows,
             ForeignKeys = foreignKeys,
+            ChildForeignKeys = childForeignKeys,
             HasActiveInactivePair = hasActivePair,
             ActiveColumn = activeCol,
             InactiveDateColumn = inactiveCol,
@@ -220,8 +391,8 @@ public class SqlServerSchemaProvider
 
     private static int? RankInCategory(List<SpecialLogicRule> rules, string category, string columnName)
     {
-        var rule = rules.FirstOrDefault(r => r.Category.Equals(category, StringComparison.OrdinalIgnoreCase) && !r.IsPairRule);
-        return rule is null ? null : SpecialLogicColumnsConfig.MatchRank(rule, columnName);
+        var rule = rules.FirstOrDefault(r => r.Category.EqualsIgnoreCase(category) && !r.IsPairRule);
+        return rule?.MatchRank(columnName);
     }
 
     // A Lookup shows people readable values: not blobs, XML, or unbounded text.
@@ -246,8 +417,8 @@ public class SqlServerSchemaProvider
                     .Select(raw => BuildColumnModel(raw, rules))
                     .ToList();
                 var referencedForeignKeys = await ReadForeignKeysAsync(connection, referencedName, cancellationToken);
-                displayColumns = DisplayColumnSelector
-                    .Select(referencedColumns, referencedForeignKeys.SelectMany(fk => fk.ReferencingColumns).ToList())
+                displayColumns = referencedColumns
+                    .SelectDisplayColumns(referencedForeignKeys.SelectMany(fk => fk.ReferencingColumns).ToList())
                     .Select(c => c.Name).ToList();
                 displayColumnsByTable[referencedName] = displayColumns;
             }
@@ -268,23 +439,23 @@ public class SqlServerSchemaProvider
 
     private static bool MatchesCategory(List<SpecialLogicRule> rules, string category, string columnName)
     {
-        var rule = rules.FirstOrDefault(r => r.Category.Equals(category, StringComparison.OrdinalIgnoreCase) && !r.IsPairRule);
-        return rule is not null && SpecialLogicColumnsConfig.MatchesColumnRule(rule, columnName);
+        var rule = rules.FirstOrDefault(r => r.Category.EqualsIgnoreCase(category) && !r.IsPairRule);
+        return rule is not null && rule.MatchesColumnRule(columnName);
     }
 
     private static (bool, ColumnModel?, ColumnModel?) EvaluatePair(
         List<SpecialLogicRule> rules, string category, List<string> columnNames, List<ColumnModel> columns)
     {
-        var rule = rules.FirstOrDefault(r => r.Category.Equals(category, StringComparison.OrdinalIgnoreCase) && r.IsPairRule);
+        var rule = rules.FirstOrDefault(r => r.Category.EqualsIgnoreCase(category) && r.IsPairRule);
         if (rule is null)
             return (false, null, null);
 
-        var match = SpecialLogicColumnsConfig.EvaluatePairRule(rule, columnNames);
+        var match = rule.EvaluatePairRule(columnNames);
         if (match is null)
             return (false, null, null);
 
-        var flagColumn = columns.First(c => c.Name.Equals(match.Value.FlagColumn, StringComparison.OrdinalIgnoreCase));
-        var companionColumn = columns.First(c => c.Name.Equals(match.Value.CompanionColumn, StringComparison.OrdinalIgnoreCase));
+        var flagColumn = columns.First(c => c.Name.EqualsIgnoreCase(match.Value.FlagColumn));
+        var companionColumn = columns.First(c => c.Name.EqualsIgnoreCase(match.Value.CompanionColumn));
         return (true, flagColumn, companionColumn);
     }
 
@@ -304,8 +475,8 @@ public class SqlServerSchemaProvider
         {
             Name = raw.Name,
             QuotedName = $"[{raw.Name}]",
-            IsReservedWordName = ReservedWordChecker.IsSqlReservedWord(raw.Name),
-            IsCSharpReservedWordName = ReservedWordChecker.IsCSharpReservedWord(raw.Name),
+            IsReservedWordName = raw.Name.IsSqlReservedWord(),
+            IsCSharpReservedWordName = raw.Name.IsCSharpReservedWord(),
             SqlType = sqlType,
             SqlTypeDeclaration = SqlTypeClassifier.BuildDeclaration(raw.SqlTypeName, sqlType, raw.MaxLength, raw.Precision, raw.Scale),
             MaxLength = maxLength,
@@ -329,7 +500,7 @@ public class SqlServerSchemaProvider
             IsStringColumn = isString,
             IsDateColumn = isDate,
             IsBooleanColumn = isBoolean,
-            IsAuditColumn = AuditColumnClassifier.IsAuditColumn(raw.Name),
+            IsAuditColumn = raw.Name.IsAuditColumn(),
             IsCreateDateColumn = MatchesCategory(rules, "CreateDateColumn", raw.Name),
             DisplayRank = IsDisplayEligibleType(sqlType) ? RankInCategory(rules, "DisplayColumn", raw.Name) : null,
             IsCreateUserColumn = MatchesCategory(rules, "CreateUserColumn", raw.Name),
@@ -338,7 +509,8 @@ public class SqlServerSchemaProvider
             IsLastChangedDateColumn = MatchesCategory(rules, "LastChangedDateColumn", raw.Name),
             IsInactiveReasonColumn = MatchesCategory(rules, "InactiveReasonColumn", raw.Name),
             IsAdminFlagColumn = MatchesCategory(rules, "AdminFlagColumn", raw.Name),
-            ParameterName = ParameterNameBuilder.Build(raw.Name, sqlType)
+            IsFilePathColumn = MatchesCategory(rules, "FilePathColumn", raw.Name),
+            ParameterName = raw.Name.ToSqlParameterName(sqlType)
         };
     }
 
@@ -392,40 +564,43 @@ public class SqlServerSchemaProvider
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            string columnName = reader.GetString(reader.GetOrdinal("ColumnName"));
-            if (SystemColumnFilter.IsSystemColumn(columnName))
+            string columnName = reader.GetString("ColumnName");
+            if (columnName.IsSystemColumn())
                 continue;
 
             results.Add(new RawColumn(
                 Name: columnName,
-                OrdinalPosition: reader.GetInt32(reader.GetOrdinal("OrdinalPosition")),
-                SqlTypeName: reader.GetString(reader.GetOrdinal("SqlTypeName")),
-                MaxLength: reader.GetInt16(reader.GetOrdinal("MaxLength")),
-                Precision: reader.GetByte(reader.GetOrdinal("Precision")),
-                Scale: reader.GetByte(reader.GetOrdinal("Scale")),
-                IsNullable: reader.GetBoolean(reader.GetOrdinal("IsNullable")),
-                IsIdentity: reader.GetBoolean(reader.GetOrdinal("IsIdentity")),
+                OrdinalPosition: reader.GetInt32("OrdinalPosition"),
+                SqlTypeName: reader.GetString("SqlTypeName"),
+                MaxLength: reader.GetInt16("MaxLength"),
+                Precision: reader.GetByte("Precision"),
+                Scale: reader.GetByte("Scale"),
+                IsNullable: reader.GetBoolean("IsNullable"),
+                IsIdentity: reader.GetBoolean("IsIdentity"),
                 // seed_value/increment_value are sql_variant -- the underlying numeric type varies by
                 // the identity column's own type (int, bigint, decimal, ...), so read via GetValue + Convert
                 // rather than assuming a fixed CLR type like GetDecimal.
-                IdentitySeed: reader.IsDBNull(reader.GetOrdinal("IdentitySeed")) ? null : Convert.ToInt32(reader.GetValue(reader.GetOrdinal("IdentitySeed"))),
-                IdentityIncrement: reader.IsDBNull(reader.GetOrdinal("IdentityIncrement")) ? null : Convert.ToInt32(reader.GetValue(reader.GetOrdinal("IdentityIncrement"))),
-                ComputedDefinition: reader.IsDBNull(reader.GetOrdinal("ComputedDefinition")) ? null : reader.GetString(reader.GetOrdinal("ComputedDefinition")),
-                DefaultDefinition: reader.IsDBNull(reader.GetOrdinal("DefaultDefinition")) ? null : reader.GetString(reader.GetOrdinal("DefaultDefinition")),
-                IsPrimaryKey: reader.GetInt32(reader.GetOrdinal("IsPrimaryKey")) == 1,
-                IsInUniqueIndex: reader.GetInt32(reader.GetOrdinal("IsInUniqueIndex")) == 1
+                IdentitySeed: reader.GetNullableInt32("IdentitySeed"),
+                IdentityIncrement: reader.GetNullableInt32("IdentityIncrement"),
+                ComputedDefinition: reader.GetNullableString("ComputedDefinition"),
+                DefaultDefinition: reader.GetNullableString("DefaultDefinition"),
+                IsPrimaryKey: reader.GetInt32("IsPrimaryKey") == 1,
+                IsInUniqueIndex: reader.GetInt32("IsInUniqueIndex") == 1
             ));
         }
 
         return results;
     }
 
+    // Both queries return the same shape (ConstraintName, the OTHER table's schema/name, the two sides'
+    // column lists) -- aliased identically on purpose so ReadForeignKeyRowsAsync below can read either one,
+    // instead of two near-identical grouping loops that only differed in which alias named "the other table".
     private const string ForeignKeysQuery = """
         SELECT
             fk.name AS ConstraintName,
             cpar.name AS ReferencingColumn,
-            OBJECT_SCHEMA_NAME(fk.referenced_object_id) AS ReferencedSchema,
-            OBJECT_NAME(fk.referenced_object_id) AS ReferencedTable,
+            OBJECT_SCHEMA_NAME(fk.referenced_object_id) AS OtherSchema,
+            OBJECT_NAME(fk.referenced_object_id) AS OtherTable,
             cref.name AS ReferencedColumn
         FROM sys.foreign_keys fk
         INNER JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
@@ -435,36 +610,81 @@ public class SqlServerSchemaProvider
         ORDER BY fk.name, fkc.constraint_column_id;
         """;
 
-    private static async Task<List<ForeignKeyModel>> ReadForeignKeysAsync(SqlConnection connection, string fullTableName, CancellationToken cancellationToken)
-    {
-        var grouped = new Dictionary<string, (string Schema, string Table, List<string> Referencing, List<string> Referenced)>();
+    // The mirror image of ForeignKeysQuery: same join, but filtered by referenced_object_id (this table is
+    // the PARENT) instead of parent_object_id, so "the other table" is the CHILD referencing this one.
+    private const string ChildForeignKeysQuery = """
+        SELECT
+            fk.name AS ConstraintName,
+            OBJECT_SCHEMA_NAME(fk.parent_object_id) AS OtherSchema,
+            OBJECT_NAME(fk.parent_object_id) AS OtherTable,
+            cpar.name AS ReferencingColumn,
+            cref.name AS ReferencedColumn
+        FROM sys.foreign_keys fk
+        INNER JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
+        INNER JOIN sys.columns cpar ON cpar.object_id = fkc.parent_object_id AND cpar.column_id = fkc.parent_column_id
+        INNER JOIN sys.columns cref ON cref.object_id = fkc.referenced_object_id AND cref.column_id = fkc.referenced_column_id
+        WHERE fkc.referenced_object_id = OBJECT_ID(@fullTableName)
+        ORDER BY fk.name, fkc.constraint_column_id;
+        """;
 
-        await using var command = new SqlCommand(ForeignKeysQuery, connection);
+    private sealed record ForeignKeyRow(string ConstraintName, string OtherSchema, string OtherTable, List<string> ReferencingColumns, List<string> ReferencedColumns);
+
+    /// <summary> Runs either ForeignKeysQuery or ChildForeignKeysQuery and groups its rows by constraint (a
+    /// composite foreign key spans several rows, one per column pair) -- the one grouping loop both
+    /// ReadForeignKeysAsync and ReadChildForeignKeysAsync build their own model type from. </summary>
+    private static async Task<List<ForeignKeyRow>> ReadForeignKeyRowsAsync(SqlConnection connection, string query, string fullTableName, CancellationToken cancellationToken)
+    {
+        var grouped = new Dictionary<string, ForeignKeyRow>();
+
+        await using var command = new SqlCommand(query, connection);
         command.Parameters.AddWithValue("@fullTableName", fullTableName);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            string constraintName = reader.GetString(reader.GetOrdinal("ConstraintName"));
-            if (!grouped.TryGetValue(constraintName, out var entry))
+            string constraintName = reader.GetString("ConstraintName");
+            if (!grouped.TryGetValue(constraintName, out var row))
             {
-                entry = (reader.GetString(reader.GetOrdinal("ReferencedSchema")),
-                          reader.GetString(reader.GetOrdinal("ReferencedTable")),
-                          [], []);
-                grouped[constraintName] = entry;
+                row = new ForeignKeyRow(constraintName,
+                    reader.GetString("OtherSchema"),
+                    reader.GetString("OtherTable"),
+                    [], []);
+                grouped[constraintName] = row;
             }
 
-            entry.Referencing.Add(reader.GetString(reader.GetOrdinal("ReferencingColumn")));
-            entry.Referenced.Add(reader.GetString(reader.GetOrdinal("ReferencedColumn")));
+            row.ReferencingColumns.Add(reader.GetString("ReferencingColumn"));
+            row.ReferencedColumns.Add(reader.GetString("ReferencedColumn"));
         }
 
-        return grouped.Select(kvp => new ForeignKeyModel
+        return grouped.Values.ToList();
+    }
+
+    private static async Task<List<ForeignKeyModel>> ReadForeignKeysAsync(SqlConnection connection, string fullTableName, CancellationToken cancellationToken)
+    {
+        var rows = await ReadForeignKeyRowsAsync(connection, ForeignKeysQuery, fullTableName, cancellationToken);
+        return rows.Select(r => new ForeignKeyModel
         {
-            ConstraintName = kvp.Key,
-            ReferencingColumns = kvp.Value.Referencing,
-            ReferencedSchema = kvp.Value.Schema,
-            ReferencedTable = kvp.Value.Table,
-            ReferencedColumns = kvp.Value.Referenced
+            ConstraintName = r.ConstraintName,
+            ReferencingColumns = r.ReferencingColumns,
+            ReferencedSchema = r.OtherSchema,
+            ReferencedTable = r.OtherTable,
+            ReferencedColumns = r.ReferencedColumns
+        }).ToList();
+    }
+
+    /// <summary> Other tables that have a foreign key pointing back at this one (TableModel.ChildForeignKeys) --
+    /// e.g. finding that E_TimeSheetDetail has an FK to E_TimeSheet's primary key, so a template could offer
+    /// to generate a child grid of E_TimeSheetDetail rows on E_TimeSheet's detail screen. </summary>
+    private static async Task<List<ChildForeignKeyModel>> ReadChildForeignKeysAsync(SqlConnection connection, string fullTableName, CancellationToken cancellationToken)
+    {
+        var rows = await ReadForeignKeyRowsAsync(connection, ChildForeignKeysQuery, fullTableName, cancellationToken);
+        return rows.Select(r => new ChildForeignKeyModel
+        {
+            ConstraintName = r.ConstraintName,
+            ReferencingSchema = r.OtherSchema,
+            ReferencingTable = r.OtherTable,
+            ReferencingColumns = r.ReferencingColumns,
+            ReferencedColumns = r.ReferencedColumns
         }).ToList();
     }
 }

@@ -1,0 +1,602 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // folders, lists of tables). Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string viewNamespace = "TimeEntry.Desktop.Views";
+    string viewModelNamespace = "TimeEntry.Desktop.ViewModels";
+    string contextType = "TimeEntryContext";
+    string contextNamespace = "TimeEntry.Common.Data";
+    string[] usings = { };
+    string viewsFolder = "Views";
+    string viewModelsFolder = "ViewModels";
+    string[] noLookupParents =
+    {
+        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
+        "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role", "DepartmentTeam", "ProjectTask"
+    };
+    // ==========================================================================================
+
+    // ------------------------------------------------------------------------------------------
+    // WinUI3_DetailMasterScreen_v1.tt
+    // WinUI3_DetailScreen.tt's own form (identical field-by-field: same column selection, same drop-down and
+    // validation rules -- see that template for the reasoning) PLUS one read-only grid per table in
+    // TableModel.ChildForeignKeys, so editing a row also shows the child rows that hang off it (e.g. a
+    // Department's Teams, a TimeSheet's lines):
+    //     Views/<TableName>DetailMasterDialog.xaml
+    //     Views/<TableName>DetailMasterDialog.xaml.cs
+    //     ViewModels/<TableName>DetailMasterViewModel.cs
+    //
+    // Per the project's own answer on this ("just have the generated code assume all are grids and the
+    // developer can cut out what grids are not needed"): EVERY child table gets a grid, unconditionally --
+    // this template does not try to guess which ones matter. Delete the <ChildTable>Rows section (XAML) and
+    // its Load<ChildTable>Async call (ViewModel) for any you don't want.
+    //
+    // Why the child grids use EF Core's own metadata (_context.Model.FindEntityType) instead of column info
+    // like every other field in this template family: TableModel.ChildForeignKeys only carries the child's
+    // constraint and column NAMES (see CodeGenNew.Core.ChildForeignKeyModel) -- TableModel itself is built
+    // for exactly ONE table per generation run, so this template never sees the child table's own column
+    // list the way it sees this table's. EF's IEntityType.GetProperties() gives the same information back at
+    // RUN time instead (scalar columns only, navigation properties excluded for free), so the grid can show
+    // something useful without a second schema-introspection pass this architecture doesn't support. Column
+    // order follows EF's own property order, and headers are the raw property name -- rename them by hand
+    // once you know what a given child table looks like; this exists to get you unblocked, not to be final.
+    // A child table whose foreign key back to this one spans more than one column is skipped (no grid).
+    //
+    // Only loaded when editing an existing row (a brand-new, unsaved row has no child rows yet); the child
+    // sections show a "save first" message instead while adding.
+    //
+    // WinUI3_MasterScreen.tt always opens the OTHER dialog, <TableName>DetailDialog (WinUI3_DetailScreen.tt) --
+    // point its OnAddClick/OnEditClick at <TableName>DetailMasterDialog by hand if you want the master screen
+    // to open this one instead.
+    //
+    // Requires a primary key that is a single, non-composite INT column, refuses a "name/active" table (same
+    // reasons as WinUI3_DetailScreen.tt), and requires at least one table in TableModel.ChildForeignKeys
+    // (TableModel.HasAtLeastOneChildForeignKey) -- a table with none is exactly WinUI3_DetailScreen.tt's job.
+    //
+    // ------------------------------------------------------------------------------------------
+
+    bool IsDate(ColumnModel c) => c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
+    bool IsNumber(ColumnModel c) => c.SqlType is SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt
+        or SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real;
+    bool IsGuid(ColumnModel c) => c.SqlType == SqlDbType.UniqueIdentifier;
+    bool IsBit(ColumnModel c) => c.SqlType == SqlDbType.Bit;
+    bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
+    bool IsEditableType(ColumnModel c) => IsDate(c) || IsNumber(c) || IsGuid(c) || IsBit(c) || IsText(c);
+    int Chars(ColumnModel c) => c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
+    bool IsMultiline(ColumnModel c) => IsText(c) && Chars(c) >= 100;
+    string Words(string s) => Regex.Replace(s.Replace('_', ' '), "(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ").Trim();
+    string Label(string columnName) => Words(Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", ""));
+    string FieldVar(string name) => char.ToLowerInvariant(name[0]) + name[1..];
+
+    string CSharpNumericType(ColumnModel c) => c.SqlType switch
+    {
+        SqlDbType.Int => "int", SqlDbType.BigInt => "long", SqlDbType.SmallInt => "short", SqlDbType.TinyInt => "byte",
+        SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Decimal => "decimal",
+        SqlDbType.Float => "double", SqlDbType.Real => "float", _ => "int"
+    };
+
+    var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
+    bool isNameActive = Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name")
+                      && Model.Columns.Any(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive");
+
+    if (keyColumn is null || keyColumn.SqlType != SqlDbType.Int)
+    {
+        Error($"WinUI3_DetailMasterScreen needs a table with a single int primary key (CS_Repo's GenericRepo<T> takes a plain int id), but [{Model.SchemaName}].[{Model.TableName}] has "
+              + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
+    }
+    else if (isNameActive)
+    {
+        Error($"WinUI3_DetailMasterScreen is for plain tables. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo; write this screen by hand.");
+    }
+    else if (!Model.HasAtLeastOneChildForeignKey)
+    {
+        Error($"WinUI3_DetailMasterScreen needs at least one other table with a foreign key pointing back at [{Model.SchemaName}].[{Model.TableName}]; none was found -- use WinUI3_DetailScreen instead.");
+    }
+    else
+    {
+        string table = Model.TableName;
+        string title = Words(table);
+        string keyProp = keyColumn.Name;
+
+        // GroupBy + First, not ToDictionary: a real table can have more than one FK constraint on the same
+        // column pointing at the same parent (seen live against ProvidenceOgas.dbo.Products) -- ToDictionary
+        // would throw on the duplicate key.
+        var fkByColumn = Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1)
+            .GroupBy(f => f.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var shown = Model.Columns
+            .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && IsEditableType(c))
+            .OrderBy(c => c.OrdinalPosition)
+            .ToList();
+
+        ForeignKeyModel LookupOf(ColumnModel c) =>
+            c.SqlType == SqlDbType.Int
+            && fkByColumn.TryGetValue(c.Name, out var fk)
+            && !noLookupParents.Contains(fk.ReferencedTable, StringComparer.OrdinalIgnoreCase)
+            && fk.ReferencedDisplayColumns.Count > 0
+                ? fk : null;
+
+        var parents = shown.Select(c => LookupOf(c)).Where(fk => fk is not null)
+            .GroupBy(fk => fk.ReferencedTable, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+            .Select(fk => new
+            {
+                Table = fk.ReferencedTable,
+                OptionsProp = fk.ReferencedTable + "Options",
+                KeyProp = fk.ReferencedColumns[0],
+                DisplayProp = fk.ReferencedDisplayColumns[0]
+            }).ToList();
+        var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
+
+        if (!Model.HasReferencedDisplayColumns && parents.Count > 0)
+            Error("WinUI3_DetailMasterScreen needs the foreign-keyed tables' display columns for its drop-downs; its .tt.config must say NeedsReferencedDisplayColumns=true.");
+
+        // Skipped, not just the composite-key case: a child whose foreign key points at one of OUR columns
+        // that isn't a plain int (almost always our own int primary key, but a child can reference any
+        // unique column) -- the grid's filter below is EF.Property<int>, matching the int-only assumption
+        // this whole template family makes about keys.
+        var children = Model.ChildForeignKeys
+            .Where(fk => fk.ReferencingColumns.Count == 1
+                      && Model.Columns.Any(c => c.Name.Equals(fk.ReferencedColumns[0], StringComparison.OrdinalIgnoreCase) && c.SqlType == SqlDbType.Int))
+            .Select(fk => new
+            {
+                Table = fk.ReferencingTable,
+                Var = FieldVar(fk.ReferencingTable),
+                FkColumn = fk.ReferencingColumns[0],
+                ParentKeyColumn = fk.ReferencedColumns[0]
+            }).ToList();
+#>
+@@@FILE <#= viewsFolder #>/<#= table #>DetailMasterDialog.xaml@@@
+<ContentDialog
+    x:Class="<#= viewNamespace #>.<#= table #>DetailMasterDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="{x:Bind ViewModel.DialogTitle, Mode=OneWay}"
+    PrimaryButtonText="Save"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+    PrimaryButtonClick="OnPrimaryButtonClick">
+
+    <ScrollViewer MinWidth="560" MaxHeight="680">
+        <StackPanel Spacing="12">
+            <InfoBar Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
+                     Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" />
+<#
+        foreach (var c in shown)
+        {
+            var lookup = LookupOf(c);
+            string prop = c.Name;
+            string label = Label(c.Name);
+            if (lookup is not null)
+            {
+                var p = parentOf[lookup.ReferencedTable];
+#>
+            <ComboBox Header="<#= label #>" ItemsSource="{x:Bind ViewModel.<#= p.OptionsProp #>}"
+                      SelectedValuePath="Id" DisplayMemberPath="Text"
+                      SelectedValue="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" HorizontalAlignment="Stretch" />
+<#
+            }
+            else if (IsBit(c))
+            {
+#>
+            <CheckBox Content="<#= label #>" IsChecked="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
+<#
+            }
+            else if (IsDate(c))
+            {
+#>
+            <TextBox Header="<#= label #>" Text="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" PlaceholderText="yyyy-MM-dd" />
+<#
+            }
+            else if (IsMultiline(c))
+            {
+#>
+            <TextBox Header="<#= label #>" Text="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+                     AcceptsReturn="True" TextWrapping="Wrap" Height="80" MaxLength="<#= Chars(c) #>" />
+<#
+            }
+            else
+            {
+                string maxLen = IsText(c) && Chars(c) > 0 ? $" MaxLength=\"{Chars(c)}\"" : "";
+#>
+            <TextBox Header="<#= label #>" Text="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"<#= maxLen #> />
+<#
+            }
+        }
+#>
+
+            <TextBlock Text="Save this <#= title #> first to add or see child rows below." FontStyle="Italic"
+                       Visibility="{x:Bind ViewModel.IsAddModeVisibility}" />
+<#
+        foreach (var child in children)
+        {
+#>
+
+            <TextBlock Text="<#= Words(child.Table) #>" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+            <ItemsControl ItemsSource="{x:Bind ViewModel.<#= child.Var #>ColumnHeaders}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="8" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding}" FontWeight="SemiBold" Width="120" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <ListView ItemsSource="{x:Bind ViewModel.<#= child.Var #>Rows}" IsEnabled="False" MaxHeight="200">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <ItemsControl ItemsSource="{Binding Cells}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" Width="120" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+<#
+        }
+#>
+        </StackPanel>
+    </ScrollViewer>
+</ContentDialog>
+@@@FILE <#= viewsFolder #>/<#= table #>DetailMasterDialog.xaml.cs@@@
+using <#= viewModelNamespace #>;
+using Microsoft.UI.Xaml.Controls;
+<#
+        foreach (string u in usings)
+        {
+#>
+using <#= u #>;
+<#
+        }
+#>
+
+namespace <#= viewNamespace #>;
+
+// Assumes nothing from CodeGenNew.App itself -- a plain ContentDialog, no shared house-style helper.
+public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
+{
+    public <#= table #>DetailMasterViewModel ViewModel { get; }
+
+    /// <param name="editing"> The row being edited, or null to add a new one (child grids only load for an existing row). </param>
+    public <#= table #>DetailMasterDialog(<#= contextType #> context, <#= table #>? editing = null)
+    {
+        ViewModel = new <#= table #>DetailMasterViewModel(context, editing);
+        InitializeComponent();
+        Loaded += async (_, _) => await ViewModel.LoadAsync();
+    }
+
+    // Validation failure keeps the dialog open instead of closing it -- see ViewModel.SaveAsync.
+    private async void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+    {
+        var deferral = args.GetDeferral();
+        try
+        {
+            if (!await ViewModel.SaveAsync())
+                args.Cancel = true;
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+}
+@@@FILE <#= viewModelsFolder #>/<#= table #>DetailMasterViewModel.cs@@@
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Threading.Tasks;
+using <#= contextNamespace #>;
+using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.UI.Xaml;
+<#
+        foreach (string u in usings)
+        {
+#>
+using <#= u #>;
+<#
+        }
+#>
+
+namespace <#= viewModelNamespace #>;
+
+/// <summary> One entry of a <#= table #>DetailMasterDialog drop-down: an id plus the text to show for it. </summary>
+public class <#= table #>DetailMasterLookupOption
+{
+    public int Id { get; set; }
+    public string Text { get; set; } = "";
+}
+
+/// <summary> One row of a child grid: a display string per scalar EF property of the child entity (see this
+/// template's header comment for why the columns are discovered at run time, via EF's own metadata, instead
+/// of being known when the file was generated). </summary>
+public class <#= table #>ChildGridRow
+{
+    public List<string> Cells { get; init; } = [];
+}
+
+public partial class <#= table #>DetailMasterViewModel : ObservableObject
+{
+    private readonly <#= contextType #> _context;
+    private readonly <#= table #>Repo _repo;
+    private readonly <#= table #>? _editing;
+
+    public string DialogTitle => _editing is null ? "Add <#= title #>" : "Edit <#= title #>";
+    public Visibility IsAddModeVisibility => _editing is null ? Visibility.Visible : Visibility.Collapsed;
+
+<#
+        foreach (var p in parents)
+        {
+#>
+    public ObservableCollection<<#= table #>DetailMasterLookupOption> <#= p.OptionsProp #> { get; } = [];
+<#
+        }
+        foreach (var child in children)
+        {
+#>
+    public ObservableCollection<string> <#= child.Var #>ColumnHeaders { get; } = [];
+    public ObservableCollection<<#= table #>ChildGridRow> <#= child.Var #>Rows { get; } = [];
+<#
+        }
+#>
+
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [ObservableProperty]
+    private string? _errorMessage;
+    public bool HasError => ErrorMessage is not null;
+
+<#
+        foreach (var c in shown)
+        {
+            var lookup = LookupOf(c);
+            string prop = c.Name;
+            string fieldType = lookup is not null ? "int?" : IsBit(c) ? "bool?" : "string?";
+#>
+    [ObservableProperty]
+    private <#= fieldType #> _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #>;
+<#
+        }
+#>
+
+    public <#= table #>DetailMasterViewModel(<#= contextType #> context, <#= table #>? editing)
+    {
+        _context = context;
+        _repo = new <#= table #>Repo(context);
+        _editing = editing;
+        // Add leaves every field at its default (null/blank); Edit fills them in from the row being edited.
+        if (editing is not null)
+        {
+<#
+        foreach (var c in shown)
+        {
+            var lookup = LookupOf(c);
+            string prop = c.Name;
+            if (lookup is not null || IsBit(c))
+            {
+#>
+            <#= prop #> = editing.<#= prop #>;
+<#
+            }
+            else if (IsDate(c))
+            {
+#>
+            <#= prop #> = editing.<#= prop #><#= c.IsNullable ? "?.ToString(\"yyyy-MM-dd\")" : ".ToString(\"yyyy-MM-dd\")" #>;
+<#
+            }
+            else
+            {
+#>
+            <#= prop #> = editing.<#= prop #><#= c.IsNullable ? "?.ToString()" : ".ToString()" #>;
+<#
+            }
+        }
+#>
+        }
+    }
+
+    /// <summary> Loads the drop-downs (always) and the child grids (only when editing an existing row --
+    /// a brand-new row has no child rows yet). </summary>
+    public async Task LoadAsync()
+    {
+<#
+        foreach (var p in parents)
+        {
+#>
+        <#= p.OptionsProp #>.Clear();
+        foreach (var row in await _context.Set<<#= p.Table #>>().OrderBy(r => r.<#= p.DisplayProp #>).ToListAsync())
+            <#= p.OptionsProp #>.Add(new <#= table #>DetailMasterLookupOption { Id = row.<#= p.KeyProp #>, Text = row.<#= p.DisplayProp #>?.ToString() ?? "" });
+<#
+        }
+        foreach (var child in children)
+        {
+#>
+        await Load<#= child.Table #>Async();
+<#
+        }
+#>
+    }
+
+<#
+        foreach (var child in children)
+        {
+#>
+    private async Task Load<#= child.Table #>Async()
+    {
+        <#= child.Var #>ColumnHeaders.Clear();
+        <#= child.Var #>Rows.Clear();
+        if (_editing is null)
+            return; // no child rows to show until this <#= title #> has been saved once
+
+        var entityType = _context.Model.FindEntityType(typeof(<#= child.Table #>))!;
+        var propertyNames = entityType.GetProperties().Select(p => p.Name).ToList();
+        foreach (string name in propertyNames)
+            <#= child.Var #>ColumnHeaders.Add(name);
+
+        var rows = await _context.Set<<#= child.Table #>>()
+            .Where(c => EF.Property<int>(c, "<#= child.FkColumn #>") == _editing!.<#= child.ParentKeyColumn #>)
+            .ToListAsync();
+        foreach (var row in rows)
+        {
+            var cells = propertyNames.Select(name => typeof(<#= child.Table #>).GetProperty(name)!.GetValue(row)?.ToString() ?? "").ToList();
+            <#= child.Var #>Rows.Add(new <#= table #>ChildGridRow { Cells = cells });
+        }
+    }
+
+<#
+        }
+#>
+    /// <summary> Parses every text-backed field into the entity's real column type, sets ErrorMessage and
+    /// returns false on the first bad or missing value, otherwise saves through <#= table #>Repo and returns true. </summary>
+    public async Task<bool> SaveAsync()
+    {
+        ErrorMessage = null;
+        var entity = _editing ?? new <#= table #>();
+
+<#
+        foreach (var c in shown)
+        {
+            var lookup = LookupOf(c);
+            string prop = c.Name;
+            string label = Label(c.Name);
+            if (lookup is not null)
+            {
+                if (!c.IsNullable)
+                {
+#>
+        if (<#= prop #> is null) { ErrorMessage = "<#= label #> is required."; return false; }
+        entity.<#= prop #> = <#= prop #>.Value;
+<#
+                }
+                else
+                {
+#>
+        entity.<#= prop #> = <#= prop #>;
+<#
+                }
+            }
+            else if (IsBit(c))
+            {
+#>
+        entity.<#= prop #> = <#= prop #><#= c.IsNullable ? "" : " ?? false" #>;
+<#
+            }
+            else if (IsDate(c))
+            {
+#>
+        if (string.IsNullOrWhiteSpace(<#= prop #>))
+        {
+<#
+                if (!c.IsNullable)
+                {
+#>
+            ErrorMessage = "<#= label #> is required."; return false;
+<#
+                }
+                else
+                {
+#>
+            entity.<#= prop #> = null;
+<#
+                }
+#>
+        }
+        else if (!DateTime.TryParse(<#= prop #>, out var <#= prop #>Value)) { ErrorMessage = "<#= label #> is not a valid date."; return false; }
+        else { entity.<#= prop #> = <#= prop #>Value; }
+<#
+            }
+            else if (IsGuid(c))
+            {
+#>
+        if (string.IsNullOrWhiteSpace(<#= prop #>))
+        {
+<#
+                if (!c.IsNullable)
+                {
+#>
+            ErrorMessage = "<#= label #> is required."; return false;
+<#
+                }
+                else
+                {
+#>
+            entity.<#= prop #> = null;
+<#
+                }
+#>
+        }
+        else if (!Guid.TryParse(<#= prop #>, out var <#= prop #>Value)) { ErrorMessage = "<#= label #> is not a valid value."; return false; }
+        else { entity.<#= prop #> = <#= prop #>Value; }
+<#
+            }
+            else if (IsNumber(c))
+            {
+                string numType = CSharpNumericType(c);
+#>
+        if (string.IsNullOrWhiteSpace(<#= prop #>))
+        {
+<#
+                if (!c.IsNullable)
+                {
+#>
+            ErrorMessage = "<#= label #> is required."; return false;
+<#
+                }
+                else
+                {
+#>
+            entity.<#= prop #> = null;
+<#
+                }
+#>
+        }
+        else if (!<#= numType #>.TryParse(<#= prop #>, out var <#= prop #>Value)) { ErrorMessage = "<#= label #> is not a valid number."; return false; }
+        else { entity.<#= prop #> = <#= prop #>Value; }
+<#
+            }
+            else // plain text
+            {
+                if (!c.IsNullable)
+                {
+#>
+        if (string.IsNullOrWhiteSpace(<#= prop #>)) { ErrorMessage = "<#= label #> is required."; return false; }
+        entity.<#= prop #> = <#= prop #>;
+<#
+                }
+                else
+                {
+#>
+        entity.<#= prop #> = string.IsNullOrWhiteSpace(<#= prop #>) ? null : <#= prop #>;
+<#
+                }
+            }
+        }
+#>
+
+        if (_editing is null)
+            await _repo.AddAsync(entity);
+        else
+            await _repo.UpdateAsync(entity.<#= keyProp #>, entity);
+        return true;
+    }
+}
+<#
+    }
+#>

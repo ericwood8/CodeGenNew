@@ -15,11 +15,7 @@ namespace CodeGenNew.App.Services;
 /// the build output on purpose. </summary>
 public class AppSettingsService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        WriteIndented = true
-    };
+    private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
 
     public string BaseDirectory { get; } = AppContext.BaseDirectory;
 
@@ -32,7 +28,7 @@ public class AppSettingsService
 
     public AppSettingsService()
     {
-        Current = Load();
+        Current = AppSettings.Load(SettingsPath);
 
         // Silently create Templates\/Output\ if missing and seed default templates/config from the
         // embedded copies baked into this exe -- never overwrites an existing (possibly customized)
@@ -53,15 +49,6 @@ public class AppSettingsService
     public string SpecialLogicColumnsConfigPath => Path.Combine(BaseDirectory, Current.SpecialLogicColumnsConfigPath);
     public string SpCanDeleteVerificationConfigPath => Path.Combine(BaseDirectory, Current.SpCanDeleteVerificationConfigPath);
 
-    private AppSettings Load()
-    {
-        if (!File.Exists(SettingsPath))
-            return new AppSettings();
-
-        string json = File.ReadAllText(SettingsPath);
-        return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
-    }
-
     /// <summary> The way to change and persist a setting: re-reads Settings.json as it is on disk RIGHT NOW, applies
     /// <paramref name="change"/> to that, and writes it back. Saving the whole in-memory copy (Save) would let a
     /// second running instance, or one started before another saved, silently overwrite settings it never touched
@@ -70,7 +57,7 @@ public class AppSettingsService
     {
         try
         {
-            var fresh = Load();
+            var fresh = AppSettings.Load(SettingsPath);
             change(fresh);
             Current = fresh;
             Save();
@@ -85,7 +72,7 @@ public class AppSettingsService
     private void Save()
     {
         Directory.CreateDirectory(SettingsDirectory);
-        string json = JsonSerializer.Serialize(Current, JsonOptions);
+        string json = JsonSerializer.Serialize(Current, WriteOptions);
         File.WriteAllText(SettingsPath, json);
     }
 }

@@ -7,7 +7,7 @@ namespace CodeGenNew.SchemaIntrospection;
 /// ProductionUnitMaster_Update worked example (Docs/specs.md Appendix A). </summary>
 public static class ParameterNameBuilder
 {
-    public static string Build(string columnName, SqlDbType sqlType)
+    public static string ToSqlParameterName(this string columnName, SqlDbType sqlType)
     {
         string prefix = sqlType switch
         {

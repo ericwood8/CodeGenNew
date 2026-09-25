@@ -1,5 +1,5 @@
 using System.Reflection;
-using System.Security.Cryptography;
+using CodeGenNew.Core;
 
 namespace CodeGenNew.TemplateEngine;
 
@@ -51,13 +51,21 @@ public static class DefaultAssetSeeder
         "SP_Load_v1.tt", "SP_Load_v1.tt.config",
         "SP_Lookup_v1.tt", "SP_Lookup_v1.tt.config",
         "SP_Clone_v1.tt", "SP_Clone_v1.tt.config",
+        "SP_Junction_v1.tt", "SP_Junction_v1.tt.config",
         "API_Crud_v1.tt", "API_Crud_v1.tt.config",
+        "API_Junction_v1.tt", "API_Junction_v1.tt.config",
         "CS_Entity_v1.tt", "CS_Entity_v1.tt.config",
         "CS_Enum_v1.tt", "CS_Enum_v1.tt.config",
         "CS_Repo_v1.tt", "CS_Repo_v1.tt.config",
         "TS_Model_v1.tt", "TS_Model_v1.tt.config",
         "TS_Service_v1.tt", "TS_Service_v1.tt.config",
-        "TS_Component_v1.tt", "TS_Component_v1.tt.config"
+        "TS_Component_v1.tt", "TS_Component_v1.tt.config",
+        "TS_JunctionComponent_v1.tt", "TS_JunctionComponent_v1.tt.config",
+        "WinUI3_JunctionEditor_v1.tt", "WinUI3_JunctionEditor_v1.tt.config",
+        "WinUI3_MasterScreen_v1.tt", "WinUI3_MasterScreen_v1.tt.config",
+        "WinUI3_DetailScreen_v1.tt", "WinUI3_DetailScreen_v1.tt.config",
+        "WinUI3_DetailMasterScreen_v1.tt", "WinUI3_DetailMasterScreen_v1.tt.config",
+        "TS_DetailMasterComponent_v1.tt", "TS_DetailMasterComponent_v1.tt.config"
     ];
 
     /// <returns> Only things a developer might want to know about (Refreshed / KeptCustomized), plus Created
@@ -92,7 +100,7 @@ public static class DefaultAssetSeeder
         if (shipped is null)
             return; // no embedded default for this file (shouldn't happen for the fixed list above).
 
-        string shippedHash = Hash(shipped);
+        string shippedHash = shipped.Sha256Hex();
 
         if (!File.Exists(destinationPath))
         {
@@ -103,15 +111,15 @@ public static class DefaultAssetSeeder
             return;
         }
 
-        string diskHash = Hash(File.ReadAllBytes(destinationPath));
+        string diskHash = File.ReadAllBytes(destinationPath).Sha256Hex();
 
-        if (diskHash.Equals(shippedHash, StringComparison.OrdinalIgnoreCase))
+        if (diskHash.EqualsIgnoreCase(shippedHash))
         {
             state[fileName] = shippedHash; // up to date; remember it so a future shipped change can refresh it
             return;
         }
 
-        if (state.TryGetValue(fileName, out string? lastWrittenHash) && diskHash.Equals(lastWrittenHash, StringComparison.OrdinalIgnoreCase))
+        if (state.TryGetValue(fileName, out string? lastWrittenHash) && diskHash.EqualsIgnoreCase(lastWrittenHash))
         {
             File.WriteAllBytes(destinationPath, shipped);
             state[fileName] = shippedHash;
@@ -122,7 +130,7 @@ public static class DefaultAssetSeeder
 
         // Customized, or we have no record of what this file was: never overwrite. Offer the shipped copy alongside.
         string newPath = destinationPath + ".new";
-        if (!File.Exists(newPath) || !Hash(File.ReadAllBytes(newPath)).Equals(shippedHash, StringComparison.OrdinalIgnoreCase))
+        if (!File.Exists(newPath) || !File.ReadAllBytes(newPath).Sha256Hex().EqualsIgnoreCase(shippedHash))
         {
             File.WriteAllBytes(newPath, shipped);
             notices.Add(new SeedNotice(fileName, SeedOutcome.KeptCustomized,
@@ -132,8 +140,8 @@ public static class DefaultAssetSeeder
 
     private static byte[]? ReadResource(Assembly assembly, string[] resourceNames, string fileName)
     {
-        string? resourceName = resourceNames.FirstOrDefault(n => n.EndsWith("." + fileName, StringComparison.OrdinalIgnoreCase)
-                                                                 || n.Equals(fileName, StringComparison.OrdinalIgnoreCase));
+        string? resourceName = resourceNames.FirstOrDefault(n => n.EndsWithIgnoreCase("." + fileName)
+                                                                 || n.EqualsIgnoreCase(fileName));
         if (resourceName is null)
             return null;
 
@@ -145,8 +153,6 @@ public static class DefaultAssetSeeder
         stream.CopyTo(buffer);
         return buffer.ToArray();
     }
-
-    private static string Hash(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
 
     private static Dictionary<string, string> LoadState(string statePath)
     {

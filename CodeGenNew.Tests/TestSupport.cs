@@ -1,5 +1,6 @@
 using System.Data;
 using CodeGenNew.Core;
+using CodeGenNew.SchemaIntrospection;
 
 namespace CodeGenNew.Tests;
 
@@ -57,7 +58,7 @@ internal static class Sample
     public static ColumnModel Column(
         string name, SqlDbType type, bool nullable = false, bool primaryKey = false, bool identity = false,
         int? characters = null, int? precision = null, int? scale = null, string? defaultSql = null, int ordinal = 0,
-        bool modifiedUserColumn = false)
+        bool modifiedUserColumn = false, bool createDateColumn = false, bool createUserColumn = false)
     {
         bool isText = type is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
         bool isUnicode = type is SqlDbType.NChar or SqlDbType.NVarChar;
@@ -88,7 +89,10 @@ internal static class Sample
             IsStringColumn = isText || type is SqlDbType.Text or SqlDbType.NText,
             IsDateColumn = type is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime,
             IsBooleanColumn = type == SqlDbType.Bit,
+            IsAuditColumn = name.IsAuditColumn(),
             IsModifiedUserColumn = modifiedUserColumn,
+            IsCreateDateColumn = createDateColumn,
+            IsCreateUserColumn = createUserColumn,
             ParameterName = "@p" + name
         };
     }
@@ -103,8 +107,19 @@ internal static class Sample
         ReferencedDisplayColumns = [.. parentDisplayColumns]
     };
 
+    /// <summary> Like ForeignKey, but from the parent's side: a child table's FK column pointing back at
+    /// this table's key (TableModel.ChildForeignKeys). </summary>
+    public static ChildForeignKeyModel ChildForeignKey(string childTable, string childColumn, string parentKey) => new()
+    {
+        ConstraintName = $"FK_{childColumn}_{childTable}",
+        ReferencingSchema = "dbo",
+        ReferencingTable = childTable,
+        ReferencingColumns = [childColumn],
+        ReferencedColumns = [parentKey]
+    };
+
     public static TableModel Table(string name, List<ColumnModel> columns, List<ForeignKeyModel>? foreignKeys = null,
-        List<object?[]>? rows = null) => new()
+        List<object?[]>? rows = null, List<ChildForeignKeyModel>? childForeignKeys = null) => new()
     {
         SchemaName = "dbo",
         TableName = name,
@@ -112,9 +127,10 @@ internal static class Sample
         Columns = columns,
         PrimaryKeyColumns = columns.Where(c => c.IsPrimaryKey).ToList(),
         ForeignKeys = foreignKeys ?? [],
+        ChildForeignKeys = childForeignKeys ?? [],
         // what the schema reader fills in when a template's .tt.config asks for referenced display columns
         HasReferencedDisplayColumns = foreignKeys?.Any(f => f.ReferencedDisplayColumns.Count > 0) ?? false,
-        DisplayColumns = DisplayColumnSelector.Select(columns, (foreignKeys ?? []).SelectMany(f => f.ReferencingColumns).ToList()),
+        DisplayColumns = columns.SelectDisplayColumns((foreignKeys ?? []).SelectMany(f => f.ReferencingColumns).ToList()),
         HasRowData = rows is not null,
         Rows = rows ?? []
     };
@@ -158,6 +174,15 @@ internal static class Sample
     ],
     [ForeignKey("DepartmentId", "Department", "DepartmentId", "Name")]);
 
+    /// <summary> Like TimeEntry's Department: a plain int-keyed table that DepartmentTeam hangs off of
+    /// (TableModel.ChildForeignKeys), for the WinUI3_DetailMasterScreen tests. </summary>
+    public static TableModel DepartmentWithTeams() => Table("Department",
+    [
+        Column("DepartmentId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Column("Name", SqlDbType.NVarChar, characters: 100, ordinal: 2)
+    ],
+    childForeignKeys: [ChildForeignKey("DepartmentTeam", "DepartmentId", "DepartmentId")]);
+
     /// <summary> Like TimeEntry's SY_Role lookup: an id and a Name, with three rows. </summary>
     public static TableModel Roles() => Table("SY_Role",
     [
@@ -195,4 +220,97 @@ internal static class Sample
         Column("Subject", SqlDbType.NVarChar, characters: 100, ordinal: 2),
         Column("ModifiedBy", SqlDbType.NVarChar, nullable: true, characters: 50, ordinal: 3, modifiedUserColumn: true)
     ]);
+
+    /// <summary> Like ProvidenceOgas's real dbo.NameBaseGroupXref (confirmed against a live database,
+    /// 2026-09-25): a many-to-many junction table shaped around a surrogate identity primary key rather
+    /// than a natural composite one -- ID is the PK, NameBaseID/GroupID are plain (non-key) foreign keys,
+    /// plus CreateDate/CreateUser audit columns. This turned out to be the real-world shape, not the
+    /// composite-key one originally assumed -- see CompositeKeyJunction for that shape. </summary>
+    public static TableModel JunctionWithSurrogateKey() => Table("NameBaseGroupXref",
+    [
+        Column("ID", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Column("NameBaseID", SqlDbType.Int, ordinal: 2),
+        Column("GroupID", SqlDbType.Int, ordinal: 3),
+        Column("CreateDate", SqlDbType.DateTime, defaultSql: "(getdate())", ordinal: 4, createDateColumn: true),
+        Column("CreateUser", SqlDbType.VarChar, characters: 50, ordinal: 5, createUserColumn: true)
+    ],
+    [
+        ForeignKey("NameBaseID", "NameBase", "ID", "Name"),
+        ForeignKey("GroupID", "Groups", "ID", "ShortDescr")
+    ]);
+
+    /// <summary> Like TimeEntry's Employee: a plain int-keyed lookup parent, the FK target of DonateLeave()
+    /// and TimeSheetWithEmployeeAndDetail() below -- for cross-template consistency tests (does a component
+    /// call the method TS_Service actually generates for this same table). </summary>
+    public static TableModel Employee() => Table("Employee",
+    [
+        Column("EmployeeId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Column("Name", SqlDbType.NVarChar, characters: 100, ordinal: 2)
+    ]);
+
+    /// <summary> Like TimeEntry's real E_TimeSheet/E_TimeSheetDetail pair (see Docs/specs.md section 11's
+    /// TS_DetailMasterComponent entry): an int-keyed table with both a foreign key to a lookup parent
+    /// (Employee) and a child table hanging off it (TimeSheetDetail) -- exercises the lookup-dropdown and
+    /// child-grid code paths together. </summary>
+    public static TableModel TimeSheetWithEmployeeAndDetail() => Table("TimeSheet",
+    [
+        Column("TimeSheetId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Column("WhenEntered", SqlDbType.DateTime, ordinal: 2),
+        Column("EmployeeId", SqlDbType.Int, ordinal: 3)
+    ],
+    [ForeignKey("EmployeeId", "Employee", "EmployeeId", "Name")],
+    childForeignKeys: [ChildForeignKey("TimeSheetDetail", "TimeSheetId", "TimeSheetId")]);
+
+    /// <summary> The other real-world junction-table shape: a natural composite key made of the two FK
+    /// columns themselves, no separate surrogate id. </summary>
+    public static TableModel CompositeKeyJunction() => Table("UserRole",
+    [
+        Column("UserId", SqlDbType.Int, primaryKey: true, ordinal: 1),
+        Column("RoleId", SqlDbType.Int, primaryKey: true, ordinal: 2)
+    ],
+    [
+        ForeignKey("UserId", "User", "UserId", "Name"),
+        ForeignKey("RoleId", "Role", "RoleId", "Name")
+    ]);
+
+    /// <summary> Like ProvidenceOgas's Products: one column covered by two differently-named FK constraints that both
+    /// point at the same parent table. A generator that keys a lookup by column name (instead of grouping) throws
+    /// "An item with the same key has already been added" building that lookup. </summary>
+    public static TableModel DuplicateForeignKeyColumn() => Table("Product",
+    [
+        Column("ProductId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Column("ProductTypeId", SqlDbType.Int, ordinal: 2),
+        Column("Name", SqlDbType.NVarChar, characters: 50, ordinal: 3)
+    ],
+    [
+        new ForeignKeyModel
+        {
+            ConstraintName = "FK_Product_ProductTypeId_ProductType",
+            ReferencingColumns = ["ProductTypeId"],
+            ReferencedSchema = "dbo",
+            ReferencedTable = "ProductType",
+            ReferencedColumns = ["ProductTypeId"],
+            ReferencedDisplayColumns = ["Name"]
+        },
+        new ForeignKeyModel
+        {
+            ConstraintName = "FK_Product_ProductTypeId_ProductType_Legacy",
+            ReferencingColumns = ["ProductTypeId"],
+            ReferencedSchema = "dbo",
+            ReferencedTable = "ProductType",
+            ReferencedColumns = ["ProductTypeId"],
+            ReferencedDisplayColumns = ["Name"]
+        }
+    ]);
+
+    /// <summary> A "name/active" table (Name + IsActive) that is ALSO the parent side of a foreign key --
+    /// exercises TS_DetailMasterComponent.tt's/WinUI3_DetailMasterScreen.tt's refusal order (child tables
+    /// exist, but the name/active shape should still refuse it, not silently pass that check). </summary>
+    public static TableModel NameActiveTableWithChildren() => Table("Team",
+    [
+        Column("TeamId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Column("Name", SqlDbType.NVarChar, characters: 100, ordinal: 2),
+        Column("IsActive", SqlDbType.Bit, defaultSql: "((1))", ordinal: 3)
+    ],
+    childForeignKeys: [ChildForeignKey("TeamMember", "TeamId", "TeamId")]);
 }

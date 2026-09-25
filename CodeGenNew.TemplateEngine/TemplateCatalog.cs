@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using CodeGenNew.Core;
 
 namespace CodeGenNew.TemplateEngine;
 
@@ -81,11 +82,11 @@ public static partial class TemplateCatalog
         var (baseName, _, hasVersionSuffix) = ParseName(stem);
         if (hasVersionSuffix)
         {
-            var pinned = all.FirstOrDefault(t => t.FileStem.Equals(stem, StringComparison.OrdinalIgnoreCase));
+            var pinned = all.FirstOrDefault(t => t.FileStem.EqualsIgnoreCase(stem));
             if (pinned is not null)
                 return pinned;
         }
 
-        return all.FirstOrDefault(t => !t.IsSuperseded && t.Name.Equals(baseName, StringComparison.OrdinalIgnoreCase));
+        return all.FirstOrDefault(t => !t.IsSuperseded && t.Name.EqualsIgnoreCase(baseName));
     }
 }

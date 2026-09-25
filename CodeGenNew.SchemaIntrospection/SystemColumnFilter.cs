@@ -1,3 +1,5 @@
+using CodeGenNew.Core;
+
 namespace CodeGenNew.SchemaIntrospection;
 
 /// <summary> Excludes SQL Server replication housekeeping columns -- these are added
@@ -7,6 +9,6 @@ public static class SystemColumnFilter
 {
     private static readonly string[] ExactNames = ["msrepl_tran_version"];
 
-    public static bool IsSystemColumn(string columnName) =>
-        ExactNames.Any(n => columnName.Equals(n, StringComparison.OrdinalIgnoreCase));
+    public static bool IsSystemColumn(this string columnName) =>
+        ExactNames.Any(n => columnName.EqualsIgnoreCase(n));
 }

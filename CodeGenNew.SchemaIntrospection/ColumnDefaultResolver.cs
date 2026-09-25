@@ -1,5 +1,6 @@
 using System.Data;
 using System.Text.RegularExpressions;
+using CodeGenNew.Core;
 
 namespace CodeGenNew.SchemaIntrospection;
 
@@ -58,8 +59,8 @@ public static class ColumnDefaultResolver
     {
         if (isBooleanColumn)
         {
-            bool defaultsToTrue = columnName.Equals("IsActive", StringComparison.OrdinalIgnoreCase)
-                || columnName.Equals("IsPrintable", StringComparison.OrdinalIgnoreCase);
+            bool defaultsToTrue = columnName.EqualsIgnoreCase("IsActive")
+                || columnName.EqualsIgnoreCase("IsPrintable");
             return defaultsToTrue ? "true" : "false";
         }
 

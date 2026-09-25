@@ -1,3 +1,4 @@
+using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -58,9 +59,9 @@ public partial class TemplateRowViewModel : ObservableObject
             foreach (string line in File.ReadAllLines(_configPath))
             {
                 string trimmed = line.Trim();
-                bool isOurs = trimmed.StartsWith("# Restriction checkboxes for", StringComparison.OrdinalIgnoreCase)
-                              || trimmed.StartsWith("RequiresPrimaryKey", StringComparison.OrdinalIgnoreCase)
-                              || trimmed.StartsWith("TableOnly", StringComparison.OrdinalIgnoreCase);
+                bool isOurs = trimmed.StartsWithIgnoreCase("# Restriction checkboxes for")
+                              || trimmed.StartsWithIgnoreCase("RequiresPrimaryKey")
+                              || trimmed.StartsWithIgnoreCase("TableOnly");
                 if (!isOurs)
                     preserved.Add(line);
             }

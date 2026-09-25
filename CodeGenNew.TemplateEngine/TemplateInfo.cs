@@ -1,3 +1,5 @@
+using CodeGenNew.Core;
+
 namespace CodeGenNew.TemplateEngine;
 
 /// <summary> One discovered .tt file (Docs/specs.md section 8). </summary>
@@ -25,11 +27,48 @@ public class TemplateInfo
 
     public required TemplateConfig Config { get; init; }
 
-    public bool AppliesTo(bool tableHasPrimaryKey, bool isView)
+    /// <summary> The name of the file this template writes for one table, e.g. SP_Update.tt + ProductionUnitMaster
+    /// -> ProductionUnitMaster_Update.sql. The extension is inferred from SubmenuGroup; unrecognized groups fall
+    /// back to .txt. Config.OutputName, when set, overrides the whole name (e.g. "{Table}Api.cs"). </summary>
+    public string BuildFileName(string tableName)
+    {
+        if (!string.IsNullOrWhiteSpace(Config.OutputName))
+            return Path.GetFileName(Config.OutputName.Replace("{Table}", tableName, StringComparison.OrdinalIgnoreCase)); // a bare file name, never a path
+
+        string suffix = (SubmenuGroup is not null && Name.Length > SubmenuGroup.Length + 1)
+            ? Name[(SubmenuGroup.Length + 1)..]
+            : Name;
+
+        string extension = (SubmenuGroup is not null && ExtensionByGroup.TryGetValue(SubmenuGroup, out var ext))
+            ? ext
+            : "txt";
+
+        return $"{tableName}_{suffix}.{extension}";
+    }
+
+    private static readonly Dictionary<string, string> ExtensionByGroup = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["SP"] = "sql",
+        ["CS"] = "cs",
+        ["TS"] = "ts",
+        ["API"] = "cs",
+        ["JS"] = "js",
+    };
+
+    public bool AppliesTo(bool tableHasPrimaryKey, bool isView, bool isJunctionTable = false, bool hasChildForeignKeys = false,
+        PrimaryKeyShape primaryKeyShape = PrimaryKeyShape.None, bool isNameActiveTable = false)
     {
         if (Config.RequiresPrimaryKey && !tableHasPrimaryKey)
             return false;
         if (Config.TableOnly && isView)
+            return false;
+        if (Config.RequiresJunctionTable && !isJunctionTable)
+            return false;
+        if (Config.RequiresChildTables && !hasChildForeignKeys)
+            return false;
+        if (!Config.PrimaryKeyShapeSatisfies(primaryKeyShape))
+            return false;
+        if (Config.RequiresNotNameActiveTable && isNameActiveTable)
             return false;
         return true;
     }

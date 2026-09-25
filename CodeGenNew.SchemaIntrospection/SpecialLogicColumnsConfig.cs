@@ -1,3 +1,5 @@
+using CodeGenNew.Core;
+
 namespace CodeGenNew.SchemaIntrospection;
 
 /// <summary> One row of SpecialLogicColumns.config (Docs/specs.md section 5.2). </summary>
@@ -10,9 +12,50 @@ public class SpecialLogicRule
 
     /// <summary> Blank companion patterns => per-column classification rule; populated => table-level paired-column rule. </summary>
     public bool IsPairRule => CompanionPatterns.Count > 0;
+
+    private static string? FindMatchingColumn(IEnumerable<string> columnNames, SpecialLogicRule rule, IReadOnlyList<string> patterns) =>
+        columnNames.FirstOrDefault(name => patterns.Any(pattern => name.MatchesPattern(pattern, rule.IgnoreCase)));
+
+    /// <summary> For a table-level pair rule, returns the matching (flagColumn, companionColumn) names if both are present. </summary>
+    public (string FlagColumn, string CompanionColumn)? EvaluatePairRule(IEnumerable<string> columnNames)
+    {
+        if (!IsPairRule)
+            return null;
+
+        var names = columnNames as IList<string> ?? columnNames.ToList();
+        string? flag = FindMatchingColumn(names, this, FlagPatterns);
+        string? companion = FindMatchingColumn(names, this, CompanionPatterns);
+
+        return (flag is not null && companion is not null) ? (flag, companion) : null;
+    }
+
+    /// <summary> For a per-column rule whose pattern ORDER is a priority (DisplayColumn): the index of the first pattern
+    /// this name matches, or null. Lower = higher priority. </summary>
+    public int? MatchRank(string columnName)
+    {
+        if (IsPairRule)
+            return null;
+
+        for (int i = 0; i < FlagPatterns.Count; i++)
+        {
+            if (columnName.MatchesPattern(FlagPatterns[i], IgnoreCase))
+                return i;
+        }
+
+        return null;
+    }
+
+    /// <summary> For a per-column classification rule (blank companion patterns), does this single column name match? </summary>
+    public bool MatchesColumnRule(string columnName)
+    {
+        if (IsPairRule)
+            return false;
+
+        return FlagPatterns.Any(pattern => columnName.MatchesPattern(pattern, IgnoreCase));
+    }
 }
 
-/// <summary> Parses and evaluates SpecialLogicColumns.config. </summary>
+/// <summary> Parses SpecialLogicColumns.config and matches column names against a pattern. </summary>
 public static class SpecialLogicColumnsConfig
 {
     public static List<SpecialLogicRule> Load(string path)
@@ -33,7 +76,7 @@ public static class SpecialLogicColumnsConfig
 
             string special = parts.Length >= 4 ? parts[3] : "";
             bool ignoreCase = special.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-                .Any(f => f.Equals("IgnoreCase", StringComparison.OrdinalIgnoreCase));
+                .Any(f => f.EqualsIgnoreCase("IgnoreCase"));
 
             rules.Add(new SpecialLogicRule
             {
@@ -53,7 +96,7 @@ public static class SpecialLogicColumnsConfig
     /// <summary>
     /// Pattern* -> StartsWith, *Pattern -> EndsWith, *Pattern* -> Contains, Pattern -> exact match.
     /// </summary>
-    public static bool MatchesPattern(string columnName, string pattern, bool ignoreCase)
+    public static bool MatchesPattern(this string columnName, string pattern, bool ignoreCase)
     {
         var comparison = ignoreCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         bool startsWithStar = pattern.StartsWith('*');
@@ -67,47 +110,5 @@ public static class SpecialLogicColumnsConfig
             return columnName.EndsWith(pattern[1..], comparison);
 
         return columnName.Equals(pattern, comparison);
-    }
-
-    private static string? FindMatchingColumn(IEnumerable<string> columnNames, SpecialLogicRule rule, IReadOnlyList<string> patterns) =>
-        columnNames.FirstOrDefault(name => patterns.Any(pattern => MatchesPattern(name, pattern, rule.IgnoreCase)));
-
-    /// <summary> For a table-level pair rule, returns the matching (flagColumn, companionColumn) names if both are present. </summary>
-    public static (string FlagColumn, string CompanionColumn)? EvaluatePairRule(
-        SpecialLogicRule rule, IEnumerable<string> columnNames)
-    {
-        if (!rule.IsPairRule)
-            return null;
-
-        var names = columnNames as IList<string> ?? columnNames.ToList();
-        string? flag = FindMatchingColumn(names, rule, rule.FlagPatterns);
-        string? companion = FindMatchingColumn(names, rule, rule.CompanionPatterns);
-
-        return (flag is not null && companion is not null) ? (flag, companion) : null;
-    }
-
-    /// <summary> For a per-column rule whose pattern ORDER is a priority (DisplayColumn): the index of the first pattern
-    /// this name matches, or null. Lower = higher priority. </summary>
-    public static int? MatchRank(SpecialLogicRule rule, string columnName)
-    {
-        if (rule.IsPairRule)
-            return null;
-
-        for (int i = 0; i < rule.FlagPatterns.Count; i++)
-        {
-            if (MatchesPattern(columnName, rule.FlagPatterns[i], rule.IgnoreCase))
-                return i;
-        }
-
-        return null;
-    }
-
-    /// <summary> For a per-column classification rule (blank companion patterns), does this single column name match? </summary>
-    public static bool MatchesColumnRule(SpecialLogicRule rule, string columnName)
-    {
-        if (rule.IsPairRule)
-            return false;
-
-        return rule.FlagPatterns.Any(pattern => MatchesPattern(columnName, pattern, rule.IgnoreCase));
     }
 }

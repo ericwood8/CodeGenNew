@@ -9,7 +9,7 @@ namespace CodeGenNew.App.ViewModels;
 /// <summary> Backs the Template Management screen (Docs/specs.md section 9.3) -- a file-management
 /// grid over Templates\*.tt, not an embedded editor; editing template content happens in whatever
 /// external editor the developer already uses. </summary>
-public partial class TemplateManagementViewModel : ObservableObject
+public partial class TemplateManagementViewModel : StatusMessageViewModel
 {
     private readonly AppSettingsService _settings;
     private readonly string _templatesDirectory;
@@ -18,13 +18,6 @@ public partial class TemplateManagementViewModel : ObservableObject
 
     [ObservableProperty]
     private TemplateRowViewModel? _selectedTemplate;
-
-    [ObservableProperty]
-    private string _statusMessage = "";
-
-    public bool HasStatusMessage => !string.IsNullOrEmpty(StatusMessage);
-
-    partial void OnStatusMessageChanged(string value) => OnPropertyChanged(nameof(HasStatusMessage));
 
     public TemplateManagementViewModel(AppSettingsService settings)
     {

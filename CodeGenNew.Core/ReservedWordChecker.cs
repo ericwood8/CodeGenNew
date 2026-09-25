@@ -38,8 +38,8 @@ public static class ReservedWordChecker
         "using","virtual","void","volatile","while"
     };
 
-    public static bool IsSqlReservedWord(string name) => SqlServerReservedWords.Contains(name);
+    public static bool IsSqlReservedWord(this string name) => SqlServerReservedWords.Contains(name);
 
     /// <summary> Case-sensitive: C# keywords are only reserved in their lowercase form. </summary>
-    public static bool IsCSharpReservedWord(string name) => CSharpReservedWords.Contains(name);
+    public static bool IsCSharpReservedWord(this string name) => CSharpReservedWords.Contains(name);
 }

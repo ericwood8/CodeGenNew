@@ -1,0 +1,164 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ------------------------------------------------------------------------------------------
+    // SP_Junction_v1.tt
+    // Generates: <TableName>_Junction.sql -- three procedures for a many-to-many "junction"/"bridge"
+    // table (TableModel.IsJunctionTable), backing a two-list "available/selected" shuttle-control screen
+    // (see WinUI3_JunctionEditor.tt, and Docs/specs.md section 7 for the detection rule):
+    //
+    //   <Table>_List   (@<Anchor>Id)              -- every row of the TARGET parent table, with an
+    //                                                 IsSelected bit saying whether it's linked to the
+    //                                                 given anchor row.
+    //   <Table>_Link   (@<Anchor>Id, @<Target>Id) -- adds the association if it doesn't already exist.
+    //   <Table>_Unlink (@<Anchor>Id, @<Target>Id) -- removes it.
+    //
+    // Why not just reuse SP_Insert/SP_Delete: those operate on the table's PRIMARY KEY, but a junction
+    // table's association columns are only sometimes its primary key (TableModel.IsJunctionTable
+    // deliberately also recognizes the surrogate-identity-key shape -- confirmed against a real database,
+    // ProvidenceOgas.dbo.NameBaseGroupXref, 2026-09-25 -- where the two FK columns are NOT the primary
+    // key at all). Link/Unlink work by the association columns directly, whichever shape they're in.
+    //
+    // Which of the two association columns is the "anchor" (the side already picked elsewhere, e.g. "this
+    // NameBase's Groups") and which is the "target" (the side being multi-selected) is not something the
+    // schema can say -- this template takes TableModel.JunctionForeignKeys[0] as the anchor and [1] as the
+    // target (i.e. column order: NameBaseID before GroupID means "edit a NameBase's Groups", not the
+    // other way around). If your table's natural direction reads the other way, swap the two @@@FILE
+    // parameter names/roles by hand in the generated output -- CodeGenNew does not guess intent here.
+    //
+    // Audit columns are handled the same way SP_Insert.tt already does: a CreateDateColumn match is
+    // hardcoded to GETDATE() on Link; a CreateUserColumn match is an optional caller-supplied parameter.
+    // Any OTHER extra column (there normally isn't one -- see TableModel.IsJunctionTable) is not written by
+    // Link at all and is left at its database default.
+    //
+    // Requires a primary key (RequiresPrimaryKey=true in .tt.config -- NOT the junction's own PK
+    // specifically, just that TableOnly/RequiresJunctionTable can be checked against a real TableModel) and
+    // TableModel.IsJunctionTable (RequiresJunctionTable=true), and the target table's display columns
+    // (NeedsReferencedDisplayColumns=true), the same way SP_Lookup.tt does.
+
+    if (!Model.IsJunctionTable)
+        Error($"SP_Junction cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it is not a many-to-many junction table -- TableModel.IsJunctionTable is false. " +
+              "A junction table's primary key (or, for a surrogate-identity-key table, its only two non-audit columns) must be exactly two single-column foreign keys.");
+    if (!Model.HasReferencedDisplayColumns)
+        Error("SP_Junction needs the target table's display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
+
+    string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
+
+    var anchorFk = Model.JunctionForeignKeys[0];
+    var targetFk = Model.JunctionForeignKeys[1];
+    var anchorColumn = Model.Columns.First(c => c.Name.Equals(anchorFk.ReferencingColumns[0], System.StringComparison.OrdinalIgnoreCase));
+    var targetColumn = Model.Columns.First(c => c.Name.Equals(targetFk.ReferencingColumns[0], System.StringComparison.OrdinalIgnoreCase));
+    string anchorParam = "@Anchor" + anchorColumn.Name;
+    string targetParam = "@Target" + targetColumn.Name;
+    string targetKeyColumn = targetFk.ReferencedColumns[0];
+
+    string junctionTable = $"{Q(Model.SchemaName)}.{Q(Model.TableName)}";
+    string targetTable = $"{Q(targetFk.ReferencedSchema)}.{Q(targetFk.ReferencedTable)}";
+
+    var createDateColumn = Model.Columns.FirstOrDefault(c => c.IsCreateDateColumn);
+    var createUserColumn = Model.Columns.FirstOrDefault(c => c.IsCreateUserColumn);
+
+    // ---- List: every target row, plus whether it's linked to the given anchor. Display columns are CAST
+    // to NVARCHAR regardless of their real type -- the same "a display column is something to SHOW a
+    // person, not typed data to compute with" convention SP_Update.tt already established for its own
+    // VarChar-for-everything parameters -- so the generated ViewModel's row type can bind every display
+    // column as a plain string without needing to know each one's real SQL type.
+    var selectItems = new List<string> { $"[t].{Q(targetKeyColumn)} AS TargetId" };
+    foreach (string displayColumn in targetFk.ReferencedDisplayColumns)
+        selectItems.Add($"CAST([t].{Q(displayColumn)} AS NVARCHAR(500)) AS {Q(displayColumn)}");
+    string orderBy = targetFk.ReferencedDisplayColumns.Count > 0 ? Q(targetFk.ReferencedDisplayColumns[0]) : Q(targetKeyColumn);
+
+    // ---- Link: the association columns, plus any audit columns this table happens to have.
+    var linkColumns = new List<(string Name, string Value)> { (anchorColumn.Name, anchorParam), (targetColumn.Name, targetParam) };
+    if (createDateColumn is not null)
+        linkColumns.Add((createDateColumn.Name, "GETDATE()"));
+    if (createUserColumn is not null)
+        linkColumns.Add((createUserColumn.Name, "@CreateUser"));
+#>
+CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_List]
+(
+	<#= anchorParam #> <#= anchorColumn.SqlTypeDeclaration #>
+)
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	SELECT
+<#
+    for (int i = 0; i < selectItems.Count; i++)
+    {
+#>
+		<#= i == 0 ? " " : "," #><#= selectItems[i] #>
+<#
+    }
+#>
+		, CASE WHEN EXISTS (
+			SELECT 1 FROM <#= junctionTable #> AS [x]
+			WHERE [x].<#= Q(anchorColumn.Name) #> = <#= anchorParam #> AND [x].<#= Q(targetColumn.Name) #> = [t].<#= Q(targetKeyColumn) #>
+		) THEN 1 ELSE 0 END AS IsSelected
+	FROM <#= targetTable #> AS [t]
+	ORDER BY [t].<#= orderBy #>;
+END
+GO
+
+CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Link]
+(
+	<#= anchorParam #> <#= anchorColumn.SqlTypeDeclaration #>,
+	<#= targetParam #> <#= targetColumn.SqlTypeDeclaration #><#= createUserColumn is not null ? "," : "" #>
+<#
+    if (createUserColumn is not null)
+    {
+#>
+	@CreateUser <#= createUserColumn.SqlTypeDeclaration #> = NULL
+<#
+    }
+#>
+)
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	IF NOT EXISTS (
+		SELECT 1 FROM <#= junctionTable #>
+		WHERE <#= Q(anchorColumn.Name) #> = <#= anchorParam #> AND <#= Q(targetColumn.Name) #> = <#= targetParam #>
+	)
+		INSERT INTO <#= junctionTable #>
+		(
+<#
+    for (int i = 0; i < linkColumns.Count; i++)
+    {
+#>
+			<#= i == 0 ? " " : "," #><#= Q(linkColumns[i].Name) #>
+<#
+    }
+#>
+		)
+		VALUES
+		(
+<#
+    for (int i = 0; i < linkColumns.Count; i++)
+    {
+#>
+			<#= i == 0 ? " " : "," #><#= linkColumns[i].Value #>
+<#
+    }
+#>
+		);
+END
+GO
+
+CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Unlink]
+(
+	<#= anchorParam #> <#= anchorColumn.SqlTypeDeclaration #>,
+	<#= targetParam #> <#= targetColumn.SqlTypeDeclaration #>
+)
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	DELETE FROM <#= junctionTable #>
+	WHERE <#= Q(anchorColumn.Name) #> = <#= anchorParam #> AND <#= Q(targetColumn.Name) #> = <#= targetParam #>;
+END

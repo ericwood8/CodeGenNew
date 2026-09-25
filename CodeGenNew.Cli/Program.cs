@@ -1,4 +1,3 @@
-using System.Text.Json;
 using CodeGenNew.Connections;
 using CodeGenNew.Core;
 using CodeGenNew.SchemaIntrospection;
@@ -30,7 +29,7 @@ public static class Program
         }
 
         string baseDirectory = AppContext.BaseDirectory;
-        var settings = LoadSettings(Path.Combine(baseDirectory, "Settings.json"));
+        var settings = AppSettings.Load(Path.Combine(baseDirectory, "Settings.json"));
 
         string templatesDirectory = Path.Combine(baseDirectory, settings.TemplatesDirectory);
         string specialLogicColumnsConfigPath = Path.Combine(baseDirectory, settings.SpecialLogicColumnsConfigPath);
@@ -93,7 +92,7 @@ public static class Program
         // Docs/specs.md section 7.1. Has no bearing on what gets generated; only reported when a fresh
         // (uncached) check actually ran, so a database already recorded as checked stays silent.
         string spCanDeleteConfigPath = Path.Combine(baseDirectory, settings.SpCanDeleteVerificationConfigPath);
-        await using (var probeConnection = SqlServerConnectionFactory.CreateConnection(connectionRequest))
+        await using (var probeConnection = connectionRequest.CreateConnection())
         {
             await probeConnection.OpenAsync();
             var (spCanDeleteStatus, wasCached) = await SpCanDeleteVerifier.GetOrVerifyAsync(
@@ -108,10 +107,10 @@ public static class Program
             }
         }
 
-        if (template.Config.RequiresPrimaryKey && !model.HasPrimaryKey)
+        string? refusal = template.Config.Refuse(model);
+        if (refusal is not null)
         {
-            Console.Error.WriteLine($"Error: template '{template.Name}' requires a primary key, but " +
-                                     $"[{options.Schema}].[{options.Table}] doesn't have one.");
+            Console.Error.WriteLine($"Error: template '{template.Name}' can't be used for [{options.Schema}].[{options.Table}]: {refusal}");
             return 1;
         }
 
@@ -140,15 +139,5 @@ public static class Program
         Console.WriteLine("Done. codegen never modifies the target database or any other application -- " +
                            "review the generated file above and apply it yourself if you're happy with it.");
         return 0;
-    }
-
-    private static AppSettings LoadSettings(string settingsPath)
-    {
-        if (!File.Exists(settingsPath))
-            return new AppSettings();
-
-        string json = File.ReadAllText(settingsPath);
-        return JsonSerializer.Deserialize<AppSettings>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-               ?? new AppSettings();
     }
 }

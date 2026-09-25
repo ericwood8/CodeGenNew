@@ -94,6 +94,12 @@ public class ColumnModel
     /// newly inserted row is never born with admin rights. </summary>
     public bool IsAdminFlagColumn { get; init; }
 
+    /// <summary> Matches SpecialLogicColumns.config category "FilePathColumn" -- e.g. LogoFile, PhotoPath,
+    /// AttachmentFileName. Not yet consumed by any shipped template; forward-looking for a screen template
+    /// where a matching column should render as a file picker + "open file" button instead of a plain
+    /// text box. </summary>
+    public bool IsFilePathColumn { get; init; }
+
     /// <summary> Hungarian-prefixed SQL parameter name, e.g. "@pstrDescription", "@plngID". See Docs/specs.md Appendix A. </summary>
     public required string ParameterName { get; init; }
 }
