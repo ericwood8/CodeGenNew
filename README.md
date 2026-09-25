@@ -10,7 +10,7 @@ See **[Docs/specs.md](Docs/specs.md)** for the full specification: architecture,
 
 ## What it generates
 
-Twenty-two templates ship in `Templates\`. A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
+Twenty-four templates ship in `Templates\`. A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
 
 | Group | Template | Writes |
 |---|---|---|
@@ -18,10 +18,12 @@ Twenty-two templates ship in `Templates\`. A table's right-click menu (or the CL
 | `SP` | `SP_Lookup` | ID + display columns of a row and of every table it points to, so a drop-down needs no joins. |
 | `SP` | `SP_Clone` | Copies a row into a new one and returns the new key (a grid's "Clone" button). |
 | `SP` | `SP_Load` | Reads the table's **rows** and writes a re-runnable procedure that loads the same rows into another database (seed data). |
+| `SP` | `SP_Search` | `Table_Search.sql` — one optional `LIKE '%...%'` parameter per string column (audit columns excluded), AND-ed together, for a list screen's search box. Refuses a table with no searchable columns. |
 | `SP` | `SP_Junction` | `Table_Junction.sql` — List/Link/Unlink for a many-to-many **junction table** (only offered when `TableModel.IsJunctionTable` is true). |
 | `API` | `API_Crud` | `TableApi.cs` — a minimal-API class: get all, get by id, create, update, delete, each over the table's repository. |
 | `API` | `API_Junction` | `TableJunctionApi.cs` — HTTP endpoints over `SP_Junction`'s three procedures, called straight through the `DbContext` (no repository) — the HTTP companion `TS_JunctionComponent` needs (also junction-only). |
 | `CS` | `CS_Entity` | `Table.cs` — an EF Core entity: key, foreign keys, navigation properties, attributes. |
+| `CS` | `CS_Validation` | `TableValidation.cs` — a `[MetadataType]` buddy class adding `[Required]`/`[StringLength]`/`[DataType]`/`[Display]` to the entity (works for a hand-maintained entity too; the entity class must be `partial`). |
 | `CS` | `CS_Enum` | `Table.cs` — a C# enum whose members are the **rows** of a small lookup table. |
 | `CS` | `CS_Repo` | `TableRepo.cs` — the thin repository class over your shared generic repository. |
 | `TS` | `TS_Model` | `models/table.ts` — an Angular interface matching the JSON the API really sends. |
@@ -87,8 +89,8 @@ Open the `.tt` file (or the app's *Templates* button → Edit), change those lin
 
 | Setting | In | Tells the template |
 |---|---|---|
-| `apiNamespace`, `entityNamespace`, `enumNamespace`, `repositoryNamespace` | `API_Crud`, `CS_Entity`, `CS_Enum`, `CS_Repo` | the `namespace` the generated file declares |
-| `usings` | `API_Crud`, `CS_Entity`, `CS_Repo` | extra `using` lines to write (leave empty if your project uses global usings) |
+| `apiNamespace`, `entityNamespace`, `enumNamespace`, `repositoryNamespace` | `API_Crud`, `CS_Entity`, `CS_Validation`, `CS_Enum`, `CS_Repo` | the `namespace` the generated file declares |
+| `usings` | `API_Crud`, `CS_Entity`, `CS_Validation`, `CS_Repo` | extra `using` lines to write (leave empty if your project uses global usings) |
 | `contextType` | `API_Crud`, `CS_Repo` | your `DbContext` class |
 | `baseEntity`, `baseNameActiveEntity` | `CS_Entity` | the base classes your entities derive from |
 | `modelsFolder`, `servicesFolder`, `componentsFolder`, `apiPrefix` | `TS_*` | where the Angular files go and the API URL prefix |
@@ -119,7 +121,7 @@ CodeGenNew.slnx
 dotnet test CodeGenNew.Tests\CodeGenNew.Tests.csproj
 ```
 
-The suite needs **no database**. It covers the file-writing engine (`@@@FILE` splitting, unsafe paths, output naming), template discovery and versioning, the seeder (created / refreshed / kept-customized, and that **every file in `Templates\` is actually shipped**), the literal and display-column helpers, and it runs every shipped template against hand-built tables to check what it writes — the API, entity, enum, repository, model, service and component rules, each template's refusals (composite keys, enum tables), and that changing a project setting changes the output. It takes about a minute, mostly compiling templates.
+The suite needs **no database**. It covers the file-writing engine (`@@@FILE` splitting, unsafe paths, output naming), template discovery and versioning, the seeder (created / refreshed / kept-customized, and that **every file in `Templates\` is actually shipped**), the literal and display-column helpers, and it runs every shipped template against hand-built tables to check what it writes — the API, entity, validation, enum, repository, model, service and component rules, each template's refusals (composite keys, enum tables), and that changing a project setting changes the output. It takes about a minute, mostly compiling templates.
 
 ## Known dependencies
 
@@ -137,7 +139,7 @@ CLI argument parsing is hand-rolled rather than pulling in a library, given the 
 
 ## Status
 
-v1 is working: the desktop app, the CLI and fourteen of the twenty-two templates were each verified against a real database, and the generated code was compiled (and, for the Angular files, run) in the sample project. The junction-table family (`TableModel.IsJunctionTable`, added after the real `ProvidenceOgas.dbo.NameBaseGroupXref` table turned out to use a surrogate identity key rather than the composite-key shape first assumed) was verified per template: `SP_Junction` was deployed and exercised (List/Link/Unlink, including duplicate-link idempotency) against that real table via a disposable scratch copy; `API_Junction` was dropped into the real TimeEntryServer project and built there (0 errors) before being removed again; `TS_JunctionComponent` was dropped into the real TimeEntryUI project, where `ng test` compiled and ran it for real (13/13 passing) before being removed again. `WinUI3_JunctionEditor`'s output was rendered against the same real table and hand-reviewed, but not compiled in a live WinUI3 project — there is no existing WinUI3 desktop client in this ecosystem to drop it into.
+v1 is working: the desktop app, the CLI and sixteen of the twenty-four templates were each verified against a real database, and the generated code was compiled (and, for the Angular files, run) in the sample project. The junction-table family (`TableModel.IsJunctionTable`, added after the real `ProvidenceOgas.dbo.NameBaseGroupXref` table turned out to use a surrogate identity key rather than the composite-key shape first assumed) was verified per template: `SP_Junction` was deployed and exercised (List/Link/Unlink, including duplicate-link idempotency) against that real table via a disposable scratch copy; `API_Junction` was dropped into the real TimeEntryServer project and built there (0 errors) before being removed again; `TS_JunctionComponent` was dropped into the real TimeEntryUI project, where `ng test` compiled and ran it for real (13/13 passing) before being removed again. `WinUI3_JunctionEditor`'s output was rendered against the same real table and hand-reviewed, but not compiled in a live WinUI3 project — there is no existing WinUI3 desktop client in this ecosystem to drop it into.
 
 The desktop CRUD-screen family (`TableModel.ChildForeignKeys`, `WinUI3_MasterScreen`, `WinUI3_DetailScreen`, `WinUI3_DetailMasterScreen`) was generated live against `ERICSMINIPC\ProvidenceOgas.dbo.Products` — a table whose `DOIProductTypeID`/`RDProductTypeID` columns each carry two separate foreign-key constraints to the same parent, which surfaced and fixed a duplicate-key crash in all three templates' column-lookup logic before this table was used as the test case — and against `Products`' 12 real child tables for `WinUI3_DetailMasterScreen`'s per-child grid (whose columns are discovered at run time via EF Core's own entity metadata, not known when the file is generated — see specs.md §11). Like `WinUI3_JunctionEditor`, none of the three were compiled in a live WinUI3 project.
 
@@ -146,6 +148,10 @@ The desktop CRUD-screen family (`TableModel.ChildForeignKeys`, `WinUI3_MasterScr
 Every `TS_*` template was then run twice more against a fresh ~50 real tables total, sampled from 16 of the ~35 databases on the dev SQL Server (legacy schemas spanning `dbo` and non-`dbo` schemas, composite keys, natural `varchar`/`char` keys, reserved-word table names, several with junctions and child tables) — no crashes across either round, but several tables' menu options were only refused once generation was attempted (a composite or natural-key table offered `TS_Service`/`TS_Component`/etc. that could never work for it). Fixed by a new per-template `RequiredPrimaryKeyShape` restriction (`TableModel`/`TableSummary.PrimaryKeyShape`, `Docs/specs.md` §5.3) so the menu (and the CLI) now leave a wrongly-shaped table's key off the option list entirely, applied to every `TS_*`/`API_Crud`/WinUI3 template that needs a specific key shape.
 
 A related mismatch was found by inspecting a real hand-maintained API rather than generating against one: `TS_Service`/`TS_Component`/`TS_DetailMasterComponent` always generate a `getAll()` call, but a "name/active" table's real backend (`API_Crud.tt` has always refused to generate one, since it needs duplicate-name checks) is hand-maintained and, confirmed against the real `TimeEntry` database's `DepartmentTeamApi.cs`, commonly has **no plain `getAll()` route at all** — only a parent-scoped one. Fixed the same way: a new `RequiresNotNameActiveTable` restriction (`TableModel`/`TableSummary.IsNameActiveTable`, one canonical rule replacing four identical inline copies across `API_Crud.tt`/`CS_Entity.tt`/`CS_Repo.tt`/the WinUI3 family), applied to every template that assumes a plain `getAll()`-shaped backend — `TS_Service`, `TS_Component`, `TS_DetailMasterComponent`, `API_Crud`, and the WinUI3 CRUD-screen family all now leave a name/active table's option off the menu, verified live against the real `DepartmentTeam` table.
+
+`SP_Search` (`CodeGenPossibilities\SearchFilterBuilder` in the research folder — a dynamic-filter list/search screen, mechanically driven by which of a table's columns are searchable string columns) was generated live against `ERICSMINIPC\ProvidenceOgas.dbo.Products` (correctly found two searchable columns, `Description`/`GEProductCode`, excluding the id/type-FK/bit columns) and against `NameBaseGroupXref` (correctly refused: its only string column, `CreateUser`, is audit-classified, leaving nothing to filter on).
+
+`CS_Validation` (`CodeGenPossibilities\ValidationLibrary` in the research folder — a `[MetadataType]` validation buddy class, the `[Required]` DataAnnotations checking `CS_Entity` deliberately leaves out) was generated live against `ERICSMINIPC\ProvidenceOgas.dbo.Products`: the identity `ID` column was correctly left out, the three foreign-key columns and two boolean flags correctly got `[Required]`, `Description`/`GEProductCode` correctly got `[StringLength]`, and the nullable `GEProductCode` correctly stayed without `[Required]`. The T-SQL guard-clause half of the same research entry (reusable `spErrorIfMoneyIsNegative`-style procedures called from inside the CRUD SPs) was not built — it needs real new engine surface (a `SpecialLogicColumns.config`-style pattern-to-value category, and opt-in project-setting lists to avoid false positives like a legitimately negative "signed amount" column) rather than being derivable from `ColumnModel` alone.
 
 Only SQL Server is supported; only tables (not views).
 

@@ -1,0 +1,169 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // lists of tables). Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string entityNamespace = "TimeEntry.Common.Entities";
+    // Namespaces the generated file must "using" (for example "MyApp.Entities"; leave empty when the project supplies them through
+    // global usings, as TimeEntryServer does). Each entry becomes a using line in the generated file.
+    string[] usings = { };
+    // ==========================================================================================
+
+    // ------------------------------------------------------------------------------------------
+    // CS_Validation_v1.tt
+    // Generates: <TableName>Validation.cs   (see OutputName in CS_Validation_v1.tt.config)
+    //
+    // A "buddy class" validation companion (CodeGenPossibilities\ValidationLibrary in the research
+    // folder): [Required]/[StringLength]/[DataType]/[Display] attributes on a separate <Table>Metadata
+    // class, attached to the real entity via [MetadataType(typeof(<Table>Metadata))] rather than written
+    // directly onto the entity -- so it works whether the entity came from CS_Entity.tt or is
+    // hand-maintained (this project's own README/specs.md §11 status notes list several entities that stay
+    // hand-maintained), without editing that file at all.
+    //
+    // Why a separate template instead of folding into CS_Entity.tt: CS_Entity.tt already writes
+    // [StringLength]/[DataType]/[Display] itself (its own header comment lists what it does NOT write:
+    // "[Range]/[RegularExpression]/[Required] validation" -- a deliberate choice, not an oversight) --
+    // [Required] is this template's actual new contribution for a CS_Entity-generated entity.  C#'s
+    // `required` modifier (which CS_Entity does use) is a compile-time "must be set somewhere" obligation,
+    // not the same thing as a RUNTIME [Required] DataAnnotations check (e.g. Validator.TryValidateObject,
+    // or an ASP.NET Core MVC model-validation pipeline) -- the two are complementary, not redundant.
+    //
+    // Which columns get validated: every column except computed columns (not assignable), audit-classified
+    // columns (IsAuditColumn -- Create*/Modif*/Change*/Delete*/Update*/Activ*/Inactiv*, per
+    // AuditColumnClassifier: server-set, not something a caller fills in a form and needs validated), and an
+    // IDENTITY primary key (database-assigned). A non-identity primary key (a natural or caller-supplied
+    // key) IS included -- the caller must supply it, same reasoning SP_Insert.tt already uses to decide
+    // whether the key is a parameter.
+    //
+    //   - IsNullable=false -> [Required].
+    //   - IsStringColumn with a known length -> [StringLength(n)] (same byte/character halving CS_Entity.tt
+    //     uses for nchar/nvarchar).
+    //   - Column name matching a semantic pattern -> [DataType(DataType.X)]: *Email* -> EmailAddress,
+    //     *Password* -> Password, *Phone* -> PhoneNumber (CS_Entity.tt already has Phone; Email/Password are
+    //     new here), else MultilineText from 100 characters up (same threshold CS_Entity.tt uses) -- checked
+    //     in that order, since a semantically-named column should win over a generic length guess.
+    //   - [Display(Name/Description)] from the column name split into words (CS_Entity.tt's own helper).
+    //
+    // Deliberately does NOT write EF-mapping attributes ([Column], [ForeignKey], [Precision],
+    // [DatabaseGenerated], [Timestamp]) or display-formatting ones ([DisplayFormat]) -- those belong to the
+    // entity's own mapping (CS_Entity.tt already writes them) and would be redundant or conflicting coming
+    // from a second class. Does not write [Range]/[RegularExpression] (needs judgment CodeGenNew cannot
+    // supply) or a custom foreign-key-exists validator attribute (the research example's
+    // [RequiredIntForeignKeyValidator] assumes a hand-written attribute class no target project can be
+    // assumed to have) -- a NOT NULL foreign-key column still gets a plain [Required].
+    //
+    // Integration this template does NOT do for you, so it stays a plain add-a-file generator like every
+    // other template: the target entity class must be declared `partial` for [MetadataType] to attach to it
+    // (a one-line edit, the same category of by-hand step TS_Component.tt's own route/sidebar/app.config
+    // wiring already leaves to the developer) -- CS_Entity.tt's own output is not `partial` today, so this
+    // is required even for a CS_Entity-generated entity. Whatever in the target project actually calls
+    // Validator.TryValidateObject (or wires ASP.NET Core's own model-validation pipeline) is also up to that
+    // project, the same way this tool never wires a DbSet registration or an Angular route either.
+    //
+    // Requires a primary key (RequiresPrimaryKey=true) and a table, not a view. Unlike CS_Entity.tt, does
+    // NOT require a single-column key -- a validation-attribute carrier has no [Key]/Fluent-API concern, so
+    // a composite-key table's columns can still be validated even though CS_Entity.tt itself would refuse
+    // to generate an entity for it.
+
+    var validatedColumns = Model.Columns
+        .Where(c => !c.IsComputed && !c.IsAuditColumn && !(c.IsPrimaryKey && c.IsIdentity))
+        .ToList();
+
+    if (validatedColumns.Count == 0)
+        Error($"CS_Validation cannot generate from [{Model.SchemaName}].[{Model.TableName}]: every column is computed, audit-classified, or an identity primary key, leaving nothing to validate.");
+
+    // ---- naming helpers (same as CS_Entity.tt, kept local rather than shared -- every template here is a
+    // standalone .tt file with no code shared between templates)
+    string Id(ColumnModel c) => c.IsCSharpReservedWordName ? "@" + c.Name : c.Name;
+    string Words(string name, bool isBit)
+    {
+        string s = name;
+        if (isBit && Regex.IsMatch(s, "^Is[A-Z]")) s = s.Substring(2);
+        s = s.Replace('_', ' ');
+        s = Regex.Replace(s, "(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ");
+        return Regex.Replace(s, " +", " ").Trim();
+    }
+    string Str(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+
+    string ClrType(ColumnModel c)
+    {
+        string t = c.SqlType switch
+        {
+            SqlDbType.Int => "int",
+            SqlDbType.BigInt => "long",
+            SqlDbType.SmallInt => "short",
+            SqlDbType.TinyInt => "byte",
+            SqlDbType.Bit => "bool",
+            SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => "decimal",
+            SqlDbType.Float => "double",
+            SqlDbType.Real => "float",
+            SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime => "DateTime",
+            SqlDbType.DateTimeOffset => "DateTimeOffset",
+            SqlDbType.Time => "TimeSpan",
+            SqlDbType.UniqueIdentifier => "Guid",
+            SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => "string",
+            SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => "byte[]",
+            _ => "object"
+        };
+        return c.IsNullable ? t + "?" : t;
+    }
+
+    string? SemanticDataType(ColumnModel c, bool multiline)
+    {
+        if (c.Name.ContainsIgnoreCase("Email")) return "DataType.EmailAddress";
+        if (c.Name.ContainsIgnoreCase("Password")) return "DataType.Password";
+        if (c.Name.ContainsIgnoreCase("Phone")) return "DataType.PhoneNumber";
+        return multiline ? "DataType.MultilineText" : null;
+    }
+
+    var o = new StringBuilder();
+    void L(string s = "") => o.Append(s).Append('\n');
+    var body = new StringBuilder();
+    void B(string s = "") => body.Append(s).Append('\n');
+
+    bool first = true;
+    foreach (var c in validatedColumns)
+    {
+        if (!first) B();
+        first = false;
+
+        bool isBit = c.SqlType == SqlDbType.Bit;
+        string words = Str(Words(c.Name, isBit));
+        int chars = c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
+        bool isText = c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
+        bool multiline = isText && chars >= 100;
+        string? dataType = SemanticDataType(c, multiline);
+
+        if (!c.IsNullable) B("    [Required]");
+        B($"    [Display(Name = \"{words}\", Description = \"{words}\")]");
+        if (isText && chars > 0) B($"    [StringLength({chars})]");
+        if (dataType is not null) B($"    [DataType({dataType})]");
+        B($"    public {ClrType(c)} {Id(c)} {{ get; set; }}");
+    }
+
+    var headUsings = usings.ToList();
+    headUsings.Insert(0, "System.ComponentModel.DataAnnotations");
+    foreach (string u in headUsings) L($"using {u};");
+    L();
+    L($"namespace {entityNamespace};");
+    L();
+    string tableIdentifier = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
+    L($"[MetadataType(typeof({Model.TableName}Metadata))]");
+    L($"public partial class {tableIdentifier}");
+    L("{");
+    L("}");
+    L();
+    L($"public class {Model.TableName}Metadata");
+    L("{");
+    o.Append(body);
+    L("}");
+    Write(o.ToString());
+#>

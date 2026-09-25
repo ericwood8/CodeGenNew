@@ -1,0 +1,88 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ------------------------------------------------------------------------------------------
+    // SP_Search_v1.tt
+    // Generates: <TableName>_Search.sql
+    //
+    // A list/search screen that builds a dynamic filter from whichever of several optional text boxes the
+    // user actually filled in (CodeGenPossibilities\SearchFilterBuilder in the research folder): one
+    // @Column parameter per searchable column, defaulting to NULL (not filtered on); every supplied
+    // parameter contributes an AND-ed "column LIKE '%value%'" clause, so a caller can search by any
+    // combination of columns, or none (returns every row).
+    //
+    // Searchable columns are every string column (ColumnModel.IsStringColumn) that isn't audit-classified
+    // (IsAuditColumn -- Create*/Modif*/Change*/Delete*/Update*/Activ*/Inactiv*, per AuditColumnClassifier):
+    // nobody types into a search box for "who created this row". A table with none (all-numeric/date/bit
+    // columns) has nothing for this template to build a filter from, so it refuses outright.
+    //
+    // Parameters are LTRIM/RTRIM'd before the LIKE, matching SP_Insert.tt's "trim strings" rule -- a caller
+    // who fat-fingers a leading/trailing space still gets the match they meant.
+    //
+    // No index is assumed for any searched column: LIKE '%...%' is a leading-wildcard scan, O(n) per
+    // filtered column on a large table. That's a real performance cost on a big table with many searchable
+    // columns -- add an index (or trim which columns this searches, by hand, in the generated file) if it
+    // gets slow, the same "documented limit, not silently generated as if free" choice TS_Component.tt's
+    // own no-paging note makes.
+    //
+    // Returns every column (not just the display columns SP_Lookup.tt returns), since a search results
+    // grid usually wants to show more than just the row's identity -- this is a plain filtered SELECT, not
+    // a summary. ORDER BY is the same "best display column, then primary key" convention SP_Lookup.tt uses.
+    //
+    // Requires a primary key (the result set needs something stable for a caller to act on) and a table,
+    // not a view. Does not filter out inactive/soft-deleted rows -- that's a different, orthogonal concern
+    // from "which columns can I type into a search box" and is left to the caller (or SP_Lookup.tt, which
+    // already handles it) rather than folded in here silently.
+
+    var searchableColumns = Model.Columns.Where(c => c.IsStringColumn && !c.IsAuditColumn).ToList();
+    if (searchableColumns.Count == 0)
+        Error($"SP_Search cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it has no searchable (string, non-audit) columns to build a filter from.");
+
+    string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
+
+    var whereClauses = searchableColumns
+        .Select(c => $"({c.ParameterName} IS NULL OR {Q(c.Name)} LIKE '%' + LTRIM(RTRIM({c.ParameterName})) + '%')")
+        .ToList();
+
+    var sortColumn = Model.DisplayColumns
+        .OrderBy(c => c.DisplayRank ?? int.MaxValue).ThenBy(c => c.OrdinalPosition)
+        .FirstOrDefault();
+    var orderBy = new List<string>();
+    if (sortColumn is not null)
+        orderBy.Add(Q(sortColumn.Name) + " ASC");
+    foreach (var pk in Model.PrimaryKeyColumns.Where(pk => pk != sortColumn))
+        orderBy.Add(Q(pk.Name) + " ASC");
+#>
+CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Search]
+(
+<#
+    for (int i = 0; i < searchableColumns.Count; i++)
+    {
+        var c = searchableColumns[i];
+        string comma = (i < searchableColumns.Count - 1) ? "," : "";
+#>
+<#= c.ParameterName #> <#= c.SqlTypeDeclaration #> = NULL<#= comma #>
+<#
+    }
+#>
+)
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	SELECT
+<#
+    for (int i = 0; i < Model.Columns.Count; i++)
+    {
+#>
+		<#= i == 0 ? " " : "," #><#= Q(Model.Columns[i].Name) #>
+<#
+    }
+#>
+	FROM [<#= Model.SchemaName #>].[<#= Model.TableName #>]
+	WHERE <#= string.Join("\r\n\t  AND ", whereClauses) #>
+	ORDER BY <#= string.Join(", ", orderBy) #>;
+END

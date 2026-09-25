@@ -52,6 +52,7 @@ public class TemplateRenderingTests
     [DataRow("SP_Save_v1.tt", "E_DonateLeave_Save")]
     [DataRow("SP_Lookup_v1.tt", "E_DonateLeave_Lookup")]
     [DataRow("SP_Clone_v1.tt", "E_DonateLeave_Clone")]
+    [DataRow("SP_Search_v1.tt", "E_DonateLeave_Search")]
     public async Task Each_stored_procedure_template_writes_its_procedure(string template, string procedure)
     {
         string sql = await Render(template, Sample.DonateLeave());
@@ -66,6 +67,62 @@ public class TemplateRenderingTests
 
         Expect.Contains(sql, "CREATE OR ALTER PROCEDURE [dbo].[SY_Role_Load]");
         Expect.Contains(sql, "N'Human Resources'");
+    }
+
+    // ------------------------------------------------------------------ SP_Search
+
+    [TestMethod]
+    public async Task SP_Search_refuses_a_table_with_no_searchable_columns()
+    {
+        string message = await Refusal("SP_Search_v1.tt", Sample.CompositeKey());
+
+        StringAssert.Contains(message, "searchable");
+    }
+
+    [TestMethod]
+    public async Task SP_Search_writes_one_optional_parameter_per_searchable_column()
+    {
+        string sql = await Render("SP_Search_v1.tt", Sample.Holiday());
+
+        Expect.Contains(sql, "@pSY_IsoCountry_Alpha3Code char(3) = NULL");
+        Expect.Contains(sql, "@pName nvarchar(50) = NULL");
+    }
+
+    [TestMethod]
+    public async Task SP_Search_ANDs_a_like_filter_per_supplied_column()
+    {
+        string sql = await Render("SP_Search_v1.tt", Sample.Holiday());
+
+        Expect.Contains(sql, "(@pName IS NULL OR [Name] LIKE '%' + LTRIM(RTRIM(@pName)) + '%')");
+        Expect.Contains(sql, "AND (@pName IS NULL OR");
+    }
+
+    [TestMethod]
+    public async Task SP_Search_excludes_audit_columns_from_the_filter()
+    {
+        string sql = await Render("SP_Search_v1.tt", Sample.WithModifiedByColumn());
+
+        Expect.Contains(sql, "@pSubject nvarchar(100) = NULL");
+        Expect.DoesNotContain(sql, "@pModifiedBy");
+    }
+
+    [TestMethod]
+    public async Task SP_Search_returns_every_column_not_just_the_display_columns()
+    {
+        string sql = await Render("SP_Search_v1.tt", Sample.DonateLeave());
+
+        Expect.Contains(sql, "[DonateLeaveId]");
+        Expect.Contains(sql, "[HoursDonated]");
+        Expect.Contains(sql, "[WhenDonated]");
+        Expect.Contains(sql, "[Note]");
+    }
+
+    [TestMethod]
+    public async Task SP_Search_orders_by_the_best_display_column_then_the_primary_key()
+    {
+        string sql = await Render("SP_Search_v1.tt", Sample.Holiday());
+
+        Expect.Contains(sql, "ORDER BY [Name] ASC, [HolidayId] ASC");
     }
 
     // ------------------------------------------------------------------ SP_Junction (many-to-many junction tables)
@@ -559,6 +616,7 @@ public class TemplateRenderingTests
     [DataRow("API_Crud_v1.tt")]
     [DataRow("CS_Repo_v1.tt")]
     [DataRow("CS_Entity_v1.tt")]
+    [DataRow("CS_Validation_v1.tt")]
     public async Task Namespaces_named_in_the_settings_block_become_using_lines(string template)
     {
         // The settings block at the top of the template is how a project says which namespaces its generated files need.
@@ -718,6 +776,74 @@ public class TemplateRenderingTests
     public async Task An_entity_refuses_a_composite_key()
     {
         StringAssert.Contains(await Refusal("CS_Entity_v1.tt", Sample.CompositeKey()), "composite primary key");
+    }
+
+    // ------------------------------------------------------------------ CS_Validation
+
+    [TestMethod]
+    public async Task Validation_writes_a_metadata_buddy_class_attached_to_a_partial_entity()
+    {
+        string cs = await Render("CS_Validation_v1.tt", Sample.DonateLeave());
+
+        Expect.Contains(cs, "[MetadataType(typeof(E_DonateLeaveMetadata))]");
+        Expect.Contains(cs, "public partial class E_DonateLeave");
+        Expect.Contains(cs, "public class E_DonateLeaveMetadata");
+        Expect.Contains(cs, "    [Required]\n    [Display(Name = \"When Donated\", Description = \"When Donated\")]\n    public DateTime WhenDonated { get; set; }");
+        Expect.Contains(cs, "    [StringLength(100)]");   // 200 bytes of nvarchar are 100 characters
+        Expect.Contains(cs, "    [DataType(DataType.MultilineText)]");
+        Expect.Contains(cs, "    public string? Note { get; set; }");
+    }
+
+    [TestMethod]
+    public async Task An_identity_primary_key_is_not_validated_but_a_natural_key_is()
+    {
+        string identity = await Render("CS_Validation_v1.tt", Sample.DonateLeave());
+        Expect.DoesNotContain(identity, "DonateLeaveId");
+
+        string natural = await Render("CS_Validation_v1.tt", Sample.NaturalKey());
+        Expect.Contains(natural, "    [Required]\n    [Display(Name = \"Code\", Description = \"Code\")]\n    [StringLength(3)]\n    public string Code { get; set; }");
+    }
+
+    [TestMethod]
+    public async Task Validation_excludes_audit_columns()
+    {
+        string cs = await Render("CS_Validation_v1.tt", Sample.WithModifiedByColumn());
+
+        Expect.Contains(cs, "public string Subject { get; set; }");
+        Expect.DoesNotContain(cs, "ModifiedBy");
+    }
+
+    [TestMethod]
+    public async Task Validation_picks_a_semantic_data_type_from_the_column_name()
+    {
+        var table = Sample.Table("Contact",
+        [
+            Sample.Column("ContactId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("EmailAddress", SqlDbType.NVarChar, characters: 100, ordinal: 2),
+            Sample.Column("AccountPassword", SqlDbType.NVarChar, characters: 50, ordinal: 3)
+        ]);
+
+        string cs = await Render("CS_Validation_v1.tt", table);
+
+        Expect.Contains(cs, "[DataType(DataType.EmailAddress)]");
+        Expect.Contains(cs, "[DataType(DataType.Password)]");
+    }
+
+    [TestMethod]
+    public async Task Validation_refuses_a_table_with_nothing_left_to_validate()
+    {
+        var table = Sample.Table("Empty", [Sample.Column("EmptyId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1)]);
+
+        StringAssert.Contains(await Refusal("CS_Validation_v1.tt", table), "nothing to validate");
+    }
+
+    [TestMethod]
+    public async Task Unlike_the_entity_validation_does_not_require_a_single_column_key()
+    {
+        string cs = await Render("CS_Validation_v1.tt", Sample.CompositeKey());
+
+        Expect.Contains(cs, "public int LeftId { get; set; }");
+        Expect.Contains(cs, "public int RightId { get; set; }");
     }
 
     // ------------------------------------------------------------------ CS_Repo
