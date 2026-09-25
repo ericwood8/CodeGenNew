@@ -3,14 +3,17 @@ using CodeGenNew.App.ViewModels;
 using CodeGenNew.App.Views;
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 
 namespace CodeGenNew.App;
 
 public sealed partial class MainWindow : Window
 {
     private readonly AppSettingsService _settingsService = new();
+    private static readonly SolidColorBrush ProblemsBrush = new(Colors.Red);
     public MainViewModel ViewModel { get; }
 
     public MainWindow()
@@ -23,6 +26,34 @@ public sealed partial class MainWindow : Window
     // Cursor focus starts on the top menu's first button.
     private void OnCommandBarLoaded(object sender, RoutedEventArgs e) =>
         FirstCommandBarButton.Focus(FocusState.Programmatic);
+
+    // AppBarButton's own default ControlTemplate hardcodes its label TextBlock to FontSize="12" -- confirmed
+    // straight from the WindowsAppSDK's own generic.xaml, it is a literal value baked into the template's XAML,
+    // not bound to the button's own FontSize property at all (unlike the icon area, which does pick it up).
+    // Setting FontSize on the AppBarButton itself is therefore a silent no-op for the label text, and there is
+    // no style-setter way to override a literal value inside a template without replacing the whole (large,
+    // WindowsAppSDK-owned) template. This instead reaches into the already-applied template's visual tree for
+    // the TextBlock named "TextLabel" once each button has loaded, and applies the button's own FontSize to it
+    // directly -- keeping the XAML's FontSize="32" the single place that number is set.
+    private void OnAppBarButtonLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is AppBarButton { FontSize: var fontSize } button && FindDescendant<TextBlock>(button, "TextLabel") is { } label)
+            label.FontSize = fontSize;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root, string name) where T : FrameworkElement
+    {
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match && match.Name == name)
+                return match;
+            if (FindDescendant<T>(child, name) is { } found)
+                return found;
+        }
+        return null;
+    }
 
     private async void OnConnectClick(object sender, RoutedEventArgs e)
     {
@@ -80,11 +111,29 @@ public sealed partial class MainWindow : Window
         ViewModel.SelectedTable = table;
 
         var templates = ViewModel.GetApplicableTemplates(table);
-        if (templates.Count == 0)
+        var problems = table.Problems;
+        if (templates.Count == 0 && problems.Count == 0)
             return;
 
         var flyout = new MenuFlyout();
         var submenus = new Dictionary<string, MenuFlyoutSubItem>();
+
+        // A non-selectable header line naming what's off about this table (no key, a reserved-word name, ...) --
+        // IsEnabled=false is WinUI's own way to show a label-only, unclickable MenuFlyoutItem. Removed entirely
+        // (not left as a blank line) for a table with no problems.
+        if (problems.Count > 0)
+        {
+            var problemsItem = new MenuFlyoutItem { Text = string.Join(", ", problems), IsEnabled = false, Foreground = ProblemsBrush };
+            // Setting Foreground above is not enough on its own: MenuFlyoutItem's Disabled visual state sets the
+            // rendered TextBlock's Foreground from the ThemeResource "MenuFlyoutItemForegroundDisabled", which wins
+            // over the plain Foreground property once IsEnabled=false. Overriding that resource on this one item
+            // (a lookup that starts at the element itself before falling back to the app-wide theme) is what
+            // actually makes disabled text render red instead of the default greyed-out color.
+            problemsItem.Resources["MenuFlyoutItemForegroundDisabled"] = ProblemsBrush;
+            flyout.Items.Add(problemsItem);
+            if (templates.Count > 0)
+                flyout.Items.Add(new MenuFlyoutSeparator());
+        }
 
         foreach (var template in templates)
         {

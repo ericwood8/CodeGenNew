@@ -13,16 +13,17 @@ namespace CodeGenNew.App.Services;
 /// role rather than guessing from the filename alone:
 ///   - database.png: plain database cylinder -> the TreeView's root (connected database) node.
 ///   - table.png: plain grid -> a normal table (has a primary key).
-///   - "table _no_pk.png" (PK badge crossed out): a table missing a primary key but that still has
-///     some other unique index/constraint.
-///   - table_no_unique.png (warning triangle): a table with neither a primary key nor any unique
-///     index at all -- the worst case, rows could be fully duplicated.
+///   - "table _no_pk.png" (PK badge crossed out): a table missing a primary key -- ForTable below gives
+///     this priority over whether the table happens to have some other unique index, so a developer sees
+///     one unambiguous "no primary key" signal rather than two subtly different red/yellow ones.
 ///   - DataSource.png (cylinder + plug): the "Connect" action.
 ///   - Refresh.png: the "Refresh" action.
 ///   - UIs.png: the "Manage Templates"/"Templates" action (closest available fit).
 ///   - columns.png: columns under an expanded table.
 ///   - pk.png: primary-key columns under an expanded table.
-/// "New database.png" and "network-server-database.png" have no matching v1 feature yet and are left unused.
+/// "New database.png", "network-server-database.png", and table_no_unique.png (warning triangle -- was
+/// "no primary key AND no unique index", now folded into TableNoPrimaryKey above) have no matching v1
+/// feature and are left unused.
 /// </summary>
 public class IconProvider
 {
@@ -34,19 +35,13 @@ public class IconProvider
     public BitmapImage Database => Get("database.png");
     public BitmapImage Table => Get("table.png");
     public BitmapImage TableNoPrimaryKey => Get("table _no_pk.png");
-    public BitmapImage TableNoUniqueIndex => Get("table_no_unique.png");
     public BitmapImage Connect => Get("DataSource.png");
     public BitmapImage Refresh => Get("Refresh.png");
     public BitmapImage ManageTemplates => Get("UIs.png");
     public BitmapImage Column => Get("columns.png");
     public BitmapImage PrimaryKey => Get("pk.png");
 
-    public BitmapImage ForTable(bool hasPrimaryKey, bool hasUniqueIndex)
-    {
-        if (hasPrimaryKey)
-            return Table;
-        return hasUniqueIndex ? TableNoPrimaryKey : TableNoUniqueIndex;
-    }
+    public BitmapImage ForTable(bool hasPrimaryKey) => hasPrimaryKey ? Table : TableNoPrimaryKey;
 
     private BitmapImage Get(string fileName)
     {

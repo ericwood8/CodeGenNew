@@ -25,12 +25,29 @@ public partial class TableNodeViewModel : ObservableObject
 
     public string SchemaName => Summary.SchemaName;
     public string TableName => Summary.TableName;
-    public string DisplayName => TableName;
+
+    /// <summary> A reserved-word-colliding name is also bracketed like a quoted SQL identifier ("[Check]"),
+    /// on top of the red TextBrush below, so the reason for the red is legible without a tooltip. </summary>
+    public string DisplayName => IsReservedWordCollision ? $"[{TableName}]" : TableName;
 
     /// <summary> Table/column names colliding with a SQL Server or C# reserved word are shown in red. </summary>
     public bool IsReservedWordCollision => Summary.IsReservedWordName || Summary.IsCSharpReservedWordName;
 
     public Brush TextBrush => IsReservedWordCollision ? ReservedWordBrush : ThemeBrushes.DefaultText;
+
+    /// <summary> Plain-English reasons this table's icon/name looks the way it does, for the right-click
+    /// menu's non-selectable header line (MainWindow.xaml.cs). Empty for a table with none. </summary>
+    public IReadOnlyList<string> Problems
+    {
+        get
+        {
+            var problems = new List<string>();
+            if (!Summary.HasUniqueIndex) problems.Add("no unique key");
+            if (!Summary.HasPrimaryKey) problems.Add("no primary key");
+            if (IsReservedWordCollision) problems.Add("reserved word");
+            return problems;
+        }
+    }
 
     public BitmapImage Icon { get; }
 
@@ -49,7 +66,7 @@ public partial class TableNodeViewModel : ObservableObject
     public TableNodeViewModel(TableSummary summary, IconProvider icons, Func<TableSummary, CancellationToken, Task<List<ColumnSummary>>> loadColumns)
     {
         Summary = summary;
-        Icon = icons.ForTable(summary.HasPrimaryKey, summary.HasUniqueIndex);
+        Icon = icons.ForTable(summary.HasPrimaryKey);
         _icons = icons;
         _loadColumns = loadColumns;
     }

@@ -13,22 +13,26 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- FontSize on each AppBarButton enlarges its label (the default template binds the label's
-             TextBlock FontSize via TemplateBinding). Refresh lives with the TreeView now (the card header
-             row below), not here: WinUI3's TreeView has no refresh affordance of its own to surface. -->
+        <!-- FontSize on each AppBarButton does NOT reach its label on its own: the default template
+             hardcodes the label TextBlock to FontSize="12" rather than binding it to the button's own
+             FontSize (confirmed against the WindowsAppSDK's own generic.xaml). Each button's Loaded handler
+             (MainWindow.xaml.cs: OnAppBarButtonLoaded) reaches into the applied template afterward and
+             copies the FontSize set here onto that TextBlock directly. Refresh lives with the TreeView now
+             (the card header row below), not here: WinUI3's TreeView has no refresh affordance of its own
+             to surface. -->
         <CommandBar Grid.Row="0" DefaultLabelPosition="Right" HorizontalAlignment="Left"
                     Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}" Loaded="OnCommandBarLoaded">
-            <AppBarButton x:Name="FirstCommandBarButton" Label="Output Location" FontSize="24" AccessKey="O" Click="OnLocationClick" ToolTipService.ToolTip="Choose where generated files are written (Alt+O)">
+            <AppBarButton x:Name="FirstCommandBarButton" Label="Output Location" FontSize="24" AccessKey="O" Click="OnLocationClick" Loaded="OnAppBarButtonLoaded" ToolTipService.ToolTip="Choose where generated files are written (Alt+O)">
                 <AppBarButton.Icon>
                     <FontIcon Glyph="&#xE8B7;" />
                 </AppBarButton.Icon>
             </AppBarButton>
-            <AppBarButton Label="Templates" FontSize="24" AccessKey="T" Click="OnManageTemplatesClick" ToolTipService.ToolTip="Add, rename, delete, or edit .tt templates (Alt+T)">
+            <AppBarButton Label="Templates" FontSize="24" AccessKey="T" Click="OnManageTemplatesClick" Loaded="OnAppBarButtonLoaded" ToolTipService.ToolTip="Add, rename, delete, or edit .tt templates (Alt+T)">
                 <AppBarButton.Icon>
                     <ImageIcon Source="{x:Bind ViewModel.Icons.ManageTemplates, Mode=OneWay}" />
                 </AppBarButton.Icon>
             </AppBarButton>
-            <AppBarButton Label="Connect" FontSize="24" AccessKey="C" Click="OnConnectClick" ToolTipService.ToolTip="Connect to a SQL Server database (Alt+C)">
+            <AppBarButton Label="Connect" FontSize="24" AccessKey="C" Click="OnConnectClick" Loaded="OnAppBarButtonLoaded" ToolTipService.ToolTip="Connect to a SQL Server database (Alt+C)">
                 <AppBarButton.Icon>
                     <ImageIcon Source="{x:Bind ViewModel.Icons.Connect, Mode=OneWay}" />
                 </AppBarButton.Icon>
@@ -84,7 +88,7 @@
                                                 ToolTipService.ToolTip="Show/hide columns">
                                             <FontIcon Glyph="{x:Bind ExpandGlyph, Mode=OneWay}" FontSize="10" />
                                         </Button>
-                                        <Image Source="{x:Bind Icon}" Width="16" Height="16" />
+                                        <Image Source="{x:Bind Icon}" Width="24" Height="24" />
                                         <TextBlock Text="{x:Bind DisplayName}" Foreground="{x:Bind TextBrush}" VerticalAlignment="Center" />
                                         <ProgressRing IsActive="{x:Bind IsLoadingColumns, Mode=OneWay}" Width="14" Height="14" />
                                     </StackPanel>
