@@ -39,8 +39,8 @@
     //
     //   - Names: class <Table>Service in services/<table>.service.ts, the table name without its "E_" / "SY_" prefix
     //     (E_TimeSheet -> TimeSheetService, services/timesheet.service.ts); the interface is imported from models/<table>.ts.
-    //   - URL: "api/" + the lower-cased name + "s" -- what BaseApi.BreakIntoStrings registers on the server (the Angular dev
-    //     proxy turns "api/..." into the server's own route).
+    //   - URL: "api/" + the lower-cased name, pluralized (CodeGenNew.Core.Pluralizer.Pluralize) -- what BaseApi.BreakIntoStrings
+    //     registers on the server (the Angular dev proxy turns "api/..." into the server's own route).
     //   - Key: an int key is a number, a uniqueidentifier key a string (the route takes {id:guid}; the api assigns the value on
     //     create -- a new row is sent with the empty GUID, as an int key is sent as 0). Any other key (composite, or a natural
     //     text key the person would have to type) is refused.
@@ -92,11 +92,11 @@
         L("    providedIn: 'root',");
         L("})");
         L($"export class {baseName}Service {{");
-        L($"    private apiUrl = '{apiPrefix}/{stem}s'; // Replace with your API URL");
+        L($"    private apiUrl = '{apiPrefix}/{stem.Pluralize()}'; // Replace with your API URL");
         L();
         L("    constructor(private http: HttpClient) { }");
         L();
-        L($"    // Get all {lowerWords}s");
+        L($"    // Get all {lowerWords.Pluralize()}");
         L($"    getAll(): Observable<{baseName}[]> {{");
         L($"        return this.http.get<{baseName}[]>(this.apiUrl);");
         L("    }");

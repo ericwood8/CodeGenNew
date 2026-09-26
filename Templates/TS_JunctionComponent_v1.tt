@@ -125,7 +125,7 @@
     T($"  availableSelectionIds: {targetTs}[] = [];");
     T($"  selectedSelectionIds: {targetTs}[] = [];");
     T();
-    T($"  private apiUrl = '{apiPrefix}/{stem}s/junction'; // Replace with your API URL");
+    T($"  private apiUrl = '{apiPrefix}/{stem.Pluralize()}/junction'; // Replace with your API URL");
     T();
     T("  constructor(private http: HttpClient) { }");
     T();

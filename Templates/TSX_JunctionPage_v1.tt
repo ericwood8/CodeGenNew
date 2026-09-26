@@ -1,0 +1,190 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string componentsFolder = "components";
+    string apiFolder = "api";
+    string apiPrefix = "/api";
+    // ==========================================================================================
+
+    // ------------------------------------------------------------------------------------------
+    // TSX_JunctionPage_v1.tt
+    // Generates: components/<Table>Junction.tsx   (a reusable function component; the path is written by the
+    // template itself, see GeneratedFiles -- point the output folder at the React app's src folder), plus a
+    // colocated components/__tests__/<Table>Junction.test.tsx.
+    //
+    // The React counterpart of TS_JunctionComponent.tt for a many-to-many junction table
+    // (TableModel.IsJunctionTable, RequiresJunctionTable=true): two <select multiple> lists ("Available"/
+    // "Selected") with >>/>/</<< buttons, calling API_Junction.tt's three endpoints directly via the shared
+    // request<T> helper (imported from "../api/client", same assumption TSX_Api.tt makes) -- no separate
+    // TSX_Api-style module, since a junction has only List/Link/Unlink, folded straight into the component the
+    // same way TSX_Page.tt's own "plain page shape" already combines grid and form. Each button click commits
+    // immediately (one HTTP call per moved row) rather than batching for a separate Save button, the same
+    // choice TS_JunctionComponent.tt/WinUI3_JunctionEditor.tt already made.
+    //
+    // Like TS_JunctionComponent.tt: the table name without its "E_"/"SY_" prefix names the component/file
+    // (E_TimeSheet -> components/TimeSheetJunction.tsx, function TimeSheetJunction). anchorId is a required
+    // prop (React's equivalent of Angular's @Input()) -- this component is meant to be embedded in whatever
+    // page already has the anchor row selected (e.g. a generated detail page), not routed to on its own. It is
+    // placed in componentsFolder rather than pagesFolder for that reason -- matching the same "small reusable
+    // piece vs. a data-fetching page" split CriticalViewer's own components/ vs. pages/ folders already use.
+    //
+    // Requires TableModel.IsJunctionTable (RequiresJunctionTable=true) and the target table's display columns
+    // (NeedsReferencedDisplayColumns=true), the same restrictions SP_Junction.tt/API_Junction.tt/
+    // TS_JunctionComponent.tt have -- generate those first.
+    // ------------------------------------------------------------------------------------------
+
+    string BaseName(string table) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(table, "^E_", ""), "^SY_", "");
+    string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
+
+    if (!Model.IsJunctionTable)
+        Error($"TSX_JunctionPage cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it is not a many-to-many junction table -- TableModel.IsJunctionTable is false.");
+    if (!Model.HasReferencedDisplayColumns)
+        Error("TSX_JunctionPage needs the target table's display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
+
+    string CSharpToTs(SqlDbType type) => type == SqlDbType.UniqueIdentifier ? "string" : "number";
+
+    var anchorFk = Model.JunctionForeignKeys[0];
+    var targetFk = Model.JunctionForeignKeys[1];
+    var anchorColumn = Model.Columns.First(c => c.Name.Equals(anchorFk.ReferencingColumns[0], System.StringComparison.OrdinalIgnoreCase));
+    var targetColumn = Model.Columns.First(c => c.Name.Equals(targetFk.ReferencingColumns[0], System.StringComparison.OrdinalIgnoreCase));
+    string anchorTs = CSharpToTs(anchorColumn.SqlType);
+    string targetTs = CSharpToTs(targetColumn.SqlType);
+    string targetRole = targetFk.ReferencedTable;
+
+    string baseName = BaseName(Model.TableName);
+    string stem = baseName.ToLowerInvariant();
+    string cls = baseName + "Junction";
+    string itemType = baseName + "JunctionItem";
+    var displayColumns = targetFk.ReferencedDisplayColumns.Select(LowerFirst).ToList(); // camelCase, matching TS_Model's JSON-casing convention
+    string ToSelectionId = targetTs == "string" ? "o.value" : "Number(o.value)";
+
+    var ts = new StringBuilder();
+    void T(string s = "") => ts.Append(s).Append('\n');
+
+    // ================= imports + item type
+    T("import { useEffect, useState } from 'react';");
+    T($"import {{ request }} from '../{apiFolder}/client';");
+    T();
+    T($"export interface {itemType} {{");
+    T($"  targetId: {targetTs};");
+    T("  isSelected: boolean;");
+    foreach (string d in displayColumns)
+        T($"  {d}?: string;");
+    T("}");
+    T();
+    T($"export function {cls}({{ anchorId }}: {{ anchorId: {anchorTs} }}) {{");
+    T($"  const [available, setAvailable] = useState<{itemType}[]>([]);");
+    T($"  const [selected, setSelected] = useState<{itemType}[]>([]);");
+    T($"  const [availableSelectionIds, setAvailableSelectionIds] = useState<{targetTs}[]>([]);");
+    T($"  const [selectedSelectionIds, setSelectedSelectionIds] = useState<{targetTs}[]>([]);");
+    T();
+    T($"  const apiUrl = '{apiPrefix}/{stem.Pluralize()}/junction';");
+    T();
+    T("  const load = () => {");
+    T($"    request<{itemType}[]>(`${{apiUrl}}/${{anchorId}}`).then((rows) => {{");
+    T("      setAvailable(rows.filter((r) => !r.isSelected));");
+    T("      setSelected(rows.filter((r) => r.isSelected));");
+    T("    });");
+    T("  };");
+    T();
+    T("  useEffect(() => {");
+    T("    load();");
+    T("  }, [anchorId]);");
+    T();
+    T($"  const displayText = (item: {itemType}): string =>");
+    T($"    [{string.Join(", ", displayColumns.Select(d => $"item.{d}"))}].filter((v) => !!v).join(' ');");
+    T();
+    T($"  const link = (items: {itemType}[]) => {{");
+    T("    for (const item of items) {");
+    T("      void request(`${apiUrl}/link`, { method: 'POST', body: JSON.stringify({ anchorId, targetId: item.targetId }) }).then(() => {");
+    T("        setAvailable((prev) => prev.filter((r) => r !== item));");
+    T("        setSelected((prev) => [...prev, item]);");
+    T("      });");
+    T("    }");
+    T("    setAvailableSelectionIds([]);");
+    T("  };");
+    T();
+    T($"  const unlink = (items: {itemType}[]) => {{");
+    T("    for (const item of items) {");
+    T("      void request(`${apiUrl}/unlink`, { method: 'POST', body: JSON.stringify({ anchorId, targetId: item.targetId }) }).then(() => {");
+    T("        setSelected((prev) => prev.filter((r) => r !== item));");
+    T("        setAvailable((prev) => [...prev, item]);");
+    T("      });");
+    T("    }");
+    T("    setSelectedSelectionIds([]);");
+    T("  };");
+    T();
+    T("  const addSelected = () => link(available.filter((r) => availableSelectionIds.includes(r.targetId)));");
+    T("  const addAll = () => link(available);");
+    T("  const removeSelected = () => unlink(selected.filter((r) => selectedSelectionIds.includes(r.targetId)));");
+    T("  const removeAll = () => unlink(selected);");
+    T();
+    T("  return (");
+    T("    <div>");
+    T($"      <h1>{targetRole}</h1>");
+    T("      <div>");
+    T("        <div>");
+    T("          <label>Available</label>");
+    T("          <select");
+    T("            multiple");
+    T("            size={10}");
+    T("            value={availableSelectionIds.map(String)}");
+    T($"            onChange={{(event) => setAvailableSelectionIds(Array.from(event.target.selectedOptions, (o) => {ToSelectionId}))}}");
+    T("          >");
+    T("            {available.map((item) => (");
+    T("              <option key={item.targetId} value={item.targetId}>{displayText(item)}</option>");
+    T("            ))}");
+    T("          </select>");
+    T("        </div>");
+    T("        <div>");
+    T("          <button type=\"button\" onClick={addAll} title=\"Add all\">&gt;&gt;</button>");
+    T("          <button type=\"button\" onClick={addSelected} title=\"Add selected\">&gt;</button>");
+    T("          <button type=\"button\" onClick={removeSelected} title=\"Remove selected\">&lt;</button>");
+    T("          <button type=\"button\" onClick={removeAll} title=\"Remove all\">&lt;&lt;</button>");
+    T("        </div>");
+    T("        <div>");
+    T("          <label>Selected</label>");
+    T("          <select");
+    T("            multiple");
+    T("            size={10}");
+    T("            value={selectedSelectionIds.map(String)}");
+    T($"            onChange={{(event) => setSelectedSelectionIds(Array.from(event.target.selectedOptions, (o) => {ToSelectionId}))}}");
+    T("          >");
+    T("            {selected.map((item) => (");
+    T("              <option key={item.targetId} value={item.targetId}>{displayText(item)}</option>");
+    T("            ))}");
+    T("          </select>");
+    T("        </div>");
+    T("      </div>");
+    T("    </div>");
+    T("  );");
+    T("}");
+
+    // ================= test
+    var test = new StringBuilder();
+    void S(string s = "") => test.Append(s).Append('\n');
+    S("import { render, screen } from '@testing-library/react';");
+    S("import { describe, expect, it } from 'vitest';");
+    S($"import {{ {cls} }} from '../{cls}';");
+    S();
+    S($"describe('{cls}', () => {{");
+    S($"  it('renders the {targetRole} heading', async () => {{");
+    S($"    render(<{cls} anchorId={{{(anchorTs == "string" ? "'00000000-0000-0000-0000-000000000000'" : "0")}}} />);");
+    S($"    expect(await screen.findByText('{targetRole}')).toBeInTheDocument();");
+    S("  });");
+    S("});");
+
+    var o = new StringBuilder();
+    o.Append($"@@@FILE {componentsFolder}/{cls}.tsx@@@\n").Append(ts);
+    o.Append($"@@@FILE {componentsFolder}/__tests__/{cls}.test.tsx@@@\n").Append(test);
+    Write(o.ToString());
+#>

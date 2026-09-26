@@ -53,7 +53,16 @@
     //         CodeGenPossibilities\AdvancedRepositoryPatterns (research folder). One column at a time:
     //         IsInUniqueIndex only says a column takes part in SOME unique index, not which other columns share a
     //         composite one, so a composite unique constraint gets one HasDuplicate per column rather than a single
-    //         combined check.
+    //         combined check;
+    //       * every such column that is ALSO a string column gets  SuggestUnique<Column>(desired)  -- given a
+    //         starting value (e.g. "New Account"), returns it unchanged if free, else the same value with a numeric
+    //         suffix bumped until free ("New Account2", "New Account3", ...), for pre-filling an Add dialog with
+    //         something that will actually save. The generalized shape of a real EnsureNameIsUnique/IsUniqueName
+    //         helper pair in CodeGenPossibilities\SuggestUniqueName (research folder) that needed a per-entity-type
+    //         switch statement in the hand-written codebase it came from; generating one column at a time from
+    //         IsInUniqueIndex needs no switch at all. Same single-column scope and composite-index caveat as
+    //         HasDuplicate<Column> above -- and the same caveat about NOT knowing whether a real project's
+    //         constraint is actually scoped to a parent (e.g. unique per model, not globally) rather than table-wide.
     //   - No entity, no repo: a table listed in noRepositoryTables (the ones that are C# enums, the *Type lookup tables, and
     //     tables with no entity class) stops with an error instead of writing a class that cannot compile.
     //
@@ -152,6 +161,20 @@
                 $"    public async Task<bool> HasDuplicate{c.Name}({ClrType(c)} {paramName}, int excludeId)",
                 "    {",
                 $"        return await _dbSet.AnyAsync(t => t.{c.Name} == {paramName} && t.{Model.PrimaryKeyColumns[0].Name} != excludeId);",
+                "    }"
+            });
+        }
+
+        foreach (var c in Model.Columns.Where(c => c.IsInUniqueIndex && c.IsStringColumn))
+        {
+            methods.Add(new[]
+            {
+                $"    public async Task<string> SuggestUnique{c.Name}(string desired)",
+                "    {",
+                "        string candidate = desired;",
+                $"        for (int suffix = 2; await _dbSet.AnyAsync(t => t.{c.Name} == candidate); suffix++)",
+                "            candidate = desired + suffix;",
+                "        return candidate;",
                 "    }"
             });
         }

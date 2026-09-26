@@ -101,7 +101,7 @@
         string s = Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", "");
         return Words(s);
     }
-    string ApiRoute(string table) => BaseName(table).ToLowerInvariant() + "s";
+    string ApiRoute(string table) => BaseName(table).ToLowerInvariant().Pluralize();
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
     if (noApiTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase))
@@ -126,7 +126,7 @@
         string baseName = BaseName(Model.TableName);
         string stem = baseName.ToLowerInvariant();
         string variable = LowerFirst(baseName);        // holiday
-        string listName = variable + "s";              // holidays
+        string listName = variable.Pluralize();        // holidays
         string keyProp = Camel(keyColumn.Name);         // holidayId
         string keyTs = keyColumn.SqlType == SqlDbType.Int ? "number" : "string";
         string emptyKey = keyColumn.SqlType == SqlDbType.Int ? "0" : "'00000000-0000-0000-0000-000000000000'";
@@ -162,7 +162,7 @@
                     Service = parentBase + "Service",
                     ServiceVar = LowerFirst(parentBase) + "Service",
                     ServiceFile = parentBase.ToLowerInvariant() + ".service",
-                    List = LowerFirst(parentBase) + "s",
+                    List = LowerFirst(parentBase).Pluralize(),
                     NameMethod = LowerFirst(parentBase) + "Name",
                     KeyProp = Camel(fk.ReferencedColumns[0]),
                     IdType = Model.Columns.First(col => col.Name.Equals(fk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)).SqlType == SqlDbType.UniqueIdentifier ? "string" : "number",

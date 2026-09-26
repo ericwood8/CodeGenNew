@@ -125,7 +125,7 @@
         string baseName = BaseName(Model.TableName);
         string stem = baseName.ToLowerInvariant();
         string variable = LowerFirst(baseName);        // holiday
-        string listName = variable + "s";              // holidays
+        string listName = variable.Pluralize();        // holidays
         string keyProp = Camel(keyColumn.Name);        // holidayId
         string keyTs = keyColumn.SqlType == SqlDbType.Int ? "number" : "string";                       // a uniqueidentifier key travels as a string
         string emptyKey = keyColumn.SqlType == SqlDbType.Int ? "0" : "'00000000-0000-0000-0000-000000000000'"; // "no key yet": the API assigns the real one
@@ -163,7 +163,7 @@
                     Service = parentBase + "Service",
                     ServiceVar = LowerFirst(parentBase) + "Service",
                     ServiceFile = parentBase.ToLowerInvariant() + ".service",
-                    List = LowerFirst(parentBase) + "s",
+                    List = LowerFirst(parentBase).Pluralize(),
                     NameMethod = LowerFirst(parentBase) + "Name",
                     KeyProp = Camel(fk.ReferencedColumns[0]),
                     IdType = Model.Columns.First(col => col.Name.Equals(fk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)).SqlType == SqlDbType.UniqueIdentifier ? "string" : "number",

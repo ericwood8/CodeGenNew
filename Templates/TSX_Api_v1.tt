@@ -1,0 +1,117 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // lists of tables). Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    // Folders under the React app's src folder (where -o points) that the generated files go in.
+    string apiFolder = "api";
+    string modelsFolder = "models";
+    string apiPrefix = "/api";
+    // Tables that have no API (C# enums, other *Type lookup tables, tables with no entity): no api module is written for them.
+    string[] noApiTables =
+    {
+        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
+        "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
+    };
+    // ==========================================================================================
+
+    // ------------------------------------------------------------------------------------------
+    // TSX_Api_v1.tt
+    // Generates: api/<table>Api.ts   (a plain object of fetch-based functions; the path is written by the
+    // template itself, see GeneratedFiles -- point the output folder at the React app's src folder)
+    //
+    // The React counterpart of TS_Service.tt -- same routes, same method names, same restrictions -- but a
+    // plain object of async functions built on fetch instead of an @Injectable class built on HttpClient,
+    // since a React app has no dependency-injection container to register a service with. Assumes the target
+    // project already has a shared request<T>(path, init) helper and an ApiError class (imported here from
+    // "./client"), the same way TS_Service.tt assumes Angular's own HttpClient is already available --
+    // CodeGenNew does not generate that shared file itself. Modeled on CriticalViewer's real
+    // src/api/client.ts, which is exactly that shape:
+    //
+    //     export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
+    //     export async function request<T>(path: string, init?: RequestInit): Promise<T> { ... }
+    //
+    //     getAll(): Promise<Holiday[]>                         GET    /api/holidays
+    //     getById(id): Promise<Holiday>                        GET    /api/holidays/{id}
+    //     create(holiday): Promise<Holiday>                    POST   /api/holidays
+    //     update(id, holiday): Promise<Holiday>                PUT    /api/holidays/{id}
+    //     delete(id): Promise<void>                            DELETE /api/holidays/{id}
+    //     findByName(name): Promise<Holiday[]>                 GET    /api/holidays/{name}   (only a table with a text Name column)
+    //
+    //   - Names: exported const <table>Api in api/<table>.ts (lower-cased table stem), the table name without
+    //     its "E_"/"SY_" prefix -- same convention TS_Service.tt uses; the row type is imported from
+    //     ../models/<table> (TS_Model.tt's own output -- that template writes a plain TS interface with no
+    //     Angular dependency, so it is reused as-is for a React project; no separate React model template exists).
+    //   - URL: apiPrefix + "/" + the lower-cased name, pluralized (CodeGenNew.Core.Pluralizer.Pluralize) -- identical route
+    //     convention to TS_Service.tt (same backend, same BaseApi.BreakIntoStrings-registered route).
+    //   - Key: an int key is a number, a uniqueidentifier key a string (the route takes {id:guid}; the api
+    //     assigns the value on create -- a new row is sent with the empty GUID, an int key is sent as 0). Any
+    //     other key (composite, or a natural text key the person would have to type) is refused.
+    //   - findByName exists on the server for the name-based tables, so it is generated for every table with a
+    //     text column called Name; the plain (API_Crud) tables have none.
+    //
+    // Not written: calls for extra routes a hand-written client adds (a parent-scoped list, a search endpoint);
+    // an api module that needs those stays hand-maintained.
+    //
+    // ------------------------------------------------------------------------------------------
+
+    string BaseName(string table) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(table, "^E_", ""), "^SY_", "");
+    string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
+
+    var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
+    if (noApiTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase))
+    {
+        Error($"TSX_Api writes no api module for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so it has no API to call.");
+    }
+    else if (keyColumn is null || keyColumn.SqlType is not (SqlDbType.Int or SqlDbType.UniqueIdentifier))
+    {
+        Error($"TSX_Api needs a table with a single int or uniqueidentifier primary key (the routes take the id as {{id:int}} or {{id:guid}}), but [{Model.SchemaName}].[{Model.TableName}] has "
+              + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
+    }
+    else if (Model.IsNameActiveTable)
+    {
+        Error($"TSX_Api assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all -- see TimeEntryServer's real DepartmentTeamApi.cs); write this api module by hand.");
+    }
+    else
+    {
+        string baseName = BaseName(Model.TableName);
+        string keyTs = keyColumn.SqlType == SqlDbType.Int ? "number" : "string";   // a uniqueidentifier key travels as a string
+        string stem = baseName.ToLowerInvariant();
+        string variable = LowerFirst(baseName);
+        bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name");
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+
+        L($"@@@FILE {apiFolder}/{stem}Api.ts@@@");
+        L("import { request } from './client';");
+        L($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
+        L();
+        L($"const apiUrl = '{apiPrefix}/{stem.Pluralize()}';");
+        L();
+        L($"export const {variable}Api = {{");
+        L($"  getAll: () => request<{baseName}[]>(apiUrl),");
+        L();
+        L($"  getById: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/${{id}}`),");
+        L();
+        L($"  create: ({variable}: {baseName}) => request<{baseName}>(apiUrl, {{ method: 'POST', body: JSON.stringify({variable}) }}),");
+        L();
+        L($"  update: (id: {keyTs}, {variable}: {baseName}) => request<{baseName}>(`${{apiUrl}}/${{id}}`, {{ method: 'PUT', body: JSON.stringify({variable}) }}),");
+        L();
+        L($"  delete: (id: {keyTs}) => request<void>(`${{apiUrl}}/${{id}}`, {{ method: 'DELETE' }}),");
+        if (hasName)
+        {
+            L();
+            L($"  findByName: (name: string) => request<{baseName}[]>(`${{apiUrl}}/${{name}}`),");
+        }
+        L("};");
+        Write(o.ToString());
+    }
+#>

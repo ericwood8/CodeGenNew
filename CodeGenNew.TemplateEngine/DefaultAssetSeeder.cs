@@ -67,7 +67,11 @@ public static class DefaultAssetSeeder
         "WinUI3_MasterScreen_v1.tt", "WinUI3_MasterScreen_v1.tt.config",
         "WinUI3_DetailScreen_v1.tt", "WinUI3_DetailScreen_v1.tt.config",
         "WinUI3_DetailMasterScreen_v1.tt", "WinUI3_DetailMasterScreen_v1.tt.config",
-        "TS_DetailMasterComponent_v1.tt", "TS_DetailMasterComponent_v1.tt.config"
+        "TS_DetailMasterComponent_v1.tt", "TS_DetailMasterComponent_v1.tt.config",
+        "TSX_Api_v1.tt", "TSX_Api_v1.tt.config",
+        "TSX_Page_v1.tt", "TSX_Page_v1.tt.config",
+        "TSX_DetailMasterPage_v1.tt", "TSX_DetailMasterPage_v1.tt.config",
+        "TSX_JunctionPage_v1.tt", "TSX_JunctionPage_v1.tt.config"
     ];
 
     /// <returns> Only things a developer might want to know about (Refreshed / KeptCustomized), plus Created

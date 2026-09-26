@@ -426,6 +426,28 @@ public class TemplateRenderingTests
         Expect.Contains(spec, "import { DepartmentDetailMasterComponent } from './department-detail-master.component';");
     }
 
+    [TestMethod]
+    public async Task TS_DetailMasterComponent_does_not_double_pluralize_an_already_plural_child_table_name()
+    {
+        var files = GeneratedFiles.Split(await Render("TS_DetailMasterComponent_v1.tt", Sample.MovieWithReviews()))
+            .ToDictionary(f => Path.GetFileName(f.RelativePath));
+        string ts = files["movie-detail-master.component.ts"].Content;
+
+        Expect.Contains(ts, "this.http.get<any[]>('api/reviews').subscribe({");
+        Expect.DoesNotContain(ts, "'api/reviewss'");
+    }
+
+    [TestMethod]
+    public async Task TS_DetailMasterComponent_adds_es_for_a_child_table_name_ending_in_double_s()
+    {
+        var files = GeneratedFiles.Split(await Render("TS_DetailMasterComponent_v1.tt", Sample.CustomerWithAddressChild()))
+            .ToDictionary(f => Path.GetFileName(f.RelativePath));
+        string ts = files["customer-detail-master.component.ts"].Content;
+
+        Expect.Contains(ts, "this.http.get<any[]>('api/addresses').subscribe({");
+        Expect.DoesNotContain(ts, "'api/address').subscribe");
+    }
+
     // ------------------------------------------------------------------ Cross-template consistency: a component's
     // lookup drop-down calls this.<parent>Service.<method>() by NAME (it never sees TS_Service's own render), so
     // nothing catches the two templates drifting apart except a test that renders both and compares them directly.
@@ -519,6 +541,26 @@ public class TemplateRenderingTests
         Expect.Contains(ts, "this.http.post(`${this.apiUrl}/unlink`, { anchorId: this.anchorId, targetId: item.targetId })");
 
         Expect.Contains(files["namebasegroupxref-junction.component.spec.ts"].Content, "provideHttpClient(), provideHttpClientTesting()");
+    }
+
+    [TestMethod]
+    public async Task TS_JunctionComponent_does_not_double_pluralize_an_already_plural_table_name()
+    {
+        var files = GeneratedFiles.Split(await Render("TS_JunctionComponent_v1.tt", Sample.JunctionWithPluralName()))
+            .ToDictionary(f => Path.GetFileName(f.RelativePath));
+
+        Expect.Contains(files["ratings-junction.component.ts"].Content, "private apiUrl = 'api/ratings/junction';");
+        Expect.DoesNotContain(files["ratings-junction.component.ts"].Content, "'api/ratingss/junction'");
+    }
+
+    [TestMethod]
+    public async Task TS_JunctionComponent_adds_es_for_a_singular_table_name_ending_in_double_s()
+    {
+        var files = GeneratedFiles.Split(await Render("TS_JunctionComponent_v1.tt", Sample.JunctionWithDoubleSName()))
+            .ToDictionary(f => Path.GetFileName(f.RelativePath));
+
+        Expect.Contains(files["class-junction.component.ts"].Content, "private apiUrl = 'api/classes/junction';");
+        Expect.DoesNotContain(files["class-junction.component.ts"].Content, "'api/class/junction'");
     }
 
     // ------------------------------------------------------------------ ModifiedUserColumn (e.g. ModifiedBy, UpdatedBy)
@@ -908,11 +950,44 @@ public class TemplateRenderingTests
     }
 
     [TestMethod]
-    public async Task No_has_duplicate_check_is_written_when_no_column_is_in_a_unique_index()
+    public async Task A_unique_string_column_gets_a_suggest_unique_method()
+    {
+        var table = Sample.Table("Account",
+        [
+            Sample.Column("AccountId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("AccountNumber", SqlDbType.NVarChar, characters: 20, ordinal: 2, inUniqueIndex: true)
+        ]);
+
+        string cs = await Render("CS_Repo_v1.tt", table);
+
+        Expect.Contains(cs, "public async Task<string> SuggestUniqueAccountNumber(string desired)");
+        Expect.Contains(cs, "string candidate = desired;");
+        Expect.Contains(cs, "for (int suffix = 2; await _dbSet.AnyAsync(t => t.AccountNumber == candidate); suffix++)");
+        Expect.Contains(cs, "candidate = desired + suffix;");
+    }
+
+    [TestMethod]
+    public async Task A_unique_non_string_column_gets_no_suggest_unique_method()
+    {
+        var table = Sample.Table("Account",
+        [
+            Sample.Column("AccountId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("ExternalRefNumber", SqlDbType.Int, ordinal: 2, inUniqueIndex: true)
+        ]);
+
+        string cs = await Render("CS_Repo_v1.tt", table);
+
+        Expect.Contains(cs, "public async Task<bool> HasDuplicateExternalRefNumber(int externalRefNumber, int excludeId)");
+        Expect.DoesNotContain(cs, "SuggestUnique"); // appending a numeric suffix to a non-text column makes no sense
+    }
+
+    [TestMethod]
+    public async Task No_has_duplicate_or_suggest_unique_is_written_when_no_column_is_in_a_unique_index()
     {
         string cs = await Render("CS_Repo_v1.tt", Sample.Holiday());
 
         Expect.DoesNotContain(cs, "HasDuplicate");
+        Expect.DoesNotContain(cs, "SuggestUnique");
     }
 
     // ------------------------------------------------------------------ TS_Model
@@ -979,6 +1054,21 @@ public class TemplateRenderingTests
 
         foreach (string method in new[] { "getAll()", "getById(id: number)", "create(", "update(id: number", "delete(id: number)" })
             Expect.Contains(file.Content, method);
+    }
+
+    [TestMethod]
+    public async Task TS_Service_pluralizes_the_route_correctly_for_names_ending_in_s()
+    {
+        var movies = GeneratedFiles.Split(await Render("TS_Service_v1.tt", Sample.Movies())).Single();
+        var address = GeneratedFiles.Split(await Render("TS_Service_v1.tt", Sample.Address())).Single();
+        var settingsSales = GeneratedFiles.Split(await Render("TS_Service_v1.tt", Sample.SettingsSales())).Single();
+
+        Expect.Contains(movies.Content, "private apiUrl = 'api/movies';"); // already plural: left alone
+        Expect.DoesNotContain(movies.Content, "'api/moviess'");
+        Expect.Contains(address.Content, "private apiUrl = 'api/addresses';"); // singular ending in "ss": gets "es"
+        Expect.DoesNotContain(address.Content, "'api/address'");
+        Expect.Contains(settingsSales.Content, "private apiUrl = 'api/settingssales';"); // bare trailing "s": left alone
+        Expect.DoesNotContain(settingsSales.Content, "'api/settingssaless'");
     }
 
     // ------------------------------------------------------------------ TS: a uniqueidentifier key
@@ -1149,5 +1239,312 @@ public class TemplateRenderingTests
         var files = GeneratedFiles.Split(result.GeneratedText!);
         Assert.IsTrue(files.All(f => f.RelativePath.StartsWith("screens/holiday/")));
         Expect.Contains(files.Single(f => f.RelativePath.EndsWith("holiday.component.ts")).Content, "from '../../types/holiday'");
+    }
+
+    [TestMethod]
+    public async Task TS_Component_pluralizes_the_list_variable_correctly_for_names_ending_in_s()
+    {
+        var movies = GeneratedFiles.Split(await Render("TS_Component_v1.tt", Sample.Movies())).ToDictionary(f => Path.GetFileName(f.RelativePath));
+        var address = GeneratedFiles.Split(await Render("TS_Component_v1.tt", Sample.Address())).ToDictionary(f => Path.GetFileName(f.RelativePath));
+
+        Expect.Contains(movies["movies.component.ts"].Content, "movies: Movies[] = [];"); // already plural: left alone
+        Expect.DoesNotContain(movies["movies.component.ts"].Content, "moviess");
+        Expect.Contains(address["address.component.ts"].Content, "addresses: Address[] = [];"); // singular ending in "ss": gets "es"
+        Expect.DoesNotContain(address["address.component.ts"].Content, "addresss:");
+    }
+
+    // ------------------------------------------------------------------ TSX_Api (the React counterpart of TS_Service)
+
+    [TestMethod]
+    public async Task TSX_Api_generates_the_five_plain_crud_functions()
+    {
+        var holiday = GeneratedFiles.Split(await Render("TSX_Api_v1.tt", Sample.Holiday())).Single();
+        var donate = GeneratedFiles.Split(await Render("TSX_Api_v1.tt", Sample.DonateLeave())).Single();
+
+        Assert.AreEqual("api/holidayApi.ts", holiday.RelativePath);
+        Expect.Contains(holiday.Content, "import { request } from './client';");
+        Expect.Contains(holiday.Content, "import type { Holiday } from '../models/holiday';");
+        Expect.Contains(holiday.Content, "export const holidayApi = {");
+        Expect.Contains(holiday.Content, "getAll: () => request<Holiday[]>(apiUrl),");
+        Expect.Contains(holiday.Content, "getById: (id: number) => request<Holiday>(`${apiUrl}/${id}`),");
+        Expect.Contains(holiday.Content, "create: (holiday: Holiday) => request<Holiday>(apiUrl, { method: 'POST', body: JSON.stringify(holiday) }),");
+        Expect.Contains(holiday.Content, "update: (id: number, holiday: Holiday) => request<Holiday>(`${apiUrl}/${id}`, { method: 'PUT', body: JSON.stringify(holiday) }),");
+        Expect.Contains(holiday.Content, "delete: (id: number) => request<void>(`${apiUrl}/${id}`, { method: 'DELETE' }),");
+        Expect.Contains(holiday.Content, "findByName: (name: string) => request<Holiday[]>(`${apiUrl}/${name}`),");
+
+        Expect.DoesNotContain(donate.Content, "findByName"); // E_DonateLeave has no text Name column
+    }
+
+    [TestMethod]
+    public async Task TSX_Api_uses_a_string_key_for_a_uniqueidentifier_primary_key()
+    {
+        var file = GeneratedFiles.Split(await Render("TSX_Api_v1.tt", Sample.AccountRef())).Single();
+
+        Expect.Contains(file.Content, "getById: (id: string) => request<AccountRef>(`${apiUrl}/${id}`),");
+    }
+
+    [TestMethod]
+    public async Task TSX_Api_pluralizes_the_route_correctly_for_names_ending_in_s()
+    {
+        var movies = GeneratedFiles.Split(await Render("TSX_Api_v1.tt", Sample.Movies())).Single();
+        var address = GeneratedFiles.Split(await Render("TSX_Api_v1.tt", Sample.Address())).Single();
+        var settingsSales = GeneratedFiles.Split(await Render("TSX_Api_v1.tt", Sample.SettingsSales())).Single();
+
+        Expect.Contains(movies.Content, "const apiUrl = '/api/movies';"); // already plural: left alone
+        Expect.DoesNotContain(movies.Content, "'/api/moviess'");
+        Expect.Contains(address.Content, "const apiUrl = '/api/addresses';"); // singular ending in "ss": gets "es"
+        Expect.DoesNotContain(address.Content, "'/api/address'");
+        Expect.Contains(settingsSales.Content, "const apiUrl = '/api/settingssales';"); // bare trailing "s": left alone
+        Expect.DoesNotContain(settingsSales.Content, "'/api/settingssaless'");
+    }
+
+    [TestMethod]
+    public async Task TSX_Api_refuses_the_same_tables_TS_Service_refuses()
+    {
+        StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.NaturalKey()), "int or uniqueidentifier");
+        StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.CompositeKey()), "composite primary key");
+        StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.DepartmentTeam()), "NameActiveRepo");
+        StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.Roles()), "noApiTables");
+    }
+
+    // ------------------------------------------------------------------ TSX_Page (the React counterpart of TS_Component)
+
+    [TestMethod]
+    public async Task TSX_Page_writes_a_page_component_plus_a_colocated_test_file()
+    {
+        var files = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", Sample.DonateLeave()));
+
+        Assert.HasCount(2, files);
+        Assert.IsTrue(files.Any(f => f.RelativePath == "pages/DonateLeavePage.tsx"));
+        Assert.IsTrue(files.Any(f => f.RelativePath == "pages/__tests__/DonateLeavePage.test.tsx"));
+    }
+
+    [TestMethod]
+    public async Task TSX_Page_uses_useState_and_useEffect_instead_of_a_class()
+    {
+        string tsx = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", Sample.Holiday()))
+            .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
+
+        Expect.Contains(tsx, "import { useEffect, useState } from 'react';");
+        Expect.Contains(tsx, "export function HolidayPage() {");
+        Expect.Contains(tsx, "const [holidays, setHolidays] = useState<Holiday[]>([]);");
+        Expect.Contains(tsx, "useEffect(() => {");
+        Expect.Contains(tsx, "<h1>Holidays</h1>");
+        Expect.Contains(tsx, "<button type=\"button\" onClick={add}>Add New Holiday</button>");
+        Expect.Contains(tsx, "placeholder=\"Search by Name\""); // Holiday has a text Name column
+        Expect.Contains(tsx, "{error && <p>{error}</p>}");
+    }
+
+    [TestMethod]
+    public async Task TSX_Page_assumes_only_the_rail_class_not_TS_Components_own_btn_and_form_classes()
+    {
+        // CriticalViewer's real index.css/movie-viewer.css has no "btn"/"form-group"/"form-container"/"btn-action"
+        // classes -- only the Angular family's reference app (TimeEntryUI) does -- so a generated page must not
+        // invent them; see this template's own header comment for the inspection that found the gap.
+        string tsx = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", Sample.Holiday()))
+            .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
+
+        Expect.Contains(tsx, "className=\"rail\"");
+        Expect.DoesNotContain(tsx, "btn");
+        Expect.DoesNotContain(tsx, "form-group");
+        Expect.DoesNotContain(tsx, "form-container");
+    }
+
+    [TestMethod]
+    public async Task TSX_Page_renders_errors_as_state_not_alert()
+    {
+        string tsx = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", Sample.Holiday()))
+            .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
+
+        Expect.Contains(tsx, "const [error, setError] = useState<string | null>(null);");
+        Expect.DoesNotContain(tsx, "alert(");
+    }
+
+    [TestMethod]
+    public async Task TSX_Page_calls_the_function_TSX_Api_actually_generates_for_a_lookup_parent()
+    {
+        string parentApiTs = await Render("TSX_Api_v1.tt", Sample.Employee());
+        string pageTs = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", Sample.DonateLeave()))
+            .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
+
+        StringAssert.Contains(parentApiTs, "export const employeeApi = {");
+        Expect.Contains(pageTs, "import { employeeApi } from '../api/employeeApi';");
+        Expect.Contains(pageTs, "employeeApi.getAll().then(setEmployees).catch(() => {});");
+    }
+
+    [TestMethod]
+    public async Task TSX_Page_starting_values_for_add_match_each_columns_type()
+    {
+        var table = Sample.Table("Project",
+        [
+            Sample.Column("ProjectId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("Started", SqlDbType.Date),
+            Sample.Column("IsOpen", SqlDbType.Bit, defaultSql: "((1))"),
+            Sample.Column("Count", SqlDbType.Int)
+        ]);
+
+        string tsx = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", table))
+            .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
+
+        Expect.Contains(tsx, "started: new Date().toISOString().substring(0, 10)");
+        Expect.Contains(tsx, "isOpen: true");
+        Expect.Contains(tsx, "count: 0");
+    }
+
+    [TestMethod]
+    public async Task A_column_covered_by_two_foreign_keys_to_the_same_parent_does_not_crash_TSX_Page()
+    {
+        var files = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", Sample.DuplicateForeignKeyColumn()));
+
+        Assert.IsTrue(files.Any(f => f.RelativePath.EndsWith("Page.tsx")));
+    }
+
+    [TestMethod]
+    public async Task TSX_Page_refuses_the_same_tables_TS_Component_refuses()
+    {
+        StringAssert.Contains(await Refusal("TSX_Page_v1.tt", Sample.NaturalKey()), "int or uniqueidentifier");
+        StringAssert.Contains(await Refusal("TSX_Page_v1.tt", Sample.CompositeKey()), "composite primary key");
+        StringAssert.Contains(await Refusal("TSX_Page_v1.tt", Sample.DepartmentTeam()), "NameActiveRepo");
+    }
+
+    [TestMethod]
+    public async Task TSX_Page_pluralizes_the_list_variable_correctly_for_names_ending_in_s()
+    {
+        string movies = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", Sample.Movies()))
+            .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
+        string address = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", Sample.Address()))
+            .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
+
+        Expect.Contains(movies, "const [movies, setMovies] = useState<Movies[]>([]);"); // already plural: left alone
+        Expect.DoesNotContain(movies, "setMoviess");
+        Expect.Contains(address, "const [addresses, setAddresses] = useState<Address[]>([]);"); // singular ending in "ss": gets "es"
+        Expect.DoesNotContain(address, "setAddress]");
+    }
+
+    // ------------------------------------------------------------------ TSX_DetailMasterPage
+
+    [TestMethod]
+    public async Task TSX_DetailMasterPage_refuses_a_table_with_no_child_tables()
+    {
+        string message = await Refusal("TSX_DetailMasterPage_v1.tt", Sample.DonateLeave());
+
+        StringAssert.Contains(message, "TSX_Page instead");
+    }
+
+    [TestMethod]
+    public async Task TSX_DetailMasterPage_writes_the_grid_form_plus_one_child_grid_per_child_table()
+    {
+        var files = GeneratedFiles.Split(await Render("TSX_DetailMasterPage_v1.tt", Sample.DepartmentWithTeams()));
+        string tsx = files.Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
+
+        Assert.IsTrue(files.Any(f => f.RelativePath == "pages/DepartmentDetailMasterPage.tsx"));
+        Expect.Contains(tsx, "const [departmentTeamRows, setDepartmentTeamRows] = useState<any[]>([]);");
+        Expect.Contains(tsx, "const loadDepartmentTeam = (parentId: number) => {");
+        Expect.Contains(tsx, "request<any[]>('/api/departmentteams')");
+        Expect.Contains(tsx, "Save this Department first to see its Department Team rows.");
+    }
+
+    [TestMethod]
+    public async Task TSX_DetailMasterPage_calls_the_function_TSX_Api_actually_generates_for_a_lookup_parent()
+    {
+        string parentApiTs = await Render("TSX_Api_v1.tt", Sample.Employee());
+        string pageTs = GeneratedFiles.Split(await Render("TSX_DetailMasterPage_v1.tt", Sample.TimeSheetWithEmployeeAndDetail()))
+            .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
+
+        StringAssert.Contains(parentApiTs, "export const employeeApi = {");
+        Expect.Contains(pageTs, "import { employeeApi } from '../api/employeeApi';");
+        Expect.Contains(pageTs, "employeeApi.getAll().then(setEmployees).catch(() => {});");
+    }
+
+    [TestMethod]
+    public async Task TSX_DetailMasterPage_does_not_double_pluralize_an_already_plural_child_table_name()
+    {
+        string tsx = GeneratedFiles.Split(await Render("TSX_DetailMasterPage_v1.tt", Sample.MovieWithReviews()))
+            .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
+
+        Expect.Contains(tsx, "request<any[]>('/api/reviews')");
+        Expect.DoesNotContain(tsx, "'/api/reviewss'");
+    }
+
+    [TestMethod]
+    public async Task TSX_DetailMasterPage_adds_es_for_a_child_table_name_ending_in_double_s()
+    {
+        string tsx = GeneratedFiles.Split(await Render("TSX_DetailMasterPage_v1.tt", Sample.CustomerWithAddressChild()))
+            .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
+
+        Expect.Contains(tsx, "request<any[]>('/api/addresses')");
+        Expect.DoesNotContain(tsx, "'/api/address')");
+    }
+
+    [TestMethod]
+    public async Task TSX_DetailMasterPage_refuses_a_composite_primary_key()
+    {
+        var table = Sample.Table("Department",
+        [
+            Sample.Column("LeftId", SqlDbType.Int, primaryKey: true, ordinal: 1),
+            Sample.Column("RightId", SqlDbType.Int, primaryKey: true, ordinal: 2)
+        ], childForeignKeys: [Sample.ChildForeignKey("DepartmentTeam", "DepartmentId", "LeftId")]);
+
+        string message = await Refusal("TSX_DetailMasterPage_v1.tt", table);
+
+        StringAssert.Contains(message, "composite primary key");
+    }
+
+    [TestMethod]
+    public async Task TSX_DetailMasterPage_refuses_a_name_active_table_even_though_it_has_child_tables()
+    {
+        var table = Sample.Table("Department",
+        [
+            Sample.Column("DepartmentId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("Name", SqlDbType.NVarChar, characters: 100, ordinal: 2),
+            Sample.Column("IsActive", SqlDbType.Bit, defaultSql: "((1))", ordinal: 3)
+        ], childForeignKeys: [Sample.ChildForeignKey("DepartmentTeam", "DepartmentId", "DepartmentId")]);
+
+        StringAssert.Contains(await Refusal("TSX_DetailMasterPage_v1.tt", table), "NameActiveRepo");
+    }
+
+    // ------------------------------------------------------------------ TSX_JunctionPage
+
+    [TestMethod]
+    public async Task TSX_JunctionPage_refuses_a_table_that_is_not_a_junction_table()
+    {
+        string message = await Refusal("TSX_JunctionPage_v1.tt", Sample.DonateLeave());
+
+        StringAssert.Contains(message, "IsJunctionTable is false");
+    }
+
+    [TestMethod]
+    public async Task TSX_JunctionPage_writes_a_shuttle_control_component_with_a_colocated_test()
+    {
+        var files = GeneratedFiles.Split(await Render("TSX_JunctionPage_v1.tt", Sample.JunctionWithSurrogateKey()));
+        string tsx = files.Single(f => f.RelativePath.EndsWith(".tsx") && !f.RelativePath.Contains("__tests__")).Content;
+
+        Assert.IsTrue(files.Any(f => f.RelativePath == "components/NameBaseGroupXrefJunction.tsx"));
+        Assert.IsTrue(files.Any(f => f.RelativePath == "components/__tests__/NameBaseGroupXrefJunction.test.tsx"));
+        Expect.Contains(tsx, "export interface NameBaseGroupXrefJunctionItem {");
+        Expect.Contains(tsx, "export function NameBaseGroupXrefJunction({ anchorId }: { anchorId: number }) {");
+        Expect.Contains(tsx, "shortDescr?: string;"); // Groups' display column, camelCased like TS_Model
+        Expect.Contains(tsx, "request<NameBaseGroupXrefJunctionItem[]>(`${apiUrl}/${anchorId}`)");
+        Expect.Contains(tsx, "request(`${apiUrl}/link`, { method: 'POST', body: JSON.stringify({ anchorId, targetId: item.targetId }) })");
+    }
+
+    [TestMethod]
+    public async Task TSX_JunctionPage_does_not_double_pluralize_an_already_plural_table_name()
+    {
+        string tsx = GeneratedFiles.Split(await Render("TSX_JunctionPage_v1.tt", Sample.JunctionWithPluralName()))
+            .Single(f => f.RelativePath.EndsWith(".tsx") && !f.RelativePath.Contains("__tests__")).Content;
+
+        Expect.Contains(tsx, "const apiUrl = '/api/ratings/junction';");
+        Expect.DoesNotContain(tsx, "'/api/ratingss/junction'");
+    }
+
+    [TestMethod]
+    public async Task TSX_JunctionPage_adds_es_for_a_singular_table_name_ending_in_double_s()
+    {
+        string tsx = GeneratedFiles.Split(await Render("TSX_JunctionPage_v1.tt", Sample.JunctionWithDoubleSName()))
+            .Single(f => f.RelativePath.EndsWith(".tsx") && !f.RelativePath.Contains("__tests__")).Content;
+
+        Expect.Contains(tsx, "const apiUrl = '/api/classes/junction';");
+        Expect.DoesNotContain(tsx, "'/api/class/junction'");
     }
 }

@@ -201,6 +201,32 @@ internal static class Sample
         Column("AccountRefID", SqlDbType.UniqueIdentifier, primaryKey: true, defaultSql: "(newsequentialid())", ordinal: 3)
     ]);
 
+    /// <summary> A table whose name is already plural, so the +s route convention must not double it up. </summary>
+    public static TableModel Movies() => Table("Movies",
+    [
+        Column("MovieId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Column("Title", SqlDbType.NVarChar, characters: 200, ordinal: 2)
+    ]);
+
+    /// <summary> Like a real Address/CustomerAddress table (a singular table -- one row is one address) and a
+    /// real ARClass table found on production databases: a singular name ending in "ss", which regular English
+    /// pluralization always turns into "...es" (class -> classes, address -> addresses) and never reproduces a
+    /// literal double "s" -- the route convention must add "es" here, not treat it as already plural. </summary>
+    public static TableModel Address() => Table("Address",
+    [
+        Column("AddressId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Column("AddressLine1", SqlDbType.NVarChar, characters: 100, ordinal: 2)
+    ]);
+
+    /// <summary> Like a real SettingsSales table found on a production database: a singular table whose name
+    /// happens to end in a bare "s" only because it is built from two already-plural-looking words -- the route
+    /// convention must leave it alone, the same as a genuinely already-plural table name (see Movies above). </summary>
+    public static TableModel SettingsSales() => Table("SettingsSales",
+    [
+        Column("SettingsSalesId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Column("Value", SqlDbType.NVarChar, characters: 100, ordinal: 2)
+    ]);
+
     /// <summary> A table keyed by a text code the person types (a natural key). </summary>
     public static TableModel NaturalKey() => Table("Country",
     [
@@ -235,6 +261,32 @@ internal static class Sample
         Column("GroupID", SqlDbType.Int, ordinal: 3),
         Column("CreateDate", SqlDbType.DateTime, defaultSql: "(getdate())", ordinal: 4, createDateColumn: true),
         Column("CreateUser", SqlDbType.VarChar, characters: 50, ordinal: 5, createUserColumn: true)
+    ],
+    [
+        ForeignKey("NameBaseID", "NameBase", "ID", "Name"),
+        ForeignKey("GroupID", "Groups", "ID", "ShortDescr")
+    ]);
+
+    /// <summary> Same shape as JunctionWithSurrogateKey, but the junction table's own name is already plural --
+    /// the +s route convention must not double it up. </summary>
+    public static TableModel JunctionWithPluralName() => Table("Ratings",
+    [
+        Column("ID", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Column("NameBaseID", SqlDbType.Int, ordinal: 2),
+        Column("GroupID", SqlDbType.Int, ordinal: 3)
+    ],
+    [
+        ForeignKey("NameBaseID", "NameBase", "ID", "Name"),
+        ForeignKey("GroupID", "Groups", "ID", "ShortDescr")
+    ]);
+
+    /// <summary> Same shape as JunctionWithSurrogateKey, but the junction table's own name is singular and ends
+    /// in "ss" (like the real ARClass table) -- the route convention must add "es", not leave it alone. </summary>
+    public static TableModel JunctionWithDoubleSName() => Table("Class",
+    [
+        Column("ID", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Column("NameBaseID", SqlDbType.Int, ordinal: 2),
+        Column("GroupID", SqlDbType.Int, ordinal: 3)
     ],
     [
         ForeignKey("NameBaseID", "NameBase", "ID", "Name"),
@@ -304,6 +356,24 @@ internal static class Sample
             ReferencedDisplayColumns = ["Name"]
         }
     ]);
+
+    /// <summary> Like the real CriticalViewer Movie/Reviews pair: a parent table whose child table's name is
+    /// already plural -- the child grid's route must not double-pluralize it. </summary>
+    public static TableModel MovieWithReviews() => Table("Movie",
+    [
+        Column("MovieId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Column("Title", SqlDbType.NVarChar, characters: 200, ordinal: 2)
+    ],
+    childForeignKeys: [ChildForeignKey("Reviews", "MovieId", "MovieId")]);
+
+    /// <summary> Like a real Customer/Address pair (see Address above): a parent table whose child table's
+    /// name is singular and ends in "ss" -- the child grid's route must add "es", not leave it alone. </summary>
+    public static TableModel CustomerWithAddressChild() => Table("Customer",
+    [
+        Column("CustomerId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Column("Name", SqlDbType.NVarChar, characters: 100, ordinal: 2)
+    ],
+    childForeignKeys: [ChildForeignKey("Address", "CustomerId", "CustomerId")]);
 
     /// <summary> A "name/active" table (Name + IsActive) that is ALSO the parent side of a foreign key --
     /// exercises TS_DetailMasterComponent.tt's/WinUI3_DetailMasterScreen.tt's refusal order (child tables
