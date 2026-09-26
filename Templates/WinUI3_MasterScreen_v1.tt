@@ -91,8 +91,8 @@
         string keyProp = keyColumn.Name;
 
         // GroupBy + First, not ToDictionary: a real table can have more than one FK constraint on the same
-        // column pointing at the same parent (seen live against ProvidenceOgas.dbo.Products) -- ToDictionary
-        // would throw on the duplicate key.
+        // column pointing at the same parent (seen live against a second production database's dbo.Products
+        // table) -- ToDictionary would throw on the duplicate key.
         var fkByColumn = Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1)
             .GroupBy(f => f.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);

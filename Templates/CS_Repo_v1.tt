@@ -45,7 +45,15 @@
     //       * a name/active table that hangs off exactly one parent through a NOT NULL int foreign key (a "child" table:
     //         DepartmentTeam -> Department) gets  GetAllOf<Parent>(int id)  -- its active rows for that parent, by name;
     //       * a table with a NOT NULL text Name that is NOT name/active-based gets  GetByName(string name)  -- names starting
-    //         with the text (Holiday).
+    //         with the text (Holiday);
+    //       * every column that takes part in a UNIQUE index or constraint OTHER than the primary key
+    //         (ColumnModel.IsInUniqueIndex -- the same signal SP_Clone.tt already uses to decide which columns need a
+    //         caller-supplied override on copy) gets  HasDuplicate<Column>(value, excludeId)  -- does some OTHER row
+    //         already have this value, the generalized shape of CityRepository.HasDuplicates in
+    //         CodeGenPossibilities\AdvancedRepositoryPatterns (research folder). One column at a time:
+    //         IsInUniqueIndex only says a column takes part in SOME unique index, not which other columns share a
+    //         composite one, so a composite unique constraint gets one HasDuplicate per column rather than a single
+    //         combined check.
     //   - No entity, no repo: a table listed in noRepositoryTables (the ones that are C# enums, the *Type lookup tables, and
     //     tables with no entity class) stops with an error instead of writing a class that cannot compile.
     //
@@ -63,6 +71,29 @@
     else
     {
         string entity = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
+
+        // ---- C# type of a column (same mapping CS_Entity.tt/CS_Validation.tt use)
+        string ClrType(ColumnModel c)
+        {
+            string t = c.SqlType switch
+            {
+                SqlDbType.Int => "int",
+                SqlDbType.BigInt => "long",
+                SqlDbType.SmallInt => "short",
+                SqlDbType.TinyInt => "byte",
+                SqlDbType.Bit => "bool",
+                SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => "decimal",
+                SqlDbType.Float => "double",
+                SqlDbType.Real => "float",
+                SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime => "DateTime",
+                SqlDbType.DateTimeOffset => "DateTimeOffset",
+                SqlDbType.Time => "TimeSpan",
+                SqlDbType.UniqueIdentifier => "Guid",
+                SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => "string",
+                _ => "object"
+            };
+            return c.IsNullable ? t + "?" : t;
+        }
 
         var nameColumn = Model.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
         var activeColumn = Model.Columns.FirstOrDefault(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive");
@@ -108,6 +139,19 @@
                 "        return await _dbSet",
                 "            .Where(d => d.Name.StartsWith(name))",
                 "            .ToListAsync();",
+                "    }"
+            });
+        }
+
+        foreach (var c in Model.Columns.Where(c => c.IsInUniqueIndex))
+        {
+            string paramName = char.ToLowerInvariant(c.Name[0]) + c.Name[1..];
+            if (paramName.IsCSharpReservedWord()) paramName = "@" + paramName;
+            methods.Add(new[]
+            {
+                $"    public async Task<bool> HasDuplicate{c.Name}({ClrType(c)} {paramName}, int excludeId)",
+                "    {",
+                $"        return await _dbSet.AnyAsync(t => t.{c.Name} == {paramName} && t.{Model.PrimaryKeyColumns[0].Name} != excludeId);",
                 "    }"
             });
         }

@@ -138,8 +138,8 @@ public class TemplateRenderingTests
     [TestMethod]
     public async Task SP_Junction_writes_list_link_and_unlink_for_the_surrogate_key_shape()
     {
-        // The real-world shape (ProvidenceOgas.dbo.NameBaseGroupXref): ID is the PK, NameBaseID/GroupID are
-        // plain FK columns -- confirmed against a live database, 2026-09-25.
+        // The real-world shape (a second production database's dbo.NameBaseGroupXref table): ID is the PK,
+        // NameBaseID/GroupID are plain FK columns -- confirmed against a live database, 2026-09-25.
         string sql = await Render("SP_Junction_v1.tt", Sample.JunctionWithSurrogateKey());
 
         Expect.Contains(sql, "CREATE OR ALTER PROCEDURE [dbo].[NameBaseGroupXref_List]");
@@ -872,6 +872,47 @@ public class TemplateRenderingTests
     public async Task No_repository_is_written_for_a_lookup_table()
     {
         StringAssert.Contains(await Refusal("CS_Repo_v1.tt", Sample.Roles()), "noRepositoryTables");
+    }
+
+    [TestMethod]
+    public async Task A_column_in_a_unique_index_gets_a_has_duplicate_check()
+    {
+        var table = Sample.Table("Account",
+        [
+            Sample.Column("AccountId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("AccountNumber", SqlDbType.NVarChar, characters: 20, ordinal: 2, inUniqueIndex: true),
+            Sample.Column("Description", SqlDbType.NVarChar, characters: 100, ordinal: 3)
+        ]);
+
+        string cs = await Render("CS_Repo_v1.tt", table);
+
+        Expect.Contains(cs, "public async Task<bool> HasDuplicateAccountNumber(string accountNumber, int excludeId)");
+        Expect.Contains(cs, "t.AccountNumber == accountNumber && t.AccountId != excludeId");
+        Expect.DoesNotContain(cs, "HasDuplicateDescription"); // not in a unique index
+    }
+
+    [TestMethod]
+    public async Task Each_column_in_a_unique_index_gets_its_own_has_duplicate_check()
+    {
+        var table = Sample.Table("Account",
+        [
+            Sample.Column("AccountId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("AccountNumber", SqlDbType.NVarChar, characters: 20, ordinal: 2, inUniqueIndex: true),
+            Sample.Column("TaxId", SqlDbType.VarChar, characters: 15, nullable: true, ordinal: 3, inUniqueIndex: true)
+        ]);
+
+        string cs = await Render("CS_Repo_v1.tt", table);
+
+        Expect.Contains(cs, "public async Task<bool> HasDuplicateAccountNumber(string accountNumber, int excludeId)");
+        Expect.Contains(cs, "public async Task<bool> HasDuplicateTaxId(string? taxId, int excludeId)");
+    }
+
+    [TestMethod]
+    public async Task No_has_duplicate_check_is_written_when_no_column_is_in_a_unique_index()
+    {
+        string cs = await Render("CS_Repo_v1.tt", Sample.Holiday());
+
+        Expect.DoesNotContain(cs, "HasDuplicate");
     }
 
     // ------------------------------------------------------------------ TS_Model

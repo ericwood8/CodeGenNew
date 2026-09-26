@@ -58,7 +58,8 @@ internal static class Sample
     public static ColumnModel Column(
         string name, SqlDbType type, bool nullable = false, bool primaryKey = false, bool identity = false,
         int? characters = null, int? precision = null, int? scale = null, string? defaultSql = null, int ordinal = 0,
-        bool modifiedUserColumn = false, bool createDateColumn = false, bool createUserColumn = false)
+        bool modifiedUserColumn = false, bool createDateColumn = false, bool createUserColumn = false,
+        bool inUniqueIndex = false)
     {
         bool isText = type is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
         bool isUnicode = type is SqlDbType.NChar or SqlDbType.NVarChar;
@@ -84,6 +85,7 @@ internal static class Sample
             OrdinalPosition = ordinal,
             IsIdentity = identity,
             IsPrimaryKey = primaryKey,
+            IsInUniqueIndex = inUniqueIndex,
             DatabaseDefaultSql = defaultSql,
             IsIntegerColumn = type is SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt,
             IsStringColumn = isText || type is SqlDbType.Text or SqlDbType.NText,
@@ -221,7 +223,7 @@ internal static class Sample
         Column("ModifiedBy", SqlDbType.NVarChar, nullable: true, characters: 50, ordinal: 3, modifiedUserColumn: true)
     ]);
 
-    /// <summary> Like ProvidenceOgas's real dbo.NameBaseGroupXref (confirmed against a live database,
+    /// <summary> Like a real dbo.NameBaseGroupXref table found on a second production database (confirmed against a live database,
     /// 2026-09-25): a many-to-many junction table shaped around a surrogate identity primary key rather
     /// than a natural composite one -- ID is the PK, NameBaseID/GroupID are plain (non-key) foreign keys,
     /// plus CreateDate/CreateUser audit columns. This turned out to be the real-world shape, not the
@@ -273,7 +275,7 @@ internal static class Sample
         ForeignKey("RoleId", "Role", "RoleId", "Name")
     ]);
 
-    /// <summary> Like ProvidenceOgas's Products: one column covered by two differently-named FK constraints that both
+    /// <summary> Like a real dbo.Products table found on a second production database: one column covered by two differently-named FK constraints that both
     /// point at the same parent table. A generator that keys a lookup by column name (instead of grouping) throws
     /// "An item with the same key has already been added" building that lookup. </summary>
     public static TableModel DuplicateForeignKeyColumn() => Table("Product",

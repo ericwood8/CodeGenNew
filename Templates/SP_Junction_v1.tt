@@ -19,8 +19,9 @@
     // Why not just reuse SP_Insert/SP_Delete: those operate on the table's PRIMARY KEY, but a junction
     // table's association columns are only sometimes its primary key (TableModel.IsJunctionTable
     // deliberately also recognizes the surrogate-identity-key shape -- confirmed against a real database,
-    // ProvidenceOgas.dbo.NameBaseGroupXref, 2026-09-25 -- where the two FK columns are NOT the primary
-    // key at all). Link/Unlink work by the association columns directly, whichever shape they're in.
+    // a second production database's dbo.NameBaseGroupXref table, 2026-09-25 -- where the two FK columns
+    // are NOT the primary key at all). Link/Unlink work by the association columns directly, whichever
+    // shape they're in.
     //
     // Which of the two association columns is the "anchor" (the side already picked elsewhere, e.g. "this
     // NameBase's Groups") and which is the "target" (the side being multi-selected) is not something the

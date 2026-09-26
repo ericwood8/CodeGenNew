@@ -19,12 +19,12 @@ public class AppSettingsLoadTests
     public void An_existing_file_is_parsed_case_insensitively()
     {
         using var temp = new TempFolder();
-        string path = temp.File("Settings.json", """{ "outputDirectory": "MyOutput", "lastConnection": { "serverName": "ERICSMINIPC" } }""");
+        string path = temp.File("Settings.json", """{ "outputDirectory": "MyOutput", "lastConnection": { "serverName": "TESTSERVER" } }""");
 
         var settings = AppSettings.Load(path);
 
         Assert.AreEqual("MyOutput", settings.OutputDirectory);
-        Assert.AreEqual("ERICSMINIPC", settings.LastConnection.ServerName);
+        Assert.AreEqual("TESTSERVER", settings.LastConnection.ServerName);
     }
 }
 
@@ -190,8 +190,9 @@ public class TableModelJunctionTableTests
     [TestMethod]
     public void A_surrogate_key_junction_table_is_recognized()
     {
-        // The real-world shape found on ProvidenceOgas.dbo.NameBaseGroupXref: an identity PK plus two
-        // plain FK columns and CreateDate/CreateUser audit columns -- confirmed against a live database.
+        // The real-world shape found on a second production database's dbo.NameBaseGroupXref table: an
+        // identity PK plus two plain FK columns and CreateDate/CreateUser audit columns -- confirmed
+        // against a live database.
         var xref = Sample.JunctionWithSurrogateKey();
 
         Assert.IsTrue(xref.IsJunctionTable);
