@@ -8,6 +8,10 @@ It replaces a series of hand-rolled "write lines to a text file with substitutio
 
 See **[Docs/specs.md](Docs/specs.md)** for the full specification: architecture, configuration file formats, the `TableModel`/`ColumnModel` schema, the special-logic column detection, every template's rules, and the CLI.
 
+## Status
+<img width="126" height="20" alt="image" src="https://github.com/user-attachments/assets/3ea8d6d1-74b0-4b49-9821-5daf70302241" />
+Project is actively being worked on. Issues and Pull Requests are welcomed.  We welcome contributions.
+
 ## What it generates
 
 Twenty-nine templates ship in `Templates\`. A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
