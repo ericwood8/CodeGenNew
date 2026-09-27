@@ -36,6 +36,16 @@
     //     update(id, holiday): Observable<Holiday>     PUT    api/holidays/{id}
     //     delete(id): Observable<void>                 DELETE api/holidays/{id}
     //     findByName(name): Observable<Holiday[]>      GET    api/holidays/{name}      (only a table with a text Name column)
+    //     getPage(pageNumber, pageSize, ...filters): Observable<{Table}PagedResult>
+    //                                                   GET    api/holidays/search?pageNumber=&pageSize=&<column>=...
+    //                                                   (always -- CodeGenPossibilities\Pagination in the research folder.
+    //                                                   One optional string parameter per searchable column, in
+    //                                                   TableModel.SearchableColumns order, matching API_Search.tt's own
+    //                                                   query parameters name-for-name -- zero of them for a table with no
+    //                                                   searchable column, since pagination and searchability are separate
+    //                                                   concerns (SP_Search.tt's own header comment); an omitted or blank
+    //                                                   value is left out of the request entirely, not sent as ''.
+    //                                                   CodeGenPossibilities\Search in the research folder.)
     //
     //   - Names: class <Table>Service in services/<table>.service.ts, the table name without its "E_" / "SY_" prefix
     //     (E_TimeSheet -> TimeSheetService, services/timesheet.service.ts); the interface is imported from models/<table>.ts.
@@ -48,7 +58,7 @@
     //     called Name; the plain (API_Crud) tables have none.
     //
     // Not written: calls for extra routes a hand-written API adds (DepartmentService.getTeams, TimeSheetDetailService's
-    // "by timesheet" call); a service that needs those stays hand-maintained.
+    // "by timesheet" call, a filtered search); a service that needs those stays hand-maintained.
     //
     // ------------------------------------------------------------------------------------------
 
@@ -78,15 +88,27 @@
         string variable = LowerFirst(baseName);
         string lowerWords = Words(baseName).ToLowerInvariant();
         bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name");
+        // Pagination (CodeGenPossibilities\Pagination): getPage always exists, once SP_Search.tt/API_Search.tt
+        // do (also always, as of the same date) -- pagination and searchability are separate concerns.
+        // Search (CodeGenPossibilities\Search): filters is simply empty for a table with no searchable column.
+        var filters = Model.SearchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
 
         L($"@@@FILE {servicesFolder}/{stem}.service.ts@@@");
         L("import { Injectable } from '@angular/core';");
-        L("import { HttpClient } from '@angular/common/http';");
+        L("import { HttpClient, HttpParams } from '@angular/common/http';");
         L("import { Observable } from 'rxjs';");
         L($"import {{ {baseName} }} from '../{modelsFolder}/{stem}';");
+        L();
+        L($"export interface {baseName}PagedResult {{");
+        L($"    items: {baseName}[];");
+        L("    page: number;");
+        L("    pageSize: number;");
+        L("    totalCount: number;");
+        L("    totalPages: number;");
+        L("}");
         L();
         L("@Injectable({");
         L("    providedIn: 'root',");
@@ -126,6 +148,17 @@
             L("    // Find by Name");
             L($"    findByName(name: string): Observable<{baseName}[]> {{");
             L($"        return this.http.get<{baseName}[]>(`${{this.apiUrl}}/${{name}}`);");
+            L("    }");
+        }
+        {
+            string filterParams = string.Concat(filters.Select(f => $", {f.ParamName}?: string"));
+            L();
+            L($"    // Get one page of {lowerWords.Pluralize()}, optionally filtered by any combination of the searchable columns");
+            L($"    getPage(pageNumber: number, pageSize: number{filterParams}): Observable<{baseName}PagedResult> {{");
+            L("        let params = new HttpParams().set('pageNumber', pageNumber).set('pageSize', pageSize);");
+            foreach (var f in filters)
+                L($"        if ({f.ParamName}) {{ params = params.set('{f.ParamName}', {f.ParamName}); }}");
+            L($"        return this.http.get<{baseName}PagedResult>(`${{this.apiUrl}}/search`, {{ params }});");
             L("    }");
         }
         L("}");

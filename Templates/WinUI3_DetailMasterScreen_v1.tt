@@ -143,15 +143,60 @@
         // that isn't a plain int (almost always our own int primary key, but a child can reference any
         // unique column) -- the grid's filter below is EF.Property<int>, matching the int-only assumption
         // this whole template family makes about keys.
+        // A raw internal id (the child's own primary key, or another foreign key on the child with no
+        // resolvable display name) has no business meaning to a user looking at the grid -- hidden entirely.
+        // A foreign key on the child that DOES have a resolvable display name (e.g. a SalesInvoice child row's
+        // own CustomerId) is resolved to that name instead of shown as a raw number, the same way this
+        // template's own parent drop-downs resolve a display name for THIS table's foreign keys. Found live:
+        // a real user looking at the generated grid saw SalesInvoiceId/CustomerId/CustomerMonthlySummaryId next
+        // to InvoiceDate and asked for exactly this (2026-09-29).
         var children = Model.ChildForeignKeys
             .Where(fk => fk.ReferencingColumns.Count == 1
                       && Model.Columns.Any(c => c.Name.Equals(fk.ReferencedColumns[0], StringComparison.OrdinalIgnoreCase) && c.SqlType == SqlDbType.Int))
-            .Select(fk => new
+            .Select(fk =>
             {
-                Table = fk.ReferencingTable,
-                Var = FieldVar(fk.ReferencingTable),
-                FkColumn = fk.ReferencingColumns[0],
-                ParentKeyColumn = fk.ReferencedColumns[0]
+                string selfFkColumn = fk.ReferencingColumns[0];
+                // Every OTHER foreign key on the child table -- not the one pointing back to this (parent)
+                // table, which is handled separately below (it's always the same value for every row shown,
+                // since the grid is already filtered to this one parent).
+                var otherFks = fk.ReferencingTableForeignKeys
+                    .Where(ofk => !(ofk.ReferencingColumns.Count == 1 && ofk.ReferencingColumns[0].Equals(selfFkColumn, StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+                var resolvable = otherFks
+                    .Where(ofk => ofk.ReferencingColumns.Count == 1 && ofk.ReferencedDisplayColumns.Count > 0)
+                    .Select(ofk => new
+                    {
+                        Column = ofk.ReferencingColumns[0],
+                        ReferencedTable = ofk.ReferencedTable,
+                        KeyProp = ofk.ReferencedColumns[0],
+                        DisplayProp = ofk.ReferencedDisplayColumns[0],
+                        LookupVar = FieldVar(fk.ReferencingTable) + ofk.ReferencedTable + "Names",
+                        // "CustomerId" -> "Customer": the same Label() this template already uses for the
+                        // parent form's own field headers (and WinUI3_MasterScreen.tt uses for its list grid's
+                        // resolved-name column) -- a resolved column's NAME is known at generation time (unlike
+                        // every other column in this grid, which is only discovered later via EF reflection),
+                        // so it gets the same nicer header instead of the raw "...Id" property name.
+                        Label = Label(ofk.ReferencingColumns[0])
+                    }).ToList();
+
+                // A List, not a HashSet: keeps the generated HideFrom<Table>Grid array in a fixed, predictable
+                // order (self FK, then primary key, then unresolvable other FKs) instead of whatever order a
+                // hash-based set happens to enumerate in, so regenerating the same table twice produces
+                // identical output.
+                var hideColumns = new List<string> { selfFkColumn };
+                hideColumns.AddRange(fk.ReferencingPrimaryKeyColumns);
+                hideColumns.AddRange(otherFks.SelectMany(o => o.ReferencingColumns).Except(resolvable.Select(r => r.Column), StringComparer.OrdinalIgnoreCase));
+                hideColumns = hideColumns.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+                return new
+                {
+                    Table = fk.ReferencingTable,
+                    Var = FieldVar(fk.ReferencingTable),
+                    FkColumn = selfFkColumn,
+                    ParentKeyColumn = fk.ReferencedColumns[0],
+                    HideColumns = hideColumns,
+                    Resolvable = resolvable
+                };
             }).ToList();
 #>
 @@@FILE <#= viewsFolder #>/<#= table #>DetailMasterDialog.xaml@@@
@@ -221,22 +266,17 @@
 #>
 
             <TextBlock Text="<#= Words(child.Table) #>" Style="{ThemeResource BodyStrongTextBlockStyle}" />
-            <ItemsControl ItemsSource="{x:Bind ViewModel.<#= child.Var #>ColumnHeaders}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Horizontal" Spacing="8" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <TextBlock Text="{Binding}" FontWeight="SemiBold" Width="120" />
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-            <ListView ItemsSource="{x:Bind ViewModel.<#= child.Var #>Rows}" IsEnabled="False" MaxHeight="200">
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <ItemsControl ItemsSource="{Binding Cells}">
+            <!-- Boxed the same way as WinUI3_MasterScreen.tt's own grid: a line around the whole grid, a line
+                 under the header, and a line under every row — see that template's 2026-09-27 styling note. -->
+            <Border BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="0,0,0,1" Padding="8">
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.<#= child.Var #>ColumnHeaders}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <StackPanel Orientation="Horizontal" Spacing="8" />
@@ -244,13 +284,33 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding}" Width="120" />
+                                    <TextBlock Text="{Binding}" FontWeight="SemiBold" Width="120" />
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
+                    </Border>
+                    <ListView Grid.Row="1" ItemsSource="{x:Bind ViewModel.<#= child.Var #>Rows}" IsEnabled="False" MaxHeight="200" Padding="0">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="0,0,0,1" Padding="8,4">
+                                    <ItemsControl ItemsSource="{Binding Cells}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" Spacing="8" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding}" Width="120" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Border>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Border>
 <#
         }
 #>
@@ -389,7 +449,15 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         {
             var lookup = LookupOf(c);
             string prop = c.Name;
-            if (lookup is not null || IsBit(c))
+            if (lookup is not null)
+            {
+                // Deliberately NOT set here -- see LoadAsync below. A ComboBox's SelectedValue binding does
+                // not retroactively select an item once its ItemsSource is populated AFTER SelectedValue was
+                // already assigned to a value with no match yet (a real, known WinUI3/UWP limitation, not
+                // just a timing quirk): the box renders as if empty even though editing.{prop} is correct,
+                // until the person types in it (found live clicking through a real running app, 2026-09-28).
+            }
+            else if (IsBit(c))
             {
 #>
             <#= prop #> = editing.<#= prop #>;
@@ -419,11 +487,28 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 <#
         foreach (var p in parents)
         {
+            var lookupColumnsForThisParent = shown.Where(c => LookupOf(c) is ForeignKeyModel fk && fk.ReferencedTable.Equals(p.Table, StringComparison.OrdinalIgnoreCase)).ToList();
 #>
         <#= p.OptionsProp #>.Clear();
         foreach (var row in await _context.Set<<#= p.Table #>>().OrderBy(r => r.<#= p.DisplayProp #>).ToListAsync())
             <#= p.OptionsProp #>.Add(new <#= table #>DetailMasterLookupOption { Id = row.<#= p.KeyProp #>, Text = row.<#= p.DisplayProp #>?.ToString() ?? "" });
 <#
+            if (lookupColumnsForThisParent.Count > 0)
+            {
+#>
+        if (_editing is not null)
+        {
+<#
+                foreach (var c in lookupColumnsForThisParent)
+                {
+#>
+            <#= c.Name #> = _editing.<#= c.Name #>;
+<#
+                }
+#>
+        }
+<#
+            }
         }
         foreach (var child in children)
         {
@@ -445,20 +530,69 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         if (_editing is null)
             return; // no child rows to show until this <#= title #> has been saved once
 
+<#
+        foreach (var r in child.Resolvable)
+        {
+#>
+        var <#= r.LookupVar #> = await _context.Set<<#= r.ReferencedTable #>>().ToDictionaryAsync(r => r.<#= r.KeyProp #>, r => r.<#= r.DisplayProp #>?.ToString() ?? "");
+<#
+        }
+#>
+        // <#= child.FkColumn #> (this grid's own filter column, always the same value here) and any internal id
+        // column with no resolvable display name are left out entirely -- see the "children" comment above.
         var entityType = _context.Model.FindEntityType(typeof(<#= child.Table #>))!;
-        var propertyNames = entityType.GetProperties().Select(p => p.Name).ToList();
+        var propertyNames = entityType.GetProperties().Select(p => p.Name)
+            .Where(name => !HideFrom<#= child.Table #>Grid.Contains(name, StringComparer.OrdinalIgnoreCase)).ToList();
         foreach (string name in propertyNames)
-            <#= child.Var #>ColumnHeaders.Add(name);
+            <#= child.Var #>ColumnHeaders.Add(HeaderLabelFor<#= child.Table #>Grid.TryGetValue(name, out string? label) ? label : name);
 
         var rows = await _context.Set<<#= child.Table #>>()
             .Where(c => EF.Property<int>(c, "<#= child.FkColumn #>") == _editing!.<#= child.ParentKeyColumn #>)
             .ToListAsync();
         foreach (var row in rows)
         {
-            var cells = propertyNames.Select(name => typeof(<#= child.Table #>).GetProperty(name)!.GetValue(row)?.ToString() ?? "").ToList();
+            var cells = propertyNames.Select(name =>
+            {
+                object? raw = typeof(<#= child.Table #>).GetProperty(name)!.GetValue(row);
+<#
+        if (child.Resolvable.Count > 0)
+        {
+#>
+                if (raw is int rawId)
+                {
+<#
+            foreach (var r in child.Resolvable)
+            {
+#>
+                    if (name == "<#= r.Column #>")
+                        return <#= r.LookupVar #>.TryGetValue(rawId, out string? resolved<#= r.Column #>) ? resolved<#= r.Column #> : rawId.ToString();
+<#
+            }
+#>
+                }
+<#
+        }
+#>
+                return raw?.ToString() ?? "";
+            }).ToList();
             <#= child.Var #>Rows.Add(new <#= table #>ChildGridRow { Cells = cells });
         }
     }
+
+    private static readonly string[] HideFrom<#= child.Table #>Grid = [ <#= string.Join(", ", child.HideColumns.Select(c => $"\"{c}\"")) #> ];
+    // A resolved column's header (e.g. "Customer" instead of "CustomerId") -- known at generation time, unlike
+    // this grid's other column headers, which come from EF reflection at run time and stay as raw property names.
+    private static readonly Dictionary<string, string> HeaderLabelFor<#= child.Table #>Grid = new(StringComparer.OrdinalIgnoreCase)
+    {
+<#
+        foreach (var r in child.Resolvable)
+        {
+#>
+        ["<#= r.Column #>"] = "<#= r.Label #>",
+<#
+        }
+#>
+    };
 
 <#
         }

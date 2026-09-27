@@ -249,12 +249,24 @@ public sealed partial class <#= table #>DetailDialog : ContentDialog
     }
 }
 @@@FILE <#= viewModelsFolder #>/<#= table #>DetailViewModel.cs@@@
+<#
+        if (parents.Count > 0)
+        {
+#>
 using System.Collections.ObjectModel;
+<#
+        }
+#>
 using System.Threading.Tasks;
 using <#= contextNamespace #>;
 using CommunityToolkit.Mvvm.ComponentModel;
+<#
+        if (parents.Count > 0)
+        {
+#>
 using Microsoft.EntityFrameworkCore;
 <#
+        }
         foreach (string u in usings)
         {
 #>
@@ -320,7 +332,15 @@ public partial class <#= table #>DetailViewModel : ObservableObject
         {
             var lookup = LookupOf(c);
             string prop = c.Name;
-            if (lookup is not null || IsBit(c))
+            if (lookup is not null)
+            {
+                // Deliberately NOT set here -- see LoadLookupsAsync below. A ComboBox's SelectedValue binding
+                // does not retroactively select an item once its ItemsSource is populated AFTER SelectedValue
+                // was already assigned to a value with no match yet (a real, known WinUI3/UWP limitation, not
+                // just a timing quirk): the box renders as if empty even though editing.{prop} is correct,
+                // until the person types in it (found live clicking through a real running app, 2026-09-28).
+            }
+            else if (IsBit(c))
             {
 #>
             <#= prop #> = editing.<#= prop #>;
@@ -343,19 +363,52 @@ public partial class <#= table #>DetailViewModel : ObservableObject
         }
     }
 
+    // A table with no foreign-key lookups has nothing to load here -- a plain, non-async Task.CompletedTask
+    // avoids CS1998 ("this async method lacks 'await' operators"), found live: this method's body was always
+    // empty-but-async for a parentless table.
+<#
+        if (parents.Count == 0)
+        {
+#>
+    public Task LoadLookupsAsync() => Task.CompletedTask;
+<#
+        }
+        else
+        {
+#>
     public async Task LoadLookupsAsync()
     {
 <#
         foreach (var p in parents)
         {
+            var lookupColumnsForThisParent = shown.Where(c => LookupOf(c) is ForeignKeyModel fk && fk.ReferencedTable.Equals(p.Table, StringComparison.OrdinalIgnoreCase)).ToList();
 #>
         <#= p.OptionsProp #>.Clear();
         foreach (var row in await _context.Set<<#= p.Table #>>().OrderBy(r => r.<#= p.DisplayProp #>).ToListAsync())
             <#= p.OptionsProp #>.Add(new <#= table #>DetailLookupOption { Id = row.<#= p.KeyProp #>, Text = row.<#= p.DisplayProp #>?.ToString() ?? "" });
 <#
+            if (lookupColumnsForThisParent.Count > 0)
+            {
+#>
+        if (_editing is not null)
+        {
+<#
+                foreach (var c in lookupColumnsForThisParent)
+                {
+#>
+            <#= c.Name #> = _editing.<#= c.Name #>;
+<#
+                }
+#>
+        }
+<#
+            }
         }
 #>
     }
+<#
+        }
+#>
 
     /// <summary> Parses every text-backed field into the entity's real column type, sets ErrorMessage and
     /// returns false on the first bad or missing value, otherwise saves through <#= table #>Repo and returns true. </summary>

@@ -111,13 +111,26 @@ internal static class Sample
 
     /// <summary> Like ForeignKey, but from the parent's side: a child table's FK column pointing back at
     /// this table's key (TableModel.ChildForeignKeys). </summary>
-    public static ChildForeignKeyModel ChildForeignKey(string childTable, string childColumn, string parentKey) => new()
+    /// <param name="childOwnPrimaryKey"> The child table's own primary key column(s) -- WinUI3_DetailMasterScreen.tt's
+    /// generated child grid hides these (an internal row id has no business meaning). Only filled in when the
+    /// model was built with NeedsReferencedDisplayColumns=true, matching the real schema provider. </param>
+    /// <param name="childOwnOtherForeignKeys"> The child table's OWN foreign keys, other than the one pointing
+    /// back to the parent -- lets a test exercise resolving one of them to a display name, or hiding it when its
+    /// target table has none. </param>
+    public static ChildForeignKeyModel ChildForeignKey(
+        string childTable, string childColumn, string parentKey,
+        List<string>? childOwnPrimaryKey = null, List<ForeignKeyModel>? childOwnOtherForeignKeys = null) => new()
     {
         ConstraintName = $"FK_{childColumn}_{childTable}",
         ReferencingSchema = "dbo",
         ReferencingTable = childTable,
         ReferencingColumns = [childColumn],
-        ReferencedColumns = [parentKey]
+        ReferencedColumns = [parentKey],
+        ReferencingPrimaryKeyColumns = childOwnPrimaryKey ?? [],
+        // The real schema provider's own list always includes the self-FK back to the parent too (it reads
+        // every FK on the child table, unfiltered); the template excludes it by referencing-column name, not
+        // by identity, so a test fixture doesn't need to replicate that entry to exercise the exclusion.
+        ReferencingTableForeignKeys = childOwnOtherForeignKeys ?? []
     };
 
     public static TableModel Table(string name, List<ColumnModel> columns, List<ForeignKeyModel>? foreignKeys = null,
@@ -184,6 +197,26 @@ internal static class Sample
         Column("Name", SqlDbType.NVarChar, characters: 100, ordinal: 2)
     ],
     childForeignKeys: [ChildForeignKey("DepartmentTeam", "DepartmentId", "DepartmentId")]);
+
+    /// <summary> Order, with a child OrderLine that has its own primary key, its own foreign key to a Product
+    /// table that HAS a display column (should be resolved to a name), and its own foreign key to a Warehouse
+    /// table that has NONE (should be hidden, not shown as a raw id) -- for WinUI3_DetailMasterScreen.tt's
+    /// child-grid id-hiding/resolving tests. </summary>
+    public static TableModel OrderWithLines() => Table("Order",
+    [
+        Column("OrderId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Column("OrderDate", SqlDbType.Date, ordinal: 2)
+    ],
+    childForeignKeys:
+    [
+        ChildForeignKey("OrderLine", "OrderId", "OrderId",
+            childOwnPrimaryKey: ["OrderLineId"],
+            childOwnOtherForeignKeys:
+            [
+                ForeignKey("ProductId", "Product", "ProductId", "ProductName"),
+                ForeignKey("WarehouseId", "Warehouse", "WarehouseId") // no display column -- unresolvable, hidden
+            ])
+    ]);
 
     /// <summary> Like TimeEntry's SY_Role lookup: an id and a Name, with three rows. </summary>
     public static TableModel Roles() => Table("SY_Role",

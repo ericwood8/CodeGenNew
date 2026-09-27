@@ -44,6 +44,16 @@
     //     update(id, holiday): Promise<Holiday>                PUT    /api/holidays/{id}
     //     delete(id): Promise<void>                            DELETE /api/holidays/{id}
     //     findByName(name): Promise<Holiday[]>                 GET    /api/holidays/{name}   (only a table with a text Name column)
+    //     getPage(pageNumber, pageSize, filters?): Promise<{Table}PagedResult>
+    //                                                           GET    /api/holidays/search?pageNumber=&pageSize=&<column>=...
+    //                                                           (always -- CodeGenPossibilities\Pagination in the research
+    //                                                           folder. A filters object with one optional string property
+    //                                                           per searchable column, matching API_Search.tt's own query
+    //                                                           parameters name-for-name -- an empty object for a table with
+    //                                                           no searchable column, since pagination and searchability are
+    //                                                           separate concerns (SP_Search.tt's own header comment); an
+    //                                                           omitted or blank value is left out of the URL entirely.
+    //                                                           CodeGenPossibilities\Search in the research folder.)
     //
     //   - Names: exported const <table>Api in api/<table>.ts (lower-cased table stem), the table name without
     //     its "E_"/"SY_" prefix -- same convention TS_Service.tt uses; the row type is imported from
@@ -57,7 +67,7 @@
     //   - findByName exists on the server for the name-based tables, so it is generated for every table with a
     //     text column called Name; the plain (API_Crud) tables have none.
     //
-    // Not written: calls for extra routes a hand-written client adds (a parent-scoped list, a search endpoint);
+    // Not written: calls for extra routes a hand-written client adds (a parent-scoped list, a filtered search);
     // an api module that needs those stays hand-maintained.
     //
     // ------------------------------------------------------------------------------------------
@@ -86,6 +96,10 @@
         string stem = baseName.ToLowerInvariant();
         string variable = LowerFirst(baseName);
         bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name");
+        // Pagination (CodeGenPossibilities\Pagination): getPage always exists, once SP_Search.tt/API_Search.tt
+        // do (also always, as of the same date) -- pagination and searchability are separate concerns.
+        // Search (CodeGenPossibilities\Search): filters is simply empty for a table with no searchable column.
+        var filters = Model.SearchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
@@ -95,6 +109,14 @@
         L($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
         L();
         L($"const apiUrl = '{apiPrefix}/{stem.Pluralize()}';");
+        L();
+        L($"export interface {baseName}PagedResult {{");
+        L($"  items: {baseName}[];");
+        L("  page: number;");
+        L("  pageSize: number;");
+        L("  totalCount: number;");
+        L("  totalPages: number;");
+        L("}");
         L();
         L($"export const {variable}Api = {{");
         L($"  getAll: () => request<{baseName}[]>(apiUrl),");
@@ -110,6 +132,18 @@
         {
             L();
             L($"  findByName: (name: string) => request<{baseName}[]>(`${{apiUrl}}/${{name}}`),");
+        }
+        {
+            string filterType = filters.Count > 0 ? string.Join("; ", filters.Select(f => $"{f.ParamName}?: string")) : "";
+            L();
+            L($"  getPage: (pageNumber: number, pageSize: number, filters: {{{(filterType.Length > 0 ? " " + filterType + " " : "")}}} = {{}}) => {{");
+            L("    const params = new URLSearchParams();");
+            L("    params.set('pageNumber', String(pageNumber));");
+            L("    params.set('pageSize', String(pageSize));");
+            foreach (var f in filters)
+                L($"    if (filters.{f.ParamName}) params.set('{f.ParamName}', filters.{f.ParamName});");
+            L($"    return request<{baseName}PagedResult>(`${{apiUrl}}/search?${{params.toString()}}`);");
+            L("  },");
         }
         L("};");
         Write(o.ToString());

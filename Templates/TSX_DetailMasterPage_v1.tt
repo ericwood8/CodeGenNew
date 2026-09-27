@@ -215,7 +215,7 @@
         }
         T();
         T("  const load = () => {");
-        T($"    {variable}Api.getAll().then({setList}).catch(() => setError('Failed to load {Words(baseName).ToLowerInvariant()}s.'));");
+        T($"    {variable}Api.getAll().then({setList}).catch(() => setError('Failed to load {Words(baseName).ToLowerInvariant().Pluralize()}.'));");
         T("  };");
         T();
         T("  useEffect(() => {");
@@ -343,7 +343,7 @@
         // ================= render
         T("  return (");
         T("    <div className=\"rail\">");
-        T($"      <h1>{title}s</h1>");
+        T($"      <h1>{title.Pluralize()}</h1>");
         T("      <button type=\"button\" onClick={add}>Add New " + title + "</button>");
         if (hasName)
         {
@@ -541,7 +541,7 @@
         S();
         S($"  it('renders the {title} heading', async () => {{");
         S($"    render(<{baseName}DetailMasterPage />);");
-        S($"    expect(await screen.findByText('{title}s')).toBeInTheDocument();");
+        S($"    expect(await screen.findByText('{title.Pluralize()}')).toBeInTheDocument();");
         S("  });");
         S("});");
 

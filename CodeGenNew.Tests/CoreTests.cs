@@ -397,3 +397,36 @@ public class TableModelIsNameActiveTableTests
         Assert.IsFalse(activeOnly.IsNameActiveTable);
     }
 }
+
+[TestClass]
+public class TableModelSearchableColumnsTests
+{
+    [TestMethod]
+    public void Every_non_audit_string_column_is_searchable_in_table_order()
+    {
+        var holiday = Sample.Holiday();
+
+        CollectionAssert.AreEqual(new[] { "SY_IsoCountry_Alpha3Code", "Name" }, holiday.SearchableColumns.Select(c => c.Name).ToList());
+    }
+
+    [TestMethod]
+    public void An_audit_classified_string_column_is_not_searchable()
+    {
+        var ticket = Sample.WithModifiedByColumn();
+
+        // Subject is a plain text column; ModifiedBy is audit-classified (IsAuditColumn) and must be excluded.
+        CollectionAssert.AreEqual(new[] { "Subject" }, ticket.SearchableColumns.Select(c => c.Name).ToList());
+    }
+
+    [TestMethod]
+    public void A_table_with_no_string_columns_has_no_searchable_columns()
+    {
+        var allNumeric = Sample.Table("Metric",
+        [
+            Sample.Column("MetricId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("Value", SqlDbType.Int, ordinal: 2)
+        ]);
+
+        Assert.IsEmpty(allNumeric.SearchableColumns);
+    }
+}

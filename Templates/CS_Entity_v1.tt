@@ -246,6 +246,8 @@
         var headUsings = usings.ToList();
         if (usesSchema && !headUsings.Contains("System.ComponentModel.DataAnnotations.Schema"))
             headUsings.Insert(0, "System.ComponentModel.DataAnnotations.Schema");
+        if (!headUsings.Contains("System.Diagnostics.CodeAnalysis"))
+            headUsings.Insert(0, "System.Diagnostics.CodeAnalysis");
         if (headUsings.Count > 0)
         {
             foreach (string u in headUsings) L($"using {u};");
@@ -253,8 +255,18 @@
         }
         L($"namespace {entityNamespace};");
         L();
-        L($"public class {(Model.IsCSharpReservedWordName ? "@" : "")}{Model.TableName} : {baseClass}");
+        string className = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
+        L($"public class {className} : {baseClass}");
         L("{");
+        // A brand-new row (WinUI3_DetailScreen.tt's "Add" case, CS_Repo.tt's own GenericRepo<T> internals) does
+        // `new {Table}()` and fills every property in afterward, one line at a time -- plain C# does not let a
+        // caller do that for a "required" property (CS9035) unless the constructor that ran first is annotated
+        // as having already set them. Found live, the first time this entity family was ever actually compiled
+        // against a real WinUI3 project: every NOT NULL column above is `required`, so a bare `new {Table}()`
+        // failed to build wherever WinUI3_DetailScreen.tt/WinUI3_DetailMasterScreen.tt used it.
+        L($"    [SetsRequiredMembers]");
+        L($"    public {className}() {{ }}");
+        L();
         o.Append(body);
         L("}");
         Write(o.ToString());

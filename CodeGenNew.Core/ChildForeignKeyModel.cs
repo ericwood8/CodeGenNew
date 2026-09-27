@@ -12,4 +12,17 @@ public class ChildForeignKeyModel
 
     /// <summary> The column(s) on THIS table the child's foreign key points at (usually the primary key). </summary>
     public required List<string> ReferencedColumns { get; init; }
+
+    /// <summary> The child (referencing) table's own primary key column name(s) -- lets a generated child grid
+    /// exclude the child's own identity column, which is an internal row id with no business meaning to show a
+    /// user. Empty unless the model was built with NeedsReferencedDisplayColumns=true (see ForeignKeyModel's own
+    /// ReferencedDisplayColumns for the same "empty means not looked up" convention). </summary>
+    public List<string> ReferencingPrimaryKeyColumns { get; init; } = [];
+
+    /// <summary> Every foreign key ON the child (referencing) table -- not just the one pointing back to THIS
+    /// table (that one is also in this list, matching ConstraintName/ReferencingColumns above). Lets a generated
+    /// child grid resolve one of the child's OTHER foreign-keyed columns (e.g. a SalesInvoice child row's own
+    /// CustomerId) to that referenced table's display name instead of a raw id, the same way a detail screen's
+    /// own drop-downs do. Empty unless the model was built with NeedsReferencedDisplayColumns=true. </summary>
+    public List<ForeignKeyModel> ReferencingTableForeignKeys { get; init; } = [];
 }

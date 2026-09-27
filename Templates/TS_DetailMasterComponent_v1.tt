@@ -204,7 +204,7 @@
         H("      <div class=\"left-side\">");
         H("<div>");
         H("    <!-- Heading -->");
-        H($"    <h1>{title}s</h1>");
+        H($"    <h1>{title.Pluralize()}</h1>");
         H($"    <button (click)=\"add()\" class=\"btn\">Add New {title}</button>");
         if (hasName)
         {

@@ -55,6 +55,7 @@ public static class DefaultAssetSeeder
         "SP_Search_v1.tt", "SP_Search_v1.tt.config",
         "API_Crud_v1.tt", "API_Crud_v1.tt.config",
         "API_Junction_v1.tt", "API_Junction_v1.tt.config",
+        "API_Search_v1.tt", "API_Search_v1.tt.config",
         "CS_Entity_v1.tt", "CS_Entity_v1.tt.config",
         "CS_Validation_v1.tt", "CS_Validation_v1.tt.config",
         "CS_Enum_v1.tt", "CS_Enum_v1.tt.config",

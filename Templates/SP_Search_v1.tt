@@ -6,18 +6,34 @@
 <#
     // ------------------------------------------------------------------------------------------
     // SP_Search_v1.tt
-    // Generates: <TableName>_Search.sql
+    // Generates: <TableName>_Search.sql -- two procedures in one file (CodeGenPossibilities\Pagination in
+    // the research folder), the same "several CREATE PROCEDURE...GO blocks in one output file" convention
+    // SP_Junction.tt already uses for its List/Link/Unlink trio.
     //
-    // A list/search screen that builds a dynamic filter from whichever of several optional text boxes the
-    // user actually filled in (CodeGenPossibilities\SearchFilterBuilder in the research folder): one
-    // @Column parameter per searchable column, defaulting to NULL (not filtered on); every supplied
-    // parameter contributes an AND-ed "column LIKE '%value%'" clause, so a caller can search by any
-    // combination of columns, or none (returns every row).
+    // <TableName>_Search: a list/search screen that builds a dynamic filter from whichever of several
+    // optional text boxes the user actually filled in (CodeGenPossibilities\SearchFilterBuilder in the
+    // research folder): one @Column parameter per searchable column, defaulting to NULL (not filtered on);
+    // every supplied parameter contributes an AND-ed "column LIKE '%value%'" clause, so a caller can search
+    // by any combination of columns, or none (returns every row). Paginated (CodeGenPossibilities\Pagination):
+    // @PageNumber (1-based) and @PageSize, applied via OFFSET/FETCH NEXT after the ORDER BY every paginated
+    // query needs to be deterministic.
+    //
+    // <TableName>_SearchCount: the identical WHERE clause (same filter parameters, same rule for what counts
+    // as searchable), but SELECT COUNT(*) -- no columns, no ORDER BY, no paging. A caller needs this to know
+    // how many pages exist. Kept as a SEPARATE procedure/round-trip rather than a COUNT(*) OVER() column on
+    // every row of <TableName>_Search: that column would stop <TableName>_Search's result shape from matching
+    // the entity's own mapped columns exactly, which breaks the Set<T>().FromSqlRaw(...) call every consumer
+    // of this procedure already uses the same way the real TimeEntryContext.SpCanDeleteAsync does today --
+    // avoided rather than asking every target project to register a second per-table DTO type just to read
+    // one extra column.
     //
     // Searchable columns are every string column (ColumnModel.IsStringColumn) that isn't audit-classified
     // (IsAuditColumn -- Create*/Modif*/Change*/Delete*/Update*/Activ*/Inactiv*, per AuditColumnClassifier):
     // nobody types into a search box for "who created this row". A table with none (all-numeric/date/bit
-    // columns) has nothing for this template to build a filter from, so it refuses outright.
+    // columns, e.g. a monthly-summary table keyed only by ids/numbers) still gets both procedures, just with
+    // no filter parameters and no WHERE clause at all -- pagination and searchability are separate concerns,
+    // found live needing pagination on exactly such a table (2026-09-28): a table only grows over time, with
+    // or without anything to type into a search box.
     //
     // Parameters are LTRIM/RTRIM'd before the LIKE, matching SP_Insert.tt's "trim strings" rule -- a caller
     // who fat-fingers a leading/trailing space still gets the match they meant.
@@ -28,24 +44,26 @@
     // gets slow, the same "documented limit, not silently generated as if free" choice TS_Component.tt's
     // own no-paging note makes.
     //
-    // Returns every column (not just the display columns SP_Lookup.tt returns), since a search results
-    // grid usually wants to show more than just the row's identity -- this is a plain filtered SELECT, not
-    // a summary. ORDER BY is the same "best display column, then primary key" convention SP_Lookup.tt uses.
+    // <TableName>_Search returns every column (not just the display columns SP_Lookup.tt returns), since a
+    // search results grid usually wants to show more than just the row's identity -- this is a plain
+    // filtered SELECT, not a summary. ORDER BY is the same "best display column, then primary key"
+    // convention SP_Lookup.tt uses.
     //
     // Requires a primary key (the result set needs something stable for a caller to act on) and a table,
     // not a view. Does not filter out inactive/soft-deleted rows -- that's a different, orthogonal concern
     // from "which columns can I type into a search box" and is left to the caller (or SP_Lookup.tt, which
     // already handles it) rather than folded in here silently.
 
-    var searchableColumns = Model.Columns.Where(c => c.IsStringColumn && !c.IsAuditColumn).ToList();
-    if (searchableColumns.Count == 0)
-        Error($"SP_Search cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it has no searchable (string, non-audit) columns to build a filter from.");
+    var searchableColumns = Model.SearchableColumns;
 
     string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
 
     var whereClauses = searchableColumns
         .Select(c => $"({c.ParameterName} IS NULL OR {Q(c.Name)} LIKE '%' + LTRIM(RTRIM({c.ParameterName})) + '%')")
         .ToList();
+    // Empty when there's nothing to filter on -- both procedures below then read/count every row
+    // unconditionally, instead of a "WHERE" with nothing after it.
+    string whereClause = whereClauses.Count > 0 ? "\tWHERE " + string.Join("\r\n\t  AND ", whereClauses) + "\r\n" : "";
 
     var sortColumn = Model.DisplayColumns
         .OrderBy(c => c.DisplayRank ?? int.MaxValue).ThenBy(c => c.OrdinalPosition)
@@ -59,15 +77,15 @@
 CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Search]
 (
 <#
-    for (int i = 0; i < searchableColumns.Count; i++)
+    foreach (var c in searchableColumns)
     {
-        var c = searchableColumns[i];
-        string comma = (i < searchableColumns.Count - 1) ? "," : "";
 #>
-<#= c.ParameterName #> <#= c.SqlTypeDeclaration #> = NULL<#= comma #>
+<#= c.ParameterName #> <#= c.SqlTypeDeclaration #> = NULL,
 <#
     }
 #>
+@PageNumber INT = 1,
+@PageSize INT = 100
 )
 AS
 BEGIN
@@ -83,6 +101,37 @@ BEGIN
     }
 #>
 	FROM [<#= Model.SchemaName #>].[<#= Model.TableName #>]
-	WHERE <#= string.Join("\r\n\t  AND ", whereClauses) #>
-	ORDER BY <#= string.Join(", ", orderBy) #>;
+<#= whereClause #>	ORDER BY <#= string.Join(", ", orderBy) #>
+	OFFSET (@PageNumber - 1) * @PageSize ROWS FETCH NEXT @PageSize ROWS ONLY;
+END
+GO
+
+CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_SearchCount]
+<#
+    // Empty "( )" is invalid T-SQL (CREATE PROCEDURE with no parameters omits the parens entirely) --
+    // found live (2026-09-28) generating this for a table with no searchable columns.
+    if (searchableColumns.Count > 0)
+    {
+#>
+(
+<#
+        for (int i = 0; i < searchableColumns.Count; i++)
+        {
+            var c = searchableColumns[i];
+            string comma = (i < searchableColumns.Count - 1) ? "," : "";
+#>
+<#= c.ParameterName #> <#= c.SqlTypeDeclaration #> = NULL<#= comma #>
+<#
+        }
+#>
+)
+<#
+    }
+#>
+AS
+BEGIN
+	SET NOCOUNT ON;
+
+	SELECT COUNT(*)
+	FROM [<#= Model.SchemaName #>].[<#= Model.TableName #>]<#= whereClauses.Count > 0 ? "\r\n" + whereClause.TrimEnd('\r', '\n') : "" #>;
 END

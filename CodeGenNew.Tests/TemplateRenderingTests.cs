@@ -72,11 +72,25 @@ public class TemplateRenderingTests
     // ------------------------------------------------------------------ SP_Search
 
     [TestMethod]
-    public async Task SP_Search_refuses_a_table_with_no_searchable_columns()
+    public async Task SP_Search_generates_with_no_filter_parameters_when_the_table_has_no_searchable_columns()
     {
-        string message = await Refusal("SP_Search_v1.tt", Sample.CompositeKey());
+        // Pagination and searchability are separate concerns (found live needing pagination alone on such a
+        // table, 2026-09-28): a table with no searchable column still gets both procedures, just with no
+        // filter parameters and no WHERE clause at all.
+        var allNumeric = Sample.Table("Metric", [Sample.Column("MetricId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("Value", SqlDbType.Int, ordinal: 2)]);
+        string sql = await Render("SP_Search_v1.tt", allNumeric);
 
-        StringAssert.Contains(message, "searchable");
+        Expect.Contains(sql, "CREATE OR ALTER PROCEDURE [dbo].[Metric_Search]");
+        Expect.Contains(sql, "@PageNumber INT = 1,");
+        Expect.Contains(sql, "@PageSize INT = 100");
+        Expect.DoesNotContain(sql, "WHERE");
+        Expect.Contains(sql, "CREATE OR ALTER PROCEDURE [dbo].[Metric_SearchCount]");
+        Expect.Contains(sql, "SELECT COUNT(*)");
+        Expect.Contains(sql, "FROM [dbo].[Metric];");
+        // Empty "( )" is invalid T-SQL -- CREATE PROCEDURE with no parameters must omit the parens
+        // entirely, not emit an empty pair (found live deploying this exact zero-column case, 2026-09-28).
+        Expect.DoesNotContain(sql, "[dbo].[Metric_SearchCount]\r\n(\r\n)");
+        Expect.DoesNotContain(sql, "[dbo].[Metric_SearchCount]\n(\n)");
     }
 
     [TestMethod]
@@ -123,6 +137,27 @@ public class TemplateRenderingTests
         string sql = await Render("SP_Search_v1.tt", Sample.Holiday());
 
         Expect.Contains(sql, "ORDER BY [Name] ASC, [HolidayId] ASC");
+    }
+
+    [TestMethod]
+    public async Task SP_Search_pages_its_results_with_offset_fetch()
+    {
+        string sql = await Render("SP_Search_v1.tt", Sample.Holiday());
+
+        Expect.Contains(sql, "@PageNumber INT = 1,");
+        Expect.Contains(sql, "@PageSize INT = 100");
+        Expect.Contains(sql, "OFFSET (@PageNumber - 1) * @PageSize ROWS FETCH NEXT @PageSize ROWS ONLY;");
+    }
+
+    [TestMethod]
+    public async Task SP_Search_also_writes_a_matching_SearchCount_procedure_with_the_same_filter_and_no_paging()
+    {
+        string sql = await Render("SP_Search_v1.tt", Sample.Holiday());
+
+        Expect.Contains(sql, "CREATE OR ALTER PROCEDURE [dbo].[Holiday_SearchCount]");
+        Expect.Contains(sql, "SELECT COUNT(*)");
+        Expect.DoesNotContain(sql.Substring(sql.IndexOf("Holiday_SearchCount")), "@PageNumber");
+        Expect.DoesNotContain(sql.Substring(sql.IndexOf("Holiday_SearchCount")), "OFFSET");
     }
 
     // ------------------------------------------------------------------ SP_Junction (many-to-many junction tables)
@@ -315,11 +350,105 @@ public class TemplateRenderingTests
         Expect.Contains(codeBehind, "public sealed partial class E_DonateLeaveListPage : Page");
         Expect.Contains(codeBehind, "new E_DonateLeaveDetailDialog(_context)");
         Expect.Contains(codeBehind, "new E_DonateLeaveDetailDialog(_context, entity)");
+        // The XAML's own Refresh button (Click="OnRefreshClick") had no matching handler at all until this was
+        // caught by actually compiling a generated project for real (2026-09-27) -- every table was affected.
+        Expect.Contains(xaml, "Button Content=\"Refresh\" Click=\"OnRefreshClick\"");
+        Expect.Contains(codeBehind, "private async void OnRefreshClick(object sender, RoutedEventArgs e) => await ViewModel.LoadAsync();");
 
         Expect.Contains(viewModel, "public class E_DonateLeaveListRow");
         Expect.Contains(viewModel, "var employeeNames = await _context.Set<Employee>().ToDictionaryAsync(r => r.EmployeeId, r => r.Name?.ToString() ?? \"\");");
         Expect.Contains(viewModel, "cells.Add(employeeNames.TryGetValue(e.DonateFrom_EmployeeId, out var donateFrom_EmployeeIdName) ? donateFrom_EmployeeIdName : e.DonateFrom_EmployeeId.ToString());");
         Expect.Contains(viewModel, "int result = await _repo.DeleteAsync(\"E_DonateLeave\", id);");
+    }
+
+    [TestMethod]
+    public async Task WinUI3_MasterScreen_pages_the_grid_through_SearchAsync_with_a_PaginationBar_when_the_table_has_a_searchable_column()
+    {
+        var files = GeneratedFiles.Split(await Render("WinUI3_MasterScreen_v1.tt", Sample.Holiday()))
+            .ToDictionary(f => Path.GetFileName(f.RelativePath));
+        string xaml = files["HolidayListPage.xaml"].Content;
+        string codeBehind = files["HolidayListPage.xaml.cs"].Content;
+        string viewModel = files["HolidayListViewModel.cs"].Content;
+
+        // PaginationBar lives in the Views namespace, not the ViewModels namespace "local:" already means
+        // (claimed by <Table>ListRow's own DataTemplate) -- referencing it via "local:" compiled the XAML but
+        // failed at compile time with WMC0001 "Unknown type 'PaginationBar'", caught only once this template
+        // was actually compiled for real (2026-09-27).
+        Expect.Contains(xaml, "xmlns:views=\"using:TimeEntry.Desktop.Views\"");
+        // Pagination bar is boxed in the same shaded Border as the Add New/Refresh and search bars
+        // (2026-09-27 grid/toolbar styling) -- the Border immediately wraps <views:PaginationBar.
+        Expect.Contains(xaml, "<Border Grid.Row=\"1\" Background=\"{ThemeResource SolidBackgroundFillColorSecondaryBrush}\"\n                    BorderBrush=\"{ThemeResource ControlStrokeColorSecondaryBrush}\" BorderThickness=\"1\" CornerRadius=\"4\" Padding=\"8\">\n                <views:PaginationBar");
+        Expect.DoesNotContain(xaml, "<local:PaginationBar");
+        Expect.Contains(xaml, "PageLabel=\"{x:Bind ViewModel.PageLabel, Mode=OneWay}\"");
+        Expect.Contains(xaml, "PreviousClicked=\"OnPreviousClick\"");
+        Expect.Contains(xaml, "NextClicked=\"OnNextClick\"");
+
+        Expect.Contains(codeBehind, "private async void OnPreviousClick(object sender, RoutedEventArgs e) => await ViewModel.PreviousPageAsync();");
+        Expect.Contains(codeBehind, "private async void OnNextClick(object sender, RoutedEventArgs e) => await ViewModel.NextPageAsync();");
+
+        Expect.Contains(viewModel, "private const int PageSize = 20;");
+        Expect.Contains(viewModel, "public bool CanGoPrevious => PageNumber > 1;");
+        Expect.Contains(viewModel, "public bool CanGoNext => PageNumber < TotalPages;");
+        Expect.Contains(viewModel, "var (rows, totalCount) = await _repo.SearchAsync(sY_IsoCountry_Alpha3Code: string.IsNullOrWhiteSpace(SY_IsoCountry_Alpha3CodeFilter) ? null : SY_IsoCountry_Alpha3CodeFilter, name: string.IsNullOrWhiteSpace(NameFilter) ? null : NameFilter, pageNumber: PageNumber, pageSize: PageSize);");
+        Expect.Contains(viewModel, "public async Task PreviousPageAsync()");
+        Expect.Contains(viewModel, "public async Task NextPageAsync()");
+        Expect.DoesNotContain(viewModel, "_repo.GetAll()");
+    }
+
+    [TestMethod]
+    public async Task WinUI3_MasterScreen_gets_a_search_bar_with_one_text_box_per_searchable_column()
+    {
+        var files = GeneratedFiles.Split(await Render("WinUI3_MasterScreen_v1.tt", Sample.Holiday()))
+            .ToDictionary(f => Path.GetFileName(f.RelativePath));
+        string xaml = files["HolidayListPage.xaml"].Content;
+        string codeBehind = files["HolidayListPage.xaml.cs"].Content;
+        string viewModel = files["HolidayListViewModel.cs"].Content;
+
+        Expect.Contains(xaml, "Text=\"{x:Bind ViewModel.SY_IsoCountry_Alpha3CodeFilter, Mode=TwoWay}\"");
+        Expect.Contains(xaml, "Text=\"{x:Bind ViewModel.NameFilter, Mode=TwoWay}\"");
+        Expect.Contains(xaml, "Button Content=\"Search\" Click=\"OnSearchClick\"");
+
+        Expect.Contains(codeBehind, "private async void OnSearchClick(object sender, RoutedEventArgs e)");
+        Expect.Contains(codeBehind, "ViewModel.PageNumber = 1;");
+
+        Expect.Contains(viewModel, "private string _sY_IsoCountry_Alpha3CodeFilter = \"\";");
+        Expect.Contains(viewModel, "private string _nameFilter = \"\";");
+    }
+
+    [TestMethod]
+    public async Task WinUI3_MasterScreen_pluralizes_the_title_heading_correctly_for_a_name_ending_in_s()
+    {
+        // Same "literal + s" bug already fixed elsewhere (TS_Component/TSX_Page's list variable, the error
+        // message), found live against the real, already-plural Movies table -- the title heading had it too.
+        string xaml = GeneratedFiles.Split(await Render("WinUI3_MasterScreen_v1.tt", Sample.Movies()))
+            .Single(f => f.RelativePath.EndsWith(".xaml")).Content;
+
+        Expect.Contains(xaml, "Text=\"Movies\" Style=\"{ThemeResource TitleTextBlockStyle}\"");
+        Expect.DoesNotContain(xaml, "Moviess");
+    }
+
+    [TestMethod]
+    public async Task WinUI3_MasterScreen_still_pages_the_grid_but_gets_no_search_bar_when_the_table_has_no_searchable_column()
+    {
+        // Pagination and searchability are separate concerns (found live needing pagination alone on such a
+        // table, 2026-09-28): the grid still pages through SearchAsync/PaginationBar; only the search bar
+        // itself (TextBoxes, Search button, filter properties) is skipped when there's nothing to search by.
+        var allNumeric = Sample.Table("Metric", [Sample.Column("MetricId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("Value", SqlDbType.Int, ordinal: 2)]);
+        var files = GeneratedFiles.Split(await Render("WinUI3_MasterScreen_v1.tt", allNumeric))
+            .ToDictionary(f => Path.GetFileName(f.RelativePath));
+        string xaml = files["MetricListPage.xaml"].Content;
+        string codeBehind = files["MetricListPage.xaml.cs"].Content;
+        string viewModel = files["MetricListViewModel.cs"].Content;
+
+        Expect.Contains(xaml, "<views:PaginationBar");
+        Expect.DoesNotContain(xaml, "TextBox");
+        Expect.DoesNotContain(xaml, "OnSearchClick");
+        Expect.Contains(codeBehind, "OnPreviousClick");
+        Expect.Contains(codeBehind, "OnNextClick");
+        Expect.DoesNotContain(codeBehind, "OnSearchClick");
+        Expect.Contains(viewModel, "var (rows, totalCount) = await _repo.SearchAsync(pageNumber: PageNumber, pageSize: PageSize);");
+        Expect.DoesNotContain(viewModel, "Filter");
+        Expect.DoesNotContain(viewModel, "GetAll()");
     }
 
     // ------------------------------------------------------------------ WinUI3_DetailMasterScreen
@@ -369,6 +498,35 @@ public class TemplateRenderingTests
         Expect.Contains(viewModel, "var entityType = _context.Model.FindEntityType(typeof(DepartmentTeam))!;");
         Expect.Contains(viewModel, "EF.Property<int>(c, \"DepartmentId\") == _editing!.DepartmentId");
         Expect.Contains(viewModel, "if (_editing is null)\n            return; // no child rows to show until this Department has been saved once");
+    }
+
+    [TestMethod]
+    public async Task WinUI3_DetailMasterScreen_child_grid_hides_internal_ids_and_resolves_a_foreign_key_with_a_display_name()
+    {
+        // OrderLine's own primary key (OrderLineId) and its own FK back to the parent (OrderId) have no business
+        // meaning to a grid viewer and are hidden entirely; its FK to Warehouse has no display column so it's
+        // hidden too; its FK to Product DOES have one, so it's resolved to ProductName instead of shown as a
+        // raw id -- found live: a real user looking at a generated grid asked for exactly this (2026-09-29).
+        var files = GeneratedFiles.Split(await Render("WinUI3_DetailMasterScreen_v1.tt", Sample.OrderWithLines()))
+            .ToDictionary(f => Path.GetFileName(f.RelativePath));
+        string viewModel = files["OrderDetailMasterViewModel.cs"].Content;
+
+        Expect.Contains(viewModel, "private static readonly string[] HideFromOrderLineGrid = [ \"OrderId\", \"OrderLineId\", \"WarehouseId\" ];");
+        Expect.Contains(viewModel, "var orderLineProductNames = await _context.Set<Product>().ToDictionaryAsync(r => r.ProductId, r => r.ProductName?.ToString() ?? \"\");");
+        Expect.Contains(viewModel, ".Where(name => !HideFromOrderLineGrid.Contains(name, StringComparer.OrdinalIgnoreCase))");
+        Expect.Contains(viewModel, "if (name == \"ProductId\")");
+        Expect.Contains(viewModel, "orderLineProductNames.TryGetValue(rawId, out string? resolvedProductId) ? resolvedProductId : rawId.ToString()");
+        // Never resolved for the unresolvable one -- no lookup dictionary, no per-column branch for it.
+        Expect.DoesNotContain(viewModel, "WarehouseNames");
+        Expect.DoesNotContain(viewModel, "name == \"WarehouseId\"");
+
+        // The resolved column's header reads "Product", not the raw "ProductId" -- its name is known at
+        // generation time (the same Label() this template already uses for the parent form's own field
+        // headers), unlike every other column in this grid, which is only discovered later via EF reflection
+        // and keeps its raw property name as the header. Found live: the Customer Monthly Summarys list
+        // screen already shows "Customer" for its own resolved column; a real user asked for the same here.
+        Expect.Contains(viewModel, "new(StringComparer.OrdinalIgnoreCase)\n    {\n        [\"ProductId\"] = \"Product\",\n    };");
+        Expect.Contains(viewModel, "HeaderLabelForOrderLineGrid.TryGetValue(name, out string? label) ? label : name");
     }
 
     // ------------------------------------------------------------------ TS_DetailMasterComponent
@@ -509,6 +667,71 @@ public class TemplateRenderingTests
         Expect.Contains(cs, "public record NameBaseGroupXrefJunctionLinkRequest(int AnchorId, int TargetId);");
         // No repo: the handlers call the DbContext directly, same as the WinUI3 ViewModel.
         Expect.DoesNotContain(cs, "Repo repo");
+    }
+
+    // ------------------------------------------------------------------ API_Search (the HTTP companion to SP_Search)
+
+    [TestMethod]
+    public async Task API_Search_generates_with_no_query_parameters_when_the_table_has_no_searchable_columns()
+    {
+        // Pagination and searchability are separate concerns (found live needing pagination alone on such a
+        // table, 2026-09-28): a table with no searchable column still gets this endpoint, with only
+        // pageNumber/pageSize -- and both parameter arrays must compile even with zero filters (an
+        // implicitly-typed "new[] { }" with nothing in it is a real CS0826 compile error, also found here).
+        var allNumeric = Sample.Table("Metric", [Sample.Column("MetricId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("Value", SqlDbType.Int, ordinal: 2)]);
+        string cs = await Render("API_Search_v1.tt", allNumeric);
+
+        Expect.Contains(cs, "[FromQuery] int pageNumber = 1,");
+        Expect.DoesNotContain(cs, "[FromQuery] string?");
+        Expect.Contains(cs, "var countParameters = new SqlParameter[]");
+        Expect.Contains(cs, "EXEC [dbo].[Metric_Search] @PageNumber, @PageSize");
+        Expect.Contains(cs, "\"EXEC [dbo].[Metric_SearchCount]\",");
+        Expect.Contains(cs, "countParameters)");
+    }
+
+    [TestMethod]
+    public async Task API_Search_registers_a_search_route_with_one_query_parameter_per_searchable_column()
+    {
+        string cs = await Render("API_Search_v1.tt", Sample.Holiday());
+
+        Expect.Contains(cs, "namespace TimeEntry.ApiService.Apis;");
+        Expect.Contains(cs, "public record HolidaySearchResult(IReadOnlyList<Holiday> Items, int Page, int PageSize, int TotalCount, int TotalPages);");
+        Expect.Contains(cs, "public class HolidaySearchApi<T> : BaseApi<T> where T : class");
+        Expect.Contains(cs, "MapGet(_apiSubDir + \"/search\", Search)");
+        Expect.Contains(cs, "[FromQuery] string? sY_IsoCountry_Alpha3Code,");
+        Expect.Contains(cs, "[FromQuery] string? name,");
+        Expect.Contains(cs, "[FromQuery] int pageNumber = 1,");
+        Expect.Contains(cs, "[FromQuery] int pageSize = 100)");
+    }
+
+    [TestMethod]
+    public async Task API_Search_calls_both_generated_procedures_through_the_context_directly()
+    {
+        string cs = await Render("API_Search_v1.tt", Sample.Holiday());
+
+        // Set<Holiday>().FromSqlRaw(...), not Database.SqlQueryRaw<Holiday>(...) -- SqlQueryRaw<T> builds an
+        // ad hoc EF model that rejects any navigation property T has, throwing for any table with a foreign
+        // key; found live running this exact generated code against a table with a parent lookup (2026-09-28).
+        Expect.Contains(cs, "context.Set<Holiday>()");
+        Expect.Contains(cs, ".FromSqlRaw(");
+        Expect.Contains(cs, "EXEC [dbo].[Holiday_Search] @pSY_IsoCountry_Alpha3Code, @pName, @PageNumber, @PageSize");
+        Expect.Contains(cs, "SqlQueryRaw<int>(");
+        Expect.Contains(cs, "EXEC [dbo].[Holiday_SearchCount] @pSY_IsoCountry_Alpha3Code, @pName");
+        // No repo: same "call the DbContext directly" convention API_Junction.tt already established.
+        Expect.DoesNotContain(cs, "Repo repo");
+        // An EXEC call is non-composable SQL -- .SingleAsync() (which needs to compose it) throws
+        // InvalidOperationException, found live running the generated code for real (2026-09-27).
+        // .ToListAsync() then .Single() client-side works instead.
+        Expect.Contains(cs, "int totalCount = totalCountRows.Single();");
+    }
+
+    [TestMethod]
+    public async Task API_Search_rejects_a_page_number_below_one()
+    {
+        string cs = await Render("API_Search_v1.tt", Sample.Holiday());
+
+        Expect.Contains(cs, "if (pageNumber < 1)");
+        Expect.Contains(cs, "return Results.BadRequest(\"pageNumber must be 1 or greater.\");");
     }
 
     // ------------------------------------------------------------------ TS_JunctionComponent
@@ -895,7 +1118,9 @@ public class TemplateRenderingTests
     {
         string cs = await Render("CS_Repo_v1.tt", Sample.Holiday());
 
-        Expect.Contains(cs, "public class HolidayRepo : GenericRepo<Holiday>");
+        // partial: a WinUI3/Windows App SDK target project's CsWinRT source generator needs it, since
+        // GenericRepo<T> implements IDisposable (WinRT's IClosable) -- see the template's own comment.
+        Expect.Contains(cs, "public partial class HolidayRepo : GenericRepo<Holiday>");
         Expect.Contains(cs, "public HolidayRepo(TimeEntryContext context) : base(context)");
         Expect.Contains(cs, "public async Task<List<Holiday>> GetByName(string name)");
     }
@@ -905,7 +1130,7 @@ public class TemplateRenderingTests
     {
         string cs = await Render("CS_Repo_v1.tt", Sample.DepartmentTeam());
 
-        Expect.Contains(cs, "public class DepartmentTeamRepo : NameActiveRepo<DepartmentTeam>");
+        Expect.Contains(cs, "public partial class DepartmentTeamRepo : NameActiveRepo<DepartmentTeam>");
         Expect.Contains(cs, "public async Task<List<DepartmentTeam>> GetAllOfDepartment(int id)");
         Expect.Contains(cs, "t.DepartmentId.Equals(id) && t.IsActive");
     }
@@ -990,6 +1215,42 @@ public class TemplateRenderingTests
         Expect.DoesNotContain(cs, "SuggestUnique");
     }
 
+    [TestMethod]
+    public async Task A_table_with_a_searchable_column_gets_a_SearchAsync_method_calling_the_same_procedures_API_Search_calls()
+    {
+        string cs = await Render("CS_Repo_v1.tt", Sample.Holiday());
+
+        Expect.Contains(cs, "public async Task<(List<Holiday> Items, int TotalCount)> SearchAsync(string? sY_IsoCountry_Alpha3Code = null, string? name = null, int pageNumber = 1, int pageSize = 100)");
+        // Set<Holiday>().FromSqlRaw(...), not Database.SqlQueryRaw<Holiday>(...) -- SqlQueryRaw<T> builds an
+        // ad hoc EF model that rejects any navigation property T has, throwing for any table with a foreign
+        // key; found live running this exact generated code against a table with a parent lookup (2026-09-28).
+        Expect.Contains(cs, "await _context.Set<Holiday>()");
+        Expect.Contains(cs, ".FromSqlRaw(\"EXEC [dbo].[Holiday_Search] @pSY_IsoCountry_Alpha3Code, @pName, @PageNumber, @PageSize\", parameters)");
+        Expect.Contains(cs, ".SqlQueryRaw<int>(\"EXEC [dbo].[Holiday_SearchCount] @pSY_IsoCountry_Alpha3Code, @pName\", countParameters)");
+        Expect.Contains(cs, "return (items, totalCount);");
+        // An EXEC call is non-composable SQL -- .SingleAsync() (which needs to compose it) throws
+        // InvalidOperationException, found live running the generated code for real (2026-09-27).
+        // .ToListAsync() then .Single() client-side works instead.
+        Expect.Contains(cs, "int totalCount = totalCountRows.Single();");
+    }
+
+    [TestMethod]
+    public async Task SearchAsync_still_gets_written_with_no_filter_parameters_when_the_table_has_no_searchable_column()
+    {
+        // Pagination and searchability are separate concerns (found live needing pagination alone on such a
+        // table, 2026-09-28): SearchAsync always exists once CS_Repo.tt generates at all, just with zero
+        // filter parameters for a table with no searchable column -- and the countParameters array must still
+        // compile with zero elements (an implicitly-typed "new[] { }" with nothing in it is a real CS0826
+        // compile error, also found here).
+        var allNumeric = Sample.Table("Metric", [Sample.Column("MetricId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("Value", SqlDbType.Int, ordinal: 2)]);
+        string cs = await Render("CS_Repo_v1.tt", allNumeric);
+
+        Expect.Contains(cs, "public async Task<(List<Metric> Items, int TotalCount)> SearchAsync(int pageNumber = 1, int pageSize = 100)");
+        Expect.Contains(cs, "var countParameters = new Microsoft.Data.SqlClient.SqlParameter[]");
+        Expect.Contains(cs, "EXEC [dbo].[Metric_Search] @PageNumber, @PageSize");
+        Expect.Contains(cs, "EXEC [dbo].[Metric_SearchCount]\", countParameters)");
+    }
+
     // ------------------------------------------------------------------ TS_Model
 
     [TestMethod]
@@ -1069,6 +1330,27 @@ public class TemplateRenderingTests
         Expect.DoesNotContain(address.Content, "'api/address'");
         Expect.Contains(settingsSales.Content, "private apiUrl = 'api/settingssales';"); // bare trailing "s": left alone
         Expect.DoesNotContain(settingsSales.Content, "'api/settingssaless'");
+    }
+
+    [TestMethod]
+    public async Task TS_Service_adds_getPage_only_when_the_table_has_a_searchable_column()
+    {
+        var withSearch = GeneratedFiles.Split(await Render("TS_Service_v1.tt", Sample.Holiday())).Single();
+        Expect.Contains(withSearch.Content, "import { HttpClient, HttpParams } from '@angular/common/http';");
+        Expect.Contains(withSearch.Content, "export interface HolidayPagedResult {");
+        Expect.Contains(withSearch.Content, "getPage(pageNumber: number, pageSize: number, sY_IsoCountry_Alpha3Code?: string, name?: string): Observable<HolidayPagedResult> {");
+        Expect.Contains(withSearch.Content, "let params = new HttpParams().set('pageNumber', pageNumber).set('pageSize', pageSize);");
+        Expect.Contains(withSearch.Content, "if (sY_IsoCountry_Alpha3Code) { params = params.set('sY_IsoCountry_Alpha3Code', sY_IsoCountry_Alpha3Code); }");
+        Expect.Contains(withSearch.Content, "if (name) { params = params.set('name', name); }");
+        Expect.Contains(withSearch.Content, "return this.http.get<HolidayPagedResult>(`${this.apiUrl}/search`, { params });");
+
+        // Pagination and searchability are separate concerns (found live needing pagination alone on such a
+        // table, 2026-09-28): getPage/PagedResult always exist, just with zero filter parameters.
+        var allNumeric = Sample.Table("Metric", [Sample.Column("MetricId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("Value", SqlDbType.Int, ordinal: 2)]);
+        var withoutSearch = GeneratedFiles.Split(await Render("TS_Service_v1.tt", allNumeric)).Single();
+        Expect.Contains(withoutSearch.Content, "import { HttpClient, HttpParams } from '@angular/common/http';");
+        Expect.Contains(withoutSearch.Content, "export interface MetricPagedResult {");
+        Expect.Contains(withoutSearch.Content, "getPage(pageNumber: number, pageSize: number): Observable<MetricPagedResult> {");
     }
 
     // ------------------------------------------------------------------ TS: a uniqueidentifier key
@@ -1178,14 +1460,22 @@ public class TemplateRenderingTests
     }
 
     [TestMethod]
-    public async Task A_component_has_a_search_box_only_for_a_table_with_a_name()
+    public async Task A_component_gets_a_search_bar_only_for_a_table_with_a_searchable_column()
     {
+        // Holiday and DonateLeave both have a searchable column (Name, Note respectively) -- Search
+        // (CodeGenPossibilities\Search) replaced the old single findByName-based "Search by Name" box (only
+        // ever offered for a text Name column) with the fuller search bar for both, once a searchable column
+        // -- of which Name is just one kind -- exists at all. Only a table with NO searchable column at all
+        // (Metric, all-numeric) gets no search UI, same as before.
         var holiday = GeneratedFiles.Split(await Render("TS_Component_v1.tt", Sample.Holiday())).ToDictionary(f => Path.GetFileName(f.RelativePath));
         var donate = GeneratedFiles.Split(await Render("TS_Component_v1.tt", Sample.DonateLeave())).ToDictionary(f => Path.GetFileName(f.RelativePath));
+        var allNumeric = Sample.Table("Metric", [Sample.Column("MetricId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("Value", SqlDbType.Int, ordinal: 2)]);
+        var metric = GeneratedFiles.Split(await Render("TS_Component_v1.tt", allNumeric)).ToDictionary(f => Path.GetFileName(f.RelativePath));
 
         Expect.Contains(holiday["holiday.component.html"].Content, "Search by Name");
-        Expect.Contains(holiday["holiday.component.ts"].Content, "findByName(this.searchText)");
-        Expect.DoesNotContain(donate["donateleave.component.html"].Content, "Search by Name");
+        Expect.DoesNotContain(holiday["holiday.component.ts"].Content, "findByName");
+        Expect.Contains(donate["donateleave.component.html"].Content, "Search by Note");
+        Expect.DoesNotContain(metric["metric.component.html"].Content, "form-group-search");
     }
 
     [TestMethod]
@@ -1225,6 +1515,73 @@ public class TemplateRenderingTests
     }
 
     [TestMethod]
+    public async Task TS_Component_pages_the_grid_through_mat_paginator_when_the_table_has_a_searchable_column()
+    {
+        var files = GeneratedFiles.Split(await Render("TS_Component_v1.tt", Sample.Holiday())).ToDictionary(f => Path.GetFileName(f.RelativePath));
+        string html = files["holiday.component.html"].Content;
+        string ts = files["holiday.component.ts"].Content;
+        string spec = files["holiday.component.spec.ts"].Content;
+
+        Expect.Contains(html, "<mat-paginator");
+        Expect.Contains(html, "[length]=\"totalCount\"");
+        Expect.Contains(html, "[pageIndex]=\"pageIndex\"");
+        Expect.Contains(html, "(page)=\"onPageChange($event)\"");
+        Expect.Contains(ts, "import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';");
+        Expect.Contains(ts, "imports: [ CommonModule, FormsModule, MatPaginatorModule ],");
+        Expect.Contains(ts, "pageIndex = 0;");
+        Expect.Contains(ts, "totalCount = 0;");
+        Expect.Contains(ts, "this.holidayService.getPage(this.pageIndex + 1, this.pageSize, this.filters.sY_IsoCountry_Alpha3Code, this.filters.name).subscribe((result) => {");
+        Expect.Contains(ts, "onPageChange(event: PageEvent): void {");
+        Expect.Contains(ts, "this.pageIndex = event.pageIndex;");
+        Expect.DoesNotContain(ts, "getAll()");
+        Expect.Contains(spec, "import { provideNoopAnimations } from '@angular/platform-browser/animations';");
+        Expect.Contains(spec, "providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations()]");
+    }
+
+    [TestMethod]
+    public async Task TS_Component_gets_a_search_bar_with_one_input_per_searchable_column()
+    {
+        var files = GeneratedFiles.Split(await Render("TS_Component_v1.tt", Sample.Holiday())).ToDictionary(f => Path.GetFileName(f.RelativePath));
+        string html = files["holiday.component.html"].Content;
+        string ts = files["holiday.component.ts"].Content;
+
+        Expect.Contains(html, "[(ngModel)]=\"filters.sY_IsoCountry_Alpha3Code\"");
+        Expect.Contains(html, "[(ngModel)]=\"filters.name\"");
+        Expect.Contains(html, "(click)=\"search()\"");
+        Expect.Contains(html, "(click)=\"clearSearch()\"");
+        Expect.DoesNotContain(html, "searchText");
+
+        Expect.Contains(ts, "filters = { sY_IsoCountry_Alpha3Code: '', name: '' };");
+        Expect.Contains(ts, "search(): void {");
+        Expect.Contains(ts, "this.selectedRow = null;");
+        Expect.Contains(ts, "this.pageIndex = 0;");
+        Expect.Contains(ts, "clearSearch(): void {");
+        Expect.Contains(ts, "this.filters.sY_IsoCountry_Alpha3Code = '';");
+        Expect.Contains(ts, "this.filters.name = '';");
+        Expect.DoesNotContain(ts, "findByName");
+    }
+
+    [TestMethod]
+    public async Task TS_Component_still_pages_the_grid_but_gets_no_search_bar_when_the_table_has_no_searchable_column()
+    {
+        // Pagination and searchability are separate concerns (found live needing pagination alone on such a
+        // table, 2026-09-28): the grid still pages through mat-paginator/getPage; only the search bar itself
+        // (and its Search/Clear buttons, filters state) is skipped when there's nothing to search by.
+        var allNumeric = Sample.Table("Metric", [Sample.Column("MetricId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("Value", SqlDbType.Int, ordinal: 2)]);
+        var files = GeneratedFiles.Split(await Render("TS_Component_v1.tt", allNumeric)).ToDictionary(f => Path.GetFileName(f.RelativePath));
+        string html = files["metric.component.html"].Content;
+        string ts = files["metric.component.ts"].Content;
+
+        Expect.Contains(html, "<mat-paginator");
+        Expect.DoesNotContain(html, "form-group-search");
+        Expect.Contains(ts, "import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';");
+        Expect.Contains(ts, "this.metricService.getPage(this.pageIndex + 1, this.pageSize).subscribe((result) => {");
+        Expect.DoesNotContain(ts, "filters");
+        Expect.DoesNotContain(ts, "clearSearch");
+        Expect.DoesNotContain(ts, "getAll()");
+    }
+
+    [TestMethod]
     public async Task The_folder_names_in_the_settings_decide_where_files_go_and_how_they_import()
     {
         using var temp = new TempFolder();
@@ -1251,6 +1608,12 @@ public class TemplateRenderingTests
         Expect.DoesNotContain(movies["movies.component.ts"].Content, "moviess");
         Expect.Contains(address["address.component.ts"].Content, "addresses: Address[] = [];"); // singular ending in "ss": gets "es"
         Expect.DoesNotContain(address["address.component.ts"].Content, "addresss:");
+
+        // The <h1> heading has the identical bug (a literal "+ s"), found live against the real, already-plural
+        // Movies table -- fixed the same way, alongside the list variable above, not just the error message.
+        Expect.Contains(movies["movies.component.html"].Content, "<h1>Movies</h1>");
+        Expect.DoesNotContain(movies["movies.component.html"].Content, "Moviess");
+        Expect.Contains(address["address.component.html"].Content, "<h1>Addresses</h1>");
     }
 
     // ------------------------------------------------------------------ TSX_Api (the React counterpart of TS_Service)
@@ -1305,6 +1668,26 @@ public class TemplateRenderingTests
         StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.CompositeKey()), "composite primary key");
         StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.DepartmentTeam()), "NameActiveRepo");
         StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.Roles()), "noApiTables");
+    }
+
+    [TestMethod]
+    public async Task TSX_Api_adds_getPage_only_when_the_table_has_a_searchable_column()
+    {
+        string withSearch = await Render("TSX_Api_v1.tt", Sample.Holiday());
+        Expect.Contains(withSearch, "export interface HolidayPagedResult {");
+        Expect.Contains(withSearch, "items: Holiday[];");
+        Expect.Contains(withSearch, "getPage: (pageNumber: number, pageSize: number, filters: { sY_IsoCountry_Alpha3Code?: string; name?: string } = {}) => {");
+        Expect.Contains(withSearch, "if (filters.sY_IsoCountry_Alpha3Code) params.set('sY_IsoCountry_Alpha3Code', filters.sY_IsoCountry_Alpha3Code);");
+        Expect.Contains(withSearch, "if (filters.name) params.set('name', filters.name);");
+        Expect.Contains(withSearch, "return request<HolidayPagedResult>(`${apiUrl}/search?${params.toString()}`);");
+
+        // Pagination and searchability are separate concerns (found live needing pagination alone on such a
+        // table, 2026-09-28): getPage/PagedResult always exist, just with an empty filters object type.
+        var allNumeric = Sample.Table("Metric", [Sample.Column("MetricId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("Value", SqlDbType.Int, ordinal: 2)]);
+        string withoutSearch = await Render("TSX_Api_v1.tt", allNumeric);
+        Expect.Contains(withoutSearch, "export interface MetricPagedResult {");
+        Expect.Contains(withoutSearch, "getPage: (pageNumber: number, pageSize: number, filters: {} = {}) => {");
+        Expect.Contains(withoutSearch, "return request<MetricPagedResult>(`${apiUrl}/search?${params.toString()}`);");
     }
 
     // ------------------------------------------------------------------ TSX_Page (the React counterpart of TS_Component)
@@ -1408,6 +1791,69 @@ public class TemplateRenderingTests
     }
 
     [TestMethod]
+    public async Task TSX_Page_pages_the_grid_through_getPage_with_a_PaginationBar_when_the_table_has_a_searchable_column()
+    {
+        var files = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", Sample.Holiday()));
+        string tsx = files.Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
+        string test = files.Single(f => f.RelativePath.EndsWith("Page.test.tsx")).Content;
+
+        Expect.Contains(tsx, "import { PaginationBar } from '../components/PaginationBar';");
+        Expect.Contains(tsx, "const pageSize = 20;");
+        Expect.Contains(tsx, "const [page, setPage] = useState(1);");
+        Expect.Contains(tsx, "const [totalPages, setTotalPages] = useState(1);");
+        Expect.Contains(tsx, "const load = (targetPage: number = 1, filterValues: typeof filters = filters) => {");
+        Expect.Contains(tsx, "holidayApi.getPage(targetPage, pageSize, filterValues).then((result) => {");
+        Expect.Contains(tsx, "<PaginationBar");
+        Expect.Contains(tsx, "onPrevious={() => load(page - 1)}");
+        Expect.Contains(tsx, "onNext={() => load(page + 1)}");
+        Expect.DoesNotContain(tsx, "getAll()");
+        Expect.Contains(test, "vi.spyOn(holidayApi, 'getPage').mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 0 });");
+    }
+
+    [TestMethod]
+    public async Task TSX_Page_gets_a_search_bar_with_one_input_per_searchable_column()
+    {
+        string tsx = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", Sample.Holiday()))
+            .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
+
+        Expect.Contains(tsx, "const [filters, setFilters] = useState({ sY_IsoCountry_Alpha3Code: '', name: '' });");
+        Expect.Contains(tsx, "onChange={(event) => setFilters({ ...filters, sY_IsoCountry_Alpha3Code: event.target.value })}");
+        Expect.Contains(tsx, "onChange={(event) => setFilters({ ...filters, name: event.target.value })}");
+        Expect.Contains(tsx, "const search = () => {");
+        Expect.Contains(tsx, "setSelectedRow(null);");
+        Expect.Contains(tsx, "load(1);");
+        Expect.Contains(tsx, "const clearSearch = () => {");
+        Expect.Contains(tsx, "const cleared = { sY_IsoCountry_Alpha3Code: '', name: '' };");
+        Expect.Contains(tsx, "setFilters(cleared);");
+        Expect.Contains(tsx, "load(1, cleared);");
+        Expect.Contains(tsx, "onClick={search}");
+        Expect.Contains(tsx, "onClick={clearSearch}");
+        Expect.DoesNotContain(tsx, "searchText");
+        Expect.DoesNotContain(tsx, "findByName");
+    }
+
+    [TestMethod]
+    public async Task TSX_Page_still_pages_the_grid_but_gets_no_search_bar_when_the_table_has_no_searchable_column()
+    {
+        // Pagination and searchability are separate concerns (found live needing pagination alone on such a
+        // table, 2026-09-28): the grid still pages through PaginationBar/getPage; only the search bar itself
+        // (and its Search/Clear buttons, filters state) is skipped when there's nothing to search by.
+        var allNumeric = Sample.Table("Metric", [Sample.Column("MetricId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("Value", SqlDbType.Int, ordinal: 2)]);
+        var files = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", allNumeric));
+        string tsx = files.Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
+        string test = files.Single(f => f.RelativePath.EndsWith("Page.test.tsx")).Content;
+
+        Expect.Contains(tsx, "import { PaginationBar } from '../components/PaginationBar';");
+        Expect.Contains(tsx, "const load = (targetPage: number = 1) => {");
+        Expect.Contains(tsx, "metricApi.getPage(targetPage, pageSize).then((result) => {");
+        Expect.Contains(tsx, "<PaginationBar");
+        Expect.DoesNotContain(tsx, "filters");
+        Expect.DoesNotContain(tsx, "clearSearch");
+        Expect.DoesNotContain(tsx, "getAll()");
+        Expect.Contains(test, "vi.spyOn(metricApi, 'getPage').mockResolvedValue({ items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 0 });");
+    }
+
+    [TestMethod]
     public async Task TSX_Page_pluralizes_the_list_variable_correctly_for_names_ending_in_s()
     {
         string movies = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", Sample.Movies()))
@@ -1419,6 +1865,12 @@ public class TemplateRenderingTests
         Expect.DoesNotContain(movies, "setMoviess");
         Expect.Contains(address, "const [addresses, setAddresses] = useState<Address[]>([]);"); // singular ending in "ss": gets "es"
         Expect.DoesNotContain(address, "setAddress]");
+
+        // The <h1> heading has the identical bug (a literal "+ s"), found live against the real, already-plural
+        // Movies table -- fixed the same way, alongside the list variable above, not just the error message.
+        Expect.Contains(movies, "<h1>Movies</h1>");
+        Expect.DoesNotContain(movies, "Moviess");
+        Expect.Contains(address, "<h1>Addresses</h1>");
     }
 
     // ------------------------------------------------------------------ TSX_DetailMasterPage

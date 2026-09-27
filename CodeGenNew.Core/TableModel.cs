@@ -98,6 +98,15 @@ public class TableModel
             .Select(c => ForeignKeys.First(fk => fk.ReferencingColumns.Count == 1 && fk.ReferencingColumns[0].EqualsIgnoreCase(c.Name)))
             .ToList();
 
+    /// <summary> Columns SP_Search.tt, API_Search.tt and CS_Repo.tt's SearchAsync all filter on: every string
+    /// column that isn't audit-classified (IsAuditColumn -- Create*/Modif*/Change*/Delete*/Update*/Activ*/
+    /// Inactiv*, per AuditColumnClassifier) -- nobody types into a search box for "who created this row".
+    /// Centralized here (CodeGenPossibilities\Search in the research folder) the same way Pluralizer was
+    /// pulled up from three copies, so the three templates -- and every frontend search bar built from this
+    /// same list -- can't drift apart on what's searchable. Empty when the table has nothing to filter on
+    /// (all-numeric/date/bit columns); SP_Search.tt/API_Search.tt both refuse to generate in that case. </summary>
+    public List<ColumnModel> SearchableColumns => Columns.Where(c => c.IsStringColumn && !c.IsAuditColumn).ToList();
+
     // Special-logic, table-level (see Docs/specs.md section 7). Populated from SpecialLogicColumns.config.
     public bool HasActiveInactivePair { get; init; }
     public ColumnModel? ActiveColumn { get; init; }

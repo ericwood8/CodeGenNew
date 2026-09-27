@@ -299,7 +299,11 @@ public class SqlServerSchemaProvider
 
         var rules = SpecialLogicColumnsConfig.Load(_specialLogicColumnsConfigPath);
         if (includeReferencedDisplayColumns)
+        {
             foreignKeys = await AttachReferencedDisplayColumnsAsync(connection, foreignKeys, rules, cancellationToken);
+            if (childForeignKeys.Count > 0)
+                childForeignKeys = await AttachChildTableOwnKeysAsync(connection, childForeignKeys, rules, cancellationToken);
+        }
         var columnNames = rawColumns.Select(c => c.Name).ToList();
 
         var columns = rawColumns.Select(c => BuildColumnModel(c, rules)).ToList();
@@ -395,10 +399,17 @@ public class SqlServerSchemaProvider
         return rule?.MatchRank(columnName);
     }
 
-    // A Lookup shows people readable values: not blobs, XML, or unbounded text.
+    // A Lookup/WinUI3 parent-name display shows a human-recognizable NAME, so it must be a plain, bounded
+    // string column -- not just "anything that isn't a blob" (the previous rule). Found live: CustomerMonthlySummary
+    // (CustomerId, MonthNumber, Year, TotalOfInvoices -- no string columns at all) let its int MonthNumber column
+    // match the DisplayColumn category's "*Number" pattern (meant for a string business key like AccountNumber,
+    // not a plain sequence number), which every WinUI3 template then rendered as if it were a nullable reference
+    // type (`row.MonthNumber?.ToString()`) -- a real compile error, since `?.` cannot be applied to a non-nullable
+    // int. Restricting eligibility to actual string types prevents any numeric/date/etc. column from being chosen
+    // as a display column in the first place, matching DisplayColumnSelector's own fallback path, which already
+    // required IsStringColumn-shaped types.
     private static bool IsDisplayEligibleType(SqlDbType t) =>
-        t is not (SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml or SqlDbType.Image or SqlDbType.Binary
-                  or SqlDbType.VarBinary or SqlDbType.Variant);
+        t is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
 
     /// <summary> For each foreign key, reads the referenced table's columns (one catalog query per distinct table) and
     /// records which of them are its display columns. </summary>
@@ -434,6 +445,40 @@ public class SqlServerSchemaProvider
             });
         }
 
+        return result;
+    }
+
+    /// <summary> For each child (referencing) table, reads its own primary key and its own full foreign-key list
+    /// (with THEIR referenced display columns resolved too) so a generated child grid can hide the child's
+    /// identity column and resolve its OTHER foreign keys to a display name -- the same building blocks
+    /// AttachReferencedDisplayColumnsAsync already uses for the primary table's own drop-downs, reused per child
+    /// table instead of per referenced table. One extra catalog round-trip per distinct child table. </summary>
+    private static async Task<List<ChildForeignKeyModel>> AttachChildTableOwnKeysAsync(
+        SqlConnection connection, List<ChildForeignKeyModel> childForeignKeys, List<SpecialLogicRule> rules, CancellationToken cancellationToken)
+    {
+        var result = new List<ChildForeignKeyModel>();
+        foreach (var child in childForeignKeys)
+        {
+            string childFullName = $"[{child.ReferencingSchema}].[{child.ReferencingTable}]";
+            var childColumns = (await ReadColumnsAsync(connection, childFullName, cancellationToken))
+                .Select(raw => BuildColumnModel(raw, rules))
+                .ToList();
+            var childPrimaryKeyColumns = childColumns
+                .Where(c => c.IsPrimaryKey).OrderBy(c => c.OrdinalPosition).Select(c => c.Name).ToList();
+            var childForeignKeysOfItsOwn = await ReadForeignKeysAsync(connection, childFullName, cancellationToken);
+            childForeignKeysOfItsOwn = await AttachReferencedDisplayColumnsAsync(connection, childForeignKeysOfItsOwn, rules, cancellationToken);
+
+            result.Add(new ChildForeignKeyModel
+            {
+                ConstraintName = child.ConstraintName,
+                ReferencingSchema = child.ReferencingSchema,
+                ReferencingTable = child.ReferencingTable,
+                ReferencingColumns = child.ReferencingColumns,
+                ReferencedColumns = child.ReferencedColumns,
+                ReferencingPrimaryKeyColumns = childPrimaryKeyColumns,
+                ReferencingTableForeignKeys = childForeignKeysOfItsOwn
+            });
+        }
         return result;
     }
 
