@@ -226,7 +226,7 @@
 #>
             <ComboBox Header="<#= label #>" ItemsSource="{x:Bind ViewModel.<#= p.OptionsProp #>}"
                       SelectedValuePath="Id" DisplayMemberPath="Text"
-                      SelectedValue="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" HorizontalAlignment="Stretch" />
+                      SelectedValue="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
 <#
             }
             else if (IsBit(c))
