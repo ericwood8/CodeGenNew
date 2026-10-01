@@ -48,6 +48,8 @@
     // whether the key is a parameter.
     //
     //   - IsNullable=false -> [Required].
+    //   - An integer column whose name says what it holds (Year, Month, a *Percent, a *Qty, ...) -> [Range(min, max)], the same
+    //     limits the generated number boxes use (see NumericClassifier and ProjectSettings.RangeFor).
     //   - IsStringColumn with a known length -> [StringLength(n)] (same byte/character halving CS_Entity.tt
     //     uses for nchar/nvarchar).
     //   - Column name matching a semantic pattern -> [DataType(DataType.X)]: *Email* -> EmailAddress,
@@ -150,6 +152,9 @@
         B($"    [Display(Name = \"{words}\", Description = \"{words}\")]");
         if (isText && chars > 0) B($"    [StringLength({chars})]");
         if (dataType is not null) B($"    [DataType({dataType})]");
+        // A whole-number column whose name says what it holds (a year, a month, a percentage, ...) gets that range; every other
+        // integer keeps the plain limits of its SQL type, which a [Range] would only repeat.
+        if (c.NumericKind != NumericKind.None && Project.RangeFor(c) is { } range) B($"    [Range({range.Min}, {range.Max})]");
         B($"    public {ClrType(c)} {Id(c)} {{ get; set; }}");
     }
 

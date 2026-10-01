@@ -37,8 +37,13 @@
         ["ProjectTask"] = "project"
     };
     // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
-    noLookupParents = Project.NoLookupParents ?? noLookupParents;
-    noApiTables = Project.NoApiTables ?? noApiTables;
+    modelFileOf = Project.ModelFileOverrides ?? modelFileOf;
+    bool IsHiddenParent(string table) => Project.HiddenParents is { } hidden ? hidden.Contains(table, StringComparer.OrdinalIgnoreCase) : table.Equals(hiddenParent, StringComparison.OrdinalIgnoreCase);
+    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
+    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // only used when no project is chosen.
+    bool NoApi(string table, LookupShape shape) => Project.NoApi(table, shape) ?? noApiTables.Contains(table, StringComparer.OrdinalIgnoreCase);
+    bool NoLookup(string table, LookupShape shape) => Project.NoLookup(table, shape) ?? noLookupParents.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------
@@ -102,7 +107,7 @@
     string ApiRoute(string table) => BaseName(table).ToLowerInvariant().Pluralize();
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
-    if (noApiTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase))
+    if (NoApi(Model.TableName, Model.LookupShape))
     {
         Error($"TSX_DetailMasterPage writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
     }
@@ -138,13 +143,13 @@
 
         var shown = Model.Columns
             .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity
-                        && !(fkByColumn.TryGetValue(c.Name, out var hfk) && hfk.ReferencedTable.Equals(hiddenParent, StringComparison.OrdinalIgnoreCase)))
+                        && !(fkByColumn.TryGetValue(c.Name, out var hfk) && IsHiddenParent(hfk.ReferencedTable)))
             .OrderBy(c => c.Name == "Name" ? 0 : 1).ThenBy(c => c.OrdinalPosition)
             .ToList();
 
         ForeignKeyModel LookupOf(ColumnModel c) =>
             fkByColumn.TryGetValue(c.Name, out var fk)
-            && !noLookupParents.Contains(fk.ReferencedTable, StringComparer.OrdinalIgnoreCase)
+            && !NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape)
             && fk.ReferencedDisplayColumns.Count > 0
                 ? fk : null;
         var parents = shown.Select(c => LookupOf(c)).Where(fk => fk is not null)
@@ -173,7 +178,7 @@
         var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
 
         var children = Model.ChildForeignKeys
-            .Where(fk => fk.ReferencingColumns.Count == 1 && !noApiTables.Contains(fk.ReferencingTable, StringComparer.OrdinalIgnoreCase))
+            .Where(fk => fk.ReferencingColumns.Count == 1 && !NoApi(fk.ReferencingTable, default))
             .Select(fk => new
             {
                 Table = fk.ReferencingTable,
@@ -181,14 +186,22 @@
                 Var = LowerFirst(BaseName(fk.ReferencingTable)),
                 MethodName = BaseName(fk.ReferencingTable),
                 Route = ApiRoute(fk.ReferencingTable),
-                FkProp = Camel(fk.ReferencingColumns[0])
+                FkProp = Camel(fk.ReferencingColumns[0]),
+                // What the schema says about the child's columns (their JSON names are camelCase): money shows as currency, long text goes last.
+                Currency = fk.ReferencingTableColumns.Where(c => c.IsCurrencyColumn && !c.IsIntegerColumn)
+                    .Select(c => (Name: Camel(c.Name), Digits: NumericClassifier.CurrencyDigits(c))).ToList(),
+                LongText = fk.ReferencingTableColumns.Where(c => c.IsLongTextColumn).Select(c => Camel(c.Name)).ToList(),
+                // The caption each child column gets (date columns lose "Date", yes/no columns end in "?", Number -> #, Percent -> %).
+                Captions = fk.ReferencingTableColumns.Select(c => (Name: Camel(c.Name), Caption: GridCaption.For(c, Label(c.Name)))).ToList()
             }).ToList();
 
         string Id(ColumnModel c) => stem + "-" + Camel(c.Name).ToLowerInvariant();
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
-        string LabelOf(ColumnModel c) => c.SqlType == SqlDbType.Bit ? Regex.Replace(Label(c.Name), "^Is ", "") + "?" : Label(c.Name);
+        string LabelOf(ColumnModel c) => c.SqlType == SqlDbType.Bit ? Label(c.Name) + "?" : Label(c.Name);
         var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
         if (gridColumns.Count == 0) gridColumns = shown.ToList();
+        // A long text column (a Notes column, ...) is listed last so a long value cannot push the other columns off screen.
+        gridColumns = gridColumns.OrderBy(c => c.IsLongTextColumn ? 1 : 0).ToList();
 
         var ts = new StringBuilder();
         void T(string s = "") => ts.Append(s).Append('\n');
@@ -205,6 +218,41 @@
             T($"import {{ {p.ApiVar} }} from '../{apiFolder}/{p.ApiFile}';");
         }
         T();
+        if (children.Count > 0)
+        {
+            var allCurrency = children.SelectMany(ch => ch.Currency).GroupBy(m => m.Name).Select(g => g.First()).ToList();
+            var allLongText = children.SelectMany(ch => ch.LongText).Distinct().ToList();
+            T("// Child grids show whatever keys the API returns; these helpers caption them, order them (long text last) and format money and dates.");
+            T("const childCurrencyDigits: Record<string, number> = { " + string.Join(", ", allCurrency.Select(m => m.Name + ": " + m.Digits)) + " };");
+            var allCaptions = children.SelectMany(ch => ch.Captions).GroupBy(m => m.Name).Select(g => g.First()).ToList();
+            T("const childCaptions: Record<string, string> = { " + string.Join(", ", allCaptions.Select(m => m.Name + ": '" + m.Caption.Replace("'", "\'") + "'")) + " };");
+            T("const childLongTextColumns: string[] = [" + string.Join(", ", allLongText.Select(n => "'" + n + "'")) + "];");
+            T();
+            T("function orderColumns(keys: string[]): string[] {");
+            T("  return [...keys.filter((k) => !childLongTextColumns.includes(k)), ...keys.filter((k) => childLongTextColumns.includes(k))];");
+            T("}");
+            T();
+            T("function caption(key: string): string {");
+            T("  if (key in childCaptions) return childCaptions[key];");
+            T("  const spaced = key.replace(/Id$/, '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');");
+            T("  return spaced.split(' ').filter(Boolean).map((w) => {");
+            T("    const l = w.toLowerCase();");
+            T("    return l === 'number' || l === 'num' ? '#' : l === 'percentage' || l === 'percent' || l === 'pct' ? '%' : w.charAt(0).toUpperCase() + w.slice(1);");
+            T("  }).join(' ');");
+            T("}");
+            T();
+            T("function formatChildCell(value: unknown, key: string): string {");
+            T("  if (value === null || value === undefined) return '';");
+            T("  if (typeof value === 'boolean') return value ? 'Yes' : 'No';");
+            T("  if (typeof value === 'number' && key in childCurrencyDigits) {");
+            T("    const d = childCurrencyDigits[key];");
+            T("    return value.toLocaleString(undefined, { style: 'currency', currency: '" + Project.CurrencyCode + "', minimumFractionDigits: d, maximumFractionDigits: d });");
+            T("  }");
+            T("  // A date-and-time string from the API (2026-09-27T00:00:00) shows as its date only.");
+            T("  return typeof value === 'string' ? value.replace(/^(\\d{4}-\\d{2}-\\d{2})T.*$/, '$1') : String(value);");
+            T("}");
+            T();
+        }
         T($"export function {baseName}DetailMasterPage() {{");
         T($"  const [{listName}, {setList}] = useState<{baseName}[]>([]);");
         foreach (var p in parents.Where(p => !p.Self))
@@ -332,7 +380,7 @@
             T($"    request<any[]>('{apiPrefix}/{child.Route}').then((rows) => {{");
             T($"      const filtered = rows.filter((r) => r['{child.FkProp}'] === parentId);");
             T($"      set{child.MethodName}Rows(filtered);");
-            T($"      set{child.MethodName}Columns(filtered.length > 0 ? Object.keys(filtered[0]) : []);");
+            T($"      set{child.MethodName}Columns(filtered.length > 0 ? orderColumns(Object.keys(filtered[0])) : []);");
             T("    }).catch(() => {});");
             T("  };");
         }
@@ -370,7 +418,7 @@
         T("        <thead>");
         T("          <tr>");
         foreach (var c in gridColumns)
-            T($"            <th>{LabelOf(c)}</th>");
+            T($"            <th>{GridCaption.For(c, LabelOf(c))}</th>");
         T("            <th>Actions</th>");
         T("          </tr>");
         T("        </thead>");
@@ -382,10 +430,12 @@
             string prop = $"{variable}.{Camel(c.Name)}";
             var lookup = LookupOf(c);
             string cell;
+            // A nullable column's value may be undefined: optional chaining keeps a strict (noUncheckedIndexedAccess/strictNullChecks) build compiling.
             if (lookup is not null) cell = $"{{{parentOf[lookup.ReferencedTable].NameMethod}({prop})}}";
             else if (c.SqlType == SqlDbType.Bit) cell = $"{{{prop} ? 'Yes' : 'No'}}";
-            else if (IsDate(c)) cell = $"{{{prop}.substring(0, 10)}}";
-            else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{prop}.toFixed(2)}}";
+            else if (IsDate(c)) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 10)}}";
+            else if (c.IsCurrencyColumn && !c.IsIntegerColumn) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {d}, maximumFractionDigits: {d} }})}}"; }
+            else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toFixed(2)}}";
             else cell = $"{{{prop}}}";
             T($"              <td>{cell}</td>");
         }
@@ -456,6 +506,12 @@
                 T("              type=\"number\"");
                 T($"              aria-label=\"{LabelOf(c)}\"");
                 if (step is not null) T($"              step=\"{step}\"");
+                // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
+                if (Project.RangeFor(c) is { } range)
+                {
+                    T($"              min=\"{range.Min}\"");
+                    T($"              max=\"{range.Max}\"");
+                }
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: Number(event.target.value) }})}}");
                 T($"              placeholder=\"{PlaceholderFor(c)}\"");
@@ -501,12 +557,13 @@
             T($"              <h3>{child.Title}</h3>");
             T("              <table>");
             T("                <thead>");
-            T($"                  <tr>{{{child.Var}Columns.map((col) => <th key={{col}}>{{col}}</th>)}}</tr>");
+            T($"                  <tr>{{{child.Var}Columns.map((col) => <th key={{col}}>{{caption(col)}}</th>)}}</tr>");
             T("                </thead>");
             T("                <tbody>");
             T($"                  {{{child.Var}Rows.map((row, index) => (");
             T("                    <tr key={index}>");
-            T($"                      {{{child.Var}Columns.map((col) => <td key={{col}}>{{row[col]}}</td>)}}");
+            // A date-and-time string from the API (2026-09-27T00:00:00) shows as its date only.
+            T("                      {" + child.Var + "Columns.map((col) => <td key={col}>{formatChildCell(row[col], col)}</td>)}");
             T("                    </tr>");
             T("                  ))}");
             T("                </tbody>");

@@ -36,7 +36,10 @@
     usings = Project.Usings ?? usings;
     viewsFolder = Project.ViewsFolder ?? viewsFolder;
     viewModelsFolder = Project.ViewModelsFolder ?? viewModelsFolder;
-    noLookupParents = Project.NoLookupParents ?? noLookupParents;
+    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
+    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // only used when no project is chosen.
+    bool NoLookup(string table, LookupShape shape) => Project.NoLookup(table, shape) ?? noLookupParents.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------
@@ -82,6 +85,13 @@
         or SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real;
     bool IsGuid(ColumnModel c) => c.SqlType == SqlDbType.UniqueIdentifier;
     bool IsBit(ColumnModel c) => c.SqlType == SqlDbType.Bit;
+    // Every whole-number column (a foreign key to a lookup is handled before this) is edited in a number box, whose value is a double:
+    // the ViewModel holds it as a double (NaN = blank) and the save converts it back, after checking it is whole and in range.
+    bool UsesNumberBox(ColumnModel c) => c.IsIntegerColumn && !IsBit(c);
+    // A currency column (money, or a decimal whose name says money) is also edited in a number box, formatted as currency in code-behind
+    // (a NumberFormatter cannot be declared in XAML; CurrencyNumberFormatter.cs, written alongside, formats as currency and also reads a plain number), and converted back to a decimal rounded to the column's scale on save.
+    bool UsesCurrencyBox(ColumnModel c) => c.IsCurrencyColumn && !c.IsIntegerColumn;
+    int CurrencyDigits(ColumnModel c) => NumericClassifier.CurrencyDigits(c);
     bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
     bool IsEditableType(ColumnModel c) => IsDate(c) || IsNumber(c) || IsGuid(c) || IsBit(c) || IsText(c);
     int Chars(ColumnModel c) => c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
@@ -135,7 +145,7 @@
         ForeignKeyModel LookupOf(ColumnModel c) =>
             c.SqlType == SqlDbType.Int
             && fkByColumn.TryGetValue(c.Name, out var fk)
-            && !noLookupParents.Contains(fk.ReferencedTable, StringComparer.OrdinalIgnoreCase)
+            && !NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape)
             && fk.ReferencedDisplayColumns.Count > 0
                 ? fk : null;
 
@@ -191,16 +201,49 @@
                       SelectedValue="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
 <#
             }
+            else if (UsesCurrencyBox(c))
+            {
+#>
+            <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+                       ValidationMode="InvalidInputOverwritten" Width="180" HorizontalAlignment="Left" />
+<#
+            }
+            else if (UsesNumberBox(c))
+            {
+                var range = Project.RangeFor(c)!.Value;
+                // Narrow to the widest number the range allows (a month is two digits, a year four) plus what the box itself needs
+                // around the text -- two inline spin buttons, the clear ("x") button and padding, about 150 pixels; any less leaves
+                // no visible room to type -- and never narrower than the header text. The digits count at most nine, so a number box over a
+                // whole int (a foreign key shown as a plain number) is not stretched across the dialog.
+                int digits = Math.Max(range.Min.ToString().Length, range.Max.ToString().Length);
+                string width = $" Width=\"{Math.Max(Math.Min(digits, 9) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
+#>
+            <NumberBox Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+                       Minimum="<#= range.Min #>" Maximum="<#= range.Max #>" SmallChange="1" LargeChange="<#= range.Max - range.Min >= 100 ? 10 : 1 #>"
+                       SpinButtonPlacementMode="Inline" ValidationMode="InvalidInputOverwritten"<#= width #> />
+<#
+            }
             else if (IsBit(c))
             {
 #>
-            <CheckBox Content="<#= label #>" IsChecked="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
+            <CheckBox Content="<#= label #>?" IsChecked="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
 <#
             }
             else if (IsDate(c))
             {
 #>
-            <TextBox Header="<#= label #>" Text="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" PlaceholderText="yyyy-MM-dd" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <CalendarDatePicker Header="<#= label #>" Date="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+                                    DateFormat="{}{month.integer}/{day.integer}/{year.full}" PlaceholderText="mm/dd/yyyy" Width="180" />
+<#
+                if (c.IsNullable)
+                {
+#>
+                <Button Content="Clear" VerticalAlignment="Bottom" Click="OnClear<#= prop #>Click" />
+<#
+                }
+#>
+            </StackPanel>
 <#
             }
             else if (IsMultiline(c))
@@ -226,6 +269,7 @@
 using <#= viewModelNamespace #>;
 using Microsoft.UI.Xaml.Controls;
 <#
+        var currencyColumns = shown.Where(UsesCurrencyBox).ToList();
         foreach (string u in usings)
         {
 #>
@@ -248,6 +292,14 @@ public sealed partial class <#= table #>DetailDialog : ContentDialog
     {
         ViewModel = new <#= table #>DetailViewModel(context, editing);
         InitializeComponent();
+<#
+        foreach (var c in currencyColumns)
+        {
+#>
+        <#= c.Name #>Box.NumberFormatter = new CurrencyNumberFormatter("<#= Project.CurrencyCode #>", <#= CurrencyDigits(c) #>);
+<#
+        }
+#>
         Loaded += async (_, _) => await ViewModel.LoadLookupsAsync();
     }
 
@@ -265,6 +317,16 @@ public sealed partial class <#= table #>DetailDialog : ContentDialog
             deferral.Complete();
         }
     }
+<#
+        foreach (var c in shown.Where(c => IsDate(c) && c.IsNullable))
+        {
+#>
+
+    // CalendarDatePicker has no clear button of its own; a nullable date gets one beside it.
+    private void OnClear<#= c.Name #>Click(object sender, RoutedEventArgs e) => ViewModel.<#= c.Name #> = null;
+<#
+        }
+#>
 }
 @@@FILE <#= viewModelsFolder #>/<#= table #>DetailViewModel.cs@@@
 <#
@@ -329,11 +391,17 @@ public partial class <#= table #>DetailViewModel : ObservableObject
         {
             var lookup = LookupOf(c);
             string prop = c.Name;
-            string fieldType = lookup is not null ? "int?" : IsBit(c) ? "bool?" : "string?";
+            string fieldType = lookup is not null ? "int?" : IsBit(c) ? "bool?" : (UsesNumberBox(c) || UsesCurrencyBox(c)) ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
 #>
     [ObservableProperty]
-    private <#= fieldType #> _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #>;
+    private <#= fieldType #> _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #><#= fieldType == "double" ? " = double.NaN" : "" #>;
 <#
+            if (IsDate(c))
+            {
+#>
+    private TimeSpan _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #>Time; // the time of day a stored date-and-time had: the calendar edits only the date
+<#
+            }
         }
 #>
 
@@ -358,6 +426,18 @@ public partial class <#= table #>DetailViewModel : ObservableObject
                 // just a timing quirk): the box renders as if empty even though editing.{prop} is correct,
                 // until the person types in it (found live clicking through a real running app, 2026-09-28).
             }
+            else if (UsesCurrencyBox(c))
+            {
+#>
+            <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? (double)editing.{prop}.Value : double.NaN" : $"(double)editing.{prop}" #>;
+<#
+            }
+            else if (UsesNumberBox(c))
+            {
+#>
+            <#= prop #> = editing.<#= prop #><#= c.IsNullable ? " ?? double.NaN" : "" #>;
+<#
+            }
             else if (IsBit(c))
             {
 #>
@@ -367,7 +447,8 @@ public partial class <#= table #>DetailViewModel : ObservableObject
             else if (IsDate(c))
             {
 #>
-            <#= prop #> = editing.<#= prop #><#= c.IsNullable ? "?.ToString(\"yyyy-MM-dd\")" : ".ToString(\"yyyy-MM-dd\")" #>;
+            <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? new DateTimeOffset(editing.{prop}.Value) : null" : $"new DateTimeOffset(editing.{prop})" #>;
+            _<#= char.ToLowerInvariant(prop[0]) + prop[1..] #>Time = editing.<#= prop #><#= c.IsNullable ? "?.TimeOfDay ?? TimeSpan.Zero" : ".TimeOfDay" #>;
 <#
             }
             else
@@ -457,16 +538,10 @@ public partial class <#= table #>DetailViewModel : ObservableObject
 <#
                 }
             }
-            else if (IsBit(c))
+            else if (UsesCurrencyBox(c))
             {
 #>
-        entity.<#= prop #> = <#= prop #><#= c.IsNullable ? "" : " ?? false" #>;
-<#
-            }
-            else if (IsDate(c))
-            {
-#>
-        if (string.IsNullOrWhiteSpace(<#= prop #>))
+        if (double.IsNaN(<#= prop #>))
         {
 <#
                 if (!c.IsNullable)
@@ -483,8 +558,63 @@ public partial class <#= table #>DetailViewModel : ObservableObject
                 }
 #>
         }
-        else if (!DateTime.TryParse(<#= prop #>, out var <#= prop #>Value)) { ErrorMessage = "<#= label #> is not a valid date."; return false; }
-        else { entity.<#= prop #> = <#= prop #>Value; }
+        else { entity.<#= prop #> = Math.Round((decimal)<#= prop #>, <#= CurrencyDigits(c) #>); }
+<#
+            }
+            else if (UsesNumberBox(c))
+            {
+                var range = Project.RangeFor(c)!.Value;
+                string intType = CSharpNumericType(c);
+#>
+        if (double.IsNaN(<#= prop #>))
+        {
+<#
+                if (!c.IsNullable)
+                {
+#>
+            ErrorMessage = "<#= label #> is required."; return false;
+<#
+                }
+                else
+                {
+#>
+            entity.<#= prop #> = null;
+<#
+                }
+#>
+        }
+        else if (<#= prop #> != Math.Floor(<#= prop #>)) { ErrorMessage = "<#= label #> must be a whole number."; return false; }
+        else if (<#= prop #> < <#= range.Min #> || <#= prop #> > <#= range.Max #>) { ErrorMessage = "<#= label #> must be between <#= range.Min #> and <#= range.Max #>."; return false; }
+        else { entity.<#= prop #> = (<#= intType #>)<#= prop #>; }
+<#
+            }
+            else if (IsBit(c))
+            {
+#>
+        entity.<#= prop #> = <#= prop #><#= c.IsNullable ? "" : " ?? false" #>;
+<#
+            }
+            else if (IsDate(c))
+            {
+#>
+        if (<#= prop #> is null)
+        {
+<#
+                if (!c.IsNullable)
+                {
+#>
+            ErrorMessage = "<#= label #> is required."; return false;
+<#
+                }
+                else
+                {
+#>
+            entity.<#= prop #> = null;
+<#
+                }
+#>
+        }
+        else { entity.<#= prop #> = <#= prop #>.Value.Date + _<#= char.ToLowerInvariant(prop[0]) + prop[1..] #>Time; }
 <#
             }
             else if (IsGuid(c))
@@ -562,6 +692,40 @@ public partial class <#= table #>DetailViewModel : ObservableObject
         return true;
     }
 }
+<#
+        if (currencyColumns.Count > 0)
+        {
+#>
+@@@FILE <#= viewsFolder #>/CurrencyNumberFormatter.cs@@@
+using Windows.Globalization.NumberFormatting;
+
+namespace <#= viewNamespace #>;
+
+// Shows a number as currency, but reads it with OR without the currency symbol. A plain CurrencyFormatter only parses text that
+// includes the symbol, so typing 7777.77 into a currency NumberBox was silently thrown away. NumberBox needs one object that both
+// formats (INumberFormatter2) and parses (INumberParser).
+public sealed partial class CurrencyNumberFormatter : INumberFormatter2, INumberParser
+{
+    private readonly CurrencyFormatter _currency;
+    private readonly DecimalFormatter _plain;
+
+    public CurrencyNumberFormatter(string currencyCode, int fractionDigits)
+    {
+        _currency = new CurrencyFormatter(currencyCode) { FractionDigits = fractionDigits };
+        _plain = new DecimalFormatter { FractionDigits = fractionDigits };
+    }
+
+    public string FormatInt(long value) => _currency.FormatInt(value);
+    public string FormatUInt(ulong value) => _currency.FormatUInt(value);
+    public string FormatDouble(double value) => _currency.FormatDouble(value);
+
+    public long? ParseInt(string text) => _currency.ParseInt(text) ?? _plain.ParseInt(text);
+    public ulong? ParseUInt(string text) => _currency.ParseUInt(text) ?? _plain.ParseUInt(text);
+    public double? ParseDouble(string text) => _currency.ParseDouble(text) ?? _plain.ParseDouble(text);
+}
+<#
+        }
+#>
 <#
     }
 #>

@@ -12,4 +12,8 @@ public class ForeignKeyModel
     /// unless the model was built for a template whose .tt.config sets NeedsReferencedDisplayColumns=true --
     /// empty then means "not looked up", not "the table has none". </summary>
     public List<string> ReferencedDisplayColumns { get; init; } = [];
+
+    /// <summary> Whether the referenced table looks like a small lookup table (see LookupShape). Always read, not
+    /// gated behind a .tt.config flag; the default (not known) is never an enum. </summary>
+    public LookupShape ReferencedLookupShape { get; init; }
 }

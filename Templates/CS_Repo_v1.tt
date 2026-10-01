@@ -26,7 +26,10 @@
     contextType = Project.ContextName ?? contextType;
     repositoryNamespace = Project.RepoNamespace ?? repositoryNamespace;
     usings = Project.Usings ?? usings;
-    noRepositoryTables = Project.NoRepositoryTables ?? noRepositoryTables;
+    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
+    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // only used when no project is chosen.
+    bool NoRepository(string table, LookupShape shape) => Project.NoRepository(table, shape) ?? noRepositoryTables.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------
@@ -82,7 +85,7 @@
     //
     // ------------------------------------------------------------------------------------------
 
-    if (noRepositoryTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase))
+    if (NoRepository(Model.TableName, Model.LookupShape))
     {
         Error($"CS_Repo writes no repository for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noRepositoryTables "
               + "(an enum, a *Type lookup table, or a table with no entity class).");
@@ -130,7 +133,7 @@
             // a child table: exactly one single-column foreign key to a table that has an entity (foreign keys to enum tables do not count)
             var childKeys = Model.ForeignKeys
                 .Where(f => f.ReferencingColumns.Count == 1
-                            && !noRepositoryTables.Contains(f.ReferencedTable, StringComparer.OrdinalIgnoreCase))
+                            && !NoRepository(f.ReferencedTable, f.ReferencedLookupShape))
                 .Select(f => Model.Columns.First(c => c.Name.Equals(f.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)))
                 .ToList();
             if (childKeys.Count == 1

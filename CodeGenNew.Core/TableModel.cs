@@ -51,6 +51,9 @@ public class TableModel
     /// <summary> This table's own display columns (see DisplayColumnSelector), in column order. </summary>
     public List<ColumnModel> DisplayColumns { get; init; } = [];
 
+    /// <summary> Whether this table looks like a small lookup table a project would model as an enum (see LookupShape). </summary>
+    public LookupShape LookupShape { get; init; }
+
     public required List<ForeignKeyModel> ForeignKeys { get; init; }
     public bool HasAtLeastOneForeignKey => ForeignKeys.Count > 0;
 

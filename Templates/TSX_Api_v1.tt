@@ -22,7 +22,10 @@
         "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
     };
     // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
-    noApiTables = Project.NoApiTables ?? noApiTables;
+    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
+    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // only used when no project is chosen.
+    bool NoApi(string table, LookupShape shape) => Project.NoApi(table, shape) ?? noApiTables.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------
@@ -79,7 +82,7 @@
     string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
-    if (noApiTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase))
+    if (NoApi(Model.TableName, Model.LookupShape))
     {
         Error($"TSX_Api writes no api module for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so it has no API to call.");
     }
@@ -139,7 +142,10 @@
         {
             string filterType = filters.Count > 0 ? string.Join("; ", filters.Select(f => $"{f.ParamName}?: string")) : "";
             L();
-            L($"  getPage: (pageNumber: number, pageSize: number, filters: {{{(filterType.Length > 0 ? " " + filterType + " " : "")}}} = {{}}) => {{");
+            // A table with no searchable column never reads the argument; the leading underscore keeps a project that compiles with
+            // noUnusedParameters (the Vite template's default) from failing on it.
+            string filtersName = filters.Count > 0 ? "filters" : "_filters";
+            L($"  getPage: (pageNumber: number, pageSize: number, {filtersName}: {{{(filterType.Length > 0 ? " " + filterType + " " : "")}}} = {{}}) => {{");
             L("    const params = new URLSearchParams();");
             L("    params.set('pageNumber', String(pageNumber));");
             L("    params.set('pageSize', String(pageSize));");

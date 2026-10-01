@@ -295,7 +295,7 @@ public class TemplateRenderingTests
         Expect.Contains(xaml, "x:Class=\"TimeEntry.Desktop.Views.E_DonateLeaveDetailDialog\"");
         Expect.Contains(xaml, "SelectedValue=\"{x:Bind ViewModel.DonateFrom_EmployeeId, Mode=TwoWay}\"");
         Expect.Contains(xaml, "SelectedValue=\"{x:Bind ViewModel.DonateTo_EmployeeId, Mode=TwoWay}\"");
-        Expect.Contains(xaml, "Text=\"{x:Bind ViewModel.WhenDonated, Mode=TwoWay}\"");
+        Expect.Contains(xaml, "<CalendarDatePicker Header=\"When Donated\" Date=\"{x:Bind ViewModel.WhenDonated, Mode=TwoWay}\"");
         Expect.Contains(xaml, "Text=\"{x:Bind ViewModel.Note, Mode=TwoWay}\"");
 
         Expect.Contains(codeBehind, "public sealed partial class E_DonateLeaveDetailDialog : ContentDialog");
@@ -315,8 +315,15 @@ public class TemplateRenderingTests
             .Single(f => f.RelativePath.EndsWith("DetailViewModel.cs")).Content;
 
         Expect.Contains(viewModel, "if (DonateFrom_EmployeeId is null) { ErrorMessage = \"Donate From Employee is required.\"; return false; }");
-        Expect.Contains(viewModel, "if (!int.TryParse(HoursDonated, out var HoursDonatedValue)) { ErrorMessage = \"Hours Donated is not a valid number.\"; return false; }");
-        Expect.Contains(viewModel, "if (!DateTime.TryParse(WhenDonated, out var WhenDonatedValue)) { ErrorMessage = \"When Donated is not a valid date.\"; return false; }");
+        // a whole-number column is a number box: a double (NaN = blank) checked for being whole and in range, then cast back
+        Expect.Contains(viewModel, "private double _hoursDonated = double.NaN;");
+        Expect.Contains(viewModel, "if (double.IsNaN(HoursDonated))");
+        Expect.Contains(viewModel, "else if (HoursDonated != Math.Floor(HoursDonated)) { ErrorMessage = \"Hours Donated must be a whole number.\"; return false; }");
+        Expect.Contains(viewModel, "else { entity.HoursDonated = (int)HoursDonated; }");
+        // a date column is a calendar picker holding a nullable DateTimeOffset; saving keeps the stored time of day
+        Expect.Contains(viewModel, "private DateTimeOffset? _whenDonated;");
+        Expect.Contains(viewModel, "if (WhenDonated is null)\n        {\n            ErrorMessage = \"When Donated is required.\"; return false;");
+        Expect.Contains(viewModel, "entity.WhenDonated = WhenDonated.Value.Date + _whenDonatedTime;");
         Expect.Contains(viewModel, "entity.Note = string.IsNullOrWhiteSpace(Note) ? null : Note;"); // nullable text
         Expect.Contains(viewModel, "await _repo.AddAsync(entity);");
         Expect.Contains(viewModel, "await _repo.UpdateAsync(entity.DonateLeaveId, entity);");
@@ -527,7 +534,7 @@ public class TemplateRenderingTests
         // and keeps its raw property name as the header. Found live: the Customer Monthly Summarys list
         // screen already shows "Customer" for its own resolved column; a real user asked for the same here.
         Expect.Contains(viewModel, "new(StringComparer.OrdinalIgnoreCase)\n    {\n        [\"ProductId\"] = \"Product\",\n    };");
-        Expect.Contains(viewModel, "HeaderLabelForOrderLineGrid.TryGetValue(name, out string? label) ? label : name");
+        Expect.Contains(viewModel, "HeaderLabelForOrderLineGrid.TryGetValue(name, out string? label) ? label : SpacedHeader(name)");
     }
 
     // ------------------------------------------------------------------ TS_DetailMasterComponent
@@ -1386,7 +1393,7 @@ public class TemplateRenderingTests
     {
         var html = GeneratedFiles.Split(await Render("TS_Component_v1.tt", Sample.AccountRef())).Single(f => f.RelativePath.EndsWith(".html")).Content;
 
-        Expect.Contains(html, "<th>Full Name</th>");
+        Expect.Contains(html, "<th>Full</th>");
         Expect.Contains(html, "<th>List ID</th>");
         Expect.DoesNotContain(html, "accountRefID }}");     // the key is not a grid column
         Expect.DoesNotContain(html, "id=\"accountRefAccountRefID\"");   // nor a form field
@@ -1687,7 +1694,7 @@ public class TemplateRenderingTests
         var allNumeric = Sample.Table("Metric", [Sample.Column("MetricId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("Value", SqlDbType.Int, ordinal: 2)]);
         string withoutSearch = await Render("TSX_Api_v1.tt", allNumeric);
         Expect.Contains(withoutSearch, "export interface MetricPagedResult {");
-        Expect.Contains(withoutSearch, "getPage: (pageNumber: number, pageSize: number, filters: {} = {}) => {");
+        Expect.Contains(withoutSearch, "getPage: (pageNumber: number, pageSize: number, _filters: {} = {}) => {");
         Expect.Contains(withoutSearch, "return request<MetricPagedResult>(`${apiUrl}/search?${params.toString()}`);");
     }
 

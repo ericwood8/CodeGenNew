@@ -30,14 +30,22 @@ public partial class ProjectSettingsDialogViewModel : StatusMessageViewModel
         ["EntityNamespace"] = "blank = <ProjectName>.App.Entities",
         ["MinYear"] = $"blank = {ProjectSettings.DefaultMinYear}",
         ["MaxYear"] = $"blank = {ProjectSettings.DefaultMaxYear}",
+        ["CurrencyCode"] = "ISO currency code for money fields; blank = USD",
         ["ViewsFolder"] = "blank = the template's own folder",
         ["ViewModelsFolder"] = "blank = the template's own folder",
         ["Usings"] = "comma-separated namespaces every generated file should use",
         ["DetailMasterTables"] = "comma-separated table names whose Add/Edit dialog is a Detail-Master dialog (with child grids)",
-        ["NoLookupParents"] = "comma-separated table names shown as a number, not a drop-down",
-        ["NoRepositoryTables"] = "comma-separated table names that get no repository",
-        ["NoApiTables"] = "comma-separated table names that get no API",
-        ["NoNavigationTables"] = "comma-separated table names that get no navigation properties"
+        ["HiddenParents"] = "comma-separated tables whose foreign key columns the TypeScript forms hide",
+        ["ModelFileOverrides"] = "Table=file pairs for model files not named after the table, e.g. DepartmentTeam=department,ProjectTask=project",
+        ["BaseEntity"] = "base class of generated entities; blank = BaseEntity",
+        ["BaseNameActiveEntity"] = "base class for Name + IsActive tables; blank = BaseNameActiveEntity",
+        ["EnumTables"] = "comma-separated enum tables (no entity, repository or API); blank = decided from each table's shape",
+        ["EnumNameSuffixes"] = "comma-separated name endings that mark an enum table; blank = Type, Types, Code, Codes, Status, Kind",
+        ["EnumMaxRows"] = $"a lookup table with more rows than this is not an enum; blank = {ProjectSettings.DefaultEnumMaxRows}",
+        ["NoLookupParents"] = "overrides EnumTables for this one question: tables whose foreign key is a number box, not a drop-down",
+        ["NoRepositoryTables"] = "overrides EnumTables for this one question: tables that get no repository",
+        ["NoApiTables"] = "overrides EnumTables for this one question: tables that get no API or TypeScript model/screen",
+        ["NoNavigationTables"] = "overrides EnumTables for this one question: tables referenced without a navigation property"
     };
 
     private readonly string _projectsDirectory;

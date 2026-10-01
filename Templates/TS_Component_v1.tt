@@ -38,8 +38,13 @@
         ["ProjectTask"] = "project"
     };
     // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
-    noLookupParents = Project.NoLookupParents ?? noLookupParents;
-    noApiTables = Project.NoApiTables ?? noApiTables;
+    modelFileOf = Project.ModelFileOverrides ?? modelFileOf;
+    bool IsHiddenParent(string table) => Project.HiddenParents is { } hidden ? hidden.Contains(table, StringComparer.OrdinalIgnoreCase) : table.Equals(hiddenParent, StringComparison.OrdinalIgnoreCase);
+    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
+    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // only used when no project is chosen.
+    bool NoApi(string table, LookupShape shape) => Project.NoApi(table, shape) ?? noApiTables.Contains(table, StringComparer.OrdinalIgnoreCase);
+    bool NoLookup(string table, LookupShape shape) => Project.NoLookup(table, shape) ?? noLookupParents.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------
@@ -135,7 +140,7 @@
     }
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
-    if (noApiTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase))
+    if (NoApi(Model.TableName, Model.LookupShape))
     {
         Error($"TS_Component writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
     }
@@ -176,14 +181,14 @@
         // ---- the columns on the screen: Name first, then table order
         var shown = Model.Columns
             .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity
-                        && !(fkByColumn.TryGetValue(c.Name, out var hfk) && hfk.ReferencedTable.Equals(hiddenParent, StringComparison.OrdinalIgnoreCase)))
+                        && !(fkByColumn.TryGetValue(c.Name, out var hfk) && IsHiddenParent(hfk.ReferencedTable)))
             .OrderBy(c => c.Name == "Name" ? 0 : 1).ThenBy(c => c.OrdinalPosition)
             .ToList();
 
         // ---- lookups: one list + one "name of" method per distinct parent table
         ForeignKeyModel LookupOf(ColumnModel c) =>
             fkByColumn.TryGetValue(c.Name, out var fk)
-            && !noLookupParents.Contains(fk.ReferencedTable, StringComparer.OrdinalIgnoreCase)
+            && !NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape)
             && fk.ReferencedDisplayColumns.Count > 0
                 ? fk : null;
         var parents = shown.Select(c => LookupOf(c)).Where(fk => fk is not null)
@@ -213,10 +218,12 @@
         // ---- naming on the page
         string Id(ColumnModel c) => variable + UpperFirst(Camel(c.Name));   // holidayName
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
-        string LabelOf(ColumnModel c) => c.SqlType == SqlDbType.Bit ? Regex.Replace(Label(c.Name), "^Is ", "") + "?" : Label(c.Name);
+        string LabelOf(ColumnModel c) => c.SqlType == SqlDbType.Bit ? Label(c.Name) + "?" : Label(c.Name);
         var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
         // long text is left out of the grid to keep it readable -- unless that would leave nothing to show but the buttons
         if (gridColumns.Count == 0) gridColumns = shown.ToList();
+        // A long text column (a Notes column, ...) is listed last so a long value cannot push the other columns off screen.
+        gridColumns = gridColumns.OrderBy(c => c.IsLongTextColumn ? 1 : 0).ToList();
 
         var css = new StringBuilder(); // stays empty
         var html = new StringBuilder();
@@ -250,7 +257,7 @@
         H("        <thead>");
         H("            <tr>");
         foreach (var c in gridColumns)
-            H($"                <th>{LabelOf(c)}</th>");
+            H($"                <th>{GridCaption.For(c, LabelOf(c))}</th>");
         H("                <th>Actions</th>");
         H("            </tr>");
         H("        </thead>");
@@ -264,6 +271,7 @@
             if (lookup is not null) cell = $"{{{{ {parentOf[lookup.ReferencedTable].NameMethod}({prop}) }}}}";
             else if (c.SqlType == SqlDbType.Bit) cell = $"{{{{ {prop} ? \"Yes\" : \"No\" }}}}";
             else if (IsDate(c)) cell = $"{{{{ {prop} | date:'MM/dd/yyyy' }}}}";
+            else if (c.IsCurrencyColumn && !c.IsIntegerColumn) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{d}-{d}' }}}}"; }
             else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{{ {prop} | number:'1.2-2' }}}}";
             else cell = $"{{{{ {prop} }}}}";
             H($"                <td>{cell}</td>");
@@ -316,7 +324,9 @@
                 string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? " step=\"" + "0." + new string('0', c.Scale!.Value - 1) + "1\""
                             : c.SqlType is SqlDbType.Money or SqlDbType.SmallMoney ? " step=\"0.01\""
                             : c.SqlType is SqlDbType.Float or SqlDbType.Real ? " step=\"any\"" : "";
-                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{step} placeholder=\"{PlaceholderFor(c)}\"{req}>");
+                // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
+                string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\"" : "";
+                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{step}{range} placeholder=\"{PlaceholderFor(c)}\"{req}>");
             }
             else if (IsMultiline(c))
             {

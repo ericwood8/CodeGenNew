@@ -430,3 +430,19 @@ public class TableModelSearchableColumnsTests
         Assert.IsEmpty(allNumeric.SearchableColumns);
     }
 }
+
+[TestClass]
+public class PluralizerYTests
+{
+    [TestMethod]
+    [DataRow("Summary", "Summaries")]
+    [DataRow("customermonthlysummary", "customermonthlysummaries")]
+    [DataRow("Category", "Categories")]
+    [DataRow("Holiday", "Holidays")]
+    [DataRow("Key", "Keys")]
+    [DataRow("Movie", "Movies")]
+    [DataRow("Address", "Addresses")]
+    [DataRow("y", "ys")]
+    public void A_word_ending_in_a_consonant_and_y_becomes_ies(string word, string expected) =>
+        Assert.AreEqual(expected, word.Pluralize());
+}

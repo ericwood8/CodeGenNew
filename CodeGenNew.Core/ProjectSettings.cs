@@ -24,8 +24,8 @@ public class ProjectSettings
     public static readonly IReadOnlyList<string> Keys =
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
-        "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder",
-        "Usings", "DetailMasterTables", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables"
+        "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables"
     ];
 
     private readonly Dictionary<string, string> _values;
@@ -152,8 +152,112 @@ public class ProjectSettings
     /// <summary> Tables whose Add/Edit dialog is a <Table>DetailMasterDialog (WinUI3_DetailMasterScreen) instead of the
     /// plain <Table>DetailDialog: a list screen and a parent's child grid open the one that exists. </summary>
     public string[]? DetailMasterTables => List("DetailMasterTables");
-    public string[]? NoLookupParents => List("NoLookupParents");
-    public string[]? NoRepositoryTables => List("NoRepositoryTables");
-    public string[]? NoApiTables => List("NoApiTables");
-    public string[]? NoNavigationTables => List("NoNavigationTables");
+
+    /// <summary> Tables whose foreign key columns a generated TypeScript form hides (a system or display table the
+    /// person never picks from). Null: no project, the template keeps its own. A chosen project that lists none hides none. </summary>
+    public string[]? HiddenParents => List("HiddenParents");
+
+    /// <summary> Table -> TypeScript model file name, for the tables whose model file is NOT named by the usual
+    /// convention (the table's base name, lower-cased, which is also what TS_Model writes). Written in the project file
+    /// as <c>ModelFileOverrides=DepartmentTeam=department,ProjectTask=project</c>. Null: no project, the template keeps
+    /// its own map. A chosen project that lists none uses the convention for every table. </summary>
+    public Dictionary<string, string>? ModelFileOverrides
+    {
+        get
+        {
+            if (ProjectName is null)
+                return null;
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string pair in List("ModelFileOverrides") ?? [])
+            {
+                int equals = pair.IndexOf('=');
+                if (equals > 0 && equals < pair.Length - 1)
+                    map[pair[..equals].Trim()] = pair[(equals + 1)..].Trim();
+            }
+            return map;
+        }
+    }
+
+    /// <summary> Base class of a generated entity; null keeps the template's own ("BaseEntity"). </summary>
+    public string? BaseEntity => Explicit("BaseEntity");
+    /// <summary> Base class of a generated entity for a Name + IsActive table; null keeps the template's own. </summary>
+    public string? BaseNameActiveEntity => Explicit("BaseNameActiveEntity");
+
+    /// <summary> The same question as <see cref="IsEnumTable(string, LookupShape)"/> asked of a whole table model. </summary>
+    public bool? IsEnumTable(TableModel model) => IsEnumTable(model.TableName, model.LookupShape);
+    /// <summary> ...and of the table a foreign key points at. </summary>
+    public bool? IsEnumTable(ForeignKeyModel foreignKey) => IsEnumTable(foreignKey.ReferencedTable, foreignKey.ReferencedLookupShape);
+
+    /// <summary> The whole-number limits a number box for this column should enforce: what its name suggests (a year runs from
+    /// MinYear to MaxYear, a month 1-12, a percentage 0-100, a count or sequence from 0), always inside the limits of its SQL
+    /// type. Null for a column that is not a whole number. </summary>
+    public NumericRange? RangeFor(ColumnModel column)
+    {
+        if (!column.IsIntegerColumn)
+            return null;
+        var type = NumericClassifier.TypeRange(column.SqlType);
+        (long min, long max) = column.NumericKind switch
+        {
+            NumericKind.Year => (MinYear, MaxYear),
+            NumericKind.Month => (1L, 12L),
+            NumericKind.DayOfMonth => (1L, 31L),
+            NumericKind.Quarter => (1L, 4L),
+            NumericKind.WeekNumber => (1L, 53L),
+            NumericKind.Percentage => (0L, 100L),
+            NumericKind.Count or NumericKind.Sequence => (0L, type.Max),
+            _ => (type.Min, type.Max)
+        };
+        return new NumericRange(Math.Max(min, type.Min), Math.Min(max, type.Max));
+    }
+
+    /// <summary> The ISO 4217 code (USD, EUR, ...) a currency number box formats with. </summary>
+    public string CurrencyCode => Explicit("CurrencyCode")?.ToUpperInvariant() ?? "USD";
+
+    public const int DefaultEnumMaxRows = 25;
+
+    /// <summary> A lookup table with more rows than this is not treated as an enum, however small its shape. </summary>
+    /// <summary> A table whose name ends in one of these (and has an integer key and a text column) is treated as an enum
+    /// even when its shape is not a bare lookup table -- the default suits names like LeaveType and MeterTypeCodes. </summary>
+    public string[] EnumNameSuffixes =>
+        Explicit("EnumNameSuffixes") is not null ? List("EnumNameSuffixes")! : ["Type", "Types", "Code", "Codes", "Status", "Kind"];
+
+    private bool NameSaysEnum(string table) =>
+        EnumNameSuffixes.Any(s => table.Length > s.Length && table.EndsWith(s, StringComparison.OrdinalIgnoreCase));
+
+    public int EnumMaxRows => int.TryParse(Explicit("EnumMaxRows"), out int rows) ? rows : DefaultEnumMaxRows;
+
+    /// <summary> The tables listed in the project file as enums, or null when it does not list any (then the schema
+    /// decides, see <see cref="IsEnumTable"/>). </summary>
+    public string[]? EnumTables => Explicit("EnumTables") is null ? null
+        : List("EnumTables") is { Length: 1 } one && one[0].Equals("none", StringComparison.OrdinalIgnoreCase) ? [] : List("EnumTables");
+
+    /// <summary> Whether <paramref name="table"/> is one of this project's enum tables -- the ones with no entity,
+    /// repository or API of their own. Null when no project is chosen (the caller keeps its own built-in list). A
+    /// project's own EnumTables list wins; without one, a table is an enum when its schema looks like a lookup table
+    /// (or its name ends in one of <see cref="EnumNameSuffixes"/> and it has an integer key and a text column) and it has
+    /// at most <see cref="EnumMaxRows"/> rows. </summary>
+    public bool? IsEnumTable(string table, LookupShape shape)
+    {
+        if (ProjectName is null)
+            return null;
+        if (EnumTables is { } listed)
+            return listed.Contains(table, StringComparer.OrdinalIgnoreCase);
+        return shape.RowCount <= EnumMaxRows && (shape.LooksLikeLookup || (shape.HasIntKeyAndText && NameSaysEnum(table)));
+    }
+
+    // Each of the four questions the templates ask about an enum table has its own optional list in the project file
+    // (it wins for that question alone); otherwise they all share IsEnumTable's answer.
+    private bool? Resolve(string key, string table, LookupShape shape) =>
+        ProjectName is null ? null
+        : Explicit(key) is not null ? List(key)!.Contains(table, StringComparer.OrdinalIgnoreCase)
+        : IsEnumTable(table, shape);
+
+    /// <summary> No API / TypeScript model or screen for this table. Null: no project, use the template's own list. </summary>
+    public bool? NoApi(string table, LookupShape shape) => Resolve("NoApiTables", table, shape);
+    /// <summary> No repository (and no API class) for this table. </summary>
+    public bool? NoRepository(string table, LookupShape shape) => Resolve("NoRepositoryTables", table, shape);
+    /// <summary> No navigation property to this table on the entity or TypeScript model that references it. </summary>
+    public bool? NoNavigation(string table, LookupShape shape) => Resolve("NoNavigationTables", table, shape);
+    /// <summary> A foreign key to this table is a plain number box rather than a drop-down of its rows. </summary>
+    public bool? NoLookup(string table, LookupShape shape) => Resolve("NoLookupParents", table, shape);
 }

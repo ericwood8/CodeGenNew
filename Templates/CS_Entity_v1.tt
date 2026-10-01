@@ -25,9 +25,14 @@
         "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role"
     };
     // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    baseEntity = Project.BaseEntity ?? baseEntity;
+    baseNameActiveEntity = Project.BaseNameActiveEntity ?? baseNameActiveEntity;
     entityNamespace = Project.EntityNamespace ?? entityNamespace;
     usings = Project.Usings ?? usings;
-    noNavigationTables = Project.NoNavigationTables ?? noNavigationTables;
+    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
+    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // only used when no project is chosen.
+    bool NoNavigation(string table, LookupShape shape) => Project.NoNavigation(table, shape) ?? noNavigationTables.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------
@@ -113,7 +118,7 @@
         foreach (var c in Model.Columns.Where(c => fkByColumn.ContainsKey(c.Name) && !c.IsPrimaryKey))
         {
             var fk = fkByColumn[c.Name];
-            if (noNavigationTables.Contains(fk.ReferencedTable, StringComparer.OrdinalIgnoreCase)) continue;
+            if (NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape)) continue;
             string role = c.Name.Length > 2 && c.Name.EndsWith("Id", StringComparison.Ordinal) ? c.Name[..^2] : c.Name + "Ref";
             // a referenced table named like this one would make a property of the class's own type; a role that repeats
             // another name cannot be a second property -- leave both as plain columns

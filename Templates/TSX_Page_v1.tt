@@ -37,8 +37,13 @@
         ["ProjectTask"] = "project"
     };
     // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
-    noLookupParents = Project.NoLookupParents ?? noLookupParents;
-    noApiTables = Project.NoApiTables ?? noApiTables;
+    modelFileOf = Project.ModelFileOverrides ?? modelFileOf;
+    bool IsHiddenParent(string table) => Project.HiddenParents is { } hidden ? hidden.Contains(table, StringComparer.OrdinalIgnoreCase) : table.Equals(hiddenParent, StringComparison.OrdinalIgnoreCase);
+    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
+    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // only used when no project is chosen.
+    bool NoApi(string table, LookupShape shape) => Project.NoApi(table, shape) ?? noApiTables.Contains(table, StringComparer.OrdinalIgnoreCase);
+    bool NoLookup(string table, LookupShape shape) => Project.NoLookup(table, shape) ?? noLookupParents.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------
@@ -159,7 +164,7 @@
     }
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
-    if (noApiTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase))
+    if (NoApi(Model.TableName, Model.LookupShape))
     {
         Error($"TSX_Page writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
     }
@@ -200,13 +205,13 @@
 
         var shown = Model.Columns
             .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity
-                        && !(fkByColumn.TryGetValue(c.Name, out var hfk) && hfk.ReferencedTable.Equals(hiddenParent, StringComparison.OrdinalIgnoreCase)))
+                        && !(fkByColumn.TryGetValue(c.Name, out var hfk) && IsHiddenParent(hfk.ReferencedTable)))
             .OrderBy(c => c.Name == "Name" ? 0 : 1).ThenBy(c => c.OrdinalPosition)
             .ToList();
 
         ForeignKeyModel LookupOf(ColumnModel c) =>
             fkByColumn.TryGetValue(c.Name, out var fk)
-            && !noLookupParents.Contains(fk.ReferencedTable, StringComparer.OrdinalIgnoreCase)
+            && !NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape)
             && fk.ReferencedDisplayColumns.Count > 0
                 ? fk : null;
         var parents = shown.Select(c => LookupOf(c)).Where(fk => fk is not null)
@@ -237,9 +242,11 @@
         // ---- naming on the page
         string Id(ColumnModel c) => stem + "-" + Camel(c.Name).ToLowerInvariant();
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
-        string LabelOf(ColumnModel c) => c.SqlType == SqlDbType.Bit ? Regex.Replace(Label(c.Name), "^Is ", "") + "?" : Label(c.Name);
+        string LabelOf(ColumnModel c) => c.SqlType == SqlDbType.Bit ? Label(c.Name) + "?" : Label(c.Name);
         var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
         if (gridColumns.Count == 0) gridColumns = shown.ToList();
+        // A long text column (a Notes column, ...) is listed last so a long value cannot push the other columns off screen.
+        gridColumns = gridColumns.OrderBy(c => c.IsLongTextColumn ? 1 : 0).ToList();
 
         var ts = new StringBuilder();
         void T(string s = "") => ts.Append(s).Append('\n');
@@ -416,7 +423,7 @@
         T("        <thead>");
         T("          <tr>");
         foreach (var c in gridColumns)
-            T($"            <th>{LabelOf(c)}</th>");
+            T($"            <th>{GridCaption.For(c, LabelOf(c))}</th>");
         T("            <th>Actions</th>");
         T("          </tr>");
         T("        </thead>");
@@ -428,10 +435,12 @@
             string prop = $"{variable}.{Camel(c.Name)}";
             var lookup = LookupOf(c);
             string cell;
+            // A nullable column's value may be undefined: optional chaining keeps a strict (noUncheckedIndexedAccess/strictNullChecks) build compiling.
             if (lookup is not null) cell = $"{{{parentOf[lookup.ReferencedTable].NameMethod}({prop})}}";
             else if (c.SqlType == SqlDbType.Bit) cell = $"{{{prop} ? 'Yes' : 'No'}}";
-            else if (IsDate(c)) cell = $"{{{prop}.substring(0, 10)}}";
-            else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{prop}.toFixed(2)}}";
+            else if (IsDate(c)) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 10)}}";
+            else if (c.IsCurrencyColumn && !c.IsIntegerColumn) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {d}, maximumFractionDigits: {d} }})}}"; }
+            else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toFixed(2)}}";
             else cell = $"{{{prop}}}";
             T($"              <td>{cell}</td>");
         }
@@ -509,6 +518,12 @@
                 T("              type=\"number\"");
                 T($"              aria-label=\"{LabelOf(c)}\"");
                 if (step is not null) T($"              step=\"{step}\"");
+                // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
+                if (Project.RangeFor(c) is { } range)
+                {
+                    T($"              min=\"{range.Min}\"");
+                    T($"              max=\"{range.Max}\"");
+                }
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: Number(event.target.value) }})}}");
                 T($"              placeholder=\"{PlaceholderFor(c)}\"");

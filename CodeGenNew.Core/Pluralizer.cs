@@ -1,7 +1,7 @@
 namespace CodeGenNew.Core;
 
 /// <summary> Best-effort English pluralization for turning a table's stem name into a route segment or a
-/// list-holding variable/property name (e.g. "Movie" -> "Movies", "Holiday" -> "Holidays"). Shared by every
+/// list-holding variable/property name (e.g. "Movie" -> "Movies", "Holiday" -> "Holidays", "Summary" -> "Summaries"). Shared by every
 /// template that builds one of those from a table name, so the same rule -- and the same known limits -- apply
 /// everywhere instead of being copied (and drifting) per template.
 ///
@@ -21,6 +21,9 @@ public static class Pluralizer
     public static string Pluralize(this string word)
     {
         string lower = word.ToLowerInvariant();
+        // A consonant + "y" becomes "ies" (Summary -> Summaries, Category -> Categories); a vowel + "y" just adds "s" (Holiday -> Holidays).
+        if (lower.Length > 1 && lower[^1] == 'y' && "aeiou".IndexOf(lower[^2]) < 0)
+            return word[..^1] + "ies";
         bool needsEs = lower.EndsWith("ss") || lower.EndsWith("x") || lower.EndsWith("z") || lower.EndsWith("ch") || lower.EndsWith("sh");
         return needsEs ? word + "es" : lower.EndsWith("s") ? word : word + "s";
     }

@@ -25,4 +25,8 @@ public class ChildForeignKeyModel
     /// CustomerId) to that referenced table's display name instead of a raw id, the same way a detail screen's
     /// own drop-downs do. Empty unless the model was built with NeedsReferencedDisplayColumns=true. </summary>
     public List<ForeignKeyModel> ReferencingTableForeignKeys { get; init; } = [];
+
+    /// <summary> Every column of the child (referencing) table, so a generated child grid can order, caption and format its columns
+    /// (money as currency, long text last) from the schema. Empty unless the model was built with NeedsReferencedDisplayColumns=true. </summary>
+    public List<ColumnModel> ReferencingTableColumns { get; init; } = [];
 }

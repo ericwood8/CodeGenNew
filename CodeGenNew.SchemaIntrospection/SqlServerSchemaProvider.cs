@@ -300,10 +300,11 @@ public class SqlServerSchemaProvider
         var rules = SpecialLogicColumnsConfig.Load(_specialLogicColumnsConfigPath);
         if (includeReferencedDisplayColumns)
         {
-            foreignKeys = await AttachReferencedDisplayColumnsAsync(connection, foreignKeys, rules, cancellationToken);
             if (childForeignKeys.Count > 0)
                 childForeignKeys = await AttachChildTableOwnKeysAsync(connection, childForeignKeys, rules, cancellationToken);
         }
+        // Always read (the lookup shape of each referenced table); the display columns only when the template asks.
+        foreignKeys = await AttachReferencedDisplayColumnsAsync(connection, foreignKeys, rules, includeReferencedDisplayColumns, cancellationToken);
         var columnNames = rawColumns.Select(c => c.Name).ToList();
 
         var columns = rawColumns.Select(c => BuildColumnModel(c, rules)).ToList();
@@ -337,6 +338,7 @@ public class SqlServerSchemaProvider
             PrimaryKeyColumns = primaryKeyColumns,
             DisplayColumns = columns.SelectDisplayColumns(foreignKeys.SelectMany(fk => fk.ReferencingColumns).ToList()),
             HasReferencedDisplayColumns = includeReferencedDisplayColumns,
+            LookupShape = new LookupShape(LookupShape.Looks(columns, foreignKeys.Count), await ReadRowCountAsync(connection, fullName, cancellationToken), LookupShape.HasKeyAndText(columns)),
             HasRowData = includeRowData,
             Rows = rows,
             ForeignKeys = foreignKeys,
@@ -413,10 +415,20 @@ public class SqlServerSchemaProvider
 
     /// <summary> For each foreign key, reads the referenced table's columns (one catalog query per distinct table) and
     /// records which of them are its display columns. </summary>
+    /// <summary> Approximate row count from the catalog (no table scan): the sum over the heap/clustered-index partitions. </summary>
+    private static async Task<long> ReadRowCountAsync(SqlConnection connection, string fullTableName, CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand(
+            "SELECT COALESCE(SUM(p.rows), 0) FROM sys.partitions p WHERE p.object_id = OBJECT_ID(@fullTableName) AND p.index_id IN (0, 1);", connection);
+        command.Parameters.AddWithValue("@fullTableName", fullTableName);
+        return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken));
+    }
+
     private static async Task<List<ForeignKeyModel>> AttachReferencedDisplayColumnsAsync(
-        SqlConnection connection, List<ForeignKeyModel> foreignKeys, List<SpecialLogicRule> rules, CancellationToken cancellationToken)
+        SqlConnection connection, List<ForeignKeyModel> foreignKeys, List<SpecialLogicRule> rules, bool includeDisplayColumns, CancellationToken cancellationToken)
     {
         var displayColumnsByTable = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var lookupShapeByTable = new Dictionary<string, LookupShape>(StringComparer.OrdinalIgnoreCase);
         var result = new List<ForeignKeyModel>();
 
         foreach (var fk in foreignKeys)
@@ -428,10 +440,16 @@ public class SqlServerSchemaProvider
                     .Select(raw => BuildColumnModel(raw, rules))
                     .ToList();
                 var referencedForeignKeys = await ReadForeignKeysAsync(connection, referencedName, cancellationToken);
-                displayColumns = referencedColumns
-                    .SelectDisplayColumns(referencedForeignKeys.SelectMany(fk => fk.ReferencingColumns).ToList())
-                    .Select(c => c.Name).ToList();
+                displayColumns = includeDisplayColumns
+                    ? referencedColumns
+                        .SelectDisplayColumns(referencedForeignKeys.SelectMany(fk => fk.ReferencingColumns).ToList())
+                        .Select(c => c.Name).ToList()
+                    : [];
                 displayColumnsByTable[referencedName] = displayColumns;
+                lookupShapeByTable[referencedName] = new LookupShape(
+                    LookupShape.Looks(referencedColumns, referencedForeignKeys.Count),
+                    await ReadRowCountAsync(connection, referencedName, cancellationToken),
+                    LookupShape.HasKeyAndText(referencedColumns));
             }
 
             result.Add(new ForeignKeyModel
@@ -441,7 +459,8 @@ public class SqlServerSchemaProvider
                 ReferencedSchema = fk.ReferencedSchema,
                 ReferencedTable = fk.ReferencedTable,
                 ReferencedColumns = fk.ReferencedColumns,
-                ReferencedDisplayColumns = displayColumns
+                ReferencedDisplayColumns = displayColumns,
+                ReferencedLookupShape = lookupShapeByTable[referencedName]
             });
         }
 
@@ -466,7 +485,7 @@ public class SqlServerSchemaProvider
             var childPrimaryKeyColumns = childColumns
                 .Where(c => c.IsPrimaryKey).OrderBy(c => c.OrdinalPosition).Select(c => c.Name).ToList();
             var childForeignKeysOfItsOwn = await ReadForeignKeysAsync(connection, childFullName, cancellationToken);
-            childForeignKeysOfItsOwn = await AttachReferencedDisplayColumnsAsync(connection, childForeignKeysOfItsOwn, rules, cancellationToken);
+            childForeignKeysOfItsOwn = await AttachReferencedDisplayColumnsAsync(connection, childForeignKeysOfItsOwn, rules, true, cancellationToken);
 
             result.Add(new ChildForeignKeyModel
             {
@@ -476,7 +495,8 @@ public class SqlServerSchemaProvider
                 ReferencingColumns = child.ReferencingColumns,
                 ReferencedColumns = child.ReferencedColumns,
                 ReferencingPrimaryKeyColumns = childPrimaryKeyColumns,
-                ReferencingTableForeignKeys = childForeignKeysOfItsOwn
+                ReferencingTableForeignKeys = childForeignKeysOfItsOwn,
+                ReferencingTableColumns = childColumns
             });
         }
         return result;
@@ -545,6 +565,8 @@ public class SqlServerSchemaProvider
             IsStringColumn = isString,
             IsDateColumn = isDate,
             IsBooleanColumn = isBoolean,
+            NumericKind = isInteger ? NumericClassifier.Classify(raw.Name) : NumericKind.None,
+            IsCurrencyColumn = isMoney || (sqlType == SqlDbType.Decimal && NumericClassifier.IsCurrencyName(raw.Name)),
             IsAuditColumn = raw.Name.IsAuditColumn(),
             IsCreateDateColumn = MatchesCategory(rules, "CreateDateColumn", raw.Name),
             DisplayRank = IsDisplayEligibleType(sqlType) ? RankInCategory(rules, "DisplayColumn", raw.Name) : null,

@@ -24,7 +24,10 @@
     contextType = Project.ContextName ?? contextType;
     apiNamespace = Project.ApiNamespace ?? apiNamespace;
     usings = Project.Usings ?? usings;
-    noRepositoryTables = Project.NoRepositoryTables ?? noRepositoryTables;
+    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
+    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // only used when no project is chosen.
+    bool NoRepository(string table, LookupShape shape) => Project.NoRepository(table, shape) ?? noRepositoryTables.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------
@@ -64,8 +67,8 @@
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
     bool supported = keyColumn is not null && keyColumn.SqlType == SqlDbType.Int
-                     && !noRepositoryTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase);
-    if (noRepositoryTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase))
+                     && !NoRepository(Model.TableName, Model.LookupShape);
+    if (NoRepository(Model.TableName, Model.LookupShape))
     {
         Error($"API_Crud writes no API for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noRepositoryTables (an enum, a *Type lookup table, or a table with no entity class), so it has no repository for the handlers to use.");
     }

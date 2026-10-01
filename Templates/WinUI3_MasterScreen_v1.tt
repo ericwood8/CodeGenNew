@@ -40,7 +40,10 @@
     detailMasterTables = Project.DetailMasterTables ?? detailMasterTables;
     viewsFolder = Project.ViewsFolder ?? viewsFolder;
     viewModelsFolder = Project.ViewModelsFolder ?? viewModelsFolder;
-    noLookupParents = Project.NoLookupParents ?? noLookupParents;
+    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
+    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // only used when no project is chosen.
+    bool NoLookup(string table, LookupShape shape) => Project.NoLookup(table, shape) ?? noLookupParents.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------
@@ -177,13 +180,15 @@
 
         var shown = Model.Columns
             .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && IsEditableType(c))
-            .OrderBy(c => c.OrdinalPosition)
+            // A long text column (varchar(max), a Notes column, ...) goes last so a long value cannot push the other columns off screen.
+            .OrderBy(c => c.IsLongTextColumn ? 1 : 0)
+            .ThenBy(c => c.OrdinalPosition)
             .ToList();
 
         ForeignKeyModel LookupOf(ColumnModel c) =>
             c.SqlType == SqlDbType.Int
             && fkByColumn.TryGetValue(c.Name, out var fk)
-            && !noLookupParents.Contains(fk.ReferencedTable, StringComparer.OrdinalIgnoreCase)
+            && !NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape)
             && fk.ReferencedDisplayColumns.Count > 0
                 ? fk : null;
 
@@ -304,7 +309,7 @@
         for (int i = 0; i < shown.Count; i++)
         {
 #>
-                            <TextBlock Grid.Column="<#= i #>" Text="<#= Label(shown[i].Name) #>" FontWeight="SemiBold" />
+                            <TextBlock Grid.Column="<#= i #>" Text="<#= GridCaption.For(shown[i], Label(shown[i].Name)) #>" FontWeight="SemiBold" />
 <#
         }
 #>
@@ -591,6 +596,13 @@ public partial class <#= table #>ListViewModel : ObservableObject
             {
 #>
             cells.Add(e.<#= prop #><#= c.IsNullable ? "?.ToString(\"MM/dd/yyyy\") ?? \"\"" : ".ToString(\"MM/dd/yyyy\")" #>);
+<#
+            }
+            else if (c.IsCurrencyColumn && !c.IsIntegerColumn)
+            {
+                // currency, in the Windows regional currency format with the column's own number of decimals (the editor uses the project's CurrencyCode)
+#>
+            cells.Add(e.<#= prop #><#= c.IsNullable ? $"?.ToString(\"C{NumericClassifier.CurrencyDigits(c)}\") ?? \"\"" : $".ToString(\"C{NumericClassifier.CurrencyDigits(c)}\")" #>);
 <#
             }
             else if (IsText(c))
