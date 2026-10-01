@@ -1,5 +1,6 @@
 <#@ template language="C#" #>
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Text" #>
 <#@ import namespace="System.Text.RegularExpressions" #>
@@ -15,6 +16,9 @@
     // Namespaces the generated file must "using" (for example "MyApp.Entities"; leave empty when the project supplies them through
     // global usings, as TimeEntryServer does). Each entry becomes a using line in the generated file.
     string[] usings = { };
+    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    entityNamespace = Project.EntityNamespace ?? entityNamespace;
+    usings = Project.Usings ?? usings;
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------

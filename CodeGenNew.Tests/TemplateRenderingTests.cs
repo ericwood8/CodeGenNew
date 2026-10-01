@@ -17,7 +17,8 @@ public class TemplateRenderingTests
     {
         var result = await Run(templateFile, model);
         Assert.IsTrue(result.Success, $"{templateFile} failed for {model.TableName}: {string.Join(" | ", result.Errors)}");
-        return result.GeneratedText!;
+        // A template checked out with CRLF line endings (git autocrlf) renders CRLF; the assertions below spell line breaks as LF.
+        return result.GeneratedText!.Replace("\r\n", "\n");
     }
 
     private static async Task<string> Refusal(string templateFile, TableModel model)

@@ -27,6 +27,11 @@
                     <FontIcon Glyph="&#xE8B7;" />
                 </AppBarButton.Icon>
             </AppBarButton>
+            <AppBarButton Label="Project" FontSize="24" AccessKey="P" Click="OnProjectSettingsClick" Loaded="OnAppBarButtonLoaded" ToolTipService.ToolTip="Namespaces and names used in generated files for a project (Alt+P)">
+                <AppBarButton.Icon>
+                    <FontIcon Glyph="&#xE713;" />
+                </AppBarButton.Icon>
+            </AppBarButton>
             <AppBarButton Label="Templates" FontSize="24" AccessKey="T" Click="OnManageTemplatesClick" Loaded="OnAppBarButtonLoaded" ToolTipService.ToolTip="Add, rename, delete, or edit .tt templates (Alt+T)">
                 <AppBarButton.Icon>
                     <ImageIcon Source="{x:Bind ViewModel.Icons.ManageTemplates, Mode=OneWay}" />

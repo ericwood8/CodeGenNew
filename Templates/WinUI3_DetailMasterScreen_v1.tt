@@ -1,5 +1,6 @@
 <#@ template language="C#" #>
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Data" #>
 <#@ import namespace="System.Text.RegularExpressions" #>
@@ -16,12 +17,25 @@
     string contextNamespace = "TimeEntry.Common.Data";
     string[] usings = { };
     string viewsFolder = "Views";
+    // Tables whose Add/Edit dialog is a <Table>DetailMasterDialog (WinUI3_DetailMasterScreen.tt) rather than a plain
+    // <Table>DetailDialog -- a list screen or a parent's child grid opens the one that exists.
+    string[] detailMasterTables = { };
     string viewModelsFolder = "ViewModels";
     string[] noLookupParents =
     {
         "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
         "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role", "DepartmentTeam", "ProjectTask"
     };
+    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    viewNamespace = Project.ViewNamespace ?? viewNamespace;
+    viewModelNamespace = Project.ViewModelNamespace ?? viewModelNamespace;
+    contextType = Project.ContextName ?? contextType;
+    contextNamespace = Project.ContextNamespace ?? contextNamespace;
+    usings = Project.Usings ?? usings;
+    detailMasterTables = Project.DetailMasterTables ?? detailMasterTables;
+    viewsFolder = Project.ViewsFolder ?? viewsFolder;
+    viewModelsFolder = Project.ViewModelsFolder ?? viewModelsFolder;
+    noLookupParents = Project.NoLookupParents ?? noLookupParents;
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------
@@ -210,7 +224,15 @@
     DefaultButton="Primary"
     PrimaryButtonClick="OnPrimaryButtonClick">
 
-    <ScrollViewer MinWidth="560" MaxHeight="680">
+    <!-- A ContentDialog's width is capped by these two theme resources (about 320-548 by default), NOT by its own
+         MinWidth/MaxWidth or by anything inside it, which is why setting those has no effect. Raising the cap
+         lets the ScrollViewer's own MinWidth below (and the content) decide the width, up to the window. -->
+    <ContentDialog.Resources>
+        <x:Double x:Key="ContentDialogMinWidth">320</x:Double>
+        <x:Double x:Key="ContentDialogMaxWidth">1400</x:Double>
+    </ContentDialog.Resources>
+
+    <ScrollViewer MinWidth="560" MaxHeight="680" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Auto">
         <StackPanel Spacing="12">
             <InfoBar Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
                      Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" />
@@ -267,7 +289,8 @@
 
             <TextBlock Text="<#= Words(child.Table) #>" Style="{ThemeResource BodyStrongTextBlockStyle}" />
             <!-- Boxed the same way as WinUI3_MasterScreen.tt's own grid: a line around the whole grid, a line
-                 under the header, and a line under every row — see that template's 2026-09-27 styling note. -->
+                 under the header, and a line under every row — see that template's 2026-09-27 styling note.
+                 Clicking a row opens that child row's own dialog (see On<#= child.Table #>ItemClick in the code-behind). -->
             <Border BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -289,7 +312,8 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </Border>
-                    <ListView Grid.Row="1" ItemsSource="{x:Bind ViewModel.<#= child.Var #>Rows}" IsEnabled="False" MaxHeight="200" Padding="0">
+                    <ListView Grid.Row="1" ItemsSource="{x:Bind ViewModel.<#= child.Var #>Rows}"
+                              IsItemClickEnabled="True" ItemClick="On<#= child.Table #>ItemClick" MaxHeight="200" Padding="0">
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <Border BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="0,0,0,1" Padding="8,4">
@@ -334,11 +358,13 @@ namespace <#= viewNamespace #>;
 // Assumes nothing from CodeGenNew.App itself -- a plain ContentDialog, no shared house-style helper.
 public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
 {
+    private readonly <#= contextType #> _context; // for the child dialogs a clicked row opens
     public <#= table #>DetailMasterViewModel ViewModel { get; }
 
     /// <param name="editing"> The row being edited, or null to add a new one (child grids only load for an existing row). </param>
     public <#= table #>DetailMasterDialog(<#= contextType #> context, <#= table #>? editing = null)
     {
+        _context = context;
         ViewModel = new <#= table #>DetailMasterViewModel(context, editing);
         InitializeComponent();
         Loaded += async (_, _) => await ViewModel.LoadAsync();
@@ -358,6 +384,28 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
             deferral.Complete();
         }
     }
+<#
+        foreach (var child in children)
+        {
+            string childDialog = child.Table + (detailMasterTables.Contains(child.Table, StringComparer.OrdinalIgnoreCase) ? "DetailMasterDialog" : "DetailDialog");
+#>
+
+    // Opens the clicked <#= child.Table #> row's own dialog. Only one ContentDialog can be open at a time in WinUI3, so this
+    // one hides itself first, and deliberately does NOT reopen itself afterwards: Hide() resolves this dialog's own
+    // ShowAsync() immediately, which also unblocks any ANCESTOR dialog awaiting it -- three or more drill-down levels
+    // deep that lets two ContentDialogs call ShowAsync() at once and crashes the process natively.
+    private async void On<#= child.Table #>ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not <#= table #>ChildGridRow { Entity: <#= child.Table #> entity })
+            return;
+
+        Hide();
+        var childDialog = new <#= childDialog #>(_context, entity) { XamlRoot = XamlRoot };
+        await childDialog.ShowAsync();
+    }
+<#
+        }
+#>
 }
 @@@FILE <#= viewModelsFolder #>/<#= table #>DetailMasterViewModel.cs@@@
 using System.Collections.Generic;
@@ -391,6 +439,8 @@ public class <#= table #>DetailMasterLookupOption
 public class <#= table #>ChildGridRow
 {
     public List<string> Cells { get; init; } = [];
+    /// <summary> The child entity this row shows, so clicking the row can open its own dialog. </summary>
+    public object? Entity { get; init; }
 }
 
 public partial class <#= table #>DetailMasterViewModel : ObservableObject
@@ -575,7 +625,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 #>
                 return raw?.ToString() ?? "";
             }).ToList();
-            <#= child.Var #>Rows.Add(new <#= table #>ChildGridRow { Cells = cells });
+            <#= child.Var #>Rows.Add(new <#= table #>ChildGridRow { Cells = cells, Entity = row });
         }
     }
 

@@ -1,5 +1,6 @@
 <#@ template language="C#" #>
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Text" #>
 <#@ import namespace="System.Data" #>
@@ -21,6 +22,11 @@
         "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
         "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
     };
+    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    contextType = Project.ContextName ?? contextType;
+    repositoryNamespace = Project.RepoNamespace ?? repositoryNamespace;
+    usings = Project.Usings ?? usings;
+    noRepositoryTables = Project.NoRepositoryTables ?? noRepositoryTables;
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------

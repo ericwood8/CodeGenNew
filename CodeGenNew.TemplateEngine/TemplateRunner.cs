@@ -28,7 +28,7 @@ public class TemplateResult
 /// </summary>
 public static class TemplateRunner
 {
-    public static async Task<TemplateResult> RunAsync(string templateFilePath, TableModel model, CancellationToken cancellationToken = default)
+    public static async Task<TemplateResult> RunAsync(string templateFilePath, TableModel model, ProjectSettings? project = null, CancellationToken cancellationToken = default)
     {
         var generator = new TemplateGenerator();
 
@@ -38,6 +38,7 @@ public static class TemplateRunner
 
         var session = generator.GetOrCreateSession();
         session["Model"] = model;
+        session["Project"] = project ?? ProjectSettings.None;
 
         string tempOutputFile = Path.GetTempFileName();
         try

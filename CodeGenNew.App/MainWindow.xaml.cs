@@ -90,6 +90,27 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void OnProjectSettingsClick(object sender, RoutedEventArgs e)
+    {
+        var dialogViewModel = new ProjectSettingsDialogViewModel(_settingsService.ProjectsDirectory, _settingsService.Current.LastProject);
+        var dialog = new ProjectSettingsDialog(dialogViewModel) { XamlRoot = Content.XamlRoot };
+        var result = await dialog.ShowAsync();
+
+        string? chosen = result switch
+        {
+            ContentDialogResult.Primary => dialogViewModel.ProjectName.Trim(),
+            ContentDialogResult.Secondary => "",
+            _ => null
+        };
+        if (chosen is null)
+            return;
+
+        string? saveError = _settingsService.Update(s => s.LastProject = chosen);
+        ViewModel.StatusMessage = saveError ?? (chosen.Length == 0
+            ? "Generating with each template's own namespaces (no project)."
+            : $"Generating with project '{chosen}'.");
+    }
+
     private async void OnManageTemplatesClick(object sender, RoutedEventArgs e)
     {
         var dialogViewModel = new TemplateManagementViewModel(_settingsService);

@@ -9,7 +9,8 @@ public static class ArgumentParser
     public static CliOptions Parse(string[] args)
     {
         string? server = null, database = null, schema = null, table = null, template = null;
-        string? outputDirectory = null, userName = null, password = null;
+        string? outputDirectory = null, userName = null, password = null, project = null;
+        var overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         bool trusted = false;
         var provider = DatabaseProvider.SqlServer;
 
@@ -35,6 +36,18 @@ public static class ArgumentParser
                 case "-U": case "--user": userName = Value(); break;
                 case "-P": case "--password": password = Value(); break;
                 case "-E": case "--trusted": trusted = true; break;
+                case "--project": project = Value(); break;
+                case "--project-name": overrides["ProjectName"] = Value(); break;
+                case "--view-ns": overrides["ViewNamespace"] = Value(); break;
+                case "--viewmodel-ns": overrides["ViewModelNamespace"] = Value(); break;
+                case "--context": overrides["ContextName"] = Value(); break;
+                case "--context-ns": overrides["ContextNamespace"] = Value(); break;
+                case "--api-ns": overrides["ApiNamespace"] = Value(); break;
+                case "--enum-ns": overrides["EnumNamespace"] = Value(); break;
+                case "--repo-ns": overrides["RepoNamespace"] = Value(); break;
+                case "--entity-ns": overrides["EntityNamespace"] = Value(); break;
+                case "--min-year": overrides["MinYear"] = Value(); break;
+                case "--max-year": overrides["MaxYear"] = Value(); break;
                 case "--provider":
                     string providerText = Value();
                     if (!Enum.TryParse(providerText, ignoreCase: true, out provider))
@@ -52,7 +65,13 @@ public static class ArgumentParser
         if (!trusted && string.IsNullOrWhiteSpace(userName))
             throw new ArgumentParseException("-U/--user is required unless -E/--trusted is used.");
 
-        return new CliOptions
+        foreach (string yearKey in new[] { "MinYear", "MaxYear" })
+        {
+            if (overrides.TryGetValue(yearKey, out string? yearText) && !int.TryParse(yearText, out _))
+                throw new ArgumentParseException($"--{(yearKey == "MinYear" ? "min" : "max")}-year must be a whole number, not '{yearText}'.");
+        }
+
+        var options = new CliOptions
         {
             Provider = provider,
             Server = server,
@@ -63,8 +82,12 @@ public static class ArgumentParser
             OutputDirectory = outputDirectory,
             Trusted = trusted,
             UserName = userName,
-            Password = password
+            Password = password,
+            Project = project
         };
+        foreach (var (key, value) in overrides)
+            options.ProjectOverrides[key] = value;
+        return options;
     }
 
     public static void PrintUsage(TextWriter writer)
@@ -97,6 +120,13 @@ public static class ArgumentParser
               -s, --schema     Schema name (default: dbo)
               -o, --output     Output directory (default: Settings.json's OutputDirectory)
               --provider       Database provider: SqlServer (default) or MySql (not implemented yet)
+
+            Project settings (namespaces, context name, table lists the templates would otherwise hard-code):
+              --project        Name of a Projects\<name>.config file in the CodeGenNew folder. Only ProjectName is
+                               required in it; every namespace not listed is derived from it.
+              --project-name, --view-ns, --viewmodel-ns, --context, --context-ns, --api-ns, --enum-ns,
+              --repo-ns, --entity-ns, --min-year, --max-year
+                               Override one setting for this run; wins over the project file.
             """);
     }
 }

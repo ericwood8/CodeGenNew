@@ -1,5 +1,6 @@
 <#@ template language="C#" #>
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Data" #>
 <#@ import namespace="System.Collections.Generic" #>
@@ -19,6 +20,14 @@
     // Folders under the WinUI3 project root (where -o points) the generated files go in.
     string viewsFolder = "Views";
     string viewModelsFolder = "ViewModels";
+    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    viewNamespace = Project.ViewNamespace ?? viewNamespace;
+    viewModelNamespace = Project.ViewModelNamespace ?? viewModelNamespace;
+    contextType = Project.ContextName ?? contextType;
+    contextNamespace = Project.ContextNamespace ?? contextNamespace;
+    usings = Project.Usings ?? usings;
+    viewsFolder = Project.ViewsFolder ?? viewsFolder;
+    viewModelsFolder = Project.ViewModelsFolder ?? viewModelsFolder;
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------

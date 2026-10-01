@@ -8,6 +8,10 @@ public class AppSettings
     public string OutputDirectory { get; set; } = "Output";
     public string TemplatesDirectory { get; set; } = "Templates";
     public string SpecialLogicColumnsConfigPath { get; set; } = "SpecialLogicColumns.config";
+    /// <summary> Folder (relative to the app folder) holding one &lt;ProjectName&gt;.config per project (see ProjectSettings). </summary>
+    public string ProjectsDirectory { get; set; } = "Projects";
+    /// <summary> The project (Projects\<name>.config) the app generates with; empty = no project, each template keeps its own values. </summary>
+    public string LastProject { get; set; } = "";
     public string SpCanDeleteVerificationConfigPath { get; set; } = "SpCanDeleteVerification.config";
     public LastConnectionSettings LastConnection { get; set; } = new();
 

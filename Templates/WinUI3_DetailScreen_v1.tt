@@ -1,5 +1,6 @@
 <#@ template language="C#" #>
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Data" #>
 <#@ import namespace="System.Text.RegularExpressions" #>
@@ -27,6 +28,15 @@
         "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
         "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role", "DepartmentTeam", "ProjectTask"
     };
+    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    viewNamespace = Project.ViewNamespace ?? viewNamespace;
+    viewModelNamespace = Project.ViewModelNamespace ?? viewModelNamespace;
+    contextType = Project.ContextName ?? contextType;
+    contextNamespace = Project.ContextNamespace ?? contextNamespace;
+    usings = Project.Usings ?? usings;
+    viewsFolder = Project.ViewsFolder ?? viewsFolder;
+    viewModelsFolder = Project.ViewModelsFolder ?? viewModelsFolder;
+    noLookupParents = Project.NoLookupParents ?? noLookupParents;
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------
@@ -153,6 +163,14 @@
     CloseButtonText="Cancel"
     DefaultButton="Primary"
     PrimaryButtonClick="OnPrimaryButtonClick">
+
+    <!-- A ContentDialog's width is capped by these two theme resources (about 320-548 by default), NOT by its own
+         MinWidth/MaxWidth or by anything inside it, which is why setting those has no effect. Raising the cap
+         lets the ScrollViewer's own MinWidth below (and the content) decide the width, up to the window. -->
+    <ContentDialog.Resources>
+        <x:Double x:Key="ContentDialogMinWidth">320</x:Double>
+        <x:Double x:Key="ContentDialogMaxWidth">1400</x:Double>
+    </ContentDialog.Resources>
 
     <ScrollViewer MinWidth="420" MaxHeight="560">
         <StackPanel Spacing="12">

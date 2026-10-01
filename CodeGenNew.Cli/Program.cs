@@ -114,8 +114,25 @@ public static class Program
             return 1;
         }
 
+        ProjectSettings project = ProjectSettings.None;
+        if (options.Project is not null)
+        {
+            string projectsDirectory = Path.Combine(baseDirectory, settings.ProjectsDirectory);
+            try
+            {
+                project = ProjectSettings.LoadNamed(projectsDirectory, options.Project);
+            }
+            catch (FileNotFoundException ex)
+            {
+                Console.Error.WriteLine($"Error: {ex.Message} Create it, or list the existing ones in '{projectsDirectory}'.");
+                return 1;
+            }
+        }
+        if (options.ProjectOverrides.Count > 0)
+            project = project.WithOverrides(options.ProjectOverrides);
+
         Console.WriteLine($"Generating '{template.Name}' for [{options.Schema}].[{options.Table}]...");
-        var result = await TemplateRunner.RunAsync(template.FilePath, model);
+        var result = await TemplateRunner.RunAsync(template.FilePath, model, project);
         if (!result.Success)
         {
             Console.Error.WriteLine("Template generation failed:");

@@ -35,6 +35,8 @@ public class AppSettingsService
         // file.
         DefaultAssetSeeder.EnsureDefaultAssets(TemplatesDirectory, SpecialLogicColumnsConfigPath, OutputDirectory, typeof(AppSettingsService).Assembly);
 
+        Directory.CreateDirectory(ProjectsDirectory);
+
         // Detect the developer's editor once, on first run, and remember it.
         if (string.IsNullOrEmpty(Current.PreferredEditorPath))
         {
@@ -47,6 +49,7 @@ public class AppSettingsService
     public string TemplatesDirectory => Path.Combine(BaseDirectory, Current.TemplatesDirectory);
     public string OutputDirectory => Path.Combine(BaseDirectory, Current.OutputDirectory);
     public string SpecialLogicColumnsConfigPath => Path.Combine(BaseDirectory, Current.SpecialLogicColumnsConfigPath);
+    public string ProjectsDirectory => Path.Combine(BaseDirectory, Current.ProjectsDirectory);
     public string SpCanDeleteVerificationConfigPath => Path.Combine(BaseDirectory, Current.SpCanDeleteVerificationConfigPath);
 
     /// <summary> The way to change and persist a setting: re-reads Settings.json as it is on disk RIGHT NOW, applies

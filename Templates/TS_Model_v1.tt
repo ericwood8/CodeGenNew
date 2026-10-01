@@ -1,5 +1,6 @@
 <#@ template language="C#" #>
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Text" #>
 <#@ import namespace="System.Data" #>
@@ -30,6 +31,9 @@
         ["DepartmentTeam"] = "department",
         ["ProjectTask"] = "project"
     };
+    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    noApiTables = Project.NoApiTables ?? noApiTables;
+    noNavigationTables = Project.NoNavigationTables ?? noNavigationTables;
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------

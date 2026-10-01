@@ -127,6 +127,23 @@ public partial class MainViewModel : ObservableObject
     /// <summary> Every file the last successful RunTemplateAsync wrote (most templates write one; the TS_ templates several). </summary>
     public IReadOnlyList<string> LastOutputFiles { get; private set; } = [];
 
+    /// <summary> The project chosen on the Project Settings screen, or ProjectSettings.None (each template's own values)
+    /// when none is chosen or its file has since gone. </summary>
+    private ProjectSettings LoadActiveProject()
+    {
+        string name = _settings.Current.LastProject;
+        if (name.Length == 0)
+            return ProjectSettings.None;
+        try
+        {
+            return ProjectSettings.LoadNamed(_settings.ProjectsDirectory, name);
+        }
+        catch (FileNotFoundException)
+        {
+            return ProjectSettings.None;
+        }
+    }
+
     public async Task<string?> RunTemplateAsync(TableNodeViewModel table, TemplateInfo template)
     {
         if (_connectionRequest is null)
@@ -140,7 +157,7 @@ public partial class MainViewModel : ObservableObject
             var model = await schemaProvider.BuildTableModelAsync(
                 table.SchemaName, table.TableName, template.Config.NeedsRowData, template.Config.NeedsReferencedDisplayColumns);
 
-            var result = await TemplateRunner.RunAsync(template.FilePath, model);
+            var result = await TemplateRunner.RunAsync(template.FilePath, model, LoadActiveProject());
             if (!result.Success)
             {
                 StatusMessage = "Template generation failed: " + string.Join(" | ", result.Errors);

@@ -80,6 +80,9 @@ codegen -S MYSERVER -d MyDatabase -s dbo -t Holiday -T API_Crud.tt -E -o C:\Work
 | `-T` | template file name; without a version (`SP_Save.tt`) means the latest, `SP_Save_v1.tt` pins that version |
 | `-E` | Windows authentication (or `-U user` and `-P password`; the password is prompted for if omitted) |
 | `-o` | output folder (default: `Output` from `Settings.json`) |
+| `--project` | a project settings file, `Projects\<name>.config` next to the exe (see below) |
+
+**Project settings.** Templates carry their own namespaces and context name, so a project of your own would otherwise need each template edited. Put `ProjectName=InvoiceSystem` in `Projects\InvoiceSystem.config` (one `key=value` per line, `#` comments, comma-separated lists) and pass `--project InvoiceSystem`: every namespace you don't list is derived from the name (`InvoiceSystem.App.Views`, `InvoiceSystemContext`, ...). The keys are `ProjectName`, `ViewNamespace`, `ViewModelNamespace`, `ContextName`, `ContextNamespace`, `ApiNamespace`, `EnumNamespace`, `RepoNamespace`, `EntityNamespace`, `MinYear`, `MaxYear`, `ViewsFolder`, `ViewModelsFolder`, `Usings`, `NoLookupParents`, `NoRepositoryTables`, `NoApiTables` and `NoNavigationTables`. A flag (`--view-ns`, `--viewmodel-ns`, `--context`, `--context-ns`, `--api-ns`, `--enum-ns`, `--repo-ns`, `--entity-ns`, `--project-name`, `--min-year`, `--max-year`) overrides the file for one run. Precedence: flag, then file, then the name-derived default, then the template's built-in value; with no `--project` a template generates exactly as before. In the desktop app the *Project* button (Alt+P) edits these files and picks the one to generate with.
 
 **Desktop app:** run `CodeGenNew.App`, choose *Connect*, expand the database, right-click a table and pick a template. *Output Location* sets the output folder; *Templates* adds, renames, edits and deletes templates.
 

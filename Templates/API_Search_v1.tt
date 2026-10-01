@@ -1,5 +1,6 @@
 <#@ template language="C#" #>
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Data" #>
 <#@ import namespace="CodeGenNew.Core" #>
@@ -11,6 +12,10 @@
     string apiNamespace = "TimeEntry.ApiService.Apis";
     string contextType = "TimeEntryContext";
     string[] usings = { };
+    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    contextType = Project.ContextName ?? contextType;
+    apiNamespace = Project.ApiNamespace ?? apiNamespace;
+    usings = Project.Usings ?? usings;
     // ==========================================================================================
 
     // ------------------------------------------------------------------------------------------
