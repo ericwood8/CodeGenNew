@@ -43,7 +43,17 @@ public partial class ProjectSettingsDialogViewModel : StatusMessageViewModel
     private readonly string _projectsDirectory;
 
     public ObservableCollection<string> Projects { get; } = [];
+    /// <summary> Settings that only the WinUI3 templates read; they get their own tab. Everything else is on General. </summary>
+    private static readonly HashSet<string> WinUI3Keys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ViewNamespace", "ViewModelNamespace", "ViewsFolder", "ViewModelsFolder", "DetailMasterTables"
+    };
+
+    /// <summary> Every editable setting, in ProjectSettings.Keys order -- what Load and TrySave work on. </summary>
     public ObservableCollection<ProjectSettingRowViewModel> Rows { get; } = [];
+    /// <summary> The same row objects, split by tab: edits made on either tab are edits to the one row. </summary>
+    public ObservableCollection<ProjectSettingRowViewModel> GeneralRows { get; } = [];
+    public ObservableCollection<ProjectSettingRowViewModel> WinUI3Rows { get; } = [];
 
     [ObservableProperty]
     private string _projectName = "";
@@ -54,7 +64,11 @@ public partial class ProjectSettingsDialogViewModel : StatusMessageViewModel
         foreach (string name in ProjectSettings.ListProjects(projectsDirectory))
             Projects.Add(name);
         foreach (string key in ProjectSettings.Keys.Where(k => k != "ProjectName"))
-            Rows.Add(new ProjectSettingRowViewModel(key, Hints.GetValueOrDefault(key, "")));
+        {
+            var row = new ProjectSettingRowViewModel(key, Hints.GetValueOrDefault(key, ""));
+            Rows.Add(row);
+            (WinUI3Keys.Contains(key) ? WinUI3Rows : GeneralRows).Add(row);
+        }
 
         if (!string.IsNullOrEmpty(activeProject) && Projects.Contains(activeProject, StringComparer.OrdinalIgnoreCase))
             Load(activeProject);

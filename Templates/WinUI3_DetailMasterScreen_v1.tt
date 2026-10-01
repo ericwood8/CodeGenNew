@@ -41,12 +41,13 @@
     // ------------------------------------------------------------------------------------------
     // WinUI3_DetailMasterScreen_v1.tt
     // WinUI3_DetailScreen.tt's own form (identical field-by-field: same column selection, same drop-down and
-    // validation rules -- see that template for the reasoning) PLUS one read-only grid per table in
-    // TableModel.ChildForeignKeys, so editing a row also shows the child rows that hang off it (e.g. a
+    // validation rules -- see that template for the reasoning) PLUS one grid per table in
+    // TableModel.ChildForeignKeys, so editing a row also shows the child rows that hang off it (clicking one opens its own dialog) (e.g. a
     // Department's Teams, a TimeSheet's lines):
     //     Views/<TableName>DetailMasterDialog.xaml
     //     Views/<TableName>DetailMasterDialog.xaml.cs
     //     ViewModels/<TableName>DetailMasterViewModel.cs
+    //     Views/PaginationBar.xaml and .xaml.cs   the Previous/Next bar the list pages use (same file for every table)
     //
     // Per the project's own answer on this ("just have the generated code assume all are grids and the
     // developer can cut out what grids are not needed"): EVERY child table gets a grid, unconditionally --
@@ -780,6 +781,43 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
             await _repo.UpdateAsync(entity.<#= keyProp #>, entity);
         return true;
     }
+}
+@@@FILE <#= viewsFolder #>/PaginationBar.xaml@@@
+<UserControl
+    x:Class="<#= viewNamespace #>.PaginationBar"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Content="Previous" Click="OnPreviousClick" IsEnabled="{x:Bind CanGoPrevious, Mode=OneWay}" />
+        <TextBlock Text="{x:Bind PageLabel, Mode=OneWay}" VerticalAlignment="Center" />
+        <Button Content="Next" Click="OnNextClick" IsEnabled="{x:Bind CanGoNext, Mode=OneWay}" />
+    </StackPanel>
+</UserControl>
+@@@FILE <#= viewsFolder #>/PaginationBar.xaml.cs@@@
+using Microsoft.UI.Xaml.Controls;
+
+namespace <#= viewNamespace #>;
+
+public sealed partial class PaginationBar : UserControl
+{
+    public static readonly DependencyProperty PageLabelProperty =
+        DependencyProperty.Register(nameof(PageLabel), typeof(string), typeof(PaginationBar), new PropertyMetadata(""));
+    public static readonly DependencyProperty CanGoPreviousProperty =
+        DependencyProperty.Register(nameof(CanGoPrevious), typeof(bool), typeof(PaginationBar), new PropertyMetadata(false));
+    public static readonly DependencyProperty CanGoNextProperty =
+        DependencyProperty.Register(nameof(CanGoNext), typeof(bool), typeof(PaginationBar), new PropertyMetadata(false));
+
+    public string PageLabel { get => (string)GetValue(PageLabelProperty); set => SetValue(PageLabelProperty, value); }
+    public bool CanGoPrevious { get => (bool)GetValue(CanGoPreviousProperty); set => SetValue(CanGoPreviousProperty, value); }
+    public bool CanGoNext { get => (bool)GetValue(CanGoNextProperty); set => SetValue(CanGoNextProperty, value); }
+
+    public event RoutedEventHandler? PreviousClicked;
+    public event RoutedEventHandler? NextClicked;
+
+    public PaginationBar() => InitializeComponent();
+
+    private void OnPreviousClick(object sender, RoutedEventArgs e) => PreviousClicked?.Invoke(this, e);
+    private void OnNextClick(object sender, RoutedEventArgs e) => NextClicked?.Invoke(this, e);
 }
 <#
     }

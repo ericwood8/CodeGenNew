@@ -24,16 +24,32 @@
                   ItemsSource="{x:Bind ViewModel.Projects}"
                   Text="{x:Bind ViewModel.ProjectName, Mode=TwoWay}"
                   SelectionChanged="OnProjectSelectionChanged" />
-        <ScrollViewer MaxHeight="420">
-            <ItemsControl ItemsSource="{x:Bind ViewModel.Rows}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:ProjectSettingRowViewModel">
-                        <TextBox Header="{x:Bind Key}" PlaceholderText="{x:Bind Hint}"
-                                 Text="{x:Bind Value, Mode=TwoWay}" Margin="0,0,12,8" />
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
+        <TabView IsAddTabButtonVisible="False" CanReorderTabs="False" CanDragTabs="False" TabWidthMode="SizeToContent">
+            <TabViewItem Header="General" IsClosable="False">
+                <ScrollViewer MaxHeight="380" Padding="0,8,0,0">
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.GeneralRows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProjectSettingRowViewModel">
+                                <TextBox Header="{x:Bind Key}" PlaceholderText="{x:Bind Hint}"
+                                         Text="{x:Bind Value, Mode=TwoWay}" Margin="0,0,12,8" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </TabViewItem>
+            <TabViewItem Header="WinUI3" IsClosable="False">
+                <ScrollViewer MaxHeight="380" Padding="0,8,0,0">
+                    <ItemsControl ItemsSource="{x:Bind ViewModel.WinUI3Rows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProjectSettingRowViewModel">
+                                <TextBox Header="{x:Bind Key}" PlaceholderText="{x:Bind Hint}"
+                                         Text="{x:Bind Value, Mode=TwoWay}" Margin="0,0,12,8" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </TabViewItem>
+        </TabView>
         <InfoBar IsOpen="{x:Bind ViewModel.HasStatusMessage, Mode=OneWay}"
                  IsClosable="False"
                  Severity="Error"

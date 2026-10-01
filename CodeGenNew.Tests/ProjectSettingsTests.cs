@@ -143,4 +143,20 @@ public class ProjectSettingsTests
         Expect.Contains(list.GeneratedText!, "new OrderDetailMasterDialog(_context)");
         Expect.Contains(master.GeneratedText!, "new OrderLineDetailMasterDialog(_context, entity)");
     }
+
+    [TestMethod]
+    [DataRow("WinUI3_MasterScreen_v1.tt")]
+    [DataRow("WinUI3_DetailMasterScreen_v1.tt")]
+    public async Task The_list_and_detail_master_templates_also_write_the_shared_PaginationBar(string template)
+    {
+        var project = ProjectSettings.Parse("ProjectName=Acme");
+
+        var result = await TemplateRunner.RunAsync(Repo.Template(template), Sample.OrderWithLines(), project);
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        var files = GeneratedFiles.Split(result.GeneratedText!).ToDictionary(f => f.RelativePath.Replace('\\', '/'));
+        Expect.Contains(files["Views/PaginationBar.xaml"].Content, "x:Class=\"Acme.App.Views.PaginationBar\"");
+        Expect.Contains(files["Views/PaginationBar.xaml.cs"].Content, "namespace Acme.App.Views;");
+        Expect.Contains(files["Views/PaginationBar.xaml.cs"].Content, "public sealed partial class PaginationBar : UserControl");
+    }
 }

@@ -338,7 +338,7 @@ public class TemplateRenderingTests
         var files = GeneratedFiles.Split(await Render("WinUI3_MasterScreen_v1.tt", Sample.DonateLeave()))
             .ToDictionary(f => Path.GetFileName(f.RelativePath));
 
-        Assert.HasCount(3, files);
+        Assert.HasCount(5, files); // the page/dialog, its code-behind, its ViewModel, and the shared PaginationBar (xaml + code-behind)
         string xaml = files["E_DonateLeaveListPage.xaml"].Content;
         string codeBehind = files["E_DonateLeaveListPage.xaml.cs"].Content;
         string viewModel = files["E_DonateLeaveListViewModel.cs"].Content;
@@ -422,7 +422,7 @@ public class TemplateRenderingTests
         // Same "literal + s" bug already fixed elsewhere (TS_Component/TSX_Page's list variable, the error
         // message), found live against the real, already-plural Movies table -- the title heading had it too.
         string xaml = GeneratedFiles.Split(await Render("WinUI3_MasterScreen_v1.tt", Sample.Movies()))
-            .Single(f => f.RelativePath.EndsWith(".xaml")).Content;
+            .Single(f => f.RelativePath.EndsWith("ListPage.xaml")).Content;
 
         Expect.Contains(xaml, "Text=\"Movies\" Style=\"{ThemeResource TitleTextBlockStyle}\"");
         Expect.DoesNotContain(xaml, "Moviess");
@@ -480,7 +480,7 @@ public class TemplateRenderingTests
         var files = GeneratedFiles.Split(await Render("WinUI3_DetailMasterScreen_v1.tt", Sample.DepartmentWithTeams()))
             .ToDictionary(f => Path.GetFileName(f.RelativePath));
 
-        Assert.HasCount(3, files);
+        Assert.HasCount(5, files); // the page/dialog, its code-behind, its ViewModel, and the shared PaginationBar (xaml + code-behind)
         string xaml = files["DepartmentDetailMasterDialog.xaml"].Content;
         string codeBehind = files["DepartmentDetailMasterDialog.xaml.cs"].Content;
         string viewModel = files["DepartmentDetailMasterViewModel.cs"].Content;
