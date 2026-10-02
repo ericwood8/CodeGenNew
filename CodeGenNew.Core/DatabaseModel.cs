@@ -22,6 +22,35 @@ public class DatabaseModel
     /// samples write no search function for them). </summary>
     public List<TableModel> SearchApiTables(ProjectSettings project) => ApiTables(project).Where(t => !t.LookupShape.LooksLikeLookup).ToList();
 
+    /// <summary> The tables that get a screen and a menu entry, in menu order: the project's <c>Screens</c> list when it has one, else every table that has an API and
+    /// a search endpoint, alphabetically. A listed name that is not a table with a single-column key is in <see cref="UnknownScreens"/>. </summary>
+    public List<TableModel> ScreenTables(ProjectSettings project)
+    {
+        if (project.Screens.Length == 0)
+            return SearchApiTables(project).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+
+        return project.Screens
+            .Select(name => EntityTables.FirstOrDefault(t => t.TableName.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            .OfType<TableModel>().ToList();
+    }
+
+    public List<string> UnknownScreens(ProjectSettings project) => project.Screens
+        .Where(name => !EntityTables.Any(t => t.TableName.Equals(name, StringComparison.OrdinalIgnoreCase))).ToList();
+
+    /// <summary> Whether the table's screen is the master-detail kind (its add/edit dialog also shows the child tables): the project's <c>DetailMasterTables</c>
+    /// when it lists any, else every table that has at least one child table. </summary>
+    public static bool IsDetailMaster(TableModel table, ProjectSettings project) =>
+        project.DetailMasterTables is { Length: > 0 } listed
+            ? listed.Contains(table.TableName, StringComparer.OrdinalIgnoreCase)
+            : table.HasAtLeastOneChildForeignKey;
+
+    /// <summary> Child tables a master-detail screen in <paramref name="screens"/> links to, but that have no screen themselves (the link would open nothing). </summary>
+    public static List<string> ChildrenWithoutScreen(IReadOnlyList<TableModel> screens, ProjectSettings project) => screens
+        .Where(t => IsDetailMaster(t, project))
+        .SelectMany(t => t.ChildForeignKeys.Select(c => $"{c.ReferencingTable} (a child of {t.TableName})"))
+        .Where(text => !screens.Any(s => text.StartsWith(s.TableName + " ", StringComparison.Ordinal)))
+        .Distinct().ToList();
+
     /// <summary> The enum / lookup tables the project (or the schema's shape) says have no API of their own. </summary>
     public List<TableModel> EnumTables(ProjectSettings project) => EntityTables
         .Where(t => project.NoRepository(t.TableName, t.LookupShape) == true)
