@@ -12,6 +12,25 @@ See **[Docs/specs.md](Docs/specs.md)** for the full specification: architecture,
 <img width="126" height="20" alt="image" src="https://github.com/user-attachments/assets/3ea8d6d1-74b0-4b49-9821-5daf70302241" />
 Project is actively being worked on. Issues and Pull Requests are welcomed.  We welcome contributions.
 
+
+## Databases
+
+| | SQL Server | PostgreSQL | MySQL |
+|---|---|---|---|
+| Connect from | app and CLI | app and CLI | app and CLI |
+| Schema read from | `sys.*` | `information_schema` + `pg_catalog` | `information_schema` |
+| `SP_*` templates write | stored procedures | functions (`RETURNS SETOF`, `plpgsql`) | stored procedures (`DELIMITER $$`) |
+| Search call in generated C# | `EXEC` | `SELECT * FROM "f"(...)` | `CALL p(...)` |
+| `API_Junction`, `WinUI3_JunctionEditor` | yes | not yet | not yet |
+
+Everything else (entities, repositories, API, Angular, React, WinUI3) is generated from the same model, so the screens look and behave the same whichever database sits underneath. The sample apps in the sibling repositories reuse one React or Angular front end over any of the three APIs.
+
+**Names.** PostgreSQL and MySQL databases usually use `snake_case`. Set `NamingStyle=Pascal` in the project file (or `--naming Pascal`) and the generated C# and TypeScript say `CustomerItem` / `CustomerId` while the SQL text and the `[Table]` / `[Column]` attributes keep the real names. MySQL on Windows stores table names in lower case (`lower_case_table_names=1`), so use `snake_case` table names there.
+
+**Passwords.** The app and CLI take the password from the connection dialog or `-P`; never commit one. For your own samples, read it from an environment variable (`PGPASSWORD`, `MYSQL_PWD`) at start-up.
+
+**Still open.** Writing the `UseNpgsql` / `UseMySQL` wiring for a project, `enum`/`set` columns as drop-downs, junction templates for PostgreSQL and MySQL, and views (tables only).
+
 ## What it generates
 
 Twenty-nine templates ship in `Templates\`. A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
@@ -80,7 +99,7 @@ codegen -S MYSERVER -d MyDatabase -s dbo -t Holiday -T API_Crud.tt -E -o C:\Work
 | `-S`, `-d`, `-s`, `-t` | server (`host` or `host:port`), database, schema, table. The default schema is `dbo` for SQL Server, `public` for PostgreSQL and the database name for MySQL |
 | `-T` | template file name; without a version (`SP_Save.tt`) means the latest, `SP_Save_v1.tt` pins that version |
 | `-E` | Windows authentication, SQL Server only (or `-U user` and `-P password`; the password is prompted for if omitted — PostgreSQL and MySQL always use a user name and password) |
-| `--naming` | `AsIs` (default) or `Pascal`: turn `snake_case` database names into PascalCase code names (see *Databases* below) |
+| `--naming` | `AsIs` (default) or `Pascal`: turn `snake_case` database names into PascalCase code names (see *Databases* above) |
 | `-o` | output folder (default: `Output` from `Settings.json`) |
 | `--project` | a project settings file, `Projects\<name>.config` next to the exe (see below) |
 
@@ -135,24 +154,6 @@ Open the `.tt` file (or the app's *Templates* button → Edit), change those lin
 The templates also assume the shape of the sample project's plumbing: a generic repository with `GetAll`, `GetByIdAsync`, `ExistsAsync` and `DeleteAsync`, a `BaseApi<T>` that registers routes, Angular's own `HttpClient`, and — for `TSX_*` only, since React has no framework-supplied HTTP client — a shared `request<T>(path, init)`/`ApiError` pair the target project must already have (`import { request } from './client'`; `CriticalViewer`'s real `src/api/client.ts` is exactly this shape). Each template's header comment says what it assumes and what it deliberately does **not** write (collection navigations, hand-written business rules, detail grids), so you know what stays yours.
 
 Column-name rules (which column means "created date", "is active", a display name, …) live in `SpecialLogicColumns.config`; edit it to match your naming.
-
-## Databases
-
-| | SQL Server | PostgreSQL | MySQL |
-|---|---|---|---|
-| Connect from | app and CLI | app and CLI | app and CLI |
-| Schema read from | `sys.*` | `information_schema` + `pg_catalog` | `information_schema` |
-| `SP_*` templates write | stored procedures | functions (`RETURNS SETOF`, `plpgsql`) | stored procedures (`DELIMITER $$`) |
-| Search call in generated C# | `EXEC` | `SELECT * FROM "f"(...)` | `CALL p(...)` |
-| `API_Junction`, `WinUI3_JunctionEditor` | yes | not yet | not yet |
-
-Everything else (entities, repositories, API, Angular, React, WinUI3) is generated from the same model, so the screens look and behave the same whichever database sits underneath. The sample apps in the sibling repositories reuse one React or Angular front end over any of the three APIs.
-
-**Names.** PostgreSQL and MySQL databases usually use `snake_case`. Set `NamingStyle=Pascal` in the project file (or `--naming Pascal`) and the generated C# and TypeScript say `CustomerItem` / `CustomerId` while the SQL text and the `[Table]` / `[Column]` attributes keep the real names. MySQL on Windows stores table names in lower case (`lower_case_table_names=1`), so use `snake_case` table names there.
-
-**Passwords.** The app and CLI take the password from the connection dialog or `-P`; never commit one. For your own samples, read it from an environment variable (`PGPASSWORD`, `MYSQL_PWD`) at start-up.
-
-**Still open.** Writing the `UseNpgsql` / `UseMySQL` wiring for a project, `enum`/`set` columns as drop-downs, junction templates for PostgreSQL and MySQL, and views (tables only).
 
 ## Solution structure
 
