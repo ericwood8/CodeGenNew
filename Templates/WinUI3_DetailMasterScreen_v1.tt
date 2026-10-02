@@ -225,6 +225,8 @@
                 return new
                 {
                     Table = fk.ReferencingTable,
+                    // The heading of the grid: the table's own name, or the project's ChildGridTitles entry.
+                    Title = Project.ChildGridTitle(Model.TableName, fk.ReferencingTable, Words(fk.ReferencingTable)),
                     Var = FieldVar(fk.ReferencingTable),
                     FkColumn = selfFkColumn,
                     ParentKeyColumn = fk.ReferencedColumns[0],
@@ -389,7 +391,7 @@
         {
 #>
 
-            <TextBlock Text="<#= Words(child.Table) #>" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+            <TextBlock Text="<#= child.Title #>" Style="{ThemeResource BodyStrongTextBlockStyle}" />
             <!-- Boxed the same way as WinUI3_MasterScreen.tt's own grid: a line around the whole grid, a line
                  under the header, and a line under every row — see that template's 2026-09-27 styling note.
                  Clicking a row opens that child row's own dialog (see On<#= child.Table #>ItemClick in the code-behind). -->

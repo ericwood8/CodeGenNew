@@ -440,6 +440,18 @@ public class TableModelSearchableColumnsTests
 
         Assert.IsEmpty(allNumeric.SearchableColumns);
     }
+
+    [TestMethod]
+    public void A_search_bar_has_at_most_eight_boxes_and_never_one_for_a_long_note()
+    {
+        var columns = new List<ColumnModel> { Sample.Column("WideId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1) };
+        columns.Add(Sample.Column("Notes", SqlDbType.VarChar, characters: 2000, ordinal: 2));
+        columns.AddRange(Enumerable.Range(1, 12).Select(i => Sample.Column("Text" + i, SqlDbType.VarChar, characters: 50, ordinal: i + 2)));
+        var wide = Sample.Table("Wide", columns);
+
+        Assert.HasCount(TableModel.MaxSearchFields, wide.SearchableColumns);
+        CollectionAssert.AreEqual(Enumerable.Range(1, 8).Select(i => "Text" + i).ToArray(), wide.SearchableColumns.Select(c => c.Name).ToArray());
+    }
 }
 
 [TestClass]

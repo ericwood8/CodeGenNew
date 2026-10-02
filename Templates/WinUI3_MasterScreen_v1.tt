@@ -254,7 +254,8 @@
         <!-- Search bar, shaded to match the Add New / Refresh bar above -->
         <Border Grid.Row="2" Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
                 BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4" Padding="8">
-            <StackPanel Orientation="Horizontal" Spacing="8">
+            <!-- Up to eight boxes (TableModel.MaxSearchFields): they wrap onto more rows when the window is narrow. -->
+            <VariableSizedWrapGrid Orientation="Horizontal" ItemWidth="168" ItemHeight="40">
 <#
             foreach (var f in searchFields)
             {
@@ -264,7 +265,7 @@
             }
 #>
                 <Button Content="Search" Click="OnSearchClick" />
-            </StackPanel>
+            </VariableSizedWrapGrid>
         </Border>
 <#
         }

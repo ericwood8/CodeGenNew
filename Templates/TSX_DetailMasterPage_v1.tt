@@ -194,13 +194,25 @@
             .Select(fk => new
             {
                 Table = fk.ReferencingTable,
-                Title = Words(BaseName(fk.ReferencingTable)),
+                // The heading of the grid: the table's name, or the project's ChildGridTitles entry (a CustomerItem table reads "Item Purchase History" under a customer and "Who Purchased?" under an item).
+                Title = Project.ChildGridTitle(Model.TableName, fk.ReferencingTable, Words(BaseName(fk.ReferencingTable))),
                 Var = LowerFirst(BaseName(fk.ReferencingTable)),
                 MethodName = BaseName(fk.ReferencingTable),
                 Route = ApiRoute(fk.ReferencingTable),
                 PageRoute = PageRoute(fk.ReferencingTable),
                 KeyProp = fk.ReferencingPrimaryKeyColumns.Count == 1 ? Camel(fk.ReferencingPrimaryKeyColumns[0]) : null,
                 FkProp = Camel(fk.ReferencingColumns[0]),
+                // The child's OTHER foreign keys that point at a table with a display column are shown as that name (a customer's purchase history lists item numbers, not item ids);
+                // the grid's own foreign key (always this row), the child's own key and every other id column are left out, as in the WinUI3 grid.
+                Lookups = fk.ReferencingTableForeignKeys
+                    .Where(o => o.ReferencingColumns.Count == 1 && !o.ReferencingColumns[0].Equals(fk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)
+                                && o.ReferencedDisplayColumns.Count > 0 && !NoApi(o.ReferencedTable, default))
+                    .Select(o => (Column: Camel(o.ReferencingColumns[0]), Route: ApiRoute(o.ReferencedTable), Key: Camel(o.ReferencedColumns[0]), Display: Camel(o.ReferencedDisplayColumns[0]))).ToList(),
+                Hidden = fk.ReferencingColumns.Concat(fk.ReferencingPrimaryKeyColumns)
+                    .Concat(fk.ReferencingTableForeignKeys.SelectMany(o => o.ReferencingColumns)
+                        .Except(fk.ReferencingTableForeignKeys.Where(o => o.ReferencingColumns.Count == 1 && o.ReferencedDisplayColumns.Count > 0 && !NoApi(o.ReferencedTable, default))
+                            .SelectMany(o => o.ReferencingColumns), StringComparer.OrdinalIgnoreCase))
+                    .Select(Camel).Distinct().ToList(),
                 // What the schema says about the child's columns (their JSON names are camelCase): money shows as currency, long text goes last.
                 Currency = fk.ReferencingTableColumns.Where(c => c.IsCurrencyColumn && !c.IsIntegerColumn)
                     .Select(c => (Name: Camel(c.Name), Digits: NumericClassifier.CurrencyDigits(c))).ToList(),
@@ -249,9 +261,14 @@
             T("const childCaptions: Record<string, string> = { " + string.Join(", ", allCaptions.Select(m => m.Name + ": '" + m.Caption.Replace("'", "\'") + "'")) + " };");
             T("const childLongTextColumns: string[] = [" + string.Join(", ", allLongText.Select(n => "'" + n + "'")) + "];");
             T();
-            T("function orderColumns(keys: string[]): string[] {");
+            foreach (var child in children)
+            {
+                T($"const {child.Var}Hidden: string[] = [" + string.Join(", ", child.Hidden.Select(n => "'" + n + "'")) + "];");
+            }
+            T();
+            T("function orderColumns(keys: string[], hidden: string[]): string[] {");
             T("  // Only the child table's own columns: the API also sends each navigation property (customer, customerMonthlySummary, ...), which is not a column.");
-            T($"  return keys.filter((k) => k in childCaptions && !childLongTextColumns.includes(k)).slice(0, {GridColumns.MaxColumns});");
+            T($"  return keys.filter((k) => k in childCaptions && !hidden.includes(k) && !childLongTextColumns.includes(k)).slice(0, {GridColumns.MaxColumns});");
             T("}");
             T();
             T("function caption(key: string): string {");
@@ -263,8 +280,9 @@
             T("  }).join(' ');");
             T("}");
             T();
-            T("function formatChildCell(value: unknown, key: string): string {");
+            T("function formatChildCell(value: unknown, key: string, names?: Record<string, string>): string {");
             T("  if (value === null || value === undefined) return '';");
+            T("  if (names) return names[String(value)] ?? String(value);");
             T("  if (typeof value === 'boolean') return value ? 'Yes' : 'No';");
             T("  if (typeof value === 'number' && key in childCurrencyDigits) {");
             T("    const d = childCurrencyDigits[key];");
@@ -302,6 +320,8 @@
         {
             T($"  const [{child.Var}Rows, set{child.MethodName}Rows] = useState<any[]>([]);");
             T($"  const [{child.Var}Columns, set{child.MethodName}Columns] = useState<string[]>([]);");
+            if (child.Lookups.Count > 0)
+                T($"  const [{child.Var}Names, set{child.MethodName}Names] = useState<Record<string, Record<string, string>>>({{}});");
         }
         T();
         T($"  const load = (targetPage: number = 1{(canSearch ? ", filterValues: typeof filters = filters" : "")}) => {{");
@@ -434,7 +454,9 @@
             T($"    request<any[]>('{apiPrefix}/{child.Route}').then((rows) => {{");
             T($"      const filtered = rows.filter((r) => r['{child.FkProp}'] === parentId);");
             T($"      set{child.MethodName}Rows(filtered);");
-            T($"      set{child.MethodName}Columns(filtered.length > 0 ? orderColumns(Object.keys(filtered[0])) : []);");
+            T($"      set{child.MethodName}Columns(filtered.length > 0 ? orderColumns(Object.keys(filtered[0]), {child.Var}Hidden) : []);");
+            foreach (var lookup in child.Lookups)
+                T($"      request<any[]>('{apiPrefix}/{lookup.Route}').then((items) => set{child.MethodName}Names((names) => ({{ ...names, {lookup.Column}: Object.fromEntries(items.map((i) => [String(i['{lookup.Key}']), String(i['{lookup.Display}'] ?? '')])) }}))).catch(() => {{}});");
             T("    }).catch(() => {});");
             T("  };");
             if (child.KeyProp is not null)
@@ -677,7 +699,7 @@
             // Clicking a row, or its Edit button, opens that row on its own page.
             T(child.KeyProp is not null ? $"                    <tr key={{index}} onClick={{() => edit{child.MethodName}(row)}} style={{{{ cursor: 'pointer' }}}}>" : "                    <tr key={index}>");
             // A date-and-time string from the API (2026-09-27T00:00:00) shows as its date only.
-            T("                      {" + child.Var + "Columns.map((col) => <td key={col}>{formatChildCell(row[col], col)}</td>)}");
+            T("                      {" + child.Var + "Columns.map((col) => <td key={col}>{formatChildCell(row[col], col" + (child.Lookups.Count > 0 ? ", " + child.Var + "Names[col]" : "") + ")}</td>)}");
             if (child.KeyProp is not null)
             {
                 T("                      <td>");

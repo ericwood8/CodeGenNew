@@ -25,7 +25,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables"
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables"
     ];
 
     private readonly Dictionary<string, string> _values;
@@ -176,6 +176,20 @@ public class ProjectSettings
             }
             return map;
         }
+    }
+
+    /// <summary> The heading of a child grid inside a master dialog, when the table's own name does not say what the rows mean. Written in the project file as
+    /// <c>ChildGridTitles=Customer.CustomerItem=Item Purchase History,Item.CustomerItem=Who Purchased?</c> (parent table, a dot, child table, an equals sign, the title):
+    /// the same junction-like table reads differently under each parent. Returns the fallback when no title is set. </summary>
+    public string ChildGridTitle(string parentTable, string childTable, string fallback)
+    {
+        foreach (string pair in List("ChildGridTitles") ?? [])
+        {
+            int equals = pair.IndexOf('=');
+            if (equals > 0 && equals < pair.Length - 1 && pair[..equals].Trim().Equals($"{parentTable}.{childTable}", StringComparison.OrdinalIgnoreCase))
+                return pair[(equals + 1)..].Trim();
+        }
+        return fallback;
     }
 
     /// <summary> Base class of a generated entity; null keeps the template's own ("BaseEntity"). </summary>

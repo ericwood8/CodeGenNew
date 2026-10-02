@@ -437,8 +437,8 @@ public class ProjectSettingsTests
 
         Expect.Contains(winui.GeneratedText!, "if (raw is DateTime dateValue) return dateValue.ToString(\"MM/dd/yyyy\");");
         Expect.Contains(react.GeneratedText!, @"value.replace(/^(\d{4}-\d{2}-\d{2})T.*$/, '$1')");
-        Expect.Contains(angular.GeneratedText!, "cell(value: unknown, key: string): string {");
-        Expect.Contains(angular.GeneratedText!, "{{cell(row[col], col)}}");
+        Expect.Contains(angular.GeneratedText!, "cell(value: unknown, key: string, names?: Record<string, string>): string {");
+        Expect.Contains(angular.GeneratedText!, "{{cell(row[col], col, orderLineNames[col])}}");
     }
 
     [TestMethod]
@@ -740,6 +740,50 @@ public class ProjectSettingsTests
         Expect.Contains(text, "</dialog>");
         Expect.Contains(text, template.StartsWith("TSX") ? "el.showModal()" : "showModal()");
         
+    }
+
+    private static TableModel CustomerWithPurchases() => Sample.Table("Customer", [
+        Sample.Column("CustomerId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
+        Sample.Column("CustomerName", System.Data.SqlDbType.NVarChar, characters: 50)],
+        childForeignKeys: [Sample.ChildForeignKey("CustomerItem", "CustomerId", "CustomerId",
+            childOwnPrimaryKey: ["CustomerItemId"],
+            childOwnOtherForeignKeys: [Sample.ForeignKey("ItemId", "Item", "ItemId", "ItemNumber")])]);
+
+    [TestMethod]
+    public void ChildGridTitle_reads_the_projects_title_for_a_parent_and_child_pair()
+    {
+        var settings = With(("ChildGridTitles", "Customer.CustomerItem=Item Purchase History,Item.CustomerItem=Who Purchased?"));
+
+        Assert.AreEqual("Item Purchase History", settings.ChildGridTitle("Customer", "CustomerItem", "Customer Item"));
+        Assert.AreEqual("Who Purchased?", settings.ChildGridTitle("item", "customeritem", "Customer Item"));
+        Assert.AreEqual("Sales Invoice", settings.ChildGridTitle("Customer", "SalesInvoice", "Sales Invoice"));
+    }
+
+    [TestMethod]
+    [DataRow("WinUI3_DetailMasterScreen_v1.tt")]
+    [DataRow("TSX_DetailMasterPage_v1.tt")]
+    [DataRow("TS_DetailMasterComponent_v1.tt")]
+    public async Task A_child_grid_uses_the_projects_title(string template)
+    {
+        var result = await TemplateRunner.RunAsync(Repo.Template(template), CustomerWithPurchases(), With(("ChildGridTitles", "Customer.CustomerItem=Item Purchase History")));
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        Expect.Contains(result.GeneratedText!, "Item Purchase History");
+        Expect.DoesNotContain(result.GeneratedText!, ">Customer Item<");
+    }
+
+    [TestMethod]
+    [DataRow("TSX_DetailMasterPage_v1.tt", "itemId: 'item'")]
+    [DataRow("TS_DetailMasterComponent_v1.tt", "this.customerItemNames")]
+    public async Task A_web_child_grid_shows_the_other_side_by_name_and_hides_ids(string template, string expected)
+    {
+        var result = await TemplateRunner.RunAsync(Repo.Template(template), CustomerWithPurchases(), With());
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string text = result.GeneratedText!;
+        Assert.IsTrue(text.Contains("column: 'itemId'") || text.Contains("itemId: Object.fromEntries"), "the item id is resolved to the item's name");
+        Assert.IsTrue(text.Contains("customerItemHidden") || text.Contains("customerItemHidden: string[]"), "the grid's own key columns are hidden");
+        Assert.IsTrue(text.Contains("'customerId'") && text.Contains("'customerItemId'"), "own foreign key and own key are in the hidden list");
     }
 
     [TestMethod]

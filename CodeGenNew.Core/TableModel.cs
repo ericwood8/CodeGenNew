@@ -102,13 +102,18 @@ public class TableModel
             .ToList();
 
     /// <summary> Columns SP_Search.tt, API_Search.tt and CS_Repo.tt's SearchAsync all filter on: every string
-    /// column that isn't audit-classified (IsAuditColumn -- Create*/Modif*/Change*/Delete*/Update*/Activ*/
+    /// column (never a long note: ColumnModel.IsLongTextColumn) that isn't audit-classified (IsAuditColumn -- Create*/Modif*/Change*/Delete*/Update*/Activ*/
     /// Inactiv*, per AuditColumnClassifier) -- nobody types into a search box for "who created this row".
     /// Centralized here (CodeGenPossibilities\Search in the research folder) the same way Pluralizer was
     /// pulled up from three copies, so the three templates -- and every frontend search bar built from this
     /// same list -- can't drift apart on what's searchable. Empty when the table has nothing to filter on
     /// (all-numeric/date/bit columns); SP_Search.tt/API_Search.tt both refuse to generate in that case. </summary>
-    public List<ColumnModel> SearchableColumns => Columns.Where(c => c.IsStringColumn && !c.IsAuditColumn).ToList();
+    public List<ColumnModel> SearchableColumns =>
+        Columns.Where(c => c.IsStringColumn && !c.IsAuditColumn && !c.IsLongTextColumn).Take(MaxSearchFields).ToList();
+
+    /// <summary> The most search boxes a search bar gets: a table with 30 text columns would otherwise get an unusable bar and a procedure with 30 filters.
+    /// The first eight searchable text columns, in table order, are used. </summary>
+    public const int MaxSearchFields = 8;
 
     // Special-logic, table-level (see Docs/specs.md section 7). Populated from SpecialLogicColumns.config.
     public bool HasActiveInactivePair { get; init; }

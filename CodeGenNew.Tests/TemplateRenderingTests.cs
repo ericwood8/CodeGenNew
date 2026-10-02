@@ -1482,7 +1482,7 @@ public class TemplateRenderingTests
 
         Expect.Contains(holiday["holiday.component.html"].Content, "Search by Name");
         Expect.DoesNotContain(holiday["holiday.component.ts"].Content, "findByName");
-        Expect.Contains(donate["donateleave.component.html"].Content, "Search by Note");
+        Expect.DoesNotContain(donate["donateleave.component.html"].Content, "Search by Note");   // a Note column is long text: never a search box
         Expect.DoesNotContain(metric["metric.component.html"].Content, "form-group-search");
     }
 

@@ -198,13 +198,25 @@
             .Select(fk => new
             {
                 Table = fk.ReferencingTable,
-                Title = Words(BaseName(fk.ReferencingTable)),
+                // The heading of the grid: the table's name, or the project's ChildGridTitles entry (a CustomerItem table reads "Item Purchase History" under a customer and "Who Purchased?" under an item).
+                Title = Project.ChildGridTitle(Model.TableName, fk.ReferencingTable, Words(BaseName(fk.ReferencingTable))),
                 Var = LowerFirst(BaseName(fk.ReferencingTable)),
                 MethodName = BaseName(fk.ReferencingTable),
                 Route = ApiRoute(fk.ReferencingTable),
                 PageRoute = PageRoute(fk.ReferencingTable),
                 KeyProp = fk.ReferencingPrimaryKeyColumns.Count == 1 ? Camel(fk.ReferencingPrimaryKeyColumns[0]) : null,
                 FkProp = Camel(fk.ReferencingColumns[0]),
+                // The child's OTHER foreign keys that point at a table with a display column are shown as that name (a customer's purchase history lists item numbers, not item ids);
+                // the grid's own foreign key (always this row), the child's own key and every other id column are left out, as in the WinUI3 grid.
+                Lookups = fk.ReferencingTableForeignKeys
+                    .Where(o => o.ReferencingColumns.Count == 1 && !o.ReferencingColumns[0].Equals(fk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)
+                                && o.ReferencedDisplayColumns.Count > 0 && !NoApi(o.ReferencedTable, default))
+                    .Select(o => (Column: Camel(o.ReferencingColumns[0]), Route: ApiRoute(o.ReferencedTable), Key: Camel(o.ReferencedColumns[0]), Display: Camel(o.ReferencedDisplayColumns[0]))).ToList(),
+                Hidden = fk.ReferencingColumns.Concat(fk.ReferencingPrimaryKeyColumns)
+                    .Concat(fk.ReferencingTableForeignKeys.SelectMany(o => o.ReferencingColumns)
+                        .Except(fk.ReferencingTableForeignKeys.Where(o => o.ReferencingColumns.Count == 1 && o.ReferencedDisplayColumns.Count > 0 && !NoApi(o.ReferencedTable, default))
+                            .SelectMany(o => o.ReferencingColumns), StringComparer.OrdinalIgnoreCase))
+                    .Select(Camel).Distinct().ToList(),
                 // What the schema says about the child's columns (their JSON names are camelCase): money shows as currency, long text goes last.
                 Currency = fk.ReferencingTableColumns.Where(c => c.IsCurrencyColumn && !c.IsIntegerColumn)
                     .Select(c => (Name: Camel(c.Name), Digits: NumericClassifier.CurrencyDigits(c))).ToList(),
@@ -374,7 +386,7 @@
             H(child.KeyProp is not null
                 ? $"                    <tr *ngFor=\"let row of {child.Var}Rows\" (click)=\"edit{child.MethodName}(row)\" style=\"cursor: pointer\">"
                 : $"                    <tr *ngFor=\"let row of {child.Var}Rows\">");
-            H($"                        <td *ngFor=\"let col of {child.Var}Columns\">{{{{cell(row[col], col)}}}}</td>");
+            H($"                        <td *ngFor=\"let col of {child.Var}Columns\">{{{{cell(row[col], col{(child.Lookups.Count > 0 ? $", {child.Var}Names[col]" : "")})}}}}</td>");
             if (child.KeyProp is not null)
             {
                 H("                        <td>");
@@ -445,6 +457,9 @@
         {
             T($"  {child.Var}Rows: any[] = [];");
             T($"  {child.Var}Columns: string[] = [];");
+            T($"  private readonly {child.Var}Hidden: string[] = [" + string.Join(", ", child.Hidden.Select(n => "'" + n + "'")) + "];");
+            if (child.Lookups.Count > 0)
+                T($"  {child.Var}Names: Record<string, Record<string, string>> = {{}};");
         }
         T();
         var ctorArgs = new List<string> { $"private {variable}Service: {baseName}Service" };
@@ -598,7 +613,9 @@
             T($"    this.http.get<any[]>('{apiPrefix}/{child.Route}').subscribe({{");
             T("      next: (rows) => {");
             T($"        this.{child.Var}Rows = rows.filter((r: any) => r['{child.FkProp}'] === parentId);");
-            T($"        this.{child.Var}Columns = this.{child.Var}Rows.length > 0 ? this.orderColumns(Object.keys(this.{child.Var}Rows[0])) : [];");
+            T($"        this.{child.Var}Columns = this.{child.Var}Rows.length > 0 ? this.orderColumns(Object.keys(this.{child.Var}Rows[0]), this.{child.Var}Hidden) : [];");
+            foreach (var lookup in child.Lookups)
+                T($"        this.http.get<any[]>('{apiPrefix}/{lookup.Route}').subscribe((items) => {{ this.{child.Var}Names = {{ ...this.{child.Var}Names, {lookup.Column}: Object.fromEntries(items.map((i) => [String(i['{lookup.Key}']), String(i['{lookup.Display}'] ?? '')])) }}; }});");
             T("      },");
             T("      error: (e) => console.error(e)");
             T("    });");
@@ -631,9 +648,9 @@
             T("  private readonly childCaptions: Record<string, string> = { " + string.Join(", ", allCaptions.Select(m => m.Name + ": '" + m.Caption.Replace("'", "\'") + "'")) + " };");
             T("  private readonly childLongTextColumns: string[] = [" + string.Join(", ", allLongText.Select(n => "'" + n + "'")) + "];");
             T();
-            T("  orderColumns(keys: string[]): string[] {");
+            T("  orderColumns(keys: string[], hidden: string[]): string[] {");
             T("    // Only the child table's own columns: the API also sends each navigation property (customer, customerMonthlySummary, ...), which is not a column.");
-            T($"    return keys.filter((k) => k in this.childCaptions && !this.childLongTextColumns.includes(k)).slice(0, {GridColumns.MaxColumns});");
+            T($"    return keys.filter((k) => k in this.childCaptions && !hidden.includes(k) && !this.childLongTextColumns.includes(k)).slice(0, {GridColumns.MaxColumns});");
             T("  }");
             T();
             T("  caption(key: string): string {");
@@ -645,8 +662,9 @@
             T("    }).join(' ');");
             T("  }");
             T();
-            T("  cell(value: unknown, key: string): string {");
+            T("  cell(value: unknown, key: string, names?: Record<string, string>): string {");
             T("    if (value === null || value === undefined) return '';");
+            T("    if (names) return names[String(value)] ?? String(value);");
             T("    if (typeof value === 'boolean') return value ? 'Yes' : 'No';");
             T("    if (typeof value === 'number' && key in this.childCurrencyDigits) {");
             T("      const d = this.childCurrencyDigits[key];");
