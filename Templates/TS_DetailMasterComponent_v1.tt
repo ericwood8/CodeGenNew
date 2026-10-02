@@ -9,7 +9,7 @@
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
-    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
     // lists of tables). Everything below this block describes and implements the template itself.
     // ==========================================================================================
     string componentsFolder = "components";
@@ -36,22 +36,22 @@
         ["DepartmentTeam"] = "department",
         ["ProjectTask"] = "project"
     };
-    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     modelFileOf = Project.ModelFileOverrides ?? modelFileOf;
     bool IsHiddenParent(string table) => Project.HiddenParents is { } hidden ? hidden.Contains(table, StringComparer.OrdinalIgnoreCase) : table.Equals(hiddenParent, StringComparison.OrdinalIgnoreCase);
     // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
-    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
     // only used when no project is chosen.
     bool NoApi(string table, LookupShape shape) => Project.NoApi(table, shape) ?? noApiTables.Contains(table, StringComparer.OrdinalIgnoreCase);
     bool NoLookup(string table, LookupShape shape) => Project.NoLookup(table, shape) ?? noLookupParents.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
     // TS_DetailMasterComponent_v1.tt
-    // TS_Component.tt's own grid + add/edit form -- identical field selection, lookups and rules, see that
-    // template for the reasoning -- PLUS one read-only grid per table in TableModel.ChildForeignKeys, shown
+    // TS_Component.tt's own grid + add/edit form - identical field selection, lookups and rules, see that
+    // template for the reasoning - PLUS one read-only grid per table in TableModel.ChildForeignKeys, shown
     // under the form while editing an existing row. The Angular counterpart of WinUI3_DetailMasterScreen.tt,
-    // for the gap TS_Component.tt's own header comment names explicitly ("not written: a detail grid --
+    // for the gap TS_Component.tt's own header comment names explicitly ("not written: a detail grid -
     // Department's teams, Project's tasks, TimeSheet's lines").
     //
     // Per the same answer that shaped WinUI3_DetailMasterScreen.tt ("just have the generated code assume all
@@ -61,15 +61,15 @@
     // Why a child grid calls the child table's API directly (this.http.get<any[]>('api/<child>s')) instead
     // of importing a generated <Child>Service/<Child> model, the way every other lookup in this template
     // does: TableModel is built for exactly one table per generation run, so this template never sees the
-    // child table's own column list or knows what its generated (or hand-written) service looks like --
+    // child table's own column list or knows what its generated (or hand-written) service looks like -
     // TS_Service.tt's own header comment calls out a real example (TimeSheetDetailService) whose actual
     // hand-written service has neither a getAll() method nor the standard method names. Calling the raw API
     // URL directly (same "api/" + lower-cased-plural-name convention TS_Service.tt itself uses) sidesteps
-    // that entirely -- same reasoning TS_JunctionComponent.tt already used for its own HttpClient calls, and
+    // that entirely - same reasoning TS_JunctionComponent.tt already used for its own HttpClient calls, and
     // the same "read the shape at run time, not generation time" idea WinUI3_DetailMasterScreen.tt uses EF
     // Core metadata for. Rows are loosely typed (any[]); columns are whatever keys the first loaded row has
     // (Object.keys), so renaming or excluding one is a one-line edit in the generated file once you know
-    // the child's real shape -- this exists to get you unblocked, not to be the final word. Loads the WHOLE
+    // the child's real shape - this exists to get you unblocked, not to be the final word. Loads the WHOLE
     // child table and filters client-side by the foreign key column, same "no paging" simplification
     // TS_Component.tt already makes for its own grid.
     //
@@ -77,10 +77,10 @@
     // yet); the child sections show a "save first" message instead while adding.
     //
     // Requires a primary key that is a single int or uniqueidentifier column (same as TS_Component.tt) and
-    // at least one table in TableModel.ChildForeignKeys (TableModel.HasAtLeastOneChildForeignKey) -- a table
+    // at least one table in TableModel.ChildForeignKeys (TableModel.HasAtLeastOneChildForeignKey) - a table
     // with none is exactly what TS_Component.tt is for.
     //
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
 
     string BaseName(string table) => Regex.Replace(Regex.Replace(table, "^E_", ""), "^SY_", "");
     string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
@@ -127,11 +127,11 @@
     }
     else if (!Model.HasAtLeastOneChildForeignKey)
     {
-        Error($"TS_DetailMasterComponent needs at least one other table with a foreign key pointing back at [{Model.SchemaName}].[{Model.TableName}]; none was found -- use TS_Component instead.");
+        Error($"TS_DetailMasterComponent needs at least one other table with a foreign key pointing back at [{Model.SchemaName}].[{Model.TableName}]; none was found - use TS_Component instead.");
     }
     else if (Model.IsNameActiveTable)
     {
-        Error($"TS_DetailMasterComponent assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all -- see TimeEntryServer's real DepartmentTeamApi.cs); write this screen by hand.");
+        Error($"TS_DetailMasterComponent assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all - see TimeEntryServer's real DepartmentTeamApi.cs); write this screen by hand.");
     }
     else
     {
@@ -225,7 +225,7 @@
                 Captions = fk.ReferencingTableColumns.Select(c => (Name: Camel(c.Name), Caption: GridCaption.For(c, Label(c.Name)))).ToList()
             }).ToList();
 
-        // ---- naming on the page
+        // ==== naming on the page
         string Id(ColumnModel c) => variable + UpperFirst(Camel(c.Name));
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
         string LabelOf(ColumnModel c) => c.SqlType == SqlDbType.Bit ? Label(c.Name) + "?" : Label(c.Name);
@@ -332,6 +332,15 @@
                 H($"                <select id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
                 if (c.IsNullable) H("                    <option [ngValue]=\"null\"></option>");
                 H($"                    <option *ngFor=\"let p of {p.List}\" [ngValue]=\"p.{p.KeyProp}\">{{{{p.{p.DisplayProp}}}}}</option>");
+                H("                </select>");
+            }
+            else if (c.HasChoices)
+            {
+                // A column whose values the database lists (a MySQL enum) is a drop-down of them.
+                H($"                <select id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
+                H(c.IsNullable ? "                    <option [ngValue]=\"null\"></option>" : "                    <option value=\"\"></option>");
+                foreach (string choice in c.Choices!)
+                    H($"                    <option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>");
                 H("                </select>");
             }
             else if (c.SqlType == SqlDbType.Bit)
@@ -611,7 +620,7 @@
         foreach (var child in children)
         {
             T();
-            T($"  // {child.Title} rows whose {child.FkProp} matches the row being edited -- the whole table is loaded and");
+            T($"  // {child.Title} rows whose {child.FkProp} matches the row being edited - the whole table is loaded and");
             T("  // filtered client-side (same no-paging simplification TS_Component.tt's own grid makes), and the columns");
             T("  // shown are whatever keys the first row actually has, since this template never sees the child's own schema.");
             T($"  private load{child.MethodName}(parentId: {keyTs}): void {{");

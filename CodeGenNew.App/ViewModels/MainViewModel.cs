@@ -129,6 +129,50 @@ public partial class MainViewModel : ObservableObject
                 _connectionRequest?.Provider switch { DatabaseProvider.PostgreSql => SqlDialect.PostgreSql, DatabaseProvider.MySql => SqlDialect.MySql, _ => SqlDialect.SqlServer }))
             .ToList();
 
+    /// <summary> The templates that write one file for the whole database (CS_DbContext, API_Registration), for the toolbar's database menu. </summary>
+    public List<TemplateInfo> GetDatabaseTemplates() =>
+        TemplateCatalog.Discover(_settings.TemplatesDirectory).Where(t => t.Config.DatabaseOnly).ToList();
+
+    /// <summary> Runs a database-level template over every table of the connected database's main schema (the one most tables are in) and
+    /// writes its file under the output folder. Returns the first file written, or null (StatusMessage says why). </summary>
+    public async Task<string?> RunDatabaseTemplateAsync(TemplateInfo template)
+    {
+        if (_connectionRequest is null || Tables.Count == 0)
+            return null;
+
+        IsBusy = true;
+        string schema = Tables.GroupBy(t => t.SchemaName).OrderByDescending(g => g.Count()).First().Key;
+        StatusMessage = $"Generating '{template.Name}' for every table of [{schema}]...";
+        try
+        {
+            var project = LoadActiveProject();
+            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms);
+            var database = await schemaProvider.BuildAsync(_connectionRequest.DatabaseName, schema);
+
+            var result = await TemplateRunner.RunAsync(template.FilePath, database, project);
+            if (!result.Success)
+            {
+                StatusMessage = "Template generation failed: " + string.Join(" | ", result.Errors);
+                return null;
+            }
+
+            LastOutputFiles = await GeneratedFiles.WriteAsync(_settings.OutputDirectory, template, project.ContextName ?? database.DatabaseName + "Context", result.GeneratedText!);
+            StatusMessage = LastOutputFiles.Count == 1
+                ? $"Done. Wrote {LastOutputFiles[0]}"
+                : $"Done. Wrote {LastOutputFiles.Count} files under {_settings.OutputDirectory}";
+            return LastOutputFiles[0];
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Generation failed: {ex.Message}";
+            return null;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     /// <summary> Every file the last successful RunTemplateAsync wrote (most templates write one; the TS_ templates several). </summary>
     public IReadOnlyList<string> LastOutputFiles { get; private set; } = [];
 
@@ -160,7 +204,7 @@ public partial class MainViewModel : ObservableObject
         {
             // The project's NamingStyle decides the names the schema reader gives tables and columns (customer_item -> CustomerItem).
             var project = LoadActiveProject();
-            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming);
+            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms);
             var model = await schemaProvider.BuildTableModelAsync(
                 table.SchemaName, table.TableName, template.Config.NeedsRowData, template.Config.NeedsReferencedDisplayColumns);
 

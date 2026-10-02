@@ -22,7 +22,7 @@ public sealed record RawColumn(
     string Name, int OrdinalPosition, string SqlTypeName, int MaxLength, int Precision, int Scale,
     bool IsNullable, bool IsIdentity, int? IdentitySeed, int? IdentityIncrement,
     string? ComputedDefinition, string? DefaultDefinition, bool IsPrimaryKey, bool IsInUniqueIndex,
-    string? DeclarationOverride = null, string? DefaultForCSharp = null);
+    string? DeclarationOverride = null, string? DefaultForCSharp = null, List<string>? Choices = null);
 
 /// <summary> One foreign key, either direction: the OTHER table's name and the two column lists. </summary>
 public sealed record ForeignKeyRow(string ConstraintName, string OtherSchema, string OtherTable, List<string> ReferencingColumns, List<string> ReferencedColumns);
@@ -33,16 +33,19 @@ public abstract class SchemaProviderBase : ISchemaProvider
 {
     private readonly string _specialLogicColumnsConfigPath;
     private readonly NamingStyle _naming;
+    private readonly IReadOnlyCollection<string>? _acronyms;
 
     /// <param name="naming"> How a table or column name from the database becomes the name generated code uses (the project's NamingStyle). The SQL text keeps the
     /// real names (ColumnModel.DbName, TableModel.DbTableName); a table name passed in (and listed in TableSummary) is always the real one. </param>
-    protected SchemaProviderBase(string specialLogicColumnsConfigPath, NamingStyle naming = NamingStyle.AsIs)
+    /// <param name="acronyms"> Words kept upper-case whole by the Pascal style (the project's Acronyms setting). </param>
+    protected SchemaProviderBase(string specialLogicColumnsConfigPath, NamingStyle naming = NamingStyle.AsIs, IReadOnlyCollection<string>? acronyms = null)
     {
         _specialLogicColumnsConfigPath = specialLogicColumnsConfigPath;
         _naming = naming;
+        _acronyms = acronyms;
     }
 
-    protected string Named(string databaseName) => NameConverter.Apply(_naming, databaseName);
+    protected string Named(string databaseName) => NameConverter.Apply(_naming, databaseName, _acronyms);
     private static string? WhenDifferent(string databaseName, string named) => databaseName == named ? null : databaseName;
 
     protected abstract SqlDialect Dialect { get; }
@@ -311,6 +314,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
             IsStringColumn = isString,
             IsDateColumn = isDate,
             IsBooleanColumn = isBoolean,
+            Choices = raw.Choices,
             NumericKind = isInteger ? NumericClassifier.Classify(name) : NumericKind.None,
             IsCurrencyColumn = isMoney || (sqlType == SqlDbType.Decimal && NumericClassifier.IsCurrencyName(name)),
             IsAuditColumn = name.IsAuditColumn(),

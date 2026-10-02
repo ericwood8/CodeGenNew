@@ -8,7 +8,7 @@
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
-    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
     // lists of tables). Everything below this block describes and implements the template itself.
     // ==========================================================================================
     string repositoryNamespace = "TimeEntry.Common.Repositories";
@@ -22,17 +22,17 @@
         "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
         "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
     };
-    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     contextType = Project.ContextName ?? contextType;
     repositoryNamespace = Project.RepoNamespace ?? repositoryNamespace;
     usings = Project.Usings ?? usings;
     // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
-    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
     // only used when no project is chosen.
     bool NoRepository(string table, LookupShape shape) => Project.NoRepository(table, shape) ?? noRepositoryTables.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
     // CS_Repo_v1.tt
     // Generates: <TableName>Repo.cs   (see OutputName in CS_Repo_v1.tt.config)
     //
@@ -52,27 +52,27 @@
     //     entity has to derive from the matching base for the repo to compile.
     //   - Extra queries, only where the COLUMNS alone say what to write:
     //       * a name/active table that hangs off exactly one parent through a NOT NULL int foreign key (a "child" table:
-    //         DepartmentTeam -> Department) gets  GetAllOf<Parent>(int id)  -- its active rows for that parent, by name;
-    //       * a table with a NOT NULL text Name that is NOT name/active-based gets  GetByName(string name)  -- names starting
+    //         DepartmentTeam -> Department) gets  GetAllOf<Parent>(int id)  - its active rows for that parent, by name;
+    //       * a table with a NOT NULL text Name that is NOT name/active-based gets  GetByName(string name)  - names starting
     //         with the text (Holiday);
     //       * every column that takes part in a UNIQUE index or constraint OTHER than the primary key
-    //         (ColumnModel.IsInUniqueIndex -- the same signal SP_Clone.tt already uses to decide which columns need a
-    //         caller-supplied override on copy) gets  HasDuplicate<Column>(value, excludeId)  -- does some OTHER row
+    //         (ColumnModel.IsInUniqueIndex - the same signal SP_Clone.tt already uses to decide which columns need a
+    //         caller-supplied override on copy) gets  HasDuplicate<Column>(value, excludeId)  - does some OTHER row
     //         already have this value, the generalized shape of CityRepository.HasDuplicates in
     //         CodeGenPossibilities\AdvancedRepositoryPatterns (research folder). One column at a time:
     //         IsInUniqueIndex only says a column takes part in SOME unique index, not which other columns share a
     //         composite one, so a composite unique constraint gets one HasDuplicate per column rather than a single
     //         combined check;
-    //       * every such column that is ALSO a string column gets  SuggestUnique<Column>(desired)  -- given a
+    //       * every such column that is ALSO a string column gets  SuggestUnique<Column>(desired)  - given a
     //         starting value (e.g. "New Account"), returns it unchanged if free, else the same value with a numeric
     //         suffix bumped until free ("New Account2", "New Account3", ...), for pre-filling an Add dialog with
     //         something that will actually save. The generalized shape of a real EnsureNameIsUnique/IsUniqueName
     //         helper pair in CodeGenPossibilities\SuggestUniqueName (research folder) that needed a per-entity-type
     //         switch statement in the hand-written codebase it came from; generating one column at a time from
     //         IsInUniqueIndex needs no switch at all. Same single-column scope and composite-index caveat as
-    //         HasDuplicate<Column> above -- and the same caveat about NOT knowing whether a real project's
+    //         HasDuplicate<Column> above - and the same caveat about NOT knowing whether a real project's
     //         constraint is actually scoped to a parent (e.g. unique per model, not globally) rather than table-wide;
-    //       * a table with at least one searchable (string, non-audit) column gets SearchAsync(...) -- the same
+    //       * a table with at least one searchable (string, non-audit) column gets SearchAsync(...) - the same
     //         filter/pagination SP_Search.tt/SP_SearchCount.tt generate, called directly through the DbContext
     //         (CodeGenPossibilities\Pagination, research folder) so an in-process WinUI3 screen and the web API's
     //         API_Search.tt endpoint share one implementation instead of two.
@@ -80,10 +80,10 @@
     //     tables with no entity class) stops with an error instead of writing a class that cannot compile.
     //
     // What it does NOT do, so a repository that needs any of these stays hand-maintained: queries that Include navigation
-    // properties (GetAllIncludeTeams, GetAllIncludeDropdowns) -- the entity's navigations are the developers' choice, and a
+    // properties (GetAllIncludeTeams, GetAllIncludeDropdowns) - the entity's navigations are the developers' choice, and a
     // guess would not compile; lookups by a hand-picked column or order (GetAllOfTimesheet ordered by project).
     //
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
 
     if (NoRepository(Model.TableName, Model.LookupShape))
     {
@@ -94,7 +94,7 @@
     {
         string entity = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
 
-        // ---- C# type of a column (same mapping CS_Entity.tt/CS_Validation.tt use)
+        // ==== C# type of a column (same mapping CS_Entity.tt/CS_Validation.tt use)
         string ClrType(ColumnModel c)
         {
             string t = c.SqlType switch
@@ -201,14 +201,14 @@
         // PagedResult<T>-shaped record: API_Search.tt's own <TableName>SearchResult lives in a different,
         // independently-generated file this template cannot assume was ever run for this table.
         //
-        // Always generated -- not gated on searchableColumns.Count > 0. Pagination and searchability are
+        // Always generated - not gated on searchableColumns.Count > 0. Pagination and searchability are
         // separate concerns (SP_Search.tt's own header comment): a table with no searchable column (e.g. one
         // keyed only by ids/numbers) still grows without bound and still needs a paged GetAll, just with zero
-        // filter parameters -- found live needing exactly this on such a table (2026-09-28).
+        // filter parameters - found live needing exactly this on such a table (2026-09-28).
         {
             string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
             var filters = searchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
-            // Filter params, then pageNumber/pageSize -- joined as ONE list so the comma placement is correct
+            // Filter params, then pageNumber/pageSize - joined as ONE list so the comma placement is correct
             // whether there are zero filters or several (a naive "{paramList}, int pageNumber" would leave a
             // leading ", " when paramList is empty).
             var signatureParams = filters.Select(f => $"string? {f.ParamName} = null")
@@ -231,7 +231,7 @@
             body.Add("");
             // Set<T>().FromSqlRaw(...), NOT Database.SqlQueryRaw<T>(...): SqlQueryRaw<T> builds an ad hoc
             // EF model for T on the fly and that model rejects any navigation property T has ("Navigations
-            // are not supported when using 'SqlQuery'") -- it throws for any table with a foreign key, found
+            // are not supported when using 'SqlQuery'") - it throws for any table with a foreign key, found
             // live running this exact generated code against a table with a parent lookup (2026-09-28).
             // FromSqlRaw uses the real, already-validated entity model (navigations and all), so it works
             // whether or not T has any.
@@ -241,7 +241,7 @@
             body.Add("");
             // Explicitly typed (not "var ... = new[]"): with zero searchable columns this array has zero
             // elements, and an implicitly-typed array initializer with nothing in it is a compile error
-            // (CS0826) -- found while testing pagination-without-search, the case that first makes this array
+            // (CS0826) - found while testing pagination-without-search, the case that first makes this array
             // possibly empty.
             body.Add($"        var countParameters = new {call.ParameterNamespace}.{call.ParameterType}[]");
             body.Add("        {");
@@ -254,7 +254,7 @@
             body.Add("        };");
             body.Add("");
             // .SingleAsync() (or any operator EF must COMPOSE the SQL for) throws InvalidOperationException
-            // ("was called with non-composable SQL") against an EXEC call -- a stored-procedure call cannot be
+            // ("was called with non-composable SQL") against an EXEC call - a stored-procedure call cannot be
             // wrapped in a derived-table subquery the way a plain SELECT can. Found live, running this exact
             // generated code for real: .ToListAsync() executes the EXEC as-is (no composition needed), then
             // .Single() enforces "exactly one row" in memory instead of in SQL.
@@ -276,11 +276,11 @@
             L();
         }
         // partial: in a WinUI3/Windows App SDK project, the CsWinRT source generator scans every type for
-        // WinRT-projected interfaces -- GenericRepo<T>/NameActiveRepo<T> both implement IDisposable (WinRT's
-        // IClosable) -- and needs to add generated members onto the concrete (non-generic) class implementing
+        // WinRT-projected interfaces - GenericRepo<T>/NameActiveRepo<T> both implement IDisposable (WinRT's
+        // IClosable) - and needs to add generated members onto the concrete (non-generic) class implementing
         // it, which it can only do if that class is declared partial. Without this, every generated repo in a
         // WinUI3 target project gets "Class {Table}Repo implements WinRT interfaces but ... isn't marked
-        // partial" -- found live, building a real WinUI3 target project (2026-09-27).
+        // partial" - found live, building a real WinUI3 target project (2026-09-27).
         L($"public partial class {Model.TableName}Repo : {baseRepo}<{entity}>");
         L("{");
         L($"    public {Model.TableName}Repo({contextType} context) : base(context)");

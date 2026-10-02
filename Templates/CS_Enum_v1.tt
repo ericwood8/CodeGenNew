@@ -8,15 +8,15 @@
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
-    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
     // lists of tables). Everything below this block describes and implements the template itself.
     // ==========================================================================================
     string enumNamespace = "TimeEntry.Common.Enums";
-    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     enumNamespace = Project.EnumNamespace ?? enumNamespace;
     // ==========================================================================================
 
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
     // CS_Enum_v1.tt
     // Generates: <TableName>.cs   (see OutputName in CS_Enum_v1.tt.config)
     //
@@ -28,9 +28,9 @@
     //   - the enum's name is the table's name;
     //   - each member's VALUE is the primary key (a single int/smallint/tinyint/bigint column; the enum's underlying type
     //     follows the key's type, and is left off for int);
-    //   - each member's NAME is the row's name column -- the column called "Name", else "<Table>Name" (Company has
+    //   - each member's NAME is the row's name column - the column called "Name", else "<Table>Name" (Company has
     //     CompanyName, SY_Role has RoleName), else the best display column from SpecialLogicColumns.config, else any text
-    //     column ending in "Name" -- with the spaces and punctuation taken out and each word
+    //     column ending in "Name" - with the spaces and punctuation taken out and each word
     //     starting with a capital: "Paid time off" -> PaidTimeOff, "Family and Medical Leave Act" ->
     //     FamilyAndMedicalLeaveAct. A name that would not be a legal C# identifier (starts with a digit, or
     //     repeats an earlier member) is made legal (_2Fast, Name_3). Every member starts with a capital, so a C# keyword never clashes.
@@ -38,7 +38,7 @@
     //
     // Only what the DATA says is generated. A member the developers abbreviated by hand (OvertimeType.RegularOT for
     // "Regular overtime") comes out as RegularOvertime, so regenerating over a hand-tuned enum renames it.
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
     string underlying = keyColumn?.SqlType switch
@@ -69,7 +69,7 @@
     if (!Model.HasRowData)
         problems.Add("its rows were not read (the template's .tt.config must say NeedsRowData=true)");
     else if (Model.Rows.Count == 0)
-        problems.Add("the table is empty, and an enum's members ARE its rows -- load the data first, then generate again");
+        problems.Add("the table is empty, and an enum's members ARE its rows - load the data first, then generate again");
     if (problems.Count > 0)
         Error($"CS_Enum cannot generate an enum from [{Model.SchemaName}].[{Model.TableName}]: " + string.Join("; ", problems) + ".");
 

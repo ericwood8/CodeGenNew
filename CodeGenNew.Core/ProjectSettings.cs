@@ -25,7 +25,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle"
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms"
     ];
 
     private readonly Dictionary<string, string> _values;
@@ -135,6 +135,10 @@ public class ProjectSettings
     /// <summary> How a table or column name from the database becomes the generated name: <c>NamingStyle=Pascal</c> turns <c>customer_item</c> into <c>CustomerItem</c>
     /// (the SQL keeps the real names); the default <c>AsIs</c> uses the database's names. Read by the schema reader, so it applies to every template. </summary>
     public NamingStyle Naming => Enum.TryParse<NamingStyle>(Explicit("NamingStyle"), ignoreCase: true, out var style) ? style : NamingStyle.AsIs;
+
+    /// <summary> Words kept upper-case whole when <see cref="Naming"/> is Pascal: <c>Acronyms=PO,UPC,MSRP</c> gives <c>require_customer_po</c> -> <c>RequireCustomerPO</c>
+    /// (what a SQL Server database with PascalCase names already says), so the generated names match across databases. Empty when not set. </summary>
+    public string[] Acronyms => Explicit("Acronyms") is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
 
     public string? ViewNamespace => Derived("ViewNamespace", ".App.Views");
     public string? ViewModelNamespace => Derived("ViewModelNamespace", ".App.ViewModels");

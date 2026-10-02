@@ -8,7 +8,7 @@
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
-    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
     // lists of tables). Everything below this block describes and implements the template itself.
     // ==========================================================================================
     // Folders under the Angular app root (where -o points) that the generated files go in.
@@ -31,19 +31,19 @@
         ["DepartmentTeam"] = "department",
         ["ProjectTask"] = "project"
     };
-    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     modelFileOf = Project.ModelFileOverrides ?? modelFileOf;
     // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
-    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
     // only used when no project is chosen.
     bool NoApi(string table, LookupShape shape) => Project.NoApi(table, shape) ?? noApiTables.Contains(table, StringComparer.OrdinalIgnoreCase);
     bool NoNavigation(string table, LookupShape shape) => Project.NoNavigation(table, shape) ?? noNavigationTables.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
     // TS_Model_v1.tt
     // Generates: models/<table>.ts   (an Angular TypeScript interface; the path is written by the template itself, see
-    // GeneratedFiles -- point the output folder at the Angular app's src/app folder)
+    // GeneratedFiles - point the output folder at the Angular app's src/app folder)
     //
     // The shape of one row as the API sends and receives it, in the style of TimeEntryUI's src\app\models\holiday.ts:
     //
@@ -61,18 +61,18 @@
     //     server really sends: HolidayId -> holidayId, IsActive -> isActive, but SY_IsoCountry_Alpha3Code ->
     //     sY_IsoCountry_Alpha3Code and E_TimeSheetId -> e_TimeSheetId.
     //   - Types: number (all numeric and money columns), boolean (bit), string (text, uniqueidentifier and DATES). A date is
-    //     a string because JSON has no date type -- the server sends "2025-12-25T00:00:00" and takes the same back -- so
+    //     a string because JSON has no date type - the server sends "2025-12-25T00:00:00" and takes the same back - so
     //     typing it Date would lie about what a row holds.
     //   - Optional ("?"): the primary key (a new row has none yet) and every column that allows NULL. NOT NULL columns are
     //     required, matching the C# entity's "required" properties, which the API refuses to bind without.
     //   - One optional navigation property per single-column foreign key (employee?: Employee), named for the FK's role, of
-    //     the parent's interface, imported from its model file -- unless the parent is an enum / lookup table listed in
+    //     the parent's interface, imported from its model file - unless the parent is an enum / lookup table listed in
     //     noNavigationTables, in which case the foreign key stays a plain number/string.
     //
     // Not written: DisplayName / validation attributes, or extra fields a screen adds to a row (TimeSheetDetail's
     // projectName); an interface that needs those stays hand-maintained.
     //
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
 
     string BaseName(string table) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(table, "^E_", ""), "^SY_", "");
     string Camel(string name)

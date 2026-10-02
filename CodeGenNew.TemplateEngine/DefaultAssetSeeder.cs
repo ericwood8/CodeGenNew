@@ -59,6 +59,8 @@ public static class DefaultAssetSeeder
         "CS_Entity_v1.tt", "CS_Entity_v1.tt.config",
         "CS_Validation_v1.tt", "CS_Validation_v1.tt.config",
         "CS_Enum_v1.tt", "CS_Enum_v1.tt.config",
+        "CS_DbContext_v1.tt", "CS_DbContext_v1.tt.config",
+        "API_Registration_v1.tt", "API_Registration_v1.tt.config",
         "CS_Repo_v1.tt", "CS_Repo_v1.tt.config",
         "TS_Model_v1.tt", "TS_Model_v1.tt.config",
         "TS_Service_v1.tt", "TS_Service_v1.tt.config",

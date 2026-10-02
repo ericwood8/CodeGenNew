@@ -25,7 +25,8 @@ public class MySqlSchemaTests
     [DataRow("char", "char(3)", 3L, null, null, "char", "char(3)")]
     [DataRow("text", "text", 65535L, null, null, "varchar", "text")]
     [DataRow("longtext", "longtext", 4294967295L, null, null, "varchar", "longtext")]
-    [DataRow("enum", "enum('a','b')", 1L, null, null, "varchar", "varchar(255)")]
+    [DataRow("enum", "enum('a','bcd')", 3L, null, null, "varchar", "varchar(3)")]   // as long as the longest listed value
+    [DataRow("set", "set('a','b')", 3L, null, null, "varchar", "varchar(255)")]
     [DataRow("json", "json", null, null, null, "varchar", "json")]
     [DataRow("blob", "blob", 65535L, null, null, "varbinary", "blob")]
     [DataRow("geometry", "geometry", null, null, null, "sql_variant", "geometry")]
@@ -100,6 +101,36 @@ public class NamingStyleTests
     {
         Assert.AreEqual(expected, NameConverter.ToPascal(name));
         Assert.AreEqual(expected, NameConverter.Apply(NamingStyle.Pascal, name));
+    }
+
+    [TestMethod]
+    [DataRow("require_customer_po", "RequireCustomerPO")]
+    [DataRow("po_number", "PONumber")]
+    [DataRow("item_upc", "ItemUPC")]
+    [DataRow("item_msrp_amount", "ItemMSRPAmount")]
+    [DataRow("po", "PO")]
+    [DataRow("report_poster", "ReportPoster")]   // only a whole word counts, never a prefix
+    [DataRow("customer_id", "CustomerId")]       // Id is not an acronym unless the project lists it
+    public void Listed_acronyms_stay_upper_case(string name, string expected)
+    {
+        string[] acronyms = ["PO", "upc", "Msrp"];
+
+        Assert.AreEqual(expected, NameConverter.ToPascal(name, acronyms));
+        Assert.AreEqual(expected, NameConverter.Apply(NamingStyle.Pascal, name, acronyms));
+    }
+
+    [TestMethod]
+    public void The_project_lists_its_acronyms_and_none_is_the_default()
+    {
+        CollectionAssert.AreEqual(new[] { "PO", "UPC", "MSRP" }, ProjectSettings.Parse("ProjectName=X\nAcronyms=PO, UPC ,MSRP").Acronyms);
+        Assert.AreEqual(0, ProjectSettings.None.Acronyms.Length);
+        Assert.AreEqual(0, ProjectSettings.Parse("ProjectName=X").Acronyms.Length);
+    }
+
+    [TestMethod]
+    public void AsIs_ignores_acronyms()
+    {
+        Assert.AreEqual("require_customer_po", NameConverter.Apply(NamingStyle.AsIs, "require_customer_po", ["PO"]));
     }
 
     [TestMethod]

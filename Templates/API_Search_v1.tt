@@ -6,43 +6,43 @@
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
-    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names).
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
     // Everything below this block describes and implements the template itself.
     // ==========================================================================================
     string apiNamespace = "TimeEntry.ApiService.Apis";
     string contextType = "TimeEntryContext";
     string[] usings = { };
-    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     contextType = Project.ContextName ?? contextType;
     apiNamespace = Project.ApiNamespace ?? apiNamespace;
     usings = Project.Usings ?? usings;
     // ==========================================================================================
 
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
     // API_Search_v1.tt
     // Generates: <TableName>SearchApi.cs   (see OutputName in API_Search_v1.tt.config)
     //
     // The HTTP companion to SP_Search.tt (CodeGenPossibilities\Pagination in the research folder):
     //     GET /<plural>/search?<column>=&...&pageNumber=1&pageSize=100
     // one optional query parameter per SP_Search.tt's own searchable column (every IsStringColumn that
-    // isn't IsAuditColumn -- the identical rule, computed the same way, so the two templates can't drift
+    // isn't IsAuditColumn - the identical rule, computed the same way, so the two templates can't drift
     // apart on what's searchable), plus pageNumber (1-based) and pageSize. Returns a <Table>SearchResult:
-    // Items/Page/PageSize/TotalCount/TotalPages -- CriticalViewer's own real, live PagedResult<T> shape
+    // Items/Page/PageSize/TotalCount/TotalPages - CriticalViewer's own real, live PagedResult<T> shape
     // (CodeGenPossibilities\Pagination\CriticalViewer_MovieContracts.cs), not TimeEntryServer's own dead,
     // never-shipped PaginatedItems/PaginationRequest convention.
     //
     // Like API_Junction.tt, there is no <Table>Repo to go through: the handler calls SP_Search and
     // SP_SearchCount directly through the injected DbContext (Database.SqlQueryRaw<T>), the same call the
-    // WinUI3 side makes through CS_Repo.tt's own new Search method -- one source of truth for "how do I
+    // WinUI3 side makes through CS_Repo.tt's own new Search method - one source of truth for "how do I
     // search+page this table" across every consumer, not three independently-maintained filter
     // implementations. SqlQueryRaw<T> works for any shape whose property names match the returned columns,
-    // entity or not, without the target project's DbContext needing to register anything new -- the same
+    // entity or not, without the target project's DbContext needing to register anything new - the same
     // property API_Junction.tt's own <Table>JunctionItem DTO already relies on.
     //
     // pageNumber < 1 is rejected with 400, matching CriticalViewer's real MoviesController.GetMovies exactly.
-    // Requires a primary key and a table, not a view (SP_Search.tt's own restrictions -- this calls that
+    // Requires a primary key and a table, not a view (SP_Search.tt's own restrictions - this calls that
     // procedure directly, so the same shape is required). A table with no searchable column still gets this
-    // endpoint -- pagination and searchability are separate concerns (SP_Search.tt's own header comment) --
+    // endpoint - pagination and searchability are separate concerns (SP_Search.tt's own header comment) -
     // it just has no query-string filter parameters, matching SP_Search.tt's own parameterless filter list.
 
     var searchableColumns = Model.SearchableColumns;
@@ -52,9 +52,9 @@
     string entity = Model.TableName;
     string usingLines = string.Concat(usings.Select(u => $"using {u};\n"));
 
-    // ---- one (paramName, columnName) pair per searchable column, e.g. ("title", "Title")
+    // ==== one (paramName, columnName) pair per searchable column, e.g. ("title", "Title")
     var filters = searchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
-    // Filters, then @PageNumber/@PageSize -- joined as ONE list so the comma placement is correct whether
+    // Filters, then @PageNumber/@PageSize - joined as ONE list so the comma placement is correct whether
     // there are zero filters or several (a naive "{filters}, @PageNumber" would leave a leading ", " when
     // filters is empty).
     // How the generated code calls the search routine: EXEC of a stored procedure on SQL Server, a function call on PostgreSQL.
@@ -114,7 +114,7 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
 
         // Set<T>().FromSqlRaw(...), NOT Database.SqlQueryRaw<T>(...): SqlQueryRaw<T> builds an ad hoc EF
         // model for T on the fly and that model rejects any navigation property T has ("Navigations are not
-        // supported when using 'SqlQuery'") -- it throws for any table with a foreign key, found live running
+        // supported when using 'SqlQuery'") - it throws for any table with a foreign key, found live running
         // this exact generated code (via CS_Repo.tt's identical SearchAsync) against a table with a parent
         // lookup (2026-09-28). FromSqlRaw uses the real, already-validated entity model (navigations and
         // all), so it works whether or not T has any.
@@ -125,7 +125,7 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
             .ToListAsync();
 
         // Explicitly typed (not "var ... = new[]"): with zero searchable columns this array has zero elements,
-        // and an implicitly-typed array initializer with nothing in it is a compile error (CS0826) -- found
+        // and an implicitly-typed array initializer with nothing in it is a compile error (CS0826) - found
         // while testing pagination-without-search, the case that first makes this array possibly empty.
         var countParameters = new <#= call.ParameterType #>[]
         {
@@ -140,7 +140,7 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
         };
 
         // .SingleAsync() (or any operator EF must COMPOSE the SQL for) throws InvalidOperationException ("was
-        // called with non-composable SQL") against an EXEC call -- a stored-procedure call cannot be wrapped
+        // called with non-composable SQL") against an EXEC call - a stored-procedure call cannot be wrapped
         // in a derived-table subquery the way a plain SELECT can. .ToListAsync() executes the EXEC as-is (no
         // composition needed); .Single() then enforces "exactly one row" in memory instead of in SQL.
         var totalCountRows = await context.Database

@@ -195,13 +195,11 @@ public class TemplateConfigRefuseTests
     }
 
     [TestMethod]
-    public void Only_the_junction_templates_that_call_T_SQL_procedures_are_marked_SQL_Server_only()
+    public void No_shipped_template_is_SQL_Server_only()
     {
-        foreach (string name in new[] { "API_Junction", "WinUI3_JunctionEditor" })
-            Assert.IsTrue(TemplateConfig.Load(Repo.Template($"{name}_v1.tt.config")).SqlServerOnly, name);
-        foreach (string name in new[] { "SP_Search", "SP_Insert", "SP_Update", "SP_Save", "SP_Delete", "SP_Clone", "SP_Load", "SP_Lookup", "SP_Junction" })
-            Assert.IsFalse(TemplateConfig.Load(Repo.Template($"{name}_v1.tt.config")).SqlServerOnly, name);
-        Assert.IsFalse(TemplateConfig.Load(Repo.Template("CS_Repo_v1.tt.config")).SqlServerOnly);
+        // The junction templates call the database's own routines (EXEC, a function call, CALL) through JunctionCall, so every template runs on every database.
+        foreach (string config in Directory.GetFiles(Repo.TemplatesDirectory, "*.tt.config"))
+            Assert.IsFalse(TemplateConfig.Load(config).SqlServerOnly, Path.GetFileName(config));
     }
 
     [TestMethod]
@@ -368,8 +366,8 @@ public class TemplateCatalogTests
 
         var groups = offered.GroupBy(t => t.SubmenuGroup).ToDictionary(g => g.Key!, g => g.Count());
         Assert.AreEqual(9, groups["SP"]);
-        Assert.AreEqual(3, groups["API"]);
-        Assert.AreEqual(4, groups["CS"]);
+        Assert.AreEqual(4, groups["API"]);
+        Assert.AreEqual(5, groups["CS"]);
         Assert.AreEqual(5, groups["TS"]);
         Assert.AreEqual(4, groups["WinUI3"]);
         Assert.IsTrue(offered.All(t => !t.IsSuperseded));

@@ -8,7 +8,7 @@
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
-    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
     // folders, lists of tables). Everything below this block describes and implements the template itself.
     // ==========================================================================================
     string viewNamespace = "TimeEntry.Desktop.Views";
@@ -20,10 +20,10 @@
     // Folders under the WinUI3 project root (where -o points) the generated files go in.
     string viewsFolder = "Views";
     // Tables whose Add/Edit dialog is a <Table>DetailMasterDialog (WinUI3_DetailMasterScreen.tt) rather than a plain
-    // <Table>DetailDialog -- a list screen or a parent's child grid opens the one that exists.
+    // <Table>DetailDialog - a list screen or a parent's child grid opens the one that exists.
     string[] detailMasterTables = { };
     string viewModelsFolder = "ViewModels";
-    // A foreign key to one of these is shown as a plain id number, not resolved to the parent's name --
+    // A foreign key to one of these is shown as a plain id number, not resolved to the parent's name -
     // must match WinUI3_DetailScreen.tt's own noLookupParents so the grid and the form agree on which
     // columns are drop-downs.
     string[] noLookupParents =
@@ -31,7 +31,7 @@
         "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
         "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role", "DepartmentTeam", "ProjectTask"
     };
-    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     viewNamespace = Project.ViewNamespace ?? viewNamespace;
     viewModelNamespace = Project.ViewModelNamespace ?? viewModelNamespace;
     contextType = Project.ContextName ?? contextType;
@@ -41,14 +41,14 @@
     viewsFolder = Project.ViewsFolder ?? viewsFolder;
     viewModelsFolder = Project.ViewModelsFolder ?? viewModelsFolder;
     // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
-    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
     // only used when no project is chosen.
     bool NoLookup(string table, LookupShape shape) => Project.NoLookup(table, shape) ?? noLookupParents.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
     // WinUI3_MasterScreen_v1.tt
-    // Generates a WinUI3 Page listing every row of the table -- the "master" of a master/detail pair (see
+    // Generates a WinUI3 Page listing every row of the table - the "master" of a master/detail pair (see
     // WinUI3_DetailScreen.tt, which this page opens for Add/Edit, and WinUI3_DetailMasterScreen.tt, the
     // detail form's own master-of-its-children alternative):
     //     Views/<TableName>ListPage.xaml         a header row, a grid of rows, Add New / Edit / Delete
@@ -59,55 +59,55 @@
     // The grid's columns are exactly WinUI3_DetailScreen.tt's own field list (every column except the primary
     // key, computed and identity columns), so the two screens always agree on what a row looks like. A
     // foreign key column shows the parent's display column (looked up once per parent into a dictionary, the
-    // same idea as TS_Component's "name of" methods) instead of the raw id -- unless it's listed in
+    // same idea as TS_Component's "name of" methods) instead of the raw id - unless it's listed in
     // noLookupParents, which shows the id number instead.
     //
     // Not a DataGrid: WinUI3 has none built in without a third-party package this template can't assume your
     // project has, so each row is a plain Grid of TextBlocks with the same column widths as the header, laid
-    // out via a generic <TableName>ListRow.Cells list rather than one named XAML property per column -- the
+    // out via a generic <TableName>ListRow.Cells list rather than one named XAML property per column - the
     // only way to keep the number of columns generic (it depends on the table) while still using compiled
     // x:Bind. If you have Community Toolkit's DataGrid or WinUI's TreeView/ListView with grid-style headers
     // already, feel free to replace this with that.
     //
     // Requires a primary key that is a single, non-composite INT column and refuses a "name/active" table
-    // (a NOT NULL text Name plus a NOT NULL bit IsActive) -- same restrictions and reasons as
+    // (a NOT NULL text Name plus a NOT NULL bit IsActive) - same restrictions and reasons as
     // WinUI3_DetailScreen.tt, since its repository (NameActiveRepo) has no GetAll for this page to call.
     //
-    // What it does NOT do: sorting, or opening from a NavigationView/Frame -- add the Page to your own
+    // What it does NOT do: sorting, or opening from a NavigationView/Frame - add the Page to your own
     // navigation the way you would any other.
     //
     // Pagination (CodeGenPossibilities\Pagination, research folder): the grid always loads one page at a time
     // through CS_Repo.tt's SearchAsync instead of GetAll(), with a PaginationBar underneath. **Update
-    // (2026-09-28):** pagination no longer requires a searchable column -- a table with none (e.g. a
+    // (2026-09-28):** pagination no longer requires a searchable column - a table with none (e.g. a
     // monthly-summary table keyed only by ids/numbers) still gets it, found live needing exactly this;
     // pagination and searchability are separate concerns, and SearchAsync already accepts zero filter values.
     //
     // Search (CodeGenPossibilities\Search, research folder): when the table has a searchable column, a plain
-    // TextBox per TableModel.SearchableColumns column (AutoSuggestBox was considered and declined -- it's
+    // TextBox per TableModel.SearchableColumns column (AutoSuggestBox was considered and declined - it's
     // built for incremental single-query autocomplete, not several independent typed filter fields) plus a
     // Search button above the grid, calling ViewModel.LoadAsync() with PageNumber reset to 1. Bespoke per
-    // table, like the add/edit form -- there is no shared "search bar" UserControl the way PaginationBar is,
+    // table, like the add/edit form - there is no shared "search bar" UserControl the way PaginationBar is,
     // since the field list differs per table. A blank field is sent as no filter for that column (every row),
     // not filtered on the empty string. A table with no searchable column gets no search UI at all, but still
     // pages through every row via the plain, unfiltered SearchAsync call.
     //
     // Unlike TS_Component.tt (a real, already-installed Angular Material dependency) there is no comparable
     // WinUI3 library already in a real target project to point at (no real WinUI3 project has ever been
-    // checked the way TimeEntryUI/CriticalViewer were -- see Docs/specs.md's own note that none of the three
+    // checked the way TimeEntryUI/CriticalViewer were - see Docs/specs.md's own note that none of the three
     // WinUI3 CRUD-screen templates have ever been compiled into a live WinUI3 project). Community Toolkit's
     // DataGrid (CommunityToolkit.WinUI.UI.Controls.DataGrid) is the project owner's chosen future grid
     // control, but swapping the ListView/Cells rendering for it is its own separate follow-up pass, not part
-    // of this one -- this pass only adds a PaginationBar under the existing grid, exactly the same scope
+    // of this one - this pass only adds a PaginationBar under the existing grid, exactly the same scope
     // split TSX_Page.tt/TS_Component.tt made.
     //
     // Grid/toolbar styling (2026-09-27, brushes fixed 2026-09-30): every WinUI3 grid (this page's own row
     // grid and WinUI3_DetailMasterScreen.tt's child grids) is boxed in a ControlStrokeColorSecondaryBrush
     // Border with a line under the header and under every row, so it reads as a table instead of loose rows
-    // of text. The Add New/Refresh bar, the search bar, and the pagination bar all share one look -- a
+    // of text. The Add New/Refresh bar, the search bar, and the pagination bar all share one look - a
     // SolidBackgroundFillColorSecondaryBrush Border with a matching ControlStrokeColorSecondaryBrush outline
-    // -- so the three toolbars read as one family instead of plain unstyled StackPanels. Both are theme
+    // - so the three toolbars read as one family instead of plain unstyled StackPanels. Both are theme
     // resources, so they follow the app's light/dark theme automatically instead of a hardcoded color.
-    // Originally used the Card* brushes (CardStrokeColorDefaultBrush/CardBackgroundFillColorDefaultBrush) --
+    // Originally used the Card* brushes (CardStrokeColorDefaultBrush/CardBackgroundFillColorDefaultBrush) -
     // switched away 2026-09-30 after a live user report of no visible shading at all: Card* is a near-
     // transparent tint meant to sit on top of another surface, and CardBackgroundFillColorDefault is
     // #B3FFFFFF in the Light theme dictionary (70%-opacity white), invisible over this page's own plain
@@ -118,12 +118,12 @@
     // WinUI3_DetailMasterScreen.tt: a plain, purely-presentational UserControl (all page-number and enabled-state
     // computation lives on the ViewModel, the same ObservableObject/[NotifyPropertyChangedFor] pattern this
     // template already uses for HasError). It is the same file for every table, so each run rewrites it
-    // identically. Referenced through its own "views:" xmlns prefix (viewNamespace), not "local:" -- that
+    // identically. Referenced through its own "views:" xmlns prefix (viewNamespace), not "local:" - that
     // prefix is already claimed by viewModelNamespace for <TableName>ListRow's own DataTemplate, and reusing it
     // for PaginationBar fails to compile (WMC0001: Unknown type 'PaginationBar' in XML namespace
     // '...ViewModels').
     //
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
 
     bool IsDate(ColumnModel c) => c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
     bool IsNumber(ColumnModel c) => c.SqlType is SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt
@@ -162,7 +162,7 @@
         // "_lowerFirst(Name)" -> "Name" ObservableProperty round-trip PageNumber/TotalPages already use, just
         // with a Filter suffix. SearchAsync's own parameters (CS_Repo.tt) are passed by name, not position, so
         // this list's order only affects the TextBoxes' left-to-right layout, not correctness. Empty for a
-        // table with no searchable column -- canSearch below gates the search bar UI specifically;
+        // table with no searchable column - canSearch below gates the search bar UI specifically;
         // pagination itself is unconditional (see the header comment's 2026-09-28 update).
         var searchFields = Model.SearchableColumns
             .Select(c => new { Field = FieldVar(c.Name) + "Filter", Prop = c.Name + "Filter", ParamName = FieldVar(c.Name), Label = Label(c.Name) })
@@ -173,7 +173,7 @@
 
         // GroupBy + First, not ToDictionary: a real table can have more than one FK constraint on the same
         // column pointing at the same parent (seen live against a second production database's dbo.Products
-        // table) -- ToDictionary would throw on the duplicate key.
+        // table) - ToDictionary would throw on the duplicate key.
         var fkByColumn = Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1)
             .GroupBy(f => f.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
@@ -381,7 +381,7 @@ using <#= u #>;
 
 namespace <#= viewNamespace #>;
 
-// Assumes nothing from CodeGenNew.App itself -- a plain Page, no shared house-style helper or navigation
+// Assumes nothing from CodeGenNew.App itself - a plain Page, no shared house-style helper or navigation
 // framework. Add it to your own NavigationView/Frame the way you would any other Page.
 public sealed partial class <#= table #>ListPage : Page
 {
@@ -403,7 +403,7 @@ public sealed partial class <#= table #>ListPage : Page
         await ViewModel.LoadAsync();
     }
 
-    // The XAML's own "Refresh" button (Click="OnRefreshClick") had no matching handler here at all -- a real,
+    // The XAML's own "Refresh" button (Click="OnRefreshClick") had no matching handler here at all - a real,
     // always-present compile error for every table, found the first time this template was ever compiled
     // against a real WinUI3 project.
     private async void OnRefreshClick(object sender, RoutedEventArgs e) => await ViewModel.LoadAsync();

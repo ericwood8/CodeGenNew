@@ -28,7 +28,14 @@ public class TemplateResult
 /// </summary>
 public static class TemplateRunner
 {
-    public static async Task<TemplateResult> RunAsync(string templateFilePath, TableModel model, ProjectSettings? project = null, CancellationToken cancellationToken = default)
+    public static Task<TemplateResult> RunAsync(string templateFilePath, TableModel model, ProjectSettings? project = null, CancellationToken cancellationToken = default) =>
+        RunCoreAsync(templateFilePath, "Model", model, project, cancellationToken);
+
+    /// <summary> Runs a database-level template (TemplateConfig.DatabaseOnly): it receives every table as the <c>Database</c> parameter. </summary>
+    public static Task<TemplateResult> RunAsync(string templateFilePath, DatabaseModel database, ProjectSettings? project = null, CancellationToken cancellationToken = default) =>
+        RunCoreAsync(templateFilePath, "Database", database, project, cancellationToken);
+
+    private static async Task<TemplateResult> RunCoreAsync(string templateFilePath, string parameterName, object model, ProjectSettings? project, CancellationToken cancellationToken)
     {
         var generator = new TemplateGenerator();
 
@@ -37,7 +44,7 @@ public static class TemplateRunner
         generator.Refs.Add(typeof(TableModel).Assembly.Location);
 
         var session = generator.GetOrCreateSession();
-        session["Model"] = model;
+        session[parameterName] = model;
         session["Project"] = project ?? ProjectSettings.None;
 
         string tempOutputFile = Path.GetTempFileName();

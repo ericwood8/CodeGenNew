@@ -9,7 +9,7 @@
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
-    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
     // lists of tables). Everything below this block describes and implements the template itself.
     // ==========================================================================================
     // Folders under the React app's src folder (where -o points) that the generated files go in.
@@ -36,36 +36,36 @@
         ["DepartmentTeam"] = "department",
         ["ProjectTask"] = "project"
     };
-    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     modelFileOf = Project.ModelFileOverrides ?? modelFileOf;
     bool IsHiddenParent(string table) => Project.HiddenParents is { } hidden ? hidden.Contains(table, StringComparer.OrdinalIgnoreCase) : table.Equals(hiddenParent, StringComparison.OrdinalIgnoreCase);
     // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
-    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
     // only used when no project is chosen.
     bool NoApi(string table, LookupShape shape) => Project.NoApi(table, shape) ?? noApiTables.Contains(table, StringComparer.OrdinalIgnoreCase);
     bool NoLookup(string table, LookupShape shape) => Project.NoLookup(table, shape) ?? noLookupParents.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
     // TSX_Page_v1.tt
-    // Generates the React counterpart of TS_Component.tt -- same field selection, lookups and rules, see that
-    // template for the reasoning -- but as a single function component in one file (pages/<Table>Page.tsx),
+    // Generates the React counterpart of TS_Component.tt - same field selection, lookups and rules, see that
+    // template for the reasoning - but as a single function component in one file (pages/<Table>Page.tsx),
     // the way CriticalViewer's own pages/HomePage.tsx, AddMoviePage.tsx and MovieDetailPage.tsx are built: a
     // named export, useState/useEffect instead of a class with fields and ngOnInit, and controlled inputs
     // (value + onChange) instead of [(ngModel)] two-way binding. A grid of the table's rows with Edit and
     // Delete buttons, an "Add New" button, a search-by-name box (only when the table has a text Name column)
-    // and an add/edit form that opens under the grid -- functionally identical to TS_Component.tt's screen.
+    // and an add/edit form that opens under the grid - functionally identical to TS_Component.tt's screen.
     //
     // Two real, deliberate departures from TS_Component.tt, found by inspecting CriticalViewer (the React
     // project this template was written against, playing the same role TimeEntryUI played for TS_Component.tt)
     // rather than assumed up front:
-    //   - Errors are a plain `error` state string rendered as {error && <p>{error}</p>}, not alert() --
+    //   - Errors are a plain `error` state string rendered as {error && <p>{error}</p>}, not alert() -
     //     CriticalViewer's own pages (HomePage, AddMoviePage, MovieDetailPage) all use exactly this pattern and
     //     never call alert() anywhere in the app; alert()'s blocking dialog is TS_Component.tt's own concession
     //     to a simpler Angular example, not a React convention worth carrying over.
     //   - No className is invented beyond "rail" (the one outer-wrapper class CriticalViewer's real index.css
     //     defines and that a generated page can safely assume exists). TS_Component.tt assumes TimeEntryUI
-    //     already has "btn"/"form-group"/"form-container"/"btn-action" classes defined globally -- CriticalViewer
+    //     already has "btn"/"form-group"/"form-container"/"btn-action" classes defined globally - CriticalViewer
     //     has no such generic CRUD-screen vocabulary at all (grep of its whole src/ tree found none of the four,
     //     only product-specific classes like movie-grid/movie-card and a single ".button", not ".btn"). Carrying
     //     the Angular family's class-name assumptions into React uncritically would have silently generated
@@ -79,19 +79,19 @@
     //     for the component (E_TimeSheet -> pages/TimeSheetPage.tsx, function TimeSheetPage). It calls
     //     <table>Api (TSX_Api.tt) and imports the <Table> interface from TS_Model.tt's output, so generate
     //     those first.
-    //   - Grid and form: identical column/control selection to TS_Component.tt -- one column/field per column
+    //   - Grid and form: identical column/control selection to TS_Component.tt - one column/field per column
     //     except the key, computed and identity columns, and foreign keys to the display-style table
     //     SY_Display; "Name" first, then table order; text box (textarea from 100 characters), number box,
     //     checkbox for bit, date box for date/datetime, and a <select> for a foreign key.
     //   - Foreign keys: a <select> of the parent's rows, loaded from the parent's own <parent>Api.getAll() (the
-    //     generated sibling file, called by name -- same cross-template contract TS_Component.tt already has
+    //     generated sibling file, called by name - same cross-template contract TS_Component.tt already has
     //     with TS_Service.tt), showing the parent's display column; the grid shows the same name instead of
     //     the id. A parent listed in noLookupParents stays a plain number box.
     //   - Key: an int key is a number, a uniqueidentifier key a string, same rule as TSX_Api.tt. The screen
     //     loads ALL rows (no paging), the same simplification TS_Component.tt makes.
     //   - Dates: the API sends and takes "2025-12-25T00:00:00" strings; the date box wants "2025-12-25", so
     //     edit() trims the time off. Shown in the grid as the same trimmed 10 characters (no date-formatting
-    //     library assumed) rather than TS_Component.tt's locale-formatted date pipe -- a deliberately smaller
+    //     library assumed) rather than TS_Component.tt's locale-formatted date pipe - a deliberately smaller
     //     claim, since a generated file cannot assume a project has picked a date library. A new row starts
     //     today, a new number at 0, a new text at "", a new bit at its database default.
     //
@@ -103,20 +103,20 @@
     // Pagination (CodeGenPossibilities\Pagination, research folder): the grid always loads one page at a time
     // through TSX_Api.tt's getPage instead of getAll(), with a Previous/Next PaginationBar underneath,
     // matching CriticalViewer_HomePage.tsx's own real page/totalPages control exactly. **Update (2026-09-28):**
-    // pagination no longer requires a searchable column -- a table with none (e.g. a monthly-summary table
+    // pagination no longer requires a searchable column - a table with none (e.g. a monthly-summary table
     // keyed only by ids/numbers) still gets it, found live needing exactly this; pagination and searchability
     // are separate concerns.
     //
     // Search (CodeGenPossibilities\Search, research folder): when the table has a searchable column,
     // TSX_Api.tt's getPage takes a filters object with one optional property per TableModel.SearchableColumns
     // column, so this template replaces the old single "Search by Name" box with one controlled text input per
-    // searchable column (bespoke per table, like the add/edit form -- there is no shared "search bar"
+    // searchable column (bespoke per table, like the add/edit form - there is no shared "search bar"
     // component the way PaginationBar is, since the field list differs per table), a Search button that
     // resets to page 1 and re-fetches with the current filter values, and a Clear button that empties every
     // field and re-fetches unfiltered. A table with no searchable column gets no search UI at all, but still
     // pages through every row via the plain, unfiltered getPage() call.
     //
-    // PaginationBar is NOT generated by this template -- assumed to already exist in the target project's
+    // PaginationBar is NOT generated by this template - assumed to already exist in the target project's
     // components folder, the same way TS_Service.tt/TSX_Api.tt assume a shared request<T>/client.ts (CodeGenNew
     // does not generate that file either). Add components/PaginationBar.tsx once per project:
     //
@@ -132,7 +132,7 @@
     //       );
     //     }
     //
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
 
     string BaseName(string table) => Regex.Replace(Regex.Replace(table, "^E_", ""), "^SY_", "");
     string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
@@ -178,7 +178,7 @@
     }
     else if (Model.IsNameActiveTable)
     {
-        Error($"TSX_Page assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all -- see TimeEntryServer's real DepartmentTeamApi.cs); write this screen by hand.");
+        Error($"TSX_Page assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all - see TimeEntryServer's real DepartmentTeamApi.cs); write this screen by hand.");
     }
     else
     {
@@ -193,9 +193,9 @@
         string title = Words(baseName);                // Time Sheet
         bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"); // just for showError's message wording below
         const int pageSize = 20;
-        // Same order as Model.SearchableColumns (not "Name first" like the form fields below) -- matches
+        // Same order as Model.SearchableColumns (not "Name first" like the form fields below) - matches
         // TSX_Api.tt's own filters object property order exactly. Empty for a table with no searchable
-        // column -- canSearch below gates the search bar UI specifically; pagination itself is unconditional
+        // column - canSearch below gates the search bar UI specifically; pagination itself is unconditional
         // (see the header comment's 2026-09-28 update).
         var searchFields = Model.SearchableColumns
             .Select(c => new { ParamName = LowerFirst(c.Name), c.Name, Label = Label(c.Name) })
@@ -242,7 +242,7 @@
             }).ToList();
         var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
 
-        // ---- naming on the page
+        // ==== naming on the page
         string Id(ColumnModel c) => stem + "-" + Camel(c.Name).ToLowerInvariant();
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
         string LabelOf(ColumnModel c) => c.SqlType == SqlDbType.Bit ? Label(c.Name) + "?" : Label(c.Name);
@@ -526,6 +526,21 @@
                 T($"              {{{p.List}.map((p) => (");
                 T($"                <option key={{p.{p.KeyProp}}} value={{p.{p.KeyProp}}}>{{p.{p.DisplayProp}}}</option>");
                 T("              ))}");
+                T("            </select>");
+            }
+            else if (c.HasChoices)
+            {
+                // A column whose values the database lists (a MySQL enum) is a drop-down of them; the blank first entry keeps a new row from silently taking the first value.
+                T($"            <select");
+                T($"              id=\"{id}\"");
+                T($"              aria-label=\"{LabelOf(c)}\"");
+                T($"              value={{selectedRow.{prop} ?? ''}}");
+                T(c.IsNullable ? $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value || undefined }})}}" : $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
+                if (!c.IsNullable) T("              required");
+                T("            >");
+                T("              <option value=\"\"></option>");
+                foreach (string choice in c.Choices!)
+                    T($"              <option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>");
                 T("            </select>");
             }
             else if (c.SqlType == SqlDbType.Bit)

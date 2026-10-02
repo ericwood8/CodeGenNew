@@ -7,7 +7,7 @@
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
-    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names).
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
     // Everything below this block describes and implements the template itself.
     // ==========================================================================================
     string componentsFolder = "components";
@@ -15,16 +15,16 @@
     string apiPrefix = "/api";
     // ==========================================================================================
 
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
     // TSX_JunctionPage_v1.tt
     // Generates: components/<Table>Junction.tsx   (a reusable function component; the path is written by the
-    // template itself, see GeneratedFiles -- point the output folder at the React app's src folder), plus a
+    // template itself, see GeneratedFiles - point the output folder at the React app's src folder), plus a
     // colocated components/__tests__/<Table>Junction.test.tsx.
     //
     // The React counterpart of TS_JunctionComponent.tt for a many-to-many junction table
     // (TableModel.IsJunctionTable, RequiresJunctionTable=true): two <select multiple> lists ("Available"/
     // "Selected") with >>/>/</<< buttons, calling API_Junction.tt's three endpoints directly via the shared
-    // request<T> helper (imported from "../api/client", same assumption TSX_Api.tt makes) -- no separate
+    // request<T> helper (imported from "../api/client", same assumption TSX_Api.tt makes) - no separate
     // TSX_Api-style module, since a junction has only List/Link/Unlink, folded straight into the component the
     // same way TSX_Page.tt's own "plain page shape" already combines grid and form. Each button click commits
     // immediately (one HTTP call per moved row) rather than batching for a separate Save button, the same
@@ -32,21 +32,21 @@
     //
     // Like TS_JunctionComponent.tt: the table name without its "E_"/"SY_" prefix names the component/file
     // (E_TimeSheet -> components/TimeSheetJunction.tsx, function TimeSheetJunction). anchorId is a required
-    // prop (React's equivalent of Angular's @Input()) -- this component is meant to be embedded in whatever
+    // prop (React's equivalent of Angular's @Input()) - this component is meant to be embedded in whatever
     // page already has the anchor row selected (e.g. a generated detail page), not routed to on its own. It is
-    // placed in componentsFolder rather than pagesFolder for that reason -- matching the same "small reusable
+    // placed in componentsFolder rather than pagesFolder for that reason - matching the same "small reusable
     // piece vs. a data-fetching page" split CriticalViewer's own components/ vs. pages/ folders already use.
     //
     // Requires TableModel.IsJunctionTable (RequiresJunctionTable=true) and the target table's display columns
     // (NeedsReferencedDisplayColumns=true), the same restrictions SP_Junction.tt/API_Junction.tt/
-    // TS_JunctionComponent.tt have -- generate those first.
-    // ------------------------------------------------------------------------------------------
+    // TS_JunctionComponent.tt have - generate those first.
+    // ==========================================================================================
 
     string BaseName(string table) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(table, "^E_", ""), "^SY_", "");
     string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
 
     if (!Model.IsJunctionTable)
-        Error($"TSX_JunctionPage cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it is not a many-to-many junction table -- TableModel.IsJunctionTable is false.");
+        Error($"TSX_JunctionPage cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it is not a many-to-many junction table - TableModel.IsJunctionTable is false.");
     if (!Model.HasReferencedDisplayColumns)
         Error("TSX_JunctionPage needs the target table's display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
 

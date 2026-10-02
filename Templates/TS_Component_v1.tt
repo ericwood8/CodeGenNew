@@ -9,7 +9,7 @@
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
-    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
     // lists of tables). Everything below this block describes and implements the template itself.
     // ==========================================================================================
     // Folders under the Angular app root (where -o points) that the generated files go in; a component goes in a folder of its
@@ -37,20 +37,20 @@
         ["DepartmentTeam"] = "department",
         ["ProjectTask"] = "project"
     };
-    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     modelFileOf = Project.ModelFileOverrides ?? modelFileOf;
     bool IsHiddenParent(string table) => Project.HiddenParents is { } hidden ? hidden.Contains(table, StringComparer.OrdinalIgnoreCase) : table.Equals(hiddenParent, StringComparison.OrdinalIgnoreCase);
     // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
-    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
     // only used when no project is chosen.
     bool NoApi(string table, LookupShape shape) => Project.NoApi(table, shape) ?? noApiTables.Contains(table, StringComparer.OrdinalIgnoreCase);
     bool NoLookup(string table, LookupShape shape) => Project.NoLookup(table, shape) ?? noLookupParents.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
     // TS_Component_v1.tt
     // Generates the four files of an Angular component, in the folder components/<table>/ (the paths are written by the
-    // template itself, see GeneratedFiles -- point the output folder at the Angular app's src/app folder):
+    // template itself, see GeneratedFiles - point the output folder at the Angular app's src/app folder):
     //     <table>.component.css        empty, as in TimeEntryUI (styling comes from the global styles)
     //     <table>.component.html       the grid, search box and add/edit form
     //     <table>.component.spec.ts    the standard "should create" test
@@ -71,7 +71,7 @@
     //     the id. A parent that is an enum/lookup table, or whose screen needs cascading drop-downs, is listed in
     //     noLookupParents and its foreign key stays a plain number box.
     //   - Key: an int key is a number, a uniqueidentifier key a string (the route takes {id:guid}; the api assigns the value on
-    //     create -- a new row is sent with the empty GUID, as an int key is sent as 0). Any other key (composite, or a natural
+    //     create - a new row is sent with the empty GUID, as an int key is sent as 0). Any other key (composite, or a natural
     //     text key the person would have to type) is refused. The screen loads ALL rows (no paging), so it suits tables of
     //     hundreds or a few thousand rows, not tens of thousands.
     //   - Dates: the API sends and takes "2025-12-25T00:00:00" strings; the date box wants "2025-12-25", so edit() trims the
@@ -85,7 +85,7 @@
     // steps 4-6).
     //
     // Pagination (CodeGenPossibilities\Pagination, research folder): the grid always loads one page at a time
-    // through TS_Service.tt's getPage instead of getAll(), with Angular Material's mat-paginator underneath --
+    // through TS_Service.tt's getPage instead of getAll(), with Angular Material's mat-paginator underneath -
     // @angular/material is a real, already-installed dependency of the real TimeEntryUI project this family is
     // written against (^18.2.14), and two of its own screens (Project, Request) already use mat-paginator,
     // just client-side only (getAll() loads everything, then slices locally). This generates the OTHER
@@ -93,22 +93,22 @@
     // totalCount rather than a local array length, and the (page) event triggers a new getPage() call rather
     // than a local re-slice. Requires the target project to have @angular/material's MatPaginatorModule
     // available (add it once, the same "assumed available" treatment TS_Service.tt/TSX_Api.tt already give
-    // request<T>/client.ts) -- unlike the React/WinUI3 pagination bar, this one is NOT hand-rolled by
+    // request<T>/client.ts) - unlike the React/WinUI3 pagination bar, this one is NOT hand-rolled by
     // CodeGenNew at all, since the library already exists in the real target project. **Update (2026-09-28):**
-    // pagination no longer requires a searchable column -- a table with none (e.g. a monthly-summary table
+    // pagination no longer requires a searchable column - a table with none (e.g. a monthly-summary table
     // keyed only by ids/numbers) still gets it, found live needing exactly this; pagination and searchability
     // are separate concerns.
     //
     // Search (CodeGenPossibilities\Search, research folder): when the table has a searchable column,
     // TS_Service.tt's getPage takes one optional filter per TableModel.SearchableColumns column, so this
     // template replaces the old single "Search by Name" box with one text input per searchable column
-    // (bespoke per table, like the add/edit form -- there is no shared "search bar" component the way
+    // (bespoke per table, like the add/edit form - there is no shared "search bar" component the way
     // PaginationBar/mat-paginator are, since the field list differs per table), a Search button that resets to
     // page 0 and re-fetches with the current filter values, and a Clear button that empties every field and
     // re-fetches unfiltered. A table with no searchable column gets no search UI at all, but still pages
     // through every row via the plain, unfiltered getPage() call.
     //
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
 
     string BaseName(string table) => Regex.Replace(Regex.Replace(table, "^E_", ""), "^SY_", "");
     string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
@@ -154,7 +154,7 @@
     }
     else if (Model.IsNameActiveTable)
     {
-        Error($"TS_Component assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all -- see TimeEntryServer's real DepartmentTeamApi.cs); write this screen by hand.");
+        Error($"TS_Component assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all - see TimeEntryServer's real DepartmentTeamApi.cs); write this screen by hand.");
     }
     else
     {
@@ -168,9 +168,9 @@
         string title = Words(baseName);                // Time Sheet
         bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"); // just for showError's message wording below
         int pageSize = 20;
-        // Same order as Model.SearchableColumns (not "Name first" like the form fields below) -- getPage's
+        // Same order as Model.SearchableColumns (not "Name first" like the form fields below) - getPage's
         // filter parameters are positional (TS_Service.tt), so this list's order must match its exactly.
-        // Empty for a table with no searchable column -- canSearch below gates the search bar UI specifically;
+        // Empty for a table with no searchable column - canSearch below gates the search bar UI specifically;
         // pagination itself is unconditional (see the header comment's 2026-09-28 update).
         var searchFields = Model.SearchableColumns
             .Select(c => new { ParamName = LowerFirst(c.Name), c.Name, Label = Label(c.Name) })
@@ -181,14 +181,14 @@
             .GroupBy(f => f.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
-        // ---- the columns on the screen: Name first, then table order
+        // ==== the columns on the screen: Name first, then table order
         var shown = Model.Columns
             .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity
                         && !(fkByColumn.TryGetValue(c.Name, out var hfk) && IsHiddenParent(hfk.ReferencedTable)))
             .OrderBy(c => c.Name == "Name" ? 0 : 1).ThenBy(c => c.OrdinalPosition)
             .ToList();
 
-        // ---- lookups: one list + one "name of" method per distinct parent table
+        // ==== lookups: one list + one "name of" method per distinct parent table
         ForeignKeyModel LookupOf(ColumnModel c) =>
             fkByColumn.TryGetValue(c.Name, out var fk)
             && !NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape)
@@ -218,12 +218,12 @@
             }).ToList();
         var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
 
-        // ---- naming on the page
+        // ==== naming on the page
         string Id(ColumnModel c) => variable + UpperFirst(Camel(c.Name));   // holidayName
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
         string LabelOf(ColumnModel c) => c.SqlType == SqlDbType.Bit ? Label(c.Name) + "?" : Label(c.Name);
         var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
-        // long text is left out of the grid to keep it readable -- unless that would leave nothing to show but the buttons
+        // long text is left out of the grid to keep it readable - unless that would leave nothing to show but the buttons
         if (gridColumns.Count == 0) gridColumns = shown.ToList();
         // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
         gridColumns = gridColumns.ForGrid();
@@ -326,6 +326,15 @@
                 H($"                <select id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
                 if (c.IsNullable) H("                    <option [ngValue]=\"null\"></option>");
                 H($"                    <option *ngFor=\"let p of {p.List}\" [ngValue]=\"p.{p.KeyProp}\">{{{{p.{p.DisplayProp}}}}}</option>");
+                H("                </select>");
+            }
+            else if (c.HasChoices)
+            {
+                // A column whose values the database lists (a MySQL enum) is a drop-down of them.
+                H($"                <select id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
+                H(c.IsNullable ? "                    <option [ngValue]=\"null\"></option>" : "                    <option value=\"\"></option>");
+                foreach (string choice in c.Choices!)
+                    H($"                    <option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>");
                 H("                </select>");
             }
             else if (c.SqlType == SqlDbType.Bit)

@@ -14,7 +14,7 @@ public class PostgresSchemaProvider : SchemaProviderBase
 {
     private readonly ConnectionRequest _connectionRequest;
 
-    public PostgresSchemaProvider(ConnectionRequest connectionRequest, string specialLogicColumnsConfigPath, NamingStyle naming = NamingStyle.AsIs) : base(specialLogicColumnsConfigPath, naming)
+    public PostgresSchemaProvider(ConnectionRequest connectionRequest, string specialLogicColumnsConfigPath, NamingStyle naming = NamingStyle.AsIs, IReadOnlyCollection<string>? acronyms = null) : base(specialLogicColumnsConfigPath, naming, acronyms)
     {
         _connectionRequest = connectionRequest;
     }

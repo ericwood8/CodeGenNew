@@ -7,14 +7,14 @@
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
-    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names).
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
     // Everything below this block describes and implements the template itself.
     // ==========================================================================================
     string componentsFolder = "components";
     string apiPrefix = "api";
     // ==========================================================================================
 
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
     // TS_JunctionComponent_v1.tt
     // Generates the four files of an Angular standalone component, in components/<table>-junction/ (the
     // paths are written by the template itself, see GeneratedFiles):
@@ -26,7 +26,7 @@
     // The Angular counterpart to WinUI3_JunctionEditor.tt for a many-to-many junction table
     // (TableModel.IsJunctionTable, RequiresJunctionTable=true): two <select multiple> lists ("Available"/
     // "Selected") with >>/>/</<< buttons, calling API_Junction.tt's three endpoints directly via
-    // HttpClient (no separate TS_Service-style service class -- unlike a plain table's five-method CRUD
+    // HttpClient (no separate TS_Service-style service class - unlike a plain table's five-method CRUD
     // service, a junction has only List/Link/Unlink, and folding them straight into the component matches
     // the "plain component shape" decision already made for TS_Component.tt). Each button click commits
     // immediately (one HTTP call per moved row) rather than batching for a separate Save button, the same
@@ -34,19 +34,19 @@
     //
     // Like TS_Component.tt: the table name without its "E_"/"SY_" prefix names the selector/class/files
     // (E_TimeSheet -> components/timesheet-junction/timesheet-junction.component.ts, class
-    // TimeSheetJunctionComponent). anchorId is an @Input() -- this component is meant to be embedded in
+    // TimeSheetJunctionComponent). anchorId is an @Input() - this component is meant to be embedded in
     // whatever screen already has the anchor row selected (e.g. a generated detail screen, once a
     // WinUI3/Angular detail-screen template exists), not routed to on its own.
     //
     // Requires TableModel.IsJunctionTable (RequiresJunctionTable=true) and the target table's display
     // columns (NeedsReferencedDisplayColumns=true), the same restrictions SP_Junction.tt/API_Junction.tt
-    // have -- generate those first.
+    // have - generate those first.
 
     string BaseName(string table) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(table, "^E_", ""), "^SY_", "");
     string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
 
     if (!Model.IsJunctionTable)
-        Error($"TS_JunctionComponent cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it is not a many-to-many junction table -- TableModel.IsJunctionTable is false.");
+        Error($"TS_JunctionComponent cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it is not a many-to-many junction table - TableModel.IsJunctionTable is false.");
     if (!Model.HasReferencedDisplayColumns)
         Error("TS_JunctionComponent needs the target table's display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
 

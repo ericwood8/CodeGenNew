@@ -8,7 +8,8 @@ public class CliOptions
     public required string Server { get; set; }
     public required string Database { get; set; }
     public string Schema { get; set; } = "dbo";
-    public required string Table { get; set; }
+    /// <summary> Null for a database-level template (TemplateConfig.DatabaseOnly), which needs no table. </summary>
+    public string? Table { get; set; }
     public required string Template { get; set; }
     public string? OutputDirectory { get; set; }
     public bool Trusted { get; set; }

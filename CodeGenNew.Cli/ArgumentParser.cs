@@ -47,6 +47,7 @@ public static class ArgumentParser
                 case "--repo-ns": overrides["RepoNamespace"] = Value(); break;
                 case "--entity-ns": overrides["EntityNamespace"] = Value(); break;
                 case "--naming": overrides["NamingStyle"] = Value(); break;
+                case "--acronyms": overrides["Acronyms"] = Value(); break;
                 case "--min-year": overrides["MinYear"] = Value(); break;
                 case "--max-year": overrides["MaxYear"] = Value(); break;
                 case "--provider":
@@ -61,7 +62,6 @@ public static class ArgumentParser
 
         if (string.IsNullOrWhiteSpace(server)) throw new ArgumentParseException("-S/--server is required.");
         if (string.IsNullOrWhiteSpace(database)) throw new ArgumentParseException("-d/--database is required.");
-        if (string.IsNullOrWhiteSpace(table)) throw new ArgumentParseException("-t/--table is required.");
         if (string.IsNullOrWhiteSpace(template)) throw new ArgumentParseException("-T/--template is required.");
         if (!trusted && string.IsNullOrWhiteSpace(userName))
             throw new ArgumentParseException("-U/--user is required unless -E/--trusted is used.");
@@ -108,7 +108,7 @@ public static class ArgumentParser
             Required:
               -S, --server     SQL Server instance name
               -d, --database   Database name
-              -t, --table      Table name
+              -t, --table      Table name (not needed for a database-level template such as CS_DbContext or API_Registration, which covers every table of the schema)
               -T, --template   Template file name (e.g. SP_Update.tt), resolved against TemplatesDirectory.
                                Without a version this means the LATEST version; SP_Update_v1.tt pins that exact one.
 
@@ -126,7 +126,7 @@ public static class ArgumentParser
               --project        Name of a Projects\<name>.config file in the CodeGenNew folder. Only ProjectName is
                                required in it; every namespace not listed is derived from it.
               --project-name, --view-ns, --viewmodel-ns, --context, --context-ns, --api-ns, --enum-ns,
-              --repo-ns, --entity-ns, --naming, --min-year, --max-year
+              --repo-ns, --entity-ns, --naming, --acronyms, --min-year, --max-year
                                Override one setting for this run; wins over the project file.
             """);
     }

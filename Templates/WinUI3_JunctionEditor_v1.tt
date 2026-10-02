@@ -7,7 +7,7 @@
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
-    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
     // folders). Everything below this block describes and implements the template itself.
     // ==========================================================================================
     string viewNamespace = "TimeEntry.Desktop.Views";
@@ -20,7 +20,7 @@
     // Folders under the WinUI3 project root (where -o points) the generated files go in.
     string viewsFolder = "Views";
     string viewModelsFolder = "ViewModels";
-    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     viewNamespace = Project.ViewNamespace ?? viewNamespace;
     viewModelNamespace = Project.ViewModelNamespace ?? viewModelNamespace;
     contextType = Project.ContextName ?? contextType;
@@ -30,10 +30,10 @@
     viewModelsFolder = Project.ViewModelsFolder ?? viewModelsFolder;
     // ==========================================================================================
 
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
     // WinUI3_JunctionEditor_v1.tt
     // Generates a WinUI3 two-list "available/selected" shuttle-control ContentDialog for editing one row's
-    // side of a many-to-many association (TableModel.IsJunctionTable -- see Docs/specs.md section 7), the
+    // side of a many-to-many association (TableModel.IsJunctionTable - see Docs/specs.md section 7), the
     // companion UI to SP_Junction.tt (generate that first; this template calls its three procedures):
     //     Views/<TableName>JunctionEditor.xaml       the two ListViews + <</</>/>> buttons
     //     Views/<TableName>JunctionEditor.xaml.cs    button click handlers, calling the ViewModel
@@ -41,23 +41,23 @@
     //                                                          <Table>_Link/<Table>_Unlink
     //
     // Like SP_Junction.tt, TableModel.JunctionForeignKeys[0] is treated as the "anchor" (the row already
-    // selected elsewhere, e.g. a specific NameBase -- passed into the dialog's constructor) and [1] as the
+    // selected elsewhere, e.g. a specific NameBase - passed into the dialog's constructor) and [1] as the
     // "target" (the side being multi-selected, e.g. that NameBase's Groups). Swap the roles by hand in the
     // generated output if your table's natural direction reads the other way.
     //
-    // Design (matches CodeGenNew.App's own WinUI3 conventions -- see the winui3/ui-conventions skills --
+    // Design (matches CodeGenNew.App's own WinUI3 conventions - see the winui3/ui-conventions skills -
     // but assumes NOTHING from CodeGenNew.App itself is available in the target project, the same way
     // CS_Repo.tt assumes only that a GenericRepo base class exists there):
     //   - A ContentDialog, not a full Page: this is meant to be opened from a parent detail screen (e.g. a
     //     generated WinUI3_DetailScreen for the anchor table, once that template exists) the same way
     //     CodeGenNew.App's own ConnectionDialog/LocationDialog are opened.
     //   - Immediate commit: each Add/Remove click calls Link/Unlink right away (an INSERT or DELETE of one
-    //     association row) rather than batching changes for a single Save button -- simpler to reason
+    //     association row) rather than batching changes for a single Save button - simpler to reason
     //     about and verify, and matches how CodeGenNew.App's own TemplateManagementDialog commits each
     //     rename/delete immediately rather than batching.
     //   - Data access goes through the project's existing EF Core DbContext (the same `contextType`
     //     CS_Repo.tt/API_Crud.tt already use), calling SP_Junction.tt's three procedures via
-    //     `Database.SqlQueryRaw<T>`/`ExecuteSqlInterpolatedAsync` (EF Core 8+) rather than raw ADO.NET --
+    //     `Database.SqlQueryRaw<T>`/`ExecuteSqlInterpolatedAsync` (EF Core 8+) rather than raw ADO.NET -
     //     one fewer convention for the target project to have to support.
     //   - Display columns are always bound as plain strings: SP_Junction.tt CASTs them to NVARCHAR in its
     //     SELECT list specifically so this ViewModel's row type never has to know each one's real SQL type.
@@ -66,7 +66,7 @@
     // target table's display columns (NeedsReferencedDisplayColumns=true).
 
     if (!Model.IsJunctionTable)
-        Error($"WinUI3_JunctionEditor cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it is not a many-to-many junction table -- TableModel.IsJunctionTable is false.");
+        Error($"WinUI3_JunctionEditor cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it is not a many-to-many junction table - TableModel.IsJunctionTable is false.");
     if (!Model.HasReferencedDisplayColumns)
         Error("WinUI3_JunctionEditor needs the target table's display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
 
@@ -90,6 +90,8 @@
     string anchorRole = anchorFk.ReferencedTable;
     string targetRole = targetFk.ReferencedTable;
     string stem = Model.TableName;
+    // How the generated code calls the routines: EXEC of a stored procedure on SQL Server, a function call on PostgreSQL, CALL on MySQL.
+    var call = new JunctionCall(Model, stem, anchorColumn.Name);
     var displayColumns = targetFk.ReferencedDisplayColumns;
     string DisplayExpr(string prefix) => string.Join(" + \" \" + ", displayColumns.Select(d => $"{prefix}.{d}"));
 #>
@@ -104,7 +106,7 @@
 
     <!-- Two side-by-side lists with <</</>/>> buttons (a "shuttle control" / "transfer list"): move rows
          between them to edit which <#= targetRole #> rows are linked to this <#= anchorRole #> row. Each
-         click commits immediately via <#= stem #>_Link/<#= stem #>_Unlink -- there is no separate Save. -->
+         click commits immediately via <#= stem #>_Link/<#= stem #>_Unlink, so there is no separate Save. -->
     <Grid ColumnSpacing="12" MinWidth="640">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
@@ -150,7 +152,7 @@ using <#= u #>;
 
 namespace <#= viewNamespace #>;
 
-// Assumes nothing from CodeGenNew.App itself -- a plain ContentDialog, no shared house-style helper.
+// Assumes nothing from CodeGenNew.App itself - a plain ContentDialog, no shared house-style helper.
 // If your project has its own dialog-convention helper (access keys, default-button focus, ...), apply
 // it here the way CodeGenNew.App's own MainWindow.xaml.cs applies ContentDialogUx to its own dialogs.
 public sealed partial class <#= stem #>JunctionEditor : ContentDialog
@@ -196,7 +198,7 @@ namespace <#= viewModelNamespace #>;
 
 /// <summary> One row of <#= stem #>_List's result set: the <#= targetRole #> side of the association, plus
 /// whether it's currently linked to the <#= anchorRole #> this dialog is editing. Display columns are bound
-/// as plain strings -- see <#= stem #>_List's CAST in SP_Junction.tt's output for why. </summary>
+/// as plain strings - see <#= stem #>_List's CAST in SP_Junction.tt's output for why. </summary>
 public class JunctionListItem
 {
 <#
@@ -233,8 +235,8 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
         Selected.Clear();
 
         var rows = await _context.Database
-            .SqlQueryRaw<JunctionListItem>("EXEC [<#= Model.SchemaName #>].[<#= stem #>_List] @Anchor<#= anchorColumn.Name #>",
-                new Microsoft.Data.SqlClient.SqlParameter("@Anchor<#= anchorColumn.Name #>", _anchorId))
+            .SqlQueryRaw<JunctionListItem>("<#= call.ListSql #>",
+                <#= call.AnchorParameter("_anchorId") #>)
             .ToListAsync();
 
         foreach (var row in rows)
@@ -246,7 +248,7 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
         foreach (var item in items)
         {
             await _context.Database.ExecuteSqlInterpolatedAsync(
-                $"EXEC [<#= Model.SchemaName #>].[<#= stem #>_Link] {_anchorId}, {item.TargetId}");
+                $"<#= call.LinkSql("_anchorId", "item.TargetId") #>");
             if (Available.Remove(item))
                 Selected.Add(item);
         }
@@ -257,7 +259,7 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
         foreach (var item in items)
         {
             await _context.Database.ExecuteSqlInterpolatedAsync(
-                $"EXEC [<#= Model.SchemaName #>].[<#= stem #>_Unlink] {_anchorId}, {item.TargetId}");
+                $"<#= call.UnlinkSql("_anchorId", "item.TargetId") #>");
             if (Selected.Remove(item))
                 Available.Add(item);
         }

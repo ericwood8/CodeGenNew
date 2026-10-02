@@ -70,11 +70,19 @@
                     <!-- Icon-only refresh for the tree below: WinUI3's TreeView has no built-in refresh
                          affordance, so this is the whole toolbar it gets, scoped to the same row as the
                          thing it reloads instead of a whole separate button bar. -->
-                    <Button Grid.Column="1" Background="Transparent" BorderThickness="0" Padding="6"
-                            AccessKey="R" Command="{x:Bind ViewModel.RefreshCommand}"
-                            ToolTipService.ToolTip="Reload the table list from the connected database (Alt+R)">
-                        <ImageIcon Source="{x:Bind ViewModel.Icons.Refresh, Mode=OneWay}" Width="20" Height="20" />
-                    </Button>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <!-- Templates that write one file for the whole database (the DbContext, the API registration). -->
+                        <Button x:Name="DatabaseTemplatesButton" Background="Transparent" BorderThickness="0" Padding="6"
+                                AccessKey="D" Click="OnDatabaseTemplatesClick" IsEnabled="{x:Bind ViewModel.IsConnected, Mode=OneWay}"
+                                ToolTipService.ToolTip="Generate for the whole database: DbContext, API registration (Alt+D)">
+                            <FontIcon Glyph="&#xE943;" FontSize="18" />
+                        </Button>
+                        <Button Background="Transparent" BorderThickness="0" Padding="6"
+                                AccessKey="R" Command="{x:Bind ViewModel.RefreshCommand}"
+                                ToolTipService.ToolTip="Reload the table list from the connected database (Alt+R)">
+                            <ImageIcon Source="{x:Bind ViewModel.Icons.Refresh, Mode=OneWay}" Width="20" Height="20" />
+                        </Button>
+                    </StackPanel>
                 </Grid>
 
                 <!-- Grid.Row="*" (not a StackPanel) so the TreeView is given a bounded height and can

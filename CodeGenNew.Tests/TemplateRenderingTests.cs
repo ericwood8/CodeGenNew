@@ -37,8 +37,10 @@ public class TemplateRenderingTests
         var table = Sample.DonateLeave();
         foreach (var template in TemplateCatalog.Discover(Repo.TemplatesDirectory))
         {
-            var model = template.Config.NeedsRowData ? Sample.Roles() : table;
-            var result = await Run(template.FileStem + ".tt", model);
+            // A database-level template is given every table instead of one.
+            var result = template.Config.DatabaseOnly
+                ? await TemplateRunner.RunAsync(template.FilePath, new DatabaseModel { DatabaseName = "Acme", SchemaName = "dbo", Tables = [table] })
+                : await Run(template.FileStem + ".tt", template.Config.NeedsRowData ? Sample.Roles() : table);
             string errors = string.Join(" | ", result.Errors);
             Assert.DoesNotContain("error CS", errors, $"{template.FileStem} does not compile: {errors}");
         }

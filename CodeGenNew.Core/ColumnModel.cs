@@ -58,6 +58,11 @@ public class ColumnModel
     public bool IsDateColumn { get; init; }
     public bool IsBooleanColumn { get; init; }
 
+    /// <summary> The values a text column may hold when the database lists them (a MySQL <c>enum('a','b')</c>); null for any other column. A generated form
+    /// shows such a column as a drop-down of these values instead of a free text box. </summary>
+    public List<string>? Choices { get; init; }
+    public bool HasChoices => Choices is { Count: > 0 };
+
     /// <summary> What this integer column's name suggests about its values (a year, a month, a percentage, ...); None for any
     /// other column. See NumericClassifier; ProjectSettings.RangeFor turns it into limits. </summary>
     public NumericKind NumericKind { get; init; }

@@ -86,16 +86,28 @@ public static class Program
 
         Console.WriteLine($"Connecting to {options.Server}\\{options.Database} ({(options.Provider == DatabaseProvider.PostgreSql ? "PostgreSQL" : options.Provider == DatabaseProvider.MySql ? "MySQL" : options.Trusted ? "Windows Auth" : "SQL Login")}) -- read-only schema lookup...");
 
+        if (!template.Config.DatabaseOnly && string.IsNullOrWhiteSpace(options.Table))
+        {
+            Console.Error.WriteLine($"Error: -t/--table is required for template '{template.Name}'.");
+            return 1;
+        }
+
         TableModel? model = null;
+        DatabaseModel? database = null;
         var schemaReadOutcome = await RetryRunner.RunAsync("schema-read", async () =>
         {
-            var schemaProvider = SchemaProviderFactory.Create(connectionRequest, specialLogicColumnsConfigPath, project.Naming);
+            var schemaProvider = SchemaProviderFactory.Create(connectionRequest, specialLogicColumnsConfigPath, project.Naming, project.Acronyms);
+            if (template.Config.DatabaseOnly)
+            {
+                database = await schemaProvider.BuildAsync(options.Database, options.Schema);
+                return $"Read schema for {database.Tables.Count} tables of [{options.Schema}].";
+            }
             model = await schemaProvider.BuildTableModelAsync(
-                options.Schema, options.Table, template.Config.NeedsRowData, template.Config.NeedsReferencedDisplayColumns);
+                options.Schema, options.Table!, template.Config.NeedsRowData, template.Config.NeedsReferencedDisplayColumns);
             return $"Read schema for [{options.Schema}].[{options.Table}].";
         });
 
-        if (!schemaReadOutcome.Success || model is null)
+        if (!schemaReadOutcome.Success || (model is null && database is null))
         {
             Console.Error.WriteLine(schemaReadOutcome.Message);
             return 1;
@@ -124,7 +136,10 @@ public static class Program
             }
         }
 
-        string? refusal = template.Config.Refuse(model);
+        if (database is not null)
+            return await GenerateDatabaseAsync(template, database, project, outputDirectory);
+
+        string? refusal = template.Config.Refuse(model!);
         if (refusal is not null)
         {
             Console.Error.WriteLine($"Error: template '{template.Name}' can't be used for [{options.Schema}].[{options.Table}]: {refusal}");
@@ -132,7 +147,7 @@ public static class Program
         }
 
         Console.WriteLine($"Generating '{template.Name}' for [{options.Schema}].[{options.Table}]...");
-        var result = await TemplateRunner.RunAsync(template.FilePath, model, project);
+        var result = await TemplateRunner.RunAsync(template.FilePath, model!, project);
         if (!result.Success)
         {
             Console.Error.WriteLine("Template generation failed:");
@@ -144,7 +159,7 @@ public static class Program
         List<string> writtenFiles;
         try
         {
-            writtenFiles = await GeneratedFiles.WriteAsync(outputDirectory, template, model.TableName, result.GeneratedText!);
+            writtenFiles = await GeneratedFiles.WriteAsync(outputDirectory, template, model!.TableName, result.GeneratedText!);
         }
         catch (InvalidDataException ex)
         {
@@ -155,6 +170,36 @@ public static class Program
             Console.WriteLine($"Wrote {writtenFile}");
         Console.WriteLine("Done. codegen never modifies the target database or any other application -- " +
                            "review the generated file above and apply it yourself if you're happy with it.");
+        return 0;
+    }
+
+    /// <summary> A database-level template (DbContext, API registration): one run over every table of the schema. The file is named after the
+    /// project's context ("InvoiceSystemContext.cs"), or after the database when no project is chosen. </summary>
+    private static async Task<int> GenerateDatabaseAsync(TemplateInfo template, DatabaseModel database, ProjectSettings project, string outputDirectory)
+    {
+        Console.WriteLine($"Generating '{template.Name}' for {database.Tables.Count} tables of [{database.SchemaName}]...");
+        var result = await TemplateRunner.RunAsync(template.FilePath, database, project);
+        if (!result.Success)
+        {
+            Console.Error.WriteLine("Template generation failed:");
+            foreach (string error in result.Errors)
+                Console.Error.WriteLine($"  {error}");
+            return 1;
+        }
+
+        List<string> writtenFiles;
+        try
+        {
+            writtenFiles = await GeneratedFiles.WriteAsync(outputDirectory, template, project.ContextName ?? database.DatabaseName + "Context", result.GeneratedText!);
+        }
+        catch (InvalidDataException ex)
+        {
+            Console.Error.WriteLine($"Template output could not be written: {ex.Message}");
+            return 1;
+        }
+        foreach (string writtenFile in writtenFiles)
+            Console.WriteLine($"Wrote {writtenFile}");
+        Console.WriteLine("Done. codegen never modifies the target database or any other application -- review the generated file and apply it yourself.");
         return 0;
     }
 }

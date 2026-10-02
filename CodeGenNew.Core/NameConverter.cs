@@ -17,13 +17,21 @@ public enum NamingStyle
 
 public static class NameConverter
 {
-    public static string Apply(NamingStyle style, string name) => style == NamingStyle.Pascal ? ToPascal(name) : name;
+    public static string Apply(NamingStyle style, string name, IReadOnlyCollection<string>? acronyms = null) =>
+        style == NamingStyle.Pascal ? ToPascal(name, acronyms) : name;
 
-    public static string ToPascal(string name)
+    /// <param name="acronyms"> Words that stay upper-case whole (the project's Acronyms setting: <c>PO</c>, <c>UPC</c>, <c>MSRP</c>), so
+    /// <c>require_customer_po</c> becomes <c>RequireCustomerPO</c> instead of <c>RequireCustomerPo</c>; a part matches whatever its case. </param>
+    public static string ToPascal(string name, IReadOnlyCollection<string>? acronyms = null)
     {
         var sb = new StringBuilder(name.Length);
         foreach (string part in name.Split('_', StringSplitOptions.RemoveEmptyEntries))
         {
+            if (acronyms is { Count: > 0 } && acronyms.Contains(part, StringComparer.OrdinalIgnoreCase))
+            {
+                sb.Append(part.ToUpperInvariant());
+                continue;
+            }
             sb.Append(char.ToUpperInvariant(part[0]));
             sb.Append(part, 1, part.Length - 1);
         }

@@ -63,6 +63,11 @@ public class TemplateConfig
     /// PostgreSQL is refused with a reason instead of getting code that cannot run there. SP_Search is not one of them: it writes PostgreSQL functions too. </summary>
     public bool SqlServerOnly { get; init; }
 
+    /// <summary> Defaults to false. A template that writes ONE file for the whole database (the DbContext, the API registration) and so is
+    /// given every table as <c>DatabaseModel</c> instead of one table. It needs no table name: the menu offers it on the database, and the
+    /// CLI runs it without -t. </summary>
+    public bool DatabaseOnly { get; init; }
+
     /// <summary> Defaults to false. A template that shows the display columns of foreign-keyed tables (SP_Lookup) asks
     /// for them to be looked up (ForeignKeyModel.ReferencedDisplayColumns). </summary>
     public bool NeedsReferencedDisplayColumns { get; init; }
@@ -121,6 +126,7 @@ public class TemplateConfig
         bool needsRowData = false;
         bool sqlServerOnly = false;
         bool needsReferencedDisplayColumns = false;
+        bool databaseOnly = false;
         string? outputName = null;
 
         foreach (string rawLine in File.ReadAllLines(ttConfigPath))
@@ -153,6 +159,8 @@ public class TemplateConfig
                 needsRowData = boolValue;
             else if (key.EqualsIgnoreCase("SqlServerOnly"))
                 sqlServerOnly = boolValue;
+            else if (key.EqualsIgnoreCase("DatabaseOnly"))
+                databaseOnly = boolValue;
             else if (key.EqualsIgnoreCase("NeedsReferencedDisplayColumns"))
                 needsReferencedDisplayColumns = boolValue;
             else if (key.EqualsIgnoreCase("OutputName"))
@@ -170,6 +178,7 @@ public class TemplateConfig
             NeedsRowData = needsRowData,
             SqlServerOnly = sqlServerOnly,
             NeedsReferencedDisplayColumns = needsReferencedDisplayColumns,
+            DatabaseOnly = databaseOnly,
             OutputName = outputName
         };
     }

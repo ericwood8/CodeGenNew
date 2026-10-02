@@ -12,7 +12,7 @@ public class MySqlSchemaProvider : SchemaProviderBase
 {
     private readonly ConnectionRequest _connectionRequest;
 
-    public MySqlSchemaProvider(ConnectionRequest connectionRequest, string specialLogicColumnsConfigPath, NamingStyle naming = NamingStyle.AsIs) : base(specialLogicColumnsConfigPath, naming)
+    public MySqlSchemaProvider(ConnectionRequest connectionRequest, string specialLogicColumnsConfigPath, NamingStyle naming = NamingStyle.AsIs, IReadOnlyCollection<string>? acronyms = null) : base(specialLogicColumnsConfigPath, naming, acronyms)
     {
         _connectionRequest = connectionRequest;
     }
@@ -66,7 +66,9 @@ public class MySqlSchemaProvider : SchemaProviderBase
             case "char": return ("char", length, 0, 0, $"char({length})");
             case "varchar": return ("varchar", length, 0, 0, $"varchar({length})");
             case "tinytext": case "text": case "mediumtext": case "longtext": return ("varchar", -1, 0, 0, t);
-            case "enum": case "set": return ("varchar", 255, 0, 0, "varchar(255)"); // a value from a list: a string (a drop-down is the natural screen)
+            // a value from a list: a string as long as the longest listed value (the form shows an enum as a drop-down); a set holds several values at once, so it stays free text
+            case "enum": { int longest = ParseEnumValues(columnType)?.Max(v => v.Length) ?? 255; return ("varchar", longest, 0, 0, $"varchar({longest})"); }
+            case "set": return ("varchar", 255, 0, 0, "varchar(255)");
             case "json": return ("varchar", -1, 0, 0, "json");
             case "binary": case "varbinary": return ("varbinary", length, 0, 0, $"{t}({length})");
             case "tinyblob": case "blob": case "mediumblob": case "longblob": return ("varbinary", -1, 0, 0, t);
@@ -76,6 +78,44 @@ public class MySqlSchemaProvider : SchemaProviderBase
 
     // A default as information_schema gives it (a literal without quotes, or an expression when EXTRA says DEFAULT_GENERATED) in the form the C# default-value
     // resolver expects a SQL Server one: functions by their SQL Server name, a string literal quoted.
+    /// <summary> The values of an <c>enum('a','b')</c> column type (a quote inside a value is doubled: <c>'it''s'</c>); null for any other type, including <c>set</c>
+    /// (a set holds several values at once, which a drop-down cannot express). </summary>
+    public static List<string>? ParseEnumValues(string columnType)
+    {
+        if (!columnType.StartsWith("enum(", StringComparison.OrdinalIgnoreCase) || !columnType.EndsWith(')'))
+            return null;
+
+        var values = new List<string>();
+        var current = new System.Text.StringBuilder();
+        bool inside = false;
+        string body = columnType[5..^1];
+        for (int i = 0; i < body.Length; i++)
+        {
+            char c = body[i];
+            if (!inside)
+            {
+                if (c == '\'')
+                    inside = true;
+            }
+            else if (c == '\'' && i + 1 < body.Length && body[i + 1] == '\'')
+            {
+                current.Append('\'');
+                i++;
+            }
+            else if (c == '\'')
+            {
+                values.Add(current.ToString());
+                current.Clear();
+                inside = false;
+            }
+            else
+            {
+                current.Append(c);
+            }
+        }
+        return values.Count > 0 ? values : null;
+    }
+
     public static string? NormalizeDefault(string? columnDefault, string extra, bool isString)
     {
         if (columnDefault is null)
@@ -290,7 +330,8 @@ public class MySqlSchemaProvider : SchemaProviderBase
                 IsPrimaryKey: reader.GetBoolean(11),
                 IsInUniqueIndex: reader.GetBoolean(12),
                 DeclarationOverride: declaration,
-                DefaultForCSharp: NormalizeDefault(columnDefault, extra, isString)));
+                DefaultForCSharp: NormalizeDefault(columnDefault, extra, isString),
+                Choices: ParseEnumValues(columnType)));
         }
 
         return results;

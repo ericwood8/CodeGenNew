@@ -182,9 +182,28 @@ public sealed partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private async Task RunTemplateAsync(TableNodeViewModel table, TemplateInfo template)
+    private void OnDatabaseTemplatesClick(object sender, RoutedEventArgs e)
     {
-        string? outputFilePath = await ViewModel.RunTemplateAsync(table, template);
+        var templates = ViewModel.GetDatabaseTemplates();
+        if (templates.Count == 0)
+            return;
+
+        var flyout = new MenuFlyout();
+        foreach (var template in templates)
+        {
+            var item = new MenuFlyoutItem { Text = template.Name };
+            item.Click += async (_, _) => await ShowGenerationResultAsync(await ViewModel.RunDatabaseTemplateAsync(template));
+            flyout.Items.Add(item);
+        }
+        flyout.ShowAt((FrameworkElement)sender);
+    }
+
+    private async Task RunTemplateAsync(TableNodeViewModel table, TemplateInfo template) =>
+        await ShowGenerationResultAsync(await ViewModel.RunTemplateAsync(table, template));
+
+    /// <summary> The dialog after a generation: what was written (or why it failed), with Open File / Copy buttons. </summary>
+    private async Task ShowGenerationResultAsync(string? outputFilePath)
+    {
         bool failed = outputFilePath is null;
         string message = failed
             ? ViewModel.StatusMessage

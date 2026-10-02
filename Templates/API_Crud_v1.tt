@@ -6,7 +6,7 @@
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
-    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
     // lists of tables). Everything below this block describes and implements the template itself.
     // ==========================================================================================
     string apiNamespace = "TimeEntry.ApiService.Apis";
@@ -20,17 +20,17 @@
         "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
         "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
     };
-    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     contextType = Project.ContextName ?? contextType;
     apiNamespace = Project.ApiNamespace ?? apiNamespace;
     usings = Project.Usings ?? usings;
     // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
-    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
     // only used when no project is chosen.
     bool NoRepository(string table, LookupShape shape) => Project.NoRepository(table, shape) ?? noRepositoryTables.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
     // API_Crud_v1.tt
     // Generates: <TableName>Api.cs   (see OutputName in API_Crud_v1.tt.config)
     //
@@ -49,21 +49,21 @@
     //   - the entity class is assumed to be named exactly like the table, and its key property like the key column
     //     (TimeEntry.Common\Entities\E_DonateLeave.cs / DonateLeaveId);
     //   - GetAll's ordering: the first NOT NULL date column (date, datetime, datetime2, smalldatetime) that is not an
-    //     audit column, newest first -- GenericRepo.GetAllOrderByDescending only takes a non-nullable DateTime.
+    //     audit column, newest first - GenericRepo.GetAllOrderByDescending only takes a non-nullable DateTime.
     //     A table with no such column gets a plain GetAll() instead. Change the line in the generated file if another
     //     column suits the screen better.
     //
     // What it does NOT do: the entity, its DbSet in TimeEntryContext and the line in ApiRegisterExtension.cs that calls
     // Register() are written by hand. Nor does it write business rules (validation, defaults, name/duplicate checks); a
-    // table that needs them keeps a hand-maintained API class -- generate this one only for the plain shape.
+    // table that needs them keeps a hand-maintained API class - generate this one only for the plain shape.
     //
     // The handlers use <Table>Repo (generate it with CS_Repo), which must sit on GenericRepo: GetAll, GetAllOrderByDescending and
-    // the delete check live there. A name/active table (a NOT NULL text Name plus a NOT NULL bit IsActive -- NameActiveRepo)
+    // the delete check live there. A name/active table (a NOT NULL text Name plus a NOT NULL bit IsActive - NameActiveRepo)
     // has no GetAll and does its own duplicate-name and trimming work in its API, so it stops with an error and stays
     // hand-maintained. So does a table with no repository (enum / *Type lookup tables, tables with no entity).
     // Requires a table with a single int primary key (routes are {id:int}). Anything else stops with an error.
     //
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
     bool supported = keyColumn is not null && keyColumn.SqlType == SqlDbType.Int
@@ -91,7 +91,7 @@
     string entity = Model.TableName;
     string keyProperty = keyColumn?.Name ?? "";
 
-    // ---- the column GetAll sorts by (see above)
+    // ==== the column GetAll sorts by (see above)
     bool IsSortableDate(ColumnModel c) =>
         c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
     var sortColumn = Model.Columns

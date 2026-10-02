@@ -9,7 +9,7 @@
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
-    // PROJECT SETTINGS -- the lines to change to use this template in your own project (namespaces, names,
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
     // lists of tables). Everything below this block describes and implements the template itself.
     // ==========================================================================================
     string entityNamespace = "TimeEntry.Common.Entities";
@@ -24,18 +24,18 @@
         "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
         "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role"
     };
-    // A project settings file (Projects\<ProjectName>.config, chosen with --project or in the app) overrides the values above.
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     baseEntity = Project.BaseEntity ?? baseEntity;
     baseNameActiveEntity = Project.BaseNameActiveEntity ?? baseNameActiveEntity;
     entityNamespace = Project.EntityNamespace ?? entityNamespace;
     usings = Project.Usings ?? usings;
     // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
-    // EnumTables, else from what the schema says about each table (LookupShape) -- not from the lists above, which are
+    // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
     // only used when no project is chosen.
     bool NoNavigation(string table, LookupShape shape) => Project.NoNavigation(table, shape) ?? noNavigationTables.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
     // CS_Entity_v1.tt
     // Generates: <TableName>.cs   (see OutputName in CS_Entity_v1.tt.config)
     //
@@ -57,11 +57,11 @@
     //   - Base class: a table with a NOT NULL text column called Name AND a NOT NULL bit column called IsActive derives from
     //     BaseNameActiveEntity (which already declares those two properties, so they are not repeated); any other table
     //     derives from BaseEntity.
-    //   - Key: the single primary key column gets [Key]. (A composite key cannot be expressed with attributes -- it needs
-    //     Fluent API in the DbContext -- so such a table stops with an error.)
+    //   - Key: the single primary key column gets [Key]. (A composite key cannot be expressed with attributes - it needs
+    //     Fluent API in the DbContext - so such a table stops with an error.)
     //   - Foreign keys: each single-column foreign key is listed in "Omitted", and gets a navigation property named for its
-    //     ROLE -- the column name without its trailing "Id" (DonateFrom_EmployeeId -> DonateFrom_Employee, ManagerId ->
-    //     Manager) -- of the referenced table's type, always nullable ("Employee?"; the FK column itself says whether the
+    //     ROLE - the column name without its trailing "Id" (DonateFrom_EmployeeId -> DonateFrom_Employee, ManagerId ->
+    //     Manager) - of the referenced table's type, always nullable ("Employee?"; the FK column itself says whether the
     //     row is required) with [ForeignKey(nameof(<role>))] on the FK column. A foreign key to a table listed in
     //     noNavigationTables below (an enum, or a table with no entity class) stays a plain int/string column.
     //   - Other columns: C# type from the SQL type; "required" when NOT NULL (it becomes "T?" / "string?" when nullable);
@@ -73,14 +73,14 @@
     //   - A table with a text column called Name that is NOT name/active-based gets "public override string? ToString() => Name;".
     //
     // What it does NOT do, so an entity that needs any of these stays hand-maintained:
-    //   - collection navigation properties (List<Child>? Teams) -- their names are the developers' choice;
+    //   - collection navigation properties (List<Child>? Teams) - their names are the developers' choice;
     //   - the reverse navigation of a one-to-many that the parent already lists (adding both sides makes serializing the
     //     parent loop forever);
     //   - enum-typed properties, [Range]/[RegularExpression]/[Required] validation, hand-picked display names, ToString on
     //     other columns, or a column the class deliberately makes optional although the table says NOT NULL.
     //   Nor does it write the entity's DbSet in TimeEntryContext or the Enums.
     //
-    // ------------------------------------------------------------------------------------------
+    // ==========================================================================================
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
     if (keyColumn is null)
@@ -90,7 +90,7 @@
     }
     else
     {
-        // ---- naming helpers
+        // ==== naming helpers
         string Id(ColumnModel c) => c.IsCSharpReservedWordName ? "@" + c.Name : c.Name;
         string Words(string name, bool isBit)
         {
@@ -102,13 +102,13 @@
         }
         string Str(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
-        // ---- base class
+        // ==== base class
         var nameColumn = Model.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
         var activeColumn = Model.Columns.FirstOrDefault(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive");
         bool nameActive = nameColumn is not null && activeColumn is not null;
         string baseClass = nameActive ? baseNameActiveEntity : baseEntity;
 
-        // ---- foreign keys: single-column ones only
+        // ==== foreign keys: single-column ones only
         var fkByColumn = new Dictionary<string, ForeignKeyModel>(StringComparer.OrdinalIgnoreCase);
         foreach (var fk in Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1))
             fkByColumn[fk.ReferencingColumns[0]] = fk;
@@ -121,13 +121,13 @@
             if (NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape)) continue;
             string role = c.Name.Length > 2 && c.Name.EndsWith("Id", StringComparison.Ordinal) ? c.Name[..^2] : c.Name + "Ref";
             // a referenced table named like this one would make a property of the class's own type; a role that repeats
-            // another name cannot be a second property -- leave both as plain columns
+            // another name cannot be a second property - leave both as plain columns
             if (role.Length == 0 || !takenNames.Add(role)) continue;
             navigations.Add((c, role, fk.ReferencedTable));
         }
         var navByColumn = navigations.ToDictionary(n => n.Column.Name, n => n, StringComparer.OrdinalIgnoreCase);
 
-        // ---- C# type of a column
+        // ==== C# type of a column
         string ClrType(ColumnModel c)
         {
             string t = c.SqlType switch
@@ -167,7 +167,7 @@
             return "    [Column(" + (name is null ? "" : $"\"{name}\"" + (columnType is null ? "" : ", ")) + (columnType is null ? "" : $"TypeName = \"{columnType}\"") + ")]";
         }
 
-        // ---- Omitted: the key, then the foreign keys, in column order
+        // ==== Omitted: the key, then the foreign keys, in column order
         B("    #region Omitted");
         bool firstOmitted = true;
         foreach (var c in Model.Columns.Where(c => c.IsPrimaryKey || fkByColumn.ContainsKey(c.Name)))
@@ -193,7 +193,7 @@
         }
         B("    #endregion Omitted");
 
-        // ---- navigation properties
+        // ==== navigation properties
         if (navigations.Count > 0)
         {
             B();
@@ -202,7 +202,7 @@
                 B($"    public {n.Type}? {n.Role} {{ get; set; }}");
         }
 
-        // ---- the rest of the columns
+        // ==== the rest of the columns
         foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && !fkByColumn.ContainsKey(c.Name) && !(nameActive && (c == nameColumn || c == activeColumn))))
         {
             B();
@@ -264,14 +264,14 @@
             B($"    public {(needsRequired ? "required " : "")}{ClrType(c)} {Id(c)} {{ get; set; }}{initializer}");
         }
 
-        // ---- ToString on a table that has a plain "Name"
+        // ==== ToString on a table that has a plain "Name"
         if (!nameActive && Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"))
         {
             B();
             B("    public override string? ToString() => Name;");
         }
 
-        // ---- assemble
+        // ==== assemble
         var headUsings = usings.ToList();
         if (Model.DatabaseTableName is not null) usesSchema = true; // [Table("customer_item")] below
         if (usesSchema && !headUsings.Contains("System.ComponentModel.DataAnnotations.Schema"))
@@ -290,7 +290,7 @@
         L($"public class {className} : {baseClass}");
         L("{");
         // A brand-new row (WinUI3_DetailScreen.tt's "Add" case, CS_Repo.tt's own GenericRepo<T> internals) does
-        // `new {Table}()` and fills every property in afterward, one line at a time -- plain C# does not let a
+        // `new {Table}()` and fills every property in afterward, one line at a time - plain C# does not let a
         // caller do that for a "required" property (CS9035) unless the constructor that ran first is annotated
         // as having already set them. Found live, the first time this entity family was ever actually compiled
         // against a real WinUI3 project: every NOT NULL column above is `required`, so a bare `new {Table}()`

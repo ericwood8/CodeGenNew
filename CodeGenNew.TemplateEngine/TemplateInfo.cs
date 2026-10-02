@@ -55,9 +55,14 @@ public class TemplateInfo
         ["JS"] = "js",
     };
 
+    /// <summary> The name of the file a database-level template writes: the OutputName pattern with {Table} replaced by the project's context name. </summary>
+    public string BuildDatabaseFileName(string contextName) => BuildFileName(contextName);
+
     public bool AppliesTo(bool tableHasPrimaryKey, bool isView, bool isJunctionTable = false, bool hasChildForeignKeys = false,
         PrimaryKeyShape primaryKeyShape = PrimaryKeyShape.None, bool isNameActiveTable = false, SqlDialect dialect = SqlDialect.SqlServer)
     {
+        if (Config.DatabaseOnly)
+            return false; // offered on the database node, not on a table
         if (Config.SqlServerOnly && dialect != SqlDialect.SqlServer)
             return false;
         if (Config.RequiresPrimaryKey && !tableHasPrimaryKey)
