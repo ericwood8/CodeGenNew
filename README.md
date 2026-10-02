@@ -1,6 +1,6 @@
 # CodeGenNew
 
-A C# code generator for a developer's own box: point it at a SQL Server database, pick a table, and generate code from **T4 templates** — SQL stored procedures, C# entities, enums, repositories and minimal-API classes, the Angular TypeScript model, service and screen for the same table, and a React counterpart of that same screen family. It has a WinUI 3 desktop app (right-click a table in a TreeView) and a scriptable command-line tool, `codegen`, that does the same without the GUI.
+A C# code generator for a developer's own box: point it at a SQL Server, PostgreSQL or MySQL database, pick a table, and generate code from **T4 templates** — SQL stored procedures, C# entities, enums, repositories and minimal-API classes, the Angular TypeScript model, service and screen for the same table, and a React counterpart of that same screen family. It has a WinUI 3 desktop app (right-click a table in a TreeView) and a scriptable command-line tool, `codegen`, that does the same without the GUI.
 
 It replaces a series of hand-rolled "write lines to a text file with substitutions and smart loops" generators with a real templating engine (T4 via `Mono.TextTemplating`), while staying simple and portable (unpackaged, no installer) and easy to extend: **a new template is just a new `.tt` file** — no code changes.
 
@@ -62,7 +62,7 @@ Templates carry a version in the file name (`SP_Save_v1.tt`). The menu shows onl
 
 ## Quick start
 
-**Prerequisites:** the [.NET 10 SDK](https://dotnet.microsoft.com/) (the templates are compiled at run time, so a real SDK must be installed — not just the runtime) and a reachable SQL Server. The desktop app also needs Windows 10/11.
+**Prerequisites:** the [.NET 10 SDK](https://dotnet.microsoft.com/) (the templates are compiled at run time, so a real SDK must be installed — not just the runtime) and a reachable SQL Server, PostgreSQL or MySQL database. The desktop app also needs Windows 10/11.
 
 ```
 dotnet build CodeGenNew.slnx
@@ -76,9 +76,11 @@ codegen -S MYSERVER -d MyDatabase -s dbo -t Holiday -T API_Crud.tt -E -o C:\Work
 
 | Option | Meaning |
 |---|---|
-| `-S`, `-d`, `-s`, `-t` | server, database, schema (default `dbo`), table |
+| `--provider` | `SqlServer` (default), `PostgreSql` or `MySql` |
+| `-S`, `-d`, `-s`, `-t` | server (`host` or `host:port`), database, schema, table. The default schema is `dbo` for SQL Server, `public` for PostgreSQL and the database name for MySQL |
 | `-T` | template file name; without a version (`SP_Save.tt`) means the latest, `SP_Save_v1.tt` pins that version |
-| `-E` | Windows authentication (or `-U user` and `-P password`; the password is prompted for if omitted) |
+| `-E` | Windows authentication, SQL Server only (or `-U user` and `-P password`; the password is prompted for if omitted — PostgreSQL and MySQL always use a user name and password) |
+| `--naming` | `AsIs` (default) or `Pascal`: turn `snake_case` database names into PascalCase code names (see *Databases* below) |
 | `-o` | output folder (default: `Output` from `Settings.json`) |
 | `--project` | a project settings file, `Projects\<name>.config` next to the exe (see below) |
 
@@ -134,13 +136,31 @@ The templates also assume the shape of the sample project's plumbing: a generic 
 
 Column-name rules (which column means "created date", "is active", a display name, …) live in `SpecialLogicColumns.config`; edit it to match your naming.
 
+## Databases
+
+| | SQL Server | PostgreSQL | MySQL |
+|---|---|---|---|
+| Connect from | app and CLI | app and CLI | app and CLI |
+| Schema read from | `sys.*` | `information_schema` + `pg_catalog` | `information_schema` |
+| `SP_*` templates write | stored procedures | functions (`RETURNS SETOF`, `plpgsql`) | stored procedures (`DELIMITER $$`) |
+| Search call in generated C# | `EXEC` | `SELECT * FROM "f"(...)` | `CALL p(...)` |
+| `API_Junction`, `WinUI3_JunctionEditor` | yes | not yet | not yet |
+
+Everything else (entities, repositories, API, Angular, React, WinUI3) is generated from the same model, so the screens look and behave the same whichever database sits underneath. The sample apps in the sibling repositories reuse one React or Angular front end over any of the three APIs.
+
+**Names.** PostgreSQL and MySQL databases usually use `snake_case`. Set `NamingStyle=Pascal` in the project file (or `--naming Pascal`) and the generated C# and TypeScript say `CustomerItem` / `CustomerId` while the SQL text and the `[Table]` / `[Column]` attributes keep the real names. MySQL on Windows stores table names in lower case (`lower_case_table_names=1`), so use `snake_case` table names there.
+
+**Passwords.** The app and CLI take the password from the connection dialog or `-P`; never commit one. For your own samples, read it from an environment variable (`PGPASSWORD`, `MYSQL_PWD`) at start-up.
+
+**Still open.** Writing the `UseNpgsql` / `UseMySQL` wiring for a project, `enum`/`set` columns as drop-downs, junction templates for PostgreSQL and MySQL, and views (tables only).
+
 ## Solution structure
 
 ```
 CodeGenNew.slnx
 ├── CodeGenNew.App                 WinUI 3 UI, MVVM via CommunityToolkit.Mvvm (TreeView, Connection/Location/Template Management dialogs)
 ├── CodeGenNew.Cli                 Scriptable console entry point (bypasses the WinUI 3 app)
-├── CodeGenNew.Connections         Connect + test SQL Server connections (SQL Login & Windows Auth)
+├── CodeGenNew.Connections         Connect + test SQL Server, PostgreSQL and MySQL connections
 ├── CodeGenNew.SchemaIntrospection Reads tables/columns/PK/FK from the database; builds TableModel
 ├── CodeGenNew.TemplateEngine      Wraps Mono.TextTemplating; discovers/runs .tt templates; writes output files; seeds defaults
 ├── CodeGenNew.Core                Shared model classes (TableModel, ColumnModel, ForeignKeyModel, settings)
@@ -155,7 +175,7 @@ CodeGenNew.slnx
 dotnet test CodeGenNew.Tests\CodeGenNew.Tests.csproj
 ```
 
-The suite needs **no database**. It covers the file-writing engine (`@@@FILE` splitting, unsafe paths, output naming), template discovery and versioning, the seeder (created / refreshed / kept-customized, and that **every file in `Templates\` is actually shipped**), the literal and display-column helpers, and it runs every shipped template against hand-built tables to check what it writes — the API, entity, validation, enum, repository, model, service, component and React-page rules, each template's refusals (composite keys, enum tables), and that changing a project setting changes the output. It takes about a minute, mostly compiling templates.
+The suite needs **no database** (live PostgreSQL and MySQL integration tests run only when `CODEGENNEW_PG_*` / `CODEGENNEW_MYSQL_*` environment variables name a server, and are skipped otherwise). It covers the file-writing engine (`@@@FILE` splitting, unsafe paths, output naming), template discovery and versioning, the seeder (created / refreshed / kept-customized, and that **every file in `Templates\` is actually shipped**), the literal and display-column helpers, and it runs every shipped template against hand-built tables to check what it writes — the API, entity, validation, enum, repository, model, service, component and React-page rules, each template's refusals (composite keys, enum tables), and that changing a project setting changes the output. It takes about a minute, mostly compiling templates.
 
 ## Known dependencies
 
@@ -169,7 +189,7 @@ The suite needs **no database**. It covers the file-writing engine (`@@@FILE` sp
 | [MySqlConnector](https://www.nuget.org/packages/MySqlConnector) | `Connections`, `SchemaIntrospection` | MySQL ADO.NET provider. |
 | [Mono.TextTemplating](https://github.com/mono/t4) | `CodeGenNew.TemplateEngine` | In-process T4 engine that runs outside Visual Studio (EF Core uses it for `dotnet ef dbcontext scaffold`). |
 | [MSTest](https://www.nuget.org/packages/MSTest) 4 | `CodeGenNew.Tests` only | Test framework. |
-| A reachable SQL Server | runtime | Read-only access is all the tool ever needs. Not bundled. |
+| A reachable SQL Server, PostgreSQL or MySQL | runtime | Read-only access is all the tool ever needs. Not bundled. |
 
 CLI argument parsing is hand-rolled rather than pulling in a library, given the small number of flags (specs.md §10).
 
