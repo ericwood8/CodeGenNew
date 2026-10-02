@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using CodeGenNew.App.Services;
 using CodeGenNew.Connections;
 using CodeGenNew.Core;
@@ -61,7 +61,7 @@ public partial class MainViewModel : ObservableObject
         StatusMessage = $"Connecting to {request.ServerName}\\{request.DatabaseName}...";
         try
         {
-            var schemaProvider = new SqlServerSchemaProvider(request, _settings.SpecialLogicColumnsConfigPath);
+            var schemaProvider = SchemaProviderFactory.Create(request, _settings.SpecialLogicColumnsConfigPath);
             var summaries = await schemaProvider.ListTablesAsync();
 
             _connectionRequest = request;
@@ -74,15 +74,19 @@ public partial class MainViewModel : ObservableObject
 
             StatusMessage = $"Loaded {Tables.Count} table(s).";
 
-            await using var probeConnection = request.CreateConnection();
-            await probeConnection.OpenAsync();
-            var (status, wasCached) = await SpCanDeleteVerifier.GetOrVerifyAsync(
-                probeConnection, request.ServerName, request.DatabaseName, _settings.SpCanDeleteVerificationConfigPath);
-            if (!wasCached)
+            // spCanDelete is a SQL Server stored procedure from the original author's tooling; there is nothing to check on PostgreSQL.
+            if (request.Provider == DatabaseProvider.SqlServer)
             {
-                StatusMessage += status == SpCanDeleteStatus.Verified
-                    ? " spCanDelete verified on this database."
-                    : " Note: spCanDelete was not found (or doesn't match the expected signature) on this database.";
+                await using var probeConnection = request.CreateConnection();
+                await probeConnection.OpenAsync();
+                var (status, wasCached) = await SpCanDeleteVerifier.GetOrVerifyAsync(
+                    probeConnection, request.ServerName, request.DatabaseName, _settings.SpCanDeleteVerificationConfigPath);
+                if (!wasCached)
+                {
+                    StatusMessage += status == SpCanDeleteStatus.Verified
+                        ? " spCanDelete verified on this database."
+                        : " Note: spCanDelete was not found (or doesn't match the expected signature) on this database.";
+                }
             }
         }
         catch (Exception ex)
@@ -114,14 +118,15 @@ public partial class MainViewModel : ObservableObject
         if (_connectionRequest is null)
             return Task.FromResult(new List<ColumnSummary>());
 
-        var schemaProvider = new SqlServerSchemaProvider(_connectionRequest, _settings.SpecialLogicColumnsConfigPath);
+        var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath);
         return schemaProvider.ListColumnSummariesAsync(table.SchemaName, table.TableName, cancellationToken);
     }
 
     /// <summary> Templates applicable to this table's shape, for building its right-click menu (section 8). </summary>
     public List<TemplateInfo> GetApplicableTemplates(TableNodeViewModel table) =>
         TemplateCatalog.Discover(_settings.TemplatesDirectory)
-            .Where(t => t.AppliesTo(table.Summary.HasPrimaryKey, isView: false, table.Summary.IsJunctionTable, table.Summary.HasChildForeignKeys, table.Summary.PrimaryKeyShape, table.Summary.IsNameActiveTable))
+            .Where(t => t.AppliesTo(table.Summary.HasPrimaryKey, isView: false, table.Summary.IsJunctionTable, table.Summary.HasChildForeignKeys, table.Summary.PrimaryKeyShape, table.Summary.IsNameActiveTable,
+                _connectionRequest?.Provider switch { DatabaseProvider.PostgreSql => SqlDialect.PostgreSql, DatabaseProvider.MySql => SqlDialect.MySql, _ => SqlDialect.SqlServer }))
             .ToList();
 
     /// <summary> Every file the last successful RunTemplateAsync wrote (most templates write one; the TS_ templates several). </summary>
@@ -153,11 +158,13 @@ public partial class MainViewModel : ObservableObject
         StatusMessage = $"Generating '{template.Name}' for [{table.SchemaName}].[{table.TableName}]...";
         try
         {
-            var schemaProvider = new SqlServerSchemaProvider(_connectionRequest, _settings.SpecialLogicColumnsConfigPath);
+            // The project's NamingStyle decides the names the schema reader gives tables and columns (customer_item -> CustomerItem).
+            var project = LoadActiveProject();
+            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming);
             var model = await schemaProvider.BuildTableModelAsync(
                 table.SchemaName, table.TableName, template.Config.NeedsRowData, template.Config.NeedsReferencedDisplayColumns);
 
-            var result = await TemplateRunner.RunAsync(template.FilePath, model, LoadActiveProject());
+            var result = await TemplateRunner.RunAsync(template.FilePath, model, project);
             if (!result.Success)
             {
                 StatusMessage = "Template generation failed: " + string.Join(" | ", result.Errors);

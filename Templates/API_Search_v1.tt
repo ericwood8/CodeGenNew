@@ -57,12 +57,12 @@
     // Filters, then @PageNumber/@PageSize -- joined as ONE list so the comma placement is correct whether
     // there are zero filters or several (a naive "{filters}, @PageNumber" would leave a leading ", " when
     // filters is empty).
-    var execSearchArgs = filters.Select(f => "@p" + f.Name).Append("@PageNumber").Append("@PageSize").ToList();
-    var execSearchCountArgs = filters.Select(f => "@p" + f.Name).ToList();
+    // How the generated code calls the search routine: EXEC of a stored procedure on SQL Server, a function call on PostgreSQL.
+    var call = new SearchCall(Model, entity, filters.Select(f => f.Name));
 #>
 namespace <#= apiNamespace #>;
 
-<#= usingLines #>using Microsoft.Data.SqlClient;
+<#= usingLines #>using <#= call.ParameterNamespace #>;
 using Microsoft.EntityFrameworkCore;
 using static Microsoft.AspNetCore.Http.TypedResults;
 
@@ -104,12 +104,12 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
     foreach (var f in filters)
     {
 #>
-            new SqlParameter("@p<#= f.Name #>", (object?)<#= f.ParamName #> ?? DBNull.Value),
+            <#= call.TextParameter(f.Name, f.ParamName) #>,
 <#
     }
 #>
-            new SqlParameter("@PageNumber", pageNumber),
-            new SqlParameter("@PageSize", pageSize)
+            <#= call.IntParameter("PageNumber", "pageNumber") #>,
+            <#= call.IntParameter("PageSize", "pageSize") #>
         };
 
         // Set<T>().FromSqlRaw(...), NOT Database.SqlQueryRaw<T>(...): SqlQueryRaw<T> builds an ad hoc EF
@@ -120,20 +120,20 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
         // all), so it works whether or not T has any.
         var items = await context.Set<<#= entity #>>()
             .FromSqlRaw(
-                "EXEC [<#= Model.SchemaName #>].[<#= entity #>_Search] <#= string.Join(", ", execSearchArgs) #>",
+                "<#= call.SearchSql #>",
                 parameters)
             .ToListAsync();
 
         // Explicitly typed (not "var ... = new[]"): with zero searchable columns this array has zero elements,
         // and an implicitly-typed array initializer with nothing in it is a compile error (CS0826) -- found
         // while testing pagination-without-search, the case that first makes this array possibly empty.
-        var countParameters = new SqlParameter[]
+        var countParameters = new <#= call.ParameterType #>[]
         {
 <#
     foreach (var f in filters)
     {
 #>
-            new SqlParameter("@p<#= f.Name #>", (object?)<#= f.ParamName #> ?? DBNull.Value),
+            <#= call.TextParameter(f.Name, f.ParamName) #>,
 <#
     }
 #>
@@ -145,7 +145,7 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
         // composition needed); .Single() then enforces "exactly one row" in memory instead of in SQL.
         var totalCountRows = await context.Database
             .SqlQueryRaw<int>(
-                "EXEC [<#= Model.SchemaName #>].[<#= entity #>_SearchCount]<#= execSearchCountArgs.Count > 0 ? " " + string.Join(", ", execSearchCountArgs) : "" #>",
+                "<#= call.CountSql #>",
                 countParameters)
             .ToListAsync();
         int totalCount = totalCountRows.Single();

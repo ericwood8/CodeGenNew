@@ -59,6 +59,10 @@ public class TemplateConfig
     /// template that generates from the table's actual data (e.g. SP_Load.tt) asks for its rows to be read. </summary>
     public bool NeedsRowData { get; init; }
 
+    /// <summary> Defaults to false. A template that writes T-SQL (a stored procedure; or C# that EXECs one) sets this, so a table read from
+    /// PostgreSQL is refused with a reason instead of getting code that cannot run there. SP_Search is not one of them: it writes PostgreSQL functions too. </summary>
+    public bool SqlServerOnly { get; init; }
+
     /// <summary> Defaults to false. A template that shows the display columns of foreign-keyed tables (SP_Lookup) asks
     /// for them to be looked up (ForeignKeyModel.ReferencedDisplayColumns). </summary>
     public bool NeedsReferencedDisplayColumns { get; init; }
@@ -87,6 +91,8 @@ public class TemplateConfig
     /// doesn't carry an IsView flag in v1 -- generation is table-only already). </summary>
     public string? Refuse(TableModel model)
     {
+        if (SqlServerOnly && model.Dialect != SqlDialect.SqlServer)
+            return "writes T-SQL (a SQL Server stored procedure) and has no PostgreSQL version yet.";
         if (RequiresPrimaryKey && !model.HasPrimaryKey)
             return "requires a primary key, but the table doesn't have one.";
         if (RequiresJunctionTable && !model.IsJunctionTable)
@@ -113,6 +119,7 @@ public class TemplateConfig
         PrimaryKeyRequirement? requiredPrimaryKeyShape = null;
         bool requiresNotNameActiveTable = false;
         bool needsRowData = false;
+        bool sqlServerOnly = false;
         bool needsReferencedDisplayColumns = false;
         string? outputName = null;
 
@@ -144,6 +151,8 @@ public class TemplateConfig
                 requiresNotNameActiveTable = boolValue;
             else if (key.EqualsIgnoreCase("NeedsRowData"))
                 needsRowData = boolValue;
+            else if (key.EqualsIgnoreCase("SqlServerOnly"))
+                sqlServerOnly = boolValue;
             else if (key.EqualsIgnoreCase("NeedsReferencedDisplayColumns"))
                 needsReferencedDisplayColumns = boolValue;
             else if (key.EqualsIgnoreCase("OutputName"))
@@ -159,6 +168,7 @@ public class TemplateConfig
             RequiredPrimaryKeyShape = requiredPrimaryKeyShape,
             RequiresNotNameActiveTable = requiresNotNameActiveTable,
             NeedsRowData = needsRowData,
+            SqlServerOnly = sqlServerOnly,
             NeedsReferencedDisplayColumns = needsReferencedDisplayColumns,
             OutputName = outputName
         };

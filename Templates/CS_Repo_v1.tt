@@ -213,8 +213,8 @@
             // leading ", " when paramList is empty).
             var signatureParams = filters.Select(f => $"string? {f.ParamName} = null")
                 .Append("int pageNumber = 1").Append("int pageSize = 100").ToList();
-            var execSearchArgs = filters.Select(f => "@p" + f.Name).Append("@PageNumber").Append("@PageSize").ToList();
-            var execSearchCountArgs = filters.Select(f => "@p" + f.Name).ToList();
+            // EXEC of a stored procedure on SQL Server, a function call on PostgreSQL (see SearchCall).
+            var call = new SearchCall(Model, Model.TableName, filters.Select(f => f.Name), qualifyTypes: true);
 
             var body = new List<string>
             {
@@ -224,9 +224,9 @@
                 "        {"
             };
             foreach (var f in filters)
-                body.Add($"            new Microsoft.Data.SqlClient.SqlParameter(\"@p{f.Name}\", (object?){f.ParamName} ?? DBNull.Value),");
-            body.Add("            new Microsoft.Data.SqlClient.SqlParameter(\"@PageNumber\", pageNumber),");
-            body.Add("            new Microsoft.Data.SqlClient.SqlParameter(\"@PageSize\", pageSize)");
+                body.Add("            " + call.TextParameter(f.Name, f.ParamName) + ",");
+            body.Add("            " + call.IntParameter("PageNumber", "pageNumber") + ",");
+            body.Add("            " + call.IntParameter("PageSize", "pageSize"));
             body.Add("        };");
             body.Add("");
             // Set<T>().FromSqlRaw(...), NOT Database.SqlQueryRaw<T>(...): SqlQueryRaw<T> builds an ad hoc
@@ -236,20 +236,20 @@
             // FromSqlRaw uses the real, already-validated entity model (navigations and all), so it works
             // whether or not T has any.
             body.Add("        var items = await _context.Set<" + entity + ">()");
-            body.Add($"            .FromSqlRaw(\"EXEC [{Model.SchemaName}].[{Model.TableName}_Search] {string.Join(", ", execSearchArgs)}\", parameters)");
+            body.Add($"            .FromSqlRaw(\"{call.SearchSql}\", parameters)");
             body.Add("            .ToListAsync();");
             body.Add("");
             // Explicitly typed (not "var ... = new[]"): with zero searchable columns this array has zero
             // elements, and an implicitly-typed array initializer with nothing in it is a compile error
             // (CS0826) -- found while testing pagination-without-search, the case that first makes this array
             // possibly empty.
-            body.Add("        var countParameters = new Microsoft.Data.SqlClient.SqlParameter[]");
+            body.Add($"        var countParameters = new {call.ParameterNamespace}.{call.ParameterType}[]");
             body.Add("        {");
             for (int i = 0; i < filters.Count; i++)
             {
                 var f = filters[i];
                 string comma = i < filters.Count - 1 ? "," : "";
-                body.Add($"            new Microsoft.Data.SqlClient.SqlParameter(\"@p{f.Name}\", (object?){f.ParamName} ?? DBNull.Value){comma}");
+                body.Add("            " + call.TextParameter(f.Name, f.ParamName) + comma);
             }
             body.Add("        };");
             body.Add("");
@@ -259,7 +259,7 @@
             // generated code for real: .ToListAsync() executes the EXEC as-is (no composition needed), then
             // .Single() enforces "exactly one row" in memory instead of in SQL.
             body.Add("        var totalCountRows = await _context.Database");
-            body.Add($"            .SqlQueryRaw<int>(\"EXEC [{Model.SchemaName}].[{Model.TableName}_SearchCount]{(execSearchCountArgs.Count > 0 ? " " + string.Join(", ", execSearchCountArgs) : "")}\", countParameters)");
+            body.Add($"            .SqlQueryRaw<int>(\"{call.CountSql}\", countParameters)");
             body.Add("            .ToListAsync();");
             body.Add("        int totalCount = totalCountRows.Single();");
             body.Add("");

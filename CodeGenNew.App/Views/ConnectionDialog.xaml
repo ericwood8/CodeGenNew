@@ -13,10 +13,15 @@
     </ContentDialog.Title>
 
     <StackPanel Spacing="8" MinWidth="360">
-        <TextBox Header="Server" Text="{x:Bind ViewModel.ServerName, Mode=TwoWay}" />
+        <ComboBox x:Name="ProviderCombo" Header="Database type" SelectionChanged="OnProviderChanged">
+            <ComboBoxItem Content="SQL Server" />
+            <ComboBoxItem Content="PostgreSQL" />
+            <ComboBoxItem Content="MySQL" />
+        </ComboBox>
+        <TextBox x:Name="ServerBox" Header="Server" Text="{x:Bind ViewModel.ServerName, Mode=TwoWay}" />
         <TextBox Header="Database" Text="{x:Bind ViewModel.DatabaseName, Mode=TwoWay}" />
 
-        <RadioButtons Header="Authentication">
+        <RadioButtons x:Name="AuthRadios" Header="Authentication">
             <RadioButton x:Name="WindowsAuthRadio" Content="Windows Authentication" Checked="OnAuthModeChanged" />
             <RadioButton x:Name="SqlLoginRadio" Content="SQL Login" Checked="OnAuthModeChanged" />
         </RadioButtons>

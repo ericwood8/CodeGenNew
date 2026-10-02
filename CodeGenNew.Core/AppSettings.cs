@@ -37,6 +37,7 @@ public class AppSettings
 
 public class LastConnectionSettings
 {
+    public string Provider { get; set; } = "SqlServer"; // "SqlServer" or "PostgreSql"
     public string AuthMode { get; set; } = "SqlLogin"; // "SqlLogin" or "WindowsAuth"
     public string ServerName { get; set; } = "";
     public string DatabaseName { get; set; } = "";

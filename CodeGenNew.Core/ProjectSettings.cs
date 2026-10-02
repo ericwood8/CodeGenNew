@@ -25,7 +25,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables"
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle"
     ];
 
     private readonly Dictionary<string, string> _values;
@@ -131,6 +131,10 @@ public class ProjectSettings
             : ProjectName is null ? null : [];
 
     public string? ProjectName => Explicit("ProjectName");
+
+    /// <summary> How a table or column name from the database becomes the generated name: <c>NamingStyle=Pascal</c> turns <c>customer_item</c> into <c>CustomerItem</c>
+    /// (the SQL keeps the real names); the default <c>AsIs</c> uses the database's names. Read by the schema reader, so it applies to every template. </summary>
+    public NamingStyle Naming => Enum.TryParse<NamingStyle>(Explicit("NamingStyle"), ignoreCase: true, out var style) ? style : NamingStyle.AsIs;
 
     public string? ViewNamespace => Derived("ViewNamespace", ".App.Views");
     public string? ViewModelNamespace => Derived("ViewModelNamespace", ".App.ViewModels");

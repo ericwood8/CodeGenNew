@@ -2,12 +2,30 @@ using System.Data;
 
 namespace CodeGenNew.Core;
 
+public enum SqlDialect
+{
+    SqlServer,
+    PostgreSql,
+    MySql
+}
+
 /// <summary> Everything a template needs to know about one selected table, built fresh by CodeGenNew.SchemaIntrospection each time a table is selected. </summary>
 public class TableModel
 {
     public required string SchemaName { get; init; }
+    /// <summary> The name generated code uses (a C# class, a file, a route). </summary>
     public required string TableName { get; init; }
+
+    /// <summary> The table's real name in the database when the project's naming style changed <see cref="TableName"/> (customer_item -> CustomerItem); null when they are the same. </summary>
+    public string? DatabaseTableName { get; init; }
+
+    /// <summary> The name SQL text uses: the database's own name. </summary>
+    public string DbTableName => DatabaseTableName ?? TableName;
+
     public required string QuotedName { get; init; }
+
+    /// <summary> Which database the table was read from; a template that writes SQL text branches on it (T-SQL vs PostgreSQL). </summary>
+    public SqlDialect Dialect { get; init; } = SqlDialect.SqlServer;
     public bool IsReservedWordName { get; init; }
     public bool IsCSharpReservedWordName { get; init; }
 

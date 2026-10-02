@@ -112,6 +112,72 @@ public class TemplateRenderingTests
         Expect.Contains(sql, "AND (@pName IS NULL OR");
     }
 
+    // ------------------------------------------------------------------ PostgreSQL
+
+    private static TableModel AsPostgres(TableModel t) => new()
+    {
+        SchemaName = "public", TableName = t.TableName, QuotedName = $"\"public\".\"{t.TableName}\"", Dialect = SqlDialect.PostgreSql,
+        Columns = t.Columns, PrimaryKeyColumns = t.PrimaryKeyColumns, ForeignKeys = t.ForeignKeys, ChildForeignKeys = t.ChildForeignKeys,
+        DisplayColumns = t.DisplayColumns, HasReferencedDisplayColumns = t.HasReferencedDisplayColumns, Rows = t.Rows
+    };
+
+    [TestMethod]
+    public async Task SP_Search_on_PostgreSQL_writes_a_function_returning_the_tables_rows()
+    {
+        string sql = (await Render("SP_Search_v1.tt", AsPostgres(Sample.Holiday())));
+
+        Expect.Contains(sql, "CREATE OR REPLACE FUNCTION \"public\".\"Holiday_Search\"(");
+        Expect.Contains(sql, "RETURNS SETOF \"public\".\"Holiday\"");
+        Expect.Contains(sql, "(\"pName\" IS NULL OR \"Name\" ILIKE '%' || btrim(\"pName\") || '%')");
+        Expect.Contains(sql, "OFFSET (\"PageNumber\" - 1) * \"PageSize\" LIMIT \"PageSize\"");
+        Expect.Contains(sql, "CREATE OR REPLACE FUNCTION \"public\".\"Holiday_SearchCount\"(");
+        Expect.Contains(sql, "RETURNS integer");
+        Expect.DoesNotContain(sql, "EXEC");
+        Expect.DoesNotContain(sql, "@p");
+    }
+
+    [TestMethod]
+    [DataRow("SP_Insert_v1.tt", "CREATE OR REPLACE FUNCTION \"public\".\"Holiday_Insert\"(")]
+    [DataRow("SP_Update_v1.tt", "CREATE OR REPLACE FUNCTION \"public\".\"Holiday_Update\"(")]
+    [DataRow("SP_Save_v1.tt", "CREATE OR REPLACE FUNCTION \"public\".\"Holiday_Save\"(")]
+    [DataRow("SP_Delete_v1.tt", "CREATE OR REPLACE FUNCTION \"public\".\"Holiday_Delete\"(")]
+    [DataRow("SP_Clone_v1.tt", "CREATE OR REPLACE FUNCTION \"public\".\"Holiday_Clone\"(")]
+    public async Task The_SP_templates_write_a_PostgreSQL_function_for_a_PostgreSQL_table(string template, string expected)
+    {
+        string sql = await Render(template, AsPostgres(Sample.Holiday()));
+
+        Expect.Contains(sql, expected);
+        Expect.DoesNotContain(sql, "CREATE OR ALTER PROCEDURE");
+    }
+
+    [TestMethod]
+    public async Task SP_Search_on_PostgreSQL_with_nothing_to_filter_has_no_where_clause()
+    {
+        var allNumeric = Sample.Table("Counter", [Sample.Column("CounterId", SqlDbType.Int, primaryKey: true)]);
+
+        string sql = (await Render("SP_Search_v1.tt", AsPostgres(allNumeric)));
+
+        Expect.DoesNotContain(sql, "WHERE");
+        Expect.Contains(sql, "SELECT count(*)::integer FROM \"public\".\"Counter\";");
+    }
+
+    [TestMethod]
+    public async Task The_search_endpoint_and_repository_call_a_function_with_Npgsql_parameters_on_PostgreSQL()
+    {
+        string repo = await Render("CS_Repo_v1.tt", AsPostgres(Sample.Holiday()));
+        string api = await Render("API_Search_v1.tt", AsPostgres(Sample.Holiday()));
+
+        foreach (string code in new[] { repo, api })
+        {
+            Expect.Contains(code, "SELECT * FROM \\\"public\\\".\\\"Holiday_Search\\\"(@pSY_IsoCountry_Alpha3Code, @pName, @PageNumber, @PageSize)");
+            Expect.Contains(code, "SELECT \\\"public\\\".\\\"Holiday_SearchCount\\\"(@pSY_IsoCountry_Alpha3Code, @pName) AS \\\"Value\\\"");
+            Expect.Contains(code, "NpgsqlParameter(\"@pName\", NpgsqlTypes.NpgsqlDbType.Text)");
+            Expect.DoesNotContain(code, "SqlParameter(");
+            Expect.DoesNotContain(code, "EXEC [");
+        }
+        Expect.Contains(api, "using Npgsql;");
+    }
+
     [TestMethod]
     public async Task SP_Search_excludes_audit_columns_from_the_filter()
     {

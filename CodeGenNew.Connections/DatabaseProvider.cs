@@ -3,7 +3,8 @@ namespace CodeGenNew.Connections;
 public enum DatabaseProvider
 {
     SqlServer,
-    MySql
+    MySql,
+    PostgreSql
 }
 
 public enum AuthMode

@@ -1,4 +1,4 @@
-using CodeGenNew.Connections;
+﻿using CodeGenNew.Connections;
 
 namespace CodeGenNew.Cli;
 
@@ -46,12 +46,13 @@ public static class ArgumentParser
                 case "--enum-ns": overrides["EnumNamespace"] = Value(); break;
                 case "--repo-ns": overrides["RepoNamespace"] = Value(); break;
                 case "--entity-ns": overrides["EntityNamespace"] = Value(); break;
+                case "--naming": overrides["NamingStyle"] = Value(); break;
                 case "--min-year": overrides["MinYear"] = Value(); break;
                 case "--max-year": overrides["MaxYear"] = Value(); break;
                 case "--provider":
                     string providerText = Value();
                     if (!Enum.TryParse(providerText, ignoreCase: true, out provider))
-                        throw new ArgumentParseException($"Unknown --provider '{providerText}'. Valid values: SqlServer, MySql.");
+                        throw new ArgumentParseException($"Unknown --provider '{providerText}'. Valid values: SqlServer, PostgreSql, MySql.");
                     break;
                 default:
                     throw new ArgumentParseException($"Unrecognized argument: '{arg}'.");
@@ -76,7 +77,7 @@ public static class ArgumentParser
             Provider = provider,
             Server = server,
             Database = database,
-            Schema = schema ?? "dbo",
+            Schema = schema ?? (provider == DatabaseProvider.PostgreSql ? "public" : provider == DatabaseProvider.MySql ? database : "dbo"),
             Table = table,
             Template = template,
             OutputDirectory = outputDirectory,
@@ -102,7 +103,7 @@ public static class ArgumentParser
 
             Usage:
               codegen -S <server> -d <database> [-s <schema>] -t <table> -T <template.tt>
-                       (-E | -U <user> [-P <password>]) [-o <outputDir>] [--provider SqlServer|MySql]
+                       (-E | -U <user> [-P <password>]) [-o <outputDir>] [--provider SqlServer|PostgreSql|MySql]
 
             Required:
               -S, --server     SQL Server instance name
@@ -119,13 +120,13 @@ public static class ArgumentParser
             Optional:
               -s, --schema     Schema name (default: dbo)
               -o, --output     Output directory (default: Settings.json's OutputDirectory)
-              --provider       Database provider: SqlServer (default) or MySql (not implemented yet)
+              --provider       Database provider: SqlServer (default), PostgreSql or MySql (-S host[:port], -U/-P required; for MySql the schema is the database)
 
             Project settings (namespaces, context name, table lists the templates would otherwise hard-code):
               --project        Name of a Projects\<name>.config file in the CodeGenNew folder. Only ProjectName is
                                required in it; every namespace not listed is derived from it.
               --project-name, --view-ns, --viewmodel-ns, --context, --context-ns, --api-ns, --enum-ns,
-              --repo-ns, --entity-ns, --min-year, --max-year
+              --repo-ns, --entity-ns, --naming, --min-year, --max-year
                                Override one setting for this run; wins over the project file.
             """);
     }

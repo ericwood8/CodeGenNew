@@ -5,6 +5,22 @@
 <#@ import namespace="System.Data" #>
 <#@ import namespace="CodeGenNew.Core" #>
 <#
+    // MySQL has real stored procedures with its own syntax: CodeGenNew.Core's MySqlProcedures writes this one for a table read from MySQL.
+    if (Model.Dialect == SqlDialect.MySql)
+    {
+        Write(MySqlProcedures.Save(Model));
+        return GenerationEnvironment.ToString();
+    }
+#>
+<#
+    // PostgreSQL has functions rather than stored procedures: CodeGenNew.Core's PostgresProcedures writes this one for a table read from PostgreSQL.
+    if (Model.Dialect == SqlDialect.PostgreSql)
+    {
+        Write(PostgresProcedures.Save(Model));
+        return GenerationEnvironment.ToString();
+    }
+#>
+<#
     // ------------------------------------------------------------------------------------------
     // SP_Save_v1.tt
     // Generates: <TableName>_Save.sql

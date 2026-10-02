@@ -861,7 +861,7 @@ public class ProjectSettingsTests
     [DataRow("WinUI3_MasterScreen_v1.tt")]
     [DataRow("TS_Component_v1.tt")]
     [DataRow("TSX_Page_v1.tt")]
-    public async Task A_master_grid_shows_at_most_20_columns(string template)
+    public async Task A_master_grid_shows_at_most_18_columns(string template)
     {
         var columns = new List<ColumnModel> { Sample.Column("ItemId", System.Data.SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1) };
         columns.AddRange(Enumerable.Range(1, 25).Select(i => Sample.Column("Quantity" + (char)('A' + i - 1), System.Data.SqlDbType.Int, ordinal: i + 1)));
@@ -869,20 +869,20 @@ public class ProjectSettingsTests
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!;
-        Assert.IsTrue(text.Contains("<th>Quantity T</th>") || text.Contains("Text=\"Quantity T\" FontWeight="), "the 20th column is in the grid");
-        Expect.DoesNotContain(text, "<th>Quantity U</th>");
-        Expect.DoesNotContain(text, "Text=\"Quantity U\" FontWeight=");
+        Assert.IsTrue(text.Contains("<th>Quantity R</th>") || text.Contains("Text=\"Quantity R\" FontWeight="), "the 18th column is in the grid");
+        Expect.DoesNotContain(text, "<th>Quantity S</th>");
+        Expect.DoesNotContain(text, "Text=\"Quantity S\" FontWeight=");
     }
 
     [TestMethod]
-    public void ForGrid_drops_long_text_even_with_few_columns_and_limits_the_rest_to_20()
+    public void ForGrid_drops_long_text_even_with_few_columns_and_limits_the_rest_to_18()
     {
         var columns = new List<ColumnModel> { Sample.Column("Notes", System.Data.SqlDbType.VarChar, characters: 40) };
         columns.AddRange(Enumerable.Range(1, 30).Select(i => Sample.Column("C" + i, System.Data.SqlDbType.Int)));
 
         var grid = columns.ForGrid();
 
-        Assert.HasCount(20, grid);
+        Assert.HasCount(18, grid);
         Assert.IsFalse(grid.Any(c => c.Name == "Notes"));
         Assert.AreEqual("Notes", new[] { columns[0] }.ForGrid().Single().Name, "a table of only long text still gets a grid");
     }
@@ -918,7 +918,7 @@ public class ProjectSettingsTests
         Assert.IsTrue(winui.Success, string.Join(" | ", winui.Errors));
         Expect.Contains(winui.GeneratedText!, "[\"LinePrice\"] = 2,");
         Expect.Contains(winui.GeneratedText!, "LongTextInOrderLineGrid = [ \"Notes\" ];");
-        Expect.Contains(winui.GeneratedText!, ".Take(20).ToList();");
+        Expect.Contains(winui.GeneratedText!, ".Take(18).ToList();");
         Expect.Contains(winui.GeneratedText!, "return moneyValue.ToString(\"C\" + moneyDigits);");
         Expect.Contains(react.GeneratedText!, "const childCurrencyDigits: Record<string, number> = { linePrice: 2 };");
         Expect.Contains(react.GeneratedText!, "const childLongTextColumns: string[] = ['notes'];");

@@ -5,7 +5,16 @@ namespace CodeGenNew.Core;
 /// <summary> One column of a TableModel, as read from the database plus classification computed by CodeGenNew.SchemaIntrospection. </summary>
 public class ColumnModel
 {
+    /// <summary> The name generated code uses (a C# property, a TypeScript field). </summary>
     public required string Name { get; init; }
+
+    /// <summary> The column's real name in the database when the project's naming style changed <see cref="Name"/> (customer_id -> CustomerId); null when they are the same. </summary>
+    public string? DatabaseName { get; init; }
+
+    /// <summary> The name SQL text uses: the database's own name. </summary>
+    public string DbName => DatabaseName ?? Name;
+
+    /// <summary> The column's name quoted for the database it was read from. </summary>
     public required string QuotedName { get; init; }
     public bool IsReservedWordName { get; init; }
     public bool IsCSharpReservedWordName { get; init; }

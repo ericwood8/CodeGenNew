@@ -179,6 +179,32 @@ public class TemplateConfigRefuseTests
     }
 
     [TestMethod]
+    public void A_SQL_Server_only_template_refuses_a_PostgreSQL_table_but_not_a_SQL_Server_one()
+    {
+        var config = new TemplateConfig { SqlServerOnly = true };
+        var columns = new List<ColumnModel> { Sample.Column("ThingId", System.Data.SqlDbType.Int, primaryKey: true) };
+        var sqlServerTable = Sample.Table("Thing", columns);
+        var postgresTable = new TableModel
+        {
+            SchemaName = "public", TableName = "Thing", QuotedName = "\"public\".\"Thing\"", Dialect = SqlDialect.PostgreSql,
+            Columns = columns, PrimaryKeyColumns = columns, ForeignKeys = [], ChildForeignKeys = []
+        };
+
+        Assert.IsNull(config.Refuse(sqlServerTable));
+        StringAssert.Contains(config.Refuse(postgresTable)!, "no PostgreSQL version");
+    }
+
+    [TestMethod]
+    public void Only_the_junction_templates_that_call_T_SQL_procedures_are_marked_SQL_Server_only()
+    {
+        foreach (string name in new[] { "API_Junction", "WinUI3_JunctionEditor" })
+            Assert.IsTrue(TemplateConfig.Load(Repo.Template($"{name}_v1.tt.config")).SqlServerOnly, name);
+        foreach (string name in new[] { "SP_Search", "SP_Insert", "SP_Update", "SP_Save", "SP_Delete", "SP_Clone", "SP_Load", "SP_Lookup", "SP_Junction" })
+            Assert.IsFalse(TemplateConfig.Load(Repo.Template($"{name}_v1.tt.config")).SqlServerOnly, name);
+        Assert.IsFalse(TemplateConfig.Load(Repo.Template("CS_Repo_v1.tt.config")).SqlServerOnly);
+    }
+
+    [TestMethod]
     public void Refuse_explains_a_non_junction_table()
     {
         var config = new TemplateConfig { RequiresJunctionTable = true };

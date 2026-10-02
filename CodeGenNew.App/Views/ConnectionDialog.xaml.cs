@@ -1,4 +1,5 @@
 using CodeGenNew.App.Services;
+using CodeGenNew.Connections;
 using CodeGenNew.App.ViewModels;
 using Microsoft.UI.Xaml.Controls;
 
@@ -16,8 +17,8 @@ public sealed partial class ConnectionDialog : ContentDialog
 
         WindowsAuthRadio.IsChecked = ViewModel.UseWindowsAuth;
         SqlLoginRadio.IsChecked = !ViewModel.UseWindowsAuth;
-        UserNameBox.Visibility = ViewModel.UseWindowsAuth ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
-        PasswordBoxControl.Visibility = UserNameBox.Visibility;
+        ProviderCombo.SelectedIndex = ViewModel.Provider switch { DatabaseProvider.PostgreSql => 1, DatabaseProvider.MySql => 2, _ => 0 };
+        UpdateAuthVisibility();
 
         PrimaryButtonClick += OnPrimaryButtonClick;
         SecondaryButtonClick += OnSecondaryButtonClick;
@@ -26,9 +27,31 @@ public sealed partial class ConnectionDialog : ContentDialog
     private void OnAuthModeChanged(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         ViewModel.UseWindowsAuth = WindowsAuthRadio.IsChecked == true;
-        var visibility = ViewModel.UseWindowsAuth ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
-        if (UserNameBox is not null) UserNameBox.Visibility = visibility;
-        if (PasswordBoxControl is not null) PasswordBoxControl.Visibility = visibility;
+        UpdateAuthVisibility();
+    }
+
+    private void OnProviderChanged(object sender, SelectionChangedEventArgs e)
+    {
+        ViewModel.Provider = ProviderCombo.SelectedIndex switch { 1 => DatabaseProvider.PostgreSql, 2 => DatabaseProvider.MySql, _ => DatabaseProvider.SqlServer };
+        ServerBox.PlaceholderText = ViewModel.Provider switch
+        {
+            DatabaseProvider.PostgreSql => "host or host:port (default port 5432)",
+            DatabaseProvider.MySql => "host or host:port (default port 3306)",
+            _ => ""
+        };
+        UpdateAuthVisibility();
+    }
+
+    /// <summary> SQL Server offers Windows or SQL login; PostgreSQL and MySQL always use a user name and password. </summary>
+    private void UpdateAuthVisibility()
+    {
+        if (UserNameBox is null || PasswordBoxControl is null || AuthRadios is null)
+            return;
+
+        AuthRadios.Visibility = ViewModel.Provider != DatabaseProvider.SqlServer ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
+        var credentials = ViewModel.UsesWindowsAuth ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
+        UserNameBox.Visibility = credentials;
+        PasswordBoxControl.Visibility = credentials;
     }
 
     private void OnPasswordChanged(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)

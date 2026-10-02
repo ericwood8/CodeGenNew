@@ -10,6 +10,10 @@ namespace CodeGenNew.App.ViewModels;
 /// for the lifetime of this dialog/session -- never written to Settings.json. </summary>
 public partial class ConnectionDialogViewModel : StatusMessageViewModel
 {
+    /// <summary> The database type. PostgreSQL and MySQL have no Windows authentication: a user name and password are always needed, and the server may be "host:port". </summary>
+    [ObservableProperty]
+    private DatabaseProvider _provider = DatabaseProvider.SqlServer;
+
     [ObservableProperty]
     private string _serverName = "";
 
@@ -36,16 +40,20 @@ public partial class ConnectionDialogViewModel : StatusMessageViewModel
 
     public ConnectionRequest BuildRequest() => new()
     {
-        Provider = DatabaseProvider.SqlServer,
+        Provider = Provider,
         ServerName = ServerName.Trim(),
         DatabaseName = DatabaseName.Trim(),
-        AuthMode = UseWindowsAuth ? AuthMode.WindowsAuth : AuthMode.SqlLogin,
-        UserName = UseWindowsAuth ? null : UserName.Trim(),
-        Password = UseWindowsAuth ? null : Password
+        AuthMode = UsesWindowsAuth ? AuthMode.WindowsAuth : AuthMode.SqlLogin,
+        UserName = UsesWindowsAuth ? null : UserName.Trim(),
+        Password = UsesWindowsAuth ? null : Password
     };
+
+    /// <summary> Windows authentication applies to SQL Server only. </summary>
+    public bool UsesWindowsAuth => Provider == DatabaseProvider.SqlServer && UseWindowsAuth;
 
     public void LoadFromSettings(LastConnectionSettings last)
     {
+        Provider = Enum.TryParse<DatabaseProvider>(last.Provider, out var provider) ? provider : DatabaseProvider.SqlServer;
         ServerName = last.ServerName;
         DatabaseName = last.DatabaseName;
         UseWindowsAuth = last.AuthMode == "WindowsAuth";
@@ -54,10 +62,11 @@ public partial class ConnectionDialogViewModel : StatusMessageViewModel
 
     public void SaveToSettings(LastConnectionSettings last)
     {
+        last.Provider = Provider.ToString();
         last.ServerName = ServerName.Trim();
         last.DatabaseName = DatabaseName.Trim();
-        last.AuthMode = UseWindowsAuth ? "WindowsAuth" : "SqlLogin";
-        last.UserName = UseWindowsAuth ? "" : UserName.Trim();
+        last.AuthMode = UsesWindowsAuth ? "WindowsAuth" : "SqlLogin";
+        last.UserName = UsesWindowsAuth ? "" : UserName.Trim();
     }
 
     [RelayCommand]

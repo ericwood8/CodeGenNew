@@ -155,7 +155,17 @@
         void L(string s = "") => o.Append(s).Append('\n');
         var body = new StringBuilder();
         void B(string s = "") => body.Append(s).Append('\n');
-        bool usesSchema = false; // System.ComponentModel.DataAnnotations.Schema: [ForeignKey], [Column]
+        bool usesSchema = false; // System.ComponentModel.DataAnnotations.Schema: [ForeignKey], [Column], [Table]
+
+        // EF Core allows one [Column] per property: it carries the column's real name when the project's NamingStyle gave the property another one
+        // (customer_id -> CustomerId), and the column type when one has to be said (money, a PostgreSQL timestamp or jsonb).
+        string? ColumnAttribute(ColumnModel col, string? columnType)
+        {
+            string? name = col.DatabaseName;
+            if (name is null && columnType is null) return null;
+            usesSchema = true;
+            return "    [Column(" + (name is null ? "" : $"\"{name}\"" + (columnType is null ? "" : ", ")) + (columnType is null ? "" : $"TypeName = \"{columnType}\"") + ")]";
+        }
 
         // ---- Omitted: the key, then the foreign keys, in column order
         B("    #region Omitted");
@@ -178,6 +188,7 @@
                 }
                 B("    [Display(Order = -1, AutoGenerateField = false)]");
             }
+            if (ColumnAttribute(c, null) is { } omittedColumnAttribute) B(omittedColumnAttribute);
             B($"    public {(c.IsNullable ? "" : "required ")}{ClrType(c)} {Id(c)} {{ get; set; }}");
         }
         B("    #endregion Omitted");
@@ -200,19 +211,22 @@
             int chars = c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
             bool isText = c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
             bool multiline = isText && chars >= 100;
+            string? columnType = null;
 
             B($"    [Display({(multiline ? "Order = -1, " : "")}Name = \"{words}\", Description = \"{words}\")]");
             if (c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime)
             {
                 B("    [DisplayFormat(DataFormatString = \"{0:MM/dd/yyyy}\")]");
                 B("    [DataType(DataType.Date)]");
+                // PostgreSQL: Npgsql maps a DateTime to "timestamp with time zone" (UTC only) unless the column type is said: timestamp (no zone) or date.
+                if (Model.Dialect == SqlDialect.PostgreSql)
+                    columnType = c.SqlTypeDeclaration;
             }
             else if (c.SqlType is SqlDbType.Money or SqlDbType.SmallMoney)
             {
                 B("    [DisplayFormat(ApplyFormatInEditMode = true)]");
                 B("    [DataType(DataType.Currency)]");
-                B($"    [Column(TypeName = \"{(c.SqlType == SqlDbType.Money ? "money" : "smallmoney")}\")]");
-                usesSchema = true;
+                columnType = c.SqlType == SqlDbType.Money ? "money" : "smallmoney";
             }
             else if (c.SqlType == SqlDbType.Decimal)
             {
@@ -222,6 +236,9 @@
             }
             else if (isText)
             {
+                // PostgreSQL json / jsonb arrive as a string column; the column type has to be said or Npgsql sends text.
+                if (Model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration is "json" or "jsonb")
+                    columnType = c.SqlTypeDeclaration;
                 if (chars > 0) B($"    [StringLength({chars})]");
                 if (multiline) B("    [DataType(DataType.MultilineText)]");
                 else if (c.Name.Contains("Phone", StringComparison.OrdinalIgnoreCase)) B("    [DataType(DataType.PhoneNumber)]");
@@ -238,9 +255,11 @@
             if (isBit && c.DatabaseDefaultSql is not null)
             {
                 string d = c.DatabaseDefaultSql.Trim('(', ')', ' ');
-                if (d == "1") initializer = " = true;";
-                else if (d == "0") initializer = " = false;";
+                // SQL Server writes a bit default as ((1)) / ((0)); PostgreSQL writes true / false.
+                if (d == "1" || d.Equals("true", StringComparison.OrdinalIgnoreCase)) initializer = " = true;";
+                else if (d == "0" || d.Equals("false", StringComparison.OrdinalIgnoreCase)) initializer = " = false;";
             }
+            if (ColumnAttribute(c, columnType) is { } columnAttribute) B(columnAttribute);
             bool needsRequired = !c.IsNullable && !c.IsComputed && !c.IsIdentity && c.SqlType != SqlDbType.Timestamp;
             B($"    public {(needsRequired ? "required " : "")}{ClrType(c)} {Id(c)} {{ get; set; }}{initializer}");
         }
@@ -254,6 +273,7 @@
 
         // ---- assemble
         var headUsings = usings.ToList();
+        if (Model.DatabaseTableName is not null) usesSchema = true; // [Table("customer_item")] below
         if (usesSchema && !headUsings.Contains("System.ComponentModel.DataAnnotations.Schema"))
             headUsings.Insert(0, "System.ComponentModel.DataAnnotations.Schema");
         if (!headUsings.Contains("System.Diagnostics.CodeAnalysis"))
@@ -266,6 +286,7 @@
         L($"namespace {entityNamespace};");
         L();
         string className = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
+        if (Model.DatabaseTableName is not null) L($"[Table(\"{Model.DatabaseTableName}\")]");
         L($"public class {className} : {baseClass}");
         L("{");
         // A brand-new row (WinUI3_DetailScreen.tt's "Add" case, CS_Repo.tt's own GenericRepo<T> internals) does

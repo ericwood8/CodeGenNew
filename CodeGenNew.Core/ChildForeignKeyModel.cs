@@ -10,6 +10,10 @@ public class ChildForeignKeyModel
     public required string ReferencingTable { get; init; }
     public required List<string> ReferencingColumns { get; init; }
 
+    /// <summary> The child table's real name in the database when the naming style changed <see cref="ReferencingTable"/> (null: the same). </summary>
+    public string? ReferencingDatabaseTable { get; init; }
+    public string ReferencingDbTable => ReferencingDatabaseTable ?? ReferencingTable;
+
     /// <summary> The column(s) on THIS table the child's foreign key points at (usually the primary key). </summary>
     public required List<string> ReferencedColumns { get; init; }
 

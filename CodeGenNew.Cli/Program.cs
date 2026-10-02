@@ -44,11 +44,6 @@ public static class Program
             Console.WriteLine($"Note: {notice.Message}");
         }
 
-        if (options.Provider != DatabaseProvider.SqlServer)
-        {
-            Console.Error.WriteLine($"Error: provider '{options.Provider}' is not implemented yet. Only SqlServer is supported in v1.");
-            return 1;
-        }
 
         var template = TemplateCatalog.FindByName(templatesDirectory, options.Template);
         if (template is null)
@@ -57,63 +52,7 @@ public static class Program
             return 1;
         }
 
-        string? password = options.Password;
-        if (!options.Trusted && password is null)
-            password = ConsolePasswordReader.Read($"Password for {options.UserName}@{options.Server}: ");
-
-        var connectionRequest = new ConnectionRequest
-        {
-            Provider = DatabaseProvider.SqlServer,
-            ServerName = options.Server,
-            DatabaseName = options.Database,
-            AuthMode = options.Trusted ? AuthMode.WindowsAuth : AuthMode.SqlLogin,
-            UserName = options.UserName,
-            Password = password
-        };
-
-        Console.WriteLine($"Connecting to {options.Server}\\{options.Database} ({(options.Trusted ? "Windows Auth" : "SQL Login")}) -- read-only schema lookup...");
-
-        TableModel? model = null;
-        var schemaReadOutcome = await RetryRunner.RunAsync("schema-read", async () =>
-        {
-            var schemaProvider = new SqlServerSchemaProvider(connectionRequest, specialLogicColumnsConfigPath);
-            model = await schemaProvider.BuildTableModelAsync(
-                options.Schema, options.Table, template.Config.NeedsRowData, template.Config.NeedsReferencedDisplayColumns);
-            return $"Read schema for [{options.Schema}].[{options.Table}].";
-        });
-
-        if (!schemaReadOutcome.Success || model is null)
-        {
-            Console.Error.WriteLine(schemaReadOutcome.Message);
-            return 1;
-        }
-
-        // One-time (cached in SpCanDeleteVerification.config), read-only, informational check -- see
-        // Docs/specs.md section 7.1. Has no bearing on what gets generated; only reported when a fresh
-        // (uncached) check actually ran, so a database already recorded as checked stays silent.
-        string spCanDeleteConfigPath = Path.Combine(baseDirectory, settings.SpCanDeleteVerificationConfigPath);
-        await using (var probeConnection = connectionRequest.CreateConnection())
-        {
-            await probeConnection.OpenAsync();
-            var (spCanDeleteStatus, wasCached) = await SpCanDeleteVerifier.GetOrVerifyAsync(
-                probeConnection, options.Server, options.Database, spCanDeleteConfigPath);
-
-            if (!wasCached)
-            {
-                Console.WriteLine(spCanDeleteStatus == SpCanDeleteStatus.Verified
-                    ? $"spCanDelete verified on {options.Server}\\{options.Database} (recorded in {Path.GetFileName(spCanDeleteConfigPath)})."
-                    : $"Note: spCanDelete was not found (or doesn't match the expected 2-parameter signature) on " +
-                      $"{options.Server}\\{options.Database} (recorded in {Path.GetFileName(spCanDeleteConfigPath)}).");
-            }
-        }
-
-        string? refusal = template.Config.Refuse(model);
-        if (refusal is not null)
-        {
-            Console.Error.WriteLine($"Error: template '{template.Name}' can't be used for [{options.Schema}].[{options.Table}]: {refusal}");
-            return 1;
-        }
-
+        // The project is read first: its NamingStyle decides the names the schema reader gives tables and columns.
         ProjectSettings project = ProjectSettings.None;
         if (options.Project is not null)
         {
@@ -130,6 +69,67 @@ public static class Program
         }
         if (options.ProjectOverrides.Count > 0)
             project = project.WithOverrides(options.ProjectOverrides);
+
+        string? password = options.Password;
+        if (!options.Trusted && password is null)
+            password = ConsolePasswordReader.Read($"Password for {options.UserName}@{options.Server}: ");
+
+        var connectionRequest = new ConnectionRequest
+        {
+            Provider = options.Provider,
+            ServerName = options.Server,
+            DatabaseName = options.Database,
+            AuthMode = options.Trusted && options.Provider == DatabaseProvider.SqlServer ? AuthMode.WindowsAuth : AuthMode.SqlLogin,
+            UserName = options.UserName,
+            Password = password
+        };
+
+        Console.WriteLine($"Connecting to {options.Server}\\{options.Database} ({(options.Provider == DatabaseProvider.PostgreSql ? "PostgreSQL" : options.Provider == DatabaseProvider.MySql ? "MySQL" : options.Trusted ? "Windows Auth" : "SQL Login")}) -- read-only schema lookup...");
+
+        TableModel? model = null;
+        var schemaReadOutcome = await RetryRunner.RunAsync("schema-read", async () =>
+        {
+            var schemaProvider = SchemaProviderFactory.Create(connectionRequest, specialLogicColumnsConfigPath, project.Naming);
+            model = await schemaProvider.BuildTableModelAsync(
+                options.Schema, options.Table, template.Config.NeedsRowData, template.Config.NeedsReferencedDisplayColumns);
+            return $"Read schema for [{options.Schema}].[{options.Table}].";
+        });
+
+        if (!schemaReadOutcome.Success || model is null)
+        {
+            Console.Error.WriteLine(schemaReadOutcome.Message);
+            return 1;
+        }
+
+        // spCanDelete is a SQL Server stored procedure of the author's own tooling; PostgreSQL and MySQL have no such check.
+        if (options.Provider == DatabaseProvider.SqlServer)
+        {
+            // One-time (cached in SpCanDeleteVerification.config), read-only, informational check -- see
+            // Docs/specs.md section 7.1. Has no bearing on what gets generated; only reported when a fresh
+            // (uncached) check actually ran, so a database already recorded as checked stays silent.
+            string spCanDeleteConfigPath = Path.Combine(baseDirectory, settings.SpCanDeleteVerificationConfigPath);
+            await using (var probeConnection = connectionRequest.CreateConnection())
+            {
+                await probeConnection.OpenAsync();
+                var (spCanDeleteStatus, wasCached) = await SpCanDeleteVerifier.GetOrVerifyAsync(
+                    probeConnection, options.Server, options.Database, spCanDeleteConfigPath);
+
+                if (!wasCached)
+                {
+                    Console.WriteLine(spCanDeleteStatus == SpCanDeleteStatus.Verified
+                        ? $"spCanDelete verified on {options.Server}\\{options.Database} (recorded in {Path.GetFileName(spCanDeleteConfigPath)})."
+                        : $"Note: spCanDelete was not found (or doesn't match the expected 2-parameter signature) on " +
+                          $"{options.Server}\\{options.Database} (recorded in {Path.GetFileName(spCanDeleteConfigPath)}).");
+                }
+            }
+        }
+
+        string? refusal = template.Config.Refuse(model);
+        if (refusal is not null)
+        {
+            Console.Error.WriteLine($"Error: template '{template.Name}' can't be used for [{options.Schema}].[{options.Table}]: {refusal}");
+            return 1;
+        }
 
         Console.WriteLine($"Generating '{template.Name}' for [{options.Schema}].[{options.Table}]...");
         var result = await TemplateRunner.RunAsync(template.FilePath, model, project);

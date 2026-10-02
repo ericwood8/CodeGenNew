@@ -340,9 +340,14 @@
             }
             else if (IsDate(c))
             {
+                // A nullable date has a Clear button on the same line, like WinUI3's calendar.
+                if (c.IsNullable) H("                <div class=\"date-with-clear\">");
                 H($"                <input type=\"date\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
-                // A nullable date has a Clear button beside it, like WinUI3's calendar.
-                if (c.IsNullable) H($"                <button type=\"button\" class=\"btn-action\" (click)=\"{model} = undefined\">Clear</button>");
+                if (c.IsNullable)
+                {
+                    H($"                <button type=\"button\" class=\"btn-action\" (click)=\"{model} = undefined\">Clear</button>");
+                    H("                </div>");
+                }
             }
             else if (IsNumber(c))
             {

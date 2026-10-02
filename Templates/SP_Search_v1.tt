@@ -4,6 +4,14 @@
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
 <#
+    // MySQL has real stored procedures with its own syntax: CodeGenNew.Core's MySqlProcedures writes this one for a table read from MySQL.
+    if (Model.Dialect == SqlDialect.MySql)
+    {
+        Write(MySqlProcedures.Search(Model));
+        return GenerationEnvironment.ToString();
+    }
+#>
+<#
     // ------------------------------------------------------------------------------------------
     // SP_Search_v1.tt
     // Generates: <TableName>_Search.sql -- two procedures in one file (CodeGenPossibilities\Pagination in
@@ -73,6 +81,35 @@
         orderBy.Add(Q(sortColumn.Name) + " ASC");
     foreach (var pk in Model.PrimaryKeyColumns.Where(pk => pk != sortColumn))
         orderBy.Add(Q(pk.Name) + " ASC");
+
+    if (Model.Dialect == SqlDialect.PostgreSql)
+    {
+        // PostgreSQL has functions, not procedures with @parameters and OFFSET/FETCH: <Table>_Search returns SETOF the table's own row type
+        // (so EF Core maps it exactly like the table, and "SELECT * FROM" it is composable) and <Table>_SearchCount returns an integer.
+        // Names are quoted so they keep their case; a parameter is "p" + the column name, never equal to a column name. ILIKE gives the
+        // case-insensitive match SQL Server's default collation gives.
+        string PQ(string identifier) => "\"" + identifier.Replace("\"", "\"\"") + "\"";
+        string PParam(ColumnModel c) => PQ(c.ParameterName.TrimStart('@'));
+        string pgTable = PQ(Model.SchemaName) + "." + PQ(Model.TableName);
+        string pgWhere = searchableColumns.Count == 0 ? "" : "\tWHERE " + string.Join("\n\t  AND ", searchableColumns
+            .Select(c => $"({PParam(c)} IS NULL OR {PQ(c.Name)} ILIKE '%' || btrim({PParam(c)}) || '%')")) + "\n";
+        string pgOrderBy = string.Join(", ", orderBy.Select(o => o.Replace("[", "\"").Replace("]", "\"")));
+        var searchParams = searchableColumns.Select(c => $"{PParam(c)} {c.SqlTypeDeclaration} DEFAULT NULL").ToList();
+
+        var pg = new System.Text.StringBuilder();
+        pg.Append("CREATE OR REPLACE FUNCTION " + PQ(Model.SchemaName) + "." + PQ(Model.TableName + "_Search") + "(\n");
+        pg.Append(string.Join(",\n", searchParams.Append("\"PageNumber\" integer DEFAULT 1").Append("\"PageSize\" integer DEFAULT 100")) + "\n)\n");
+        pg.Append("RETURNS SETOF " + pgTable + "\nLANGUAGE sql STABLE\nAS $$\n");
+        pg.Append("\tSELECT * FROM " + pgTable + "\n" + pgWhere);
+        pg.Append("\tORDER BY " + pgOrderBy + "\n\tOFFSET (\"PageNumber\" - 1) * \"PageSize\" LIMIT \"PageSize\";\n$$;\n\n");
+        pg.Append("CREATE OR REPLACE FUNCTION " + PQ(Model.SchemaName) + "." + PQ(Model.TableName + "_SearchCount") + "(");
+        pg.Append(searchParams.Count > 0 ? "\n" + string.Join(",\n", searchParams) + "\n" : "");
+        pg.Append(")\nRETURNS integer\nLANGUAGE sql STABLE\nAS $$\n");
+        pg.Append("\tSELECT count(*)::integer FROM " + pgTable + (pgWhere.Length > 0 ? "\n" + pgWhere.TrimEnd('\n') : "") + ";\n$$;\n");
+        Write(pg.ToString());
+    }
+    else
+    {
 #>
 CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Search]
 (
@@ -135,3 +172,6 @@ BEGIN
 	SELECT COUNT(*)
 	FROM [<#= Model.SchemaName #>].[<#= Model.TableName #>]<#= whereClauses.Count > 0 ? "\r\n" + whereClause.TrimEnd('\r', '\n') : "" #>;
 END
+<#
+    }
+#>

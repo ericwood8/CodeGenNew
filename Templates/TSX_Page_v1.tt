@@ -613,8 +613,10 @@
         if (tabbed) T("            </div>");
         }
         T();
-        T(tabbed ? "            <button type=\"submit\" onClick={revealInvalidTab}>Submit</button>" : "            <button type=\"submit\">Submit</button>");
-        T("            <button type=\"button\" onClick={cancel}>Cancel</button>");
+        T("            <div className=\"form-buttons\">");
+        T(tabbed ? "              <button type=\"submit\" onClick={revealInvalidTab}>Submit</button>" : "              <button type=\"submit\">Submit</button>");
+        T("              <button type=\"button\" onClick={cancel}>Cancel</button>");
+        T("            </div>");
         T("          </form>");
         T("        </dialog>");
         T("      )}");

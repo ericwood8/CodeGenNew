@@ -5,7 +5,7 @@ namespace CodeGenNew.Core;
 /// edit form shows them on its Notes tab instead. </summary>
 public static class GridColumns
 {
-    public const int MaxColumns = 20;
+    public const int MaxColumns = 18;
 
     /// <summary> The columns for a grid. A table whose columns are ALL long text would otherwise get an empty grid, so then (and only then) its long-text columns are used. </summary>
     public static List<ColumnModel> ForGrid(this IEnumerable<ColumnModel> columns)
