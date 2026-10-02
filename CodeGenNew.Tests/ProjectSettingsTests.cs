@@ -397,7 +397,8 @@ public class ProjectSettingsTests
         string codeBehind = files["LineDetailDialog.xaml.cs"].Content.Replace("\r\n", "\n");
         string viewModel = files["LineDetailViewModel.cs"].Content.Replace("\r\n", "\n");
         Expect.Contains(xaml, "<NumberBox x:Name=\"ItemPriceBox\" Header=\"Item Price\" Value=\"{x:Bind ViewModel.ItemPrice, Mode=TwoWay}\"");
-        Expect.Contains(xaml, "<TextBox Header=\"Quantity\"");   // a decimal quantity is not money
+        Expect.Contains(xaml, "<NumberBox x:Name=\"QuantityBox\" Header=\"Quantity\"");   // a decimal quantity is not money: a plain number box, no currency formatter
+        Expect.DoesNotContain(codeBehind, "QuantityBox.NumberFormatter = new CurrencyNumberFormatter");
         Expect.Contains(codeBehind, "ItemPriceBox.NumberFormatter = new CurrencyNumberFormatter(\"EUR\", 2);");
         Expect.Contains(codeBehind, "DiscountBox.NumberFormatter = new CurrencyNumberFormatter(\"EUR\", 4);");
         Expect.Contains(xaml, "Width=\"180\" HorizontalAlignment=\"Left\"");
@@ -468,6 +469,280 @@ public class ProjectSettingsTests
     }
 
     [TestMethod]
+    [DataRow("WinUI3_DetailScreen_v1.tt")]
+    [DataRow("WinUI3_DetailMasterScreen_v1.tt")]
+    public async Task Billing_and_shipping_fields_move_to_a_second_tab_and_the_main_tab_is_selected(string template)
+    {
+        var table = Sample.Table("Order", [
+            Sample.Column("OrderId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
+            Sample.Column("CustomerName", System.Data.SqlDbType.NVarChar, characters: 50),
+            Sample.Column("BillingCity", System.Data.SqlDbType.NVarChar, characters: 50, nullable: true),
+            Sample.Column("ShippingCity", System.Data.SqlDbType.NVarChar, characters: 50, nullable: true)],
+            childForeignKeys: [Sample.ChildForeignKey("OrderLine", "OrderId", "OrderId", childOwnPrimaryKey: ["OrderLineId"])]);
+
+        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, With());
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string xaml = GeneratedFiles.Split(result.GeneratedText!).Single(f => f.RelativePath.EndsWith("Order" + (template.Contains("Master") ? "DetailMasterDialog.xaml" : "DetailDialog.xaml"))).Content.Replace("\r\n", "\n");
+        Expect.Contains(xaml, "SelectedIndex=\"0\"");
+        Expect.Contains(xaml, "<TabViewItem Header=\"Main\"");
+        Expect.Contains(xaml, "<TabViewItem Header=\"Billing &amp; Shipping\"");
+        int main = xaml.IndexOf("Header=\"Main\"", StringComparison.Ordinal), second = xaml.IndexOf("Header=\"Billing &amp; Shipping\"", StringComparison.Ordinal);
+        Assert.IsTrue(main < xaml.IndexOf("Header=\"Customer Name\"", StringComparison.Ordinal) && xaml.IndexOf("Header=\"Customer Name\"", StringComparison.Ordinal) < second);
+        Assert.IsTrue(second < xaml.IndexOf("Header=\"Billing City\"", StringComparison.Ordinal) && second < xaml.IndexOf("Header=\"Shipping City\"", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    [DataRow("WinUI3_DetailScreen_v1.tt")]
+    [DataRow("WinUI3_DetailMasterScreen_v1.tt")]
+    public async Task Long_text_fields_move_to_a_Notes_tab_after_Billing_and_Shipping(string template)
+    {
+        var table = Sample.Table("Order", [
+            Sample.Column("OrderId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
+            Sample.Column("CustomerName", System.Data.SqlDbType.NVarChar, characters: 50),
+            Sample.Column("BillingCity", System.Data.SqlDbType.NVarChar, characters: 50, nullable: true),
+            Sample.Column("LineMemo", System.Data.SqlDbType.NVarChar, characters: 50, nullable: true),
+            Sample.Column("Remarks", System.Data.SqlDbType.NVarChar, characters: 50, nullable: true),
+            Sample.Column("PickNotes", System.Data.SqlDbType.NVarChar, characters: 50, nullable: true)],
+            childForeignKeys: [Sample.ChildForeignKey("OrderLine", "OrderId", "OrderId", childOwnPrimaryKey: ["OrderLineId"])]);
+
+        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, With());
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string xaml = GeneratedFiles.Split(result.GeneratedText!).Single(f => f.RelativePath.EndsWith("Order" + (template.Contains("Master") ? "DetailMasterDialog.xaml" : "DetailDialog.xaml"))).Content.Replace("\r\n", "\n");
+        int At(string header) => xaml.IndexOf("Header=\"" + header + "\"", StringComparison.Ordinal);
+        Assert.IsTrue(At("Main") < At("Customer Name") && At("Customer Name") < At("Billing &amp; Shipping"));
+        Assert.IsTrue(At("Billing &amp; Shipping") < At("Billing City") && At("Billing City") < At("Notes"));
+        Assert.IsTrue(At("Notes") < At("Line Memo") && At("Notes") < At("Remarks") && At("Notes") < At("Pick Notes"));
+        Expect.Contains(xaml, "SelectedIndex=\"0\"");
+    }
+
+    [TestMethod]
+    public async Task With_no_billing_fields_the_Notes_tab_is_the_second_page()
+    {
+        var table = Sample.Table("Order", [
+            Sample.Column("OrderId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
+            Sample.Column("CustomerName", System.Data.SqlDbType.NVarChar, characters: 50),
+            Sample.Column("Notes", System.Data.SqlDbType.NVarChar, characters: 50, nullable: true)]);
+
+        var result = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), table, With());
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        Expect.Contains(result.GeneratedText!, "<TabViewItem Header=\"Notes\"");
+        Expect.DoesNotContain(result.GeneratedText!, "Billing &amp; Shipping");
+    }
+
+    [TestMethod]
+    public async Task A_table_without_billing_shipping_or_note_fields_has_no_tabs()
+    {
+        var table = Sample.Table("Order", [
+            Sample.Column("OrderId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
+            Sample.Column("CustomerName", System.Data.SqlDbType.NVarChar, characters: 50)]);
+
+        var result = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), table, With());
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        Expect.DoesNotContain(result.GeneratedText!, "<TabView");
+    }
+
+    [TestMethod]
+    [DataRow("WinUI3_DetailScreen_v1.tt")]
+    [DataRow("WinUI3_DetailMasterScreen_v1.tt")]
+    public async Task A_decimal_that_is_not_money_is_a_number_box_limited_to_what_the_column_holds(string template)
+    {
+        var table = Sample.Table("Order", [
+            Sample.Column("OrderId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
+            Sample.Column("OnTimePercentage", System.Data.SqlDbType.Decimal, precision: 5, scale: 2, nullable: true),
+            Sample.Column("Weight", System.Data.SqlDbType.Decimal, precision: 5, scale: 2),
+            Sample.Column("Ratio", System.Data.SqlDbType.Float, nullable: true)],
+            childForeignKeys: [Sample.ChildForeignKey("OrderLine", "OrderId", "OrderId", childOwnPrimaryKey: ["OrderLineId"])]);
+
+        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, With());
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string text = result.GeneratedText!.Replace("\r\n", "\n");
+        Expect.Contains(text, "Value=\"{x:Bind ViewModel.OnTimePercentage, Mode=TwoWay}\"");
+        Expect.Contains(text, "Minimum=\"0\" Maximum=\"100\"");                       // a percentage is 0 to 100
+        Expect.Contains(text, "Minimum=\"-999.99\" Maximum=\"999.99\"");              // decimal(5,2)
+        Expect.DoesNotContain(text, "Text=\"{x:Bind ViewModel.OnTimePercentage");
+        Expect.Contains(text, "OnTimePercentageBox.NumberFormatter = new Windows.Globalization.NumberFormatting.DecimalFormatter");
+        Expect.Contains(text, "entity.OnTimePercentage = Math.Round((decimal)OnTimePercentage, 2);");
+        Expect.Contains(text, "entity.Ratio = Ratio;");
+        Expect.Contains(text, "OnTimePercentage = editing.OnTimePercentage.HasValue ? (double)editing.OnTimePercentage.Value : double.NaN;");
+    }
+
+    [TestMethod]
+    public async Task The_error_bar_is_outside_the_scrolling_area_so_a_validation_message_is_always_visible()
+    {
+        var result = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), Sample.DonateLeave(), With());
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string text = result.GeneratedText!.Replace("\r\n", "\n");
+        Assert.IsLessThan(text.IndexOf("<ScrollViewer", StringComparison.Ordinal), text.IndexOf("<InfoBar", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public async Task Callers_wait_for_a_closed_dialogs_own_load_before_reusing_the_DbContext()
+    {
+        var edit = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), Sample.DonateLeave(), With());
+        var list = await TemplateRunner.RunAsync(Repo.Template("WinUI3_MasterScreen_v1.tt"), Sample.DonateLeave(), With());
+        var master = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), Sample.OrderWithLines(), With());
+
+        Assert.IsTrue(edit.Success && list.Success && master.Success);
+        Expect.Contains(edit.GeneratedText!, "Loaded += (_, _) => _loading = ViewModel.LoadLookupsAsync();");
+        Expect.Contains(edit.GeneratedText!, "public async System.Threading.Tasks.Task<ContentDialogResult> ShowAndWaitAsync()");
+        Expect.Contains(master.GeneratedText!, "await childDialog.ShowAndWaitAsync();");
+        Expect.Contains(master.GeneratedText!, "await _drillDown.Task;");   // the parent's ShowAndWaitAsync outlasts the child dialog it opened
+        Expect.Contains(master.GeneratedText!, "_drillDown.SetResult();");
+        Expect.DoesNotContain(list.GeneratedText!, "await dialog.ShowAsync();");
+        Expect.Contains(list.GeneratedText!, "await dialog.ShowAndWaitAsync();");
+    }
+
+    private static TableModel TabbedTable() => Sample.Table("Order", [
+        Sample.Column("OrderId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
+        Sample.Column("CustomerName", System.Data.SqlDbType.NVarChar, characters: 50),
+        Sample.Column("OnTimePercentage", System.Data.SqlDbType.Decimal, precision: 5, scale: 2, nullable: true),
+        Sample.Column("BillingCity", System.Data.SqlDbType.NVarChar, characters: 50, nullable: true),
+        Sample.Column("LineMemo", System.Data.SqlDbType.NVarChar, characters: 50, nullable: true)],
+        childForeignKeys: [Sample.ChildForeignKey("OrderLine", "OrderId", "OrderId", childOwnPrimaryKey: ["OrderLineId"])]);
+
+    [TestMethod]
+    public void FormPages_splits_main_billing_shipping_and_notes_and_leaves_a_plain_table_alone()
+    {
+        var pages = FormPages.For(TabbedTable().Columns.Where(c => !c.IsPrimaryKey).ToList());
+
+        CollectionAssert.AreEqual(new[] { "Main", "Billing & Shipping", "Notes" }, pages.Select(p => p.Header).ToArray());
+        CollectionAssert.AreEqual(new[] { "CustomerName", "OnTimePercentage" }, pages[0].Columns.Select(c => c.Name).ToArray());
+        Assert.HasCount(1, FormPages.For([Sample.Column("Name", System.Data.SqlDbType.NVarChar, characters: 50)]));
+        Assert.AreEqual("", FormPages.For([Sample.Column("Name", System.Data.SqlDbType.NVarChar, characters: 50)])[0].Header);
+    }
+
+    [TestMethod]
+    [DataRow("TS_Component_v1.tt")]
+    [DataRow("TS_DetailMasterComponent_v1.tt")]
+    [DataRow("TSX_Page_v1.tt")]
+    [DataRow("TSX_DetailMasterPage_v1.tt")]
+    public async Task A_web_form_has_tabs_and_limits_a_percentage_to_0_100(string template)
+    {
+        var result = await TemplateRunner.RunAsync(Repo.Template(template), TabbedTable(), With());
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string text = result.GeneratedText!.Replace("\r\n", "\n");
+        Expect.Contains(text, ">Main</button>");
+        Expect.Contains(text, ">Billing &amp; Shipping</button>");
+        Expect.Contains(text, ">Notes</button>");
+        Assert.IsTrue(text.Contains("min=\"0\"") && text.Contains("max=\"100\""), "a percentage is limited to 0-100");
+        Assert.IsTrue(text.Contains("activeTab = 0") || text.Contains("setTab(0)"), "a new form opens on the Main tab");
+        if (template.StartsWith("TSX"))
+            Expect.Contains(text, "onClick={revealInvalidTab}");
+    }
+
+    [TestMethod]
+    [DataRow("TS_Component_v1.tt")]
+    [DataRow("TSX_Page_v1.tt")]
+    public async Task A_web_form_without_billing_shipping_or_note_fields_has_no_tabs(string template)
+    {
+        var table = Sample.Table("Order", [
+            Sample.Column("OrderId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
+            Sample.Column("CustomerName", System.Data.SqlDbType.NVarChar, characters: 50)]);
+
+        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, With());
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        Expect.DoesNotContain(result.GeneratedText!, "role=\"tablist\"");
+    }
+
+    [TestMethod]
+    public async Task A_master_dialogs_child_grid_has_row_level_Edit_and_Delete_in_every_stack()
+    {
+        var winui = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), Sample.OrderWithLines(), With());
+        var react = await TemplateRunner.RunAsync(Repo.Template("TSX_DetailMasterPage_v1.tt"), Sample.OrderWithLines(), With());
+        var angular = await TemplateRunner.RunAsync(Repo.Template("TS_DetailMasterComponent_v1.tt"), Sample.OrderWithLines(), With());
+
+        Assert.IsTrue(winui.Success && react.Success && angular.Success);
+        Expect.Contains(winui.GeneratedText!, "Click=\"OnOrderLineEditClick\"");
+        Expect.Contains(winui.GeneratedText!, "Click=\"OnOrderLineDeleteClick\"");
+        Expect.Contains(winui.GeneratedText!, "orderLineColumnHeaders.Add(\"Actions\");");
+        Expect.Contains(react.GeneratedText!, "const editOrderLine = (row: any) => {");
+        Expect.Contains(react.GeneratedText!, "const deleteOrderLine = async (row: any): Promise<void> => {");
+        Expect.Contains(react.GeneratedText!, "onClick={() => editOrderLine(row)}");
+        Expect.Contains(react.GeneratedText!, "?edit=${row['orderLineId']}&back=");
+        Expect.Contains(angular.GeneratedText!, "editOrderLine(row: any): void {");
+        Expect.Contains(angular.GeneratedText!, "deleteOrderLine(row: any): void {");
+        Expect.Contains(angular.GeneratedText!, "(click)=\"editOrderLine(row)\"");
+    }
+
+    [TestMethod]
+    public async Task A_master_detail_page_has_the_same_search_and_paging_as_a_plain_page_in_React_and_Angular()
+    {
+        var table = Sample.Table("Order", [
+            Sample.Column("OrderId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
+            Sample.Column("CustomerPO", System.Data.SqlDbType.NVarChar, characters: 50, nullable: true)],
+            childForeignKeys: [Sample.ChildForeignKey("OrderLine", "OrderId", "OrderId", childOwnPrimaryKey: ["OrderLineId"])]);
+        var react = await TemplateRunner.RunAsync(Repo.Template("TSX_DetailMasterPage_v1.tt"), table, With());
+        var angular = await TemplateRunner.RunAsync(Repo.Template("TS_DetailMasterComponent_v1.tt"), table, With());
+
+        Assert.IsTrue(react.Success && angular.Success);
+        Expect.Contains(react.GeneratedText!, "placeholder=\"Search by Customer PO\"");
+        Expect.Contains(react.GeneratedText!, "<PaginationBar");
+        Expect.Contains(react.GeneratedText!, "orderApi.getPage(targetPage, pageSize, filterValues)");
+        Expect.Contains(angular.GeneratedText!, "placeholder=\"Search by Customer PO\"");
+        Expect.Contains(angular.GeneratedText!, "<mat-paginator");
+        Expect.Contains(angular.GeneratedText!, "getPage(this.pageIndex + 1, this.pageSize");
+    }
+
+    [TestMethod]
+    [DataRow("TS_Component_v1.tt")]
+    [DataRow("TS_DetailMasterComponent_v1.tt")]
+    [DataRow("TSX_Page_v1.tt")]
+    [DataRow("TSX_DetailMasterPage_v1.tt")]
+    public async Task A_nullable_date_has_a_Clear_button_in_the_web_forms_and_a_required_one_does_not(string template)
+    {
+        var table = Sample.Table("Order", [
+            Sample.Column("OrderId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
+            Sample.Column("OrderDate", System.Data.SqlDbType.DateTime),
+            Sample.Column("DueDate", System.Data.SqlDbType.DateTime, nullable: true)],
+            childForeignKeys: [Sample.ChildForeignKey("OrderLine", "OrderId", "OrderId", childOwnPrimaryKey: ["OrderLineId"])]);
+
+        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, With());
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string text = result.GeneratedText!;
+        Assert.AreEqual(1, System.Text.RegularExpressions.Regex.Matches(text, ">Clear</button>").Count(m => text.Substring(Math.Max(0, m.Index - 160), Math.Min(160, m.Index)).Contains("ueDate")), "one Clear button, on DueDate");
+        Expect.DoesNotContain(text, "orderDate: undefined");
+        Expect.DoesNotContain(text, "selectedRow.orderDate = undefined");
+    }
+
+    [TestMethod]
+    [DataRow("TS_Component_v1.tt")]
+    [DataRow("TS_DetailMasterComponent_v1.tt")]
+    public async Task An_Angular_component_keeps_eager_change_detection(string template)
+    {
+        var result = await TemplateRunner.RunAsync(Repo.Template(template), TabbedTable(), With());
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        Expect.Contains(result.GeneratedText!, "import { ChangeDetectionStrategy, Component, ElementRef, ViewChild } from '@angular/core';");
+        Expect.Contains(result.GeneratedText!, "changeDetection: ChangeDetectionStrategy.Default,");
+    }
+
+    [TestMethod]
+    [DataRow("TS_Component_v1.tt", "<dialog *ngIf=")]
+    [DataRow("TS_DetailMasterComponent_v1.tt", "<dialog *ngIf=")]
+    [DataRow("TSX_Page_v1.tt", "<dialog")]
+    [DataRow("TSX_DetailMasterPage_v1.tt", "<dialog")]
+    public async Task The_web_edit_form_is_a_modal_dialog_that_opens_over_the_page(string template, string opening)
+    {
+        var result = await TemplateRunner.RunAsync(Repo.Template(template), TabbedTable(), With());
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string text = result.GeneratedText!;
+        Expect.Contains(text, opening);
+        Expect.Contains(text, "</dialog>");
+        Expect.Contains(text, template.StartsWith("TSX") ? "el.showModal()" : "showModal()");
+        
+    }
+
+    [TestMethod]
     public async Task A_child_grid_spaces_its_captions_and_shows_an_empty_cell_without_a_classic_binding()
     {
         var result = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), Sample.OrderWithLines(), With());
@@ -525,7 +800,7 @@ public class ProjectSettingsTests
     [DataRow("WinUI3_MasterScreen_v1.tt")]
     [DataRow("TS_Component_v1.tt")]
     [DataRow("TSX_Page_v1.tt")]
-    public async Task A_master_grid_lists_long_text_last_and_writes_number_and_percent_as_symbols(string template)
+    public async Task A_master_grid_leaves_out_long_text_and_writes_number_and_percent_as_symbols(string template)
     {
         var result = await TemplateRunner.RunAsync(Repo.Template(template), GridTable(), With());
 
@@ -533,10 +808,39 @@ public class ProjectSettingsTests
         string text = result.GeneratedText!;
         Assert.IsTrue(text.Contains("<th>Item #</th>") || text.Contains("FontWeight=\"SemiBold\"") && text.Contains("Text=\"Item #\""), "the Item Number column is captioned Item #");
         Expect.Contains(text, "Discount %");
-        // Notes is the second column in the table but is listed after the others
-        int notes = Math.Max(text.IndexOf("<th>Notes</th>", StringComparison.Ordinal), text.IndexOf("Text=\"Notes\" FontWeight=", StringComparison.Ordinal));
-        int percent = text.IndexOf("Discount %", StringComparison.Ordinal);
-        Assert.IsGreaterThan(percent, notes, "Notes should come after Discount %");
+        // Notes is a long text column: it never appears in a grid
+        Expect.DoesNotContain(text, "<th>Notes</th>");
+        Expect.DoesNotContain(text, "Text=\"Notes\" FontWeight=");
+    }
+
+    [TestMethod]
+    [DataRow("WinUI3_MasterScreen_v1.tt")]
+    [DataRow("TS_Component_v1.tt")]
+    [DataRow("TSX_Page_v1.tt")]
+    public async Task A_master_grid_shows_at_most_20_columns(string template)
+    {
+        var columns = new List<ColumnModel> { Sample.Column("ItemId", System.Data.SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1) };
+        columns.AddRange(Enumerable.Range(1, 25).Select(i => Sample.Column("Quantity" + (char)('A' + i - 1), System.Data.SqlDbType.Int, ordinal: i + 1)));
+        var result = await TemplateRunner.RunAsync(Repo.Template(template), Sample.Table("Item", columns), With());
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string text = result.GeneratedText!;
+        Assert.IsTrue(text.Contains("<th>Quantity T</th>") || text.Contains("Text=\"Quantity T\" FontWeight="), "the 20th column is in the grid");
+        Expect.DoesNotContain(text, "<th>Quantity U</th>");
+        Expect.DoesNotContain(text, "Text=\"Quantity U\" FontWeight=");
+    }
+
+    [TestMethod]
+    public void ForGrid_drops_long_text_even_with_few_columns_and_limits_the_rest_to_20()
+    {
+        var columns = new List<ColumnModel> { Sample.Column("Notes", System.Data.SqlDbType.VarChar, characters: 40) };
+        columns.AddRange(Enumerable.Range(1, 30).Select(i => Sample.Column("C" + i, System.Data.SqlDbType.Int)));
+
+        var grid = columns.ForGrid();
+
+        Assert.HasCount(20, grid);
+        Assert.IsFalse(grid.Any(c => c.Name == "Notes"));
+        Assert.AreEqual("Notes", new[] { columns[0] }.ForGrid().Single().Name, "a table of only long text still gets a grid");
     }
 
     [TestMethod]
@@ -570,6 +874,7 @@ public class ProjectSettingsTests
         Assert.IsTrue(winui.Success, string.Join(" | ", winui.Errors));
         Expect.Contains(winui.GeneratedText!, "[\"LinePrice\"] = 2,");
         Expect.Contains(winui.GeneratedText!, "LongTextInOrderLineGrid = [ \"Notes\" ];");
+        Expect.Contains(winui.GeneratedText!, ".Take(20).ToList();");
         Expect.Contains(winui.GeneratedText!, "return moneyValue.ToString(\"C\" + moneyDigits);");
         Expect.Contains(react.GeneratedText!, "const childCurrencyDigits: Record<string, number> = { linePrice: 2 };");
         Expect.Contains(react.GeneratedText!, "const childLongTextColumns: string[] = ['notes'];");
@@ -586,8 +891,9 @@ public class ProjectSettingsTests
     {
         ColumnModel Col(string name, System.Data.SqlDbType type) => Sample.Column(name, type);
 
-        Assert.AreEqual("Is Closed?", GridCaption.For(Col("IsClosed", System.Data.SqlDbType.Bit), "Is Closed"));
-        Assert.AreEqual("Is Closed?", GridCaption.For(Col("IsClosed", System.Data.SqlDbType.Bit), "Is Closed?"), "no second question mark");
+        Assert.AreEqual("Closed?", GridCaption.For(Col("IsClosed", System.Data.SqlDbType.Bit), "Is Closed"));
+        Assert.AreEqual("Is?", GridCaption.For(Col("Is", System.Data.SqlDbType.Bit), "Is"), "a lone Is stays");
+        Assert.AreEqual("Closed?", GridCaption.For(Col("IsClosed", System.Data.SqlDbType.Bit), "Is Closed?"), "no second question mark");
         Assert.AreEqual("Added", GridCaption.For(Col("DateAdded", System.Data.SqlDbType.DateTime), "Date Added"));
         Assert.AreEqual("Invoice", GridCaption.For(Col("InvoiceDate", System.Data.SqlDbType.DateTime), "Invoice Date"));
         Assert.AreEqual("Date", GridCaption.For(Col("Date", System.Data.SqlDbType.Date), "Date"), "nothing would be left");
@@ -619,7 +925,7 @@ public class ProjectSettingsTests
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!;
-        Assert.IsTrue(text.Contains("<th>Is Closed?</th>") || text.Contains("Text=\"Is Closed?\" FontWeight="), "yes/no caption");
+        Assert.IsTrue(text.Contains("<th>Closed?</th>") || text.Contains("Text=\"Closed?\" FontWeight="), "yes/no caption");
         Assert.IsTrue(text.Contains("<th>Added</th>") || text.Contains("Text=\"Added\" FontWeight="), "date caption without Date");
     }
 }

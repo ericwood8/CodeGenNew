@@ -130,6 +130,9 @@
     bool IsDate(ColumnModel c) => c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
     bool IsNumber(ColumnModel c) => c.SqlType is SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt
         or SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real;
+    // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is limited to what the column can hold (a percentage to 0-100).
+    bool IsPlainDecimal(ColumnModel c) => !c.IsIntegerColumn && !c.IsCurrencyColumn && c.SqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real;
+    string Inv(double d) => d.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture);
     bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
     int Chars(ColumnModel c) => c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
     bool IsMultiline(ColumnModel c) => IsText(c) && Chars(c) >= 100;
@@ -222,8 +225,11 @@
         var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
         // long text is left out of the grid to keep it readable -- unless that would leave nothing to show but the buttons
         if (gridColumns.Count == 0) gridColumns = shown.ToList();
-        // A long text column (a Notes column, ...) is listed last so a long value cannot push the other columns off screen.
-        gridColumns = gridColumns.OrderBy(c => c.IsLongTextColumn ? 1 : 0).ToList();
+        // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
+        gridColumns = gridColumns.ForGrid();
+        // The form is tabbed (Main / Billing & Shipping / Notes) when it has more than one kind of field: see FormPages.
+        var formPages = FormPages.For(shown);
+        bool tabbed = formPages.Count > 1;
 
         var css = new StringBuilder(); // stays empty
         var html = new StringBuilder();
@@ -292,10 +298,21 @@
         H("    </mat-paginator>");
         H();
         H("    <!-- Add/Edit Form -->");
-        H("    <div *ngIf=\"selectedRow\" class=\"form-container\">");
+        // The add/edit form is a modal <dialog> (native, no library): it opens over the page, wherever the grid is scrolled to, and Escape cancels it.
+        H("    <dialog *ngIf=\"selectedRow\" #editDialog class=\"form-container\" (cancel)=\"$event.preventDefault(); cancel()\">");
         H($"        <h2>{{{{selectedRow.{keyProp} ? 'Edit' : 'Add'}}}} {title}</h2>");
         H($"        <form id=\"{variable}Form\" (ngSubmit)=\"submit(selectedRow)\">");
-        foreach (var c in shown)
+        if (tabbed)
+        {
+            H("            <div role=\"tablist\" class=\"form-tabs\">");
+            for (int i = 0; i < formPages.Count; i++)
+                H($"                <button type=\"button\" role=\"tab\" [attr.aria-selected]=\"activeTab === {i}\" [style.font-weight]=\"activeTab === {i} ? 'bold' : 'normal'\" (click)=\"activeTab = {i}\">{formPages[i].Header.Replace("&", "&amp;")}</button>");
+            H("            </div>");
+        }
+        for (int pageIndex = 0; pageIndex < formPages.Count; pageIndex++)
+        {
+        if (tabbed) H($"            <div role=\"tabpanel\" [hidden]=\"activeTab !== {pageIndex}\">");
+        foreach (var c in formPages[pageIndex].Columns)
         {
             string id = Id(c);
             string model = $"selectedRow.{Camel(c.Name)}";
@@ -318,6 +335,8 @@
             else if (IsDate(c))
             {
                 H($"                <input type=\"date\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
+                // A nullable date has a Clear button beside it, like WinUI3's calendar.
+                if (c.IsNullable) H($"                <button type=\"button\" class=\"btn-action\" (click)=\"{model} = undefined\">Clear</button>");
             }
             else if (IsNumber(c))
             {
@@ -325,7 +344,8 @@
                             : c.SqlType is SqlDbType.Money or SqlDbType.SmallMoney ? " step=\"0.01\""
                             : c.SqlType is SqlDbType.Float or SqlDbType.Real ? " step=\"any\"" : "";
                 // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
-                string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\"" : "";
+                string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\""
+                    : IsPlainDecimal(c) ? $" min=\"{Inv(NumericClassifier.DecimalRange(c).Min)}\" max=\"{Inv(NumericClassifier.DecimalRange(c).Max)}\"" : "";
                 H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{step}{range} placeholder=\"{PlaceholderFor(c)}\"{req}>");
             }
             else if (IsMultiline(c))
@@ -339,11 +359,13 @@
             }
             H("            </div>");
         }
+        if (tabbed) H("            </div>");
+        }
         H();
         H("            <button type=\"submit\" class=\"btn\">Submit</button>");
         H("            <button type=\"button\" (click)=\"cancel()\" class=\"btn btn-outline\">Cancel</button>");
         H("        </form>");
-        H("    </div>");
+        H("    </dialog>");
         H("</div>");
         H("</div>");
         H("</div>");
@@ -351,18 +373,19 @@
 
         // ================= spec
         string cls = baseName + "Component";
-        spec.Append("import { ComponentFixture, TestBed } from '@angular/core/testing';\nimport { provideHttpClient } from '@angular/common/http';\nimport { provideHttpClientTesting } from '@angular/common/http/testing';\nimport { provideNoopAnimations } from '@angular/platform-browser/animations';\n");
+        spec.Append("import { ComponentFixture, TestBed } from '@angular/core/testing';\nimport { provideHttpClient } from '@angular/common/http';\nimport { provideHttpClientTesting } from '@angular/common/http/testing';\nimport { provideRouter } from '@angular/router';\nimport { provideNoopAnimations } from '@angular/platform-browser/animations';\n");
         spec.Append("\n");
         spec.Append($"import {{ {cls} }} from './{stem}.component';\n\n");
         spec.Append($"describe('{cls}', () => {{\n  let component: {cls};\n  let fixture: ComponentFixture<{cls}>;\n\n");
         // the screen's service needs an HttpClient; the testing one never touches the network. mat-paginator
         // needs animations provided (even as the no-op stub) or TestBed throws.
-        spec.Append($"  beforeEach(async () => {{\n    await TestBed.configureTestingModule({{\n      imports: [{cls}],\n      providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations()]\n    }})\n    .compileComponents();\n\n");
+        spec.Append($"  beforeEach(async () => {{\n    await TestBed.configureTestingModule({{\n      imports: [{cls}],\n      providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations(), provideRouter([])]\n    }})\n    .compileComponents();\n\n");
         spec.Append($"    fixture = TestBed.createComponent({cls});\n    component = fixture.componentInstance;\n    fixture.detectChanges();\n  }});\n\n");
         spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n});\n");
 
         // ================= ts
-        T("import { Component } from '@angular/core';");
+        T("import { ChangeDetectionStrategy, Component, ElementRef, ViewChild } from '@angular/core';");
+        T("import { ActivatedRoute, Router } from '@angular/router';");
         T($"import {{ {baseName} }} from '../../{modelsFolder}/{stem}';");
         T($"import {{ {baseName}Service }} from '../../{servicesFolder}/{stem}.service';");
         foreach (var p in parents.Where(p => !p.Self))
@@ -377,6 +400,7 @@
         T("@Component({");
         T($"  selector: 'app-{stem}',");
         T("  standalone: true,");
+        T("  changeDetection: ChangeDetectionStrategy.Default, // plain properties change inside subscribe callbacks: keep eager checking when OnPush is the default (Angular 22)");
         T("  imports: [ CommonModule, FormsModule, MatPaginatorModule ],");
         T($"  templateUrl: './{stem}.component.html',");
         T($"  styleUrl: './{stem}.component.css'");
@@ -386,6 +410,12 @@
         foreach (var p in parents.Where(p => !p.Self))
             T($"  {p.List}: {p.Type}[] = [];");
         T($"  selectedRow: {baseName} | null = null;");
+        if (tabbed) T("  activeTab = 0; // the form tab showing");
+        T("  // The edit form is a modal <dialog> that is only in the page while a row is being edited: open it as soon as it is rendered.");
+        T("  @ViewChild('editDialog') set editDialog(element: ElementRef<HTMLDialogElement> | undefined) {");
+        T("    if (element && !element.nativeElement.open) element.nativeElement.showModal();");
+        T("  }");
+        T("  private backTo: string | null = null; // set when another page's grid opened this row (?edit=<id>&back=<that page>)");
         if (canSearch) T($"  filters = {{ {string.Join(", ", searchFields.Select(f => $"{f.ParamName}: ''"))} }};");
         T($"  pageSize = {pageSize};");
         T("  pageIndex = 0;"); // mat-paginator is 0-based; the API's pageNumber is 1-based
@@ -393,9 +423,16 @@
         T();
         var ctorArgs = new List<string> { $"private {variable}Service: {baseName}Service" };
         ctorArgs.AddRange(parents.Where(p => !p.Self).Select(p => $"private {p.ServiceVar}: {p.Service}"));
+        ctorArgs.Add("private router: Router");
+        ctorArgs.Add("private route: ActivatedRoute");
         T($"  constructor({string.Join(", ", ctorArgs)}) {{ }}");
         T();
         T("  ngOnInit(): void {");
+        T("    // Opened from another page's grid (?edit=<id>&back=<that page>): open this row, and go back to that page when the form is saved or cancelled.");
+        T("    const params = this.route.snapshot.queryParamMap;");
+        T("    this.backTo = params.get('back');");
+        T("    const openId = params.get('edit');");
+        T($"    if (openId) this.{variable}Service.getById({(keyColumn.SqlType == SqlDbType.Int ? "Number(openId)" : "openId")}).subscribe((row) => this.edit(row));");
         T("    this.load();");
         foreach (var p in parents.Where(p => !p.Self))
             T($"    this.{p.ServiceVar}.getAll().subscribe((data) => {{ this.{p.List} = data; }});");
@@ -422,6 +459,7 @@
         T("        next: () => {");
         T("          console.log(\"Updated successfully!\");");
         T("          this.load();");
+        T("          this.goBack();");
         T("        },");
         T("        error: (error) => this.showError(\"updating\", error)");
         T("      });");
@@ -429,7 +467,7 @@
         T("    else {");
         T($"      {variable}.{keyProp} = {emptyKey};");
         T($"      this.{variable}Service.create({variable}).subscribe({{");
-        T("        next: () => { this.load(); },");
+        T("        next: () => { this.load(); this.goBack(); },");
         T("        error: (error) => this.showError(\"adding\", error)");
         T("      });");
         T("    }");
@@ -464,10 +502,12 @@
             adds.Add($"{Camel(c.Name)}: {value}");
         }
         T("  add(): void {");
+        if (tabbed) T("    this.activeTab = 0;");
         T(adds.Count == 0 ? "    this.selectedRow = { };" : $"    this.selectedRow = {{ {string.Join(", ", adds)} }};");
         T("  }");
         T();
         T($"  edit({variable}: {baseName}): void {{");
+        if (tabbed) T("    this.activeTab = 0;");
         T($"    this.selectedRow = {{ ...{variable} }};");
         var dateColumns = shown.Where(IsDate).ToList();
         if (dateColumns.Count > 0)
@@ -484,6 +524,12 @@
         T();
         T("  cancel(): void {");
         T("    this.selectedRow = null;");
+        T("    this.goBack();");
+        T("  }");
+        T();
+        T("  // Back to the page whose grid opened this row, if any.");
+        T("  private goBack(): void {");
+        T("    if (this.backTo) this.router.navigateByUrl(this.backTo);");
         T("  }");
         if (canSearch)
         {

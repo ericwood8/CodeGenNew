@@ -7,7 +7,7 @@ namespace CodeGenNew.Core;
 public static class GridCaption
 {
     /// <summary> The caption for a column's grid header: <see cref="From"/>, plus the rules that depend on the column's type. A date column drops the word "Date"
-    /// ("Date Added" -> "Added", "Invoice Date" -> "Invoice"; the data shows it is a date) unless that would leave nothing; a yes/no column ends in "?" ("Is Closed" -> "Is Closed?"). </summary>
+    /// ("Date Added" -> "Added", "Invoice Date" -> "Invoice"; the data shows it is a date) unless that would leave nothing; a yes/no column loses a leading "Is" and ends in "?" ("Is Closed" -> "Closed?"). </summary>
     public static string For(ColumnModel column, string spacedWords)
     {
         string words = spacedWords;
@@ -18,8 +18,14 @@ public static class GridCaption
                 words = string.Join(' ', kept);
         }
         string caption = From(words);
-        if (column.SqlType == System.Data.SqlDbType.Bit && !caption.EndsWith('?'))
-            caption += "?";
+        if (column.SqlType == System.Data.SqlDbType.Bit)
+        {
+            // "Is Taxable" -> "Taxable?": the question mark already says it is a yes/no, so a leading "Is" is dropped.
+            if (caption.StartsWith("Is ", StringComparison.OrdinalIgnoreCase) && caption.Length > 3)
+                caption = caption[3..];
+            if (!caption.EndsWith('?'))
+                caption += "?";
+        }
         return caption;
     }
 

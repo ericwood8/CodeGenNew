@@ -59,6 +59,22 @@ public static class NumericClassifier
     public static int CurrencyDigits(ColumnModel column) =>
         column.SqlType is SqlDbType.Decimal ? Math.Clamp(column.Scale ?? 2, 0, 8) : 2;
 
+    /// <summary> The limits a number box puts on a decimal / float / real column that is not money: what the column's precision and scale can hold
+    /// (decimal(5,2) holds -999.99 to 999.99), or +/-10^15 for a floating-point type; a percentage (by name) is 0 to 100 within that. </summary>
+    public static (double Min, double Max) DecimalRange(ColumnModel column)
+    {
+        double max = 1e15;
+        if (column.SqlType == SqlDbType.Decimal && column.Precision is { } precision && column.Scale is { } scale)
+            max = Math.Round(Math.Pow(10, precision - scale) - Math.Pow(10, -scale), scale);
+        double min = -max;
+        if (Classify(column.Name) == NumericKind.Percentage)
+        {
+            min = 0;
+            max = Math.Min(max, 100);
+        }
+        return (min, max);
+    }
+
     /// <summary> The limits of a SQL integer type. bigint stops at 2^53 - 1, the largest whole number a number box (a double) holds exactly. </summary>
     public static NumericRange TypeRange(SqlDbType type) => type switch
     {

@@ -58,13 +58,13 @@ public class ColumnModel
     public bool IsCurrencyColumn { get; init; }
 
     /// <summary> A text column that can be very long: varchar/nvarchar(max), text/ntext, 500 or more characters, or a name that says it is a
-    /// note (ends in Note, Notes, Comment, Comments or Remarks). Grids list these columns last so a long value cannot push the others off screen. </summary>
+    /// note (ends in Note, Notes, Comment, Comments, Remarks or Memo). Grids list these columns last so a long value cannot push the others off screen; a form puts them on its own "Notes" tab. </summary>
     public bool IsLongTextColumn =>
         IsStringColumn
         && (SqlType is System.Data.SqlDbType.Text or System.Data.SqlDbType.NText
             || MaxLength is -1
             || (MaxLength is { } bytes && (SqlType is System.Data.SqlDbType.NChar or System.Data.SqlDbType.NVarChar ? bytes / 2 : bytes) >= 500)
-            || new[] { "Note", "Notes", "Comment", "Comments", "Remarks" }.Any(s => Name.EndsWith(s, StringComparison.OrdinalIgnoreCase)));
+            || new[] { "Note", "Notes", "Comment", "Comments", "Remarks", "Memo" }.Any(s => Name.EndsWith(s, StringComparison.OrdinalIgnoreCase)));
 
     /// <summary> Name-pattern match for create/modify/delete/activate/inactivate tracking columns
     /// (e.g. CreateDate, ModifiedBy, InactivatedDate). </summary>

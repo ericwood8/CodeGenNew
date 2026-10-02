@@ -96,6 +96,9 @@
     bool IsDate(ColumnModel c) => c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
     bool IsNumber(ColumnModel c) => c.SqlType is SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt
         or SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real;
+    // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is limited to what the column can hold (a percentage to 0-100).
+    bool IsPlainDecimal(ColumnModel c) => !c.IsIntegerColumn && !c.IsCurrencyColumn && c.SqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real;
+    string Inv(double d) => d.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture);
     bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
     int Chars(ColumnModel c) => c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
     bool IsMultiline(ColumnModel c) => IsText(c) && Chars(c) >= 100;
@@ -135,7 +138,16 @@
         string keyTs = keyColumn.SqlType == SqlDbType.Int ? "number" : "string";
         string emptyKey = keyColumn.SqlType == SqlDbType.Int ? "0" : "'00000000-0000-0000-0000-000000000000'";
         string title = Words(baseName);
-        bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name");
+        bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"); // just for showError's message wording below
+        const int pageSize = 20;
+        // The same paging and search bar as TSX_Page: one text box per searchable column (Model.SearchableColumns), paged by the API's /search endpoint.
+        var searchFields = Model.SearchableColumns
+            .Select(c => new { ParamName = LowerFirst(c.Name), c.Name, Label = Label(c.Name) })
+            .ToList();
+        bool canSearch = searchFields.Count > 0;
+        // The route of a table's own page ("SalesInvoice" -> "sales-invoice"): the hand-written App.tsx has one route per generated page, named this way.
+        string PageRoute(string table) => Words(BaseName(table)).ToLowerInvariant().Replace(' ', '-');
+        string selfRoute = PageRoute(Model.TableName);
 
         var fkByColumn = Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1)
             .GroupBy(f => f.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase)
@@ -186,6 +198,8 @@
                 Var = LowerFirst(BaseName(fk.ReferencingTable)),
                 MethodName = BaseName(fk.ReferencingTable),
                 Route = ApiRoute(fk.ReferencingTable),
+                PageRoute = PageRoute(fk.ReferencingTable),
+                KeyProp = fk.ReferencingPrimaryKeyColumns.Count == 1 ? Camel(fk.ReferencingPrimaryKeyColumns[0]) : null,
                 FkProp = Camel(fk.ReferencingColumns[0]),
                 // What the schema says about the child's columns (their JSON names are camelCase): money shows as currency, long text goes last.
                 Currency = fk.ReferencingTableColumns.Where(c => c.IsCurrencyColumn && !c.IsIntegerColumn)
@@ -200,8 +214,11 @@
         string LabelOf(ColumnModel c) => c.SqlType == SqlDbType.Bit ? Label(c.Name) + "?" : Label(c.Name);
         var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
         if (gridColumns.Count == 0) gridColumns = shown.ToList();
-        // A long text column (a Notes column, ...) is listed last so a long value cannot push the other columns off screen.
-        gridColumns = gridColumns.OrderBy(c => c.IsLongTextColumn ? 1 : 0).ToList();
+        // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
+        gridColumns = gridColumns.ForGrid();
+        // The form is tabbed (Main / Billing & Shipping / Notes) when it has more than one kind of field: see FormPages.
+        var formPages = FormPages.For(shown);
+        bool tabbed = formPages.Count > 1;
 
         var ts = new StringBuilder();
         void T(string s = "") => ts.Append(s).Append('\n');
@@ -209,27 +226,32 @@
         // ================= imports
         T("import { useEffect, useState } from 'react';");
         T("import type { FormEvent } from 'react';");
+        T("import { useNavigate, useSearchParams } from 'react-router-dom';");
         T($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
         T($"import {{ {variable}Api }} from '../{apiFolder}/{stem}Api';");
         T($"import {{ ApiError, request }} from '../{apiFolder}/client';");
+        T("import { PaginationBar } from '../components/PaginationBar';");
         foreach (var p in parents.Where(p => !p.Self))
         {
             T($"import type {{ {p.Type} }} from '../{modelsFolder}/{p.ModelFile}';");
             T($"import {{ {p.ApiVar} }} from '../{apiFolder}/{p.ApiFile}';");
         }
         T();
+        T($"const pageSize = {pageSize};");
+        T();
         if (children.Count > 0)
         {
             var allCurrency = children.SelectMany(ch => ch.Currency).GroupBy(m => m.Name).Select(g => g.First()).ToList();
             var allLongText = children.SelectMany(ch => ch.LongText).Distinct().ToList();
-            T("// Child grids show whatever keys the API returns; these helpers caption them, order them (long text last) and format money and dates.");
+            T("// Child grids show whatever keys the API returns; these helpers caption them, leave out long text, limit them to 20 and format money and dates.");
             T("const childCurrencyDigits: Record<string, number> = { " + string.Join(", ", allCurrency.Select(m => m.Name + ": " + m.Digits)) + " };");
             var allCaptions = children.SelectMany(ch => ch.Captions).GroupBy(m => m.Name).Select(g => g.First()).ToList();
             T("const childCaptions: Record<string, string> = { " + string.Join(", ", allCaptions.Select(m => m.Name + ": '" + m.Caption.Replace("'", "\'") + "'")) + " };");
             T("const childLongTextColumns: string[] = [" + string.Join(", ", allLongText.Select(n => "'" + n + "'")) + "];");
             T();
             T("function orderColumns(keys: string[]): string[] {");
-            T("  return [...keys.filter((k) => !childLongTextColumns.includes(k)), ...keys.filter((k) => childLongTextColumns.includes(k))];");
+            T("  // Only the child table's own columns: the API also sends each navigation property (customer, customerMonthlySummary, ...), which is not a column.");
+            T($"  return keys.filter((k) => k in childCaptions && !childLongTextColumns.includes(k)).slice(0, {GridColumns.MaxColumns});");
             T("}");
             T();
             T("function caption(key: string): string {");
@@ -258,22 +280,44 @@
         foreach (var p in parents.Where(p => !p.Self))
             T($"  const [{p.List}, {p.SetList}] = useState<{p.Type}[]>([]);");
         T($"  const [selectedRow, setSelectedRow] = useState<{baseName} | null>(null);");
-        if (hasName) T("  const [searchText, setSearchText] = useState('');");
+        if (tabbed)
+        {
+            T("  const [tab, setTab] = useState(0); // the form tab showing");
+            T("  // A required field on a tab that is not showing blocks the submit without a visible message: show the tab that holds the first invalid field.");
+            T("  const revealInvalidTab = (event: { currentTarget: HTMLButtonElement }) => {");
+            T("    const panel = event.currentTarget.form?.querySelector(':invalid')?.closest('[role=\"tabpanel\"]');");
+            T("    if (panel) setTab(Number(panel.getAttribute('data-tab')));");
+            T("  };");
+        }
+        string filterInit = string.Join(", ", searchFields.Select(f => $"{f.ParamName}: ''"));
+        if (canSearch) T($"  const [filters, setFilters] = useState({{ {filterInit} }});");
+        T("  const [page, setPage] = useState(1);");
+        T("  const [totalPages, setTotalPages] = useState(1);");
         T("  const [error, setError] = useState<string | null>(null);");
+        T("  // Opened from another page's grid (?edit=<id>&back=<that page>): open this row, and go back to that page when the form is saved or cancelled.");
+        T("  const [searchParams] = useSearchParams();");
+        T("  const navigate = useNavigate();");
+        T("  const backTo = searchParams.get('back');");
         foreach (var child in children)
         {
             T($"  const [{child.Var}Rows, set{child.MethodName}Rows] = useState<any[]>([]);");
             T($"  const [{child.Var}Columns, set{child.MethodName}Columns] = useState<string[]>([]);");
         }
         T();
-        T("  const load = () => {");
-        T($"    {variable}Api.getAll().then({setList}).catch(() => setError('Failed to load {Words(baseName).ToLowerInvariant().Pluralize()}.'));");
+        T($"  const load = (targetPage: number = 1{(canSearch ? ", filterValues: typeof filters = filters" : "")}) => {{");
+        T($"    {variable}Api.getPage(targetPage, pageSize{(canSearch ? ", filterValues" : "")}).then((result) => {{");
+        T($"      {setList}(result.items);");
+        T("      setPage(result.page);");
+        T("      setTotalPages(result.totalPages);");
+        T($"    }}).catch(() => setError('Failed to load {Words(baseName).ToLowerInvariant().Pluralize()}.'));");
         T("  };");
         T();
         T("  useEffect(() => {");
         T("    load();");
         foreach (var p in parents.Where(p => !p.Self))
             T($"    {p.ApiVar}.getAll().then({p.SetList}).catch(() => {{}});");
+        T("    const openId = searchParams.get('edit');");
+        T($"    if (openId) {variable}Api.getById({(keyColumn.SqlType == SqlDbType.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Words(baseName).ToLowerInvariant()} no longer exists!'));");
         T("  }, []);");
         T();
         T($"  const submit = async ({variable}: {baseName}): Promise<void> => {{");
@@ -286,7 +330,8 @@
         T($"        await {variable}Api.create({variable});");
         T("      }");
         T("      setSelectedRow(null);");
-        T("      load();");
+        T("      load(page);");
+        T("      if (backTo) navigate(backTo);");
         T("    } catch (err) {");
         T("      showError('saving', err);");
         T("    }");
@@ -307,7 +352,7 @@
         T("        setError('It cannot be deleted because it is in use!');");
         T("      } else if (err instanceof ApiError && err.status === 404) {");
         T("        setError('It no longer exists!');");
-        T("        load();");
+        T("        load(page);");
         T("      } else {");
         T("        setError('Problem while deleting!');");
         T("      }");
@@ -325,6 +370,7 @@
             adds.Add($"{Camel(c.Name)}: {value}");
         }
         T("  const add = () => {");
+        if (tabbed) T("    setTab(0);");
         T(adds.Count == 0 ? "    setSelectedRow({});" : $"    setSelectedRow({{ {string.Join(", ", adds)} }});");
         foreach (var child in children)
         {
@@ -334,6 +380,7 @@
         T("  };");
         T();
         T($"  const edit = ({variable}: {baseName}) => {{");
+        if (tabbed) T("    setTab(0);");
         T($"    const row = {{ ...{variable} }};");
         var dateColumns = shown.Where(IsDate).ToList();
         if (dateColumns.Count > 0)
@@ -353,13 +400,20 @@
         T();
         T("  const cancel = () => {");
         T("    setSelectedRow(null);");
+        T("    if (backTo) navigate(backTo);");
         T("  };");
-        if (hasName)
+        if (canSearch)
         {
             T();
             T("  const search = () => {");
             T("    setSelectedRow(null);");
-            T($"    {variable}Api.findByName(searchText).then({setList}).catch(() => setError('Search failed.'));");
+            T("    load(1);");
+            T("  };");
+            T();
+            T("  const clearSearch = () => {");
+            T($"    const cleared = {{ {filterInit} }};");
+            T("    setFilters(cleared);");
+            T("    load(1, cleared);");
             T("  };");
         }
         foreach (var p in parents)
@@ -383,11 +437,29 @@
             T($"      set{child.MethodName}Columns(filtered.length > 0 ? orderColumns(Object.keys(filtered[0])) : []);");
             T("    }).catch(() => {});");
             T("  };");
+            if (child.KeyProp is not null)
+            {
+                T();
+                T($"  // Edit opens the {child.Title}'s own page on that row; saving or cancelling there comes back here with this {title} open again.");
+                T($"  const edit{child.MethodName} = (row: any) => {{");
+                T($"    navigate(`/{child.PageRoute}?edit=${{row['{child.KeyProp}']}}&back=${{encodeURIComponent(`/{selfRoute}?edit=${{selectedRow?.{keyProp}}}`)}}`);");
+                T("  };");
+                T();
+                T($"  const delete{child.MethodName} = async (row: any): Promise<void> => {{");
+                T("    if (!confirm('Are you sure you want to delete this?')) return;");
+                T("    try {");
+                T($"      await request<void>(`{apiPrefix}/{child.Route}/${{row['{child.KeyProp}']}}`, {{ method: 'DELETE' }});");
+                T($"      load{child.MethodName}(selectedRow!.{keyProp}!);");
+                T("    } catch (err) {");
+                T("      setError(err instanceof ApiError && err.status === 400 ? 'It cannot be deleted because it is in use!' : 'Problem while deleting!');");
+                T("    }");
+                T("  };");
+            }
         }
         T();
         T("  const showError = (action: string, err: unknown) => {");
         T($"    if (err instanceof ApiError && err.status === 400) {{ setError({(hasName ? "'Name is bad or has special characters!'" : "'Some of the values are not acceptable!'")}); }}");
-        T($"    else if (err instanceof ApiError && err.status === 404) {{ setError('This {Words(baseName).ToLowerInvariant()} no longer exists!'); load(); }}");
+        T($"    else if (err instanceof ApiError && err.status === 404) {{ setError('This {Words(baseName).ToLowerInvariant()} no longer exists!'); load(page); }}");
         T("    else { setError('Problem while ' + action + '!'); }");
         T("  };");
         T();
@@ -397,22 +469,26 @@
         T("    <div className=\"rail\">");
         T($"      <h1>{title.Pluralize()}</h1>");
         T("      <button type=\"button\" onClick={add}>Add New " + title + "</button>");
-        if (hasName)
+        if (canSearch)
         {
             T();
             T("      <div>");
-            T("        <input");
-            T("          type=\"text\"");
-            T("          placeholder=\"Search by Name\"");
-            T("          aria-label=\"Search by Name\"");
-            T("          value={searchText}");
-            T("          onChange={(event) => setSearchText(event.target.value)}");
-            T("        />");
+            foreach (var f in searchFields)
+            {
+                T("        <input");
+                T("          type=\"text\"");
+                T($"          placeholder=\"Search by {f.Label}\"");
+                T($"          aria-label=\"Search by {f.Label}\"");
+                T($"          value={{filters.{f.ParamName}}}");
+                T($"          onChange={{(event) => setFilters({{ ...filters, {f.ParamName}: event.target.value }})}}");
+                T("        />");
+            }
             T("        <button type=\"button\" onClick={search}>Search</button>");
+            T("        <button type=\"button\" onClick={clearSearch}>Clear</button>");
             T("      </div>");
         }
         T();
-        T("      {error && <p>{error}</p>}");
+        T("      {error && !selectedRow && <p>{error}</p>}"); // while the dialog is open the error shows inside it
         T();
         T("      <table>");
         T("        <thead>");
@@ -448,11 +524,33 @@
         T("        </tbody>");
         T("      </table>");
         T();
+        T("      <PaginationBar");
+        T("        page={page}");
+        T("        totalPages={totalPages}");
+        T("        onPrevious={() => load(page - 1)}");
+        T("        onNext={() => load(page + 1)}");
+        T("      />");
+        T();
+        // The add/edit form is a modal <dialog> (native, no library): it opens over the page, wherever the grid is scrolled to, and Escape cancels it.
         T("      {selectedRow && (");
-        T("        <div>");
+        T("        <dialog");
+        T("          ref={(el) => { if (el && !el.open) el.showModal(); }}");
+        T("          onCancel={(event) => { event.preventDefault(); cancel(); }}");
+        T("        >");
+        T("          {error && <p role=\"alert\">{error}</p>}");
         T($"          <h2>{{selectedRow.{keyProp} ? 'Edit' : 'Add'}} {title}</h2>");
         T("          <form onSubmit={handleSubmit}>");
-        foreach (var c in shown)
+        if (tabbed)
+        {
+            T("            <div role=\"tablist\">");
+            for (int i = 0; i < formPages.Count; i++)
+                T($"              <button type=\"button\" role=\"tab\" aria-selected={{tab === {i}}} style={{{{ fontWeight: tab === {i} ? 'bold' : 'normal' }}}} onClick={{() => setTab({i})}}>{formPages[i].Header.Replace("&", "&amp;")}</button>");
+            T("            </div>");
+        }
+        for (int pageIndex = 0; pageIndex < formPages.Count; pageIndex++)
+        {
+        if (tabbed) T($"            <div role=\"tabpanel\" data-tab=\"{pageIndex}\" hidden={{tab !== {pageIndex}}}>");
+        foreach (var c in formPages[pageIndex].Columns)
         {
             string id = Id(c);
             string prop = Camel(c.Name);
@@ -487,14 +585,21 @@
             }
             else if (IsDate(c))
             {
+                // A nullable date has a Clear button beside it (the date box's own clear is easy to miss, and WinUI3's calendar has a Clear button too).
+                if (c.IsNullable) T("            <div style={{ display: 'flex', gap: 8 }}>");
                 T($"            <input");
                 T($"              id=\"{id}\"");
                 T("              type=\"date\"");
                 T($"              aria-label=\"{LabelOf(c)}\"");
-                T($"              value={{selectedRow.{prop}}}");
-                T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
+                T(c.IsNullable ? $"              value={{selectedRow.{prop} ?? ''}}" : $"              value={{selectedRow.{prop}}}");
+                T(c.IsNullable ? $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value || undefined }})}}" : $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
                 if (!c.IsNullable) T("              required");
                 T("            />");
+                if (c.IsNullable)
+                {
+                    T($"            <button type=\"button\" onClick={{() => setSelectedRow({{ ...selectedRow, {prop}: undefined }})}}>Clear</button>");
+                    T("            </div>");
+                }
             }
             else if (IsNumber(c))
             {
@@ -511,6 +616,12 @@
                 {
                     T($"              min=\"{range.Min}\"");
                     T($"              max=\"{range.Max}\"");
+                }
+                else if (IsPlainDecimal(c))
+                {
+                    var (decMin, decMax) = NumericClassifier.DecimalRange(c);
+                    T($"              min=\"{Inv(decMin)}\"");
+                    T($"              max=\"{Inv(decMax)}\"");
                 }
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: Number(event.target.value) }})}}");
@@ -544,8 +655,10 @@
                 T("            />");
             }
         }
+        if (tabbed) T("            </div>");
+        }
         T();
-        T("            <button type=\"submit\">Submit</button>");
+        T(tabbed ? "            <button type=\"submit\" onClick={revealInvalidTab}>Submit</button>" : "            <button type=\"submit\">Submit</button>");
         T("            <button type=\"button\" onClick={cancel}>Cancel</button>");
         T("          </form>");
         T();
@@ -557,13 +670,21 @@
             T($"              <h3>{child.Title}</h3>");
             T("              <table>");
             T("                <thead>");
-            T($"                  <tr>{{{child.Var}Columns.map((col) => <th key={{col}}>{{caption(col)}}</th>)}}</tr>");
+            T($"                  <tr>{{{child.Var}Columns.map((col) => <th key={{col}}>{{caption(col)}}</th>)}}{(child.KeyProp is not null ? "<th>Actions</th>" : "")}</tr>");
             T("                </thead>");
             T("                <tbody>");
             T($"                  {{{child.Var}Rows.map((row, index) => (");
-            T("                    <tr key={index}>");
+            // Clicking a row, or its Edit button, opens that row on its own page.
+            T(child.KeyProp is not null ? $"                    <tr key={{index}} onClick={{() => edit{child.MethodName}(row)}} style={{{{ cursor: 'pointer' }}}}>" : "                    <tr key={index}>");
             // A date-and-time string from the API (2026-09-27T00:00:00) shows as its date only.
             T("                      {" + child.Var + "Columns.map((col) => <td key={col}>{formatChildCell(row[col], col)}</td>)}");
+            if (child.KeyProp is not null)
+            {
+                T("                      <td>");
+                T($"                        <button type=\"button\" onClick={{(event) => {{ event.stopPropagation(); edit{child.MethodName}(row); }}}}>Edit</button>");
+                T($"                        <button type=\"button\" onClick={{(event) => {{ event.stopPropagation(); void delete{child.MethodName}(row); }}}}>Delete</button>");
+                T("                      </td>");
+            }
             T("                    </tr>");
             T("                  ))}");
             T("                </tbody>");
@@ -573,7 +694,7 @@
             T($"            <p><em>Save this {title} first to see its {child.Title} rows.</em></p>");
             T("          )}");
         }
-        T("        </div>");
+        T("        </dialog>");
         T("      )}");
         T("    </div>");
         T("  );");
@@ -583,6 +704,7 @@
         var test = new StringBuilder();
         void S(string s = "") => test.Append(s).Append('\n');
         S("import { render, screen } from '@testing-library/react';");
+        S("import { MemoryRouter } from 'react-router-dom';");
         S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
         S($"import {{ {baseName}DetailMasterPage }} from '../{baseName}DetailMasterPage';");
         S($"import {{ {variable}Api }} from '../../{apiFolder}/{stem}Api';");
@@ -591,7 +713,7 @@
         S();
         S($"describe('{baseName}DetailMasterPage', () => {{");
         S("  beforeEach(() => {");
-        S($"    vi.spyOn({variable}Api, 'getAll').mockResolvedValue([]);");
+        S($"    vi.spyOn({variable}Api, 'getPage').mockResolvedValue({{ items: [], page: 1, pageSize: {pageSize}, totalCount: 0, totalPages: 0 }});");
         foreach (var p in parents.Where(p => !p.Self))
             S($"    vi.spyOn({p.ApiVar}, 'getAll').mockResolvedValue([]);");
         S("  });");
@@ -601,7 +723,7 @@
         S("  });");
         S();
         S($"  it('renders the {title} heading', async () => {{");
-        S($"    render(<{baseName}DetailMasterPage />);");
+        S($"    render(<MemoryRouter><{baseName}DetailMasterPage /></MemoryRouter>);");
         S($"    expect(await screen.findByText('{title.Pluralize()}')).toBeInTheDocument();");
         S("  });");
         S("});");

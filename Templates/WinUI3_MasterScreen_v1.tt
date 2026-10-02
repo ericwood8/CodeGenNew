@@ -180,10 +180,9 @@
 
         var shown = Model.Columns
             .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && IsEditableType(c))
-            // A long text column (varchar(max), a Notes column, ...) goes last so a long value cannot push the other columns off screen.
-            .OrderBy(c => c.IsLongTextColumn ? 1 : 0)
-            .ThenBy(c => c.OrdinalPosition)
-            .ToList();
+            .OrderBy(c => c.OrdinalPosition)
+            // The grid shows at most 20 columns and never a long text column (a Notes column, varchar(max), ...): see GridColumns.
+            .ForGrid();
 
         ForeignKeyModel LookupOf(ColumnModel c) =>
             c.SqlType == SqlDbType.Int
@@ -399,7 +398,7 @@ public sealed partial class <#= table #>ListPage : Page
     private async void OnAddClick(object sender, RoutedEventArgs e)
     {
         var dialog = new <#= editDialog #>(_context) { XamlRoot = XamlRoot };
-        await dialog.ShowAsync();
+        await dialog.ShowAndWaitAsync();
         await ViewModel.LoadAsync();
     }
 
@@ -416,7 +415,7 @@ public sealed partial class <#= table #>ListPage : Page
             return;
 
         var dialog = new <#= editDialog #>(_context, entity) { XamlRoot = XamlRoot };
-        await dialog.ShowAsync();
+        await dialog.ShowAndWaitAsync();
         await ViewModel.LoadAsync();
     }
 

@@ -93,6 +93,11 @@
     // (a NumberFormatter cannot be declared in XAML; CurrencyNumberFormatter.cs, written alongside, formats as currency and also reads a plain number), and converted back to a decimal rounded to the column's scale on save.
     bool UsesCurrencyBox(ColumnModel c) => c.IsCurrencyColumn && !c.IsIntegerColumn;
     int CurrencyDigits(ColumnModel c) => NumericClassifier.CurrencyDigits(c);
+    // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is edited in a number box too: its value is a double
+    // (NaN = blank), limited to what the column can hold (NumericClassifier.DecimalRange), and converted back on save.
+    bool UsesDecimalBox(ColumnModel c) => !c.IsIntegerColumn && !c.IsCurrencyColumn && c.SqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real;
+    int DecimalPlaces(ColumnModel c) => Math.Clamp(c.Scale ?? 2, 0, 8);
+    string Inv(double d) => d.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture);
     bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
     bool IsEditableType(ColumnModel c) => IsDate(c) || IsNumber(c) || IsGuid(c) || IsBit(c) || IsText(c);
     int Chars(ColumnModel c) => c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
@@ -142,6 +147,10 @@
             .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && IsEditableType(c))
             .OrderBy(c => c.OrdinalPosition)
             .ToList();
+
+        // A form with more than one kind of field is tabbed (Main / Billing & Shipping / Notes): see FormPages. A narrow table keeps its single column.
+        var pages = FormPages.For(shown).Select(p => (Header: p.Header.Replace("&", "&amp;"), Columns: p.Columns)).ToList();
+        bool tabbed = pages.Count > 1;
 
         ForeignKeyModel LookupOf(ColumnModel c) =>
             c.SqlType == SqlDbType.Int
@@ -249,12 +258,30 @@
         <x:Double x:Key="ContentDialogMaxWidth">1400</x:Double>
     </ContentDialog.Resources>
 
-    <ScrollViewer MinWidth="560" MaxHeight="680" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Auto">
-        <StackPanel Spacing="12">
-            <InfoBar Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
-                     Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" />
+    <!-- The error bar sits ABOVE the scrolling area: inside it, a validation message is out of sight whenever the person has scrolled down. -->
+    <StackPanel Spacing="12">
+        <InfoBar Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
+                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" />
+    <ScrollViewer MinWidth="560" MaxHeight="620" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Auto">
+        <!-- The bottom padding keeps the last row of a child grid from sitting on the very edge of the scrolling area, where it was cut off even when scrolled to the end. -->
+        <StackPanel Spacing="12" Padding="0,0,0,24">
 <#
-        foreach (var c in shown)
+        if (tabbed)
+        {
+#>
+            <TabView IsAddTabButtonVisible="False" TabWidthMode="SizeToContent" CanReorderTabs="False" CanDragTabs="False" SelectedIndex="0">
+<#
+        }
+        foreach (var page in pages)
+        {
+            if (tabbed)
+            {
+#>
+                <TabViewItem Header="<#= page.Header #>" IsClosable="False">
+                    <StackPanel Spacing="12" Padding="0,8,0,8">
+<#
+            }
+        foreach (var c in page.Columns)
         {
             var lookup = LookupOf(c);
             string prop = c.Name;
@@ -273,6 +300,17 @@
 #>
             <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
                        ValidationMode="InvalidInputOverwritten" Width="180" HorizontalAlignment="Left" />
+<#
+            }
+            else if (UsesDecimalBox(c))
+            {
+                var (decMin, decMax) = NumericClassifier.DecimalRange(c);
+                int decDigits = Inv(decMax).Length + (c.SqlType == SqlDbType.Decimal ? DecimalPlaces(c) : 4);
+                string decWidth = $" Width=\"{Math.Max(Math.Min(decDigits, 12) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
+#>
+            <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+                       Minimum="<#= Inv(decMin) #>" Maximum="<#= Inv(decMax) #>" SmallChange="1" LargeChange="10"
+                       SpinButtonPlacementMode="Inline" ValidationMode="InvalidInputOverwritten"<#= decWidth #> />
 <#
             }
             else if (UsesNumberBox(c))
@@ -328,6 +366,20 @@
 <#
             }
         }
+            if (tabbed)
+            {
+#>
+                    </StackPanel>
+                </TabViewItem>
+<#
+            }
+        }
+        if (tabbed)
+        {
+#>
+            </TabView>
+<#
+        }
 #>
 
             <TextBlock Text="Save this <#= title #> first to add or see child rows below." FontStyle="Italic"
@@ -364,9 +416,17 @@
                     </Border>
                     <ListView Grid.Row="1" ItemsSource="{x:Bind ViewModel.<#= child.Var #>Rows}"
                               IsItemClickEnabled="True" ItemClick="On<#= child.Table #>ItemClick" MaxHeight="200" Padding="0">
+                        <!-- A ListView sizes itself from the rows' content, but every row container has a 40 pixel minimum height; with shorter rows the grid came out
+                             a fraction of a row too short and its last row was cut off. No minimum makes the rows and the grid agree. -->
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                                <Setter Property="MinHeight" Value="0" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <Border BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="0,0,0,1" Padding="8,4">
+                                  <StackPanel Orientation="Horizontal" Spacing="8">
                                     <ItemsControl ItemsSource="{Binding Cells}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
@@ -381,6 +441,12 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
+                                    <!-- Row-level Edit and Delete, like the master screens' grids. Delete asks to be clicked twice (a second ContentDialog cannot open over this one). -->
+                                    <StackPanel Orientation="Horizontal" Spacing="4" Width="120">
+                                        <Button Content="Edit" Padding="8,2" Click="On<#= child.Table #>EditClick" />
+                                        <Button Content="Delete" Padding="8,2" Click="On<#= child.Table #>DeleteClick" LostFocus="On<#= child.Table #>DeleteLostFocus" />
+                                    </StackPanel>
+                                  </StackPanel>
                                 </Border>
                             </DataTemplate>
                         </ListView.ItemTemplate>
@@ -392,6 +458,7 @@
 #>
         </StackPanel>
     </ScrollViewer>
+    </StackPanel>
 </ContentDialog>
 @@@FILE <#= viewsFolder #>/<#= table #>DetailMasterDialog.xaml.cs@@@
 using <#= viewModelNamespace #>;
@@ -413,6 +480,8 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
 {
     private readonly <#= contextType #> _context; // for the child dialogs a clicked row opens
     public <#= table #>DetailMasterViewModel ViewModel { get; }
+    private System.Threading.Tasks.Task _loading = System.Threading.Tasks.Task.CompletedTask;
+    private System.Threading.Tasks.TaskCompletionSource? _drillDown; // set while a child dialog opened from this one is showing
 
     /// <param name="editing"> The row being edited, or null to add a new one (child grids only load for an existing row). </param>
     public <#= table #>DetailMasterDialog(<#= contextType #> context, <#= table #>? editing = null)
@@ -428,7 +497,31 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
 <#
         }
 #>
-        Loaded += async (_, _) => await ViewModel.LoadAsync();
+<#
+        foreach (var c in shown.Where(c => UsesDecimalBox(c) && c.SqlType == SqlDbType.Decimal))
+        {
+#>
+        <#= c.Name #>Box.NumberFormatter = new Windows.Globalization.NumberFormatting.DecimalFormatter
+        {
+            IntegerDigits = 1, FractionDigits = <#= DecimalPlaces(c) #>, IsGrouped = false,
+            NumberRounder = new Windows.Globalization.NumberFormatting.IncrementNumberRounder { Increment = <#= Inv(Math.Pow(10, -DecimalPlaces(c))) #>, RoundingAlgorithm = Windows.Globalization.NumberFormatting.RoundingAlgorithm.RoundHalfUp }
+        };
+<#
+        }
+#>
+        Loaded += (_, _) => _loading = ViewModel.LoadAsync();
+    }
+
+    // ShowAsync() returns the moment the dialog closes (or hides itself to open a child row's dialog), which can be before the dialog's own LoadAsync() has
+    // finished or while a child dialog is still showing and loading. A DbContext is not thread-safe, so a caller that is about to use the same context (reload the
+    // list, open another dialog) calls this instead: it also waits for that load and for any child dialog opened from here.
+    public async System.Threading.Tasks.Task<ContentDialogResult> ShowAndWaitAsync()
+    {
+        var result = await ShowAsync();
+        await _loading;
+        if (_drillDown is not null)
+            await _drillDown.Task;
+        return result;
     }
 
     // Validation failure keeps the dialog open instead of closing it -- see ViewModel.SaveAsync.
@@ -467,12 +560,56 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
     // deep that lets two ContentDialogs call ShowAsync() at once and crashes the process natively.
     private async void On<#= child.Table #>ItemClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is not <#= table #>ChildGridRow { Entity: <#= child.Table #> entity })
-            return;
+        if (e.ClickedItem is <#= table #>ChildGridRow { Entity: <#= child.Table #> entity })
+            await Open<#= child.Table #>Async(entity);
+    }
 
+    private async void On<#= child.Table #>EditClick(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is <#= table #>ChildGridRow { Entity: <#= child.Table #> entity })
+            await Open<#= child.Table #>Async(entity);
+    }
+
+    // The first click on Delete only asks ("Confirm?"); the second deletes the row and reloads the grid. Losing focus puts the label back.
+    private async void On<#= child.Table #>DeleteClick(object sender, RoutedEventArgs e)
+    {
+        var button = (Button)sender;
+        if (button.DataContext is not <#= table #>ChildGridRow { Entity: <#= child.Table #> entity })
+            return;
+        if (button.Content as string != "Confirm?")
+        {
+            button.Content = "Confirm?";
+            return;
+        }
+        try
+        {
+            _context.Remove(entity);
+            await _context.SaveChangesAsync();
+            await ViewModel.LoadAsync();
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        {
+            _context.Entry(entity).State = Microsoft.EntityFrameworkCore.EntityState.Unchanged;
+            ViewModel.ErrorMessage = "It cannot be deleted because it is in use!";
+            button.Content = "Delete";
+        }
+    }
+
+    private void On<#= child.Table #>DeleteLostFocus(object sender, RoutedEventArgs e) => ((Button)sender).Content = "Delete";
+
+    private async System.Threading.Tasks.Task Open<#= child.Table #>Async(<#= child.Table #> entity)
+    {
+        _drillDown = new System.Threading.Tasks.TaskCompletionSource();
         Hide();
         var childDialog = new <#= childDialog #>(_context, entity) { XamlRoot = XamlRoot };
-        await childDialog.ShowAsync();
+        try
+        {
+            await childDialog.ShowAndWaitAsync();
+        }
+        finally
+        {
+            _drillDown.SetResult();
+        }
     }
 <#
         }
@@ -565,7 +702,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         {
             var lookup = LookupOf(c);
             string prop = c.Name;
-            string fieldType = lookup is not null ? "int?" : IsBit(c) ? "bool?" : (UsesNumberBox(c) || UsesCurrencyBox(c)) ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
+            string fieldType = lookup is not null ? "int?" : IsBit(c) ? "bool?" : (UsesNumberBox(c) || UsesCurrencyBox(c) || UsesDecimalBox(c)) ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
 #>
     [ObservableProperty]
     private <#= fieldType #> _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #><#= fieldType == "double" ? " = double.NaN" : "" #>;
@@ -601,6 +738,12 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
                 // until the person types in it (found live clicking through a real running app, 2026-09-28).
             }
             else if (UsesCurrencyBox(c))
+            {
+#>
+            <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? (double)editing.{prop}.Value : double.NaN" : $"(double)editing.{prop}" #>;
+<#
+            }
+            else if (UsesDecimalBox(c))
             {
 #>
             <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? (double)editing.{prop}.Value : double.NaN" : $"(double)editing.{prop}" #>;
@@ -699,9 +842,11 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         var entityType = _context.Model.FindEntityType(typeof(<#= child.Table #>))!;
         var propertyNames = entityType.GetProperties().Select(p => p.Name)
             .Where(name => !HideFrom<#= child.Table #>Grid.Contains(name, StringComparer.OrdinalIgnoreCase))
-            .OrderBy(name => LongTextIn<#= child.Table #>Grid.Contains(name, StringComparer.OrdinalIgnoreCase) ? 1 : 0).ToList(); // long text last
+            .Where(name => !LongTextIn<#= child.Table #>Grid.Contains(name, StringComparer.OrdinalIgnoreCase)) // long text never shows in a grid
+            .Take(<#= GridColumns.MaxColumns #>).ToList();
         foreach (string name in propertyNames)
             <#= child.Var #>ColumnHeaders.Add(HeaderLabelFor<#= child.Table #>Grid.TryGetValue(name, out string? label) ? label : SpacedHeader(name));
+        <#= child.Var #>ColumnHeaders.Add("Actions");
 
         var rows = await _context.Set<<#= child.Table #>>()
             .Where(c => EF.Property<int>(c, "<#= child.FkColumn #>") == _editing!.<#= child.ParentKeyColumn #>)
@@ -827,6 +972,32 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 #>
         }
         else { entity.<#= prop #> = Math.Round((decimal)<#= prop #>, <#= CurrencyDigits(c) #>); }
+<#
+            }
+            else if (UsesDecimalBox(c))
+            {
+                var (decMin, decMax) = NumericClassifier.DecimalRange(c);
+                string decValue = c.SqlType == SqlDbType.Decimal ? $"Math.Round((decimal){prop}, {DecimalPlaces(c)})" : c.SqlType == SqlDbType.Real ? $"(float){prop}" : prop;
+#>
+        if (double.IsNaN(<#= prop #>))
+        {
+<#
+                if (!c.IsNullable)
+                {
+#>
+            ErrorMessage = "<#= label #> is required."; return false;
+<#
+                }
+                else
+                {
+#>
+            entity.<#= prop #> = null;
+<#
+                }
+#>
+        }
+        else if (<#= prop #> < <#= Inv(decMin) #> || <#= prop #> > <#= Inv(decMax) #>) { ErrorMessage = "<#= label #> must be between <#= Inv(decMin) #> and <#= Inv(decMax) #>."; return false; }
+        else { entity.<#= prop #> = <#= decValue #>; }
 <#
             }
             else if (UsesNumberBox(c))

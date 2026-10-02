@@ -98,7 +98,7 @@
     H("</div>");
 
     // ================= ts
-    T("import { Component, Input, OnInit } from '@angular/core';");
+    T("import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';");
     T("import { HttpClient } from '@angular/common/http';");
     T("import { CommonModule } from '@angular/common';");
     T("import { FormsModule } from '@angular/forms';");
@@ -113,6 +113,7 @@
     T("@Component({");
     T($"  selector: 'app-{stem}-junction',");
     T("  standalone: true,");
+    T("  changeDetection: ChangeDetectionStrategy.Default, // plain properties change inside subscribe callbacks: keep eager checking when OnPush is the default (Angular 22)");
     T("  imports: [ CommonModule, FormsModule ],");
     T($"  templateUrl: './{stem}-junction.component.html',");
     T($"  styleUrl: './{stem}-junction.component.css'");

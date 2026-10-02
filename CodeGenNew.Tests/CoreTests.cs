@@ -132,6 +132,17 @@ public class DisplayColumnSelectorTests
         Assert.AreEqual("Reason", withText.SelectDisplayColumns([]).Single().Name);
         Assert.IsEmpty(withoutText.SelectDisplayColumns([]));
     }
+
+    [TestMethod]
+    public void A_long_note_or_optional_column_is_never_the_fallback_display_column()
+    {
+        var onlyNote = new List<ColumnModel> { Sample.Column("Id", SqlDbType.Int, primaryKey: true), Sample.Column("SummaryNote", SqlDbType.VarChar, characters: 500) };
+
+        var onlyOptional = new List<ColumnModel> { Sample.Column("Id", SqlDbType.Int, primaryKey: true), Sample.Column("ReviewedBy", SqlDbType.VarChar, characters: 50, nullable: true) };
+
+        Assert.IsEmpty(onlyNote.SelectDisplayColumns([]));
+        Assert.IsEmpty(onlyOptional.SelectDisplayColumns([]));
+    }
 }
 
 [TestClass]

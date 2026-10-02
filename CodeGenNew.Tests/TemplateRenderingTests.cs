@@ -1543,7 +1543,7 @@ public class TemplateRenderingTests
         Expect.Contains(ts, "this.pageIndex = event.pageIndex;");
         Expect.DoesNotContain(ts, "getAll()");
         Expect.Contains(spec, "import { provideNoopAnimations } from '@angular/platform-browser/animations';");
-        Expect.Contains(spec, "providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations()]");
+        Expect.Contains(spec, "providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations(), provideRouter([])]");
     }
 
     [TestMethod]
@@ -1723,7 +1723,8 @@ public class TemplateRenderingTests
         Expect.Contains(tsx, "<h1>Holidays</h1>");
         Expect.Contains(tsx, "<button type=\"button\" onClick={add}>Add New Holiday</button>");
         Expect.Contains(tsx, "placeholder=\"Search by Name\""); // Holiday has a text Name column
-        Expect.Contains(tsx, "{error && <p>{error}</p>}");
+        Expect.Contains(tsx, "{error && !selectedRow && <p>{error}</p>}");   // the dialog shows the error itself while it is open
+        Expect.Contains(tsx, "{error && <p role=\"alert\">{error}</p>}");
     }
 
     [TestMethod]

@@ -92,6 +92,11 @@
     // (a NumberFormatter cannot be declared in XAML; CurrencyNumberFormatter.cs, written alongside, formats as currency and also reads a plain number), and converted back to a decimal rounded to the column's scale on save.
     bool UsesCurrencyBox(ColumnModel c) => c.IsCurrencyColumn && !c.IsIntegerColumn;
     int CurrencyDigits(ColumnModel c) => NumericClassifier.CurrencyDigits(c);
+    // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is edited in a number box too: its value is a double
+    // (NaN = blank), limited to what the column can hold (NumericClassifier.DecimalRange), and converted back on save.
+    bool UsesDecimalBox(ColumnModel c) => !c.IsIntegerColumn && !c.IsCurrencyColumn && c.SqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real;
+    int DecimalPlaces(ColumnModel c) => Math.Clamp(c.Scale ?? 2, 0, 8);
+    string Inv(double d) => d.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture);
     bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
     bool IsEditableType(ColumnModel c) => IsDate(c) || IsNumber(c) || IsGuid(c) || IsBit(c) || IsText(c);
     int Chars(ColumnModel c) => c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
@@ -139,6 +144,10 @@
             .OrderBy(c => c.OrdinalPosition)
             .ToList();
 
+        // A form with more than one kind of field is tabbed (Main / Billing & Shipping / Notes): see FormPages. A narrow table keeps its single column.
+        var pages = FormPages.For(shown).Select(p => (Header: p.Header.Replace("&", "&amp;"), Columns: p.Columns)).ToList();
+        bool tabbed = pages.Count > 1;
+
         // Only an int-typed foreign key becomes a drop-down: the ViewModel binds every lookup field as int?
         // (ComboBox.SelectedValue needs a concrete CLR type, and this project's foreign keys -- like CS_Repo's
         // GenericRepo<T> itself -- are assumed to be plain ints, never a Guid or natural-text key).
@@ -182,12 +191,38 @@
         <x:Double x:Key="ContentDialogMaxWidth">1400</x:Double>
     </ContentDialog.Resources>
 
+<#
+        if (tabbed)
+        {
+#>
+    <StackPanel MinWidth="420" Spacing="12">
+        <InfoBar Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
+                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" />
+        <TabView IsAddTabButtonVisible="False" TabWidthMode="SizeToContent" CanReorderTabs="False" CanDragTabs="False" SelectedIndex="0">
+<#
+        }
+        else
+        {
+#>
+    <!-- The error bar sits ABOVE the scrolling area: inside it, a validation message is out of sight whenever the person has scrolled down. -->
+    <StackPanel Spacing="12">
+        <InfoBar Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
+                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" />
     <ScrollViewer MinWidth="420" MaxHeight="560">
         <StackPanel Spacing="12">
-            <InfoBar Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
-                     Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" />
 <#
-        foreach (var c in shown)
+        }
+        foreach (var page in pages)
+        {
+            if (tabbed)
+            {
+#>
+            <TabViewItem Header="<#= page.Header #>" IsClosable="False">
+                <ScrollViewer Height="460">
+                    <StackPanel Spacing="12" Padding="0,8,12,8">
+<#
+            }
+        foreach (var c in page.Columns)
         {
             var lookup = LookupOf(c);
             string prop = c.Name;
@@ -206,6 +241,17 @@
 #>
             <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
                        ValidationMode="InvalidInputOverwritten" Width="180" HorizontalAlignment="Left" />
+<#
+            }
+            else if (UsesDecimalBox(c))
+            {
+                var (decMin, decMax) = NumericClassifier.DecimalRange(c);
+                int decDigits = Inv(decMax).Length + (c.SqlType == SqlDbType.Decimal ? DecimalPlaces(c) : 4);
+                string decWidth = $" Width=\"{Math.Max(Math.Min(decDigits, 12) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
+#>
+            <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+                       Minimum="<#= Inv(decMin) #>" Maximum="<#= Inv(decMax) #>" SmallChange="1" LargeChange="10"
+                       SpinButtonPlacementMode="Inline" ValidationMode="InvalidInputOverwritten"<#= decWidth #> />
 <#
             }
             else if (UsesNumberBox(c))
@@ -261,9 +307,31 @@
 <#
             }
         }
+            if (tabbed)
+            {
+#>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabViewItem>
+<#
+            }
+        }
+        if (tabbed)
+        {
+#>
+        </TabView>
+    </StackPanel>
+<#
+        }
+        else
+        {
 #>
         </StackPanel>
     </ScrollViewer>
+    </StackPanel>
+<#
+        }
+#>
 </ContentDialog>
 @@@FILE <#= viewsFolder #>/<#= table #>DetailDialog.xaml.cs@@@
 using <#= viewModelNamespace #>;
@@ -286,6 +354,7 @@ namespace <#= viewNamespace #>;
 public sealed partial class <#= table #>DetailDialog : ContentDialog
 {
     public <#= table #>DetailViewModel ViewModel { get; }
+    private System.Threading.Tasks.Task _loading = System.Threading.Tasks.Task.CompletedTask;
 
     /// <param name="editing"> The row being edited, or null to add a new one. </param>
     public <#= table #>DetailDialog(<#= contextType #> context, <#= table #>? editing = null)
@@ -300,7 +369,28 @@ public sealed partial class <#= table #>DetailDialog : ContentDialog
 <#
         }
 #>
-        Loaded += async (_, _) => await ViewModel.LoadLookupsAsync();
+<#
+        foreach (var c in shown.Where(c => UsesDecimalBox(c) && c.SqlType == SqlDbType.Decimal))
+        {
+#>
+        <#= c.Name #>Box.NumberFormatter = new Windows.Globalization.NumberFormatting.DecimalFormatter
+        {
+            IntegerDigits = 1, FractionDigits = <#= DecimalPlaces(c) #>, IsGrouped = false,
+            NumberRounder = new Windows.Globalization.NumberFormatting.IncrementNumberRounder { Increment = <#= Inv(Math.Pow(10, -DecimalPlaces(c))) #>, RoundingAlgorithm = Windows.Globalization.NumberFormatting.RoundingAlgorithm.RoundHalfUp }
+        };
+<#
+        }
+#>
+        Loaded += (_, _) => _loading = ViewModel.LoadLookupsAsync();
+    }
+
+    // ShowAsync() returns the moment the dialog closes, which can be before the dialog's own LoadLookupsAsync() has finished. A DbContext is not thread-safe, so a
+    // caller that is about to use the same context (reload the list, open another dialog) calls this instead and waits for that load first.
+    public async System.Threading.Tasks.Task<ContentDialogResult> ShowAndWaitAsync()
+    {
+        var result = await ShowAsync();
+        await _loading;
+        return result;
     }
 
     // Validation failure keeps the dialog open instead of closing it -- see ViewModel.SaveAsync.
@@ -391,7 +481,7 @@ public partial class <#= table #>DetailViewModel : ObservableObject
         {
             var lookup = LookupOf(c);
             string prop = c.Name;
-            string fieldType = lookup is not null ? "int?" : IsBit(c) ? "bool?" : (UsesNumberBox(c) || UsesCurrencyBox(c)) ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
+            string fieldType = lookup is not null ? "int?" : IsBit(c) ? "bool?" : (UsesNumberBox(c) || UsesCurrencyBox(c) || UsesDecimalBox(c)) ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
 #>
     [ObservableProperty]
     private <#= fieldType #> _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #><#= fieldType == "double" ? " = double.NaN" : "" #>;
@@ -427,6 +517,12 @@ public partial class <#= table #>DetailViewModel : ObservableObject
                 // until the person types in it (found live clicking through a real running app, 2026-09-28).
             }
             else if (UsesCurrencyBox(c))
+            {
+#>
+            <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? (double)editing.{prop}.Value : double.NaN" : $"(double)editing.{prop}" #>;
+<#
+            }
+            else if (UsesDecimalBox(c))
             {
 #>
             <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? (double)editing.{prop}.Value : double.NaN" : $"(double)editing.{prop}" #>;
@@ -559,6 +655,32 @@ public partial class <#= table #>DetailViewModel : ObservableObject
 #>
         }
         else { entity.<#= prop #> = Math.Round((decimal)<#= prop #>, <#= CurrencyDigits(c) #>); }
+<#
+            }
+            else if (UsesDecimalBox(c))
+            {
+                var (decMin, decMax) = NumericClassifier.DecimalRange(c);
+                string decValue = c.SqlType == SqlDbType.Decimal ? $"Math.Round((decimal){prop}, {DecimalPlaces(c)})" : c.SqlType == SqlDbType.Real ? $"(float){prop}" : prop;
+#>
+        if (double.IsNaN(<#= prop #>))
+        {
+<#
+                if (!c.IsNullable)
+                {
+#>
+            ErrorMessage = "<#= label #> is required."; return false;
+<#
+                }
+                else
+                {
+#>
+            entity.<#= prop #> = null;
+<#
+                }
+#>
+        }
+        else if (<#= prop #> < <#= Inv(decMin) #> || <#= prop #> > <#= Inv(decMax) #>) { ErrorMessage = "<#= label #> must be between <#= Inv(decMin) #> and <#= Inv(decMax) #>."; return false; }
+        else { entity.<#= prop #> = <#= decValue #>; }
 <#
             }
             else if (UsesNumberBox(c))

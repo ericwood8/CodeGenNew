@@ -154,6 +154,9 @@
     bool IsDate(ColumnModel c) => c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
     bool IsNumber(ColumnModel c) => c.SqlType is SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt
         or SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real;
+    // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is limited to what the column can hold (a percentage to 0-100).
+    bool IsPlainDecimal(ColumnModel c) => !c.IsIntegerColumn && !c.IsCurrencyColumn && c.SqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real;
+    string Inv(double d) => d.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture);
     bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
     int Chars(ColumnModel c) => c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
     bool IsMultiline(ColumnModel c) => IsText(c) && Chars(c) >= 100;
@@ -245,8 +248,11 @@
         string LabelOf(ColumnModel c) => c.SqlType == SqlDbType.Bit ? Label(c.Name) + "?" : Label(c.Name);
         var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
         if (gridColumns.Count == 0) gridColumns = shown.ToList();
-        // A long text column (a Notes column, ...) is listed last so a long value cannot push the other columns off screen.
-        gridColumns = gridColumns.OrderBy(c => c.IsLongTextColumn ? 1 : 0).ToList();
+        // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
+        gridColumns = gridColumns.ForGrid();
+        // The form is tabbed (Main / Billing & Shipping / Notes) when it has more than one kind of field: see FormPages.
+        var formPages = FormPages.For(shown);
+        bool tabbed = formPages.Count > 1;
 
         var ts = new StringBuilder();
         void T(string s = "") => ts.Append(s).Append('\n');
@@ -254,6 +260,7 @@
         // ================= imports
         T("import { useEffect, useState } from 'react';");
         T("import type { FormEvent } from 'react';");
+        T("import { useNavigate, useSearchParams } from 'react-router-dom';");
         T($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
         T($"import {{ {variable}Api }} from '../{apiFolder}/{stem}Api';");
         T($"import {{ ApiError }} from '../{apiFolder}/client';");
@@ -271,11 +278,24 @@
         foreach (var p in parents.Where(p => !p.Self))
             T($"  const [{p.List}, {p.SetList}] = useState<{p.Type}[]>([]);");
         T($"  const [selectedRow, setSelectedRow] = useState<{baseName} | null>(null);");
+        if (tabbed)
+        {
+            T("  const [tab, setTab] = useState(0); // the form tab showing");
+            T("  // A required field on a tab that is not showing blocks the submit without a visible message: show the tab that holds the first invalid field.");
+            T("  const revealInvalidTab = (event: { currentTarget: HTMLButtonElement }) => {");
+            T("    const panel = event.currentTarget.form?.querySelector(':invalid')?.closest('[role=\"tabpanel\"]');");
+            T("    if (panel) setTab(Number(panel.getAttribute('data-tab')));");
+            T("  };");
+        }
         string filterInit = string.Join(", ", searchFields.Select(f => $"{f.ParamName}: ''"));
         if (canSearch) T($"  const [filters, setFilters] = useState({{ {filterInit} }});");
         T("  const [page, setPage] = useState(1);");
         T("  const [totalPages, setTotalPages] = useState(1);");
         T("  const [error, setError] = useState<string | null>(null);");
+        T("  // Opened from another page's grid (?edit=<id>&back=<that page>): open this row, and go back to that page when the form is saved or cancelled.");
+        T("  const [searchParams] = useSearchParams();");
+        T("  const navigate = useNavigate();");
+        T("  const backTo = searchParams.get('back');");
         T();
         T($"  const load = (targetPage: number = 1{(canSearch ? ", filterValues: typeof filters = filters" : "")}) => {{");
         T($"    {variable}Api.getPage(targetPage, pageSize{(canSearch ? ", filterValues" : "")}).then((result) => {{");
@@ -289,6 +309,8 @@
         T("    load();");
         foreach (var p in parents.Where(p => !p.Self))
             T($"    {p.ApiVar}.getAll().then({p.SetList}).catch(() => {{}});");
+        T("    const openId = searchParams.get('edit');");
+        T($"    if (openId) {variable}Api.getById({(keyColumn.SqlType == SqlDbType.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Words(baseName).ToLowerInvariant()} no longer exists!'));");
         T("  }, []);");
         T();
         T($"  const submit = async ({variable}: {baseName}): Promise<void> => {{");
@@ -302,6 +324,7 @@
         T("      }");
         T("      setSelectedRow(null);");
         T("      load(page);");
+        T("      if (backTo) navigate(backTo);");
         T("    } catch (err) {");
         T("      showError('saving', err);");
         T("    }");
@@ -341,10 +364,12 @@
             adds.Add($"{Camel(c.Name)}: {value}");
         }
         T("  const add = () => {");
+        if (tabbed) T("    setTab(0);");
         T(adds.Count == 0 ? "    setSelectedRow({});" : $"    setSelectedRow({{ {string.Join(", ", adds)} }});");
         T("  };");
         T();
         T($"  const edit = ({variable}: {baseName}) => {{");
+        if (tabbed) T("    setTab(0);");
         T($"    const row = {{ ...{variable} }};");
         var dateColumns = shown.Where(IsDate).ToList();
         if (dateColumns.Count > 0)
@@ -362,6 +387,7 @@
         T();
         T("  const cancel = () => {");
         T("    setSelectedRow(null);");
+        T("    if (backTo) navigate(backTo);");
         T("  };");
         if (canSearch)
         {
@@ -417,7 +443,7 @@
             T("      </div>");
         }
         T();
-        T("      {error && <p>{error}</p>}");
+        T("      {error && !selectedRow && <p>{error}</p>}"); // while the dialog is open the error shows inside it
         T();
         T("      <table>");
         T("        <thead>");
@@ -460,11 +486,26 @@
         T("        onNext={() => load(page + 1)}");
         T("      />");
         T();
+        // The add/edit form is a modal <dialog> (native, no library): it opens over the page, wherever the grid is scrolled to, and Escape cancels it.
         T("      {selectedRow && (");
-        T("        <div>");
+        T("        <dialog");
+        T("          ref={(el) => { if (el && !el.open) el.showModal(); }}");
+        T("          onCancel={(event) => { event.preventDefault(); cancel(); }}");
+        T("        >");
+        T("          {error && <p role=\"alert\">{error}</p>}");
         T($"          <h2>{{selectedRow.{keyProp} ? 'Edit' : 'Add'}} {title}</h2>");
         T("          <form onSubmit={handleSubmit}>");
-        foreach (var c in shown)
+        if (tabbed)
+        {
+            T("            <div role=\"tablist\">");
+            for (int i = 0; i < formPages.Count; i++)
+                T($"              <button type=\"button\" role=\"tab\" aria-selected={{tab === {i}}} style={{{{ fontWeight: tab === {i} ? 'bold' : 'normal' }}}} onClick={{() => setTab({i})}}>{formPages[i].Header.Replace("&", "&amp;")}</button>");
+            T("            </div>");
+        }
+        for (int pageIndex = 0; pageIndex < formPages.Count; pageIndex++)
+        {
+        if (tabbed) T($"            <div role=\"tabpanel\" data-tab=\"{pageIndex}\" hidden={{tab !== {pageIndex}}}>");
+        foreach (var c in formPages[pageIndex].Columns)
         {
             string id = Id(c);
             string prop = Camel(c.Name);
@@ -499,14 +540,21 @@
             }
             else if (IsDate(c))
             {
+                // A nullable date has a Clear button beside it (the date box's own clear is easy to miss, and WinUI3's calendar has a Clear button too).
+                if (c.IsNullable) T("            <div style={{ display: 'flex', gap: 8 }}>");
                 T($"            <input");
                 T($"              id=\"{id}\"");
                 T("              type=\"date\"");
                 T($"              aria-label=\"{LabelOf(c)}\"");
-                T($"              value={{selectedRow.{prop}}}");
-                T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
+                T(c.IsNullable ? $"              value={{selectedRow.{prop} ?? ''}}" : $"              value={{selectedRow.{prop}}}");
+                T(c.IsNullable ? $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value || undefined }})}}" : $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
                 if (!c.IsNullable) T("              required");
                 T("            />");
+                if (c.IsNullable)
+                {
+                    T($"            <button type=\"button\" onClick={{() => setSelectedRow({{ ...selectedRow, {prop}: undefined }})}}>Clear</button>");
+                    T("            </div>");
+                }
             }
             else if (IsNumber(c))
             {
@@ -523,6 +571,12 @@
                 {
                     T($"              min=\"{range.Min}\"");
                     T($"              max=\"{range.Max}\"");
+                }
+                else if (IsPlainDecimal(c))
+                {
+                    var (decMin, decMax) = NumericClassifier.DecimalRange(c);
+                    T($"              min=\"{Inv(decMin)}\"");
+                    T($"              max=\"{Inv(decMax)}\"");
                 }
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: Number(event.target.value) }})}}");
@@ -556,11 +610,13 @@
                 T("            />");
             }
         }
+        if (tabbed) T("            </div>");
+        }
         T();
-        T("            <button type=\"submit\">Submit</button>");
+        T(tabbed ? "            <button type=\"submit\" onClick={revealInvalidTab}>Submit</button>" : "            <button type=\"submit\">Submit</button>");
         T("            <button type=\"button\" onClick={cancel}>Cancel</button>");
         T("          </form>");
-        T("        </div>");
+        T("        </dialog>");
         T("      )}");
         T("    </div>");
         T("  );");
@@ -570,6 +626,7 @@
         var test = new StringBuilder();
         void S(string s = "") => test.Append(s).Append('\n');
         S("import { render, screen } from '@testing-library/react';");
+        S("import { MemoryRouter } from 'react-router-dom';");
         S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
         S($"import {{ {baseName}Page }} from '../{baseName}Page';");
         S($"import {{ {variable}Api }} from '../../{apiFolder}/{stem}Api';");
@@ -588,7 +645,7 @@
         S("  });");
         S();
         S($"  it('renders the {title} heading', async () => {{");
-        S($"    render(<{baseName}Page />);");
+        S($"    render(<MemoryRouter><{baseName}Page /></MemoryRouter>);");
         S($"    expect(await screen.findByText('{title.Pluralize()}')).toBeInTheDocument();");
         S("  });");
         S("});");

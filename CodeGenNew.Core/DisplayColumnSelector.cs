@@ -7,8 +7,8 @@ public static class DisplayColumnSelector
     /// <summary> Columns whose name matches SpecialLogicColumns.config's DisplayColumn rule (ColumnModel.DisplayRank
     /// set), in table order. Primary-key and foreign-key columns are never display columns: they ARE the IDs a Lookup
     /// returns anyway, and a key column that happens to match a pattern (RegionCode against "*Code") must not hide
-    /// the real description next to it. If nothing matches, falls back to the first ordinary string column so a
-    /// table always contributes something recognizable when it has any text; if it has none, returns empty. </summary>
+    /// the real description next to it. If nothing matches, falls back to the first ordinary, short, required string column (never a
+    /// long note or an optional column: those are often empty, so a drop-down built on them shows blank rows); if there is none, returns empty. </summary>
     /// <param name="foreignKeyColumns"> Names of this table's columns that take part in a foreign key. </param>
     public static List<ColumnModel> SelectDisplayColumns(this IReadOnlyList<ColumnModel> columns, IReadOnlyCollection<string> foreignKeyColumns)
     {
@@ -20,7 +20,7 @@ public static class DisplayColumnSelector
             return chosen;
 
         var fallback = columns.FirstOrDefault(c =>
-            c.IsStringColumn && !IsKey(c) && !c.IsAuditColumn
+            c.IsStringColumn && !IsKey(c) && !c.IsAuditColumn && !c.IsNullable && !c.IsLongTextColumn
             && c.SqlType is not (System.Data.SqlDbType.Text or System.Data.SqlDbType.NText));
         return fallback is null ? [] : [fallback];
     }
