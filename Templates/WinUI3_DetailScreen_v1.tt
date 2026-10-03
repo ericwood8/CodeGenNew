@@ -247,7 +247,7 @@
             {
 #>
             <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
-                       ValidationMode="InvalidInputOverwritten" Width="180" HorizontalAlignment="Left" />
+                       <#= Project.IsNonNegative(table, c.Name) ? "Minimum=\"0\" " : "" #>ValidationMode="InvalidInputOverwritten" Width="180" HorizontalAlignment="Left" />
 <#
             }
             else if (UsesDecimalBox(c))

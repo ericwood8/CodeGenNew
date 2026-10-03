@@ -731,9 +731,9 @@ public partial class <#= table #>ListViewModel : ObservableObject
             }
             else if (c.IsCurrencyColumn && !c.IsIntegerColumn)
             {
-                // currency, in the Windows regional currency format with the column's own number of decimals (the editor uses the project's CurrencyCode)
+                // currency, in the project's CurrencyCode with the column's own number of decimals (the same as the editor)
 #>
-            cells.Add(e.<#= prop #><#= c.IsNullable ? $"?.ToString(\"C{NumericClassifier.CurrencyDigits(c)}\") ?? \"\"" : $".ToString(\"C{NumericClassifier.CurrencyDigits(c)}\")" #>);
+            cells.Add(<#= c.IsNullable ? $"e.{prop} is {{ }} {FieldVar(prop)}Money ? " : "" #>new Windows.Globalization.NumberFormatting.CurrencyFormatter("<#= Project.CurrencyCode #>") { IsGrouped = true, FractionDigits = <#= NumericClassifier.CurrencyDigits(c) #> }.FormatDouble((double)<#= c.IsNullable ? FieldVar(prop) + "Money" : "e." + prop #>)<#= c.IsNullable ? " : \"\"" : "" #>);
 <#
             }
             else if (IsText(c))

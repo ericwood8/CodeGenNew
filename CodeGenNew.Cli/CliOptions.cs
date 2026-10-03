@@ -17,6 +17,8 @@ public class CliOptions
     public string? Password { get; set; }
     /// <summary> --project: the name of a Projects\<name>.config file; null generates with each template's built-in values. </summary>
     public string? Project { get; set; }
+    /// <summary> --projects-dir: the folder of project files; null uses Settings.json's ProjectsDirectory next to the exe. </summary>
+    public string? ProjectsDirectory { get; set; }
     /// <summary> Individual project-setting flags (--view-ns and so on), keyed by ProjectSettings key; they win over the project file. </summary>
     public Dictionary<string, string> ProjectOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
 }

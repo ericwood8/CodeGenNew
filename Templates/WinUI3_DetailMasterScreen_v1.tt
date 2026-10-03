@@ -308,7 +308,7 @@
             {
 #>
             <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
-                       ValidationMode="InvalidInputOverwritten" Width="180" HorizontalAlignment="Left" />
+                       <#= Project.IsNonNegative(table, c.Name) ? "Minimum=\"0\" " : "" #>ValidationMode="InvalidInputOverwritten" Width="180" HorizontalAlignment="Left" />
 <#
             }
             else if (UsesDecimalBox(c))
@@ -996,8 +996,8 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
             }).ToList();
             var cells = values.Select((value, i) =>
             {
-                // Money shows with its currency symbol and the column's own number of decimals, like the list screens.
-                if (value is decimal moneyValue && CurrencyDigitsFor<#= child.Table #>Grid.TryGetValue(propertyNames[i], out int moneyDigits)) return moneyValue.ToString("C" + moneyDigits);
+                // Money shows in the project's currency (CurrencyCode) with the column's own number of decimals, like the list screens and the editors.
+                if (value is decimal moneyValue && CurrencyDigitsFor<#= child.Table #>Grid.TryGetValue(propertyNames[i], out int moneyDigits)) return new Windows.Globalization.NumberFormatting.CurrencyFormatter("<#= Project.CurrencyCode #>") { IsGrouped = true, FractionDigits = moneyDigits }.FormatDouble((double)moneyValue);
                 // A date-and-time value shows as its date only (the time is never what a child grid is for, and 12:00:00 AM clips).
                 if (value is DateTime dateValue) return dateValue.ToString("MM/dd/yyyy");
                 if (value is DateTimeOffset dateOffsetValue) return dateOffsetValue.ToString("MM/dd/yyyy");

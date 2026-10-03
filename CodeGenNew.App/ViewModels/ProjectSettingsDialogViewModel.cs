@@ -45,7 +45,13 @@ public partial class ProjectSettingsDialogViewModel : StatusMessageViewModel
         ["NoLookupParents"] = "overrides EnumTables for this one question: tables whose foreign key is a number box, not a drop-down",
         ["NoRepositoryTables"] = "overrides EnumTables for this one question: tables that get no repository",
         ["NoApiTables"] = "overrides EnumTables for this one question: tables that get no API or TypeScript model/screen",
-        ["NoNavigationTables"] = "overrides EnumTables for this one question: tables referenced without a navigation property"
+        ["NoNavigationTables"] = "overrides EnumTables for this one question: tables referenced without a navigation property",
+        ["NonNegativeColumns"] = "comma-separated money columns that can never be negative (CreditLimit, or Item.Cost for one table): their number box gets a minimum of 0",
+        ["ApiFolder"] = "React / Angular folder for the api modules, relative to the source folder; blank = api",
+        ["ModelsFolder"] = "React / Angular folder for the TypeScript models; blank = models",
+        ["ServicesFolder"] = "Angular folder for the services; blank = services",
+        ["ComponentsFolder"] = "React / Angular folder for the shared components and Angular screens; blank = components",
+        ["PagesFolder"] = "React folder for the pages; blank = pages"
     };
 
     private readonly string _projectsDirectory;

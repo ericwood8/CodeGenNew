@@ -56,7 +56,7 @@ public static class Program
         ProjectSettings project = ProjectSettings.None;
         if (options.Project is not null)
         {
-            string projectsDirectory = Path.Combine(baseDirectory, settings.ProjectsDirectory);
+            string projectsDirectory = options.ProjectsDirectory ?? Path.Combine(baseDirectory, settings.ProjectsDirectory);
             try
             {
                 project = ProjectSettings.LoadNamed(projectsDirectory, options.Project);

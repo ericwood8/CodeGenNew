@@ -1,5 +1,6 @@
 <#@ template language="C#" #>
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Text" #>
 <#@ import namespace="System.Data" #>
@@ -10,8 +11,8 @@
     // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
     // Everything below this block describes and implements the template itself.
     // ==========================================================================================
-    string componentsFolder = "components";
-    string apiFolder = "api";
+    string componentsFolder = Project.ComponentsFolder;
+    string apiFolder = Project.ApiFolder;
     string apiPrefix = "/api";
     // ==========================================================================================
 

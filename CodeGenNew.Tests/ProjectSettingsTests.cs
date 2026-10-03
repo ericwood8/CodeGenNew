@@ -420,8 +420,8 @@ public class ProjectSettingsTests
         var angular = await TemplateRunner.RunAsync(Repo.Template("TS_Component_v1.tt"), LineTable(), With(("CurrencyCode", "EUR")));
         var react = await TemplateRunner.RunAsync(Repo.Template("TSX_Page_v1.tt"), LineTable(), With(("CurrencyCode", "EUR")));
 
-        Expect.Contains(list.GeneratedText!, "cells.Add(e.ItemPrice.ToString(\"C2\"));");
-        Expect.Contains(list.GeneratedText!, "cells.Add(e.Discount?.ToString(\"C4\") ?? \"\");");
+        Expect.Contains(list.GeneratedText!, "cells.Add(new Windows.Globalization.NumberFormatting.CurrencyFormatter(\"EUR\") { IsGrouped = true, FractionDigits = 2 }.FormatDouble((double)e.ItemPrice));");
+        Expect.Contains(list.GeneratedText!, "cells.Add(e.Discount is { } discountMoney ? new Windows.Globalization.NumberFormatting.CurrencyFormatter(\"EUR\") { IsGrouped = true, FractionDigits = 4 }.FormatDouble((double)discountMoney) : \"\");");
         Expect.Contains(angular.GeneratedText!, "itemPrice | currency:'EUR':'symbol':'1.2-2'");
         Expect.Contains(react.GeneratedText!, "currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2");
     }
@@ -930,7 +930,7 @@ public class ProjectSettingsTests
         Expect.Contains(winui.GeneratedText!, "[\"LinePrice\"] = 2,");
         Expect.Contains(winui.GeneratedText!, "LongTextInOrderLineGrid = [ \"Notes\" ];");
         Expect.Contains(winui.GeneratedText!, ".Take(18).ToList();");
-        Expect.Contains(winui.GeneratedText!, "return moneyValue.ToString(\"C\" + moneyDigits);");
+        Expect.Contains(winui.GeneratedText!, "return new Windows.Globalization.NumberFormatting.CurrencyFormatter(\"EUR\") { IsGrouped = true, FractionDigits = moneyDigits }.FormatDouble((double)moneyValue);");
         Expect.Contains(react.GeneratedText!, "const childCurrencyDigits: Record<string, number> = { linePrice: 2 };");
         Expect.Contains(react.GeneratedText!, "const childLongTextColumns: string[] = ['notes'];");
         Expect.Contains(react.GeneratedText!, "currency: 'EUR', minimumFractionDigits: d");

@@ -12,9 +12,10 @@
     // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
     // lists of tables). Everything below this block describes and implements the template itself.
     // ==========================================================================================
-    string pagesFolder = "pages";
-    string modelsFolder = "models";
-    string apiFolder = "api";
+    string pagesFolder = Project.PagesFolder;
+    string componentsFolder = Project.ComponentsFolder;
+    string modelsFolder = Project.ModelsFolder;
+    string apiFolder = Project.ApiFolder;
     string apiPrefix = "/api";
     // Tables that have no API (C# enums, other *Type lookup tables, tables with no entity class): no screen is written for them.
     string[] noApiTables =
@@ -246,9 +247,9 @@
         T($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
         T($"import {{ {variable}Api }} from '../{apiFolder}/{stem}Api';");
         T($"import {{ ApiError, request }} from '../{apiFolder}/client';");
-        T("import { PaginationBar } from '../components/PaginationBar';");
-        T("import { GridMenu, SortHeader, loadSort, nextSort, saveSort, sortRows } from '../components/gridSort';");
-        T("import type { GridSort } from '../components/gridSort';");
+        T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
+        T($"import {{ GridMenu, SortHeader, loadSort, nextSort, saveSort, sortRows }} from '../{componentsFolder}/gridSort';");
+        T($"import type {{ GridSort }} from '../{componentsFolder}/gridSort';");
         foreach (var p in parents.Where(p => !p.Self))
         {
             T($"import type {{ {p.Type} }} from '../{modelsFolder}/{p.ModelFile}';");
@@ -647,15 +648,20 @@
             if (lookup is not null)
             {
                 var p = parentOf[lookup.ReferencedTable];
-                string numeric = p.IdType == "number" ? "Number(event.target.value)" : "event.target.value";
+                // A blank choice means "none": undefined for a nullable column (0 would be a key that does not exist); a required column starts blank too (0 shows as blank, and
+                // the browser's required check then refuses it) instead of looking like the first parent is chosen while the row still holds 0.
+                string numeric = p.IdType == "number"
+                    ? (c.IsNullable ? "event.target.value === '' ? undefined : Number(event.target.value)" : "Number(event.target.value)")
+                    : (c.IsNullable ? "event.target.value || undefined" : "event.target.value");
+                string blankTest = p.IdType == "number" && !c.IsNullable ? "||" : "??";
                 T($"            <select");
                 T($"              id=\"{id}\"");
                 T($"              aria-label=\"{LabelOf(c)}\"");
-                T($"              value={{selectedRow.{prop} ?? ''}}");
+                T($"              value={{selectedRow.{prop} {blankTest} ''}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: {numeric} }})}}");
                 if (!c.IsNullable) T("              required");
                 T("            >");
-                if (c.IsNullable) T("              <option value=\"\"></option>");
+                T("              <option value=\"\"></option>");
                 T($"              {{{p.List}.map((p) => (");
                 T($"                <option key={{p.{p.KeyProp}}} value={{p.{p.KeyProp}}}>{{p.{p.DisplayProp}}}</option>");
                 T("              ))}");
@@ -725,6 +731,10 @@
                     var (decMin, decMax) = NumericClassifier.DecimalRange(c);
                     T($"              min=\"{Inv(decMin)}\"");
                     T($"              max=\"{Inv(decMax)}\"");
+                }
+                else if (c.IsCurrencyColumn && !c.IsIntegerColumn && Project.IsNonNegative(Model.TableName, c.Name))
+                {
+                    T("              min=\"0\"");   // a money column the project says is never negative
                 }
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: Number(event.target.value) }})}}");

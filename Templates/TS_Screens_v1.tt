@@ -9,7 +9,7 @@
     // PROJECT SETTINGS - the lines to change to use this template in your own project (folders).
     // Everything below this block describes and implements the template itself.
     // ==========================================================================================
-    string componentsFolder = "components";   // where TS_Component / TS_DetailMasterComponent write the screens, relative to the file this template writes
+    string componentsFolder = Project.ComponentsFolder;   // where TS_Component / TS_DetailMasterComponent write the screens, relative to the file this template writes
     // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     // The screens and their order come from the project's Screens setting, the master-detail ones from DetailMasterTables (see DatabaseModel).
     // ==========================================================================================

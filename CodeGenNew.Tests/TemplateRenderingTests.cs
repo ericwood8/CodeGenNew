@@ -1662,13 +1662,9 @@ public class TemplateRenderingTests
     [TestMethod]
     public async Task The_folder_names_in_the_settings_decide_where_files_go_and_how_they_import()
     {
-        using var temp = new TempFolder();
-        string source = File.ReadAllText(Repo.Template("TS_Component_v1.tt"))
-            .Replace("string componentsFolder = \"components\";", "string componentsFolder = \"screens\";")
-            .Replace("string modelsFolder = \"models\";", "string modelsFolder = \"types\";");
-        string custom = temp.File("TS_Component_v1.tt", source);
+        var project = ProjectSettings.FromValues([new("ProjectName", "Acme"), new("ComponentsFolder", "screens"), new("ModelsFolder", "types")]);
 
-        var result = await TemplateRunner.RunAsync(custom, Sample.Holiday());
+        var result = await TemplateRunner.RunAsync(Repo.Template("TS_Component_v1.tt"), Sample.Holiday(), project);
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         var files = GeneratedFiles.Split(result.GeneratedText!);

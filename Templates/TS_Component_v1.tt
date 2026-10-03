@@ -14,9 +14,9 @@
     // ==========================================================================================
     // Folders under the Angular app root (where -o points) that the generated files go in; a component goes in a folder of its
     // own inside componentsFolder, so its imports climb two levels (../../models/...).
-    string componentsFolder = "components";
-    string servicesFolder = "services";
-    string modelsFolder = "models";
+    string componentsFolder = Project.ComponentsFolder;
+    string servicesFolder = Project.ServicesFolder;
+    string modelsFolder = Project.ModelsFolder;
     // Tables that have no API (C# enums, other *Type lookup tables, tables with no entity): no screen is written for them.
     string[] noApiTables =
     {
@@ -374,7 +374,8 @@
                             : c.SqlType is SqlDbType.Float or SqlDbType.Real ? " step=\"any\"" : "";
                 // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
                 string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\""
-                    : IsPlainDecimal(c) ? $" min=\"{Inv(NumericClassifier.DecimalRange(c).Min)}\" max=\"{Inv(NumericClassifier.DecimalRange(c).Max)}\"" : "";
+                    : IsPlainDecimal(c) ? $" min=\"{Inv(NumericClassifier.DecimalRange(c).Min)}\" max=\"{Inv(NumericClassifier.DecimalRange(c).Max)}\""
+                    : c.IsCurrencyColumn && !c.IsIntegerColumn && Project.IsNonNegative(Model.TableName, c.Name) ? " min=\"0\"" : "";
                 H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{step}{range} placeholder=\"{PlaceholderFor(c)}\"{req}>");
             }
             else if (IsMultiline(c))

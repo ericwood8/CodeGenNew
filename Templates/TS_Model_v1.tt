@@ -12,7 +12,7 @@
     // lists of tables). Everything below this block describes and implements the template itself.
     // ==========================================================================================
     // Folders under the Angular app root (where -o points) that the generated files go in.
-    string modelsFolder = "models";
+    string modelsFolder = Project.ModelsFolder;
     // Tables that have no API (C# enums, other *Type lookup tables, tables with no entity): no model is written for them.
     string[] noApiTables =
     {

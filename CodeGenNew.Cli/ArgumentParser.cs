@@ -1,4 +1,5 @@
 ﻿using CodeGenNew.Connections;
+using CodeGenNew.Core;
 
 namespace CodeGenNew.Cli;
 
@@ -9,7 +10,7 @@ public static class ArgumentParser
     public static CliOptions Parse(string[] args)
     {
         string? server = null, database = null, schema = null, table = null, template = null;
-        string? outputDirectory = null, userName = null, password = null, project = null;
+        string? outputDirectory = null, userName = null, password = null, project = null, projectsDirectory = null;
         var overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         bool trusted = false;
         var provider = DatabaseProvider.SqlServer;
@@ -37,6 +38,16 @@ public static class ArgumentParser
                 case "-P": case "--password": password = Value(); break;
                 case "-E": case "--trusted": trusted = true; break;
                 case "--project": project = Value(); break;
+                case "--projects-dir": projectsDirectory = Value(); break;
+                case "--set":
+                    string setting = Value();
+                    int equals = setting.IndexOf('=');
+                    if (equals <= 0)
+                        throw new ArgumentParseException($"--set takes Key=Value, not '{setting}'.");
+                    string key = ProjectSettings.Keys.FirstOrDefault(k => k.Equals(setting[..equals].Trim(), StringComparison.OrdinalIgnoreCase))
+                        ?? throw new ArgumentParseException($"Unknown project setting '{setting[..equals].Trim()}' in --set. Known keys: {string.Join(", ", ProjectSettings.Keys)}.");
+                    overrides[key] = setting[(equals + 1)..];
+                    break;
                 case "--project-name": overrides["ProjectName"] = Value(); break;
                 case "--view-ns": overrides["ViewNamespace"] = Value(); break;
                 case "--viewmodel-ns": overrides["ViewModelNamespace"] = Value(); break;
@@ -84,7 +95,8 @@ public static class ArgumentParser
             Trusted = trusted,
             UserName = userName,
             Password = password,
-            Project = project
+            Project = project,
+            ProjectsDirectory = projectsDirectory
         };
         foreach (var (key, value) in overrides)
             options.ProjectOverrides[key] = value;
@@ -125,6 +137,10 @@ public static class ArgumentParser
             Project settings (namespaces, context name, table lists the templates would otherwise hard-code):
               --project        Name of a Projects\<name>.config file in the CodeGenNew folder. Only ProjectName is
                                required in it; every namespace not listed is derived from it.
+              --projects-dir   The folder that holds the project files (default: the Projects folder next to the exe, or Settings.json's ProjectsDirectory).
+                               Point the desktop app's Settings.json ProjectsDirectory at the same absolute folder and both tools share one set of projects.
+              --set Key=Value  Override any project setting by its name (repeatable), for example --set CurrencyCode=EUR --set "NonNegativeColumns=CreditLimit,Item.Cost".
+                               Keys: see Projects\<name>.config / the app's project settings screen.
               --project-name, --view-ns, --viewmodel-ns, --context, --context-ns, --api-ns, --enum-ns,
               --repo-ns, --entity-ns, --naming, --acronyms, --min-year, --max-year
                                Override one setting for this run; wins over the project file.

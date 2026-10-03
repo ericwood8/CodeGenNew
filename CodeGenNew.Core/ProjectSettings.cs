@@ -25,7 +25,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables"
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder"
     ];
 
     private readonly Dictionary<string, string> _values;
@@ -159,6 +159,20 @@ public class ProjectSettings
 
     public int MinYear => int.TryParse(Explicit("MinYear"), out int year) ? year : DefaultMinYear;
     public int MaxYear => int.TryParse(Explicit("MaxYear"), out int year) ? year : DefaultMaxYear;
+
+    /// <summary> The folders the React and Angular templates write into and import from, relative to the front end's source folder (<c>src</c> for React, <c>srcpp</c> for Angular).
+    /// The defaults are what both samples use. </summary>
+    public string ApiFolder => Explicit("ApiFolder") ?? "api";
+    public string ModelsFolder => Explicit("ModelsFolder") ?? "models";
+    public string ServicesFolder => Explicit("ServicesFolder") ?? "services";
+    public string ComponentsFolder => Explicit("ComponentsFolder") ?? "components";
+    public string PagesFolder => Explicit("PagesFolder") ?? "pages";
+
+    /// <summary> Money columns that can never be negative (<c>NonNegativeColumns=CreditLimit,Item.Cost</c>: a column name for every table, or <c>Table.Column</c> for one): their number box
+    /// gets a minimum of 0. The schema cannot say so, because a check constraint is not read. </summary>
+    public bool IsNonNegative(string table, string column) => Explicit("NonNegativeColumns") is { } text
+        && text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Any(entry => entry.Equals(column, StringComparison.OrdinalIgnoreCase) || entry.Equals($"{table}.{column}", StringComparison.OrdinalIgnoreCase));
 
     public string? ViewsFolder => Explicit("ViewsFolder");
     public string? ViewModelsFolder => Explicit("ViewModelsFolder");
