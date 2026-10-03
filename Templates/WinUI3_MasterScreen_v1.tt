@@ -206,6 +206,11 @@
             Error("WinUI3_MasterScreen needs the foreign-keyed tables' display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
 
         int columnCount = shown.Count + 1; // +1 for the Edit/Delete actions column
+        // A grid column's header sorts the grid unless it is long text or binary (SearchSort.IsSortable; long text never is in a grid anyway).
+        var sortableShown = shown.Where(SearchSort.IsSortable).ToList();
+        // A Clone button between Edit and Delete for the tables CloneShape allows (CS_Repo writes CloneAsync for the same tables).
+        bool canClone = CloneShape.CanClone(Model, Project);
+        string SortButtonName(ColumnModel c) => "SortHeader" + c.Name;
 #>
 @@@FILE <#= viewsFolder #>/<#= table #>ListPage.xaml@@@
 <Page
@@ -285,13 +290,15 @@
             </Grid.RowDefinitions>
 
             <!-- Header + rows, boxed in a line around the grid with a line between each row -->
-            <Border Grid.Row="0" BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4">
+            <Border Grid.Row="0" BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4"
+                    Background="Transparent" RightTapped="OnGridRightTapped">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
+                    <!-- Header: a click on a column header sorts by it (again: flips the direction); a right-click on the grid offers Clear sort. -->
                     <!-- Header -->
                     <Border Grid.Row="0" BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="0,0,0,1" Padding="8">
                         <Grid ColumnSpacing="8">
@@ -300,7 +307,7 @@
         for (int i = 0; i < columnCount; i++)
         {
 #>
-                                <ColumnDefinition Width="<#= i == columnCount - 1 ? "160" : "*" #>" />
+                                <ColumnDefinition Width="<#= i == columnCount - 1 ? (canClone ? "230" : "160") : "*" #>" />
 <#
         }
 #>
@@ -308,9 +315,19 @@
 <#
         for (int i = 0; i < shown.Count; i++)
         {
+            if (sortableShown.Contains(shown[i]))
+            {
+#>
+                            <Button x:Name="<#= SortButtonName(shown[i]) #>" Grid.Column="<#= i #>" Content="<#= GridCaption.For(shown[i], Label(shown[i].Name)) #>" Tag="<#= shown[i].Name #>"
+                                    Click="OnSortHeaderClick" FontWeight="SemiBold" Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left" />
+<#
+            }
+            else
+            {
 #>
                             <TextBlock Grid.Column="<#= i #>" Text="<#= GridCaption.For(shown[i], Label(shown[i].Name)) #>" FontWeight="SemiBold" />
 <#
+            }
         }
 #>
                             <TextBlock Grid.Column="<#= shown.Count #>" Text="Actions" FontWeight="SemiBold" />
@@ -328,7 +345,7 @@
         for (int i = 0; i < columnCount; i++)
         {
 #>
-                                            <ColumnDefinition Width="<#= i == columnCount - 1 ? "160" : "*" #>" />
+                                            <ColumnDefinition Width="<#= i == columnCount - 1 ? (canClone ? "230" : "160") : "*" #>" />
 <#
         }
 #>
@@ -343,6 +360,14 @@
 #>
                                         <StackPanel Grid.Column="<#= shown.Count #>" Orientation="Horizontal" Spacing="4">
                                             <Button Content="Edit" Tag="{x:Bind Id}" Click="OnEditClick" />
+<#
+        if (canClone)
+        {
+#>
+                                            <Button Content="Clone" Tag="{x:Bind Id}" Click="OnCloneClick" />
+<#
+        }
+#>
                                             <Button Content="Delete" Tag="{x:Bind Id}" Click="OnDeleteClick" />
                                         </StackPanel>
                                     </Grid>
@@ -393,7 +418,49 @@ public sealed partial class <#= table #>ListPage : Page
         _context = context;
         ViewModel = new <#= table #>ListViewModel(context);
         InitializeComponent();
-        Loaded += async (_, _) => await ViewModel.LoadAsync();
+        Loaded += async (_, _) =>
+        {
+            await ViewModel.LoadAsync();
+            ShowSortMarks();
+        };
+    }
+
+    // Click a column header to sort by it, click it again to flip the direction. The sort is applied by the database (SearchAsync) and kept when paging
+    // and when the search changes; a change goes back to page 1.
+    private async void OnSortHeaderClick(object sender, RoutedEventArgs e)
+    {
+        ViewModel.SortBy((string)((Button)sender).Tag);
+        await ViewModel.LoadAsync();
+        ShowSortMarks();
+    }
+
+    // A right-click on the grid offers Clear sort, which also forgets the saved sort.
+    private void OnGridRightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
+    {
+        var clear = new MenuFlyoutItem { Text = "Clear sort", IsEnabled = ViewModel.HasSort };
+        clear.Click += async (_, _) =>
+        {
+            ViewModel.ClearSort();
+            await ViewModel.LoadAsync();
+            ShowSortMarks();
+        };
+        var flyout = new MenuFlyout();
+        flyout.Items.Add(clear);
+        flyout.ShowAt((FrameworkElement)sender, e.GetPosition((FrameworkElement)sender));
+        e.Handled = true;
+    }
+
+    // The sorted column's header shows an arrow after its caption.
+    private void ShowSortMarks()
+    {
+<#
+        foreach (var c in sortableShown)
+        {
+#>
+        <#= SortButtonName(c) #>.Content = "<#= GridCaption.For(c, Label(c.Name)) #>" + ViewModel.SortMark("<#= c.Name #>");
+<#
+        }
+#>
     }
 
     private async void OnAddClick(object sender, RoutedEventArgs e)
@@ -420,6 +487,31 @@ public sealed partial class <#= table #>ListPage : Page
         await ViewModel.LoadAsync();
     }
 
+<#
+        if (canClone)
+        {
+#>
+    // Clone copies the row (CloneAsync -> <#= table #>_Clone) and opens the copy in the edit dialog at once, so the person changes what differs.
+    private async void OnCloneClick(object sender, RoutedEventArgs e)
+    {
+        int id = (int)((Button)sender).Tag;
+        int? newId = await ViewModel.CloneAsync(id);
+        await ViewModel.LoadAsync();
+        if (newId is null)
+            return;
+
+        var copy = await _context.Set<<#= table #>>().FindAsync(newId.Value);
+        if (copy is null)
+            return;
+
+        var dialog = new <#= editDialog #>(_context, copy) { XamlRoot = XamlRoot };
+        await dialog.ShowAndWaitAsync();
+        await ViewModel.LoadAsync();
+    }
+
+<#
+        }
+#>
     private async void OnDeleteClick(object sender, RoutedEventArgs e)
     {
         int id = (int)((Button)sender).Tag;
@@ -526,11 +618,50 @@ public partial class <#= table #>ListViewModel : ObservableObject
         }
 #>
 
+    // The grid's sort: a column name (null = the default order) and the direction. It is remembered between runs (GridSortStore) until Clear sort.
+    private const string GridKey = "<#= table #>";
+    private static readonly string[] SortableColumns = [<#= string.Join(", ", sortableShown.Select(c => "\"" + c.Name + "\"")) #>];
+    private string? _sortColumn;
+    private bool _sortDescending;
+
+    public bool HasSort => _sortColumn is not null;
+
     public <#= table #>ListViewModel(<#= contextType #> context)
     {
         _context = context;
         _repo = new <#= table #>Repo(context);
+        var saved = GridSortStore.Load(GridKey, SortableColumns);
+        _sortColumn = saved?.Column;
+        _sortDescending = saved?.Descending ?? false;
     }
+
+    /// <summary> A click on a column header: another column sorts ascending, the sorted column flips its direction. The caller reloads (page 1). </summary>
+    public void SortBy(string column)
+    {
+        if (_sortColumn == column)
+        {
+            _sortDescending = !_sortDescending;
+        }
+        else
+        {
+            _sortColumn = column;
+            _sortDescending = false;
+        }
+        PageNumber = 1;
+        GridSortStore.Save(GridKey, new GridSortEntry(_sortColumn, _sortDescending));
+    }
+
+    /// <summary> Back to the default order, and forget the saved sort. The caller reloads (page 1). </summary>
+    public void ClearSort()
+    {
+        _sortColumn = null;
+        _sortDescending = false;
+        PageNumber = 1;
+        GridSortStore.Save(GridKey, null);
+    }
+
+    /// <summary> The arrow shown after the caption of the sorted column's header. </summary>
+    public string SortMark(string column) => _sortColumn == column ? (_sortDescending ? " ▼" : " ▲") : "";
 
     public async Task LoadAsync()
     {
@@ -549,7 +680,7 @@ public partial class <#= table #>ListViewModel : ObservableObject
 <#
         string filterArgs = string.Concat(searchFields.Select(f => $"{f.ParamName}: string.IsNullOrWhiteSpace({f.Prop}) ? null : {f.Prop}, "));
 #>
-        var (rows, totalCount) = await _repo.SearchAsync(<#= filterArgs #>pageNumber: PageNumber, pageSize: PageSize);
+        var (rows, totalCount) = await _repo.SearchAsync(<#= filterArgs #>pageNumber: PageNumber, pageSize: PageSize, sortColumn: _sortColumn, sortDescending: _sortDescending);
         TotalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)PageSize);
 
         foreach (var e in rows)
@@ -635,6 +766,28 @@ public partial class <#= table #>ListViewModel : ObservableObject
             ErrorMessage = "This row cannot be deleted because it is in use.";
     }
 
+<#
+        if (canClone)
+        {
+#>
+    /// <summary> Copies the row and returns the new row's id, or null with ErrorMessage set when the copy failed. </summary>
+    public async Task<int?> CloneAsync(int id)
+    {
+        ErrorMessage = null;
+        try
+        {
+            return await _repo.CloneAsync(id);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = "The row could not be cloned: " + ex.Message;
+            return null;
+        }
+    }
+
+<#
+        }
+#>
     public async Task PreviousPageAsync()
     {
         if (!CanGoPrevious) return;
@@ -647,6 +800,80 @@ public partial class <#= table #>ListViewModel : ObservableObject
         if (!CanGoNext) return;
         PageNumber++;
         await LoadAsync();
+    }
+}
+@@@FILE <#= viewModelsFolder #>/GridSortStore.cs@@@
+using System.IO;
+using System.Text.Json;
+
+namespace <#= viewModelNamespace #>;
+
+/// <summary> The sort of one grid: a column name and the direction. </summary>
+public record GridSortEntry(string Column, bool Descending);
+
+/// <summary> Remembers the sort of each grid between runs in GridSorts.json, in the user's local application data folder (one folder per app). The file maps a grid's
+/// name to its list of { Column, Descending } so that sorting by several columns can be added later without changing the format. Clearing a grid's sort removes
+/// its entry, and the file itself when no grid has one. A file that cannot be read or written just means the sort is not remembered. </summary>
+public static class GridSortStore
+{
+    private static readonly object Gate = new();
+    private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
+
+    private static string FilePath { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name ?? "App",
+        "GridSorts.json");
+
+    /// <summary> The saved sort of a grid, or null when there is none or its column is not one of the grid's sortable columns. </summary>
+    public static GridSortEntry? Load(string gridKey, IReadOnlyCollection<string> sortableColumns)
+    {
+        lock (Gate)
+        {
+            var first = ReadAll().GetValueOrDefault(gridKey)?.FirstOrDefault();
+            return first is not null && sortableColumns.Contains(first.Column) ? first : null;
+        }
+    }
+
+    /// <summary> Remember the sort of a grid, or forget it (null). </summary>
+    public static void Save(string gridKey, GridSortEntry? sort)
+    {
+        lock (Gate)
+        {
+            var all = ReadAll();
+            if (sort is null)
+                all.Remove(gridKey);
+            else
+                all[gridKey] = [sort];
+
+            try
+            {
+                if (all.Count == 0)
+                {
+                    File.Delete(FilePath);
+                    return;
+                }
+                Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+                File.WriteAllText(FilePath, JsonSerializer.Serialize(all, Json));
+            }
+            catch (Exception)
+            {
+                // the sort just is not remembered
+            }
+        }
+    }
+
+    private static Dictionary<string, List<GridSortEntry>> ReadAll()
+    {
+        try
+        {
+            if (File.Exists(FilePath))
+                return JsonSerializer.Deserialize<Dictionary<string, List<GridSortEntry>>>(File.ReadAllText(FilePath)) ?? [];
+        }
+        catch (Exception)
+        {
+            // unreadable: start again with no saved sorts
+        }
+        return [];
     }
 }
 @@@FILE <#= viewsFolder #>/PaginationBar.xaml@@@

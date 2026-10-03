@@ -62,6 +62,8 @@ public static class DefaultAssetSeeder
         "CS_DbContext_v1.tt", "CS_DbContext_v1.tt.config",
         "API_Registration_v1.tt", "API_Registration_v1.tt.config",
         "TSX_Screens_v1.tt", "TSX_Screens_v1.tt.config",
+        "TSX_GridSort_v1.tt", "TSX_GridSort_v1.tt.config",
+        "TS_GridSort_v1.tt", "TS_GridSort_v1.tt.config",
         "TS_Screens_v1.tt", "TS_Screens_v1.tt.config",
         "WinUI3_Screens_v1.tt", "WinUI3_Screens_v1.tt.config",
         "CS_Repo_v1.tt", "CS_Repo_v1.tt.config",

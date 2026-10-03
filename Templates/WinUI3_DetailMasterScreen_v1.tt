@@ -401,8 +401,10 @@
             <TextBlock Text="<#= child.Title #>" Style="{ThemeResource BodyStrongTextBlockStyle}" />
             <!-- Boxed the same way as WinUI3_MasterScreen.tt's own grid: a line around the whole grid, a line
                  under the header, and a line under every row — see that template's 2026-09-27 styling note.
-                 Clicking a row opens that child row's own dialog (see On<#= child.Table #>ItemClick in the code-behind). -->
-            <Border BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4">
+                 Clicking a row opens that child row's own dialog (see On<#= child.Table #>ItemClick in the code-behind).
+                 A click on a column header sorts the rows by it (again: flips the direction); a right-click on the grid offers Clear sort. -->
+            <Border BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4"
+                    Background="Transparent" RightTapped="On<#= child.Table #>GridRightTapped">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -410,18 +412,22 @@
                     </Grid.RowDefinitions>
 
                     <Border Grid.Row="0" BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="0,0,0,1" Padding="8">
-                        <ItemsControl ItemsSource="{x:Bind ViewModel.<#= child.Var #>ColumnHeaders}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Orientation="Horizontal" Spacing="8" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding}" FontWeight="SemiBold" Width="120" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.<#= child.Var #>ColumnHeaders}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="8" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Content="{Binding Text}" Tag="{Binding Column}" Click="On<#= child.Table #>HeaderClick" Width="120" Padding="0"
+                                                Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Left" FontWeight="SemiBold" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="Actions" FontWeight="SemiBold" Width="120" VerticalAlignment="Center" />
+                        </StackPanel>
                     </Border>
                     <ListView Grid.Row="1" ItemsSource="{x:Bind ViewModel.<#= child.Var #>Rows}"
                               IsItemClickEnabled="True" ItemClick="On<#= child.Table #>ItemClick" MaxHeight="200" Padding="0">
@@ -606,6 +612,20 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
 
     private void On<#= child.Table #>DeleteLostFocus(object sender, RoutedEventArgs e) => ((Button)sender).Content = "Delete";
 
+    // A click on a column header sorts the rows by it (again: flips the direction); the rows are all loaded, so it sorts them here.
+    private void On<#= child.Table #>HeaderClick(object sender, RoutedEventArgs e) => ViewModel.Sort<#= child.Table #>By((string)((Button)sender).Tag);
+
+    // A right-click on the grid offers Clear sort, which also forgets the saved sort.
+    private void On<#= child.Table #>GridRightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
+    {
+        var clear = new MenuFlyoutItem { Text = "Clear sort", IsEnabled = ViewModel.Has<#= child.Table #>Sort };
+        clear.Click += (_, _) => ViewModel.Clear<#= child.Table #>Sort();
+        var flyout = new MenuFlyout();
+        flyout.Items.Add(clear);
+        flyout.ShowAt((FrameworkElement)sender, e.GetPosition((FrameworkElement)sender));
+        e.Handled = true;
+    }
+
     private async System.Threading.Tasks.Task Open<#= child.Table #>Async(<#= child.Table #> entity)
     {
         _drillDown = new System.Threading.Tasks.TaskCompletionSource();
@@ -657,8 +677,17 @@ public class <#= table #>DetailMasterLookupOption
 public class <#= table #>ChildGridRow
 {
     public List<string> Cells { get; init; } = [];
+    /// <summary> What each cell sorts by: the value itself (a number, a date, a yes/no, text), or the name a column shows in place of an id. </summary>
+    public List<object?> Values { get; init; } = [];
     /// <summary> The child entity this row shows, so clicking the row can open its own dialog. </summary>
     public object? Entity { get; init; }
+}
+
+/// <summary> The header of one column of a child grid: its caption (with an arrow when the grid is sorted by it) and the property it sorts by. </summary>
+public class <#= table #>ChildGridHeader
+{
+    public string Text { get; init; } = "";
+    public string Column { get; init; } = "";
 }
 
 public partial class <#= table #>DetailMasterViewModel : ObservableObject
@@ -680,11 +709,75 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         foreach (var child in children)
         {
 #>
-    public ObservableCollection<string> <#= child.Var #>ColumnHeaders { get; } = [];
+    public ObservableCollection<<#= table #>ChildGridHeader> <#= child.Var #>ColumnHeaders { get; } = [];
     public ObservableCollection<<#= table #>ChildGridRow> <#= child.Var #>Rows { get; } = [];
+
+    // The <#= child.Title #> grid holds all its rows, so it sorts them here. The sort is remembered between runs (GridSortStore) until Clear sort.
+    private readonly List<<#= table #>ChildGridRow> _<#= child.Var #>Loaded = [];
+    private List<string> _<#= child.Var #>Columns = [];
+    private List<string> _<#= child.Var #>Captions = [];
+    private string? _<#= child.Var #>SortColumn;
+    private bool _<#= child.Var #>SortDescending;
+
+    public bool Has<#= child.Table #>Sort => _<#= child.Var #>SortColumn is not null;
+
+    /// <summary> A click on a column header: another column sorts ascending, the sorted column flips its direction. </summary>
+    public void Sort<#= child.Table #>By(string column)
+    {
+        _<#= child.Var #>SortDescending = _<#= child.Var #>SortColumn == column && !_<#= child.Var #>SortDescending;
+        _<#= child.Var #>SortColumn = column;
+        GridSortStore.Save(GridKeyFor("<#= child.Var #>"), new GridSortEntry(column, _<#= child.Var #>SortDescending));
+        Show<#= child.Table #>Sorted();
+    }
+
+    /// <summary> Back to the order the rows came in, and forget the saved sort. </summary>
+    public void Clear<#= child.Table #>Sort()
+    {
+        _<#= child.Var #>SortColumn = null;
+        _<#= child.Var #>SortDescending = false;
+        GridSortStore.Save(GridKeyFor("<#= child.Var #>"), null);
+        Show<#= child.Table #>Sorted();
+    }
+
+    // The headers (an arrow after the sorted one) and the rows in the grid's sort order.
+    private void Show<#= child.Table #>Sorted()
+    {
+        <#= child.Var #>ColumnHeaders.Clear();
+        for (int i = 0; i < _<#= child.Var #>Columns.Count; i++)
+            <#= child.Var #>ColumnHeaders.Add(new <#= table #>ChildGridHeader { Text = _<#= child.Var #>Captions[i] + SortMark(_<#= child.Var #>Columns[i], _<#= child.Var #>SortColumn, _<#= child.Var #>SortDescending), Column = _<#= child.Var #>Columns[i] });
+
+        <#= child.Var #>Rows.Clear();
+        int sortIndex = _<#= child.Var #>SortColumn is null ? -1 : _<#= child.Var #>Columns.IndexOf(_<#= child.Var #>SortColumn);
+        IEnumerable<<#= table #>ChildGridRow> ordered = _<#= child.Var #>Loaded;
+        if (sortIndex >= 0)
+            ordered = _<#= child.Var #>SortDescending
+                ? ordered.OrderByDescending(r => r.Values[sortIndex], SortValueComparer.Instance)
+                : ordered.OrderBy(r => r.Values[sortIndex], SortValueComparer.Instance);
+        foreach (var row in ordered)
+            <#= child.Var #>Rows.Add(row);
+    }
 <#
         }
 #>
+
+    private const string GridKey = "<#= table #>";
+    private static string GridKeyFor(string child) => GridKey + "." + child;
+    private static string SortMark(string column, string? sortColumn, bool descending) => column == sortColumn ? (descending ? " ▼" : " ▲") : "";
+
+    // Compares what two cells sort by as what they are: numbers as numbers, dates as dates, text without regard to case, nothing first.
+    private sealed class SortValueComparer : IComparer<object?>
+    {
+        public static readonly SortValueComparer Instance = new();
+
+        public int Compare(object? a, object? b)
+        {
+            if (a is null) return b is null ? 0 : -1;
+            if (b is null) return 1;
+            if (a is string sa && b is string sb) return StringComparer.CurrentCultureIgnoreCase.Compare(sa, sb);
+            if (a is IComparable ca && a.GetType() == b.GetType()) return ca.CompareTo(b);
+            return StringComparer.CurrentCultureIgnoreCase.Compare(a.ToString(), b.ToString());
+        }
+    }
 
     // A child grid's columns come from EF Core's property names at run time; this spaces them the way the list screens' captions are
     // ("CustomerPO" -> "Customer PO", "InvoicedOnDate" -> "Invoiced On Date", no trailing "Id" or leading "SY_").
@@ -845,6 +938,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
     {
         <#= child.Var #>ColumnHeaders.Clear();
         <#= child.Var #>Rows.Clear();
+        _<#= child.Var #>Loaded.Clear();
         if (_editing is null)
             return; // no child rows to show until this <#= title #> has been saved once
 
@@ -863,16 +957,20 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
             .Where(name => !HideFrom<#= child.Table #>Grid.Contains(name, StringComparer.OrdinalIgnoreCase))
             .Where(name => !LongTextIn<#= child.Table #>Grid.Contains(name, StringComparer.OrdinalIgnoreCase)) // long text never shows in a grid
             .Take(<#= GridColumns.MaxColumns #>).ToList();
-        foreach (string name in propertyNames)
-            <#= child.Var #>ColumnHeaders.Add(HeaderLabelFor<#= child.Table #>Grid.TryGetValue(name, out string? label) ? label : SpacedHeader(name));
-        <#= child.Var #>ColumnHeaders.Add("Actions");
+        _<#= child.Var #>Columns = propertyNames;
+        _<#= child.Var #>Captions = propertyNames.Select(name => HeaderLabelFor<#= child.Table #>Grid.TryGetValue(name, out string? label) ? label : SpacedHeader(name)).ToList();
+        // The sort saved by an earlier run (or earlier in this one), if its column is still in the grid.
+        var savedSort = GridSortStore.Load(GridKeyFor("<#= child.Var #>"), propertyNames);
+        _<#= child.Var #>SortColumn = savedSort?.Column;
+        _<#= child.Var #>SortDescending = savedSort?.Descending ?? false;
 
         var rows = await _context.Set<<#= child.Table #>>()
             .Where(c => EF.Property<int>(c, "<#= child.FkColumn #>") == _editing!.<#= child.ParentKeyColumn #>)
             .ToListAsync();
         foreach (var row in rows)
         {
-            var cells = propertyNames.Select(name =>
+            // What each cell sorts by: its value, or the name a column shows in place of an id.
+            var values = propertyNames.Select<string, object?>(name =>
             {
                 object? raw = typeof(<#= child.Table #>).GetProperty(name)!.GetValue(row);
 <#
@@ -894,15 +992,20 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 <#
         }
 #>
-                // Money shows with its currency symbol and the column's own number of decimals, like the list screens.
-                if (raw is decimal moneyValue && CurrencyDigitsFor<#= child.Table #>Grid.TryGetValue(name, out int moneyDigits)) return moneyValue.ToString("C" + moneyDigits);
-                // A date-and-time value shows as its date only (the time is never what a child grid is for, and 12:00:00 AM clips).
-                if (raw is DateTime dateValue) return dateValue.ToString("MM/dd/yyyy");
-                if (raw is DateTimeOffset dateOffsetValue) return dateOffsetValue.ToString("MM/dd/yyyy");
-                return raw?.ToString() ?? "";
+                return raw;
             }).ToList();
-            <#= child.Var #>Rows.Add(new <#= table #>ChildGridRow { Cells = cells, Entity = row });
+            var cells = values.Select((value, i) =>
+            {
+                // Money shows with its currency symbol and the column's own number of decimals, like the list screens.
+                if (value is decimal moneyValue && CurrencyDigitsFor<#= child.Table #>Grid.TryGetValue(propertyNames[i], out int moneyDigits)) return moneyValue.ToString("C" + moneyDigits);
+                // A date-and-time value shows as its date only (the time is never what a child grid is for, and 12:00:00 AM clips).
+                if (value is DateTime dateValue) return dateValue.ToString("MM/dd/yyyy");
+                if (value is DateTimeOffset dateOffsetValue) return dateOffsetValue.ToString("MM/dd/yyyy");
+                return value?.ToString() ?? "";
+            }).ToList();
+            _<#= child.Var #>Loaded.Add(new <#= table #>ChildGridRow { Cells = cells, Values = values, Entity = row });
         }
+        Show<#= child.Table #>Sorted();
     }
 
     private static readonly string[] HideFrom<#= child.Table #>Grid = [ <#= string.Join(", ", child.HideColumns.Select(c => $"\"{c}\"")) #> ];

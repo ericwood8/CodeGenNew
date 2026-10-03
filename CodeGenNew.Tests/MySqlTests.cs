@@ -262,7 +262,7 @@ public class MySqlProcedureTests
     {
         var call = new SearchCall(CustomerItem(), "CustomerItem", ["Title"], qualifyTypes: true);
 
-        Assert.AreEqual("CALL `CustomerItem_Search`(@pTitle, @PageNumber, @PageSize)", call.SearchSql);
+        Assert.AreEqual("CALL `CustomerItem_Search`(@pTitle, @PageNumber, @PageSize, @SortColumn, @SortDescending)", call.SearchSql);
         Assert.AreEqual("CALL `CustomerItem_SearchCount`(@pTitle)", call.CountSql);
         StringAssert.Contains(call.TextParameter("Title", "title"), "new MySql.Data.MySqlClient.MySqlParameter(\"@pTitle\"");
     }
@@ -309,6 +309,20 @@ public class MySqlIntegrationTests
         Assert.AreEqual(PrimaryKeyShape.SingleInt, customer.PrimaryKeyShape);
         Assert.IsTrue(customer.HasChildForeignKeys);
         Assert.IsFalse(tables.Single(t => t.TableName == "customer_item").IsJunctionTable); // it carries a purchased_date
+    }
+
+    [TestMethod]
+    public async Task A_table_that_is_not_there_is_reported_at_once_and_a_wrong_case_name_is_not_found_on_a_case_sensitive_server()
+    {
+        string database = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_DATABASE")!;
+        var provider = Provider(NamingStyle.AsIs);
+
+        var ex = await Assert.ThrowsAsync<TableNotFoundException>(() => provider.BuildTableModelAsync(database, "no_such_table"));
+        StringAssert.Contains(ex.Message, "was not found");
+
+        // On Linux (lower_case_table_names=0) "CUSTOMER" is another name than "customer"; on Windows the server lower-cases and finds it, so only the first is checked everywhere.
+        var real = await provider.BuildTableModelAsync(database, "customer");
+        Assert.AreEqual("customer", real.TableName);
     }
 
     [TestMethod]

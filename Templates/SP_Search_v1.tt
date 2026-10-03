@@ -90,18 +90,30 @@
         // case-insensitive match SQL Server's default collation gives.
         string PQ(string identifier) => "\"" + identifier.Replace("\"", "\"\"") + "\"";
         string PParam(ColumnModel c) => PQ(c.ParameterName.TrimStart('@'));
-        string pgTable = PQ(Model.SchemaName) + "." + PQ(Model.TableName);
+        string pgTable = PQ(Model.SchemaName) + "." + PQ(Model.DbTableName);
         string pgWhere = searchableColumns.Count == 0 ? "" : "\tWHERE " + string.Join("\n\t  AND ", searchableColumns
-            .Select(c => $"({PParam(c)} IS NULL OR {PQ(c.Name)} ILIKE '%' || btrim({PParam(c)}) || '%')")) + "\n";
-        string pgOrderBy = string.Join(", ", orderBy.Select(o => o.Replace("[", "\"").Replace("]", "\"")));
+            .Select(c => $"({PParam(c)} IS NULL OR {PQ(c.DbName)} ILIKE '%' || btrim({PParam(c)}) || '%')")) + "\n";
+        // The default order (best display column, then the key) follows the chosen sort as the tie-breaker.
+        var pgDefaultOrder = new List<string>();
+        if (sortColumn is not null)
+            pgDefaultOrder.Add(PQ(sortColumn.DbName) + " ASC");
+        foreach (var pk in Model.PrimaryKeyColumns.Where(pk => pk != sortColumn))
+            pgDefaultOrder.Add(PQ(pk.DbName) + " ASC");
+        string pgOrderBy = string.Join(", ", pgDefaultOrder);
         var searchParams = searchableColumns.Select(c => $"{PParam(c)} {c.SqlTypeDeclaration} DEFAULT NULL").ToList();
 
         var pg = new System.Text.StringBuilder();
+        // A function with a different parameter list is a second function with the same name, not a replacement, and a call that leaves defaults out is then
+        // ambiguous: drop the earlier signature (the same list without SortColumn / SortDescending) if it exists.
+        pg.Append("DROP FUNCTION IF EXISTS " + PQ(Model.SchemaName) + "." + PQ(Model.TableName + "_Search") + "("
+            + string.Join(", ", searchableColumns.Select(c => c.SqlTypeDeclaration).Append("integer").Append("integer")) + ");\n\n");
         pg.Append("CREATE OR REPLACE FUNCTION " + PQ(Model.SchemaName) + "." + PQ(Model.TableName + "_Search") + "(\n");
-        pg.Append(string.Join(",\n", searchParams.Append("\"PageNumber\" integer DEFAULT 1").Append("\"PageSize\" integer DEFAULT 100")) + "\n)\n");
+        // SortColumn / SortDescending: the grid's chosen sort (SearchSort); both default to "the default order".
+        pg.Append(string.Join(",\n", searchParams.Append("\"PageNumber\" integer DEFAULT 1").Append("\"PageSize\" integer DEFAULT 100")
+            .Append("\"SortColumn\" text DEFAULT NULL").Append("\"SortDescending\" boolean DEFAULT false")) + "\n)\n");
         pg.Append("RETURNS SETOF " + pgTable + "\nLANGUAGE sql STABLE\nAS $$\n");
-        pg.Append("\tSELECT * FROM " + pgTable + "\n" + pgWhere);
-        pg.Append("\tORDER BY " + pgOrderBy + "\n\tOFFSET (\"PageNumber\" - 1) * \"PageSize\" LIMIT \"PageSize\";\n$$;\n\n");
+        pg.Append("\tSELECT t.* FROM " + pgTable + " AS t\n" + pgWhere);
+        pg.Append("\tORDER BY\n" + SearchSort.Postgres(Model) + "\t\t" + pgOrderBy + "\n\tOFFSET (\"PageNumber\" - 1) * \"PageSize\" LIMIT \"PageSize\";\n$$;\n\n");
         pg.Append("CREATE OR REPLACE FUNCTION " + PQ(Model.SchemaName) + "." + PQ(Model.TableName + "_SearchCount") + "(");
         pg.Append(searchParams.Count > 0 ? "\n" + string.Join(",\n", searchParams) + "\n" : "");
         pg.Append(")\nRETURNS integer\nLANGUAGE sql STABLE\nAS $$\n");
@@ -122,7 +134,9 @@ CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Sear
     }
 #>
 @PageNumber INT = 1,
-@PageSize INT = 100
+@PageSize INT = 100,
+@SortColumn NVARCHAR(128) = NULL,
+@SortDescending BIT = 0
 )
 AS
 BEGIN
@@ -137,8 +151,9 @@ BEGIN
 <#
     }
 #>
-	FROM [<#= Model.SchemaName #>].[<#= Model.TableName #>]
-<#= whereClause #>	ORDER BY <#= string.Join(", ", orderBy) #>
+	FROM [<#= Model.SchemaName #>].[<#= Model.TableName #>] AS t
+<#= whereClause #>	ORDER BY
+<#= SearchSort.SqlServer(Model) #>		<#= string.Join(", ", orderBy) #>
 	OFFSET (@PageNumber - 1) * @PageSize ROWS FETCH NEXT @PageSize ROWS ONLY;
 END
 GO

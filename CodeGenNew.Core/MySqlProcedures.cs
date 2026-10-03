@@ -65,10 +65,12 @@ public static class MySqlProcedures
         if (sortColumn is not null) orderBy.Add(Col(sortColumn) + " ASC");
         foreach (var k in m.PrimaryKeyColumns.Where(k => k != sortColumn)) orderBy.Add(Col(k) + " ASC");
 
-        var parameters = searchable.Select(In).Append((Q("PageNumber"), "int", "IN")).Append((Q("PageSize"), "int", "IN")).ToList();
+        // SortColumn / SortDescending: the grid's chosen sort (SearchSort); a MySQL procedure has no default parameter, so a caller passes NULL / 0 for "the default order".
+        var parameters = searchable.Select(In).Append((Q("PageNumber"), "int", "IN")).Append((Q("PageSize"), "int", "IN"))
+            .Append((Q("SortColumn"), $"varchar({SearchSort.MaxNameLength})", "IN")).Append((Q("SortDescending"), "tinyint(1)", "IN")).ToList();
         string body = "BEGIN\n\tDECLARE v_offset int;\n\tSET v_offset = (" + Q("PageNumber") + " - 1) * " + Q("PageSize") + ";\n\n" +
-                      $"\tSELECT {string.Join(", ", m.Columns.Select(Col))}\n\tFROM {Table(m)}\n{where}" +
-                      $"\tORDER BY {string.Join(", ", orderBy)}\n\tLIMIT {Q("PageSize")} OFFSET v_offset;\nEND\n";
+                      $"\tSELECT {string.Join(", ", m.Columns.Select(Col))}\n\tFROM {Table(m)} AS t\n{where}" +
+                      $"\tORDER BY\n{SearchSort.MySql(m)}\t\t{string.Join(", ", orderBy)}\n\tLIMIT {Q("PageSize")} OFFSET v_offset;\nEND\n";
         string search = Create(m, "Search", parameters, body);
 
         var countParameters = searchable.Select(In);
@@ -309,7 +311,8 @@ public static class MySqlProcedures
         }
         if (generatedKey is { IsIdentity: true })
             o.Append($"\n\tSET v_new_key = LAST_INSERT_ID();\n");
-        o.Append(generatedKey is not null ? $"\n\tSELECT v_new_key AS {Q(generatedKey.DbName)}; -- the key of the new row\n" : "\n\tSELECT 0 AS `Result`;\n");
+        // The new key comes back as a one-row result set whose column is called Value, which is where EF Core's SqlQueryRaw<int> reads a scalar from.
+        o.Append(generatedKey is not null ? "\n\tSELECT v_new_key AS `Value`; -- the key of the new row\n" : "\n\tSELECT 0 AS `Result`;\n");
         o.Append("END\n");
         return $"-- Copies the {m.TableName} row named by `CopyFrom...` into a new row and returns the new key as a one-row result set.\n" +
                Create(m, "Clone", parameters, o.ToString());

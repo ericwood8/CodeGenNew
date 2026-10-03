@@ -134,6 +134,12 @@
         L($"  update: (id: {keyTs}, {variable}: {baseName}) => request<{baseName}>(`${{apiUrl}}/${{id}}`, {{ method: 'PUT', body: JSON.stringify({variable}) }}),");
         L();
         L($"  delete: (id: {keyTs}) => request<void>(`${{apiUrl}}/${{id}}`, {{ method: 'DELETE' }}),");
+        // clone(id): copy a row into a new one and get the copy back (POST <route>/{id}/clone, API_Crud); only for the tables CloneShape says can be cloned.
+        if (CloneShape.CanClone(Model, Project))
+        {
+            L();
+            L($"  clone: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/${{id}}/clone`, {{ method: 'POST' }}),");
+        }
         if (hasName)
         {
             L();
@@ -145,12 +151,17 @@
             // A table with no searchable column never reads the argument; the leading underscore keeps a project that compiles with
             // noUnusedParameters (the Vite template's default) from failing on it.
             string filtersName = filters.Count > 0 ? "filters" : "_filters";
-            L($"  getPage: (pageNumber: number, pageSize: number, {filtersName}: {{{(filterType.Length > 0 ? " " + filterType + " " : "")}}} = {{}}) => {{");
+            // sort: the grid's chosen sort (a column name and a direction); left out of the request when there is none (the default order).
+            L($"  getPage: (pageNumber: number, pageSize: number, {filtersName}: {{{(filterType.Length > 0 ? " " + filterType + " " : "")}}} = {{}}, sort: {{ column: string; descending: boolean }} | null = null) => {{");
             L("    const params = new URLSearchParams();");
             L("    params.set('pageNumber', String(pageNumber));");
             L("    params.set('pageSize', String(pageSize));");
             foreach (var f in filters)
                 L($"    if (filters.{f.ParamName}) params.set('{f.ParamName}', filters.{f.ParamName});");
+            L("    if (sort) {");
+            L("      params.set('sortBy', sort.column);");
+            L("      params.set('sortDir', sort.descending ? 'desc' : 'asc');");
+            L("    }");
             L($"    return request<{baseName}PagedResult>(`${{apiUrl}}/search?${{params.toString()}}`);");
             L("  },");
         }

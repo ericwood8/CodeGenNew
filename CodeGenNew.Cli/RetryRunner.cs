@@ -29,6 +29,11 @@ public static class RetryRunner
                 string message = await action();
                 return new RetryOutcome { Success = true, Message = message, AttemptsMade = attempt };
             }
+            catch (CodeGenNew.SchemaIntrospection.TableNotFoundException ex)
+            {
+                // Not an environmental problem: the table is not there under that name. Retrying (and beeping) would not change that.
+                return new RetryOutcome { Success = false, Message = $"Error: {ex.Message}", AttemptsMade = attempt };
+            }
             catch (Exception ex)
             {
                 lastError = ex;

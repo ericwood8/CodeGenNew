@@ -435,7 +435,7 @@ public class ProjectSettingsTests
         var react = await TemplateRunner.RunAsync(Repo.Template("TSX_DetailMasterPage_v1.tt"), Sample.OrderWithLines(), With());
         var angular = await TemplateRunner.RunAsync(Repo.Template("TS_DetailMasterComponent_v1.tt"), Sample.OrderWithLines(), With());
 
-        Expect.Contains(winui.GeneratedText!, "if (raw is DateTime dateValue) return dateValue.ToString(\"MM/dd/yyyy\");");
+        Expect.Contains(winui.GeneratedText!, "if (value is DateTime dateValue) return dateValue.ToString(\"MM/dd/yyyy\");");
         Expect.Contains(react.GeneratedText!, @"value.replace(/^(\d{4}-\d{2}-\d{2})T.*$/, '$1')");
         Expect.Contains(angular.GeneratedText!, "cell(value: unknown, key: string, names?: Record<string, string>): string {");
         Expect.Contains(angular.GeneratedText!, "{{cell(row[col], col, orderLineNames[col])}}");
@@ -662,7 +662,7 @@ public class ProjectSettingsTests
         Assert.IsTrue(winui.Success && react.Success && angular.Success);
         Expect.Contains(winui.GeneratedText!, "Click=\"OnOrderLineEditClick\"");
         Expect.Contains(winui.GeneratedText!, "Click=\"OnOrderLineDeleteClick\"");
-        Expect.Contains(winui.GeneratedText!, "orderLineColumnHeaders.Add(\"Actions\");");
+        Expect.Contains(winui.GeneratedText!, "<TextBlock Text=\"Actions\" FontWeight=\"SemiBold\" Width=\"120\" VerticalAlignment=\"Center\" />");
         Expect.Contains(react.GeneratedText!, "const editOrderLine = (row: any) => {");
         Expect.Contains(react.GeneratedText!, "const deleteOrderLine = async (row: any): Promise<void> => {");
         Expect.Contains(react.GeneratedText!, "onClick={() => editOrderLine(row)}");
@@ -685,7 +685,7 @@ public class ProjectSettingsTests
         Assert.IsTrue(react.Success && angular.Success);
         Expect.Contains(react.GeneratedText!, "placeholder=\"Search by Customer PO\"");
         Expect.Contains(react.GeneratedText!, "<PaginationBar");
-        Expect.Contains(react.GeneratedText!, "orderApi.getPage(targetPage, pageSize, filterValues)");
+        Expect.Contains(react.GeneratedText!, "orderApi.getPage(targetPage, pageSize, filterValues, sortValue)");
         Expect.Contains(angular.GeneratedText!, "placeholder=\"Search by Customer PO\"");
         Expect.Contains(angular.GeneratedText!, "<mat-paginator");
         Expect.Contains(angular.GeneratedText!, "getPage(this.pageIndex + 1, this.pageSize");
@@ -721,7 +721,7 @@ public class ProjectSettingsTests
         var result = await TemplateRunner.RunAsync(Repo.Template(template), TabbedTable(), With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
-        Expect.Contains(result.GeneratedText!, "import { ChangeDetectionStrategy, Component, ElementRef, ViewChild } from '@angular/core';");
+        Expect.Contains(result.GeneratedText!, "import { ChangeDetectionStrategy, Component, ElementRef, HostListener, ViewChild } from '@angular/core';");
         Expect.Contains(result.GeneratedText!, "changeDetection: ChangeDetectionStrategy.Default,");
     }
 
@@ -793,7 +793,7 @@ public class ProjectSettingsTests
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!.Replace("\r\n", "\n");
-        Expect.Contains(text, "label : SpacedHeader(name));");
+        Expect.Contains(text, "label : SpacedHeader(name)).ToList();");
         Expect.Contains(text, "private static string SpacedHeader(string name)");
         Expect.Contains(text, "using System.Text.RegularExpressions;");
         Expect.Contains(text, "<DataTemplate x:DataType=\"x:String\">");
@@ -834,6 +834,17 @@ public class ProjectSettingsTests
         Assert.IsFalse(Sample.Column("Quantity", System.Data.SqlDbType.Int).IsLongTextColumn);
     }
 
+    // A grid header, whichever stack wrote it: a plain <th>, a WinUI3 TextBlock or sort Button, a React SortHeader, an Angular sort button.
+    private static bool HasHeader(string text, string caption)
+    {
+        const string Q = "\"";
+        return text.Contains($"<th>{caption}</th>")
+            || text.Contains($"Text={Q}{caption}{Q} FontWeight=")
+            || text.Contains($"Content={Q}{caption}{Q} Tag=")
+            || text.Contains($"label={Q}{caption}{Q} column=")
+            || text.Contains($">{caption}{{{{ sortMark(");
+    }
+
     private static TableModel GridTable() => Sample.Table("Item", [
         Sample.Column("ItemId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
         Sample.Column("Notes", System.Data.SqlDbType.VarChar, characters: 40, ordinal: 2),
@@ -850,7 +861,7 @@ public class ProjectSettingsTests
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!;
-        Assert.IsTrue(text.Contains("<th>Item #</th>") || text.Contains("FontWeight=\"SemiBold\"") && text.Contains("Text=\"Item #\""), "the Item Number column is captioned Item #");
+        Assert.IsTrue(HasHeader(text, "Item #"), "the Item Number column is captioned Item #");
         Expect.Contains(text, "Discount %");
         // Notes is a long text column: it never appears in a grid
         Expect.DoesNotContain(text, "<th>Notes</th>");
@@ -869,7 +880,7 @@ public class ProjectSettingsTests
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!;
-        Assert.IsTrue(text.Contains("<th>Quantity R</th>") || text.Contains("Text=\"Quantity R\" FontWeight="), "the 18th column is in the grid");
+        Assert.IsTrue(HasHeader(text, "Quantity R"), "the 18th column is in the grid");
         Expect.DoesNotContain(text, "<th>Quantity S</th>");
         Expect.DoesNotContain(text, "Text=\"Quantity S\" FontWeight=");
     }
@@ -969,7 +980,7 @@ public class ProjectSettingsTests
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!;
-        Assert.IsTrue(text.Contains("<th>Closed?</th>") || text.Contains("Text=\"Closed?\" FontWeight="), "yes/no caption");
-        Assert.IsTrue(text.Contains("<th>Added</th>") || text.Contains("Text=\"Added\" FontWeight="), "date caption without Date");
+        Assert.IsTrue(HasHeader(text, "Closed?"), "yes/no caption");
+        Assert.IsTrue(HasHeader(text, "Added"), "date caption without Date");
     }
 }

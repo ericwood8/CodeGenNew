@@ -228,6 +228,10 @@
         if (gridColumns.Count == 0) gridColumns = shown.ToList();
         // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
         gridColumns = gridColumns.ForGrid();
+        // A grid column's header sorts the grid unless it is long text or binary (SearchSort.IsSortable; long text never is in a grid anyway).
+        var sortableColumns = gridColumns.Where(SearchSort.IsSortable).ToList();
+        // A Clone button beside Edit and Delete for the tables CloneShape allows (the api has clone(id), API_Crud / CS_Repo write the server side).
+        bool canClone = CloneShape.CanClone(Model, Project);
         // The form is tabbed (Main / Billing & Shipping / Notes) when it has more than one kind of field: see FormPages.
         var formPages = FormPages.For(shown);
         bool tabbed = formPages.Count > 1;
@@ -243,6 +247,8 @@
         T($"import {{ {variable}Api }} from '../{apiFolder}/{stem}Api';");
         T($"import {{ ApiError, request }} from '../{apiFolder}/client';");
         T("import { PaginationBar } from '../components/PaginationBar';");
+        T("import { GridMenu, SortHeader, loadSort, nextSort, saveSort, sortRows } from '../components/gridSort';");
+        T("import type { GridSort } from '../components/gridSort';");
         foreach (var p in parents.Where(p => !p.Self))
         {
             T($"import type {{ {p.Type} }} from '../{modelsFolder}/{p.ModelFile}';");
@@ -250,6 +256,8 @@
         }
         T();
         T($"const pageSize = {pageSize};");
+        T($"const gridKey = '{stem}'; // the grid's saved sort is kept in the browser under this key (see components/gridSort.tsx)");
+        T($"const sortableColumns = [{string.Join(", ", sortableColumns.Select(c => "'" + c.Name + "'"))}]; // the columns whose header sorts the grid");
         T();
         if (children.Count > 0)
         {
@@ -312,6 +320,7 @@
         T("  const [page, setPage] = useState(1);");
         T("  const [totalPages, setTotalPages] = useState(1);");
         T("  const [error, setError] = useState<string | null>(null);");
+        T("  const [sort, setSort] = useState<GridSort | null>(() => loadSort(gridKey, sortableColumns));");
         T("  // Opened from another page's grid (?edit=<id>&back=<that page>): open this row, and go back to that page when the form is saved or cancelled.");
         T("  const [searchParams] = useSearchParams();");
         T("  const navigate = useNavigate();");
@@ -320,12 +329,14 @@
         {
             T($"  const [{child.Var}Rows, set{child.MethodName}Rows] = useState<any[]>([]);");
             T($"  const [{child.Var}Columns, set{child.MethodName}Columns] = useState<string[]>([]);");
+            T($"  const [{child.Var}Sort, set{child.MethodName}Sort] = useState<GridSort | null>(() => loadSort(gridKey + '.{child.Var}'));");
             if (child.Lookups.Count > 0)
                 T($"  const [{child.Var}Names, set{child.MethodName}Names] = useState<Record<string, Record<string, string>>>({{}});");
         }
         T();
-        T($"  const load = (targetPage: number = 1{(canSearch ? ", filterValues: typeof filters = filters" : "")}) => {{");
-        T($"    {variable}Api.getPage(targetPage, pageSize{(canSearch ? ", filterValues" : "")}).then((result) => {{");
+        // The sort (like the filters) is read from state by default; a change passes its new value explicitly because state is not updated yet.
+        T($"  const load = (targetPage: number = 1{(canSearch ? ", filterValues: typeof filters = filters" : "")}, sortValue: GridSort | null = sort) => {{");
+        T($"    {variable}Api.getPage(targetPage, pageSize, {(canSearch ? "filterValues" : "{}")}, sortValue).then((result) => {{");
         T($"      {setList}(result.items);");
         T("      setPage(result.page);");
         T("      setTotalPages(result.totalPages);");
@@ -378,6 +389,25 @@
         T("      }");
         T("    }");
         T("  };");
+        if (canClone)
+        {
+            // Clone copies the row on the server and returns the copy: it is in the grid, and open in the form at once so the person changes what differs.
+            T();
+            T($"  const clone = async (id: {keyTs}): Promise<void> => {{");
+            T("    try {");
+            T($"      const copy = await {variable}Api.clone(id);");
+            T("      load(page);");
+            T("      edit(copy);");
+            T("    } catch (err) {");
+            T("      if (err instanceof ApiError && err.status === 404) {");
+            T("        setError('It no longer exists!');");
+            T("        load(page);");
+            T("      } else {");
+            T("        setError('Problem while cloning!');");
+            T("      }");
+            T("    }");
+            T("  };");
+        }
         T();
         var adds = new List<string>();
         foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && !c.IsNullable && !c.IsComputed && !c.IsIdentity))
@@ -436,6 +466,21 @@
             T("    load(1, cleared);");
             T("  };");
         }
+        // Click a column header to sort by it, click it again to flip the direction; the right-click menu clears the sort. The sort is saved (gridSort.tsx) and
+        // kept when paging and when the filters change; a change goes back to page 1.
+        T();
+        T("  const sortBy = (column: string) => {");
+        T("    const next = nextSort(sort, column);");
+        T("    setSort(next);");
+        T("    saveSort(gridKey, next);");
+        T($"    load(1{(canSearch ? ", filters" : "")}, next);");
+        T("  };");
+        T();
+        T("  const clearSort = () => {");
+        T("    setSort(null);");
+        T("    saveSort(gridKey, null);");
+        T($"    load(1{(canSearch ? ", filters" : "")}, null);");
+        T("  };");
         foreach (var p in parents)
         {
             T();
@@ -458,6 +503,18 @@
             foreach (var lookup in child.Lookups)
                 T($"      request<any[]>('{apiPrefix}/{lookup.Route}').then((items) => set{child.MethodName}Names((names) => ({{ ...names, {lookup.Column}: Object.fromEntries(items.map((i) => [String(i['{lookup.Key}']), String(i['{lookup.Display}'] ?? '')])) }}))).catch(() => {{}});");
             T("    }).catch(() => {});");
+            T("  };");
+            // The child grid holds all its rows, so a click on a header sorts them here (no trip to the server); the sort is saved like the main grid's.
+            T();
+            T($"  const sort{child.MethodName}By = (column: string) => {{");
+            T($"    const next = nextSort({child.Var}Sort, column);");
+            T($"    set{child.MethodName}Sort(next);");
+            T($"    saveSort(gridKey + '.{child.Var}', next);");
+            T("  };");
+            T();
+            T($"  const clear{child.MethodName}Sort = () => {{");
+            T($"    set{child.MethodName}Sort(null);");
+            T($"    saveSort(gridKey + '.{child.Var}', null);");
             T("  };");
             if (child.KeyProp is not null)
             {
@@ -512,11 +569,17 @@
         T();
         T("      {error && !selectedRow && <p>{error}</p>}"); // while the dialog is open the error shows inside it
         T();
+        T("      <GridMenu sort={sort} onClear={clearSort}>");
         T("      <table>");
         T("        <thead>");
         T("          <tr>");
         foreach (var c in gridColumns)
-            T($"            <th>{GridCaption.For(c, LabelOf(c))}</th>");
+        {
+            if (sortableColumns.Contains(c))
+                T($"            <SortHeader label=\"{GridCaption.For(c, LabelOf(c))}\" column=\"{c.Name}\" sort={{sort}} onSort={{sortBy}} />");
+            else
+                T($"            <th>{GridCaption.For(c, LabelOf(c))}</th>");
+        }
         T("            <th>Actions</th>");
         T("          </tr>");
         T("        </thead>");
@@ -539,12 +602,15 @@
         }
         T("              <td>");
         T($"                <button type=\"button\" onClick={{() => edit({variable})}}>Edit</button>");
+        if (canClone)
+            T($"                <button type=\"button\" onClick={{() => void clone({variable}.{keyProp}!)}}>Clone</button>");
         T($"                <button type=\"button\" onClick={{() => void remove({variable}.{keyProp}!)}}>Delete</button>");
         T("              </td>");
         T("            </tr>");
         T("          ))}");
         T("        </tbody>");
         T("      </table>");
+        T("      </GridMenu>");
         T();
         T("      <PaginationBar");
         T("        page={page}");
@@ -707,12 +773,13 @@
             T($"          {{selectedRow.{keyProp} ? (");
             T("            <div>");
             T($"              <h3>{child.Title}</h3>");
+            T($"              <GridMenu sort={{{child.Var}Sort}} onClear={{clear{child.MethodName}Sort}}>");
             T("              <table>");
             T("                <thead>");
-            T($"                  <tr>{{{child.Var}Columns.map((col) => <th key={{col}}>{{caption(col)}}</th>)}}{(child.KeyProp is not null ? "<th>Actions</th>" : "")}</tr>");
+            T($"                  <tr>{{{child.Var}Columns.map((col) => <SortHeader key={{col}} label={{caption(col)}} column={{col}} sort={{{child.Var}Sort}} onSort={{sort{child.MethodName}By}} />)}}{(child.KeyProp is not null ? "<th>Actions</th>" : "")}</tr>");
             T("                </thead>");
             T("                <tbody>");
-            T($"                  {{{child.Var}Rows.map((row, index) => (");
+            T($"                  {{sortRows({child.Var}Rows, {child.Var}Sort{(child.Lookups.Count > 0 ? $", {child.Var}Names[{child.Var}Sort?.column ?? '']" : "")}).map((row, index) => (");
             // Clicking a row, or its Edit button, opens that row on its own page.
             T(child.KeyProp is not null ? $"                    <tr key={{index}} onClick={{() => edit{child.MethodName}(row)}} style={{{{ cursor: 'pointer' }}}}>" : "                    <tr key={index}>");
             // A date-and-time string from the API (2026-09-27T00:00:00) shows as its date only.
@@ -728,6 +795,7 @@
             T("                  ))}");
             T("                </tbody>");
             T("              </table>");
+            T("              </GridMenu>");
             T("            </div>");
             T("          ) : (");
             T($"            <p><em>Save this {title} first to see its {child.Title} rows.</em></p>");

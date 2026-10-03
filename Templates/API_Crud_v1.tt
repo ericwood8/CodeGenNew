@@ -88,6 +88,9 @@
 
     string usingLines = string.Concat(usings.Select(u => $"using {u};\n"));
 
+    // A table with a database-assigned int key and a clone routine gets POST <route>/{id}/clone (CloneShape; CS_Repo writes CloneAsync for the same tables).
+    bool canClone = supported && CloneShape.CanClone(Model, Project);
+
     string entity = Model.TableName;
     string keyProperty = keyColumn?.Name ?? "";
 
@@ -149,6 +152,20 @@ public class <#= entity #>Api<T> : BaseApi<T> where T : class
         .WithOpenApi()
         .ProducesProblem(404)
         .ProducesProblem(500);
+<#
+        if (canClone)
+        {
+#>
+
+        // Clone: copy a row into a new one and return it (the grids' Clone button opens the copy in the edit form)
+        app.MapPost(_apiSubDir + "/{id:int}/clone", CloneRow)
+        .WithName($"Clone{singular}")
+        .WithOpenApi()
+        .ProducesProblem(404)
+        .ProducesProblem(500);
+<#
+        }
+#>
     }
 
     private static async Task<IResult> GetAll([FromServices] <#= contextType #> context)
@@ -208,6 +225,23 @@ public class <#= entity #>Api<T> : BaseApi<T> where T : class
         else
             return Results.BadRequest(); // cannot delete because "in use"
     }
+<#
+        if (canClone)
+        {
+#>
+
+    private static async Task<IResult> CloneRow([FromServices] <#= contextType #> context, int id)
+    {
+        <#= entity #>Repo repo = new(context);
+        if (!await repo.ExistsAsync(id))
+            return Results.NotFound(); // 404 error if there is no row to copy
+        int newId = await repo.CloneAsync(id);
+        var copy = await repo.GetByIdAsync(newId);
+        return Results.Created($"/api{_apiSubDir}/{newId}", copy);
+    }
+<#
+        }
+#>
 }
 <#
     }

@@ -148,6 +148,15 @@
         L($"    delete(id: {keyTs}): Observable<void> {{");
         L("        return this.http.delete<void>(`${this.apiUrl}/${id}`);");
         L("    }");
+        // clone(id): copy a row into a new one and get the copy back (POST api/<route>/{id}/clone, API_Crud); only for the tables CloneShape says can be cloned.
+        if (CloneShape.CanClone(Model, Project))
+        {
+            L();
+            L($"    // Copy a {lowerWords} into a new one and return the copy");
+            L($"    clone(id: {keyTs}): Observable<{baseName}> {{");
+            L($"        return this.http.post<{baseName}>(`${{this.apiUrl}}/${{id}}/clone`, null);");
+            L("    }");
+        }
         if (hasName)
         {
             L();
@@ -160,10 +169,12 @@
             string filterParams = string.Concat(filters.Select(f => $", {f.ParamName}?: string"));
             L();
             L($"    // Get one page of {lowerWords.Pluralize()}, optionally filtered by any combination of the searchable columns");
-            L($"    getPage(pageNumber: number, pageSize: number{filterParams}): Observable<{baseName}PagedResult> {{");
+            // sortBy / sortDescending: the grid's chosen sort (a column name, "asc" or "desc"); left out of the request when there is none (the default order).
+            L($"    getPage(pageNumber: number, pageSize: number{filterParams}, sortBy?: string, sortDescending?: boolean): Observable<{baseName}PagedResult> {{");
             L("        let params = new HttpParams().set('pageNumber', pageNumber).set('pageSize', pageSize);");
             foreach (var f in filters)
                 L($"        if ({f.ParamName}) {{ params = params.set('{f.ParamName}', {f.ParamName}); }}");
+            L("        if (sortBy) { params = params.set('sortBy', sortBy).set('sortDir', sortDescending ? 'desc' : 'asc'); }");
             L($"        return this.http.get<{baseName}PagedResult>(`${{this.apiUrl}}/search`, {{ params }});");
             L("    }");
         }

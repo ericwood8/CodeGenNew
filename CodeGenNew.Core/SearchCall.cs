@@ -33,7 +33,7 @@ public sealed class SearchCall
     {
         get
         {
-            string args = string.Join(", ", _filterArguments.Append("@PageNumber").Append("@PageSize"));
+            string args = string.Join(", ", _filterArguments.Append("@PageNumber").Append("@PageSize").Append("@SortColumn").Append("@SortDescending"));
             return _postgres ? $"SELECT * FROM \\\"{_schema}\\\".\\\"{_entity}_Search\\\"({args})"
                 : _mysql ? $"CALL `{_entity}_Search`({args})"
                 : $"EXEC [{_schema}].[{_entity}_Search] {args}";
@@ -58,6 +58,18 @@ public sealed class SearchCall
         ? $"new {_prefix}NpgsqlParameter(\"@p{name}\", NpgsqlTypes.NpgsqlDbType.Text) {{ Value = (object?){valueExpression} ?? DBNull.Value }}"
         : _mysql ? $"new {_prefix}MySqlParameter(\"@p{name}\", (object?){valueExpression} ?? DBNull.Value)"
         : $"new {_prefix}SqlParameter(\"@p{name}\", (object?){valueExpression} ?? DBNull.Value)";
+
+    /// <summary> The grid's chosen sort column (a column name, or null for the default order); the routine compares it with its own list of columns (SearchSort). </summary>
+    public string SortColumnParameter(string valueExpression) => _postgres
+        ? $"new {_prefix}NpgsqlParameter(\"@SortColumn\", NpgsqlTypes.NpgsqlDbType.Text) {{ Value = (object?){valueExpression} ?? DBNull.Value }}"
+        : _mysql ? $"new {_prefix}MySqlParameter(\"@SortColumn\", (object?){valueExpression} ?? DBNull.Value)"
+        : $"new {_prefix}SqlParameter(\"@SortColumn\", (object?){valueExpression} ?? DBNull.Value)";
+
+    /// <summary> The sort direction: true for descending. </summary>
+    public string SortDescendingParameter(string valueExpression) => _postgres
+        ? $"new {_prefix}NpgsqlParameter(\"@SortDescending\", {valueExpression})"
+        : _mysql ? $"new {_prefix}MySqlParameter(\"@SortDescending\", {valueExpression})"
+        : $"new {_prefix}SqlParameter(\"@SortDescending\", {valueExpression})";
 
     /// <summary> A C# expression creating a non-null integer parameter (@PageNumber, @PageSize). </summary>
     public string IntParameter(string name, string valueExpression) => _postgres

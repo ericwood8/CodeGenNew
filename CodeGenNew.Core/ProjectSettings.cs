@@ -25,7 +25,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens"
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables"
     ];
 
     private readonly Dictionary<string, string> _values;
@@ -141,6 +141,10 @@ public class ProjectSettings
     /// <summary> The tables that get a screen, in menu order (<c>Screens=CustomerMonthlySummary,SalesInvoice,Customer</c>). Empty when not set: the generated menu
     /// then lists every table that has an API and a search, alphabetically. </summary>
     public string[] Screens => Explicit("Screens") is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
+
+    /// <summary> Tables that get no Clone button even though they could (<c>NoCloneTables=Customer,SalesInvoice</c>): copying a customer or an invoice is rarely what is wanted. </summary>
+    public bool NoClone(string table) => Explicit("NoCloneTables") is { } text
+        && text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Contains(table, StringComparer.OrdinalIgnoreCase);
 
     public string[] Acronyms => Explicit("Acronyms") is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
 

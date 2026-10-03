@@ -79,6 +79,8 @@ public abstract class SchemaProviderBase : ISchemaProvider
         await using var connection = await OpenConnectionAsync(cancellationToken);
 
         var rawColumns = await ReadColumnsAsync(connection, schemaName, tableName, cancellationToken);
+        if (rawColumns.Count == 0)
+            throw new TableNotFoundException(schemaName, tableName);
         var foreignKeys = await ReadForeignKeysAsync(connection, schemaName, tableName, cancellationToken);
         var childForeignKeys = await ReadChildForeignKeysAsync(connection, schemaName, tableName, cancellationToken);
 

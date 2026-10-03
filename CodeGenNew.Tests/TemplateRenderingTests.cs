@@ -171,7 +171,7 @@ public class TemplateRenderingTests
 
         foreach (string code in new[] { repo, api })
         {
-            Expect.Contains(code, "SELECT * FROM \\\"public\\\".\\\"Holiday_Search\\\"(@pSY_IsoCountry_Alpha3Code, @pName, @PageNumber, @PageSize)");
+            Expect.Contains(code, "SELECT * FROM \\\"public\\\".\\\"Holiday_Search\\\"(@pSY_IsoCountry_Alpha3Code, @pName, @PageNumber, @PageSize, @SortColumn, @SortDescending)");
             Expect.Contains(code, "SELECT \\\"public\\\".\\\"Holiday_SearchCount\\\"(@pSY_IsoCountry_Alpha3Code, @pName) AS \\\"Value\\\"");
             Expect.Contains(code, "NpgsqlParameter(\"@pName\", NpgsqlTypes.NpgsqlDbType.Text)");
             Expect.DoesNotContain(code, "SqlParameter(");
@@ -205,7 +205,7 @@ public class TemplateRenderingTests
     {
         string sql = await Render("SP_Search_v1.tt", Sample.Holiday());
 
-        Expect.Contains(sql, "ORDER BY [Name] ASC, [HolidayId] ASC");
+        Expect.Contains(sql, "[Name] ASC, [HolidayId] ASC");
     }
 
     [TestMethod]
@@ -413,13 +413,13 @@ public class TemplateRenderingTests
         var files = GeneratedFiles.Split(await Render("WinUI3_MasterScreen_v1.tt", Sample.DonateLeave()))
             .ToDictionary(f => Path.GetFileName(f.RelativePath));
 
-        Assert.HasCount(5, files); // the page/dialog, its code-behind, its ViewModel, and the shared PaginationBar (xaml + code-behind)
+        Assert.HasCount(6, files); // the page, its code-behind, its ViewModel, the shared PaginationBar (xaml + code-behind) and the saved-sort store
         string xaml = files["E_DonateLeaveListPage.xaml"].Content;
         string codeBehind = files["E_DonateLeaveListPage.xaml.cs"].Content;
         string viewModel = files["E_DonateLeaveListViewModel.cs"].Content;
 
         Expect.Contains(xaml, "x:Class=\"TimeEntry.Desktop.Views.E_DonateLeaveListPage\"");
-        Expect.Contains(xaml, "Text=\"Donate From Employee\"");
+        Expect.Contains(xaml, "Content=\"Donate From Employee\"");   // a sortable header is a button
         Expect.Contains(xaml, "ItemsSource=\"{x:Bind ViewModel.Rows}\"");
         Expect.Contains(xaml, "Text=\"{x:Bind Cells[0]}\"");
 
@@ -465,7 +465,7 @@ public class TemplateRenderingTests
         Expect.Contains(viewModel, "private const int PageSize = 20;");
         Expect.Contains(viewModel, "public bool CanGoPrevious => PageNumber > 1;");
         Expect.Contains(viewModel, "public bool CanGoNext => PageNumber < TotalPages;");
-        Expect.Contains(viewModel, "var (rows, totalCount) = await _repo.SearchAsync(sY_IsoCountry_Alpha3Code: string.IsNullOrWhiteSpace(SY_IsoCountry_Alpha3CodeFilter) ? null : SY_IsoCountry_Alpha3CodeFilter, name: string.IsNullOrWhiteSpace(NameFilter) ? null : NameFilter, pageNumber: PageNumber, pageSize: PageSize);");
+        Expect.Contains(viewModel, "var (rows, totalCount) = await _repo.SearchAsync(sY_IsoCountry_Alpha3Code: string.IsNullOrWhiteSpace(SY_IsoCountry_Alpha3CodeFilter) ? null : SY_IsoCountry_Alpha3CodeFilter, name: string.IsNullOrWhiteSpace(NameFilter) ? null : NameFilter, pageNumber: PageNumber, pageSize: PageSize, sortColumn: _sortColumn, sortDescending: _sortDescending);");
         Expect.Contains(viewModel, "public async Task PreviousPageAsync()");
         Expect.Contains(viewModel, "public async Task NextPageAsync()");
         Expect.DoesNotContain(viewModel, "_repo.GetAll()");
@@ -522,7 +522,7 @@ public class TemplateRenderingTests
         Expect.Contains(codeBehind, "OnPreviousClick");
         Expect.Contains(codeBehind, "OnNextClick");
         Expect.DoesNotContain(codeBehind, "OnSearchClick");
-        Expect.Contains(viewModel, "var (rows, totalCount) = await _repo.SearchAsync(pageNumber: PageNumber, pageSize: PageSize);");
+        Expect.Contains(viewModel, "var (rows, totalCount) = await _repo.SearchAsync(pageNumber: PageNumber, pageSize: PageSize, sortColumn: _sortColumn, sortDescending: _sortDescending);");
         Expect.DoesNotContain(viewModel, "Filter");
         Expect.DoesNotContain(viewModel, "GetAll()");
     }
@@ -569,7 +569,7 @@ public class TemplateRenderingTests
         Expect.Contains(codeBehind, "public sealed partial class DepartmentDetailMasterDialog : ContentDialog");
 
         Expect.Contains(viewModel, "public class DepartmentChildGridRow");
-        Expect.Contains(viewModel, "public ObservableCollection<string> departmentTeamColumnHeaders { get; } = [];");
+        Expect.Contains(viewModel, "public ObservableCollection<DepartmentChildGridHeader> departmentTeamColumnHeaders { get; } = [];");
         Expect.Contains(viewModel, "public ObservableCollection<DepartmentChildGridRow> departmentTeamRows { get; } = [];");
         Expect.Contains(viewModel, "var entityType = _context.Model.FindEntityType(typeof(DepartmentTeam))!;");
         Expect.Contains(viewModel, "EF.Property<int>(c, \"DepartmentId\") == _editing!.DepartmentId");
@@ -642,7 +642,7 @@ public class TemplateRenderingTests
         Expect.Contains(html, "Department Team");
         Expect.Contains(html, "*ngIf=\"selectedRow.departmentId; else saveDepartmentTeamFirst\"");
         Expect.Contains(html, "*ngFor=\"let col of departmentTeamColumns\"");
-        Expect.Contains(html, "*ngFor=\"let row of departmentTeamRows\"");
+        Expect.Contains(html, "*ngFor=\"let row of sortedChildRows('departmentTeam', departmentTeamRows)\"");
         Expect.Contains(html, "Save this Department first to see its Department Team rows.");
 
         Expect.Contains(ts, "export class DepartmentDetailMasterComponent {");
@@ -758,9 +758,11 @@ public class TemplateRenderingTests
         string cs = await Render("API_Search_v1.tt", allNumeric);
 
         Expect.Contains(cs, "[FromQuery] int pageNumber = 1,");
-        Expect.DoesNotContain(cs, "[FromQuery] string?");
+        // no filter parameter: the only string query parameters are the sort (sortBy, sortDir)
+        Assert.AreEqual(2, cs.Split("[FromQuery] string?").Length - 1, "only sortBy and sortDir");
+        Expect.Contains(cs, "[FromQuery] string? sortBy = null,");
         Expect.Contains(cs, "var countParameters = new SqlParameter[]");
-        Expect.Contains(cs, "EXEC [dbo].[Metric_Search] @PageNumber, @PageSize");
+        Expect.Contains(cs, "EXEC [dbo].[Metric_Search] @PageNumber, @PageSize, @SortColumn, @SortDescending");
         Expect.Contains(cs, "\"EXEC [dbo].[Metric_SearchCount]\",");
         Expect.Contains(cs, "countParameters)");
     }
@@ -777,7 +779,7 @@ public class TemplateRenderingTests
         Expect.Contains(cs, "[FromQuery] string? sY_IsoCountry_Alpha3Code,");
         Expect.Contains(cs, "[FromQuery] string? name,");
         Expect.Contains(cs, "[FromQuery] int pageNumber = 1,");
-        Expect.Contains(cs, "[FromQuery] int pageSize = 100)");
+        Expect.Contains(cs, "[FromQuery] int pageSize = 100,");
     }
 
     [TestMethod]
@@ -1296,12 +1298,12 @@ public class TemplateRenderingTests
     {
         string cs = await Render("CS_Repo_v1.tt", Sample.Holiday());
 
-        Expect.Contains(cs, "public async Task<(List<Holiday> Items, int TotalCount)> SearchAsync(string? sY_IsoCountry_Alpha3Code = null, string? name = null, int pageNumber = 1, int pageSize = 100)");
+        Expect.Contains(cs, "public async Task<(List<Holiday> Items, int TotalCount)> SearchAsync(string? sY_IsoCountry_Alpha3Code = null, string? name = null, int pageNumber = 1, int pageSize = 100, string? sortColumn = null, bool sortDescending = false)");
         // Set<Holiday>().FromSqlRaw(...), not Database.SqlQueryRaw<Holiday>(...) -- SqlQueryRaw<T> builds an
         // ad hoc EF model that rejects any navigation property T has, throwing for any table with a foreign
         // key; found live running this exact generated code against a table with a parent lookup (2026-09-28).
         Expect.Contains(cs, "await _context.Set<Holiday>()");
-        Expect.Contains(cs, ".FromSqlRaw(\"EXEC [dbo].[Holiday_Search] @pSY_IsoCountry_Alpha3Code, @pName, @PageNumber, @PageSize\", parameters)");
+        Expect.Contains(cs, ".FromSqlRaw(\"EXEC [dbo].[Holiday_Search] @pSY_IsoCountry_Alpha3Code, @pName, @PageNumber, @PageSize, @SortColumn, @SortDescending\", parameters)");
         Expect.Contains(cs, ".SqlQueryRaw<int>(\"EXEC [dbo].[Holiday_SearchCount] @pSY_IsoCountry_Alpha3Code, @pName\", countParameters)");
         Expect.Contains(cs, "return (items, totalCount);");
         // An EXEC call is non-composable SQL -- .SingleAsync() (which needs to compose it) throws
@@ -1321,7 +1323,7 @@ public class TemplateRenderingTests
         var allNumeric = Sample.Table("Metric", [Sample.Column("MetricId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("Value", SqlDbType.Int, ordinal: 2)]);
         string cs = await Render("CS_Repo_v1.tt", allNumeric);
 
-        Expect.Contains(cs, "public async Task<(List<Metric> Items, int TotalCount)> SearchAsync(int pageNumber = 1, int pageSize = 100)");
+        Expect.Contains(cs, "public async Task<(List<Metric> Items, int TotalCount)> SearchAsync(int pageNumber = 1, int pageSize = 100, string? sortColumn = null, bool sortDescending = false)");
         Expect.Contains(cs, "var countParameters = new Microsoft.Data.SqlClient.SqlParameter[]");
         Expect.Contains(cs, "EXEC [dbo].[Metric_Search] @PageNumber, @PageSize");
         Expect.Contains(cs, "EXEC [dbo].[Metric_SearchCount]\", countParameters)");
@@ -1414,7 +1416,7 @@ public class TemplateRenderingTests
         var withSearch = GeneratedFiles.Split(await Render("TS_Service_v1.tt", Sample.Holiday())).Single();
         Expect.Contains(withSearch.Content, "import { HttpClient, HttpParams } from '@angular/common/http';");
         Expect.Contains(withSearch.Content, "export interface HolidayPagedResult {");
-        Expect.Contains(withSearch.Content, "getPage(pageNumber: number, pageSize: number, sY_IsoCountry_Alpha3Code?: string, name?: string): Observable<HolidayPagedResult> {");
+        Expect.Contains(withSearch.Content, "getPage(pageNumber: number, pageSize: number, sY_IsoCountry_Alpha3Code?: string, name?: string, sortBy?: string, sortDescending?: boolean): Observable<HolidayPagedResult> {");
         Expect.Contains(withSearch.Content, "let params = new HttpParams().set('pageNumber', pageNumber).set('pageSize', pageSize);");
         Expect.Contains(withSearch.Content, "if (sY_IsoCountry_Alpha3Code) { params = params.set('sY_IsoCountry_Alpha3Code', sY_IsoCountry_Alpha3Code); }");
         Expect.Contains(withSearch.Content, "if (name) { params = params.set('name', name); }");
@@ -1426,7 +1428,7 @@ public class TemplateRenderingTests
         var withoutSearch = GeneratedFiles.Split(await Render("TS_Service_v1.tt", allNumeric)).Single();
         Expect.Contains(withoutSearch.Content, "import { HttpClient, HttpParams } from '@angular/common/http';");
         Expect.Contains(withoutSearch.Content, "export interface MetricPagedResult {");
-        Expect.Contains(withoutSearch.Content, "getPage(pageNumber: number, pageSize: number): Observable<MetricPagedResult> {");
+        Expect.Contains(withoutSearch.Content, "getPage(pageNumber: number, pageSize: number, sortBy?: string, sortDescending?: boolean): Observable<MetricPagedResult> {");
     }
 
     // ------------------------------------------------------------------ TS: a uniqueidentifier key
@@ -1461,8 +1463,8 @@ public class TemplateRenderingTests
     {
         var html = GeneratedFiles.Split(await Render("TS_Component_v1.tt", Sample.AccountRef())).Single(f => f.RelativePath.EndsWith(".html")).Content;
 
-        Expect.Contains(html, "<th>Full</th>");
-        Expect.Contains(html, "<th>List ID</th>");
+        Expect.Contains(html, ">Full{{ sortMark(");
+        Expect.Contains(html, ">List ID{{ sortMark(");
         Expect.DoesNotContain(html, "accountRefID }}");     // the key is not a grid column
         Expect.DoesNotContain(html, "id=\"accountRefAccountRefID\"");   // nor a form field
     }
@@ -1514,7 +1516,7 @@ public class TemplateRenderingTests
             "components/donateleave/donateleave.component.spec.ts",
             "components/donateleave/donateleave.component.ts"
         }, files.Select(f => f.RelativePath).ToArray());
-        Assert.AreEqual("", files[0].Content, "the stylesheet is meant to be empty");
+        StringAssert.StartsWith(files[0].Content, ".sort-header {", "the stylesheet holds only the sort styles");
     }
 
     [TestMethod]
@@ -1606,7 +1608,7 @@ public class TemplateRenderingTests
         Expect.Contains(ts, "imports: [ CommonModule, FormsModule, MatPaginatorModule ],");
         Expect.Contains(ts, "pageIndex = 0;");
         Expect.Contains(ts, "totalCount = 0;");
-        Expect.Contains(ts, "this.holidayService.getPage(this.pageIndex + 1, this.pageSize, this.filters.sY_IsoCountry_Alpha3Code, this.filters.name).subscribe((result) => {");
+        Expect.Contains(ts, "this.holidayService.getPage(this.pageIndex + 1, this.pageSize, this.filters.sY_IsoCountry_Alpha3Code, this.filters.name, this.sort?.column, this.sort?.descending).subscribe((result) => {");
         Expect.Contains(ts, "onPageChange(event: PageEvent): void {");
         Expect.Contains(ts, "this.pageIndex = event.pageIndex;");
         Expect.DoesNotContain(ts, "getAll()");
@@ -1651,7 +1653,7 @@ public class TemplateRenderingTests
         Expect.Contains(html, "<mat-paginator");
         Expect.DoesNotContain(html, "form-group-search");
         Expect.Contains(ts, "import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';");
-        Expect.Contains(ts, "this.metricService.getPage(this.pageIndex + 1, this.pageSize).subscribe((result) => {");
+        Expect.Contains(ts, "this.metricService.getPage(this.pageIndex + 1, this.pageSize, this.sort?.column, this.sort?.descending).subscribe((result) => {");
         Expect.DoesNotContain(ts, "filters");
         Expect.DoesNotContain(ts, "clearSearch");
         Expect.DoesNotContain(ts, "getAll()");
@@ -1752,7 +1754,7 @@ public class TemplateRenderingTests
         string withSearch = await Render("TSX_Api_v1.tt", Sample.Holiday());
         Expect.Contains(withSearch, "export interface HolidayPagedResult {");
         Expect.Contains(withSearch, "items: Holiday[];");
-        Expect.Contains(withSearch, "getPage: (pageNumber: number, pageSize: number, filters: { sY_IsoCountry_Alpha3Code?: string; name?: string } = {}) => {");
+        Expect.Contains(withSearch, "getPage: (pageNumber: number, pageSize: number, filters: { sY_IsoCountry_Alpha3Code?: string; name?: string } = {}, sort: { column: string; descending: boolean } | null = null) => {");
         Expect.Contains(withSearch, "if (filters.sY_IsoCountry_Alpha3Code) params.set('sY_IsoCountry_Alpha3Code', filters.sY_IsoCountry_Alpha3Code);");
         Expect.Contains(withSearch, "if (filters.name) params.set('name', filters.name);");
         Expect.Contains(withSearch, "return request<HolidayPagedResult>(`${apiUrl}/search?${params.toString()}`);");
@@ -1762,7 +1764,7 @@ public class TemplateRenderingTests
         var allNumeric = Sample.Table("Metric", [Sample.Column("MetricId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("Value", SqlDbType.Int, ordinal: 2)]);
         string withoutSearch = await Render("TSX_Api_v1.tt", allNumeric);
         Expect.Contains(withoutSearch, "export interface MetricPagedResult {");
-        Expect.Contains(withoutSearch, "getPage: (pageNumber: number, pageSize: number, _filters: {} = {}) => {");
+        Expect.Contains(withoutSearch, "getPage: (pageNumber: number, pageSize: number, _filters: {} = {}, sort: { column: string; descending: boolean } | null = null) => {");
         Expect.Contains(withoutSearch, "return request<MetricPagedResult>(`${apiUrl}/search?${params.toString()}`);");
     }
 
@@ -1878,8 +1880,8 @@ public class TemplateRenderingTests
         Expect.Contains(tsx, "const pageSize = 20;");
         Expect.Contains(tsx, "const [page, setPage] = useState(1);");
         Expect.Contains(tsx, "const [totalPages, setTotalPages] = useState(1);");
-        Expect.Contains(tsx, "const load = (targetPage: number = 1, filterValues: typeof filters = filters) => {");
-        Expect.Contains(tsx, "holidayApi.getPage(targetPage, pageSize, filterValues).then((result) => {");
+        Expect.Contains(tsx, "const load = (targetPage: number = 1, filterValues: typeof filters = filters, sortValue: GridSort | null = sort) => {");
+        Expect.Contains(tsx, "holidayApi.getPage(targetPage, pageSize, filterValues, sortValue).then((result) => {");
         Expect.Contains(tsx, "<PaginationBar");
         Expect.Contains(tsx, "onPrevious={() => load(page - 1)}");
         Expect.Contains(tsx, "onNext={() => load(page + 1)}");
@@ -1921,8 +1923,8 @@ public class TemplateRenderingTests
         string test = files.Single(f => f.RelativePath.EndsWith("Page.test.tsx")).Content;
 
         Expect.Contains(tsx, "import { PaginationBar } from '../components/PaginationBar';");
-        Expect.Contains(tsx, "const load = (targetPage: number = 1) => {");
-        Expect.Contains(tsx, "metricApi.getPage(targetPage, pageSize).then((result) => {");
+        Expect.Contains(tsx, "const load = (targetPage: number = 1, sortValue: GridSort | null = sort) => {");
+        Expect.Contains(tsx, "metricApi.getPage(targetPage, pageSize, {}, sortValue).then((result) => {");
         Expect.Contains(tsx, "<PaginationBar");
         Expect.DoesNotContain(tsx, "filters");
         Expect.DoesNotContain(tsx, "clearSearch");

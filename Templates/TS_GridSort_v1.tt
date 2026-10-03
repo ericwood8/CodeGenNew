@@ -1,0 +1,78 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TS_GridSort_v1.tt
+    // Generates: grid-sort.ts   (point the output folder at the Angular app's src\app folder; the components import it as '../../grid-sort')
+    //
+    // The support code every generated Angular grid imports for sorting. It does not depend on any table, so it is the same text for every database; it is a
+    // template only so that it is written the same way as the screens and kept in step with them. The header buttons, the right-click menu and the styles are
+    // in each generated component (TS_Component, TS_DetailMasterComponent); what is shared is how the sort is remembered and flipped:
+    //   - loadSort / saveSort: the sort is remembered in the browser (local storage), one entry per grid ("gridSort:<grid>"). It is saved as a list of
+    //     { column, descending } so that sorting by several columns can be added later without changing what is stored. Clearing the sort removes the entry.
+    //     A saved column that the grid no longer has is ignored. Local storage that is unavailable just means the sort is not remembered.
+    //   - nextSort: a click on another column sorts it ascending; a click on the sorted column flips the direction.
+    //   - sortRows: sorts the rows of a grid that holds all of them (a master dialog's child grids) in the browser, comparing real values and the names a column shows.
+    // The sort of a paged grid is applied by the server (a page of 20 rows sorted on its own would be wrong): the components pass it to the service's getPage as sortBy / sortDescending.
+
+    Write("@@@FILE grid-sort.ts@@@\n");
+#>
+/** The sort of a grid: one column and its direction. */
+export interface GridSort {
+  column: string;
+  descending: boolean;
+}
+
+const storageKey = (gridKey: string) => `gridSort:${gridKey}`;
+
+/** The saved sort of a grid, or null when there is none or its column is not one of the grid's sortable columns (any column when the grid's columns are not known yet). */
+export function loadSort(gridKey: string, sortableColumns?: string[]): GridSort | null {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(storageKey(gridKey)) ?? 'null');
+    const first = Array.isArray(saved) ? saved[0] : null;
+    if (first && typeof first.column === 'string' && (!sortableColumns || sortableColumns.includes(first.column))) {
+      return { column: first.column, descending: first.descending === true };
+    }
+  } catch {
+    // storage unavailable or unreadable: no saved sort
+  }
+  return null;
+}
+
+/** Remember the sort of a grid, or forget it (null). */
+export function saveSort(gridKey: string, sort: GridSort | null): void {
+  try {
+    if (sort) localStorage.setItem(storageKey(gridKey), JSON.stringify([sort]));
+    else localStorage.removeItem(storageKey(gridKey));
+  } catch {
+    // storage unavailable: the sort just is not remembered
+  }
+}
+
+/** What a click on a column header gives: another column sorts ascending, the sorted column flips its direction. */
+export function nextSort(current: GridSort | null, column: string): GridSort {
+  return current?.column === column ? { column, descending: !current.descending } : { column, descending: false };
+}
+
+/**
+ * A grid that holds all its rows (the read-only grids inside a master dialog) sorts them here, comparing the real values: numbers as numbers, text
+ * without regard to case, a yes/no as no before yes, a date-and-time string in time order, nothing first. A column that shows a name in place of an id
+ * (lookup: id -> name) sorts by the name. The rows are not changed; a column no row has leaves them as they are.
+ */
+export function sortRows<T extends Record<string, unknown>>(rows: T[], sort: GridSort | null, lookup?: Record<string, string>): T[] {
+  if (!sort) return rows;
+  const value = (row: T): unknown => {
+    const v = row[sort.column];
+    return lookup && v !== null && v !== undefined ? lookup[String(v)] ?? v : v;
+  };
+  const compare = (a: unknown, b: unknown): number => {
+    if (a === null || a === undefined) return b === null || b === undefined ? 0 : -1;
+    if (b === null || b === undefined) return 1;
+    if (typeof a === 'number' && typeof b === 'number') return a - b;
+    if (typeof a === 'boolean' && typeof b === 'boolean') return Number(a) - Number(b);
+    return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+  };
+  return [...rows].sort((x, y) => (sort.descending ? -1 : 1) * compare(value(x), value(y)));
+}

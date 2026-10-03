@@ -193,6 +193,11 @@
             });
         }
 
+        // CloneAsync: the grids' Clone button (CloneShape says which tables get one). Calls <Table>_Clone (SP_Clone) and returns the new row's id; a unique text column gets a
+        // free value from SuggestUnique<Column> above.
+        if (CloneShape.CanClone(Model, Project))
+            methods.Add(CloneCall.RepoMethod(Model, entity).ToArray());
+
         // Pagination (CodeGenPossibilities\Pagination, research folder): this repo method calls the same
         // generated <Table>_Search/<Table>_SearchCount pair directly through the DbContext, the identical
         // Database.SqlQueryRaw<T> call API_Search.tt's minimal-API endpoint makes, so WinUI3 (in-process)
@@ -212,7 +217,9 @@
             // whether there are zero filters or several (a naive "{paramList}, int pageNumber" would leave a
             // leading ", " when paramList is empty).
             var signatureParams = filters.Select(f => $"string? {f.ParamName} = null")
-                .Append("int pageNumber = 1").Append("int pageSize = 100").ToList();
+                .Append("int pageNumber = 1").Append("int pageSize = 100")
+                // The grid's chosen sort: a column name (null = the default order) and the direction. The procedure compares the name with its own list of columns (SearchSort).
+                .Append("string? sortColumn = null").Append("bool sortDescending = false").ToList();
             // EXEC of a stored procedure on SQL Server, a function call on PostgreSQL (see SearchCall).
             var call = new SearchCall(Model, Model.TableName, filters.Select(f => f.Name), qualifyTypes: true);
 
@@ -226,7 +233,9 @@
             foreach (var f in filters)
                 body.Add("            " + call.TextParameter(f.Name, f.ParamName) + ",");
             body.Add("            " + call.IntParameter("PageNumber", "pageNumber") + ",");
-            body.Add("            " + call.IntParameter("PageSize", "pageSize"));
+            body.Add("            " + call.IntParameter("PageSize", "pageSize") + ",");
+            body.Add("            " + call.SortColumnParameter("sortColumn") + ",");
+            body.Add("            " + call.SortDescendingParameter("sortDescending"));
             body.Add("        };");
             body.Add("");
             // Set<T>().FromSqlRaw(...), NOT Database.SqlQueryRaw<T>(...): SqlQueryRaw<T> builds an ad hoc

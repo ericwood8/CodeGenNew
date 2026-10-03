@@ -93,10 +93,17 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
     }
 #>
         [FromQuery] int pageNumber = 1,
-        [FromQuery] int pageSize = 100)
+        [FromQuery] int pageSize = 100,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDir = null)
     {
         if (pageNumber < 1)
             return Results.BadRequest("pageNumber must be 1 or greater.");
+
+        // The grid's chosen sort: a column name and "asc" / "desc". The routine compares the name with its own list of sortable columns, so an unknown or
+        // missing name just gives the default order; the name is never pasted into SQL.
+        string? sortColumn = string.IsNullOrWhiteSpace(sortBy) || sortBy.Length > <#= SearchSort.MaxNameLength #> ? null : sortBy.Trim();
+        bool sortDescending = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase);
 
         var parameters = new[]
         {
@@ -109,7 +116,9 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
     }
 #>
             <#= call.IntParameter("PageNumber", "pageNumber") #>,
-            <#= call.IntParameter("PageSize", "pageSize") #>
+            <#= call.IntParameter("PageSize", "pageSize") #>,
+            <#= call.SortColumnParameter("sortColumn") #>,
+            <#= call.SortDescendingParameter("sortDescending") #>
         };
 
         // Set<T>().FromSqlRaw(...), NOT Database.SqlQueryRaw<T>(...): SqlQueryRaw<T> builds an ad hoc EF

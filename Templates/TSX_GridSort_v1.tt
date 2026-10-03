@@ -1,0 +1,143 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (folders).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string componentsFolder = "components";   // where the pages import PaginationBar from, relative to the folder the pages are in
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // TSX_GridSort_v1.tt
+    // Generates: components/gridSort.tsx   (point the output folder at the React app's src folder)
+    //
+    // The support code every generated React grid imports for sorting (the same way PaginationBar is shared). It does not depend on any table, so it is the
+    // same text for every database; it is a template only so that it is written the same way as the screens and kept in step with them.
+    //   - SortHeader: a <th> with a button; clicking it sorts by that column, clicking it again flips the direction. The sorted column shows an arrow.
+    //   - GridMenu: wraps a grid; a right-click opens a small menu with "Clear sort" (disabled when the grid is not sorted).
+    //   - loadSort / saveSort: the sort is remembered in the browser (local storage), one entry per grid ("gridSort:<grid>"). It is saved as a list of
+    //     { column, descending } so that sorting by several columns can be added later without changing what is stored. Clearing the sort removes the entry.
+    //     A saved column that the grid no longer has is ignored. Local storage that is unavailable just means the sort is not remembered.
+    //   - nextSort: a click on another column sorts it ascending; a click on the sorted column flips the direction.
+    //   - sortRows: sorts the rows of a grid that holds all of them (a master dialog's child grids) in the browser, comparing real values and the names a column shows.
+    // The sort of a paged grid is applied by the server (a page of 20 rows sorted on its own would be wrong): the pages pass it to the api's getPage as sortBy / sortDir.
+
+    Write("@@@FILE " + componentsFolder + "/gridSort.tsx@@@\n");
+#>
+import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
+
+/** The sort of a grid: one column and its direction. */
+export interface GridSort {
+  column: string;
+  descending: boolean;
+}
+
+const storageKey = (gridKey: string) => `gridSort:${gridKey}`;
+
+/** The saved sort of a grid, or null when there is none or its column is not one of the grid's sortable columns (any column when the grid's columns are not known yet). */
+export function loadSort(gridKey: string, sortableColumns?: string[]): GridSort | null {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(storageKey(gridKey)) ?? 'null');
+    const first = Array.isArray(saved) ? saved[0] : null;
+    if (first && typeof first.column === 'string' && (!sortableColumns || sortableColumns.includes(first.column))) {
+      return { column: first.column, descending: first.descending === true };
+    }
+  } catch {
+    // storage unavailable or unreadable: no saved sort
+  }
+  return null;
+}
+
+/** Remember the sort of a grid, or forget it (null). */
+export function saveSort(gridKey: string, sort: GridSort | null): void {
+  try {
+    if (sort) localStorage.setItem(storageKey(gridKey), JSON.stringify([sort]));
+    else localStorage.removeItem(storageKey(gridKey));
+  } catch {
+    // storage unavailable: the sort just is not remembered
+  }
+}
+
+/** What a click on a column header gives: another column sorts ascending, the sorted column flips its direction. */
+export function nextSort(current: GridSort | null, column: string): GridSort {
+  return current?.column === column ? { column, descending: !current.descending } : { column, descending: false };
+}
+
+/**
+ * A grid that holds all its rows (the read-only grids inside a master dialog) sorts them here, comparing the real values: numbers as numbers, text
+ * without regard to case, a yes/no as no before yes, a date-and-time string in time order, nothing first. A column that shows a name in place of an id
+ * (lookup: id -> name) sorts by the name. The rows are not changed; a column no row has leaves them as they are.
+ */
+export function sortRows<T extends Record<string, unknown>>(rows: T[], sort: GridSort | null, lookup?: Record<string, string>): T[] {
+  if (!sort) return rows;
+  const value = (row: T): unknown => {
+    const v = row[sort.column];
+    return lookup && v !== null && v !== undefined ? lookup[String(v)] ?? v : v;
+  };
+  const compare = (a: unknown, b: unknown): number => {
+    if (a === null || a === undefined) return b === null || b === undefined ? 0 : -1;
+    if (b === null || b === undefined) return 1;
+    if (typeof a === 'number' && typeof b === 'number') return a - b;
+    if (typeof a === 'boolean' && typeof b === 'boolean') return Number(a) - Number(b);
+    return String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+  };
+  return [...rows].sort((x, y) => (sort.descending ? -1 : 1) * compare(value(x), value(y)));
+}
+
+export function SortHeader({ label, column, sort, onSort }: {
+  label: string;
+  column: string;
+  sort: GridSort | null;
+  onSort: (column: string) => void;
+}) {
+  const active = sort?.column === column;
+  return (
+    <th aria-sort={active ? (sort.descending ? 'descending' : 'ascending') : undefined}>
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        style={{ font: 'inherit', fontWeight: 'inherit', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit' }}
+      >
+        {label}{active ? (sort.descending ? ' ▼' : ' ▲') : ''}
+      </button>
+    </th>
+  );
+}
+
+/** Wraps a grid: a right-click opens a small menu with one item, Clear sort. */
+export function GridMenu({ sort, onClear, children }: { sort: GridSort | null; onClear: () => void; children: ReactNode }) {
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') close(); };
+    window.addEventListener('click', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menu]);
+
+  return (
+    <div onContextMenu={(event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY }); }}>
+      {children}
+      {menu && (
+        <ul
+          role="menu"
+          style={{ position: 'fixed', left: menu.x, top: menu.y, zIndex: 10, margin: 0, padding: 4, listStyle: 'none', background: 'Canvas', color: 'CanvasText', border: '1px solid GrayText', borderRadius: 4 }}
+        >
+          <li role="none">
+            <button type="button" role="menuitem" disabled={!sort} onClick={onClear}>Clear sort</button>
+          </li>
+        </ul>
+      )}
+    </div>
+  );
+}
