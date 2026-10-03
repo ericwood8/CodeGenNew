@@ -53,8 +53,10 @@ public class PostgresSchemaProvider : SchemaProviderBase
             case "bool": return ("bit", 0, 0, 0, "boolean");
             case "numeric":
             {
+                // A bare "numeric" holds any number of places; a form needs a number, so it reads as 38 digits with 4 places (what money holds). The SQL keeps "numeric" and the
+                // entity writes no [Precision], so nothing is rounded or re-typed by the generated code on the way to the database.
                 int precision = numericPrecision ?? 38;
-                int scale = numericScale ?? 18;
+                int scale = numericScale ?? 4;
                 return ("decimal", 0, precision, scale, numericPrecision is null ? "numeric" : $"numeric({precision},{scale})");
             }
             case "money": return ("money", 0, 0, 0, "money");

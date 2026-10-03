@@ -146,7 +146,7 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var project = LoadActiveProject();
-            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms);
+            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns);
             var database = await schemaProvider.BuildAsync(_connectionRequest.DatabaseName, schema);
 
             var result = await TemplateRunner.RunAsync(template.FilePath, database, project);
@@ -204,7 +204,7 @@ public partial class MainViewModel : ObservableObject
         {
             // The project's NamingStyle decides the names the schema reader gives tables and columns (customer_item -> CustomerItem).
             var project = LoadActiveProject();
-            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms);
+            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns);
             var model = await schemaProvider.BuildTableModelAsync(
                 table.SchemaName, table.TableName, template.Config.NeedsRowData, template.Config.NeedsReferencedDisplayColumns);
 

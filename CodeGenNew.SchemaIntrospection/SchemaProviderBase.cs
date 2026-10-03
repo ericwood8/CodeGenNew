@@ -45,6 +45,21 @@ public abstract class SchemaProviderBase : ISchemaProvider
         _acronyms = acronyms;
     }
 
+    /// <summary> Columns the project leaves out (its IgnoredColumns setting: <c>Column</c> for every table or <c>Table.Column</c>, by the database's name or the generated one): a
+    /// type CodeGenNew cannot map (an array, geometry) is listed here so the table still generates. A primary key column is never left out. </summary>
+    public IReadOnlyCollection<string>? IgnoredColumns { get; set; }
+
+    private async Task<List<RawColumn>> ReadVisibleColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        var columns = await ReadColumnsAsync(connection, schemaName, tableName, cancellationToken);
+        if (IgnoredColumns is not { Count: > 0 } ignored)
+            return columns;
+        bool Listed(RawColumn c) => ignored.Any(entry =>
+            entry.Equals(c.Name, StringComparison.OrdinalIgnoreCase) || entry.Equals($"{tableName}.{c.Name}", StringComparison.OrdinalIgnoreCase)
+            || entry.Equals(Named(c.Name), StringComparison.OrdinalIgnoreCase) || entry.Equals($"{Named(tableName)}.{Named(c.Name)}", StringComparison.OrdinalIgnoreCase));
+        return columns.Where(c => c.IsPrimaryKey || !Listed(c)).ToList();
+    }
+
     protected string Named(string databaseName) => NameConverter.Apply(_naming, databaseName, _acronyms);
     private static string? WhenDifferent(string databaseName, string named) => databaseName == named ? null : databaseName;
 
@@ -78,7 +93,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
     {
         await using var connection = await OpenConnectionAsync(cancellationToken);
 
-        var rawColumns = await ReadColumnsAsync(connection, schemaName, tableName, cancellationToken);
+        var rawColumns = await ReadVisibleColumnsAsync(connection, schemaName, tableName, cancellationToken);
         if (rawColumns.Count == 0)
             throw new TableNotFoundException(schemaName, tableName);
         var foreignKeys = await ReadForeignKeysAsync(connection, schemaName, tableName, cancellationToken);

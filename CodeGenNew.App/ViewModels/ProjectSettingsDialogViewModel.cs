@@ -52,6 +52,8 @@ public partial class ProjectSettingsDialogViewModel : StatusMessageViewModel
         ["ServicesFolder"] = "Angular folder for the services; blank = services",
         ["ComponentsFolder"] = "React / Angular folder for the shared components and Angular screens; blank = components",
         ["PagesFolder"] = "React folder for the pages; blank = pages",
+        ["AngularVersion"] = "major version of Angular, e.g. 22; blank = output that every version from 18 accepts",
+        ["IgnoredColumns"] = "comma-separated columns to leave out (Tags, or Place.Location): a type CodeGenNew cannot map, such as an array or geometry",
         ["DbSetNames"] = "Plural = Customers, blank = the table name (Customer)"
     };
 

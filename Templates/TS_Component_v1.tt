@@ -376,8 +376,8 @@
         T();
         T("@Component({");
         T($"  selector: 'app-{stem}',");
-        T("  standalone: true,");
-        T("  changeDetection: ChangeDetectionStrategy.Default, // plain properties change inside subscribe callbacks: keep eager checking when OnPush is the default (Angular 22)");
+        if (Project.AngularStandaloneFlag) T("  standalone: true,");
+        T($"  changeDetection: ChangeDetectionStrategy.{Project.AngularEagerStrategy}, // plain properties change inside subscribe callbacks: keep eager checking when OnPush is the default (Angular 22)");
         T("  imports: [ CommonModule, FormsModule, MatPaginatorModule ],");
         T($"  templateUrl: './{stem}.component.html',");
         T($"  styleUrl: './{stem}.component.css'");
@@ -599,8 +599,8 @@
 
         var o = new StringBuilder();
         o.Append($"@@@FILE {componentsFolder}/{stem}/{stem}.component.css@@@\n").Append(GridSortStyles.Css);
-        o.Append($"@@@FILE {componentsFolder}/{stem}/{stem}.component.html@@@\n").Append(html);
-        o.Append($"@@@FILE {componentsFolder}/{stem}/{stem}.component.spec.ts@@@\n").Append(spec);
+        o.Append($"@@@FILE {componentsFolder}/{stem}/{stem}.component.html@@@\n").Append(Project.AdaptAngularHtml(html.ToString()));
+        o.Append($"@@@FILE {componentsFolder}/{stem}/{stem}.component.spec.ts@@@\n").Append(Project.AdaptAngularSpec(spec.ToString()));
         o.Append($"@@@FILE {componentsFolder}/{stem}/{stem}.component.ts@@@\n").Append(ts);
         Write(o.ToString());
     }

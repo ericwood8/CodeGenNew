@@ -7,6 +7,16 @@ namespace CodeGenNew.Tests;
 public class PostgresSchemaTests
 {
     [TestMethod]
+    public void A_bare_numeric_is_38_digits_with_4_places_and_keeps_its_own_name_in_the_sql()
+    {
+        var (sqlType, _, precision, scale, declaration) = PostgresSchemaProvider.MapType("numeric", null, null, null);
+
+        Assert.AreEqual("decimal", sqlType);
+        Assert.AreEqual((38, 4, "numeric"), (precision, scale, declaration));
+        Assert.AreEqual("sql_variant", PostgresSchemaProvider.MapType("_text", null, null, null).SqlTypeName);   // an array is unsupported
+    }
+
+    [TestMethod]
     [DataRow("int2", null, null, null, "smallint", "smallint")]
     [DataRow("int4", null, null, null, "int", "integer")]
     [DataRow("int8", null, null, null, "bigint", "bigint")]

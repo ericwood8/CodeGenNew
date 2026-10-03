@@ -59,7 +59,7 @@ internal static class Sample
         string name, SqlDbType type, bool nullable = false, bool primaryKey = false, bool identity = false,
         int? characters = null, int? precision = null, int? scale = null, string? defaultSql = null, int ordinal = 0,
         bool modifiedUserColumn = false, bool createDateColumn = false, bool createUserColumn = false,
-        bool inUniqueIndex = false, NumericKind numericKind = NumericKind.None, bool currency = false, List<string>? choices = null, string? enumType = null)
+        bool inUniqueIndex = false, NumericKind numericKind = NumericKind.None, bool currency = false, List<string>? choices = null, string? enumType = null, string? sqlDeclaration = null)
     {
         bool isText = type is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
         bool isUnicode = type is SqlDbType.NChar or SqlDbType.NVarChar;
@@ -76,7 +76,7 @@ internal static class Sample
             Name = name,
             QuotedName = "[" + name + "]",
             SqlType = type,
-            SqlTypeDeclaration = declaration,
+            SqlTypeDeclaration = sqlDeclaration ?? declaration,
             // the schema reader reports the length in BYTES, so an nvarchar(100) column has MaxLength 200
             MaxLength = isText ? (isUnicode ? (characters ?? 50) * 2 : characters ?? 50) : null,
             Precision = precision,

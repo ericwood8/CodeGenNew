@@ -176,4 +176,29 @@ public class ProjectFollowUpTests
         Expect.DoesNotContain(vm, "cells.Add(");
         Expect.DoesNotContain(vm, "new List<string>()");
     }
+
+    [TestMethod]
+    public void Ignored_columns_are_listed_by_name_or_with_their_table()
+    {
+        CollectionAssert.AreEqual(new[] { "Tags", "Place.Location" }, Project(("IgnoredColumns", "Tags, Place.Location")).IgnoredColumns);
+        Assert.IsEmpty(Project().IgnoredColumns);
+    }
+
+    [TestMethod]
+    public async Task A_bare_postgresql_numeric_gets_no_precision_attribute_and_two_currency_digits()
+    {
+        var declared = Sample.Column("Amount", SqlDbType.Decimal, precision: 38, scale: 4, currency: true, ordinal: 2, sqlDeclaration: "numeric");
+        var table = Sample.Table("Payment", [Sample.Column("PaymentId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), declared]);
+        var pg = new TableModel
+        {
+            SchemaName = "public", TableName = table.TableName, QuotedName = table.QuotedName, Dialect = SqlDialect.PostgreSql,
+            Columns = table.Columns, PrimaryKeyColumns = table.PrimaryKeyColumns, ForeignKeys = [], ChildForeignKeys = [], DisplayColumns = table.DisplayColumns
+        };
+
+        string entity = await Render("CS_Entity_v1.tt", pg, Project());
+
+        Expect.DoesNotContain(entity, "[Precision(");
+        Assert.AreEqual(2, NumericClassifier.CurrencyDigits(declared));
+        Expect.Contains(await Render("CS_Entity_v1.tt", table, Project()), "[Precision(38, 4)]");   // a constrained decimal still says it
+    }
 }

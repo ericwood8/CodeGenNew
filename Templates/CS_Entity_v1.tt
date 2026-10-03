@@ -194,7 +194,8 @@
             {
                 int scale = c.Scale ?? 0;
                 B($"    [DisplayFormat(ApplyFormatInEditMode = true, DataFormatString = \"#0{(scale > 0 ? "." + new string('0', scale) : "")}\")]");
-                B($"    [Precision({c.Precision ?? 18}, {scale})]");
+                if (!(Model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration == "numeric")) // a bare PostgreSQL numeric has no precision to state
+                    B($"    [Precision({c.Precision ?? 18}, {scale})]");
             }
             else if (isText)
             {

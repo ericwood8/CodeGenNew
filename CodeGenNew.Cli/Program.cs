@@ -96,7 +96,7 @@ public static class Program
         DatabaseModel? database = null;
         var schemaReadOutcome = await RetryRunner.RunAsync("schema-read", async () =>
         {
-            var schemaProvider = SchemaProviderFactory.Create(connectionRequest, specialLogicColumnsConfigPath, project.Naming, project.Acronyms);
+            var schemaProvider = SchemaProviderFactory.Create(connectionRequest, specialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns);
             if (template.Config.DatabaseOnly)
             {
                 database = await schemaProvider.BuildAsync(options.Database, options.Schema);
@@ -134,6 +134,13 @@ public static class Program
                           $"{options.Server}\\{options.Database} (recorded in {Path.GetFileName(spCanDeleteConfigPath)}).");
                 }
             }
+        }
+
+        foreach (var table in database?.Tables ?? (model is null ? [] : [model]))
+        {
+            foreach (var column in table.UnsupportedColumns)
+                Console.WriteLine($"Warning: column {table.DbTableName}.{column.DbName} has the type '{column.SqlTypeDeclaration}', which CodeGenNew does not map; the generated code cannot use it. " +
+                                  $"List it in the project setting IgnoredColumns ({table.DbTableName}.{column.DbName}) to leave it out.");
         }
 
         if (database is not null)

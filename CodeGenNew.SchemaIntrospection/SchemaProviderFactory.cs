@@ -5,11 +5,16 @@ namespace CodeGenNew.SchemaIntrospection;
 
 public static class SchemaProviderFactory
 {
-    public static ISchemaProvider Create(ConnectionRequest request, string specialLogicColumnsConfigPath, NamingStyle naming = NamingStyle.AsIs, IReadOnlyCollection<string>? acronyms = null) => request.Provider switch
+    public static ISchemaProvider Create(ConnectionRequest request, string specialLogicColumnsConfigPath, NamingStyle naming = NamingStyle.AsIs, IReadOnlyCollection<string>? acronyms = null, IReadOnlyCollection<string>? ignoredColumns = null)
     {
-        DatabaseProvider.SqlServer => new SqlServerSchemaProvider(request, specialLogicColumnsConfigPath, naming, acronyms),
-        DatabaseProvider.PostgreSql => new PostgresSchemaProvider(request, specialLogicColumnsConfigPath, naming, acronyms),
-        DatabaseProvider.MySql => new MySqlSchemaProvider(request, specialLogicColumnsConfigPath, naming, acronyms),
-        _ => throw new NotSupportedException($"Provider '{request.Provider}' is not implemented yet. SqlServer, PostgreSql and MySql are supported.")
-    };
+        SchemaProviderBase provider = request.Provider switch
+        {
+            DatabaseProvider.SqlServer => new SqlServerSchemaProvider(request, specialLogicColumnsConfigPath, naming, acronyms),
+            DatabaseProvider.PostgreSql => new PostgresSchemaProvider(request, specialLogicColumnsConfigPath, naming, acronyms),
+            DatabaseProvider.MySql => new MySqlSchemaProvider(request, specialLogicColumnsConfigPath, naming, acronyms),
+            _ => throw new NotSupportedException($"Provider '{request.Provider}' is not implemented yet. SqlServer, PostgreSql and MySql are supported.")
+        };
+        provider.IgnoredColumns = ignoredColumns;
+        return provider;
+    }
 }

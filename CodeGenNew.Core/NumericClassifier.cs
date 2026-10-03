@@ -57,7 +57,7 @@ public static class NumericClassifier
     /// <summary> How many decimal places a currency column is shown with: the column's own scale for a decimal, two for money / smallmoney
     /// (whose four stored places are never what people read). </summary>
     public static int CurrencyDigits(ColumnModel column) =>
-        column.SqlType is SqlDbType.Decimal ? Math.Clamp(column.Scale ?? 2, 0, 8) : 2;
+        column.SqlType is SqlDbType.Decimal && column.SqlTypeDeclaration != "numeric" ? Math.Clamp(column.Scale ?? 2, 0, 8) : 2;   // a bare PostgreSQL numeric has no scale to follow
 
     /// <summary> The limits a number box puts on a decimal / float / real column that is not money: what the column's precision and scale can hold
     /// (decimal(5,2) holds -999.99 to 999.99), or +/-10^15 for a floating-point type; a percentage (by name) is 0 to 100 within that. </summary>

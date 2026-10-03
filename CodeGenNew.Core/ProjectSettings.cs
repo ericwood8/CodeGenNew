@@ -25,7 +25,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames"
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns"
     ];
 
     private readonly Dictionary<string, string> _values;
@@ -164,6 +164,33 @@ public class ProjectSettings
     /// The defaults are what both samples use. </summary>
     /// <summary> <c>DbSetNames=Plural</c> names the context's DbSet properties in the plural (<c>Customers</c>); the default is the table's own name (<c>Customer</c>), which is what the samples use. </summary>
     public bool PluralDbSets => string.Equals(Explicit("DbSetNames"), "Plural", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary> The major version of Angular the project runs (<c>AngularVersion=22</c>); null when the project does not say, which keeps the output every Angular version from 18 accepts
+    /// (<c>standalone: true</c>, <c>*ngIf</c> / <c>*ngFor</c>, the default change detection spelled <c>Default</c>, the animation providers in the specs). </summary>
+    public int? AngularVersion => int.TryParse(Explicit("AngularVersion"), out int version) && version > 0 ? version : null;
+
+    /// <summary> Version 19 made every component standalone, so <c>standalone: true</c> is redundant from there on. </summary>
+    public bool AngularStandaloneFlag => AngularVersion is null or < 19;
+
+    /// <summary> Built-in <c>@if</c> / <c>@for</c> instead of <c>*ngIf</c> / <c>*ngFor</c> (stable from 18, the old directives deprecated from 20). </summary>
+    public bool AngularControlFlow => AngularVersion is >= 18;
+
+    /// <summary> The eager strategy is spelled <c>Eager</c> from 22 (<c>Default</c> is deprecated there) and <c>Default</c> before. </summary>
+    public string AngularEagerStrategy => AngularVersion is >= 22 ? "Eager" : "Default";
+
+    /// <summary> Angular Material's paginator needs the animation providers in a spec until the animations package was dropped (22). </summary>
+    public bool AngularSpecAnimations => AngularVersion is null or < 22;
+
+    /// <summary> A generated spec file without the animation providers when <see cref="AngularSpecAnimations"/> says they are not needed. </summary>
+    public string AdaptAngularSpec(string spec) => AngularSpecAnimations ? spec
+        : spec.Replace("import { provideNoopAnimations } from '@angular/platform-browser/animations';\n", "").Replace(", provideNoopAnimations()", "");
+
+    /// <summary> The generated html with the built-in control flow when <see cref="AngularControlFlow"/> says so. </summary>
+    public string AdaptAngularHtml(string html) => AngularControlFlow ? CodeGenNew.Core.AngularControlFlow.Convert(html) : html;
+
+    /// <summary> Columns left out of every table (<c>IgnoredColumns=Tags,Place.Location</c>: a column name for every table, or <c>Table.Column</c>): a type CodeGenNew cannot map
+    /// (a PostgreSQL array, geometry) is listed here so the rest of the table still generates. A primary key column is never left out. </summary>
+    public string[] IgnoredColumns => Explicit("IgnoredColumns") is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
 
     public string ApiFolder => Explicit("ApiFolder") ?? "api";
     public string ModelsFolder => Explicit("ModelsFolder") ?? "models";

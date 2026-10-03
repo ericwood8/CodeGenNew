@@ -8,7 +8,7 @@ namespace CodeGenNew.Tests;
 /// <summary> Reads the schema of a real PostgreSQL copy of the InvoiceSystem sample database. They need a live server, so they run only when
 /// CODEGENNEW_PG_HOST (host or host:port), CODEGENNEW_PG_DATABASE, CODEGENNEW_PG_USER and CODEGENNEW_PG_PASSWORD are set (the database is the one
 /// created by the PostgreSQL sample's CreateInvoiceSystemPg.sql and SeedInvoiceSystemPg.sql); otherwise each test reports itself as inconclusive.
-/// Nothing is written to the database, except by the enum test, which creates a throwaway schema and drops it again. </summary>
+/// Nothing is written to the database, except by the enum and snake_case tests, which create a throwaway schema and drop it again. </summary>
 [TestClass]
 public class PostgresIntegrationTests
 {
@@ -126,6 +126,85 @@ public class PostgresIntegrationTests
         finally
         {
             await Run("DROP SCHEMA IF EXISTS codegen_enum_test CASCADE");
+        }
+    }
+
+    [TestMethod]
+    public async Task A_snake_case_schema_reads_as_pascal_names_over_the_real_ones_and_its_generated_functions_run()
+    {
+        // Writes a throwaway schema (dropped again whatever happens): snake_case tables, an unsupported array column and a bare numeric.
+        var request = Request();
+        if (request is null)
+            Assert.Inconclusive("Set CODEGENNEW_PG_HOST, CODEGENNEW_PG_DATABASE, CODEGENNEW_PG_USER and CODEGENNEW_PG_PASSWORD to run the PostgreSQL integration tests.");
+
+        await using var connection = request!.CreatePostgresConnection();
+        await connection.OpenAsync();
+        async Task Run(string sql) { await using var command = new Npgsql.NpgsqlCommand(sql, connection); await command.ExecuteNonQueryAsync(); }
+        try
+        {
+            await Run("DROP SCHEMA IF EXISTS codegen_snake_test CASCADE");
+            await Run("CREATE SCHEMA codegen_snake_test");
+            await Run("""
+                CREATE TABLE codegen_snake_test.customer_account (
+                    customer_account_id serial PRIMARY KEY,
+                    account_number varchar(20) NOT NULL UNIQUE,
+                    created_date timestamp NOT NULL DEFAULT now(),
+                    credit_limit numeric,
+                    tags text[])
+                """);
+            await Run("""
+                CREATE TABLE codegen_snake_test.customer_note (
+                    customer_note_id serial PRIMARY KEY,
+                    customer_account_id int NOT NULL REFERENCES codegen_snake_test.customer_account,
+                    note_text varchar(100) NOT NULL)
+                """);
+            string config = Path.Combine(AppContext.BaseDirectory, "SpecialLogicColumns.config");
+
+            var plain = new PostgresSchemaProvider(request, config, NamingStyle.Pascal);
+            var model = await plain.BuildTableModelAsync("codegen_snake_test", "customer_account");
+
+            Assert.AreEqual("CustomerAccount", model.TableName);
+            Assert.AreEqual("customer_account", model.DbTableName);
+            var id = model.Columns.Single(c => c.Name == "CustomerAccountId");
+            Assert.AreEqual("customer_account_id", id.DbName);
+            Assert.IsTrue(id.IsIdentity);
+            Assert.AreEqual("AccountNumber", model.Columns.Single(c => c.DbName == "account_number").Name);
+
+            // a bare numeric is a decimal of 38 digits and 4 places; the SQL keeps "numeric"
+            var limit = model.Columns.Single(c => c.Name == "CreditLimit");
+            Assert.AreEqual((SqlDbType.Decimal, 38, 4, "numeric"), (limit.SqlType, (int)limit.Precision!, (int)limit.Scale!, limit.SqlTypeDeclaration));
+            Assert.AreEqual(2, NumericClassifier.CurrencyDigits(limit));
+
+            // an array has no mapping: it is reported, and listing it leaves it out
+            CollectionAssert.AreEqual(new[] { "Tags" }, model.UnsupportedColumns.Select(c => c.Name).ToList());
+            var ignoring = new PostgresSchemaProvider(request, config, NamingStyle.Pascal) { IgnoredColumns = ["tags"] };
+            var without = await ignoring.BuildTableModelAsync("codegen_snake_test", "customer_account");
+            Assert.IsFalse(without.Columns.Any(c => c.DbName == "tags"));
+            Assert.IsFalse(without.UnsupportedColumns.Any());
+            var byGeneratedName = await new PostgresSchemaProvider(request, config, NamingStyle.Pascal) { IgnoredColumns = ["CustomerAccount.Tags"] }.BuildTableModelAsync("codegen_snake_test", "customer_account");
+            Assert.IsFalse(byGeneratedName.Columns.Any(c => c.DbName == "tags"));
+            var primaryKeyKept = await new PostgresSchemaProvider(request, config, NamingStyle.Pascal) { IgnoredColumns = ["customer_account_id"] }.BuildTableModelAsync("codegen_snake_test", "customer_account");
+            Assert.IsTrue(primaryKeyKept.Columns.Any(c => c.DbName == "customer_account_id"), "a primary key column is never left out");
+
+            // the child table: the foreign key and its parent keep the real names for SQL
+            var note = await plain.BuildTableModelAsync("codegen_snake_test", "customer_note", includeReferencedDisplayColumns: true);
+            var fk = note.ForeignKeys.Single();
+            Assert.AreEqual("CustomerAccount", fk.ReferencedTable);
+            Assert.AreEqual("customer_account", fk.ReferencedDbTable);
+
+            // every function the generator writes for the table runs in the database: the real names are what the SQL says
+            foreach (string template in new[] { "SP_Insert_v1.tt", "SP_Update_v1.tt", "SP_Save_v1.tt", "SP_Delete_v1.tt", "SP_Clone_v1.tt", "SP_Search_v1.tt", "SP_Lookup_v1.tt" })
+            {
+                var result = await CodeGenNew.TemplateEngine.TemplateRunner.RunAsync(Repo.Template(template), without, ProjectSettings.FromValues([new("ProjectName", "Snake")]));
+                Assert.IsTrue(result.Success, $"{template}: {string.Join(" | ", result.Errors)}");
+                await Run(result.GeneratedText!);
+            }
+            await using var count = new Npgsql.NpgsqlCommand("SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'codegen_snake_test'", connection);
+            Assert.IsTrue((long)(await count.ExecuteScalarAsync())! >= 7);
+        }
+        finally
+        {
+            await Run("DROP SCHEMA IF EXISTS codegen_snake_test CASCADE");
         }
     }
 }

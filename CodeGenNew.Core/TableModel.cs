@@ -19,6 +19,10 @@ public class TableModel
     /// <summary> The table's real name in the database when the project's naming style changed <see cref="TableName"/> (customer_item -> CustomerItem); null when they are the same. </summary>
     public string? DatabaseTableName { get; init; }
 
+    /// <summary> Columns whose database type CodeGenNew does not map (a PostgreSQL array, geometry ...): they come through as an unsupported object column that an EF Core
+    /// context cannot map, so the project lists them in IgnoredColumns. </summary>
+    public IEnumerable<ColumnModel> UnsupportedColumns => Columns.Where(c => c.SqlType == System.Data.SqlDbType.Variant);
+
     /// <summary> The name SQL text uses: the database's own name. </summary>
     public string DbTableName => DatabaseTableName ?? TableName;
 
