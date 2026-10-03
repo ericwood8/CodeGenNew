@@ -44,6 +44,9 @@ public static class AngularControlFlow
         string indent = new(beforeTag.TakeWhile(char.IsWhiteSpace).ToArray());
         string prefix = beforeTag.All(char.IsWhiteSpace) ? html[..lineStart] + indent : html[..tagStart] + "\n" + indent;
 
+        // the element sits two spaces inside its block, and so does every line after its first
+        string inside = indent + "  " + string.Join("\n", element.Split('\n').Select((line, i) => i == 0 || line.Length == 0 ? line : "  " + line));
+
         string expr = directive.Groups["expr"].Value;
         string rest = html[elementEnd..];
         string core;
@@ -52,7 +55,7 @@ public static class AngularControlFlow
             var parts = ForExpression.Match(expr);
             if (!parts.Success)
                 throw new InvalidOperationException($"Cannot convert *ngFor=\"{expr}\".");
-            core = $"@for ({parts.Groups["item"].Value} of {parts.Groups["list"].Value}; track $index) {{\n{indent}    {element}\n{indent}}}";
+            core = $"@for ({parts.Groups["item"].Value} of {parts.Groups["list"].Value}; track $index) {{\n{inside}\n{indent}}}";
         }
         else if (IfElse.Match(expr) is { Success: true } withElse)
         {
@@ -60,12 +63,12 @@ public static class AngularControlFlow
             var template = Regex.Match(rest, "[ \\t]*<ng-template #" + name + ">(?<inner>.*?)</ng-template>[ \\t]*\\r?\\n?", RegexOptions.Singleline);
             if (!template.Success)
                 throw new InvalidOperationException($"*ngIf refers to <ng-template #{name}>, which is not in the html after it.");
-            core = $"@if ({withElse.Groups["cond"].Value}) {{\n{indent}    {element}\n{indent}}} @else {{\n{indent}    {template.Groups["inner"].Value.Trim()}\n{indent}}}";
+            core = $"@if ({withElse.Groups["cond"].Value}) {{\n{inside}\n{indent}}} @else {{\n{indent}  {template.Groups["inner"].Value.Trim()}\n{indent}}}";
             rest = rest.Remove(template.Index, template.Length);
         }
         else
         {
-            core = $"@if ({expr}) {{\n{indent}    {element}\n{indent}}}";
+            core = $"@if ({expr}) {{\n{inside}\n{indent}}}";
         }
         return prefix + core + rest;
     }

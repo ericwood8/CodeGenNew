@@ -37,6 +37,20 @@
                     <ImageIcon Source="{x:Bind ViewModel.Icons.ManageTemplates, Mode=OneWay}" />
                 </AppBarButton.Icon>
             </AppBarButton>
+            <!-- The files every app of a kind needs and no table drives (App.xaml, MainWindow.xaml, styles, Program.cs ...): no connection is needed. -->
+            <AppBarButton Label="Essentials" FontSize="24" AccessKey="E" Loaded="OnAppBarButtonLoaded" ToolTipService.ToolTip="The files every app needs that no table drives: App, main window, styles, Program.cs (Alt+E)">
+                <AppBarButton.Icon>
+                    <FontIcon Glyph="&#xE8A5;" />
+                </AppBarButton.Icon>
+                <AppBarButton.Flyout>
+                    <MenuFlyout>
+                        <MenuFlyoutItem Text="WinUI essentials" Tag="WinUI3" Click="OnEssentialsClick" />
+                        <MenuFlyoutItem Text="React essentials" Tag="React" Click="OnEssentialsClick" />
+                        <MenuFlyoutItem Text="Angular essentials" Tag="Angular" Click="OnEssentialsClick" />
+                        <MenuFlyoutItem Text="API essentials" Tag="Api" Click="OnEssentialsClick" />
+                    </MenuFlyout>
+                </AppBarButton.Flyout>
+            </AppBarButton>
             <AppBarButton Label="Connect" FontSize="24" AccessKey="C" Click="OnConnectClick" Loaded="OnAppBarButtonLoaded" ToolTipService.ToolTip="Connect to a SQL Server database (Alt+C)">
                 <AppBarButton.Icon>
                     <ImageIcon Source="{x:Bind ViewModel.Icons.Connect, Mode=OneWay}" />

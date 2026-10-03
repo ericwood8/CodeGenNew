@@ -1,0 +1,60 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TSX_EssentialSupport_v1.tt
+    // Generates: src/api/client.ts, src/components/PaginationBar.tsx and src/setupTests.ts   (no table, no database: an essentials group)
+    // The three small files the generated React pages and api modules import: the fetch helper with ApiError, the Previous / Next bar under every grid, and the test setup that adds the
+    // jest-dom matchers. The folders come from the project's ApiFolder and ComponentsFolder settings.
+    // ==========================================================================================
+    string apiFolder = Project.ApiFolder;
+    string componentsFolder = Project.ComponentsFolder;
+#>
+@@@FILE src/<#= apiFolder #>/client.ts@@@
+// The shared fetch helper the generated api modules (TSX_Api) and pages import. Paths are relative ("/api/customers"): in development the Vite dev server proxies /api to the API
+// (vite.config.ts), and VITE_API_BASE_URL can point a built copy at an API on another origin.
+const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? '';
+
+export class ApiError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...init?.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new ApiError(response.status, body || response.statusText);
+  }
+
+  // DELETE (and a 200 with no body) has nothing to parse.
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+@@@FILE src/<#= componentsFolder #>/PaginationBar.tsx@@@
+// The Previous / Next bar every generated list page puts under its grid.
+export function PaginationBar({ page, totalPages, onPrevious, onNext }: {
+  page: number;
+  totalPages: number;
+  onPrevious: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <div className="pagination">
+      <button type="button" onClick={onPrevious} disabled={page <= 1}>Previous</button>
+      <span>Page {page} of {totalPages}</span>
+      <button type="button" onClick={onNext} disabled={page >= totalPages}>Next</button>
+    </div>
+  );
+}
+@@@FILE src/setupTests.ts@@@
+import '@testing-library/jest-dom';

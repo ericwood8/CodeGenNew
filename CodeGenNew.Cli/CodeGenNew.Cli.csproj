@@ -5,6 +5,7 @@
     <ProjectReference Include="..\CodeGenNew.Connections\CodeGenNew.Connections.csproj" />
     <ProjectReference Include="..\CodeGenNew.SchemaIntrospection\CodeGenNew.SchemaIntrospection.csproj" />
     <ProjectReference Include="..\CodeGenNew.TemplateEngine\CodeGenNew.TemplateEngine.csproj" />
+    <ProjectReference Include="..\CodeGenNew.Generation\CodeGenNew.Generation.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

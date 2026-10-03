@@ -1,0 +1,113 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // WinUI3_EssentialProject_v1.tt
+    // Generates: <AppNamespace>.csproj, app.manifest, appsettings.json and GlobalUsings.cs   (no table, no database: an essentials group)
+    // The project file of the WinUI 3 app (unpackaged, x64, the packages the generated screens need and the EF Core provider of the project's DatabaseProvider), the connection string in
+    // appsettings.json (SqlServer: Windows authentication; PostgreSql / MySql: the DatabaseUser, never a password: the generated context reads it from PGPASSWORD / MYSQL_PWD) and the
+    // global usings the generated entities, repositories and pages assume. Settings: AppNamespace, DatabaseProvider, DatabaseServer, DatabaseName, DatabaseUser and the namespaces.
+    // ==========================================================================================
+    string appNamespace = Project.AppNamespace;
+    string assemblyName = Project.ProjectName ?? "MyApp";
+    string entityNamespace = Project.EntityNamespace ?? appNamespace + ".Entities";
+    string repoNamespace = Project.RepoNamespace ?? appNamespace + ".Repositories";
+    string contextNamespace = Project.ContextNamespace ?? appNamespace + ".Data";
+    var dialect = Project.DatabaseDialect;
+    string providerPackage = dialect switch
+    {
+        SqlDialect.PostgreSql => "Npgsql.EntityFrameworkCore.PostgreSQL\" Version=\"10.0.0",
+        SqlDialect.MySql => "MySql.EntityFrameworkCore\" Version=\"10.0.9",
+        _ => "Microsoft.EntityFrameworkCore.SqlServer\" Version=\"10.0.12"
+    };
+    string user = Project.DatabaseUser ?? "";
+    string connection = dialect switch
+    {
+        SqlDialect.PostgreSql => $"Host={Project.DatabaseServer};Port=5432;Database={Project.DatabaseName};Username={user}",
+        SqlDialect.MySql => $"Server={Project.DatabaseServer};Port=3306;Database={Project.DatabaseName};User ID={user}",
+        _ => user.Length > 0
+            ? $"Server={Project.DatabaseServer};Database={Project.DatabaseName};User Id={user};TrustServerCertificate=True;"
+            : $"Server={Project.DatabaseServer};Database={Project.DatabaseName};Trusted_Connection=True;TrustServerCertificate=True;"
+    };
+#>
+@@@FILE <#= appNamespace #>.csproj@@@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace><#= appNamespace #></RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>false</SelfContained>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName><#= assemblyName #></AssemblyName>
+    <!-- The generated ViewModels use the classic backing-field [ObservableProperty] style (the partial-property style does not compile in a WinUI 3 project),
+         which raises this recommendation harmlessly. -->
+    <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="<#= providerPackage #>" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
+@@@FILE app.manifest@@@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.0.0.0" name="<#= appNamespace #>.app"/>
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
+    <security>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}" />
+      <supportedOS Id="{4a2f28e3-53b9-4441-ba9c-d69d4a4a6e38}" />
+      <supportedOS Id="{35138b9a-5d96-4fbd-8e2d-a2440225f93a}" />
+      <supportedOS Id="{e2011457-1546-43c5-a5fe-008deee3d3f0}" />
+    </application>
+  </compatibility>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/PM</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+    </windowsSettings>
+  </application>
+</assembly>
+@@@FILE appsettings.json@@@
+{
+  "ConnectionStrings": {
+    "DbConnectionString": "<#= connection #>"
+  }
+}
+@@@FILE GlobalUsings.cs@@@
+global using Microsoft.EntityFrameworkCore;
+global using Microsoft.UI.Xaml;
+global using System.ComponentModel.DataAnnotations;
+global using System.ComponentModel.DataAnnotations.Schema;
+global using <#= contextNamespace #>;
+global using <#= entityNamespace #>;
+global using <#= repoNamespace #>;

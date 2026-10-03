@@ -18,6 +18,8 @@
     <ProjectReference Include="..\CodeGenNew.Core\CodeGenNew.Core.csproj" />
     <ProjectReference Include="..\CodeGenNew.TemplateEngine\CodeGenNew.TemplateEngine.csproj" />
     <ProjectReference Include="..\CodeGenNew.Cli\CodeGenNew.Cli.csproj" />
+    <ProjectReference Include="..\CodeGenNew.Generation\CodeGenNew.Generation.csproj" />
+    <ProjectReference Include="..\CodeGenNew.SchemaIntrospection\CodeGenNew.SchemaIntrospection.csproj" />
   </ItemGroup>
 
   <ItemGroup>

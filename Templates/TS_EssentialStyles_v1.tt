@@ -1,0 +1,59 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TS_EssentialStyles_v1.tt
+    // Generates: src/styles.css   (no table, no database: an essentials group)
+    // The global stylesheet the generated Angular components assume (their own css files are empty): the grids, the forms (form-container, form-group, form-control), the tabs, the modal
+    // dialog, the search row and the shaded bold row buttons (btn-action).
+    // ==========================================================================================
+#>
+@@@FILE src/styles.css@@@
+/* Global styles. The generated components write their own css files empty and use these class names:
+   main/content/left-side, btn, btn-outline, btn-action, form-container, form-group, form-control, form-group-search, child-grid. */
+:root { font-family: system-ui, sans-serif; color-scheme: light dark; }
+body { margin: 0; }
+main { padding: 16px 24px; }
+h1 { margin-top: 0; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #8884; }
+tbody tr:hover { background: #8881; }
+/* The Edit / Clone / Delete buttons on a grid row: shaded and bold. */
+td .btn-action { background: #8883; border: 1px solid #8886; border-radius: 4px; font-weight: 700; cursor: pointer; }
+td .btn-action:hover { background: #8885; }
+
+.btn, .btn-action, .btn-outline, .btn-outline-secondary { padding: 4px 12px; font: inherit; cursor: pointer; }
+.btn-action { margin-right: 4px; padding: 2px 10px; }
+.btn.btn-outline, .btn-outline { background: none; }
+
+
+.form-container { margin-top: 16px; max-width: 640px; }
+.form-group { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+.form-group label { font-weight: 600; }
+.form-group input[type='text'], .form-group input[type='number'], .form-group input[type='date'], .form-group select, .form-group textarea {
+  width: 100%; box-sizing: border-box; padding: 6px 8px; font: inherit;
+}
+.form-group textarea { min-height: 80px; resize: vertical; }
+.form-group input[type='checkbox'] { align-self: flex-start; width: 18px; height: 18px; }
+.form-group > .btn-action { align-self: flex-start; }
+/* A nullable date: the date box and its Clear button on one line. */
+.date-with-clear { display: flex; gap: 8px; width: 100%; }
+.date-with-clear input { flex: 1; }
+.form-container form > .btn { margin-top: 16px; margin-right: 8px; }
+
+/* The search bar is a .form-group too (one box per searchable column plus Search and Clear): lay it out in a row, after the .form-group rules above. */
+.form-group.form-group-search { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
+.form-group.form-group-search input[type='text'] { width: 220px; flex: 0 1 220px; }
+.form-control { padding: 6px 8px; font: inherit; }
+
+[role='tablist'] { display: flex; gap: 4px; margin-bottom: 4px; border-bottom: 1px solid #8884; }
+[role='tab'] { padding: 6px 14px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; border-bottom: 2px solid transparent; }
+[role='tab'][aria-selected='true'] { border-bottom-color: currentColor; }
+[role='tabpanel'][hidden] { display: none; }
+
+.child-grid h3 { margin-top: 24px; }
+
+/* The add/edit form is a native modal <dialog>: it opens over the page wherever the grid is scrolled to. */
+dialog.form-container { width: min(920px, 94vw); max-width: none; max-height: 90vh; overflow: auto; box-sizing: border-box; margin: auto; padding: 8px 24px 24px; border: 1px solid #8886; border-radius: 8px; color: inherit; background: Canvas; }
+dialog.form-container::backdrop { background: rgb(0 0 0 / 0.45); }

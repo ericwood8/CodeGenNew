@@ -17,6 +17,23 @@ public class CliOptions
     public string? Password { get; set; }
     /// <summary> --project: the name of a Projects\<name>.config file; null generates with each template's built-in values. </summary>
     public string? Project { get; set; }
+
+    /// <summary> The first word of the command line when it is not a flag: <c>generate</c> (every file of a project) or <c>essentials</c> (the files no table drives); null for the one-template form. </summary>
+    public string? Command { get; set; }
+    /// <summary> --stack: the stacks to generate (Api, WinUI3, React, Angular); empty = the project's Stacks setting. </summary>
+    public List<string> Stacks { get; } = [];
+    /// <summary> --essentials: a whole-project generate also writes the essentials groups. </summary>
+    public bool Essentials { get; set; }
+    /// <summary> --groups: the essentials groups to write (App,MainWindow ...); empty = those ticked by default. </summary>
+    public List<string> Groups { get; } = [];
+    /// <summary> --replace: essentials files that exist are replaced (the default only creates the missing ones). </summary>
+    public bool Replace { get; set; }
+    /// <summary> --only: run only these templates of the plan. </summary>
+    public List<string> Only { get; } = [];
+    /// <summary> --dry-run: report what would be written, write nothing. </summary>
+    public bool DryRun { get; set; }
+    /// <summary> --list: print the stacks and their essentials groups. </summary>
+    public bool List { get; set; }
     /// <summary> --projects-dir: the folder of project files; null uses Settings.json's ProjectsDirectory next to the exe. </summary>
     public string? ProjectsDirectory { get; set; }
     /// <summary> Individual project-setting flags (--view-ns and so on), keyed by ProjectSettings key; they win over the project file. </summary>

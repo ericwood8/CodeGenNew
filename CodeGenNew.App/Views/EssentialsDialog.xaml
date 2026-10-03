@@ -1,0 +1,60 @@
+<ContentDialog
+    x:Class="CodeGenNew.App.Views.EssentialsDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:CodeGenNew.App.ViewModels"
+    PrimaryButtonText="Generate"
+    CloseButtonText="Close"
+    DefaultButton="Primary"
+    RequestedTheme="Dark">
+
+    <ContentDialog.Title>
+        <TextBlock Text="{x:Bind ViewModel.Title}" FontFamily="{ThemeResource NocturneDisplayFontFamily}" FontWeight="SemiBold" />
+    </ContentDialog.Title>
+
+    <ContentDialog.Resources>
+        <x:Double x:Key="ContentDialogMaxWidth">1100</x:Double>
+        <x:Double x:Key="ContentDialogMaxHeight">900</x:Double>
+    </ContentDialog.Resources>
+
+    <StackPanel Spacing="10" MinWidth="760">
+        <TextBlock TextWrapping="Wrap" Opacity="0.8"
+                   Text="The files every app of this kind needs and that no table drives. They are written from the project's settings (names, namespaces, ports); no database is needed." />
+
+        <ComboBox Header="Project" ItemsSource="{x:Bind ViewModel.Projects}" SelectedItem="{x:Bind ViewModel.SelectedProject, Mode=TwoWay}"
+                  PlaceholderText="(no project: default names)" MinWidth="360" />
+
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox Grid.Column="0" Header="Output folder" Text="{x:Bind ViewModel.OutputDirectory, Mode=TwoWay}" />
+            <Button Grid.Column="1" VerticalAlignment="Bottom" Content="Browse..." AccessKey="B" Click="OnBrowseClick" />
+        </Grid>
+        <TextBlock Opacity="0.7" TextWrapping="Wrap" Text="{x:Bind ViewModel.TargetHint, Mode=OneWay}" />
+
+        <TextBlock Text="File groups" FontWeight="SemiBold" />
+        <ItemsControl ItemsSource="{x:Bind ViewModel.Groups}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:EssentialsGroupRowViewModel">
+                    <CheckBox IsChecked="{x:Bind IsChecked, Mode=TwoWay}" Margin="0,2">
+                        <StackPanel>
+                            <TextBlock Text="{x:Bind Name}" FontWeight="SemiBold" />
+                            <TextBlock Text="{x:Bind Description}" Opacity="0.75" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </CheckBox>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <CheckBox Content="Replace files that already exist (by default only missing files are written: these files are edited by hand afterwards)"
+                  IsChecked="{x:Bind ViewModel.Replace, Mode=TwoWay}" />
+
+        <InfoBar IsOpen="{x:Bind ViewModel.HasStatusMessage, Mode=OneWay}" IsClosable="False" Severity="Warning"
+                 Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" />
+
+        <TextBlock Text="{x:Bind ViewModel.Summary, Mode=OneWay}" FontWeight="SemiBold" />
+        <ListView ItemsSource="{x:Bind ViewModel.Results}" MaxHeight="220" SelectionMode="None" />
+    </StackPanel>
+</ContentDialog>

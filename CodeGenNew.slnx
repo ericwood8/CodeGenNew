@@ -5,6 +5,7 @@
   <Project Path="CodeGenNew.Cli/CodeGenNew.Cli.csproj" />
   <Project Path="CodeGenNew.Connections/CodeGenNew.Connections.csproj" />
   <Project Path="CodeGenNew.Core/CodeGenNew.Core.csproj" />
+  <Project Path="CodeGenNew.Generation/CodeGenNew.Generation.csproj" />
   <Project Path="CodeGenNew.SchemaIntrospection/CodeGenNew.SchemaIntrospection.csproj" />
   <Project Path="CodeGenNew.TemplateEngine/CodeGenNew.TemplateEngine.csproj" />
   <Project Path="CodeGenNew.Tests/CodeGenNew.Tests.csproj" />

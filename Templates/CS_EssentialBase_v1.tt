@@ -1,0 +1,141 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // CS_EssentialBase_v1.tt
+    // Generates: Entities/BaseEntity.cs, Repositories/IGenericRepo.cs and Repositories/GenericRepo.cs   (no table, no database: an essentials group)
+    // The base classes the generated entities and repositories derive from, for the API and for the WinUI3 app: an empty BaseEntity and the generic repository (get, add, update, delete that
+    // reports "in use" when a foreign key blocks it). The namespaces and the context's name come from the project settings (EntityNamespace, RepoNamespace, ContextNamespace, ContextName).
+    // ==========================================================================================
+    string projectName = Project.ProjectName ?? "MyApp";
+    string entityNamespace = Project.EntityNamespace ?? projectName + ".Api.Entities";
+    string repoNamespace = Project.RepoNamespace ?? projectName + ".Api.Repositories";
+    string contextNamespace = Project.ContextNamespace ?? projectName + ".Api.Data";
+    string contextType = Project.ContextName ?? "AppContext";
+#>
+@@@FILE Entities/BaseEntity.cs@@@
+namespace <#= entityNamespace #>;
+
+public class BaseEntity
+{
+}
+@@@FILE Repositories/IGenericRepo.cs@@@
+using System.Linq.Expressions;
+
+namespace <#= repoNamespace #>;
+
+public interface IGenericRepo<T> where T : BaseEntity
+{
+    public T GetById(int id);
+    public Task<T?> GetByIdAsync(int id);
+    public Task<bool> ExistsAsync(int id);
+    public T Get(Expression<Func<T, bool>> predicate);
+    public Task<T?> GetAsync(Expression<Func<T, bool>> predicate);
+
+    public Task<List<T>> GetAll();
+
+    public Task<bool> AddAsync(T newRow);
+
+    public Task<T> UpdateAsync(int id, T rowToUpdate);
+
+    public Task<int> DeleteAsync(string deleteFromTable, int deleteId);
+
+    public int Count();
+    public Task<int> CountAsync();
+}
+@@@FILE Repositories/GenericRepo.cs@@@
+using System.Linq.Expressions;
+using <#= contextNamespace #>;
+
+namespace <#= repoNamespace #>;
+
+/// <summary> Repository for any table: the shared base every generated <Table>Repo (CS_Repo) derives from. DeleteAsync attempts the delete and catches the foreign-key violation EF Core
+/// reports as a DbUpdateException, returning the "in use" result the generated screens expect (0 = deleted, -1 = no longer exists, 1 = in use). </summary>
+public class GenericRepo<T> : IGenericRepo<T>, IDisposable where T : BaseEntity
+{
+    protected readonly <#= contextType #> _context;
+    protected readonly DbSet<T> _dbSet;
+    private bool _disposed = false;
+
+    public GenericRepo(<#= contextType #> context)
+    {
+        _context = context;
+        _dbSet = _context.Set<T>();
+    }
+
+    public T GetById(int id) => _dbSet.Find(id)!;
+
+    public async Task<T?> GetByIdAsync(int id) => await _dbSet.FindAsync(id);
+
+    public async Task<bool> ExistsAsync(int id)
+    {
+        string keyName = _context.Model.FindEntityType(typeof(T))!.FindPrimaryKey()!.Properties[0].Name;
+        return await _dbSet.AsNoTracking().AnyAsync(e => EF.Property<int>(e, keyName) == id);
+    }
+
+    public T Get(Expression<Func<T, bool>> predicate) => _dbSet.FirstOrDefault(predicate)!;
+
+    public async Task<T?> GetAsync(Expression<Func<T, bool>> predicate) => await _dbSet.FirstOrDefaultAsync(predicate);
+
+    public async Task<List<T>> GetAll() => await _dbSet.ToListAsync();
+
+    public async Task<List<T>> GetAllOrderBy<TKey>(Expression<Func<T, TKey>> key) => await _dbSet.OrderBy(key).ToListAsync();
+
+    /// <summary> Newest first; takes a non-nullable DateTime column (what the generated API classes sort by). </summary>
+    public async Task<List<T>> GetAllOrderByDescending(Expression<Func<T, DateTime>> key) => await _dbSet.OrderByDescending(key).ToListAsync();
+
+    public async Task<bool> AddAsync(T newRow)
+    {
+        _dbSet.Add(newRow);
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<T> UpdateAsync(int id, T rowToUpdate)
+    {
+        _context.Entry(rowToUpdate).State = EntityState.Modified;
+        await _context.SaveChangesAsync();
+        return await GetByIdAsync(id) ?? throw new InvalidOperationException($"Entity with id {id} not found.");
+    }
+
+    /// <summary> 0 = deleted, -1 = row no longer exists, 1 = blocked by a foreign key elsewhere ("in use"). </summary>
+    public async Task<int> DeleteAsync(string deleteFromTable, int deleteId)
+    {
+        var rowToDelete = GetById(deleteId);
+        if (rowToDelete is null)
+            return -1;
+
+        _dbSet.Remove(rowToDelete);
+        try
+        {
+            await _context.SaveChangesAsync();
+            return 0;
+        }
+        catch (DbUpdateException)
+        {
+            _context.Entry(rowToDelete).State = EntityState.Unchanged;
+            return 1;
+        }
+    }
+
+    public int Count() => _dbSet.Count();
+
+    public async Task<int> CountAsync() => await _dbSet.CountAsync();
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+                _context.Dispose();
+        }
+        _disposed = true;
+    }
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+}

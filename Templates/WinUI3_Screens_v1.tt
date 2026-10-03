@@ -13,7 +13,7 @@
     string viewNamespace = "TimeEntry.Desktop.Views";        // the namespace of the list pages (WinUI3_MasterScreen)
     // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     viewNamespace = Project.ViewNamespace ?? viewNamespace;
-    windowNamespace = Project.ViewNamespace is { } views && views.EndsWith(".Views") ? views[..^".Views".Length] : windowNamespace;
+    windowNamespace = Project.ViewNamespace is not null || Project.ProjectName is not null ? Project.AppNamespace : windowNamespace;
     // The screens and their order come from the project's Screens setting (see DatabaseModel).
     // ==========================================================================================
 

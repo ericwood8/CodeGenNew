@@ -45,6 +45,9 @@ public static class Program
         }
 
 
+        if (options.Command is not null)
+            return await GenerateCommand.RunAsync(options, baseDirectory, settings, templatesDirectory, specialLogicColumnsConfigPath, outputDirectory);
+
         var template = TemplateCatalog.FindByName(templatesDirectory, options.Template);
         if (template is null)
         {

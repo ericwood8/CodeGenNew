@@ -72,6 +72,35 @@ public class TemplateConfig
     /// <c>Project</c> settings. The CLI runs it without -S, -d or -t, and no table or database menu offers it. </summary>
     public bool NoDatabase { get; init; }
 
+    /// <summary> The stacks whose generation includes this template (<c>Stacks=Api,WinUI3</c>): <c>Api</c>, <c>WinUI3</c>, <c>React</c> and <c>Angular</c>. Empty: the template is run by hand
+    /// only and is not part of "generate everything for a project". </summary>
+    public IReadOnlyList<string> Stacks { get; init; } = [];
+
+    /// <summary> Which tables a plan runs this template for (<c>PlanTables=Entity</c>): see <see cref="PlanTableSet"/>. Ignored for a database-level or no-database template, which runs once. </summary>
+    public PlanTableSet PlanTables { get; init; } = PlanTableSet.Entity;
+
+    /// <summary> Where the template's files go: <c>Stack</c> (the stack's own project folder, the default) or <c>Sql</c> (the project's SQL folder). </summary>
+    public string OutputRoot { get; init; } = "Stack";
+
+    /// <summary> Defaults to true. A template with <c>InPlan=false</c> is run in a whole-project generate only when the project's <c>PlanAlso</c> setting names it (the PostgreSQL / MySQL
+    /// insert, update, save, delete and lookup routines, which nothing calls by default). </summary>
+    public bool InPlan { get; init; } = true;
+
+    /// <summary> The databases this template is for (<c>Dialects=PostgreSql</c>); a plan skips it, silently, for another one. Empty: every database. </summary>
+    public IReadOnlyList<string> Dialects { get; init; } = [];
+
+    /// <summary> The folder under the root the template's own relative paths land in (<c>OutputFolder=Entities</c>, or per stack: <c>OutputFolder.React=src</c>, <c>OutputFolder.Angular=src/app</c>). </summary>
+    public string OutputFolderFor(string stack) =>
+        _outputFolders.TryGetValue(stack, out string? folder) ? folder : _outputFolders.GetValueOrDefault("", "");
+
+    internal Dictionary<string, string> _outputFolders { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary> A no-database template that is one of the files every app of a stack needs (an "essentials" group): its name in the Essentials menu (<c>EssentialsGroup=MainWindow</c>), one line
+    /// saying what it writes (<c>Description=...</c>) and whether it is ticked the first time (<c>EssentialsDefault=false</c> for an optional one). </summary>
+    public string? EssentialsGroup { get; init; }
+    public string? Description { get; init; }
+    public bool EssentialsDefault { get; init; } = true;
+
     /// <summary> Defaults to false. A template that shows the display columns of foreign-keyed tables (SP_Lookup) asks
     /// for them to be looked up (ForeignKeyModel.ReferencedDisplayColumns). </summary>
     public bool NeedsReferencedDisplayColumns { get; init; }
@@ -132,6 +161,14 @@ public class TemplateConfig
         bool needsReferencedDisplayColumns = false;
         bool databaseOnly = false;
         bool noDatabase = false;
+        var stacks = new List<string>();
+        var planTables = PlanTableSet.Entity;
+        string outputRoot = "Stack";
+        bool inPlan = true;
+        var dialects = new List<string>();
+        var outputFolders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        string? essentialsGroup = null, description = null;
+        bool essentialsDefault = true;
         string? outputName = null;
 
         foreach (string rawLine in File.ReadAllLines(ttConfigPath))
@@ -168,6 +205,26 @@ public class TemplateConfig
                 databaseOnly = boolValue;
             else if (key.EqualsIgnoreCase("NoDatabase"))
                 noDatabase = boolValue;
+            else if (key.EqualsIgnoreCase("Stacks"))
+                stacks = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+            else if (key.EqualsIgnoreCase("PlanTables"))
+                planTables = Enum.TryParse<PlanTableSet>(value, ignoreCase: true, out var set) ? set : PlanTableSet.Entity;
+            else if (key.EqualsIgnoreCase("InPlan"))
+                inPlan = boolValue;
+            else if (key.EqualsIgnoreCase("Dialects"))
+                dialects = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+            else if (key.EqualsIgnoreCase("OutputRoot"))
+                outputRoot = value.Length > 0 ? value : "Stack";
+            else if (key.EqualsIgnoreCase("OutputFolder"))
+                outputFolders[""] = value;
+            else if (key.StartsWith("OutputFolder.", StringComparison.OrdinalIgnoreCase))
+                outputFolders[key["OutputFolder.".Length..]] = value;
+            else if (key.EqualsIgnoreCase("EssentialsGroup"))
+                essentialsGroup = value.Length > 0 ? value : null;
+            else if (key.EqualsIgnoreCase("Description"))
+                description = value.Length > 0 ? value : null;
+            else if (key.EqualsIgnoreCase("EssentialsDefault"))
+                essentialsDefault = boolValue;
             else if (key.EqualsIgnoreCase("NeedsReferencedDisplayColumns"))
                 needsReferencedDisplayColumns = boolValue;
             else if (key.EqualsIgnoreCase("OutputName"))
@@ -187,7 +244,37 @@ public class TemplateConfig
             NeedsReferencedDisplayColumns = needsReferencedDisplayColumns,
             DatabaseOnly = databaseOnly,
             NoDatabase = noDatabase,
+            Stacks = stacks,
+            PlanTables = planTables,
+            OutputRoot = outputRoot,
+            InPlan = inPlan,
+            Dialects = dialects,
+            _outputFolders = outputFolders,
+            EssentialsGroup = essentialsGroup,
+            Description = description,
+            EssentialsDefault = essentialsDefault,
             OutputName = outputName
         };
     }
+}
+
+/// <summary> Which tables a template runs for when a whole project is generated (the template's <c>PlanTables</c> config key). </summary>
+public enum PlanTableSet
+{
+    /// <summary> Every table that gets an entity and a repository: a single-column key and not an enum table. </summary>
+    Entity,
+    /// <summary> The tables that get a CRUD API (<see cref="CodeGenNew.Core.DatabaseModel.ApiTables"/>). </summary>
+    Api,
+    /// <summary> The tables that also get a search routine and endpoint (a lookup table does not). </summary>
+    Search,
+    /// <summary> The tables with a screen (the project's Screens setting, else every table with a search). </summary>
+    Screen,
+    /// <summary> The screens whose dialog has no child grids. </summary>
+    ScreenForm,
+    /// <summary> The screens whose dialog also shows child grids. </summary>
+    ScreenDetailMaster,
+    /// <summary> The many-to-many junction tables. </summary>
+    Junction,
+    /// <summary> The enum (lookup) tables the project turns into C# enums. </summary>
+    Enum
 }

@@ -1,0 +1,91 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TS_EssentialShell_v1.tt
+    // Generates: src/index.html, src/main.ts, src/app/app.ts, src/app/app.html and src/app/app.css   (no table, no database: an essentials group; the output folder is the Angular app's own folder)
+    // The Angular shell: the page, the bootstrap, and the root component with the menu (the hamburger button opens and closes it, the choice is remembered in the browser) around the router outlet.
+    // The screens (route, menu text) are imported from app.routes.ts, which TS_Screens writes from the project's Screens setting. The standalone flag, the eager strategy's name and the
+    // control flow follow the project's AngularVersion. Setting: ProjectTitle (the page title).
+    // ==========================================================================================
+    bool controlFlow = Project.AngularControlFlow;
+    string imports = "RouterOutlet, RouterLink, RouterLinkActive" + (controlFlow ? "" : ", NgFor, NgIf");
+    string html = @"<div class=""app"" [class.menu-closed]=""!menuOpen"">
+  <nav class=""rail"" *ngIf=""menuOpen"">
+    <a *ngFor=""let screen of screens"" [routerLink]=""'/' + screen.path"" routerLinkActive=""active"">{{ screen.label }}</a>
+  </nav>
+  <!-- The router puts the screen next to the outlet, not inside it: the wrapper is what sits in the second grid column. -->
+  <div class=""screen"">
+    <button type=""button"" class=""hamburger"" aria-label=""Toggle the menu"" [attr.aria-expanded]=""menuOpen"" (click)=""toggleMenu()"">&#9776;</button>
+    <router-outlet />
+  </div>
+</div>
+";
+    html = Project.AdaptAngularHtml(html);
+#>
+@@@FILE src/index.html@@@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title><#= Project.ProjectTitle #></title>
+  <base href="/">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+</head>
+<body>
+  <app-root></app-root>
+</body>
+</html>
+@@@FILE src/main.ts@@@
+import { bootstrapApplication } from '@angular/platform-browser';
+import { appConfig } from './app/app.config';
+import { App } from './app/app';
+
+bootstrapApplication(App, appConfig)
+  .catch((err) => console.error(err));
+@@@FILE src/app/app.ts@@@
+import { ChangeDetectionStrategy, Component } from '@angular/core';
+<# if (!controlFlow) { #>
+import { NgFor, NgIf } from '@angular/common';
+<# } #>
+import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { screens } from './app.routes';
+
+// The menu opens and closes with the hamburger button (like the WinUI3 pane); the choice is remembered in the browser.
+function readMenuOpen(): boolean {
+  try { return localStorage.getItem('menuOpen') !== 'false'; } catch { return true; }
+}
+
+@Component({
+  selector: 'app-root',
+<# if (Project.AngularStandaloneFlag) { #>
+  standalone: true,
+<# } #>
+  imports: [<#= imports #>],
+  // Eager, not the OnPush that Angular 22 makes the default: an OnPush ancestor stops change detection from reaching the generated screens below it
+  // (they change plain properties inside subscribe callbacks), so they would never show the rows they load.
+  changeDetection: ChangeDetectionStrategy.<#= Project.AngularEagerStrategy #>,
+  templateUrl: './app.html',
+  styleUrl: './app.css',
+})
+export class App {
+  protected readonly screens = screens;
+  protected menuOpen = readMenuOpen();
+
+  protected toggleMenu(): void {
+    this.menuOpen = !this.menuOpen;
+    try { localStorage.setItem('menuOpen', String(this.menuOpen)); } catch { /* storage unavailable: the choice just is not remembered */ }
+  }
+}
+@@@FILE src/app/app.html@@@
+<#= html #>@@@FILE src/app/app.css@@@
+.app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+.rail { display: flex; flex-direction: column; gap: 4px; padding: 16px 12px; border-right: 1px solid #8884; }
+.rail a { padding: 8px 10px; border-radius: 4px; color: inherit; text-decoration: none; }
+.rail a.active { background: #8883; font-weight: 600; }
+.screen { min-width: 0; overflow-x: auto; }
+.app.menu-closed { grid-template-columns: 1fr; }
+.hamburger { margin: 8px 24px 0; padding: 4px 10px; font-size: 20px; line-height: 1; background: none; border: 1px solid transparent; border-radius: 4px; color: inherit; cursor: pointer; }
+.hamburger:hover { background: #8883; }

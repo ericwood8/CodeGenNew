@@ -1,0 +1,55 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TSX_EssentialStyles_v1.tt
+    // Generates: src/index.css   (no table, no database: an essentials group)
+    // The one stylesheet the generated React pages assume (they invent no class names): the menu, the tables, the edit form and its tabs, the modal dialog, the search bar, the pagination bar
+    // and the shaded bold Edit / Clone / Delete buttons of a grid row.
+    // ==========================================================================================
+#>
+@@@FILE src/index.css@@@
+:root { font-family: system-ui, sans-serif; color-scheme: light dark; }
+body { margin: 0; }
+.app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+.app.menu-closed { grid-template-columns: 1fr; }
+.hamburger { padding: 4px 10px; margin-bottom: 8px; font-size: 20px; line-height: 1; background: none; border: 1px solid transparent; border-radius: 4px; color: inherit; cursor: pointer; }
+.hamburger:hover { background: #8883; }
+.rail { display: flex; flex-direction: column; gap: 4px; padding: 16px 12px; border-right: 1px solid #8884; }
+.rail a { padding: 8px 10px; border-radius: 4px; color: inherit; text-decoration: none; }
+.rail a.active { background: #8883; font-weight: 600; }
+main { padding: 16px 24px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #8884; }
+.pagination { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+
+/* Generated edit forms are plain label + input pairs (the templates invent no class names), so the spacing lives here. */
+form { max-width: 640px; margin-top: 16px; }
+/* The fields sit directly in the form, or in a tab panel when the form has tabs: stack them one per line either way. */
+form, [role='tabpanel'] { display: flex; flex-direction: column; gap: 4px; }
+[role='tabpanel'][hidden] { display: none; }
+form label { margin-top: 12px; font-weight: 600; }
+form input[type='text'], form input[type='number'], form input[type='date'], form select, form textarea {
+  width: 100%; box-sizing: border-box; padding: 6px 8px; font: inherit;
+}
+form textarea { min-height: 80px; resize: vertical; }
+form input[type='checkbox'] { align-self: flex-start; width: 18px; height: 18px; }
+/* Submit and Cancel sit side by side under the last field. */
+.form-buttons { display: flex; gap: 8px; margin-top: 16px; }
+[role='tablist'] { display: flex; gap: 4px; margin-bottom: 4px; border-bottom: 1px solid #8884; }
+[role='tab'] { padding: 6px 14px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; border-bottom: 2px solid transparent; }
+[role='tab'][aria-selected='true'] { border-bottom-color: currentColor; }
+main button { padding: 4px 12px; font: inherit; }
+main > div > div > input { margin: 4px 6px 4px 0; padding: 6px 8px; font: inherit; }
+tbody tr:hover { background: #8881; }
+/* The Edit / Clone / Delete buttons on a grid row: shaded and bold. */
+td button { background: #8883; border: 1px solid #8886; border-radius: 4px; font-weight: 700; cursor: pointer; }
+td button:hover { background: #8885; }
+h3 { margin-top: 24px; }
+
+/* The add/edit form is a native modal <dialog>: it opens over the page wherever the grid is scrolled to. */
+dialog { width: min(920px, 94vw); max-height: 90vh; overflow: auto; box-sizing: border-box; padding: 8px 24px 24px; border: 1px solid #8886; border-radius: 8px; color: inherit; background: Canvas; }
+dialog::backdrop { background: rgb(0 0 0 / 0.45); }
+dialog form { margin-top: 0; }
+dialog [role='alert'] { color: #c62828; font-weight: 600; }

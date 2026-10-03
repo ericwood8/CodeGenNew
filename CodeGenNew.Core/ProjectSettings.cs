@@ -25,7 +25,8 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern"
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
+        "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle"
     ];
 
     private readonly Dictionary<string, string> _values;
@@ -197,6 +198,47 @@ public class ProjectSettings
     public string? ListingName => Explicit("ListingName");
     public string? ListingFolder => Explicit("ListingFolder");
     public string? ListingPattern => Explicit("ListingPattern");
+
+    // ---- generating a whole project (codegen generate) and the essentials files
+
+    /// <summary> The stacks a project generates (<c>Stacks=Api,React</c>): <c>Api</c>, <c>WinUI3</c>, <c>React</c>, <c>Angular</c>. Empty when not set (the command line then names them). </summary>
+    public string[] Stacks => Explicit("Stacks") is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
+
+    /// <summary> Templates a plan runs although their config does not put them in it (<c>PlanAlso=SP_Insert,SP_Update</c>: the PostgreSQL / MySQL routines nothing calls by default). </summary>
+    public string[] PlanAlso => Explicit("PlanAlso") is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
+
+    /// <summary> Where a stack's files go (<c>OutputApi=InvoiceSystem.Api</c>; relative to the output folder of the run). Null: the default, <c>&lt;ProjectName&gt;.Api</c>, <c>&lt;ProjectName&gt;.App</c>,
+    /// <c>frontend</c> (React and Angular) and <c>sql</c>. </summary>
+    public string OutputFolderOf(string root) => (root.ToLowerInvariant() switch
+    {
+        "api" => Explicit("OutputApi") ?? (ProjectName ?? "MyApp") + ".Api",
+        "winui3" => Explicit("OutputWinUI3") ?? (ProjectName ?? "MyApp") + ".App",
+        "react" => Explicit("OutputReact") ?? "frontend",
+        "angular" => Explicit("OutputAngular") ?? "frontend",
+        "sql" => Explicit("OutputSql") ?? "sql",
+        _ => root
+    });
+
+    /// <summary> The WinUI3 app's root namespace (App.xaml, MainWindow, GlobalUsings): <c>&lt;ProjectName&gt;.App</c> unless AppNamespace says otherwise. </summary>
+    public string AppNamespace => Explicit("AppNamespace")
+        ?? (ViewNamespace is { } views && views.EndsWith(".Views") ? views[..^".Views".Length] : (ProjectName ?? "MyApp") + ".App");
+
+    /// <summary> The database the generated app talks to, for appsettings.json and the package reference: <c>SqlServer</c> (default), <c>PostgreSql</c> or <c>MySql</c>, the server (<c>localhost</c>),
+    /// the database (the project name), the login (blank for SQL Server's Windows authentication). The password is never written: the context reads it from the environment. </summary>
+    public SqlDialect DatabaseDialect => Explicit("DatabaseProvider")?.ToLowerInvariant() switch
+    {
+        "postgresql" or "postgres" or "pg" => SqlDialect.PostgreSql,
+        "mysql" => SqlDialect.MySql,
+        _ => SqlDialect.SqlServer
+    };
+    public string DatabaseServer => Explicit("DatabaseServer") ?? "localhost";
+    public string DatabaseName => Explicit("DatabaseName") ?? ProjectName ?? "MyDatabase";
+    public string? DatabaseUser => Explicit("DatabaseUser");
+
+    /// <summary> The port the API listens on (default 5080), the dev server's (React 5173, Angular 4200) and the window title of a web app. </summary>
+    public int ApiPort => int.TryParse(Explicit("ApiPort"), out int port) ? port : 5080;
+    public int DevPort(string stack) => int.TryParse(Explicit("DevPort"), out int port) ? port : stack.Equals("Angular", StringComparison.OrdinalIgnoreCase) ? 4200 : 5173;
+    public string ProjectTitle => Explicit("ProjectTitle") ?? System.Text.RegularExpressions.Regex.Replace(ProjectName ?? "My App", "(?<=[a-z0-9])(?=[A-Z])", " ");
 
     public string ApiFolder => Explicit("ApiFolder") ?? "api";
     public string ModelsFolder => Explicit("ModelsFolder") ?? "models";

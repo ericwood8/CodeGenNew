@@ -15,9 +15,20 @@ public static class ArgumentParser
         bool trusted = false;
         var provider = DatabaseProvider.SqlServer;
 
+        string? command = null;
+        var stacks = new List<string>();
+        var groups = new List<string>();
+        var only = new List<string>();
+        bool essentials = false, replace = false, dryRun = false, list = false;
+
         for (int i = 0; i < args.Length; i++)
         {
             string arg = args[i];
+            if (i == 0 && arg is "generate" or "essentials")
+            {
+                command = arg;
+                continue;
+            }
 
             string Value()
             {
@@ -38,6 +49,13 @@ public static class ArgumentParser
                 case "-P": case "--password": password = Value(); break;
                 case "-E": case "--trusted": trusted = true; break;
                 case "--project": project = Value(); break;
+                case "--stack": stacks.AddRange(Value().Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)); break;
+                case "--groups": groups.AddRange(Value().Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)); break;
+                case "--only": only.AddRange(Value().Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)); break;
+                case "--essentials": essentials = true; break;
+                case "--replace": replace = true; break;
+                case "--dry-run": dryRun = true; break;
+                case "--list": list = true; break;
                 case "--projects-dir": projectsDirectory = Value(); break;
                 case "--set":
                     string setting = Value();
@@ -71,7 +89,7 @@ public static class ArgumentParser
             }
         }
 
-        if (string.IsNullOrWhiteSpace(template)) throw new ArgumentParseException("-T/--template is required.");
+        if (command is null && string.IsNullOrWhiteSpace(template)) throw new ArgumentParseException("-T/--template is required.");
 
         foreach (string yearKey in new[] { "MinYear", "MaxYear" })
         {
@@ -86,7 +104,12 @@ public static class ArgumentParser
             Database = database ?? "",
             Schema = schema ?? (provider == DatabaseProvider.PostgreSql ? "public" : provider == DatabaseProvider.MySql ? database ?? "" : "dbo"),
             Table = table,
-            Template = template,
+            Template = template ?? "",
+            Command = command,
+            Essentials = essentials,
+            Replace = replace,
+            DryRun = dryRun,
+            List = list,
             OutputDirectory = outputDirectory,
             Trusted = trusted,
             UserName = userName,
@@ -96,6 +119,9 @@ public static class ArgumentParser
         };
         foreach (var (key, value) in overrides)
             options.ProjectOverrides[key] = value;
+        options.Stacks.AddRange(stacks);
+        options.Groups.AddRange(groups);
+        options.Only.AddRange(only);
         return options;
     }
 
@@ -117,6 +143,13 @@ public static class ArgumentParser
             a generated file to the output directory. It never creates, alters, or executes anything in
             the target database, and never modifies files in any other project. What you do with the
             generated output is entirely up to you.
+
+            Whole project (every file of the chosen stacks in one run; see Docs/specs.md item 57):
+              codegen generate -S <server> -d <database> (-E | -U <user> [-P <password>]) --project <name> -o <dir>
+                       [--stack api,winui3,react,angular] [--essentials [--groups a,b] [--replace]] [--only SP_Search,CS_Entity] [--dry-run]
+            The files no table drives (App, MainWindow, styles, Program.cs ...), without a database:
+              codegen essentials --stack winui3|react|angular|api [--groups app,mainwindow] --project <name> -o <dir> [--replace] [--dry-run]
+              codegen essentials --list
 
             Usage:
               codegen -S <server> -d <database> [-s <schema>] -t <table> -T <template.tt>

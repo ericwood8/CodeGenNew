@@ -16,7 +16,7 @@ public class AngularVersionTests
 
         string converted = AngularControlFlow.Convert(html);
 
-        Assert.AreEqual("<table>\n    <tbody>\n        @for (row of rows; track $index) {\n            <tr>\n            <td>{{row.name}}</td>\n        </tr>\n        }\n    </tbody>\n</table>\n", converted);
+        Assert.AreEqual("<table>\n    <tbody>\n        @for (row of rows; track $index) {\n          <tr>\n              <td>{{row.name}}</td>\n          </tr>\n        }\n    </tbody>\n</table>\n", converted);
     }
 
     [TestMethod]

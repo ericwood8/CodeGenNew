@@ -1,0 +1,33 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TS_EssentialConfig_v1.tt
+    // Generates: src/app/app.config.ts and proxy.conf.json   (no table, no database: an essentials group)
+    // The application config (HttpClient for every generated service, the router with the routes TS_Screens writes) and the dev server's proxy, which forwards /api to the API on the project's
+    // ApiPort (default 5080). The zone-based change detection is written for every version; a zoneless app removes that line.
+    // ==========================================================================================
+#>
+@@@FILE src/app/app.config.ts@@@
+import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZoneChangeDetection } from '@angular/core';
+import { provideHttpClient } from '@angular/common/http';
+import { provideRouter } from '@angular/router';
+import { routes } from './app.routes';
+
+// Every generated service uses HttpClient, so it is provided once here. The dev server forwards /api to the API (proxy.conf.json).
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideBrowserGlobalErrorListeners(),
+    provideZoneChangeDetection({ eventCoalescing: true }),
+    provideHttpClient(),
+    provideRouter(routes)
+  ]
+};
+@@@FILE proxy.conf.json@@@
+{
+  "/api": {
+    "target": "http://localhost:<#= Project.ApiPort #>",
+    "secure": false
+  }
+}

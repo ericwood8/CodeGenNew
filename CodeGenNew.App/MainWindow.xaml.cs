@@ -111,6 +111,18 @@ public sealed partial class MainWindow : Window
             : $"Generating with project '{chosen}'.");
     }
 
+    private async void OnEssentialsClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuFlyoutItem { Tag: string stack })
+            return;
+
+        string menuText = TemplateEngine.EssentialsCatalog.Stacks.First(s => s.Stack == stack).MenuText;
+        var dialogViewModel = new EssentialsDialogViewModel(stack, menuText, _settingsService.ProjectsDirectory, _settingsService.TemplatesDirectory,
+            _settingsService.OutputDirectory, _settingsService.Current.LastProject);
+        var dialog = new EssentialsDialog(dialogViewModel, this) { XamlRoot = Content.XamlRoot };
+        await dialog.ShowAsync();
+    }
+
     private async void OnManageTemplatesClick(object sender, RoutedEventArgs e)
     {
         var dialogViewModel = new TemplateManagementViewModel(_settingsService);
