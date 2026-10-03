@@ -92,7 +92,7 @@
         string PParam(ColumnModel c) => PQ(c.ParameterName.TrimStart('@'));
         string pgTable = PQ(Model.SchemaName) + "." + PQ(Model.DbTableName);
         string pgWhere = searchableColumns.Count == 0 ? "" : "\tWHERE " + string.Join("\n\t  AND ", searchableColumns
-            .Select(c => $"({PParam(c)} IS NULL OR {PQ(c.DbName)} ILIKE '%' || btrim({PParam(c)}) || '%')")) + "\n";
+            .Select(c => $"({PParam(c)} IS NULL OR {PQ(c.DbName)}{(c.DbEnumType is null ? "" : "::text")} ILIKE '%' || btrim({PParam(c)}) || '%')")) + "\n";   // an enum column has no ILIKE: compare its text
         // The default order (best display column, then the key) follows the chosen sort as the tie-breaker.
         var pgDefaultOrder = new List<string>();
         if (sortColumn is not null)

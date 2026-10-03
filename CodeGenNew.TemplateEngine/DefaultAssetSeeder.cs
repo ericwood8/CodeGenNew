@@ -35,7 +35,7 @@ public sealed record SeedNotice(string FileName, SeedOutcome Outcome, string Mes
 ///                                                    an install that predates SeededAssets.config, since there is
 ///                                                    no way to know whether it was customized.
 /// Templates carry their version in the file name (SP_Save_v1.tt), so a new template version arrives as a new
-/// file (SP_Save_v2.tt) and the older one is simply hidden from the menu by TemplateCatalog -- this refresh
+/// file (SP_Save_v2.tt) and the older one is simply hidden from the menu by TemplateCatalog. This refresh
 /// path is for shipped files that keep the same name (configs, SpecialLogicColumns.config, in-place fixes).
 /// </summary>
 public static class DefaultAssetSeeder
@@ -60,6 +60,7 @@ public static class DefaultAssetSeeder
         "CS_Validation_v1.tt", "CS_Validation_v1.tt.config",
         "CS_Enum_v1.tt", "CS_Enum_v1.tt.config",
         "CS_DbContext_v1.tt", "CS_DbContext_v1.tt.config",
+        "SP_EnumCasts_v1.tt", "SP_EnumCasts_v1.tt.config",
         "API_Registration_v1.tt", "API_Registration_v1.tt.config",
         "TSX_Screens_v1.tt", "TSX_Screens_v1.tt.config",
         "TSX_GridSort_v1.tt", "TSX_GridSort_v1.tt.config",

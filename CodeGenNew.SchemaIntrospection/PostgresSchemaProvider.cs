@@ -30,14 +30,20 @@ public class PostgresSchemaProvider : SchemaProviderBase
 
     protected override string Quote(string name) => "\"" + name.Replace("\"", "\"\"") + "\"";
 
-    // ---- type vocabulary -------------------------------------------------------------------------------------------
+    // ========== type vocabulary =============
 
     /// <summary> A PostgreSQL type (information_schema udt_name) in the SQL Server vocabulary the generator classifies by, plus the
     /// PostgreSQL spelling of the declaration. Length -1 means unbounded (text, bytea, json). A type with no equivalent
     /// (arrays, enums, geometry ...) maps to sql_variant, which the generators treat as an unsupported "object" column. </summary>
     public static (string SqlTypeName, int MaxLength, int Precision, int Scale, string Declaration) MapType(
-        string udtName, int? characterMaximumLength, int? numericPrecision, int? numericScale)
+        string udtName, int? characterMaximumLength, int? numericPrecision, int? numericScale, IReadOnlyList<string>? enumLabels = null)
     {
+        // An enum type is a string as long as its longest label (the form shows it as a drop-down); the SQL text calls it varchar so a function can take it as text.
+        if (enumLabels is { Count: > 0 })
+        {
+            int longest = enumLabels.Max(v => v.Length);
+            return ("varchar", longest, 0, 0, $"varchar({longest})");
+        }
         int length = characterMaximumLength ?? -1;
         switch (udtName.ToLowerInvariant())
         {
@@ -94,6 +100,28 @@ public class PostgresSchemaProvider : SchemaProviderBase
         return expr;
     }
 
+    private static readonly Regex StringLiteral = new("'((?:[^']|'')*)'", RegexOptions.Compiled);
+
+    /// <summary> The values a single-column CHECK constraint lists (<c>CHECK (status IN ('Open','Closed'))</c>, which PostgreSQL stores as
+    /// <c>= ANY (ARRAY['Open'::text, 'Closed'::text])</c>); null for any other check (a range, an OR, a NOT, a comparison with a column). </summary>
+    public static List<string>? ParseCheckValues(string constraintDefinition)
+    {
+        // Quoted values hold anything, so judge the shape on the definition with every value emptied out.
+        string shape = StringLiteral.Replace(constraintDefinition, "''");
+        if (!shape.Contains("= ANY", StringComparison.OrdinalIgnoreCase) || !shape.Contains("ARRAY[", StringComparison.OrdinalIgnoreCase))
+            return null;
+        if (Regex.IsMatch(shape, @"\b(OR|AND|NOT)\b|<>|!=|<|>", RegexOptions.IgnoreCase))
+            return null;
+
+        int open = shape.IndexOf("ARRAY[", StringComparison.OrdinalIgnoreCase) + 6;
+        int close = shape.IndexOf(']', open);
+        if (close < 0 || Regex.Replace(shape[open..close], @"''(::[a-zA-Z_ ]+)?|,|\s", "").Length > 0)
+            return null;                                           // something other than listed values inside the array
+
+        var values = StringLiteral.Matches(constraintDefinition).Select(m => m.Groups[1].Value.Replace("''", "'")).ToList();
+        return values.Count > 0 ? values : null;
+    }
+
     private static bool IsSerialDefault(string? columnDefault) => columnDefault is not null && columnDefault.StartsWith("nextval(", StringComparison.OrdinalIgnoreCase);
 
     // A single primary key column's PostgreSQL type -> PrimaryKeyShape, matching TableModel.PrimaryKeyShape's own rule.
@@ -109,7 +137,7 @@ public class PostgresSchemaProvider : SchemaProviderBase
         }
     };
 
-    // ---- the table list ---------------------------------------------------------------------------------------------
+    // ========== the table list ==============
 
     private const string ListTablesQuery = """
         SELECT t.table_schema AS schema_name, t.table_name AS table_name,
@@ -289,10 +317,10 @@ public class PostgresSchemaProvider : SchemaProviderBase
         return hasNotNullName;
     }
 
-    // ---- columns ------------------------------------------------------------------------------------------------------
+    // ========== columns ==========
 
     private const string ColumnsQuery = """
-        SELECT c.column_name, c.ordinal_position, c.udt_name, c.character_maximum_length, c.numeric_precision, c.numeric_scale,
+        SELECT c.column_name, c.ordinal_position, c.udt_schema, c.udt_name, c.character_maximum_length, c.numeric_precision, c.numeric_scale,
                (c.is_nullable = 'YES') AS is_nullable, c.is_identity, c.identity_start, c.identity_increment,
                c.column_default, c.is_generated, c.generation_expression,
                EXISTS (SELECT 1 FROM pg_index i
@@ -304,7 +332,17 @@ public class PostgresSchemaProvider : SchemaProviderBase
                          JOIN pg_class t ON t.oid = i.indrelid
                          JOIN pg_namespace n ON n.oid = t.relnamespace
                          JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY ((i.indkey::int2[])[0:i.indnkeyatts - 1])
-                        WHERE i.indisunique AND NOT i.indisprimary AND n.nspname = c.table_schema AND t.relname = c.table_name AND a.attname = c.column_name) AS is_in_unique_index
+                        WHERE i.indisunique AND NOT i.indisprimary AND n.nspname = c.table_schema AND t.relname = c.table_name AND a.attname = c.column_name) AS is_in_unique_index,
+               (SELECT array_agg(e.enumlabel::text ORDER BY e.enumsortorder) FROM pg_type ty
+                         JOIN pg_namespace tn ON tn.oid = ty.typnamespace
+                         JOIN pg_enum e ON e.enumtypid = ty.oid
+                        WHERE ty.typname = c.udt_name AND tn.nspname = c.udt_schema) AS enum_labels,
+               (SELECT array_agg(pg_get_constraintdef(con.oid)) FROM pg_constraint con
+                         JOIN pg_class t ON t.oid = con.conrelid
+                         JOIN pg_namespace n ON n.oid = t.relnamespace
+                         JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = con.conkey[1]
+                        WHERE con.contype = 'c' AND array_length(con.conkey, 1) = 1
+                          AND n.nspname = c.table_schema AND t.relname = c.table_name AND a.attname = c.column_name) AS check_definitions
         FROM information_schema.columns c
         WHERE c.table_schema = @schema AND c.table_name = @table
         ORDER BY c.ordinal_position;
@@ -327,8 +365,21 @@ public class PostgresSchemaProvider : SchemaProviderBase
             int? Int(string name) { int o = reader.GetOrdinal(name); return reader.IsDBNull(o) ? null : Convert.ToInt32(reader.GetValue(o)); }
             string? Text(string name) { int o = reader.GetOrdinal(name); return reader.IsDBNull(o) ? null : reader.GetString(o); }
 
+            string udtName = reader.GetString(reader.GetOrdinal("udt_name"));
+            int enumOrdinal = reader.GetOrdinal("enum_labels"), checkOrdinal = reader.GetOrdinal("check_definitions");
+            var enumLabels = reader.IsDBNull(enumOrdinal) ? null : ((string[])reader.GetValue(enumOrdinal)).ToList();
             var (sqlType, maxLength, precision, scale, declaration) = MapType(
-                reader.GetString(reader.GetOrdinal("udt_name")), Int("character_maximum_length"), Int("numeric_precision"), Int("numeric_scale"));
+                udtName, Int("character_maximum_length"), Int("numeric_precision"), Int("numeric_scale"), enumLabels);
+
+            // A value from a list: a native enum type, or a text column a CHECK constraint limits to listed values. The form shows either as a drop-down.
+            var choices = enumLabels;
+            if (choices is null && sqlType == "varchar" && !reader.IsDBNull(checkOrdinal))
+            {
+                choices = ((string[])reader.GetValue(checkOrdinal)).Select(ParseCheckValues).FirstOrDefault(v => v is not null);
+                // an unbounded text column has no length to size the control by: it is as long as its longest listed value
+                if (choices is not null && maxLength <= 0)
+                    maxLength = choices.Max(v => v.Length);
+            }
 
             string? columnDefault = Text("column_default");
             bool serial = IsSerialDefault(columnDefault);
@@ -351,7 +402,9 @@ public class PostgresSchemaProvider : SchemaProviderBase
                 IsPrimaryKey: reader.GetBoolean(reader.GetOrdinal("is_primary_key")),
                 IsInUniqueIndex: reader.GetBoolean(reader.GetOrdinal("is_in_unique_index")),
                 DeclarationOverride: declaration,
-                DefaultForCSharp: serial ? null : NormalizeDefault(columnDefault)));
+                DefaultForCSharp: serial ? null : NormalizeDefault(columnDefault),
+                Choices: choices,
+                EnumType: enumLabels is null ? null : reader.GetString(reader.GetOrdinal("udt_schema")) + "." + udtName));
         }
 
         return results;
@@ -398,7 +451,7 @@ public class PostgresSchemaProvider : SchemaProviderBase
         return results;
     }
 
-    // ---- foreign keys -------------------------------------------------------------------------------------------------
+    // ========== foreign keys ==========
 
     // pg_constraint keeps the two column lists as parallel arrays (conkey, confkey); unnest pairs them in order.
     private const string ForeignKeysQueryTemplate = """
@@ -432,7 +485,7 @@ public class PostgresSchemaProvider : SchemaProviderBase
         return await GroupForeignKeyRowsAsync(reader, cancellationToken);
     }
 
-    // ---- row count and row data -----------------------------------------------------------------------------------------
+    // ========== row count and row data ==========
 
     protected override async Task<long> ReadRowCountAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {

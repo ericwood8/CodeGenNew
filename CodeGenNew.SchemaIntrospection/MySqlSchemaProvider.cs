@@ -28,7 +28,7 @@ public class MySqlSchemaProvider : SchemaProviderBase
 
     protected override string Quote(string name) => "`" + name.Replace("`", "``") + "`";
 
-    // ---- type vocabulary -------------------------------------------------------------------------------------------
+    // =============== type vocabulary ===============
 
     /// <summary> A MySQL column type in the SQL Server vocabulary the generator classifies by, plus the MySQL spelling of the declaration (for procedure parameters).
     /// <paramref name="columnType"/> is information_schema's COLUMN_TYPE ("int unsigned", "varchar(50)", "tinyint(1)", "enum('a','b')"). Length -1 means unbounded
@@ -146,7 +146,7 @@ public class MySqlSchemaProvider : SchemaProviderBase
         }
     };
 
-    // ---- the table list ---------------------------------------------------------------------------------------------
+    // =============== the table list ===============
 
     private const string ListTablesQuery = """
         SELECT t.TABLE_SCHEMA, t.TABLE_NAME,
@@ -274,7 +274,7 @@ public class MySqlSchemaProvider : SchemaProviderBase
             HashCode.Combine(obj.Schema.ToLowerInvariant(), obj.Table.ToLowerInvariant());
     }
 
-    // ---- columns ------------------------------------------------------------------------------------------------------
+    // =============== columns ===============
 
     private const string ColumnsQuery = """
         SELECT c.COLUMN_NAME, c.ORDINAL_POSITION, c.DATA_TYPE, c.COLUMN_TYPE, c.CHARACTER_MAXIMUM_LENGTH, c.NUMERIC_PRECISION, c.NUMERIC_SCALE,
@@ -373,7 +373,7 @@ public class MySqlSchemaProvider : SchemaProviderBase
         return results;
     }
 
-    // ---- foreign keys -------------------------------------------------------------------------------------------------
+    // =============== foreign keys  ===============
 
     private const string ForeignKeysQuery = """
         SELECT k.CONSTRAINT_NAME AS ConstraintName, k.REFERENCED_TABLE_SCHEMA AS OtherSchema, k.REFERENCED_TABLE_NAME AS OtherTable,
@@ -402,7 +402,7 @@ public class MySqlSchemaProvider : SchemaProviderBase
         return await GroupForeignKeyRowsAsync(reader, cancellationToken);
     }
 
-    // ---- row count and row data -----------------------------------------------------------------------------------------
+    // =============== row count and row data  ===============
 
     protected override async Task<long> ReadRowCountAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {

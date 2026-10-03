@@ -63,6 +63,11 @@ public class ColumnModel
     public List<string>? Choices { get; init; }
     public bool HasChoices => Choices is { Count: > 0 };
 
+    /// <summary> The schema and name of the column's PostgreSQL enum type (<c>public.status</c>, from <c>CREATE TYPE status AS ENUM (...)</c>); null for any other
+    /// column. The column is a text column to the generator, but PostgreSQL will not compare it with text (ILIKE, lower) or accept text for it unless told how: the
+    /// search function casts the column to text, and the SP_EnumCasts script creates the assignment cast (text to the enum) that lets EF Core, which sends text, write it. </summary>
+    public string? DbEnumType { get; init; }
+
     /// <summary> What this integer column's name suggests about its values (a year, a month, a percentage, ...); None for any
     /// other column. See NumericClassifier; ProjectSettings.RangeFor turns it into limits. </summary>
     public NumericKind NumericKind { get; init; }

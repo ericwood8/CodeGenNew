@@ -178,8 +178,8 @@ public class CloneTests
         string page = files.Single(f => f.RelativePath.EndsWith("ListPage.xaml.cs")).Content;
         string vm = files.Single(f => f.RelativePath.EndsWith("ListViewModel.cs")).Content;
 
-        Expect.Contains(xaml, "<Button Content=\"Clone\" Tag=\"{x:Bind Id}\" Click=\"OnCloneClick\" />");
-        Expect.Contains(xaml, "Width=\"230\"");                  // room for three buttons in the actions column
+        Expect.Contains(xaml, "<Button Content=\"Clone\" FontWeight=\"Bold\" Background=\"{ThemeResource SystemControlBackgroundBaseLowBrush}\" Tag=\"{x:Bind Id}\" Click=\"OnCloneClick\" />");   // shaded and bold, like Edit and Delete
+        Expect.Contains(xaml, "Width=\"250\"");                  // room for three buttons in the actions column
         Expect.Contains(page, "int? newId = await ViewModel.CloneAsync(id);");
         Expect.Contains(page, "FindAsync(newId.Value)");
         Expect.Contains(vm, "return await _repo.CloneAsync(id);");

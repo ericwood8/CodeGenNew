@@ -32,7 +32,7 @@ public static class SearchSort
 
     private static string DisplayDbColumn(ForeignKeyModel fk) => fk.ReferencedDisplayDbColumns[0];
 
-    // ------------------------------------------------------------------------------------------------ SQL Server
+    // =============== SqlServer ===============
 
     /// <summary> The leading part of the ORDER BY (each item ends with a comma) for a procedure with <c>@SortColumn NVARCHAR(128)</c> and <c>@SortDescending BIT</c>.
     /// The table is aliased <c>t</c> in the query. Empty when nothing can be sorted. </summary>
@@ -52,7 +52,7 @@ public static class SearchSort
         return o.ToString();
     }
 
-    // ------------------------------------------------------------------------------------------------ PostgreSQL
+    // =============== Postgres ===============
 
     /// <summary> The same for a function with <c>"SortColumn" text</c> and <c>"SortDescending" boolean</c>; the table is aliased <c>t</c>. The names are compared in lower case. </summary>
     public static string Postgres(TableModel m)
@@ -63,7 +63,7 @@ public static class SearchSort
         {
             string expr = e.Parent is { } fk
                 ? $"(SELECT p.{Q(DisplayDbColumn(fk))} FROM {Q(fk.ReferencedSchema)}.{Q(fk.ReferencedDbTable)} AS p WHERE p.{Q(fk.ReferencedDbColumns[0])} = t.{Q(e.Column.DbName)} LIMIT 1)"
-                : "t." + Q(e.Column.DbName);
+                : "t." + Q(e.Column.DbName) + (e.Column.DbEnumType is null ? "" : "::text");   // an enum sorts by its text (its declared order is not what a person expects)
             string name = e.Name.ToLowerInvariant().Replace("'", "''");
             o.Append($"\t\tCASE WHEN lower(\"SortColumn\") = '{name}' AND NOT \"SortDescending\" THEN {expr} END ASC,\n");
             o.Append($"\t\tCASE WHEN lower(\"SortColumn\") = '{name}' AND \"SortDescending\" THEN {expr} END DESC,\n");
@@ -71,7 +71,7 @@ public static class SearchSort
         return o.ToString();
     }
 
-    // ------------------------------------------------------------------------------------------------ MySQL
+    // =============== MySQL ===============
 
     /// <summary> The same for a procedure with <c>IN `SortColumn` varchar(128)</c> and <c>IN `SortDescending` tinyint(1)</c>; the table is aliased <c>t</c>. </summary>
     public static string MySql(TableModel m)

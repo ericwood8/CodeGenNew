@@ -4,7 +4,7 @@ using CodeGenNew.Core;
 namespace CodeGenNew.TemplateEngine;
 
 /// <summary> Discovers .tt files in the Templates directory and builds menu-ready TemplateInfo entries
-/// (Docs/specs.md section 8). Rebuilt fresh every time -- no caching, so editing a .tt file takes effect
+/// (Docs/specs.md section 8). Rebuilt fresh every time. No caching, so editing a .tt file takes effect
 /// on the very next lookup.
 ///
 /// Versioning: a shipped template's file name ends in "_vN" (SP_Save_v1.tt). Only the highest version of each

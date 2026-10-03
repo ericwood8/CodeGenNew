@@ -59,7 +59,7 @@ public static class PostgresProcedures
         }
     }
 
-    // ------------------------------------------------------------------------------------------------ Insert
+    // =============== Insert ===============
 
     public static string Insert(TableModel m)
     {
@@ -101,7 +101,7 @@ public static class PostgresProcedures
         return Create(m, "Insert", ParameterList(parameters), identity?.SqlTypeDeclaration ?? "integer", declare + o);
     }
 
-    // ------------------------------------------------------------------------------------------------ Update
+    // =============== Update ===============
 
     public static string Update(TableModel m)
     {
@@ -144,7 +144,7 @@ public static class PostgresProcedures
         return Create(m, "Update", ParameterList(parameters), "integer", "DECLARE\n\tv_rows integer;\n" + o);
     }
 
-    // ------------------------------------------------------------------------------------------------ Save
+    // =============== Save =============== 
 
     public static string Save(TableModel m)
     {
@@ -215,7 +215,7 @@ public static class PostgresProcedures
         return header + Create(m, "Save", ParameterList(parameters), identityKey?.SqlTypeDeclaration ?? "void", declare + o);
     }
 
-    // ------------------------------------------------------------------------------------------------ Delete
+    // =============== Delete =============== 
 
     public static string Delete(TableModel m)
     {
@@ -232,7 +232,7 @@ public static class PostgresProcedures
                Create(m, "Delete", ParameterList(parameters), "integer", body);
     }
 
-    // ------------------------------------------------------------------------------------------------ Clone
+    // =============== Clone =============== 
 
     public static string Clone(TableModel m)
     {
@@ -314,7 +314,7 @@ public static class PostgresProcedures
         return header + Create(m, "Clone", ParameterList(parameters), generatedKey?.SqlTypeDeclaration ?? "void", declare + o);
     }
 
-    // ------------------------------------------------------------------------------------------------ Load
+    // =============== Load =============== 
 
     public static string Load(TableModel m)
     {
@@ -352,7 +352,7 @@ public static class PostgresProcedures
         return header + Create(m, "Load", "", "void", o.ToString());
     }
 
-    // ------------------------------------------------------------------------------------------------ Lookup
+    // =============== Lookup ===============
 
     public static string Lookup(TableModel m)
     {
@@ -460,7 +460,7 @@ public static class PostgresProcedures
         return i >= 0 ? fk.ReferencedDisplayDbColumns[i] : generatedName;
     }
 
-    // ------------------------------------------------------------------------------------------------ Junction
+    // ============================================== Junction ==============================================
 
     public static string Junction(TableModel m)
     {

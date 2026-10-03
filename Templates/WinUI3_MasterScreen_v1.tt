@@ -307,7 +307,7 @@
         for (int i = 0; i < columnCount; i++)
         {
 #>
-                                <ColumnDefinition Width="<#= i == columnCount - 1 ? (canClone ? "230" : "160") : "*" #>" />
+                                <ColumnDefinition Width="<#= i == columnCount - 1 ? (canClone ? "250" : "175") : "*" #>" />
 <#
         }
 #>
@@ -345,7 +345,7 @@
         for (int i = 0; i < columnCount; i++)
         {
 #>
-                                            <ColumnDefinition Width="<#= i == columnCount - 1 ? (canClone ? "230" : "160") : "*" #>" />
+                                            <ColumnDefinition Width="<#= i == columnCount - 1 ? (canClone ? "250" : "175") : "*" #>" />
 <#
         }
 #>
@@ -359,16 +359,16 @@
         }
 #>
                                         <StackPanel Grid.Column="<#= shown.Count #>" Orientation="Horizontal" Spacing="4">
-                                            <Button Content="Edit" Tag="{x:Bind Id}" Click="OnEditClick" />
+                                            <Button Content="Edit" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnEditClick" />
 <#
         if (canClone)
         {
 #>
-                                            <Button Content="Clone" Tag="{x:Bind Id}" Click="OnCloneClick" />
+                                            <Button Content="Clone" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnCloneClick" />
 <#
         }
 #>
-                                            <Button Content="Delete" Tag="{x:Bind Id}" Click="OnDeleteClick" />
+                                            <Button Content="Delete" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnDeleteClick" />
                                         </StackPanel>
                                     </Grid>
                                 </Border>

@@ -11,8 +11,8 @@ public sealed partial class LocationDialog : ContentDialog
     private readonly Microsoft.UI.Xaml.Window _ownerWindow;
 
     // Tracks whether the developer has already been warned once, this dialog session, that the
-    // directory they typed doesn't exist yet -- clicking Save again confirms "yes, create it."
-    // Avoids a nested ContentDialog (WinUI only allows one open at a time -- see OnPrimaryButtonClick).
+    // directory they typed doesn't exist yet. Clicking Save again confirms "yes, create it."
+    // Avoids a nested ContentDialog (WinUI only allows one open at a time. See OnPrimaryButtonClick).
     private string? _pendingCreateDirectory;
 
     public LocationDialog(LocationDialogViewModel viewModel, Microsoft.UI.Xaml.Window ownerWindow)
@@ -53,7 +53,7 @@ public sealed partial class LocationDialog : ContentDialog
 
         // Second click on the same not-yet-existing path: create it and let the dialog close.
         // A nested confirmation ContentDialog isn't used here because WinUI only allows one
-        // ContentDialog open at a time -- stacking a second one on top of this one (which is
+        // ContentDialog open at a time Stacking a second one on top of this one (which is
         // still open, mid-deferral) throws "Only a single ContentDialog can be open at any time."
         if (_pendingCreateDirectory == ViewModel.OutputDirectory)
         {

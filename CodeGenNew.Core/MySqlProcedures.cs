@@ -52,7 +52,7 @@ public static class MySqlProcedures
         }
     }
 
-    // ------------------------------------------------------------------------------------------------ Search
+    // ============================================== Search ==============================================
 
     public static string Search(TableModel m)
     {
@@ -79,7 +79,7 @@ public static class MySqlProcedures
         return search + "\n" + count;
     }
 
-    // ------------------------------------------------------------------------------------------------ Insert
+    // ============================================== Insert ==============================================
 
     public static string Insert(TableModel m)
     {
@@ -112,7 +112,7 @@ public static class MySqlProcedures
                Create(m, "Insert", parameterColumns.Select(In), o.ToString());
     }
 
-    // ------------------------------------------------------------------------------------------------ Update
+    // ============================================== Update ==============================================
 
     public static string Update(TableModel m)
     {
@@ -155,7 +155,7 @@ public static class MySqlProcedures
                Create(m, "Update", updatable.Select(In), o.ToString());
     }
 
-    // ------------------------------------------------------------------------------------------------ Save
+    // ============================================== Save ==============================================
 
     public static string Save(TableModel m)
     {
@@ -220,7 +220,7 @@ public static class MySqlProcedures
         return header + Create(m, "Save", parameterColumns.Select(In), o.ToString());
     }
 
-    // ------------------------------------------------------------------------------------------------ Delete
+    // ============================================== Delete ==============================================
 
     public static string Delete(TableModel m)
     {
@@ -235,7 +235,7 @@ public static class MySqlProcedures
                Create(m, "Delete", pk.Select(In), body);
     }
 
-    // ------------------------------------------------------------------------------------------------ Clone
+    // ============================================== Clone ==============================================
 
     public static string Clone(TableModel m)
     {
@@ -318,7 +318,7 @@ public static class MySqlProcedures
                Create(m, "Clone", parameters, o.ToString());
     }
 
-    // ------------------------------------------------------------------------------------------------ Load
+    // ============================================== Load ==============================================
 
     public static string Load(TableModel m)
     {
@@ -345,7 +345,7 @@ public static class MySqlProcedures
         return header + Create(m, "Load", [], o.ToString());
     }
 
-    // ------------------------------------------------------------------------------------------------ Lookup
+    // ============================================== Lookup ==============================================
 
     public static string Lookup(TableModel m)
     {
@@ -450,7 +450,7 @@ public static class MySqlProcedures
         return i >= 0 ? fk.ReferencedDisplayDbColumns[i] : generatedName;
     }
 
-    // ------------------------------------------------------------------------------------------------ Junction
+    // ============================================== Junction ==============================================
 
     public static string Junction(TableModel m)
     {

@@ -458,8 +458,8 @@
                                     </ItemsControl>
                                     <!-- Row-level Edit and Delete, like the master screens' grids. Delete asks to be clicked twice (a second ContentDialog cannot open over this one). -->
                                     <StackPanel Orientation="Horizontal" Spacing="4" Width="120">
-                                        <Button Content="Edit" Padding="8,2" Click="On<#= child.Table #>EditClick" />
-                                        <Button Content="Delete" Padding="8,2" Click="On<#= child.Table #>DeleteClick" LostFocus="On<#= child.Table #>DeleteLostFocus" />
+                                        <Button Content="Edit" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Padding="8,2" Click="On<#= child.Table #>EditClick" />
+                                        <Button Content="Delete" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Padding="8,2" Click="On<#= child.Table #>DeleteClick" LostFocus="On<#= child.Table #>DeleteLostFocus" />
                                     </StackPanel>
                                   </StackPanel>
                                 </Border>

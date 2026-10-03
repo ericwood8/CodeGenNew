@@ -1,0 +1,57 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // SP_EnumCasts_v1.tt
+    // Generates: EnumCasts.sql   (one script for the whole database; PostgreSQL only)
+    //
+    // A PostgreSQL enum column (CREATE TYPE status AS ENUM ('Open', 'Closed')) reaches the generated code as a string, and the form shows it as a drop-down of
+    // its values. EF Core sends a string as text, and PostgreSQL refuses to store text in an enum column ("column is of type status but expression is of
+    // type text") unless a cast from text (and from character varying, which the generated entity declares) to that enum exists. This script creates those casts, once per enum type that a column of the schema uses, as an
+    // ASSIGNMENT cast (applied when a value is stored, never inside a comparison). A value that is not one of the enum's labels is still refused by
+    // the database, so the type keeps doing its job. Running it again changes nothing: a cast that exists is left alone.
+    // codegen never modifies the database: review the script and apply it yourself (psql -f EnumCasts.sql).
+
+    if (Database.Dialect != SqlDialect.PostgreSql)
+    {
+        Error("SP_EnumCasts is for PostgreSQL (native enum types); this database has none.");
+    }
+    else
+    {
+        var enumTypes = Database.Tables.SelectMany(t => t.Columns).Select(c => c.DbEnumType).Where(e => e is not null)
+            .Distinct(StringComparer.Ordinal).OrderBy(e => e, StringComparer.Ordinal).ToList();
+        var sb = new StringBuilder();
+        void L(string line = "") => sb.Append(line).Append('\n');
+        string Rem = new string('-', 2);   // an SQL comment marker
+        string Q(string identifier) => "\"" + identifier.Replace("\"", "\"\"") + "\"";
+
+        sb.Append("@@@FILE EnumCasts.sql@@@\n");
+        if (enumTypes.Count == 0)
+        {
+            L(Rem + " No column of this schema uses an enum type, so there is nothing to cast.");
+        }
+        foreach (string full in enumTypes)
+        {
+            int dot = full!.IndexOf('.');
+            string type = Q(full[..dot]) + "." + Q(full[(dot + 1)..]);
+            // the entity declares the column as varchar(n), so Npgsql sends character varying; a plain string parameter is text
+            foreach (string source in new[] { "text", "character varying" })
+            {
+                L($"{Rem} {source} to {type}: EF Core sends a string as {source}, and an assignment cast lets the enum column take it.");
+                L("DO $$");
+                L("BEGIN");
+                L($"    IF NOT EXISTS (SELECT 1 FROM pg_cast WHERE castsource = '{source}'::regtype AND casttarget = '{type.Replace("'", "''")}'::regtype) THEN");
+                L($"        CREATE CAST ({source} AS {type}) WITH INOUT AS ASSIGNMENT;");
+                L("    END IF;");
+                L("END");
+                L("$$;");
+                L();
+            }
+        }
+        Write(sb.ToString());
+    }
+#>

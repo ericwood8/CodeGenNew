@@ -59,7 +59,7 @@ internal static class Sample
         string name, SqlDbType type, bool nullable = false, bool primaryKey = false, bool identity = false,
         int? characters = null, int? precision = null, int? scale = null, string? defaultSql = null, int ordinal = 0,
         bool modifiedUserColumn = false, bool createDateColumn = false, bool createUserColumn = false,
-        bool inUniqueIndex = false, NumericKind numericKind = NumericKind.None, bool currency = false, List<string>? choices = null)
+        bool inUniqueIndex = false, NumericKind numericKind = NumericKind.None, bool currency = false, List<string>? choices = null, string? enumType = null)
     {
         bool isText = type is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
         bool isUnicode = type is SqlDbType.NChar or SqlDbType.NVarChar;
@@ -94,6 +94,7 @@ internal static class Sample
             IsDateColumn = type is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime,
             IsBooleanColumn = type == SqlDbType.Bit,
             Choices = choices,
+            DbEnumType = enumType,
             IsAuditColumn = name.IsAuditColumn(),
             IsModifiedUserColumn = modifiedUserColumn,
             IsCreateDateColumn = createDateColumn,

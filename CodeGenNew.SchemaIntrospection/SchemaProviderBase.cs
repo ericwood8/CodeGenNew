@@ -22,7 +22,7 @@ public sealed record RawColumn(
     string Name, int OrdinalPosition, string SqlTypeName, int MaxLength, int Precision, int Scale,
     bool IsNullable, bool IsIdentity, int? IdentitySeed, int? IdentityIncrement,
     string? ComputedDefinition, string? DefaultDefinition, bool IsPrimaryKey, bool IsInUniqueIndex,
-    string? DeclarationOverride = null, string? DefaultForCSharp = null, List<string>? Choices = null);
+    string? DeclarationOverride = null, string? DefaultForCSharp = null, List<string>? Choices = null, string? EnumType = null);
 
 /// <summary> One foreign key, either direction: the OTHER table's name and the two column lists. </summary>
 public sealed record ForeignKeyRow(string ConstraintName, string OtherSchema, string OtherTable, List<string> ReferencingColumns, List<string> ReferencedColumns);
@@ -317,6 +317,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
             IsDateColumn = isDate,
             IsBooleanColumn = isBoolean,
             Choices = raw.Choices,
+            DbEnumType = raw.EnumType,
             NumericKind = isInteger ? NumericClassifier.Classify(name) : NumericKind.None,
             IsCurrencyColumn = isMoney || (sqlType == SqlDbType.Decimal && NumericClassifier.IsCurrencyName(name)),
             IsAuditColumn = name.IsAuditColumn(),

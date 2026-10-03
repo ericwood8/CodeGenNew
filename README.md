@@ -31,7 +31,7 @@ Everything else (entities, repositories, API, Angular, React, WinUI3) is generat
 
 **Provider wiring.** `CS_DbContext` and `API_Registration` write the `DbContext` and the API registration for the database that was read, so a web API's `Program.cs` is `AddGeneratedDbContext(...)` and `RegisterGeneratedApis()`; the NuGet package the provider needs is named in the generated context's comment (`Npgsql.EntityFrameworkCore.PostgreSQL`, `MySql.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.SqlServer`).
 
-**Drop-downs for listed values.** A MySQL `enum('a','b')` column is a drop-down of its values on every screen (Angular and React `<select>`, WinUI3 `ComboBox`); a `set` stays a text box. **Still open.** PostgreSQL enum types and CHECK-constraint lists as drop-downs, and views (tables only).
+**Drop-downs for listed values.** A MySQL `enum('a','b')` column is a drop-down of its values on every screen (Angular and React `<select>`, WinUI3 `ComboBox`); a `set` stays a text box. PostgreSQL does the same for a native enum type (`CREATE TYPE status AS ENUM (...)`) and for a text column limited by a single-column CHECK list (`CHECK (priority IN ('Low','High'))`). An enum column needs one extra step: EF Core sends text, which PostgreSQL will not store in an enum column, so run the `SP_EnumCasts` script (a whole-database template; it creates assignment casts from text and from varchar to each enum type, and a value that is not one of the labels is still refused). **Still open.** Views (tables only), and a CHECK that is not a plain list (a range, an OR).
 
 ## What it generates
 
@@ -41,6 +41,7 @@ Thirty-six templates ship in `Templates\`. A table's right-click menu (or the CL
 |---|---|---|
 | `SP` | `SP_Insert`, `SP_Update`, `SP_Delete`, `SP_Save` | `Table_Insert.sql` … — the classic CRUD stored procedures; `Save` is insert-or-update in one. Audit, active/inactive, soft-delete and date-range columns are handled by rule. |
 | `SP` | `SP_Lookup` | ID + display columns of a row and of every table it points to, so a drop-down needs no joins. |
+| `SP` | `SP_EnumCasts` | `EnumCasts.sql` - whole-database, PostgreSQL only: one guarded `CREATE CAST (text AS <enum>) ... AS ASSIGNMENT` per enum type a column uses, so EF Core can store the drop-down's value. |
 | `SP` | `SP_Clone` | Copies a row into a new one and returns the new key (a grid's "Clone" button). |
 | `SP` | `SP_Load` | Reads the table's **rows** and writes a re-runnable procedure that loads the same rows into another database (seed data). |
 | `SP` | `SP_Search` | `Table_Search.sql` — one optional `LIKE '%...%'` parameter per string column (audit columns excluded), AND-ed together, for a list screen's search box. Refuses a table with no searchable columns. |

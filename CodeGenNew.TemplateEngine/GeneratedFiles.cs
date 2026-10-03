@@ -1,7 +1,7 @@
 namespace CodeGenNew.TemplateEngine;
 
 /// <summary> Turns a template's output into files on disk. Most templates produce ONE file, named by TemplateInfo.BuildFileName.
-/// A template that must produce several -- or a file inside sub-folders, as the Angular TS_ templates do -- says so itself by
+/// A template that must produce several or a file inside sub-folders, as the Angular TS_ templates do. says so itself by
 /// writing a marker line before each file:
 ///
 ///     @@@FILE components/holiday/holiday.component.ts@@@

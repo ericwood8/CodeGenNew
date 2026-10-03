@@ -238,8 +238,7 @@
             {
                 // PostgreSQL json / jsonb arrive as a string column; the column type has to be said or Npgsql sends text.
                 if (Model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration is "json" or "jsonb")
-                    columnType = c.SqlTypeDeclaration;
-                if (chars > 0) B($"    [StringLength({chars})]");
+                    columnType = c.SqlTypeDeclaration;                if (chars > 0) B($"    [StringLength({chars})]");
                 if (multiline) B("    [DataType(DataType.MultilineText)]");
                 else if (c.Name.Contains("Phone", StringComparison.OrdinalIgnoreCase)) B("    [DataType(DataType.PhoneNumber)]");
             }

@@ -78,7 +78,7 @@ public sealed partial class TemplateManagementDialog : ContentDialog
     }
 
     /// <summary> Prompts for a name via a Flyout anchored on <paramref name="target"/> rather than a
-    /// nested ContentDialog -- this dialog is itself a ContentDialog, and WinUI only allows one
+    /// nested ContentDialog. This dialog is itself a ContentDialog, and WinUI only allows one
     /// ContentDialog open at a time (stacking a second one throws "Only a single ContentDialog can be
     /// open at any time."). A Flyout is a different popup layer and coexists with it fine. </summary>
     private static Task<string?> PromptForNameAsync(FrameworkElement target, string label, string initialValue)
