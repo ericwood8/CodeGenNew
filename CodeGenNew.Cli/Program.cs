@@ -70,6 +70,17 @@ public static class Program
         if (options.ProjectOverrides.Count > 0)
             project = project.WithOverrides(options.ProjectOverrides);
 
+        if (template.Config.NoDatabase)
+            return await GenerateNoDatabaseAsync(template, project, outputDirectory);
+
+        if (ArgumentParser.MissingConnection(options) is { } missing)
+        {
+            Console.Error.WriteLine($"Error: {missing}");
+            Console.Error.WriteLine();
+            ArgumentParser.PrintUsage(Console.Error);
+            return 1;
+        }
+
         string? password = options.Password;
         if (!options.Trusted && password is null)
             password = ConsolePasswordReader.Read($"Password for {options.UserName}@{options.Server}: ");
@@ -182,6 +193,34 @@ public static class Program
 
     /// <summary> A database-level template (DbContext, API registration): one run over every table of the schema. The file is named after the
     /// project's context ("InvoiceSystemContext.cs"), or after the database when no project is chosen. </summary>
+    private static async Task<int> GenerateNoDatabaseAsync(TemplateInfo template, ProjectSettings project, string outputDirectory)
+    {
+        Console.WriteLine($"Generating '{template.Name}' (no database needed)...");
+        var result = await TemplateRunner.RunAsync(template.FilePath, project);
+        if (!result.Success)
+        {
+            Console.Error.WriteLine("Template generation failed:");
+            foreach (string error in result.Errors)
+                Console.Error.WriteLine($"  {error}");
+            return 1;
+        }
+
+        List<string> writtenFiles;
+        try
+        {
+            writtenFiles = await GeneratedFiles.WriteAsync(outputDirectory, template, project.ProjectName ?? "Project", result.GeneratedText!);
+        }
+        catch (InvalidDataException ex)
+        {
+            Console.Error.WriteLine($"Template output could not be written: {ex.Message}");
+            return 1;
+        }
+        foreach (string writtenFile in writtenFiles)
+            Console.WriteLine($"Wrote {writtenFile}");
+        Console.WriteLine("Done. review the generated files and add them to your project yourself.");
+        return 0;
+    }
+
     private static async Task<int> GenerateDatabaseAsync(TemplateInfo template, DatabaseModel database, ProjectSettings project, string outputDirectory)
     {
         Console.WriteLine($"Generating '{template.Name}' for {database.Tables.Count} tables of [{database.SchemaName}]...");

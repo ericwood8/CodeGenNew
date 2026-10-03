@@ -76,6 +76,7 @@ Thirty-six templates ship in `Templates\`. A table's right-click menu (or the CL
 | `TSX` | `TSX_DetailMasterPage` | `pages/TableDetailMasterPage.tsx` plus its test — `TSX_Page`'s own grid + form plus one read-only grid per child table (only offered when there's at least one). |
 | `TSX` | `TSX_JunctionPage` | `components/TableJunction.tsx` plus its test — a two-`<select multiple>` shuttle-control component (an `anchorId` prop, not routed on its own) calling `API_Junction` (also junction-only). |
 | `WinUI3` | `WinUI3_JunctionEditor` | Three files (View, code-behind, ViewModel) — the same shuttle-control idea as a desktop `ContentDialog`, calling `SP_Junction` directly through EF Core (also junction-only). |
+| `WinUI3` | `WinUI3_DirectoryListing` | Four files — **no table and no database**: a `Page` listing the files of a folder (sortable Name / Size / Modified, a filter box, Add File..., Open, Rename, Delete, Open Folder). The project settings `ListingName`, `ListingFolder` and `ListingPattern` name it; run it with the CLI without `-S`, `-d` or `-t`. |
 | `WinUI3` | `WinUI3_MasterScreen` | Three files — a `Page` listing every row (grid + Add/Edit/Delete), calling `TableRepo` (`CS_Repo`) directly. |
 | `WinUI3` | `WinUI3_DetailScreen` | Three files — a `ContentDialog` add/edit form, one field per column, drop-downs for foreign keys. |
 | `WinUI3` | `WinUI3_DetailMasterScreen` | `WinUI3_DetailScreen`'s form plus one read-only child grid per table in `TableModel.ChildForeignKeys` (only offered when there's at least one). |

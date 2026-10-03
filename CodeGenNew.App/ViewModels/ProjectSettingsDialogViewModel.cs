@@ -54,6 +54,9 @@ public partial class ProjectSettingsDialogViewModel : StatusMessageViewModel
         ["PagesFolder"] = "React folder for the pages; blank = pages",
         ["AngularVersion"] = "major version of Angular, e.g. 22; blank = output that every version from 18 accepts",
         ["IgnoredColumns"] = "comma-separated columns to leave out (Tags, or Place.Location): a type CodeGenNew cannot map, such as an array or geometry",
+        ["ListingName"] = "WinUI3_DirectoryListing: the class stem, e.g. Document (DocumentListPage); blank = Document",
+        ["ListingFolder"] = "WinUI3_DirectoryListing: the folder whose files are listed (%LocalAppData%\Project\Name); blank = under LocalAppData",
+        ["ListingPattern"] = "WinUI3_DirectoryListing: which files are listed; blank = *.*",
         ["DbSetNames"] = "Plural = Customers, blank = the table name (Customer)"
     };
 

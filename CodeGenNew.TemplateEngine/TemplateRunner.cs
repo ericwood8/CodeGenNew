@@ -35,7 +35,11 @@ public static class TemplateRunner
     public static Task<TemplateResult> RunAsync(string templateFilePath, DatabaseModel database, ProjectSettings? project = null, CancellationToken cancellationToken = default) =>
         RunCoreAsync(templateFilePath, "Database", database, project, cancellationToken);
 
-    private static async Task<TemplateResult> RunCoreAsync(string templateFilePath, string parameterName, object model, ProjectSettings? project, CancellationToken cancellationToken)
+    /// <summary> Runs a template that needs no database (TemplateConfig.NoDatabase): it receives only the <c>Project</c> settings. </summary>
+    public static Task<TemplateResult> RunAsync(string templateFilePath, ProjectSettings project, CancellationToken cancellationToken = default) =>
+        RunCoreAsync(templateFilePath, null, null, project, cancellationToken);
+
+    private static async Task<TemplateResult> RunCoreAsync(string templateFilePath, string? parameterName, object? model, ProjectSettings? project, CancellationToken cancellationToken)
     {
         var generator = new TemplateGenerator();
 
@@ -44,7 +48,8 @@ public static class TemplateRunner
         generator.Refs.Add(typeof(TableModel).Assembly.Location);
 
         var session = generator.GetOrCreateSession();
-        session[parameterName] = model;
+        if (parameterName is not null)
+            session[parameterName] = model;
         session["Project"] = project ?? ProjectSettings.None;
 
         string tempOutputFile = Path.GetTempFileName();

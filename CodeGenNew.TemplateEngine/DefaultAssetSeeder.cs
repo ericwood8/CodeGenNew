@@ -61,6 +61,7 @@ public static class DefaultAssetSeeder
         "CS_Enum_v1.tt", "CS_Enum_v1.tt.config",
         "CS_DbContext_v1.tt", "CS_DbContext_v1.tt.config",
         "SP_EnumCasts_v1.tt", "SP_EnumCasts_v1.tt.config",
+        "WinUI3_DirectoryListing_v1.tt", "WinUI3_DirectoryListing_v1.tt.config",
         "API_Registration_v1.tt", "API_Registration_v1.tt.config",
         "TSX_Screens_v1.tt", "TSX_Screens_v1.tt.config",
         "TSX_GridSort_v1.tt", "TSX_GridSort_v1.tt.config",

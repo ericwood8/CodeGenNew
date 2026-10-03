@@ -25,7 +25,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns"
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern"
     ];
 
     private readonly Dictionary<string, string> _values;
@@ -191,6 +191,12 @@ public class ProjectSettings
     /// <summary> Columns left out of every table (<c>IgnoredColumns=Tags,Place.Location</c>: a column name for every table, or <c>Table.Column</c>): a type CodeGenNew cannot map
     /// (a PostgreSQL array, geometry) is listed here so the rest of the table still generates. A primary key column is never left out. </summary>
     public string[] IgnoredColumns => Explicit("IgnoredColumns") is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
+
+    /// <summary> WinUI3_DirectoryListing: the class stem (<c>DocumentListPage</c>), the folder whose files are listed (environment variables are expanded when the app runs) and
+    /// the file pattern. Null when not set; the template then uses <c>Document</c>, <c>%LocalAppData%\&lt;ProjectName&gt;\&lt;ListingName&gt;</c> and <c>*.*</c>. </summary>
+    public string? ListingName => Explicit("ListingName");
+    public string? ListingFolder => Explicit("ListingFolder");
+    public string? ListingPattern => Explicit("ListingPattern");
 
     public string ApiFolder => Explicit("ApiFolder") ?? "api";
     public string ModelsFolder => Explicit("ModelsFolder") ?? "models";

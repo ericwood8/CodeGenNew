@@ -68,6 +68,10 @@ public class TemplateConfig
     /// CLI runs it without -t. </summary>
     public bool DatabaseOnly { get; init; }
 
+    /// <summary> Defaults to false. A template that needs neither a table nor a database (the files every app of a kind needs, a directory listing): it is given only the
+    /// <c>Project</c> settings. The CLI runs it without -S, -d or -t, and no table or database menu offers it. </summary>
+    public bool NoDatabase { get; init; }
+
     /// <summary> Defaults to false. A template that shows the display columns of foreign-keyed tables (SP_Lookup) asks
     /// for them to be looked up (ForeignKeyModel.ReferencedDisplayColumns). </summary>
     public bool NeedsReferencedDisplayColumns { get; init; }
@@ -127,6 +131,7 @@ public class TemplateConfig
         bool sqlServerOnly = false;
         bool needsReferencedDisplayColumns = false;
         bool databaseOnly = false;
+        bool noDatabase = false;
         string? outputName = null;
 
         foreach (string rawLine in File.ReadAllLines(ttConfigPath))
@@ -161,6 +166,8 @@ public class TemplateConfig
                 sqlServerOnly = boolValue;
             else if (key.EqualsIgnoreCase("DatabaseOnly"))
                 databaseOnly = boolValue;
+            else if (key.EqualsIgnoreCase("NoDatabase"))
+                noDatabase = boolValue;
             else if (key.EqualsIgnoreCase("NeedsReferencedDisplayColumns"))
                 needsReferencedDisplayColumns = boolValue;
             else if (key.EqualsIgnoreCase("OutputName"))
@@ -179,6 +186,7 @@ public class TemplateConfig
             SqlServerOnly = sqlServerOnly,
             NeedsReferencedDisplayColumns = needsReferencedDisplayColumns,
             DatabaseOnly = databaseOnly,
+            NoDatabase = noDatabase,
             OutputName = outputName
         };
     }

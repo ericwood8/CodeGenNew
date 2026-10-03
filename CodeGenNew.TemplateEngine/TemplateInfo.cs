@@ -61,8 +61,8 @@ public class TemplateInfo
     public bool AppliesTo(bool tableHasPrimaryKey, bool isView, bool isJunctionTable = false, bool hasChildForeignKeys = false,
         PrimaryKeyShape primaryKeyShape = PrimaryKeyShape.None, bool isNameActiveTable = false, SqlDialect dialect = SqlDialect.SqlServer)
     {
-        if (Config.DatabaseOnly)
-            return false; // offered on the database node, not on a table
+        if (Config.DatabaseOnly || Config.NoDatabase)
+            return false; // offered on the database node (or in no database menu at all), not on a table
         if (Config.SqlServerOnly && dialect != SqlDialect.SqlServer)
             return false;
         if (Config.RequiresPrimaryKey && !tableHasPrimaryKey)

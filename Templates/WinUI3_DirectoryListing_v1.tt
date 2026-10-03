@@ -1,0 +1,413 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string viewNamespace = "MyApp.Views";
+    string viewModelNamespace = "MyApp.ViewModels";
+    string viewsFolder = "Views";
+    string viewModelsFolder = "ViewModels";
+    string listingName = "Document";          // the class stem: DocumentListPage, DocumentListViewModel, DocumentFileRow
+    string listingFolder = "";                // where the files live; blank = %LocalAppData%\<ProjectName>\<ListingName>
+    string listingPattern = "*.*";            // which files are listed
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    viewNamespace = Project.ViewNamespace ?? viewNamespace;
+    viewModelNamespace = Project.ViewModelNamespace ?? viewModelNamespace;
+    viewsFolder = Project.ViewsFolder ?? viewsFolder;
+    viewModelsFolder = Project.ViewModelsFolder ?? viewModelsFolder;
+    listingName = Project.ListingName ?? listingName;
+    listingPattern = Project.ListingPattern ?? listingPattern;
+    listingFolder = Project.ListingFolder ?? (@"%LocalAppData%\" + (Project.ProjectName ?? "MyApp") + @"\" + listingName);
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // WinUI3_DirectoryListing_v1.tt
+    // Generates: Views/<Name>ListPage.xaml and .xaml.cs, ViewModels/<Name>ListViewModel.cs, ViewModels/<Name>FileRow.cs   (no table, no database)
+    // A master list whose rows are the files of one folder instead of the rows of a table: name, size and modified date, sortable headers, a filter box,
+    // Add File... (a file picker copies the file in), Open (the file's own program), Rename, Delete (the button arms, a second click deletes), Open Folder.
+    // The folder, the pattern and the class stem come from the project settings ListingFolder, ListingPattern and ListingName; the page is created with
+    // new <Name>ListPage() and shown in the main window's content area like the table screens. Needs the CommunityToolkit.Mvvm package.
+    // ==========================================================================================
+
+    string Esc(string text) => text.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    string title = Regex.Replace(listingName, "(?<=[a-z0-9])(?=[A-Z])", " ").Pluralize();
+    string singular = Regex.Replace(listingName, "(?<=[a-z0-9])(?=[A-Z])", " ");
+#>
+@@@FILE <#= viewsFolder #>/<#= listingName #>ListPage.xaml@@@
+<Page
+    x:Class="<#= viewNamespace #>.<#= listingName #>ListPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:<#= viewModelNamespace #>">
+
+    <Grid Padding="16" RowSpacing="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="<#= title #>" FontSize="24" FontWeight="SemiBold" />
+
+        <Border Grid.Row="1" Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4" Padding="8">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Add File..." Click="OnAddFileClick" />
+                <Button Content="Refresh" Click="OnRefreshClick" />
+                <Button Content="Open Folder" Click="OnOpenFolderClick" />
+                <TextBox x:Name="FilterBox" PlaceholderText="Filter by name" Width="240" Text="{x:Bind ViewModel.FilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Row="2" Opacity="0.75" TextWrapping="Wrap" Text="{x:Bind ViewModel.FolderPath, Mode=OneWay}" />
+
+        <Border Grid.Row="3" BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="0,0,0,1" Padding="8">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="110" />
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="300" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Content="{x:Bind ViewModel.NameHeader, Mode=OneWay}" Tag="Name" Click="OnSortHeaderClick" Background="Transparent" BorderThickness="0" FontWeight="SemiBold" />
+                        <Button Grid.Column="1" Content="{x:Bind ViewModel.SizeHeader, Mode=OneWay}" Tag="Size" Click="OnSortHeaderClick" Background="Transparent" BorderThickness="0" FontWeight="SemiBold" />
+                        <Button Grid.Column="2" Content="{x:Bind ViewModel.ModifiedHeader, Mode=OneWay}" Tag="Modified" Click="OnSortHeaderClick" Background="Transparent" BorderThickness="0" FontWeight="SemiBold" />
+                        <TextBlock Grid.Column="3" Text="Actions" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+
+                <ListView Grid.Row="1" Padding="0" ItemsSource="{x:Bind ViewModel.Rows}" SelectionMode="None">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="0" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:<#= listingName #>FileRow">
+                            <Border BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="0,0,0,1" Padding="8">
+                                <Grid ColumnSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="170" />
+                                        <ColumnDefinition Width="300" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{x:Bind Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="1" Text="{x:Bind SizeText}" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{x:Bind ModifiedText}" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4">
+                                        <Button Content="Open" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind}" Click="OnOpenClick" />
+                                        <Button Content="Rename" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind}" Click="OnRenameClick" />
+                                        <Button Content="{x:Bind DeleteText, Mode=OneWay}" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind}" Click="OnDeleteClick" LostFocus="OnDeleteLostFocus" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Grid>
+        </Border>
+
+        <InfoBar Grid.Row="4" IsOpen="{x:Bind ViewModel.HasMessage, Mode=OneWay}" IsClosable="False" Severity="Error" Message="{x:Bind ViewModel.Message, Mode=OneWay}" />
+    </Grid>
+</Page>
+@@@FILE <#= viewsFolder #>/<#= listingName #>ListPage.xaml.cs@@@
+using System.Runtime.InteropServices;
+using <#= viewModelNamespace #>;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Windows.Storage.Pickers;
+
+namespace <#= viewNamespace #>;
+
+public sealed partial class <#= listingName #>ListPage : Page
+{
+    public <#= listingName #>ListViewModel ViewModel { get; } = new();
+
+    public <#= listingName #>ListPage()
+    {
+        InitializeComponent();
+        Loaded += (_, _) => ViewModel.Load();
+    }
+
+    private void OnRefreshClick(object sender, RoutedEventArgs e) => ViewModel.Load();
+
+    private void OnOpenFolderClick(object sender, RoutedEventArgs e) => ViewModel.OpenFolder();
+
+    private void OnSortHeaderClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string column })
+            ViewModel.SortBy(column);
+    }
+
+    private void OnOpenClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: <#= listingName #>FileRow row })
+            ViewModel.Open(row);
+    }
+
+    private async void OnAddFileClick(object sender, RoutedEventArgs e)
+    {
+        var picker = new FileOpenPicker();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, GetActiveWindow());
+        picker.FileTypeFilter.Add("*");
+        var file = await picker.PickSingleFileAsync();
+        if (file is not null)
+            ViewModel.AddFile(file.Path);
+    }
+
+    private async void OnRenameClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: <#= listingName #>FileRow row })
+            return;
+        var box = new TextBox { Text = row.Name, MinWidth = 320, SelectionStart = 0, SelectionLength = Path.GetFileNameWithoutExtension(row.Name).Length };
+        var dialog = new ContentDialog
+        {
+            Title = "Rename <#= singular.ToLowerInvariant() #>",
+            Content = box,
+            PrimaryButtonText = "Rename",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = XamlRoot
+        };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+            ViewModel.Rename(row, box.Text);
+    }
+
+    // The first click arms the button ("Confirm Delete?"), the second deletes; leaving the button disarms it.
+    private void OnDeleteClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: <#= listingName #>FileRow row })
+            ViewModel.Delete(row);
+    }
+
+    private void OnDeleteLostFocus(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: <#= listingName #>FileRow row })
+            row.Disarm();
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetActiveWindow();
+}
+@@@FILE <#= viewModelsFolder #>/<#= listingName #>FileRow.cs@@@
+using CommunityToolkit.Mvvm.ComponentModel;
+
+namespace <#= viewModelNamespace #>;
+
+/// <summary> One file of the listed folder. </summary>
+public partial class <#= listingName #>FileRow : ObservableObject
+{
+    public <#= listingName #>FileRow(FileInfo file)
+    {
+        Name = file.Name;
+        FullPath = file.FullName;
+        Length = file.Length;
+        Modified = file.LastWriteTime;
+    }
+
+    public string Name { get; }
+    public string FullPath { get; }
+    public long Length { get; }
+    public DateTime Modified { get; }
+
+    public string SizeText => Length switch
+    {
+        < 1024 => $"{Length} B",
+        < 1024 * 1024 => $"{Length / 1024.0:0.#} KB",
+        < 1024L * 1024 * 1024 => $"{Length / (1024.0 * 1024):0.#} MB",
+        _ => $"{Length / (1024.0 * 1024 * 1024):0.#} GB"
+    };
+
+    public string ModifiedText => Modified.ToString("MM/dd/yyyy hh:mm tt");
+
+    [ObservableProperty]
+    private string _deleteText = "Delete";
+
+    public bool IsArmed => DeleteText != "Delete";
+
+    public void Arm() => DeleteText = "Confirm Delete?";
+
+    public void Disarm() => DeleteText = "Delete";
+}
+@@@FILE <#= viewModelsFolder #>/<#= listingName #>ListViewModel.cs@@@
+using System.Collections.ObjectModel;
+using System.Diagnostics;
+using CommunityToolkit.Mvvm.ComponentModel;
+
+namespace <#= viewModelNamespace #>;
+
+public partial class <#= listingName #>ListViewModel : ObservableObject
+{
+    /// <summary> The folder the files live in (environment variables are expanded); it is created when it is missing. </summary>
+    public const string FolderTemplate = "<#= Esc(listingFolder) #>";
+    public const string Pattern = "<#= Esc(listingPattern) #>";
+
+    private string _sortColumn = "Name";
+    private bool _sortDescending;
+
+    public string FolderPath { get; } = Path.GetFullPath(Environment.ExpandEnvironmentVariables(FolderTemplate), AppContext.BaseDirectory);
+
+    public ObservableCollection<<#= listingName #>FileRow> Rows { get; } = [];
+
+    [ObservableProperty]
+    private string _filterText = "";
+
+    [ObservableProperty]
+    private string _message = "";
+
+    [ObservableProperty]
+    private string _nameHeader = "Name";
+
+    [ObservableProperty]
+    private string _sizeHeader = "Size";
+
+    [ObservableProperty]
+    private string _modifiedHeader = "Modified";
+
+    public bool HasMessage => Message.Length > 0;
+
+    partial void OnMessageChanged(string value) => OnPropertyChanged(nameof(HasMessage));
+
+    partial void OnFilterTextChanged(string value) => Load();
+
+    public void Load()
+    {
+        Message = "";
+        try
+        {
+            Directory.CreateDirectory(FolderPath);
+            var files = new DirectoryInfo(FolderPath).EnumerateFiles(Pattern)
+                .Where(f => FilterText.Length == 0 || f.Name.Contains(FilterText, StringComparison.CurrentCultureIgnoreCase))
+                .Select(f => new <#= listingName #>FileRow(f));
+            IEnumerable<<#= listingName #>FileRow> sorted = (_sortColumn, _sortDescending) switch
+            {
+                ("Size", false) => files.OrderBy(r => r.Length),
+                ("Size", true) => files.OrderByDescending(r => r.Length),
+                ("Modified", false) => files.OrderBy(r => r.Modified),
+                ("Modified", true) => files.OrderByDescending(r => r.Modified),
+                (_, true) => files.OrderByDescending(r => r.Name, StringComparer.CurrentCultureIgnoreCase),
+                _ => files.OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase)
+            };
+            Rows.Clear();
+            foreach (var row in sorted)
+                Rows.Add(row);
+        }
+        catch (Exception ex)
+        {
+            Message = "The folder could not be read: " + ex.Message;
+        }
+        NameHeader = "Name" + Mark("Name");
+        SizeHeader = "Size" + Mark("Size");
+        ModifiedHeader = "Modified" + Mark("Modified");
+    }
+
+    private string Mark(string column) => _sortColumn != column ? "" : _sortDescending ? " ▼" : " ▲";
+
+    /// <summary> A click on a header sorts by it; a second click on the same header flips the direction. </summary>
+    public void SortBy(string column)
+    {
+        _sortDescending = _sortColumn == column && !_sortDescending;
+        _sortColumn = column;
+        Load();
+    }
+
+    public void Open(<#= listingName #>FileRow row)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(row.FullPath) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Message = "The file could not be opened: " + ex.Message;
+        }
+    }
+
+    public void OpenFolder()
+    {
+        Directory.CreateDirectory(FolderPath);
+        Process.Start(new ProcessStartInfo(FolderPath) { UseShellExecute = true });
+    }
+
+    /// <summary> Copies a file into the folder; a name already taken gets " (2)", " (3)" ... before its extension. </summary>
+    public void AddFile(string sourcePath)
+    {
+        try
+        {
+            Directory.CreateDirectory(FolderPath);
+            string name = Path.GetFileName(sourcePath);
+            string target = Path.Combine(FolderPath, name);
+            for (int copy = 2; File.Exists(target); copy++)
+                target = Path.Combine(FolderPath, $"{Path.GetFileNameWithoutExtension(name)} ({copy}){Path.GetExtension(name)}");
+            File.Copy(sourcePath, target);
+            Load();
+        }
+        catch (Exception ex)
+        {
+            Message = "The file could not be added: " + ex.Message;
+        }
+    }
+
+    public void Rename(<#= listingName #>FileRow row, string newName)
+    {
+        newName = newName.Trim();
+        if (newName.Length == 0 || newName == row.Name)
+            return;
+        if (newName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            Message = "A file name cannot contain \\ / : * ? \" < > |.";
+            return;
+        }
+        string target = Path.Combine(FolderPath, newName);
+        if (File.Exists(target))
+        {
+            Message = $"A file named {newName} already exists.";
+            return;
+        }
+        try
+        {
+            File.Move(row.FullPath, target);
+            Load();
+        }
+        catch (Exception ex)
+        {
+            Message = "The file could not be renamed: " + ex.Message;
+        }
+    }
+
+    /// <summary> The first call arms the row's button; the second deletes the file. </summary>
+    public void Delete(<#= listingName #>FileRow row)
+    {
+        if (!row.IsArmed)
+        {
+            row.Arm();
+            return;
+        }
+        try
+        {
+            File.Delete(row.FullPath);
+            Load();
+        }
+        catch (Exception ex)
+        {
+            Message = "The file could not be deleted: " + ex.Message;
+        }
+    }
+}

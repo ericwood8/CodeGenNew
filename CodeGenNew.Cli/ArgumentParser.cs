@@ -71,11 +71,7 @@ public static class ArgumentParser
             }
         }
 
-        if (string.IsNullOrWhiteSpace(server)) throw new ArgumentParseException("-S/--server is required.");
-        if (string.IsNullOrWhiteSpace(database)) throw new ArgumentParseException("-d/--database is required.");
         if (string.IsNullOrWhiteSpace(template)) throw new ArgumentParseException("-T/--template is required.");
-        if (!trusted && string.IsNullOrWhiteSpace(userName))
-            throw new ArgumentParseException("-U/--user is required unless -E/--trusted is used.");
 
         foreach (string yearKey in new[] { "MinYear", "MaxYear" })
         {
@@ -86,9 +82,9 @@ public static class ArgumentParser
         var options = new CliOptions
         {
             Provider = provider,
-            Server = server,
-            Database = database,
-            Schema = schema ?? (provider == DatabaseProvider.PostgreSql ? "public" : provider == DatabaseProvider.MySql ? database : "dbo"),
+            Server = server ?? "",
+            Database = database ?? "",
+            Schema = schema ?? (provider == DatabaseProvider.PostgreSql ? "public" : provider == DatabaseProvider.MySql ? database ?? "" : "dbo"),
             Table = table,
             Template = template,
             OutputDirectory = outputDirectory,
@@ -101,6 +97,15 @@ public static class ArgumentParser
         foreach (var (key, value) in overrides)
             options.ProjectOverrides[key] = value;
         return options;
+    }
+
+    /// <summary> What is missing for a template that reads a database (every template except one with NoDatabase): the server, the database and a login. Null when the connection is complete. </summary>
+    public static string? MissingConnection(CliOptions options)
+    {
+        if (string.IsNullOrWhiteSpace(options.Server)) return "-S/--server is required.";
+        if (string.IsNullOrWhiteSpace(options.Database)) return "-d/--database is required.";
+        if (!options.Trusted && string.IsNullOrWhiteSpace(options.UserName)) return "-U/--user is required unless -E/--trusted is used.";
+        return null;
     }
 
     public static void PrintUsage(TextWriter writer)
@@ -117,7 +122,7 @@ public static class ArgumentParser
               codegen -S <server> -d <database> [-s <schema>] -t <table> -T <template.tt>
                        (-E | -U <user> [-P <password>]) [-o <outputDir>] [--provider SqlServer|PostgreSql|MySql]
 
-            Required:
+            Required (-S and -d, and a login, are not needed for a template whose config says NoDatabase, such as WinUI3_DirectoryListing):
               -S, --server     SQL Server instance name
               -d, --database   Database name
               -t, --table      Table name (not needed for a database-level template such as CS_DbContext or API_Registration, which covers every table of the schema)
