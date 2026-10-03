@@ -9,8 +9,14 @@ public class DatabaseModel
     public SqlDialect Dialect { get; init; } = SqlDialect.SqlServer;
     public required List<TableModel> Tables { get; init; }
 
-    /// <summary> The tables that get an entity class and a DbSet: a table with a single-column primary key (CS_Entity refuses any other). </summary>
+    /// <summary> The tables that get an entity class, a repository and an API: a table with a single-column primary key. </summary>
     public List<TableModel> EntityTables => Tables.Where(t => t.PrimaryKeyColumns.Count == 1).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+
+    /// <summary> The tables with a composite primary key (a junction table): CS_Entity writes an entity for them and the context names the key in OnModelCreating, but they get no repository or API. </summary>
+    public List<TableModel> CompositeKeyTables => Tables.Where(t => t.PrimaryKeyColumns.Count > 1).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+
+    /// <summary> Every table the context has a DbSet for: <see cref="EntityTables"/> and <see cref="CompositeKeyTables"/>, by name. </summary>
+    public List<TableModel> ContextTables => EntityTables.Concat(CompositeKeyTables).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
 
     /// <summary> The tables API_Crud writes an API for: a single int key, no name/active shape, and not an enum or other table the project
     /// says has no repository. API_Search is registered for the same tables. </summary>

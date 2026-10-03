@@ -29,6 +29,10 @@ Everything else (entities, repositories, API, Angular, React, WinUI3) is generat
 
 **Passwords.** The app and CLI take the password from the connection dialog or `-P`; never commit one. For your own samples, read it from an environment variable (`PGPASSWORD`, `MYSQL_PWD`) at start-up.
 
+**Junction tables and DbSet names.** A table with a composite primary key (a junction table) gets an entity (`CS_Entity` writes its key columns without `[Key]`), a `DbSet`, and `HasKey` in the generated `OnModelCreating`, which calls a partial `OnModelCreatingPartial` that a hand-written part of the context can implement. The `DbSet` properties are named like their tables; `DbSetNames=Plural` in the project file names them in the plural (`Customers`).
+
+**Template notes.** Each template starts with a short summary (what it generates, its restrictions, what it needs); the long design notes for each one are in [Docs/TemplateNotes](Docs/TemplateNotes).
+
 **Provider wiring.** `CS_DbContext` and `API_Registration` write the `DbContext` and the API registration for the database that was read, so a web API's `Program.cs` is `AddGeneratedDbContext(...)` and `RegisterGeneratedApis()`; the NuGet package the provider needs is named in the generated context's comment (`Npgsql.EntityFrameworkCore.PostgreSQL`, `MySql.EntityFrameworkCore`, `Microsoft.EntityFrameworkCore.SqlServer`).
 
 **Drop-downs for listed values.** A MySQL `enum('a','b')` column is a drop-down of its values on every screen (Angular and React `<select>`, WinUI3 `ComboBox`); a `set` stays a text box. PostgreSQL does the same for a native enum type (`CREATE TYPE status AS ENUM (...)`) and for a text column limited by a single-column CHECK list (`CHECK (priority IN ('Low','High'))`). An enum column needs one extra step: EF Core sends text, which PostgreSQL will not store in an enum column, so run the `SP_EnumCasts` script (a whole-database template; it creates assignment casts from text and from varchar to each enum type, and a value that is not one of the labels is still refused). **Still open.** Views (tables only), and a CHECK that is not a plain list (a range, an OR).

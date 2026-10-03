@@ -20,17 +20,10 @@
     // ==========================================================================================
     // WinUI3_Screens_v1.tt
     // Generates: MainWindow.Screens.cs   (see OutputName in WinUI3_Screens_v1.tt.config)
-    //
-    // The part of the main window that lists the screens, as the other half of the partial class MainWindow: the menu entries and the switch that shows a
-    // screen. MainWindow.xaml keeps an empty <NavigationView> (no MenuItems) and MainWindow.xaml.cs, which stays hand-written, does
-    //
-    //     InitializeComponent();
-    //     AddScreens();
-    //     NavView.SelectedItem = NavView.MenuItems[0];
-    //     ShowPage(FirstScreen);
-    //
-    // plus the SelectionChanged handler that calls ShowPage(tag), and owns the `_context` field the pages are created with. Adding a table is a regenerate.
-    // A screen is <Table>ListPage (WinUI3_MasterScreen), created as new <Table>ListPage(_context).
+    // The other half of the partial MainWindow: the menu entries and the switch that shows a screen, in menu order from the project's Screens setting.
+    // MainWindow.xaml keeps an empty NavigationView and MainWindow.xaml.cs stays hand-written. A master-detail screen whose child table has no screen gets
+    // a WARNING comment at the top.
+    // Full notes: Docs/TemplateNotes/WinUI3_Screens_v1.md
 
     var screens = Database.ScreenTables(Project);
     foreach (string name in Database.UnknownScreens(Project))

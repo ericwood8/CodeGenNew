@@ -49,65 +49,11 @@
 
     // ==========================================================================================
     // TS_Component_v1.tt
-    // Generates the four files of an Angular component, in the folder components/<table>/ (the paths are written by the
-    // template itself, see GeneratedFiles - point the output folder at the Angular app's src/app folder):
-    //     <table>.component.css        empty, as in TimeEntryUI (styling comes from the global styles)
-    //     <table>.component.html       the grid, search box and add/edit form
-    //     <table>.component.spec.ts    the standard "should create" test
-    //     <table>.component.ts         the standalone component
-    // in the style of TimeEntryUI's src\app\components\holiday\holiday.component.*: a grid of the table's rows with Edit and
-    // Delete buttons, an "Add New" button, a search-by-name box (only when the table has a text Name column) and an add/edit
-    // form that opens under the grid.
-    //
-    //   - Names: the table name without its "E_" / "SY_" prefix, lower-cased for the folder, files and selector
-    //     (E_TimeSheet -> components/timesheet/timesheet.component.ts, selector app-timesheet, class TimeSheetComponent). It uses
-    //     <Table>Service (TS_Service) and the <Table> interface (TS_Model), so generate those first.
-    //   - Grid and form: one column / one field per column of the table except the key, computed and identity columns, and
-    //     foreign keys to the display-style table SY_Display; "Name" comes first, the rest in table order. The control follows
-    //     the type: text box (a text area from 100 characters up, which the grid leaves out unless that would leave it empty), number box, checkbox for bit, date
-    //     box for date/datetime, and a drop-down for a foreign key.
-    //   - Foreign keys: a drop-down of the parent's rows, loaded from the parent's service (its getAll), showing the parent's
-    //     display column (the one CodeGenNew picks for a Lookup: Name, ShortDescr ...); the grid shows the same name instead of
-    //     the id. A parent that is an enum/lookup table, or whose screen needs cascading drop-downs, is listed in
-    //     noLookupParents and its foreign key stays a plain number box.
-    //   - Key: an int key is a number, a uniqueidentifier key a string (the route takes {id:guid}; the api assigns the value on
-    //     create - a new row is sent with the empty GUID, as an int key is sent as 0). Any other key (composite, or a natural
-    //     text key the person would have to type) is refused. The screen loads ALL rows (no paging), so it suits tables of
-    //     hundreds or a few thousand rows, not tens of thousands.
-    //   - Dates: the API sends and takes "2025-12-25T00:00:00" strings; the date box wants "2025-12-25", so edit() trims the
-    //     time off and the grid formats with the date pipe. A new row starts today, a new number at 0, a new text at "", a new
-    //     bit at its database default.
-    //   - Errors: alert(), as in the other screens: 400 = bad value (the API's own rejection), 404 = gone, delete's 400 = "in use".
-    //
-    // Not written, so a screen that needs any of these stays hand-maintained: a detail grid (Department's teams, Project's
-    // tasks, TimeSheet's lines), drop-downs that depend on each other (Employee's team follows its department), fields that
-    // are computed on screen, and the route / sidebar entry / app.config line that show the screen (ComponentChecklist.txt
-    // steps 4-6).
-    //
-    // Pagination (CodeGenPossibilities\Pagination, research folder): the grid always loads one page at a time
-    // through TS_Service.tt's getPage instead of getAll(), with Angular Material's mat-paginator underneath -
-    // @angular/material is a real, already-installed dependency of the real TimeEntryUI project this family is
-    // written against (^18.2.14), and two of its own screens (Project, Request) already use mat-paginator,
-    // just client-side only (getAll() loads everything, then slices locally). This generates the OTHER
-    // standard, equally documented way to use the same control instead: [length] set to the server's
-    // totalCount rather than a local array length, and the (page) event triggers a new getPage() call rather
-    // than a local re-slice. Requires the target project to have @angular/material's MatPaginatorModule
-    // available (add it once, the same "assumed available" treatment TS_Service.tt/TSX_Api.tt already give
-    // request<T>/client.ts) - unlike the React/WinUI3 pagination bar, this one is NOT hand-rolled by
-    // CodeGenNew at all, since the library already exists in the real target project. **Update (2026-09-28):**
-    // pagination no longer requires a searchable column - a table with none (e.g. a monthly-summary table
-    // keyed only by ids/numbers) still gets it, found live needing exactly this; pagination and searchability
-    // are separate concerns.
-    //
-    // Search (CodeGenPossibilities\Search, research folder): when the table has a searchable column,
-    // TS_Service.tt's getPage takes one optional filter per TableModel.SearchableColumns column, so this
-    // template replaces the old single "Search by Name" box with one text input per searchable column
-    // (bespoke per table, like the add/edit form - there is no shared "search bar" component the way
-    // PaginationBar/mat-paginator are, since the field list differs per table), a Search button that resets to
-    // page 0 and re-fetches with the current filter values, and a Clear button that empties every field and
-    // re-fetches unfiltered. A table with no searchable column gets no search UI at all, but still pages
-    // through every row via the plain, unfiltered getPage() call.
-    //
+    // Generates the four files of an Angular standalone component in components/<table>/ (css, html, spec.ts, ts; the paths are written by the template, point the output folder at src/app)
+    // A grid of the table's rows with Edit, Clone and Delete, Add New, a search row with a box per searchable column, paging, sortable headers and an
+    // add/edit form (tabs when the table has billing/shipping or note fields), with drop-downs for foreign keys and listed values, a date box and number limits.
+    // Imports the model and service (TS_Model, TS_Service). Does not write a detail grid (TS_DetailMasterComponent does).
+    // Full notes: Docs/TemplateNotes/TS_Component_v1.md
     // ==========================================================================================
 
     string BaseName(string table) => Regex.Replace(Regex.Replace(table, "^E_", ""), "^SY_", "");
@@ -154,7 +100,7 @@
     }
     else if (Model.IsNameActiveTable)
     {
-        Error($"TS_Component assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all - see TimeEntryServer's real DepartmentTeamApi.cs); write this screen by hand.");
+        Error($"TS_Component assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all); write this screen by hand.");
     }
     else
     {

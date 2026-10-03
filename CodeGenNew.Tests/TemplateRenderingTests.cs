@@ -433,7 +433,7 @@ public class TemplateRenderingTests
 
         Expect.Contains(viewModel, "public class E_DonateLeaveListRow");
         Expect.Contains(viewModel, "var employeeNames = await _context.Set<Employee>().ToDictionaryAsync(r => r.EmployeeId, r => r.Name?.ToString() ?? \"\");");
-        Expect.Contains(viewModel, "cells.Add(employeeNames.TryGetValue(e.DonateFrom_EmployeeId, out var donateFrom_EmployeeIdName) ? donateFrom_EmployeeIdName : e.DonateFrom_EmployeeId.ToString());");
+        Expect.Contains(viewModel, "employeeNames.TryGetValue(e.DonateFrom_EmployeeId, out var donateFrom_EmployeeIdName) ? donateFrom_EmployeeIdName : e.DonateFrom_EmployeeId.ToString(),");
         Expect.Contains(viewModel, "int result = await _repo.DeleteAsync(\"E_DonateLeave\", id);");
     }
 
@@ -1116,9 +1116,15 @@ public class TemplateRenderingTests
     }
 
     [TestMethod]
-    public async Task An_entity_refuses_a_composite_key()
+    public async Task An_entity_refuses_a_table_with_no_key_but_writes_a_composite_key_without_key_attributes()
     {
-        StringAssert.Contains(await Refusal("CS_Entity_v1.tt", Sample.CompositeKey()), "composite primary key");
+        var keyless = Sample.Table("Log", [Sample.Column("Message", SqlDbType.NVarChar, characters: 50)]);
+        StringAssert.Contains(await Refusal("CS_Entity_v1.tt", keyless), "has none");
+
+        string cs = await Render("CS_Entity_v1.tt", Sample.CompositeKey());
+        Expect.Contains(cs, "public required int LeftId { get; set; }");
+        Expect.Contains(cs, "public required int RightId { get; set; }");
+        Expect.DoesNotContain(cs, "[Key]");   // the context names a composite key with HasKey
     }
 
     // ------------------------------------------------------------------ CS_Validation

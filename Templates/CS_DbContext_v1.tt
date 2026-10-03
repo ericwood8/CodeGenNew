@@ -22,20 +22,11 @@
     // ==========================================================================================
     // CS_DbContext_v1.tt
     // Generates: <ContextName>.cs   (see OutputName in CS_DbContext_v1.tt.config)
-    //
-    // The EF Core context for the whole database, written for the database the schema was read from:
-    //   - one DbSet<Entity> per table that has a single-column primary key (the tables CS_Entity writes an entity for);
-    //   - both constructors: the one dependency injection uses (a web API) and the parameterless one a desktop app uses, whose
-    //     OnConfiguring reads the connection string from appsettings.json next to the exe;
-    //   - the provider call - UseSqlServer, UseNpgsql or UseMySQL - in ONE place, UseProvider, which the API registration
-    //     (API_Registration) calls too, so changing database is a regenerate and not a hand edit;
-    //   - for PostgreSQL, "timestamp" as the column type of every DateTime: a DateTime maps to timestamptz by default and Npgsql then
-    //     refuses any value that is not UTC, while the columns this generator reads are plain timestamps;
-    //   - for PostgreSQL and MySQL the password is never in appsettings.json: Npgsql reads PGPASSWORD itself and, because the MySQL
-    //     driver does not read MYSQL_PWD, the generated code adds it when the connection string has no password.
-    // The class is partial (a context inside a WinUI 3 project is reachable from WinRT-projected types, which otherwise warns CsWinRT1028).
-    // The NuGet package the provider needs is named in the class comment. Hand-written parts (extra DbSets for views, OnModelCreating)
-    // go in another part of the partial class, so regenerating never loses them.
+    // The EF Core context for the whole database, written for the database the schema came from (SQL Server, PostgreSQL or MySQL): a DbSet per
+    // table that has a primary key, both constructors, and the provider call in one place (UseProvider, also used by API_Registration).
+    // A composite key gets HasKey in OnModelCreating, which then calls a partial OnModelCreatingPartial for hand-written additions.
+    // The class is partial; DbSetNames=Plural names the sets in the plural. The NuGet package the provider needs is named in the class comment.
+    // Full notes: Docs/TemplateNotes/CS_DbContext_v1.md
 
     var provider = EfProviderInfo.For(Database.Dialect);
     string databaseKind = Database.Dialect == SqlDialect.PostgreSql ? "PostgreSQL" : Database.Dialect == SqlDialect.MySql ? "MySQL" : "SQL Server";
@@ -53,8 +44,15 @@
     Line($"/// Needs the NuGet packages {provider.Package} and Microsoft.Extensions.Configuration.Json. </summary>");
     Line($"public partial class {contextType} : DbContext");
     Line("{");
-    foreach (var table in Database.EntityTables)
-        Line($"    public DbSet<{table.TableName}> {table.TableName} => Set<{table.TableName}>();");
+    // The DbSet is named like its table, or in the plural with DbSetNames=Plural (a plural that another table already uses stays singular).
+    string SetName(TableModel table)
+    {
+        if (!Project.PluralDbSets) return table.TableName;
+        string plural = table.TableName.Pluralize();
+        return Database.Tables.Any(t => t != table && t.TableName.Equals(plural, StringComparison.OrdinalIgnoreCase)) ? table.TableName : plural;
+    }
+    foreach (var table in Database.ContextTables)
+        Line($"    public DbSet<{table.TableName}> {SetName(table)} => Set<{table.TableName}>();");
     Line();
     Line($"    public {contextType}()");
     Line("    {");
@@ -72,6 +70,21 @@
         Line("    {");
         Line("        configurationBuilder.Properties<DateTime>().HaveColumnType(\"timestamp\");");
         Line("    }");
+    }
+    var composite = Database.CompositeKeyTables;
+    if (composite.Count > 0)
+    {
+        Line();
+        Line("    // A composite primary key cannot be said with an attribute, so the key of each junction table is named here.");
+        Line("    // Extra model configuration of your own goes in OnModelCreatingPartial, in another part of this class.");
+        Line("    protected override void OnModelCreating(ModelBuilder modelBuilder)");
+        Line("    {");
+        foreach (var table in composite)
+            Line($"        modelBuilder.Entity<{table.TableName}>().HasKey(e => new {{ {string.Join(", ", table.PrimaryKeyColumns.Select(c => "e." + (c.IsCSharpReservedWordName ? "@" : "") + c.Name))} }});");
+        Line("        OnModelCreatingPartial(modelBuilder);");
+        Line("    }");
+        Line();
+        Line("    partial void OnModelCreatingPartial(ModelBuilder modelBuilder);");
     }
     Line();
     Line("    /// <summary> The one place the database provider is chosen; the API registration calls it too. </summary>");

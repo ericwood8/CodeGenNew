@@ -420,8 +420,8 @@ public class ProjectSettingsTests
         var angular = await TemplateRunner.RunAsync(Repo.Template("TS_Component_v1.tt"), LineTable(), With(("CurrencyCode", "EUR")));
         var react = await TemplateRunner.RunAsync(Repo.Template("TSX_Page_v1.tt"), LineTable(), With(("CurrencyCode", "EUR")));
 
-        Expect.Contains(list.GeneratedText!, "cells.Add(new Windows.Globalization.NumberFormatting.CurrencyFormatter(\"EUR\") { IsGrouped = true, FractionDigits = 2 }.FormatDouble((double)e.ItemPrice));");
-        Expect.Contains(list.GeneratedText!, "cells.Add(e.Discount is { } discountMoney ? new Windows.Globalization.NumberFormatting.CurrencyFormatter(\"EUR\") { IsGrouped = true, FractionDigits = 4 }.FormatDouble((double)discountMoney) : \"\");");
+        Expect.Contains(list.GeneratedText!, "new Windows.Globalization.NumberFormatting.CurrencyFormatter(\"EUR\") { IsGrouped = true, FractionDigits = 2 }.FormatDouble((double)e.ItemPrice),");
+        Expect.Contains(list.GeneratedText!, "e.Discount is { } discountMoney ? new Windows.Globalization.NumberFormatting.CurrencyFormatter(\"EUR\") { IsGrouped = true, FractionDigits = 4 }.FormatDouble((double)discountMoney) : \"\",");
         Expect.Contains(angular.GeneratedText!, "itemPrice | currency:'EUR':'symbol':'1.2-2'");
         Expect.Contains(react.GeneratedText!, "currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2");
     }

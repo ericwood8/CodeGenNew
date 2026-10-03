@@ -30,52 +30,11 @@
 
     // ==========================================================================================
     // TSX_Api_v1.tt
-    // Generates: api/<table>Api.ts   (a plain object of fetch-based functions; the path is written by the
-    // template itself, see GeneratedFiles - point the output folder at the React app's src folder)
-    //
-    // The React counterpart of TS_Service.tt - same routes, same method names, same restrictions - but a
-    // plain object of async functions built on fetch instead of an @Injectable class built on HttpClient,
-    // since a React app has no dependency-injection container to register a service with. Assumes the target
-    // project already has a shared request<T>(path, init) helper and an ApiError class (imported here from
-    // "./client"), the same way TS_Service.tt assumes Angular's own HttpClient is already available -
-    // CodeGenNew does not generate that shared file itself. Modeled on CriticalViewer's real
-    // src/api/client.ts, which is exactly that shape:
-    //
-    //     export class ApiError extends Error { constructor(public status: number, message: string) { super(message); } }
-    //     export async function request<T>(path: string, init?: RequestInit): Promise<T> { ... }
-    //
-    //     getAll(): Promise<Holiday[]>                         GET    /api/holidays
-    //     getById(id): Promise<Holiday>                        GET    /api/holidays/{id}
-    //     create(holiday): Promise<Holiday>                    POST   /api/holidays
-    //     update(id, holiday): Promise<Holiday>                PUT    /api/holidays/{id}
-    //     delete(id): Promise<void>                            DELETE /api/holidays/{id}
-    //     findByName(name): Promise<Holiday[]>                 GET    /api/holidays/{name}   (only a table with a text Name column)
-    //     getPage(pageNumber, pageSize, filters?): Promise<{Table}PagedResult>
-    //                                                           GET    /api/holidays/search?pageNumber=&pageSize=&<column>=...
-    //                                                           (always - CodeGenPossibilities\Pagination in the research
-    //                                                           folder. A filters object with one optional string property
-    //                                                           per searchable column, matching API_Search.tt's own query
-    //                                                           parameters name-for-name - an empty object for a table with
-    //                                                           no searchable column, since pagination and searchability are
-    //                                                           separate concerns (SP_Search.tt's own header comment); an
-    //                                                           omitted or blank value is left out of the URL entirely.
-    //                                                           CodeGenPossibilities\Search in the research folder.)
-    //
-    //   - Names: exported const <table>Api in api/<table>.ts (lower-cased table stem), the table name without
-    //     its "E_"/"SY_" prefix - same convention TS_Service.tt uses; the row type is imported from
-    //     ../models/<table> (TS_Model.tt's own output - that template writes a plain TS interface with no
-    //     Angular dependency, so it is reused as-is for a React project; no separate React model template exists).
-    //   - URL: apiPrefix + "/" + the lower-cased name, pluralized (CodeGenNew.Core.Pluralizer.Pluralize) - identical route
-    //     convention to TS_Service.tt (same backend, same BaseApi.BreakIntoStrings-registered route).
-    //   - Key: an int key is a number, a uniqueidentifier key a string (the route takes {id:guid}; the api
-    //     assigns the value on create - a new row is sent with the empty GUID, an int key is sent as 0). Any
-    //     other key (composite, or a natural text key the person would have to type) is refused.
-    //   - findByName exists on the server for the name-based tables, so it is generated for every table with a
-    //     text column called Name; the plain (API_Crud) tables have none.
-    //
-    // Not written: calls for extra routes a hand-written client adds (a parent-scoped list, a filtered search);
-    // an api module that needs those stays hand-maintained.
-    //
+    // Generates: api/<table>Api.ts   (a plain object of fetch-based functions; the path is written by the template, point the output folder at the React src folder)
+    // The React counterpart of TS_Service: getAll, getPage (search and paging), getById, create, update, delete and, for a cloneable table, clone.
+    // Needs the shared request helper and ApiError in api/client.ts (not generated). Imports the model from models/<table> (TS_Model).
+    // Folder names come from the project's ApiFolder and ModelsFolder.
+    // Full notes: Docs/TemplateNotes/TSX_Api_v1.md
     // ==========================================================================================
 
     string BaseName(string table) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(table, "^E_", ""), "^SY_", "");
@@ -93,7 +52,7 @@
     }
     else if (Model.IsNameActiveTable)
     {
-        Error($"TSX_Api assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all - see TimeEntryServer's real DepartmentTeamApi.cs); write this api module by hand.");
+        Error($"TSX_Api assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all); write this api module by hand.");
     }
     else
     {
@@ -102,9 +61,8 @@
         string stem = baseName.ToLowerInvariant();
         string variable = LowerFirst(baseName);
         bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name");
-        // Pagination (CodeGenPossibilities\Pagination): getPage always exists, once SP_Search.tt/API_Search.tt
-        // do (also always, as of the same date) - pagination and searchability are separate concerns.
-        // Search (CodeGenPossibilities\Search): filters is simply empty for a table with no searchable column.
+        // Pagination: getPage always exists, once SP_Search.tt/API_Search.tt do; pagination and searchability are separate concerns.
+        // Search: filters is simply empty for a table with no searchable column.
         var filters = Model.SearchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
 
         var o = new StringBuilder();

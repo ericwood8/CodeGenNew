@@ -25,7 +25,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder"
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames"
     ];
 
     private readonly Dictionary<string, string> _values;
@@ -162,6 +162,9 @@ public class ProjectSettings
 
     /// <summary> The folders the React and Angular templates write into and import from, relative to the front end's source folder (<c>src</c> for React, <c>srcpp</c> for Angular).
     /// The defaults are what both samples use. </summary>
+    /// <summary> <c>DbSetNames=Plural</c> names the context's DbSet properties in the plural (<c>Customers</c>); the default is the table's own name (<c>Customer</c>), which is what the samples use. </summary>
+    public bool PluralDbSets => string.Equals(Explicit("DbSetNames"), "Plural", StringComparison.OrdinalIgnoreCase);
+
     public string ApiFolder => Explicit("ApiFolder") ?? "api";
     public string ModelsFolder => Explicit("ModelsFolder") ?? "models";
     public string ServicesFolder => Explicit("ServicesFolder") ?? "services";

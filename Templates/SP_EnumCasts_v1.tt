@@ -8,13 +8,9 @@
     // ==========================================================================================
     // SP_EnumCasts_v1.tt
     // Generates: EnumCasts.sql   (one script for the whole database; PostgreSQL only)
-    //
-    // A PostgreSQL enum column (CREATE TYPE status AS ENUM ('Open', 'Closed')) reaches the generated code as a string, and the form shows it as a drop-down of
-    // its values. EF Core sends a string as text, and PostgreSQL refuses to store text in an enum column ("column is of type status but expression is of
-    // type text") unless a cast from text (and from character varying, which the generated entity declares) to that enum exists. This script creates those casts, once per enum type that a column of the schema uses, as an
-    // ASSIGNMENT cast (applied when a value is stored, never inside a comparison). A value that is not one of the enum's labels is still refused by
-    // the database, so the type keeps doing its job. Running it again changes nothing: a cast that exists is left alone.
-    // codegen never modifies the database: review the script and apply it yourself (psql -f EnumCasts.sql).
+    // EF Core sends a string as text or character varying and PostgreSQL refuses either for an enum column. This writes one guarded
+    // CREATE CAST ... WITH INOUT AS ASSIGNMENT per enum type a column uses, from text and from character varying; a label the enum does not have
+    // is still refused. Running it again changes nothing. codegen never applies it: review the script and run it yourself (psql -f EnumCasts.sql).
 
     if (Database.Dialect != SqlDialect.PostgreSql)
     {

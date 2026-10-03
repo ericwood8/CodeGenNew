@@ -12,7 +12,7 @@
     string apiNamespace = "TimeEntry.ApiService.Apis";
     string contextType = "TimeEntryContext";
     // Namespaces the generated file must "using" (for example "MyApp.Entities"; leave empty when the project supplies them through
-    // global usings, as TimeEntryServer does). Each entry becomes a using line in the generated file.
+    // global usings). Each entry becomes a using line in the generated file.
     string[] usings = { };
     // Tables that have no repository (and so no API): C# enums, other *Type lookup tables, tables with no entity class.
     string[] noRepositoryTables =
@@ -33,36 +33,10 @@
     // ==========================================================================================
     // API_Crud_v1.tt
     // Generates: <TableName>Api.cs   (see OutputName in API_Crud_v1.tt.config)
-    //
-    // A minimal-API class for one table, in the style of TimeEntryServer's TimeEntry.ApiService\Apis\E_DonateLeaveApi.cs:
-    // five endpoints registered from Register(), each a static handler over the table's repository (<Entity>Repo, from CS_Repo):
-    //     GET    /<plural>          all rows
-    //     GET    /<plural>/{id}     one row                 (404 when there is no such row)
-    //     POST   /<plural>          create                  (201 with a Location header)
-    //     PUT    /<plural>/{id}     update                  (400 when the id in the URL and the id in the body disagree,
-    //                                                          404 when there is no such row)
-    //     DELETE /<plural>/{id}     delete                  (404 = no such row, 400 = row is in use by another table)
-    // The route names come from BaseApi.BreakIntoStrings (an "E_" / "SY_" prefix is dropped, the rest is lower-cased and
-    // pluralised with an "s"), so this template never spells a route out.
-    //
-    // What comes from the table:
-    //   - the entity class is assumed to be named exactly like the table, and its key property like the key column
-    //     (TimeEntry.Common\Entities\E_DonateLeave.cs / DonateLeaveId);
-    //   - GetAll's ordering: the first NOT NULL date column (date, datetime, datetime2, smalldatetime) that is not an
-    //     audit column, newest first - GenericRepo.GetAllOrderByDescending only takes a non-nullable DateTime.
-    //     A table with no such column gets a plain GetAll() instead. Change the line in the generated file if another
-    //     column suits the screen better.
-    //
-    // What it does NOT do: the entity, its DbSet in TimeEntryContext and the line in ApiRegisterExtension.cs that calls
-    // Register() are written by hand. Nor does it write business rules (validation, defaults, name/duplicate checks); a
-    // table that needs them keeps a hand-maintained API class - generate this one only for the plain shape.
-    //
-    // The handlers use <Table>Repo (generate it with CS_Repo), which must sit on GenericRepo: GetAll, GetAllOrderByDescending and
-    // the delete check live there. A name/active table (a NOT NULL text Name plus a NOT NULL bit IsActive - NameActiveRepo)
-    // has no GetAll and does its own duplicate-name and trimming work in its API, so it stops with an error and stays
-    // hand-maintained. So does a table with no repository (enum / *Type lookup tables, tables with no entity).
-    // Requires a table with a single int primary key (routes are {id:int}). Anything else stops with an error.
-    //
+    // A minimal-API class for one table: GET all, GET one, POST, PUT and DELETE over the table's repository (<Entity>Repo from CS_Repo).
+    // Needs a single int primary key (the routes are {id:int}); a name/active table or a table with no repository stops with an error.
+    // Does not write the entity, its DbSet or the registration line (CS_Entity, CS_DbContext and API_Registration do), nor any business rule.
+    // Full notes: Docs/TemplateNotes/API_Crud_v1.md
     // ==========================================================================================
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;

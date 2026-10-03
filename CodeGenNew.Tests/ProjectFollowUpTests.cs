@@ -163,4 +163,17 @@ public class ProjectFollowUpTests
         Expect.Contains(tsx, "ownerId: event.target.value === '' ? undefined : Number(event.target.value)");
         Assert.AreEqual(2, tsx.Split("<option value=\"\"></option>").Length - 1, "a blank first entry in both");
     }
+
+    [TestMethod]
+    public async Task The_winui3_list_builds_a_row_as_one_collection_expression()
+    {
+        var files = GeneratedFiles.Split(await Render("WinUI3_MasterScreen_v1.tt", Invoice(), Project()));
+        string vm = files.Single(f => f.RelativePath.EndsWith("ListViewModel.cs")).Content;
+
+        vm = vm.Replace("\r\n", "\n");
+        Expect.Contains(vm, "            List<string> cells =\n            [\n                e.Name,\n");
+        Expect.Contains(vm, "\n            ];\n            Rows.Add(new InvoiceListRow { Id = e.InvoiceId, Cells = cells });");
+        Expect.DoesNotContain(vm, "cells.Add(");
+        Expect.DoesNotContain(vm, "new List<string>()");
+    }
 }

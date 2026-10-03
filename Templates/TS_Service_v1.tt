@@ -30,42 +30,11 @@
 
     // ==========================================================================================
     // TS_Service_v1.tt
-    // Generates: services/<table>.service.ts   (an Angular injectable; the path is written by the template itself, see
-    // GeneratedFiles - point the output folder at the Angular app's src/app folder)
-    //
-    // The HttpClient wrapper for one table's API, in the style of TimeEntryUI's src\app\services\holiday.service.ts, with the
-    // same method names on every service so a component never has to remember which one this table uses:
-    //
-    //     getAll(): Observable<Holiday[]>              GET    api/holidays
-    //     getById(id): Observable<Holiday>             GET    api/holidays/{id}
-    //     create(holiday): Observable<Holiday>         POST   api/holidays
-    //     update(id, holiday): Observable<Holiday>     PUT    api/holidays/{id}
-    //     delete(id): Observable<void>                 DELETE api/holidays/{id}
-    //     findByName(name): Observable<Holiday[]>      GET    api/holidays/{name}      (only a table with a text Name column)
-    //     getPage(pageNumber, pageSize, ...filters): Observable<{Table}PagedResult>
-    //                                                   GET    api/holidays/search?pageNumber=&pageSize=&<column>=...
-    //                                                   (always - CodeGenPossibilities\Pagination in the research folder.
-    //                                                   One optional string parameter per searchable column, in
-    //                                                   TableModel.SearchableColumns order, matching API_Search.tt's own
-    //                                                   query parameters name-for-name - zero of them for a table with no
-    //                                                   searchable column, since pagination and searchability are separate
-    //                                                   concerns (SP_Search.tt's own header comment); an omitted or blank
-    //                                                   value is left out of the request entirely, not sent as ''.
-    //                                                   CodeGenPossibilities\Search in the research folder.)
-    //
-    //   - Names: class <Table>Service in services/<table>.service.ts, the table name without its "E_" / "SY_" prefix
-    //     (E_TimeSheet -> TimeSheetService, services/timesheet.service.ts); the interface is imported from models/<table>.ts.
-    //   - URL: "api/" + the lower-cased name, pluralized (CodeGenNew.Core.Pluralizer.Pluralize) - what BaseApi.BreakIntoStrings
-    //     registers on the server (the Angular dev proxy turns "api/..." into the server's own route).
-    //   - Key: an int key is a number, a uniqueidentifier key a string (the route takes {id:guid}; the api assigns the value on
-    //     create - a new row is sent with the empty GUID, as an int key is sent as 0). Any other key (composite, or a natural
-    //     text key the person would have to type) is refused.
-    //   - findByName exists on the server for the name-based tables, so it is generated for every table with a text column
-    //     called Name; the plain (API_Crud) tables have none.
-    //
-    // Not written: calls for extra routes a hand-written API adds (DepartmentService.getTeams, TimeSheetDetailService's
-    // "by timesheet" call, a filtered search); a service that needs those stays hand-maintained.
-    //
+    // Generates: services/<table>.service.ts   (an Angular injectable; the path is written by the template, point the output folder at src/app)
+    // The HttpClient wrapper for one table's API with the same method names on every service (getAll, getPage, getById, create, update, delete,
+    // findByName for a table with a Name column, clone for a cloneable table), so a component never has to remember which one a table uses.
+    // Imports the model from models/<table>. Folder names come from the project's ServicesFolder and ModelsFolder.
+    // Full notes: Docs/TemplateNotes/TS_Service_v1.md
     // ==========================================================================================
 
     string BaseName(string table) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(table, "^E_", ""), "^SY_", "");
@@ -84,7 +53,7 @@
     }
     else if (Model.IsNameActiveTable)
     {
-        Error($"TS_Service assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all - see TimeEntryServer's real DepartmentTeamApi.cs); write this service by hand.");
+        Error($"TS_Service assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all); write this service by hand.");
     }
     else
     {
@@ -94,9 +63,8 @@
         string variable = LowerFirst(baseName);
         string lowerWords = Words(baseName).ToLowerInvariant();
         bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name");
-        // Pagination (CodeGenPossibilities\Pagination): getPage always exists, once SP_Search.tt/API_Search.tt
-        // do (also always, as of the same date) - pagination and searchability are separate concerns.
-        // Search (CodeGenPossibilities\Search): filters is simply empty for a table with no searchable column.
+        // Pagination: getPage always exists, once SP_Search.tt/API_Search.tt do; pagination and searchability are separate concerns.
+        // Search: filters is simply empty for a table with no searchable column.
         var filters = Model.SearchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
 
         var o = new StringBuilder();

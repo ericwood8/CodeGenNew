@@ -51,7 +51,8 @@ public partial class ProjectSettingsDialogViewModel : StatusMessageViewModel
         ["ModelsFolder"] = "React / Angular folder for the TypeScript models; blank = models",
         ["ServicesFolder"] = "Angular folder for the services; blank = services",
         ["ComponentsFolder"] = "React / Angular folder for the shared components and Angular screens; blank = components",
-        ["PagesFolder"] = "React folder for the pages; blank = pages"
+        ["PagesFolder"] = "React folder for the pages; blank = pages",
+        ["DbSetNames"] = "Plural = Customers, blank = the table name (Customer)"
     };
 
     private readonly string _projectsDirectory;

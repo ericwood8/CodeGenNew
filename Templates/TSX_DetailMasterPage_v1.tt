@@ -49,32 +49,10 @@
 
     // ==========================================================================================
     // TSX_DetailMasterPage_v1.tt
-    // TSX_Page_v1.tt's own grid + add/edit form - identical field selection, lookups, error-as-state and
-    // rail/no-invented-classes rules, see that template for the reasoning - PLUS one read-only grid per table
-    // in TableModel.ChildForeignKeys, shown under the form while editing an existing row. The React counterpart
-    // of TS_DetailMasterComponent.tt, closing the same gap TSX_Page.tt's own header comment names explicitly
-    // ("not written: a detail grid").
-    //
-    // Per the same answer that shaped WinUI3_DetailMasterScreen.tt/TS_DetailMasterComponent.tt ("just have the
-    // generated code assume all are grids and the developer can cut out what grids are not needed"): EVERY
-    // table in ChildForeignKeys gets a grid, unconditionally.
-    //
-    // A child grid calls the child table's API directly (request<any[]>('/api/<child>s'), filtering client-side
-    // by the foreign key column) instead of importing a generated <Child>Api module the way every other lookup
-    // in this template does - same reason TS_DetailMasterComponent.tt's own header comment gives: TableModel is
-    // built for exactly one table per generation run, so this template never sees the child table's own column
-    // list or knows what its generated (or hand-written) api module looks like. Rows are loosely typed (any[]);
-    // columns are whatever keys the first loaded row has (Object.keys), discovered at run time rather than
-    // generation time - the same "read the shape at run time, not generation time" idea the Angular and WinUI3
-    // families already use for this exact gap.
-    //
-    // Only loaded once the row being edited has a real key (a brand-new, unsaved row has no child rows yet);
-    // the child sections show a "save first" message instead while adding.
-    //
-    // Requires a primary key that is a single int or uniqueidentifier column (same as TSX_Page.tt) and at
-    // least one table in TableModel.ChildForeignKeys (TableModel.HasAtLeastOneChildForeignKey) - a table with
-    // none is exactly what TSX_Page.tt is for.
-    //
+    // Generates: pages/<Table>DetailMasterPage.tsx plus its test file (the paths are written by the template; point the output folder at the React src folder)
+    // TSX_Page's grid, search, paging and modal add/edit form, plus one read-only grid per child table under the form while a row is edited.
+    // The React counterpart of TS_DetailMasterComponent. Needs a table with at least one child foreign key.
+    // Full notes: Docs/TemplateNotes/TSX_DetailMasterPage_v1.md
     // ==========================================================================================
 
     string BaseName(string table) => Regex.Replace(Regex.Replace(table, "^E_", ""), "^SY_", "");
@@ -126,7 +104,7 @@
     }
     else if (Model.IsNameActiveTable)
     {
-        Error($"TSX_DetailMasterPage assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all - see TimeEntryServer's real DepartmentTeamApi.cs); write this screen by hand.");
+        Error($"TSX_DetailMasterPage assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all); write this screen by hand.");
     }
     else
     {
