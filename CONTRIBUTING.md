@@ -2,6 +2,8 @@
 
 Issues and pull requests are welcome. A change is easiest to review when it is small and says what it generates differently.
 
+Start with [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md) for the layout of the code and how a run flows.
+
 ## Build and test
 
 ```

@@ -145,7 +145,7 @@ BEGIN
 		BEGIN
 			DECLARE @ErrorMessage VARCHAR(400);
 			SET @ErrorMessage = 'No <#= Model.TableName.Replace("'", "''") #> found to clone (' + <#= keyDescription #> + ').';
-			THROW 55509, @ErrorMessage, 1;
+			THROW <#= SqlErrorCodes.NoRowToClone #>, @ErrorMessage, 1;
 		END
 
 <#

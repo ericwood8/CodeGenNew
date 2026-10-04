@@ -2,7 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace CodeGenNew.App.ViewModels;
 
-/// <summary> Backs the Location screen (Docs/specs.md section 9.2). </summary>
+/// <summary> Backs the Location screen (Docs/ARCHITECTURE.md section 7). </summary>
 public partial class LocationDialogViewModel : StatusMessageViewModel
 {
     [ObservableProperty]

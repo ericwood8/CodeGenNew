@@ -223,10 +223,10 @@ public static class PostgresProcedures
         var parameters = pk.Select(c => (P(c), c.SqlTypeDeclaration, (string?)null));
         string body = "BEGIN\n" +
                       $"\tDELETE FROM {Table(m)} WHERE ({Eq(pk, k => P(k))});\n" +
-                      "\tRETURN 0; -- deleted\n" +
+                      $"\tRETURN {DeleteResult.Deleted}; -- deleted\n" +
                       "EXCEPTION\n" +
-                      "\tWHEN foreign_key_violation THEN\n\t\tRETURN -1; -- blocked by a foreign key elsewhere\n" +
-                      "\tWHEN OTHERS THEN\n\t\tRETURN -2; -- the DELETE failed for another reason\n" +
+                      $"\tWHEN foreign_key_violation THEN\n\t\tRETURN {DeleteResult.BlockedByForeignKey}; -- blocked by a foreign key elsewhere\n" +
+                      $"\tWHEN OTHERS THEN\n\t\tRETURN {DeleteResult.Failed}; -- the DELETE failed for another reason\n" +
                       "END\n";
         return "-- Returns 0 = deleted, -1 = blocked by a foreign key elsewhere, -2 = failed for some other reason.\n" +
                Create(m, "Delete", ParameterList(parameters), "integer", body);
@@ -293,7 +293,7 @@ public static class PostgresProcedures
         if (generatedKey is not null && !generatedKey.IsIdentity)
             o.Append("\tv_new_key := gen_random_uuid(); -- a new key for the new row\n\n");
         o.Append($"\tIF NOT EXISTS (SELECT 1 FROM {Table(m)} AS {Q("src")} WHERE {keyMatch}) THEN\n");
-        o.Append($"\t\tRAISE EXCEPTION 'No {Message(m.TableName)} found to clone (%).', {keyDescription} USING ERRCODE = '55509';\n\tEND IF;\n\n");
+        o.Append($"\t\tRAISE EXCEPTION 'No {Message(m.TableName)} found to clone (%).', {keyDescription} USING ERRCODE = '{SqlErrorCodes.NoRowToClone}';\n\tEND IF;\n\n");
         if (pairs.Count == 0)
         {
             o.Append($"\tINSERT INTO {Table(m)} DEFAULT VALUES");
@@ -445,7 +445,7 @@ public static class PostgresProcedures
         foreach (string join in joins) o.Append($"\t{join}\n");
         if (activeFilter.Length > 0) o.Append($"\tWHERE {activeFilter}\n");
         o.Append($"\tORDER BY {string.Join(", ", orderBy)};\n\n");
-        o.Append($"\tIF NOT FOUND THEN\n\t\tRAISE EXCEPTION 'No {Message(m.TableName)} found for {Message(m.TableName + "_Lookup")}.' USING ERRCODE = '55508';\n\tEND IF;\nEND\n");
+        o.Append($"\tIF NOT FOUND THEN\n\t\tRAISE EXCEPTION 'No {Message(m.TableName)} found for {Message(m.TableName + "_Lookup")}.' USING ERRCODE = '{SqlErrorCodes.NoRowToLookUp}';\n\tEND IF;\nEND\n");
 
         string parameters = active is not null ? "\"pblnIncludeInactive\" boolean DEFAULT false" : "";
         string header = active is not null ? "-- Returns only active rows unless \"pblnIncludeInactive\" is true.\n" : "";

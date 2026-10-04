@@ -4,7 +4,7 @@ The full design notes that used to head the template. The template keeps a short
 
 ```text
 Generates a WinUI3 two-list "available/selected" shuttle-control ContentDialog for editing one row's
-side of a many-to-many association (TableModel.IsJunctionTable - see Docs/specs.md section 7), the
+side of a many-to-many association (TableModel.IsJunctionTable - see Docs/Reference.md section 5), the
 companion UI to SP_Junction.tt (generate that first; this template calls its three procedures):
     Views/<TableName>JunctionEditor.xaml       the two ListViews + <</</>/>> buttons
     Views/<TableName>JunctionEditor.xaml.cs    button click handlers, calling the ViewModel

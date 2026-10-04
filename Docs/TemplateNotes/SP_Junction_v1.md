@@ -5,7 +5,7 @@ The full design notes that used to head the template. The template keeps a short
 ```text
 Generates: <TableName>_Junction.sql - three procedures for a many-to-many "junction"/"bridge"
 table (TableModel.IsJunctionTable), backing a two-list "available/selected" shuttle-control screen
-(see WinUI3_JunctionEditor.tt, and Docs/specs.md section 7 for the detection rule):
+(see WinUI3_JunctionEditor.tt, and Docs/Reference.md section 5 for the detection rule):
 
   <Table>_List   (@<Anchor>Id)              - every row of the TARGET parent table, with an
                                                 IsSelected bit saying whether it's linked to the

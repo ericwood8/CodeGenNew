@@ -6,7 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace CodeGenNew.App.ViewModels;
 
-/// <summary> Backs the Template Management screen (Docs/specs.md section 9.3) -- a file-management
+/// <summary> Backs the Template Management screen (Docs/ARCHITECTURE.md section 7) -- a file-management
 /// grid over Templates\*.tt, not an embedded editor; editing template content happens in whatever
 /// external editor the developer already uses. </summary>
 public partial class TemplateManagementViewModel : StatusMessageViewModel
@@ -56,7 +56,7 @@ public partial class TemplateManagementViewModel : StatusMessageViewModel
 
         File.WriteAllLines(ttPath + ".config",
         [
-            $"# Restriction checkboxes for {name}.tt (see Docs/specs.md section 5.3).",
+            $"# Restriction checkboxes for {name}.tt (see Docs/Reference.md section 3).",
             "RequiresPrimaryKey=true",
             "TableOnly=true"
         ]);

@@ -4,7 +4,7 @@ namespace CodeGenNew.TemplateEngine;
 
 /// <summary> What a template's RequiredPrimaryKeyShape (below) needs a table's TableModel.PrimaryKeyShape /
 /// TableSummary.PrimaryKeyShape to be -- three tiers, matching the three shapes actually needed across the
-/// shipped templates (Docs/specs.md section 5.3). </summary>
+/// shipped templates (Docs/Reference.md section 3). </summary>
 public enum PrimaryKeyRequirement
 {
     /// <summary> Any single primary key column (int, uniqueidentifier, or a natural text/other key) -- just
@@ -20,7 +20,7 @@ public enum PrimaryKeyRequirement
     SingleInt
 }
 
-/// <summary> Parses a &lt;TemplateName&gt;.tt.config file (Docs/specs.md section 5.3). Both restrictions
+/// <summary> Parses a &lt;TemplateName&gt;.tt.config file (Docs/Reference.md section 3). Both restrictions
 /// default to true when the file is missing entirely (conservative default for a hand-added .tt file). </summary>
 public class TemplateConfig
 {

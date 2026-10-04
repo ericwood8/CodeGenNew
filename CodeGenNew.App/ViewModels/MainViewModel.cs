@@ -11,7 +11,7 @@ using Windows.UI;
 
 namespace CodeGenNew.App.ViewModels;
 
-/// <summary> The main screen's ViewModel (Docs/specs.md section 9.4): the TreeView's data, the current
+/// <summary> The main screen's ViewModel (Docs/ARCHITECTURE.md section 7): the TreeView's data, the current
 /// connection, and running a template against the selected table. CodeGenNew never writes to the target
 /// database itself (section 1.1) -- SqlServerSchemaProvider only ever reads schema metadata here. </summary>
 public partial class MainViewModel : ObservableObject

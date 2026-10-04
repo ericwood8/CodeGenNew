@@ -255,8 +255,8 @@ public class SqlServerSchemaProvider : SchemaProviderBase
         ORDER BY c.column_id;
         """;
 
-    /// <summary> Column names/types for display under a table node in the TreeView (Docs/specs.md
-    /// section 9.4) -- loaded lazily, only when a table is expanded, and much cheaper than
+    /// <summary> Column names/types for display under a table node in the TreeView
+    /// (Docs/ARCHITECTURE.md section 7) -- loaded lazily, only when a table is expanded, and much cheaper than
     /// BuildTableModelAsync's full column metadata since nothing here drives code generation. </summary>
     public override async Task<List<ColumnSummary>> ListColumnSummariesAsync(string schemaName, string tableName, CancellationToken cancellationToken = default)
     {

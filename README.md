@@ -6,7 +6,7 @@ It replaces a series of hand-rolled "write lines to a text file with substitutio
 
 **CodeGenNew only reads.** It introspects schema (and, for two templates, the table's rows) and writes files to an output folder. It never creates, alters or runs anything in your database and never edits your project — you review the output and copy it in.
 
-See **[Docs/specs.md](Docs/specs.md)** for the full specification: architecture, configuration file formats, the `TableModel`/`ColumnModel` schema, the special-logic column detection, every template's rules, and the CLI.
+See **[Docs/specs.md](Docs/specs.md)** for what the product promises and decides, and **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)** for the code layout, how a run flows, the `.tt.config` keys and where a reviewer should look first.
 
 ## Status
 <img width="126" height="20" alt="image" src="https://github.com/user-attachments/assets/3ea8d6d1-74b0-4b49-9821-5daf70302241" />
@@ -18,14 +18,14 @@ Project is actively being worked on. Issues and Pull Requests are welcomed.  We 
 | Dependency | Used by | Notes |
 |---|---|---|
 | [.NET 10 SDK](https://dotnet.microsoft.com/) | all projects | Target framework, and required at run time to compile templates. |
-| [Windows App SDK 2.4.0](https://github.com/microsoft/WindowsAppSDK) (WinUI 3) | `CodeGenNew.App` only | GUI framework, unpackaged (no MSIX); its native runtime is bundled. .NET itself is framework-dependent — see specs.md §3. |
-| [CommunityToolkit.Mvvm](https://www.nuget.org/packages/CommunityToolkit.Mvvm) 8.4.0 (WinUI 3) | `CodeGenNew.App` only | MVVM helpers (`[ObservableProperty]`, `[RelayCommand]`), classic backing-field style — see specs.md §9. |
+| [Windows App SDK 2.4.0](https://github.com/microsoft/WindowsAppSDK) (WinUI 3) | `CodeGenNew.App` only | GUI framework, unpackaged (no MSIX); its native runtime is bundled. .NET itself is framework-dependent — see specs.md. |
+| [CommunityToolkit.Mvvm](https://www.nuget.org/packages/CommunityToolkit.Mvvm) 8.4.0 (WinUI 3) | `CodeGenNew.App` only | MVVM helpers (`[ObservableProperty]`, `[RelayCommand]`), classic backing-field style — see ARCHITECTURE.md. |
 | [Microsoft.Data.SqlClient](https://www.nuget.org/packages/Microsoft.Data.SqlClient), [Npgsql](https://www.nuget.org/packages/Npgsql), [MySqlConnector](https://www.nuget.org/packages/MySqlConnector) | `Connections`, `SchemaIntrospection` | The ADO.NET providers for SQL Server, PostgreSQL and MySQL. |
 | [Mono.TextTemplating](https://github.com/mono/t4) | `CodeGenNew.TemplateEngine` | In-process T4 engine that runs outside Visual Studio (EF Core uses it for `dotnet ef dbcontext scaffold`). |
 | [MSTest](https://www.nuget.org/packages/MSTest) 4 | `CodeGenNew.Tests` only | Test framework. |
 | A reachable SQL Server, PostgreSQL or MySQL | runtime | Read-only access is all the tool ever needs. Not bundled. |
 
-CLI argument parsing is hand-rolled rather than pulling in a library, given the small number of flags (specs.md §10).
+CLI argument parsing is hand-rolled rather than pulling in a library, given the small number of flags (see ARCHITECTURE.md).
 
 ## Databases
 
@@ -55,7 +55,7 @@ Everything else (entities, repositories, API, Angular, React, WinUI3) is generat
 
 ## What it generates
 
-Fifty-two templates ship in `Templates\` (the no-database essentials groups described below come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
+Fifty-four templates ship in `Templates\` (the no-database essentials groups described below come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
 
 | Group | Template | Writes |
 |---|---|---|
@@ -182,7 +182,7 @@ The first run creates `Templates\`, `Output\` and `SpecialLogicColumns.config` n
 
 ### Templates that write several files
 
-`TS_Component` writes four files and the `TS_`/`TSX_` templates write into sub-folders. A template does that by starting each file with a marker line, `@@@FILE relative/path@@@` (see specs.md §8.2). For these templates point the output folder at the **root of the target project** — for Angular, its `src\app` folder; for React, its `src` folder — and the files land in the right places:
+`TS_Component` writes four files and the `TS_`/`TSX_` templates write into sub-folders. A template does that by starting each file with a marker line, `@@@FILE relative/path@@@` (see ARCHITECTURE.md). For these templates point the output folder at the **root of the target project** — for Angular, its `src\app` folder; for React, its `src` folder — and the files land in the right places:
 
 ```
 codegen -S MYSERVER -d MyDatabase -t Holiday -T TS_Component.tt -E -o C:\Work\MyApp\src\app
@@ -230,7 +230,7 @@ CodeGenNew.slnx
 ├── CodeGenNew.Core                Shared model classes (TableModel, ColumnModel, ForeignKeyModel, settings)
 ├── CodeGenNew.Tests               MSTest suite (see below)
 ├── Templates\                     The shipped .tt templates and their .tt.config files
-└── Docs\specs.md                  The specification
+└── Docs\                          specs.md (the specification), ARCHITECTURE.md (the reviewer guide), template notes, verification scripts
 ```
 
 ## Tests

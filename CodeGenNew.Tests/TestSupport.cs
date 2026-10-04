@@ -344,8 +344,8 @@ internal static class Sample
         Column("Name", SqlDbType.NVarChar, characters: 100, ordinal: 2)
     ]);
 
-    /// <summary> Like an E_TimeSheet/E_TimeSheetDetail pair (see Docs/specs.md section 11's
-    /// TS_DetailMasterComponent entry): an int-keyed table with both a foreign key to a lookup parent
+    /// <summary> Like an E_TimeSheet/E_TimeSheetDetail pair (the shape
+    /// TS_DetailMasterComponent is written for): an int-keyed table with both a foreign key to a lookup parent
     /// (Employee) and a child table hanging off it (TimeSheetDetail) -- exercises the lookup-dropdown and
     /// child-grid code paths together. </summary>
     public static TableModel TimeSheetWithEmployeeAndDetail() => Table("TimeSheet",

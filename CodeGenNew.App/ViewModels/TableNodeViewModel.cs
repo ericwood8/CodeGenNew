@@ -9,7 +9,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 
 namespace CodeGenNew.App.ViewModels;
 
-/// <summary> One table node in the TreeView (Docs/specs.md section 9.4). Its columns
+/// <summary> One table node in the TreeView (Docs/ARCHITECTURE.md section 7). Its columns
 /// are shown inline, underneath its own name, inside this same node's content rather than as separate
 /// TreeView nodes -- they're plain read-only text with no selection/right-click of their own, which is
 /// what keeps a column from ever being "highlighted" and offered the table's right-click menu. </summary>

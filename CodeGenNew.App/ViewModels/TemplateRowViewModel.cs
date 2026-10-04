@@ -4,7 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace CodeGenNew.App.ViewModels;
 
-/// <summary> One row of the Template Management screen (Docs/specs.md section 9.3). Editing either
+/// <summary> One row of the Template Management screen (Docs/ARCHITECTURE.md section 7). Editing either
 /// checkbox writes the .tt.config file immediately. </summary>
 public partial class TemplateRowViewModel : ObservableObject
 {
@@ -69,7 +69,7 @@ public partial class TemplateRowViewModel : ObservableObject
 
         var lines = new List<string>
         {
-            "# Restriction checkboxes for " + Name + ".tt (see Docs/specs.md section 5.3).",
+            "# Restriction checkboxes for " + Name + ".tt (see Docs/Reference.md section 3).",
             $"RequiresPrimaryKey={RequiresPrimaryKey.ToString().ToLowerInvariant()}",
             $"TableOnly={TableOnly.ToString().ToLowerInvariant()}"
         };

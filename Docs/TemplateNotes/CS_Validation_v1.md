@@ -8,8 +8,7 @@ Generates: <TableName>Validation.cs   (see OutputName in CS_Validation_v1.tt.con
 A "buddy class" validation companion: [Required]/[StringLength]/[DataType]/[Display] attributes on a separate <Table>Metadata
 class, attached to the real entity via [MetadataType(typeof(<Table>Metadata))] rather than written
 directly onto the entity - so it works whether the entity came from CS_Entity.tt or is
-hand-maintained (this project's own README/specs.md §11 status notes list several entities that stay
-hand-maintained), without editing that file at all.
+hand-maintained (a project may keep some entities, such as name/active tables, hand-maintained), without editing that file at all.
 
 Why a separate template instead of folding into CS_Entity.tt: CS_Entity.tt already writes
 [StringLength]/[DataType]/[Display] itself (its own header comment lists what it does NOT write:

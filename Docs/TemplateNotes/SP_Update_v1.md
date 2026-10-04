@@ -5,7 +5,7 @@ The full design notes that used to head the template. The template keeps a short
 ```text
 Generates: <TableName>_Update.sql
 
-Behavior (matches the worked example in Docs/specs.md and the original generator's specification):
+Behavior (see Docs/Reference.md sections 5 and 7):
   - Every column becomes a VarChar parameter, regardless of its real SQL type (this is a
     deliberate, established convention from the author's prior generators - NOT a data-type
     mismatch bug). Passing NULL for a parameter means "do not update this column."
@@ -20,7 +20,7 @@ Behavior (matches the worked example in Docs/specs.md and the original generator
     1 on success / 0 on failure, rather than echoing back the (single) ID parameter, since a
     composite key has no single value to echo.
   - Uses CREATE OR ALTER PROCEDURE (not ALTER PROCEDURE) so it deploys whether or not the
-    procedure already exists - required for the CLI's verify parameter (Docs/specs.md section 10.1).
+    procedure already exists - required for the CLI's verify parameter (Docs/ARCHITECTURE.md section 7).
   - Audit date columns (SpecialLogicColumns.config categories CreateDateColumn/ModifiedDateColumn/
     LastChangedDateColumn, e.g. CreateDate/ModifiedDate/LastDateChanged) are excluded from the
     parameter list entirely - they are never caller-supplied. ModifiedDateColumn and

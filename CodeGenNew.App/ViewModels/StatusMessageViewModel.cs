@@ -3,7 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace CodeGenNew.App.ViewModels;
 
 /// <summary> Base for a dialog ViewModel that shows a single status/error line bound to an InfoBar's
-/// IsOpen (via HasStatusMessage) and Message (Docs/specs.md sections 9.1-9.3) -- shared by
+/// IsOpen (via HasStatusMessage) and Message (Docs/ARCHITECTURE.md section 7) -- shared by
 /// ConnectionDialogViewModel, LocationDialogViewModel and TemplateManagementViewModel, which used to
 /// each declare this identically. MainViewModel does NOT derive from this: its own StatusMessage change
 /// handler computes StatusBrush instead of HasStatusMessage, and CommunityToolkit.Mvvm's

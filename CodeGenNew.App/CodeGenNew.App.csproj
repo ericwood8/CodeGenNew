@@ -46,7 +46,7 @@
     <ProjectReference Include="..\CodeGenNew.Generation\CodeGenNew.Generation.csproj" />
   </ItemGroup>
 
-  <!-- Docs/specs.md section 3: Templates\*.tt(.config) and SpecialLogicColumns.config are embedded as a
+  <!-- Docs/ARCHITECTURE.md section 5: Templates\*.tt(.config) and SpecialLogicColumns.config are embedded as a
        factory-default seed. DefaultAssetSeeder materializes them as real,
        editable files next to the EXE the first time they're missing, and never overwrites an existing
        (possibly customized) one. Images are embedded outright (item 8) and never touch disk at all;

@@ -208,6 +208,6 @@ BEGIN
 	BEGIN
 		DECLARE @ErrorMessage VARCHAR(200);
 		SET @ErrorMessage = 'No <#= tableNameForMessage #> found for ' + OBJECT_NAME(@@PROCID) + '.';
-		THROW 55508, @ErrorMessage, 1;
+		THROW <#= SqlErrorCodes.NoRowToLookUp #>, @ErrorMessage, 1;
 	END
 END

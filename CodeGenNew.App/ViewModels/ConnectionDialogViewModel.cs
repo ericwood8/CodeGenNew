@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace CodeGenNew.App.ViewModels;
 
-/// <summary> Backs the Connection screen (Docs/specs.md section 9.1). Password is held only in memory
+/// <summary> Backs the Connection screen (Docs/ARCHITECTURE.md section 7). Password is held only in memory
 /// for the lifetime of this dialog/session -- never written to Settings.json. </summary>
 public partial class ConnectionDialogViewModel : StatusMessageViewModel
 {

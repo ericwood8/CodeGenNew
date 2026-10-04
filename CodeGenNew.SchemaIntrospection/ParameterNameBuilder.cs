@@ -4,7 +4,7 @@ using System.Text;
 namespace CodeGenNew.SchemaIntrospection;
 
 /// <summary> Builds Hungarian-prefixed SQL parameter names matching the convention in the original
-/// ProductionUnitMaster_Update worked example (Docs/specs.md Appendix A). </summary>
+/// ProductionUnitMaster_Update worked example (Docs/Reference.md section 7). </summary>
 public static class ParameterNameBuilder
 {
     public static string ToSqlParameterName(this string columnName, SqlDbType sqlType)

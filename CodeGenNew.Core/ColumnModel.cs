@@ -129,7 +129,7 @@ public class ColumnModel
     public bool IsLastChangedDateColumn { get; init; }
 
     /// <summary> Matches SpecialLogicColumns.config category "InactiveReasonColumn" -- e.g.
-    /// InactiveReasonNoteText. Excluded from Insert parameters and left NULL (see Docs/specs.md section 7). </summary>
+    /// InactiveReasonNoteText. Excluded from Insert parameters and left NULL (see Docs/Reference.md section 5). </summary>
     public bool IsInactiveReasonColumn { get; init; }
 
     /// <summary> Matches SpecialLogicColumns.config category "AdminFlagColumn" -- e.g. IsAdmin. Excluded
@@ -143,6 +143,6 @@ public class ColumnModel
     /// text box. </summary>
     public bool IsFilePathColumn { get; init; }
 
-    /// <summary> Hungarian-prefixed SQL parameter name, e.g. "@pstrDescription", "@plngID". See Docs/specs.md Appendix A. </summary>
+    /// <summary> Hungarian-prefixed SQL parameter name, e.g. "@pstrDescription", "@plngID". See Docs/Reference.md section 7. </summary>
     public required string ParameterName { get; init; }
 }

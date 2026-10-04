@@ -39,7 +39,7 @@ public class TableModel
     public required List<ColumnModel> PrimaryKeyColumns { get; init; }
     public bool HasPrimaryKey => PrimaryKeyColumns.Count > 0;
 
-    /// <summary> See PrimaryKeyShape and TemplateConfig.RequiredPrimaryKeyShape (Docs/specs.md section 5.3) --
+    /// <summary> See PrimaryKeyShape and TemplateConfig.RequiredPrimaryKeyShape (Docs/Reference.md section 3) --
     /// several templates need more than just HasPrimaryKey. </summary>
     /// <summary> What the database says about the table (SQL Server <c>MS_Description</c>, PostgreSQL <c>COMMENT ON TABLE</c>, MySQL <c>COMMENT</c>); null when it says nothing. </summary>
     public string? Description { get; init; }
@@ -62,7 +62,7 @@ public class TableModel
     /// "IsActive" -- the one shape test repeated identically across API_Crud.tt, CS_Entity.tt, CS_Repo.tt and
     /// the WinUI3 CRUD-screen family (each used to spell it out inline; canonical here so they can't drift
     /// apart). Such a table's repository is a NameActiveRepo, not a GenericRepo -- see
-    /// TemplateConfig.RequiresNotNameActiveTable (Docs/specs.md section 5.3) for which templates that rules
+    /// TemplateConfig.RequiresNotNameActiveTable (Docs/Reference.md section 3) for which templates that rules
     /// out and why. Exact-name match, not a SpecialLogicColumns.config pattern rule, matching how the
     /// existing inline checks were always written. </summary>
     public bool IsNameActiveTable =>
@@ -146,7 +146,7 @@ public class TableModel
     /// The first eight searchable text columns, in table order, are used. </summary>
     public const int MaxSearchFields = 8;
 
-    // Special-logic, table-level (see Docs/specs.md section 7). Populated from SpecialLogicColumns.config.
+    // Special-logic, table-level (see Docs/Reference.md section 5). Populated from SpecialLogicColumns.config.
     public bool HasActiveInactivePair { get; init; }
     public ColumnModel? ActiveColumn { get; init; }
     public ColumnModel? InactiveDateColumn { get; init; }

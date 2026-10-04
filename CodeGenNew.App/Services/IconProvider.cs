@@ -6,8 +6,7 @@ using Windows.Storage.Streams;
 namespace CodeGenNew.App.Services;
 
 /// <summary>
-/// Maps app state to the shipped icon images (Docs/specs.md section 9.4 / section 1's "use the provided
-/// icons" ask). Images are embedded resources baked into this assembly (the app is meant to be self-
+/// Maps app state to the shipped icon images (Docs/ARCHITECTURE.md section 7). Images are embedded resources baked into this assembly (the app is meant to be self-
 /// sufficient enough that copying the EXE is about all that is needed), loaded via
 /// Assembly.GetManifestResourceStream rather than a loose file on disk. Looked at each PNG to decide its
 /// role rather than guessing from the filename alone:

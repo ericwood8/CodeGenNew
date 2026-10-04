@@ -4,7 +4,7 @@ using CodeGenNew.TemplateEngine;
 
 namespace CodeGenNew.App.Services;
 
-/// <summary> Loads/saves Settings.json (Docs/specs.md section 5.1). Password is never part of this -- the
+/// <summary> Loads/saves Settings.json (Docs/Reference.md section 1). Password is never part of this -- the
 /// Connection dialog always re-prompts for it.
 ///
 /// Settings.json itself lives under %LocalAppData%\CodeGenNew, not next to the exe -- the exe's own

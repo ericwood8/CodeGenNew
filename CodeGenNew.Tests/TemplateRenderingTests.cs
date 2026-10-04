@@ -686,7 +686,7 @@ public class TemplateRenderingTests
     // lookup drop-down calls this.<parent>Service.<method>() by NAME (it never sees TS_Service's own render), so
     // nothing catches the two templates drifting apart except a test that renders both and compares them directly.
     // TS_JunctionComponent/TS_DetailMasterComponent's own child-grid fetch is deliberately exempt (see
-    // Docs/specs.md section 11): it calls the API directly instead of assuming a parent service's shape at all.
+    // see its template notes): it calls the API directly instead of assuming a parent service's shape at all.
 
     private static string CalledServiceMethod(string componentTs, string serviceVar)
     {
@@ -1485,7 +1485,7 @@ public class TemplateRenderingTests
 
     // ------------------------------------------------------------------ name/active tables (Name + IsActive):
     // their real API is always hand-maintained and commonly has no plain getAll() at all (see TS_Service.tt's
-    // header comment and Docs/specs.md section 5.3's RequiresNotNameActiveTable), so every template that
+    // header comment and Docs/Reference.md section 3's RequiresNotNameActiveTable), so every template that
     // assumes a plain getAll()-style backend refuses one, matching API_Crud.tt's own long-standing refusal.
 
     [TestMethod]

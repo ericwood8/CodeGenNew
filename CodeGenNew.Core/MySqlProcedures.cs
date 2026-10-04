@@ -226,10 +226,10 @@ public static class MySqlProcedures
     {
         var pk = m.PrimaryKeyColumns;
         string body = "BEGIN\n" +
-                      "\tDECLARE EXIT HANDLER FOR 1451 SELECT -1 AS `Result`; -- blocked by a foreign key elsewhere\n" +
-                      "\tDECLARE EXIT HANDLER FOR SQLEXCEPTION SELECT -2 AS `Result`; -- the DELETE failed for another reason\n\n" +
+                      $"\tDECLARE EXIT HANDLER FOR {SqlErrorCodes.MySqlForeignKeyViolation} SELECT {DeleteResult.BlockedByForeignKey} AS `Result`; -- blocked by a foreign key elsewhere\n" +
+                      $"\tDECLARE EXIT HANDLER FOR SQLEXCEPTION SELECT {DeleteResult.Failed} AS `Result`; -- the DELETE failed for another reason\n\n" +
                       $"\tDELETE FROM {Table(m)} WHERE ({Eq(pk, P)});\n" +
-                      "\tSELECT 0 AS `Result`; -- deleted\n" +
+                      $"\tSELECT {DeleteResult.Deleted} AS `Result`; -- deleted\n" +
                       "END\n";
         return "-- Result: 0 = deleted, -1 = blocked by a foreign key elsewhere, -2 = failed for some other reason.\n" +
                Create(m, "Delete", pk.Select(In), body);
@@ -299,7 +299,7 @@ public static class MySqlProcedures
             o.Append("\tSET v_new_key = UUID(); -- a new key for the new row\n\n");
         o.Append($"\tIF NOT EXISTS (SELECT 1 FROM {Table(m)} AS {Q("src")} WHERE {keyMatch}) THEN\n");
         o.Append($"\t\tSET v_message = CONCAT('No {Message(m.TableName)} found to clone (', {keyDescription}, ').');\n");
-        o.Append("\t\tSIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_message, MYSQL_ERRNO = 55509;\n\tEND IF;\n\n");
+        o.Append($"\t\tSIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_message, MYSQL_ERRNO = {SqlErrorCodes.NoRowToClone};\n\tEND IF;\n\n");
         if (pairs.Count == 0)
         {
             o.Append($"\tINSERT INTO {Table(m)} () VALUES ();\n");

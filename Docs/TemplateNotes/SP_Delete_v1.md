@@ -5,7 +5,7 @@ The full design notes that used to head the template. The template keeps a short
 ```text
 Generates: <TableName>_Delete.sql
 
-Design notes (revised - see Docs/specs.md section 7.1 for the full history):
+Design notes (revised - see Docs/Reference.md section 6 for the full history):
   - The first version of this template pre-checked for dependent rows by calling spCanDelete
     into a temp table before every delete. That was removed deliberately: these procedures run
     OFTEN in production, and paying for a temp table + a dynamic-SQL loop across every FK
@@ -18,7 +18,7 @@ Design notes (revised - see Docs/specs.md section 7.1 for the full history):
   - Whether a *separate*, general-purpose dependency-lookup procedure like spCanDelete exists and
     is correctly shaped on the target database is verified once per (server, database) - not
     per delete call, and not by this generated procedure - by CodeGenNew itself at connection
-    time, cached in SpCanDeleteVerification.config (Docs/specs.md section 7.1/section 5.4). That
+    time, cached in SpCanDeleteVerification.config (Docs/Reference.md sections 6 and 4). That
     check is informational for the developer; it has no runtime relationship to this procedure.
   - Return convention: 0 = deleted successfully, -1 = blocked by a foreign key elsewhere,
     -2 = the DELETE failed for some other database-level reason.

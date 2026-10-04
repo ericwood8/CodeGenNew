@@ -48,8 +48,7 @@ pages through every row via the plain, unfiltered SearchAsync call.
 
 Unlike TS_Component.tt (a real, already-installed Angular Material dependency) there is no comparable
 WinUI3 library already in a real target project to point at (no real WinUI3 project has ever been
-checked the way the other stacks were - see Docs/specs.md's own note that none of the three
-WinUI3 CRUD-screen templates have ever been compiled into a live WinUI3 project). Community Toolkit's
+checked the way the other stacks were). Community Toolkit's
 DataGrid (CommunityToolkit.WinUI.UI.Controls.DataGrid) is the project owner's chosen future grid
 control, but swapping the ListView/Cells rendering for it is its own separate follow-up pass, not part
 of this one - this pass only adds a PaginationBar under the existing grid, exactly the same scope

@@ -12,7 +12,7 @@ public class TemplateResult
 
 /// <summary>
 /// Runs a .tt template in-process via Mono.TextTemplating, passing a TableModel in as a T4 parameter
-/// through the session dictionary (Docs/specs.md section 8, section 15.3). No intermediate file, no
+/// through the session dictionary (Docs/ARCHITECTURE.md section 5). No intermediate file, no
 /// caching/preprocessing -- loads and transforms the .tt file fresh from disk on every call, so editing
 /// a template takes effect on the very next generation.
 ///

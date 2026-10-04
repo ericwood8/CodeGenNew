@@ -2,7 +2,7 @@ using CodeGenNew.Core;
 
 namespace CodeGenNew.SchemaIntrospection;
 
-/// <summary> One row of SpecialLogicColumns.config (Docs/specs.md section 5.2). </summary>
+/// <summary> One row of SpecialLogicColumns.config (Docs/Reference.md section 2). </summary>
 public class SpecialLogicRule
 {
     public required string Category { get; init; }

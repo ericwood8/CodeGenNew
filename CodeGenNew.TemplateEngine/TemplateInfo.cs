@@ -2,7 +2,7 @@ using CodeGenNew.Core;
 
 namespace CodeGenNew.TemplateEngine;
 
-/// <summary> One discovered .tt file (Docs/specs.md section 8). </summary>
+/// <summary> One discovered .tt file (Docs/ARCHITECTURE.md section 5). </summary>
 public class TemplateInfo
 {
     public required string FilePath { get; init; }

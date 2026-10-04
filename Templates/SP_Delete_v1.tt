@@ -23,9 +23,10 @@
     // ==========================================================================================
     // SP_Delete_v1.tt
     // Generates: <TableName>_Delete.sql
-    // Attempts the DELETE and reports: 0 deleted, -1 blocked by a foreign key elsewhere (error 547), -2 failed for another database reason. No
+    // Attempts the DELETE and reports: 0 deleted, -1 blocked by a foreign key elsewhere, -2 failed for another database reason. No
     // dependency pre-check: the database's own constraints refuse it natively and fast. Needs a primary key (single, composite or GUID) and a table.
-    // SQL Server procedure, PostgreSQL function or MySQL procedure, by the source database.
+    // Writes a SQL Server procedure (blocked = error 547, read from @@ERROR), a PostgreSQL function (foreign_key_violation) or a MySQL procedure
+    // (error 1451), by the source database; the last two come from CodeGenNew.Core's PostgresProcedures and MySqlProcedures.
     // Full notes: Docs/TemplateNotes/SP_Delete_v1.md
 
     var pkColumns = Model.PrimaryKeyColumns;
@@ -51,12 +52,12 @@ BEGIN
 	DELETE FROM [<#= Model.SchemaName #>].[<#= Model.TableName #>] WHERE (<#= whereClause #>);
 
 	DECLARE @lngDeleteError INT = @@ERROR;
-	IF @lngDeleteError = 547
-		SELECT @lngReturn = -1;
+	IF @lngDeleteError = <#= SqlErrorCodes.SqlServerForeignKeyViolation #>
+		SELECT @lngReturn = <#= DeleteResult.BlockedByForeignKey #>;
 	ELSE IF @lngDeleteError <> 0
-		SELECT @lngReturn = -2;
+		SELECT @lngReturn = <#= DeleteResult.Failed #>;
 	ELSE
-		SELECT @lngReturn = 0;
+		SELECT @lngReturn = <#= DeleteResult.Deleted #>;
 
 	RETURN IsNull(@lngReturn, 0);
 END

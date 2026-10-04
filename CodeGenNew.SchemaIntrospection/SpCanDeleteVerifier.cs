@@ -14,7 +14,7 @@ public enum SpCanDeleteStatus
 /// with the exact 2-parameter signature CodeGenNew's SP_Delete.tt assumes elsewhere in the developer's
 /// own tooling (@deleteFromTable varchar, @deleteId int). This is purely a read-only informational
 /// check -- schema metadata only -- and has no effect on what SP_Delete.tt itself generates (see
-/// Docs/specs.md section 7.1); the result is cached in SpCanDeleteVerification.config so the live
+/// Docs/Reference.md section 6); the result is cached in SpCanDeleteVerification.config so the live
 /// check only ever runs once per database, not on every invocation.
 /// </summary>
 public static class SpCanDeleteVerifier
@@ -114,7 +114,7 @@ public static class SpCanDeleteVerifier
             writer.WriteLine("# SpCanDeleteVerification.config");
             writer.WriteLine("# Records, once per (server, database), whether spCanDelete exists with the exact");
             writer.WriteLine("# signature CodeGenNew's SP_Delete.tt assumes (@deleteFromTable varchar, @deleteId int).");
-            writer.WriteLine("# This is informational only -- see Docs/specs.md section 7.1 -- and has no effect on");
+            writer.WriteLine("# This is informational only -- see Docs/Reference.md section 6 -- and has no effect on");
             writer.WriteLine("# what SP_Delete.tt generates. Delete a line to force CodeGenNew to re-check that database.");
             writer.WriteLine("#");
             writer.WriteLine("# ServerName|DatabaseName|Status|CheckedAtUtc");

@@ -132,7 +132,7 @@ public static class Program
         if (options.Provider == DatabaseProvider.SqlServer)
         {
             // One-time (cached in SpCanDeleteVerification.config), read-only, informational check -- see
-            // Docs/specs.md section 7.1. Has no bearing on what gets generated; only reported when a fresh
+            // Docs/Reference.md section 6. Has no bearing on what gets generated; only reported when a fresh
             // (uncached) check actually ran, so a database already recorded as checked stays silent.
             string spCanDeleteConfigPath = Path.Combine(baseDirectory, settings.SpCanDeleteVerificationConfigPath);
             await using (var probeConnection = connectionRequest.CreateConnection())

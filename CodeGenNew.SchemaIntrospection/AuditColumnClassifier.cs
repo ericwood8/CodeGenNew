@@ -3,7 +3,7 @@ using CodeGenNew.Core;
 namespace CodeGenNew.SchemaIntrospection;
 
 /// <summary> Name-pattern match for audit/tracking columns, used to exclude them from DisplayColumnSelector
-/// (Docs/specs.md section 6). </summary>
+/// (Docs/ARCHITECTURE.md section 4). </summary>
 public static class AuditColumnClassifier
 {
     public static bool IsAuditColumn(this string columnName) =>

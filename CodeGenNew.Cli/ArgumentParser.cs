@@ -145,14 +145,14 @@ public static class ArgumentParser
     public static void PrintUsage(TextWriter writer)
     {
         writer.WriteLine("""
-            codegen - CodeGenNew command-line interface (Docs/specs.md section 10)
+            codegen - CodeGenNew command-line interface (Docs/ARCHITECTURE.md section 7)
 
             codegen is READ-ONLY against the target database: it introspects schema metadata and writes
             a generated file to the output directory. It never creates, alters, or executes anything in
             the target database, and never modifies files in any other project. What you do with the
             generated output is entirely up to you.
 
-            Whole project (every file of the chosen stacks in one run; see Docs/specs.md item 57):
+            Whole project (every file of the chosen stacks in one run; see Docs/ARCHITECTURE.md section 6):
               codegen generate -S <server> -d <database> (-E | -U <user> [-P <password>]) --project <name> -o <dir>
                        [--stack api,winui3,react,angular] [--essentials [--groups a,b] [--replace]] [--only SP_Search,CS_Entity] [--table Customer,Item]
                        [--dry-run] [--diff] [--delete-stale] [--build] [--test]

@@ -8,7 +8,7 @@ public class RetryOutcome
 }
 
 /// <summary>
-/// Generic retry-then-halt-and-beep helper (Docs/specs.md section 10.1). Used around the read-only
+/// Generic retry-then-halt-and-beep helper (Docs/ARCHITECTURE.md section 7). Used around the read-only
 /// schema-introspection connection. Repeated failure across MaxAttempts tries usually means an
 /// environmental problem (e.g. the database is unreachable), not a bug worth silently retrying
 /// forever -- so it stops and gets a human's attention instead. This never wraps anything that writes

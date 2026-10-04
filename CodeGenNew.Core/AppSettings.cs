@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace CodeGenNew.Core;
 
-/// <summary> Maps directly to Settings.json (Docs/specs.md section 5.1). Password is never part of this -- always re-prompted. </summary>
+/// <summary> Maps directly to Settings.json (Docs/Reference.md section 1). Password is never part of this -- always re-prompted. </summary>
 public class AppSettings
 {
     public string OutputDirectory { get; set; } = "Output";

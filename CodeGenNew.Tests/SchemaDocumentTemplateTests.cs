@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Data;
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
@@ -201,6 +202,20 @@ public class SchemaDocumentTemplateTests
         Expect.Contains(md, "    Customer {\n        int CustomerId PK\n        int CustomerStatusId FK\n        nvarchar Name\n        varchar BillingEmail \"null\"");
         Expect.Contains(md, "decimal CreditLimit \"null\"");
         Assert.IsTrue(md.TrimEnd().EndsWith("```"));
+    }
+
+    [TestMethod]
+    public async Task Every_line_of_the_diagram_fits_the_erDiagram_grammar()
+    {
+        string md = await Render("MD_Erd_v1.tt", Database());
+        var lines = md.Replace("\r\n", "\n").Split('\n').SkipWhile(l => l != "erDiagram").Skip(1).TakeWhile(l => l != "```").Where(l => l.Length > 0).ToList();
+        Assert.IsGreaterThan(5, lines.Count, "no diagram lines were found");
+
+        var entity = new Regex(@"^    (\w+|""[^""]+"") \{$");
+        var attribute = new Regex(@"^        \w+ \w+( (PK|FK|UK)(,(PK|FK|UK))*)?( ""null"")?$");
+        var relationship = new Regex(@"^    \w+ (\|\||\|o)--o\{ \w+ : ""[^""]+""$");
+        foreach (string line in lines)
+            Assert.IsTrue(line == "    }" || entity.IsMatch(line) || attribute.IsMatch(line) || relationship.IsMatch(line), "not erDiagram syntax: " + line);
     }
 
     [TestMethod]

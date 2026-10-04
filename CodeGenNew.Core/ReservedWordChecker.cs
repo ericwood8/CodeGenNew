@@ -1,6 +1,6 @@
 namespace CodeGenNew.Core;
 
-/// <summary> Flags table/column names that collide with SQL Server or C# reserved words (Docs/specs.md section 9.4). </summary>
+/// <summary> Flags table/column names that collide with SQL Server or C# reserved words (Docs/ARCHITECTURE.md section 7). </summary>
 public static class ReservedWordChecker
 {
     // ODBC/T-SQL reserved keywords (Microsoft Learn: "Reserved Keywords (Transact-SQL)" + ODBC reserved words).
