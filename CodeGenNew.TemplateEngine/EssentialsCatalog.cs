@@ -44,13 +44,31 @@ public static class EssentialsCatalog
     public static string TargetFolder(string outputDirectory, ProjectSettings project, EssentialsGroup group) =>
         Path.Combine(outputDirectory, project.OutputFolderOf(group.Stack), group.Template.Config.OutputFolderFor(group.Stack));
 
+    /// <summary> The files the groups assume (<c>Needs</c> in their configs) that are not under the stack's folder, one warning per missing file, saying which group needs it and which template writes
+    /// it. Called after the groups were written, so a file one group writes for another is not reported. </summary>
+    public static List<string> MissingPartners(IEnumerable<EssentialsGroup> groups, ProjectSettings project, string outputDirectory)
+    {
+        var warnings = new List<string>();
+        string context = project.ContextName ?? (project.ProjectName ?? "App") + "Context";
+        foreach (var group in groups)
+            foreach (string need in group.Template.Config.Needs)
+            {
+                string relative = need.Replace("{Context}", context);
+                string path = Path.Combine(outputDirectory, project.OutputFolderOf(group.Stack), relative);
+                if (!File.Exists(path))
+                    warnings.Add($"{group.Stack}/{group.Name} assumes {relative}, which is not under {Path.Combine(outputDirectory, project.OutputFolderOf(group.Stack))} yet (codegen generate writes it).");
+            }
+        return warnings.Distinct().ToList();
+    }
+
     /// <summary> Runs the chosen groups and writes their files. Existing files are left alone unless <paramref name="replace"/> is set, because these files are edited by hand after the
     /// first generation. A group whose template fails reports its errors and does not stop the others. </summary>
     public static async Task<EssentialsRun> GenerateAsync(IEnumerable<EssentialsGroup> groups, ProjectSettings project, string outputDirectory, bool replace = false, bool dryRun = false,
-        CancellationToken cancellationToken = default)
+        bool withDiff = false, CancellationToken cancellationToken = default)
     {
         var run = new EssentialsRun();
-        foreach (var group in groups)
+        var chosen = groups.ToList();
+        foreach (var group in chosen)
         {
             var result = await TemplateRunner.RunAsync(group.Template.FilePath, project, cancellationToken);
             if (!result.Success)
@@ -59,14 +77,18 @@ public static class EssentialsCatalog
                 continue;
             }
             var files = OutputWriter.FilesOf(group.Template, project.ProjectName ?? "Project", result.GeneratedText!);
-            run.Outcomes.AddRange(await OutputWriter.WriteAsync(TargetFolder(outputDirectory, project, group), files, createOnly: !replace, dryRun: dryRun, cancellationToken));
+            run.Outcomes.AddRange(await OutputWriter.WriteAsync(TargetFolder(outputDirectory, project, group), files, createOnly: !replace, dryRun: dryRun, withDiff: withDiff, stack: group.Stack,
+                cancellationToken: cancellationToken));
         }
+        run.Warnings.AddRange(MissingPartners(chosen, project, outputDirectory));
         return run;
     }
 }
 
 public sealed class EssentialsRun
 {
+    /// <summary> A file a group assumes (its <c>Needs</c>) that is not on disk and was not written by this run. </summary>
+    public List<string> Warnings { get; } = [];
     public List<FileOutcome> Outcomes { get; } = [];
     public List<(EssentialsGroup Group, IReadOnlyList<string> Errors)> Failures { get; } = [];
     public bool Success => Failures.Count == 0;

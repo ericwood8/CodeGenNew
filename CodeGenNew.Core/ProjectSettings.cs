@@ -26,7 +26,8 @@ public class ProjectSettings
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
         "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
-        "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle"
+        "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
+        "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "TestApi", "TestWinUI3", "TestReact", "TestAngular"
     ];
 
     private readonly Dictionary<string, string> _values;
@@ -239,6 +240,14 @@ public class ProjectSettings
     public int ApiPort => int.TryParse(Explicit("ApiPort"), out int port) ? port : 5080;
     public int DevPort(string stack) => int.TryParse(Explicit("DevPort"), out int port) ? port : stack.Equals("Angular", StringComparison.OrdinalIgnoreCase) ? 4200 : 5173;
     public string ProjectTitle => Explicit("ProjectTitle") ?? System.Text.RegularExpressions.Regex.Replace(ProjectName ?? "My App", "(?<=[a-z0-9])(?=[A-Z])", " ");
+
+    /// <summary> The command a stack's build or test step runs after a generate (<c>BuildReact=npm run build</c>, <c>TestApi=dotnet test</c>); null when the project says nothing (the stack's
+    /// default applies), an empty string or <c>none</c> to switch the step off. <paramref name="step"/> is <c>build</c> or <c>test</c>. </summary>
+    public string? StepCommand(string step, string stack)
+    {
+        string key = (step.Equals("test", StringComparison.OrdinalIgnoreCase) ? "Test" : "Build") + stack;
+        return _values.FirstOrDefault(v => v.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Value;
+    }
 
     public string ApiFolder => Explicit("ApiFolder") ?? "api";
     public string ModelsFolder => Explicit("ModelsFolder") ?? "models";

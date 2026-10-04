@@ -1,0 +1,18 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TS_EssentialGit_v1.tt
+    // Generates: .gitignore   (no table, no database: an essentials group; the output folder is the Angular app's own folder)
+    // What an Angular app keeps out of version control: node_modules, the build output, the Angular CLI cache and local editor files.
+    // ==========================================================================================
+#>
+@@@FILE .gitignore@@@
+node_modules/
+dist/
+.angular/
+out-tsc/
+*.log
+.vscode/*
+!.vscode/extensions.json

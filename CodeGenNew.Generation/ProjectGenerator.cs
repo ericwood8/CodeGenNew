@@ -19,8 +19,15 @@ public sealed class GenerateOptions
     /// <summary> The essentials groups to write; null = every group that is ticked by default. </summary>
     public IReadOnlyList<string>? EssentialsGroups { get; init; }
     public bool ReplaceEssentials { get; init; }
+    /// <summary> Carry the line diff of every file that exists with other content (a dry run then shows what regenerating would change). </summary>
+    public bool WithDiff { get; init; }
     /// <summary> Run only these templates (by name, <c>SP_Search</c> or <c>CS_Entity_v1.tt</c>); null = the whole plan. </summary>
     public IReadOnlyList<string>? OnlyTemplates { get; init; }
+    /// <summary> Run only for these tables (by generated or database name): a quick regenerate after one table changed. The templates that cover the whole database (the context, the
+    /// registration, the screens list) and the essentials are left out, and no file is reported stale. </summary>
+    public IReadOnlyList<string>? Tables { get; init; }
+    /// <summary> Delete the stale files (files an earlier run wrote that the plan no longer produces) that nobody has edited since. Edited ones are only reported. </summary>
+    public bool DeleteStale { get; init; }
 }
 
 /// <summary> One run of one template over one table (or the whole database): its files and how each went. </summary>
@@ -35,6 +42,10 @@ public sealed class GenerateReport
     public List<string> Errors { get; } = [];
     public List<string> Warnings { get; } = [];
     public EssentialsRun? Essentials { get; set; }
+    /// <summary> Files an earlier whole-project run wrote that this run does not produce (a table or template that is gone). Empty after a partial run (--only, --table). </summary>
+    public List<StaleFile> Stale { get; } = [];
+    /// <summary> True when the run wrote <c>.codegen-manifest.json</c> (not on a dry run); false means the next run has no list to compare with. </summary>
+    public bool ManifestWritten { get; set; }
 
     public IEnumerable<FileOutcome> AllFiles => Steps.SelectMany(s => s.Files).Concat(Essentials?.Outcomes ?? []);
     public int Count(FileOutcomeKind kind) => AllFiles.Count(f => f.Kind == kind);
@@ -62,6 +73,14 @@ public static class ProjectGenerator
 
         var templates = TemplateCatalog.Discover(templatesDirectory);
         var steps = ProjectPlan.Build(templates, database, project, options.Stacks);
+        bool partial = options.OnlyTemplates is { Count: > 0 } || options.Tables is { Count: > 0 };
+        if (options.Tables is { Count: > 0 } wantedTables)
+        {
+            foreach (string name in wantedTables.Where(n => !database.Tables.Any(t => t.TableName.Equals(n, StringComparison.OrdinalIgnoreCase) || t.DbTableName.Equals(n, StringComparison.OrdinalIgnoreCase))))
+                report.Warnings.Add($"--table {name}: no such table in [{options.Schema}].");
+            bool Wanted(string table) => database.Tables.Any(t => t.TableName == table && wantedTables.Any(n => n.Equals(t.TableName, StringComparison.OrdinalIgnoreCase) || n.Equals(t.DbTableName, StringComparison.OrdinalIgnoreCase)));
+            steps = steps.Where(s => !s.IsDatabaseLevel).Select(s => s with { TableNames = s.TableNames.Where(Wanted).ToList() }).Where(s => s.TableNames.Count > 0).ToList();
+        }
         if (options.OnlyTemplates is { Count: > 0 } only)
         {
             var wanted = only.Select(n => TemplateCatalog.ParseName(n.EndsWith(".tt", StringComparison.OrdinalIgnoreCase) ? n[..^3] : n).BaseName).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -111,7 +130,9 @@ public static class ProjectGenerator
             }
         }
 
-        if (options.Essentials)
+        await UpdateManifestAsync(report, options, partial);
+
+        if (options.Essentials && options.Tables is not { Count: > 0 })
         {
             var groups = options.Stacks.SelectMany(s => EssentialsCatalog.Groups(templatesDirectory, s)).ToList();
             if (options.EssentialsGroups is { Count: > 0 } named)
@@ -119,9 +140,60 @@ public static class ProjectGenerator
             else
                 groups = groups.Where(g => g.DefaultOn).ToList();
             progress?.Invoke("Essentials...");
-            report.Essentials = await EssentialsCatalog.GenerateAsync(groups, project, options.OutputDirectory, options.ReplaceEssentials, options.DryRun, cancellationToken);
+            report.Essentials = await EssentialsCatalog.GenerateAsync(groups, project, options.OutputDirectory, options.ReplaceEssentials, options.DryRun, options.WithDiff, cancellationToken);
         }
         return report;
+    }
+
+    /// <summary> Compares what this run produced with the manifest of the last one: files that are no longer produced are stale; then saves the new manifest (not on a dry run). </summary>
+    private static Task UpdateManifestAsync(GenerateReport report, GenerateOptions options, bool partial)
+    {
+        string output = options.OutputDirectory;
+        var produced = new Dictionary<string, ManifestEntry>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in report.Steps.SelectMany(s => s.Files).Where(f => f.Kind != FileOutcomeKind.Skipped && f.Content is not null))
+        {
+            string relative = GenerationManifest.Relative(output, file.FullPath);
+            produced[relative] = new ManifestEntry(relative, file.Stack ?? "", GenerationManifest.Hash(file.Content!));
+        }
+
+        var manifest = GenerationManifest.Load(output);
+        var scope = options.Stacks.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (scope.Contains("Api") || scope.Contains("WinUI3"))
+            scope.Add("Sql");
+
+        var kept = new List<ManifestEntry>();
+        foreach (var old in manifest.Entries)
+        {
+            if (produced.ContainsKey(old.Path))
+                continue;
+            if (partial || !scope.Contains(old.Stack))
+            {
+                kept.Add(old);
+                continue;
+            }
+            string full = Path.GetFullPath(Path.Combine(output, old.Path));
+            bool exists = File.Exists(full);
+            bool edited = exists && GenerationManifest.Hash(File.ReadAllText(full)) != old.Sha256;
+            bool deleted = false;
+            if (!exists)
+                continue;   // already gone: nothing to report or remember
+            if (options.DeleteStale && !options.DryRun && !edited)
+            {
+                File.Delete(full);
+                deleted = true;
+            }
+            report.Stale.Add(new StaleFile(old.Path, old.Stack, exists, edited, deleted));
+            if (!deleted)
+                kept.Add(old);   // still on disk: it stays on the list until someone deals with it
+        }
+
+        if (!options.DryRun)
+        {
+            manifest.Entries = [.. kept, .. produced.Values];
+            manifest.Save(output);
+            report.ManifestWritten = true;
+        }
+        return Task.CompletedTask;
     }
 
     /// <summary> Writes one template's files into the folder of each stack it belongs to (the SQL root once, however many stacks share it). </summary>
@@ -136,7 +208,7 @@ public static class ProjectGenerator
             string folder = Path.Combine(options.OutputDirectory, options.Project.OutputFolderOf(root), config.OutputFolderFor(stack));
             if (!written.Add(Path.GetFullPath(folder)))
                 continue;
-            outcomes.AddRange(await OutputWriter.WriteAsync(folder, files, dryRun: options.DryRun, cancellationToken: cancellationToken));
+            outcomes.AddRange(await OutputWriter.WriteAsync(folder, files, dryRun: options.DryRun, withDiff: options.WithDiff, stack: root, cancellationToken: cancellationToken));
         }
         return outcomes;
     }

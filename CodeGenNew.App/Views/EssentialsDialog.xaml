@@ -55,6 +55,9 @@
                  Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" />
 
         <TextBlock Text="{x:Bind ViewModel.Summary, Mode=OneWay}" FontWeight="SemiBold" />
-        <ListView ItemsSource="{x:Bind ViewModel.Results}" MaxHeight="220" SelectionMode="None" />
+        <ListView ItemsSource="{x:Bind ViewModel.Results}" SelectedItem="{x:Bind ViewModel.SelectedResult, Mode=TwoWay}" MaxHeight="200" />
+        <TextBox Text="{x:Bind ViewModel.Diff, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" MaxHeight="200" FontFamily="Consolas"
+                 Header="What differs from the file on disk (the selected file; Replace would overwrite it)" Visibility="{x:Bind ViewModel.HasDiff, Mode=OneWay}"
+                 ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" />
     </StackPanel>
 </ContentDialog>

@@ -91,6 +91,12 @@
                                 ToolTipService.ToolTip="Generate for the whole database: DbContext, API registration (Alt+D)">
                             <FontIcon Glyph="&#xE943;" FontSize="18" />
                         </Button>
+                        <!-- Every file of a project's stacks for every table, in one run (the engine behind codegen generate). -->
+                        <Button x:Name="GenerateAllButton" Background="Transparent" BorderThickness="0" Padding="6"
+                                AccessKey="G" Click="OnGenerateAllClick" IsEnabled="{x:Bind ViewModel.IsConnected, Mode=OneWay}"
+                                ToolTipService.ToolTip="Generate everything for a project: every stack, every table, one run (Alt+G)">
+                            <FontIcon Glyph="&#xE768;" FontSize="18" />
+                        </Button>
                         <Button Background="Transparent" BorderThickness="0" Padding="6"
                                 AccessKey="R" Command="{x:Bind ViewModel.RefreshCommand}"
                                 ToolTipService.ToolTip="Reload the table list from the connected database (Alt+R)">

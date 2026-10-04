@@ -42,7 +42,19 @@ public partial class EssentialsDialogViewModel : StatusMessageViewModel
     public string Title { get; }
     public ObservableCollection<string> Projects { get; } = [];
     public ObservableCollection<EssentialsGroupRowViewModel> Groups { get; } = [];
-    public ObservableCollection<string> Results { get; } = [];
+    public ObservableCollection<ResultRow> Results { get; } = [];
+
+    [ObservableProperty]
+    private ResultRow? _selectedResult;
+
+    public string Diff => SelectedResult?.Diff ?? "";
+    public bool HasDiff => !string.IsNullOrEmpty(Diff);
+
+    partial void OnSelectedResultChanged(ResultRow? value)
+    {
+        OnPropertyChanged(nameof(Diff));
+        OnPropertyChanged(nameof(HasDiff));
+    }
 
     [ObservableProperty]
     private string _selectedProject = "";
@@ -99,15 +111,17 @@ public partial class EssentialsDialogViewModel : StatusMessageViewModel
             return false;
         }
 
-        var run = await EssentialsCatalog.GenerateAsync(chosen, project, OutputDirectory, Replace);
+        var run = await EssentialsCatalog.GenerateAsync(chosen, project, OutputDirectory, Replace, withDiff: true);
         string root = System.IO.Path.GetFullPath(OutputDirectory);
         foreach (var outcome in run.Outcomes)
         {
             string shown = outcome.FullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase) ? outcome.FullPath[root.Length..].TrimStart('\\', '/') : outcome.FullPath;
-            Results.Add($"{outcome.Kind}: {shown}");
+            Results.Add(new ResultRow($"{outcome.Kind}: {shown}" + (outcome.Diff is not null && outcome.Kind == FileOutcomeKind.Skipped ? " (differs: select it to see how)" : ""), outcome.Diff));
         }
         foreach (var (group, errors) in run.Failures)
-            Results.Add($"Failed: {group.Name}: {string.Join(" | ", errors)}");
+            Results.Add(new ResultRow($"Failed: {group.Name}: {string.Join(" | ", errors)}"));
+        foreach (string warning in run.Warnings)
+            Results.Add(new ResultRow($"Warning: {warning}"));
 
         int created = run.Outcomes.Count(o => o.Kind == FileOutcomeKind.Created), updated = run.Outcomes.Count(o => o.Kind == FileOutcomeKind.Updated);
         int kept = run.Outcomes.Count(o => o.Kind is FileOutcomeKind.Skipped or FileOutcomeKind.Unchanged);

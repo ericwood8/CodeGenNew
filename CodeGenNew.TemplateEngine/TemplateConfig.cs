@@ -101,6 +101,10 @@ public class TemplateConfig
     public string? Description { get; init; }
     public bool EssentialsDefault { get; init; } = true;
 
+    /// <summary> Files (relative to the stack's project folder, <c>{Context}</c> standing for the context's name) that the files of an essentials group assume another run has written
+    /// (<c>Needs=MainWindow.Screens.cs,Data/{Context}.cs</c>); a run warns when one is missing. </summary>
+    public IReadOnlyList<string> Needs { get; init; } = [];
+
     /// <summary> Defaults to false. A template that shows the display columns of foreign-keyed tables (SP_Lookup) asks
     /// for them to be looked up (ForeignKeyModel.ReferencedDisplayColumns). </summary>
     public bool NeedsReferencedDisplayColumns { get; init; }
@@ -169,6 +173,7 @@ public class TemplateConfig
         var outputFolders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         string? essentialsGroup = null, description = null;
         bool essentialsDefault = true;
+        var needs = new List<string>();
         string? outputName = null;
 
         foreach (string rawLine in File.ReadAllLines(ttConfigPath))
@@ -223,6 +228,8 @@ public class TemplateConfig
                 essentialsGroup = value.Length > 0 ? value : null;
             else if (key.EqualsIgnoreCase("Description"))
                 description = value.Length > 0 ? value : null;
+            else if (key.EqualsIgnoreCase("Needs"))
+                needs = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
             else if (key.EqualsIgnoreCase("EssentialsDefault"))
                 essentialsDefault = boolValue;
             else if (key.EqualsIgnoreCase("NeedsReferencedDisplayColumns"))
@@ -253,6 +260,7 @@ public class TemplateConfig
             EssentialsGroup = essentialsGroup,
             Description = description,
             EssentialsDefault = essentialsDefault,
+            Needs = needs,
             OutputName = outputName
         };
     }

@@ -34,6 +34,13 @@ public class CliOptions
     public bool DryRun { get; set; }
     /// <summary> --list: print the stacks and their essentials groups. </summary>
     public bool List { get; set; }
+    /// <summary> --delete-stale: delete the files an earlier run wrote that the plan no longer produces (never one that was edited since). </summary>
+    public bool DeleteStale { get; set; }
+    /// <summary> --build / --test: build and test the stacks after generating. </summary>
+    public bool Build { get; set; }
+    public bool Test { get; set; }
+    /// <summary> --diff: print what differs in every file that exists with other content. </summary>
+    public bool Diff { get; set; }
     /// <summary> --projects-dir: the folder of project files; null uses Settings.json's ProjectsDirectory next to the exe. </summary>
     public string? ProjectsDirectory { get; set; }
     /// <summary> Individual project-setting flags (--view-ns and so on), keyed by ProjectSettings key; they win over the project file. </summary>

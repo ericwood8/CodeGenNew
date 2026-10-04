@@ -1,0 +1,42 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // CS_EssentialEditorConfig_v1.tt
+    // Generates: .editorconfig and .gitignore   (no table, no database: an essentials group)
+    // The two small files a .NET project folder starts with: an .editorconfig that makes the style rules the generated C# follows (collection expressions, target-typed new, file-scoped namespaces)
+    // warnings in the IDE, and a .gitignore for a Visual Studio / dotnet project (bin, obj, .vs, user files, publish output).
+    // ==========================================================================================
+#>
+@@@FILE .editorconfig@@@
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{json,xml,xaml,csproj,props,targets}]
+indent_size = 2
+
+[*.cs]
+# the generated code uses collection expressions, target-typed new and file-scoped namespaces: the IDE keeps hand-written code to the same style
+dotnet_style_prefer_collection_expression = true:warning
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_implicit_object_creation_when_type_is_apparent = true:suggestion
+dotnet_diagnostic.IDE0028.severity = warning
+dotnet_diagnostic.IDE0090.severity = suggestion
+@@@FILE .gitignore@@@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.rsuser
+publish/
+*.log
+.vscode/*
+!.vscode/extensions.json

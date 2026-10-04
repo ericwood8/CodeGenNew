@@ -173,6 +173,17 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary> The view model of the Generate All dialog for the connected database (its main schema: the one most tables are in), or null when nothing is connected. </summary>
+    public GenerateAllDialogViewModel? CreateGenerateAllViewModel(Microsoft.UI.Dispatching.DispatcherQueue dispatcher)
+    {
+        if (_connectionRequest is not { } request || Tables.Count == 0)
+            return null;
+        string schema = Tables.GroupBy(t => t.SchemaName).OrderByDescending(g => g.Count()).First().Key;
+        return new GenerateAllDialogViewModel(_settings.ProjectsDirectory, _settings.TemplatesDirectory, _settings.OutputDirectory, _settings.Current.LastProject,
+            project => SchemaProviderFactory.Create(request, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns),
+            schema, request.DatabaseName, dispatcher);
+    }
+
     /// <summary> Every file the last successful RunTemplateAsync wrote (most templates write one; the TS_ templates several). </summary>
     public IReadOnlyList<string> LastOutputFiles { get; private set; } = [];
 

@@ -1,0 +1,36 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // API_EssentialLaunch_v1.tt
+    // Generates: Properties/launchSettings.json and <ProjectName>.Api.http   (no table, no database: an essentials group)
+    // How the API starts from Visual Studio or `dotnet run` (an http profile on the project's ApiPort, Development environment) and a .http file with one request to try it
+    // (the route of the project's first screen, when the Screens setting names one).
+    // ==========================================================================================
+    string projectName = Project.ProjectName ?? "MyApp";
+    string firstRoute = "";
+    if (Project.Screens.Length > 0)
+        firstRoute = "/api/" + Project.Screens[0].Pluralize().ToLowerInvariant();
+#>
+@@@FILE Properties/launchSettings.json@@@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "http": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:<#= Project.ApiPort #>",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
+@@@FILE <#= projectName #>.Api.http@@@
+@host = http://localhost:<#= Project.ApiPort #>
+
+### The first screen's rows (page 1)
+GET {{host}}<#= firstRoute.Length > 0 ? firstRoute + "/search?pageNumber=1&pageSize=20" : "/api/<table>s/search?pageNumber=1&pageSize=20" #>
+Accept: application/json

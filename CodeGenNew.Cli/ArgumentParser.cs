@@ -19,7 +19,7 @@ public static class ArgumentParser
         var stacks = new List<string>();
         var groups = new List<string>();
         var only = new List<string>();
-        bool essentials = false, replace = false, dryRun = false, list = false;
+        bool essentials = false, replace = false, dryRun = false, list = false, deleteStale = false, build = false, test = false, diff = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -56,6 +56,10 @@ public static class ArgumentParser
                 case "--replace": replace = true; break;
                 case "--dry-run": dryRun = true; break;
                 case "--list": list = true; break;
+                case "--delete-stale": deleteStale = true; break;
+                case "--build": build = true; break;
+                case "--test": test = true; break;
+                case "--diff": diff = true; break;
                 case "--projects-dir": projectsDirectory = Value(); break;
                 case "--set":
                     string setting = Value();
@@ -110,6 +114,10 @@ public static class ArgumentParser
             Replace = replace,
             DryRun = dryRun,
             List = list,
+            DeleteStale = deleteStale,
+            Build = build,
+            Test = test,
+            Diff = diff,
             OutputDirectory = outputDirectory,
             Trusted = trusted,
             UserName = userName,
@@ -146,7 +154,8 @@ public static class ArgumentParser
 
             Whole project (every file of the chosen stacks in one run; see Docs/specs.md item 57):
               codegen generate -S <server> -d <database> (-E | -U <user> [-P <password>]) --project <name> -o <dir>
-                       [--stack api,winui3,react,angular] [--essentials [--groups a,b] [--replace]] [--only SP_Search,CS_Entity] [--dry-run]
+                       [--stack api,winui3,react,angular] [--essentials [--groups a,b] [--replace]] [--only SP_Search,CS_Entity] [--table Customer,Item]
+                       [--dry-run] [--diff] [--delete-stale] [--build] [--test]
             The files no table drives (App, MainWindow, styles, Program.cs ...), without a database:
               codegen essentials --stack winui3|react|angular|api [--groups app,mainwindow] --project <name> -o <dir> [--replace] [--dry-run]
               codegen essentials --list

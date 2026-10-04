@@ -123,6 +123,18 @@ public sealed partial class MainWindow : Window
         await dialog.ShowAsync();
     }
 
+    private async void OnGenerateAllClick(object sender, RoutedEventArgs e)
+    {
+        var dialogViewModel = ViewModel.CreateGenerateAllViewModel(DispatcherQueue);
+        if (dialogViewModel is null)
+        {
+            ViewModel.StatusMessage = "Connect to a database first.";
+            return;
+        }
+        var dialog = new GenerateAllDialog(dialogViewModel, this) { XamlRoot = Content.XamlRoot };
+        await dialog.ShowAsync();
+    }
+
     private async void OnManageTemplatesClick(object sender, RoutedEventArgs e)
     {
         var dialogViewModel = new TemplateManagementViewModel(_settingsService);

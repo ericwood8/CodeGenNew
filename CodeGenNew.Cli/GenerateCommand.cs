@@ -97,8 +97,11 @@ public static class GenerateCommand
         }
 
         Console.WriteLine($"Essentials: {string.Join(", ", groups.Select(g => $"{g.Stack}/{g.Name}"))}{(options.DryRun ? " (dry run)" : "")}");
-        var run = await EssentialsCatalog.GenerateAsync(groups, project, outputDirectory, options.Replace, options.DryRun);
+        var run = await EssentialsCatalog.GenerateAsync(groups, project, outputDirectory, options.Replace, options.DryRun, options.Diff);
         PrintFiles(run.Outcomes, outputDirectory);
+        PrintDiffs(run.Outcomes);
+        foreach (string warning in run.Warnings)
+            Console.WriteLine($"Warning: {warning}");
         foreach (var (group, errors) in run.Failures)
             Console.Error.WriteLine($"Error: {group.Stack}/{group.Name} failed: {string.Join(" | ", errors)}");
         if (!options.Replace && run.Outcomes.Any(o => o.Kind == FileOutcomeKind.Skipped))
@@ -130,14 +133,23 @@ public static class GenerateCommand
         {
             Project = project, Stacks = stacks, OutputDirectory = outputDirectory, DatabaseName = options.Database, Schema = options.Schema,
             DryRun = options.DryRun, Essentials = options.Essentials, EssentialsGroups = options.Groups.Count > 0 ? options.Groups : null, ReplaceEssentials = options.Replace,
-            OnlyTemplates = options.Only.Count > 0 ? options.Only : null
-        });
+            OnlyTemplates = options.Only.Count > 0 ? options.Only : null,
+            Tables = string.IsNullOrWhiteSpace(options.Table) ? null : options.Table.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+            DeleteStale = options.DeleteStale, WithDiff = options.Diff
+        }, progress: null);
 
         foreach (string warning in report.Warnings)
             Console.WriteLine($"Warning: {warning}");
         PrintFiles(report.AllFiles.Where(f => f.Kind != FileOutcomeKind.Unchanged), outputDirectory);
+        PrintDiffs(report.AllFiles);
         foreach (string refusal in report.Refusals)
             Console.WriteLine($"Skipped: {refusal}");
+        foreach (var stale in report.Stale)
+            Console.WriteLine(stale.Deleted ? $"Deleted    {stale.Path} (stale: no table or template produces it any more)"
+                : $"Stale      {stale.Path} ({(stale.Edited ? "edited since it was generated, so it is left alone" : "no table or template produces it any more; --delete-stale removes it")})");
+        if (report.Essentials is { } shown)
+            foreach (string warning in shown.Warnings)
+                Console.WriteLine($"Warning: {warning}");
         foreach (string error in report.Errors)
             Console.Error.WriteLine($"Error: {error}");
         if (report.Essentials is { } essentials)
@@ -146,7 +158,31 @@ public static class GenerateCommand
 
         Console.WriteLine($"Done: {report.Steps.Count} template runs, {report.Count(FileOutcomeKind.Created)} files created, {report.Count(FileOutcomeKind.Updated)} updated, " +
                           $"{report.Count(FileOutcomeKind.WouldWrite)} would be written, {report.Count(FileOutcomeKind.Unchanged)} unchanged, {report.Count(FileOutcomeKind.Skipped)} skipped, {report.Refusals.Count} refused.");
-        return report.Success ? 0 : 1;
+        if (!report.ManifestWritten && !options.DryRun)
+            Console.WriteLine("Note: the manifest was not written.");
+
+        bool built = true;
+        if ((options.Build || options.Test) && !options.DryRun)
+        {
+            var results = await ProjectBuilder.RunAsync(project, stacks, outputDirectory, options.Build, options.Test, message => Console.WriteLine($"  {message}"));
+            foreach (var result in results)
+            {
+                Console.WriteLine($"{(result.Success ? "ok  " : "FAIL")} {result.Stack} {result.Step}: {result.Command}");
+                foreach (string line in result.Summary.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                    Console.WriteLine($"       {line}");
+            }
+            built = results.All(r => r.Success);
+        }
+        return report.Success && built ? 0 : 1;
+    }
+
+    private static void PrintDiffs(IEnumerable<FileOutcome> outcomes)
+    {
+        foreach (var outcome in outcomes.Where(o => o.Diff is not null))
+        {
+            Console.WriteLine($"--- {outcome.Kind}: {outcome.FullPath}");
+            Console.Write(outcome.Diff);
+        }
     }
 
     private static void PrintFiles(IEnumerable<FileOutcome> outcomes, string outputDirectory)

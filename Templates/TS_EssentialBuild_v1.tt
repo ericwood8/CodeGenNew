@@ -1,0 +1,190 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TS_EssentialBuild_v1.tt
+    // Generates: package.json, angular.json, tsconfig.json, tsconfig.app.json and tsconfig.spec.json   (no table, no database: an essentials group; the output folder is the Angular app's own folder)
+    // The build files of an Angular app as `ng new` writes them for Angular 22 (standalone components, the unit-test builder with Vitest, no Karma), plus Angular Material, whose prebuilt theme is a
+    // style of the build, and the dev server's proxy start script. The @angular package ranges follow the project's AngularVersion (default 22); the TypeScript and Vitest ranges are the ones
+    // that release uses, so for an older version check them against its own `ng new`.
+    // ==========================================================================================
+    string dd = new string('-', 2);   // the command-line flags below start with two hyphens
+    int version = Project.AngularVersion ?? 22;
+    string typescript = version >= 22 ? "~6.0.2" : version == 21 ? "~5.9.2" : version == 20 ? "~5.8.2" : "~5.6.2";
+    string packageName = System.Text.RegularExpressions.Regex.Replace(Project.ProjectName ?? "my-app", "(?<=[a-z0-9])(?=[A-Z])", "-").ToLowerInvariant() + "-angular";
+#>
+@@@FILE package.json@@@
+{
+  "name": "<#= packageName #>",
+  "version": "0.0.0",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve <#= dd #>proxy-config proxy.conf.json",
+    "build": "ng build",
+    "watch": "ng build <#= dd #>watch <#= dd #>configuration development",
+    "test": "ng test"
+  },
+  "private": true,
+  "dependencies": {
+    "@angular/common": "^<#= version #>.0.0",
+    "@angular/compiler": "^<#= version #>.0.0",
+    "@angular/core": "^<#= version #>.0.0",
+    "@angular/forms": "^<#= version #>.0.0",
+    "@angular/platform-browser": "^<#= version #>.0.0",
+    "@angular/router": "^<#= version #>.0.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0",
+    "zone.js": "~0.16.0",
+    "@angular/material": "^<#= version #>.0.0",
+    "@angular/cdk": "^<#= version #>.0.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^<#= version #>.0.0",
+    "@angular/cli": "^<#= version #>.0.0",
+    "@angular/compiler-cli": "^<#= version #>.0.0",
+    "jsdom": "^28.0.0",
+    "typescript": "<#= typescript #>",
+    "vitest": "^4.0.8"
+  }
+}
+@@@FILE angular.json@@@
+{
+  "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
+  "version": 1,
+  "cli": {
+    "packageManager": "npm"
+  },
+  "newProjectRoot": "projects",
+  "projects": {
+    "frontend": {
+      "projectType": "application",
+      "schematics": {},
+      "root": "",
+      "sourceRoot": "src",
+      "prefix": "app",
+      "architect": {
+        "build": {
+          "builder": "@angular/build:application",
+          "options": {
+            "browser": "src/main.ts",
+            "polyfills": [
+              "zone.js"
+            ],
+            "tsConfig": "tsconfig.app.json",
+            "assets": [
+              {
+                "glob": "**/*",
+                "input": "public"
+              }
+            ],
+            "styles": [
+              "node_modules/@angular/material/prebuilt-themes/azure-blue.css",
+              "src/styles.css"
+            ]
+          },
+          "configurations": {
+            "production": {
+              "budgets": [
+                {
+                  "type": "initial",
+                  "maximumWarning": "500kB",
+                  "maximumError": "1MB"
+                },
+                {
+                  "type": "anyComponentStyle",
+                  "maximumWarning": "4kB",
+                  "maximumError": "8kB"
+                }
+              ],
+              "outputHashing": "all"
+            },
+            "development": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true
+            }
+          },
+          "defaultConfiguration": "production"
+        },
+        "serve": {
+          "builder": "@angular/build:dev-server",
+          "configurations": {
+            "production": {
+              "buildTarget": "frontend:build:production"
+            },
+            "development": {
+              "buildTarget": "frontend:build:development"
+            }
+          },
+          "defaultConfiguration": "development"
+        },
+        "test": {
+          "builder": "@angular/build:unit-test"
+        }
+      }
+    }
+  }
+}
+@@@FILE tsconfig.json@@@
+/* To learn more about Typescript configuration file: https://www.typescriptlang.org/docs/handbook/tsconfig-json.html. */
+/* To learn more about Angular compiler options: https://angular.dev/reference/configs/angular-compiler-options. */
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "ES2022",
+    "module": "preserve"
+  },
+  "angularCompilerOptions": {
+    "enableI18nLegacyMessageIdFormat": false,
+    "strictInjectionParameters": true,
+    "strictInputAccessModifiers": true
+  },
+  "files": [],
+  "references": [
+    {
+      "path": "./tsconfig.app.json"
+    },
+    {
+      "path": "./tsconfig.spec.json"
+    }
+  ]
+}
+@@@FILE tsconfig.app.json@@@
+/* To learn more about Typescript configuration file: https://www.typescriptlang.org/docs/handbook/tsconfig-json.html. */
+/* To learn more about Angular compiler options: https://angular.dev/reference/configs/angular-compiler-options. */
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": []
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/**/*.spec.ts"
+  ]
+}
+@@@FILE tsconfig.spec.json@@@
+/* To learn more about Typescript configuration file: https://www.typescriptlang.org/docs/handbook/tsconfig-json.html. */
+/* To learn more about Angular compiler options: https://angular.dev/reference/configs/angular-compiler-options. */
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "vitest/globals"
+    ]
+  },
+  "include": [
+    "src/**/*.d.ts",
+    "src/**/*.spec.ts"
+  ]
+}

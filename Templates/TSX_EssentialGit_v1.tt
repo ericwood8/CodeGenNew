@@ -1,0 +1,19 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TSX_EssentialGit_v1.tt
+    // Generates: .gitignore   (no table, no database: an essentials group; the output folder is the React app's own folder)
+    // What a Vite + React app keeps out of version control: node_modules, the build output, TypeScript's incremental build file and local environment files.
+    // ==========================================================================================
+#>
+@@@FILE .gitignore@@@
+node_modules/
+dist/
+*.tsbuildinfo
+.env.local
+.env.*.local
+*.log
+.vscode/*
+!.vscode/extensions.json

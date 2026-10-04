@@ -72,6 +72,14 @@ public partial class ProjectSettingsDialogViewModel : StatusMessageViewModel
         ["ApiPort"] = "port the API listens on; blank = 5080",
         ["DevPort"] = "port of the front end's dev server; blank = 5173 (React) or 4200 (Angular)",
         ["ProjectTitle"] = "the web app's title; blank = the project name in words",
+        ["BuildApi"] = "command that builds the API after a generate; blank = dotnet build -v q (none skips it)",
+        ["BuildWinUI3"] = "command that builds the WinUI3 app after a generate; blank = dotnet build -v q",
+        ["BuildReact"] = "command that builds the React app; blank = npm run build",
+        ["BuildAngular"] = "command that builds the Angular app; blank = npm run build",
+        ["TestApi"] = "command that tests the API; blank = no tests",
+        ["TestWinUI3"] = "command that tests the WinUI3 app; blank = no tests",
+        ["TestReact"] = "command that tests the React app; blank = npm test",
+        ["TestAngular"] = "command that tests the Angular app; blank = npm test -- --watch=false",
         ["DbSetNames"] = "Plural = Customers, blank = the table name (Customer)"
     };
 
