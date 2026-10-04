@@ -1,0 +1,121 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // SP_ReplicationTriggers_v1.tt
+    // Generates: <TableName>_ReplicationTriggers.sql   (SQL Server only)
+    // Three triggers on one table that copy every change to the databases the project names in ReplicationTargets (linked server and database, for example ReplicationTargets=server1.Sales):
+    // after an insert each new row goes to <target>.<schema>.<Table>_Replicate_Insert, after an update each changed row to _Replicate_Update (nothing is sent when no column was assigned, and a
+    // change of the primary key is refused), after a delete the key goes to _Replicate_Delete. The routines on the target are not written here: each takes one parameter per column of the table
+    // (insert and update) or the key columns (delete), in the table's column order (the call is positional), and is yours to write.
+    // text, ntext, image and timestamp columns are left out (a trigger cannot read them from the inserted table).
+    // A trigger runs inside the statement that fired it: a target that is down or a routine that fails rolls back EVERY write to this table. Review the script, try it on a copy with the targets
+    // unreachable, and run it yourself; codegen never applies it.
+
+    var targets = Project.ReplicationTargets;
+    string Rem = new string((char)45, 2);   // an SQL comment marker
+    string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
+
+    var badTargets = targets.Where(t => t.Split('.').Length != 2 || t.Split('.').Any(p => p.Length == 0)).ToList();
+    if (Model.Dialect != SqlDialect.SqlServer)
+    {
+        Error("SP_ReplicationTriggers writes T-SQL triggers: it is for a table read from SQL Server.");
+    }
+    else if (Model.PrimaryKeyColumns.Count == 0)
+    {
+        Error(Model.TableName + " has no primary key: a replicated update or delete could not say which row changed.");
+    }
+    else if (targets.Length == 0)
+    {
+        Error("Name the databases to copy to in the project's ReplicationTargets (linked server, then database: ReplicationTargets=server1.Sales,server2.Sales).");
+    }
+    else if (badTargets.Count > 0)
+    {
+        Error("ReplicationTargets must be linked-server.database pairs; " + string.Join(", ", badTargets) + " is not.");
+    }
+    else
+    {
+        bool Unreadable(ColumnModel c) => c.IsComputed || c.SqlType is SqlDbType.Text or SqlDbType.NText or SqlDbType.Image or SqlDbType.Timestamp
+            || c.SqlTypeDeclaration.Equals("rowversion", StringComparison.OrdinalIgnoreCase);
+        var columns = Model.Columns.Where(c => !Unreadable(c)).ToList();
+        var key = Model.PrimaryKeyColumns.ToList();
+        var nonKey = columns.Where(c => !key.Contains(c)).ToList();
+        string table = Q(Model.SchemaName) + "." + Q(Model.TableName);
+        string TargetCall(string target, string suffix) => string.Join(".", target.Split('.').Select(Q)) + "." + Q(Model.SchemaName) + "." + Q(Model.TableName + "_Replicate_" + suffix);
+        string Declare(IEnumerable<ColumnModel> cs) => string.Join(", ", cs.Select(c => c.ParameterName + " " + c.SqlTypeDeclaration));
+        string ColumnList(IEnumerable<ColumnModel> cs) => string.Join(", ", cs.Select(c => Q(c.Name)));
+        string ParameterList(IEnumerable<ColumnModel> cs) => string.Join(", ", cs.Select(c => c.ParameterName));
+
+        var sb = new StringBuilder();
+        void Line(string line = "") => sb.Append(line).Append('\n');
+
+        // The row loop shared by the three triggers: a cursor over the inserted (or deleted) rows, one call per target per row.
+        void RowLoop(string cursorName, string source, IReadOnlyList<ColumnModel> cs, string suffix, string indent)
+        {
+            Line(indent + "DECLARE " + Declare(cs) + ";");
+            Line(indent + "DECLARE " + cursorName + " CURSOR LOCAL FAST_FORWARD FOR SELECT " + ColumnList(cs) + " FROM " + source + ";");
+            Line(indent + "OPEN " + cursorName + ";");
+            Line(indent + "WHILE 1 = 1");
+            Line(indent + "BEGIN");
+            Line(indent + "    FETCH NEXT FROM " + cursorName + " INTO " + ParameterList(cs) + ";");
+            Line(indent + "    IF @@FETCH_STATUS <> 0 BREAK;");
+            foreach (string target in targets)
+                Line(indent + "    EXEC " + TargetCall(target, suffix) + " " + ParameterList(cs) + ";");
+            Line(indent + "END");
+            Line(indent + "CLOSE " + cursorName + ";");
+            Line(indent + "DEALLOCATE " + cursorName + ";");
+        }
+
+        Line("" + Rem + " "+ "Copies every change to " + table + " to " + string.Join(", ", targets) + ".");
+        Line("" + Rem + " "+ "Review before running: a trigger that fails (a target that is down) rolls back the write that fired it.");
+        Line();
+        Line("CREATE OR ALTER TRIGGER " + Q(Model.SchemaName) + "." + Q("TR_" + Model.TableName + "_Replicate_I"));
+        Line("ON " + table + " AFTER INSERT");
+        Line("AS");
+        Line("BEGIN");
+        Line("    SET NOCOUNT ON;");
+        RowLoop("insert_cursor", "inserted", columns, "Insert", "    ");
+        Line("END");
+        Line("GO");
+        Line();
+        Line("CREATE OR ALTER TRIGGER " + Q(Model.SchemaName) + "." + Q("TR_" + Model.TableName + "_Replicate_U"));
+        Line("ON " + table + " AFTER UPDATE");
+        Line("AS");
+        Line("BEGIN");
+        Line("    SET NOCOUNT ON;");
+        Line();
+        Line("    IF " + string.Join(" OR ", key.Select(c => "UPDATE(" + Q(c.Name) + ")")));
+        Line("    BEGIN");
+        Line("        RAISERROR('Unable to modify the primary key of " + Model.TableName.Replace("'", "''") + ": it identifies the row on the other servers.', 16, 1);");
+        Line("        ROLLBACK TRANSACTION;");
+        Line("        RETURN;");
+        Line("    END");
+        Line();
+        if (nonKey.Count > 0)
+        {
+            Line("    " + Rem + " "+ "only when some column was assigned");
+            Line("    IF " + string.Join(" OR ", nonKey.Select(c => "UPDATE(" + Q(c.Name) + ")")));
+            Line("    BEGIN");
+            RowLoop("update_cursor", "inserted", columns, "Update", "        ");
+            Line("    END");
+        }
+        Line("END");
+        Line("GO");
+        Line();
+        Line("CREATE OR ALTER TRIGGER " + Q(Model.SchemaName) + "." + Q("TR_" + Model.TableName + "_Replicate_D"));
+        Line("ON " + table + " AFTER DELETE");
+        Line("AS");
+        Line("BEGIN");
+        Line("    SET NOCOUNT ON;");
+        RowLoop("delete_cursor", "deleted", key, "Delete", "    ");
+        Line("END");
+        Line("GO");
+        Write(sb.ToString());
+    }
+#>

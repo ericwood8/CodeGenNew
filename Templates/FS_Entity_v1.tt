@@ -1,0 +1,154 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ import namespace="System.Globalization" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the line to change to use this template in your own project. A project settings file (FSharpNamespace, or ProjectName for <ProjectName>.Domain) overrides it.
+    // ==========================================================================================
+    string fsharpNamespace = Project.FSharpNamespace ?? "MyApp.Domain";
+
+    // ==========================================================================================
+    // FS_Entity_v1.tt
+    // Generates: <TableName>.fs   (see OutputName in FS_Entity_v1.tt.config)
+    // An immutable F# record, one field per column: a column that can be NULL is an option (no nulls anywhere), and a module of the same name with two functions that answer with a
+    // Result instead of throwing:
+    //   validate : record -> Result<record, string list>       lengths, text that may not be empty, whole-number and decimal limits (a CHECK range of the database counts), all problems at once
+    //   ofStrings : Map<string, string> -> Result<record, string list>   builds a record from text (a form, a CSV line, a query string) keyed by column name, then validates it
+    // It needs the Rop module that FS_Rop writes once into the same project (Result helpers and the text parsers). The record is not a table row's class for a database library: it is the
+    // domain value a row becomes, and it has no knowledge of how it is stored. Compile order in the project file: Rop.fs first, then the records.
+    // Does not write a data-access layer, a business rule beyond the column's own limits, or a record for a column type with no F# mapping (it is an obj).
+    // Full notes: Docs/TemplateNotes/FS_Entity_v1.md
+    // ==========================================================================================
+
+    var keywords = new HashSet<string>
+    {
+        "abstract", "and", "as", "assert", "base", "begin", "class", "default", "delegate", "do", "done", "downcast", "downto", "elif", "else", "end", "exception", "extern", "false",
+        "finally", "fixed", "for", "fun", "function", "global", "if", "in", "inherit", "inline", "interface", "internal", "lazy", "let", "match", "member", "module", "mutable",
+        "namespace", "new", "not", "null", "of", "open", "or", "override", "private", "public", "rec", "return", "select", "sig", "static", "struct", "then", "to", "true", "try",
+        "type", "upcast", "use", "val", "void", "when", "while", "with", "yield", "atomic", "break", "checked", "component", "const", "constraint", "constructor", "continue",
+        "event", "external", "include", "mixin", "parallel", "process", "protected", "pure", "sealed", "tailcall", "trait", "virtual", "params"
+    };
+    string Id(string name) => keywords.Contains(name) ? "``" + name + "``" : name;
+    string Inv(double value) => value.ToString("R", CultureInfo.InvariantCulture);
+    string Words(string name) => Regex.Replace(name.Replace('_', ' '), "(?<=[a-z0-9])(?=[A-Z])", " ").Trim();
+    string Text(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+
+    // F# type, the Rop parser and the literal of a limit, by column type
+    (string Type, string Parser) FsType(ColumnModel c) => c.SqlType switch
+    {
+        SqlDbType.Int => ("int", "Parse.int32"),
+        SqlDbType.BigInt => ("int64", "Parse.int64"),
+        SqlDbType.SmallInt => ("int16", "Parse.int16"),
+        SqlDbType.TinyInt => ("byte", "Parse.byte"),
+        SqlDbType.Bit => ("bool", "Parse.boolean"),
+        SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => ("decimal", "Parse.decimal"),
+        SqlDbType.Float => ("double", "Parse.double"),
+        SqlDbType.Real => ("float32", "Parse.single"),
+        SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime => ("DateTime", "Parse.dateTime"),
+        SqlDbType.DateTimeOffset => ("DateTimeOffset", "Parse.dateTimeOffset"),
+        SqlDbType.Time => ("TimeSpan", "Parse.timeSpan"),
+        SqlDbType.UniqueIdentifier => ("Guid", "Parse.guid"),
+        SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => ("string", "Parse.text"),
+        SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => ("byte[]", "Parse.base64"),
+        _ => ("obj", "Parse.untyped")
+    };
+    string Literal(ColumnModel c, double value) => FsType(c).Type switch
+    {
+        "decimal" => Inv(value) + "M",
+        "double" => Inv(value).Contains('.') || Inv(value).Contains('E') ? Inv(value) : Inv(value) + ".0",
+        "float32" => (Inv(value).Contains('.') || Inv(value).Contains('E') ? Inv(value) : Inv(value) + ".0") + "f",
+        "int64" => Inv(value) + "L",
+        "int16" => Inv(value) + "s",
+        "byte" => Inv(value) + "uy",
+        _ => Inv(value)
+    };
+
+    var o = new StringBuilder();
+    void L(string s = "") => o.Append(s).Append('\n');
+
+    var columns = Model.Columns;
+    string type = Id(Model.TableName);
+    string Field(ColumnModel c) => Id(c.Name);
+    string FieldType(ColumnModel c) => FsType(c).Type + (c.IsNullable ? " option" : "");
+
+    // ==== the checks of validate: (condition that is a problem, message)
+    var problems = new List<string>();
+    foreach (var c in columns)
+    {
+        string label = Text(Words(c.Name));
+        string value = "row." + Field(c);
+        var (fsType, _) = FsType(c);
+        string Wrap(string condition) => c.IsNullable ? $"match {value} with Some v when {condition.Replace("{v}", "v")} -> \"{{MESSAGE}}\" | _ -> ()" : $"if {condition.Replace("{v}", value)} then \"{{MESSAGE}}\"";
+        void Add(string condition, string message) => problems.Add(Wrap(condition).Replace("{MESSAGE}", message));
+
+        if (fsType == "string")
+        {
+            if (!c.IsNullable)
+                Add("String.IsNullOrWhiteSpace {v}", label + " is required.");
+            // the schema reader states the length of a Unicode column in bytes
+            int chars = c.MaxLength is > 0 ? (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value) : 0;
+            if (chars > 0 && !c.IsLongTextColumn)
+                Add($"not (isNull {{v}}) && {{v}}.Length > {chars}", $"{label} must be at most {chars} characters.");
+        }
+        else if (c.IsIntegerColumn && (c.NumericKind != NumericKind.None || c.Check is not null) && Project.RangeFor(c) is { } range)
+        {
+            Add($"{{v}} < {Literal(c, range.Min)} || {{v}} > {Literal(c, range.Max)}", $"{label} must be between {range.Min} and {range.Max}.");
+        }
+        else if (c.Check is { } check && !c.IsIntegerColumn && (fsType is "decimal" or "double" or "float32"))
+        {
+            if (check.Min is { } min)
+                Add($"{{v}} {(check.MinStrict ? "<=" : "<")} {Literal(c, min)}", $"{label} must be {(check.MinStrict ? "greater than" : "at least")} {Inv(min)}.");
+            if (check.Max is { } max)
+                Add($"{{v}} {(check.MaxStrict ? ">=" : ">")} {Literal(c, max)}", $"{label} must be {(check.MaxStrict ? "less than" : "at most")} {Inv(max)}.");
+        }
+    }
+
+    L("namespace " + fsharpNamespace);
+    L();
+    L("open System");
+    L();
+    L("/// One row of " + Model.QuotedName + " as an immutable value.");
+    L("type " + type + " =");
+    for (int i = 0; i < columns.Count; i++)
+        L((i == 0 ? "    { " : "      ") + Field(columns[i]) + ": " + FieldType(columns[i]) + (i == columns.Count - 1 ? " }" : ""));
+    L();
+    L("[<RequireQualifiedAccess>]");
+    L("module " + type + " =");
+    L();
+    L("    /// Checks a record against what the table allows; every problem is reported, not only the first.");
+    L("    let validate (row: " + type + ") : Result<" + type + ", string list> =");
+    if (problems.Count == 0)
+    {
+        L("        Ok row");
+    }
+    else
+    {
+        L("        let problems =");
+        for (int i = 0; i < problems.Count; i++)
+            L((i == 0 ? "            [ " : "              ") + problems[i] + (i == problems.Count - 1 ? " ]" : ""));
+        L("        if List.isEmpty problems then Ok row else Error problems");
+    }
+    L();
+    L("    /// Builds a record from text keyed by column name (a form, a CSV line, a query string): every field that cannot be read is reported together, then the record is validated.");
+    L("    let ofStrings (fields: Map<string, string>) : Result<" + type + ", string list> =");
+    L("        Ok(fun " + string.Join(" ", columns.Select((_, i) => "f" + (i + 1))) + " ->");
+    L("            { " + string.Join("; ", columns.Select((c, i) => Field(c) + " = f" + (i + 1))) + " })");
+    foreach (var c in columns)
+    {
+        var (fsType, parser) = FsType(c);
+        string name = "\"" + Text(c.Name) + "\"";
+        string call = c.IsNullable ? $"Parse.optional {name} {parser} fields"
+            : c.IsIdentity || c.IsComputed ? $"Parse.orDefault {name} {parser} fields"
+            : $"Parse.required {name} {parser} fields";
+        L("        <*> " + call);
+    }
+    L("        |> Result.bind validate");
+    Write(o.ToString());
+#>

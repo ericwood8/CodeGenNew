@@ -1,0 +1,140 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the line to change to use this template in your own project. A project settings file (DtoNamespace, or ProjectName for <ProjectName>.App.Dtos) overrides it.
+    // ==========================================================================================
+    string dtoNamespace = Project.DtoNamespace ?? "MyApp.Dtos";
+
+    // ==========================================================================================
+    // CS_Dto_v1.tt
+    // Generates: <TableName>Dto.cs   (see OutputName in CS_Dto_v1.tt.config)
+    // A plain data-transfer class for one table that fills itself from a data reader (any ADO.NET provider: IDataRecord): one property per column, a Populate(IDataRecord) method that reads
+    // the required columns and then the optional ones (a NULL becomes null), an IsIdentical(other) comparer over the columns whose change matters (not the key, not audit, create / modify or
+    // computed columns) for synchronising two copies, and a ToString that shows the table's display column. Columns are found by name, so the order of a SELECT does not matter.
+    // The entity class (CS_Entity) is the EF shape of the same table; CS_Mapper copies between the two.
+    // Does not write the data access that produces the reader, or a column the reader does not select (Populate throws for a missing column: select every column, or trim the class).
+    // Full notes: Docs/TemplateNotes/CS_Dto_v1.md
+    // ==========================================================================================
+
+    string Id(ColumnModel c) => c.IsCSharpReservedWordName ? "@" + c.Name : c.Name;
+    string BaseType(ColumnModel c) => c.SqlType switch
+    {
+        SqlDbType.Int => "int",
+        SqlDbType.BigInt => "long",
+        SqlDbType.SmallInt => "short",
+        SqlDbType.TinyInt => "byte",
+        SqlDbType.Bit => "bool",
+        SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => "decimal",
+        SqlDbType.Float => "double",
+        SqlDbType.Real => "float",
+        SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime => "DateTime",
+        SqlDbType.DateTimeOffset => "DateTimeOffset",
+        SqlDbType.Time => "TimeSpan",
+        SqlDbType.UniqueIdentifier => "Guid",
+        SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => "string",
+        SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => "byte[]",
+        _ => "object"
+    };
+    string ClrType(ColumnModel c) => c.IsNullable && BaseType(c) != "object" ? BaseType(c) + "?" : BaseType(c);
+    // the expression that turns the reader's value at column index <i> into the property's type
+    string Read(ColumnModel c, string i) => BaseType(c) switch
+    {
+        "int" => $"Convert.ToInt32(record.GetValue({i}))",
+        "long" => $"Convert.ToInt64(record.GetValue({i}))",
+        "short" => $"Convert.ToInt16(record.GetValue({i}))",
+        "byte" => $"Convert.ToByte(record.GetValue({i}))",
+        "bool" => $"Convert.ToBoolean(record.GetValue({i}))",
+        "decimal" => $"Convert.ToDecimal(record.GetValue({i}))",
+        "double" => $"Convert.ToDouble(record.GetValue({i}))",
+        "float" => $"Convert.ToSingle(record.GetValue({i}))",
+        "DateTime" => $"Convert.ToDateTime(record.GetValue({i}))",
+        "DateTimeOffset" => $"(DateTimeOffset)record.GetValue({i})",
+        "TimeSpan" => $"(TimeSpan)record.GetValue({i})",
+        "Guid" => $"(Guid)record.GetValue({i})",
+        "string" => $"Convert.ToString(record.GetValue({i}))!",
+        "byte[]" => $"(byte[])record.GetValue({i})",
+        _ => $"record.GetValue({i})"
+    };
+
+    var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
+    var required = columns.Where(c => !c.IsNullable).ToList();
+    var optional = columns.Where(c => c.IsNullable).ToList();
+    // the columns whose change makes a copy "effectively modified": not the key, an identity, a computed column or an audit / create / modify column
+    var meaningful = columns.Where(c => !c.IsPrimaryKey && !c.IsIdentity && !c.IsComputed && !c.IsAuditColumn && !c.IsCreateDateColumn && !c.IsCreateUserColumn
+        && !c.IsModifiedDateColumn && !c.IsModifiedUserColumn && !c.IsLastChangedDateColumn).ToList();
+    if (meaningful.Count == 0)
+        meaningful = Model.PrimaryKeyColumns.ToList();
+    var display = columns.Where(c => c.IsDisplayColumn).OrderBy(c => c.DisplayRank).FirstOrDefault() ?? columns.FirstOrDefault(c => BaseType(c) == "string") ?? Model.PrimaryKeyColumns.FirstOrDefault() ?? columns[0];
+    string className = Model.TableName + "Dto";
+    string Default(ColumnModel c) => !c.IsNullable && BaseType(c) == "string" ? " = \"\";" : !c.IsNullable && BaseType(c) == "byte[]" ? " = [];" : "";
+    string Quote(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+
+    var o = new StringBuilder();
+    void L(string s = "") => o.Append(s).Append('\n');
+
+    L("using System;");
+    L("using System.Data;");
+    L();
+    L("namespace " + dtoNamespace + ";");
+    L();
+    L("/// <summary> One row of " + Model.QuotedName + ", read from a data reader. </summary>");
+    L("public class " + className);
+    L("{");
+    foreach (var c in columns)
+        L("    public " + ClrType(c) + " " + Id(c) + " { get; set; }" + Default(c));
+    L();
+    L("    public " + className + "() { }");
+    L();
+    L("    public " + className + "(IDataRecord record)");
+    L("    {");
+    L("        Populate(record);");
+    L("    }");
+    L();
+    L("    /// <summary> Reads every column of the table from the current row of <paramref name=\"record\"/> (found by name). </summary>");
+    L("    public " + className + " Populate(IDataRecord record)");
+    L("    {");
+    L("        // required");
+    foreach (var c in required)
+        L("        " + Id(c) + " = " + Read(c, "record.GetOrdinal(" + Quote(c.DbName) + ")") + ";");
+    if (optional.Count > 0)
+    {
+        L();
+        L("        // optional: a NULL stays null");
+        foreach (var c in optional)
+        {
+            string ordinal = "ordinal" + c.Name.Replace("@", "");
+            L("        int " + ordinal + " = record.GetOrdinal(" + Quote(c.DbName) + ");");
+            L("        " + Id(c) + " = record.IsDBNull(" + ordinal + ") ? null : " + Read(c, ordinal) + ";");
+        }
+    }
+    L();
+    L("        return this;");
+    L("    }");
+    L();
+    L("    /// <summary> True when every column that matters (not the key, audit, create / modify or computed ones) is the same in <paramref name=\"other\"/>. </summary>");
+    L("    public bool IsIdentical(" + className + "? other)");
+    L("    {");
+    L("        if (other is null)");
+    L("            return false;");
+    L();
+    for (int i = 0; i < meaningful.Count; i++)
+    {
+        string prefix = i == 0 ? "        return " : "               ";
+        string comparison = BaseType(meaningful[i]) == "byte[]"
+            ? $"System.Linq.Enumerable.SequenceEqual({Id(meaningful[i])} ?? [], other.{Id(meaningful[i])} ?? [])"
+            : $"Equals({Id(meaningful[i])}, other.{Id(meaningful[i])})";
+        L(prefix + comparison + (i == meaningful.Count - 1 ? ";" : " &&"));
+    }
+    L("    }");
+    L();
+    L("    public override string ToString() => " + (BaseType(display) == "string" ? Id(display) + " ?? \"\"" : Id(display) + (display.IsNullable ? "?.ToString() ?? \"\"" : ".ToString()")) + ";");
+    L("}");
+    Write(o.ToString());
+#>

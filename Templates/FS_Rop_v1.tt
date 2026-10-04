@@ -1,0 +1,112 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // FS_Rop_v1.tt
+    // Generates: Rop.fs   (no table and no database: the helpers every FS_Entity record uses; written once per project)
+    // "Railway-oriented" helpers over F#'s own Result type: succeed / fail / either / bind, an applicative (<*>) that collects the errors of several checks instead of stopping at the first,
+    // and the Parse module that reads text into typed values (required, optional or defaulted fields of a Map keyed by column name). The namespace follows the project (FSharpNamespace, or
+    // ProjectName.Domain). Put Rop.fs before the generated records in the project's compile order.
+    // ==========================================================================================
+    string fsharpNamespace = Project.FSharpNamespace ?? "MyApp.Domain";
+#>
+@@@FILE Rop.fs@@@
+namespace <#= fsharpNamespace #>
+
+open System
+open System.Globalization
+
+/// Success / failure helpers over Result, and the applicative operator that gathers every error.
+[<AutoOpen>]
+module Rop =
+
+    /// A successful two-track value.
+    let succeed (x: 'a) : Result<'a, 'e> = Ok x
+
+    /// A failed two-track value.
+    let fail (e: 'e) : Result<'a, 'e> = Error e
+
+    /// Applies the success function or the failure function, whichever the result calls for.
+    let either (onSuccess: 'a -> 'b) (onFailure: 'e -> 'b) (result: Result<'a, 'e>) : 'b =
+        match result with
+        | Ok a -> onSuccess a
+        | Error e -> onFailure e
+
+    /// Turns a function that can fail into one that takes a result.
+    let bind (f: 'a -> Result<'b, 'e>) (result: Result<'a, 'e>) : Result<'b, 'e> = Result.bind f result
+
+    /// Runs two checks on the same value: both pass, or the first failure is the failure.
+    let bind2 (f1: 'a -> Result<'b, 'e>) (f2: 'a -> Result<'c, 'e>) (result: Result<'a, 'e>) : Result<'b * 'c, 'e> =
+        match result with
+        | Ok a ->
+            match f1 a, f2 a with
+            | Ok b, Ok c -> Ok(b, c)
+            | Error e, _
+            | _, Error e -> Error e
+        | Error e -> Error e
+
+    /// Applies a function held in a result to a value held in a result; when both failed, their errors are joined.
+    let apply (f: Result<'a -> 'b, string list>) (x: Result<'a, string list>) : Result<'b, string list> =
+        match f, x with
+        | Ok g, Ok v -> Ok(g v)
+        | Error a, Error b -> Error(a @ b)
+        | Error a, _
+        | _, Error a -> Error a
+
+    /// <*> for building a record field by field while collecting every error: Ok f <*> field1 <*> field2
+    let (<*>) f x = apply f x
+
+/// Reads text into typed values; each parser returns the problem as text, and the field helpers name the column in it.
+module Parse =
+
+    let private invariant = CultureInfo.InvariantCulture
+
+    let private attempt (what: string) (tryParse: string -> bool * 'a) (name: string) (text: string) : Result<'a, string> =
+        match tryParse text with
+        | true, value -> Ok value
+        | _ -> Error(sprintf "%s is not %s." name what)
+
+    let text (_: string) (value: string) : Result<string, string> = Ok value
+    let untyped (_: string) (value: string) : Result<obj, string> = Ok(box value)
+    let int32 = attempt "a whole number" (fun s -> Int32.TryParse(s, NumberStyles.Integer, invariant))
+    let int64 = attempt "a whole number" (fun s -> Int64.TryParse(s, NumberStyles.Integer, invariant))
+    let int16 = attempt "a whole number" (fun s -> Int16.TryParse(s, NumberStyles.Integer, invariant))
+    let byte = attempt "a whole number from 0 to 255" (fun s -> Byte.TryParse(s, NumberStyles.Integer, invariant))
+    let decimal = attempt "a number" (fun s -> Decimal.TryParse(s, NumberStyles.Number, invariant))
+    let double = attempt "a number" (fun s -> Double.TryParse(s, NumberStyles.Float, invariant))
+    let single = attempt "a number" (fun s -> Single.TryParse(s, NumberStyles.Float, invariant))
+    let dateTime = attempt "a date" (fun s -> DateTime.TryParse(s, invariant, DateTimeStyles.AssumeUniversal ||| DateTimeStyles.AdjustToUniversal))
+    let dateTimeOffset = attempt "a date and time" (fun s -> DateTimeOffset.TryParse(s, invariant, DateTimeStyles.AssumeUniversal))
+    let timeSpan = attempt "a time" (fun s -> TimeSpan.TryParse(s, invariant))
+    let guid = attempt "a GUID" (fun s -> Guid.TryParse s)
+
+    let boolean (name: string) (value: string) : Result<bool, string> =
+        match value.Trim().ToLowerInvariant() with
+        | "true" | "1" | "yes" | "y" | "on" -> Ok true
+        | "false" | "0" | "no" | "n" | "off" -> Ok false
+        | _ -> Error(sprintf "%s is not true or false." name)
+
+    let base64 (name: string) (value: string) : Result<byte[], string> =
+        try Ok(Convert.FromBase64String value) with :? FormatException -> Error(sprintf "%s is not base64 text." name)
+
+    let private find (name: string) (fields: Map<string, string>) =
+        fields |> Map.tryFind name |> Option.map (fun s -> s.Trim()) |> Option.filter (fun s -> s <> "")
+
+    /// A field that must be there.
+    let required (name: string) (parse: string -> string -> Result<'a, string>) (fields: Map<string, string>) : Result<'a, string list> =
+        match find name fields with
+        | Some text -> parse name text |> Result.mapError List.singleton
+        | None -> Error [ sprintf "%s is required." name ]
+
+    /// A field that may be missing or empty: None, else the parsed value.
+    let optional (name: string) (parse: string -> string -> Result<'a, string>) (fields: Map<string, string>) : Result<'a option, string list> =
+        match find name fields with
+        | Some text -> parse name text |> Result.map Some |> Result.mapError List.singleton
+        | None -> Ok None
+
+    /// A field the database fills in (an identity or computed column): the default value when it is missing.
+    let orDefault (name: string) (parse: string -> string -> Result<'a, string>) (fields: Map<string, string>) : Result<'a, string list> =
+        match find name fields with
+        | Some text -> parse name text |> Result.mapError List.singleton
+        | None -> Ok Unchecked.defaultof<'a>

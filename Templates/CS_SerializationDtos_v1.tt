@@ -1,0 +1,107 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the line to change to use this template in your own project. A project settings file (DtoNamespace, or ProjectName for <ProjectName>.App.Dtos) overrides it.
+    // ==========================================================================================
+    string dtoNamespace = Project.DtoNamespace ?? "MyApp.Dtos";
+
+    // ==========================================================================================
+    // CS_SerializationDtos_v1.tt
+    // Generates: <TableName>SerializationDtos.cs   (see OutputName in CS_SerializationDtos_v1.tt.config)
+    // The same table's data class in three serialization contracts, side by side, so the one that suits can be kept and the others deleted:
+    //   <Table>Basic         a plain [Serializable] class (the runtime's default field-by-field contract)
+    //   <Table>Serializable  [Serializable] with a custom ISerializable contract: GetObjectData writes every column by name, the protected constructor reads them back
+    //   <Table>Xml           XmlSerializer attributes: the key columns as XML attributes, every other column an element, a computed column ignored
+    // New code serialises a plain class (CS_Dto) with JSON; these are for a format that is fixed by a partner or an old file. A property that cannot be NULL starts as "" / the type's default.
+    // Does not write the code that reads or writes the files, or a version number for the contract.
+    // Full notes: Docs/TemplateNotes/CS_SerializationDtos_v1.md
+    // ==========================================================================================
+
+    string Id(ColumnModel c) => c.IsCSharpReservedWordName ? "@" + c.Name : c.Name;
+    string BaseType(ColumnModel c) => c.SqlType switch
+    {
+        SqlDbType.Int => "int",
+        SqlDbType.BigInt => "long",
+        SqlDbType.SmallInt => "short",
+        SqlDbType.TinyInt => "byte",
+        SqlDbType.Bit => "bool",
+        SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => "decimal",
+        SqlDbType.Float => "double",
+        SqlDbType.Real => "float",
+        SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime => "DateTime",
+        SqlDbType.DateTimeOffset => "DateTimeOffset",
+        SqlDbType.Time => "TimeSpan",
+        SqlDbType.UniqueIdentifier => "Guid",
+        SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => "string",
+        SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => "byte[]",
+        _ => "object"
+    };
+    string ClrType(ColumnModel c) => c.IsNullable && BaseType(c) != "object" ? BaseType(c) + "?" : BaseType(c);
+    // typeof() cannot take a nullable reference type: string? is typeof(string), int? stays typeof(int?)
+    string TypeOf(ColumnModel c) => c.IsNullable && BaseType(c) is not ("string" or "byte[]" or "object") ? BaseType(c) + "?" : BaseType(c);
+    string Quote(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+    string Default(ColumnModel c) => !c.IsNullable && BaseType(c) == "string" ? " = \"\";" : !c.IsNullable && BaseType(c) == "byte[]" ? " = [];" : "";
+
+    var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
+    var o = new StringBuilder();
+    void L(string s = "") => o.Append(s).Append('\n');
+    void Properties(Func<ColumnModel, string?> attribute)
+    {
+        foreach (var c in columns)
+        {
+            if (attribute(c) is { } a)
+                L("    " + a);
+            L("    public " + ClrType(c) + " " + Id(c) + " { get; set; }" + Default(c));
+        }
+    }
+
+    L("using System;");
+    L("using System.Runtime.Serialization;");
+    L("using System.Xml.Serialization;");
+    L();
+    L("namespace " + dtoNamespace + ";");
+    L();
+    L("/// <summary> A plain [Serializable] class: the runtime's default contract. </summary>");
+    L("[Serializable]");
+    L("public class " + Model.TableName + "Basic");
+    L("{");
+    Properties(_ => null);
+    L("}");
+    L();
+    L("/// <summary> [Serializable] with a custom contract: every column is written by name and read back by name. </summary>");
+    L("[Serializable]");
+    L("public class " + Model.TableName + "Serializable : ISerializable");
+    L("{");
+    Properties(_ => null);
+    L();
+    L("    public " + Model.TableName + "Serializable() { }");
+    L();
+    L("    protected " + Model.TableName + "Serializable(SerializationInfo info, StreamingContext context)");
+    L("    {");
+    foreach (var c in columns)
+        L("        " + Id(c) + " = (" + ClrType(c) + ")info.GetValue(" + Quote(c.Name) + ", typeof(" + TypeOf(c) + "))" + (ClrType(c).EndsWith("?") ? "" : "!") + ";");
+    L("    }");
+    L();
+    L("    // SerializationInfo is a property bag: the names written here are the names read above");
+    L("    public void GetObjectData(SerializationInfo info, StreamingContext context)");
+    L("    {");
+    foreach (var c in columns)
+        L("        info.AddValue(" + Quote(c.Name) + ", " + Id(c) + ", typeof(" + TypeOf(c) + "));");
+    L("    }");
+    L("}");
+    L();
+    L("/// <summary> XmlSerializer attributes: the key as attributes, the other columns as elements. </summary>");
+    L("[Serializable, XmlRoot(" + Quote(Model.TableName) + ", IsNullable = false)]");
+    L("public class " + Model.TableName + "Xml");
+    L("{");
+    Properties(c => c.IsPrimaryKey ? "[XmlAttribute(" + Quote(c.Name) + ")]" : c.IsComputed ? "[XmlIgnore]" : "[XmlElement(" + Quote(c.Name) + ")]");
+    L("}");
+    Write(o.ToString());
+#>

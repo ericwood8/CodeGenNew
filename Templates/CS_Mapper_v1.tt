@@ -1,0 +1,88 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project. A project settings file (EntityNamespace, DtoNamespace, or ProjectName) overrides them.
+    // ==========================================================================================
+    string entityNamespace = Project.EntityNamespace ?? "MyApp.Common.Entities";
+    string dtoNamespace = Project.DtoNamespace ?? "MyApp.Dtos";
+
+    // ==========================================================================================
+    // CS_Mapper_v1.tt
+    // Generates: <TableName>Mapping.cs   (see OutputName in CS_Mapper_v1.tt.config)
+    // A static class that copies one table between its two shapes, the EF entity (CS_Entity) and the data-transfer class (CS_Dto): ToDto, ToEntity, the same for a list, and FromReader, which builds
+    // the transfer class from a data reader. One property-copy line per column, in the table's column order; a null in gives a null out. Navigation properties are not copied (the transfer
+    // class has none), so an entity's related rows have to be loaded and mapped by the caller.
+    // Needs a primary key (the entity class does). Does not write the entity or the transfer class: run CS_Entity and CS_Dto for the same table.
+    // Full notes: Docs/TemplateNotes/CS_Mapper_v1.md
+    // ==========================================================================================
+
+    if (Model.PrimaryKeyColumns.Count == 0)
+    {
+        Error($"CS_Mapper needs a table with a primary key, but [{Model.SchemaName}].[{Model.TableName}] has none.");
+    }
+    else
+    {
+        string Id(ColumnModel c) => c.IsCSharpReservedWordName ? "@" + c.Name : c.Name;
+        var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
+        string entity = Model.TableName;
+        string dto = Model.TableName + "Dto";
+        string className = Model.TableName + "Mapping";
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+        void Copy(string source, string indent)
+        {
+            for (int i = 0; i < columns.Count; i++)
+                L(indent + Id(columns[i]) + " = " + source + "." + Id(columns[i]) + (i == columns.Count - 1 ? "" : ","));
+        }
+
+        L("using System.Collections.Generic;");
+        L("using System.Data;");
+        L("using System.Linq;");
+        L("using " + entityNamespace + ";");
+        L();
+        L("namespace " + dtoNamespace + ";");
+        L();
+        L("/// <summary> Copies " + Model.QuotedName + " between the entity class " + entity + " and the transfer class " + dto + ". </summary>");
+        L("public static class " + className);
+        L("{");
+        L("    public static " + dto + "? ToDto(" + entity + "? entity)");
+        L("    {");
+        L("        if (entity is null)");
+        L("            return null;");
+        L();
+        L("        return new " + dto);
+        L("        {");
+        Copy("entity", "            ");
+        L("        };");
+        L("    }");
+        L();
+        L("    public static " + entity + "? ToEntity(" + dto + "? dto)");
+        L("    {");
+        L("        if (dto is null)");
+        L("            return null;");
+        L();
+        L("        return new " + entity);
+        L("        {");
+        Copy("dto", "            ");
+        L("        };");
+        L("    }");
+        L();
+        L("    public static List<" + dto + "> ToDtos(IEnumerable<" + entity + ">? entities) =>");
+        L("        entities is null ? [] : entities.Select(entity => ToDto(entity)!).ToList();");
+        L();
+        L("    public static List<" + entity + "> ToEntities(IEnumerable<" + dto + ">? dtos) =>");
+        L("        dtos is null ? [] : dtos.Select(dto => ToEntity(dto)!).ToList();");
+        L();
+        L("    /// <summary> Builds the transfer class from the current row of a data reader (every column of the table must be selected). </summary>");
+        L("    public static " + dto + "? FromReader(IDataRecord? record) => record is null ? null : new " + dto + "(record);");
+        L("}");
+        Write(o.ToString());
+    }
+#>

@@ -1,0 +1,71 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // SP_BulkUpdate_v1.tt
+    // Generates: BulkUpdate.sql   (one script for the whole database; SQL Server only)
+    // A procedure that rewrites the same column in every table that has it, for example upper-casing the Fnd and Acct columns everywhere (BulkUpdateColumns=Fnd,Acct; BulkUpdateExpression=UPPER({column}),
+    // the default, with {column} standing for the column). The catalog is read here, when the script is written, so the procedure is plain UPDATE statements, one per table and column, in one transaction:
+    // nothing is built from text at run time. Views, computed columns, identity columns, key columns and row-version columns are left alone; a NULL stays NULL.
+    // Rewriting every row of many tables is not undoable: run it on a copy first. codegen never applies it: review the script and run it yourself.
+
+    if (Database.Dialect != SqlDialect.SqlServer)
+    {
+        Error("SP_BulkUpdate is for SQL Server.");
+    }
+    else if (Project.BulkUpdateColumns.Length == 0)
+    {
+        Error("Name the columns to rewrite in the project's BulkUpdateColumns (for example BulkUpdateColumns=Fnd,Acct).");
+    }
+    else if (!Project.BulkUpdateExpression.Contains("{column}"))
+    {
+        Error("BulkUpdateExpression must contain {column}, the column being rewritten (UPPER({column})).");
+    }
+    else
+    {
+        string Rem = new string((char)45, 2);   // an SQL comment marker
+        string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
+        string L(string text) => "'" + text.Replace("'", "''") + "'";
+        bool Rewritable(ColumnModel c) => !c.IsComputed && !c.IsIdentity && !c.IsPrimaryKey
+            && !c.SqlTypeDeclaration.Equals("rowversion", StringComparison.OrdinalIgnoreCase) && c.SqlType != SqlDbType.Timestamp;
+
+        var targets = new List<(TableModel Table, ColumnModel Column)>();
+        foreach (var table in Database.Tables.OrderBy(t => t.SchemaName, StringComparer.OrdinalIgnoreCase).ThenBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
+            foreach (string name in Project.BulkUpdateColumns)
+                if (table.Columns.FirstOrDefault(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } column && Rewritable(column))
+                    targets.Add((table, column));
+
+        var sb = new StringBuilder();
+        void Line(string line = "") => sb.Append(line).Append('\n');
+        sb.Append("@@@FILE BulkUpdate.sql@@@\n");
+        Line("" + Rem + " "+ "Sets " + string.Join(", ", Project.BulkUpdateColumns) + " to " + Project.BulkUpdateExpression.Replace("{column}", "<column>") + " in every table that has them (" + targets.Count + " column" + (targets.Count == 1 ? "" : "s") + ").");
+        Line("" + Rem + " "+ "Review before running: this rewrites every row; try it on a copy first.");
+        Line("CREATE OR ALTER PROCEDURE " + Q(Database.SchemaName) + ".[BulkUpdateColumns]");
+        Line("AS");
+        Line("BEGIN");
+        Line("    SET NOCOUNT ON;");
+        Line("    SET XACT_ABORT ON;");
+        Line("    BEGIN TRANSACTION;");
+        if (targets.Count == 0)
+            Line("    " + Rem + " "+ "no table of this database has one of those columns");
+        foreach (var (table, column) in targets)
+        {
+            string target = Q(table.SchemaName) + "." + Q(table.TableName);
+            string set = Project.BulkUpdateExpression.Replace("{column}", Q(column.Name));
+            Line();
+            Line("    UPDATE " + target + " SET " + Q(column.Name) + " = " + set + " WHERE " + Q(column.Name) + " IS NOT NULL;");
+            Line("    SELECT " + L(table.TableName + "." + column.Name) + " AS [Column], @@ROWCOUNT AS [RowsUpdated];");
+        }
+        Line();
+        Line("    COMMIT TRANSACTION;");
+        Line("END");
+        Line("GO");
+        Write(sb.ToString());
+    }
+#>

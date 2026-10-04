@@ -1,5 +1,6 @@
 <#@ template language="C#" #>
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
@@ -25,6 +26,7 @@
     // Generates: <TableName>_Insert.sql
     // Inserts one row with properly typed parameters and returns the new key (SCOPE_IDENTITY for an identity key; a composite or caller-supplied key is a
     // parameter). Computed columns are left out, create-date columns are set by rule, a new row is never born inactive, and strings are trimmed.
+    // A table listed in the project's KeySequenceTables takes its key from the GetNextID routine (SP_KeySequence) instead of IDENTITY.
     // Needs a primary key. SQL Server procedure, PostgreSQL function or MySQL procedure, by the source database.
     // Full notes: Docs/TemplateNotes/SP_Insert_v1.md
 
@@ -36,8 +38,19 @@
     bool HasSingleIdentityPrimaryKey = Model.PrimaryKeyColumns.Count == 1 && Model.PrimaryKeyColumns[0].IsIdentity;
     var identityColumn = HasSingleIdentityPrimaryKey ? Model.PrimaryKeyColumns[0] : null;
 
+    // A table the project lists in KeySequenceTables takes its key from the key-sequence routine (SP_KeySequence) instead of IDENTITY: the key is no parameter, it is asked for first.
+    bool usesKeySequence = Project.UsesKeySequence(Model.TableName);
+    ColumnModel sequenceKey = null;
+    if (usesKeySequence)
+    {
+        if (Model.PrimaryKeyShape != PrimaryKeyShape.SingleInt || Model.PrimaryKeyColumns[0].IsIdentity)
+            Error($"{Model.TableName} is listed in KeySequenceTables but its key is not a single whole-number column without IDENTITY.");
+        else
+            sequenceKey = Model.PrimaryKeyColumns[0];
+    }
+
     var parameterColumns = insertableColumns
-        .Where(c => c != identityColumn && !c.IsCreateDateColumn && !c.IsLastChangedDateColumn && c != Model.ActiveColumn)
+        .Where(c => c != identityColumn && c != sequenceKey && !c.IsCreateDateColumn && !c.IsLastChangedDateColumn && c != Model.ActiveColumn)
         .ToList();
 
     var autoTouchedOnInsertColumns = Model.Columns.Where(c => c.IsCreateDateColumn || c.IsLastChangedDateColumn).ToList();
@@ -58,7 +71,8 @@
 
     // One combined (columnName, valueExpression) list drives both the INSERT column list and the
     // VALUES list, so the two can never drift out of sync and comma placement only has to be computed once.
-    var insertPairs = parameterColumns.Select(c => (Name: c.Name, Value: ValueExpression(c)))
+    var insertPairs = (sequenceKey is null ? new List<(string Name, string Value)>() : [(sequenceKey.Name, "@NewKey")])
+        .Concat(parameterColumns.Select(c => (Name: c.Name, Value: ValueExpression(c))))
         .Concat(autoTouchedOnInsertColumns.Select(c => (Name: c.Name, Value: "GETDATE()")))
         .Concat(hardcodedInsertColumns)
         .ToList();
@@ -84,6 +98,14 @@ CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Inse
 AS
 BEGIN
 <#
+    if (sequenceKey is not null)
+    {
+#>
+	DECLARE @NewKey <#= sequenceKey.SqlTypeDeclaration #>;
+	EXEC [<#= Model.SchemaName #>].[GetNextID] '<#= Model.TableName #>', '<#= sequenceKey.Name #>', @NewKey OUTPUT;
+
+<#
+    }
     if (Model.HasStartEndDatePair && Model.StartDateColumn is not null && Model.EndDateColumn is not null)
     {
         var startCol = Model.StartDateColumn;
@@ -147,6 +169,12 @@ BEGIN
     {
 #>
 	SELECT CAST(SCOPE_IDENTITY() AS <#= identityColumn.SqlTypeDeclaration #>) AS [<#= identityColumn.Name #>];
+<#
+    }
+    else if (sequenceKey is not null)
+    {
+#>
+	SELECT @NewKey AS [<#= sequenceKey.Name #>];
 <#
     }
     else

@@ -1,0 +1,108 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // SP_KeySequence_v1.tt
+    // Generates: KeySequence.sql   (one script for the whole database; SQL Server only)
+    // A surrogate-key generator kept in a table, as an alternative to IDENTITY: one row per (table, key column) holding the current value, and a GetNextID routine that hands out the next one.
+    // The tables that use it are the project's KeySequenceTables (the project setting lists them; SP_Insert then asks GetNextID for the key instead of leaving it to IDENTITY); the script also
+    // starts each listed table's counter from its highest existing key, so a table with rows carries on where it was. The table's name is the project's KeySequenceTable (default AutoInc).
+    // Every call locks the whole sequence table (TABLOCKX) for the length of its transaction, so all inserts of all the listed tables queue behind one another: this is a convenience for
+    // a modest write load (or keys that must be set before the insert), not a faster IDENTITY. codegen never applies it: review the script and run it yourself.
+
+    if (Database.Dialect != SqlDialect.SqlServer)
+    {
+        Error("SP_KeySequence is for SQL Server.");
+    }
+    else if (Project.KeySequenceTables.Length == 0)
+    {
+        Error("Name the tables that take their key from the sequence in the project's KeySequenceTables (for example KeySequenceTables=Customer,Item).");
+    }
+    else
+    {
+        var listed = Project.KeySequenceTables
+            .Select(name => (Name: name, Table: Database.Tables.FirstOrDefault(t => t.TableName.Equals(name, StringComparison.OrdinalIgnoreCase))))
+            .ToList();
+        var unknown = listed.Where(l => l.Table is null).Select(l => l.Name).ToList();
+        var unsuitable = listed.Where(l => l.Table is not null && (l.Table.PrimaryKeyShape != PrimaryKeyShape.SingleInt || l.Table.PrimaryKeyColumns[0].IsIdentity)).Select(l => l.Name).ToList();
+        if (unknown.Count > 0)
+        {
+            Error("KeySequenceTables names " + string.Join(", ", unknown) + ", which " + (unknown.Count == 1 ? "is" : "are") + " not in this database.");
+        }
+        else if (unsuitable.Count > 0)
+        {
+            Error("KeySequenceTables names " + string.Join(", ", unsuitable) + ", whose key is not a single whole-number column without IDENTITY.");
+        }
+        else
+        {
+            string schema = Database.SchemaName;
+            string sequence = Project.KeySequenceTable;
+            string Rem = new string((char)45, 2);   // an SQL comment marker
+            string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
+            string L(string text) => "'" + text.Replace("'", "''") + "'";
+            var sb = new StringBuilder();
+            void Line(string line = "") => sb.Append(line).Append('\n');
+
+            sb.Append("@@@FILE KeySequence.sql@@@\n");
+            Line("" + Rem + " "+ "The key sequence for " + string.Join(", ", listed.Select(l => l.Table.TableName)) + ".");
+            Line("" + Rem + " "+ "Review before running: GetNextID locks the whole " + sequence + " table while it works.");
+            Line("IF OBJECT_ID(N'" + schema + "." + sequence + "', N'U') IS NULL");
+            Line("BEGIN");
+            Line("    CREATE TABLE " + Q(schema) + "." + Q(sequence) + " (");
+            Line("        [TableName]  sysname NOT NULL,");
+            Line("        [FieldName]  sysname NOT NULL,");
+            Line("        [StartID]    int     NOT NULL DEFAULT 1,");
+            Line("        [EndID]      int     NOT NULL DEFAULT 2147483647,");
+            Line("        [StepValue]  int     NOT NULL DEFAULT 1,");
+            Line("        [CurrentID]  int     NOT NULL DEFAULT 0,");
+            Line("        CONSTRAINT " + Q("PK_" + sequence) + " PRIMARY KEY ([TableName], [FieldName])");
+            Line("    );");
+            Line("END");
+            Line("GO");
+            Line();
+            foreach (var table in listed.Select(l => l.Table))
+            {
+                var key = table.PrimaryKeyColumns[0];
+                Line("IF NOT EXISTS (SELECT 1 FROM " + Q(schema) + "." + Q(sequence) + " WHERE [TableName] = " + L(table.TableName) + " AND [FieldName] = " + L(key.Name) + ")");
+                Line("    INSERT INTO " + Q(schema) + "." + Q(sequence) + " ([TableName], [FieldName], [CurrentID])");
+                Line("    SELECT " + L(table.TableName) + ", " + L(key.Name) + ", ISNULL(MAX(" + Q(key.Name) + "), 0) FROM " + Q(table.SchemaName) + "." + Q(table.TableName) + ";");
+            }
+            Line("GO");
+            Line();
+            Line("CREATE OR ALTER PROCEDURE " + Q(schema) + ".[GetNextID]");
+            Line("    @TableName sysname,");
+            Line("    @FieldName sysname,");
+            Line("    @NextId    int OUTPUT");
+            Line("AS");
+            Line("BEGIN");
+            Line("    SET NOCOUNT ON;");
+            Line("    DECLARE @StartID int, @EndID int, @StepValue int, @CurrentID int;");
+            Line();
+            Line("    BEGIN TRANSACTION;");
+            Line("    SELECT @CurrentID = [CurrentID], @StartID = [StartID], @EndID = [EndID], @StepValue = [StepValue]");
+            Line("    FROM " + Q(schema) + "." + Q(sequence) + " WITH (TABLOCKX)");
+            Line("    WHERE [TableName] = @TableName AND [FieldName] = @FieldName;");
+            Line();
+            Line("    IF @@ROWCOUNT = 0");
+            Line("    BEGIN");
+            Line("        ROLLBACK TRANSACTION;");
+            Line("        RAISERROR('No key sequence is set up for %s.%s.', 16, 1, @TableName, @FieldName);");
+            Line("        RETURN;");
+            Line("    END");
+            Line();
+            Line("    " + Rem + " "+ "past the end the sequence starts over at its first value");
+            Line("    SET @NextId = CASE WHEN @CurrentID >= @EndID THEN @StartID ELSE @CurrentID + @StepValue END;");
+            Line();
+            Line("    UPDATE " + Q(schema) + "." + Q(sequence) + " SET [CurrentID] = @NextId");
+            Line("    WHERE [TableName] = @TableName AND [FieldName] = @FieldName;");
+            Line("    COMMIT TRANSACTION;");
+            Line("END");
+            Line("GO");
+            Write(sb.ToString());
+        }
+    }
+#>

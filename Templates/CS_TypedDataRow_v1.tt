@@ -1,0 +1,152 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the line to change to use this template in your own project. A project settings file (DtoNamespace, or ProjectName for <ProjectName>.App.Dtos) overrides it.
+    // ==========================================================================================
+    string dtoNamespace = Project.DtoNamespace ?? "MyApp.Dtos";
+
+    // ==========================================================================================
+    // CS_TypedDataRow_v1.tt
+    // Generates: <TableName>DataTable.cs   (see OutputName in CS_TypedDataRow_v1.tt.config)
+    // The ADO.NET typed-DataSet shape of one table, for code that still works with DataTable and DataRow: a <Table>DataTable (its columns, the key, a typed NewRow and Add) and a <Table>Row
+    // with one strongly-typed property per column and, for every column that can be NULL, an Is<Column>Null / Set<Column>Null pair. Reading a NULL column through its property throws a
+    // StrongTypingException, as the Visual Studio generator's classes do; test Is<Column>Null first. The column properties of a nullable column are the plain type, not T?.
+    // Does not write a DataSet that holds the tables, the relations between them, or an adapter.
+    // Full notes: Docs/TemplateNotes/CS_TypedDataRow_v1.md
+    // ==========================================================================================
+
+    string Id(ColumnModel c) => c.IsCSharpReservedWordName ? "@" + c.Name : c.Name;
+    string BaseType(ColumnModel c) => c.SqlType switch
+    {
+        SqlDbType.Int => "int",
+        SqlDbType.BigInt => "long",
+        SqlDbType.SmallInt => "short",
+        SqlDbType.TinyInt => "byte",
+        SqlDbType.Bit => "bool",
+        SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => "decimal",
+        SqlDbType.Float => "double",
+        SqlDbType.Real => "float",
+        SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime => "DateTime",
+        SqlDbType.DateTimeOffset => "DateTimeOffset",
+        SqlDbType.Time => "TimeSpan",
+        SqlDbType.UniqueIdentifier => "Guid",
+        SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => "string",
+        SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => "byte[]",
+        _ => "object"
+    };
+    string Quote(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+
+    var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
+    string table = Model.TableName + "DataTable";
+    string row = Model.TableName + "Row";
+    string ColumnField(ColumnModel c) => c.Name.Replace("@", "") + "Column";
+
+    var o = new StringBuilder();
+    void L(string s = "") => o.Append(s).Append('\n');
+
+    L("using System;");
+    L("using System.Collections.Generic;");
+    L("using System.Data;");
+    L("using System.Linq;");
+    L();
+    L("namespace " + dtoNamespace + ";");
+    L();
+    L("/// <summary> The typed table of " + Model.QuotedName + ". </summary>");
+    L("public class " + table + " : DataTable");
+    L("{");
+    foreach (var c in columns)
+        L("    public DataColumn " + ColumnField(c) + " { get; private set; } = null!;");
+    L();
+    L("    public " + table + "() : base(" + Quote(Model.TableName) + ")");
+    L("    {");
+    foreach (var c in columns)
+    {
+        var settings = new List<string> { "AllowDBNull = " + (c.IsNullable ? "true" : "false") };
+        if (c.IsIdentity)
+            settings.Add("AutoIncrement = true");
+        if (BaseType(c) == "string" && c.MaxLength is > 0)
+            settings.Add("MaxLength = " + (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value));
+        L("        Columns.Add(new DataColumn(" + Quote(c.DbName) + ", typeof(" + BaseType(c) + ")) { " + string.Join(", ", settings) + " });");
+    }
+    if (Model.PrimaryKeyColumns.Count > 0)
+        L("        PrimaryKey = [" + string.Join(", ", Model.PrimaryKeyColumns.Select(c => "Columns[" + Quote(c.DbName) + "]!")) + "];");
+    L("        BindColumns();");
+    L("    }");
+    L();
+    L("    // the typed column properties point at this table's own columns, so a clone binds its own");
+    L("    private void BindColumns()");
+    L("    {");
+    foreach (var c in columns)
+        L("        " + ColumnField(c) + " = Columns[" + Quote(c.DbName) + "]!;");
+    L("    }");
+    L();
+    L("    public override DataTable Clone()");
+    L("    {");
+    L("        var clone = (" + table + ")base.Clone();");
+    L("        clone.BindColumns();");
+    L("        return clone;");
+    L("    }");
+    L();
+    L("    protected override DataTable CreateInstance() => new " + table + "();");
+    L("    protected override Type GetRowType() => typeof(" + row + ");");
+    L("    protected override DataRow NewRowFromBuilder(DataRowBuilder builder) => new " + row + "(builder);");
+    L();
+    L("    public new " + row + " NewRow() => (" + row + ")base.NewRow();");
+    L("    public void Add" + Model.TableName + "Row(" + row + " row) => Rows.Add(row);");
+    L("    public IEnumerable<" + row + "> " + Model.TableName + "Rows => Rows.Cast<" + row + ">();");
+    L("}");
+    L();
+    L("/// <summary> One row of the typed table of " + Model.QuotedName + ". </summary>");
+    L("public class " + row + " : DataRow");
+    L("{");
+    L("    private readonly " + table + " _table;");
+    L();
+    L("    internal " + row + "(DataRowBuilder builder) : base(builder)");
+    L("    {");
+    L("        _table = (" + table + ")Table;");
+    L("    }");
+    foreach (var c in columns)
+    {
+        string type = BaseType(c);
+        L();
+        L("    public " + type + " " + Id(c));
+        L("    {");
+        if (c.IsNullable)
+        {
+            L("        get");
+            L("        {");
+            L("            try");
+            L("            {");
+            L("                return (" + type + ")this[_table." + ColumnField(c) + "];");
+            L("            }");
+            L("            catch (InvalidCastException e)");
+            L("            {");
+            L("                throw new StrongTypingException(\"Cannot get value because it is DBNull.\", e);");
+            L("            }");
+            L("        }");
+        }
+        else
+        {
+            L("        get => (" + type + ")this[_table." + ColumnField(c) + "];");
+        }
+        L("        set => this[_table." + ColumnField(c) + "] = value;");
+        L("    }");
+        if (c.IsNullable)
+        {
+            string name = c.Name.Replace("@", "");
+            L();
+            L("    public bool Is" + name + "Null() => IsNull(_table." + ColumnField(c) + ");");
+            L();
+            L("    public void Set" + name + "Null() => this[_table." + ColumnField(c) + "] = Convert.DBNull;");
+        }
+    }
+    L("}");
+    Write(o.ToString());
+#>

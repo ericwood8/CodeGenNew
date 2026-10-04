@@ -53,6 +53,7 @@ public class TemplateInfo
         ["TS"] = "ts",
         ["API"] = "cs",
         ["JS"] = "js",
+        ["FS"] = "fs",
     };
 
     /// <summary> The name of the file a database-level template writes: the OutputName pattern with {Table} replaced by the project's context name. </summary>
