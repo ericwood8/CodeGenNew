@@ -406,7 +406,8 @@ public class PostgresSchemaProvider : SchemaProviderBase
                 DeclarationOverride: declaration,
                 DefaultForCSharp: serial ? null : NormalizeDefault(columnDefault),
                 Choices: choices,
-                EnumType: enumLabels is null ? null : reader.GetString(reader.GetOrdinal("udt_schema")) + "." + udtName));
+                EnumType: enumLabels is null ? null : reader.GetString(reader.GetOrdinal("udt_schema")) + "." + udtName,
+                CheckDefinitions: reader.IsDBNull(checkOrdinal) ? null : ((string[])reader.GetValue(checkOrdinal)).ToList()));
         }
 
         return results;

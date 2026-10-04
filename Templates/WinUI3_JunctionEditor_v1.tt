@@ -10,10 +10,10 @@
     // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
     // folders). Everything below this block describes and implements the template itself.
     // ==========================================================================================
-    string viewNamespace = "TimeEntry.Desktop.Views";
-    string viewModelNamespace = "TimeEntry.Desktop.ViewModels";
-    string contextType = "TimeEntryContext";
-    string contextNamespace = "TimeEntry.Common.Data";
+    string viewNamespace = "MyApp.Desktop.Views";
+    string viewModelNamespace = "MyApp.Desktop.ViewModels";
+    string contextType = "MyAppContext";
+    string contextNamespace = "MyApp.Common.Data";
     // Namespaces the generated files must "using" beyond the ones every file needs (Microsoft.UI.Xaml.*,
     // Microsoft.EntityFrameworkCore, System.Collections.ObjectModel, CommunityToolkit.Mvvm.ComponentModel).
     string[] usings = { };

@@ -338,7 +338,40 @@ public class ProjectSettings
             NumericKind.Count or NumericKind.Sequence => (0L, type.Max),
             _ => (type.Min, type.Max)
         };
+        // what the database says in a CHECK constraint narrows it further (CHECK (rating BETWEEN 1 AND 5))
+        if (column.Check is { } check)
+        {
+            long checkedMin = Math.Max(min, check.IntegerMin ?? min), checkedMax = Math.Min(max, check.IntegerMax ?? max);
+            if (checkedMin <= checkedMax)
+                (min, max) = (checkedMin, checkedMax);
+        }
         return new NumericRange(Math.Max(min, type.Min), Math.Min(max, type.Max));
+    }
+
+    /// <summary> The limits a money box (a currency column that is not a whole number) puts on its value: what the column's CHECK constraint says (<c>CHECK (credit_limit &gt;= 0)</c>), and a minimum of
+    /// 0 for a column the project lists in <c>NonNegativeColumns</c> (for a database whose schema does not say so). Null for no limit. </summary>
+    public (double? Min, double? Max) MoneyLimits(string table, ColumnModel column)
+    {
+        double? min = column.Check?.Min, max = column.Check?.Max;
+        if (IsNonNegative(table, column.Name))
+            min = min is null ? 0 : Math.Max(min.Value, 0);
+        return (min, max);
+    }
+
+    private static string Number(double value) => value.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary> <see cref="MoneyLimits"/> as XAML attributes (<c>Minimum="0" Maximum="100" </c>, with a trailing space), or empty. </summary>
+    public string MoneyLimitAttributes(string table, ColumnModel column)
+    {
+        var (min, max) = MoneyLimits(table, column);
+        return (min is { } lo ? $"Minimum=\"{Number(lo)}\" " : "") + (max is { } hi ? $"Maximum=\"{Number(hi)}\" " : "");
+    }
+
+    /// <summary> <see cref="MoneyLimits"/> as html input attributes (<c> min="0" max="100"</c>, with a leading space), or empty. </summary>
+    public string MoneyLimitHtml(string table, ColumnModel column)
+    {
+        var (min, max) = MoneyLimits(table, column);
+        return (min is { } lo ? $" min=\"{Number(lo)}\"" : "") + (max is { } hi ? $" max=\"{Number(hi)}\"" : "");
     }
 
     /// <summary> The ISO 4217 code (USD, EUR, ...) a currency number box formats with. </summary>

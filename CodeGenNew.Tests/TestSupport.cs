@@ -59,7 +59,7 @@ internal static class Sample
         string name, SqlDbType type, bool nullable = false, bool primaryKey = false, bool identity = false,
         int? characters = null, int? precision = null, int? scale = null, string? defaultSql = null, int ordinal = 0,
         bool modifiedUserColumn = false, bool createDateColumn = false, bool createUserColumn = false,
-        bool inUniqueIndex = false, NumericKind numericKind = NumericKind.None, bool currency = false, List<string>? choices = null, string? enumType = null, string? sqlDeclaration = null)
+        bool inUniqueIndex = false, NumericKind numericKind = NumericKind.None, bool currency = false, List<string>? choices = null, string? enumType = null, string? sqlDeclaration = null, CheckRange? check = null)
     {
         bool isText = type is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
         bool isUnicode = type is SqlDbType.NChar or SqlDbType.NVarChar;
@@ -95,6 +95,8 @@ internal static class Sample
             IsBooleanColumn = type == SqlDbType.Bit,
             Choices = choices,
             DbEnumType = enumType,
+            Check = check,
+            IsNumericColumn = check is not null,
             IsAuditColumn = name.IsAuditColumn(),
             IsModifiedUserColumn = modifiedUserColumn,
             IsCreateDateColumn = createDateColumn,
@@ -154,7 +156,7 @@ internal static class Sample
         Rows = rows ?? []
     };
 
-    /// <summary> Like TimeEntry's E_DonateLeave: identity key, two foreign keys to the same parent, a date, an int, a note. </summary>
+    /// <summary> Like a E_DonateLeave: identity key, two foreign keys to the same parent, a date, an int, a note. </summary>
     public static TableModel DonateLeave() => Table("E_DonateLeave",
     [
         Column("DonateLeaveId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
@@ -169,7 +171,7 @@ internal static class Sample
         ForeignKey("DonateTo_EmployeeId", "Employee", "EmployeeId", "Name")
     ]);
 
-    /// <summary> Like TimeEntry's Holiday: a text Name, no IsActive, a string foreign key to a lookup table. </summary>
+    /// <summary> Like a Holiday: a text Name, no IsActive, a string foreign key to a lookup table. </summary>
     public static TableModel Holiday() => Table("Holiday",
     [
         Column("HolidayId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
@@ -183,7 +185,7 @@ internal static class Sample
         ForeignKey("SY_DisplayId", "SY_Display", "SY_DisplayId")
     ]);
 
-    /// <summary> Like TimeEntry's DepartmentTeam: Name + IsActive (a "name/active" table) hanging off one parent. </summary>
+    /// <summary> Like a DepartmentTeam: Name + IsActive (a "name/active" table) hanging off one parent. </summary>
     public static TableModel DepartmentTeam() => Table("DepartmentTeam",
     [
         Column("DepartmentTeamId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
@@ -193,7 +195,7 @@ internal static class Sample
     ],
     [ForeignKey("DepartmentId", "Department", "DepartmentId", "Name")]);
 
-    /// <summary> Like TimeEntry's Department: a plain int-keyed table that DepartmentTeam hangs off of
+    /// <summary> Like a Department: a plain int-keyed table that DepartmentTeam hangs off of
     /// (TableModel.ChildForeignKeys), for the WinUI3_DetailMasterScreen tests. </summary>
     public static TableModel DepartmentWithTeams() => Table("Department",
     [
@@ -222,7 +224,7 @@ internal static class Sample
             ])
     ]);
 
-    /// <summary> Like TimeEntry's SY_Role lookup: an id and a Name, with three rows. </summary>
+    /// <summary> Like a SY_Role lookup: an id and a Name, with three rows. </summary>
     public static TableModel Roles() => Table("SY_Role",
     [
         Column("SY_RoleId", SqlDbType.Int, primaryKey: true, ordinal: 1),
@@ -330,7 +332,7 @@ internal static class Sample
         ForeignKey("GroupID", "Groups", "ID", "ShortDescr")
     ]);
 
-    /// <summary> Like TimeEntry's Employee: a plain int-keyed lookup parent, the FK target of DonateLeave()
+    /// <summary> Like a Employee: a plain int-keyed lookup parent, the FK target of DonateLeave()
     /// and TimeSheetWithEmployeeAndDetail() below -- for cross-template consistency tests (does a component
     /// call the method TS_Service actually generates for this same table). </summary>
     public static TableModel Employee() => Table("Employee",
@@ -339,7 +341,7 @@ internal static class Sample
         Column("Name", SqlDbType.NVarChar, characters: 100, ordinal: 2)
     ]);
 
-    /// <summary> Like TimeEntry's real E_TimeSheet/E_TimeSheetDetail pair (see Docs/specs.md section 11's
+    /// <summary> Like an E_TimeSheet/E_TimeSheetDetail pair (see Docs/specs.md section 11's
     /// TS_DetailMasterComponent entry): an int-keyed table with both a foreign key to a lookup parent
     /// (Employee) and a child table hanging off it (TimeSheetDetail) -- exercises the lookup-dropdown and
     /// child-grid code paths together. </summary>
@@ -394,7 +396,7 @@ internal static class Sample
         }
     ]);
 
-    /// <summary> Like the real CriticalViewer Movie/Reviews pair: a parent table whose child table's name is
+    /// <summary> Like a Movie/Reviews pair: a parent table whose child table's name is
     /// already plural -- the child grid's route must not double-pluralize it. </summary>
     public static TableModel MovieWithReviews() => Table("Movie",
     [

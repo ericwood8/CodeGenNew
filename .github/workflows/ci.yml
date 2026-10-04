@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      # No database is available here: the live schema tests report themselves as inconclusive when
+      # their CODEGENNEW_* environment variables are not set.
+      - name: Test
+        run: dotnet test CodeGenNew.Tests -c Release --logger "trx;LogFileName=tests.trx"
+      - name: Pack the command-line tool
+        run: dotnet pack CodeGenNew.Cli -c Release -o artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codegen-tool
+          path: artifacts/*.nupkg
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: "**/tests.trx"
+
+  desktop-app:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build the WinUI3 app
+        run: dotnet build CodeGenNew.App -c Release -p:Platform=x64

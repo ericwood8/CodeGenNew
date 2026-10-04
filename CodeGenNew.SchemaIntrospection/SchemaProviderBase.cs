@@ -22,7 +22,7 @@ public sealed record RawColumn(
     string Name, int OrdinalPosition, string SqlTypeName, int MaxLength, int Precision, int Scale,
     bool IsNullable, bool IsIdentity, int? IdentitySeed, int? IdentityIncrement,
     string? ComputedDefinition, string? DefaultDefinition, bool IsPrimaryKey, bool IsInUniqueIndex,
-    string? DeclarationOverride = null, string? DefaultForCSharp = null, List<string>? Choices = null, string? EnumType = null);
+    string? DeclarationOverride = null, string? DefaultForCSharp = null, List<string>? Choices = null, string? EnumType = null, IReadOnlyList<string>? CheckDefinitions = null);
 
 /// <summary> One foreign key, either direction: the OTHER table's name and the two column lists. </summary>
 public sealed record ForeignKeyRow(string ConstraintName, string OtherSchema, string OtherTable, List<string> ReferencingColumns, List<string> ReferencedColumns);
@@ -285,6 +285,37 @@ public abstract class SchemaProviderBase : ISchemaProvider
         return (true, flagColumn, companionColumn);
     }
 
+    /// <summary> Gives each column the CHECK constraints that name it: <paramref name="checks"/> pairs a column (null when the catalog does not say which one) with a definition; a definition with no
+    /// column is matched by the one column it mentions. A constraint over several columns belongs to none. </summary>
+    protected static List<RawColumn> WithChecks(List<RawColumn> columns, IEnumerable<(string? Column, string Definition)> checks)
+    {
+        var byColumn = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (column, definition) in checks)
+        {
+            string? name = column ?? CheckConstraintParser.SingleColumn(definition);
+            if (name is null || !columns.Any(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            if (!byColumn.TryGetValue(name, out var list))
+                byColumn[name] = list = [];
+            list.Add(definition);
+        }
+        return columns.Select(c => byColumn.TryGetValue(c.Name, out var list) ? c with { CheckDefinitions = list } : c).ToList();
+    }
+
+    /// <summary> The values a text column's CHECK constraint lists (SQL Server and MySQL spell it as an OR chain or an IN list), which make it a drop-down like a MySQL enum. </summary>
+    private static List<string>? ListFromChecks(RawColumn raw, bool isString) =>
+        !isString || raw.CheckDefinitions is null ? null : raw.CheckDefinitions.Select(d => CheckConstraintParser.ParseList(d, raw.Name)).FirstOrDefault(v => v is not null);
+
+    /// <summary> The limits all of a numeric column's CHECK constraints put on it together. </summary>
+    private static CheckRange? RangeFromChecks(RawColumn raw)
+    {
+        CheckRange? range = null;
+        foreach (string definition in raw.CheckDefinitions ?? [])
+            if (CheckConstraintParser.ParseRange(definition, raw.Name) is { } parsed)
+                range = range is null ? parsed : range.Combine(parsed);
+        return range;
+    }
+
     private ColumnModel BuildColumnModel(RawColumn raw, List<SpecialLogicRule> rules)
     {
         var sqlType = SqlTypeClassifier.MapSqlTypeName(raw.SqlTypeName);
@@ -331,8 +362,9 @@ public abstract class SchemaProviderBase : ISchemaProvider
             IsStringColumn = isString,
             IsDateColumn = isDate,
             IsBooleanColumn = isBoolean,
-            Choices = raw.Choices,
+            Choices = raw.Choices ?? ListFromChecks(raw, isString),
             DbEnumType = raw.EnumType,
+            Check = isNumeric || isInteger || isMoney ? RangeFromChecks(raw) : null,
             NumericKind = isInteger ? NumericClassifier.Classify(name) : NumericKind.None,
             IsCurrencyColumn = isMoney || (sqlType == SqlDbType.Decimal && NumericClassifier.IsCurrencyName(name)),
             IsAuditColumn = name.IsAuditColumn(),

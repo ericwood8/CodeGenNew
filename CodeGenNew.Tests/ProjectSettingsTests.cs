@@ -162,7 +162,7 @@ public class ProjectSettingsTests
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         Expect.Contains(result.GeneratedText!, expectedNamespace);
         Expect.Contains(result.GeneratedText!, expectedContext);
-        Expect.DoesNotContain(result.GeneratedText!, "TimeEntryContext");
+        Expect.DoesNotContain(result.GeneratedText!, "MyAppContext");
     }
 
     [TestMethod]
@@ -171,7 +171,7 @@ public class ProjectSettingsTests
         var result = await TemplateRunner.RunAsync(Repo.Template("CS_Repo_v1.tt"), Sample.Holiday());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
-        Expect.Contains(result.GeneratedText!, "TimeEntryContext");
+        Expect.Contains(result.GeneratedText!, "MyAppContext");
     }
 
     [TestMethod]

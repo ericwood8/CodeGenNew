@@ -9,8 +9,8 @@
     // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
     // Everything below this block describes and implements the template itself.
     // ==========================================================================================
-    string contextNamespace = "TimeEntry.Common.Data";
-    string contextType = "TimeEntryContext";
+    string contextNamespace = "MyApp.Common.Data";
+    string contextType = "MyAppContext";
     string connectionName = "DbConnectionString";   // the key under ConnectionStrings in appsettings.json
     string[] usings = { };                          // namespaces the generated file must "using" (the entities')
     // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.

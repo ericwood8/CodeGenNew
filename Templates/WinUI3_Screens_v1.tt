@@ -9,8 +9,8 @@
     // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces).
     // Everything below this block describes and implements the template itself.
     // ==========================================================================================
-    string windowNamespace = "TimeEntry.Desktop";            // the namespace of MainWindow
-    string viewNamespace = "TimeEntry.Desktop.Views";        // the namespace of the list pages (WinUI3_MasterScreen)
+    string windowNamespace = "MyApp.Desktop";            // the namespace of MainWindow
+    string viewNamespace = "MyApp.Desktop.Views";        // the namespace of the list pages (WinUI3_MasterScreen)
     // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     viewNamespace = Project.ViewNamespace ?? viewNamespace;
     windowNamespace = Project.ViewNamespace is not null || Project.ProjectName is not null ? Project.AppNamespace : windowNamespace;

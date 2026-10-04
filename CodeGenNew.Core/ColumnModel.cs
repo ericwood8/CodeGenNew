@@ -68,6 +68,10 @@ public class ColumnModel
     /// search function casts the column to text, and the SP_EnumCasts script creates the assignment cast (text to the enum) that lets EF Core, which sends text, write it. </summary>
     public string? DbEnumType { get; init; }
 
+    /// <summary> The limits a CHECK constraint of the database puts on this numeric column (<c>CHECK (credit_limit &gt;= 0)</c>); null when it has none or the check is not a plain range. The number
+    /// boxes, the web inputs and the validation attributes use it with the limits the column's type and name already give. </summary>
+    public CheckRange? Check { get; init; }
+
     /// <summary> What this integer column's name suggests about its values (a year, a month, a percentage, ...); None for any
     /// other column. See NumericClassifier; ProjectSettings.RangeFor turns it into limits. </summary>
     public NumericKind NumericKind { get; init; }

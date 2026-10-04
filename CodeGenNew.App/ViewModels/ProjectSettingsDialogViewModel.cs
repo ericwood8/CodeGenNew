@@ -46,7 +46,7 @@ public partial class ProjectSettingsDialogViewModel : StatusMessageViewModel
         ["NoRepositoryTables"] = "overrides EnumTables for this one question: tables that get no repository",
         ["NoApiTables"] = "overrides EnumTables for this one question: tables that get no API or TypeScript model/screen",
         ["NoNavigationTables"] = "overrides EnumTables for this one question: tables referenced without a navigation property",
-        ["NonNegativeColumns"] = "comma-separated money columns that can never be negative (CreditLimit, or Item.Cost for one table): their number box gets a minimum of 0",
+        ["NonNegativeColumns"] = "comma-separated money columns that can never be negative (CreditLimit, or Item.Cost for one table): their number box gets a minimum of 0 (a CHECK range in the database does this without the list)",
         ["ApiFolder"] = "React / Angular folder for the api modules, relative to the source folder; blank = api",
         ["ModelsFolder"] = "React / Angular folder for the TypeScript models; blank = models",
         ["ServicesFolder"] = "Angular folder for the services; blank = services",

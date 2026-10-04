@@ -287,7 +287,35 @@ public class MySqlSchemaProvider : SchemaProviderBase
         ORDER BY c.ORDINAL_POSITION;
         """;
 
+    // CHECK_CONSTRAINTS exists from MySQL 8.0.16; an older server has none to read.
+    private const string CheckConstraintsQuery = """
+        SELECT cc.CHECK_CLAUSE
+        FROM information_schema.CHECK_CONSTRAINTS cc
+        JOIN information_schema.TABLE_CONSTRAINTS tc ON tc.CONSTRAINT_SCHEMA = cc.CONSTRAINT_SCHEMA AND tc.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
+        WHERE tc.CONSTRAINT_TYPE = 'CHECK' AND tc.TABLE_SCHEMA = @schema AND tc.TABLE_NAME = @table
+        """;
+
     protected override async Task<List<RawColumn>> ReadColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        var columns = await ReadRawColumnsAsync(connection, schemaName, tableName, cancellationToken);
+        var checks = new List<(string?, string)>();
+        try
+        {
+            await using var command = new MySqlCommand(CheckConstraintsQuery, (MySqlConnection)connection);
+            command.Parameters.AddWithValue("@schema", schemaName);
+            command.Parameters.AddWithValue("@table", tableName);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                checks.Add((null, reader.GetString(0)));
+        }
+        catch (MySqlException)
+        {
+            // a server without information_schema.CHECK_CONSTRAINTS: no checks to read
+        }
+        return WithChecks(columns, checks);
+    }
+
+    private async Task<List<RawColumn>> ReadRawColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {
         var results = new List<RawColumn>();
         await using var command = new MySqlCommand(ColumnsQuery, (MySqlConnection)connection);

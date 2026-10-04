@@ -12,7 +12,7 @@
     // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
     // lists of tables). Everything below this block describes and implements the template itself.
     // ==========================================================================================
-    string entityNamespace = "TimeEntry.Common.Entities";
+    string entityNamespace = "MyApp.Common.Entities";
     string baseEntity = "BaseEntity";
     string baseNameActiveEntity = "BaseNameActiveEntity";
     // Namespaces the generated file must "using" (for example "MyApp.Entities"; leave empty when the project supplies them through

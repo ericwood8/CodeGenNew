@@ -28,7 +28,8 @@ public static class Program
             return 1;
         }
 
-        string baseDirectory = AppContext.BaseDirectory;
+        string baseDirectory = AppHome.Resolve(AppContext.BaseDirectory);   // the program's folder, or the user's own folder for an installed tool
+        Directory.CreateDirectory(baseDirectory);
         var settings = AppSettings.Load(Path.Combine(baseDirectory, "Settings.json"));
 
         string templatesDirectory = Path.Combine(baseDirectory, settings.TemplatesDirectory);

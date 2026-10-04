@@ -72,6 +72,13 @@ public static class NumericClassifier
             min = 0;
             max = Math.Min(max, 100);
         }
+        // a CHECK constraint of the database narrows it (CHECK (price > 0): strict bounds are taken as inclusive, the database still refuses the edge)
+        if (column.Check is { } check)
+        {
+            double lo = check.Min is { } cm ? Math.Max(min, cm) : min, hi = check.Max is { } cx ? Math.Min(max, cx) : max;
+            if (lo <= hi)
+                (min, max) = (lo, hi);
+        }
         return (min, max);
     }
 

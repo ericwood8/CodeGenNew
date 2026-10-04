@@ -49,8 +49,7 @@ public class TemplateConfig
     /// &lt;Table&gt;Repo directly) sets this. A "name/active" table's repository is a NameActiveRepo instead
     /// (API_Crud.tt already refuses it, for the same reason: it needs duplicate-name checks and trimming, so
     /// its real API is always hand-maintained) -- and a hand-maintained API for that shape commonly does
-    /// NOT expose a plain getAll() at all (confirmed against a real one, TimeEntryServer's
-    /// DepartmentTeamApi.cs: its only "list" route is scoped to a parent, /department/{id}, not a bare
+    /// NOT expose a plain getAll() at all (confirmed against a real one: its only "list" route is scoped to a parent, /department/{id}, not a bare
     /// GET api/departmentteams). A template that assumes the standard shape would generate a client that
     /// compiles but 404s. Checked against TableSummary.IsNameActiveTable / TableModel.IsNameActiveTable. </summary>
     public bool RequiresNotNameActiveTable { get; init; }

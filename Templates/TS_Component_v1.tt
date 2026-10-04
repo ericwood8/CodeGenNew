@@ -321,7 +321,7 @@
                 // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
                 string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\""
                     : IsPlainDecimal(c) ? $" min=\"{Inv(NumericClassifier.DecimalRange(c).Min)}\" max=\"{Inv(NumericClassifier.DecimalRange(c).Max)}\""
-                    : c.IsCurrencyColumn && !c.IsIntegerColumn && Project.IsNonNegative(Model.TableName, c.Name) ? " min=\"0\"" : "";
+                    : c.IsCurrencyColumn && !c.IsIntegerColumn ? Project.MoneyLimitHtml(Model.TableName, c) : "";
                 H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{step}{range} placeholder=\"{PlaceholderFor(c)}\"{req}>");
             }
             else if (IsMultiline(c))

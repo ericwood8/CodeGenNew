@@ -9,8 +9,8 @@
     // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
     // lists of tables). Everything below this block describes and implements the template itself.
     // ==========================================================================================
-    string apiNamespace = "TimeEntry.ApiService.Apis";
-    string contextType = "TimeEntryContext";
+    string apiNamespace = "MyApp.ApiService.Apis";
+    string contextType = "MyAppContext";
     // Namespaces the generated file must "using" (for example "MyApp.Entities"; leave empty when the project supplies them through
     // global usings). Each entry becomes a using line in the generated file.
     string[] usings = { };

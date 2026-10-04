@@ -107,8 +107,7 @@ public class TableModel
     /// table, counts too). A composite FK spanning both columns in one constraint does NOT count: that
     /// describes a table whose key duplicates a parent's own composite key, not a many-to-many association.
     /// Purely structural (no name-pattern guessing), unlike most SpecialLogicColumns.config categories. See
-    /// CodeGenPossibilities\ShuttleControlJunctionTable in the research folder for the UI pattern this was
-    /// added to support. </summary>
+    /// The junction editor screen is the UI pattern this supports. </summary>
     public bool IsJunctionTable =>
         JunctionCandidateColumns.Count == 2 &&
         JunctionCandidateColumns.All(c => ForeignKeys.Any(fk =>
@@ -126,7 +125,7 @@ public class TableModel
     /// <summary> Columns SP_Search.tt, API_Search.tt and CS_Repo.tt's SearchAsync all filter on: every string
     /// column (never a long note: ColumnModel.IsLongTextColumn) that isn't audit-classified (IsAuditColumn -- Create*/Modif*/Change*/Delete*/Update*/Activ*/
     /// Inactiv*, per AuditColumnClassifier) -- nobody types into a search box for "who created this row".
-    /// Centralized here (CodeGenPossibilities\Search in the research folder) the same way Pluralizer was
+    /// Centralized here the same way Pluralizer was
     /// pulled up from three copies, so the three templates -- and every frontend search bar built from this
     /// same list -- can't drift apart on what's searchable. Empty when the table has nothing to filter on
     /// (all-numeric/date/bit columns); SP_Search.tt/API_Search.tt both refuse to generate in that case. </summary>

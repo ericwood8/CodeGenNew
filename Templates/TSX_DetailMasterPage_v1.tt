@@ -710,9 +710,11 @@
                     T($"              min=\"{Inv(decMin)}\"");
                     T($"              max=\"{Inv(decMax)}\"");
                 }
-                else if (c.IsCurrencyColumn && !c.IsIntegerColumn && Project.IsNonNegative(Model.TableName, c.Name))
+                else if (c.IsCurrencyColumn && !c.IsIntegerColumn && Project.MoneyLimits(Model.TableName, c) is var (moneyMin, moneyMax))
                 {
-                    T("              min=\"0\"");   // a money column the project says is never negative
+                    // what the column's CHECK constraint says, or a minimum of 0 for a column the project lists as never negative
+                    if (moneyMin is { } lo) T($"              min=\"{Inv(lo)}\"");
+                    if (moneyMax is { } hi) T($"              max=\"{Inv(hi)}\"");
                 }
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: Number(event.target.value) }})}}");

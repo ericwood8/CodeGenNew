@@ -11,10 +11,10 @@
     // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
     // folders, lists of tables). Everything below this block describes and implements the template itself.
     // ==========================================================================================
-    string viewNamespace = "TimeEntry.Desktop.Views";
-    string viewModelNamespace = "TimeEntry.Desktop.ViewModels";
-    string contextType = "TimeEntryContext";
-    string contextNamespace = "TimeEntry.Common.Data";
+    string viewNamespace = "MyApp.Desktop.Views";
+    string viewModelNamespace = "MyApp.Desktop.ViewModels";
+    string contextType = "MyAppContext";
+    string contextNamespace = "MyApp.Common.Data";
     string[] usings = { };
     string viewsFolder = "Views";
     // Tables whose Add/Edit dialog is a <Table>DetailMasterDialog (WinUI3_DetailMasterScreen.tt) rather than a plain
@@ -276,7 +276,7 @@
             {
 #>
             <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
-                       <#= Project.IsNonNegative(table, c.Name) ? "Minimum=\"0\" " : "" #>ValidationMode="InvalidInputOverwritten" Width="180" HorizontalAlignment="Left" />
+                       <#= Project.MoneyLimitAttributes(table, c) #>ValidationMode="InvalidInputOverwritten" Width="180" HorizontalAlignment="Left" />
 <#
             }
             else if (UsesDecimalBox(c))

@@ -303,7 +303,7 @@ public class TemplateRenderingTests
         var codeBehind = files.Single(f => f.RelativePath.EndsWith(".xaml.cs")).Content;
         var viewModel = files.Single(f => f.RelativePath.EndsWith("JunctionEditorViewModel.cs")).Content;
 
-        Expect.Contains(xaml, "x:Class=\"TimeEntry.Desktop.Views.NameBaseGroupXrefJunctionEditor\"");
+        Expect.Contains(xaml, "x:Class=\"MyApp.Desktop.Views.NameBaseGroupXrefJunctionEditor\"");
         Expect.Contains(xaml, "Title=\"Groups for this NameBase\"");
         Expect.Contains(xaml, "ItemsSource=\"{x:Bind ViewModel.Available}\"");
         Expect.Contains(xaml, "ItemsSource=\"{x:Bind ViewModel.Selected}\"");
@@ -313,7 +313,7 @@ public class TemplateRenderingTests
 
         Expect.Contains(viewModel, "public string? ShortDescr { get; set; }"); // Groups' display column
         Expect.Contains(viewModel, "public int TargetId { get; set; }");
-        Expect.Contains(viewModel, "public NameBaseGroupXrefJunctionEditorViewModel(TimeEntryContext context, int anchorId)");
+        Expect.Contains(viewModel, "public NameBaseGroupXrefJunctionEditorViewModel(MyAppContext context, int anchorId)");
         Expect.Contains(viewModel, "SqlQueryRaw<JunctionListItem>(\"EXEC [dbo].[NameBaseGroupXref_List] @AnchorNameBaseID\"");
         Expect.Contains(viewModel, "$\"EXEC [dbo].[NameBaseGroupXref_Link] {_anchorId}, {item.TargetId}\"");
         Expect.Contains(viewModel, "$\"EXEC [dbo].[NameBaseGroupXref_Unlink] {_anchorId}, {item.TargetId}\"");
@@ -360,14 +360,14 @@ public class TemplateRenderingTests
         string codeBehind = files["E_DonateLeaveDetailDialog.xaml.cs"].Content;
         string viewModel = files["E_DonateLeaveDetailViewModel.cs"].Content;
 
-        Expect.Contains(xaml, "x:Class=\"TimeEntry.Desktop.Views.E_DonateLeaveDetailDialog\"");
+        Expect.Contains(xaml, "x:Class=\"MyApp.Desktop.Views.E_DonateLeaveDetailDialog\"");
         Expect.Contains(xaml, "SelectedValue=\"{x:Bind ViewModel.DonateFrom_EmployeeId, Mode=TwoWay}\"");
         Expect.Contains(xaml, "SelectedValue=\"{x:Bind ViewModel.DonateTo_EmployeeId, Mode=TwoWay}\"");
         Expect.Contains(xaml, "<CalendarDatePicker Header=\"When Donated\" Date=\"{x:Bind ViewModel.WhenDonated, Mode=TwoWay}\"");
         Expect.Contains(xaml, "Text=\"{x:Bind ViewModel.Note, Mode=TwoWay}\"");
 
         Expect.Contains(codeBehind, "public sealed partial class E_DonateLeaveDetailDialog : ContentDialog");
-        Expect.Contains(codeBehind, "public E_DonateLeaveDetailDialog(TimeEntryContext context, E_DonateLeave? editing = null)");
+        Expect.Contains(codeBehind, "public E_DonateLeaveDetailDialog(MyAppContext context, E_DonateLeave? editing = null)");
 
         Expect.Contains(viewModel, "private readonly E_DonateLeaveRepo _repo;");
         Expect.Contains(viewModel, "public ObservableCollection<E_DonateLeaveDetailLookupOption> EmployeeOptions { get; } = [];");
@@ -418,7 +418,7 @@ public class TemplateRenderingTests
         string codeBehind = files["E_DonateLeaveListPage.xaml.cs"].Content;
         string viewModel = files["E_DonateLeaveListViewModel.cs"].Content;
 
-        Expect.Contains(xaml, "x:Class=\"TimeEntry.Desktop.Views.E_DonateLeaveListPage\"");
+        Expect.Contains(xaml, "x:Class=\"MyApp.Desktop.Views.E_DonateLeaveListPage\"");
         Expect.Contains(xaml, "Content=\"Donate From Employee\"");   // a sortable header is a button
         Expect.Contains(xaml, "ItemsSource=\"{x:Bind ViewModel.Rows}\"");
         Expect.Contains(xaml, "Text=\"{x:Bind Cells[0]}\"");
@@ -450,7 +450,7 @@ public class TemplateRenderingTests
         // (claimed by <Table>ListRow's own DataTemplate) -- referencing it via "local:" compiled the XAML but
         // failed at compile time with WMC0001 "Unknown type 'PaginationBar'", caught only once this template
         // was actually compiled for real (2026-09-27).
-        Expect.Contains(xaml, "xmlns:views=\"using:TimeEntry.Desktop.Views\"");
+        Expect.Contains(xaml, "xmlns:views=\"using:MyApp.Desktop.Views\"");
         // Pagination bar is boxed in the same shaded Border as the Add New/Refresh and search bars
         // (2026-09-27 grid/toolbar styling) -- the Border immediately wraps <views:PaginationBar.
         Expect.Contains(xaml, "<Border Grid.Row=\"1\" Background=\"{ThemeResource SolidBackgroundFillColorSecondaryBrush}\"\n                    BorderBrush=\"{ThemeResource ControlStrokeColorSecondaryBrush}\" BorderThickness=\"1\" CornerRadius=\"4\" Padding=\"8\">\n                <views:PaginationBar");
@@ -560,7 +560,7 @@ public class TemplateRenderingTests
         string codeBehind = files["DepartmentDetailMasterDialog.xaml.cs"].Content;
         string viewModel = files["DepartmentDetailMasterViewModel.cs"].Content;
 
-        Expect.Contains(xaml, "x:Class=\"TimeEntry.Desktop.Views.DepartmentDetailMasterDialog\"");
+        Expect.Contains(xaml, "x:Class=\"MyApp.Desktop.Views.DepartmentDetailMasterDialog\"");
         Expect.Contains(xaml, "Text=\"{x:Bind ViewModel.Name, Mode=TwoWay}\"");
         Expect.Contains(xaml, "Text=\"Department Team\""); // the child table's grid title
         Expect.Contains(xaml, "ItemsSource=\"{x:Bind ViewModel.departmentTeamColumnHeaders}\"");
@@ -734,7 +734,7 @@ public class TemplateRenderingTests
     {
         string cs = await Render("API_Junction_v1.tt", Sample.JunctionWithSurrogateKey());
 
-        Expect.Contains(cs, "namespace TimeEntry.ApiService.Apis;");
+        Expect.Contains(cs, "namespace MyApp.ApiService.Apis;");
         Expect.Contains(cs, "public class NameBaseGroupXrefJunctionApi<T> : BaseApi<T> where T : class");
         Expect.Contains(cs, "MapGet(_apiSubDir + \"/junction/{anchorId}\", GetJunctionList)");
         Expect.Contains(cs, "MapPost(_apiSubDir + \"/junction/link\", Link)");
@@ -772,7 +772,7 @@ public class TemplateRenderingTests
     {
         string cs = await Render("API_Search_v1.tt", Sample.Holiday());
 
-        Expect.Contains(cs, "namespace TimeEntry.ApiService.Apis;");
+        Expect.Contains(cs, "namespace MyApp.ApiService.Apis;");
         Expect.Contains(cs, "public record HolidaySearchResult(IReadOnlyList<Holiday> Items, int Page, int PageSize, int TotalCount, int TotalPages);");
         Expect.Contains(cs, "public class HolidaySearchApi<T> : BaseApi<T> where T : class");
         Expect.Contains(cs, "MapGet(_apiSubDir + \"/search\", Search)");
@@ -910,7 +910,7 @@ public class TemplateRenderingTests
     {
         string cs = await Render("API_Crud_v1.tt", Sample.DonateLeave());
 
-        Expect.Contains(cs, "namespace TimeEntry.ApiService.Apis;");
+        Expect.Contains(cs, "namespace MyApp.ApiService.Apis;");
         Expect.Contains(cs, "public class E_DonateLeaveApi<T> : BaseApi<T> where T : class");
         Expect.Contains(cs, "E_DonateLeaveRepo repo = new(context);");
         Expect.DoesNotContain(cs, "GenericRepo<");
@@ -988,7 +988,7 @@ public class TemplateRenderingTests
     {
         using var temp = new TempFolder();
         string source = File.ReadAllText(Repo.Template("CS_Enum_v1.tt"));
-        string custom = temp.File("CS_Enum_v1.tt", source.Replace("\"TimeEntry.Common.Enums\"", "\"MyApp.Lookups\""));
+        string custom = temp.File("CS_Enum_v1.tt", source.Replace("\"MyApp.Common.Enums\"", "\"MyApp.Lookups\""));
 
         var result = await TemplateRunner.RunAsync(custom, Sample.Roles());
 
@@ -1003,7 +1003,7 @@ public class TemplateRenderingTests
     {
         string cs = await Render("CS_Enum_v1.tt", Sample.Roles());
 
-        Expect.Contains(cs, "namespace TimeEntry.Common.Enums;");
+        Expect.Contains(cs, "namespace MyApp.Common.Enums;");
         Expect.Contains(cs, "public enum SY_Role");
         Expect.Contains(cs, "    Admin = 1,");
         Expect.Contains(cs, "    HumanResources = 2,");
@@ -1205,7 +1205,7 @@ public class TemplateRenderingTests
         // partial: a WinUI3/Windows App SDK target project's CsWinRT source generator needs it, since
         // GenericRepo<T> implements IDisposable (WinRT's IClosable) -- see the template's own comment.
         Expect.Contains(cs, "public partial class HolidayRepo : GenericRepo<Holiday>");
-        Expect.Contains(cs, "public HolidayRepo(TimeEntryContext context) : base(context)");
+        Expect.Contains(cs, "public HolidayRepo(MyAppContext context) : base(context)");
         Expect.Contains(cs, "public async Task<List<Holiday>> GetByName(string name)");
     }
 
@@ -1546,8 +1546,8 @@ public class TemplateRenderingTests
     [TestMethod]
     public async Task A_component_gets_a_search_bar_only_for_a_table_with_a_searchable_column()
     {
-        // Holiday and DonateLeave both have a searchable column (Name, Note respectively) -- Search
-        // (CodeGenPossibilities\Search) replaced the old single findByName-based "Search by Name" box (only
+        // Holiday and DonateLeave both have a searchable column (Name, Note respectively) -- The search bar
+        // replaced the old single findByName-based "Search by Name" box (only
         // ever offered for a text Name column) with the fuller search bar for both, once a searchable column
         // -- of which Name is just one kind -- exists at all. Only a table with NO searchable column at all
         // (Metric, all-numeric) gets no search UI, same as before.
@@ -1802,8 +1802,8 @@ public class TemplateRenderingTests
     [TestMethod]
     public async Task TSX_Page_assumes_only_the_rail_class_not_TS_Components_own_btn_and_form_classes()
     {
-        // CriticalViewer's real index.css/movie-viewer.css has no "btn"/"form-group"/"form-container"/"btn-action"
-        // classes -- only the Angular family's reference app (TimeEntryUI) does -- so a generated page must not
+        // A plain React app's stylesheet has no "btn"/"form-group"/"form-container"/"btn-action"
+        // classes -- only the Angular family's output does -- so a generated page must not
         // invent them; see this template's own header comment for the inspection that found the gap.
         string tsx = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", Sample.Holiday()))
             .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;

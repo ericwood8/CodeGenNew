@@ -365,7 +365,26 @@ public class SqlServerSchemaProvider : SchemaProviderBase
         ORDER BY c.column_id;
         """;
 
+    private const string CheckConstraintsQuery = """
+        SELECT c.name AS ColumnName, cc.definition AS Definition
+        FROM sys.check_constraints cc
+        LEFT JOIN sys.columns c ON c.object_id = cc.parent_object_id AND c.column_id = cc.parent_column_id
+        WHERE cc.parent_object_id = OBJECT_ID(@fullTableName) AND cc.is_disabled = 0
+        """;
+
     protected override async Task<List<RawColumn>> ReadColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        var columns = await ReadRawColumnsAsync(connection, schemaName, tableName, cancellationToken);
+        var checks = new List<(string?, string)>();
+        await using var command = new SqlCommand(CheckConstraintsQuery, (SqlConnection)connection);
+        command.Parameters.AddWithValue("@fullTableName", QuotedTable(schemaName, tableName));
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            checks.Add((reader.GetNullableString("ColumnName"), reader.GetString(1)));
+        return WithChecks(columns, checks);
+    }
+
+    private async Task<List<RawColumn>> ReadRawColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {
         var results = new List<RawColumn>();
         await using var command = new SqlCommand(ColumnsQuery, (SqlConnection)connection);
