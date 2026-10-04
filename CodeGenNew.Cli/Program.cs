@@ -86,7 +86,7 @@ public static class Program
         }
 
         string? password = options.Password;
-        if (!options.Trusted && password is null)
+        if (!options.Trusted && password is null && options.Provider != DatabaseProvider.Sqlite)
             password = ConsolePasswordReader.Read($"Password for {options.UserName}@{options.Server}: ");
 
         var connectionRequest = new ConnectionRequest
@@ -99,7 +99,15 @@ public static class Program
             Password = password
         };
 
-        Console.WriteLine($"Connecting to {options.Server}\\{options.Database} ({(options.Provider == DatabaseProvider.PostgreSql ? "PostgreSQL" : options.Provider == DatabaseProvider.MySql ? "MySQL" : options.Trusted ? "Windows Auth" : "SQL Login")}) -- read-only schema lookup...");
+        string target = options.Provider == DatabaseProvider.Sqlite ? options.Database : $"{options.Server}\\{options.Database}";
+        string kind = options.Provider switch
+        {
+            DatabaseProvider.PostgreSql => "PostgreSQL",
+            DatabaseProvider.MySql => "MySQL",
+            DatabaseProvider.Sqlite => "SQLite",
+            _ => options.Trusted ? "Windows Auth" : "SQL Login"
+        };
+        Console.WriteLine($"Connecting to {target} ({kind}) -- read-only schema lookup...");
 
         if (!template.Config.DatabaseOnly && string.IsNullOrWhiteSpace(options.Table))
         {

@@ -1,0 +1,44 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // The Mapperly counterpart of CS_Mapper: a [Mapper] partial class whose methods Mapperly's source generator fills in at compile time, so a property added to the entity and the transfer
+    // class is copied without touching this file. Needs the Riok.Mapperly package, the entity (CS_Entity) and the transfer class (CS_Dto).
+    // The required-mapping attributes keep the compiler quiet about members that cannot match: the entity's navigation properties have no counterpart in the transfer class.
+
+    string entityNamespace = Project.EntityNamespace ?? "MyApp.Common.Entities";
+    string dtoNamespace = Project.DtoNamespace ?? "MyApp.Dtos";
+
+    if (Model.PrimaryKeyColumns.Count == 0)
+    {
+        Error($"CS_MapperlyMapper needs a table with a primary key, but [{Model.SchemaName}].[{Model.TableName}] has none.");
+    }
+    else
+    {
+        string entity = Model.TableName;
+        string dto = Model.TableName + "Dto";
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+
+        L("using Riok.Mapperly.Abstractions;");
+        L("using " + entityNamespace + ";");
+        L();
+        L("namespace " + dtoNamespace + ";");
+        L();
+        L("[Mapper]");
+        L("public static partial class " + entity + "Mapper");
+        L("{");
+        L("    [MapperRequiredMapping(RequiredMappingStrategy.Target)]");
+        L("    public static partial " + dto + " ToDto(" + entity + " entity);");
+        L();
+        L("    [MapperRequiredMapping(RequiredMappingStrategy.Source)]");
+        L("    public static partial " + entity + " ToEntity(" + dto + " dto);");
+        L();
+        L("    public static partial IQueryable<" + dto + "> ProjectToDto(this IQueryable<" + entity + "> query);");
+        L("}");
+        Write(o.ToString());
+    }
+#>

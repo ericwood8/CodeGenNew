@@ -69,6 +69,21 @@ public static class ColumnTypes
         _ => "string"
     };
 
+    /// <summary> The protobuf type: <c>int32</c>, <c>int64</c>, <c>bool</c>, <c>float</c>, <c>double</c>, <c>bytes</c>, <c>google.protobuf.Timestamp</c> for a date, and <c>string</c> for text, a decimal (protobuf has no decimal type), a time or a GUID. </summary>
+    public static string Proto(this ColumnModel column) => column.SqlType switch
+    {
+        SqlDbType.Int or SqlDbType.SmallInt or SqlDbType.TinyInt => "int32",
+        SqlDbType.BigInt => "int64",
+        SqlDbType.Bit => "bool",
+        SqlDbType.Float => "double",
+        SqlDbType.Real => "float",
+        SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime or SqlDbType.DateTimeOffset => "google.protobuf.Timestamp",
+        SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => "bytes",
+        SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Time or SqlDbType.UniqueIdentifier
+            or SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => "string",
+        _ => "bytes"
+    };
+
     /// <summary> The JSON Schema / OpenAPI <c>type</c> and <c>format</c> of the column's JSON value; the type is null for a database type with no JSON form. </summary>
     public static (string? Type, string? Format) JsonSchema(this ColumnModel column) => column.SqlType switch
     {

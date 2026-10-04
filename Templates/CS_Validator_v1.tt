@@ -47,67 +47,55 @@
             SqlDbType.TinyInt => "(byte)" + Inv(value),
             _ => Inv(value)
         };
-        bool Skipped(ColumnModel c) => c.IsIdentity || c.IsComputed || c.IsAuditColumn || c.IsCreateDateColumn || c.IsCreateUserColumn
-            || c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsLastChangedDateColumn;
 
         var rules = new List<string>();
         var values = new List<string>();   // the allowed-value arrays, written above the constructor
 
-        foreach (var c in Model.Columns.OrderBy(c => c.OrdinalPosition).Where(c => !Skipped(c)))
+        foreach (var c in Model.Columns.OrderBy(c => c.OrdinalPosition))
         {
+            if (c.RuleOf(Project) is not { } rule)
+                continue;
+
             var parts = new List<string>();
             string label = Words(c.Name);
-            if (c.IsStringColumn)
+            if (rule.Required)
+                parts.Add(".NotEmpty()");
+            if (rule.MaxLength > 0)
+                parts.Add($".MaximumLength({rule.MaxLength})");
+            if (rule.Choices is not null)
             {
-                if (!c.IsNullable)
-                    parts.Add(".NotEmpty()");
-                int chars = c.CharacterLength();
-                if (chars > 0)
-                    parts.Add($".MaximumLength({chars})");
-                if (c.HasChoices)
-                {
-                    string array = c.Name.Replace("@", "") + "Values";
-                    values.Add($"    private static readonly string[] {array} = [{string.Join(", ", c.Choices!.Select(Str))}];");
-                    parts.Add($".Must(value => value is null || {array}.Contains(value)).WithMessage({Str(label + " must be one of: " + string.Join(", ", c.Choices!) + ".")})");
-                }
-                else if (c.Name.Contains("Email", StringComparison.OrdinalIgnoreCase))
-                {
-                    parts.Add(".EmailAddress()");
-                }
-                else if (c.Name.Contains("Phone", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Fax", StringComparison.OrdinalIgnoreCase))
-                {
-                    parts.Add(".Matches(@\"^[0-9+()\\-.\\s]{3,25}$\").WithMessage(" + Str(label + " is not a phone number.") + ")");
-                }
-                else if (c.Name.Contains("Url", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Website", StringComparison.OrdinalIgnoreCase))
-                {
-                    parts.Add(".Must(value => value is null || Uri.IsWellFormedUriString(value, UriKind.Absolute)).WithMessage(" + Str(label + " is not a URL.") + ")");
-                }
+                string array = c.Name.Replace("@", "") + "Values";
+                values.Add($"    private static readonly string[] {array} = [{string.Join(", ", rule.Choices.Select(Str))}];");
+                parts.Add($".Must(value => value is null || {array}.Contains(value)).WithMessage({Str(label + " must be one of: " + string.Join(", ", rule.Choices) + ".")})");
             }
-            else if (c.IsIntegerColumn && (c.NumericKind != NumericKind.None || c.Check is not null) && Project.RangeFor(c) is { } range)
+            else if (rule.Shape == TextShape.Email)
             {
-                parts.Add($".InclusiveBetween({Literal(c, range.Min)}, {Literal(c, range.Max)})");
+                parts.Add(".EmailAddress()");
             }
-            else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real)
+            else if (rule.Shape == TextShape.Phone)
             {
-                if (c.Check is { } check)
-                {
-                    if (check.Min is { } min)
-                        parts.Add($".{(check.MinStrict ? "GreaterThan" : "GreaterThanOrEqualTo")}({Literal(c, min)})");
-                    if (check.Max is { } max)
-                        parts.Add($".{(check.MaxStrict ? "LessThan" : "LessThanOrEqualTo")}({Literal(c, max)})");
-                }
-                else if (c.Name.Contains("Latitude", StringComparison.OrdinalIgnoreCase))
-                {
-                    parts.Add($".InclusiveBetween({Literal(c, -90)}, {Literal(c, 90)})");
-                }
-                else if (c.Name.Contains("Longitude", StringComparison.OrdinalIgnoreCase))
-                {
-                    parts.Add($".InclusiveBetween({Literal(c, -180)}, {Literal(c, 180)})");
-                }
+                parts.Add(".Matches(@\"^[0-9+()\\-.\\s]{3,25}$\").WithMessage(" + Str(label + " is not a phone number.") + ")");
+            }
+            else if (rule.Shape == TextShape.Url)
+            {
+                parts.Add(".Must(value => value is null || Uri.IsWellFormedUriString(value, UriKind.Absolute)).WithMessage(" + Str(label + " is not a URL.") + ")");
             }
 
-            if (parts.Count > 0)
-                rules.Add($"        RuleFor(x => x.{Id(c)}){string.Concat(parts)};");
+            // a whole number or a latitude / longitude has both limits at once; a decimal's CHECK may state either, strictly or not
+            bool bothLimits = c.IsIntegerColumn || c.Check is null;
+            if (rule.HasRange && bothLimits)
+            {
+                parts.Add($".InclusiveBetween({Literal(c, rule.Min!.Value)}, {Literal(c, rule.Max!.Value)})");
+            }
+            else if (rule.HasRange)
+            {
+                if (rule.Min is { } min)
+                    parts.Add($".{(rule.MinStrict ? "GreaterThan" : "GreaterThanOrEqualTo")}({Literal(c, min)})");
+                if (rule.Max is { } max)
+                    parts.Add($".{(rule.MaxStrict ? "LessThan" : "LessThanOrEqualTo")}({Literal(c, max)})");
+            }
+
+            rules.Add($"        RuleFor(x => x.{Id(c)}){string.Concat(parts)};");
         }
 
         var o = new StringBuilder();

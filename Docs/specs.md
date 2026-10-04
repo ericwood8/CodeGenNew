@@ -21,7 +21,7 @@ It runs as a WinUI 3 desktop app (right-click a table), as a command-line tool (
 
 ## 3. What it reads
 
-SQL Server, PostgreSQL and MySQL, through one schema model. Whatever the source, a table arrives as a `TableModel` (columns, keys, foreign keys in both directions, defaults, CHECK ranges and lists, column and table comments) and a database as a `DatabaseModel`. Names can be converted (`NamingStyle=Pascal` turns `customer_item` into `CustomerItem`) while the SQL keeps the real names. A set of name-pattern rules, kept in `SpecialLogicColumns.config`, classifies columns that mean something (an active flag, a start and end date, audit dates and users, a soft delete, display columns); they are plain text a user can edit.
+SQL Server, PostgreSQL, MySQL and SQLite, through one schema model. Whatever the source, a table arrives as a `TableModel` (columns, keys, foreign keys in both directions, defaults, CHECK ranges and lists, column and table comments) and a database as a `DatabaseModel`. Names can be converted (`NamingStyle=Pascal` turns `customer_item` into `CustomerItem`) while the SQL keeps the real names. A set of name-pattern rules, kept in `SpecialLogicColumns.config`, classifies columns that mean something (an active flag, a start and end date, audit dates and users, a soft delete, display columns); they are plain text a user can edit.
 
 Tables only. Views, keyless tables and routine metadata are not read.
 
@@ -59,7 +59,8 @@ A template may write several files (`@@@FILE` markers), one file for a table, or
 - **Everything a user may edit sits in plain files next to the program** (or in the user's application-data folder for the installed tool): `Templates`, `Projects`, `SpecialLogicColumns.config`, `Settings.json`. The program seeds them from copies embedded in itself and **never overwrites a file the user changed**; a newer shipped copy is written beside it as `<name>.new`.
 - **Templates are versioned by file name** (`SP_Save_v1.tt`). The menu and `-T SP_Save.tt` use the newest version; a breaking change is a new `_v2` file beside the old one.
 - **Type mapping and naming are shared code**, not copied per template (`ColumnTypes`, `Labels`, `JsonNames`, `TableModel.HasCrudApi` and `HasSearchApi`), each tested over every column type.
-- **Stored procedures stay the data-access path for search, sort, paging, clone and junctions.** The generated SQL treats every value as a bound parameter, and a sort column is chosen from a fixed list written into the routine.
+- **Routines are the default data-access path for search, sort, paging, clone and junctions, and EF Core LINQ is the alternative** (`AccessMode=Routines` or `Ef`; SQLite, which has no routines, always uses `Ef`). The generated SQL treats every value as a bound parameter and a sort column is chosen from a fixed list, in a routine or in a `switch` in the generated query class; the two paths are meant to behave the same, and one `SearchPlan` in Core states what a search does.
+
 - **A generator cannot know some things**, and says so in each template's header: collection navigation names, hand-picked sort columns, screens with unusual shapes, and the registration lines of a hand-written host. These stay hand-written.
 
 ## 7. Quality bar
@@ -87,4 +88,5 @@ Themes, in rough order; each is a design question before it is a task.
 2. **Validation that is enforced**: the attributes, validators and form limits agree, and something at run time actually applies them.
 3. **Generated tests that test something**: an integration test per table, and screens whose tests check what is shown, not only that they render.
 4. **A fourth database, SQLite**, which needs a way to do search, sort, paging and clone without routines.
-5. **More small templates and stacks** (zod schemas, protobuf messages, Blazor, routine wrappers, a production profile for the API), each optional and each off by default.
+5. **More small templates and stacks** (Blazor, routine wrappers, a production profile for the API), each optional and each off by default.
+6. **New kinds of output**, each optional: a Rust stack (an Axum API, and a Tauri shell around the generated web front end), a dashboard page derived from the schema (KPI cards, breakdowns, trends), timed reminders that pop up a notification when a row falls due, and themes written from exported Figma design tokens.

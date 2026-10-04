@@ -4,7 +4,8 @@ public enum DatabaseProvider
 {
     SqlServer,
     MySql,
-    PostgreSql
+    PostgreSql,
+    Sqlite
 }
 
 public enum AuthMode

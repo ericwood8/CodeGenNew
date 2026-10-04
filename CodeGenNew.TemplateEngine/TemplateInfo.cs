@@ -55,6 +55,7 @@ public class TemplateInfo
         ["JS"] = "js",
         ["FS"] = "fs",
         ["MD"] = "md",
+        ["PROTO"] = "proto",
     };
 
     /// <summary> The name of the file a database-level template writes: the OutputName pattern with {Table} replaced by the project's context name. </summary>
@@ -66,6 +67,8 @@ public class TemplateInfo
         if (Config.DatabaseOnly || Config.NoDatabase)
             return false; // offered on the database node (or in no database menu at all), not on a table
         if (Config.SqlServerOnly && dialect != SqlDialect.SqlServer)
+            return false;
+        if (!Config.SupportsDialect(dialect))
             return false;
         if (Config.RequiresPrimaryKey && !tableHasPrimaryKey)
             return false;

@@ -6,7 +6,8 @@ public enum SqlDialect
 {
     SqlServer,
     PostgreSql,
-    MySql
+    MySql,
+    Sqlite
 }
 
 /// <summary> Everything a template needs to know about one selected table, built fresh by CodeGenNew.SchemaIntrospection each time a table is selected. </summary>
@@ -93,6 +94,14 @@ public class TableModel
     /// ForeignKeys. Always computed (not gated behind a template .tt.config flag), same as ForeignKeys. </summary>
     public required List<ChildForeignKeyModel> ChildForeignKeys { get; init; }
     public bool HasAtLeastOneChildForeignKey => ChildForeignKeys.Count > 0;
+
+    /// <summary> The table's indexes, the primary key's included. </summary>
+    public IReadOnlyList<IndexModel> Indexes { get; init; } = [];
+
+    /// <summary> True when some index starts with exactly these columns (database names, in any order), so a lookup or join on them can use it. </summary>
+    public bool IsIndexed(IReadOnlyList<string> databaseColumns) => Indexes.Any(index =>
+        index.Columns.Count >= databaseColumns.Count
+        && index.Columns.Take(databaseColumns.Count).ToHashSet(StringComparer.OrdinalIgnoreCase).SetEquals(databaseColumns));
 
     public bool IsSelfReferencing(ForeignKeyModel fk) =>
         fk.ReferencedTable.EqualsIgnoreCase(TableName);

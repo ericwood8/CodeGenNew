@@ -86,7 +86,7 @@ public static class ArgumentParser
                 case "--provider":
                     string providerText = Value();
                     if (!Enum.TryParse(providerText, ignoreCase: true, out provider))
-                        throw new ArgumentParseException($"Unknown --provider '{providerText}'. Valid values: SqlServer, PostgreSql, MySql.");
+                        throw new ArgumentParseException($"Unknown --provider '{providerText}'. Valid values: SqlServer, PostgreSql, MySql, Sqlite.");
                     break;
                 default:
                     throw new ArgumentParseException($"Unrecognized argument: '{arg}'.");
@@ -106,7 +106,7 @@ public static class ArgumentParser
             Provider = provider,
             Server = server ?? "",
             Database = database ?? "",
-            Schema = schema ?? (provider == DatabaseProvider.PostgreSql ? "public" : provider == DatabaseProvider.MySql ? database ?? "" : "dbo"),
+            Schema = schema ?? (provider == DatabaseProvider.PostgreSql ? "public" : provider == DatabaseProvider.MySql ? database ?? "" : provider == DatabaseProvider.Sqlite ? "main" : "dbo"),
             Table = table,
             Template = template ?? "",
             Command = command,
@@ -136,9 +136,9 @@ public static class ArgumentParser
     /// <summary> What is missing for a template that reads a database (every template except one with NoDatabase): the server, the database and a login. Null when the connection is complete. </summary>
     public static string? MissingConnection(CliOptions options)
     {
-        if (string.IsNullOrWhiteSpace(options.Server)) return "-S/--server is required.";
+        if (options.Provider != DatabaseProvider.Sqlite && string.IsNullOrWhiteSpace(options.Server)) return "-S/--server is required.";
         if (string.IsNullOrWhiteSpace(options.Database)) return "-d/--database is required.";
-        if (!options.Trusted && string.IsNullOrWhiteSpace(options.UserName)) return "-U/--user is required unless -E/--trusted is used.";
+        if (options.Provider != DatabaseProvider.Sqlite && !options.Trusted && string.IsNullOrWhiteSpace(options.UserName)) return "-U/--user is required unless -E/--trusted is used.";
         return null;
     }
 
@@ -162,7 +162,7 @@ public static class ArgumentParser
 
             Usage:
               codegen -S <server> -d <database> [-s <schema>] -t <table> -T <template.tt>
-                       (-E | -U <user> [-P <password>]) [-o <outputDir>] [--provider SqlServer|PostgreSql|MySql]
+                       (-E | -U <user> [-P <password>]) [-o <outputDir>] [--provider SqlServer|PostgreSql|MySql|Sqlite]
 
             Required (-S and -d, and a login, are not needed for a template whose config says NoDatabase, such as WinUI3_DirectoryListing):
               -S, --server     SQL Server instance name
@@ -179,7 +179,7 @@ public static class ArgumentParser
             Optional:
               -s, --schema     Schema name (default: dbo)
               -o, --output     Output directory (default: Settings.json's OutputDirectory)
-              --provider       Database provider: SqlServer (default), PostgreSql or MySql (-S host[:port], -U/-P required; for MySql the schema is the database)
+              --provider       Database provider: SqlServer (default), PostgreSql or MySql (-S host[:port], -U/-P required; for MySql the schema is the database); Sqlite (-d is the path of the database file; no -S, -U or -P, the schema is main)
 
             Project settings (namespaces, context name, table lists the templates would otherwise hard-code):
               --project        Name of a Projects\<name>.config file in the CodeGenNew folder. Only ProjectName is

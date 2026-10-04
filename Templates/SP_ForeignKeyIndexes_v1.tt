@@ -1,0 +1,62 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // One CREATE INDEX per foreign key whose columns no index starts with, for the whole database (ForeignKeyIndexes.sql).
+    // An unindexed foreign key makes every join to it and every delete of a parent row scan the child table. The script is advice: codegen never applies it.
+    // SQL Server skips an index that already exists by name; PostgreSQL and SQLite use IF NOT EXISTS; MySQL has no such clause, so run that script once.
+
+    var dialect = Database.Dialect;
+    int nameLimit = 63;   // the shortest identifier limit of the three databases (PostgreSQL)
+    string Rem = new string((char)45, 2);   // the SQL comment marker, built so the template text holds no double hyphen
+    var info = DialectInfo.For(dialect);
+    string Q(string name) => info.Quote(name);
+    string QTable(TableModel table) => info.QuoteTable(table.SchemaName, table.DbTableName);
+
+    // a name cut to the limit keeps a hash of the whole name, so two long names cannot collapse into one
+    string IndexName(TableModel table, IReadOnlyList<string> columns)
+    {
+        string full = "IX_" + table.DbTableName + "_" + string.Join("_", columns);
+        if (full.Length <= nameLimit)
+            return full;
+        uint hash = 2166136261;
+        foreach (char c in full)
+            hash = (hash ^ c) * 16777619;
+        return full[..(nameLimit - 9)] + "_" + hash.ToString("x8");
+    }
+
+    var missing = Database.Tables.OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase)
+        .SelectMany(t => t.ForeignKeys.Where(fk => !t.IsIndexed(fk.ReferencingDbColumns)).Select(fk => (Table: t, Key: fk)))
+        .ToList();
+
+    var sb = new StringBuilder();
+    void Line(string line = "") => sb.Append(line).Append('\n');
+
+    sb.Append("@@@FILE ForeignKeyIndexes.sql@@@\n");
+    Line(Rem + " Indexes for foreign keys that no index starts with. Review them first; every index costs a little on each write.");
+    if (missing.Count == 0)
+    {
+        Line(Rem + " Every foreign key of this database already has an index.");
+    }
+    foreach (var (table, key) in missing)
+    {
+        string name = IndexName(table, key.ReferencingDbColumns);
+        string columns = string.Join(", ", key.ReferencingDbColumns.Select(Q));
+        Line();
+        Line(Rem + " " + table.DbTableName + " (" + string.Join(", ", key.ReferencingDbColumns) + ") refers to " + key.ReferencedDbTable);
+        if (dialect == SqlDialect.SqlServer)
+        {
+            Line("IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'" + name.Replace("'", "''") + "' AND object_id = OBJECT_ID(N'" + QTable(table).Replace("'", "''") + "'))");
+            Line("    CREATE INDEX " + Q(name) + " ON " + QTable(table) + " (" + columns + ");");
+        }
+        else
+        {
+            Line("CREATE INDEX " + (dialect is SqlDialect.PostgreSql or SqlDialect.Sqlite ? "IF NOT EXISTS " : "") + Q(name) + " ON " + QTable(table) + " (" + columns + ");");
+        }
+    }
+    Write(sb.ToString());
+#>

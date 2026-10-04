@@ -64,6 +64,17 @@
     string stem = Model.TableName;
     // How the generated code calls the routines: EXEC of a stored procedure on SQL Server, a function call on PostgreSQL, CALL on MySQL.
     var call = new JunctionCall(Model, stem, anchorColumn.Name);
+    // With AccessMode=Ef there are no routines to call: the same three operations are LINQ over the context.
+    bool ef = Project.AccessModeFor(Model.Dialect) == AccessMode.Ef;
+    var efJunction = ef ? new JunctionEf(Model) : null;
+    void Emit(List<string> lines)
+    {
+        foreach (string line in lines)
+        {
+            Write(line);
+            Write(((char)10).ToString());
+        }
+    }
     var displayColumns = targetFk.ReferencedDisplayColumns;
     string DisplayExpr(string prefix) => string.Join(" + \" \" + ", displayColumns.Select(d => $"{prefix}.{d}"));
 #>
@@ -206,10 +217,19 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
         Available.Clear();
         Selected.Clear();
 
+<#
+    if (ef)
+        Emit(efJunction.List("JunctionListItem", "_context", "_anchorId", "        "));
+    else
+    {
+#>
         var rows = await _context.Database
             .SqlQueryRaw<JunctionListItem>("<#= call.ListSql #>",
                 <#= call.AnchorParameter("_anchorId") #>)
             .ToListAsync();
+<#
+    }
+#>
 
         foreach (var row in rows)
             (row.IsSelected ? Selected : Available).Add(row);
@@ -219,8 +239,17 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
     {
         foreach (var item in items)
         {
+<#
+    if (ef)
+        Emit(efJunction.Link("_context", "_anchorId", "item.TargetId", "            "));
+    else
+    {
+#>
             await _context.Database.ExecuteSqlInterpolatedAsync(
                 $"<#= call.LinkSql("_anchorId", "item.TargetId") #>");
+<#
+    }
+#>
             if (Available.Remove(item))
                 Selected.Add(item);
         }
@@ -230,8 +259,17 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
     {
         foreach (var item in items)
         {
+<#
+    if (ef)
+        Emit(efJunction.Unlink("_context", "_anchorId", "item.TargetId", "            "));
+    else
+    {
+#>
             await _context.Database.ExecuteSqlInterpolatedAsync(
                 $"<#= call.UnlinkSql("_anchorId", "item.TargetId") #>");
+<#
+    }
+#>
             if (Selected.Remove(item))
                 Available.Add(item);
         }

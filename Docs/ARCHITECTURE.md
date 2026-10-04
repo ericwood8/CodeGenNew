@@ -17,7 +17,7 @@ This is for someone reading the code for the first time: where things are, how a
  database (SQL Server | PostgreSQL | MySQL)
         |  read-only catalog queries
         v
- SchemaIntrospection:  ISchemaProvider  ->  TableModel / DatabaseModel      (one provider per database;
+ SchemaIntrospection:  ISchemaProvider  ->  TableModel / DatabaseModel      (one provider per database, four of them;
         |                                                                      the rest is shared)
         |   + ProjectSettings (<name>.config) + SpecialLogicColumns.config
         v
@@ -52,13 +52,15 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 
 **One vocabulary.** Every provider reads its own catalog (`sys.*`, `information_schema` plus `pg_catalog`, `information_schema`) and reports a column as a `RawColumn` whose type is a **SQL Server type name** whatever the source database is. Classification (integer, money, string, date, boolean) and the C#, F# and TypeScript mappings are therefore written once. A database whose spelling of the declaration differs supplies an override for the SQL text only. A type with no mapping (an array, a geometry) is reported as a warning, and the `IgnoredColumns` setting leaves it out.
 
-**What the model holds.** Columns with type, length, precision, nullability, identity, computed definition, default, CHECK range or list, description; primary key and its shape (`None`, `Composite`, `SingleInt`, `SingleUniqueIdentifier`, `SingleOther`); foreign keys in both directions; unique indexes; display columns; whether the table is a many-to-many junction, a lookup (enum-like) table, or a name/active table; the dialect. Rows are read only when a template's config asks (`NeedsRowData`, capped at 5000 rows).
+**What the model holds.** Columns with type, length, precision, nullability, identity, computed definition, default, CHECK range or list, description; primary key and its shape (`None`, `Composite`, `SingleInt`, `SingleUniqueIdentifier`, `SingleOther`); foreign keys in both directions; indexes (key columns, for the unindexed-foreign-key script); display columns; whether the table is a many-to-many junction, a lookup (enum-like) table, or a name/active table; the dialect. Rows are read only when a template's config asks (`NeedsRowData`, capped at 5000 rows).
 
 **Names.** `NamingStyle=Pascal` converts `snake_case` to `PascalCase` (with an `Acronyms` list); the model carries both the generated name and the database name (`DbTableName`, `DbName`), and SQL text always uses the second.
 
 **Special-logic columns** (`SpecialLogicColumns.config`) are name-pattern rules: `category|flag columns|companion columns|special`, with `*` as a wildcard and an `IgnoreCase` option. A pair rule (an active flag and its inactive date) sets table-level properties; a single-column rule classifies a column (audit date, create user, display column, file path). The rules are applied once, when the model is built, and templates only read the resulting properties.
 
 **Descriptions** (SQL Server `MS_Description`, PostgreSQL `COMMENT ON`, MySQL `COMMENT`) are read into `Description` on columns and tables and appear in the data dictionary and the OpenAPI document.
+
+**How the generated code reaches the database.** Two choices, both in the project settings. `AccessMode=Routines` (the default where routines exist) calls the procedures and functions the `SP_` templates write; `AccessMode=Ef` writes LINQ over the EF Core context instead (`CS_SearchQuery`, the clone and junction code in `CS_Repo`, `API_Junction` and `WinUI3_JunctionEditor`) and leaves the routine templates out of a plan. SQLite has no routines, so it is always `Ef`. A template says which mode it belongs to with `AccessMode=` in its config and which databases it is for with `Dialects=`. `DialectInfo` (Core) answers what differs between the four databases when a template writes SQL text itself (quoting, paging, placeholders, a case-insensitive contains, grouping a date into a month, LIKE escaping), and `SearchPlan` states what a table's search does independent of how it is carried out; a stack that does not use EF (a Rust repository, a dashboard query) reads those two instead of copying the rules.
 
 ## 5. Templates
 

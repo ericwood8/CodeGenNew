@@ -1,0 +1,85 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Globalization" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // A zod schema for the fields of one table that a person fills in, with the limits the database states (required text, length, allowed values, ranges, email / phone / url shapes),
+    // and the form type inferred from it. It is not wired to a form: pass it to a resolver (react-hook-form) or call safeParse. Needs the zod package.
+
+    var columns = Model.Columns.Where(c => !c.IsSystemFilled()).OrderBy(c => c.OrdinalPosition).ToList();
+    if (columns.Count == 0)
+    {
+        Error($"TSX_Schema has nothing to write for [{Model.SchemaName}].[{Model.TableName}]: every column is filled in by the database.");
+    }
+    else
+    {
+        string Str(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        string Num(double value) => value.ToString("R", CultureInfo.InvariantCulture);
+        string baseName = ScreenNames.BaseName(Model.TableName);
+
+        string Field(ColumnModel c)
+        {
+            string label = Labels.Words(c.Name);
+            var rule = c.RuleOf(Project);
+            var o = new StringBuilder();
+            if (rule?.Choices is { Count: > 0 } choices)
+            {
+                o.Append("z.enum([" + string.Join(", ", choices.Select(Str)) + "])");
+            }
+            else if (c.TypeScript() == "number")
+            {
+                o.Append(c.IsIntegerColumn ? "z.number().int()" : "z.number()");
+            }
+            else if (c.TypeScript() == "boolean")
+            {
+                o.Append("z.boolean()");
+            }
+            else
+            {
+                o.Append("z.string()");
+                if (c.SqlType == SqlDbType.UniqueIdentifier)
+                    o.Append(".uuid(" + Str(label + " is not a GUID.") + ")");
+            }
+
+            if (rule is not null)
+            {
+                bool anyText = rule.Choices is null;   // an enum is already one of its values
+                if (rule.Required && anyText)
+                    o.Append(".min(1, " + Str(label + " is required.") + ")");
+                if (rule.MaxLength > 0 && anyText)
+                    o.Append(".max(" + rule.MaxLength + ", " + Str(label + " is longer than " + rule.MaxLength + " characters.") + ")");
+                if (rule.Shape == TextShape.Email)
+                    o.Append(".email(" + Str(label + " is not an email address.") + ")");
+                else if (rule.Shape == TextShape.Phone)
+                    o.Append(@".regex(/^[0-9+()\-.\s]{3,25}$/, " + Str(label + " is not a phone number.") + ")");
+                else if (rule.Shape == TextShape.Url)
+                    o.Append(".url(" + Str(label + " is not a URL.") + ")");
+                if (rule.Min is { } min)
+                    o.Append((rule.MinStrict ? ".gt(" : ".min(") + Num(min) + ", " + Str(label + (rule.MinStrict ? " must be more than " : " must be at least ") + Num(min) + ".") + ")");
+                if (rule.Max is { } max)
+                    o.Append((rule.MaxStrict ? ".lt(" : ".max(") + Num(max) + ", " + Str(label + (rule.MaxStrict ? " must be less than " : " must be at most ") + Num(max) + ".") + ")");
+            }
+
+            if (c.IsNullable)
+                o.Append(".nullable()");
+            return o.ToString();
+        }
+
+        var sb = new StringBuilder();
+        void L(string s = "") => sb.Append(s).Append('\n');
+        L("@@@FILE schemas/" + ScreenNames.Stem(Model.TableName) + ".ts@@@");
+        L("import { z } from \"zod\";");
+        L();
+        L("export const " + baseName + "Schema = z.object({");
+        for (int i = 0; i < columns.Count; i++)
+            L("    " + JsonNames.Camel(columns[i].Name) + ": " + Field(columns[i]) + (i == columns.Count - 1 ? "" : ","));
+        L("});");
+        L();
+        L("export type " + baseName + "Form = z.infer<typeof " + baseName + "Schema>;");
+        Write(sb.ToString());
+    }
+#>

@@ -16,11 +16,12 @@
     string repoNamespace = Project.RepoNamespace ?? projectName + ".Api.Repositories";
     string contextNamespace = Project.ContextNamespace ?? projectName + ".Api.Data";
     var dialect = Project.DatabaseDialect;
-    string providerName = dialect switch { SqlDialect.PostgreSql => "UseNpgsql", SqlDialect.MySql => "UseMySQL", _ => "UseSqlServer" };
+    string providerName = EfProviderInfo.For(dialect).UseMethod;
     string providerPackage = dialect switch
     {
         SqlDialect.PostgreSql => "Npgsql.EntityFrameworkCore.PostgreSQL\" Version=\"10.0.0",
         SqlDialect.MySql => "MySql.EntityFrameworkCore\" Version=\"10.0.9",
+        SqlDialect.Sqlite => "Microsoft.EntityFrameworkCore.Sqlite\" Version=\"10.0.12",
         _ => "Microsoft.EntityFrameworkCore.SqlServer\" Version=\"10.0.12"
     };
     string user = Project.DatabaseUser ?? "";
@@ -28,6 +29,7 @@
     {
         SqlDialect.PostgreSql => $"Host={Project.DatabaseServer};Port=5432;Database={Project.DatabaseName};Username={user}",
         SqlDialect.MySql => $"Server={Project.DatabaseServer};Port=3306;Database={Project.DatabaseName};User ID={user}",
+        SqlDialect.Sqlite => $"Data Source={Project.DatabaseName}",
         _ => user.Length > 0
             ? $"Server={Project.DatabaseServer};Database={Project.DatabaseName};User Id={user};TrustServerCertificate=True;"
             : $"Server={Project.DatabaseServer};Database={Project.DatabaseName};Trusted_Connection=True;TrustServerCertificate=True;"

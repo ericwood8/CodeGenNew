@@ -126,7 +126,7 @@ public partial class MainViewModel : ObservableObject
     public List<TemplateInfo> GetApplicableTemplates(TableNodeViewModel table) =>
         TemplateCatalog.Discover(_settings.TemplatesDirectory)
             .Where(t => t.AppliesTo(table.Summary.HasPrimaryKey, isView: false, table.Summary.IsJunctionTable, table.Summary.HasChildForeignKeys, table.Summary.PrimaryKeyShape, table.Summary.IsNameActiveTable,
-                _connectionRequest?.Provider switch { DatabaseProvider.PostgreSql => SqlDialect.PostgreSql, DatabaseProvider.MySql => SqlDialect.MySql, _ => SqlDialect.SqlServer }))
+                _connectionRequest?.Provider switch { DatabaseProvider.PostgreSql => SqlDialect.PostgreSql, DatabaseProvider.MySql => SqlDialect.MySql, DatabaseProvider.Sqlite => SqlDialect.Sqlite, _ => SqlDialect.SqlServer }))
             .ToList();
 
     /// <summary> The templates that write one file for the whole database (CS_DbContext, API_Registration), for the toolbar's database menu. </summary>

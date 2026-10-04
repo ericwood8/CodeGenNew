@@ -1,6 +1,6 @@
 # CodeGenNew
 
-A C# code generator for a developer's own box: point it at a SQL Server, PostgreSQL or MySQL database, pick a table, and generate code from **T4 templates** — SQL stored procedures, C# entities, enums, repositories and minimal-API classes, the Angular TypeScript model, service and screen for the same table, and a React counterpart of that same screen family. It has a WinUI 3 desktop app (right-click a table in a TreeView) and a scriptable command-line tool, `codegen`, that does the same without the GUI.
+A C# code generator for a developer's own box: point it at a SQL Server, PostgreSQL, MySQL or SQLite database, pick a table, and generate code from **T4 templates** — SQL stored procedures, C# entities, enums, repositories and minimal-API classes, the Angular TypeScript model, service and screen for the same table, and a React counterpart of that same screen family. It has a WinUI 3 desktop app (right-click a table in a TreeView) and a scriptable command-line tool, `codegen`, that does the same without the GUI.
 
 It replaces a series of hand-rolled "write lines to a text file with substitutions and smart loops" generators with a real templating engine (T4 via `Mono.TextTemplating`), while staying simple and portable (unpackaged, no installer) and easy to extend: **a new template is just a new `.tt` file** — no code changes.
 
@@ -29,13 +29,17 @@ CLI argument parsing is hand-rolled rather than pulling in a library, given the 
 
 ## Databases
 
-| | SQL Server | PostgreSQL | MySQL |
-|---|---|---|---|
-| Connect from | app and CLI | app and CLI | app and CLI |
-| Schema read from | `sys.*` | `information_schema` + `pg_catalog` | `information_schema` |
-| `SP_*` templates write | stored procedures | functions (`RETURNS SETOF`, `plpgsql`) | stored procedures (`DELIMITER $$`) |
-| Search call in generated C# | `EXEC` | `SELECT * FROM "f"(...)` | `CALL p(...)` |
-| `API_Junction`, `WinUI3_JunctionEditor` | yes | yes (call the functions) | yes (call the procedures) |
+| | SQL Server | PostgreSQL | MySQL | SQLite |
+|---|---|---|---|---|
+| Connect from | app and CLI | app and CLI | app and CLI | app and CLI (the database is a file, opened read-only) |
+| Schema read from | `sys.*` | `information_schema` + `pg_catalog` | `information_schema` | `sqlite_master`, the `pragma_*` functions and the `CREATE TABLE` text (for CHECK constraints) |
+| `SP_*` templates write | stored procedures | functions (`RETURNS SETOF`, `plpgsql`) | stored procedures (`DELIMITER $$`) | nothing: SQLite has no routines (see `AccessMode`) |
+| Search call in generated C# | `EXEC` | `SELECT * FROM "f"(...)` | `CALL p(...)` | LINQ over the context (`CS_SearchQuery`) |
+| `API_Junction`, `WinUI3_JunctionEditor` | yes | yes (call the functions) | yes (call the procedures) | yes (LINQ over the context) |
+
+**Access mode.** Search, sort, paging, clone and the many-to-many editors reach the database in one of two ways, chosen by the project setting `AccessMode`: `Routines` (the default where routines exist: the generated code calls the procedures or functions the `SP_` templates write) or `Ef` (LINQ over the EF Core context; no routine has to be deployed). SQLite always uses `Ef`; any other database can too, for owners who do not want routines in their database. A plan in `Ef` mode leaves out the routine templates and adds `CS_SearchQuery`, which holds the filter and the sort that `CS_Repo` and `API_Search` share. The filter matches text ignoring case and treats `%` and `_` in the value as ordinary characters.
+
+**SQLite.** Point the CLI at the file (`--provider Sqlite -d path/to/shop.db`, no server, login or password) and set `DatabaseProvider=Sqlite` and `DatabaseName=<file>` in the project file so the generated project names the SQLite provider and `Data Source=<file>`. A declared type is read the way ORMs read it (`INTEGER` is an `int`, `BIGINT` a `long`, `BOOLEAN`, `DATETIME`, `DECIMAL(10,2)`, `VARCHAR(50)`); an integer named `Is...` or limited to 0 and 1 by a CHECK is a flag; unbounded `TEXT` is long text, as in PostgreSQL, so declare `VARCHAR(n)` for a column that should appear in grids and searches. The generated context stores `decimal` as a double and `DateTimeOffset` and `TimeSpan` as numbers, because SQLite cannot order the forms EF would otherwise use.
 
 Everything else (entities, repositories, API, Angular, React, WinUI3) is generated from the same model, so the screens look and behave the same whichever database sits underneath. The sample apps in the sibling repositories reuse one React or Angular front end over any of the three APIs.
 
@@ -55,7 +59,7 @@ Everything else (entities, repositories, API, Angular, React, WinUI3) is generat
 
 ## What it generates
 
-Fifty-four templates ship in `Templates\` (the no-database essentials groups described below come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
+Sixty templates ship in `Templates\` (the no-database essentials groups described below come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
 
 | Group | Template | Writes |
 |---|---|---|
@@ -69,6 +73,7 @@ Fifty-four templates ship in `Templates\` (the no-database essentials groups des
 | `SP` | `SP_KeySequence` | `KeySequence.sql` - whole-database, SQL Server only: a key-sequence table and a `GetNextID` routine as an alternative to `IDENTITY`, for the tables the project lists in `KeySequenceTables` (their `SP_Insert` then asks the sequence for the key); each counter starts from the table's highest key. |
 | `SP` | `SP_ReplicationTriggers` | `Table_ReplicationTriggers.sql` - SQL Server only: insert, update and delete triggers that copy each change to the databases named in `ReplicationTargets` (linked server, database). A failing target rolls back the write: review it and try it on a copy. |
 | `SP` | `SP_BulkUpdate` | `BulkUpdate.sql` - whole-database, SQL Server only: a procedure that rewrites the columns named in `BulkUpdateColumns` (for example `UPPER({column})`) in every table that has them, as plain `UPDATE` statements in one transaction. |
+| `SP` | `SP_ForeignKeyIndexes` | `ForeignKeyIndexes.sql` - whole-database, all three databases: a `CREATE INDEX` for every foreign key that no index starts with, in the database's own syntax (an advisory script: it is never applied). |
 | `API` | `API_Crud` | `TableApi.cs` — a minimal-API class: get all, get by id, create, update, delete, each over the table's repository. |
 | `API` | `API_Junction` | `TableJunctionApi.cs` — HTTP endpoints over `SP_Junction`'s three procedures, called straight through the `DbContext` (no repository) — the HTTP companion `TS_JunctionComponent` needs (also junction-only). |
 | `API` | `API_Search` | `TableSearchApi.cs` — a `/search?...&pageNumber=&pageSize=` endpoint over `SP_Search`/`SP_SearchCount`, called straight through the `DbContext` (no repository), returning `TableSearchResult` (`Items`/`Page`/`PageSize`/`TotalCount`/`TotalPages`) — the HTTP companion the Angular/React pagination wiring needs (only offered for a table with at least one searchable column). |
@@ -85,10 +90,12 @@ Fifty-four templates ship in `Templates\` (the no-database essentials groups des
 | `CS` | `CS_Validation` | `TableValidation.cs` — a `[MetadataType]` buddy class adding `[Required]`/`[StringLength]`/`[DataType]`/`[Display]` to the entity (works for a hand-maintained entity too; the entity class must be `partial`). |
 | `CS` | `CS_Enum` | `Table.cs` — a C# enum whose members are the **rows** of a small lookup table. |
 | `CS` | `CS_Repo` | `TableRepo.cs` — the thin repository class over your shared generic repository, plus a `HasDuplicate<Column>` check and (for a string column) a `SuggestUnique<Column>` name generator for every column in a unique index other than the primary key. |
+| `CS` | `CS_SearchQuery` | `TableSearchQuery.cs` - the search as LINQ (filter by contains, sort from a fixed list, default order), written when the project uses `AccessMode=Ef` (always for SQLite); `CS_Repo` and `API_Search` call it instead of the routines. |
 | `CS` | `CS_Validator` | `TableValidator.cs` - a FluentValidation `AbstractValidator<Entity>`: required, length, ranges from the name rules and CHECK constraints, CHECK lists, email / phone / URL / latitude / longitude by column name. |
 | `CS` | `CS_Faker` | `TableFaker.cs` - a Bogus fake-data generator per table: text of the right kind and length, numbers inside their CHECK ranges, choices from CHECK lists, nullable columns sometimes NULL, a seed for repeatable rows. |
 | `CS` | `CS_Dto` | `TableDto.cs` - a plain transfer class filled from any `IDataRecord`: a `Populate` method (required columns, then optional ones), an `IsIdentical` comparer over the columns that matter, a `ToString` on the display column. |
 | `CS` | `CS_Mapper` | `TableMapping.cs` - a static class copying a table between its entity (`CS_Entity`) and its transfer class (`CS_Dto`): `ToDto`, `ToEntity`, list versions and `FromReader`. |
+| `CS` | `CS_MapperlyMapper` | `TableMapper.cs` - the Mapperly counterpart of `CS_Mapper`: a `[Mapper]` partial class (`ToDto`, `ToEntity`, `ProjectToDto`) whose bodies Mapperly writes at compile time. |
 | `CS` | `CS_DataContractDto` | `TableContract.cs` - a `[DataContract]` class with four constructors (empty, from a `DataRow`, from a reader row, copy), for a WCF-style service. |
 | `CS` | `CS_TypedDataRow` | `TableDataTable.cs` - the typed-DataSet shape of a table: a `DataTable` with its columns and a `DataRow` with one typed property per column and `IsXNull` / `SetXNull` pairs. |
 | `CS` | `CS_SerializationDtos` | `TableSerializationDtos.cs` - the same data class in three contracts side by side: plain `[Serializable]`, custom `ISerializable`, and `XmlSerializer` attributes. |
@@ -97,11 +104,14 @@ Fifty-four templates ship in `Templates\` (the no-database essentials groups des
 | `MD` | `MD_DataDictionary` | `Table.md` - one Markdown page per table: every column with type, null, default, key role, limits and notes, the foreign keys out and the tables that refer to it. |
 | `MD` | `MD_Erd` | `ErDiagram.md` - whole-database: a Mermaid entity-relationship diagram (GitHub and VS Code draw it); `ErdTables` picks the tables. |
 | `TS` | `TS_Model` | `models/table.ts` — an Angular interface matching the JSON the API really sends. |
+| `TS` | `TS_Validators` | `validators/table.validators.ts` - the Angular `Validators` the schema states for each field (required, length, allowed values, ranges, email, phone, URL), keyed by property name. |
 | `TS` | `TS_Service` | `services/table.service.ts` — the `HttpClient` wrapper with the same method names on every table. |
 | `TS` | `TS_Component` | Four files in `components/table/` — CSS, HTML, spec and TypeScript for a grid + add/edit form screen. |
 | `TS` | `TS_JunctionComponent` | Four files in `components/table-junction/` — a two-`<select multiple>` shuttle-control screen calling `API_Junction` (also junction-only). |
 | `TS` | `TS_DetailMasterComponent` | Four files in `components/table-detail-master/` — `TS_Component`'s own grid + form plus one read-only grid per child table (only offered when there's at least one). |
 | `TSX` | `TSX_Api` | `api/tableApi.ts` — the React counterpart of `TS_Service`: a plain object of `fetch`-based functions instead of an `HttpClient` class (reuses `TS_Model`'s own output for the row type — no separate React model template exists). |
+| `TSX` | `TSX_Schema` | `schemas/table.ts` - a zod schema of the editable fields with the same limits, and the form type inferred from it. |
+| `PROTO` | `PROTO_Message` | `Table.proto` - a proto3 message per table, its key message, list messages and a CRUD service (a decimal is a string, a date a Timestamp, a nullable column optional). |
 | `TSX` | `TSX_Page` | `pages/TablePage.tsx` plus a colocated `pages/__tests__/TablePage.test.tsx` — the React counterpart of `TS_Component`: one function component (grid + add/edit form) using `useState`/`useEffect` instead of a class. |
 | `TSX` | `TSX_DetailMasterPage` | `pages/TableDetailMasterPage.tsx` plus its test — `TSX_Page`'s own grid + form plus one read-only grid per child table (only offered when there's at least one). |
 | `TSX` | `TSX_JunctionPage` | `components/TableJunction.tsx` plus its test — a two-`<select multiple>` shuttle-control component (an `anchorId` prop, not routed on its own) calling `API_Junction` (also junction-only). |

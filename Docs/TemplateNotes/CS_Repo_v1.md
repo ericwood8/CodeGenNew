@@ -51,3 +51,5 @@ What it does NOT do, so a repository that needs any of these stays hand-maintain
 properties (GetAllIncludeTeams, GetAllIncludeDropdowns) - the entity's navigations are the developers' choice, and a
 guess would not compile; lookups by a hand-picked column or order (GetAllOfTimesheet ordered by project).
 ```
+
+- **Access mode (EF Core instead of routines):** with `AccessMode=Ef` (always for SQLite) this template writes LINQ over the context instead of calls to the routines. See CS_SearchQuery_v1.md and Docs/Reference.md.

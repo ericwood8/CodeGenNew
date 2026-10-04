@@ -1,11 +1,11 @@
 # Getting started
 
-From an empty folder to a running web API generated from a database, in about ten minutes. The same steps work for SQL Server (`--provider SqlServer`, the default) and MySQL (`--provider MySql`); this walk-through uses PostgreSQL.
+From an empty folder to a running web API generated from a database, in about ten minutes. The same steps work for SQL Server (`--provider SqlServer`, the default), MySQL (`--provider MySql`) and SQLite (`--provider Sqlite`); this walk-through uses PostgreSQL.
 
 ## What you need
 
 - The [.NET 10 SDK](https://dotnet.microsoft.com/download) (the templates are compiled when they run, so the runtime alone is not enough).
-- A SQL Server, PostgreSQL or MySQL server you can create a database on. CodeGenNew only ever *reads* the database.
+- A SQL Server, PostgreSQL or MySQL server you can create a database on (or no server at all for SQLite, which is a file). CodeGenNew only ever *reads* the database.
 
 ## 1. Install the tool
 
@@ -26,6 +26,15 @@ An installed tool keeps its templates, project files and output in `%APPDATA%\Co
 psql -U <login> -d postgres -c "CREATE DATABASE shop"
 psql -U <login> -d shop -f Examples/GettingStarted/shop.postgresql.sql
 ```
+
+**SQLite** needs no server: `sqlite3 shop.db < Examples/GettingStarted/shop.sqlite.sql` makes the same shop in a file. Then use these lines in step 3 instead of the PostgreSQL ones, and leave out `-S` and `-U` in steps 4 and 5 (the database is the file: `--provider Sqlite -d shop.db`):
+
+```
+DatabaseProvider=Sqlite
+DatabaseName=shop.db
+```
+
+SQLite has no stored routines, so the project reaches the database through EF Core (`AccessMode=Ef`, which SQLite always uses): step 5 writes no SQL, and `Shop.Api/Repositories/CustomerSearchQuery.cs` holds the search. Run the API from the folder that holds `shop.db` (the connection string is `Data Source=shop.db`).
 
 ## 3. Describe the project
 

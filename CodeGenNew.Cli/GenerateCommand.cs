@@ -118,7 +118,7 @@ public static class GenerateCommand
         }
 
         string? password = options.Password;
-        if (!options.Trusted && password is null)
+        if (!options.Trusted && password is null && options.Provider != DatabaseProvider.Sqlite)
             password = ConsolePasswordReader.Read($"Password for {options.UserName}@{options.Server}: ");
         var request = new ConnectionRequest
         {

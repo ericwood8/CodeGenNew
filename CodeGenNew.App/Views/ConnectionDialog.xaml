@@ -17,9 +17,10 @@
             <ComboBoxItem Content="SQL Server" />
             <ComboBoxItem Content="PostgreSQL" />
             <ComboBoxItem Content="MySQL" />
+            <ComboBoxItem Content="SQLite (a file)" />
         </ComboBox>
         <TextBox x:Name="ServerBox" Header="Server" Text="{x:Bind ViewModel.ServerName, Mode=TwoWay}" />
-        <TextBox Header="Database" Text="{x:Bind ViewModel.DatabaseName, Mode=TwoWay}" />
+        <TextBox x:Name="DatabaseBox" Header="Database" Text="{x:Bind ViewModel.DatabaseName, Mode=TwoWay}" />
 
         <RadioButtons x:Name="AuthRadios" Header="Authentication">
             <RadioButton x:Name="WindowsAuthRadio" Content="Windows Authentication" Checked="OnAuthModeChanged" />

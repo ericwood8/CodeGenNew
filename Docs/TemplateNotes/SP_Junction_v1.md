@@ -37,3 +37,5 @@ specifically, just that TableOnly/RequiresJunctionTable can be checked against a
 TableModel.IsJunctionTable (RequiresJunctionTable=true), and the target table's display columns
 (NeedsReferencedDisplayColumns=true), the same way SP_Lookup.tt does.
 ```
+
+- **Access mode (EF Core instead of routines):** with `AccessMode=Ef` (always for SQLite) this template writes LINQ over the context instead of the routine; the plan leaves it out. See CS_SearchQuery_v1.md and Docs/Reference.md.

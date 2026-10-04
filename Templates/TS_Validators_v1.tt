@@ -1,0 +1,78 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Globalization" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // The Angular validators for the fields of one table that the schema says something about (required text, length, allowed values, ranges, email / phone / url shapes), keyed by the
+    // JSON property name so the record can feed FormBuilder or a FormControl. A limit the Angular Validators cannot state (a strict bound) gets a small validator function in the same file.
+
+    var fields = Model.Columns.Where(c => !c.IsSystemFilled()).OrderBy(c => c.OrdinalPosition)
+        .Select(c => (Column: c, Rule: c.RuleOf(Project))).Where(f => f.Rule is not null).ToList();
+    {
+        string Num(double value) => value.ToString("R", CultureInfo.InvariantCulture);
+        string baseName = ScreenNames.BaseName(Model.TableName);
+        string variable = char.ToLowerInvariant(baseName[0]) + baseName[1..] + "Validators";
+        string RegexLiteral(string pattern) => "/" + pattern.Replace("/", "\\/") + "/";
+
+        bool needsGreaterThan = fields.Any(f => f.Rule!.MinStrict);
+        bool needsLessThan = fields.Any(f => f.Rule!.MaxStrict);
+
+        var sb = new StringBuilder();
+        void L(string s = "") => sb.Append(s).Append('\n');
+        L("@@@FILE validators/" + ScreenNames.Stem(Model.TableName) + ".validators.ts@@@");
+        var imports = new List<string>();
+        if (needsGreaterThan || needsLessThan)
+            imports.AddRange(["AbstractControl", "ValidationErrors"]);
+        imports.Add("ValidatorFn");
+        if (fields.Count > 0)
+            imports.Add("Validators");
+        L("import { " + string.Join(", ", imports) + " } from \"@angular/forms\";");
+        if (needsGreaterThan)
+        {
+            L();
+            L("function greaterThan(min: number): ValidatorFn {");
+            L("    return (control: AbstractControl): ValidationErrors | null =>");
+            L("        control.value === null || control.value === \"\" || control.value > min ? null : { greaterThan: { min, actual: control.value } };");
+            L("}");
+        }
+        if (needsLessThan)
+        {
+            L();
+            L("function lessThan(max: number): ValidatorFn {");
+            L("    return (control: AbstractControl): ValidationErrors | null =>");
+            L("        control.value === null || control.value === \"\" || control.value < max ? null : { lessThan: { max, actual: control.value } };");
+            L("}");
+        }
+        L();
+        L("export const " + variable + ": Record<string, ValidatorFn[]> = {");
+        for (int i = 0; i < fields.Count; i++)
+        {
+            var (c, rule) = (fields[i].Column, fields[i].Rule!);
+            var list = new List<string>();
+            if (rule.Required)
+                list.Add("Validators.required");
+            if (rule.MaxLength > 0 && rule.Choices is null)
+                list.Add("Validators.maxLength(" + rule.MaxLength + ")");
+            if (rule.Choices is { Count: > 0 } choices)
+                list.Add("Validators.pattern(" + RegexLiteral("^(" + string.Join("|", choices.Select(Regex.Escape)) + ")$") + ")");
+            if (rule.Shape == TextShape.Email)
+                list.Add("Validators.email");
+            else if (rule.Shape == TextShape.Phone)
+                list.Add("Validators.pattern(" + RegexLiteral(@"^[0-9+()\-.\s]{3,25}$") + ")");
+            else if (rule.Shape == TextShape.Url)
+                list.Add("Validators.pattern(" + RegexLiteral(@"^https?://\S+$") + "i)");
+            if (rule.Min is { } min)
+                list.Add(rule.MinStrict ? "greaterThan(" + Num(min) + ")" : "Validators.min(" + Num(min) + ")");
+            if (rule.Max is { } max)
+                list.Add(rule.MaxStrict ? "lessThan(" + Num(max) + ")" : "Validators.max(" + Num(max) + ")");
+            L("    " + JsonNames.Camel(c.Name) + ": [" + string.Join(", ", list) + "]" + (i == fields.Count - 1 ? "" : ","));
+        }
+        L("};");
+        Write(sb.ToString());
+    }
+#>

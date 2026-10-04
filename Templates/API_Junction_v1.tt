@@ -2,6 +2,7 @@
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
 <#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
@@ -51,6 +52,17 @@
     var displayColumns = targetFk.ReferencedDisplayColumns;
     // How the generated code calls the routines: EXEC of a stored procedure on SQL Server, a function call on PostgreSQL, CALL on MySQL.
     var call = new JunctionCall(Model, entity, anchorColumn.Name);
+    // With AccessMode=Ef there are no routines to call: the same three operations are LINQ over the context.
+    bool ef = Project.AccessModeFor(Model.Dialect) == AccessMode.Ef;
+    var efJunction = ef ? new JunctionEf(Model) : null;
+    void Emit(List<string> lines)
+    {
+        foreach (string line in lines)
+        {
+            Write(line);
+            Write(((char)10).ToString());
+        }
+    }
 
     string usingLines = string.Concat(usings.Select(u => $"using {u};\n"));
 #>
@@ -102,24 +114,51 @@ public class <#= entity #>JunctionApi<T> : BaseApi<T> where T : class
 
     private static async Task<IResult> GetJunctionList([FromServices] <#= contextType #> context, <#= anchorType #> anchorId)
     {
+<#
+    if (ef)
+        Emit(efJunction.List(entity + "JunctionItem", "context", "anchorId", "        "));
+    else
+    {
+#>
         var rows = await context.Database
             .SqlQueryRaw<<#= entity #>JunctionItem>("<#= call.ListSql #>",
                 <#= call.AnchorParameter("anchorId") #>)
             .ToListAsync();
+<#
+    }
+#>
         return Ok(rows);
     }
 
     private static async Task<IResult> Link([FromServices] <#= contextType #> context, [FromBody] <#= entity #>JunctionLinkRequest request)
     {
+<#
+    if (ef)
+        Emit(efJunction.Link("context", "request.AnchorId", "request.TargetId", "        "));
+    else
+    {
+#>
         await context.Database.ExecuteSqlInterpolatedAsync(
             $"<#= call.LinkSql("request.AnchorId", "request.TargetId") #>");
+<#
+    }
+#>
         return Ok();
     }
 
     private static async Task<IResult> Unlink([FromServices] <#= contextType #> context, [FromBody] <#= entity #>JunctionLinkRequest request)
     {
+<#
+    if (ef)
+        Emit(efJunction.Unlink("context", "request.AnchorId", "request.TargetId", "        "));
+    else
+    {
+#>
         await context.Database.ExecuteSqlInterpolatedAsync(
             $"<#= call.UnlinkSql("request.AnchorId", "request.TargetId") #>");
+<#
+    }
+#>
         return Ok();
     }
 }

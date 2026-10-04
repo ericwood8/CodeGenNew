@@ -52,6 +52,38 @@ public class ColumnTypesTests
     }
 
     [TestMethod]
+    [DataRow(SqlDbType.Int, "int32")]
+    [DataRow(SqlDbType.SmallInt, "int32")]
+    [DataRow(SqlDbType.TinyInt, "int32")]
+    [DataRow(SqlDbType.BigInt, "int64")]
+    [DataRow(SqlDbType.Bit, "bool")]
+    [DataRow(SqlDbType.Decimal, "string")]
+    [DataRow(SqlDbType.Money, "string")]
+    [DataRow(SqlDbType.SmallMoney, "string")]
+    [DataRow(SqlDbType.Float, "double")]
+    [DataRow(SqlDbType.Real, "float")]
+    [DataRow(SqlDbType.Date, "google.protobuf.Timestamp")]
+    [DataRow(SqlDbType.DateTime, "google.protobuf.Timestamp")]
+    [DataRow(SqlDbType.DateTime2, "google.protobuf.Timestamp")]
+    [DataRow(SqlDbType.SmallDateTime, "google.protobuf.Timestamp")]
+    [DataRow(SqlDbType.DateTimeOffset, "google.protobuf.Timestamp")]
+    [DataRow(SqlDbType.Time, "string")]
+    [DataRow(SqlDbType.UniqueIdentifier, "string")]
+    [DataRow(SqlDbType.Char, "string")]
+    [DataRow(SqlDbType.VarChar, "string")]
+    [DataRow(SqlDbType.NChar, "string")]
+    [DataRow(SqlDbType.NVarChar, "string")]
+    [DataRow(SqlDbType.Text, "string")]
+    [DataRow(SqlDbType.NText, "string")]
+    [DataRow(SqlDbType.Xml, "string")]
+    [DataRow(SqlDbType.Binary, "bytes")]
+    [DataRow(SqlDbType.VarBinary, "bytes")]
+    [DataRow(SqlDbType.Image, "bytes")]
+    [DataRow(SqlDbType.Timestamp, "bytes")]
+    [DataRow(SqlDbType.Variant, "bytes")]
+    public void Every_sql_type_has_a_protobuf_type(SqlDbType type, string proto) => Assert.AreEqual(proto, Of(type).Proto());
+
+    [TestMethod]
     public void Nullability_adds_a_question_mark_in_C_Sharp_and_option_in_F_Sharp()
     {
         Assert.AreEqual("int", Of(SqlDbType.Int).CSharp());

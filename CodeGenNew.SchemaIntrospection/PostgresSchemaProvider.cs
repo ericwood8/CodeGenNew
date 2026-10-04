@@ -518,6 +518,28 @@ public class PostgresSchemaProvider : SchemaProviderBase
         return await GroupForeignKeyRowsAsync(reader, cancellationToken);
     }
 
+    private const string IndexesQuery = """
+        SELECT ic.relname, i.indisunique, a.attname
+        FROM pg_index i
+        JOIN pg_class ic ON ic.oid = i.indexrelid
+        JOIN pg_class tc ON tc.oid = i.indrelid
+        JOIN pg_namespace n ON n.oid = tc.relnamespace
+        CROSS JOIN LATERAL unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, position)
+        JOIN pg_attribute a ON a.attrelid = tc.oid AND a.attnum = k.attnum
+        WHERE n.nspname = @schema AND tc.relname = @table AND i.indisvalid AND i.indpred IS NULL AND i.indexprs IS NULL AND k.position <= i.indnkeyatts
+        ORDER BY ic.relname, k.position;
+        """;
+
+    protected override async Task<List<IndexRow>> ReadIndexRowsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(IndexesQuery, (NpgsqlConnection)connection);
+        command.Parameters.AddWithValue("schema", schemaName);
+        command.Parameters.AddWithValue("table", tableName);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await GroupIndexRowsAsync(reader, cancellationToken);
+    }
+
     // ========== row count and row data ==========
 
     protected override async Task<long> ReadRowCountAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)

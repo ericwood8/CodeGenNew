@@ -12,7 +12,8 @@ public static class SchemaProviderFactory
             DatabaseProvider.SqlServer => new SqlServerSchemaProvider(request, specialLogicColumnsConfigPath, naming, acronyms),
             DatabaseProvider.PostgreSql => new PostgresSchemaProvider(request, specialLogicColumnsConfigPath, naming, acronyms),
             DatabaseProvider.MySql => new MySqlSchemaProvider(request, specialLogicColumnsConfigPath, naming, acronyms),
-            _ => throw new NotSupportedException($"Provider '{request.Provider}' is not implemented yet. SqlServer, PostgreSql and MySql are supported.")
+            DatabaseProvider.Sqlite => new SqliteSchemaProvider(request, specialLogicColumnsConfigPath, naming, acronyms),
+            _ => throw new NotSupportedException($"Provider '{request.Provider}' is not implemented yet. SqlServer, PostgreSql, MySql and Sqlite are supported.")
         };
         provider.IgnoredColumns = ignoredColumns;
         return provider;

@@ -9,6 +9,7 @@ A build and a unit test cannot see a blank drop-down, a number box that takes a 
 | `Test-AppDialogs.ps1` | A worked click-through of the CodeGenNew app (the Project settings dialog and the Essentials dialog): PASS / FAIL lines and an exit code. |
 | `Test-ApiCrud.ps1` | Starts a generated API on a spare port against a scratch database and walks one route through POST, GET, PUT, list and DELETE. |
 | `Test-OpenApiRoutes.ps1` | Checks the generated `openapi.yaml` against the running API: every documented GET answers 200, every `PUT /{id}` 400, and the schema's properties are in a real row's JSON. Apply the generated SQL to the scratch database first. |
+| `Test-SqliteStack.ps1` | The SQLite counterpart of the API check: generates the API of a SQLite file with `codegen generate`, builds it and runs `Test-ApiCrud.ps1` against a scratch copy of the file. No server is needed. |
 | `Browser.md` | Snippets for driving and reading a React / Angular page from the browser's console. |
 | `Recipes/` | The steps per stack: `Api.md`, `React.md`, `Angular.md`, `WinUI3.md`. |
 

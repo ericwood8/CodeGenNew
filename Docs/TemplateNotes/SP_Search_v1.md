@@ -49,3 +49,5 @@ not a view. Does not filter out inactive/soft-deleted rows - that's a different,
 from "which columns can I type into a search box" and is left to the caller (or SP_Lookup.tt, which
 already handles it) rather than folded in here silently.
 ```
+
+- **Access mode (EF Core instead of routines):** with `AccessMode=Ef` (always for SQLite) this template writes LINQ over the context instead of the routine; the plan leaves it out. See CS_SearchQuery_v1.md and Docs/Reference.md.

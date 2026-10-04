@@ -50,6 +50,11 @@
     Line();
     foreach (var t in Database.SearchApiTables(Project).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
         Line($"        new {t.TableName}SearchApi<{t.TableName}>().Register(app);");
+    var junctions = Database.Tables.Where(t => t.IsJunctionTable).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    if (junctions.Count > 0)
+        Line();
+    foreach (var t in junctions)
+        Line($"        new {t.TableName}JunctionApi<{t.TableName}>().Register(app);");
     Line("    }");
     Line("}");
     Write(sb.ToString());

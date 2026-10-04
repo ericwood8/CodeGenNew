@@ -1,0 +1,88 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // The search of one table as LINQ, for a project that reaches the database through EF Core (AccessMode=Ef) instead of through the routines SP_Search writes. Filter is one optional
+    // contains-match per searchable text column (null or blank means no filter, case ignored, wildcard characters in the value mean themselves); Sort picks the column by name from a fixed
+    // list and falls back to the default order, which also breaks ties. CS_Repo.SearchAsync and API_Search both call it, so the two stay identical.
+
+    string repositoryNamespace = Project.RepoNamespace ?? "MyApp.Common.Repositories";
+    string[] usings = Project.Usings ?? [];
+
+    if (Model.PrimaryKeyColumns.Count == 0)
+    {
+        Error($"CS_SearchQuery needs a table with a primary key, but [{Model.SchemaName}].[{Model.TableName}] has none.");
+    }
+    else
+    {
+        string entity = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
+        var navigations = EntityNavigations.Of(Model, fk => Project.NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape) ?? false);
+        var plan = SearchPlan.For(Model, navigations);
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+
+        foreach (string u in usings)
+            L($"using {u};");
+        if (usings.Length > 0)
+            L();
+        L($"namespace {repositoryNamespace};");
+        L();
+        L($"/// <summary> The filter and the sort of the {Model.TableName} search. </summary>");
+        L($"public static class {Model.TableName}SearchQuery");
+        L("{");
+
+        string filterParameters = string.Join(", ", plan.Filters.Select(f => $"string? {f.ParameterName} = null"));
+        L($"    public static IQueryable<{entity}> Filter(IQueryable<{entity}> query{(plan.Filters.Count > 0 ? ", " + filterParameters : "")})");
+        L("    {");
+        foreach (var filter in plan.Filters)
+        {
+            string name = filter.ParameterName;
+            string property = filter.Column.CSharpName();
+            if (filter.Column.DbEnumType is not null)
+            {
+                L($"        // {property} is a database enum, which has no text comparison: it is not filtered here.");
+                continue;
+            }
+            L($"        if (!string.IsNullOrWhiteSpace({name}))");
+            L("        {");
+            L($"            string {name}Term = {name}.Trim().ToLower();");
+            string notNull = filter.Column.IsNullable ? $"t.{property} != null && " : "";
+            L($"            query = query.Where(t => {notNull}t.{property}.ToLower().Contains({name}Term));");
+            L("        }");
+        }
+        L("        return query;");
+        L("    }");
+        L();
+
+        L($"    public static IQueryable<{entity}> Sort(IQueryable<{entity}> query, string? sortColumn, bool descending)");
+        L("    {");
+        L($"        IOrderedQueryable<{entity}>? ordered = null;");
+        if (plan.Sorts.Count > 0)
+        {
+            L($"        switch (sortColumn is {{ Length: <= {plan.MaxSortNameLength} }} ? sortColumn.Trim().ToLowerInvariant() : null)");
+            L("        {");
+            foreach (var sort in plan.Sorts)
+            {
+                string path = sort.ParentPath is { } parent ? "t." + parent.Replace(".", "!.") : "t." + sort.Column.CSharpName();
+                L($"            case \"{sort.Name.ToLowerInvariant().Replace("\\", "\\\\").Replace("\"", "\\\"")}\":");
+                L($"                ordered = descending ? query.OrderByDescending(t => {path}) : query.OrderBy(t => {path});");
+                L("                break;");
+            }
+            L("        }");
+        }
+        L();
+        var order = plan.DefaultOrder.Select(c => "t." + c.CSharpName()).ToList();
+        L("        // the default order applies without a chosen sort and breaks ties after one");
+        L("        return ordered is null");
+        L($"            ? query.OrderBy(t => {order[0]}){string.Concat(order.Skip(1).Select(p => $".ThenBy(t => {p})"))}");
+        L($"            : ordered{string.Concat(order.Select(p => $".ThenBy(t => {p})"))};");
+        L("    }");
+        L("}");
+        Write(o.ToString());
+    }
+#>

@@ -25,7 +25,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
         "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "TestApi", "TestWinUI3", "TestReact", "TestAngular"
     ];
@@ -205,6 +205,17 @@ public class ProjectSettings
     /// <summary> <c>ApiValidation=true</c>: the plan also writes a FluentValidation validator per table (CS_Validator), and the create and update endpoints run them (a 400 with the messages). </summary>
     public bool ApiValidation => Flag("ApiValidation");
 
+    /// <summary> <c>AccessMode=Routines</c> or <c>Ef</c>: how search, sort, paging, clone and the junction editors reach the database. Null when the project does not say; <see cref="AccessModes.For"/> decides then. </summary>
+    public AccessMode? AccessModeSetting => Explicit("AccessMode")?.Trim().ToLowerInvariant() switch
+    {
+        "ef" => AccessMode.Ef,
+        "routines" => AccessMode.Routines,
+        _ => null
+    };
+
+    /// <summary> The access mode this project uses over the given database. </summary>
+    public AccessMode AccessModeFor(SqlDialect dialect) => AccessModes.For(this, dialect);
+
     /// <summary> The templates the flags above add to a plan, as if <c>PlanAlso</c> named them. </summary>
     public IEnumerable<string> ImpliedPlanTemplates
     {
@@ -294,6 +305,7 @@ public class ProjectSettings
     {
         "postgresql" or "postgres" or "pg" => SqlDialect.PostgreSql,
         "mysql" => SqlDialect.MySql,
+        "sqlite" => SqlDialect.Sqlite,
         _ => SqlDialect.SqlServer
     };
     public string DatabaseServer => Explicit("DatabaseServer") ?? "localhost";

@@ -48,7 +48,8 @@ One per template, same base name, plain `key=value` lines, `#` comments. A missi
 | `RequiresJunctionTable` | false | only for a many-to-many table: excluding computed, audit and surrogate identity-key columns, exactly two columns remain and each is covered by its own single-column foreign key (a natural composite key and an identity key plus two foreign keys both count; one composite foreign key over both columns does not) |
 | `RequiresChildTables` | false | only when another table has a foreign key back at this one (master-detail screens) |
 | `RequiresNotNameActiveTable` | false | hidden for a "name/active" table (a NOT NULL text column `Name` and a NOT NULL bit column `IsActive`). Its repository is a `NameActiveRepo` with duplicate-name checks and trimming a template cannot supply, so `API_Crud` refuses it and every screen that assumes a plain list / get / create / update / delete backend sets this. `CS_Entity` and `CS_Repo` support both shapes. |
-| `Dialects` | all | the databases the template is for (`SqlServer`, `PostgreSql`, `MySql`); a plan skips it silently for another one |
+| `Dialects` | all | the databases the template is for (`SqlServer`, `PostgreSql`, `MySql`, `Sqlite`); a plan skips it silently for another one, the menu does not offer it, and a single run is refused with the reason |
+| `AccessMode` | both | `Routines` or `Ef`: the template writes routines the generated code calls, or the LINQ that replaces them; a plan skips it when the project's access mode (the `AccessMode` setting; `Ef` for SQLite) is the other one, unless `PlanAlso` names it |
 
 **Extra input the template asks for** (each costs read-only catalog queries, so the default is off):
 
@@ -77,7 +78,7 @@ One per template, same base name, plain `key=value` lines, `#` comments. A missi
 | Key | Meaning |
 |---|---|
 | `Stacks` | the stacks that include the template (`Api`, `WinUI3`, `React`, `Angular`); empty means run by hand only |
-| `PlanTables` | which tables a plan runs it for (entity tables, tables with an API, tables with a screen ...); ignored for database-level and no-database templates |
+| `PlanTables` | which tables a plan runs it for (entity tables, `Context`: the entity tables and the composite-key junction tables, tables with an API, tables with a screen ...); ignored for database-level and no-database templates |
 | `InPlan` | default true; `false` joins a plan only through the project's `PlanAlso` or a flag that implies it |
 | `EssentialsGroup`, `Description`, `EssentialsDefault` | the template is one file group of a stack's essentials: its menu name, one line on what it writes, and whether it is ticked the first time |
 | `Needs` | files (relative to the stack folder, `{Context}` for the context name) that the group assumes another run wrote; a run warns when one is missing |
@@ -178,6 +179,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `ApiFakers` | true: the plan also writes a Bogus fake-data generator per table (CS_Faker) and the generated project references Bogus |
 | `ProjectDocs` | true: the plan also writes a data dictionary page per table and the ER diagram (MD_DataDictionary, MD_Erd) |
 | `ApiValidation` | true: the plan also writes a FluentValidation validator per table (CS_Validator) and the create and update endpoints run them (400 with the messages) |
+| `AccessMode` | Routines or Ef: how search, sort, paging, clone and the junction editors reach the database. Ef uses LINQ over the context and needs no routine in the database; SQLite always uses it; blank = Routines |
 | `DtoNamespace` | the namespace of the data-transfer classes and mappers (CS_Dto, CS_Mapper, CS_DataContractDto, CS_TypedDataRow, CS_SerializationDtos; default &lt;ProjectName&gt;.App.Dtos) |
 | `FSharpNamespace` | the namespace of the F# records FS_Entity and the Rop module FS_Rop write (default &lt;ProjectName&gt;.Domain) |
 | `ReplicationTargets` | SQL Server only: linked server and database each change is copied to, comma-separated (server1.Sales,server2.Sales); SP_ReplicationTriggers writes the triggers |
@@ -204,9 +206,9 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `OutputAngular` | folder of the Angular app; blank = frontend |
 | `OutputSql` | folder of the generated SQL; blank = sql |
 | `AppNamespace` | root namespace of the WinUI3 app; blank = &lt;ProjectName&gt;.App |
-| `DatabaseProvider` | SqlServer, PostgreSql or MySql (appsettings.json and the package reference); blank = SqlServer |
+| `DatabaseProvider` | SqlServer, PostgreSql, MySql or Sqlite (appsettings.json and the package reference); blank = SqlServer |
 | `DatabaseServer` | server for appsettings.json; blank = localhost |
-| `DatabaseName` | database for appsettings.json; blank = the project name |
+| `DatabaseName` | database for appsettings.json (for SQLite the path of the database file); blank = the project name |
 | `DatabaseUser` | login for appsettings.json (never the password); blank = Windows authentication |
 | `ApiPort` | port the API listens on; blank = 5080 |
 | `DevPort` | port of the front end's dev server; blank = 5173 (React) or 4200 (Angular) |

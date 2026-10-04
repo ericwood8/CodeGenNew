@@ -143,15 +143,17 @@ internal static class Sample
     };
 
     public static TableModel Table(string name, List<ColumnModel> columns, List<ForeignKeyModel>? foreignKeys = null,
-        List<object?[]>? rows = null, List<ChildForeignKeyModel>? childForeignKeys = null) => new()
+        List<object?[]>? rows = null, List<ChildForeignKeyModel>? childForeignKeys = null, List<IndexModel>? indexes = null, SqlDialect dialect = SqlDialect.SqlServer) => new()
     {
-        SchemaName = "dbo",
+        Dialect = dialect,
+        SchemaName = dialect == SqlDialect.Sqlite ? "main" : "dbo",
         TableName = name,
         QuotedName = $"[dbo].[{name}]",
         Columns = columns,
         PrimaryKeyColumns = columns.Where(c => c.IsPrimaryKey).ToList(),
         ForeignKeys = foreignKeys ?? [],
         ChildForeignKeys = childForeignKeys ?? [],
+        Indexes = indexes ?? [],
         // what the schema reader fills in when a template's .tt.config asks for referenced display columns
         HasReferencedDisplayColumns = foreignKeys?.Any(f => f.ReferencedDisplayColumns.Count > 0) ?? false,
         DisplayColumns = columns.SelectDisplayColumns((foreignKeys ?? []).SelectMany(f => f.ReferencingColumns).ToList()),

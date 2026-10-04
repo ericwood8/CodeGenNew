@@ -28,3 +28,5 @@ Requires a primary key and TableModel.IsJunctionTable (RequiresJunctionTable=tru
 table's display columns (NeedsReferencedDisplayColumns=true), the same restrictions SP_Junction.tt
 itself has - generate that first.
 ```
+
+- **Access mode (EF Core instead of routines):** with `AccessMode=Ef` (always for SQLite) this template writes LINQ over the context instead of calls to the routines. See CS_SearchQuery_v1.md and Docs/Reference.md.

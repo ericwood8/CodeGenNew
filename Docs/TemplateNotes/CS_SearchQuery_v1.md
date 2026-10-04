@@ -1,0 +1,10 @@
+# CS_SearchQuery_v1
+
+`<Table>SearchQuery.cs`: a static class with `Filter` and `Sort` over `IQueryable<Entity>`, written only for a project that reaches the database through EF Core (`AccessMode=Ef`, always the case for SQLite). `CS_Repo.SearchAsync` and `API_Search` both call it, so the web API and the in-process desktop app search identically, as the routine pair `SP_Search` makes them do in the default mode.
+
+- **Filter:** one optional parameter per searchable text column (the rule `SP_Search` uses: not audit, not long text, at most eight). A null or blank value is no filter; any other value must be contained in the column, ignoring case (`ToLower().Contains(...)`, which every provider translates, and which treats `%` and `_` in the value as ordinary characters). A PostgreSQL enum column has no text comparison and is not filtered.
+- **Sort:** the caller names a column (case ignored, at most 128 characters); the name is looked up in a `switch` over the table's own sortable columns, so an unknown name gives the default order and nothing from outside reaches the query. A foreign key sorts by its parent's display column through the entity's navigation property (`t.Status!.Description`) when the entity has one, else by its own value. The default order (best display column, then the key) follows as the tie-breaker.
+- **Paging and count:** done by the callers (`Skip`/`Take` over the filtered query, and `CountAsync` for the total).
+- The plan behind it (`SearchPlan` in Core: filters, sort options, default order) is database-independent, so a Rust repository or a dashboard query can read the same facts.
+- Not for a database with routines unless the project says `AccessMode=Ef`; the plan then also leaves out `SP_Search`, `SP_Clone`, `SP_Junction` and the other routine templates (a template named in `PlanAlso` is still written).
+- **Checked** by generating the project of a SQLite database and of the PostgreSQL sample, building both, and calling search with a filter, a sort by a foreign key and a `%` in the value over HTTP.

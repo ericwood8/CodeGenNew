@@ -41,11 +41,12 @@ public static class SqlServerConnectionFactory
     public static SqlConnection CreateConnection(this ConnectionRequest request) =>
         new(request.BuildConnectionString());
 
-    /// <summary> A connection of whichever database the request names (SQL Server, PostgreSQL or MySQL). </summary>
+    /// <summary> A connection of whichever database the request names (SQL Server, PostgreSQL, MySQL or SQLite). </summary>
     public static DbConnection CreateDbConnection(this ConnectionRequest request) => request.Provider switch
     {
         DatabaseProvider.PostgreSql => request.CreatePostgresConnection(),
         DatabaseProvider.MySql => request.CreateMySqlConnection(),
+        DatabaseProvider.Sqlite => request.CreateSqliteConnection(),
         _ => request.CreateConnection()
     };
 

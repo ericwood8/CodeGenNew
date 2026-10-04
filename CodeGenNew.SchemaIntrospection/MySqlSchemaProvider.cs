@@ -448,6 +448,23 @@ public class MySqlSchemaProvider : SchemaProviderBase
         return await GroupForeignKeyRowsAsync(reader, cancellationToken);
     }
 
+    private const string IndexesQuery = """
+        SELECT INDEX_NAME, NON_UNIQUE = 0, COLUMN_NAME
+        FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = @table AND COLUMN_NAME IS NOT NULL AND INDEX_TYPE IN ('BTREE', 'HASH')
+        ORDER BY INDEX_NAME, SEQ_IN_INDEX;
+        """;
+
+    protected override async Task<List<IndexRow>> ReadIndexRowsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = new MySqlCommand(IndexesQuery, (MySqlConnection)connection);
+        command.Parameters.AddWithValue("@schema", schemaName);
+        command.Parameters.AddWithValue("@table", tableName);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await GroupIndexRowsAsync(reader, cancellationToken);
+    }
+
     // =============== row count and row data  ===============
 
     protected override async Task<long> ReadRowCountAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)

@@ -23,6 +23,7 @@ public static class ProjectPlan
         return set switch
         {
             PlanTableSet.Entity => database.EntityTables.Where(t => project.NoRepository(t.TableName, t.LookupShape) != true).ToList(),
+            PlanTableSet.Context => database.EntityTables.Where(t => project.NoRepository(t.TableName, t.LookupShape) != true).Concat(database.CompositeKeyTables).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),
             PlanTableSet.Api => database.ApiTables(project),
             PlanTableSet.Search => database.SearchApiTables(project),
             PlanTableSet.Screen => screens,
@@ -50,6 +51,8 @@ public static class ProjectPlan
             if (!config.InPlan && !also.Contains(Normalize(template.Name)))
                 continue;
             if (config.Dialects.Count > 0 && !config.Dialects.Contains(dialect, StringComparer.OrdinalIgnoreCase))
+                continue;
+            if (config.AccessMode is { } mode && mode != project.AccessModeFor(database.Dialect) && !also.Contains(Normalize(template.Name)))
                 continue;
 
             var tableNames = config.DatabaseOnly ? [] : Tables(config.PlanTables, database, project).Select(t => t.TableName).ToList();

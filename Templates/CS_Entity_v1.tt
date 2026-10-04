@@ -67,18 +67,8 @@
         foreach (var fk in Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1))
             fkByColumn[fk.ReferencingColumns[0]] = fk;
 
-        var navigations = new List<(ColumnModel Column, string Role, string Type)>();
-        var takenNames = new HashSet<string>(Model.Columns.Select(c => c.Name), StringComparer.OrdinalIgnoreCase) { Model.TableName };
-        foreach (var c in Model.Columns.Where(c => fkByColumn.ContainsKey(c.Name) && !c.IsPrimaryKey))
-        {
-            var fk = fkByColumn[c.Name];
-            if (NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape)) continue;
-            string role = c.Name.Length > 2 && c.Name.EndsWith("Id", StringComparison.Ordinal) ? c.Name[..^2] : c.Name + "Ref";
-            // a referenced table named like this one would make a property of the class's own type; a role that repeats
-            // another name cannot be a second property - leave both as plain columns
-            if (role.Length == 0 || !takenNames.Add(role)) continue;
-            navigations.Add((c, role, fk.ReferencedTable));
-        }
+        var navigations = EntityNavigations.Of(Model, fk => NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape))
+            .Select(n => (Column: n.Column, Role: n.Role, Type: n.Type)).ToList();
         var navByColumn = navigations.ToDictionary(n => n.Column.Name, n => n, StringComparer.OrdinalIgnoreCase);
 
         // ==== C# type of a column

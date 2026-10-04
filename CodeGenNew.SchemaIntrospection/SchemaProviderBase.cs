@@ -27,6 +27,9 @@ public sealed record RawColumn(
 /// <summary> One foreign key, either direction: the OTHER table's name and the two column lists. </summary>
 public sealed record ForeignKeyRow(string ConstraintName, string OtherSchema, string OtherTable, List<string> ReferencingColumns, List<string> ReferencedColumns);
 
+/// <summary> One index as the catalog reports it: the key columns in order. </summary>
+public sealed record IndexRow(string Name, bool IsUnique, List<string> Columns);
+
 /// <summary> The database-independent part of reading a schema: turning raw catalog rows into a TableModel (display columns,
 /// lookup shape, special-logic column rules, child tables). A subclass implements the catalog queries. </summary>
 public abstract class SchemaProviderBase : ISchemaProvider
@@ -72,6 +75,24 @@ public abstract class SchemaProviderBase : ISchemaProvider
     protected abstract Task<List<RawColumn>> ReadColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken);
     /// <summary> Foreign keys this table has (<paramref name="children"/> false) or that point at it (true), grouped per constraint. </summary>
     protected abstract Task<List<ForeignKeyRow>> ReadForeignKeyRowsAsync(DbConnection connection, string schemaName, string tableName, bool children, CancellationToken cancellationToken);
+    /// <summary> The table's indexes (key columns only, none filtered or partial). A provider that cannot read them leaves the list empty. </summary>
+    protected virtual Task<List<IndexRow>> ReadIndexRowsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken) => Task.FromResult(new List<IndexRow>());
+
+    /// <summary> Groups rows of (index name, unique flag, column name), already ordered by index and position, into indexes. </summary>
+    protected static async Task<List<IndexRow>> GroupIndexRowsAsync(DbDataReader reader, CancellationToken cancellationToken)
+    {
+        var indexes = new Dictionary<string, IndexRow>(StringComparer.Ordinal);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            string name = reader.GetString(0);
+            if (!indexes.TryGetValue(name, out var index))
+                indexes[name] = index = new IndexRow(name, Convert.ToBoolean(reader.GetValue(1)), []);
+            index.Columns.Add(reader.GetString(2));
+        }
+
+        return [.. indexes.Values];
+    }
+
     protected abstract Task<long> ReadRowCountAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken);
     protected abstract Task<List<object?[]>> ReadRowsAsync(DbConnection connection, string schemaName, string tableName,
         List<ColumnModel> columns, List<ColumnModel> primaryKeyColumns, CancellationToken cancellationToken);
@@ -151,6 +172,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
             Rows = rows,
             ForeignKeys = foreignKeys,
             ChildForeignKeys = childForeignKeys,
+            Indexes = (await ReadIndexRowsAsync(connection, schemaName, tableName, cancellationToken)).Select(row => new IndexModel(row.Name, row.IsUnique, row.Columns)).ToList(),
             HasActiveInactivePair = hasActivePair,
             ActiveColumn = activeCol,
             InactiveDateColumn = inactiveCol,

@@ -12,10 +12,12 @@
     string apiNamespace = "MyApp.ApiService.Apis";
     string contextType = "MyAppContext";
     string[] usings = { };
+    string repositoryNamespace = "MyApp.Common.Repositories";
     // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     contextType = Project.ContextName ?? contextType;
     apiNamespace = Project.ApiNamespace ?? apiNamespace;
     usings = Project.Usings ?? usings;
+    repositoryNamespace = Project.RepoNamespace ?? repositoryNamespace;
     // ==========================================================================================
 
     // ==========================================================================================
@@ -40,10 +42,13 @@
     // filters is empty).
     // How the generated code calls the search routine: EXEC of a stored procedure on SQL Server, a function call on PostgreSQL.
     var call = new SearchCall(Model, entity, filters.Select(f => f.Name));
+    // With AccessMode=Ef the search is LINQ over the context (the CS_SearchQuery class of this table), not a call to the routines SP_Search writes.
+    bool ef = Project.AccessModeFor(Model.Dialect) == AccessMode.Ef;
+    var efFilters = string.Concat(filters.Select(f => ", " + f.ParamName));
 #>
 namespace <#= apiNamespace #>;
 
-<#= usingLines #>using <#= call.ParameterNamespace #>;
+<#= usingLines #><#= ef ? "using " + repositoryNamespace + ";" : "using " + call.ParameterNamespace + ";" #>
 using Microsoft.EntityFrameworkCore;
 using static Microsoft.AspNetCore.Http.TypedResults;
 
@@ -86,6 +91,20 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
         string? sortColumn = string.IsNullOrWhiteSpace(sortBy) || sortBy.Length > <#= SearchSort.MaxNameLength #> ? null : sortBy.Trim();
         bool sortDescending = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase);
 
+<#
+    if (ef)
+    {
+#>
+        pageSize = Math.Max(pageSize, 1);
+        var query = <#= entity #>SearchQuery.Filter(context.Set<<#= entity #>>()<#= efFilters #>);
+        int totalCount = await query.CountAsync();
+        var items = await <#= entity #>SearchQuery.Sort(query, sortColumn, sortDescending)
+            .Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync();
+<#
+    }
+    else
+    {
+#>
         var parameters = new[]
         {
 <#
@@ -139,6 +158,9 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
                 countParameters)
             .ToListAsync();
         int totalCount = totalCountRows.Single();
+<#
+    }
+#>
 
         int totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
         return Ok(new <#= entity #>SearchResult(items, pageNumber, pageSize, totalCount, totalPages));

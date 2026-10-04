@@ -36,3 +36,5 @@ CS_Repo.tt assumes only that a GenericRepo base class exists there):
 Requires a primary key and TableModel.IsJunctionTable (same restrictions as SP_Junction.tt), and the
 target table's display columns (NeedsReferencedDisplayColumns=true).
 ```
+
+- **Access mode (EF Core instead of routines):** with `AccessMode=Ef` (always for SQLite) this template writes LINQ over the context instead of calls to the routines. See CS_SearchQuery_v1.md and Docs/Reference.md.

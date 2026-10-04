@@ -10,7 +10,7 @@ namespace CodeGenNew.App.ViewModels;
 /// for the lifetime of this dialog/session -- never written to Settings.json. </summary>
 public partial class ConnectionDialogViewModel : StatusMessageViewModel
 {
-    /// <summary> The database type. PostgreSQL and MySQL have no Windows authentication: a user name and password are always needed, and the server may be "host:port". </summary>
+    /// <summary> The database type. PostgreSQL and MySQL have no Windows authentication: a user name and password are always needed, and the server may be "host:port". SQLite is a file: the database name is its path and nothing else is asked. </summary>
     [ObservableProperty]
     private DatabaseProvider _provider = DatabaseProvider.SqlServer;
 
@@ -72,9 +72,9 @@ public partial class ConnectionDialogViewModel : StatusMessageViewModel
     [RelayCommand]
     private async Task TestConnectionAsync()
     {
-        if (string.IsNullOrWhiteSpace(ServerName) || string.IsNullOrWhiteSpace(DatabaseName))
+        if ((Provider != DatabaseProvider.Sqlite && string.IsNullOrWhiteSpace(ServerName)) || string.IsNullOrWhiteSpace(DatabaseName))
         {
-            StatusMessage = "Server and database are required.";
+            StatusMessage = Provider == DatabaseProvider.Sqlite ? "The database file is required." : "Server and database are required.";
             StatusSeverity = InfoBarSeverity.Error;
             LastTestSucceeded = false;
             return;

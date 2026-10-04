@@ -56,6 +56,8 @@
         var nameColumn = Model.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
         var activeColumn = Model.Columns.FirstOrDefault(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive");
         var searchableColumns = Model.SearchableColumns;
+        // With AccessMode=Ef the search, the sort and the clone are LINQ over the context (CS_SearchQuery writes the query), not calls to the routines SP_Search and SP_Clone write.
+        bool ef = Project.AccessModeFor(Model.Dialect) == AccessMode.Ef;
         bool nameActive = nameColumn is not null && activeColumn is not null;
         string baseRepo = nameActive ? "NameActiveRepo" : "GenericRepo";
 
@@ -132,7 +134,7 @@
         // CloneAsync: the grids' Clone button (CloneShape says which tables get one). Calls <Table>_Clone (SP_Clone) and returns the new row's id; a unique text column gets a
         // free value from SuggestUnique<Column> above.
         if (CloneShape.CanClone(Model, Project))
-            methods.Add(CloneCall.RepoMethod(Model, entity).ToArray());
+            methods.Add((ef ? CloneEf.RepoMethod(Model, entity) : CloneCall.RepoMethod(Model, entity)).ToArray());
 
         // Pagination: this repo method calls the same
         // generated <Table>_Search/<Table>_SearchCount pair directly through the DbContext, the identical
@@ -156,6 +158,25 @@
                 .Append("int pageNumber = 1").Append("int pageSize = 100")
                 // The grid's chosen sort: a column name (null = the default order) and the direction. The procedure compares the name with its own list of columns (SearchSort).
                 .Append("string? sortColumn = null").Append("bool sortDescending = false").ToList();
+            if (ef)
+            {
+                string filterArguments = string.Concat(filters.Select(f => ", " + f.ParamName));
+                string queryClass = Model.TableName + "SearchQuery";
+                methods.Add(new[]
+                {
+                    $"    public async Task<(List<{entity}> Items, int TotalCount)> SearchAsync({string.Join(", ", signatureParams)})",
+                    "    {",
+                    $"        var query = {queryClass}.Filter(_dbSet{filterArguments});",
+                    "        int totalCount = await query.CountAsync();",
+                    "        int size = Math.Max(pageSize, 1);",
+                    $"        var items = await {queryClass}.Sort(query, sortColumn, sortDescending)",
+                    "            .Skip((Math.Max(pageNumber, 1) - 1) * size).Take(size).ToListAsync();",
+                    "        return (items, totalCount);",
+                    "    }"
+                });
+            }
+            else
+            {
             // EXEC of a stored procedure on SQL Server, a function call on PostgreSQL (see SearchCall).
             var call = new SearchCall(Model, Model.TableName, filters.Select(f => f.Name), qualifyTypes: true);
 
@@ -211,6 +232,7 @@
             body.Add("        return (items, totalCount);");
             body.Add("    }");
             methods.Add(body.ToArray());
+            }
         }
 
         L($"namespace {repositoryNamespace};");

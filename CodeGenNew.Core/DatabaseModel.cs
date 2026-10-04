@@ -71,6 +71,7 @@ public sealed record EfProviderInfo(string UseMethod, string Package, string? Pa
             "Npgsql reads PGPASSWORD itself when the connection string has no password."),
         SqlDialect.MySql => new("UseMySQL", "MySql.EntityFrameworkCore", "MYSQL_PWD",
             "Oracle's provider (Pomelo has no EF Core 10 release yet). The driver does not read MYSQL_PWD, so the generated code adds it."),
+        SqlDialect.Sqlite => new("UseSqlite", "Microsoft.EntityFrameworkCore.Sqlite", null, "A file database: the connection string is Data Source=<file>, so there is no password."),
         _ => new("UseSqlServer", "Microsoft.EntityFrameworkCore.SqlServer", null, null)
     };
 }

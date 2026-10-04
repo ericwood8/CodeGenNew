@@ -1,0 +1,76 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // A proto3 file for one table: the row as a message, a key message (the whole primary key, so a composite key works), list request and response messages, and a CRUD service.
+    // Types come from ColumnTypes.Proto: a decimal is a string (protobuf has no decimal), a date a Timestamp, a nullable column an optional field. Field numbers follow column order, so
+    // adding a column at the end keeps existing numbers; reordering the table renumbers the fields. Implementing the service is up to you.
+
+    if (Model.PrimaryKeyColumns.Count == 0)
+    {
+        Error($"PROTO_Message needs a table with a primary key, but [{Model.SchemaName}].[{Model.TableName}] has none.");
+    }
+    else
+    {
+        string baseName = ScreenNames.BaseName(Model.TableName);
+        string plural = baseName.Pluralize();
+        string projectName = Project.ProjectName ?? "MyApp";
+        string package = Regex.Replace(projectName.ToLowerInvariant(), "[^a-z0-9]", "");
+        string FieldName(ColumnModel c) => Labels.Words(c.Name).ToLowerInvariant().Replace(' ', '_');
+
+        var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
+        bool usesTimestamp = columns.Any(c => c.Proto() == "google.protobuf.Timestamp");
+
+        var sb = new StringBuilder();
+        void L(string s = "") => sb.Append(s).Append('\n');
+        void Fields(IEnumerable<ColumnModel> list)
+        {
+            int number = 1;
+            foreach (var c in list)
+                L("  " + (c.IsNullable ? "optional " : "") + c.Proto() + " " + FieldName(c) + " = " + number++ + ";");
+        }
+
+        L("syntax = \"proto3\";");
+        L();
+        if (usesTimestamp)
+            L("import \"google/protobuf/timestamp.proto\";");
+        L("import \"google/protobuf/empty.proto\";");
+        L();
+        L("package " + package + ";");
+        L();
+        L("option csharp_namespace = \"" + projectName + ".Grpc\";");
+        L();
+        L("// One row of " + Model.QuotedName + ".");
+        L("message " + baseName + " {");
+        Fields(columns);
+        L("}");
+        L();
+        L("message " + baseName + "Key {");
+        Fields(Model.PrimaryKeyColumns);
+        L("}");
+        L();
+        L("message List" + plural + "Request {");
+        L("  int32 page_number = 1;");
+        L("  int32 page_size = 2;");
+        L("}");
+        L();
+        L("message List" + plural + "Response {");
+        L("  repeated " + baseName + " items = 1;");
+        L("  int32 total_count = 2;");
+        L("}");
+        L();
+        L("service " + baseName + "Service {");
+        L("  rpc Get (" + baseName + "Key) returns (" + baseName + ");");
+        L("  rpc List (List" + plural + "Request) returns (List" + plural + "Response);");
+        L("  rpc Create (" + baseName + ") returns (" + baseName + ");");
+        L("  rpc Update (" + baseName + ") returns (" + baseName + ");");
+        L("  rpc Delete (" + baseName + "Key) returns (google.protobuf.Empty);");
+        L("}");
+        Write(sb.ToString());
+    }
+#>

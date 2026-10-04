@@ -45,3 +45,5 @@ Nothing here depends on spLogPath/spLogError.
 
 Requires a primary key (that is how the source row is named); tables only.
 ```
+
+- **Access mode (EF Core instead of routines):** with `AccessMode=Ef` (always for SQLite) this template writes LINQ over the context instead of the routine; the plan leaves it out. See CS_SearchQuery_v1.md and Docs/Reference.md.

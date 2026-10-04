@@ -88,6 +88,13 @@ public class TemplateConfig
     /// <summary> The databases this template is for (<c>Dialects=PostgreSql</c>); a plan skips it, silently, for another one. Empty: every database. </summary>
     public IReadOnlyList<string> Dialects { get; init; } = [];
 
+    /// <summary> The access mode this template belongs to (<c>AccessMode=Routines</c>: it writes routines the generated code calls; <c>AccessMode=Ef</c>: it writes the LINQ replacement for them). A plan skips it when the project's
+    /// mode (<see cref="AccessModes.For"/>) is the other one. Null: it belongs to both. </summary>
+    public AccessMode? AccessMode { get; init; }
+
+    /// <summary> True when the template is for the given database (its <c>Dialects</c> list is empty or names it). </summary>
+    public bool SupportsDialect(SqlDialect dialect) => Dialects.Count == 0 || Dialects.Contains(dialect.ToString(), StringComparer.OrdinalIgnoreCase);
+
     /// <summary> The folder under the root the template's own relative paths land in (<c>OutputFolder=Entities</c>, or per stack: <c>OutputFolder.React=src</c>, <c>OutputFolder.Angular=src/app</c>). </summary>
     public string OutputFolderFor(string stack) =>
         _outputFolders.TryGetValue(stack, out string? folder) ? folder : _outputFolders.GetValueOrDefault("", "");
@@ -132,6 +139,8 @@ public class TemplateConfig
     /// doesn't carry an IsView flag in v1 -- generation is table-only already). </summary>
     public string? Refuse(TableModel model)
     {
+        if (!SupportsDialect(model.Dialect))
+            return $"is not written for {DialectInfo.For(model.Dialect).Name} (it is for {string.Join(", ", Dialects)}).";
         if (SqlServerOnly && model.Dialect != SqlDialect.SqlServer)
             return "writes T-SQL (a SQL Server stored procedure) and has no PostgreSQL version yet.";
         if (RequiresPrimaryKey && !model.HasPrimaryKey)
@@ -169,6 +178,7 @@ public class TemplateConfig
         string outputRoot = "Stack";
         bool inPlan = true;
         var dialects = new List<string>();
+        AccessMode? accessMode = null;
         var outputFolders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         string? essentialsGroup = null, description = null;
         bool essentialsDefault = true;
@@ -217,6 +227,8 @@ public class TemplateConfig
                 inPlan = boolValue;
             else if (key.EqualsIgnoreCase("Dialects"))
                 dialects = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+            else if (key.EqualsIgnoreCase("AccessMode"))
+                accessMode = Enum.TryParse<AccessMode>(value, ignoreCase: true, out var mode) ? mode : null;
             else if (key.EqualsIgnoreCase("OutputRoot"))
                 outputRoot = value.Length > 0 ? value : "Stack";
             else if (key.EqualsIgnoreCase("OutputFolder"))
@@ -255,6 +267,7 @@ public class TemplateConfig
             OutputRoot = outputRoot,
             InPlan = inPlan,
             Dialects = dialects,
+            AccessMode = accessMode,
             _outputFolders = outputFolders,
             EssentialsGroup = essentialsGroup,
             Description = description,
@@ -270,6 +283,8 @@ public enum PlanTableSet
 {
     /// <summary> Every table that gets an entity and a repository: a single-column key and not an enum table. </summary>
     Entity,
+    /// <summary> The <see cref="Entity"/> tables and the tables with a composite key (the junction tables): every class the DbContext has a DbSet for, except an enum table. </summary>
+    Context,
     /// <summary> The tables that get a CRUD API (<see cref="CodeGenNew.Core.DatabaseModel.ApiTables"/>). </summary>
     Api,
     /// <summary> The tables that also get a search routine and endpoint (a lookup table does not). </summary>

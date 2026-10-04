@@ -17,7 +17,7 @@ public sealed partial class ConnectionDialog : ContentDialog
 
         WindowsAuthRadio.IsChecked = ViewModel.UseWindowsAuth;
         SqlLoginRadio.IsChecked = !ViewModel.UseWindowsAuth;
-        ProviderCombo.SelectedIndex = ViewModel.Provider switch { DatabaseProvider.PostgreSql => 1, DatabaseProvider.MySql => 2, _ => 0 };
+        ProviderCombo.SelectedIndex = ViewModel.Provider switch { DatabaseProvider.PostgreSql => 1, DatabaseProvider.MySql => 2, DatabaseProvider.Sqlite => 3, _ => 0 };
         UpdateAuthVisibility();
 
         PrimaryButtonClick += OnPrimaryButtonClick;
@@ -32,11 +32,15 @@ public sealed partial class ConnectionDialog : ContentDialog
 
     private void OnProviderChanged(object sender, SelectionChangedEventArgs e)
     {
-        ViewModel.Provider = ProviderCombo.SelectedIndex switch { 1 => DatabaseProvider.PostgreSql, 2 => DatabaseProvider.MySql, _ => DatabaseProvider.SqlServer };
+        ViewModel.Provider = ProviderCombo.SelectedIndex switch { 1 => DatabaseProvider.PostgreSql, 2 => DatabaseProvider.MySql, 3 => DatabaseProvider.Sqlite, _ => DatabaseProvider.SqlServer };
+        bool isFile = ViewModel.Provider == DatabaseProvider.Sqlite;
+        ServerBox.Visibility = isFile ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
+        DatabaseBox.Header = isFile ? "Database file (the path of the .db file)" : "Database";
         ServerBox.PlaceholderText = ViewModel.Provider switch
         {
             DatabaseProvider.PostgreSql => "host or host:port (default port 5432)",
             DatabaseProvider.MySql => "host or host:port (default port 3306)",
+            DatabaseProvider.Sqlite => "",
             _ => ""
         };
         UpdateAuthVisibility();
@@ -49,7 +53,7 @@ public sealed partial class ConnectionDialog : ContentDialog
             return;
 
         AuthRadios.Visibility = ViewModel.Provider != DatabaseProvider.SqlServer ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
-        var credentials = ViewModel.UsesWindowsAuth ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
+        var credentials = ViewModel.UsesWindowsAuth || ViewModel.Provider == DatabaseProvider.Sqlite ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
         UserNameBox.Visibility = credentials;
         PasswordBoxControl.Visibility = credentials;
     }

@@ -494,4 +494,22 @@ public class SqlServerSchemaProvider : SchemaProviderBase
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await GroupForeignKeyRowsAsync(reader, cancellationToken);
     }
+
+    private const string IndexesQuery = """
+        SELECT i.name, CAST(i.is_unique AS int), c.name
+        FROM sys.indexes i
+        JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.is_included_column = 0 AND ic.key_ordinal > 0
+        JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+        WHERE i.object_id = OBJECT_ID(@fullTableName) AND i.type > 0 AND i.is_hypothetical = 0 AND i.has_filter = 0
+        ORDER BY i.index_id, ic.key_ordinal;
+        """;
+
+    protected override async Task<List<IndexRow>> ReadIndexRowsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand(IndexesQuery, (SqlConnection)connection);
+        command.Parameters.AddWithValue("@fullTableName", QuotedTable(schemaName, tableName));
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await GroupIndexRowsAsync(reader, cancellationToken);
+    }
 }
