@@ -295,9 +295,27 @@ public class MySqlSchemaProvider : SchemaProviderBase
         WHERE tc.CONSTRAINT_TYPE = 'CHECK' AND tc.TABLE_SCHEMA = @schema AND tc.TABLE_NAME = @table
         """;
 
+    protected override async Task<string?> ReadTableDescriptionAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = new MySqlCommand("SELECT TABLE_COMMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = @table", (MySqlConnection)connection);
+        command.Parameters.AddWithValue("@schema", schemaName);
+        command.Parameters.AddWithValue("@table", tableName);
+        return await command.ExecuteScalarAsync(cancellationToken) is string text && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null;
+    }
+
     protected override async Task<List<RawColumn>> ReadColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {
         var columns = await ReadRawColumnsAsync(connection, schemaName, tableName, cancellationToken);
+        var descriptions = new List<(string, string)>();
+        await using (var describe = new MySqlCommand("SELECT COLUMN_NAME, COLUMN_COMMENT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = @table AND COLUMN_COMMENT <> ''", (MySqlConnection)connection))
+        {
+            describe.Parameters.AddWithValue("@schema", schemaName);
+            describe.Parameters.AddWithValue("@table", tableName);
+            await using var described = await describe.ExecuteReaderAsync(cancellationToken);
+            while (await described.ReadAsync(cancellationToken))
+                descriptions.Add((described.GetString(0), described.GetString(1)));
+        }
+        columns = WithDescriptions(columns, descriptions);
         var checks = new List<(string?, string)>();
         try
         {

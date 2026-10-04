@@ -110,12 +110,28 @@ public class <#= entity #>Api<T> : BaseApi<T> where T : class
         app.MapPost(_apiSubDir, CreateRow)
         .WithName($"Create{singular}")
         .WithOpenApi()
+<#
+        if (Project.ApiValidation)
+        {
+#>
+        .AddEndpointFilter<ValidationFilter<<#= entity #>>>()
+<#
+        }
+#>
         .ProducesProblem(500);
 
         // Update existing
         app.MapPut(_apiSubDir + "/{id:int}", UpdateRow)
         .WithName($"Update{singular}")
         .WithOpenApi()
+<#
+        if (Project.ApiValidation)
+        {
+#>
+        .AddEndpointFilter<ValidationFilter<<#= entity #>>>()
+<#
+        }
+#>
         .ProducesProblem(400)
         .ProducesProblem(404)
         .ProducesProblem(500);

@@ -28,7 +28,7 @@
     }
     else
     {
-        string Id(ColumnModel c) => c.IsCSharpReservedWordName ? "@" + c.Name : c.Name;
+        string Id(ColumnModel c) => c.CSharpName();
         var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
         string entity = Model.TableName;
         string dto = Model.TableName + "Dto";

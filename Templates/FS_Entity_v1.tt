@@ -37,28 +37,11 @@
     };
     string Id(string name) => keywords.Contains(name) ? "``" + name + "``" : name;
     string Inv(double value) => value.ToString("R", CultureInfo.InvariantCulture);
-    string Words(string name) => Regex.Replace(name.Replace('_', ' '), "(?<=[a-z0-9])(?=[A-Z])", " ").Trim();
+    string Words(string name) => Labels.Words(name);
     string Text(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
     // F# type, the Rop parser and the literal of a limit, by column type
-    (string Type, string Parser) FsType(ColumnModel c) => c.SqlType switch
-    {
-        SqlDbType.Int => ("int", "Parse.int32"),
-        SqlDbType.BigInt => ("int64", "Parse.int64"),
-        SqlDbType.SmallInt => ("int16", "Parse.int16"),
-        SqlDbType.TinyInt => ("byte", "Parse.byte"),
-        SqlDbType.Bit => ("bool", "Parse.boolean"),
-        SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => ("decimal", "Parse.decimal"),
-        SqlDbType.Float => ("double", "Parse.double"),
-        SqlDbType.Real => ("float32", "Parse.single"),
-        SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime => ("DateTime", "Parse.dateTime"),
-        SqlDbType.DateTimeOffset => ("DateTimeOffset", "Parse.dateTimeOffset"),
-        SqlDbType.Time => ("TimeSpan", "Parse.timeSpan"),
-        SqlDbType.UniqueIdentifier => ("Guid", "Parse.guid"),
-        SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => ("string", "Parse.text"),
-        SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => ("byte[]", "Parse.base64"),
-        _ => ("obj", "Parse.untyped")
-    };
+    (string Type, string Parser) FsType(ColumnModel c) => (c.FSharpBase(), c.FSharpParser());
     string Literal(ColumnModel c, double value) => FsType(c).Type switch
     {
         "decimal" => Inv(value) + "M",
@@ -92,8 +75,7 @@
         {
             if (!c.IsNullable)
                 Add("String.IsNullOrWhiteSpace {v}", label + " is required.");
-            // the schema reader states the length of a Unicode column in bytes
-            int chars = c.MaxLength is > 0 ? (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value) : 0;
+            int chars = c.CharacterLength();
             if (chars > 0 && !c.IsLongTextColumn)
                 Add($"not (isNull {{v}}) && {{v}}.Length > {chars}", $"{label} must be at most {chars} characters.");
         }

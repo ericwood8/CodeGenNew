@@ -1,0 +1,280 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Globalization" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // API_OpenApi_v1.tt
+    // Generates: openapi.yaml   (one OpenAPI 3.0 document for the whole database)
+    // The API this project's API templates write, described for tools: for every table API_Crud writes an API for, the paths get all / create (/api/<plural>), get / update / delete by id
+    // (/api/<plural>/{id}), clone (where the clone routine exists) and search (where API_Search writes one: one optional query parameter per searchable column, paging, sort); and a schema per
+    // table from its columns: JSON property names as ASP.NET Core sends them (camel case), type and format, nullable, maxLength, minimum / maximum from the name rules and the database's CHECK
+    // ranges, enum from a CHECK list, required for every column that cannot be NULL, and an optional property for each foreign key's parent (the navigation property the entity has).
+    // Feed it to Kiota, NSwag or openapi-generator for a client in another language, or to a Swagger UI.
+    // The routes follow the API templates by rule, not by reading the API: change one and this must be run again. Does not describe authentication, or a table the API templates skip.
+    // Full notes: Docs/TemplateNotes/API_OpenApi_v1.md
+    // ==========================================================================================
+
+    var tables = Database.ApiTables(Project).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    var searchTables = Database.SearchApiTables(Project).Select(t => t.TableName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    var apiNames = tables.Select(t => t.TableName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    if (tables.Count == 0)
+    {
+        Error("API_OpenApi found no table that has an API (a single whole-number key, not an enum or a name/active table): there is nothing to describe.");
+    }
+    else
+    {
+        string Quote(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        // a description is one line of text in the document
+        string OneLine(string s) => System.Text.RegularExpressions.Regex.Replace(s, @"\s+", " ").Trim();
+        string Inv(double value) => value.ToString("R", CultureInfo.InvariantCulture);
+        string title = (Project.ProjectName is null ? Database.DatabaseName : Project.ProjectTitle) + " API";
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+
+        // ==== one column as a schema
+        void ColumnSchema(ColumnModel c, string indent)
+        {
+            var (type, format) = c.JsonSchema();
+            string pad = indent + "  ";
+            L(indent + JsonNames.Camel(c.Name) + ":");
+            if (!string.IsNullOrWhiteSpace(c.Description))
+                L(pad + "description: " + Quote(OneLine(c.Description)));
+            if (type is null)
+            {
+                L(pad + "description: " + Quote("A value of the database type " + c.SqlTypeDeclaration + "."));
+                return;
+            }
+            L(pad + "type: " + type);
+            if (format is not null)
+                L(pad + "format: " + format);
+            if (c.IsNullable)
+                L(pad + "nullable: true");
+
+            if (type == "string" && format is null && c.SqlType != SqlDbType.Time)
+            {
+                int chars = c.CharacterLength();
+                if (chars > 0)
+                    L(pad + "maxLength: " + chars);
+                if (c.HasChoices)
+                {
+                    L(pad + "enum:");
+                    foreach (string choice in c.Choices!)
+                        L(pad + "  - " + Quote(choice));
+                }
+            }
+            else if (c.IsIntegerColumn && (c.NumericKind != NumericKind.None || c.Check is not null) && Project.RangeFor(c) is { } range)
+            {
+                L(pad + "minimum: " + range.Min);
+                L(pad + "maximum: " + range.Max);
+            }
+            else if (c.Check is { } check && (type == "number"))
+            {
+                if (check.Min is { } min)
+                {
+                    L(pad + "minimum: " + Inv(min));
+                    if (check.MinStrict)
+                        L(pad + "exclusiveMinimum: true");
+                }
+                if (check.Max is { } max)
+                {
+                    L(pad + "maximum: " + Inv(max));
+                    if (check.MaxStrict)
+                        L(pad + "exclusiveMaximum: true");
+                }
+            }
+        }
+
+        // ==== navigation properties: a single-column foreign key to a table that has a schema here, named like the entity names it
+        List<(string Role, string Parent)> Navigations(TableModel table)
+        {
+            var result = new List<(string, string)>();
+            var taken = new HashSet<string>(table.Columns.Select(c => c.Name), StringComparer.OrdinalIgnoreCase) { table.TableName };
+            foreach (var fk in table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1))
+            {
+                var column = table.Columns.FirstOrDefault(c => c.Name.Equals(fk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase));
+                if (column is null || column.IsPrimaryKey || !apiNames.Contains(fk.ReferencedTable) || (Project.NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape) ?? false))
+                    continue;
+                string role = column.Name.Length > 2 && column.Name.EndsWith("Id", StringComparison.Ordinal) ? column.Name[..^2] : column.Name + "Ref";
+                if (role.Length == 0 || !taken.Add(role))
+                    continue;
+                result.Add((role, fk.ReferencedTable));
+            }
+            return result;
+        }
+
+        void Problems(string indent, params int[] codes)
+        {
+            foreach (int code in codes)
+            {
+                L(indent + Quote(code.ToString()) + ":");
+                L(indent + "  description: " + Quote(code switch { 400 => "The request is not valid.", 404 => "There is no such row.", _ => "The server failed." }));
+                L(indent + "  content:");
+                L(indent + "    application/problem+json:");
+                L(indent + "      schema:");
+                L(indent + "        $ref: '#/components/schemas/ProblemDetails'");
+            }
+        }
+
+        void Operation(string verb, string operationId, string tag, string summary, string? requestSchema, string okCode, string okDescription, string? okSchema, bool okIsArray, int[] problems, string[]? parameters = null)
+        {
+            L("    " + verb + ":");
+            L("      operationId: " + operationId);
+            L("      summary: " + Quote(summary));
+            L("      tags: [" + Quote(tag) + "]");
+            if (parameters is not null)
+                foreach (string p in parameters)
+                    L(p);
+            if (requestSchema is not null)
+            {
+                L("      requestBody:");
+                L("        required: true");
+                L("        content:");
+                L("          application/json:");
+                L("            schema:");
+                L("              $ref: '#/components/schemas/" + requestSchema + "'");
+            }
+            L("      responses:");
+            L("        " + Quote(okCode) + ":");
+            L("          description: " + Quote(okDescription));
+            if (okSchema is not null)
+            {
+                L("          content:");
+                L("            application/json:");
+                L("              schema:");
+                if (okIsArray)
+                {
+                    L("                type: array");
+                    L("                items:");
+                    L("                  $ref: '#/components/schemas/" + okSchema + "'");
+                }
+                else
+                {
+                    L("                $ref: '#/components/schemas/" + okSchema + "'");
+                }
+            }
+            Problems("        ", problems);
+        }
+
+        string[] IdParameter() =>
+        [
+            "      parameters:",
+            "        - name: id",
+            "          in: path",
+            "          required: true",
+            "          schema:",
+            "            type: integer",
+            "            format: int32"
+        ];
+
+        L("openapi: 3.0.3");
+        L("info:");
+        L("  title: " + Quote(title));
+        L("  version: " + Quote("1.0.0"));
+        L("  description: " + Quote("Written by codegen from the schema of " + Database.DatabaseName + ". Run it again when a table or an API template changes."));
+        L("servers:");
+        L("  - url: http://localhost:" + Project.ApiPort);
+        L("paths:");
+        foreach (var table in tables)
+        {
+            string singular = table.TableName;
+            string plural = singular.Pluralize();
+            string route = "/api/" + plural.ToLowerInvariant();
+            var key = table.PrimaryKeyColumns[0];
+
+            L("  " + route + ":");
+            Operation("get", "Get" + plural, singular, "All " + plural, null, "200", "Every row.", singular, true, [404, 500]);
+            Operation("post", "Create" + singular, singular, "Add a " + singular, singular, "201", "The new row.", singular, false, [500]);
+
+            L("  " + route + "/{id}:");
+            Operation("get", "Get" + singular + "ById", singular, "One " + singular, null, "200", "The row.", singular, false, [404, 500], IdParameter());
+            Operation("put", "Update" + singular, singular, "Change a " + singular + " (the key in the body must be the id)", singular, "200", "The changed row.", singular, false, [400, 404, 500], IdParameter());
+            Operation("delete", "Delete" + singular, singular, "Remove a " + singular + " (400 when it is in use)", null, "200", "Removed.", null, false, [400, 404, 500], IdParameter());
+
+            if (CloneShape.CanClone(table, Project))
+            {
+                L("  " + route + "/{id}/clone:");
+                Operation("post", "Clone" + singular, singular, "Copy a " + singular + " into a new row", null, "201", "The copy.", singular, false, [404, 500], IdParameter());
+            }
+
+            if (searchTables.Contains(table.TableName))
+            {
+                var parameters = new List<string> { "      parameters:" };
+                foreach (var c in table.SearchableColumns)
+                {
+                    parameters.Add("        - name: " + char.ToLowerInvariant(c.Name[0]) + c.Name[1..]);
+                    parameters.Add("          in: query");
+                    parameters.Add("          description: " + Quote("Rows whose " + c.Name + " contains this text."));
+                    parameters.Add("          schema:");
+                    parameters.Add("            type: string");
+                }
+                parameters.AddRange(
+                [
+                    "        - name: pageNumber", "          in: query", "          schema:", "            type: integer", "            minimum: 1", "            default: 1",
+                    "        - name: pageSize", "          in: query", "          schema:", "            type: integer", "            default: 100",
+                    "        - name: sortBy", "          in: query", "          description: " + Quote("A column name; an unknown one gives the default order."), "          schema:", "            type: string",
+                    "        - name: sortDir", "          in: query", "          schema:", "            type: string", "            enum: [asc, desc]"
+                ]);
+                L("  " + route + "/search:");
+                Operation("get", "Search" + plural, singular, "Search " + plural + " (paged)", null, "200", "A page of rows.", singular + "SearchResult", false, [400, 500], parameters.ToArray());
+            }
+        }
+
+        L("components:");
+        L("  schemas:");
+        L("    ProblemDetails:");
+        L("      type: object");
+        L("      properties:");
+        L("        type: { type: string, nullable: true }");
+        L("        title: { type: string, nullable: true }");
+        L("        status: { type: integer, format: int32, nullable: true }");
+        L("        detail: { type: string, nullable: true }");
+        L("        instance: { type: string, nullable: true }");
+        foreach (var table in tables)
+        {
+            string singular = table.TableName;
+            var required = table.Columns.Where(c => !c.IsNullable).Select(c => JsonNames.Camel(c.Name)).ToList();
+            L("    " + singular + ":");
+            L("      type: object");
+            if (!string.IsNullOrWhiteSpace(table.Description))
+                L("      description: " + Quote(OneLine(table.Description)));
+            if (required.Count > 0)
+            {
+                L("      required:");
+                foreach (string name in required)
+                    L("        - " + name);
+            }
+            L("      properties:");
+            foreach (var c in table.Columns.OrderBy(c => c.OrdinalPosition))
+                ColumnSchema(c, "        ");
+            foreach (var (role, parent) in Navigations(table))
+            {
+                L("        " + JsonNames.Camel(role) + ":");
+                L("          $ref: '#/components/schemas/" + parent + "'");
+            }
+            if (searchTables.Contains(table.TableName))
+            {
+                L("    " + singular + "SearchResult:");
+                L("      type: object");
+                L("      required: [items, page, pageSize, totalCount, totalPages]");
+                L("      properties:");
+                L("        items:");
+                L("          type: array");
+                L("          items:");
+                L("            $ref: '#/components/schemas/" + singular + "'");
+                L("        page: { type: integer, format: int32 }");
+                L("        pageSize: { type: integer, format: int32 }");
+                L("        totalCount: { type: integer, format: int32 }");
+                L("        totalPages: { type: integer, format: int32 }");
+            }
+        }
+        Write("@@@FILE openapi.yaml@@@\n" + o.ToString());
+    }
+#>

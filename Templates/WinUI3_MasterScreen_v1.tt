@@ -62,7 +62,7 @@
     bool IsBit(ColumnModel c) => c.SqlType == SqlDbType.Bit;
     bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
     bool IsEditableType(ColumnModel c) => IsDate(c) || IsNumber(c) || IsGuid(c) || IsBit(c) || IsText(c);
-    string Words(string s) => Regex.Replace(s.Replace('_', ' '), "(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ").Trim();
+    string Words(string s) => Labels.Words(s);
     string Label(string columnName) => Words(Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", ""));
     string FieldVar(string name) => char.ToLowerInvariant(name[0]) + name[1..];
 

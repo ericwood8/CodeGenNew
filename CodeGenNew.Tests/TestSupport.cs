@@ -59,7 +59,7 @@ internal static class Sample
         string name, SqlDbType type, bool nullable = false, bool primaryKey = false, bool identity = false,
         int? characters = null, int? precision = null, int? scale = null, string? defaultSql = null, int ordinal = 0,
         bool modifiedUserColumn = false, bool createDateColumn = false, bool createUserColumn = false,
-        bool inUniqueIndex = false, NumericKind numericKind = NumericKind.None, bool currency = false, List<string>? choices = null, string? enumType = null, string? sqlDeclaration = null, CheckRange? check = null, bool computed = false)
+        bool inUniqueIndex = false, NumericKind numericKind = NumericKind.None, bool currency = false, List<string>? choices = null, string? enumType = null, string? sqlDeclaration = null, CheckRange? check = null, bool computed = false, string? description = null)
     {
         bool isText = type is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
         bool isUnicode = type is SqlDbType.NChar or SqlDbType.NVarChar;
@@ -97,6 +97,7 @@ internal static class Sample
             DbEnumType = enumType,
             Check = check,
             IsComputed = computed,
+            Description = description,
             IsCSharpReservedWordName = name.IsCSharpReservedWord(),
             IsNumericColumn = check is not null,
             IsAuditColumn = name.IsAuditColumn(),

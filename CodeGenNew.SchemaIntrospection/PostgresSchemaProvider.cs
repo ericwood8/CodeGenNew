@@ -350,7 +350,37 @@ public class PostgresSchemaProvider : SchemaProviderBase
         ORDER BY c.ordinal_position;
         """;
 
+    // COMMENT ON COLUMN / COMMENT ON TABLE; to_regclass(format('%I.%I', ...)) finds the table by its real (quoted) name
+    private const string DescriptionsQuery = """
+        SELECT a.attname, col_description(a.attrelid, a.attnum)
+        FROM pg_attribute a
+        WHERE a.attrelid = to_regclass(format('%I.%I', @schema::text, @table::text)) AND a.attnum > 0 AND NOT a.attisdropped
+        """;
+
+    protected override async Task<string?> ReadTableDescriptionAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("SELECT obj_description(to_regclass(format('%I.%I', @schema::text, @table::text)), 'pg_class')", (NpgsqlConnection)connection);
+        command.Parameters.AddWithValue("schema", schemaName);
+        command.Parameters.AddWithValue("table", tableName);
+        return await command.ExecuteScalarAsync(cancellationToken) is string text && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null;
+    }
+
     protected override async Task<List<RawColumn>> ReadColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        var columns = await ReadRawColumnsAsync(connection, schemaName, tableName, cancellationToken);
+        var descriptions = new List<(string, string)>();
+        await using (var describe = new NpgsqlCommand(DescriptionsQuery, (NpgsqlConnection)connection))
+        {
+            describe.Parameters.AddWithValue("schema", schemaName);
+            describe.Parameters.AddWithValue("table", tableName);
+            await using var described = await describe.ExecuteReaderAsync(cancellationToken);
+            while (await described.ReadAsync(cancellationToken))
+                descriptions.Add((described.GetString(0), described.IsDBNull(1) ? "" : described.GetString(1)));
+        }
+        return WithDescriptions(columns, descriptions);
+    }
+
+    private async Task<List<RawColumn>> ReadRawColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {
         var results = new List<RawColumn>();
         await using var command = new NpgsqlCommand(ColumnsQuery, (NpgsqlConnection)connection);

@@ -20,13 +20,11 @@ public class DatabaseModel
 
     /// <summary> The tables API_Crud writes an API for: a single int key, no name/active shape, and not an enum or other table the project
     /// says has no repository. API_Search is registered for the same tables. </summary>
-    public List<TableModel> ApiTables(ProjectSettings project) => EntityTables
-        .Where(t => t.PrimaryKeyShape == PrimaryKeyShape.SingleInt && !t.IsNameActiveTable && project.NoRepository(t.TableName, t.LookupShape) != true)
-        .ToList();
+    public List<TableModel> ApiTables(ProjectSettings project) => EntityTables.Where(t => t.HasCrudApi(project)).ToList();
 
     /// <summary> The tables that also get a search endpoint: the API tables minus bare lookup tables (a few rows, no pager worth having; the
     /// samples write no search function for them). </summary>
-    public List<TableModel> SearchApiTables(ProjectSettings project) => ApiTables(project).Where(t => !t.LookupShape.LooksLikeLookup).ToList();
+    public List<TableModel> SearchApiTables(ProjectSettings project) => ApiTables(project).Where(t => t.HasSearchApi(project)).ToList();
 
     /// <summary> The tables that get a screen and a menu entry, in menu order: the project's <c>Screens</c> list when it has one, else every table that has an API and
     /// a search endpoint, alphabetically. A listed name that is not a table with a single-column key is in <see cref="UnknownScreens"/>. </summary>

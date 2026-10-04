@@ -1,0 +1,136 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Globalization" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project. A project settings file (EntityNamespace, ValidatorNamespace, or ProjectName) overrides them.
+    // ==========================================================================================
+    string entityNamespace = Project.EntityNamespace ?? "MyApp.Common.Entities";
+    string validatorNamespace = Project.ValidatorNamespace ?? "MyApp.Validators";
+
+    // ==========================================================================================
+    // CS_Validator_v1.tt
+    // Generates: <TableName>Validator.cs   (see OutputName in CS_Validator_v1.tt.config)
+    // A FluentValidation validator for the table's entity: AbstractValidator<Entity> with a rule per column that the schema says something about. Text that cannot be NULL must not be empty; text has
+    // its maximum length; a whole number keeps to the range its name suggests or its CHECK constraint states; a decimal keeps to its CHECK range (a strict bound stays strict); a column with a CHECK
+    // list allows only those values; a text column named like an email address, a phone number or a URL is checked for that shape, and a latitude or longitude for its degrees. Identity, computed,
+    // audit and modified columns get no rule (the database or the repository sets them).
+    // The consumer is yours: register the validators (services.AddValidatorsFromAssemblyContaining<...>()) and call them from an endpoint filter, the repository or a form; unlike the
+    // [Required] / [StringLength] attributes of CS_Validation, nothing runs them for you. Needs the FluentValidation package, and the entity class (CS_Entity), so a primary key.
+    // Full notes: Docs/TemplateNotes/CS_Validator_v1.md
+    // ==========================================================================================
+
+    if (Model.PrimaryKeyColumns.Count == 0)
+    {
+        Error($"CS_Validator needs a table with a primary key, but [{Model.SchemaName}].[{Model.TableName}] has none (the entity class is written for keyed tables).");
+    }
+    else
+    {
+        string Id(ColumnModel c) => c.CSharpName();
+        string Inv(double value) => value.ToString("R", CultureInfo.InvariantCulture);
+        string Str(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        string Words(string name) => Labels.Words(name);
+        // a number literal in the property's own type
+        string Literal(ColumnModel c, double value) => c.SqlType switch
+        {
+            SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => Inv(value) + "m",
+            SqlDbType.Float => Inv(value).Contains('.') || Inv(value).Contains('E') ? Inv(value) : Inv(value) + ".0",
+            SqlDbType.Real => (Inv(value).Contains('.') || Inv(value).Contains('E') ? Inv(value) : Inv(value) + ".0") + "f",
+            SqlDbType.BigInt => Inv(value) + "L",
+            SqlDbType.SmallInt => "(short)" + Inv(value),
+            SqlDbType.TinyInt => "(byte)" + Inv(value),
+            _ => Inv(value)
+        };
+        bool Skipped(ColumnModel c) => c.IsIdentity || c.IsComputed || c.IsAuditColumn || c.IsCreateDateColumn || c.IsCreateUserColumn
+            || c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsLastChangedDateColumn;
+
+        var rules = new List<string>();
+        var values = new List<string>();   // the allowed-value arrays, written above the constructor
+
+        foreach (var c in Model.Columns.OrderBy(c => c.OrdinalPosition).Where(c => !Skipped(c)))
+        {
+            var parts = new List<string>();
+            string label = Words(c.Name);
+            if (c.IsStringColumn)
+            {
+                if (!c.IsNullable)
+                    parts.Add(".NotEmpty()");
+                int chars = c.CharacterLength();
+                if (chars > 0)
+                    parts.Add($".MaximumLength({chars})");
+                if (c.HasChoices)
+                {
+                    string array = c.Name.Replace("@", "") + "Values";
+                    values.Add($"    private static readonly string[] {array} = [{string.Join(", ", c.Choices!.Select(Str))}];");
+                    parts.Add($".Must(value => value is null || {array}.Contains(value)).WithMessage({Str(label + " must be one of: " + string.Join(", ", c.Choices!) + ".")})");
+                }
+                else if (c.Name.Contains("Email", StringComparison.OrdinalIgnoreCase))
+                {
+                    parts.Add(".EmailAddress()");
+                }
+                else if (c.Name.Contains("Phone", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Fax", StringComparison.OrdinalIgnoreCase))
+                {
+                    parts.Add(".Matches(@\"^[0-9+()\\-.\\s]{3,25}$\").WithMessage(" + Str(label + " is not a phone number.") + ")");
+                }
+                else if (c.Name.Contains("Url", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Website", StringComparison.OrdinalIgnoreCase))
+                {
+                    parts.Add(".Must(value => value is null || Uri.IsWellFormedUriString(value, UriKind.Absolute)).WithMessage(" + Str(label + " is not a URL.") + ")");
+                }
+            }
+            else if (c.IsIntegerColumn && (c.NumericKind != NumericKind.None || c.Check is not null) && Project.RangeFor(c) is { } range)
+            {
+                parts.Add($".InclusiveBetween({Literal(c, range.Min)}, {Literal(c, range.Max)})");
+            }
+            else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real)
+            {
+                if (c.Check is { } check)
+                {
+                    if (check.Min is { } min)
+                        parts.Add($".{(check.MinStrict ? "GreaterThan" : "GreaterThanOrEqualTo")}({Literal(c, min)})");
+                    if (check.Max is { } max)
+                        parts.Add($".{(check.MaxStrict ? "LessThan" : "LessThanOrEqualTo")}({Literal(c, max)})");
+                }
+                else if (c.Name.Contains("Latitude", StringComparison.OrdinalIgnoreCase))
+                {
+                    parts.Add($".InclusiveBetween({Literal(c, -90)}, {Literal(c, 90)})");
+                }
+                else if (c.Name.Contains("Longitude", StringComparison.OrdinalIgnoreCase))
+                {
+                    parts.Add($".InclusiveBetween({Literal(c, -180)}, {Literal(c, 180)})");
+                }
+            }
+
+            if (parts.Count > 0)
+                rules.Add($"        RuleFor(x => x.{Id(c)}){string.Concat(parts)};");
+        }
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+
+        L("using FluentValidation;");
+        L("using " + entityNamespace + ";");
+        L();
+        L("namespace " + validatorNamespace + ";");
+        L();
+        L("/// <summary> What the schema says about a " + Model.TableName + " row, as FluentValidation rules. </summary>");
+        L("public class " + Model.TableName + "Validator : AbstractValidator<" + Model.TableName + ">");
+        L("{");
+        foreach (string v in values)
+            L(v);
+        if (values.Count > 0)
+            L();
+        L("    public " + Model.TableName + "Validator()");
+        L("    {");
+        foreach (string rule in rules)
+            L(rule);
+        L("    }");
+        L("}");
+        Write(o.ToString());
+    }
+#>

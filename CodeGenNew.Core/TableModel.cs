@@ -41,6 +41,16 @@ public class TableModel
 
     /// <summary> See PrimaryKeyShape and TemplateConfig.RequiredPrimaryKeyShape (Docs/specs.md section 5.3) --
     /// several templates need more than just HasPrimaryKey. </summary>
+    /// <summary> What the database says about the table (SQL Server <c>MS_Description</c>, PostgreSQL <c>COMMENT ON TABLE</c>, MySQL <c>COMMENT</c>); null when it says nothing. </summary>
+    public string? Description { get; init; }
+
+    /// <summary> True when API_Crud writes an API for the table under these project settings: a single whole-number key, not a name/active table, not one the project says has no repository (an enum). </summary>
+    public bool HasCrudApi(ProjectSettings project) =>
+        PrimaryKeyShape == PrimaryKeyShape.SingleInt && !IsNameActiveTable && project.NoRepository(TableName, LookupShape) != true;
+
+    /// <summary> True when the table also gets a search endpoint (API_Search): it has an API and is not a bare lookup table. </summary>
+    public bool HasSearchApi(ProjectSettings project) => HasCrudApi(project) && !LookupShape.LooksLikeLookup;
+
     public PrimaryKeyShape PrimaryKeyShape =>
         PrimaryKeyColumns.Count == 0 ? PrimaryKeyShape.None :
         PrimaryKeyColumns.Count > 1 ? PrimaryKeyShape.Composite :

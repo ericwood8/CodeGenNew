@@ -72,6 +72,9 @@ public class ColumnModel
     /// boxes, the web inputs and the validation attributes use it with the limits the column's type and name already give. </summary>
     public CheckRange? Check { get; init; }
 
+    /// <summary> What the database says about the column (SQL Server <c>MS_Description</c>, PostgreSQL <c>COMMENT ON COLUMN</c>, MySQL <c>COMMENT</c>); null when it says nothing. </summary>
+    public string? Description { get; init; }
+
     /// <summary> What this integer column's name suggests about its values (a year, a month, a percentage, ...); None for any
     /// other column. See NumericClassifier; ProjectSettings.RangeFor turns it into limits. </summary>
     public NumericKind NumericKind { get; init; }

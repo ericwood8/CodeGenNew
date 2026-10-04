@@ -71,7 +71,7 @@
     bool IsEditableType(ColumnModel c) => IsDate(c) || IsNumber(c) || IsGuid(c) || IsBit(c) || IsText(c);
     int Chars(ColumnModel c) => c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
     bool IsMultiline(ColumnModel c) => IsText(c) && Chars(c) >= 100;
-    string Words(string s) => Regex.Replace(s.Replace('_', ' '), "(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ").Trim();
+    string Words(string s) => Labels.Words(s);
     string Label(string columnName) => Words(Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", ""));
     string UpperFirst(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
 

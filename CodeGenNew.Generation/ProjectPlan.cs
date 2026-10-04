@@ -39,7 +39,7 @@ public static class ProjectPlan
     public static List<PlanStep> Build(IReadOnlyList<TemplateInfo> templates, DatabaseModel database, ProjectSettings project, IReadOnlyCollection<string> stacks)
     {
         string dialect = database.Dialect.ToString();
-        var also = project.PlanAlso.Select(Normalize).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var also = project.PlanAlso.Concat(project.ImpliedPlanTemplates).Select(Normalize).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var steps = new List<PlanStep>();
         foreach (var template in templates.Where(t => !t.IsSuperseded && !t.Config.NoDatabase).OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
         {

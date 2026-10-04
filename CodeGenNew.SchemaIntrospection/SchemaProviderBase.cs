@@ -22,7 +22,7 @@ public sealed record RawColumn(
     string Name, int OrdinalPosition, string SqlTypeName, int MaxLength, int Precision, int Scale,
     bool IsNullable, bool IsIdentity, int? IdentitySeed, int? IdentityIncrement,
     string? ComputedDefinition, string? DefaultDefinition, bool IsPrimaryKey, bool IsInUniqueIndex,
-    string? DeclarationOverride = null, string? DefaultForCSharp = null, List<string>? Choices = null, string? EnumType = null, IReadOnlyList<string>? CheckDefinitions = null);
+    string? DeclarationOverride = null, string? DefaultForCSharp = null, List<string>? Choices = null, string? EnumType = null, IReadOnlyList<string>? CheckDefinitions = null, string? Description = null);
 
 /// <summary> One foreign key, either direction: the OTHER table's name and the two column lists. </summary>
 public sealed record ForeignKeyRow(string ConstraintName, string OtherSchema, string OtherTable, List<string> ReferencingColumns, List<string> ReferencedColumns);
@@ -66,6 +66,9 @@ public abstract class SchemaProviderBase : ISchemaProvider
     protected abstract SqlDialect Dialect { get; }
     protected abstract Task<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken);
     protected abstract string Quote(string name);
+    /// <summary> What the database says about the table itself (its comment); null when nothing. A database without table comments need not override it. </summary>
+    protected virtual Task<string?> ReadTableDescriptionAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+
     protected abstract Task<List<RawColumn>> ReadColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken);
     /// <summary> Foreign keys this table has (<paramref name="children"/> false) or that point at it (true), grouped per constraint. </summary>
     protected abstract Task<List<ForeignKeyRow>> ReadForeignKeyRowsAsync(DbConnection connection, string schemaName, string tableName, bool children, CancellationToken cancellationToken);
@@ -135,6 +138,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
             TableName = Named(tableName),
             DatabaseTableName = WhenDifferent(tableName, Named(tableName)),
             QuotedName = QuotedTable(schemaName, tableName),
+            Description = await ReadTableDescriptionAsync(connection, schemaName, tableName, cancellationToken),
             Dialect = Dialect,
             IsReservedWordName = tableName.IsSqlReservedWord(),
             IsCSharpReservedWordName = Named(tableName).IsCSharpReservedWord(),
@@ -302,6 +306,14 @@ public abstract class SchemaProviderBase : ISchemaProvider
         return columns.Select(c => byColumn.TryGetValue(c.Name, out var list) ? c with { CheckDefinitions = list } : c).ToList();
     }
 
+    /// <summary> Gives each column the comment the database holds for it (<paramref name="descriptions"/>: database column name and text; an empty text is no comment). </summary>
+    protected static List<RawColumn> WithDescriptions(List<RawColumn> columns, IEnumerable<(string Column, string Text)> descriptions)
+    {
+        var byColumn = descriptions.Where(d => !string.IsNullOrWhiteSpace(d.Text)).GroupBy(d => d.Column, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Text.Trim(), StringComparer.OrdinalIgnoreCase);
+        return columns.Select(c => byColumn.TryGetValue(c.Name, out string? text) ? c with { Description = text } : c).ToList();
+    }
+
     /// <summary> The values a text column's CHECK constraint lists (SQL Server and MySQL spell it as an OR chain or an IN list), which make it a drop-down like a MySQL enum. </summary>
     private static List<string>? ListFromChecks(RawColumn raw, bool isString) =>
         !isString || raw.CheckDefinitions is null ? null : raw.CheckDefinitions.Select(d => CheckConstraintParser.ParseList(d, raw.Name)).FirstOrDefault(v => v is not null);
@@ -365,6 +377,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
             Choices = raw.Choices ?? ListFromChecks(raw, isString),
             DbEnumType = raw.EnumType,
             Check = isNumeric || isInteger || isMoney ? RangeFromChecks(raw) : null,
+            Description = raw.Description,
             NumericKind = isInteger ? NumericClassifier.Classify(name) : NumericKind.None,
             IsCurrencyColumn = isMoney || (sqlType == SqlDbType.Decimal && NumericClassifier.IsCurrencyName(name)),
             IsAuditColumn = name.IsAuditColumn(),

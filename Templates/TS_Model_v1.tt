@@ -49,26 +49,8 @@
     // ==========================================================================================
 
     string BaseName(string table) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(table, "^E_", ""), "^SY_", "");
-    string Camel(string name)
-    {
-        if (string.IsNullOrEmpty(name) || !char.IsUpper(name[0])) return name;
-        var chars = name.ToCharArray();
-        for (int i = 0; i < chars.Length; i++)
-        {
-            if (i == 1 && !char.IsUpper(chars[i])) break;
-            bool hasNext = i + 1 < chars.Length;
-            if (i > 0 && hasNext && !char.IsUpper(chars[i + 1])) break;
-            chars[i] = char.ToLowerInvariant(chars[i]);
-        }
-        return new string(chars);
-    }
-    string TsType(ColumnModel c) => c.SqlType switch
-    {
-        SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt or SqlDbType.Decimal or SqlDbType.Money
-            or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real => "number",
-        SqlDbType.Bit => "boolean",
-        _ => "string"
-    };
+    string Camel(string name) => JsonNames.Camel(name);
+    string TsType(ColumnModel c) => c.TypeScript();
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
     if (NoApi(Model.TableName, Model.LookupShape))

@@ -24,26 +24,9 @@
     // Full notes: Docs/TemplateNotes/CS_SerializationDtos_v1.md
     // ==========================================================================================
 
-    string Id(ColumnModel c) => c.IsCSharpReservedWordName ? "@" + c.Name : c.Name;
-    string BaseType(ColumnModel c) => c.SqlType switch
-    {
-        SqlDbType.Int => "int",
-        SqlDbType.BigInt => "long",
-        SqlDbType.SmallInt => "short",
-        SqlDbType.TinyInt => "byte",
-        SqlDbType.Bit => "bool",
-        SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => "decimal",
-        SqlDbType.Float => "double",
-        SqlDbType.Real => "float",
-        SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime => "DateTime",
-        SqlDbType.DateTimeOffset => "DateTimeOffset",
-        SqlDbType.Time => "TimeSpan",
-        SqlDbType.UniqueIdentifier => "Guid",
-        SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => "string",
-        SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => "byte[]",
-        _ => "object"
-    };
-    string ClrType(ColumnModel c) => c.IsNullable && BaseType(c) != "object" ? BaseType(c) + "?" : BaseType(c);
+    string Id(ColumnModel c) => c.CSharpName();
+    string BaseType(ColumnModel c) => c.CSharpBase();
+    string ClrType(ColumnModel c) => c.CSharp();
     // typeof() cannot take a nullable reference type: string? is typeof(string), int? stays typeof(int?)
     string TypeOf(ColumnModel c) => c.IsNullable && BaseType(c) is not ("string" or "byte[]" or "object") ? BaseType(c) + "?" : BaseType(c);
     string Quote(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";

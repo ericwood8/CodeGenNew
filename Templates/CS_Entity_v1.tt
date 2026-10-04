@@ -52,15 +52,8 @@
     else
     {
         // ==== naming helpers
-        string Id(ColumnModel c) => c.IsCSharpReservedWordName ? "@" + c.Name : c.Name;
-        string Words(string name, bool isBit)
-        {
-            string s = name;
-            if (isBit && Regex.IsMatch(s, "^Is[A-Z]")) s = s.Substring(2);
-            s = s.Replace('_', ' ');
-            s = Regex.Replace(s, "(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ");
-            return Regex.Replace(s, " +", " ").Trim();
-        }
+        string Id(ColumnModel c) => c.CSharpName();
+        string Words(string name, bool isBit) => Labels.Words(name, isBit);
         string Str(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
         // ==== base class
@@ -89,28 +82,7 @@
         var navByColumn = navigations.ToDictionary(n => n.Column.Name, n => n, StringComparer.OrdinalIgnoreCase);
 
         // ==== C# type of a column
-        string ClrType(ColumnModel c)
-        {
-            string t = c.SqlType switch
-            {
-                SqlDbType.Int => "int",
-                SqlDbType.BigInt => "long",
-                SqlDbType.SmallInt => "short",
-                SqlDbType.TinyInt => "byte",
-                SqlDbType.Bit => "bool",
-                SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => "decimal",
-                SqlDbType.Float => "double",
-                SqlDbType.Real => "float",
-                SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime => "DateTime",
-                SqlDbType.DateTimeOffset => "DateTimeOffset",
-                SqlDbType.Time => "TimeSpan",
-                SqlDbType.UniqueIdentifier => "Guid",
-                SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => "string",
-                SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp => "byte[]",
-                _ => "object"
-            };
-            return c.IsNullable ? t + "?" : t;
-        }
+        string ClrType(ColumnModel c) => c.CSharp();
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
@@ -170,7 +142,7 @@
             B();
             bool isBit = c.SqlType == SqlDbType.Bit;
             string words = Str(Words(c.Name, isBit));
-            int chars = c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
+            int chars = c.CharacterLength();
             bool isText = c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
             bool multiline = isText && chars >= 100;
             string? columnType = null;

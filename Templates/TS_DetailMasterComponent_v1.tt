@@ -57,20 +57,8 @@
     string BaseName(string table) => Regex.Replace(Regex.Replace(table, "^E_", ""), "^SY_", "");
     string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
     string UpperFirst(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
-    string Words(string s) => Regex.Replace(s.Replace('_', ' '), "(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ").Trim();
-    string Camel(string name)
-    {
-        if (string.IsNullOrEmpty(name) || !char.IsUpper(name[0])) return name;
-        var chars = name.ToCharArray();
-        for (int i = 0; i < chars.Length; i++)
-        {
-            if (i == 1 && !char.IsUpper(chars[i])) break;
-            bool hasNext = i + 1 < chars.Length;
-            if (i > 0 && hasNext && !char.IsUpper(chars[i + 1])) break;
-            chars[i] = char.ToLowerInvariant(chars[i]);
-        }
-        return new string(chars);
-    }
+    string Words(string s) => Labels.Words(s);
+    string Camel(string name) => JsonNames.Camel(name);
     bool IsDate(ColumnModel c) => c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
     bool IsNumber(ColumnModel c) => c.SqlType is SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt
         or SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real;

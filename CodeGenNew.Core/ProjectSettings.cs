@@ -25,7 +25,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
         "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "TestApi", "TestWinUI3", "TestReact", "TestAngular"
     ];
@@ -182,6 +182,45 @@ public class ProjectSettings
     public string? RepoNamespace => Derived("RepoNamespace", ".App.Repositories");
     /// <summary> The namespace of the data-transfer classes and mappers (CS_Dto, CS_Mapper, CS_DataContractDto, CS_TypedDataRow, CS_SerializationDtos): <c>DtoNamespace</c>, or <c>Name.App.Dtos</c>. </summary>
     public string? DtoNamespace => Derived("DtoNamespace", ".App.Dtos");
+    /// <summary> The namespace of the FluentValidation validators CS_Validator writes: <c>ValidatorNamespace</c>, or <c>Name.App.Validators</c>. </summary>
+    public string? ValidatorNamespace => Derived("ValidatorNamespace", ".App.Validators");
+
+    /// <summary> The namespace of the Bogus fakers CS_Faker writes: <c>FakerNamespace</c>, or <c>Name.App.Fakers</c>. </summary>
+    public string? FakerNamespace => Derived("FakerNamespace", ".App.Fakers");
+
+    private bool Flag(string key) => Explicit(key) is { } text && (text.Equals("true", StringComparison.OrdinalIgnoreCase) || text == "1" || text.Equals("yes", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary> <c>ApiDocs=true</c>: the plan also writes <c>openapi.yaml</c> (API_OpenApi) and the API serves it with a Swagger UI page at <c>/docs</c>. </summary>
+    public bool ApiDocs => Flag("ApiDocs");
+
+    /// <summary> <c>ApiHttp=true</c>: the plan also writes a <c>.http</c> request file per table (API_Http). </summary>
+    public bool ApiHttp => Flag("ApiHttp");
+
+    /// <summary> <c>ApiFakers=true</c>: the plan also writes a Bogus fake-data generator per table (CS_Faker), and the generated project references Bogus. </summary>
+    public bool ApiFakers => Flag("ApiFakers");
+
+    /// <summary> <c>ProjectDocs=true</c>: the plan also writes a data dictionary page per table and the ER diagram (MD_DataDictionary, MD_Erd). </summary>
+    public bool ProjectDocs => Flag("ProjectDocs");
+
+    /// <summary> <c>ApiValidation=true</c>: the plan also writes a FluentValidation validator per table (CS_Validator), and the create and update endpoints run them (a 400 with the messages). </summary>
+    public bool ApiValidation => Flag("ApiValidation");
+
+    /// <summary> The templates the flags above add to a plan, as if <c>PlanAlso</c> named them. </summary>
+    public IEnumerable<string> ImpliedPlanTemplates
+    {
+        get
+        {
+            if (ApiDocs) yield return "API_OpenApi";
+            if (ApiHttp) yield return "API_Http";
+            if (ApiFakers) yield return "CS_Faker";
+            if (ProjectDocs) { yield return "MD_DataDictionary"; yield return "MD_Erd"; }
+            if (ApiValidation) yield return "CS_Validator";
+        }
+    }
+
+    /// <summary> The tables MD_Erd draws (<c>ErdTables=Customer,SalesInvoice</c>); empty: every table. </summary>
+    public string[] ErdTables => Explicit("ErdTables") is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
+
     public string? EntityNamespace => Derived("EntityNamespace", ".App.Entities");
 
     public int MinYear => int.TryParse(Explicit("MinYear"), out int year) ? year : DefaultMinYear;

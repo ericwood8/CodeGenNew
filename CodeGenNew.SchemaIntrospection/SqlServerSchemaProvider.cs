@@ -372,9 +372,39 @@ public class SqlServerSchemaProvider : SchemaProviderBase
         WHERE cc.parent_object_id = OBJECT_ID(@fullTableName) AND cc.is_disabled = 0
         """;
 
+    // the MS_Description extended property: of a column (minor_id = its column id) or of the table itself (minor_id = 0)
+    private const string DescriptionsQuery = """
+        SELECT c.name AS ColumnName, CAST(ep.value AS nvarchar(4000)) AS Description
+        FROM sys.extended_properties ep
+        JOIN sys.columns c ON c.object_id = ep.major_id AND c.column_id = ep.minor_id
+        WHERE ep.class = 1 AND ep.name = N'MS_Description' AND ep.major_id = OBJECT_ID(@fullTableName)
+        """;
+
+    private const string TableDescriptionQuery = """
+        SELECT CAST(ep.value AS nvarchar(4000))
+        FROM sys.extended_properties ep
+        WHERE ep.class = 1 AND ep.name = N'MS_Description' AND ep.minor_id = 0 AND ep.major_id = OBJECT_ID(@fullTableName)
+        """;
+
+    protected override async Task<string?> ReadTableDescriptionAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand(TableDescriptionQuery, (SqlConnection)connection);
+        command.Parameters.AddWithValue("@fullTableName", QuotedTable(schemaName, tableName));
+        return await command.ExecuteScalarAsync(cancellationToken) is string text && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null;
+    }
+
     protected override async Task<List<RawColumn>> ReadColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {
         var columns = await ReadRawColumnsAsync(connection, schemaName, tableName, cancellationToken);
+        var descriptions = new List<(string, string)>();
+        await using (var describe = new SqlCommand(DescriptionsQuery, (SqlConnection)connection))
+        {
+            describe.Parameters.AddWithValue("@fullTableName", QuotedTable(schemaName, tableName));
+            await using var described = await describe.ExecuteReaderAsync(cancellationToken);
+            while (await described.ReadAsync(cancellationToken))
+                descriptions.Add((described.GetString(0), described.IsDBNull(1) ? "" : described.GetString(1)));
+        }
+        columns = WithDescriptions(columns, descriptions);
         var checks = new List<(string?, string)>();
         await using var command = new SqlCommand(CheckConstraintsQuery, (SqlConnection)connection);
         command.Parameters.AddWithValue("@fullTableName", QuotedTable(schemaName, tableName));

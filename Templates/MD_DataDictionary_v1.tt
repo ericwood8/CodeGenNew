@@ -1,0 +1,123 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Globalization" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // MD_DataDictionary_v1.tt
+    // Generates: <TableName>.md   (see OutputName in MD_DataDictionary_v1.tt.config)
+    // One Markdown page for one table, for people rather than programs: every column with its type, whether it can be NULL, its default, its key role (primary, foreign, unique), what the
+    // database limits it to (a CHECK range or a list of allowed values, a text length) and notes (identity, computed); then the foreign keys out of the table and the tables that point at it.
+    // Names are the ones the code uses (the project's naming style); a column the style renamed shows its database name in the notes. Run it for every table and the pages link to each other.
+    // Does not describe what the data means: the schema has no column descriptions to read, so add a sentence to the page by hand and keep the file out of the regenerated ones.
+    // Full notes: Docs/TemplateNotes/MD_DataDictionary_v1.md
+    // ==========================================================================================
+
+    string Cell(string text) => text.Replace("|", "\\|").Replace("\r", " ").Replace("\n", " ");
+    string Inv(double value) => value.ToString("R", CultureInfo.InvariantCulture);
+    // a Markdown table separator row, one group of three hyphens per column (a template may not write two hyphens in a row)
+    string Separator(int columns) => "|" + string.Concat(Enumerable.Repeat(new string((char)45, 3) + "|", columns));
+    string Page(string table) => "[" + table + "](" + table + ".md)";
+
+    var fkByColumn = new Dictionary<string, ForeignKeyModel>(StringComparer.OrdinalIgnoreCase);
+    foreach (var fk in Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1))
+        fkByColumn[fk.ReferencingColumns[0]] = fk;
+
+    string Limits(ColumnModel c)
+    {
+        var parts = new List<string>();
+        if (c.IsStringColumn)
+        {
+            int chars = c.CharacterLength();
+            if (chars > 0)
+                parts.Add("at most " + chars + " characters");
+        }
+        if (c.HasChoices)
+            parts.Add("one of " + string.Join(", ", c.Choices!.Select(v => "`" + v + "`")));
+        if (c.Check is { } check)
+        {
+            if (check.Min is { } min)
+                parts.Add((check.MinStrict ? "greater than " : "at least ") + Inv(min));
+            if (check.Max is { } max)
+                parts.Add((check.MaxStrict ? "less than " : "at most ") + Inv(max));
+        }
+        return string.Join("; ", parts);
+    }
+
+    string Key(ColumnModel c)
+    {
+        var roles = new List<string>();
+        if (c.IsPrimaryKey)
+            roles.Add("PK");
+        if (fkByColumn.TryGetValue(c.Name, out var fk))
+            roles.Add("FK -> " + Page(fk.ReferencedTable));
+        if (c.IsInUniqueIndex && !c.IsPrimaryKey)
+            roles.Add("unique");
+        return string.Join(", ", roles);
+    }
+
+    string Notes(ColumnModel c)
+    {
+        var notes = new List<string>();
+        if (c.IsIdentity)
+            notes.Add("identity");
+        if (c.IsComputed)
+            notes.Add("computed" + (string.IsNullOrWhiteSpace(c.ComputedDefinition) ? "" : ": `" + c.ComputedDefinition + "`"));
+        if (c.DatabaseName is not null && c.DatabaseName != c.Name)
+            notes.Add("database name `" + c.DatabaseName + "`");
+        return string.Join("; ", notes);
+    }
+
+    var o = new StringBuilder();
+    void L(string s = "") => o.Append(s).Append('\n');
+    // a Description column only when the database has a comment for some column
+    bool anyDescription = Model.Columns.Any(c => !string.IsNullOrWhiteSpace(c.Description));
+
+    var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
+    L("# " + Model.TableName);
+    L();
+    L("Table `" + Model.SchemaName + "." + Model.TableName + "`: " + columns.Count + " column" + (columns.Count == 1 ? "" : "s") + ", "
+        + (Model.PrimaryKeyColumns.Count == 0 ? "no primary key." : "primary key " + string.Join(", ", Model.PrimaryKeyColumns.Select(c => "`" + c.Name + "`")) + "."));
+    if (!string.IsNullOrWhiteSpace(Model.Description))
+    {
+        L();
+        L(Cell(Model.Description));
+    }
+    L();
+    L("## Columns");
+    L();
+    L("| # | Column | Type | Null | Default | Key | Limits | Notes |" + (anyDescription ? " Description |" : ""));
+    L(Separator(anyDescription ? 9 : 8));
+    int n = 0;
+    foreach (var c in columns)
+        L("| " + (++n) + " | `" + Cell(c.Name) + "` | " + Cell(c.SqlTypeDeclaration) + " | " + (c.IsNullable ? "yes" : "no") + " | "
+            + (string.IsNullOrWhiteSpace(c.DatabaseDefaultSql) ? "" : "`" + Cell(c.DatabaseDefaultSql!) + "`") + " | " + Cell(Key(c)) + " | " + Cell(Limits(c)) + " | " + Cell(Notes(c)) + " |" + (anyDescription ? " " + Cell(c.Description ?? "") + " |" : ""));
+
+    if (Model.ForeignKeys.Count > 0)
+    {
+        L();
+        L("## Refers to");
+        L();
+        L("| Columns | Table | Referenced columns |");
+        L(Separator(3));
+        foreach (var fk in Model.ForeignKeys.OrderBy(f => f.ReferencedTable, StringComparer.OrdinalIgnoreCase))
+            L("| " + string.Join(", ", fk.ReferencingColumns.Select(c => "`" + c + "`")) + " | " + Page(fk.ReferencedTable) + " | " + string.Join(", ", fk.ReferencedColumns.Select(c => "`" + c + "`")) + " |");
+    }
+
+    if (Model.ChildForeignKeys.Count > 0)
+    {
+        L();
+        L("## Referred to by");
+        L();
+        L("| Table | Columns |");
+        L(Separator(2));
+        foreach (var child in Model.ChildForeignKeys.OrderBy(f => f.ReferencingTable, StringComparer.OrdinalIgnoreCase))
+            L("| " + Page(child.ReferencingTable) + " | " + string.Join(", ", child.ReferencingColumns.Select(c => "`" + c + "`")) + " |");
+    }
+    Write(o.ToString());
+#>

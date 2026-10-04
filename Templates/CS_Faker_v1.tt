@@ -1,0 +1,180 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Globalization" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project. A project settings file (EntityNamespace, FakerNamespace, or ProjectName) overrides them.
+    // ==========================================================================================
+    string entityNamespace = Project.EntityNamespace ?? "MyApp.Common.Entities";
+    string fakerNamespace = Project.FakerNamespace ?? "MyApp.Fakers";
+
+    // ==========================================================================================
+    // CS_Faker_v1.tt
+    // Generates: <TableName>Faker.cs   (see OutputName in CS_Faker_v1.tt.config)
+    // A Bogus fake-data generator for the table's entity: <Table>Faker.Create(seed, maxForeignKey) is a Faker<Entity> and <Table>Faker.Generate(count, seed, maxForeignKey) the rows, for demos,
+    // tests and load. Every value respects what the schema says: text of a sensible kind for its name (an email, a phone number, a city, a company name) and never longer than the column; a choice
+    // from a CHECK list; a whole number inside the range its name or its CHECK states; a decimal inside its CHECK range and its precision; a date in the past five years. A column that can be
+    // NULL is NULL about one time in five. Identity, computed, audit and modified columns are left to the database or the repository; a foreign key is a random id from 1 to maxForeignKey, so
+    // pass ids that exist (or insert the parents first and use their count). The same seed gives the same rows.
+    // Needs the Bogus package and the entity class (CS_Entity), so a primary key.
+    // Full notes: Docs/TemplateNotes/CS_Faker_v1.md
+    // ==========================================================================================
+
+    if (Model.PrimaryKeyColumns.Count == 0)
+    {
+        Error($"CS_Faker needs a table with a primary key, but [{Model.SchemaName}].[{Model.TableName}] has none (the entity class is written for keyed tables).");
+    }
+    else
+    {
+        string Id(ColumnModel c) => c.CSharpName();
+        string Inv(double value) => value.ToString("R", CultureInfo.InvariantCulture);
+        string Str(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        bool Skipped(ColumnModel c) => (c.IsIdentity && c.IsPrimaryKey) || c.IsComputed || c.IsAuditColumn || c.IsCreateDateColumn || c.IsCreateUserColumn
+            || c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsLastChangedDateColumn;
+        var foreignKeyColumns = Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1).Select(f => f.ReferencingColumns[0]).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        string tableWords = Model.TableName.ToLowerInvariant();
+
+        // the numbers of a whole-number column: its range when the name or a CHECK gives one, else 1 to 1000 inside the type
+        (long Low, long High) IntegerBounds(ColumnModel c)
+        {
+            var type = NumericClassifier.TypeRange(c.SqlType);
+            if ((c.NumericKind != NumericKind.None || c.Check is not null) && Project.RangeFor(c) is { } range)
+                return (range.Min, Math.Min(range.Max, range.Min + 1000));
+            return (Math.Max(1, type.Min), Math.Min(1000, type.Max));
+        }
+
+        // the text of a string column, by its name
+        string Text(ColumnModel c)
+        {
+            string name = c.Name;
+            bool Has(params string[] words) => words.Any(w => name.Contains(w, StringComparison.OrdinalIgnoreCase));
+            if (Has("Email")) return "f.Internet.Email()";
+            if (Has("Phone", "Fax", "Mobile")) return "f.Phone.PhoneNumber()";
+            if (Has("Url", "Website", "Link")) return "f.Internet.Url()";
+            if (Has("FirstName", "GivenName")) return "f.Name.FirstName()";
+            if (Has("LastName", "Surname", "FamilyName")) return "f.Name.LastName()";
+            if (Has("Address2", "Suite", "Unit")) return "f.Address.SecondaryAddress()";
+            if (Has("Address", "Street")) return "f.Address.StreetAddress()";
+            if (Has("City", "Town")) return "f.Address.City()";
+            if (Has("State", "Province")) return "f.Address.StateAbbr()";
+            if (Has("Zip", "Postal")) return "f.Address.ZipCode()";
+            if (Has("Country")) return "f.Address.Country()";
+            if (Has("Company", "Organization", "Organisation")) return "f.Company.CompanyName()";
+            if (Has("Description", "Note", "Memo", "Comment", "Remark", "Summary")) return "f.Lorem.Sentence()";
+            if (Has("Title", "Subject", "Caption")) return "f.Lorem.Sentence(3)";
+            if (Has("Number", "Code", "Sku", "Upc", "Reference")) return "f.Random.AlphaNumeric(8).ToUpperInvariant()";
+            if (Has("Name") && (tableWords.Contains("customer") || tableWords.Contains("company") || tableWords.Contains("vendor") || tableWords.Contains("supplier"))) return "f.Company.CompanyName()";
+            if (Has("Name") && (tableWords.Contains("item") || tableWords.Contains("product"))) return "f.Commerce.ProductName()";
+            if (Has("Name")) return "f.Name.FullName()";
+            return "f.Lorem.Word()";
+        }
+
+        var values = new List<string>();   // allowed-value arrays for CHECK lists
+        string Value(ColumnModel c)
+        {
+            string baseType = c.CSharpBase();
+            if (foreignKeyColumns.Contains(c.Name) && c.IsIntegerColumn && !c.IsPrimaryKey)
+                return baseType switch { "short" => "(short)f.Random.Int(1, maxForeignKey)", "byte" => "(byte)f.Random.Int(1, maxForeignKey)", "long" => "f.Random.Long(1, maxForeignKey)", _ => "f.Random.Int(1, maxForeignKey)" };
+            if (c.IsPrimaryKey)
+                return baseType switch { "short" => "(short)(f.IndexFaker + 1)", "byte" => "(byte)(f.IndexFaker + 1)", "long" => "f.IndexFaker + 1L", _ => "f.IndexFaker + 1" };
+            switch (baseType)
+            {
+                case "string":
+                    if (c.HasChoices)
+                    {
+                        string array = c.Name.Replace("@", "") + "Values";
+                        values.Add($"    private static readonly string[] {array} = [{string.Join(", ", c.Choices!.Select(Str))}];");
+                        return $"f.PickRandom({array})";
+                    }
+                    int chars = c.CharacterLength();
+                    return Text(c) + (chars > 0 ? $".ClampLength(max: {chars})" : "");
+                case "int" or "short" or "byte" or "long":
+                    var (low, high) = IntegerBounds(c);
+                    return baseType switch
+                    {
+                        "short" => $"f.Random.Short({low}, {high})",
+                        "byte" => $"f.Random.Byte({low}, {high})",
+                        "long" => $"f.Random.Long({low}L, {high}L)",
+                        _ => $"f.Random.Int({low}, {high})"
+                    };
+                case "decimal" or "double" or "float":
+                    var (lo, hi) = NumericClassifier.DecimalRange(c);
+                    double low2 = Math.Max(lo, 0), high2 = Math.Min(hi, 10000);
+                    int scale = Math.Min(c.Scale ?? 2, 2);
+                    if (c.Check is { MinStrict: true } strict && strict.Min is { } m && low2 <= m)
+                        low2 = m + Math.Pow(10, -scale);
+                    if (high2 < low2)
+                        high2 = low2;
+                    return baseType switch
+                    {
+                        "decimal" => $"Math.Round(f.Random.Decimal({Inv(low2)}m, {Inv(high2)}m), {scale})",
+                        "float" => $"f.Random.Float({Inv(low2)}f, {Inv(high2)}f)",
+                        _ => $"f.Random.Double({Inv(low2)}, {Inv(high2)})"
+                    };
+                case "bool": return "f.Random.Bool()";
+                case "DateTime": return c.SqlType == SqlDbType.Date ? "f.Date.Past(5).Date" : "f.Date.Past(5)";
+                case "DateTimeOffset": return "f.Date.PastOffset(5)";
+                case "TimeSpan": return "f.Date.Timespan()";
+                case "Guid": return "f.Random.Guid()";
+                case "byte[]": return "f.Random.Bytes(16)";
+                default: return "null";
+            }
+        }
+
+        var rules = new List<string>();
+        foreach (var c in Model.Columns.OrderBy(c => c.OrdinalPosition).Where(c => !Skipped(c)))
+        {
+            string value = Value(c);
+            if (value == "null" && !c.IsNullable)
+                continue;   // a type with no fake value and a required column: the caller sets it
+            if (c.IsNullable && !c.IsPrimaryKey)
+                value = $"f.Random.Bool(0.8f) ? {value} : null";
+            rules.Add($"            .RuleFor(x => x.{Id(c)}, f => {value})");
+        }
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+        string className = Model.TableName + "Faker";
+
+        L("using Bogus;");
+        L("using Bogus.Extensions;");
+        L("using " + entityNamespace + ";");
+        L();
+        L("namespace " + fakerNamespace + ";");
+        L();
+        L("/// <summary> Fake " + Model.TableName + " rows that respect what the schema says; the same seed gives the same rows. </summary>");
+        L("public static class " + className);
+        L("{");
+        foreach (string v in values.Distinct())
+            L(v);
+        if (values.Count > 0)
+            L();
+        L("    /// <param name=\"seed\"> A number that makes the rows the same every time; null for different ones. </param>");
+        L("    /// <param name=\"maxForeignKey\"> A foreign key is a random id from 1 to this number: pass ids that exist. </param>");
+        L("    public static Faker<" + Model.TableName + "> Create(int? seed = null, int maxForeignKey = 10)");
+        L("    {");
+        L("        var faker = new Faker<" + Model.TableName + ">();");
+        L("        if (seed is not null)");
+        L("            faker.UseSeed(seed.Value);");
+        if (rules.Count > 0)
+        {
+            L();
+            L("        faker");
+            for (int i = 0; i < rules.Count; i++)
+                L(rules[i] + (i == rules.Count - 1 ? ";" : ""));
+        }
+        L();
+        L("        return faker;");
+        L("    }");
+        L();
+        L("    public static List<" + Model.TableName + "> Generate(int count, int? seed = null, int maxForeignKey = 10) => Create(seed, maxForeignKey).Generate(count);");
+        L("}");
+        Write(o.ToString());
+    }
+#>
