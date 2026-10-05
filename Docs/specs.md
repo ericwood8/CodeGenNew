@@ -44,7 +44,7 @@ A template may write several files (`@@@FILE` markers), one file for a table, or
 
 **The three screen families behave the same** (WinUI 3, Angular, React): paged grid with server-side search and sort, add/edit/delete, foreign-key drop-downs, master-detail dialogs with child grids, many-to-many editors, clone, and validation limits read from the schema.
 
-**Optional extras are switches** in the project settings (`ApiDocs`, `ApiHttp`, `ApiFakers`, `ProjectDocs`, `ApiValidation`) and are off by default, so a default run is unchanged.
+**Optional extras are switches** in the project settings (`ApiDocs`, `ApiHttp`, `ApiFakers`, `ProjectDocs`, `ApiValidation`, `ApiProduction`) and are off by default, so a default run is unchanged.
 
 ## 5. How a run is driven
 

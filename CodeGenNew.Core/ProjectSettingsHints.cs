@@ -7,7 +7,7 @@ public static class ProjectSettingsHints
     /// <summary> The settings that are true or false: the settings screen shows a check box for each. </summary>
     public static IReadOnlySet<string> BooleanKeys { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "Dashboard", "DashboardStrip"
+        "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiProduction", "Dashboard", "DashboardStrip"
     };
 
     /// <summary> The caption of a setting with the words apart: "DashboardStrip" -> "Dashboard Strip". </summary>
@@ -44,6 +44,7 @@ public static class ProjectSettingsHints
         ["FakerNamespace"] = "the namespace of the Bogus fakers CS_Faker writes (default <ProjectName>.App.Fakers)",
         ["ApiDocs"] = "The plan also writes openapi.yaml (API_OpenApi) and the API serves it with a Swagger UI page at /docs.",
         ["ApiFakers"] = "The plan also writes a Bogus fake-data generator per table (CS_Faker) and the generated project references Bogus.",
+        ["ApiProduction"] = "The API project also gets a production profile (Problem Details, health checks at /health/live and /health/ready, rate limiting, response compression, security headers) and a Dockerfile. Nothing beyond ASP.NET Core is referenced.",
         ["ApiHttp"] = "The plan also writes a .http request file per table (API_Http).",
         ["ProjectDocs"] = "The plan also writes a data dictionary page per table and the ER diagram (MD_DataDictionary, MD_Erd).",
         ["ApiValidation"] = "The plan also writes a FluentValidation validator per table (CS_Validator) and the create and update endpoints run them (400 with the messages).",

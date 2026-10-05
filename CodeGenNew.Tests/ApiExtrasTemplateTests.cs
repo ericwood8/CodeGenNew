@@ -172,7 +172,7 @@ public class ApiExtrasTemplateTests
     {
         CollectionAssert.AreEqual(Array.Empty<string>(), Project().ImpliedPlanTemplates.ToArray());
         CollectionAssert.AreEquivalent(new[] { "API_OpenApi", "API_Http", "CS_Faker", "MD_DataDictionary", "MD_Erd", "CS_Validator", "RS_Validate" },
-            Project(("ApiDocs", "true"), ("ApiHttp", "TRUE"), ("ApiFakers", "1"), ("ProjectDocs", "yes"), ("ApiValidation", "true")).ImpliedPlanTemplates.ToArray());
+            Project(("ApiDocs", "true"), ("ApiHttp", "TRUE"), ("ApiFakers", "1"), ("ProjectDocs", "yes"), ("ApiValidation", "true"), ("ApiProduction", "true")).ImpliedPlanTemplates.ToArray());
         Assert.IsFalse(Project(("ApiDocs", "false")).ApiDocs);
         Assert.IsFalse(Project(("ApiDocs", "maybe")).ApiDocs);
     }
@@ -221,6 +221,29 @@ public class ApiExtrasTemplateTests
         Expect.DoesNotContain(plain, "ValidationFilter");
         Assert.AreEqual(2, validated.Split("AddEndpointFilter<ValidationFilter<E_DonateLeave>>()").Length - 1, "the create and the update, not the reads or the delete");
         Expect.Contains(validated, "app.MapPost(_apiSubDir, CreateRow)\n        .WithName($\"Create{singular}\")\n        .WithOpenApi()\n        .AddEndpointFilter<ValidationFilter<E_DonateLeave>>()");
+    }
+
+    [TestMethod]
+    public async Task The_production_profile_adds_files_and_no_package_only_when_asked()
+    {
+        var plain = await TemplateRunner.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project());
+        var production = await TemplateRunner.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("ApiProduction", "true")));
+        Assert.IsTrue(plain.Success && production.Success, string.Join(" | ", plain.Errors.Concat(production.Errors)));
+        string without = plain.GeneratedText!.Replace("\r\n", "\n"), with = production.GeneratedText!.Replace("\r\n", "\n");
+
+        foreach (string part in new[] { "ProductionProfile", "AddProductionProfile", "Dockerfile", "UseRateLimiter", "MapProductionHealth", "RateLimit", "Cors:Origins" })
+            Expect.DoesNotContain(without, part);
+
+        Expect.Contains(with, "@@@FILE ProductionProfile.cs@@@");
+        Expect.Contains(with, "@@@FILE Dockerfile@@@");
+        Expect.Contains(with, "@@@FILE .dockerignore@@@");
+        Expect.Contains(with, "builder.AddProductionProfile();");
+        Expect.Contains(with, "var app = builder.Build();\napp.UseProductionProfile();\napp.UseCors();\napp.UseRateLimiter();");
+        Expect.Contains(with, "app.MapProductionHealth();");
+        Expect.Contains(with, "\"RateLimit\": {\n    \"PermitsPerMinute\": 100\n  },");
+        Expect.Contains(with, "public class DatabaseHealthCheck(AcmeContext context) : IHealthCheck");
+        Expect.Contains(with, "ENV Urls=http://+:8080 \\\n    ASPNETCORE_FORWARDEDHEADERS_ENABLED=true");
+        Assert.AreEqual(without.Split("PackageReference").Length, with.Split("PackageReference").Length, "no package is added");
     }
 
     [TestMethod]
