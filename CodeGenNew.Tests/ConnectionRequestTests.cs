@@ -13,7 +13,7 @@ public class ConnectionRequestTests
     {
         Assert.AreEqual("SQL Server, Windows Auth", Request(DatabaseProvider.SqlServer, AuthMode.WindowsAuth).DescribeConnection());
         Assert.AreEqual("SQL Server, SQL Login (sa)", Request(DatabaseProvider.SqlServer, AuthMode.SqlLogin, "sa").DescribeConnection());
-        Assert.AreEqual("PostgreSQL, SQL Login (ClaudeCode)", Request(DatabaseProvider.PostgreSql, AuthMode.SqlLogin, "ClaudeCode").DescribeConnection());
+        Assert.AreEqual("PostgreSQL, SQL Login (app_user)", Request(DatabaseProvider.PostgreSql, AuthMode.SqlLogin, "app_user").DescribeConnection());
         Assert.AreEqual("MySQL, SQL Login", Request(DatabaseProvider.MySql, AuthMode.SqlLogin).DescribeConnection());
         Assert.AreEqual("SQLite", Request(DatabaseProvider.Sqlite, AuthMode.SqlLogin).DescribeConnection());
     }

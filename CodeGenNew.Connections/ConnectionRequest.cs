@@ -13,7 +13,7 @@ public class ConnectionRequest
     /// <summary> Defaults to true since dev-box SQL Server instances typically use a self-signed certificate. </summary>
     public bool TrustServerCertificate { get; init; } = true;
 
-    /// <summary> How the connection was made, for the tree's header: "SQL Server, Windows Auth" or "PostgreSQL, SQL Login (ClaudeCode)". A SQLite file has no login. </summary>
+    /// <summary> How the connection was made, for the tree's header: "SQL Server, Windows Auth" or "PostgreSQL, SQL Login (app_user)". A SQLite file has no login. </summary>
     public string DescribeConnection()
     {
         string provider = Provider switch
