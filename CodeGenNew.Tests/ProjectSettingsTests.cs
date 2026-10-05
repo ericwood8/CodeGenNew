@@ -7,6 +7,62 @@ namespace CodeGenNew.Tests;
 public class ProjectSettingsTests
 {
     [TestMethod]
+    public void Every_setting_is_on_exactly_one_tab_of_the_settings_screen()
+    {
+        var listed = ProjectSettingGroups.All.SelectMany(g => g.Keys).ToList();
+        CollectionAssert.AreEquivalent(ProjectSettings.Keys.Where(k => k != "ProjectName").ToList(), listed);
+        Assert.AreEqual(listed.Count, listed.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.IsTrue(ProjectSettingGroups.All.All(g => g.Keys.Length <= ProjectSettingGroups.MaxKeysPerTab && g.Description.StartsWith("This tab has ")));
+        Assert.AreEqual("Dashboard", ProjectSettingGroups.TabOf("Dashboard"));
+        Assert.AreEqual(ProjectSettingGroups.General, ProjectSettingGroups.TabOf("NotAKnownKey"));
+    }
+
+    [TestMethod]
+    public void Captions_put_spaces_between_words_and_every_true_false_flag_is_a_check_box()
+    {
+        Assert.AreEqual("Dashboard Strip", ProjectSettingsHints.Caption("DashboardStrip"));
+        Assert.AreEqual("Api Docs", ProjectSettingsHints.Caption("ApiDocs"));
+        foreach (string key in new[] { "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "Dashboard", "DashboardStrip" })
+        {
+            Assert.IsTrue(ProjectSettingsHints.BooleanKeys.Contains(key), key);
+            Assert.IsFalse(ProjectSettingsHints.All[key].StartsWith("true", StringComparison.OrdinalIgnoreCase), key + " hint should explain, not give the value");
+        }
+        Assert.IsTrue(ProjectSettingsHints.BooleanKeys.All(k => ProjectSettings.Keys.Contains(k)));
+    }
+
+    [TestMethod]
+    public void Settings_with_a_fixed_list_of_values_offer_the_list_and_the_stacks_match_the_plan()
+    {
+        CollectionAssert.AreEqual(CodeGenNew.Generation.ProjectPlan.KnownStacks.ToList(), ProjectSettingChoices.Stacks.ToList());
+        foreach (var (key, (kind, choices)) in ProjectSettingChoices.All)
+        {
+            Assert.IsTrue(ProjectSettings.Keys.Contains(key), key);
+            Assert.IsFalse(ProjectSettingsHints.BooleanKeys.Contains(key), key);
+            if (kind is SettingKind.Radio)
+                Assert.IsTrue(choices.Length <= 3, key + " has more than three choices: use a drop-down");
+            if (kind is SettingKind.Radio or SettingKind.Dropdown)
+                Assert.AreEqual("", choices[0].Value, key + " starts with the not-set choice");
+        }
+        Assert.IsTrue(ProjectSettingChoices.All["DatabaseProvider"].Choices.Skip(1).All(c => ProjectSettings.FromValues([new("DatabaseProvider", c.Value)]).DatabaseDialect.ToString().Equals(c.Value, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
+    public void Whole_number_settings_have_a_range_that_holds_their_defaults()
+    {
+        foreach (var (key, (min, max)) in ProjectSettingChoices.Numbers)
+        {
+            Assert.IsTrue(ProjectSettings.Keys.Contains(key), key);
+            Assert.IsFalse(ProjectSettingChoices.All.ContainsKey(key) || ProjectSettingsHints.BooleanKeys.Contains(key), key);
+            Assert.IsTrue(min >= 1 && min < max, key);
+        }
+        var none = ProjectSettings.FromValues([]);
+        foreach (int value in new[] { none.MinYear, none.MaxYear, none.EnumMaxRows, none.ApiPort, none.RustPort, none.DevPort("React"), none.DevPort("Angular") })
+            Assert.IsTrue(value >= 1 && value <= 65535 || value <= 9999, value.ToString());
+        Assert.IsTrue(none.MinYear >= ProjectSettingChoices.Numbers["MinYear"].Min && none.MaxYear <= ProjectSettingChoices.Numbers["MaxYear"].Max);
+        Assert.IsTrue(none.EnumMaxRows <= ProjectSettingChoices.Numbers["EnumMaxRows"].Max);
+    }
+
+    [TestMethod]
     public void No_project_gives_null_everywhere_so_a_template_keeps_its_own_values()
     {
         var none = ProjectSettings.None;

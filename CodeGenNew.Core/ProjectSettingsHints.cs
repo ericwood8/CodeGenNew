@@ -4,6 +4,15 @@ namespace CodeGenNew.Core;
 /// it and Docs/Reference.md complete as keys are added. </summary>
 public static class ProjectSettingsHints
 {
+    /// <summary> The settings that are true or false: the settings screen shows a check box for each. </summary>
+    public static IReadOnlySet<string> BooleanKeys { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "Dashboard", "DashboardStrip"
+    };
+
+    /// <summary> The caption of a setting with the words apart: "DashboardStrip" -> "Dashboard Strip". </summary>
+    public static string Caption(string key) => ScreenNames.Words(key);
+
     public static IReadOnlyDictionary<string, string> All { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["ViewNamespace"] = "blank = <ProjectName>.App.Views",
@@ -33,13 +42,13 @@ public static class ProjectSettingsHints
         ["NoApiTables"] = "overrides EnumTables for this one question: tables that get no API or TypeScript model/screen",
         ["NoNavigationTables"] = "overrides EnumTables for this one question: tables referenced without a navigation property",
         ["FakerNamespace"] = "the namespace of the Bogus fakers CS_Faker writes (default <ProjectName>.App.Fakers)",
-        ["ApiDocs"] = "true: the plan also writes openapi.yaml (API_OpenApi) and the API serves it with a Swagger UI page at /docs",
-        ["ApiFakers"] = "true: the plan also writes a Bogus fake-data generator per table (CS_Faker) and the generated project references Bogus",
-        ["ApiHttp"] = "true: the plan also writes a .http request file per table (API_Http)",
-        ["ProjectDocs"] = "true: the plan also writes a data dictionary page per table and the ER diagram (MD_DataDictionary, MD_Erd)",
-        ["ApiValidation"] = "true: the plan also writes a FluentValidation validator per table (CS_Validator) and the create and update endpoints run them (400 with the messages)",
-        ["Dashboard"] = "true: the plan also writes the dashboard: its queries (CS_Dashboard, SP_Dashboard), the GET /api/dashboard endpoint (API_Dashboard), a page and menu entry per front end (TSX_Dashboard, TS_Dashboard, WinUI3_DashboardPage) and a Markdown page listing the widgets (MD_Dashboard)",
-        ["DashboardStrip"] = "true (with Dashboard): each table screen shows that table's two or three cards above its grid",
+        ["ApiDocs"] = "The plan also writes openapi.yaml (API_OpenApi) and the API serves it with a Swagger UI page at /docs.",
+        ["ApiFakers"] = "The plan also writes a Bogus fake-data generator per table (CS_Faker) and the generated project references Bogus.",
+        ["ApiHttp"] = "The plan also writes a .http request file per table (API_Http).",
+        ["ProjectDocs"] = "The plan also writes a data dictionary page per table and the ER diagram (MD_DataDictionary, MD_Erd).",
+        ["ApiValidation"] = "The plan also writes a FluentValidation validator per table (CS_Validator) and the create and update endpoints run them (400 with the messages).",
+        ["Dashboard"] = "The plan also writes the dashboard: its queries (CS_Dashboard, SP_Dashboard), the GET /api/dashboard endpoint (API_Dashboard), a page and menu entry per front end (TSX_Dashboard, TS_Dashboard, WinUI3_DashboardPage) and a Markdown page listing the widgets (MD_Dashboard). Regenerate the project after turning it on.",
+        ["DashboardStrip"] = "Needs Dashboard. Each table screen shows that table's two or three cards above its grid.",
         ["DashboardMeasures"] = "comma-separated widgets you name: Table.Column:sum|avg|max|min|count, or Table.Column:aggregate:DateColumn:day|month|year for a trend (SalesInvoice.TotalAmount:sum:InvoiceDate:month)",
         ["NoDashboardTables"] = "comma-separated tables the dashboard leaves out",
         ["AccessMode"] = "Routines or Ef: how search, sort, paging, clone and the junction editors reach the database. Ef uses LINQ over the context and needs no routine in the database; SQLite always uses it; blank = Routines",
@@ -63,7 +72,7 @@ public static class ProjectSettingsHints
         ["ListingName"] = "WinUI3_DirectoryListing: the class stem, e.g. Document (DocumentListPage); blank = Document",
         ["ListingFolder"] = "WinUI3_DirectoryListing: the folder whose files are listed (for example %LocalAppData%/Project/Name); blank = under LocalAppData",
         ["ListingPattern"] = "WinUI3_DirectoryListing: which files are listed; blank = *.*",
-        ["Stacks"] = "stacks to generate: Api, WinUI3, React, Angular (comma-separated), e.g. Api,React",
+        ["Stacks"] = "the stacks Generate All offers ticked for this project; none ticked means you choose them each time",
         ["PlanAlso"] = "templates to run in a whole-project generate although their config leaves them out, e.g. SP_Insert,SP_Update",
         ["OutputApi"] = "folder of the API project under the output folder; blank = <ProjectName>.Api",
         ["OutputWinUI3"] = "folder of the WinUI3 app under the output folder; blank = <ProjectName>.App",

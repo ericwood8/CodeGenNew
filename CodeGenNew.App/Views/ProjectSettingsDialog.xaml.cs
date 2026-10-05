@@ -1,6 +1,8 @@
 using CodeGenNew.App.Services;
 using CodeGenNew.App.ViewModels;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 
 namespace CodeGenNew.App.Views;
 
@@ -12,6 +14,28 @@ public sealed partial class ProjectSettingsDialog : ContentDialog
     {
         ViewModel = viewModel;
         InitializeComponent();
+        foreach (var (title, description, rows) in ViewModel.Tabs)
+        {
+            var panel = new StackPanel { Spacing = 8, Padding = new Thickness(0, 8, 0, 0) };
+            panel.Children.Add(new Border
+            {
+                Background = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 220, 220, 220)),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(12, 8, 12, 8),
+                Child = new TextBlock
+                {
+                    Text = description,
+                    Foreground = new SolidColorBrush(Microsoft.UI.Colors.Black),
+                    TextWrapping = TextWrapping.Wrap
+                }
+            });
+            panel.Children.Add(new ScrollViewer
+            {
+                MaxHeight = 320,
+                Content = new ItemsControl { ItemsSource = rows, ItemTemplate = (DataTemplate)Resources["SettingRowTemplate"] }
+            });
+            SettingsTabs.TabItems.Add(new TabViewItem { Header = title, IsClosable = false, Content = panel });
+        }
         ContentDialogUx.Apply(this, primaryAccessKey: "S", secondaryAccessKey: "N", closeAccessKey: "C");
         PrimaryButtonClick += OnPrimaryButtonClick;
     }
