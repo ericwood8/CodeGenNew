@@ -201,6 +201,32 @@ public class ProjectSettingsTests
     }
 
     [TestMethod]
+    public async Task Without_DetailMasterTables_a_table_with_child_tables_gets_a_list_page_that_opens_the_dialog_the_plan_writes()
+    {
+        var project = ProjectSettings.Parse("ProjectName=Acme");
+        var order = Sample.OrderWithLines();
+
+        var list = await TemplateRunner.RunAsync(Repo.Template("WinUI3_MasterScreen_v1.tt"), order, project);
+        var master = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), order, project);
+
+        Assert.IsTrue(DatabaseModel.IsDetailMaster(order, project));
+        Expect.Contains(list.GeneratedText!, "new OrderDetailMasterDialog(_context)");
+        Expect.Contains(master.GeneratedText!, "new OrderLineDetailDialog(_context, entity)");
+    }
+
+    [TestMethod]
+    public void A_table_known_by_name_follows_the_same_rule_as_one_known_by_model()
+    {
+        var unlisted = ProjectSettings.Parse("ProjectName=Acme");
+        var listed = ProjectSettings.Parse("ProjectName=Acme\nDetailMasterTables=Order");
+
+        Assert.IsTrue(DatabaseModel.IsDetailMaster("OrderLine", true, unlisted));
+        Assert.IsFalse(DatabaseModel.IsDetailMaster("OrderLine", false, unlisted));
+        Assert.IsTrue(DatabaseModel.IsDetailMaster("order", false, listed));
+        Assert.IsFalse(DatabaseModel.IsDetailMaster("OrderLine", true, listed));
+    }
+
+    [TestMethod]
     [DataRow("WinUI3_MasterScreen_v1.tt")]
     [DataRow("WinUI3_DetailMasterScreen_v1.tt")]
     public async Task The_list_and_detail_master_templates_also_write_the_shared_PaginationBar(string template)

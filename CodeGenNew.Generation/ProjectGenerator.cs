@@ -67,6 +67,12 @@ public static class ProjectGenerator
         var database = await provider.BuildAsync(options.DatabaseName, options.Schema, cancellationToken);
         progress?.Invoke($"Read {database.Tables.Count} tables of [{options.Schema}].");
 
+        if (options.Stacks.Contains("Rust", StringComparer.OrdinalIgnoreCase) && database.Dialect == SqlDialect.SqlServer)
+        {
+            report.Errors.Add("The Rust stack is not written for SQL Server: sqlx, the database layer it uses, supports PostgreSQL, MySQL and SQLite. Leave Rust out of the project's Stacks or read one of those databases.");
+            return report;
+        }
+
         foreach (var table in database.Tables)
             foreach (var column in table.UnsupportedColumns)
                 report.Warnings.Add($"column {table.DbTableName}.{column.DbName} has the type '{column.SqlTypeDeclaration}', which CodeGenNew does not map; list it in IgnoredColumns to leave it out.");

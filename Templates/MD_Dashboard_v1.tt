@@ -1,0 +1,66 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // MD_Dashboard_v1.tt
+    // Generates: Dashboard.md   (one file for the whole database)
+    // The dashboard as a page to read before any screen exists: every widget DashboardPlan chose, with the schema fact that made it a candidate and the statement that fills it, then the
+    // candidates the caps left out. Reviewing this page is the way to change the choice: DashboardMeasures adds or replaces a widget, NoDashboardTables removes a table.
+    // Full notes: Docs/TemplateNotes/MD_Dashboard_v1.md
+    // ==========================================================================================
+
+    var plan = DashboardPlan.Build(Database, Project);
+    foreach (string problem in plan.Problems)
+        Error(problem);
+
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+    string Cell(string text) => text.Replace("|", "\\|");
+
+    void Widget(DashboardWidget w)
+    {
+        Line($"### {w.Title}");
+        Line();
+        Line($"{w.Kind} widget on {w.Table}. {w.Why}");
+        Line();
+        Line("```sql");
+        Line(w.Sql);
+        Line("```");
+        Line();
+    }
+
+    Line("@@@FILE Dashboard.md@@@");
+    Line($"# Dashboard of {Database.DatabaseName}");
+    Line();
+    Line($"Statements are written for {DialectInfo.For(Database.Dialect).Name}. Each one is fixed text with no parameter and returns a label and a number (the recent list returns a label and a date).");
+    Line();
+    Line("## On the dashboard");
+    Line();
+    if (plan.Widgets.Count == 0)
+        Line("The schema suggests nothing to show.");
+    foreach (var w in plan.Widgets)
+        Widget(w);
+
+    var shown = plan.Widgets.Select(w => w.Id).ToHashSet();
+    var left = plan.Candidates.Where(w => !shown.Contains(w.Id)).ToList();
+    Line("## Left out by the caps");
+    Line();
+    if (left.Count == 0)
+        Line("Every candidate is on the dashboard.");
+    else
+    {
+        Line($"At most {DashboardPlan.MaxCards} cards, {DashboardPlan.MaxTopBy} top lists, {DashboardPlan.MaxBreakdowns} breakdowns, {DashboardPlan.MaxTrends} trends and {DashboardPlan.MaxRecent} recent list are shown. These candidates scored lower:");
+        Line();
+        Line("| Widget | Kind | Table | Why |");
+        Line("|:-|:-|:-|:-|");
+        foreach (var w in left)
+            Line($"| {Cell(w.Title)} | {w.Kind} | {w.Table} | {Cell(w.Why)} |");
+    }
+    Line();
+    Write(sb.ToString());
+#>

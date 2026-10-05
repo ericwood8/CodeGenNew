@@ -1,0 +1,210 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Repo_v1.tt
+    // Generates: src/repos/<table>.rs   (the template writes its own path with an @@@FILE marker; the output folder is the Rust crate's folder)
+    // The statements of a table and the functions that run them with sqlx: get all, get by key, insert, update, delete, clone (a cloneable table) and search (a table with a search endpoint).
+    // There is no routine in the database: every statement is fixed text written here for the database that was read (the quotes, the placeholders, the casts PostgreSQL needs for money and
+    // enums, RETURNING where the database has it and a second read where it has not, MySQL), and the search builds its WHERE from the filters the caller gave, binding every value.
+    // A sort name is looked up in a fixed list and never reaches the SQL; a filter value is escaped so % and _ are ordinary characters.
+    // Full notes: Docs/TemplateNotes/RS_Repo_v1.md
+    // ==========================================================================================
+
+    var t = RustTable.Of(Model, Project);
+    bool mysql = Model.Dialect == SqlDialect.MySql;
+    bool search = Model.HasSearchApi(Project);
+    string key = t.Key.Name;
+    string keyType = t.Key.Type;
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+    string Binds(IEnumerable<RustField> fields) => string.Concat(fields.Select(f => $".bind(&row.{f.Name})"));
+
+    Line($"@@@FILE src/repos/{t.Module}.rs@@@");
+    Line($"use crate::models::{t.Module}::{t.Struct};");
+    Line(search ? "use crate::support::{Db, Pool};" : "use crate::support::Pool;");
+    if (search && t.Filters.Count > 0)
+        Line("use crate::support::{escape_like, non_blank};");
+    if (search)
+        Line("use serde::Deserialize;");
+    if (search)
+        Line("use sqlx::QueryBuilder;");
+    Line();
+    Line($"const SELECT_ALL: &str = {RustTable.Raw(t.SelectAll)};");
+    Line($"const SELECT_ONE: &str = {RustTable.Raw(t.SelectOne)};");
+    Line($"const INSERT: &str = {RustTable.Raw(t.Insert)};");
+    Line($"const UPDATE: &str = {RustTable.Raw(t.Update)};");
+    Line($"const DELETE: &str = {RustTable.Raw(t.Delete)};");
+    if (t.Clone is { } clone)
+    {
+        Line($"const CLONE: &str = {RustTable.Raw(clone.Sql)};");
+        var di = DialectInfo.For(Model.Dialect);
+        foreach (var f in clone.Overrides)
+            Line($"const EXISTS_{f.Name.ToUpperInvariant().Replace("R#", "")}: &str = {RustTable.Raw($"SELECT COUNT(*) FROM {t.Table} WHERE {di.Quote(f.Column.DbName)} = {di.Placeholder(1)}")};");
+    }
+    if (search)
+    {
+        Line($"const SEARCH_ITEMS: &str = {RustTable.Raw(t.SearchItems)};");
+        Line($"const SEARCH_COUNT: &str = {RustTable.Raw(t.SearchCount)};");
+        Line($"const DEFAULT_ORDER: &str = {RustTable.Raw(t.DefaultOrder)};");
+    }
+    Line();
+
+    Line($"pub async fn get_all(pool: &Pool) -> Result<Vec<{t.Struct}>, sqlx::Error> {{");
+    Line($"    sqlx::query_as::<_, {t.Struct}>(SELECT_ALL).fetch_all(pool).await");
+    Line("}");
+    Line();
+    Line($"pub async fn get_by_id(pool: &Pool, id: {keyType}) -> Result<Option<{t.Struct}>, sqlx::Error> {{");
+    Line($"    sqlx::query_as::<_, {t.Struct}>(SELECT_ONE).bind(id).fetch_optional(pool).await");
+    Line("}");
+    Line();
+
+    // insert and update: one statement with RETURNING, or (MySQL) the statement and a read of the row by its key
+    Line($"pub async fn insert(pool: &Pool, row: &{t.Struct}) -> Result<{t.Struct}, sqlx::Error> {{");
+    if (mysql)
+    {
+        Line($"    let result = sqlx::query(INSERT){Binds(t.Written)}.execute(pool).await?;");
+        Line($"    get_by_id(pool, result.last_insert_id() as {keyType}).await?.ok_or(sqlx::Error::RowNotFound)");
+    }
+    else
+        Line($"    sqlx::query_as::<_, {t.Struct}>(INSERT){Binds(t.Written)}.fetch_one(pool).await");
+    Line("}");
+    Line();
+    Line($"pub async fn update(pool: &Pool, id: {keyType}, row: &{t.Struct}) -> Result<Option<{t.Struct}>, sqlx::Error> {{");
+    if (mysql)
+    {
+        Line($"    sqlx::query(UPDATE){Binds(t.Updated)}.bind(id).execute(pool).await?;");
+        Line("    get_by_id(pool, id).await");
+    }
+    else
+        Line($"    sqlx::query_as::<_, {t.Struct}>(UPDATE){Binds(t.Updated)}.bind(id).fetch_optional(pool).await");
+    Line("}");
+    Line();
+    Line($"pub async fn delete(pool: &Pool, id: {keyType}) -> Result<u64, sqlx::Error> {{");
+    Line("    Ok(sqlx::query(DELETE).bind(id).execute(pool).await?.rows_affected())");
+    Line("}");
+
+    if (t.Clone is { } cloneStatement)
+    {
+        Line();
+        foreach (var f in cloneStatement.Overrides)
+        {
+            string constant = "EXISTS_" + f.Name.ToUpperInvariant().Replace("R#", "");
+            Line($"// A copy of a unique text value that is free: the value itself, or the value with 2, 3 ... after it.");
+            Line($"async fn suggest_{f.Name.Replace("r#", "")}(pool: &Pool, desired: &str) -> Result<String, sqlx::Error> {{");
+            Line("    let mut candidate = desired.to_string();");
+            Line("    let mut suffix = 2;");
+            Line($"    while sqlx::query_scalar::<_, i64>({constant}).bind(&candidate).fetch_one(pool).await? > 0 {{");
+            Line("        candidate = format!(\"{desired}{suffix}\");");
+            Line("        suffix += 1;");
+            Line("    }");
+            Line("    Ok(candidate)");
+            Line("}");
+            Line();
+        }
+        Line("/// Copies a row into a new one and returns the new row. A unique text column gets a free value so the copy can be saved.");
+        Line($"pub async fn clone_row(pool: &Pool, id: {keyType}) -> Result<Option<{t.Struct}>, sqlx::Error> {{");
+        if (cloneStatement.Overrides.Count > 0)
+        {
+            Line("    let Some(source) = get_by_id(pool, id).await? else {");
+            Line("        return Ok(None);");
+            Line("    };");
+        }
+        else
+        {
+            Line("    if get_by_id(pool, id).await?.is_none() {");
+            Line("        return Ok(None);");
+            Line("    }");
+        }
+        Line(mysql ? "    let query = sqlx::query(CLONE);" : $"    let query = sqlx::query_scalar::<_, {keyType}>(CLONE);");
+        foreach (var f in cloneStatement.Overrides)
+        {
+            int chars = f.Column.CharacterLength();
+            string name = f.Name.Replace("r#", "");
+            string fitted = chars > 3 ? $"{{ let v = value.as_str(); if v.chars().count() > {chars - 3} {{ &v[..v.char_indices().nth({chars - 3}).map_or(v.len(), |(i, _)| i)] }} else {{ v }} }}" : "value.as_str()";
+            if (f.IsOption)
+                Line($"    let {name} = match &source.{f.Name} {{ Some(value) => Some(suggest_{name}(pool, {fitted}).await?), None => None }};");
+            else
+                Line($"    let {name} = {{ let value = &source.{f.Name}; suggest_{name}(pool, {fitted}).await? }};");
+        }
+        string bound = string.Concat(cloneStatement.Overrides.Select(f => $".bind({f.Name.Replace("r#", "")})"));
+        if (mysql)
+        {
+            Line($"    let result = query{bound}.bind(id).execute(pool).await?;");
+            Line($"    get_by_id(pool, result.last_insert_id() as {keyType}).await");
+        }
+        else
+        {
+            Line($"    let new_id: {keyType} = query{bound}.bind(id).fetch_one(pool).await?;");
+            Line("    get_by_id(pool, new_id).await");
+        }
+        Line("}");
+    }
+
+    if (search)
+    {
+        Line();
+        Line("/// The query string of the search: one optional text filter per searchable column, the page, and the sort.");
+        Line("#[derive(Debug, Default, Deserialize)]");
+        Line("#[serde(default)]");
+        Line("pub struct SearchQuery {");
+        foreach (var f in t.Filters)
+        {
+            Line($"    #[serde(rename = \"{f.Query}\")]");
+            Line($"    pub {f.Field}: Option<String>,");
+        }
+        Line("    #[serde(rename = \"pageNumber\")]");
+        Line("    pub page_number: Option<i64>,");
+        Line("    #[serde(rename = \"pageSize\")]");
+        Line("    pub page_size: Option<i64>,");
+        Line("    #[serde(rename = \"sortBy\")]");
+        Line("    pub sort_by: Option<String>,");
+        Line("    #[serde(rename = \"sortDir\")]");
+        Line("    pub sort_dir: Option<String>,");
+        Line("}");
+        Line();
+        Line("// A sort name is looked up here; the name itself is never part of the SQL.");
+        Line("fn sort_expression(name: &str) -> Option<&'static str> {");
+        Line("    match name.to_ascii_lowercase().as_str() {");
+        foreach (var s in t.Sorts)
+            Line($"        \"{s.Name}\" => Some({RustTable.Raw(s.Expression)}),");
+        Line("        _ => None,");
+        Line("    }");
+        Line("}");
+        Line();
+        Line("fn apply_filters(builder: &mut QueryBuilder<Db>, query: &SearchQuery) {");
+        foreach (var f in t.Filters)
+        {
+            Line($"    if let Some(value) = non_blank(&query.{f.Field}) {{");
+            Line($"        builder.push({RustTable.Raw(" AND " + f.Before)}).push_bind(escape_like(value)).push({RustTable.Raw(f.After)});");
+            Line("    }");
+        }
+        if (t.Filters.Count == 0)
+            Line("    let _ = (builder, query);");
+        Line("}");
+        Line();
+        Line($"/// One page of rows and the total number of rows that match the filters.");
+        Line($"pub async fn search(pool: &Pool, query: &SearchQuery, page: i64, page_size: i64) -> Result<(Vec<{t.Struct}>, i64), sqlx::Error> {{");
+        Line("    let mut count = QueryBuilder::<Db>::new(SEARCH_COUNT);");
+        Line("    apply_filters(&mut count, query);");
+        Line("    let total: i64 = count.build_query_scalar().fetch_one(pool).await?;");
+        Line();
+        Line("    let mut items = QueryBuilder::<Db>::new(SEARCH_ITEMS);");
+        Line("    apply_filters(&mut items, query);");
+        Line("    let descending = query.sort_dir.as_deref().is_some_and(|d| d.eq_ignore_ascii_case(\"desc\"));");
+        Line("    match query.sort_by.as_deref().map(str::trim).filter(|n| n.len() <= 128).and_then(sort_expression) {");
+        Line("        Some(expression) => items.push(format!(\" ORDER BY {expression}{}, {DEFAULT_ORDER}\", if descending { \" DESC\" } else { \"\" })),");
+        Line("        None => items.push(format!(\" ORDER BY {DEFAULT_ORDER}\")),");
+        Line("    };");
+        Line("    items.push(\" LIMIT \").push_bind(page_size).push(\" OFFSET \").push_bind((page - 1) * page_size);");
+        Line($"    let rows = items.build_query_as::<{t.Struct}>().fetch_all(pool).await?;");
+        Line("    Ok((rows, total))");
+        Line("}");
+    }
+    Write(sb.ToString());
+#>

@@ -272,6 +272,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
                 .Where(c => c.IsPrimaryKey).OrderBy(c => c.OrdinalPosition).Select(c => c.Name).ToList();
             var childForeignKeysOfItsOwn = await ReadForeignKeysAsync(connection, child.ReferencingSchema, child.ReferencingDbTable, cancellationToken);
             childForeignKeysOfItsOwn = await AttachReferencedDisplayColumnsAsync(connection, childForeignKeysOfItsOwn, rules, true, cancellationToken);
+            bool childHasChildren = (await ReadChildForeignKeysAsync(connection, child.ReferencingSchema, child.ReferencingDbTable, cancellationToken)).Count > 0;
 
             result.Add(new ChildForeignKeyModel
             {
@@ -283,7 +284,8 @@ public abstract class SchemaProviderBase : ISchemaProvider
                 ReferencedColumns = child.ReferencedColumns,
                 ReferencingPrimaryKeyColumns = childPrimaryKeyColumns,
                 ReferencingTableForeignKeys = childForeignKeysOfItsOwn,
-                ReferencingTableColumns = childColumns
+                ReferencingTableColumns = childColumns,
+                ReferencingTableHasChildren = childHasChildren
             });
         }
         return result;

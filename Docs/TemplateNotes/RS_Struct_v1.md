@@ -1,0 +1,9 @@
+# RS_Struct_v1
+
+`src/models/<table>.rs`: the Rust struct of a table, for the Rust stack (an Axum and sqlx API; PostgreSQL, MySQL and SQLite).
+
+- One field per column, named in snake_case (`RustNames`; a keyword is a raw identifier, `r#type`). The JSON name is `JsonNames.Camel` of the column name, the same text ASP.NET writes, so the React, Angular and desktop front ends work unchanged; serde reads and writes it with an explicit `rename`. sqlx reads the column under its real database name (`#[sqlx(rename = ...)]`), so `NamingStyle` and `Acronyms` need nothing more.
+- A nullable column is an `Option` that may be missing from the JSON; an identity key may be missing too (a new row is sent with 0 or nothing). A decimal is a JSON number (`rust_decimal::serde::float`; SQLite has no decimal type, so it is an `f64`). A `date` or `datetime` is written as `2026-10-04T00:00:00` and read from a bare `2026-10-04` as well (what a date input sends), through `support.rs`. A foreign key's navigation property (`customerStatus`) is written as `null`, as the .NET entity does for a list, so a schema built from the entity finds every property.
+- The types: `i32`, `i64`, `i16`, `i8` and the unsigned MySQL ones, `bool`, `Decimal`, `f64`, `f32`, `NaiveDate`, `NaiveDateTime`, `DateTime<Utc>`, `NaiveTime`, `Uuid`, `String`. A column with no mapping (binary, xml, a type CodeGenNew cannot map, MySQL `year`) is left out of the struct and the statements and named in a comment. The mapping of every database type is tested (`RustTests`).
+- For a table with a single int key and not a name/active table, like the API templates. The Rust stack is not written for SQL Server (a run that names it stops with the reason): sqlx has no SQL Server driver.
+- **Checked** by compiling the crate generated from the PostgreSQL, MySQL and SQLite InvoiceSystem copies (`Docs/Verification/Test-RustBuild.ps1`) and by running the unchanged React front end against it.

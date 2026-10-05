@@ -14,7 +14,7 @@ public sealed record PlanStep(TemplateInfo Template, IReadOnlyList<string> Stack
 /// project's settings (<c>Stacks</c>, <c>Screens</c>, <c>DetailMasterTables</c>, the enum rules, <c>PlanAlso</c>). It replaces the table lists every sample's Regenerate.sh wrote out by hand. </summary>
 public static class ProjectPlan
 {
-    public static IReadOnlyList<string> KnownStacks { get; } = ["Api", "WinUI3", "React", "Angular"];
+    public static IReadOnlyList<string> KnownStacks { get; } = ["Api", "WinUI3", "React", "Angular", "Rust"];
 
     /// <summary> The tables a <see cref="PlanTableSet"/> stands for in <paramref name="database"/>, by name. </summary>
     public static List<TableModel> Tables(PlanTableSet set, DatabaseModel database, ProjectSettings project)

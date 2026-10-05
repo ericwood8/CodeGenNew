@@ -3,6 +3,7 @@
 <#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
@@ -10,6 +11,7 @@
     // Everything below this block describes and implements the template itself.
     // ==========================================================================================
     string pagesFolder = Project.PagesFolder;   // where TSX_Page / TSX_DetailMasterPage write the pages, relative to the file this template writes
+    string componentsFolder = Project.ComponentsFolder;   // where TSX_Dashboard writes DashboardStrip
     // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     // The screens and their order come from the project's Screens setting, the master-detail ones from DetailMasterTables (see DatabaseModel).
     // ==========================================================================================
@@ -33,6 +35,13 @@
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
 
+    // With Dashboard=true the dashboard is the first screen; with DashboardStrip=true each table that has cards shows them above its page.
+    var stripTables = Project.DashboardStrip ? DashboardPlan.Build(Database, Project).StripTables.Where(name => screens.Any(t => t.TableName.Equals(name, StringComparison.OrdinalIgnoreCase))).ToHashSet(StringComparer.OrdinalIgnoreCase) : new HashSet<string>();
+    string Element(TableModel t) => stripTables.Contains(t.TableName) ? $"<><DashboardStrip table=\"{t.TableName}\" /><{PageName(t)} /></>" : $"<{PageName(t)} />";
+    if (Project.Dashboard)
+        Line($"import {{ DashboardPage }} from './{pagesFolder}/DashboardPage';");
+    if (stripTables.Count > 0)
+        Line($"import {{ DashboardStrip }} from './{componentsFolder}/DashboardStrip';");
     foreach (var t in screens)
         Line($"import {{ {PageName(t)} }} from './{pagesFolder}/{PageName(t)}';");
     Line();
@@ -40,8 +49,10 @@
     if (missingChildren.Count > 0)
         Line("// WARNING: these child tables are linked from a master-detail screen but have no screen of their own: " + string.Join(", ", missingChildren) + ".");
     Line("export const screens = [");
+    if (Project.Dashboard)
+        Line("  { path: 'dashboard', label: 'Dashboard', element: <DashboardPage /> },");
     foreach (var t in screens)
-        Line($"  {{ path: '{ScreenNames.Route(t.TableName)}', label: '{ScreenNames.Label(t.TableName)}', element: <{PageName(t)} /> }},");
+        Line($"  {{ path: '{ScreenNames.Route(t.TableName)}', label: '{ScreenNames.Label(t.TableName)}', element: {Element(t)} }},");
     Line("];");
     Write(sb.ToString());
 #>

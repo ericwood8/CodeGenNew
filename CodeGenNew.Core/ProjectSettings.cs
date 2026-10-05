@@ -25,8 +25,8 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
-        "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
+        "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputRust", "RustCrateName", "RustPort", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "TestApi", "TestWinUI3", "TestReact", "TestAngular"
     ];
 
@@ -205,6 +205,18 @@ public class ProjectSettings
     /// <summary> <c>ApiValidation=true</c>: the plan also writes a FluentValidation validator per table (CS_Validator), and the create and update endpoints run them (a 400 with the messages). </summary>
     public bool ApiValidation => Flag("ApiValidation");
 
+    /// <summary> <c>Dashboard=true</c>: the plan also writes the dashboard (its queries, endpoint, page and a menu entry per front end, and a Markdown page and SQL script that list the widgets). </summary>
+    public bool Dashboard => Flag("Dashboard");
+
+    /// <summary> <c>DashboardStrip=true</c>: each screen of a table shows that table's two or three cards above its grid. Needs <see cref="Dashboard"/>. </summary>
+    public bool DashboardStrip => Dashboard && Flag("DashboardStrip");
+
+    /// <summary> <c>DashboardMeasures=SalesInvoice.TotalAmount:sum,SalesInvoice.TotalAmount:sum:InvoiceDate:month</c>: widgets the project names, which are always shown and replace the automatic widget of the same kind for that table. </summary>
+    public string[] DashboardMeasures => Items("DashboardMeasures");
+
+    /// <summary> <c>NoDashboardTables=AuditLog</c>: tables the dashboard leaves out. </summary>
+    public string[] NoDashboardTables => Items("NoDashboardTables");
+
     /// <summary> <c>AccessMode=Routines</c> or <c>Ef</c>: how search, sort, paging, clone and the junction editors reach the database. Null when the project does not say; <see cref="AccessModes.For"/> decides then. </summary>
     public AccessMode? AccessModeSetting => Explicit("AccessMode")?.Trim().ToLowerInvariant() switch
     {
@@ -225,7 +237,12 @@ public class ProjectSettings
             if (ApiHttp) yield return "API_Http";
             if (ApiFakers) yield return "CS_Faker";
             if (ProjectDocs) { yield return "MD_DataDictionary"; yield return "MD_Erd"; }
-            if (ApiValidation) yield return "CS_Validator";
+            if (ApiValidation) { yield return "CS_Validator"; yield return "RS_Validate"; }
+            if (Dashboard)
+            {
+                foreach (string name in new[] { "CS_Dashboard", "API_Dashboard", "TSX_Dashboard", "TS_Dashboard", "WinUI3_DashboardPage", "SP_Dashboard", "MD_Dashboard" })
+                    yield return name;
+            }
         }
     }
 
@@ -291,6 +308,7 @@ public class ProjectSettings
         "winui3" => Explicit("OutputWinUI3") ?? (ProjectName ?? "MyApp") + ".App",
         "react" => Explicit("OutputReact") ?? "frontend",
         "angular" => Explicit("OutputAngular") ?? "frontend",
+        "rust" => Explicit("OutputRust") ?? (ProjectName ?? "MyApp") + ".Rust",
         "sql" => Explicit("OutputSql") ?? "sql",
         _ => root
     });
@@ -308,6 +326,12 @@ public class ProjectSettings
         "sqlite" => SqlDialect.Sqlite,
         _ => SqlDialect.SqlServer
     };
+    /// <summary> The crate (package) name of the Rust API: <c>RustCrateName</c>, or the project name in snake_case (<c>invoice_system</c>). </summary>
+    public string RustCrateName => Explicit("RustCrateName") ?? RustNames.Crate(ProjectName ?? "my_app");
+
+    /// <summary> The port the Rust API listens on: <c>RustPort</c>, else <see cref="ApiPort"/>, so the front ends' proxies need no change. </summary>
+    public int RustPort => int.TryParse(Explicit("RustPort"), out int port) ? port : ApiPort;
+
     public string DatabaseServer => Explicit("DatabaseServer") ?? "localhost";
     public string DatabaseName => Explicit("DatabaseName") ?? ProjectName ?? "MyDatabase";
     public string? DatabaseUser => Explicit("DatabaseUser");

@@ -33,4 +33,7 @@ public class ChildForeignKeyModel
     /// <summary> Every column of the child (referencing) table, so a generated child grid can order, caption and format its columns
     /// (money as currency, long text last) from the schema. Empty unless the model was built with NeedsReferencedDisplayColumns=true. </summary>
     public List<ColumnModel> ReferencingTableColumns { get; init; } = [];
+
+    /// <summary> Whether the child table itself has child tables, which makes its screen master-detail unless the project lists the master-detail tables. Set only when the model was built with NeedsReferencedDisplayColumns=true. </summary>
+    public bool ReferencingTableHasChildren { get; init; }
 }

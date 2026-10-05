@@ -1,0 +1,122 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Routes_v1.tt
+    // Generates: src/routes/<table>.rs   (the template writes its own path with an @@@FILE marker; the output folder is the Rust crate's folder)
+    // The Axum handlers of a table with the contract every stack of the project keeps (so the React, Angular and desktop front ends need no change): GET /api/<plural> (all rows), GET /{id},
+    // POST (201 with a Location header and the new row), PUT /{id} (400 when the id in the body differs, 404 for no such row), DELETE /{id} (200, 404, or 400 when the row is in use),
+    // POST /{id}/clone (201 and the copy, a cloneable table) and GET /search with the filters, pageNumber, pageSize, sortBy and sortDir (a table with a search endpoint).
+    // With ApiValidation=true the create and update handlers run the table's validate (RS_Validate) and answer 400 with the problems.
+    // Full notes: Docs/TemplateNotes/RS_Routes_v1.md
+    // ==========================================================================================
+
+    var t = RustTable.Of(Model, Project);
+    bool search = Model.HasSearchApi(Project);
+    bool validate = Project.ApiValidation;
+    string keyType = t.Key.Type;
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+
+    Line($"@@@FILE src/routes/{t.Module}.rs@@@");
+    Line("use axum::{");
+    Line("    Json, Router,");
+    Line(search ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
+    Line("    http::StatusCode,");
+    Line("    response::Response,");
+    Line("    routing::{get, post},");
+    Line("};");
+    Line($"use crate::models::{t.Module}::{t.Struct};");
+    Line($"use crate::repos::{t.Module} as repo;");
+    Line("use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
+    if (validate)
+        Line($"use crate::validation::{t.Module}::validate;");
+    if (search)
+        Line("use serde::Serialize;");
+    Line();
+    Line("pub fn router() -> Router<Pool> {");
+    Line("    Router::new()");
+    Line($"        .route(\"{t.Route}\", get(get_all).post(create))");
+    if (search)
+        Line($"        .route(\"{t.Route}/search\", get(search))");
+    Line($"        .route(\"{t.Route}/{{id}}\", get(get_by_id).put(update).delete(delete))");
+    if (t.Clone is not null)
+        Line($"        .route(\"{t.Route}/{{id}}/clone\", post(clone_row))");
+    Line("}");
+    Line();
+    Line($"async fn get_all(State(pool): State<Pool>) -> ApiResult<Json<Vec<{t.Struct}>>> {{");
+    Line("    Ok(Json(repo::get_all(&pool).await?))");
+    Line("}");
+    Line();
+    Line($"async fn get_by_id(State(pool): State<Pool>, Path(id): Path<{keyType}>) -> ApiResult<Json<{t.Struct}>> {{");
+    Line("    repo::get_by_id(&pool, id).await?.map(Json).ok_or(ApiError::NotFound)");
+    Line("}");
+    Line();
+    Line($"async fn create(State(pool): State<Pool>, ApiJson(row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    if (validate)
+    {
+        Line("    validate(&row)?;");
+    }
+    Line("    let row = repo::insert(&pool, &row).await?;");
+    Line($"    Ok(created(format!(\"{t.Route}/{{}}\", row.{t.Key.Name}), row))");
+    Line("}");
+    Line();
+    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>, ApiJson(row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
+    Line($"    if row.{t.Key.Name} != id {{");
+    Line("        return Err(ApiError::BadRequest(\"The id in the URL and the id in the body differ.\".into()));");
+    Line("    }");
+    if (validate)
+        Line("    validate(&row)?;");
+    Line("    repo::update(&pool, id, &row).await?.map(Json).ok_or(ApiError::NotFound)");
+    Line("}");
+    Line();
+    Line($"async fn delete(State(pool): State<Pool>, Path(id): Path<{keyType}>) -> ApiResult<StatusCode> {{");
+    Line("    match repo::delete(&pool, id).await? {");
+    Line("        0 => Err(ApiError::NotFound),");
+    Line("        _ => Ok(StatusCode::OK),");
+    Line("    }");
+    Line("}");
+    if (t.Clone is not null)
+    {
+        Line();
+        Line($"async fn clone_row(State(pool): State<Pool>, Path(id): Path<{keyType}>) -> ApiResult<Response> {{");
+        Line("    let copy = repo::clone_row(&pool, id).await?.ok_or(ApiError::NotFound)?;");
+        Line($"    Ok(created(format!(\"{t.Route}/{{}}\", copy.{t.Key.Name}), copy))");
+        Line("}");
+    }
+    if (search)
+    {
+        Line();
+        Line("#[derive(Serialize)]");
+        Line("struct SearchResult {");
+        Line($"    items: Vec<{t.Struct}>,");
+        Line("    page: i64,");
+        Line("    #[serde(rename = \"pageSize\")]");
+        Line("    page_size: i64,");
+        Line("    #[serde(rename = \"totalCount\")]");
+        Line("    total_count: i64,");
+        Line("    #[serde(rename = \"totalPages\")]");
+        Line("    total_pages: i64,");
+        Line("}");
+        Line();
+        Line("// The most rows one request may ask for, so a page size from outside cannot make the database return the whole table at once.");
+        Line("const MAX_PAGE_SIZE: i64 = 1000;");
+        Line();
+        Line("async fn search(State(pool): State<Pool>, Query(query): Query<repo::SearchQuery>) -> ApiResult<Json<SearchResult>> {");
+        Line("    let page = query.page_number.unwrap_or(1);");
+        Line("    if page < 1 {");
+        Line("        return Err(ApiError::BadRequest(\"pageNumber must be 1 or greater.\".into()));");
+        Line("    }");
+        Line("    let page_size = query.page_size.unwrap_or(100).clamp(1, MAX_PAGE_SIZE);");
+        Line("    let (items, total_count) = repo::search(&pool, &query, page, page_size).await?;");
+        Line("    let total_pages = if total_count == 0 { 0 } else { (total_count + page_size - 1) / page_size };");
+        Line("    Ok(Json(SearchResult { items, page, page_size, total_count, total_pages }))");
+        Line("}");
+    }
+    Write(sb.ToString());
+#>

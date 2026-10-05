@@ -67,9 +67,19 @@ public sealed class DialectInfo
     {
         SqlDialect.PostgreSql => $"{columnExpression} ILIKE '%' || {parameterExpression} || '%' ESCAPE '{LikeEscapeCharacter}'",
         SqlDialect.SqlServer => $"{columnExpression} LIKE '%' + {parameterExpression} + '%' ESCAPE '{LikeEscapeCharacter}'",
-        SqlDialect.MySql => $"{columnExpression} LIKE CONCAT('%', {parameterExpression}, '%') ESCAPE '{LikeEscapeCharacter}'",
+        SqlDialect.MySql => $"{columnExpression} LIKE CONCAT('%', {parameterExpression}, '%') ESCAPE '{LikeEscapeCharacter}{LikeEscapeCharacter}'",   // a backslash is itself an escape in a MySQL string
         _ => $"{columnExpression} LIKE '%' || {parameterExpression} || '%' ESCAPE '{LikeEscapeCharacter}'"
     };
+
+    /// <summary> <see cref="ContainsCondition"/> split around the parameter: the text before it and the text after it, for code that adds the bound value itself (Rust's sqlx query builder
+    /// writes the placeholder). </summary>
+    public (string Before, string After) ContainsParts(string columnExpression)
+    {
+        const string marker = "\u0001";
+        string text = ContainsCondition(columnExpression, marker);
+        int at = text.IndexOf(marker, StringComparison.Ordinal);
+        return (text[..at], text[(at + marker.Length)..]);
+    }
 
     /// <summary> The escape character a LIKE pattern built with <see cref="EscapeLike"/> uses. </summary>
     public const char LikeEscapeCharacter = '\\';
@@ -101,6 +111,42 @@ public sealed class DialectInfo
             DateBucket.Month => $"DATEFROMPARTS(YEAR({dateExpression}), MONTH({dateExpression}), 1)",
             _ => $"DATEFROMPARTS(YEAR({dateExpression}), 1, 1)"
         }
+    };
+
+    /// <summary> The expression as text, for a label. A date comes out in ISO form through <see cref="DateText"/>, not through this. </summary>
+    public string ToText(string expression) => Dialect switch
+    {
+        SqlDialect.SqlServer => $"CAST({expression} AS nvarchar(255))",
+        SqlDialect.MySql => $"CAST({expression} AS CHAR)",
+        SqlDialect.Sqlite => $"CAST({expression} AS TEXT)",
+        _ => $"CAST({expression} AS text)"
+    };
+
+    /// <summary> The date expression as <c>yyyy-MM-dd</c> text, whatever the database's own date format is. </summary>
+    public string DateText(string expression) => Dialect switch
+    {
+        SqlDialect.SqlServer => $"CONVERT(nvarchar(10), {expression}, 23)",
+        SqlDialect.MySql => $"DATE_FORMAT({expression}, '%Y-%m-%d')",
+        SqlDialect.Sqlite => $"date({expression})",
+        _ => $"to_char({expression}, 'YYYY-MM-DD')"
+    };
+
+    /// <summary> The expression as a double-precision number, so every database hands the same type to the reader (a count is a bigint, a sum a decimal, PostgreSQL's money a type of its own). </summary>
+    public string ToDouble(string expression) => Dialect switch
+    {
+        SqlDialect.SqlServer => $"CAST({expression} AS float)",
+        SqlDialect.MySql => $"CAST({expression} AS DOUBLE)",
+        SqlDialect.Sqlite => $"CAST({expression} AS REAL)",
+        _ => $"CAST({expression} AS double precision)"
+    };
+
+    /// <summary> The date expression moved back by <paramref name="count"/> days, months or years. </summary>
+    public string DateBefore(string dateExpression, DateBucket unit, int count) => Dialect switch
+    {
+        SqlDialect.PostgreSql => $"({dateExpression} - interval '{count} {BucketName(unit)}s')",
+        SqlDialect.MySql => $"DATE_SUB({dateExpression}, INTERVAL {count} {BucketName(unit).ToUpperInvariant()})",
+        SqlDialect.Sqlite => $"datetime({dateExpression}, '-{count} {BucketName(unit)}s')",
+        _ => $"DATEADD({BucketName(unit)}, -{count}, {dateExpression})"
     };
 
     private static string BucketName(DateBucket bucket) => bucket switch { DateBucket.Day => "day", DateBucket.Month => "month", _ => "year" };

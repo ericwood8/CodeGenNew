@@ -55,6 +55,11 @@
         Line();
     foreach (var t in junctions)
         Line($"        new {t.TableName}JunctionApi<{t.TableName}>().Register(app);");
+    if (Project.Dashboard)
+    {
+        Line();
+        Line("        DashboardApi.Register(app);");
+    }
     Line("    }");
     Line("}");
     Write(sb.ToString());

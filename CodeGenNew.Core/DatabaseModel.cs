@@ -44,9 +44,13 @@ public class DatabaseModel
     /// <summary> Whether the table's screen is the master-detail kind (its add/edit dialog also shows the child tables): the project's <c>DetailMasterTables</c>
     /// when it lists any, else every table that has at least one child table. </summary>
     public static bool IsDetailMaster(TableModel table, ProjectSettings project) =>
+        IsDetailMaster(table.TableName, table.HasAtLeastOneChildForeignKey, project);
+
+    /// <summary> The same rule for a table known by name and by whether it has child tables (a child grid's link knows the child only that way). </summary>
+    public static bool IsDetailMaster(string tableName, bool hasChildTables, ProjectSettings project) =>
         project.DetailMasterTables is { Length: > 0 } listed
-            ? listed.Contains(table.TableName, StringComparer.OrdinalIgnoreCase)
-            : table.HasAtLeastOneChildForeignKey;
+            ? listed.Contains(tableName, StringComparer.OrdinalIgnoreCase)
+            : hasChildTables;
 
     /// <summary> Child tables a master-detail screen in <paramref name="screens"/> links to, but that have no screen themselves (the link would open nothing). </summary>
     public static List<string> ChildrenWithoutScreen(IReadOnlyList<TableModel> screens, ProjectSettings project) => screens

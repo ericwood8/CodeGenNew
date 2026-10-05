@@ -1,0 +1,123 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Validate_v1.tt
+    // Generates: src/validation/<table>.rs   (the template writes its own path with an @@@FILE marker; the output folder is the Rust crate's folder)
+    // The rules the schema states for a row, as a function: required text, the longest length, the values a CHECK list or an enum allows, an email, phone or URL shape by the column's name, and
+    // the range a CHECK or the column's name gives a number. The rules are ColumnRules (Core), the same list CS_Validator and the TypeScript validators follow. Written for a project with
+    // ApiValidation=true; the create and update handlers answer 400 with the problems in the ASP.NET validation-problem form. No crate is needed.
+    // Full notes: Docs/TemplateNotes/RS_Validate_v1.md
+    // ==========================================================================================
+
+    var t = RustTable.Of(Model, Project);
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+    string Str(string text) => "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+
+    string Number(RustField f, string value) => f.BaseType switch
+    {
+        "Decimal" => $"{value}.to_f64().unwrap_or(0.0)",
+        "f64" => $"*{value}",
+        _ => $"*{value} as f64"
+    };
+
+    bool anyRange = false;
+    var checks = new List<string[]>();
+    foreach (var f in t.Fields)
+    {
+        var rule = f.Column.RuleOf(Project);
+        if (rule is null)
+            continue;
+        string label = Labels.Words(f.Column.Name);
+        string property = f.Column.Name;
+        var lines = new List<string>();
+        if (f.BaseType == "String")
+        {
+            string v = f.IsOption ? "value" : $"self_{f.Name.Replace("r#", "")}";
+            string source = f.IsOption ? $"&row.{f.Name}" : $"&row.{f.Name}";
+            var body = new List<string>();
+            if (rule.Required && !f.IsOption)
+                body.Add($"if {v}.trim().is_empty() {{ problems.push(({Str(property)}, {Str(label + " must not be empty.")})); }}");
+            if (rule.MaxLength > 0)
+                body.Add($"if {v}.chars().count() > {rule.MaxLength} {{ problems.push(({Str(property)}, {Str(label + " must be " + rule.MaxLength + " characters or fewer.")})); }}");
+            if (rule.Choices is { Count: > 0 } choices)
+                body.Add($"if !{v}.is_empty() && ![{string.Join(", ", choices.Select(Str))}].contains(&{v}.as_str()) {{ problems.push(({Str(property)}, {Str(label + " must be one of: " + string.Join(", ", choices) + ".")})); }}");
+            if (rule.Shape != TextShape.None)
+            {
+                string function = rule.Shape switch { TextShape.Email => "looks_like_email", TextShape.Phone => "looks_like_phone", _ => "looks_like_url" };
+                string what = rule.Shape switch { TextShape.Email => "an email address", TextShape.Phone => "a phone number", _ => "a web address" };
+                body.Add($"if !{v}.is_empty() && !crate::support::{function}({v}) {{ problems.push(({Str(property)}, {Str(label + " must be " + what + ".")})); }}");
+            }
+            if (body.Count == 0)
+                continue;
+            if (f.IsOption)
+            {
+                lines.Add($"    if let Some(value) = &row.{f.Name} {{");
+                lines.AddRange(body.Select(b => "        " + b));
+                lines.Add("    }");
+            }
+            else
+            {
+                lines.Add($"    let {v} = &row.{f.Name};");
+                lines.AddRange(body.Select(b => "    " + b));
+            }
+        }
+        else if (rule.HasRange)
+        {
+            anyRange = true;
+            string n = f.IsOption ? "value" : "number";
+            var body = new List<string>();
+            string numeric = $"let n = {Number(f, f.IsOption ? "value" : "number")};";
+            if (rule.Min is { } min)
+                body.Add($"if {(rule.MinStrict ? "n <= " : "n < ")}{min.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}_f64 {{ problems.push(({Str(property)}, {Str(label + " must be " + (rule.MinStrict ? "greater than " : "at least ") + min.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ".")})); }}");
+            if (rule.Max is { } max)
+                body.Add($"if {(rule.MaxStrict ? "n >= " : "n > ")}{max.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}_f64 {{ problems.push(({Str(property)}, {Str(label + " must be " + (rule.MaxStrict ? "less than " : "at most ") + max.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ".")})); }}");
+            if (f.IsOption)
+            {
+                lines.Add($"    if let Some(value) = &row.{f.Name} {{");
+                lines.Add("        " + numeric);
+                lines.AddRange(body.Select(b => "        " + b));
+                lines.Add("    }");
+            }
+            else
+            {
+                lines.Add($"    let number = &row.{f.Name};");
+                lines.Add("    " + numeric);
+                lines.AddRange(body.Select(b => "    " + b));
+            }
+        }
+        if (lines.Count > 0)
+            checks.Add(lines.ToArray());
+    }
+
+    Line($"@@@FILE src/validation/{t.Module}.rs@@@");
+    Line($"use crate::models::{t.Module}::{t.Struct};");
+    Line("use crate::support::ApiError;");
+    if (anyRange && t.Fields.Any(f => f.BaseType == "Decimal" && f.Column.RuleOf(Project)?.HasRange == true))
+        Line("use rust_decimal::prelude::ToPrimitive;");
+    Line();
+    Line("/// Checks the row against what the schema says: required, length, allowed values, shape and range. An error carries every problem, by property name.");
+    if (checks.Count == 0)
+    {
+        Line($"pub fn validate(_row: &{t.Struct}) -> Result<(), ApiError> {{");
+        Line("    Ok(())");
+        Line("}");
+    }
+    else
+    {
+        Line($"pub fn validate(row: &{t.Struct}) -> Result<(), ApiError> {{");
+        Line("    let mut problems: Vec<(&'static str, &'static str)> = Vec::new();");
+        foreach (var c in checks)
+            foreach (string line in c)
+                Line(line);
+        Line("    if problems.is_empty() { Ok(()) } else { Err(ApiError::Validation(problems)) }");
+        Line("}");
+    }
+    Write(sb.ToString());
+#>

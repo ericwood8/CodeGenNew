@@ -3,6 +3,7 @@
 <#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
@@ -34,7 +35,14 @@
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
 
+    // With Dashboard=true the dashboard is the first screen; with DashboardStrip=true each table that has cards is hosted with them above its screen.
+    var stripTables = Project.DashboardStrip ? DashboardPlan.Build(Database, Project).StripTables.Where(name => screens.Any(t => t.TableName.Equals(name, StringComparison.OrdinalIgnoreCase))).ToHashSet(StringComparer.OrdinalIgnoreCase) : new HashSet<string>();
+
     Line("import { Routes } from '@angular/router';");
+    if (Project.Dashboard)
+        Line($"import {{ DashboardComponent }} from './{componentsFolder}/dashboard/dashboard.component';");
+    if (stripTables.Count > 0)
+        Line($"import {{ ScreenWithStripComponent }} from './{componentsFolder}/screen-with-strip/screen-with-strip.component';");
     foreach (var t in screens)
         Line($"import {{ {ClassName(t)} }} from './{componentsFolder}/{FileStem(t)}/{FileStem(t)}.component';");
     Line();
@@ -44,13 +52,18 @@
     if (missingChildren.Count > 0)
         Line("// WARNING: these child tables are linked from a master-detail screen but have no screen of their own: " + string.Join(", ", missingChildren) + ".");
     Line("export const screens = [");
+    if (Project.Dashboard)
+        Line("  { path: 'dashboard', label: 'Dashboard', component: DashboardComponent },");
     foreach (var t in screens)
-        Line($"  {{ path: '{ScreenNames.Route(t.TableName)}', label: '{ScreenNames.Label(t.TableName)}', component: {ClassName(t)} }},");
+        Line($"  {{ path: '{ScreenNames.Route(t.TableName)}', label: '{ScreenNames.Label(t.TableName)}', component: {ClassName(t)}" + (stripTables.Contains(t.TableName) ? $", strip: '{t.TableName}'" : "") + " },");
     Line("];");
     Line();
     Line("export const routes: Routes = [");
     Line("  { path: '', pathMatch: 'full', redirectTo: screens[0].path },");
-    Line("  ...screens.map((s) => ({ path: s.path, component: s.component })),");
+    if (stripTables.Count > 0)
+        Line("  ...screens.map((s) => (s.strip ? { path: s.path, component: ScreenWithStripComponent, data: { table: s.strip, screen: s.component } } : { path: s.path, component: s.component })),");
+    else
+        Line("  ...screens.map((s) => ({ path: s.path, component: s.component })),");
     Line("];");
     Write(sb.ToString());
 #>

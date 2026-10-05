@@ -1,0 +1,356 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_EssentialMain_v1.tt
+    // Generates: src/lib.rs, src/main.rs and src/support.rs   (no table, no database: an essentials group; the output folder is the Rust crate's own folder)
+    // lib.rs is the application as a library: the router (routes::router, RS_Mod) over a pool, CORS for the front ends' dev servers, openapi.yaml when the project says ApiDocs=true, optionally
+    // the built front end (FRONTEND_DIR), and run(), which reads the environment (a .env file is optional) and listens on PORT (default RustPort). main.rs only calls run(), so a desktop shell
+    // can embed the same router. support.rs holds what the generated files share: the pool type of the project's database, the connection, the error type and its HTTP answers (404, 400 with
+    // the text or the ASP.NET validation-problem form, 500 with nothing from the database in the body), the JSON forms of dates and decimals the other stacks use, the LIKE escape and the
+    // shape checks of the validators.
+    // Settings: DatabaseProvider, DatabaseServer, DatabaseName, DatabaseUser, RustPort, ApiDocs, ApiValidation, Stacks.
+    // ==========================================================================================
+    var dialect = Project.DatabaseDialect;
+    string user = Project.DatabaseUser ?? "";
+    var stacks = Project.Stacks.Where(s => s.Equals("React", StringComparison.OrdinalIgnoreCase) || s.Equals("Angular", StringComparison.OrdinalIgnoreCase)).ToList();
+    if (stacks.Count == 0) stacks = ["React"];
+    string origins = string.Join(", ", stacks.Select(s => $"HeaderValue::from_static(\"http://localhost:{Project.DevPort(s)}\")"));
+    string poolType = dialect switch { SqlDialect.PostgreSql => "PgPool", SqlDialect.MySql => "MySqlPool", _ => "SqlitePool" };
+    string dbType = dialect switch { SqlDialect.PostgreSql => "Postgres", SqlDialect.MySql => "MySql", _ => "Sqlite" };
+#>
+@@@FILE src/lib.rs@@@
+// The API as a library, so the same router runs from main.rs and, embedded, from a desktop shell.
+mod models;
+mod repos;
+mod routes;
+mod support;
+<#
+    if (Project.ApiValidation)
+    {
+#>
+mod validation;
+<#
+    }
+#>
+
+use std::path::PathBuf;
+
+use axum::{Router, http::HeaderValue};
+use tower_http::{
+    cors::{Any, CorsLayer},
+    services::{ServeDir, ServeFile},
+};
+
+pub use support::Pool;
+
+/// The whole application over a connected pool: the generated API, openapi.yaml when the project says ApiDocs=true and, when a folder is given, the built front end
+/// (index.html for every other path, so a route of the front end can be opened directly).
+pub fn app(pool: Pool, frontend: Option<PathBuf>) -> Router {
+    let router = routes::router();
+<#
+    if (Project.ApiDocs)
+    {
+#>
+    // openapi.yaml (API_OpenApi) is compiled into the program.
+    let router = router.route(
+        "/openapi.yaml",
+        axum::routing::get(|| async { ([(axum::http::header::CONTENT_TYPE, "application/yaml")], include_str!("../openapi.yaml")) }),
+    );
+<#
+    }
+#>
+    let mut app = router.with_state(pool);
+    if let Some(folder) = frontend {
+        let index = folder.join("index.html");
+        app = app.fallback_service(ServeDir::new(folder).fallback(ServeFile::new(index)));
+    }
+
+    // The dev servers of the front ends call this API from another origin.
+    let cors = CorsLayer::new().allow_origin([<#= origins #>]).allow_methods(Any).allow_headers(Any);
+    app.layer(cors)
+}
+
+/// Connects to the database (from the environment, see support.rs) and serves on the listener until the process ends.
+pub async fn serve(listener: tokio::net::TcpListener, frontend: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+    let pool = support::connect().await?;
+    axum::serve(listener, app(pool, frontend)).await?;
+    Ok(())
+}
+
+/// What main does: read the optional .env file, listen on PORT (default <#= Project.RustPort #>) and serve. FRONTEND_DIR names a built front end to serve beside the API.
+pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    // A .env file next to Cargo.toml is optional; the process environment wins over it.
+    dotenvy::dotenv().ok();
+    let port = std::env::var("PORT").unwrap_or_else(|_| "<#= Project.RustPort #>".into());
+    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
+    println!("listening on http://127.0.0.1:{port}");
+    serve(listener, std::env::var_os("FRONTEND_DIR").map(PathBuf::from)).await
+}
+@@@FILE src/main.rs@@@
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    <#= Project.RustCrateName #>::run().await
+}
+@@@FILE src/support.rs@@@
+// What the generated models, repositories and routes share. Written by RS_EssentialMain; the files that depend on the tables are regenerated, this one is yours to change.
+// Some helpers serve only tables with a certain column (a date, an email), so a project without one leaves them unused.
+#![allow(dead_code)]
+
+use axum::{
+    Json,
+    http::{HeaderValue, StatusCode, header},
+    response::{IntoResponse, Response},
+};
+use serde::Serialize;
+use sqlx::error::ErrorKind;
+
+/// The sqlx database and pool of this project (<#= dbType #>).
+pub type Db = sqlx::<#= dbType #>;
+pub type Pool = sqlx::<#= poolType #>;
+
+fn env_or(name: &str, default: &str) -> String {
+    std::env::var(name).unwrap_or_else(|_| default.to_string())
+}
+
+<#
+    if (dialect == SqlDialect.PostgreSql)
+    {
+#>
+/// Connects to PostgreSQL: DATABASE_URL when set, else PGHOST, PGPORT, PGUSER and PGDATABASE (defaults below), and PGPASSWORD, which is never written down.
+pub async fn connect() -> Result<Pool, sqlx::Error> {
+    use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+    let mut options: PgConnectOptions = match std::env::var("DATABASE_URL") {
+        Ok(url) => url.parse()?,
+        Err(_) => PgConnectOptions::new_without_pgpass()
+            .host(&env_or("PGHOST", "<#= Project.DatabaseServer #>"))
+            .port(env_or("PGPORT", "5432").parse().unwrap_or(5432))
+            .username(&env_or("PGUSER", "<#= user #>"))
+            .database(&env_or("PGDATABASE", "<#= Project.DatabaseName #>")),
+    };
+    if let Ok(password) = std::env::var("PGPASSWORD") {
+        options = options.password(&password);
+    }
+    PgPoolOptions::new().max_connections(10).connect_with(options).await
+}
+<#
+    }
+    else if (dialect == SqlDialect.MySql)
+    {
+#>
+/// Connects to MySQL: DATABASE_URL when set, else MYSQL_HOST, MYSQL_TCP_PORT, MYSQL_USER and MYSQL_DATABASE (defaults below), and MYSQL_PWD, which is never written down.
+pub async fn connect() -> Result<Pool, sqlx::Error> {
+    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+    let mut options: MySqlConnectOptions = match std::env::var("DATABASE_URL") {
+        Ok(url) => url.parse()?,
+        Err(_) => MySqlConnectOptions::new()
+            .host(&env_or("MYSQL_HOST", "<#= Project.DatabaseServer #>"))
+            .port(env_or("MYSQL_TCP_PORT", "3306").parse().unwrap_or(3306))
+            .username(&env_or("MYSQL_USER", "<#= user #>"))
+            .database(&env_or("MYSQL_DATABASE", "<#= Project.DatabaseName #>")),
+    };
+    if let Ok(password) = std::env::var("MYSQL_PWD") {
+        options = options.password(&password);
+    }
+    MySqlPoolOptions::new().max_connections(10).connect_with(options).await
+}
+<#
+    }
+    else
+    {
+#>
+/// Opens the SQLite file: DATABASE_URL (sqlite:path) when set, else DATABASE_FILE (default below, relative to the folder the API runs from). A missing file is an error, not a new empty database.
+pub async fn connect() -> Result<Pool, sqlx::Error> {
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    let options: SqliteConnectOptions = match std::env::var("DATABASE_URL") {
+        Ok(url) => url.parse()?,
+        Err(_) => SqliteConnectOptions::new().filename(env_or("DATABASE_FILE", "<#= Project.DatabaseName #>")).create_if_missing(false),
+    };
+    SqlitePoolOptions::new().max_connections(5).connect_with(options).await
+}
+<#
+    }
+#>
+
+/// A JSON request body that answers 400, as ASP.NET does for a body it cannot read (axum's own Json answers 422 for a body of the wrong shape).
+#[derive(axum::extract::FromRequest)]
+#[from_request(via(axum::Json), rejection(ApiError))]
+pub struct ApiJson<T>(pub T);
+
+impl From<axum::extract::rejection::JsonRejection> for ApiError {
+    fn from(rejection: axum::extract::rejection::JsonRejection) -> Self {
+        ApiError::BadRequest(rejection.body_text())
+    }
+}
+
+/// What a handler can fail with and the HTTP answer of each: the contract of the other stacks (404 for no such row, 400 for a bad row, 500 for anything else).
+pub enum ApiError {
+    NotFound,
+    BadRequest(String),
+    /// Problems by property name: answered in the form ASP.NET's validation problem has.
+    Validation(Vec<(&'static str, &'static str)>),
+    Database(sqlx::Error),
+}
+
+pub type ApiResult<T> = Result<T, ApiError>;
+
+impl From<sqlx::Error> for ApiError {
+    fn from(error: sqlx::Error) -> Self {
+        if let sqlx::Error::Database(database) = &error {
+            match database.kind() {
+                ErrorKind::ForeignKeyViolation => return ApiError::BadRequest("The row is in use, or refers to a row that does not exist.".into()),
+                ErrorKind::UniqueViolation | ErrorKind::CheckViolation | ErrorKind::NotNullViolation => return ApiError::BadRequest(database.message().to_string()),
+                _ => {}
+            }
+        }
+        ApiError::Database(error)
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        match self {
+            ApiError::NotFound => StatusCode::NOT_FOUND.into_response(),
+            ApiError::BadRequest(message) => (StatusCode::BAD_REQUEST, message).into_response(),
+            ApiError::Validation(problems) => {
+                let mut errors = serde_json::Map::new();
+                for (property, message) in problems {
+                    errors.entry(property).or_insert_with(|| serde_json::json!([])).as_array_mut().expect("an array").push(serde_json::json!(message));
+                }
+                let body = serde_json::json!({
+                    "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
+                    "title": "One or more validation errors occurred.",
+                    "status": 400,
+                    "errors": errors,
+                });
+                let mut response = (StatusCode::BAD_REQUEST, Json(body)).into_response();
+                response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("application/problem+json"));
+                response
+            }
+            ApiError::Database(error) => {
+                eprintln!("database error: {error}");
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
+        }
+    }
+}
+
+/// 201 with the new row and a Location header.
+pub fn created<T: Serialize>(location: String, value: T) -> Response {
+    let mut response = (StatusCode::CREATED, Json(value)).into_response();
+    if let Ok(location) = HeaderValue::from_str(&location) {
+        response.headers_mut().insert(header::LOCATION, location);
+    }
+    response
+}
+
+/// A filter value that is present and not just spaces.
+pub fn non_blank(value: &Option<String>) -> Option<&str> {
+    value.as_deref().map(str::trim).filter(|v| !v.is_empty())
+}
+
+/// Puts a backslash before % and _ (and before a backslash), so a search for 50% matches those three characters and not "50 followed by anything".
+pub fn escape_like(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+}
+
+// The shapes a column's name can say (RS_Validate): deliberately loose, they catch a typo and not an unusual address.
+pub fn looks_like_email(value: &str) -> bool {
+    let mut parts = value.splitn(2, '@');
+    match (parts.next(), parts.next()) {
+        (Some(local), Some(domain)) => !local.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.') && !value.contains(' '),
+        _ => false,
+    }
+}
+
+pub fn looks_like_phone(value: &str) -> bool {
+    value.chars().any(|c| c.is_ascii_digit()) && value.chars().all(|c| c.is_ascii_digit() || " +-().,xX#/".contains(c))
+}
+
+pub fn looks_like_url(value: &str) -> bool {
+    (value.starts_with("http://") || value.starts_with("https://")) && value.len() > 8 && !value.contains(' ')
+}
+
+// ASP.NET writes a date as 2026-10-04T00:00:00 and accepts a bare 2026-10-04 (what a date input sends); these modules do the same for chrono's types.
+pub mod json_date_time {
+    use chrono::{NaiveDate, NaiveDateTime};
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn parse(text: &str) -> Option<NaiveDateTime> {
+        let text = text.trim();
+        for format in ["%Y-%m-%dT%H:%M:%S%.f", "%Y-%m-%d %H:%M:%S%.f"] {
+            if let Ok(value) = NaiveDateTime::parse_from_str(text, format) {
+                return Some(value);
+            }
+        }
+        if let Ok(value) = chrono::DateTime::parse_from_rfc3339(text) {
+            return Some(value.naive_utc());
+        }
+        NaiveDate::parse_from_str(text, "%Y-%m-%d").ok().and_then(|d| d.and_hms_opt(0, 0, 0))
+    }
+
+    pub fn serialize<S: Serializer>(value: &NaiveDateTime, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&value.format("%Y-%m-%dT%H:%M:%S%.f").to_string())
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<NaiveDateTime, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        parse(&text).ok_or_else(|| serde::de::Error::custom(format!("not a date: {text}")))
+    }
+}
+
+pub mod json_date_time_option {
+    use chrono::NaiveDateTime;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(value: &Option<NaiveDateTime>, serializer: S) -> Result<S::Ok, S::Error> {
+        match value {
+            Some(value) => super::json_date_time::serialize(value, serializer),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<NaiveDateTime>, D::Error> {
+        match Option::<String>::deserialize(deserializer)? {
+            None => Ok(None),
+            Some(text) if text.trim().is_empty() => Ok(None),
+            Some(text) => super::json_date_time::parse(&text).map(Some).ok_or_else(|| serde::de::Error::custom(format!("not a date: {text}"))),
+        }
+    }
+}
+
+pub mod json_date {
+    use chrono::NaiveDate;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(value: &NaiveDate, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&value.format("%Y-%m-%dT00:00:00").to_string())
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<NaiveDate, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        super::json_date_time::parse(&text).map(|d| d.date()).ok_or_else(|| serde::de::Error::custom(format!("not a date: {text}")))
+    }
+}
+
+pub mod json_date_option {
+    use chrono::NaiveDate;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(value: &Option<NaiveDate>, serializer: S) -> Result<S::Ok, S::Error> {
+        match value {
+            Some(value) => super::json_date::serialize(value, serializer),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<NaiveDate>, D::Error> {
+        match Option::<String>::deserialize(deserializer)? {
+            None => Ok(None),
+            Some(text) if text.trim().is_empty() => Ok(None),
+            Some(text) => super::json_date_time::parse(&text).map(|d| Some(d.date())).ok_or_else(|| serde::de::Error::custom(format!("not a date: {text}"))),
+        }
+    }
+}

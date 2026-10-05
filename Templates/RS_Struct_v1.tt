@@ -1,0 +1,59 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Struct_v1.tt
+    // Generates: src/models/<table>.rs   (the template writes its own path with an @@@FILE marker; the output folder is the Rust crate's folder)
+    // The Rust struct of a table: one field per column, named in snake_case, sent and read as the camel-cased JSON the other stacks use (so the same front ends work), and read from the
+    // database by sqlx under the column's real name. A nullable column is an Option, a decimal is a JSON number, a date accepts the date-only and the full ISO text a form sends.
+    // A column with no Rust mapping (binary, xml, a type CodeGenNew cannot map) is left out and named in a comment.
+    // Full notes: Docs/TemplateNotes/RS_Struct_v1.md
+    // ==========================================================================================
+
+    var table = RustTable.Of(Model, Project);
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+
+    var types = table.Fields.Select(f => f.BaseType).ToHashSet();
+    var chrono = new[] { "NaiveDate", "NaiveDateTime", "NaiveTime", "DateTime", "Utc" }.Where(t => types.Any(x => x == t || x.StartsWith(t + "<", StringComparison.Ordinal) || (t == "Utc" && x.Contains("Utc")))).ToList();
+
+    Line($"@@@FILE src/models/{table.Module}.rs@@@");
+    if (chrono.Count > 0)
+        Line($"use chrono::{{{string.Join(", ", chrono)}}};");
+    if (types.Contains("Decimal"))
+        Line("use rust_decimal::Decimal;");
+    Line("use serde::{Deserialize, Serialize};");
+    Line("use sqlx::FromRow;");
+    if (types.Contains("Uuid"))
+        Line("use uuid::Uuid;");
+    Line();
+    Line($"/// A row of {Model.DbTableName}. The JSON names are what the other stacks send, the sqlx names are the database's own.");
+    foreach (var c in table.Skipped)
+        Line($"/// Left out: the column {c.DbName} has the type {c.SqlTypeDeclaration}, which has no Rust mapping here.");
+    Line("#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]");
+    Line($"pub struct {table.Struct} {{");
+    foreach (var f in table.Fields)
+    {
+        Line($"    #[serde(rename = \"{f.Json}\")]");
+        if (f.IsOption || f.Column.IsIdentity)
+            Line("    #[serde(default)]");
+        if (f.SerdeWith is not null)
+            Line($"    #[serde(with = \"{f.SerdeWith}\")]");
+        Line($"    #[sqlx(rename = \"{f.Column.DbName}\")]");
+        Line($"    pub {f.Name}: {f.Type},");
+    }
+    foreach (var n in table.Navigations)
+    {
+        Line($"    /// The parent row: always null here, the front ends look a parent up by its key.");
+        Line($"    #[serde(rename = \"{n.Json}\", default, skip_deserializing)]");
+        Line("    #[sqlx(skip)]");
+        Line($"    pub {n.Name}: Option<serde_json::Value>,");
+    }
+    Line("}");
+    Write(sb.ToString());
+#>

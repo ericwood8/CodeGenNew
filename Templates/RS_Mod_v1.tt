@@ -1,0 +1,46 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Mod_v1.tt
+    // Generates: src/models/mod.rs, src/repos/mod.rs, src/routes/mod.rs and, with ApiValidation=true, src/validation/mod.rs   (whole-database; the output folder is the Rust crate's folder)
+    // The module lists of the Rust crate and the router that merges the router of every table, so main.rs lists nothing: a new table is a regenerate. The tables are those that have an API.
+    // Full notes: Docs/TemplateNotes/RS_Mod_v1.md
+    // ==========================================================================================
+
+    var modules = Database.ApiTables(Project).Select(t => RustNames.Snake(t.TableName)).OrderBy(m => m, StringComparer.Ordinal).ToList();
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+
+    void ModuleList(string folder)
+    {
+        Line($"@@@FILE src/{folder}/mod.rs@@@");
+        foreach (string m in modules)
+            Line($"pub mod {m};");
+    }
+
+    ModuleList("models");
+    ModuleList("repos");
+    if (Project.ApiValidation)
+        ModuleList("validation");
+
+    Line("@@@FILE src/routes/mod.rs@@@");
+    Line("use axum::Router;");
+    Line("use crate::support::Pool;");
+    Line();
+    foreach (string m in modules)
+        Line($"pub mod {m};");
+    Line();
+    Line("/// The routes of every table, merged.");
+    Line("pub fn router() -> Router<Pool> {");
+    Line("    Router::new()");
+    foreach (string m in modules)
+        Line($"        .merge({m}::router())");
+    Line("}");
+    Write(sb.ToString());
+#>

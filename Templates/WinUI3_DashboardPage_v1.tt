@@ -1,0 +1,304 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, folders).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string viewNamespace = "MyApp.Desktop.Views";
+    string contextType = "MyAppContext";
+    string contextNamespace = "MyApp.Common.Data";
+    string repositoryNamespace = "MyApp.Common.Repositories";
+    string[] usings = { };
+    string viewsFolder = "Views";   // under the WinUI3 project root (where -o points)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    viewNamespace = Project.ViewNamespace ?? viewNamespace;
+    contextType = Project.ContextName ?? contextType;
+    contextNamespace = Project.ContextNamespace ?? contextNamespace;
+    repositoryNamespace = Project.RepoNamespace ?? repositoryNamespace;
+    usings = Project.Usings ?? usings;
+    viewsFolder = Project.ViewsFolder ?? viewsFolder;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // WinUI3_DashboardPage_v1.tt
+    // Generates: Views/DashboardWidgetViews.cs, Views/DashboardPage.cs and, with DashboardStrip=true, Views/DashboardStrip.cs
+    // The dashboard page of the desktop app, built in code from what DashboardData (CS_Dashboard) returns, so one file draws every kind of widget: cards, bar lists, a sparkline and a list of
+    // recent rows, with no chart package. Every chart has its numbers beside it as text. The page and the strip read the database through a context of their own, so a page still loading
+    // when the person moves on never shares a context with the next screen. WinUI3_Screens adds the menu entry and, for the strip, puts it above each table's list page.
+    // Full notes: Docs/TemplateNotes/WinUI3_DashboardPage_v1.md
+    // ==========================================================================================
+
+    bool strip = Project.DashboardStrip;
+    string usingLines = string.Concat(usings.Select(u => $"using {u};\n"));
+#>
+@@@FILE <#= viewsFolder #>/DashboardWidgetViews.cs@@@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using <#= repositoryNamespace #>;
+using Microsoft.UI;
+using Microsoft.UI.Text;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
+using Windows.UI;
+
+namespace <#= viewNamespace #>;
+
+// Draws one widget of DashboardData as plain controls. The numbers are always text: a bar or a line is an extra, never the only way to read a value.
+internal static class DashboardWidgetViews
+{
+    private static readonly System.Globalization.CultureInfo Culture = System.Globalization.CultureInfo.CurrentCulture;
+
+    public static bool IsCard(DashboardWidgetData widget) => widget.Kind is "count" or "childCount" or "money" or "ratio" or "status";
+
+    private static string Format(double? value) => value is null ? "" : value.Value.ToString("#,##0.##", Culture);
+
+    private static Brush ThemeBrush(string key, Color fallback) =>
+        Application.Current.Resources.TryGetValue(key, out var found) && found is Brush brush ? brush : new SolidColorBrush(fallback);
+
+    public static UIElement Build(DashboardWidgetData widget, Action<string>? navigate)
+    {
+        var body = new StackPanel { Spacing = 6 };
+        body.Children.Add(TitleOf(widget, navigate));
+        switch (widget.Kind)
+        {
+            case "topBy":
+            case "breakdown":
+                AddBars(body, widget);
+                break;
+            case "trend":
+                AddTrend(body, widget);
+                break;
+            case "recent":
+                AddRecent(body, widget);
+                break;
+            default:
+                AddCard(body, widget);
+                break;
+        }
+
+        return new Border
+        {
+            Child = body,
+            Padding = new Thickness(12),
+            CornerRadius = new CornerRadius(4),
+            BorderThickness = new Thickness(1),
+            Background = ThemeBrush("SolidBackgroundFillColorSecondaryBrush", Color.FromArgb(0x20, 0x80, 0x80, 0x80)),
+            BorderBrush = ThemeBrush("ControlStrokeColorSecondaryBrush", Color.FromArgb(0x40, 0x80, 0x80, 0x80)),
+            MinWidth = 260,
+            MaxWidth = 420
+        };
+    }
+
+    private static UIElement TitleOf(DashboardWidgetData widget, Action<string>? navigate)
+    {
+        // WinUI3_Screens tags a screen with the table's name, so the widget's table is where a click goes.
+        if (navigate is null || string.IsNullOrEmpty(widget.Route))
+            return new TextBlock { Text = widget.Title, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap };
+
+        var link = new HyperlinkButton { Content = widget.Title, Padding = new Thickness(0), FontWeight = FontWeights.SemiBold };
+        link.Click += (_, _) => navigate(widget.Table);
+        return link;
+    }
+
+    private static void AddCard(StackPanel body, DashboardWidgetData widget)
+    {
+        var wrap = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 20 };
+        foreach (var point in widget.Points)
+        {
+            var one = new StackPanel();
+            one.Children.Add(new TextBlock { Text = point.Label, Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"] });
+            one.Children.Add(new TextBlock { Text = Format(point.Value), FontSize = 26, FontWeight = FontWeights.Bold });
+            wrap.Children.Add(one);
+        }
+
+        body.Children.Add(wrap);
+    }
+
+    private static void AddBars(StackPanel body, DashboardWidgetData widget)
+    {
+        if (widget.Points.Count == 0)
+        {
+            body.Children.Add(new TextBlock { Text = "No data." });
+            return;
+        }
+
+        double largest = Math.Max(widget.Points.Max(p => p.Value ?? 0), 1);
+        foreach (var point in widget.Points)
+        {
+            double share = Math.Clamp((point.Value ?? 0) / largest, 0, 1);
+            var row = new Grid { ColumnSpacing = 8 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.Children.Add(new TextBlock { Text = point.Label, TextTrimming = TextTrimming.CharacterEllipsis });
+
+            var track = new Grid { Height = 10, VerticalAlignment = VerticalAlignment.Center };
+            track.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(share, 0.001), GridUnitType.Star) });
+            track.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(1 - share, 0.001), GridUnitType.Star) });
+            var fill = new Border { CornerRadius = new CornerRadius(5), Background = ThemeBrush("AccentFillColorDefaultBrush", Colors.SteelBlue) };
+            track.Children.Add(fill);
+            Grid.SetColumn(track, 1);
+            row.Children.Add(track);
+
+            var value = new TextBlock { Text = Format(point.Value), FontWeight = FontWeights.SemiBold };
+            Grid.SetColumn(value, 2);
+            row.Children.Add(value);
+            body.Children.Add(row);
+        }
+    }
+
+    private static void AddTrend(StackPanel body, DashboardWidgetData widget)
+    {
+        if (widget.Points.Count == 0)
+        {
+            body.Children.Add(new TextBlock { Text = "No data." });
+            return;
+        }
+
+        var values = widget.Points.Select(p => p.Value ?? 0).ToList();
+        double max = Math.Max(values.Max(), 0), min = Math.Min(values.Min(), 0), span = max - min == 0 ? 1 : max - min;
+        double step = values.Count > 1 ? 200.0 / (values.Count - 1) : 0;
+        var line = new Polyline { Stroke = ThemeBrush("TextFillColorPrimaryBrush", Colors.Gray), StrokeThickness = 2 };
+        for (int i = 0; i < values.Count; i++)
+            line.Points.Add(new Windows.Foundation.Point(i * step, 46 - ((values[i] - min) / span) * 44));
+        body.Children.Add(new Canvas { Width = 200, Height = 48, Children = { line } });
+
+        var numbers = new Expander { Header = "Show the numbers", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var list = new StackPanel();
+        foreach (var point in widget.Points)
+            list.Children.Add(new TextBlock { Text = $"{point.Label}   {Format(point.Value)}" });
+        numbers.Content = list;
+        body.Children.Add(numbers);
+    }
+
+    private static void AddRecent(StackPanel body, DashboardWidgetData widget)
+    {
+        if (widget.Rows.Count == 0)
+            body.Children.Add(new TextBlock { Text = "No rows." });
+        foreach (var row in widget.Rows)
+        {
+            var line = new Grid { ColumnSpacing = 12 };
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            line.Children.Add(new TextBlock { Text = row.Label, TextTrimming = TextTrimming.CharacterEllipsis });
+            var detail = new TextBlock { Text = row.Detail };
+            Grid.SetColumn(detail, 1);
+            line.Children.Add(detail);
+            body.Children.Add(line);
+        }
+    }
+}
+@@@FILE <#= viewsFolder #>/DashboardPage.cs@@@
+using System;
+using System.Linq;
+using <#= contextNamespace #>;
+using <#= repositoryNamespace #>;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+<#= usingLines #>
+namespace <#= viewNamespace #>;
+
+// The dashboard: cards first, then the lists and charts, each a widget of DashboardData. Refresh reads the database again.
+public sealed class DashboardPage : Page
+{
+    private readonly Action<string>? _navigate;
+    private readonly StackPanel _cards = new() { Orientation = Orientation.Horizontal, Spacing = 12 };
+    private readonly ContentControl _others = new();
+    private readonly TextBlock _message = new();
+
+    public DashboardPage(Action<string>? navigate = null)
+    {
+        _navigate = navigate;
+        var refresh = new Button { Content = "Refresh" };
+        refresh.Click += async (_, _) => await LoadAsync();
+
+        var cardScroller = new ScrollViewer { Content = _cards, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalScrollMode = ScrollMode.Enabled };
+        var panel = new StackPanel { Spacing = 12, Padding = new Thickness(16) };
+        panel.Children.Add(new TextBlock { Text = "Dashboard", Style = (Style)Application.Current.Resources["TitleTextBlockStyle"] });
+        panel.Children.Add(refresh);
+        panel.Children.Add(_message);
+        panel.Children.Add(cardScroller);
+        panel.Children.Add(_others);
+        Content = new ScrollViewer { Content = panel };
+
+        Loaded += async (_, _) => await LoadAsync();
+    }
+
+    private async System.Threading.Tasks.Task LoadAsync()
+    {
+        _message.Text = "";
+        try
+        {
+            using var context = new <#= contextType #>();
+            var result = await DashboardData.LoadAsync(context);
+            _cards.Children.Clear();
+            foreach (var widget in result.Widgets.Where(DashboardWidgetViews.IsCard))
+                _cards.Children.Add(DashboardWidgetViews.Build(widget, _navigate));
+
+            var wrap = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = 440 };
+            foreach (var widget in result.Widgets.Where(w => !DashboardWidgetViews.IsCard(w)))
+                wrap.Children.Add(DashboardWidgetViews.Build(widget, _navigate));
+            _others.Content = wrap;
+            if (result.Widgets.Count == 0)
+                _message.Text = "The schema suggests nothing to show.";
+        }
+        catch (Exception ex)
+        {
+            _message.Text = "Failed to load the dashboard: " + ex.Message;
+        }
+    }
+}
+<#
+    if (strip)
+    {
+#>
+@@@FILE <#= viewsFolder #>/DashboardStrip.cs@@@
+using System;
+using System.Threading.Tasks;
+using <#= contextNamespace #>;
+using <#= repositoryNamespace #>;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+<#= usingLines #>
+namespace <#= viewNamespace #>;
+
+// The two or three cards of one table, above its list page. A failure shows nothing: the list below is what the person came for.
+public sealed class DashboardStrip : UserControl
+{
+    private readonly string _table;
+    private readonly StackPanel _cards = new() { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new Thickness(16, 8, 16, 0) };
+
+    public DashboardStrip(string table)
+    {
+        _table = table;
+        Content = _cards;
+        Loaded += async (_, _) => await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            using var context = new <#= contextType #>();
+            var result = await DashboardData.LoadAsync(context, _table);
+            _cards.Children.Clear();
+            foreach (var widget in result.Widgets)
+                _cards.Children.Add(DashboardWidgetViews.Build(widget, null));
+        }
+        catch (Exception)
+        {
+            _cards.Children.Clear();
+        }
+    }
+}
+<#
+    }
+#>

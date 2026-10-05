@@ -1,0 +1,57 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_EssentialCargo_v1.tt
+    // Generates: Cargo.toml, .env.example and .gitignore   (no table, no database: an essentials group; the output folder is the Rust crate's own folder)
+    // The crate: the package name (RustCrateName), the dependencies pinned to the versions this release was built and checked with (all in this one place; a bump is a template change with a
+    // regenerate and a compile), and the sqlx features of the project's DatabaseProvider. .env.example names the variables the API reads; no password is written, a real .env is ignored by git.
+    // Settings: ProjectName, RustCrateName, DatabaseProvider, DatabaseServer, DatabaseName, DatabaseUser, RustPort.
+    // ==========================================================================================
+    var dialect = Project.DatabaseDialect;
+    string driver = dialect switch { SqlDialect.PostgreSql => "postgres", SqlDialect.MySql => "mysql", _ => "sqlite" };
+    string sqlxFeatures = $"\"runtime-tokio\", \"{driver}\", \"chrono\", \"uuid\", \"macros\"" + (dialect == SqlDialect.Sqlite ? "" : ", \"rust_decimal\"");
+    string user = Project.DatabaseUser ?? "";
+    string connection = dialect switch
+    {
+        SqlDialect.PostgreSql => $"PGHOST={Project.DatabaseServer}\nPGPORT=5432\nPGUSER={user}\nPGDATABASE={Project.DatabaseName}\n# PGPASSWORD is read from the environment: set it in your own shell, never in this file",
+        SqlDialect.MySql => $"MYSQL_HOST={Project.DatabaseServer}\nMYSQL_TCP_PORT=3306\nMYSQL_USER={user}\nMYSQL_DATABASE={Project.DatabaseName}\n# MYSQL_PWD is read from the environment: set it in your own shell, never in this file",
+        _ => $"# the SQLite file, relative to the folder the API runs from\nDATABASE_FILE={Project.DatabaseName}"
+    };
+#>
+@@@FILE Cargo.toml@@@
+[package]
+name = "<#= Project.RustCrateName #>"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { version = "0.8.9", features = ["macros"] }
+chrono = { version = "0.4.45", features = ["serde"] }
+dotenvy = "0.15.7"
+<#
+    if (dialect != SqlDialect.Sqlite)
+    {
+#>
+rust_decimal = { version = "1.43.0", features = ["serde-with-float"] }
+<#
+    }
+#>
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sqlx = { version = "0.9.0", default-features = false, features = [<#= sqlxFeatures #>] }
+tokio = { version = "1.53.2", features = ["macros", "net", "rt-multi-thread"] }
+tower-http = { version = "0.7.1", features = ["cors", "fs"] }
+uuid = { version = "1", features = ["serde"] }
+@@@FILE .env.example@@@
+# Copy to .env (git ignores it) to run the API with these values; the process environment wins over this file.
+<#= connection #>
+PORT=<#= Project.RustPort #>
+# DATABASE_URL, when set, replaces the variables above (it must not hold a password for PostgreSQL or MySQL).
+@@@FILE .gitignore@@@
+/target
+/desktop/target
+/desktop/gen
+.env

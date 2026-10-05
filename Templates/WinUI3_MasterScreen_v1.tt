@@ -19,9 +19,6 @@
     string[] usings = { };
     // Folders under the WinUI3 project root (where -o points) the generated files go in.
     string viewsFolder = "Views";
-    // Tables whose Add/Edit dialog is a <Table>DetailMasterDialog (WinUI3_DetailMasterScreen.tt) rather than a plain
-    // <Table>DetailDialog - a list screen or a parent's child grid opens the one that exists.
-    string[] detailMasterTables = { };
     string viewModelsFolder = "ViewModels";
     // A foreign key to one of these is shown as a plain id number, not resolved to the parent's name -
     // must match WinUI3_DetailScreen.tt's own noLookupParents so the grid and the form agree on which
@@ -37,7 +34,6 @@
     contextType = Project.ContextName ?? contextType;
     contextNamespace = Project.ContextNamespace ?? contextNamespace;
     usings = Project.Usings ?? usings;
-    detailMasterTables = Project.DetailMasterTables ?? detailMasterTables;
     viewsFolder = Project.ViewsFolder ?? viewsFolder;
     viewModelsFolder = Project.ViewModelsFolder ?? viewModelsFolder;
     // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
@@ -83,8 +79,8 @@
     {
         string table = Model.TableName;
         string title = Words(table);
-        // The dialog Add/Edit opens: the table's Detail-Master dialog when it has one (detailMasterTables), else its plain Detail dialog.
-        string editDialog = table + (detailMasterTables.Contains(table, StringComparer.OrdinalIgnoreCase) ? "DetailMasterDialog" : "DetailDialog");
+        // The dialog Add/Edit opens: the table's Detail-Master dialog when it has one (DatabaseModel.IsDetailMaster, the rule WinUI3_DetailMasterScreen's plan uses), else its plain Detail dialog.
+        string editDialog = table + (DatabaseModel.IsDetailMaster(Model, Project) ? "DetailMasterDialog" : "DetailDialog");
         string keyProp = keyColumn.Name;
         int pageSize = 20;
         // One TextBox + one ViewModel filter property per searchable column, in the same order as

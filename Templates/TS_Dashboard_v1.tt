@@ -1,0 +1,342 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (folders).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string servicesFolder = Project.ServicesFolder;       // under the Angular app's src\app folder (where -o points)
+    string componentsFolder = Project.ComponentsFolder;
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // TS_Dashboard_v1.tt
+    // Generates: services/dashboard.service.ts and the components dashboard, dashboard-widget and, with DashboardStrip=true, dashboard-strip and screen-with-strip
+    // The dashboard page of an Angular front end, drawn from what GET /api/dashboard returns (API_Dashboard): cards, bar lists, a sparkline and a list of recent rows, all written by the
+    // template, so no chart package is added. Every chart has the same numbers beside it as text, and no meaning is carried by colour alone. TS_Screens adds the route and menu entry and, for
+    // the strip, hosts each table's screen in screen-with-strip.
+    // Full notes: Docs/TemplateNotes/TS_Dashboard_v1.md
+    // ==========================================================================================
+
+    bool strip = Project.DashboardStrip;
+    string standalone = Project.AngularStandaloneFlag ? "  standalone: true,\n" : "";
+    string detection = $"  changeDetection: ChangeDetectionStrategy.{Project.AngularEagerStrategy},   // plain properties change inside subscribe callbacks\n";
+    string Html(string text) => Project.AngularControlFlow ? AngularControlFlow.Convert(Unix(text)) : Unix(text);
+    string Unix(string text) => text.Replace((char)13 + "" + (char)10, "\n");
+    string widgetHtml = Html(
+@"<section class=""dash-panel"" *ngIf=""layout === 'bars'"" [attr.aria-label]=""widget.title"">
+  <h3><a [routerLink]=""link"">{{ widget.title }}</a></h3>
+  <p *ngIf=""widget.points.length === 0"">No data.</p>
+  <ol class=""dash-bars"">
+    <li *ngFor=""let p of widget.points"">
+      <span>{{ p.label }}</span>
+      <span class=""dash-track"" aria-hidden=""true""><span class=""dash-fill"" [style.width]=""barWidth(p.value)""></span></span>
+      <span class=""dash-value"">{{ p.value | number:'1.0-2' }}</span>
+    </li>
+  </ol>
+</section>
+<section class=""dash-panel"" *ngIf=""layout === 'trend'"" [attr.aria-label]=""widget.title"">
+  <h3><a [routerLink]=""link"">{{ widget.title }}</a></h3>
+  <p *ngIf=""widget.points.length === 0"">No data.</p>
+  <svg *ngIf=""widget.points.length > 0"" class=""dash-spark"" viewBox=""0 0 200 48"" preserveAspectRatio=""none"" role=""img"" [attr.aria-label]=""summary"">
+    <polyline [attr.points]=""sparkPoints""></polyline>
+  </svg>
+  <details *ngIf=""widget.points.length > 0"">
+    <summary>Show the numbers</summary>
+    <table>
+      <tbody>
+        <tr *ngFor=""let p of widget.points""><td>{{ p.label }}</td><td>{{ p.value | number:'1.0-2' }}</td></tr>
+      </tbody>
+    </table>
+  </details>
+</section>
+<section class=""dash-panel"" *ngIf=""layout === 'recent'"" [attr.aria-label]=""widget.title"">
+  <h3><a [routerLink]=""link"">{{ widget.title }}</a></h3>
+  <p *ngIf=""widget.rows.length === 0"">No rows.</p>
+  <ul class=""dash-recent"">
+    <li *ngFor=""let r of widget.rows""><span>{{ r.label }}</span><span>{{ r.detail }}</span></li>
+  </ul>
+</section>
+<section class=""dash-card"" *ngIf=""layout === 'card'"" [attr.aria-label]=""widget.title"">
+  <h3><a [routerLink]=""link"">{{ widget.title }}</a></h3>
+  <dl>
+    <div *ngFor=""let p of widget.points"">
+      <dt>{{ p.label }}</dt>
+      <dd>{{ p.value | number:'1.0-2' }}</dd>
+    </div>
+  </dl>
+</section>
+");
+
+    string dashboardHtml = Html(
+@"<h2>Dashboard</h2>
+<button type=""button"" (click)=""load()"">Refresh</button>
+<p class=""dash-error"" role=""alert"" *ngIf=""error"">{{ error }}</p>
+<p *ngIf=""data && data.widgets.length === 0"">The schema suggests nothing to show.</p>
+<div class=""dash-grid"">
+  <app-dashboard-widget *ngFor=""let w of cards"" [widget]=""w""></app-dashboard-widget>
+</div>
+<div class=""dash-grid"">
+  <app-dashboard-widget *ngFor=""let w of others"" [widget]=""w""></app-dashboard-widget>
+</div>
+");
+
+    string stripHtml = Html(
+@"<div class=""dash-grid"" *ngIf=""widgets.length > 0"">
+  <app-dashboard-widget *ngFor=""let w of widgets"" [widget]=""w""></app-dashboard-widget>
+</div>
+");
+#>
+@@@FILE <#= servicesFolder #>/dashboard.service.ts@@@
+import { Injectable } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+export interface DashboardPoint {
+    label: string | null;
+    value: number | null;
+}
+
+export interface DashboardRow {
+    label: string | null;
+    detail: string | null;
+}
+
+export type DashboardKind = 'count' | 'childCount' | 'money' | 'topBy' | 'breakdown' | 'trend' | 'ratio' | 'status' | 'recent';
+
+export interface DashboardWidget {
+    id: string;
+    kind: DashboardKind;
+    title: string;
+    table: string;
+    route: string;
+    points: DashboardPoint[];
+    rows: DashboardRow[];
+}
+
+export interface DashboardResult {
+    widgets: DashboardWidget[];
+}
+
+@Injectable({
+    providedIn: 'root',
+})
+export class DashboardService {
+    private apiUrl = 'api/dashboard';
+
+    constructor(private http: HttpClient) { }
+
+    // Every widget of the dashboard page, or with a table the cards of that table's strip.
+    get(table?: string): Observable<DashboardResult> {
+        return this.http.get<DashboardResult>(this.apiUrl, table ? { params: new HttpParams().set('table', table) } : {});
+    }
+}
+@@@FILE <#= componentsFolder #>/dashboard-widget/dashboard-widget.component.ts@@@
+import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
+import { DashboardWidget } from '../../<#= servicesFolder #>/dashboard.service';
+
+// One widget: a card (count, childCount, money, ratio, status), a bar list (topBy, breakdown), a trend or the recent rows.
+@Component({
+  selector: 'app-dashboard-widget',
+<#= detection #><#= standalone #>  imports: [CommonModule, RouterLink],
+  templateUrl: './dashboard-widget.component.html',
+  styleUrl: './dashboard-widget.component.css'
+})
+export class DashboardWidgetComponent {
+  @Input({ required: true }) widget!: DashboardWidget;
+
+  get layout(): 'bars' | 'trend' | 'recent' | 'card' {
+    switch (this.widget.kind) {
+      case 'topBy':
+      case 'breakdown': return 'bars';
+      case 'trend': return 'trend';
+      case 'recent': return 'recent';
+      default: return 'card';
+    }
+  }
+
+  // The route of the table's screen, where a click on the title goes; null when the table has none.
+  get link(): string | null {
+    return this.widget.route ? '/' + this.widget.route : null;
+  }
+
+  barWidth(value: number | null): string {
+    const largest = Math.max(...this.widget.points.map((p) => p.value ?? 0), 1);
+    return `${((value ?? 0) / largest) * 100}%`;
+  }
+
+  // A line over the points of a trend, scaled to a 200 by 48 box; the numbers are in the table under it.
+  get sparkPoints(): string {
+    const values = this.widget.points.map((p) => p.value ?? 0);
+    if (values.length === 0) return '';
+    const max = Math.max(...values, 0);
+    const min = Math.min(...values, 0);
+    const span = max - min || 1;
+    const step = values.length > 1 ? 200 / (values.length - 1) : 0;
+    return values.map((v, i) => `${(i * step).toFixed(1)},${(46 - ((v - min) / span) * 44).toFixed(1)}`).join(' ');
+  }
+
+  get summary(): string {
+    return `${this.widget.title}: ` + this.widget.points.map((p) => `${p.label} ${p.value}`).join(', ');
+  }
+}
+@@@FILE <#= componentsFolder #>/dashboard-widget/dashboard-widget.component.html@@@
+<#= widgetHtml #>@@@FILE <#= componentsFolder #>/dashboard-widget/dashboard-widget.component.css@@@
+.dash-card, .dash-panel { padding: 12px 16px; border: 1px solid #8886; border-radius: 6px; background: #8881; }
+.dash-card h3, .dash-panel h3 { margin: 0 0 8px; font-size: 1rem; }
+.dash-card a, .dash-panel a { color: inherit; text-decoration: none; }
+.dash-card a:hover, .dash-panel a:hover { text-decoration: underline; }
+.dash-card dl { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; }
+.dash-card dt { font-size: 0.85rem; opacity: 0.8; }
+.dash-card dd { margin: 0 0 4px; font-size: 1.6rem; font-weight: 700; }
+.dash-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.dash-bars li { display: grid; grid-template-columns: minmax(80px, 30%) 1fr auto; align-items: center; gap: 8px; }
+.dash-track { display: block; height: 10px; border-radius: 5px; background: #8883; }
+.dash-fill { display: block; height: 100%; border-radius: 5px; background: currentColor; opacity: 0.55; }
+.dash-value { font-variant-numeric: tabular-nums; font-weight: 600; }
+.dash-spark { width: 100%; height: 56px; }
+.dash-spark polyline { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.dash-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.dash-recent li { display: flex; justify-content: space-between; gap: 12px; }
+.dash-panel details { margin-top: 8px; }
+.dash-panel summary { cursor: pointer; font-size: 0.85rem; opacity: 0.8; }
+@@@FILE <#= componentsFolder #>/dashboard/dashboard.component.ts@@@
+import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { DashboardResult, DashboardService, DashboardWidget } from '../../<#= servicesFolder #>/dashboard.service';
+import { DashboardWidgetComponent } from '../dashboard-widget/dashboard-widget.component';
+
+@Component({
+  selector: 'app-dashboard',
+<#= detection #><#= standalone #>  imports: [CommonModule, DashboardWidgetComponent],
+  templateUrl: './dashboard.component.html',
+  styleUrl: './dashboard.component.css'
+})
+export class DashboardComponent implements OnInit {
+  data: DashboardResult | null = null;
+  error: string | null = null;
+
+  constructor(private service: DashboardService) { }
+
+  ngOnInit(): void {
+    this.load();
+  }
+
+  load(): void {
+    this.error = null;
+    this.service.get().subscribe({
+      next: (result) => (this.data = result),
+      error: () => (this.error = 'Failed to load the dashboard.')
+    });
+  }
+
+  get cards(): DashboardWidget[] {
+    return (this.data?.widgets ?? []).filter((w) => ['count', 'childCount', 'money', 'ratio', 'status'].includes(w.kind));
+  }
+
+  get others(): DashboardWidget[] {
+    return (this.data?.widgets ?? []).filter((w) => !['count', 'childCount', 'money', 'ratio', 'status'].includes(w.kind));
+  }
+}
+@@@FILE <#= componentsFolder #>/dashboard/dashboard.component.html@@@
+<#= dashboardHtml #>@@@FILE <#= componentsFolder #>/dashboard/dashboard.component.css@@@
+:host { display: block; padding: 16px 24px; }
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 12px 0; }
+.dash-error { color: #b00020; }
+@@@FILE <#= componentsFolder #>/dashboard/dashboard.component.spec.ts@@@
+import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideRouter } from '@angular/router';
+
+import { DashboardComponent } from './dashboard.component';
+
+describe('DashboardComponent', () => {
+  it('shows a card for a count widget and the numbers of a breakdown', async () => {
+    await TestBed.configureTestingModule({
+      imports: [DashboardComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])]
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+    TestBed.inject(HttpTestingController).expectOne('api/dashboard').flush({
+      widgets: [
+        { id: 'a-count', kind: 'count', title: 'Customers', table: 'Customer', route: 'customer', points: [{ label: 'Customers', value: 51 }], rows: [] },
+        { id: 'b-breakdown', kind: 'breakdown', title: 'Customers by Status', table: 'Customer', route: 'customer', points: [{ label: 'Active', value: 40 }, { label: 'Closed', value: 11 }], rows: [] }
+      ]
+    });
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Customers');
+    expect(text).toContain('51');
+    expect(text).toContain('Active');
+    expect(text).toContain('40');
+  });
+});
+<#
+    if (strip)
+    {
+#>
+@@@FILE <#= componentsFolder #>/dashboard-strip/dashboard-strip.component.ts@@@
+import { ChangeDetectionStrategy, Component, Input, OnChanges } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { DashboardService, DashboardWidget } from '../../<#= servicesFolder #>/dashboard.service';
+import { DashboardWidgetComponent } from '../dashboard-widget/dashboard-widget.component';
+
+// The two or three cards of one table, above its grid. A failure shows nothing: the grid below is what the person came for.
+@Component({
+  selector: 'app-dashboard-strip',
+<#= detection #><#= standalone #>  imports: [CommonModule, DashboardWidgetComponent],
+  templateUrl: './dashboard-strip.component.html',
+  styleUrl: './dashboard-strip.component.css'
+})
+export class DashboardStripComponent implements OnChanges {
+  @Input({ required: true }) table = '';
+  widgets: DashboardWidget[] = [];
+
+  constructor(private service: DashboardService) { }
+
+  ngOnChanges(): void {
+    this.service.get(this.table).subscribe({
+      next: (result) => (this.widgets = result.widgets),
+      error: () => (this.widgets = [])
+    });
+  }
+}
+@@@FILE <#= componentsFolder #>/dashboard-strip/dashboard-strip.component.html@@@
+<#= stripHtml #>@@@FILE <#= componentsFolder #>/dashboard-strip/dashboard-strip.component.css@@@
+:host { display: block; padding: 8px 24px 0; }
+.dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+@@@FILE <#= componentsFolder #>/screen-with-strip/screen-with-strip.component.ts@@@
+import { ChangeDetectionStrategy, Component, Type } from '@angular/core';
+import { NgComponentOutlet } from '@angular/common';
+import { ActivatedRoute } from '@angular/router';
+import { DashboardStripComponent } from '../dashboard-strip/dashboard-strip.component';
+
+// Hosts a table's screen with its strip of cards above it. The route's data names the table and the screen (see the routes TS_Screens writes).
+@Component({
+  selector: 'app-screen-with-strip',
+<#= detection #><#= standalone #>  imports: [NgComponentOutlet, DashboardStripComponent],
+  template: `<app-dashboard-strip [table]="table"></app-dashboard-strip><ng-container *ngComponentOutlet="screen"></ng-container>`
+})
+export class ScreenWithStripComponent {
+  readonly table: string;
+  readonly screen: Type<unknown>;
+
+  constructor(route: ActivatedRoute) {
+    this.table = route.snapshot.data['table'];
+    this.screen = route.snapshot.data['screen'];
+  }
+}
+<#
+    }
+#>

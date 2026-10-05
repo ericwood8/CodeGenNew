@@ -3,6 +3,8 @@
 .DESCRIPTION
   The connection string is passed through the environment (ConnectionStrings__DbConnectionString) so no file is edited; it must not contain a password. PostgreSQL's driver
   reads PGPASSWORD and MySQL's MYSQL_PWD only if the connection string leaves it out: set those in your own shell. The API is started on a spare port and always stopped.
+  A Rust API is an executable, not a project: pass -Executable (the built binary) and set its own variables (PGHOST, PGUSER, PGDATABASE, PGPASSWORD, or DATABASE_URL for SQLite and MySQL) in your shell;
+  the port is passed as the PORT variable.
   Run it against a copy made by ScratchDatabase.ps1, never the real database.
 .EXAMPLE
   .\Test-ApiCrud.ps1 -ApiProject C:\InvoiceSystemPg\InvoiceSystem.Api -Route /api/customers `
@@ -10,9 +12,10 @@
       -Body '{"accountNumber":"VERIFY-1","customerName":"Verification Co","customerStatusId":1,"isTaxable":false}' -IdProperty customerId
 #>
 param(
-    [Parameter(Mandatory)][string]$ApiProject,
+    [string]$ApiProject,
+    [string]$Executable,
     [Parameter(Mandatory)][string]$Route,
-    [Parameter(Mandatory)][string]$ConnectionString,
+    [string]$ConnectionString,
     [Parameter(Mandatory)][string]$Body,
     [string]$IdProperty = 'id',
     [string]$UpdateProperty,
@@ -22,9 +25,16 @@ param(
 Import-Module (Join-Path $PSScriptRoot 'UiAutomation.psm1') -Force -WarningAction Ignore   # only for Assert-That
 $script:Failed = $false
 $base = "http://localhost:$Port"
-$env:ConnectionStrings__DbConnectionString = $ConnectionString
-$env:ASPNETCORE_ENVIRONMENT = 'Development'
-$api = Start-Process dotnet -ArgumentList @('run', '--project', $ApiProject, '--no-launch-profile', '--urls', $base) -PassThru -WindowStyle Hidden
+if (-not $ApiProject -and -not $Executable) { throw 'Give -ApiProject (a .NET API) or -Executable (a built binary).' }
+if ($ApiProject) {
+    $env:ConnectionStrings__DbConnectionString = $ConnectionString
+    $env:ASPNETCORE_ENVIRONMENT = 'Development'
+    $api = Start-Process dotnet -ArgumentList @('run', '--project', $ApiProject, '--no-launch-profile', '--urls', $base) -PassThru -WindowStyle Hidden
+}
+else {
+    $env:PORT = "$Port"
+    $api = Start-Process $Executable -PassThru -WindowStyle Hidden
+}
 
 try {
     $deadline = (Get-Date).AddSeconds(90)

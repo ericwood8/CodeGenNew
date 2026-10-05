@@ -1,0 +1,29 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // The dashboard's statements for the whole database in one script (DashboardQueries.sql): the same text the web API and the desktop page run, each under a comment that says
+    // why the widget exists. Run it by hand to check a widget against the data; codegen never applies it.
+
+    var plan = DashboardPlan.Build(Database, Project);
+    foreach (string problem in plan.Problems)
+        Error(problem);
+
+    string Rem = new string((char)45, 2);   // the SQL comment marker, built so the template text holds no double hyphen
+    var sb = new StringBuilder();
+    void Line(string line = "") => sb.Append(line).Append('\n');
+
+    sb.Append("@@@FILE DashboardQueries.sql@@@\n");
+    Line(Rem + " Dashboard queries for " + Database.DatabaseName + " (" + DialectInfo.For(Database.Dialect).Name + "). Each statement is fixed text and returns Label and Value, or Label and Detail for a recent list.");
+    foreach (var w in plan.Widgets)
+    {
+        Line();
+        Line(Rem + " " + w.Title + ": " + w.Why);
+        Line(w.Sql + ";");
+    }
+    Write(sb.ToString());
+#>

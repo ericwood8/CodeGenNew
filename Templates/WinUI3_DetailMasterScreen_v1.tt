@@ -17,9 +17,6 @@
     string contextNamespace = "MyApp.Common.Data";
     string[] usings = { };
     string viewsFolder = "Views";
-    // Tables whose Add/Edit dialog is a <Table>DetailMasterDialog (WinUI3_DetailMasterScreen.tt) rather than a plain
-    // <Table>DetailDialog - a list screen or a parent's child grid opens the one that exists.
-    string[] detailMasterTables = { };
     string viewModelsFolder = "ViewModels";
     string[] noLookupParents =
     {
@@ -32,7 +29,6 @@
     contextType = Project.ContextName ?? contextType;
     contextNamespace = Project.ContextNamespace ?? contextNamespace;
     usings = Project.Usings ?? usings;
-    detailMasterTables = Project.DetailMasterTables ?? detailMasterTables;
     viewsFolder = Project.ViewsFolder ?? viewsFolder;
     viewModelsFolder = Project.ViewModelsFolder ?? viewModelsFolder;
     // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
@@ -193,6 +189,7 @@
                 return new
                 {
                     Table = fk.ReferencingTable,
+                    HasChildren = fk.ReferencingTableHasChildren,
                     // The heading of the grid: the table's own name, or the project's ChildGridTitles entry.
                     Title = Project.ChildGridTitle(Model.TableName, fk.ReferencingTable, Words(fk.ReferencingTable)),
                     Var = FieldVar(fk.ReferencingTable),
@@ -534,7 +531,7 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
 <#
         foreach (var child in children)
         {
-            string childDialog = child.Table + (detailMasterTables.Contains(child.Table, StringComparer.OrdinalIgnoreCase) ? "DetailMasterDialog" : "DetailDialog");
+            string childDialog = child.Table + (DatabaseModel.IsDetailMaster(child.Table, child.HasChildren, Project) ? "DetailMasterDialog" : "DetailDialog");
 #>
 
     // Opens the clicked <#= child.Table #> row's own dialog. Only one ContentDialog can be open at a time in WinUI3, so this

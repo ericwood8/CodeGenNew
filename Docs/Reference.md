@@ -49,6 +49,10 @@ One per template, same base name, plain `key=value` lines, `#` comments. A missi
 | `RequiresChildTables` | false | only when another table has a foreign key back at this one (master-detail screens) |
 | `RequiresNotNameActiveTable` | false | hidden for a "name/active" table (a NOT NULL text column `Name` and a NOT NULL bit column `IsActive`). Its repository is a `NameActiveRepo` with duplicate-name checks and trimming a template cannot supply, so `API_Crud` refuses it and every screen that assumes a plain list / get / create / update / delete backend sets this. `CS_Entity` and `CS_Repo` support both shapes. |
 | `Dialects` | all | the databases the template is for (`SqlServer`, `PostgreSql`, `MySql`, `Sqlite`); a plan skips it silently for another one, the menu does not offer it, and a single run is refused with the reason |
+| `Dashboard` | true: the plan also writes the dashboard: its queries (CS_Dashboard, SP_Dashboard), the GET /api/dashboard endpoint (API_Dashboard), a page and menu entry per front end (TSX_Dashboard, TS_Dashboard, WinUI3_DashboardPage) and a Markdown page listing the widgets (MD_Dashboard) |
+| `DashboardStrip` | true (with Dashboard): each table screen shows that table's two or three cards above its grid |
+| `DashboardMeasures` | comma-separated widgets you name: Table.Column:sum|avg|max|min|count, or Table.Column:aggregate:DateColumn:day|month|year for a trend (SalesInvoice.TotalAmount:sum:InvoiceDate:month) |
+| `NoDashboardTables` | comma-separated tables the dashboard leaves out |
 | `AccessMode` | both | `Routines` or `Ef`: the template writes routines the generated code calls, or the LINQ that replaces them; a plan skips it when the project's access mode (the `AccessMode` setting; `Ef` for SQLite) is the other one, unless `PlanAlso` names it |
 
 **Extra input the template asks for** (each costs read-only catalog queries, so the default is off):
@@ -203,6 +207,9 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `OutputApi` | folder of the API project under the output folder; blank = &lt;ProjectName&gt;.Api |
 | `OutputWinUI3` | folder of the WinUI3 app under the output folder; blank = &lt;ProjectName&gt;.App |
 | `OutputReact` | folder of the React app; blank = frontend |
+| `OutputRust` | folder of the Rust API; blank = &lt;ProjectName&gt;.Rust |
+| `RustCrateName` | the crate name of the Rust API; blank = the project name in snake_case |
+| `RustPort` | the port the Rust API listens on; blank = ApiPort (5080) |
 | `OutputAngular` | folder of the Angular app; blank = frontend |
 | `OutputSql` | folder of the generated SQL; blank = sql |
 | `AppNamespace` | root namespace of the WinUI3 app; blank = &lt;ProjectName&gt;.App |

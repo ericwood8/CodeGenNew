@@ -1,0 +1,101 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_EssentialTauri_v1.tt
+    // Generates: desktop/Cargo.toml, desktop/build.rs, desktop/tauri.conf.json, desktop/capabilities/default.json, desktop/src/main.rs   (no table, no database: an optional essentials group)
+    // A Tauri 2 desktop shell for the Rust API: a window that runs on Windows, macOS and Linux without WinUI 3. The shell depends on the API crate (the folder above it), starts the generated API
+    // inside the app on a free local port, serves the built React or Angular front end from the same port (so the front end's relative /api calls need no change and no setting) and opens a
+    // window on it. The database is reached the way the API reaches it (the environment, a .env file in the crate folder). Run it from desktop/ with `cargo run`; FRONTEND_DIR overrides the
+    // folder of the built front end. Packaging an installer (bundle.active) is not set up. A no-database template cannot know the front end's build output, so the default is the React dist
+    // folder (or Angular's dist/frontend/browser when the project's Stacks name Angular and not React) under the project's OutputReact / OutputAngular.
+    // Settings: RustCrateName, Stacks, OutputRust, OutputReact, OutputAngular, ProjectTitle, ProjectName.
+    // ==========================================================================================
+    string crate = Project.RustCrateName;
+    bool angular = Project.Stacks.Any(s => s.Equals("Angular", StringComparison.OrdinalIgnoreCase)) && !Project.Stacks.Any(s => s.Equals("React", StringComparison.OrdinalIgnoreCase));
+    int depth = Project.OutputFolderOf("rust").Split('/', '\\').Count(p => p.Length > 0 && p != ".") + 1;   // from desktop/ up to the folder the stacks sit in
+    string frontend = string.Concat(Enumerable.Repeat("../", depth)) + (angular ? Project.OutputFolderOf("angular") + "/dist/frontend/browser" : Project.OutputFolderOf("react") + "/dist");
+    string title = Project.ProjectTitle;
+    string identifier = "com.example." + crate.Replace("_", "");
+    string icon = "0,0,1,0,1,0,32,32,0,0,1,0,32,0,104,0,0,0,22,0,0,0,137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,32,0,0,0,32,8,6,0,0,0,115,122,122,244,0,0,0,47,73,68,65,84,120,218,237,206,33,1,0,0,8,3,48,154,16,145,116,228,131,24,55,19,243,171,158,189,164,18,16,16,16,16,16,16,16,16,16,16,16,16,16,16,72,7,30,8,65,8,136,172,194,148,129,0,0,0,0,73,69,78,68,174,66,96,130";
+#>
+@@@FILE desktop/Cargo.toml@@@
+[package]
+name = "<#= crate #>_desktop"
+version = "0.1.0"
+edition = "2024"
+
+[build-dependencies]
+tauri-build = "2"
+
+[dependencies]
+<#= crate #> = { path = ".." }
+dotenvy = "0.15.7"
+tauri = "2"
+tokio = { version = "1.53.2", features = ["net"] }
+@@@FILE desktop/build.rs@@@
+// tauri-build wants an icon on Windows; this writes a plain 32 by 32 one when the project has none. Replace icons/icon.ico (and bundle.icon in tauri.conf.json) with your own.
+const PLACEHOLDER_ICON: &[u8] = &[<#= icon #>];
+
+fn main() {
+    let path = std::path::Path::new("icons/icon.ico");
+    if !path.exists() {
+        std::fs::create_dir_all("icons").expect("create the icons folder");
+        std::fs::write(path, PLACEHOLDER_ICON).expect("write the placeholder icon");
+    }
+    tauri_build::build()
+}
+@@@FILE desktop/tauri.conf.json@@@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "<#= title #>",
+  "version": "0.1.0",
+  "identifier": "<#= identifier #>",
+  "build": {},
+  "app": { "windows": [], "security": { "csp": null } },
+  "bundle": { "active": false, "icon": ["icons/icon.ico"] }
+}
+@@@FILE desktop/capabilities/default.json@@@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
+@@@FILE desktop/src/main.rs@@@
+// Starts the generated API inside the app on a free local port and shows the front end it serves in a window.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+use std::path::PathBuf;
+
+use tauri::{WebviewUrl, WebviewWindowBuilder};
+
+/// The built front end, relative to this folder: FRONTEND_DIR overrides it.
+const DEFAULT_FRONTEND: &str = "<#= frontend #>";
+
+fn main() {
+    // The API reads its database settings from the environment; a .env file in the crate folder (or here) is optional.
+    dotenvy::from_path("../.env").ok();
+    dotenvy::dotenv().ok();
+
+    tauri::Builder::default()
+        .setup(|app| {
+            let frontend = std::env::var_os("FRONTEND_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(DEFAULT_FRONTEND));
+            let listener = tauri::async_runtime::block_on(tokio::net::TcpListener::bind("127.0.0.1:0"))?;
+            let port = listener.local_addr()?.port();
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = <#= crate #>::serve(listener, Some(frontend)).await {
+                    eprintln!("the API stopped: {error}");
+                }
+            });
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::External(format!("http://127.0.0.1:{port}").parse()?))
+                .title("<#= title #>")
+                .inner_size(1280.0, 800.0)
+                .build()?;
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("the desktop app failed to start");
+}

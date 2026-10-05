@@ -12,17 +12,25 @@
   .\Test-OpenApiRoutes.ps1 -ApiProject C:\MySample\My.Api -ConnectionString 'Host=localhost;Port=5432;Database=MyDatabase_scratch;Username=dev_login'
 #>
 param(
-    [Parameter(Mandatory)][string]$ApiProject,
-    [Parameter(Mandatory)][string]$ConnectionString,
-    [string]$OpenApiFile = (Join-Path $ApiProject 'openapi.yaml'),
+    [string]$ApiProject,
+    [string]$Executable,
+    [string]$ConnectionString,
+    [string]$OpenApiFile = (Join-Path $(if ($ApiProject) { $ApiProject } else { Split-Path (Split-Path (Split-Path $Executable)) }) 'openapi.yaml'),
     [int]$Port = 5199
 )
 Import-Module (Join-Path $PSScriptRoot 'UiAutomation.psm1') -Force -WarningAction Ignore   # only for Assert-That
 $script:Failed = $false
 $base = "http://localhost:$Port"
-$env:ConnectionStrings__DbConnectionString = $ConnectionString
-$env:ASPNETCORE_ENVIRONMENT = 'Development'
-$api = Start-Process dotnet -ArgumentList @('run', '--project', $ApiProject, '--no-launch-profile', '--urls', $base) -PassThru -WindowStyle Hidden
+if (-not $ApiProject -and -not $Executable) { throw 'Give -ApiProject (a .NET API) or -Executable (a built Rust binary; its own variables PGHOST, PGUSER, PGDATABASE, PGPASSWORD ... are set in your shell).' }
+if ($ApiProject) {
+    $env:ConnectionStrings__DbConnectionString = $ConnectionString
+    $env:ASPNETCORE_ENVIRONMENT = 'Development'
+    $api = Start-Process dotnet -ArgumentList @('run', '--project', $ApiProject, '--no-launch-profile', '--urls', $base) -PassThru -WindowStyle Hidden
+}
+else {
+    $env:PORT = "$Port"
+    $api = Start-Process $Executable -PassThru -WindowStyle Hidden
+}
 
 function Get-Status($url, $method = 'Get', $body = $null) {
     try {

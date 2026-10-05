@@ -19,7 +19,8 @@ public static class EssentialsCatalog
         ("WinUI3", "WinUI essentials"),
         ("React", "React essentials"),
         ("Angular", "Angular essentials"),
-        ("Api", "API essentials")
+        ("Api", "API essentials"),
+        ("Rust", "Rust essentials")
     ];
 
     /// <summary> The stack named by <paramref name="text"/> (<c>winui</c>, <c>WinUI3</c>, <c>react</c> ...), or null. </summary>
