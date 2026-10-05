@@ -12,4 +12,20 @@ public class ConnectionRequest
 
     /// <summary> Defaults to true since dev-box SQL Server instances typically use a self-signed certificate. </summary>
     public bool TrustServerCertificate { get; init; } = true;
+
+    /// <summary> How the connection was made, for the tree's header: "SQL Server, Windows Auth" or "PostgreSQL, SQL Login (ClaudeCode)". A SQLite file has no login. </summary>
+    public string DescribeConnection()
+    {
+        string provider = Provider switch
+        {
+            DatabaseProvider.SqlServer => "SQL Server",
+            DatabaseProvider.PostgreSql => "PostgreSQL",
+            DatabaseProvider.MySql => "MySQL",
+            _ => "SQLite"
+        };
+        if (Provider == DatabaseProvider.Sqlite)
+            return provider;
+        string login = AuthMode == AuthMode.WindowsAuth ? "Windows Auth" : string.IsNullOrWhiteSpace(UserName) ? "SQL Login" : $"SQL Login ({UserName})";
+        return $"{provider}, {login}";
+    }
 }

@@ -75,11 +75,15 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" Background="Transparent" RightTapped="OnDatabaseRightTapped"
+                                ToolTipService.ToolTip="Right-click for the templates that write files for the whole database">
                         <Image Source="{x:Bind ViewModel.Icons.Database, Mode=OneWay}" Width="22" Height="22" />
-                        <TextBlock Text="{x:Bind ViewModel.DatabaseLabel, Mode=OneWay}" FontWeight="SemiBold" FontSize="16"
-                                   FontFamily="{ThemeResource NocturneDisplayFontFamily}"
-                                   VerticalAlignment="Center" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="{x:Bind ViewModel.DatabaseLabel, Mode=OneWay}" FontWeight="SemiBold" FontSize="16"
+                                       FontFamily="{ThemeResource NocturneDisplayFontFamily}"
+                                       Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                            <TextBlock Text="{x:Bind ViewModel.DatabaseDetail, Mode=OneWay}" FontSize="12" Opacity="0.7" />
+                        </StackPanel>
                     </StackPanel>
                     <!-- Icon-only refresh for the tree below: WinUI3's TreeView has no built-in refresh
                          affordance, so this is the whole toolbar it gets, scoped to the same row as the
@@ -88,7 +92,7 @@
                         <!-- Templates that write one file for the whole database (the DbContext, the API registration). -->
                         <Button x:Name="DatabaseTemplatesButton" Background="Transparent" BorderThickness="0" Padding="6"
                                 AccessKey="D" Click="OnDatabaseTemplatesClick" IsEnabled="{x:Bind ViewModel.IsConnected, Mode=OneWay}"
-                                ToolTipService.ToolTip="Generate for the whole database: DbContext, API registration (Alt+D)">
+                                ToolTipService.ToolTip="Generate for the whole database: DbContext, API registration, dashboard (Alt+D, or right-click the database name)">
                             <FontIcon Glyph="&#xE943;" FontSize="18" />
                         </Button>
                         <!-- Every file of a project's stacks for every table, in one run (the engine behind codegen generate). -->

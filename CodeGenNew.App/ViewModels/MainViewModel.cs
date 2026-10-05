@@ -29,6 +29,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _databaseLabel = "(not connected)";
 
+    /// <summary> The provider and login the connection was made with, under the database name. </summary>
+    [ObservableProperty]
+    private string _databaseDetail = "";
+
     [ObservableProperty]
     private bool _isConnected;
 
@@ -66,6 +70,7 @@ public partial class MainViewModel : ObservableObject
 
             _connectionRequest = request;
             DatabaseLabel = $"{request.ServerName} \\ {request.DatabaseName}";
+            DatabaseDetail = request.DescribeConnection();
             IsConnected = true;
 
             Tables.Clear();

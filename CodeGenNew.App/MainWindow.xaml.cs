@@ -161,7 +161,6 @@ public sealed partial class MainWindow : Window
             return;
 
         var flyout = new MenuFlyout();
-        var submenus = new Dictionary<string, MenuFlyoutSubItem>();
 
         // A non-selectable header line naming what's off about this table (no key, a reserved-word name, ...) --
         // IsEnabled=false is WinUI's own way to show a label-only, unclickable MenuFlyoutItem. Removed entirely
@@ -180,10 +179,21 @@ public sealed partial class MainWindow : Window
                 flyout.Items.Add(new MenuFlyoutSeparator());
         }
 
+        AddGrouped(flyout, templates, template => RunTemplateAsync(table, template));
+
+        var position = e.GetPosition((FrameworkElement)sender);
+        flyout.ShowAt((FrameworkElement)sender, position);
+        e.Handled = true;
+    }
+
+    /// <summary> Adds the templates to the menu, one submenu per group (TSX, WinUI3 ...) as the table menu does. </summary>
+    private static void AddGrouped(MenuFlyout flyout, IEnumerable<TemplateInfo> templates, Func<TemplateInfo, Task> run)
+    {
+        var submenus = new Dictionary<string, MenuFlyoutSubItem>();
         foreach (var template in templates)
         {
             var item = new MenuFlyoutItem { Text = template.Name };
-            item.Click += async (_, _) => await RunTemplateAsync(table, template);
+            item.Click += async (_, _) => await run(template);
 
             if (template.SubmenuGroup is not null)
             {
@@ -200,26 +210,31 @@ public sealed partial class MainWindow : Window
                 flyout.Items.Add(item);
             }
         }
-
-        var position = e.GetPosition((FrameworkElement)sender);
-        flyout.ShowAt((FrameworkElement)sender, position);
-        e.Handled = true;
     }
 
-    private void OnDatabaseTemplatesClick(object sender, RoutedEventArgs e)
+    /// <summary> The templates that write files for the whole database, grouped by prefix: the toolbar button and a right-click on the database name both show it. </summary>
+    private void ShowDatabaseMenu(FrameworkElement anchor, Windows.Foundation.Point? position = null)
     {
+        if (!ViewModel.IsConnected)
+            return;
         var templates = ViewModel.GetDatabaseTemplates();
         if (templates.Count == 0)
             return;
 
         var flyout = new MenuFlyout();
-        foreach (var template in templates)
-        {
-            var item = new MenuFlyoutItem { Text = template.Name };
-            item.Click += async (_, _) => await ShowGenerationResultAsync(await ViewModel.RunDatabaseTemplateAsync(template));
-            flyout.Items.Add(item);
-        }
-        flyout.ShowAt((FrameworkElement)sender);
+        AddGrouped(flyout, templates, async template => await ShowGenerationResultAsync(await ViewModel.RunDatabaseTemplateAsync(template)));
+        if (position is { } point)
+            flyout.ShowAt(anchor, point);
+        else
+            flyout.ShowAt(anchor);
+    }
+
+    private void OnDatabaseTemplatesClick(object sender, RoutedEventArgs e) => ShowDatabaseMenu((FrameworkElement)sender);
+
+    private void OnDatabaseRightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
+    {
+        ShowDatabaseMenu((FrameworkElement)sender, e.GetPosition((FrameworkElement)sender));
+        e.Handled = true;
     }
 
     private async Task RunTemplateAsync(TableNodeViewModel table, TemplateInfo template) =>
