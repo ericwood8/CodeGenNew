@@ -1,0 +1,75 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_Model_v1.tt
+    // Generates: app/models/<table>.py   (the template writes its own path with an @@@FILE marker; the output folder is the Python API's folder)
+    // The SQLAlchemy 2.0 class of a table: __tablename__ (the database's own name, with the schema for a SQL Server or PostgreSQL table that is not in dbo / public), and one Mapped column per
+    // column, named in snake_case over the database's own column name, with its type (String(50), Numeric(10, 2), DateTime ...), nullability and, for the key, autoincrement. A column the
+    // database writes (computed, or an identity that is not the key) is marked server-generated. A binary column, a PostgreSQL money column and a type CodeGenNew cannot map are left out.
+    // Full notes: Docs/TemplateNotes/PY_Model_v1.md
+    // ==========================================================================================
+
+    var t = PythonTable.Of(Model, Project);
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+    string Str(string text) => PythonNames.Str(text);
+
+    bool schemaNamed = Model.Dialect is SqlDialect.SqlServer or SqlDialect.PostgreSql
+        && !Model.SchemaName.Equals(Model.Dialect == SqlDialect.SqlServer ? "dbo" : "public", StringComparison.OrdinalIgnoreCase);
+
+    var saTypes = t.Fields.Select(f => System.Text.RegularExpressions.Regex.Match(f.SqlAlchemyType, "^[A-Za-z]+").Value).Where(n => n != "PgEnum").Distinct().OrderBy(n => n, StringComparer.Ordinal).ToList();
+    bool anyServerGenerated = t.Fields.Any(f => f.ReadOnly);
+    if (anyServerGenerated)
+        saTypes.Add("FetchedValue");
+    var annotations = t.Fields.Select(f => f.Annotation).Distinct().ToList();
+
+    Line($"@@@FILE app/models/{t.Module}.py@@@");
+    if (annotations.Contains("Decimal"))
+        Line("from decimal import Decimal");
+    var datetimes = new[] { "date", "datetime", "time" }.Where(annotations.Contains).ToList();
+    if (datetimes.Count > 0)
+        Line($"from datetime import {string.Join(", ", datetimes)}");
+    if (annotations.Contains("UUID"))
+        Line("from uuid import UUID");
+    Line();
+    Line($"from sqlalchemy import {string.Join(", ", saTypes.OrderBy(n => n, StringComparer.Ordinal))}");
+    if (t.Fields.Any(f => f.SqlAlchemyType.StartsWith("PgEnum")))
+        Line("from sqlalchemy.dialects.postgresql import ENUM as PgEnum");
+    Line("from sqlalchemy.orm import Mapped, mapped_column");
+    Line();
+    Line("from app.db import Base");
+    Line();
+    Line();
+    Line($"class {t.Class}(Base):");
+    Line($"    __tablename__ = {Str(Model.DbTableName)}");
+    if (schemaNamed)
+        Line($"    __table_args__ = {{\"schema\": {Str(Model.SchemaName)}}}");
+    Line();
+    foreach (var f in t.Fields)
+    {
+        var c = f.Column;
+        var options = new List<string>();
+        if (c.IsPrimaryKey)
+            options.Add("primary_key=True");
+        if (c.IsPrimaryKey)
+            options.Add(c.IsIdentity ? "autoincrement=True" : "autoincrement=False");
+        else
+            options.Add(c.IsNullable ? "nullable=True" : "nullable=False");
+        if (f.ReadOnly)
+            options.Add("server_default=FetchedValue(), server_onupdate=FetchedValue()");
+        string type = f.Annotation + (c.IsNullable ? " | None" : "");
+        Line($"    {f.Name}: Mapped[{type}] = mapped_column({Str(c.DbName)}, {f.SqlAlchemyType}, {string.Join(", ", options)})");
+    }
+    if (t.Skipped.Count > 0)
+    {
+        Line();
+        Line($"    # Left out (no Python mapping here): {string.Join(", ", t.Skipped.Select(c => c.Name))}.");
+    }
+    Write(sb.ToString());
+#>

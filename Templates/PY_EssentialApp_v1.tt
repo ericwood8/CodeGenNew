@@ -1,0 +1,243 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_EssentialApp_v1.tt
+    // Generates: app/__init__.py, app/db.py, app/support.py and app/main.py   (no table, no database: an essentials group; the output folder is the Python API's own folder)
+    // The files every generated Python API needs, written once and kept (they are edited by hand afterwards). db.py: the declarative Base, the engine and the session, built from the project's
+    // DatabaseProvider, DatabaseServer, DatabaseName and DatabaseUser, or from DATABASE_URL; the password is never written: it is read from PGPASSWORD (PostgreSQL), MYSQL_PWD (MySQL) or
+    // DB_PASSWORD (SQL Server). support.py: ApiError, the validation problems in the ASP.NET problem form, Page (the search answer), the JSON form of a decimal, the LIKE escape, suggest_free
+    // (a free unique value for a clone) and the shape checks of the validators. main.py: the FastAPI app with every router (routes.routers), the error handlers and CORS for the front ends' dev servers.
+    // Settings: DatabaseProvider, DatabaseServer, DatabaseName, DatabaseUser, ProjectTitle, Stacks.
+    // ==========================================================================================
+    var dialect = Project.DatabaseDialect;
+    string user = Project.DatabaseUser ?? "";
+    string server = Project.DatabaseServer ?? "localhost";
+    string portFlag = new string((char)45, 2) + "port";   // a template line may not hold two hyphens in a row (see TemplateDashTests)
+    string Str(string text) => PythonNames.Str(text);
+    var stacks = Project.Stacks.Where(s => s.Equals("React", StringComparison.OrdinalIgnoreCase) || s.Equals("Angular", StringComparison.OrdinalIgnoreCase) || s.Equals("Blazor", StringComparison.OrdinalIgnoreCase)).ToList();
+    if (stacks.Count == 0) stacks = ["React"];
+    string origins = string.Join(", ", stacks.Select(s => Str($"http://localhost:{Project.DevPort(s)}")));
+#>
+@@@FILE app/__init__.py@@@
+# The generated API: app.main is the FastAPI application (uvicorn app.main:app).
+@@@FILE app/db.py@@@
+"""The database: the declarative base, the engine and the session of a request."""
+import os
+from collections.abc import Iterator
+
+from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+def database_url() -> str | URL:
+    """DATABASE_URL when it is set, else the database the project was read from. The password is never in this file."""
+    url = os.environ.get("DATABASE_URL")
+    if url:
+        return url
+<#
+    if (dialect == SqlDialect.PostgreSql)
+    {
+#>
+    return URL.create(
+        "postgresql+psycopg",
+        username=os.environ.get("PGUSER", <#= Str(user) #>) or None,
+        password=os.environ.get("PGPASSWORD"),
+        host=os.environ.get("PGHOST", <#= Str(server) #>),
+        port=int(os.environ.get("PGPORT", "5432")),
+        database=os.environ.get("PGDATABASE", <#= Str(Project.DatabaseName) #>),
+    )
+<#
+    }
+    else if (dialect == SqlDialect.MySql)
+    {
+#>
+    return URL.create(
+        "mysql+pymysql",
+        username=os.environ.get("MYSQL_USER", <#= Str(user) #>) or None,
+        password=os.environ.get("MYSQL_PWD"),
+        host=os.environ.get("MYSQL_HOST", <#= Str(server) #>),
+        port=int(os.environ.get("MYSQL_TCP_PORT", "3306")),
+        database=os.environ.get("MYSQL_DATABASE", <#= Str(Project.DatabaseName) #>),
+    )
+<#
+    }
+    else if (dialect == SqlDialect.Sqlite)
+    {
+#>
+    # The database file, relative to the folder the API runs from; a missing file is created empty by SQLite, so check the path.
+    return "sqlite:///" + os.environ.get("DATABASE_FILE", <#= Str(Project.DatabaseName) #>)
+<#
+    }
+    else
+    {
+#>
+    user = os.environ.get("DB_USER", <#= Str(user) #>)
+    query = {"driver": os.environ.get("ODBC_DRIVER", "ODBC Driver 18 for SQL Server"), "TrustServerCertificate": "yes"}
+    if not user:
+        query["Trusted_Connection"] = "yes"
+    return URL.create(
+        "mssql+pyodbc",
+        username=user or None,
+        password=os.environ.get("DB_PASSWORD") if user else None,
+        host=os.environ.get("DB_SERVER", <#= Str(server) #>),
+        database=os.environ.get("DB_NAME", <#= Str(Project.DatabaseName) #>),
+        query=query,
+    )
+<#
+    }
+#>
+
+
+engine = create_engine(
+    database_url(),
+    pool_pre_ping=True,
+    connect_args={"check_same_thread": False} if str(database_url()).startswith("sqlite") else {},
+)
+
+# expire_on_commit is off so a row can be returned (and written as JSON) after the commit that saved it.
+SessionLocal = sessionmaker(engine, expire_on_commit=False)
+
+
+def get_session() -> Iterator[Session]:
+    with SessionLocal() as session:
+        yield session
+@@@FILE app/support.py@@@
+"""What the generated routes share: the error forms, the search answer, the JSON form of a decimal and the helpers of a search and a clone."""
+from decimal import Decimal
+from typing import Annotated, Generic, TypeVar
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
+from sqlalchemy import func, select
+
+T = TypeVar("T")
+
+# ASP.NET writes a decimal as a JSON number; Pydantic writes it as a string unless it is told not to.
+JsonDecimal = Annotated[Decimal, PlainSerializer(float, return_type=float, when_used="json")]
+
+PROBLEM_TYPE = "https://tools.ietf.org/html/rfc9110#section-15.5.1"
+
+
+class ApiError(Exception):
+    """An answer with a status and a message: 400, 404 ..."""
+
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+        self.message = message
+
+
+class ApiValidationError(Exception):
+    """The problems found in a row, each as (property name, message): a 400 in the ASP.NET validation-problem form."""
+
+    def __init__(self, problems: list[tuple[str, str]]):
+        super().__init__("One or more validation errors occurred.")
+        self.problems = problems
+
+
+class Page(BaseModel, Generic[T]):
+    """The answer of a search: the rows of a page and the counts, named as the other stacks name them."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    items: list[T]
+    page: int
+    page_size: int = Field(alias="pageSize")
+    total_count: int = Field(alias="totalCount")
+    total_pages: int = Field(alias="totalPages")
+
+
+def _problem(status: int, title: str, errors: dict[str, list[str]] | None = None) -> JSONResponse:
+    body: dict = {"type": PROBLEM_TYPE, "title": title, "status": status}
+    if errors:
+        body["errors"] = errors
+    return JSONResponse(body, status_code=status, media_type="application/problem+json")
+
+
+def register_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(ApiError)
+    async def api_error(request: Request, error: ApiError) -> JSONResponse:
+        return _problem(error.status, error.message)
+
+    @app.exception_handler(ApiValidationError)
+    async def validation_error(request: Request, error: ApiValidationError) -> JSONResponse:
+        errors: dict[str, list[str]] = {}
+        for name, message in error.problems:
+            errors.setdefault(name, []).append(message)
+        return _problem(400, "One or more validation errors occurred.", errors)
+
+    @app.exception_handler(RequestValidationError)
+    async def request_error(request: Request, error: RequestValidationError) -> JSONResponse:
+        errors: dict[str, list[str]] = {}
+        for item in error.errors():
+            name = str(item["loc"][-1]) if item.get("loc") else "body"
+            errors.setdefault(name, []).append(item["msg"])
+        return _problem(400, "One or more validation errors occurred.", errors)
+
+
+def escape_like(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def contains(column, text: str):
+    """A case-insensitive 'contains' test; the % and _ in the text mean themselves."""
+    return column.ilike("%" + escape_like(text) + "%", escape="\\")
+
+
+def suggest_free(session, column, desired: str, max_length: int = 0) -> str:
+    """A copy of a unique text value that is free: the value itself, or the value with 2, 3 ... after it, cut to fit the column."""
+    model = column.class_
+
+    def taken(value: str) -> bool:
+        return (session.scalar(select(func.count()).select_from(model).where(column == value)) or 0) > 0
+
+    candidate = desired
+    n = 2
+    while taken(candidate):
+        suffix = f" {n}"
+        base = desired[: max_length - len(suffix)] if max_length > 0 else desired
+        candidate = base + suffix
+        n += 1
+    return candidate
+
+
+def looks_like_email(value: str) -> bool:
+    local, _, domain = value.partition("@")
+    return bool(local) and "." in domain and not domain.startswith(".") and not domain.endswith(".") and " " not in value
+
+
+def looks_like_phone(value: str) -> bool:
+    return any(c in "0123456789" for c in value) and all(c in "0123456789 +-().,xX#/" for c in value)
+
+
+def looks_like_url(value: str) -> bool:
+    return value.startswith(("http://", "https://")) and len(value) > 8 and " " not in value
+@@@FILE app/main.py@@@
+"""The API: every table's router, the error forms and CORS for the front ends' dev servers. Run it with: uvicorn app.main:app <#= portFlag #> <#= Project.ApiPort #>"""
+import os
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app import routes
+from app.support import register_error_handlers
+
+app = FastAPI(title=<#= Str(Project.ProjectTitle + " API") #>)
+register_error_handlers(app)
+
+# The front ends' dev servers call this API from another origin; CORS_ORIGINS (comma separated) names the origins of a deployment.
+origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()] or [<#= origins #>]
+app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"], expose_headers=["Location"])
+
+for router in routes.routers:
+    app.include_router(router)

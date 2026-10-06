@@ -1,0 +1,199 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_Routes_v1.tt
+    // Generates: app/routes/<table>.py   (the template writes its own path with an @@@FILE marker; the output folder is the Python API's folder)
+    // The FastAPI router of a table with the contract every stack of the project keeps (so the React, Angular, Blazor and desktop front ends need no change): GET /api/<plural> (all rows), GET /{id},
+    // POST (201 with a Location header and the new row), PUT /{id} (400 when the id in the body differs, 404 for no such row), DELETE /{id} (200, 404, or 400 when the row is in use),
+    // POST /{id}/clone (201 and the copy, a cloneable table) and GET /search with the filters, pageNumber, pageSize, sortBy and sortDir (a table with a search endpoint).
+    // With ApiValidation=true the create and update routes run the table's validate (PY_Validate) and answer 400 with the problems.
+    // Full notes: Docs/TemplateNotes/PY_Routes_v1.md
+    // ==========================================================================================
+
+    var t = PythonTable.Of(Model, Project);
+    bool search = Model.HasSearchApi(Project);
+    bool validate = Project.ApiValidation;
+    string key = t.Key.Name;
+    string keyType = "int";   // the routes take {id:int}: RequiredPrimaryKeyShape=SingleInt
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+    string Str(string text) => PythonNames.Str(text);
+
+    Line($"@@@FILE app/routes/{t.Module}.py@@@");
+    var clonedDates = new[] { "datetime", "date" }.Where(w => t.Clone?.Any(c => c.Value.StartsWith(w + ".")) == true).ToList();
+    if (clonedDates.Count > 0)
+        Line($"from datetime import {string.Join(", ", clonedDates)}");
+    if (clonedDates.Count > 0)
+        Line();
+    bool castsEnum = search && t.Filters.Any(f => f.Field.Column.DbEnumType is not null);
+    var sqlalchemy = new List<string> { "select" };
+    if (search)
+        sqlalchemy.Add("func");
+    if (castsEnum)
+    {
+        sqlalchemy.Add("cast");
+        sqlalchemy.Add("String");
+    }
+    Line(search ? "from fastapi import APIRouter, Depends, Query, Response" : "from fastapi import APIRouter, Depends, Response");
+    Line($"from sqlalchemy import {string.Join(", ", sqlalchemy.OrderBy(s => s, StringComparer.Ordinal))}");
+    Line("from sqlalchemy.exc import IntegrityError");
+    Line("from sqlalchemy.orm import Session");
+    Line();
+    Line("from app.db import get_session");
+    Line($"from app.models.{t.Module} import {t.Class}");
+    Line($"from app.schemas.{t.Module} import {t.Schema}");
+    var support = new List<string> { "ApiError" };
+    if (search)
+    {
+        support.Add("Page");
+        support.Add("contains");
+    }
+    if (t.CloneOverrides.Count > 0)
+        support.Add("suggest_free");
+    Line($"from app.support import {string.Join(", ", support.OrderBy(s => s, StringComparer.Ordinal))}");
+    if (validate)
+        Line($"from app.validation.{t.Module} import validate");
+    Line();
+    Line("router = APIRouter()");
+    Line($"IN_USE = \"The database refused the row (a missing parent row, or a value that must be unique).\"");
+    Line();
+
+    if (search)
+    {
+        Line("# The columns a grid may sort by, by the lower-case name it sends.");
+        Line("SORTS = {");
+        foreach (var s in t.Sorts)
+            Line($"    {Str(s.Name)}: {t.Class}.{s.Field.Name},");
+        Line("}");
+        Line("MAX_PAGE_SIZE = 1000");
+        Line();
+    }
+
+    Line();
+    Line($"@router.get(\"{t.Route}\", response_model=list[{t.Schema}])");
+    Line("def get_all(session: Session = Depends(get_session)):");
+    Line($"    return session.scalars(select({t.Class}).order_by({t.Class}.{key})).all()");
+    Line();
+
+    if (search)
+    {
+        Line();
+        Line($"@router.get(\"{t.Route}/search\", response_model=Page[{t.Schema}])");
+        Line("def search(");
+        Line("    session: Session = Depends(get_session),");
+        Line("    page_number: int = Query(1, alias=\"pageNumber\"),");
+        Line("    page_size: int = Query(100, alias=\"pageSize\"),");
+        Line("    sort_by: str | None = Query(None, alias=\"sortBy\"),");
+        Line("    sort_dir: str | None = Query(None, alias=\"sortDir\"),");
+        foreach (var f in t.Filters)
+            Line($"    {f.Field.Name}: str | None = Query(None, alias=\"{f.Query}\"),");
+        Line("):");
+        Line("    if page_number < 1:");
+        Line("        raise ApiError(400, \"pageNumber must be 1 or greater.\")");
+        Line("    page_size = max(1, min(page_size, MAX_PAGE_SIZE))");
+        Line($"    statement = select({t.Class})");
+        foreach (var f in t.Filters)
+        {
+            string column = f.Field.Column.DbEnumType is not null ? $"cast({t.Class}.{f.Field.Name}, String)" : $"{t.Class}.{f.Field.Name}";
+            Line($"    if {f.Field.Name}:");
+            Line($"        statement = statement.where(contains({column}, {f.Field.Name}))");
+        }
+        Line("    total_count = session.scalar(select(func.count()).select_from(statement.subquery())) or 0");
+        Line($"    default_order = [{string.Join(", ", t.DefaultOrder.Select(f => $"{t.Class}.{f.Name}"))}]");
+        Line("    column = SORTS.get(sort_by.lower()) if sort_by and len(sort_by) <= 64 else None");
+        Line("    if column is not None:");
+        Line("        statement = statement.order_by(column.desc() if (sort_dir or \"\").lower() == \"desc\" else column.asc(), *default_order)");
+        Line("    else:");
+        Line("        statement = statement.order_by(*default_order)");
+        Line("    items = session.scalars(statement.offset((page_number - 1) * page_size).limit(page_size)).all()");
+        Line("    total_pages = 0 if total_count == 0 else (total_count + page_size - 1) // page_size");
+        Line($"    return Page[{t.Schema}](items=items, page=page_number, page_size=page_size, total_count=total_count, total_pages=total_pages)");
+        Line();
+    }
+
+    Line();
+    Line($"@router.get(\"{t.Route}/{{id}}\", response_model={t.Schema})");
+    Line($"def get_by_id(id: {keyType}, session: Session = Depends(get_session)):");
+    Line($"    row = session.get({t.Class}, id)");
+    Line("    if row is None:");
+    Line("        raise ApiError(404, \"Not found.\")");
+    Line("    return row");
+    Line();
+    Line();
+    Line($"@router.post(\"{t.Route}\", response_model={t.Schema}, status_code=201)");
+    Line($"def create(body: {t.Schema}, response: Response, session: Session = Depends(get_session)):");
+    if (validate)
+        Line("    validate(body)");
+    Line($"    row = {t.Class}(**body.columns())");
+    Line("    session.add(row)");
+    Line("    try:");
+    Line("        session.commit()");
+    Line("    except IntegrityError:");
+    Line("        session.rollback()");
+    Line("        raise ApiError(400, IN_USE)");
+    Line("    session.refresh(row)");
+    Line($"    response.headers[\"Location\"] = f\"{t.Route}/{{row.{key}}}\"");
+    Line("    return row");
+    Line();
+    Line();
+    Line($"@router.put(\"{t.Route}/{{id}}\", response_model={t.Schema})");
+    Line($"def update(id: {keyType}, body: {t.Schema}, session: Session = Depends(get_session)):");
+    Line($"    if body.{key} != id:");
+    Line("        raise ApiError(400, \"The id in the URL and the id in the body differ.\")");
+    if (validate)
+        Line("    validate(body)");
+    Line($"    row = session.get({t.Class}, id)");
+    Line("    if row is None:");
+    Line("        raise ApiError(404, \"Not found.\")");
+    Line("    for name, value in body.changes().items():");
+    Line("        setattr(row, name, value)");
+    Line("    try:");
+    Line("        session.commit()");
+    Line("    except IntegrityError:");
+    Line("        session.rollback()");
+    Line("        raise ApiError(400, IN_USE)");
+    Line("    session.refresh(row)");
+    Line("    return row");
+    Line();
+    Line();
+    Line($"@router.delete(\"{t.Route}/{{id}}\")");
+    Line($"def delete(id: {keyType}, session: Session = Depends(get_session)):");
+    Line($"    row = session.get({t.Class}, id)");
+    Line("    if row is None:");
+    Line("        raise ApiError(404, \"Not found.\")");
+    Line("    session.delete(row)");
+    Line("    try:");
+    Line("        session.commit()");
+    Line("    except IntegrityError:");
+    Line("        session.rollback()");
+    Line("        raise ApiError(400, \"It cannot be deleted because it is in use.\")");
+    Line("    return Response(status_code=200)");
+
+    if (t.Clone is { } cloned)
+    {
+        Line();
+        Line();
+        Line($"@router.post(\"{t.Route}/{{id}}/clone\", response_model={t.Schema}, status_code=201)");
+        Line($"def clone_row(id: {keyType}, response: Response, session: Session = Depends(get_session)):");
+        Line("    \"\"\"Copies a row into a new one and returns it. A unique text column gets a free value so the copy can be saved.\"\"\"");
+        Line($"    source = session.get({t.Class}, id)");
+        Line("    if source is None:");
+        Line("        raise ApiError(404, \"Not found.\")");
+        Line($"    row = {t.Class}(");
+        foreach (var (field, value) in cloned)
+            Line($"        {field.Name}={value},");
+        Line("    )");
+        Line("    session.add(row)");
+        Line("    session.commit()");
+        Line("    session.refresh(row)");
+        Line($"    response.headers[\"Location\"] = f\"{t.Route}/{{row.{key}}}\"");
+        Line("    return row");
+    }
+    Write(sb.ToString());
+#>

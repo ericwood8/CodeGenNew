@@ -1,0 +1,87 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Globalization" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_Validate_v1.tt
+    // Generates: app/validation/<table>.py   (the template writes its own path with an @@@FILE marker; the output folder is the Python API's folder)
+    // The rules the schema states for a row, as a function: required text, the longest length, the values a CHECK list or an enum allows, an email, phone or URL shape by the column's name, and
+    // the range a CHECK or the column's name gives a number. The rules are ColumnRules (Core), the same list CS_Validator, RS_Validate and the TypeScript validators follow. Written for a project
+    // with ApiValidation=true; the create and update routes answer 400 with every problem in the ASP.NET validation-problem form. No package is needed.
+    // Full notes: Docs/TemplateNotes/PY_Validate_v1.md
+    // ==========================================================================================
+
+    var t = PythonTable.Of(Model, Project);
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+    string Str(string text) => PythonNames.Str(text);
+    string Num(double value) => value.ToString("R", CultureInfo.InvariantCulture);
+
+    var checks = new List<string>();
+    var shapes = new HashSet<string>();
+    foreach (var f in t.Fields)
+    {
+        var rule = f.Column.RuleOf(Project);
+        if (rule is null || f.ReadOnly)
+            continue;
+        string label = Labels.Words(f.Column.Name);
+        string property = f.Column.Name;
+        string value = $"row.{f.Name}";
+        var body = new List<string>();
+        if (f.Annotation == "str")
+        {
+            if (rule.Required && !f.IsNullable)
+                body.Add($"if not {value}.strip():\n    problems.append(({Str(property)}, {Str(label + " must not be empty.")}))");
+            if (rule.MaxLength > 0)
+                body.Add($"if len({value}) > {rule.MaxLength}:\n    problems.append(({Str(property)}, {Str(label + " must be " + rule.MaxLength + " characters or fewer.")}))");
+            if (rule.Choices is { Count: > 0 } choices)
+                body.Add($"if {value} and {value} not in ({string.Join(", ", choices.Select(Str))},):\n    problems.append(({Str(property)}, {Str(label + " must be one of: " + string.Join(", ", choices) + ".")}))");
+            if (rule.Shape != TextShape.None)
+            {
+                string function = rule.Shape switch { TextShape.Email => "looks_like_email", TextShape.Phone => "looks_like_phone", _ => "looks_like_url" };
+                string what = rule.Shape switch { TextShape.Email => "an email address", TextShape.Phone => "a phone number", _ => "a web address" };
+                shapes.Add(function);
+                body.Add($"if {value} and not {function}({value}):\n    problems.append(({Str(property)}, {Str(label + " must be " + what + ".")}))");
+            }
+        }
+        else if (rule.HasRange && f.Annotation is "int" or "float" or "Decimal")
+        {
+            if (rule.Min is { } min)
+                body.Add($"if {value} is not None and float({value}) {(rule.MinStrict ? "<=" : "<")} {Num(min)}:\n    problems.append(({Str(property)}, {Str(label + " must be " + (rule.MinStrict ? "greater than " : "at least ") + Num(min) + ".")}))");
+            if (rule.Max is { } max)
+                body.Add($"if {value} is not None and float({value}) {(rule.MaxStrict ? ">=" : ">")} {Num(max)}:\n    problems.append(({Str(property)}, {Str(label + " must be " + (rule.MaxStrict ? "less than " : "at most ") + Num(max) + ".")}))");
+        }
+        // a nullable text column is only checked when it has a value
+        foreach (string b in body)
+            checks.Add(f.Annotation == "str" && f.IsNullable ? $"if {value} is not None:\n" + string.Join("\n", b.Split('\n').Select(l => "    " + l)) : b);
+    }
+
+    Line($"@@@FILE app/validation/{t.Module}.py@@@");
+    Line($"from app.schemas.{t.Module} import {t.Schema}");
+    var support = new List<string> { "ApiValidationError" };
+    support.AddRange(shapes.OrderBy(s => s, StringComparer.Ordinal));
+    Line($"from app.support import {string.Join(", ", support)}");
+    Line();
+    Line();
+    Line($"def validate(row: {t.Schema}) -> None:");
+    Line("    \"\"\"Checks the row against what the schema says: required, length, allowed values, shape and range. The error carries every problem, by property name.\"\"\"");
+    if (checks.Count == 0)
+    {
+        Line("    return");
+    }
+    else
+    {
+        Line("    problems: list[tuple[str, str]] = []");
+        foreach (string check in checks)
+            foreach (string line in check.Split('\n'))
+                Line("    " + line);
+        Line("    if problems:");
+        Line("        raise ApiValidationError(problems)");
+    }
+    Write(sb.ToString());
+#>

@@ -75,7 +75,7 @@ public class TemplateConfig
     /// <c>Project</c> settings. The CLI runs it without -S, -d or -t, and no table or database menu offers it. </summary>
     public bool NoDatabase { get; init; }
 
-    /// <summary> The stacks whose generation includes this template (<c>Stacks=Api,WinUI3</c>): <c>Api</c>, <c>WinUI3</c>, <c>React</c>, <c>Angular</c>, <c>Blazor</c> and <c>Rust</c>. Empty: the template is run by hand
+    /// <summary> The stacks whose generation includes this template (<c>Stacks=Api,WinUI3</c>): <c>Api</c>, <c>WinUI3</c>, <c>React</c>, <c>Angular</c>, <c>Blazor</c>, <c>Rust</c> and <c>Python</c>. Empty: the template is run by hand
     /// only and is not part of "generate everything for a project". </summary>
     public IReadOnlyList<string> Stacks { get; init; } = [];
 

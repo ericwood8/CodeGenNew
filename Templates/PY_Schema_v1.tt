@@ -1,0 +1,68 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_Schema_v1.tt
+    // Generates: app/schemas/<table>.py   (the template writes its own path with an @@@FILE marker; the output folder is the Python API's folder)
+    // The Pydantic v2 class a request body and a response are: one field per column with the JSON name the other stacks use (customerId), the type (a decimal is written as a JSON number, as ASP.NET
+    // does), a default of None for a nullable column and for a column the database writes, and a default key (0, or the empty GUID) so a new row can be posted. columns() is what an insert
+    // writes and changes() what an update sets. A type that does not fit is a 400 with the ASP.NET problem form (app/support.py). The schema's own rules (required text, length, allowed values,
+    // shape, range) are PY_Validate's, written for a project with ApiValidation=true.
+    // Full notes: Docs/TemplateNotes/PY_Schema_v1.md
+    // ==========================================================================================
+
+    var t = PythonTable.Of(Model, Project);
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+
+    string Annotation(PythonField f) => f.Annotation == "Decimal" ? "JsonDecimal" : f.Annotation;
+    string Default(PythonField f)
+    {
+        if (f.IsNullable || f.ReadOnly)
+            return "None";
+        if (f.Column.IsPrimaryKey)
+            return f.Annotation == "UUID" ? "UUID(int=0)" : "0";
+        return "";
+    }
+
+    var annotations = t.Fields.Select(f => f.Annotation).Distinct().ToList();
+
+    Line($"@@@FILE app/schemas/{t.Module}.py@@@");
+    var datetimes = new[] { "date", "datetime", "time" }.Where(annotations.Contains).ToList();
+    if (datetimes.Count > 0)
+        Line($"from datetime import {string.Join(", ", datetimes)}");
+    Line("from typing import Any");
+    if (annotations.Contains("UUID"))
+        Line("from uuid import UUID");
+    Line();
+    Line("from pydantic import BaseModel, ConfigDict, Field");
+    Line();
+    if (annotations.Contains("Decimal"))
+        Line("from app.support import JsonDecimal");
+    Line();
+    Line();
+    Line($"class {t.Schema}(BaseModel):");
+    Line("    model_config = ConfigDict(populate_by_name=True, from_attributes=True, extra=\"ignore\")");
+    Line();
+    foreach (var f in t.Fields)
+    {
+        string d = Default(f);
+        string alias = $"alias=\"{f.Json}\"";
+        string field = d.Length == 0 ? $"Field({alias})" : $"Field({d}, {alias})";
+        Line($"    {f.Name}: {(f.IsNullable || f.ReadOnly ? Annotation(f) + " | None" : Annotation(f))} = {field}");
+    }
+    Line();
+    Line("    # What an insert writes: every column the database does not assign.");
+    Line("    def columns(self) -> dict[str, Any]:");
+    Line("        return {" + string.Join(", ", t.Written.Select(f => $"\"{f.Name}\": self.{f.Name}")) + "}");
+    Line();
+    Line("    # What an update sets: the same without the key.");
+    Line("    def changes(self) -> dict[str, Any]:");
+    Line("        return {" + string.Join(", ", t.Updated.Select(f => $"\"{f.Name}\": self.{f.Name}")) + "}");
+    Write(sb.ToString());
+#>

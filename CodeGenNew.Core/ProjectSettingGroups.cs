@@ -31,9 +31,9 @@ public static class ProjectSettingGroups
         new("Web", "This tab has the React and Angular folders, Angular version and dev port.",
             ["ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "AngularVersion", "DevPort"]),
         new("Output", "This tab has Stacks (which front ends and APIs are generated), plan-also, the output folders, and the Rust crate and port.",
-            ["Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputRust", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql"]),
+            ["Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputRust", "OutputPython", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql"]),
         new("Build", "This tab has the build and test commands.",
-            ["BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor"]),
+            ["BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildPython", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestPython"]),
     ];
 
     /// <summary> The title of the tab a key is shown on. </summary>

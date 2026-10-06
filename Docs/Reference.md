@@ -209,7 +209,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `ListingName` | WinUI3_DirectoryListing: the class stem, e.g. Document (DocumentListPage); blank = Document |
 | `ListingFolder` | WinUI3_DirectoryListing: the folder whose files are listed (for example %LocalAppData%/Project/Name); blank = under LocalAppData |
 | `ListingPattern` | WinUI3_DirectoryListing: which files are listed; blank = *.* |
-| `Stacks` | stacks to generate: Api, WinUI3, React, Angular, Blazor, Rust (comma-separated), e.g. Api,React |
+| `Stacks` | stacks to generate: Api, WinUI3, React, Angular, Blazor, Rust, Python (comma-separated), e.g. Api,React |
 | `PlanAlso` | templates to run in a whole-project generate although their config leaves them out, e.g. SP_Insert,SP_Update |
 | `OutputApi` | folder of the API project under the output folder; blank = &lt;ProjectName&gt;.Api |
 | `OutputWinUI3` | folder of the WinUI3 app under the output folder; blank = &lt;ProjectName&gt;.App |
@@ -220,6 +220,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `RustPort` | the port the Rust API listens on; blank = ApiPort (5080) |
 | `OutputAngular` | folder of the Angular app; blank = frontend |
 | `OutputBlazor` | folder of the Blazor WebAssembly app; blank = &lt;ProjectName&gt;.Blazor |
+| `OutputPython` | folder of the Python API; blank = &lt;ProjectName&gt;.Python |
 | `OutputSql` | folder of the generated SQL; blank = sql |
 | `AppNamespace` | root namespace of the WinUI3 app; blank = &lt;ProjectName&gt;.App |
 | `DatabaseProvider` | SqlServer, PostgreSql, MySql or Sqlite (appsettings.json and the package reference); blank = SqlServer |
@@ -234,8 +235,10 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `BuildReact` | command that builds the React app; blank = npm run build |
 | `BuildAngular` | command that builds the Angular app; blank = npm run build |
 | `BuildBlazor` | command that builds the Blazor app; blank = dotnet build -v q |
+| `BuildPython` | command that checks the Python API after a generate; blank = python -m compileall -q app |
 | `TestApi` | command that tests the API; blank = no tests |
 | `TestWinUI3` | command that tests the WinUI3 app; blank = no tests |
 | `TestReact` | command that tests the React app; blank = npm test |
 | `TestAngular` | command that tests the Angular app; blank = npm test -- --watch=false |
 | `TestBlazor` | command that tests the Blazor app; blank = no tests |
+| `TestPython` | command that tests the Python API; blank = no tests |

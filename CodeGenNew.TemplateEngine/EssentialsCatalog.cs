@@ -21,7 +21,8 @@ public static class EssentialsCatalog
         ("Angular", "Angular essentials"),
         ("Blazor", "Blazor essentials"),
         ("Api", "API essentials"),
-        ("Rust", "Rust essentials")
+        ("Rust", "Rust essentials"),
+        ("Python", "Python essentials")
     ];
 
     /// <summary> The stack named by <paramref name="text"/> (<c>winui</c>, <c>WinUI3</c>, <c>react</c> ...), or null. </summary>

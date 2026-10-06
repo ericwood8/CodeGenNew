@@ -57,6 +57,7 @@ public class TemplateInfo
         ["MD"] = "md",
         ["PROTO"] = "proto",
         ["BLZ"] = "razor",
+        ["PY"] = "py",
     };
 
     /// <summary> The name of the file a database-level template writes: the OutputName pattern with {Table} replaced by the project's context name. </summary>

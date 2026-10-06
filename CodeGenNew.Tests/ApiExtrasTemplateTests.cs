@@ -171,7 +171,7 @@ public class ApiExtrasTemplateTests
     public void The_flags_name_the_templates_they_add()
     {
         CollectionAssert.AreEqual(Array.Empty<string>(), Project().ImpliedPlanTemplates.ToArray());
-        CollectionAssert.AreEquivalent(new[] { "API_OpenApi", "API_Http", "CS_Faker", "MD_DataDictionary", "MD_Erd", "CS_Validator", "RS_Validate" },
+        CollectionAssert.AreEquivalent(new[] { "API_OpenApi", "API_Http", "CS_Faker", "MD_DataDictionary", "MD_Erd", "CS_Validator", "RS_Validate", "PY_Validate" },
             Project(("ApiDocs", "true"), ("ApiHttp", "TRUE"), ("ApiFakers", "1"), ("ProjectDocs", "yes"), ("ApiValidation", "true"), ("ApiProduction", "true")).ImpliedPlanTemplates.ToArray());
         Assert.IsFalse(Project(("ApiDocs", "false")).ApiDocs);
         Assert.IsFalse(Project(("ApiDocs", "maybe")).ApiDocs);
