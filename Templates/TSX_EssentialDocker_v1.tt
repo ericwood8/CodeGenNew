@@ -1,0 +1,50 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TSX_EssentialDocker_v1.tt
+    // Generates: Dockerfile, nginx.conf.template and .dockerignore   (no table, no database: an essentials group; the output folder is the React app's own folder)
+    // A container for the built React app: a Node stage runs npm install and npm run build, an nginx stage serves dist. The generated api modules call relative /api paths, so nginx forwards
+    // /api/ to the container named by the API_UPSTREAM environment variable (default api:<port the API Dockerfile exposes>), and any other path gets index.html for the router.
+    // Needs no package and no secret. Image tags are the ones current when this was written; change them there.
+    // ==========================================================================================
+    string fromBuild = new string('-', 2) + "from=build";   // a template line may not hold two hyphens in a row (see TemplateDashTests)
+#>
+@@@FILE Dockerfile@@@
+FROM node:24-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY <#= fromBuild #> /app/dist /usr/share/nginx/html
+ENV API_UPSTREAM=api:8080
+EXPOSE 80
+@@@FILE nginx.conf.template@@@
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location /api/ {
+        proxy_pass http://${API_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+@@@FILE .dockerignore@@@
+node_modules/
+dist/
+Dockerfile
+.dockerignore
+.git/
+*.log

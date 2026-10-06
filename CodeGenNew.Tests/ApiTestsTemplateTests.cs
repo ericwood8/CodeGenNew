@@ -141,3 +141,48 @@ public class ApiTestsTemplateTests
         Expect.Contains(command!, "Acme.Api.Tests");
     }
 }
+
+/// <summary> The Dockerfiles the web front ends can have. </summary>
+[TestClass]
+public class FrontEndDockerTemplateTests
+{
+    private static ProjectSettings Project() => ProjectSettings.FromValues([new("ProjectName", "Acme")]);
+
+    [TestMethod]
+    public async Task Each_front_end_builds_with_node_and_is_served_by_nginx_with_the_api_forwarded()
+    {
+        foreach ((string template, string dist) in new[] { ("TSX_EssentialDocker_v1.tt", "/app/dist /usr/share/nginx/html"), ("TS_EssentialDocker_v1.tt", "/app/dist/frontend/browser /usr/share/nginx/html") })
+        {
+            var result = await TemplateRunner.RunAsync(Repo.Template(template), Project());
+            Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+            string text = result.GeneratedText!.Replace("\r\n", "\n");
+
+            Expect.Contains(text, "@@@FILE Dockerfile@@@\nFROM node:24-alpine AS build");
+            Expect.Contains(text, "RUN npm run build");
+            Expect.Contains(text, "COPY --from=build " + dist);
+            Expect.Contains(text, "ENV API_UPSTREAM=api:8080");
+            Expect.Contains(text, "@@@FILE nginx.conf.template@@@");
+            Expect.Contains(text, "proxy_pass http://${API_UPSTREAM};");
+            Expect.Contains(text, "try_files $uri $uri/ /index.html;");
+            Expect.Contains(text, "@@@FILE .dockerignore@@@\nnode_modules/");
+        }
+    }
+
+    [TestMethod]
+    public void The_front_end_docker_groups_are_optional()
+    {
+        var groups = EssentialsCatalog.All(Repo.TemplatesDirectory).Where(g => g.Name == "Docker").ToList();
+
+        CollectionAssert.AreEquivalent(new[] { "Angular", "React" }, groups.Select(g => g.Stack).ToArray());
+        Assert.IsTrue(groups.All(g => !g.DefaultOn));
+    }
+
+    [TestMethod]
+    public async Task The_react_build_files_include_the_vite_types_the_fetch_helper_needs()
+    {
+        var result = await TemplateRunner.RunAsync(Repo.Template("TSX_EssentialBuild_v1.tt"), Project());
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+
+        Expect.Contains(result.GeneratedText!.Replace("\r\n", "\n"), "@@@FILE src/vite-env.d.ts@@@\n/// <reference types=\"vite/client\" />");
+    }
+}

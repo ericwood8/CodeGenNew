@@ -4,9 +4,9 @@
 <#
     // ==========================================================================================
     // TSX_EssentialBuild_v1.tt
-    // Generates: package.json, vite.config.ts and tsconfig.json   (no table, no database: an essentials group)
+    // Generates: package.json, vite.config.ts, tsconfig.json and src/vite-env.d.ts   (no table, no database: an essentials group)
     // The build files of a Vite + React + TypeScript app with the Vitest setup the generated page tests use. vite.config.ts proxies /api to the API (settings ApiPort, default 5080) and sets the
-    // dev server's port (DevPort, default 5173). The package name comes from the project name.
+    // dev server's port (DevPort, default 5173). The package name comes from the project name. vite-env.d.ts gives TypeScript the type of import.meta.env that the shared fetch helper reads.
     // ==========================================================================================
     string packageName = System.Text.RegularExpressions.Regex.Replace(Project.ProjectName ?? "my-app", "(?<=[a-z0-9])(?=[A-Z])", "-").ToLowerInvariant() + "-react";
 #>
@@ -81,3 +81,5 @@ export default defineConfig({
   },
   "include": ["src"]
 }
+@@@FILE src/vite-env.d.ts@@@
+/// <reference types="vite/client" />

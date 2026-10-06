@@ -110,6 +110,8 @@ public static class DefaultAssetSeeder
         "API_Test_v1.tt", "API_Test_v1.tt.config",
         "CS_EssentialEditorConfig_v1.tt", "CS_EssentialEditorConfig_v1.tt.config",
         "TSX_EssentialGit_v1.tt", "TSX_EssentialGit_v1.tt.config",
+        "TSX_EssentialDocker_v1.tt", "TSX_EssentialDocker_v1.tt.config",
+        "TS_EssentialDocker_v1.tt", "TS_EssentialDocker_v1.tt.config",
         "TS_EssentialGit_v1.tt", "TS_EssentialGit_v1.tt.config",
         "API_Registration_v1.tt", "API_Registration_v1.tt.config",
         "API_Dashboard_v1.tt", "API_Dashboard_v1.tt.config",
