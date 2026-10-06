@@ -56,6 +56,7 @@ public static class ProjectSettingsHints
         ["NoDashboardTables"] = "comma-separated tables the dashboard leaves out",
         ["AccessMode"] = "Routines or Ef: how search, sort, paging, clone and the junction editors reach the database. Ef uses LINQ over the context and needs no routine in the database; SQLite always uses it; blank = Routines",
         ["ValidatorNamespace"] = "the namespace of the FluentValidation validators CS_Validator writes (default <ProjectName>.App.Validators)",
+        ["ApplicationNamespace"] = "the namespace of the commands, queries and handlers CS_CqrsHandlers writes (default <ProjectName>.App.Application)",
         ["ErdTables"] = "comma-separated tables MD_Erd draws (Customer,SalesInvoice); empty: every table",
         ["DtoNamespace"] = "the namespace of the data-transfer classes and mappers (CS_Dto, CS_Mapper, CS_DataContractDto, CS_TypedDataRow, CS_SerializationDtos; default <ProjectName>.App.Dtos)",
         ["FSharpNamespace"] = "the namespace of the F# records FS_Entity and the Rop module FS_Rop write (default <ProjectName>.Domain)",

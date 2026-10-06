@@ -15,8 +15,8 @@ public static class ProjectSettingGroups
     [
         new(General, "This tab has the context name, currency, years, naming style, acronyms, title, app namespace and usings.",
             ["ContextName", "CurrencyCode", "MinYear", "MaxYear", "NamingStyle", "Acronyms", "ProjectTitle", "AppNamespace", "Usings"]),
-        new("Namespaces", "This tab has the context, API, enum, repo, entity, validator, faker, DTO and F# namespaces.",
-            ["ContextNamespace", "ApiNamespace", "EnumNamespace", "RepoNamespace", "EntityNamespace", "ValidatorNamespace", "FakerNamespace", "DtoNamespace", "FSharpNamespace"]),
+        new("Namespaces", "This tab has the context, API, enum, repo, entity, validator, application, faker, DTO and F# namespaces.",
+            ["ContextNamespace", "ApiNamespace", "EnumNamespace", "RepoNamespace", "EntityNamespace", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "DtoNamespace", "FSharpNamespace"]),
         new("Tables", "This tab has screens, enum rules, the \"No...\" lists, base entity, DbSet names, ignored columns and ERD tables.",
             ["Screens", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NoCloneTables",
              "BaseEntity", "BaseNameActiveEntity", "DbSetNames", "IgnoredColumns", "NonNegativeColumns", "ModelFileOverrides", "ChildGridTitles", "ErdTables"]),

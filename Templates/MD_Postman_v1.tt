@@ -1,0 +1,85 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // MD_Postman_v1.tt
+    // Generates: <ProjectName>.postman_collection.json   (the path is written by the template; whole-database)
+    // A Postman collection (v2.1) for the generated API: a folder per table with the requests of API_Http (get all, get one, search, add, change, remove, copy), the create and update bodies filled
+    // with sample values shaped by the columns. The host and the id are collection variables (baseUrl = http://localhost:<ApiPort>, id = 1). Import it in Postman, or run it with newman.
+    // The requests come from ApiRequests, the same list API_Http and MD_Bruno write. Does not log in: add the Authorization header if the API has authentication.
+    // Full notes: Docs/TemplateNotes/MD_Postman_v1.md
+    // ==========================================================================================
+
+    var tables = Database.ApiTables(Project);
+    if (tables.Count == 0)
+        Error("MD_Postman found no table to write requests for: none has an API of its own (a single whole-number key, not an enum or a name/active table).");
+
+    string J(string s) => ApiRequests.JsonString(s);
+    string name = (Project.ProjectName ?? "My") + " API";
+    var o = new StringBuilder();
+    void L(string s = "") => o.Append(s).Append('\n');
+
+    L($"@@@FILE {Project.ProjectName ?? "Api"}.postman_collection.json@@@");
+    L("{");
+    L("  \"info\": {");
+    L($"    \"name\": {J(name)},");
+    L("    \"schema\": \"https://schema.getpostman.com/json/collection/v2.1.0/collection.json\"");
+    L("  },");
+    L("  \"item\": [");
+    for (int t = 0; t < tables.Count; t++)
+    {
+        var table = tables[t];
+        var requests = ApiRequests.For(table, Project);
+        L("    {");
+        L($"      \"name\": {J(table.TableName.Pluralize())},");
+        L("      \"item\": [");
+        for (int r = 0; r < requests.Count; r++)
+        {
+            var request = requests[r];
+            string path = request.Path;
+            string query = "";
+            int mark = path.IndexOf('?');
+            if (mark >= 0)
+            {
+                query = path[(mark + 1)..];
+                path = path[..mark];
+            }
+            var segments = path.Trim('/').Split('/').Select(J);
+            var queryItems = query.Length == 0 ? new List<string>() : query.Split('&').Select(pair =>
+            {
+                int eq = pair.IndexOf('=');
+                return "{ \"key\": " + J(pair[..eq]) + ", \"value\": " + J(pair[(eq + 1)..]) + " }";
+            }).ToList();
+            L("        {");
+            L($"          \"name\": {J(request.Name)},");
+            L("          \"request\": {");
+            L($"            \"method\": \"{request.Method}\",");
+            L("            \"header\": [" + (request.Body is null ? "{ \"key\": \"Accept\", \"value\": \"application/json\" }" : "{ \"key\": \"Content-Type\", \"value\": \"application/json\" }") + "],");
+            if (request.Body is not null)
+                L($"            \"body\": {{ \"mode\": \"raw\", \"raw\": {J(request.Body)}, \"options\": {{ \"raw\": {{ \"language\": \"json\" }} }} }},");
+            L("            \"url\": {");
+            L($"              \"raw\": {J("{{baseUrl}}" + request.Path)},");
+            L("              \"host\": [\"{{baseUrl}}\"],");
+            L($"              \"path\": [{string.Join(", ", segments)}]" + (queryItems.Count > 0 ? "," : ""));
+            if (queryItems.Count > 0)
+                L($"              \"query\": [{string.Join(", ", queryItems)}]");
+            L("            }");
+            L("          }");
+            L("        }" + (r < requests.Count - 1 ? "," : ""));
+        }
+        L("      ]");
+        L("    }" + (t < tables.Count - 1 ? "," : ""));
+    }
+    L("  ],");
+    L("  \"variable\": [");
+    L($"    {{ \"key\": \"baseUrl\", \"value\": \"http://localhost:{Project.ApiPort}\" }},");
+    L("    { \"key\": \"id\", \"value\": \"1\" }");
+    L("  ]");
+    L("}");
+    Write(o.ToString());
+#>

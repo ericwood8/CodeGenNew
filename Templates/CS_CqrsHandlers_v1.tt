@@ -1,0 +1,203 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project. A project settings file (ApplicationNamespace, EntityNamespace, RepoNamespace, ContextNamespace,
+    // ContextName, or ProjectName) overrides them.
+    // ==========================================================================================
+    string applicationNamespace = Project.ApplicationNamespace ?? "MyApp.Application";
+    string entityNamespace = Project.EntityNamespace ?? "MyApp.Common.Entities";
+    string repositoryNamespace = Project.RepoNamespace ?? "MyApp.Common.Repositories";
+    string contextNamespace = Project.ContextNamespace ?? "MyApp.Data";
+    string contextType = Project.ContextName ?? "MyAppContext";
+
+    // ==========================================================================================
+    // CS_CqrsHandlers_v1.tt
+    // Generates: Application/Abstractions.cs, Application/<Table>Handlers.cs per table and Application/ApplicationRegistration.cs   (the paths are written by the template)
+    // Commands and queries without a package: Create, Update and Delete commands, a Get-by-id query and a paged list query (search boxes, sort, page) per table, each with its handler,
+    // behind two small interfaces (ICommandHandler, IQueryHandler). The command handlers use the table's repository; the list handler queries the context directly, so it works in either
+    // access mode. With ApiValidation=true the Create and Update handlers run the table's FluentValidation validator first (ValidationException). AddApplicationHandlers() registers every
+    // handler; an endpoint (or a mediator of your own) asks for the handler it needs. For the tables with an API of their own, an int key and no Name + IsActive pair, as the repositories are.
+    // Opinionated, so it is only in a plan that names it in PlanAlso. Full notes: Docs/TemplateNotes/CS_CqrsHandlers_v1.md
+    // ==========================================================================================
+
+
+    var tables = Database.ApiTables(Project)
+        .Where(t => t.PrimaryKeyColumns.Count == 1 && t.PrimaryKeyColumns[0].SqlType == SqlDbType.Int && !t.IsNameActiveTable)
+        .ToList();
+    if (tables.Count == 0)
+        Error("CS_CqrsHandlers found no table to write handlers for: none has an API of its own with a single int key.");
+
+    var o = new StringBuilder();
+    void L(string s = "") => o.Append(s).Append('\n');
+
+    L("@@@FILE Application/Abstractions.cs@@@");
+    L($"namespace {applicationNamespace};");
+    L();
+    L("public interface ICommand<TResult>");
+    L("{");
+    L("}");
+    L();
+    L("public interface IQuery<TResult>");
+    L("{");
+    L("}");
+    L();
+    L("public interface ICommandHandler<in TCommand, TResult> where TCommand : ICommand<TResult>");
+    L("{");
+    L("    Task<TResult> Handle(TCommand command, CancellationToken cancellationToken = default);");
+    L("}");
+    L();
+    L("public interface IQueryHandler<in TQuery, TResult> where TQuery : IQuery<TResult>");
+    L("{");
+    L("    Task<TResult> Handle(TQuery query, CancellationToken cancellationToken = default);");
+    L("}");
+    L();
+    L("public enum DeleteOutcome");
+    L("{");
+    L("    Deleted,");
+    L("    NotFound,");
+    L("    InUse");
+    L("}");
+    L();
+    L("public record PagedList<T>(List<T> Items, int PageNumber, int PageSize, int TotalCount)");
+    L("{");
+    L("    public int TotalPages => PageSize <= 0 ? 0 : (TotalCount + PageSize - 1) / PageSize;");
+    L("}");
+
+    foreach (var t in tables)
+    {
+        string e = ScreenNames.BaseName(t.TableName);
+        string key = t.PrimaryKeyColumns[0].CSharpName();
+        var filters = t.SearchableColumns.Where(c => c.CSharpBase() == "string").ToList();
+        var sorts = t.Columns.Where(SearchSort.IsSortable).Where(c => c.CSharpBase() != "object").ToList();
+        bool validate = Project.ApiValidation;
+
+        string R(string s) => s.Replace("§E", e).Replace("§K", key).Replace("§C", contextType);
+
+        L($"@@@FILE Application/{e}Handlers.cs@@@");
+        if (validate)
+            L("using FluentValidation;");
+        L("using Microsoft.EntityFrameworkCore;");
+        L($"using {entityNamespace};");
+        L($"using {repositoryNamespace};");
+        L($"using {contextNamespace};");
+        L();
+        L($"namespace {applicationNamespace};");
+        L();
+        L(R("public record Create§ECommand(§E Row) : ICommand<§E>;"));
+        L(R("public record Update§ECommand(int Id, §E Row) : ICommand<§E?>;"));
+        L(R("public record Delete§ECommand(int Id) : ICommand<DeleteOutcome>;"));
+        L(R("public record Get§EByIdQuery(int Id) : IQuery<§E?>;"));
+        string filterParams = string.Concat(filters.Select(c => $", string? {c.CSharpName()} = null"));
+        L(R("public record Get§EListQuery(int PageNumber = 1, int PageSize = 20, string? SortBy = null, bool Descending = false" + filterParams + ") : IQuery<PagedList<§E>>;"));
+        L();
+        L(R("public class Create§EHandler(§C context" + (validate ? ", IValidator<§E> validator" : "") + ") : ICommandHandler<Create§ECommand, §E>"));
+        L("{");
+        L(R("    private readonly §ERepo repo = new(context);"));
+        L();
+        L(R("    public async Task<§E> Handle(Create§ECommand command, CancellationToken cancellationToken = default)"));
+        L("    {");
+        if (validate)
+            L("        await validator.ValidateAndThrowAsync(command.Row, cancellationToken);");
+        L("        await repo.AddAsync(command.Row);");
+        L("        return command.Row;");
+        L("    }");
+        L("}");
+        L();
+        L(R("public class Update§EHandler(§C context" + (validate ? ", IValidator<§E> validator" : "") + ") : ICommandHandler<Update§ECommand, §E?>"));
+        L("{");
+        L(R("    private readonly §ERepo repo = new(context);"));
+        L();
+        L(R("    // null: there is no row with that id."));
+        L(R("    public async Task<§E?> Handle(Update§ECommand command, CancellationToken cancellationToken = default)"));
+        L("    {");
+        L("        if (!await repo.ExistsAsync(command.Id))");
+        L("            return null;");
+        L(R("        command.Row.§K = command.Id;"));
+        if (validate)
+            L("        await validator.ValidateAndThrowAsync(command.Row, cancellationToken);");
+        L("        return await repo.UpdateAsync(command.Id, command.Row);");
+        L("    }");
+        L("}");
+        L();
+        L(R("public class Delete§EHandler(§C context) : ICommandHandler<Delete§ECommand, DeleteOutcome>"));
+        L("{");
+        L(R("    private readonly §ERepo repo = new(context);"));
+        L();
+        L(R("    public async Task<DeleteOutcome> Handle(Delete§ECommand command, CancellationToken cancellationToken = default)"));
+        L("    {");
+        L($"        int result = await repo.DeleteAsync(\"{t.TableName}\", command.Id);");
+        L("        return result switch { 0 => DeleteOutcome.Deleted, -1 => DeleteOutcome.NotFound, _ => DeleteOutcome.InUse };");
+        L("    }");
+        L("}");
+        L();
+        L(R("public class Get§EByIdHandler(§C context) : IQueryHandler<Get§EByIdQuery, §E?>"));
+        L("{");
+        L(R("    public async Task<§E?> Handle(Get§EByIdQuery query, CancellationToken cancellationToken = default) =>"));
+        L(R("        await context.Set<§E>().AsNoTracking().FirstOrDefaultAsync(x => x.§K == query.Id, cancellationToken);"));
+        L("}");
+        L();
+        L(R("public class Get§EListHandler(§C context) : IQueryHandler<Get§EListQuery, PagedList<§E>>"));
+        L("{");
+        L(R("    public async Task<PagedList<§E>> Handle(Get§EListQuery query, CancellationToken cancellationToken = default)"));
+        L("    {");
+        L(R("        IQueryable<§E> rows = context.Set<§E>().AsNoTracking();"));
+        foreach (var c in filters)
+        {
+            string n = c.CSharpName();
+            L($"        if (!string.IsNullOrWhiteSpace(query.{n}))");
+            L($"            rows = rows.Where(x => x.{n} != null && x.{n}.Contains(query.{n}));");
+        }
+        L("        int totalCount = await rows.CountAsync(cancellationToken);");
+        L();
+        L("        // The columns a header can sort by; anything else, or no sort, is the key.");
+        L("        var ordered = (query.SortBy?.ToLowerInvariant(), query.Descending) switch");
+        L("        {");
+        foreach (var c in sorts)
+        {
+            string n = c.CSharpName();
+            L($"            (\"{c.Name.ToLowerInvariant()}\", false) => rows.OrderBy(x => x.{n}),");
+            L($"            (\"{c.Name.ToLowerInvariant()}\", true) => rows.OrderByDescending(x => x.{n}),");
+        }
+        L(R("            (_, true) => rows.OrderByDescending(x => x.§K),"));
+        L(R("            _ => rows.OrderBy(x => x.§K)"));
+        L("        };");
+        L();
+        L("        int pageSize = Math.Clamp(query.PageSize, 1, 200);");
+        L("        int pageNumber = Math.Max(query.PageNumber, 1);");
+        L("        var items = await ordered.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);");
+        L(R("        return new PagedList<§E>(items, pageNumber, pageSize, totalCount);"));
+        L("    }");
+        L("}");
+    }
+
+    L("@@@FILE Application/ApplicationRegistration.cs@@@");
+    L("using Microsoft.Extensions.DependencyInjection;");
+    L($"using {entityNamespace};");
+    L();
+    L($"namespace {applicationNamespace};");
+    L();
+    L("public static class ApplicationRegistration");
+    L("{");
+    L("    public static IServiceCollection AddApplicationHandlers(this IServiceCollection services)");
+    L("    {");
+    foreach (var t in tables)
+    {
+        string e = ScreenNames.BaseName(t.TableName);
+        L($"        services.AddScoped<ICommandHandler<Create{e}Command, {e}>, Create{e}Handler>();");
+        L($"        services.AddScoped<ICommandHandler<Update{e}Command, {e}?>, Update{e}Handler>();");
+        L($"        services.AddScoped<ICommandHandler<Delete{e}Command, DeleteOutcome>, Delete{e}Handler>();");
+        L($"        services.AddScoped<IQueryHandler<Get{e}ByIdQuery, {e}?>, Get{e}ByIdHandler>();");
+        L($"        services.AddScoped<IQueryHandler<Get{e}ListQuery, PagedList<{e}>>, Get{e}ListHandler>();");
+    }
+    L("        return services;");
+    L("    }");
+    L("}");
+    Write(o.ToString());
+#>

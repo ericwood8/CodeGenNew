@@ -1,0 +1,71 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // MD_Bruno_v1.tt
+    // Generates: bruno.json, environments/Local.bru and <Table>/<Request>.bru per request   (the paths are written by the template; whole-database)
+    // A Bruno collection (open the folder in Bruno, or run it with the bru CLI) for the generated API: a folder per table with the requests of API_Http (get all, get one, search, add, change,
+    // remove, copy), the create and update bodies filled with sample values shaped by the columns. The host and the id are variables of the Local environment (baseUrl = http://localhost:<ApiPort>,
+    // id = 1). The requests come from ApiRequests, the same list API_Http and MD_Postman write. Does not log in: add the Authorization header if the API has authentication.
+    // Full notes: Docs/TemplateNotes/MD_Bruno_v1.md
+    // ==========================================================================================
+
+    var tables = Database.ApiTables(Project);
+    if (tables.Count == 0)
+        Error("MD_Bruno found no table to write requests for: none has an API of its own (a single whole-number key, not an enum or a name/active table).");
+
+    var o = new StringBuilder();
+    void L(string s = "") => o.Append(s).Append('\n');
+
+    L("@@@FILE bruno.json@@@");
+    L("{");
+    L("  \"version\": \"1\",");
+    L($"  \"name\": {ApiRequests.JsonString((Project.ProjectName ?? "My") + " API")},");
+    L("  \"type\": \"collection\",");
+    L("  \"ignore\": [\"node_modules\", \".git\"]");
+    L("}");
+    L("@@@FILE environments/Local.bru@@@");
+    L("vars {");
+    L($"  baseUrl: http://localhost:{Project.ApiPort}");
+    L("  id: 1");
+    L("}");
+
+    foreach (var table in tables)
+    {
+        var requests = ApiRequests.For(table, Project);
+        for (int r = 0; r < requests.Count; r++)
+        {
+            var request = requests[r];
+            L($"@@@FILE {table.TableName}/{ApiRequests.FileName(request.Name)}.bru@@@");
+            L("meta {");
+            L($"  name: {request.Name}");
+            L("  type: http");
+            L($"  seq: {r + 1}");
+            L("}");
+            L();
+            L($"{request.Method.ToLowerInvariant()} {{");
+            L("  url: {{baseUrl}}" + request.Path);
+            L($"  body: {(request.Body is null ? "none" : "json")}");
+            L("  auth: none");
+            L("}");
+            L();
+            L("headers {");
+            L(request.Body is null ? "  Accept: application/json" : "  Content-Type: application/json");
+            L("}");
+            if (request.Body is not null)
+            {
+                L();
+                L("body:json {");
+                foreach (string line in request.Body.Split('\n'))
+                    L("  " + line);
+                L("}");
+            }
+        }
+    }
+    Write(o.ToString());
+#>

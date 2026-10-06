@@ -177,6 +177,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `NoCloneTables` | comma-separated tables that get no Clone button although they could (Customer,SalesInvoice) |
 | `NonNegativeColumns` | comma-separated money columns that can never be negative (CreditLimit, or Item.Cost for one table): their number box gets a minimum of 0 (a CHECK range in the database does this without the list) |
 | `ValidatorNamespace` | the namespace of the FluentValidation validators CS_Validator writes (default &lt;ProjectName&gt;.App.Validators) |
+| `ApplicationNamespace` | the namespace of the commands, queries and handlers CS_CqrsHandlers writes (default &lt;ProjectName&gt;.App.Application) |
 | `FakerNamespace` | the namespace of the Bogus fakers CS_Faker writes (default &lt;ProjectName&gt;.App.Fakers) |
 | `ErdTables` | comma-separated tables MD_Erd draws (Customer,SalesInvoice); empty: every table |
 | `ApiDocs` | true: the plan also writes openapi.yaml (API_OpenApi) and the API serves it with a Swagger UI page at /docs |
