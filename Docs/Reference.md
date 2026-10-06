@@ -187,6 +187,8 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `ApiProduction` | true: the API project also gets a production profile (ProductionProfile.cs: Problem Details, health checks, rate limiting, response compression, security headers) and a Dockerfile; no package is added |
 | `ApiTests` | true: the plan also writes an integration test class per table (API_Test) and the test project (Tests essentials group) beside the API; folder `OutputApiTests`, default `<ProjectName>.Api.Tests` |
 | `ApiValidation` | true: the plan also writes a FluentValidation validator per table (CS_Validator) and the create and update endpoints run them (400 with the messages) |
+| `ApiCsv` | true: the plan also writes CSV export and import endpoints for every table (API_Csv) and Program.cs maps them: GET /api/&lt;table&gt;/export.csv and POST /api/&lt;table&gt;/import. Regenerate after ticking |
+| `EfConfigurations` | true: the plan also writes an IEntityTypeConfiguration per table (CS_EfConfiguration) and the context applies them from the assembly; composite keys move into them. Regenerate after ticking |
 | `AccessMode` | Routines or Ef: how search, sort, paging, clone and the junction editors reach the database. Ef uses LINQ over the context and needs no routine in the database; SQLite always uses it; blank = Routines |
 | `DtoNamespace` | the namespace of the data-transfer classes and mappers (CS_Dto, CS_Mapper, CS_DataContractDto, CS_TypedDataRow, CS_SerializationDtos; default &lt;ProjectName&gt;.App.Dtos) |
 | `FSharpNamespace` | the namespace of the F# records FS_Entity and the Rop module FS_Rop write (default &lt;ProjectName&gt;.Domain) |

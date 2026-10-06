@@ -25,6 +25,7 @@
     // The EF Core context for the whole database, written for the database the schema came from (SQL Server, PostgreSQL or MySQL): a DbSet per
     // table that has a primary key, both constructors, and the provider call in one place (UseProvider, also used by API_Registration).
     // A composite key gets HasKey in OnModelCreating, which then calls a partial OnModelCreatingPartial for hand-written additions.
+    // With EfConfigurations=true OnModelCreating applies the <Table>Configuration classes of CS_EfConfiguration instead (they carry the composite keys), then calls OnModelCreatingPartial.
     // The class is partial; DbSetNames=Plural names the sets in the plural. The NuGet package the provider needs is named in the class comment.
     // Full notes: Docs/TemplateNotes/CS_DbContext_v1.md
 
@@ -89,7 +90,20 @@
         Line("    }");
     }
     var composite = Database.CompositeKeyTables;
-    if (composite.Count > 0)
+    if (Project.EfConfigurations)
+    {
+        Line();
+        Line("    // The keys, columns and indexes of every table are in its <Table>Configuration (CS_EfConfiguration), found in this assembly.");
+        Line("    // Extra model configuration of your own goes in OnModelCreatingPartial, in another part of this class, or in another IEntityTypeConfiguration.");
+        Line("    protected override void OnModelCreating(ModelBuilder modelBuilder)");
+        Line("    {");
+        Line($"        modelBuilder.ApplyConfigurationsFromAssembly(typeof({contextType}).Assembly);");
+        Line("        OnModelCreatingPartial(modelBuilder);");
+        Line("    }");
+        Line();
+        Line("    partial void OnModelCreatingPartial(ModelBuilder modelBuilder);");
+    }
+    else if (composite.Count > 0)
     {
         Line();
         Line("    // A composite primary key cannot be said with an attribute, so the key of each junction table is named here.");

@@ -1,0 +1,352 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project. A project settings file (ApiNamespace, ContextName, or ProjectName) overrides them.
+    // ==========================================================================================
+    string apiNamespace = Project.ApiNamespace ?? "MyApp.ApiService.Apis";
+    string contextType = Project.ContextName ?? "MyAppContext";
+
+    // ==========================================================================================
+    // API_Csv_v1.tt
+    // Generates: Csv.cs   (whole-database; the path is written by the template)
+    // CSV export and import for every table that has an API of its own, with no package: GET /api/<table>/export.csv writes every row (a header line of the property names, RFC 4180 quoting,
+    // UTF-8) and POST /api/<table>/import reads a CSV body (text/csv, or the first file of a multipart form) and adds its rows. The import is all or nothing: a row that does not convert
+    // (a number, a date, a yes / no, a missing required value, a text longer than its column) or that the validator refuses (ApiValidation=true) is reported by its row number, and then nothing
+    // is saved; a 400 lists the problems. Identity and computed columns are not read. A text cell that starts with = + - or @ is exported with a leading apostrophe, so a spreadsheet does not run it,
+    // and the apostrophe is dropped again on import. At most 10000 rows an import. The API is the project's: add authorization to the endpoints yourself.
+    // Program.cs maps them with app.MapCsvEndpoints() when ApiCsv=true. Full notes: Docs/TemplateNotes/API_Csv_v1.md
+    // ==========================================================================================
+
+    var tables = Database.ApiTables(Project).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    if (tables.Count == 0)
+        Error("API_Csv found no table to write endpoints for: none has an API of its own (a single whole-number key, not an enum or a name/active table).");
+    bool validate = Project.ApiValidation;
+
+    string Columns(TableModel table)
+    {
+        var parts = new List<string>();
+        foreach (var c in table.Columns.OrderBy(c => c.OrdinalPosition).Where(c => c.CSharpBase() is not ("byte[]" or "object")))
+        {
+            bool import = !c.IsIdentity && !c.IsComputed && c.SqlType != SqlDbType.Timestamp;
+            int length = c.CSharpBase() == "string" ? c.CharacterLength() : 0;
+            parts.Add($"new(\"{c.Name}\", {(import ? "true" : "false")}, {(import && !c.IsNullable ? "true" : "false")}, {(c.IsNullable ? "true" : "false")}, {length})");
+        }
+        return string.Join(", ", parts);
+    }
+#>
+<#
+    if (validate)
+    {
+#>
+using FluentValidation;
+<#
+    }
+#>
+using System.Globalization;
+using System.Text;
+using Microsoft.EntityFrameworkCore;
+
+namespace <#= apiNamespace #>;
+
+/// <summary> One column of a table's CSV: its property name, whether an import reads it, whether it must have a value, whether it can be NULL and its text length (0: none). </summary>
+public sealed record CsvColumn(string Name, bool Import, bool Required, bool Nullable, int MaxLength);
+
+public sealed record CsvImport<T>(List<T> Rows, List<int> Lines, List<string> Errors);
+
+public static class CsvSupport
+{
+    public const int MaxRows = 10000;
+
+    /// <summary> The cells of every row of an RFC 4180 text: quoted cells, doubled quotes, line breaks inside quotes, CRLF or LF; blank lines are skipped. </summary>
+    public static List<List<string>> Parse(string text)
+    {
+        var rows = new List<List<string>>();
+        var row = new List<string>();
+        var cell = new StringBuilder();
+        bool quoted = false;
+        bool any = false;
+        if (text.Length > 0 && text[0] == '﻿')
+            text = text[1..];
+        for (int i = 0; i < text.Length; i++)
+        {
+            char c = text[i];
+            if (quoted)
+            {
+                if (c == '"' && i + 1 < text.Length && text[i + 1] == '"')
+                {
+                    cell.Append('"');
+                    i++;
+                }
+                else if (c == '"')
+                    quoted = false;
+                else
+                    cell.Append(c);
+            }
+            else if (c == '"')
+            {
+                quoted = true;
+                any = true;
+            }
+            else if (c == ',')
+            {
+                row.Add(cell.ToString());
+                cell.Clear();
+                any = true;
+            }
+            else if (c == '\r' || c == '\n')
+            {
+                if (c == '\r' && i + 1 < text.Length && text[i + 1] == '\n')
+                    i++;
+                if (any || cell.Length > 0)
+                {
+                    row.Add(cell.ToString());
+                    rows.Add(row);
+                }
+                row = new List<string>();
+                cell.Clear();
+                any = false;
+            }
+            else
+            {
+                cell.Append(c);
+                any = true;
+            }
+        }
+        if (any || cell.Length > 0)
+        {
+            row.Add(cell.ToString());
+            rows.Add(row);
+        }
+        return rows;
+    }
+
+    public static string Escape(string text) =>
+        text.IndexOfAny([',', '"', '\r', '\n']) >= 0 ? "\"" + text.Replace("\"", "\"\"") + "\"" : text;
+
+    /// <summary> A value as the CSV writes it: culture free, a date as 2026-01-15T00:00:00, a yes / no as true / false. </summary>
+    public static string Format(object? value) => value switch
+    {
+        null => "",
+        bool flag => flag ? "true" : "false",
+        DateTime date => date.ToString("s", CultureInfo.InvariantCulture),
+        DateTimeOffset offset => offset.ToString("o", CultureInfo.InvariantCulture),
+        string text => text.Length > 0 && "=+-@\t\r".Contains(text[0]) ? "'" + text : text,
+        IFormattable number => number.ToString(null, CultureInfo.InvariantCulture),
+        _ => value.ToString() ?? ""
+    };
+
+    public static string Export<T>(IEnumerable<T> rows, IReadOnlyList<CsvColumn> columns)
+    {
+        var properties = columns.Select(c => typeof(T).GetProperty(c.Name)!).ToArray();
+        var text = new StringBuilder();
+        text.Append(string.Join(',', columns.Select(c => c.Name))).Append("\r\n");
+        foreach (var row in rows)
+            text.Append(string.Join(',', properties.Select(p => Escape(Format(p.GetValue(row)))))).Append("\r\n");
+        return text.ToString();
+    }
+
+    /// <summary> Reads the rows of a CSV text into new <typeparamref name="T"/> objects. The first line names the columns (any order, any case); every column that must have a value has to be there. </summary>
+    public static CsvImport<T> Import<T>(string text, IReadOnlyList<CsvColumn> columns) where T : new()
+    {
+        var result = new CsvImport<T>([], [], []);
+        var lines = Parse(text);
+        if (lines.Count == 0)
+        {
+            result.Errors.Add("The file is empty: the first line must name the columns.");
+            return result;
+        }
+
+        var header = lines[0].Select(h => h.Trim()).ToList();
+        var positions = new List<(CsvColumn Column, int At)>();
+        foreach (var column in columns.Where(c => c.Import))
+        {
+            int at = header.FindIndex(h => h.Equals(column.Name, StringComparison.OrdinalIgnoreCase));
+            if (at >= 0)
+                positions.Add((column, at));
+            else if (column.Required)
+                result.Errors.Add($"The column {column.Name} is missing from the first line.");
+        }
+        if (lines.Count - 1 > MaxRows)
+            result.Errors.Add($"At most {MaxRows} rows can be imported at once.");
+        if (result.Errors.Count > 0)
+            return result;
+
+        for (int line = 1; line < lines.Count; line++)
+        {
+            var cells = lines[line];
+            var item = new T();
+            int before = result.Errors.Count;
+            foreach (var (column, at) in positions)
+            {
+                string cell = at < cells.Count ? cells[at] : "";
+                if (TryConvert(typeof(T).GetProperty(column.Name)!.PropertyType, cell, column, out object? value, out string problem))
+                    typeof(T).GetProperty(column.Name)!.SetValue(item, value);
+                else
+                    result.Errors.Add($"Row {line}: {column.Name} {problem}.");
+            }
+            if (result.Errors.Count == before)
+            {
+                result.Rows.Add(item);
+                result.Lines.Add(line);
+            }
+        }
+        return result;
+    }
+
+    private static bool TryConvert(Type type, string cell, CsvColumn column, out object? value, out string problem)
+    {
+        value = null;
+        problem = "";
+        Type target = Nullable.GetUnderlyingType(type) ?? type;
+        if (cell.Length == 0)
+        {
+            if (target == typeof(string))
+            {
+                value = column.Nullable ? null : "";
+                return true;
+            }
+            if (column.Nullable)
+                return true;
+            problem = "is required";
+            return false;
+        }
+
+        if (target == typeof(string))
+        {
+            if (column.MaxLength > 0 && cell.Length > column.MaxLength)
+            {
+                problem = $"is longer than {column.MaxLength} characters";
+                return false;
+            }
+            value = cell.Length > 1 && cell[0] == '\'' && "=+-@\t\r".Contains(cell[1]) ? cell[1..] : cell;
+            return true;
+        }
+        if (target == typeof(bool))
+        {
+            switch (cell.Trim().ToLowerInvariant())
+            {
+                case "true" or "1" or "yes" or "y":
+                    value = true;
+                    return true;
+                case "false" or "0" or "no" or "n":
+                    value = false;
+                    return true;
+            }
+            problem = "must be true or false";
+            return false;
+        }
+        if (target == typeof(DateTime) && DateTime.TryParse(cell, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+        {
+            value = date;
+            return true;
+        }
+        if (target == typeof(DateTimeOffset) && DateTimeOffset.TryParse(cell, CultureInfo.InvariantCulture, DateTimeStyles.None, out var offset))
+        {
+            value = offset;
+            return true;
+        }
+        if (target == typeof(TimeSpan) && TimeSpan.TryParse(cell, CultureInfo.InvariantCulture, out var span))
+        {
+            value = span;
+            return true;
+        }
+        if (target == typeof(Guid) && Guid.TryParse(cell, out var guid))
+        {
+            value = guid;
+            return true;
+        }
+        if (target != typeof(DateTime) && target != typeof(DateTimeOffset) && target != typeof(TimeSpan) && target != typeof(Guid))
+        {
+            try
+            {
+                value = Convert.ChangeType(cell.Trim(), target, CultureInfo.InvariantCulture);
+                return true;
+            }
+            catch (Exception ex) when (ex is FormatException or OverflowException or InvalidCastException)
+            {
+            }
+        }
+        problem = target == typeof(DateTime) || target == typeof(DateTimeOffset) ? "must be a date" : target == typeof(Guid) ? "must be a GUID" : "must be a valid " + target.Name.ToLowerInvariant();
+        return false;
+    }
+}
+
+/// <summary> Generated by API_Csv: the export and import routes of every table that has an API. </summary>
+public static class CsvEndpoints
+{
+    public static void MapCsvEndpoints(this WebApplication app)
+    {
+<#
+    foreach (var t in tables)
+    {
+        string entity = t.TableName;
+#>
+        MapTable<<#= entity #>, <#= contextType #>>(app, "<#= ApiRequests.Route(t) #>", "<#= t.TableName.Pluralize().ToLowerInvariant() #>", [<#= Columns(t) #>]);
+<#
+    }
+#>
+    }
+
+    private static void MapTable<T, TContext>(WebApplication app, string route, string file, CsvColumn[] columns) where T : class, new() where TContext : DbContext
+    {
+        app.MapGet(route + "/export.csv", async (TContext context) =>
+        {
+            var rows = await context.Set<T>().AsNoTracking().ToListAsync();
+            return Results.File(Encoding.UTF8.GetBytes(CsvSupport.Export(rows, columns)), "text/csv; charset=utf-8", file + ".csv");
+        }).WithName("Export" + file + "Csv");
+
+        app.MapPost(route + "/import", async (HttpRequest request, TContext context) =>
+        {
+            string text;
+            if (request.HasFormContentType)
+            {
+                var form = await request.ReadFormAsync();
+                if (form.Files.Count == 0)
+                    return Results.BadRequest(new { imported = 0, errors = new[] { "The form has no file." } });
+                using var upload = new StreamReader(form.Files[0].OpenReadStream(), Encoding.UTF8);
+                text = await upload.ReadToEndAsync();
+            }
+            else
+            {
+                using var body = new StreamReader(request.Body, Encoding.UTF8);
+                text = await body.ReadToEndAsync();
+            }
+
+            var import = CsvSupport.Import<T>(text, columns);
+<#
+    if (validate)
+    {
+#>
+            if (import.Errors.Count == 0 && request.HttpContext.RequestServices.GetService<IValidator<T>>() is { } validator)
+            {
+                for (int i = 0; i < import.Rows.Count; i++)
+                    foreach (var failure in validator.Validate(import.Rows[i]).Errors)
+                        import.Errors.Add($"Row {import.Lines[i]}: {failure.ErrorMessage}");
+            }
+<#
+    }
+#>
+            if (import.Errors.Count > 0)
+                return Results.BadRequest(new { imported = 0, errors = import.Errors });
+
+            context.Set<T>().AddRange(import.Rows);
+            try
+            {
+                await context.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                context.ChangeTracker.Clear();
+                return Results.BadRequest(new { imported = 0, errors = new[] { "The database refused the rows (a missing parent row, or a value that must be unique). Nothing was imported." } });
+            }
+            return Results.Ok(new { imported = import.Rows.Count });
+        }).WithName("Import" + file + "Csv");
+    }
+}

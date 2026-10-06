@@ -82,6 +82,8 @@ public static class DefaultAssetSeeder
         "RS_Validate_v1.tt", "RS_Validate_v1.tt.config",
         "RS_Mod_v1.tt", "RS_Mod_v1.tt.config",
         "CS_CqrsHandlers_v1.tt", "CS_CqrsHandlers_v1.tt.config",
+        "CS_EfConfiguration_v1.tt", "CS_EfConfiguration_v1.tt.config",
+        "API_Csv_v1.tt", "API_Csv_v1.tt.config",
         "MD_Postman_v1.tt", "MD_Postman_v1.tt.config",
         "MD_Bruno_v1.tt", "MD_Bruno_v1.tt.config",
         "BLZ_Model_v1.tt", "BLZ_Model_v1.tt.config",

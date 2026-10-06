@@ -1,0 +1,113 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project. A project settings file (EntityNamespace, ContextNamespace, or ProjectName) overrides them.
+    // ==========================================================================================
+    string entityNamespace = Project.EntityNamespace ?? "MyApp.Common.Entities";
+    string configurationNamespace = (Project.ContextNamespace ?? "MyApp.Common.Data") + ".Configurations";
+
+    // ==========================================================================================
+    // CS_EfConfiguration_v1.tt
+    // Generates: <TableName>Configuration.cs   (see OutputName in CS_EfConfiguration_v1.tt.config)
+    // One IEntityTypeConfiguration<Entity> per table, in place of fluent code in OnModelCreating: the table name, the key (a composite one too), and for each column what the database says that the
+    // class does not state by its type: the column name (when NamingStyle gave the property another), the column type where it has to be said (money, a PostgreSQL timestamp or jsonb), the text
+    // length, the decimal precision, required, store-generated (identity, computed) and the row version. Then the table's indexes (name, columns, unique), apart from the primary key's.
+    // The entity class (CS_Entity) keeps its attributes; the two say the same, so a hand edit in this file is the one to make. With EfConfigurations=true the plan writes these files and the
+    // context (CS_DbContext) applies them with ApplyConfigurationsFromAssembly; add configuration of your own as another IEntityTypeConfiguration in the same assembly.
+    // Full notes: Docs/TemplateNotes/CS_EfConfiguration_v1.md
+    // ==========================================================================================
+
+    if (Model.PrimaryKeyColumns.Count == 0)
+    {
+        Error($"CS_EfConfiguration needs a table with a primary key, but [{Model.SchemaName}].[{Model.TableName}] has none (the entity class is written for keyed tables).");
+    }
+    else
+    {
+        string Id(ColumnModel c) => c.CSharpName();
+        string Str(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        string entity = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
+        bool schemaNamed = Model.Dialect is SqlDialect.SqlServer or SqlDialect.PostgreSql
+            && !Model.SchemaName.Equals(Model.Dialect == SqlDialect.SqlServer ? "dbo" : "public", StringComparison.OrdinalIgnoreCase);
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+
+        L($"using {entityNamespace};");
+        L("using Microsoft.EntityFrameworkCore;");
+        L("using Microsoft.EntityFrameworkCore.Metadata.Builders;");
+        L();
+        L($"namespace {configurationNamespace};");
+        L();
+        L($"public class {Model.TableName}Configuration : IEntityTypeConfiguration<{entity}>");
+        L("{");
+        L($"    public void Configure(EntityTypeBuilder<{entity}> builder)");
+        L("    {");
+        L($"        builder.ToTable({Str(Model.DbTableName)}{(schemaNamed ? ", " + Str(Model.SchemaName) : "")});");
+        L(Model.PrimaryKeyColumns.Count == 1
+            ? $"        builder.HasKey(e => e.{Id(Model.PrimaryKeyColumns[0])});"
+            : $"        builder.HasKey(e => new {{ {string.Join(", ", Model.PrimaryKeyColumns.Select(c => "e." + Id(c)))} }});");
+
+        foreach (var c in Model.Columns.OrderBy(c => c.OrdinalPosition))
+        {
+            var chain = new List<string>();
+            if (c.DatabaseName is not null)
+                chain.Add($".HasColumnName({Str(c.DatabaseName)})");
+            string? columnType = null;
+            if (c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime)
+            {
+                if (Model.Dialect == SqlDialect.PostgreSql)
+                    columnType = c.SqlTypeDeclaration;
+            }
+            else if (c.SqlType is SqlDbType.Money or SqlDbType.SmallMoney)
+                columnType = c.SqlType == SqlDbType.Money ? "money" : "smallmoney";
+            else if (c.SqlType == SqlDbType.Decimal)
+            {
+                if (!(Model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration == "numeric"))
+                    chain.Add($".HasPrecision({c.Precision ?? 18}, {c.Scale ?? 0})");
+            }
+            else if (c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar)
+            {
+                if (Model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration is "json" or "jsonb")
+                    columnType = c.SqlTypeDeclaration;
+                int chars = c.CharacterLength();
+                if (chars > 0)
+                    chain.Add($".HasMaxLength({chars})");
+            }
+            if (columnType is not null)
+                chain.Insert(c.DatabaseName is not null ? 1 : 0, $".HasColumnType({Str(columnType)})");
+            if (c.SqlType == SqlDbType.Timestamp)
+                chain.Add(".IsRowVersion()");
+            else if (c.IsComputed)
+                chain.Add(".ValueGeneratedOnAddOrUpdate()");
+            else if (c.IsIdentity)
+                chain.Add(".ValueGeneratedOnAdd()");
+            if (!c.IsNullable && !c.IsPrimaryKey && c.CSharpBase() == "string")
+                chain.Add(".IsRequired()");
+            if (chain.Count > 0)
+                L($"        builder.Property(e => e.{Id(c)}){string.Concat(chain)};");
+        }
+
+        // The indexes: the columns are named as the database names them, so each is found by its database name.
+        var keyNames = Model.PrimaryKeyColumns.Select(c => c.DbName).ToList();
+        foreach (var index in Model.Indexes.OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            if (index.Columns.SequenceEqual(keyNames, StringComparer.OrdinalIgnoreCase))
+                continue;
+            var columns = index.Columns.Select(name => Model.Columns.FirstOrDefault(c => c.DbName.Equals(name, StringComparison.OrdinalIgnoreCase))).ToList();
+            if (columns.Any(c => c is null))
+                continue;
+            string key = columns.Count == 1 ? $"e.{Id(columns[0]!)}" : $"new {{ {string.Join(", ", columns.Select(c => "e." + Id(c!)))} }}";
+            L($"        builder.HasIndex(e => {key}).HasDatabaseName({Str(index.Name)}){(index.IsUnique ? ".IsUnique()" : "")};");
+        }
+        L("    }");
+        L("}");
+        Write(o.ToString());
+    }
+#>

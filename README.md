@@ -65,7 +65,7 @@ Everything else (entities, repositories, API, Angular, React, Blazor, WinUI3) is
 
 ## What it generates
 
-Eighty-two templates ship in `Templates\` (the no-database essentials groups described below come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
+Eighty-four templates ship in `Templates\` (the no-database essentials groups described below come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
 
 | Group | Template | Writes |
 |---|---|---|
@@ -125,6 +125,8 @@ Eighty-two templates ship in `Templates\` (the no-database essentials groups des
 | `BLZ` | `BLZ_Model`, `BLZ_Client` | `Models/Table.cs` and `Services/TableClient.cs` - the class a table's JSON becomes in the Blazor app and its `HttpClient` calls (get, search with paging and sort, create, update, delete, clone). |
 | `BLZ` | `BLZ_Page` | `Pages/TablePage.razor` - the Blazor screen: grid, search, sortable headers, paging, add / edit panel with drop-downs for foreign keys. |
 | `BLZ` | `BLZ_Screens` | `Layout/NavMenu.razor`, `Pages/Home.razor` and `Services/ApiClients.cs` - whole-database: the menu in `Screens` order and the registration of every client. |
+| `CS` | `CS_EfConfiguration` | `Data/Configurations/TableConfiguration.cs` - an `IEntityTypeConfiguration` per table (table, key, column details, indexes); with `EfConfigurations=true` the context applies them with `ApplyConfigurationsFromAssembly`. |
+| `API` | `API_Csv` | `Apis/Csv.cs` - whole-database, `ApiCsv=true`: `GET /api/table/export.csv` and an all-or-nothing `POST /api/table/import` for every table, no package. |
 | `MD` | `MD_Postman`, `MD_Bruno` | `collections/<Project>.postman_collection.json` and `collections/bruno/` - whole-database, only with `PlanAlso`: a Postman and a Bruno collection of the API requests (a folder per table: all, one, search, add, change, remove, copy) with sample bodies and a `baseUrl` variable. |
 | `CS` | `CS_CqrsHandlers` | `Application/` - whole-database, only with `PlanAlso`: commands, queries and handlers per table (create, update, delete, get by id, paged list) behind two small interfaces, and `AddApplicationHandlers()`. No package. |
 | `MD` | `MD_Dashboard` | `Dashboard.md` - whole-database, only with `Dashboard=true`: the widgets the dashboard shows, each with the schema fact that chose it and the statement that fills it, then what the caps left out. |
