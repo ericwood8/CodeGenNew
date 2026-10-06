@@ -7,6 +7,7 @@
 <#@ import namespace="System.Globalization" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // ==========================================================================================
     // PROJECT SETTINGS - the lines to change to use this template in your own project. A project settings file (EntityNamespace, FakerNamespace, or ProjectName) overrides them.
@@ -33,7 +34,6 @@
     else
     {
         string Id(ColumnModel c) => c.CSharpName();
-        string Inv(double value) => value.ToString("R", CultureInfo.InvariantCulture);
         string Str(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
         bool Skipped(ColumnModel c) => (c.IsIdentity && c.IsPrimaryKey) || c.IsComputed || c.IsAuditColumn || c.IsCreateDateColumn || c.IsCreateUserColumn
             || c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsLastChangedDateColumn;
@@ -113,9 +113,9 @@
                         high2 = low2;
                     return baseType switch
                     {
-                        "decimal" => $"Math.Round(f.Random.Decimal({Inv(low2)}m, {Inv(high2)}m), {scale})",
-                        "float" => $"f.Random.Float({Inv(low2)}f, {Inv(high2)}f)",
-                        _ => $"f.Random.Double({Inv(low2)}, {Inv(high2)})"
+                        "decimal" => $"Math.Round(f.Random.Decimal({Num(low2)}m, {Num(high2)}m), {scale})",
+                        "float" => $"f.Random.Float({Num(low2)}f, {Num(high2)}f)",
+                        _ => $"f.Random.Double({Num(low2)}, {Num(high2)})"
                     };
                 case "bool": return "f.Random.Bool()";
                 case "DateTime": return c.SqlType == SqlDbType.Date ? "f.Date.Past(5).Date" : "f.Date.Past(5)";

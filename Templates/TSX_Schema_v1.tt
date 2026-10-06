@@ -6,6 +6,7 @@
 <#@ import namespace="System.Text" #>
 <#@ import namespace="System.Data" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // A zod schema for the fields of one table that a person fills in, with the limits the database states (required text, length, allowed values, ranges, email / phone / url shapes),
     // and the form type inferred from it. It is not wired to a form: pass it to a resolver (react-hook-form) or call safeParse. Needs the zod package.
@@ -18,7 +19,6 @@
     else
     {
         string Str(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
-        string Num(double value) => value.ToString("R", CultureInfo.InvariantCulture);
         string baseName = ScreenNames.BaseName(Model.TableName);
 
         string Field(ColumnModel c)

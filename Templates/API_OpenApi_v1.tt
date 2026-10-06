@@ -7,6 +7,7 @@
 <#@ import namespace="System.Globalization" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // ==========================================================================================
     // API_OpenApi_v1.tt
@@ -33,7 +34,6 @@
         string Quote(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
         // a description is one line of text in the document
         string OneLine(string s) => System.Text.RegularExpressions.Regex.Replace(s, @"\s+", " ").Trim();
-        string Inv(double value) => value.ToString("R", CultureInfo.InvariantCulture);
         string title = (Project.ProjectName is null ? Database.DatabaseName : Project.ProjectTitle) + " API";
 
         var o = new StringBuilder();
@@ -79,13 +79,13 @@
             {
                 if (check.Min is { } min)
                 {
-                    L(pad + "minimum: " + Inv(min));
+                    L(pad + "minimum: " + Num(min));
                     if (check.MinStrict)
                         L(pad + "exclusiveMinimum: true");
                 }
                 if (check.Max is { } max)
                 {
-                    L(pad + "maximum: " + Inv(max));
+                    L(pad + "maximum: " + Num(max));
                     if (check.MaxStrict)
                         L(pad + "exclusiveMaximum: true");
                 }

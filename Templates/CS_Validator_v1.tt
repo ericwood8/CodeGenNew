@@ -7,6 +7,7 @@
 <#@ import namespace="System.Globalization" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // ==========================================================================================
     // PROJECT SETTINGS - the lines to change to use this template in your own project. A project settings file (EntityNamespace, ValidatorNamespace, or ProjectName) overrides them.
@@ -33,19 +34,18 @@
     else
     {
         string Id(ColumnModel c) => c.CSharpName();
-        string Inv(double value) => value.ToString("R", CultureInfo.InvariantCulture);
         string Str(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
         string Words(string name) => Labels.Words(name);
         // a number literal in the property's own type
         string Literal(ColumnModel c, double value) => c.SqlType switch
         {
-            SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => Inv(value) + "m",
-            SqlDbType.Float => Inv(value).Contains('.') || Inv(value).Contains('E') ? Inv(value) : Inv(value) + ".0",
-            SqlDbType.Real => (Inv(value).Contains('.') || Inv(value).Contains('E') ? Inv(value) : Inv(value) + ".0") + "f",
-            SqlDbType.BigInt => Inv(value) + "L",
-            SqlDbType.SmallInt => "(short)" + Inv(value),
-            SqlDbType.TinyInt => "(byte)" + Inv(value),
-            _ => Inv(value)
+            SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney => Num(value) + "m",
+            SqlDbType.Float => Num(value).Contains('.') || Num(value).Contains('E') ? Num(value) : Num(value) + ".0",
+            SqlDbType.Real => (Num(value).Contains('.') || Num(value).Contains('E') ? Num(value) : Num(value) + ".0") + "f",
+            SqlDbType.BigInt => Num(value) + "L",
+            SqlDbType.SmallInt => "(short)" + Num(value),
+            SqlDbType.TinyInt => "(byte)" + Num(value),
+            _ => Num(value)
         };
 
         var rules = new List<string>();

@@ -6,6 +6,7 @@
 <#@ import namespace="System.Globalization" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // ==========================================================================================
     // PY_Validate_v1.tt
@@ -20,7 +21,6 @@
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
     string Str(string text) => PythonNames.Str(text);
-    string Num(double value) => value.ToString("R", CultureInfo.InvariantCulture);
 
     var checks = new List<string>();
     var shapes = new HashSet<string>();

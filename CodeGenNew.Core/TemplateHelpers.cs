@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace CodeGenNew.Core;
@@ -32,4 +33,10 @@ public static class TemplateHelpers
     public static int Chars(ColumnModel c) => c.CharacterLength();
 
     public static bool IsMultiline(ColumnModel c) => IsText(c) && Chars(c) >= 100;
+
+    /// <summary> A number in the shortest text that reads back to the same value ("R"), in the invariant culture. </summary>
+    public static string Num(double value) => value.ToString("R", CultureInfo.InvariantCulture);
+
+    /// <summary> A number with up to eight decimals and no exponent, in the invariant culture. </summary>
+    public static string Inv(double value) => value.ToString("0.########", CultureInfo.InvariantCulture);
 }

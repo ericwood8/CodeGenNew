@@ -7,6 +7,7 @@
 <#@ import namespace="System.Text" #>
 <#@ import namespace="System.Text.RegularExpressions" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // The Angular validators for the fields of one table that the schema says something about (required text, length, allowed values, ranges, email / phone / url shapes), keyed by the
     // JSON property name so the record can feed FormBuilder or a FormControl. A limit the Angular Validators cannot state (a strict bound) gets a small validator function in the same file.
@@ -14,7 +15,6 @@
     var fields = Model.Columns.Where(c => !c.IsSystemFilled()).OrderBy(c => c.OrdinalPosition)
         .Select(c => (Column: c, Rule: c.RuleOf(Project))).Where(f => f.Rule is not null).ToList();
     {
-        string Num(double value) => value.ToString("R", CultureInfo.InvariantCulture);
         string baseName = ScreenNames.BaseName(Model.TableName);
         string variable = char.ToLowerInvariant(baseName[0]) + baseName[1..] + "Validators";
         string RegexLiteral(string pattern) => "/" + pattern.Replace("/", "\\/") + "/";

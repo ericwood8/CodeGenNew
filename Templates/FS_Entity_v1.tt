@@ -8,6 +8,7 @@
 <#@ import namespace="System.Data" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // ==========================================================================================
     // PROJECT SETTINGS - the line to change to use this template in your own project. A project settings file (FSharpNamespace, or ProjectName for <ProjectName>.Domain) overrides it.
@@ -36,7 +37,6 @@
         "event", "external", "include", "mixin", "parallel", "process", "protected", "pure", "sealed", "tailcall", "trait", "virtual", "params"
     };
     string Id(string name) => keywords.Contains(name) ? "``" + name + "``" : name;
-    string Inv(double value) => value.ToString("R", CultureInfo.InvariantCulture);
     string Words(string name) => Labels.Words(name);
     string Text(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
@@ -44,13 +44,13 @@
     (string Type, string Parser) FsType(ColumnModel c) => (c.FSharpBase(), c.FSharpParser());
     string Literal(ColumnModel c, double value) => FsType(c).Type switch
     {
-        "decimal" => Inv(value) + "M",
-        "double" => Inv(value).Contains('.') || Inv(value).Contains('E') ? Inv(value) : Inv(value) + ".0",
-        "float32" => (Inv(value).Contains('.') || Inv(value).Contains('E') ? Inv(value) : Inv(value) + ".0") + "f",
-        "int64" => Inv(value) + "L",
-        "int16" => Inv(value) + "s",
-        "byte" => Inv(value) + "uy",
-        _ => Inv(value)
+        "decimal" => Num(value) + "M",
+        "double" => Num(value).Contains('.') || Num(value).Contains('E') ? Num(value) : Num(value) + ".0",
+        "float32" => (Num(value).Contains('.') || Num(value).Contains('E') ? Num(value) : Num(value) + ".0") + "f",
+        "int64" => Num(value) + "L",
+        "int16" => Num(value) + "s",
+        "byte" => Num(value) + "uy",
+        _ => Num(value)
     };
 
     var o = new StringBuilder();
@@ -86,9 +86,9 @@
         else if (c.Check is { } check && !c.IsIntegerColumn && (fsType is "decimal" or "double" or "float32"))
         {
             if (check.Min is { } min)
-                Add($"{{v}} {(check.MinStrict ? "<=" : "<")} {Literal(c, min)}", $"{label} must be {(check.MinStrict ? "greater than" : "at least")} {Inv(min)}.");
+                Add($"{{v}} {(check.MinStrict ? "<=" : "<")} {Literal(c, min)}", $"{label} must be {(check.MinStrict ? "greater than" : "at least")} {Num(min)}.");
             if (check.Max is { } max)
-                Add($"{{v}} {(check.MaxStrict ? ">=" : ">")} {Literal(c, max)}", $"{label} must be {(check.MaxStrict ? "less than" : "at most")} {Inv(max)}.");
+                Add($"{{v}} {(check.MaxStrict ? ">=" : ">")} {Literal(c, max)}", $"{label} must be {(check.MaxStrict ? "less than" : "at most")} {Num(max)}.");
         }
     }
 

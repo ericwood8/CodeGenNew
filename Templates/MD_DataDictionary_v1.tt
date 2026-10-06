@@ -7,6 +7,7 @@
 <#@ import namespace="System.Globalization" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // ==========================================================================================
     // MD_DataDictionary_v1.tt
@@ -19,7 +20,6 @@
     // ==========================================================================================
 
     string Cell(string text) => text.Replace("|", "\\|").Replace("\r", " ").Replace("\n", " ");
-    string Inv(double value) => value.ToString("R", CultureInfo.InvariantCulture);
     // a Markdown table separator row, one group of three hyphens per column (a template may not write two hyphens in a row)
     string Separator(int columns) => "|" + string.Concat(Enumerable.Repeat(new string((char)45, 3) + "|", columns));
     string Page(string table) => "[" + table + "](" + table + ".md)";
@@ -42,9 +42,9 @@
         if (c.Check is { } check)
         {
             if (check.Min is { } min)
-                parts.Add((check.MinStrict ? "greater than " : "at least ") + Inv(min));
+                parts.Add((check.MinStrict ? "greater than " : "at least ") + Num(min));
             if (check.Max is { } max)
-                parts.Add((check.MaxStrict ? "less than " : "at most ") + Inv(max));
+                parts.Add((check.MaxStrict ? "less than " : "at most ") + Num(max));
         }
         return string.Join("; ", parts);
     }

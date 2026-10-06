@@ -59,7 +59,6 @@
     string Words(string s) => Labels.Words(s);
     string Camel(string name) => JsonNames.Camel(name);
     // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is limited to what the column can hold (a percentage to 0-100).
-    string Inv(double d) => d.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture);
     string Label(string columnName)
     {
         string s = Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", "");

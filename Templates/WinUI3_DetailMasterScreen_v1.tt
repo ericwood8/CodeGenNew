@@ -57,7 +57,6 @@
     // (NaN = blank), limited to what the column can hold (NumericClassifier.DecimalRange), and converted back on save.
     bool UsesDecimalBox(ColumnModel c) => !c.IsIntegerColumn && !c.IsCurrencyColumn && c.SqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real;
     int DecimalPlaces(ColumnModel c) => Math.Clamp(c.Scale ?? 2, 0, 8);
-    string Inv(double d) => d.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture);
     string Words(string s) => Labels.Words(s);
     string Label(string columnName) => Words(Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", ""));
     string FieldVar(string name) => char.ToLowerInvariant(name[0]) + name[1..];
