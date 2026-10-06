@@ -183,6 +183,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `ApiFakers` | true: the plan also writes a Bogus fake-data generator per table (CS_Faker) and the generated project references Bogus |
 | `ProjectDocs` | true: the plan also writes a data dictionary page per table and the ER diagram (MD_DataDictionary, MD_Erd) |
 | `ApiProduction` | true: the API project also gets a production profile (ProductionProfile.cs: Problem Details, health checks, rate limiting, response compression, security headers) and a Dockerfile; no package is added |
+| `ApiTests` | true: the plan also writes an integration test class per table (API_Test) and the test project (Tests essentials group) beside the API; folder `OutputApiTests`, default `<ProjectName>.Api.Tests` |
 | `ApiValidation` | true: the plan also writes a FluentValidation validator per table (CS_Validator) and the create and update endpoints run them (400 with the messages) |
 | `AccessMode` | Routines or Ef: how search, sort, paging, clone and the junction editors reach the database. Ef uses LINQ over the context and needs no routine in the database; SQLite always uses it; blank = Routines |
 | `DtoNamespace` | the namespace of the data-transfer classes and mappers (CS_Dto, CS_Mapper, CS_DataContractDto, CS_TypedDataRow, CS_SerializationDtos; default &lt;ProjectName&gt;.App.Dtos) |
@@ -209,6 +210,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `OutputWinUI3` | folder of the WinUI3 app under the output folder; blank = &lt;ProjectName&gt;.App |
 | `OutputReact` | folder of the React app; blank = frontend |
 | `OutputRust` | folder of the Rust API; blank = &lt;ProjectName&gt;.Rust |
+| `OutputApiTests` | folder of the API test project (`ApiTests=true`); blank = &lt;ProjectName&gt;.Api.Tests |
 | `RustCrateName` | the crate name of the Rust API; blank = the project name in snake_case |
 | `RustPort` | the port the Rust API listens on; blank = ApiPort (5080) |
 | `OutputAngular` | folder of the Angular app; blank = frontend |

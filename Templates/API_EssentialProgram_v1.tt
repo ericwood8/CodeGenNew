@@ -8,7 +8,7 @@
     // Generates: <ProjectName>.Api.csproj, Program.cs, appsettings.json and GlobalUsings.cs   (no table, no database: an essentials group; the output folder is the API project's own folder)
     // The web API project: the project file with the EF Core provider of the project's DatabaseProvider, Program.cs (the generated context and registration, JSON options that do not follow
     // entity loops, CORS for the front ends the project's Stacks name), appsettings.json (the connection string without a password, the port from ApiPort) and the global usings the generated
-    // classes assume. ApiProduction=true adds ProductionProfile.cs, a Dockerfile and a .dockerignore, using only what ships in ASP.NET Core (no package is added).
+    // classes assume. ApiTests=true makes Program public for the test project. ApiProduction=true adds ProductionProfile.cs, a Dockerfile and a .dockerignore, using only what ships in ASP.NET Core (no package is added).
     // Settings: DatabaseProvider, DatabaseServer, DatabaseName, DatabaseUser, ApiPort, ApiProduction, Stacks and the namespaces.
     // ==========================================================================================
     string projectName = Project.ProjectName ?? "MyApp";
@@ -41,6 +41,8 @@
     string origins = string.Join(", ", stacks.Select(s => $"\"http://localhost:{Project.DevPort(s)}\""));
     string frontEnd = string.Join(" / ", stacks.Select(s => s == "Angular" ? "Angular" : "React"));
     string contextName = Project.ContextName ?? "AppContext";
+    // the Dockerfile flag, built from parts: a template line may not hold two hyphens in a row (see TemplateDashTests)
+    string fromBuild = new string('-', 2) + "from=build";
     string proxyFile = stacks[0].Equals("Angular", StringComparison.OrdinalIgnoreCase) ? "frontend/proxy.conf.json" : "frontend/vite.config.ts";
 #>
 @@@FILE <#= projectName #>.Api.csproj@@@
@@ -187,6 +189,16 @@ app.MapOpenApiDocs();
 #>
 
 app.Run();
+<#
+    if (Project.ApiTests)
+    {
+#>
+
+// The test project (ApiTests=true) starts this API in process.
+public partial class Program;
+<#
+    }
+#>
 @@@FILE appsettings.json@@@
 {
   "ConnectionStrings": {
@@ -362,11 +374,11 @@ WORKDIR /src
 COPY <#= projectName #>.Api.csproj .
 RUN dotnet restore
 COPY . .
-RUN dotnet publish -c Release -o /app --no-restore
+RUN dotnet publish -c Release -o /app
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
-COPY --from=build /app .
+COPY <#= fromBuild #> /app .
 ENV Urls=http://+:8080 \
     ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
 EXPOSE 8080

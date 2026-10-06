@@ -1,0 +1,218 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Globalization" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // API_Test_v1.tt
+    // Generates: <TableName>ApiTests.cs   (see OutputName in API_Test_v1.tt.config; goes to the test project, OutputApiTests)
+    // An MSTest class that drives one table's API in process (WebApplicationFactory) against a scratch database: add a row, read it, change it, remove it and see a 404 afterwards; ask for a row
+    // that is not there; fetch a page of the search; and, with ApiValidation=true, send a value past a limit and see a 400. The bodies are made like API_Http's (one value for every column that
+    // cannot be NULL); text gets a unique ending so a unique index does not stop a second run, and a foreign key takes the key of the first row of the parent's API.
+    // Writes for the tables API_Crud writes an API for. The ApiFixture and the project file come from the Tests essentials group (API_EssentialTests).
+    // Full notes: Docs/TemplateNotes/API_Test_v1.md
+    // ==========================================================================================
+
+    if (!Model.HasCrudApi(Project))
+    {
+        Error($"API_Test writes tests for the tables API_Crud writes an API for (a single whole-number key, not an enum or a name/active table), and [{Model.SchemaName}].[{Model.TableName}] is not one.");
+    }
+    else
+    {
+        string projectName = Project.ProjectName ?? "MyApp";
+        string singular = Model.TableName;
+        string route = "/api/" + singular.Pluralize().ToLowerInvariant();
+        var key = Model.PrimaryKeyColumns[0];
+        string keyJson = JsonNames.Camel(key.Name);
+        var bodyColumns = ApiSampleValues.BodyColumns(Model);
+
+        // a text value that is not a fixed format: it can take a unique ending
+        bool IsFreeText(ColumnModel c) => c.IsStringColumn && !c.HasChoices && !c.IsPrimaryKey
+            && !new[] { "Email", "Phone", "Fax", "Url", "Website" }.Any(word => c.Name.Contains(word, StringComparison.OrdinalIgnoreCase));
+
+        string ForeignKeyParentRoute(ColumnModel c, out string parentKey)
+        {
+            parentKey = "";
+            var fk = Model.ForeignKeys.FirstOrDefault(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name && f.ReferencedColumns.Count == 1);
+            if (fk is null || fk.ReferencedTable == Model.TableName || !c.IsIntegerColumn || Project.NoRepository(fk.ReferencedTable, fk.ReferencedLookupShape) == true)
+                return "";
+            parentKey = JsonNames.Camel(fk.ReferencedColumns[0]);
+            return "/api/" + fk.ReferencedTable.Pluralize().ToLowerInvariant();
+        }
+
+        string Expression(ColumnModel c)
+        {
+            string sample = ApiSampleValues.Value(c, Project);
+            if (c.IsPrimaryKey)
+            {
+                if (c.IsIdentity)
+                    return sample;
+                var range = NumericClassifier.TypeRange(c.SqlType);
+                long high = Math.Min(range.Max, 2_000_000_000);
+                return $"ApiFixture.NewKey({Math.Max(1, high / 2).ToString(CultureInfo.InvariantCulture)}, {high.ToString(CultureInfo.InvariantCulture)})";
+            }
+            if (IsFreeText(c))
+                return $"ApiFixture.Unique({ApiSampleValues.Json(ApiSampleValues.Text(c))}, {c.CharacterLength()})";
+            string parentRoute = ForeignKeyParentRoute(c, out string parentKey);
+            if (parentRoute.Length > 0)
+                return $"await ApiFixture.ExistingKeyAsync({ApiSampleValues.Json(parentRoute)}, {ApiSampleValues.Json(parentKey)}, {sample})";
+            return sample;
+        }
+
+        // the one column the update step changes: a free text column, else a bit column, else a whole number that has room to go up by one
+        bool HasRoomToGrow(ColumnModel c) => c.IsIntegerColumn && !c.IsPrimaryKey && ForeignKeyParentRoute(c, out string _).Length == 0
+            && (Project.RangeFor(c) is not { } range || range.Max > long.Parse(ApiSampleValues.Value(c, Project), CultureInfo.InvariantCulture));
+        var changed = bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength() > 0)
+            ?? bodyColumns.FirstOrDefault(c => c.SqlType == SqlDbType.Bit && !c.IsPrimaryKey)
+            ?? bodyColumns.FirstOrDefault(HasRoomToGrow);
+        string changedJson = changed is null ? "" : JsonNames.Camel(changed.Name);
+        string changedType = changed is null ? "" : changed.IsStringColumn ? "string" : changed.SqlType == SqlDbType.Bit ? "bool" : "long";
+
+        // limits the validators enforce, for the 400 tests
+        var longText = Project.ApiValidation ? bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength() > 0) : null;
+        ColumnModel? ranged = null;
+        long over = 0;
+        if (Project.ApiValidation)
+        {
+            foreach (var c in bodyColumns.Where(c => !c.IsPrimaryKey && c.IsIntegerColumn))
+            {
+                if (Project.RangeFor(c) is { } range && range.Max < NumericClassifier.TypeRange(c.SqlType).Max && ForeignKeyParentRoute(c, out string _).Length == 0)
+                {
+                    ranged = c;
+                    over = range.Max + 1;
+                    break;
+                }
+            }
+        }
+#>
+namespace <#= projectName #>.Api.Tests;
+
+[TestClass]
+public class <#= singular #>ApiTests
+{
+    private const string Route = "<#= route #>";
+
+    private static async Task<JsonObject> NewBodyAsync() => new()
+    {
+<#
+        foreach (var c in bodyColumns)
+        {
+#>
+        [<#= ApiSampleValues.Json(JsonNames.Camel(c.Name)) #>] = <#= Expression(c) #>,
+<#
+        }
+#>
+    };
+
+    [TestMethod]
+    public async Task A_row_can_be_added_read_changed_and_removed()
+    {
+        ApiFixture.RequireDatabase();
+        var client = ApiFixture.Client;
+
+        using var created = await client.PostAsJsonAsync(Route, await NewBodyAsync());
+        Assert.AreEqual(HttpStatusCode.Created, created.StatusCode, await created.Content.ReadAsStringAsync());
+        var row = (await created.Content.ReadFromJsonAsync<JsonObject>())!;
+        long id = row[<#= ApiSampleValues.Json(keyJson) #>]!.GetValue<long>();
+        try
+        {
+            using var read = await client.GetAsync($"{Route}/{id}");
+            Assert.AreEqual(HttpStatusCode.OK, read.StatusCode, "the new row can be read");
+<#
+        if (changed is not null)
+        {
+#>
+
+<#
+            if (changedType == "string")
+            {
+#>
+            string after = ApiFixture.Unique("Changed", <#= changed.CharacterLength() #>);
+<#
+            }
+            else
+            {
+#>
+            <#= changedType #> after = <#= changedType == "bool" ? "!" : "" #>row[<#= ApiSampleValues.Json(changedJson) #>]!.GetValue<<#= changedType #>>()<#= changedType == "long" ? " + 1" : "" #>;
+<#
+            }
+#>
+            row[<#= ApiSampleValues.Json(changedJson) #>] = after;
+            using var updated = await client.PutAsJsonAsync($"{Route}/{id}", row);
+            Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode, await updated.Content.ReadAsStringAsync());
+
+            var again = (await client.GetFromJsonAsync<JsonObject>($"{Route}/{id}"))!;
+            Assert.AreEqual(after, again[<#= ApiSampleValues.Json(changedJson) #>]!.GetValue<<#= changedType #>>(), "the change was saved");
+<#
+        }
+#>
+        }
+        finally
+        {
+            using var removed = await client.DeleteAsync($"{Route}/{id}");
+        }
+
+        using var gone = await client.GetAsync($"{Route}/{id}");
+        Assert.AreEqual(HttpStatusCode.NotFound, gone.StatusCode, "the removed row is gone");
+    }
+
+    [TestMethod]
+    public async Task A_row_that_is_not_there_answers_404()
+    {
+        ApiFixture.RequireDatabase();
+        using var response = await ApiFixture.Client.GetAsync($"{Route}/{int.MaxValue}");
+        Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
+    }
+<#
+        if (Model.HasSearchApi(Project))
+        {
+#>
+
+    [TestMethod]
+    public async Task The_search_answers_a_page()
+    {
+        ApiFixture.RequireDatabase();
+        using var response = await ApiFixture.Client.GetAsync($"{Route}/search?pageNumber=1&pageSize=5");
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+        Assert.IsFalse(string.IsNullOrWhiteSpace(await response.Content.ReadAsStringAsync()));
+    }
+<#
+        }
+        if (longText is not null)
+        {
+#>
+
+    [TestMethod]
+    public async Task Text_longer_than_the_column_is_refused()
+    {
+        ApiFixture.RequireDatabase();
+        var body = await NewBodyAsync();
+        body[<#= ApiSampleValues.Json(JsonNames.Camel(longText.Name)) #>] = new string('x', <#= longText.CharacterLength() + 1 #>);
+        using var response = await ApiFixture.Client.PostAsJsonAsync(Route, body);
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+<#
+        }
+        if (ranged is not null)
+        {
+#>
+
+    [TestMethod]
+    public async Task A_number_past_its_limit_is_refused()
+    {
+        ApiFixture.RequireDatabase();
+        var body = await NewBodyAsync();
+        body[<#= ApiSampleValues.Json(JsonNames.Camel(ranged.Name)) #>] = <#= over.ToString(CultureInfo.InvariantCulture) #>;
+        using var response = await ApiFixture.Client.PostAsJsonAsync(Route, body);
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+<#
+        }
+#>
+}
+<#
+    }
+#>

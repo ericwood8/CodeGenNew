@@ -1,0 +1,189 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // API_EssentialTests_v1.tt
+    // Generates: <ProjectName>.Api.Tests.csproj, ApiFixture.cs and GlobalUsings.cs   (no table, no database: an essentials group; the output folder is the test project's own folder, OutputApiTests)
+    // The project the per-table API_Test classes live in. ApiFixture starts the API in process (WebApplicationFactory) once for the run and hands every test an HttpClient. The database is a scratch
+    // copy: for SQLite a temporary copy of the database file (the file is never written), for the others the connection string in <PROJECT>_TEST_CONNECTION, and with neither the tests report
+    // themselves as inconclusive. Writes nothing unless the project sets ApiTests=true. Settings: ApiTests, OutputApiTests, OutputApi, DatabaseProvider, DatabaseName.
+    // Full notes: Docs/TemplateNotes/API_Test_v1.md
+    // ==========================================================================================
+    if (Project.ApiTests)
+    {
+        string projectName = Project.ProjectName ?? "MyApp";
+        string testsFolder = Project.OutputFolderOf("apitests");
+        string apiFolder = Project.OutputFolderOf("api");
+        string apiPath = Path.GetRelativePath(testsFolder, apiFolder).Replace('\\', '/');
+        string variable = new string(projectName.ToUpperInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray()) + "_TEST_CONNECTION";
+        bool sqlite = Project.DatabaseDialect == SqlDialect.Sqlite;
+#>
+@@@FILE <#= projectName #>.Api.Tests.csproj@@@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RootNamespace><#= projectName #>.Api.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MSTest" Version="4.0.2" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="<#= apiPath #>/<#= projectName #>.Api.csproj" />
+  </ItemGroup>
+
+</Project>
+@@@FILE GlobalUsings.cs@@@
+global using System.Net;
+global using System.Net.Http.Json;
+global using System.Text.Json.Nodes;
+global using Microsoft.VisualStudio.TestTools.UnitTesting;
+@@@FILE ApiFixture.cs@@@
+using Microsoft.AspNetCore.Mvc.Testing;
+
+namespace <#= projectName #>.Api.Tests;
+
+/// <summary> Starts the API in process once for the whole run, over a scratch database, and gives the tests its client and a few helpers. </summary>
+[TestClass]
+public static class ApiFixture
+{
+    private const string ConnectionVariable = "<#= variable #>";
+
+    private static WebApplicationFactory<Program>? _factory;
+<#
+        if (sqlite)
+        {
+#>
+    private static string? _scratchFile;
+<#
+        }
+#>
+
+    public static HttpClient Client { get; private set; } = null!;
+    public static bool HasDatabase { get; private set; }
+
+    [AssemblyInitialize]
+    public static void Start(TestContext context)
+    {
+        string? connection = Environment.GetEnvironmentVariable(ConnectionVariable);
+<#
+        if (sqlite)
+        {
+#>
+        if (string.IsNullOrEmpty(connection))
+        {
+            // the database file is copied and never written: the tests add and remove rows in the copy
+            string source = Path.GetFullPath(Path.Combine(ApiFolder(), "<#= Project.DatabaseName #>"));
+            if (!File.Exists(source))
+                return;
+            _scratchFile = Path.Combine(Path.GetTempPath(), "<#= projectName #>_test_" + Guid.NewGuid().ToString("N") + ".db");
+            File.Copy(source, _scratchFile);
+            connection = "Data Source=" + _scratchFile;
+        }
+<#
+        }
+        else
+        {
+#>
+        if (string.IsNullOrEmpty(connection))
+            return;
+<#
+        }
+#>
+
+        Environment.SetEnvironmentVariable("ConnectionStrings__DbConnectionString", connection);
+        Environment.SetEnvironmentVariable("RateLimit__PermitsPerMinute", "1000000");
+        _factory = new WebApplicationFactory<Program>();
+        Client = _factory.CreateClient();
+        HasDatabase = true;
+    }
+
+    [AssemblyCleanup]
+    public static void Stop()
+    {
+        Client?.Dispose();
+        _factory?.Dispose();
+<#
+        if (sqlite)
+        {
+#>
+        try
+        {
+            if (_scratchFile is not null)
+                File.Delete(_scratchFile);
+        }
+        catch (IOException)
+        {
+        }
+<#
+        }
+#>
+    }
+
+    /// <summary> Skips the test (inconclusive) when there is no scratch database to run against. </summary>
+    public static void RequireDatabase()
+    {
+        if (!HasDatabase)
+            Assert.Inconclusive("Set " + ConnectionVariable + " to the connection string of a scratch copy of the database (the tests add and remove rows).");
+    }
+
+    /// <summary> Text with a short random ending, cut to the column's length, so a unique index does not stop a second run. </summary>
+    public static string Unique(string text, int maxLength)
+    {
+        string tail = Guid.NewGuid().ToString("N")[..6];
+        if (maxLength <= 0)
+            return text + " " + tail;
+        tail = tail[..Math.Min(tail.Length, maxLength)];
+        int room = maxLength - tail.Length - 1;
+        return room > 0 ? text[..Math.Min(text.Length, room)] + " " + tail : tail;
+    }
+
+    /// <summary> A key for a table whose key the database does not number. </summary>
+    public static long NewKey(long low, long high) => Random.Shared.NextInt64(low, high);
+
+    /// <summary> The key of the first row the parent's API lists, for a foreign key to point at. When the parent has no list route the fallback is used; when it has no rows the test is inconclusive. </summary>
+    public static async Task<long> ExistingKeyAsync(string route, string keyProperty, long fallback)
+    {
+        using var response = await Client.GetAsync(route);
+        if (!response.IsSuccessStatusCode)
+            return fallback;
+        var rows = await response.Content.ReadFromJsonAsync<JsonArray>();
+        if (rows is not { Count: > 0 })
+        {
+            Assert.Inconclusive("There is no row in " + route + " for a foreign key to point at.");
+            return fallback;
+        }
+        return rows[0]![keyProperty]!.GetValue<long>();
+    }
+<#
+        if (sqlite)
+        {
+#>
+
+    // the API project's folder: found by walking up from the test run to the folder that holds <#= apiPath #>
+    private static string ApiFolder()
+    {
+        for (var folder = new DirectoryInfo(AppContext.BaseDirectory); folder is not null; folder = folder.Parent)
+        {
+            string candidate = Path.GetFullPath(Path.Combine(folder.FullName, "<#= apiPath #>"));
+            if (File.Exists(Path.Combine(candidate, "<#= projectName #>.Api.csproj")))
+                return candidate;
+        }
+        return AppContext.BaseDirectory;
+    }
+<#
+        }
+#>
+}
+<#
+    }
+#>

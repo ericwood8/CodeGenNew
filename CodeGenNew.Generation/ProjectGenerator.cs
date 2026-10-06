@@ -166,6 +166,8 @@ public static class ProjectGenerator
         var scope = options.Stacks.ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (scope.Contains("Api") || scope.Contains("WinUI3"))
             scope.Add("Sql");
+        if (scope.Contains("Api"))
+            scope.Add("ApiTests");
 
         var kept = new List<ManifestEntry>();
         foreach (var old in manifest.Entries)
@@ -210,7 +212,7 @@ public static class ProjectGenerator
         var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (string stack in step.Stacks)
         {
-            string root = config.OutputRoot.Equals("Sql", StringComparison.OrdinalIgnoreCase) ? "Sql" : stack;
+            string root = config.OutputRoot.Equals("Stack", StringComparison.OrdinalIgnoreCase) ? stack : config.OutputRoot;
             string folder = Path.Combine(options.OutputDirectory, options.Project.OutputFolderOf(root), config.OutputFolderFor(stack));
             if (!written.Add(Path.GetFullPath(folder)))
                 continue;

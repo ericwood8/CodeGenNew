@@ -24,61 +24,16 @@
     }
     else
     {
-        string Inv(double value) => value.ToString("R", CultureInfo.InvariantCulture);
-        string Json(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
-
         string singular = Model.TableName;
         string plural = singular.Pluralize();
         string route = "/api/" + plural.ToLowerInvariant();
         var key = Model.PrimaryKeyColumns[0];
         string words = Labels.Words(singular);
 
-        // one example value (as JSON text) for a column
-        string Sample(ColumnModel c)
-        {
-            if (c.IsPrimaryKey)
-                return c.IsIdentity ? "0" : "1";
-            if (c.IsStringColumn)
-            {
-                string text = c.HasChoices ? c.Choices![0]
-                    : c.Name.Contains("Email", StringComparison.OrdinalIgnoreCase) ? "someone@example.com"
-                    : c.Name.Contains("Phone", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Fax", StringComparison.OrdinalIgnoreCase) ? "555-0100"
-                    : c.Name.Contains("Url", StringComparison.OrdinalIgnoreCase) || c.Name.Contains("Website", StringComparison.OrdinalIgnoreCase) ? "https://example.com"
-                    : "Sample " + Labels.Words(c.Name).ToLowerInvariant();
-                int chars = c.CharacterLength();
-                if (chars > 0 && text.Length > chars)
-                    text = text[..chars];
-                return Json(text);
-            }
-            if (c.IsIntegerColumn)
-                return Project.RangeFor(c) is { } range ? Math.Max(range.Min, Math.Min(1, range.Max)).ToString(CultureInfo.InvariantCulture) : "1";
-            switch (c.SqlType)
-            {
-                case SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real:
-                    double value = 1;
-                    if (c.Check is { } check)
-                    {
-                        if (check.Min is { } min && value <= min)
-                            value = check.MinStrict ? min + 1 : min;
-                        if (check.Max is { } max && value > max)
-                            value = max;
-                    }
-                    return Inv(value);
-                case SqlDbType.Bit: return "false";
-                case SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime: return "\"2026-01-15T00:00:00\"";
-                case SqlDbType.DateTimeOffset: return "\"2026-01-15T00:00:00+00:00\"";
-                case SqlDbType.Time: return "\"08:00:00\"";
-                case SqlDbType.UniqueIdentifier: return "\"00000000-0000-0000-0000-000000000001\"";
-                case SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp: return "\"AA==\"";
-                default: return "null";
-            }
-        }
-
         // the request body: every column that cannot be NULL (and is not computed), by its JSON name; the key from {{id}} for an update
         string Body(bool update)
         {
-            var fields = Model.Columns.OrderBy(c => c.OrdinalPosition).Where(c => !c.IsComputed && (!c.IsNullable || c.IsPrimaryKey)).ToList();
-            var lines = fields.Select(c => "  " + Json(JsonNames.Camel(c.Name)) + ": " + (update && c.IsPrimaryKey ? "{{id}}" : Sample(c)));
+            var lines = ApiSampleValues.BodyColumns(Model).Select(c => "  " + ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + (update && c.IsPrimaryKey ? "{{id}}" : ApiSampleValues.Value(c, Project)));
             return "{\n" + string.Join(",\n", lines) + "\n}";
         }
 

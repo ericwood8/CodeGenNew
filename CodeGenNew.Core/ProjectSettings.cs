@@ -25,8 +25,8 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiProduction", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
-        "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputRust", "RustCrateName", "RustPort", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiProduction", "ApiTests", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
+        "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputRust", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "TestApi", "TestWinUI3", "TestReact", "TestAngular"
     ];
 
@@ -205,6 +205,9 @@ public class ProjectSettings
     /// <summary> <c>ApiProduction=true</c>: the API project also gets a production profile (ProductionProfile.cs, a Dockerfile) that uses only what ships in ASP.NET Core: Problem Details, health checks, rate limiting, response compression, security headers. </summary>
     public bool ApiProduction => Flag("ApiProduction");
 
+    /// <summary> <c>ApiTests=true</c>: the plan also writes an integration test class per table (API_Test) and the test project around them (the Tests essentials group), in <see cref="OutputFolderOf"/> <c>apitests</c>. </summary>
+    public bool ApiTests => Flag("ApiTests");
+
     /// <summary> <c>ApiValidation=true</c>: the plan also writes a FluentValidation validator per table (CS_Validator), and the create and update endpoints run them (a 400 with the messages). </summary>
     public bool ApiValidation => Flag("ApiValidation");
 
@@ -239,6 +242,7 @@ public class ProjectSettings
             if (ApiDocs) yield return "API_OpenApi";
             if (ApiHttp) yield return "API_Http";
             if (ApiFakers) yield return "CS_Faker";
+            if (ApiTests) yield return "API_Test";
             if (ProjectDocs) { yield return "MD_DataDictionary"; yield return "MD_Erd"; }
             if (ApiValidation) { yield return "CS_Validator"; yield return "RS_Validate"; }
             if (Dashboard)
@@ -312,6 +316,7 @@ public class ProjectSettings
         "react" => Explicit("OutputReact") ?? "frontend",
         "angular" => Explicit("OutputAngular") ?? "frontend",
         "rust" => Explicit("OutputRust") ?? (ProjectName ?? "MyApp") + ".Rust",
+        "apitests" => Explicit("OutputApiTests") ?? (ProjectName ?? "MyApp") + ".Api.Tests",
         "sql" => Explicit("OutputSql") ?? "sql",
         _ => root
     });

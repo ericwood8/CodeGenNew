@@ -34,6 +34,8 @@ public static class ProjectBuilder
         string? custom = project.StepCommand(step, stack);
         if (custom is not null)
             return custom.Length == 0 || custom.Equals("none", StringComparison.OrdinalIgnoreCase) ? null : custom;
+        if (step == "test" && stack.Equals("Api", StringComparison.OrdinalIgnoreCase) && project.ApiTests)
+            return $"dotnet test \"{Path.GetRelativePath(project.OutputFolderOf("api"), project.OutputFolderOf("apitests"))}\" -v q";
         return DefaultCommand(stack, step);
     }
 

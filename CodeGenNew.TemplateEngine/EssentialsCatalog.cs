@@ -43,7 +43,11 @@ public static class EssentialsCatalog
 
     /// <summary> Where a group's files go: the output folder, the stack's project folder from the settings (<c>OutputWinUI3</c> ...), then the template's own sub-folder. </summary>
     public static string TargetFolder(string outputDirectory, ProjectSettings project, EssentialsGroup group) =>
-        Path.Combine(outputDirectory, project.OutputFolderOf(group.Stack), group.Template.Config.OutputFolderFor(group.Stack));
+        Path.Combine(outputDirectory, project.OutputFolderOf(RootOf(group)), group.Template.Config.OutputFolderFor(group.Stack));
+
+    /// <summary> The settings root a group writes under: its stack, or the <c>OutputRoot</c> its config names (<c>ApiTests</c>: the test project beside the API). </summary>
+    private static string RootOf(EssentialsGroup group) =>
+        group.Template.Config.OutputRoot.Equals("Stack", StringComparison.OrdinalIgnoreCase) ? group.Stack : group.Template.Config.OutputRoot;
 
     /// <summary> The files the groups assume (<c>Needs</c> in their configs) that are not under the stack's folder, one warning per missing file, saying which group needs it and which template writes
     /// it. Called after the groups were written, so a file one group writes for another is not reported. </summary>
@@ -78,7 +82,7 @@ public static class EssentialsCatalog
                 continue;
             }
             var files = OutputWriter.FilesOf(group.Template, project.ProjectName ?? "Project", result.GeneratedText!);
-            run.Outcomes.AddRange(await OutputWriter.WriteAsync(TargetFolder(outputDirectory, project, group), files, createOnly: !replace, dryRun: dryRun, withDiff: withDiff, stack: group.Stack,
+            run.Outcomes.AddRange(await OutputWriter.WriteAsync(TargetFolder(outputDirectory, project, group), files, createOnly: !replace, dryRun: dryRun, withDiff: withDiff, stack: RootOf(group),
                 cancellationToken: cancellationToken));
         }
         run.Warnings.AddRange(MissingPartners(chosen, project, outputDirectory));
