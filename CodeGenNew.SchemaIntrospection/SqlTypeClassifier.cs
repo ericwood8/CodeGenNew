@@ -62,7 +62,7 @@ public static class SqlTypeClassifier
         if (IsStringColumn(type) && type is not (SqlDbType.Text or SqlDbType.NText))
         {
             bool isUnicode = type is SqlDbType.NChar or SqlDbType.NVarChar;
-            int declaredLength = isUnicode ? maxLength / 2 : maxLength;
+            int declaredLength = maxLength < 0 ? -1 : isUnicode ? maxLength / 2 : maxLength;   // -1 is MAX; halving it would give 0
             string lengthText = declaredLength < 0 ? "MAX" : declaredLength.ToString();
             return $"{sqlTypeName}({lengthText})";
         }

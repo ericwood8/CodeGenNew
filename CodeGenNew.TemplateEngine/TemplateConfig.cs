@@ -37,6 +37,10 @@ public class TemplateConfig
     /// TableSummary.HasChildForeignKeys / TableModel.HasAtLeastOneChildForeignKey. </summary>
     public bool RequiresChildTables { get; init; }
 
+    /// <summary> Defaults to false: only a template for tables that track who created and who changed each row (SP_AuditTable) asks for this. Checked against
+    /// TableSummary.IsAuditTable / TableModel.IsAuditTable. </summary>
+    public bool RequiresAuditTable { get; init; }
+
     /// <summary> Optional, unset by default (no extra restriction beyond RequiresPrimaryKey). A template
     /// whose routes or repository calls need a specific key shape (not just "has a primary key") sets this
     /// so the menu/CLI refuse a table shaped wrong up front, instead of only finding out via the template's
@@ -149,6 +153,8 @@ public class TemplateConfig
             return "requires a many-to-many junction/bridge table, but the table isn't shaped like one.";
         if (RequiresChildTables && !model.HasAtLeastOneChildForeignKey)
             return "requires at least one other table with a foreign key pointing back at it, but none was found.";
+        if (RequiresAuditTable && !model.IsAuditTable)
+            return "requires a table with audit columns (one that records its creation, like CreateDate or CreateUser, and one that records a change, like ModifiedDate or ModifiedBy), but the table has none.";
         if (!PrimaryKeyShapeSatisfies(model.PrimaryKeyShape))
             return $"requires a {RequiredPrimaryKeyShape} primary key, but the table has a {model.PrimaryKeyShape} one.";
         if (RequiresNotNameActiveTable && model.IsNameActiveTable)
@@ -166,6 +172,7 @@ public class TemplateConfig
         bool tableOnly = true;
         bool requiresJunctionTable = false;
         bool requiresChildTables = false;
+        bool requiresAuditTable = false;
         PrimaryKeyRequirement? requiredPrimaryKeyShape = null;
         bool requiresNotNameActiveTable = false;
         bool needsRowData = false;
@@ -207,6 +214,8 @@ public class TemplateConfig
                 requiresJunctionTable = boolValue;
             else if (key.EqualsIgnoreCase("RequiresChildTables"))
                 requiresChildTables = boolValue;
+            else if (key.EqualsIgnoreCase("RequiresAuditTable"))
+                requiresAuditTable = boolValue;
             else if (key.EqualsIgnoreCase("RequiredPrimaryKeyShape"))
                 requiredPrimaryKeyShape = Enum.TryParse<PrimaryKeyRequirement>(value, ignoreCase: true, out var parsed) ? parsed : null;
             else if (key.EqualsIgnoreCase("RequiresNotNameActiveTable"))
@@ -255,6 +264,7 @@ public class TemplateConfig
             TableOnly = tableOnly,
             RequiresJunctionTable = requiresJunctionTable,
             RequiresChildTables = requiresChildTables,
+            RequiresAuditTable = requiresAuditTable,
             RequiredPrimaryKeyShape = requiredPrimaryKeyShape,
             RequiresNotNameActiveTable = requiresNotNameActiveTable,
             NeedsRowData = needsRowData,
@@ -298,5 +308,9 @@ public enum PlanTableSet
     /// <summary> The many-to-many junction tables. </summary>
     Junction,
     /// <summary> The enum (lookup) tables the project turns into C# enums. </summary>
-    Enum
+    Enum,
+    /// <summary> The tables with audit columns (<see cref="CodeGenNew.Core.TableModel.IsAuditTable"/>). </summary>
+    Audit,
+    /// <summary> The tables the project's <c>TemporalTables</c> setting names. </summary>
+    Temporal
 }

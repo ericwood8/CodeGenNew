@@ -25,7 +25,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiProduction", "ApiTests", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiProduction", "ApiTests", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
         "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputRust", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "TestApi", "TestWinUI3", "TestReact", "TestAngular"
     ];
@@ -153,6 +153,9 @@ public class ProjectSettings
     /// <summary> The databases a table's changes are copied to by SP_ReplicationTriggers (<c>ReplicationTargets=server1.Sales,server2.Sales</c>: linked server, then database). Empty when not set. </summary>
     public string[] ReplicationTargets => Items("ReplicationTargets");
 
+    /// <summary> SQL Server tables the database itself versions (SP_TemporalTable, SYSTEM_VERSIONING): <c>TemporalTables=Customer,Item</c>. Empty when not set. </summary>
+    public string[] TemporalTables => Items("TemporalTables");
+
     /// <summary> Tables whose primary key comes from the key-sequence table (SP_KeySequence) instead of an IDENTITY column (<c>KeySequenceTables=Customer,Item</c>): their insert routine asks the
     /// sequence for the next key. Empty when not set (every table keeps its own key rules). </summary>
     public bool UsesKeySequence(string table) => Items("KeySequenceTables").Contains(table, StringComparer.OrdinalIgnoreCase);
@@ -242,6 +245,7 @@ public class ProjectSettings
             if (ApiDocs) yield return "API_OpenApi";
             if (ApiHttp) yield return "API_Http";
             if (ApiFakers) yield return "CS_Faker";
+            if (TemporalTables.Length > 0) yield return "SP_TemporalTable";
             if (ApiTests) yield return "API_Test";
             if (ProjectDocs) { yield return "MD_DataDictionary"; yield return "MD_Erd"; }
             if (ApiValidation) { yield return "CS_Validator"; yield return "RS_Validate"; }

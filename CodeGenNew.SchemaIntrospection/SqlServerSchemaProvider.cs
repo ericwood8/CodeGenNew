@@ -68,7 +68,7 @@ public class SqlServerSchemaProvider : SchemaProviderBase
         await using var connection = _connectionRequest.CreateConnection();
         await connection.OpenAsync(cancellationToken);
 
-        var junctionTables = await DetermineJunctionTablesAsync(connection, cancellationToken);
+        var (junctionTables, auditTables) = await DetermineJunctionAndAuditTablesAsync(connection, cancellationToken);
         var tablesWithChildren = await DetermineTablesWithChildForeignKeysAsync(connection, cancellationToken);
         var nameActiveTables = await DetermineNameActiveTablesAsync(connection, cancellationToken);
 
@@ -95,6 +95,7 @@ public class SqlServerSchemaProvider : SchemaProviderBase
                 HasChildForeignKeys = tablesWithChildren.Contains((schemaName, tableName)),
                 PrimaryKeyShape = ClassifyPrimaryKeyShape(pkColumnCount, pkColumnTypeName),
                 IsNameActiveTable = nameActiveTables.Contains((schemaName, tableName)),
+                IsAuditTable = auditTables.Contains((schemaName, tableName)),
                 IsReservedWordName = tableName.IsSqlReservedWord(),
                 IsCSharpReservedWordName = tableName.IsCSharpReservedWord()
             });
@@ -130,7 +131,8 @@ public class SqlServerSchemaProvider : SchemaProviderBase
         WHERE (SELECT COUNT(*) FROM sys.foreign_key_columns fkc2 WHERE fkc2.constraint_object_id = fkc.constraint_object_id) = 1;
         """;
 
-    private static async Task<HashSet<(string Schema, string Table)>> DetermineJunctionTablesAsync(SqlConnection connection, CancellationToken cancellationToken)
+    private static async Task<(HashSet<(string Schema, string Table)> Junction, HashSet<(string Schema, string Table)> Audit)> DetermineJunctionAndAuditTablesAsync(
+        SqlConnection connection, CancellationToken cancellationToken)
     {
         var columnsByTable = new Dictionary<(string Schema, string Table), List<(string Name, bool IsIdentity, bool IsPrimaryKey, bool IsComputed)>>();
         await using (var command = new SqlCommand(AllColumnsForJunctionCheckQuery, connection))
@@ -162,8 +164,12 @@ public class SqlServerSchemaProvider : SchemaProviderBase
         }
 
         var junctionTables = new HashSet<(string Schema, string Table)>();
+        var auditTables = new HashSet<(string Schema, string Table)>();
         foreach (var (key, columns) in columnsByTable)
         {
+            if (AuditTableShape.IsAuditTable(columns.Select(c => c.Name)))
+                auditTables.Add(key);
+
             var candidates = columns
                 .Where(c => !c.IsComputed && !c.Name.IsAuditColumn() && !(c.IsIdentity && c.IsPrimaryKey))
                 .ToList();
@@ -175,7 +181,7 @@ public class SqlServerSchemaProvider : SchemaProviderBase
                 junctionTables.Add(key);
         }
 
-        return junctionTables;
+        return (junctionTables, auditTables);
     }
 
     // Every table referenced by at least one foreign key, i.e. every table that is a PARENT of some other

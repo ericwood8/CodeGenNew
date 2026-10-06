@@ -70,6 +70,9 @@ public class TableModel
         Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name") &&
         Columns.Any(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive");
 
+    /// <summary> A column that records the row's creation and a column that records a later change (see <see cref="AuditTableShape"/>): the tables SP_AuditTable is offered for. </summary>
+    public bool IsAuditTable => AuditTableShape.IsAuditTable(Columns.Select(c => c.Name));
+
     /// <summary> True only when the model was built with row data (a template's .tt.config sets NeedsRowData=true,
     /// e.g. SP_Load.tt). Otherwise Rows is empty because it was never read -- not because the table is empty. </summary>
     public bool HasRowData { get; init; }

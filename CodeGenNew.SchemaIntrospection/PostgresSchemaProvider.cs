@@ -205,7 +205,7 @@ public class PostgresSchemaProvider : SchemaProviderBase
         await using var connection = _connectionRequest.CreatePostgresConnection();
         await connection.OpenAsync(cancellationToken);
 
-        var junctionTables = await DetermineJunctionTablesAsync(connection, cancellationToken);
+        var (junctionTables, auditTables) = await DetermineJunctionAndAuditTablesAsync(connection, cancellationToken);
         var tablesWithChildren = await ReadPairsAsync(connection, AllReferencedTablesQuery, cancellationToken);
         var nameActiveTables = await DetermineNameActiveTablesAsync(connection, cancellationToken);
 
@@ -230,6 +230,7 @@ public class PostgresSchemaProvider : SchemaProviderBase
                 HasChildForeignKeys = tablesWithChildren.Contains((schemaName, tableName)),
                 PrimaryKeyShape = ClassifyPrimaryKeyShape(reader.GetInt32(reader.GetOrdinal("pk_column_count")), reader.IsDBNull(pkOrdinal) ? null : reader.GetString(pkOrdinal)),
                 IsNameActiveTable = nameActiveTables.Contains((schemaName, tableName)),
+                IsAuditTable = auditTables.Contains((schemaName, tableName)),
                 IsReservedWordName = tableName.IsSqlReservedWord(),
                 IsCSharpReservedWordName = tableName.IsCSharpReservedWord()
             });
@@ -248,7 +249,8 @@ public class PostgresSchemaProvider : SchemaProviderBase
         return pairs;
     }
 
-    private async Task<HashSet<(string Schema, string Table)>> DetermineJunctionTablesAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
+    private async Task<(HashSet<(string Schema, string Table)> Junction, HashSet<(string Schema, string Table)> Audit)> DetermineJunctionAndAuditTablesAsync(
+        NpgsqlConnection connection, CancellationToken cancellationToken)
     {
         var columnsByTable = new Dictionary<(string Schema, string Table), List<(string Name, bool IsIdentity, bool IsPrimaryKey, bool IsComputed)>>();
         await using (var command = new NpgsqlCommand(AllColumnsForJunctionCheckQuery, connection))
@@ -277,8 +279,12 @@ public class PostgresSchemaProvider : SchemaProviderBase
         }
 
         var junctionTables = new HashSet<(string Schema, string Table)>();
+        var auditTables = new HashSet<(string Schema, string Table)>();
         foreach (var (key, columns) in columnsByTable)
         {
+            if (AuditTableShape.IsAuditTable(columns.Select(c => Named(c.Name))))
+                auditTables.Add(key);
+
             var candidates = columns
                 .Where(c => !c.IsComputed && !Named(c.Name).IsAuditColumn() && !(c.IsIdentity && c.IsPrimaryKey))
                 .ToList();
@@ -290,7 +296,7 @@ public class PostgresSchemaProvider : SchemaProviderBase
                 junctionTables.Add(key);
         }
 
-        return junctionTables;
+        return (junctionTables, auditTables);
     }
 
     // A NOT NULL text column named exactly "Name" and a NOT NULL boolean column named exactly "IsActive" (TableModel.IsNameActiveTable's bulk form).

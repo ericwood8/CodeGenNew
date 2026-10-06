@@ -62,7 +62,7 @@ public class TemplateInfo
     public string BuildDatabaseFileName(string contextName) => BuildFileName(contextName);
 
     public bool AppliesTo(bool tableHasPrimaryKey, bool isView, bool isJunctionTable = false, bool hasChildForeignKeys = false,
-        PrimaryKeyShape primaryKeyShape = PrimaryKeyShape.None, bool isNameActiveTable = false, SqlDialect dialect = SqlDialect.SqlServer)
+        PrimaryKeyShape primaryKeyShape = PrimaryKeyShape.None, bool isNameActiveTable = false, SqlDialect dialect = SqlDialect.SqlServer, bool isAuditTable = false)
     {
         if (Config.DatabaseOnly || Config.NoDatabase)
             return false; // offered on the database node (or in no database menu at all), not on a table
@@ -77,6 +77,8 @@ public class TemplateInfo
         if (Config.RequiresJunctionTable && !isJunctionTable)
             return false;
         if (Config.RequiresChildTables && !hasChildForeignKeys)
+            return false;
+        if (Config.RequiresAuditTable && !isAuditTable)
             return false;
         if (!Config.PrimaryKeyShapeSatisfies(primaryKeyShape))
             return false;

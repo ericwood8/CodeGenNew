@@ -365,7 +365,7 @@ public class TemplateCatalogTests
         var offered = TemplateCatalog.Discover(Repo.TemplatesDirectory);
 
         var groups = offered.GroupBy(t => t.SubmenuGroup).ToDictionary(g => g.Key!, g => g.Count());
-        Assert.AreEqual(15, groups["SP"]);
+        Assert.AreEqual(17, groups["SP"]);
         Assert.AreEqual(12, groups["API"]);
         Assert.AreEqual(17, groups["CS"]);
         Assert.AreEqual(15, groups["TS"]);

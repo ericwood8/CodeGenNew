@@ -28,6 +28,9 @@ public class TableSummary
     /// <summary> Bulk-computed equivalent of TableModel.IsNameActiveTable. </summary>
     public bool IsNameActiveTable { get; init; }
 
+    /// <summary> Bulk-computed equivalent of TableModel.IsAuditTable. </summary>
+    public bool IsAuditTable { get; init; }
+
     public bool IsReservedWordName { get; init; }
     public bool IsCSharpReservedWordName { get; init; }
 }

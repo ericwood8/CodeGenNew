@@ -60,6 +60,7 @@ public static class ProjectSettingsHints
         ["DtoNamespace"] = "the namespace of the data-transfer classes and mappers (CS_Dto, CS_Mapper, CS_DataContractDto, CS_TypedDataRow, CS_SerializationDtos; default <ProjectName>.App.Dtos)",
         ["FSharpNamespace"] = "the namespace of the F# records FS_Entity and the Rop module FS_Rop write (default <ProjectName>.Domain)",
         ["ReplicationTargets"] = "SQL Server only: linked server and database each change is copied to, comma-separated (server1.Sales,server2.Sales); SP_ReplicationTriggers writes the triggers",
+        ["TemporalTables"] = "SQL Server only: comma-separated tables the database versions itself (SP_TemporalTable: SYSTEM_VERSIONING and a <Table>_History table); SP_AuditTable refuses such a table",
         ["KeySequenceTables"] = "SQL Server only: tables whose key comes from the key-sequence table instead of IDENTITY (Customer,Item); their insert routine calls GetNextID",
         ["KeySequenceTable"] = "the table the key sequence is kept in (default AutoInc)",
         ["BulkUpdateColumns"] = "SQL Server only: columns SP_BulkUpdate rewrites in every table that has one (Fnd,Acct)",

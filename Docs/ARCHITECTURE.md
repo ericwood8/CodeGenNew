@@ -81,7 +81,7 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 |---|---|
 | `RequiresPrimaryKey`, `TableOnly` | hide the template for a table without a key, or for a view (both default to true) |
 | `RequiredPrimaryKeyShape` | `SingleColumn`, `SingleIntOrGuid` or `SingleInt`: the key shape the generated routes need |
-| `RequiresJunctionTable`, `RequiresChildTables`, `RequiresNotNameActiveTable` | shape restrictions for the specialised templates |
+| `RequiresJunctionTable`, `RequiresChildTables`, `RequiresAuditTable`, `RequiresNotNameActiveTable` | shape restrictions for the specialised templates |
 | `NeedsRowData`, `NeedsReferencedDisplayColumns` | ask the schema reader for more (rows; the display columns of parent tables) |
 | `DatabaseOnly`, `NoDatabase` | one file for the whole database, or no database at all |
 | `Dialects` | the databases the template is for; a plan skips it silently for another |

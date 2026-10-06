@@ -369,6 +369,7 @@ public class SqliteSchemaProvider : SchemaProviderBase
                 HasChildForeignKeys = referenced.Contains(name),
                 PrimaryKeyShape = ShapeOf(primaryKey.Count, primaryKey.FirstOrDefault()?.Type),
                 IsNameActiveTable = nameActive,
+                IsAuditTable = AuditTableShape.IsAuditTable(columns.Where(c => c.Hidden == 0).Select(c => Named(c.Name))),
                 IsReservedWordName = name.IsSqlReservedWord(),
                 IsCSharpReservedWordName = Named(name).IsCSharpReservedWord()
             });

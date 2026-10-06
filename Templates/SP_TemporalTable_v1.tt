@@ -1,0 +1,68 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // SP_TemporalTable_v1.tt
+    // Generates: <TableName>_Temporal.sql   (SQL Server only)
+    // Makes SQL Server keep the history of a table itself: two hidden period columns (SysStartTime, SysEndTime) and SYSTEM_VERSIONING with a <Table>_History table that the database creates
+    // and fills; no trigger. The history can be read as it was at any moment (FOR SYSTEM_TIME AS OF) and survives with the table. Compare SP_AuditTable, which works on every database and
+    // also records who made the change.
+    // The script can be run again: it does nothing for a table that is already temporal. Needs a primary key; text, ntext and image columns are refused (a temporal table cannot hold them).
+    // The existing rows start their history at the moment the script runs. Review it, try it on a copy and run it yourself; codegen never applies it.
+    // Settings: TemporalTables (the tables that get it; others are refused). SP_AuditTable refuses such a table.
+    // Full notes: Docs/TemplateNotes/SP_AuditTable_v1.md
+    // ==========================================================================================
+
+    string Rem = new string((char)45, 2);   // an SQL comment marker
+    string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
+    string[] periodNames = ["SysStartTime", "SysEndTime"];
+
+    if (Model.Dialect != SqlDialect.SqlServer)
+    {
+        Error("SP_TemporalTable writes SQL Server system-versioned tables: it is for a table read from SQL Server (SP_AuditTable works on every database).");
+    }
+    else if (!Project.TemporalTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase))
+    {
+        Error($"{Model.TableName} is not in the project's TemporalTables setting (TemporalTables=Customer,Item): temporal tables are opt in, table by table.");
+    }
+    else if (Model.PrimaryKeyColumns.Count == 0)
+    {
+        Error($"{Model.TableName} has no primary key: a temporal table needs one.");
+    }
+    else if (Model.Columns.FirstOrDefault(c => c.SqlType is SqlDbType.Text or SqlDbType.NText or SqlDbType.Image) is { } unsupported)
+    {
+        Error($"{Model.TableName}.{unsupported.DbName} is {unsupported.SqlTypeDeclaration}: a temporal table cannot hold text, ntext or image columns.");
+    }
+    else if (Model.Columns.FirstOrDefault(c => periodNames.Contains(c.DbName, StringComparer.OrdinalIgnoreCase)) is { } clash)
+    {
+        Error($"{Model.TableName} already has a column called {clash.DbName}, one of the two period columns this script adds ({string.Join(", ", periodNames)}).");
+    }
+    else
+    {
+        string table = Q(Model.SchemaName) + "." + Q(Model.DbTableName);
+        string historyName = Model.DbTableName + "_History";
+        string history = Q(Model.SchemaName) + "." + Q(historyName);
+        var sb = new StringBuilder();
+        void Line(string line = "") => sb.Append(line).Append('\n');
+
+        Line(Rem + " Makes SQL Server keep the history of " + table + " in " + history + ".");
+        Line(Rem + " Review before running: the existing rows start their history now, and the table cannot be dropped until versioning is turned off.");
+        Line();
+        Line("IF (SELECT temporal_type FROM sys.tables WHERE object_id = OBJECT_ID(N'" + (Model.SchemaName + "." + Model.DbTableName).Replace("'", "''") + "', N'U')) = 0");
+        Line("BEGIN");
+        Line("    ALTER TABLE " + table + " ADD");
+        Line("        [SysStartTime] datetime2 GENERATED ALWAYS AS ROW START HIDDEN NOT NULL CONSTRAINT " + Q("DF_" + Model.DbTableName + "_SysStartTime") + " DEFAULT SYSUTCDATETIME(),");
+        Line("        [SysEndTime] datetime2 GENERATED ALWAYS AS ROW END HIDDEN NOT NULL CONSTRAINT " + Q("DF_" + Model.DbTableName + "_SysEndTime") + " DEFAULT CONVERT(datetime2, '9999-12-31 23:59:59.9999999'),");
+        Line("        PERIOD FOR SYSTEM_TIME ([SysStartTime], [SysEndTime]);");
+        Line();
+        Line("    ALTER TABLE " + table + " SET (SYSTEM_VERSIONING = ON (HISTORY_TABLE = " + history + "));");
+        Line("END");
+        Line("GO");
+        Write(sb.ToString());
+    }
+#>

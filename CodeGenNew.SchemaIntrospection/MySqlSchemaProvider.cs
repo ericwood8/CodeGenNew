@@ -257,6 +257,7 @@ public class MySqlSchemaProvider : SchemaProviderBase
                     tables.IsDBNull(pkOrdinal) ? null : tables.GetString(pkOrdinal),
                     tables.IsDBNull(tables.GetOrdinal("pk_column_type")) ? null : tables.GetString(tables.GetOrdinal("pk_column_type"))),
                 IsNameActiveTable = nameActive,
+                IsAuditTable = AuditTableShape.IsAuditTable(columns.Select(c => Named(c.Name))),
                 IsReservedWordName = tableName.IsSqlReservedWord(),
                 IsCSharpReservedWordName = Named(tableName).IsCSharpReservedWord()
             });

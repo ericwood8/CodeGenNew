@@ -7,11 +7,9 @@ namespace CodeGenNew.SchemaIntrospection;
 public static class AuditColumnClassifier
 {
     public static bool IsAuditColumn(this string columnName) =>
-        columnName.StartsWithIgnoreCase("Create") ||
-        (columnName.ContainsIgnoreCase("Modif") && !columnName.EqualsIgnoreCase("IsBeingModified")) ||
-        columnName.ContainsIgnoreCase("Change") ||
+        AuditTableShape.IsCreateName(columnName) ||
+        AuditTableShape.IsChangeName(columnName) ||
         columnName.StartsWithIgnoreCase("Delete") ||
-        columnName.StartsWithIgnoreCase("Update") ||
         columnName.StartsWithIgnoreCase("Inactiv") ||
         columnName.StartsWithIgnoreCase("Activ") ||
         columnName.EqualsIgnoreCase("BadAddressDate");

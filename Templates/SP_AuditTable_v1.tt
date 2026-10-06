@@ -1,0 +1,176 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // SP_AuditTable_v1.tt
+    // Generates: <TableName>_Audit.sql   (SQL Server, PostgreSQL, MySQL and SQLite; the script of the table's own database)
+    // A history of every change to a table: a <Table>_History table that holds one row per update and delete (the row as it was before, who and when) and the trigger that fills it.
+    // The history table has the table's columns, with no key, default or foreign key of their own, behind four of its own: AuditId (its key), AuditAction ('U' for an update, 'D' for a delete),
+    // AuditDate (UTC) and AuditUser (the database login or user; SQLite has none, so NULL). An insert is not recorded: the live row is the record of it.
+    // The script can be run again: the table is created only when it is missing and the trigger is replaced. A column of a type a trigger cannot read (SQL Server text, ntext, image,
+    // timestamp) and a computed column are left out. The history table does not follow later changes to the table: add the column to both.
+    // A trigger runs inside the statement that fired it: a history table that cannot be written rolls the change back. Review the script, try it on a copy and run it yourself;
+    // codegen never applies it. For a table with audit columns (a creation column such as CreateDate or CreateUser and a change column such as ModifiedDate or ModifiedBy); any other table
+    // is refused. Not for a table also in the TemporalTables setting.
+    // Full notes: Docs/TemplateNotes/SP_AuditTable_v1.md
+    // ==========================================================================================
+
+    var dialect = Model.Dialect;
+    var info = DialectInfo.For(dialect);
+    string Rem = new string((char)45, 2);   // an SQL comment marker
+    string Q(string identifier) => info.Quote(identifier);
+    var auditNames = new[] { "AuditId", "AuditAction", "AuditDate", "AuditUser" };
+
+    bool Unreadable(ColumnModel c) => c.IsComputed
+        || (dialect == SqlDialect.SqlServer && (c.SqlType is SqlDbType.Text or SqlDbType.NText or SqlDbType.Image or SqlDbType.Timestamp
+            || c.SqlTypeDeclaration.Equals("rowversion", StringComparison.OrdinalIgnoreCase)));
+    var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).Where(c => !Unreadable(c)).ToList();
+
+    if (!Model.IsAuditTable)
+    {
+        Error($"{Model.TableName} has no audit columns: the audit trail is for a table with a column that records its creation (CreateDate, CreateUser) and one that records a change (ModifiedDate, ModifiedBy).");
+    }
+    else if (Project.TemporalTables.Contains(Model.TableName, StringComparer.OrdinalIgnoreCase))
+    {
+        Error($"{Model.TableName} is also in TemporalTables: both keep a {Model.DbTableName}_History table. Choose one.");
+    }
+    else if (columns.Count == 0)
+    {
+        Error($"{Model.TableName} has no column a trigger can read.");
+    }
+    else if (columns.FirstOrDefault(c => auditNames.Contains(c.DbName, StringComparer.OrdinalIgnoreCase)) is { } clash)
+    {
+        Error($"{Model.TableName} already has a column called {clash.DbName}, one of the four the history table adds ({string.Join(", ", auditNames)}).");
+    }
+    else
+    {
+        string historyName = Model.DbTableName + "_History";
+        string table = info.QuoteTable(Model.SchemaName, Model.DbTableName);
+        string history = info.QuoteTable(Model.SchemaName, historyName);
+        string ColumnDeclaration(ColumnModel c) => "    " + Q(c.DbName) + " " + c.SqlTypeDeclaration + (c.IsNullable ? " NULL" : " NOT NULL");
+        string auditColumns = string.Join(", ", new[] { "AuditAction", "AuditDate", "AuditUser" }.Select(Q));
+        string columnList = string.Join(", ", columns.Select(c => Q(c.DbName)));
+
+        var sb = new StringBuilder();
+        void Line(string line = "") => sb.Append(line).Append('\n');
+
+        Line(Rem + " History of every update and delete of " + table + ", kept in " + history + " by a trigger.");
+        Line(Rem + " Review before running: a trigger that cannot write the history table rolls back the change that fired it.");
+        Line();
+
+        // the history table
+        switch (dialect)
+        {
+            case SqlDialect.SqlServer:
+                Line("IF OBJECT_ID(N'" + (Model.SchemaName + "." + historyName).Replace("'", "''") + "', N'U') IS NULL");
+                Line("BEGIN");
+                Line("    CREATE TABLE " + history);
+                Line("    (");
+                Line("        [AuditId] bigint IDENTITY(1,1) NOT NULL CONSTRAINT " + Q("PK_" + historyName) + " PRIMARY KEY,");
+                Line("        [AuditAction] char(1) NOT NULL,");
+                Line("        [AuditDate] datetime2 NOT NULL CONSTRAINT " + Q("DF_" + historyName + "_AuditDate") + " DEFAULT SYSUTCDATETIME(),");
+                Line("        [AuditUser] nvarchar(128) NULL,");
+                Line(string.Join(",\n", columns.Select(c => "    " + ColumnDeclaration(c))));
+                Line("    );");
+                Line("END");
+                Line("GO");
+                break;
+            case SqlDialect.PostgreSql:
+                Line("CREATE TABLE IF NOT EXISTS " + history);
+                Line("(");
+                Line("    \"AuditId\" bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,");
+                Line("    \"AuditAction\" char(1) NOT NULL,");
+                Line("    \"AuditDate\" timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'utc'),");
+                Line("    \"AuditUser\" varchar(128) NULL,");
+                Line(string.Join(",\n", columns.Select(ColumnDeclaration)));
+                Line(");");
+                break;
+            case SqlDialect.MySql:
+                Line("CREATE TABLE IF NOT EXISTS " + history);
+                Line("(");
+                Line("    `AuditId` bigint NOT NULL AUTO_INCREMENT PRIMARY KEY,");
+                Line("    `AuditAction` char(1) NOT NULL,");
+                Line("    `AuditDate` datetime(6) NOT NULL,");
+                Line("    `AuditUser` varchar(128) NULL,");
+                Line(string.Join(",\n", columns.Select(ColumnDeclaration)));
+                Line(");");
+                break;
+            default:
+                Line("CREATE TABLE IF NOT EXISTS " + history);
+                Line("(");
+                Line("    \"AuditId\" INTEGER PRIMARY KEY AUTOINCREMENT,");
+                Line("    \"AuditAction\" TEXT NOT NULL,");
+                Line("    \"AuditDate\" TEXT NOT NULL,");
+                Line("    \"AuditUser\" TEXT NULL,");
+                Line(string.Join(",\n", columns.Select(ColumnDeclaration)));
+                Line(");");
+                break;
+        }
+        Line();
+
+        // the trigger
+        string Old(ColumnModel c) => "OLD." + Q(c.DbName);
+        string oldValues = string.Join(", ", columns.Select(Old));
+        switch (dialect)
+        {
+            case SqlDialect.SqlServer:
+                Line("CREATE OR ALTER TRIGGER " + Q(Model.SchemaName) + "." + Q("TR_" + Model.DbTableName + "_Audit"));
+                Line("ON " + table + " AFTER UPDATE, DELETE");
+                Line("AS");
+                Line("BEGIN");
+                Line("    SET NOCOUNT ON;");
+                Line("    INSERT INTO " + history + " (" + auditColumns + ", " + columnList + ")");
+                Line("    SELECT CASE WHEN EXISTS (SELECT 1 FROM inserted) THEN 'U' ELSE 'D' END, SYSUTCDATETIME(), SUSER_SNAME(), " + columnList);
+                Line("    FROM deleted;");
+                Line("END");
+                Line("GO");
+                break;
+            case SqlDialect.PostgreSql:
+                string function = Q(Model.SchemaName) + "." + Q(Model.DbTableName + "_Audit");
+                Line("CREATE OR REPLACE FUNCTION " + function + "() RETURNS trigger");
+                Line("LANGUAGE plpgsql AS $audit$");
+                Line("BEGIN");
+                Line("    INSERT INTO " + history + " (" + auditColumns + ", " + columnList + ")");
+                Line("    VALUES (CASE TG_OP WHEN 'UPDATE' THEN 'U' ELSE 'D' END, now() AT TIME ZONE 'utc', current_user, " + oldValues + ");");
+                Line("    RETURN NULL;");
+                Line("END");
+                Line("$audit$;");
+                Line();
+                Line("CREATE OR REPLACE TRIGGER " + Q("TR_" + Model.DbTableName + "_Audit"));
+                Line("AFTER UPDATE OR DELETE ON " + table);
+                Line("FOR EACH ROW EXECUTE FUNCTION " + function + "();");
+                break;
+            case SqlDialect.MySql:
+                foreach ((string letter, string action, string verb) in new[] { ("U", "UPDATE", "U"), ("D", "DELETE", "D") })
+                {
+                    string trigger = Q("TR_" + Model.DbTableName + "_Audit_" + letter);
+                    Line("DROP TRIGGER IF EXISTS " + trigger + ";");
+                    Line("CREATE TRIGGER " + trigger + " AFTER " + action + " ON " + table + " FOR EACH ROW");
+                    Line("    INSERT INTO " + history + " (" + auditColumns + ", " + columnList + ")");
+                    Line("    VALUES ('" + verb + "', UTC_TIMESTAMP(6), USER(), " + oldValues + ");");
+                    Line();
+                }
+                break;
+            default:
+                foreach ((string letter, string action) in new[] { ("U", "UPDATE"), ("D", "DELETE") })
+                {
+                    string trigger = Q("TR_" + Model.DbTableName + "_Audit_" + letter);
+                    Line("DROP TRIGGER IF EXISTS " + trigger + ";");
+                    Line("CREATE TRIGGER " + trigger + " AFTER " + action + " ON " + table + " FOR EACH ROW");
+                    Line("BEGIN");
+                    Line("    INSERT INTO " + history + " (" + auditColumns + ", " + columnList + ")");
+                    Line("    VALUES ('" + letter + "', strftime('%Y-%m-%d %H:%M:%f', 'now'), NULL, " + oldValues + ");");
+                    Line("END;");
+                    Line();
+                }
+                break;
+        }
+        Write(sb.ToString().TrimEnd('\n') + "\n");
+    }
+#>
