@@ -7,6 +7,7 @@
 <#@ import namespace="System.Data" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // ==========================================================================================
     // BLZ_Page_v1.tt
@@ -17,14 +18,7 @@
     // Full notes: Docs/TemplateNotes/BLZ_Page_v1.md
     // ==========================================================================================
 
-    string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
     string Words(string s) => Labels.Words(s);
-    bool IsDate(ColumnModel c) => c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
-    bool IsNumber(ColumnModel c) => c.SqlType is SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt
-        or SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real;
-    bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
-    int Chars(ColumnModel c) => c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
-    bool IsMultiline(ColumnModel c) => IsText(c) && Chars(c) >= 100;
     bool HasInput(ColumnModel c) => c.CSharpBase() is not ("byte[]" or "object");
     string Label(string columnName) => Words(Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", ""));
     string Ident(string name) => Regex.Replace(name, "[^A-Za-z0-9]", "");

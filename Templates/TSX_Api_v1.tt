@@ -6,6 +6,7 @@
 <#@ import namespace="System.Data" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // ==========================================================================================
     // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
@@ -37,8 +38,6 @@
     // Full notes: Docs/TemplateNotes/TSX_Api_v1.md
     // ==========================================================================================
 
-    string BaseName(string table) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(table, "^E_", ""), "^SY_", "");
-    string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
     if (NoApi(Model.TableName, Model.LookupShape))

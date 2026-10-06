@@ -6,6 +6,7 @@
 <#@ import namespace="System.Data" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // ==========================================================================================
     // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
@@ -22,8 +23,6 @@
     // Needs a table detected as a junction table (TableModel.IsJunctionTable).
     // Full notes: Docs/TemplateNotes/TS_JunctionComponent_v1.md
 
-    string BaseName(string table) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(table, "^E_", ""), "^SY_", "");
-    string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
 
     if (!Model.IsJunctionTable)
         Error($"TS_JunctionComponent cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it is not a many-to-many junction table - TableModel.IsJunctionTable is false.");

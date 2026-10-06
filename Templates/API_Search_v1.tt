@@ -4,6 +4,7 @@
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Data" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // ==========================================================================================
     // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
@@ -30,7 +31,6 @@
 
     var searchableColumns = Model.SearchableColumns;
 
-    string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
 
     string entity = Model.TableName;
     string usingLines = string.Concat(usings.Select(u => $"using {u};\n"));

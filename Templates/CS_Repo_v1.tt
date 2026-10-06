@@ -6,6 +6,7 @@
 <#@ import namespace="System.Data" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // ==========================================================================================
     // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
@@ -149,7 +150,6 @@
         // keyed only by ids/numbers) still grows without bound and still needs a paged GetAll, just with zero
         // filter parameters - found live needing exactly this on such a table (2026-09-28).
         {
-            string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
             var filters = searchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
             // Filter params, then pageNumber/pageSize - joined as ONE list so the comma placement is correct
             // whether there are zero filters or several (a naive "{paramList}, int pageNumber" would leave a

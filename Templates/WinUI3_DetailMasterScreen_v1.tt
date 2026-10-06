@@ -6,6 +6,7 @@
 <#@ import namespace="System.Text.RegularExpressions" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // ==========================================================================================
     // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
@@ -45,11 +46,6 @@
     // Full notes: Docs/TemplateNotes/WinUI3_DetailMasterScreen_v1.md
     // ==========================================================================================
 
-    bool IsDate(ColumnModel c) => c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
-    bool IsNumber(ColumnModel c) => c.SqlType is SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt
-        or SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real;
-    bool IsGuid(ColumnModel c) => c.SqlType == SqlDbType.UniqueIdentifier;
-    bool IsBit(ColumnModel c) => c.SqlType == SqlDbType.Bit;
     // Every whole-number column (a foreign key to a lookup is handled before this) is edited in a number box, whose value is a double:
     // the ViewModel holds it as a double (NaN = blank) and the save converts it back, after checking it is whole and in range.
     bool UsesNumberBox(ColumnModel c) => c.IsIntegerColumn && !IsBit(c);
@@ -62,10 +58,6 @@
     bool UsesDecimalBox(ColumnModel c) => !c.IsIntegerColumn && !c.IsCurrencyColumn && c.SqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real;
     int DecimalPlaces(ColumnModel c) => Math.Clamp(c.Scale ?? 2, 0, 8);
     string Inv(double d) => d.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture);
-    bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
-    bool IsEditableType(ColumnModel c) => IsDate(c) || IsNumber(c) || IsGuid(c) || IsBit(c) || IsText(c);
-    int Chars(ColumnModel c) => c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
-    bool IsMultiline(ColumnModel c) => IsText(c) && Chars(c) >= 100;
     string Words(string s) => Labels.Words(s);
     string Label(string columnName) => Words(Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", ""));
     string FieldVar(string name) => char.ToLowerInvariant(name[0]) + name[1..];

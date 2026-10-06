@@ -6,6 +6,7 @@
 <#@ import namespace="System.Data" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // ==========================================================================================
     // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
@@ -48,7 +49,6 @@
     // Full notes: Docs/TemplateNotes/TS_Model_v1.md
     // ==========================================================================================
 
-    string BaseName(string table) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(table, "^E_", ""), "^SY_", "");
     string Camel(string name) => JsonNames.Camel(name);
     string TsType(ColumnModel c) => c.TypeScript();
 

@@ -7,6 +7,7 @@
 <#@ import namespace="System.Data" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
 <#
     // ==========================================================================================
     // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
@@ -55,20 +56,10 @@
     // Full notes: Docs/TemplateNotes/TSX_DetailMasterPage_v1.md
     // ==========================================================================================
 
-    string BaseName(string table) => Regex.Replace(Regex.Replace(table, "^E_", ""), "^SY_", "");
-    string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
-    string UpperFirst(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
     string Words(string s) => Labels.Words(s);
     string Camel(string name) => JsonNames.Camel(name);
-    bool IsDate(ColumnModel c) => c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
-    bool IsNumber(ColumnModel c) => c.SqlType is SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt
-        or SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real;
     // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is limited to what the column can hold (a percentage to 0-100).
-    bool IsPlainDecimal(ColumnModel c) => !c.IsIntegerColumn && !c.IsCurrencyColumn && c.SqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real;
     string Inv(double d) => d.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture);
-    bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
-    int Chars(ColumnModel c) => c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
-    bool IsMultiline(ColumnModel c) => IsText(c) && Chars(c) >= 100;
     string Label(string columnName)
     {
         string s = Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", "");
