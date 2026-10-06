@@ -27,7 +27,7 @@ public class AccessModeTests
 
     private static async Task<string> Render(string template, TableModel table, ProjectSettings? project = null)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, project ?? Project());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table, project ?? Project());
         if (!result.Success)
             Assert.Fail(template + ": " + string.Join(" | ", result.Errors).ReplaceLineEndings(" "));
         return result.GeneratedText!.ReplaceLineEndings("\n");
@@ -291,7 +291,7 @@ public class AccessModeTests
     public async Task The_sqlite_context_converts_the_types_it_cannot_order_and_the_essentials_name_the_provider()
     {
         var database = DatabaseOf(SqlDialect.Sqlite);
-        var result = await TemplateRunner.RunAsync(Repo.Template("CS_DbContext_v1.tt"), database, Project());
+        var result = await Repo.Cache.RunAsync(Repo.Template("CS_DbContext_v1.tt"), database, Project());
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string cs = result.GeneratedText!.ReplaceLineEndings("\n");
 
@@ -302,7 +302,7 @@ public class AccessModeTests
         Expect.Contains(cs, "(SQLite)");
         Expect.DoesNotContain(cs, "UseSqlServer");
 
-        var program = await TemplateRunner.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("DatabaseProvider", "Sqlite"), ("DatabaseName", "shop.db")));
+        var program = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("DatabaseProvider", "Sqlite"), ("DatabaseName", "shop.db")));
         Assert.IsTrue(program.Success, string.Join(" | ", program.Errors));
         string text = program.GeneratedText!.ReplaceLineEndings("\n");
         Expect.Contains(text, "Microsoft.EntityFrameworkCore.Sqlite");

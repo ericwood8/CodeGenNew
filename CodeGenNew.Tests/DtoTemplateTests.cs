@@ -24,7 +24,7 @@ public class DtoTemplateTests
 
     private static async Task<string> Render(string template, TableModel table, ProjectSettings? project = null)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, project ?? Project());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table, project ?? Project());
         Assert.IsTrue(result.Success, $"{template}: {string.Join(" | ", result.Errors)}");
         return result.GeneratedText!.Replace("\r\n", "\n");
     }
@@ -97,7 +97,7 @@ public class DtoTemplateTests
     {
         var keyless = Sample.Table("Log", [Sample.Column("Text", SqlDbType.NVarChar, characters: 50, ordinal: 1)]);
 
-        var result = await TemplateRunner.RunAsync(Repo.Template("CS_Mapper_v1.tt"), keyless, Project());
+        var result = await Repo.Cache.RunAsync(Repo.Template("CS_Mapper_v1.tt"), keyless, Project());
 
         Assert.IsFalse(result.Success);
         Assert.IsTrue(result.Errors.Any(e => e.Contains("primary key")));

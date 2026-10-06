@@ -1,8 +1,17 @@
 using System.Data;
 using CodeGenNew.Core;
+using CodeGenNew.Generation;
 using CodeGenNew.SchemaIntrospection;
+using CodeGenNew.TemplateEngine;
 
 namespace CodeGenNew.Tests;
+
+[TestClass]
+public static class TestAssemblyLifetime
+{
+    [AssemblyCleanup]
+    public static void DisposeSharedCache() => Repo.DisposeCache();
+}
 
 /// <summary> Where the repository's shipped templates are, found by walking up from the test binaries to CodeGenNew.slnx. </summary>
 internal static class Repo
@@ -10,6 +19,20 @@ internal static class Repo
     public static string Root { get; } = FindRoot();
     public static string TemplatesDirectory => Path.Combine(Root, "Templates");
     public static string Template(string fileName) => Path.Combine(TemplatesDirectory, fileName);
+
+    private static readonly Lazy<TemplateCache> SharedCache = new(() => new TemplateCache());
+
+    /// <summary> Compiles each shipped template once for the whole test run. Tests run one at a time, so it needs no locking; a test that edits a template writes a copy to its own path and uses TemplateRunner. </summary>
+    public static TemplateCache Cache => SharedCache.Value;
+
+    public static Task<GenerateReport> GenerateAsync(ISchemaProvider provider, GenerateOptions options, Action<string>? progress = null) =>
+        ProjectGenerator.RunAsync(provider, TemplatesDirectory, options, progress, templateCache: Cache);
+
+    public static void DisposeCache()
+    {
+        if (SharedCache.IsValueCreated)
+            SharedCache.Value.Dispose();
+    }
 
     private static string FindRoot()
     {

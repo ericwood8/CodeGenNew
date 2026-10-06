@@ -310,7 +310,7 @@ public class DashboardTests
                 ["OutputApi"] = "Api", ["OutputWinUI3"] = "App", ["OutputReact"] = "web", ["OutputAngular"] = "ng", ["Screens"] = "Customer,Invoice,InvoiceLine,Promotion",
                 ["Dashboard"] = "true", ["DashboardStrip"] = "true", ["ProjectDocs"] = "false"
             };
-            var report = await ProjectGenerator.RunAsync(provider, Repo.TemplatesDirectory, new GenerateOptions
+            var report = await Repo.GenerateAsync(provider, new GenerateOptions
             {
                 Project = ProjectSettings.FromValues(settings), Stacks = ["Api", "WinUI3", "React", "Angular"], OutputDirectory = output, DatabaseName = path, Schema = "main"
             });
@@ -345,7 +345,7 @@ public class DashboardTests
             {
                 settings["Dashboard"] = "false";
                 settings["DashboardStrip"] = "false";
-                var off = await ProjectGenerator.RunAsync(provider, Repo.TemplatesDirectory, new GenerateOptions
+                var off = await Repo.GenerateAsync(provider, new GenerateOptions
                 {
                     Project = ProjectSettings.FromValues(settings), Stacks = ["Api", "WinUI3", "React", "Angular"], OutputDirectory = plain, DatabaseName = path, Schema = "main"
                 });

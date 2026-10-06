@@ -122,7 +122,7 @@ public class GenerateAllTests
             Stacks = ["Api", "React"], OutputDirectory = temp.Path, DatabaseName = "Acme", Schema = "dbo"
         };
 
-        var first = await ProjectGenerator.RunAsync(provider, Repo.TemplatesDirectory, options);
+        var first = await Repo.GenerateAsync(provider, options);
 
         Assert.IsTrue(first.Success, string.Join("\n", first.Errors));
         string Api(string relative) => System.IO.Path.Combine(temp.Path, "Acme.Api", relative);
@@ -135,7 +135,7 @@ public class GenerateAllTests
         Assert.IsTrue(first.Count(FileOutcomeKind.Created) > 20);
         Assert.AreEqual(0, first.Count(FileOutcomeKind.Updated));
 
-        var second = await ProjectGenerator.RunAsync(provider, Repo.TemplatesDirectory, options);
+        var second = await Repo.GenerateAsync(provider, options);
         Assert.AreEqual(0, second.Count(FileOutcomeKind.Created) + second.Count(FileOutcomeKind.Updated), "nothing changed, so nothing is written");
         Assert.IsTrue(second.Count(FileOutcomeKind.Unchanged) > 20);
     }
@@ -146,7 +146,7 @@ public class GenerateAllTests
         using var temp = new TempFolder();
         var provider = new FakeProvider(Department(), Employee());
 
-        var dry = await ProjectGenerator.RunAsync(provider, Repo.TemplatesDirectory, new GenerateOptions
+        var dry = await Repo.GenerateAsync(provider, new GenerateOptions
         {
             Project = Project(), Stacks = ["Api"], OutputDirectory = temp.Path, DatabaseName = "Acme", Schema = "dbo", DryRun = true, OnlyTemplates = ["CS_Entity"]
         });
@@ -168,7 +168,7 @@ public class GenerateAllTests
             Sample.Column("IsActive", SqlDbType.Bit, ordinal: 3)
         ]);
 
-        var report = await ProjectGenerator.RunAsync(new FakeProvider(nameActive), Repo.TemplatesDirectory, new GenerateOptions
+        var report = await Repo.GenerateAsync(new FakeProvider(nameActive), new GenerateOptions
         {
             Project = Project(), Stacks = ["Api"], OutputDirectory = temp.Path, DatabaseName = "Acme", Schema = "dbo", OnlyTemplates = ["CS_Entity", "CS_Repo"]
         });

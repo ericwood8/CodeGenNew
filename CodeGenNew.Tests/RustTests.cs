@@ -282,7 +282,7 @@ public class RustTests
             var request = new ConnectionRequest { Provider = DatabaseProvider.Sqlite, ServerName = "", DatabaseName = database };
             var provider = SchemaProviderFactory.Create(request, Path.Combine(Repo.Root, "SpecialLogicColumns.config"));
 
-            var report = await ProjectGenerator.RunAsync(provider, Repo.TemplatesDirectory, new GenerateOptions
+            var report = await Repo.GenerateAsync(provider, new GenerateOptions
             {
                 Project = project, Stacks = ["Rust"], OutputDirectory = output, DatabaseName = database, Schema = "main", Essentials = true
             });
@@ -341,9 +341,9 @@ public class RustTests
     [TestMethod]
     public async Task The_tauri_shell_embeds_the_api_and_finds_the_front_end_from_the_projects_folders()
     {
-        var react = await TemplateRunner.RunAsync(Repo.Template("RS_EssentialTauri_v1.tt"), ProjectSettings.FromValues(new Dictionary<string, string>
+        var react = await Repo.Cache.RunAsync(Repo.Template("RS_EssentialTauri_v1.tt"), ProjectSettings.FromValues(new Dictionary<string, string>
             { ["ProjectName"] = "Shop", ["Stacks"] = "Rust,React", ["OutputRust"] = "Shop.Rust", ["OutputReact"] = "web" }));
-        var angular = await TemplateRunner.RunAsync(Repo.Template("RS_EssentialTauri_v1.tt"), ProjectSettings.FromValues(new Dictionary<string, string>
+        var angular = await Repo.Cache.RunAsync(Repo.Template("RS_EssentialTauri_v1.tt"), ProjectSettings.FromValues(new Dictionary<string, string>
             { ["ProjectName"] = "Shop", ["Stacks"] = "Rust,Angular", ["OutputRust"] = "Shop.Rust" }));
 
         Assert.IsTrue(react.Success, string.Join(" | ", react.Errors));
@@ -368,7 +368,7 @@ public class RustTests
     public async Task A_run_against_sql_server_is_refused_with_the_reason_and_writes_nothing()
     {
         string output = Path.Combine(Path.GetTempPath(), "codegen_rust_sqlserver_" + Guid.NewGuid().ToString("N"));
-        var report = await ProjectGenerator.RunAsync(new SqlServerProvider(Account(SqlDialect.SqlServer)), Repo.TemplatesDirectory, new GenerateOptions
+        var report = await Repo.GenerateAsync(new SqlServerProvider(Account(SqlDialect.SqlServer)), new GenerateOptions
         {
             Project = Project(("Stacks", "Rust")), Stacks = ["Rust"], OutputDirectory = output, DatabaseName = "Acme", Schema = "acme"
         });

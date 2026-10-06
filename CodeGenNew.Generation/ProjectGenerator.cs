@@ -57,11 +57,12 @@ public sealed class GenerateReport
 public static class ProjectGenerator
 {
     public static async Task<GenerateReport> RunAsync(ISchemaProvider provider, string templatesDirectory, GenerateOptions options, Action<string>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, TemplateCache? templateCache = null)
     {
         var report = new GenerateReport();
         var project = options.Project;
-        using var cache = new TemplateCache();
+        using var ownCache = templateCache is null ? new TemplateCache() : null;
+        var cache = templateCache ?? ownCache!;
 
         progress?.Invoke("Reading the schema...");
         var database = await provider.BuildAsync(options.DatabaseName, options.Schema, cancellationToken);

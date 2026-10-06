@@ -88,7 +88,7 @@ public class BlazorTests
             var request = new ConnectionRequest { Provider = DatabaseProvider.Sqlite, ServerName = "", DatabaseName = database };
             var provider = SchemaProviderFactory.Create(request, Path.Combine(Repo.Root, "SpecialLogicColumns.config"));
 
-            var report = await ProjectGenerator.RunAsync(provider, Repo.TemplatesDirectory, new GenerateOptions
+            var report = await Repo.GenerateAsync(provider, new GenerateOptions
             {
                 Project = project, Stacks = ["Blazor"], OutputDirectory = output, DatabaseName = database, Schema = "main", Essentials = true
             });
@@ -173,7 +173,7 @@ public class BlazorTests
             StringAssert.Contains(BlazorNames.Refusal(table, project)!, "no API of its own");
             foreach (string template in new[] { "BLZ_Model_v1.tt", "BLZ_Client_v1.tt", "BLZ_Page_v1.tt" })
             {
-                var result = await TemplateRunner.RunAsync(Repo.Template(template), table, project);
+                var result = await Repo.Cache.RunAsync(Repo.Template(template), table, project);
                 Assert.IsFalse(result.Success, template);
                 StringAssert.Contains(string.Join(" ", result.Errors), "no API of its own");
             }
@@ -189,7 +189,7 @@ public class BlazorTests
     {
         async Task<string> Program(params (string Key, string Value)[] values)
         {
-            var result = await TemplateRunner.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(values));
+            var result = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(values));
             Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
             return GeneratedFiles.Split(result.GeneratedText!).Single(f => f.RelativePath.EndsWith("Program.cs")).Content.Replace("\r\n", "\n");
         }

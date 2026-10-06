@@ -14,7 +14,7 @@ public class DirectoryListingTests
 
     private static async Task<Dictionary<string, string>> Files(ProjectSettings project)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DirectoryListing_v1.tt"), project);
+        var result = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DirectoryListing_v1.tt"), project);
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         return GeneratedFiles.Split(result.GeneratedText!).ToDictionary(f => f.RelativePath, f => f.Content.Replace("\r\n", "\n"));
     }

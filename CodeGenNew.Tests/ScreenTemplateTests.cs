@@ -15,7 +15,7 @@ public class ScreenTemplateTests
 
     private static async Task<string> Render(string template, DatabaseModel database, ProjectSettings? project = null)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), database, project ?? Project());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), database, project ?? Project());
         Assert.IsTrue(result.Success, $"{template} failed: {string.Join(" | ", result.Errors)}");
         return result.GeneratedText!.Replace("\r\n", "\n");
     }
@@ -57,7 +57,7 @@ public class ScreenTemplateTests
     [TestMethod]
     public async Task A_listed_screen_that_is_not_a_table_is_an_error()
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template("TSX_Screens_v1.tt"), Database(Sample.DonateLeave()), Project(("Screens", "E_DonateLeave,Nothing")));
+        var result = await Repo.Cache.RunAsync(Repo.Template("TSX_Screens_v1.tt"), Database(Sample.DonateLeave()), Project(("Screens", "E_DonateLeave,Nothing")));
 
         Assert.IsFalse(result.Success);
         StringAssert.Contains(string.Join(" | ", result.Errors), "'Nothing'");
@@ -103,7 +103,7 @@ public class ScreenTemplateTests
         var order = Sample.OrderWithLines();
         var line = Sample.Table("OrderLine", [Sample.Column("OrderLineId", System.Data.SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("OrderId", System.Data.SqlDbType.Int, ordinal: 2)]);
 
-        var page = await TemplateRunner.RunAsync(Repo.Template("TSX_DetailMasterPage_v1.tt"), order);
+        var page = await Repo.Cache.RunAsync(Repo.Template("TSX_DetailMasterPage_v1.tt"), order);
         Assert.IsTrue(page.Success, string.Join(" | ", page.Errors));
         string menu = await Render("TSX_Screens_v1.tt", Database(order, line));
 

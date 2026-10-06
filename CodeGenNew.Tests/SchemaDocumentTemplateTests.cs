@@ -47,14 +47,14 @@ public class SchemaDocumentTemplateTests
 
     private static async Task<string> Render(string template, TableModel table, ProjectSettings? project = null)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, project ?? Project());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table, project ?? Project());
         Assert.IsTrue(result.Success, $"{template}: {string.Join(" | ", result.Errors)}");
         return result.GeneratedText!.Replace("\r\n", "\n");
     }
 
     private static async Task<string> Render(string template, DatabaseModel database, ProjectSettings? project = null)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), database, project ?? Project());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), database, project ?? Project());
         Assert.IsTrue(result.Success, $"{template}: {string.Join(" | ", result.Errors)}");
         return result.GeneratedText!.Replace("\r\n", "\n");
     }
@@ -138,7 +138,7 @@ public class SchemaDocumentTemplateTests
 
         Expect.DoesNotContain(yaml, composite.TableName);
 
-        var none = await TemplateRunner.RunAsync(Repo.Template("API_OpenApi_v1.tt"), Database(composite), Project());
+        var none = await Repo.Cache.RunAsync(Repo.Template("API_OpenApi_v1.tt"), Database(composite), Project());
         Assert.IsFalse(none.Success);
     }
 
@@ -235,7 +235,7 @@ public class SchemaDocumentTemplateTests
         Expect.DoesNotContain(picked, "Customer {");
         Expect.Contains(picked, "Ticket {");
 
-        var unknown = await TemplateRunner.RunAsync(Repo.Template("MD_Erd_v1.tt"), Database(), Project(("ErdTables", "Nothing")));
+        var unknown = await Repo.Cache.RunAsync(Repo.Template("MD_Erd_v1.tt"), Database(), Project(("ErdTables", "Nothing")));
         Assert.IsFalse(unknown.Success);
     }
 
@@ -269,7 +269,7 @@ public class SchemaDocumentTemplateTests
     {
         var keyless = Sample.Table("Log", [Sample.Column("Text", SqlDbType.NVarChar, characters: 50, ordinal: 1)]);
 
-        var result = await TemplateRunner.RunAsync(Repo.Template("CS_Validator_v1.tt"), keyless, Project());
+        var result = await Repo.Cache.RunAsync(Repo.Template("CS_Validator_v1.tt"), keyless, Project());
 
         Assert.IsFalse(result.Success);
         Assert.IsTrue(result.Errors.Any(e => e.Contains("primary key")));

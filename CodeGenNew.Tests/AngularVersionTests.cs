@@ -61,7 +61,7 @@ public class AngularVersionTests
 
     private static async Task<Dictionary<string, string>> Files(string template, string? version)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), Invoice(), Project(version));
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), Invoice(), Project(version));
         Assert.IsTrue(result.Success, $"{template}: {string.Join(" | ", result.Errors)}");
         return GeneratedFiles.Split(result.GeneratedText!).ToDictionary(f => Path.GetExtension(f.RelativePath) == ".ts" && f.RelativePath.EndsWith(".spec.ts") ? "spec" : Path.GetExtension(f.RelativePath).TrimStart('.'), f => f.Content.Replace("\r\n", "\n"));
     }

@@ -43,10 +43,10 @@ public class SmallTemplatesTests
     }
 
     private static async Task<string> Render(string template, TableModel table, ProjectSettings? project = null) =>
-        Text(await TemplateRunner.RunAsync(Repo.Template(template), table, project ?? Project()), template);
+        Text(await Repo.Cache.RunAsync(Repo.Template(template), table, project ?? Project()), template);
 
     private static async Task<string> Render(string template, DatabaseModel database, ProjectSettings? project = null) =>
-        Text(await TemplateRunner.RunAsync(Repo.Template(template), database, project ?? Project()), template);
+        Text(await Repo.Cache.RunAsync(Repo.Template(template), database, project ?? Project()), template);
 
     // ------------------------------------------------------------------ ColumnRules
 
@@ -106,7 +106,7 @@ public class SmallTemplatesTests
     {
         var table = Sample.Table("Counter", [Sample.Column("CounterId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1)]);
 
-        Assert.IsFalse((await TemplateRunner.RunAsync(Repo.Template("TSX_Schema_v1.tt"), table, Project())).Success);
+        Assert.IsFalse((await Repo.Cache.RunAsync(Repo.Template("TSX_Schema_v1.tt"), table, Project())).Success);
     }
 
     // ------------------------------------------------------------------ TS_Validators

@@ -97,7 +97,7 @@ public class GenerateAllFollowUpTests
         using var temp = new TempFolder();
         var provider = new FakeProvider(Department(), Employee());
 
-        var report = await ProjectGenerator.RunAsync(provider, Repo.TemplatesDirectory, Options(temp.Path, change: o => o.Tables = ["employee", "Nowhere"]));
+        var report = await Repo.GenerateAsync(provider, Options(temp.Path, change: o => o.Tables = ["employee", "Nowhere"]));
 
         Assert.IsTrue(report.Success, string.Join("\n", report.Errors));
         Assert.IsTrue(File.Exists(Api(temp, "Entities/Employee.cs")));
@@ -112,14 +112,14 @@ public class GenerateAllFollowUpTests
     public async Task A_file_the_plan_no_longer_produces_is_reported_stale_and_only_an_unedited_one_is_deleted()
     {
         using var temp = new TempFolder();
-        var first = await ProjectGenerator.RunAsync(new FakeProvider(Department(), Employee()), Repo.TemplatesDirectory, Options(temp.Path));
+        var first = await Repo.GenerateAsync(new FakeProvider(Department(), Employee()), Options(temp.Path));
         Assert.IsTrue(first.ManifestWritten);
         Assert.AreEqual(0, first.Stale.Count);
         Assert.IsTrue(File.Exists(GenerationManifest.PathFor(temp.Path)));
 
         // the Employee table is dropped; someone edited its repository by hand
         File.AppendAllText(Api(temp, "Repositories/EmployeeRepo.cs"), "// my change\n");
-        var second = await ProjectGenerator.RunAsync(new FakeProvider(Department()), Repo.TemplatesDirectory, Options(temp.Path));
+        var second = await Repo.GenerateAsync(new FakeProvider(Department()), Options(temp.Path));
 
         var stale = second.Stale.ToDictionary(s => s.Path);
         Assert.IsTrue(stale.ContainsKey("Acme.Api/Entities/Employee.cs") && stale.ContainsKey("Acme.Api/Repositories/EmployeeRepo.cs"));
@@ -127,14 +127,14 @@ public class GenerateAllFollowUpTests
         Assert.IsTrue(stale["Acme.Api/Repositories/EmployeeRepo.cs"].Edited);
         Assert.IsTrue(File.Exists(Api(temp, "Entities/Employee.cs")), "reporting does not delete");
 
-        var third = await ProjectGenerator.RunAsync(new FakeProvider(Department()), Repo.TemplatesDirectory, Options(temp.Path, change: o => o.DeleteStale = true));
+        var third = await Repo.GenerateAsync(new FakeProvider(Department()), Options(temp.Path, change: o => o.DeleteStale = true));
 
         Assert.IsFalse(File.Exists(Api(temp, "Entities/Employee.cs")), "an unedited stale file is deleted");
         Assert.IsTrue(File.Exists(Api(temp, "Repositories/EmployeeRepo.cs")), "an edited one never is");
         Assert.IsTrue(third.Stale.Single(s => s.Path.EndsWith("Entities/Employee.cs")).Deleted);
         Assert.IsTrue(third.Stale.Single(s => s.Path.EndsWith("EmployeeRepo.cs")).Edited);
 
-        var fourth = await ProjectGenerator.RunAsync(new FakeProvider(Department()), Repo.TemplatesDirectory, Options(temp.Path));
+        var fourth = await Repo.GenerateAsync(new FakeProvider(Department()), Options(temp.Path));
         CollectionAssert.AreEqual(new[] { "Acme.Api/Repositories/EmployeeRepo.cs" }, fourth.Stale.Select(s => s.Path).Where(p => p.Contains("Employee")).ToList(), "the edited file stays on the list");
     }
 
@@ -142,15 +142,15 @@ public class GenerateAllFollowUpTests
     public async Task A_dry_run_and_a_partial_run_report_no_stale_files_and_do_not_lose_the_list()
     {
         using var temp = new TempFolder();
-        await ProjectGenerator.RunAsync(new FakeProvider(Department(), Employee()), Repo.TemplatesDirectory, Options(temp.Path));
+        await Repo.GenerateAsync(new FakeProvider(Department(), Employee()), Options(temp.Path));
         string manifest = File.ReadAllText(GenerationManifest.PathFor(temp.Path));
 
-        var partial = await ProjectGenerator.RunAsync(new FakeProvider(Department()), Repo.TemplatesDirectory, Options(temp.Path, change: o => o.Only = ["CS_Entity"]));
+        var partial = await Repo.GenerateAsync(new FakeProvider(Department()), Options(temp.Path, change: o => o.Only = ["CS_Entity"]));
         Assert.AreEqual(0, partial.Stale.Count, "a run of part of the plan cannot tell what is stale");
         StringAssert.Contains(File.ReadAllText(GenerationManifest.PathFor(temp.Path)), "Employee.cs");   // the earlier entries are kept
 
         File.WriteAllText(GenerationManifest.PathFor(temp.Path), manifest);
-        var dry = await ProjectGenerator.RunAsync(new FakeProvider(Department()), Repo.TemplatesDirectory, Options(temp.Path, change: o => { o.DryRun = true; o.DeleteStale = true; }));
+        var dry = await Repo.GenerateAsync(new FakeProvider(Department()), Options(temp.Path, change: o => { o.DryRun = true; o.DeleteStale = true; }));
         Assert.IsTrue(dry.Stale.Count > 0 && dry.Stale.All(s => !s.Deleted));
         Assert.IsTrue(File.Exists(Api(temp, "Entities/Employee.cs")));
         Assert.AreEqual(manifest, File.ReadAllText(GenerationManifest.PathFor(temp.Path)), "a dry run writes no manifest");

@@ -213,7 +213,7 @@ public class ProjectSettingsTests
             "ProjectName=Acme\nViewNamespace=Acme.Ui.Views\nRepoNamespace=Acme.Repos\nApiNamespace=Acme.Web\nContextName=AcmeDb");
 
         var model = template == "API_Crud_v1.tt" ? Sample.DonateLeave() : Sample.Holiday();
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), model, project);
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), model, project);
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         Expect.Contains(result.GeneratedText!, expectedNamespace);
@@ -224,7 +224,7 @@ public class ProjectSettingsTests
     [TestMethod]
     public async Task With_no_project_a_template_generates_with_its_own_built_in_values()
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template("CS_Repo_v1.tt"), Sample.Holiday());
+        var result = await Repo.Cache.RunAsync(Repo.Template("CS_Repo_v1.tt"), Sample.Holiday());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         Expect.Contains(result.GeneratedText!, "MyAppContext");
@@ -233,7 +233,7 @@ public class ProjectSettingsTests
     [TestMethod]
     public async Task A_child_grid_row_is_clickable_and_opens_the_childs_own_dialog()
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), Sample.OrderWithLines());
+        var result = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), Sample.OrderWithLines());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!.Replace("\r\n", "\n");
@@ -249,8 +249,8 @@ public class ProjectSettingsTests
     {
         var project = ProjectSettings.Parse("ProjectName=Acme\nDetailMasterTables=Order,OrderLine");
 
-        var list = await TemplateRunner.RunAsync(Repo.Template("WinUI3_MasterScreen_v1.tt"), Sample.OrderWithLines(), project);
-        var master = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), Sample.OrderWithLines(), project);
+        var list = await Repo.Cache.RunAsync(Repo.Template("WinUI3_MasterScreen_v1.tt"), Sample.OrderWithLines(), project);
+        var master = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), Sample.OrderWithLines(), project);
 
         Expect.Contains(list.GeneratedText!, "new OrderDetailMasterDialog(_context)");
         Expect.Contains(master.GeneratedText!, "new OrderLineDetailMasterDialog(_context, entity)");
@@ -262,8 +262,8 @@ public class ProjectSettingsTests
         var project = ProjectSettings.Parse("ProjectName=Acme");
         var order = Sample.OrderWithLines();
 
-        var list = await TemplateRunner.RunAsync(Repo.Template("WinUI3_MasterScreen_v1.tt"), order, project);
-        var master = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), order, project);
+        var list = await Repo.Cache.RunAsync(Repo.Template("WinUI3_MasterScreen_v1.tt"), order, project);
+        var master = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), order, project);
 
         Assert.IsTrue(DatabaseModel.IsDetailMaster(order, project));
         Expect.Contains(list.GeneratedText!, "new OrderDetailMasterDialog(_context)");
@@ -289,7 +289,7 @@ public class ProjectSettingsTests
     {
         var project = ProjectSettings.Parse("ProjectName=Acme");
 
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), Sample.OrderWithLines(), project);
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), Sample.OrderWithLines(), project);
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         var files = GeneratedFiles.Split(result.GeneratedText!).ToDictionary(f => f.RelativePath.Replace('\\', '/'));
@@ -336,8 +336,8 @@ public class ProjectSettingsTests
     [TestMethod]
     public async Task A_project_can_name_the_base_entity_classes()
     {
-        var withBase = await TemplateRunner.RunAsync(Repo.Template("CS_Entity_v1.tt"), Sample.Holiday(), With(("BaseEntity", "AuditedEntity")));
-        var without = await TemplateRunner.RunAsync(Repo.Template("CS_Entity_v1.tt"), Sample.Holiday(), With());
+        var withBase = await Repo.Cache.RunAsync(Repo.Template("CS_Entity_v1.tt"), Sample.Holiday(), With(("BaseEntity", "AuditedEntity")));
+        var without = await Repo.Cache.RunAsync(Repo.Template("CS_Entity_v1.tt"), Sample.Holiday(), With());
 
         Assert.IsTrue(withBase.Success, string.Join(" | ", withBase.Errors));
         Expect.Contains(withBase.GeneratedText!, ": AuditedEntity");
@@ -388,7 +388,7 @@ public class ProjectSettingsTests
             Sample.Column("MonthNumber", System.Data.SqlDbType.Int, nullable: true, numericKind: NumericKind.Month)]);
         var project = With(("MinYear", "1990"), ("MaxYear", "2040"));
 
-        var result = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), table, project);
+        var result = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), table, project);
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         var files = GeneratedFiles.Split(result.GeneratedText!).ToDictionary(f => Path.GetFileName(f.RelativePath));
@@ -418,7 +418,7 @@ public class ProjectSettingsTests
     [DataRow("TSX_Page_v1.tt", "min=\"1\"")]
     public async Task The_typescript_screens_limit_a_whole_number_input_to_its_range(string template, string expected)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), SummaryTable(), With(("MinYear", "1990"), ("MaxYear", "2040")));
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), SummaryTable(), With(("MinYear", "1990"), ("MaxYear", "2040")));
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         Expect.Contains(result.GeneratedText!, expected);
@@ -428,7 +428,7 @@ public class ProjectSettingsTests
     [TestMethod]
     public async Task The_validation_class_adds_a_Range_only_for_a_column_whose_name_says_what_it_holds()
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template("CS_Validation_v1.tt"), SummaryTable(), With(("MinYear", "1990"), ("MaxYear", "2040")));
+        var result = await Repo.Cache.RunAsync(Repo.Template("CS_Validation_v1.tt"), SummaryTable(), With(("MinYear", "1990"), ("MaxYear", "2040")));
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         Expect.Contains(result.GeneratedText!, "[Range(1990, 2040)]");
@@ -471,7 +471,7 @@ public class ProjectSettingsTests
     [TestMethod]
     public async Task A_currency_column_is_a_currency_formatted_number_box_converted_to_a_decimal_on_save()
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), LineTable(), With(("CurrencyCode", "EUR")));
+        var result = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), LineTable(), With(("CurrencyCode", "EUR")));
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         var files = GeneratedFiles.Split(result.GeneratedText!).ToDictionary(f => Path.GetFileName(f.RelativePath));
@@ -498,9 +498,9 @@ public class ProjectSettingsTests
     [TestMethod]
     public async Task The_list_and_the_typescript_grids_format_a_currency_column_as_money()
     {
-        var list = await TemplateRunner.RunAsync(Repo.Template("WinUI3_MasterScreen_v1.tt"), LineTable(), With(("CurrencyCode", "EUR")));
-        var angular = await TemplateRunner.RunAsync(Repo.Template("TS_Component_v1.tt"), LineTable(), With(("CurrencyCode", "EUR")));
-        var react = await TemplateRunner.RunAsync(Repo.Template("TSX_Page_v1.tt"), LineTable(), With(("CurrencyCode", "EUR")));
+        var list = await Repo.Cache.RunAsync(Repo.Template("WinUI3_MasterScreen_v1.tt"), LineTable(), With(("CurrencyCode", "EUR")));
+        var angular = await Repo.Cache.RunAsync(Repo.Template("TS_Component_v1.tt"), LineTable(), With(("CurrencyCode", "EUR")));
+        var react = await Repo.Cache.RunAsync(Repo.Template("TSX_Page_v1.tt"), LineTable(), With(("CurrencyCode", "EUR")));
 
         Expect.Contains(list.GeneratedText!, "new Windows.Globalization.NumberFormatting.CurrencyFormatter(\"EUR\") { IsGrouped = true, FractionDigits = 2 }.FormatDouble((double)e.ItemPrice),");
         Expect.Contains(list.GeneratedText!, "e.Discount is { } discountMoney ? new Windows.Globalization.NumberFormatting.CurrencyFormatter(\"EUR\") { IsGrouped = true, FractionDigits = 4 }.FormatDouble((double)discountMoney) : \"\",");
@@ -513,9 +513,9 @@ public class ProjectSettingsTests
     [TestMethod]
     public async Task A_child_grid_shows_a_date_and_time_as_its_date_only()
     {
-        var winui = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), Sample.OrderWithLines(), With());
-        var react = await TemplateRunner.RunAsync(Repo.Template("TSX_DetailMasterPage_v1.tt"), Sample.OrderWithLines(), With());
-        var angular = await TemplateRunner.RunAsync(Repo.Template("TS_DetailMasterComponent_v1.tt"), Sample.OrderWithLines(), With());
+        var winui = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), Sample.OrderWithLines(), With());
+        var react = await Repo.Cache.RunAsync(Repo.Template("TSX_DetailMasterPage_v1.tt"), Sample.OrderWithLines(), With());
+        var angular = await Repo.Cache.RunAsync(Repo.Template("TS_DetailMasterComponent_v1.tt"), Sample.OrderWithLines(), With());
 
         Expect.Contains(winui.GeneratedText!, "if (value is DateTime dateValue) return dateValue.ToString(\"MM/dd/yyyy\");");
         Expect.Contains(react.GeneratedText!, @"value.replace(/^(\d{4}-\d{2}-\d{2})T.*$/, '$1')");
@@ -532,7 +532,7 @@ public class ProjectSettingsTests
             Sample.Column("StartDate", System.Data.SqlDbType.DateTime),
             Sample.Column("ClosedDate", System.Data.SqlDbType.DateTime, nullable: true)]);
 
-        var result = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), table, With());
+        var result = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), table, With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         var files = GeneratedFiles.Split(result.GeneratedText!).ToDictionary(f => Path.GetFileName(f.RelativePath));
@@ -562,7 +562,7 @@ public class ProjectSettingsTests
             Sample.Column("ShippingCity", System.Data.SqlDbType.NVarChar, characters: 50, nullable: true)],
             childForeignKeys: [Sample.ChildForeignKey("OrderLine", "OrderId", "OrderId", childOwnPrimaryKey: ["OrderLineId"])]);
 
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, With());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table, With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string xaml = GeneratedFiles.Split(result.GeneratedText!).Single(f => f.RelativePath.EndsWith("Order" + (template.Contains("Master") ? "DetailMasterDialog.xaml" : "DetailDialog.xaml"))).Content.Replace("\r\n", "\n");
@@ -588,7 +588,7 @@ public class ProjectSettingsTests
             Sample.Column("PickNotes", System.Data.SqlDbType.NVarChar, characters: 50, nullable: true)],
             childForeignKeys: [Sample.ChildForeignKey("OrderLine", "OrderId", "OrderId", childOwnPrimaryKey: ["OrderLineId"])]);
 
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, With());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table, With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string xaml = GeneratedFiles.Split(result.GeneratedText!).Single(f => f.RelativePath.EndsWith("Order" + (template.Contains("Master") ? "DetailMasterDialog.xaml" : "DetailDialog.xaml"))).Content.Replace("\r\n", "\n");
@@ -607,7 +607,7 @@ public class ProjectSettingsTests
             Sample.Column("CustomerName", System.Data.SqlDbType.NVarChar, characters: 50),
             Sample.Column("Notes", System.Data.SqlDbType.NVarChar, characters: 50, nullable: true)]);
 
-        var result = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), table, With());
+        var result = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), table, With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         Expect.Contains(result.GeneratedText!, "<TabViewItem Header=\"Notes\"");
@@ -621,7 +621,7 @@ public class ProjectSettingsTests
             Sample.Column("OrderId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
             Sample.Column("CustomerName", System.Data.SqlDbType.NVarChar, characters: 50)]);
 
-        var result = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), table, With());
+        var result = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), table, With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         Expect.DoesNotContain(result.GeneratedText!, "<TabView");
@@ -639,7 +639,7 @@ public class ProjectSettingsTests
             Sample.Column("Ratio", System.Data.SqlDbType.Float, nullable: true)],
             childForeignKeys: [Sample.ChildForeignKey("OrderLine", "OrderId", "OrderId", childOwnPrimaryKey: ["OrderLineId"])]);
 
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, With());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table, With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!.Replace("\r\n", "\n");
@@ -656,7 +656,7 @@ public class ProjectSettingsTests
     [TestMethod]
     public async Task The_error_bar_is_outside_the_scrolling_area_so_a_validation_message_is_always_visible()
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), Sample.DonateLeave(), With());
+        var result = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), Sample.DonateLeave(), With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!.Replace("\r\n", "\n");
@@ -666,9 +666,9 @@ public class ProjectSettingsTests
     [TestMethod]
     public async Task Callers_wait_for_a_closed_dialogs_own_load_before_reusing_the_DbContext()
     {
-        var edit = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), Sample.DonateLeave(), With());
-        var list = await TemplateRunner.RunAsync(Repo.Template("WinUI3_MasterScreen_v1.tt"), Sample.DonateLeave(), With());
-        var master = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), Sample.OrderWithLines(), With());
+        var edit = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailScreen_v1.tt"), Sample.DonateLeave(), With());
+        var list = await Repo.Cache.RunAsync(Repo.Template("WinUI3_MasterScreen_v1.tt"), Sample.DonateLeave(), With());
+        var master = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), Sample.OrderWithLines(), With());
 
         Assert.IsTrue(edit.Success && list.Success && master.Success);
         Expect.Contains(edit.GeneratedText!, "Loaded += (_, _) => _loading = ViewModel.LoadLookupsAsync();");
@@ -706,7 +706,7 @@ public class ProjectSettingsTests
     [DataRow("TSX_DetailMasterPage_v1.tt")]
     public async Task A_web_form_has_tabs_and_limits_a_percentage_to_0_100(string template)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), TabbedTable(), With());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), TabbedTable(), With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!.Replace("\r\n", "\n");
@@ -728,7 +728,7 @@ public class ProjectSettingsTests
             Sample.Column("OrderId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
             Sample.Column("CustomerName", System.Data.SqlDbType.NVarChar, characters: 50)]);
 
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, With());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table, With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         Expect.DoesNotContain(result.GeneratedText!, "role=\"tablist\"");
@@ -737,9 +737,9 @@ public class ProjectSettingsTests
     [TestMethod]
     public async Task A_master_dialogs_child_grid_has_row_level_Edit_and_Delete_in_every_stack()
     {
-        var winui = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), Sample.OrderWithLines(), With());
-        var react = await TemplateRunner.RunAsync(Repo.Template("TSX_DetailMasterPage_v1.tt"), Sample.OrderWithLines(), With());
-        var angular = await TemplateRunner.RunAsync(Repo.Template("TS_DetailMasterComponent_v1.tt"), Sample.OrderWithLines(), With());
+        var winui = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), Sample.OrderWithLines(), With());
+        var react = await Repo.Cache.RunAsync(Repo.Template("TSX_DetailMasterPage_v1.tt"), Sample.OrderWithLines(), With());
+        var angular = await Repo.Cache.RunAsync(Repo.Template("TS_DetailMasterComponent_v1.tt"), Sample.OrderWithLines(), With());
 
         Assert.IsTrue(winui.Success && react.Success && angular.Success);
         Expect.Contains(winui.GeneratedText!, "Click=\"OnOrderLineEditClick\"");
@@ -761,8 +761,8 @@ public class ProjectSettingsTests
             Sample.Column("OrderId", System.Data.SqlDbType.Int, primaryKey: true, identity: true),
             Sample.Column("CustomerPO", System.Data.SqlDbType.NVarChar, characters: 50, nullable: true)],
             childForeignKeys: [Sample.ChildForeignKey("OrderLine", "OrderId", "OrderId", childOwnPrimaryKey: ["OrderLineId"])]);
-        var react = await TemplateRunner.RunAsync(Repo.Template("TSX_DetailMasterPage_v1.tt"), table, With());
-        var angular = await TemplateRunner.RunAsync(Repo.Template("TS_DetailMasterComponent_v1.tt"), table, With());
+        var react = await Repo.Cache.RunAsync(Repo.Template("TSX_DetailMasterPage_v1.tt"), table, With());
+        var angular = await Repo.Cache.RunAsync(Repo.Template("TS_DetailMasterComponent_v1.tt"), table, With());
 
         Assert.IsTrue(react.Success && angular.Success);
         Expect.Contains(react.GeneratedText!, "placeholder=\"Search by Customer PO\"");
@@ -786,7 +786,7 @@ public class ProjectSettingsTests
             Sample.Column("DueDate", System.Data.SqlDbType.DateTime, nullable: true)],
             childForeignKeys: [Sample.ChildForeignKey("OrderLine", "OrderId", "OrderId", childOwnPrimaryKey: ["OrderLineId"])]);
 
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, With());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table, With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!;
@@ -800,7 +800,7 @@ public class ProjectSettingsTests
     [DataRow("TS_DetailMasterComponent_v1.tt")]
     public async Task An_Angular_component_keeps_eager_change_detection(string template)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), TabbedTable(), With());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), TabbedTable(), With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         Expect.Contains(result.GeneratedText!, "import { ChangeDetectionStrategy, Component, ElementRef, HostListener, ViewChild } from '@angular/core';");
@@ -814,7 +814,7 @@ public class ProjectSettingsTests
     [DataRow("TSX_DetailMasterPage_v1.tt", "<dialog")]
     public async Task The_web_edit_form_is_a_modal_dialog_that_opens_over_the_page(string template, string opening)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), TabbedTable(), With());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), TabbedTable(), With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!;
@@ -847,7 +847,7 @@ public class ProjectSettingsTests
     [DataRow("TS_DetailMasterComponent_v1.tt")]
     public async Task A_child_grid_uses_the_projects_title(string template)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), CustomerWithPurchases(), With(("ChildGridTitles", "Customer.CustomerItem=Item Purchase History")));
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), CustomerWithPurchases(), With(("ChildGridTitles", "Customer.CustomerItem=Item Purchase History")));
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         Expect.Contains(result.GeneratedText!, "Item Purchase History");
@@ -859,7 +859,7 @@ public class ProjectSettingsTests
     [DataRow("TS_DetailMasterComponent_v1.tt", "this.customerItemNames")]
     public async Task A_web_child_grid_shows_the_other_side_by_name_and_hides_ids(string template, string expected)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), CustomerWithPurchases(), With());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), CustomerWithPurchases(), With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!;
@@ -871,7 +871,7 @@ public class ProjectSettingsTests
     [TestMethod]
     public async Task A_child_grid_spaces_its_captions_and_shows_an_empty_cell_without_a_classic_binding()
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), Sample.OrderWithLines(), With());
+        var result = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), Sample.OrderWithLines(), With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!.Replace("\r\n", "\n");
@@ -939,7 +939,7 @@ public class ProjectSettingsTests
     [DataRow("TSX_Page_v1.tt")]
     public async Task A_master_grid_leaves_out_long_text_and_writes_number_and_percent_as_symbols(string template)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), GridTable(), With());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), GridTable(), With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!;
@@ -958,7 +958,7 @@ public class ProjectSettingsTests
     {
         var columns = new List<ColumnModel> { Sample.Column("ItemId", System.Data.SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1) };
         columns.AddRange(Enumerable.Range(1, 25).Select(i => Sample.Column("Quantity" + (char)('A' + i - 1), System.Data.SqlDbType.Int, ordinal: i + 1)));
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), Sample.Table("Item", columns), With());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), Sample.Table("Item", columns), With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!;
@@ -1004,9 +1004,9 @@ public class ProjectSettingsTests
             Sample.Column("OrderDate", System.Data.SqlDbType.Date)], childForeignKeys: [child]);
         var project = With(("CurrencyCode", "EUR"));
 
-        var winui = await TemplateRunner.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), parent, project);
-        var react = await TemplateRunner.RunAsync(Repo.Template("TSX_DetailMasterPage_v1.tt"), parent, project);
-        var angular = await TemplateRunner.RunAsync(Repo.Template("TS_DetailMasterComponent_v1.tt"), parent, project);
+        var winui = await Repo.Cache.RunAsync(Repo.Template("WinUI3_DetailMasterScreen_v1.tt"), parent, project);
+        var react = await Repo.Cache.RunAsync(Repo.Template("TSX_DetailMasterPage_v1.tt"), parent, project);
+        var angular = await Repo.Cache.RunAsync(Repo.Template("TS_DetailMasterComponent_v1.tt"), parent, project);
 
         Assert.IsTrue(winui.Success, string.Join(" | ", winui.Errors));
         Expect.Contains(winui.GeneratedText!, "[\"LinePrice\"] = 2,");
@@ -1058,7 +1058,7 @@ public class ProjectSettingsTests
             Sample.Column("IsClosed", System.Data.SqlDbType.Bit),
             Sample.Column("DateAdded", System.Data.SqlDbType.DateTime)]);
 
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, With());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table, With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!;

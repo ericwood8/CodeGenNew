@@ -25,7 +25,7 @@ public class ApiTestsTemplateTests
 
     private static async Task<string> Render(TableModel table, ProjectSettings project)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template("API_Test_v1.tt"), table, project);
+        var result = await Repo.Cache.RunAsync(Repo.Template("API_Test_v1.tt"), table, project);
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         return result.GeneratedText!.Replace("\r\n", "\n");
     }
@@ -83,7 +83,7 @@ public class ApiTestsTemplateTests
             Sample.Column("AId", SqlDbType.Int, primaryKey: true, ordinal: 1),
             Sample.Column("BId", SqlDbType.Int, primaryKey: true, ordinal: 2)
         ]);
-        var result = await TemplateRunner.RunAsync(Repo.Template("API_Test_v1.tt"), composite, Project());
+        var result = await Repo.Cache.RunAsync(Repo.Template("API_Test_v1.tt"), composite, Project());
 
         Assert.IsFalse(result.Success);
         Expect.Contains(string.Join(" ", result.Errors), "API_Test writes tests for the tables API_Crud writes an API for");
@@ -92,9 +92,9 @@ public class ApiTestsTemplateTests
     [TestMethod]
     public async Task The_test_project_is_written_only_when_asked_and_points_at_the_api()
     {
-        var off = await TemplateRunner.RunAsync(Repo.Template("API_EssentialTests_v1.tt"), Project());
-        var sqlite = await TemplateRunner.RunAsync(Repo.Template("API_EssentialTests_v1.tt"), Project(("ApiTests", "true"), ("DatabaseProvider", "Sqlite"), ("DatabaseName", "shop.db")));
-        var server = await TemplateRunner.RunAsync(Repo.Template("API_EssentialTests_v1.tt"), Project(("ApiTests", "true")));
+        var off = await Repo.Cache.RunAsync(Repo.Template("API_EssentialTests_v1.tt"), Project());
+        var sqlite = await Repo.Cache.RunAsync(Repo.Template("API_EssentialTests_v1.tt"), Project(("ApiTests", "true"), ("DatabaseProvider", "Sqlite"), ("DatabaseName", "shop.db")));
+        var server = await Repo.Cache.RunAsync(Repo.Template("API_EssentialTests_v1.tt"), Project(("ApiTests", "true")));
         Assert.IsTrue(off.Success && sqlite.Success && server.Success, string.Join(" | ", off.Errors.Concat(sqlite.Errors).Concat(server.Errors)));
 
         Assert.AreEqual("", off.GeneratedText!.Trim());
@@ -114,8 +114,8 @@ public class ApiTestsTemplateTests
     [TestMethod]
     public async Task The_program_is_public_for_the_test_project_only_when_asked()
     {
-        var plain = await TemplateRunner.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project());
-        var tests = await TemplateRunner.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("ApiTests", "true")));
+        var plain = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project());
+        var tests = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("ApiTests", "true")));
         Assert.IsTrue(plain.Success && tests.Success, string.Join(" | ", plain.Errors.Concat(tests.Errors)));
 
         Expect.DoesNotContain(plain.GeneratedText!, "partial class Program");
@@ -153,7 +153,7 @@ public class FrontEndDockerTemplateTests
     {
         foreach ((string template, string dist) in new[] { ("TSX_EssentialDocker_v1.tt", "/app/dist /usr/share/nginx/html"), ("TS_EssentialDocker_v1.tt", "/app/dist/frontend/browser /usr/share/nginx/html") })
         {
-            var result = await TemplateRunner.RunAsync(Repo.Template(template), Project());
+            var result = await Repo.Cache.RunAsync(Repo.Template(template), Project());
             Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
             string text = result.GeneratedText!.Replace("\r\n", "\n");
 
@@ -180,7 +180,7 @@ public class FrontEndDockerTemplateTests
     [TestMethod]
     public async Task The_react_build_files_include_the_vite_types_the_fetch_helper_needs()
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template("TSX_EssentialBuild_v1.tt"), Project());
+        var result = await Repo.Cache.RunAsync(Repo.Template("TSX_EssentialBuild_v1.tt"), Project());
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
 
         Expect.Contains(result.GeneratedText!.Replace("\r\n", "\n"), "@@@FILE src/vite-env.d.ts@@@\n/// <reference types=\"vite/client\" />");

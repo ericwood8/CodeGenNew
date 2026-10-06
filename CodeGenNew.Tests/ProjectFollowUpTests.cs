@@ -53,7 +53,7 @@ public class ProjectFollowUpTests
 
     private static async Task<string> Render(string template, TableModel table, ProjectSettings project)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, project);
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table, project);
         Assert.IsTrue(result.Success, $"{template}: {string.Join(" | ", result.Errors)}");
         return result.GeneratedText!.Replace("\r\n", "\n");
     }

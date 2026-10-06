@@ -18,14 +18,14 @@ public class JunctionDialectTests
 
     private static async Task<string> Api(SqlDialect dialect)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template("API_Junction_v1.tt"), In(Sample.JunctionWithSurrogateKey(), dialect));
+        var result = await Repo.Cache.RunAsync(Repo.Template("API_Junction_v1.tt"), In(Sample.JunctionWithSurrogateKey(), dialect));
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         return result.GeneratedText!.Replace("\r\n", "\n");
     }
 
     private static async Task<string> ViewModel(SqlDialect dialect)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template("WinUI3_JunctionEditor_v1.tt"), In(Sample.JunctionWithSurrogateKey(), dialect));
+        var result = await Repo.Cache.RunAsync(Repo.Template("WinUI3_JunctionEditor_v1.tt"), In(Sample.JunctionWithSurrogateKey(), dialect));
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         return GeneratedFiles.Split(result.GeneratedText!).Single(f => f.RelativePath.EndsWith("JunctionEditorViewModel.cs")).Content.Replace("\r\n", "\n");
     }
@@ -75,7 +75,7 @@ public class JunctionDialectTests
     public async Task The_desktop_editors_xaml_is_well_formed_xml()
     {
         // A "--" inside an XML comment (an easy slip in a template's explanatory text) breaks the XAML compiler, not the template run.
-        var result = await TemplateRunner.RunAsync(Repo.Template("WinUI3_JunctionEditor_v1.tt"), In(Sample.JunctionWithSurrogateKey(), SqlDialect.PostgreSql));
+        var result = await Repo.Cache.RunAsync(Repo.Template("WinUI3_JunctionEditor_v1.tt"), In(Sample.JunctionWithSurrogateKey(), SqlDialect.PostgreSql));
         var xaml = GeneratedFiles.Split(result.GeneratedText!).Single(f => f.RelativePath.EndsWith(".xaml")).Content;
 
         System.Xml.Linq.XDocument.Parse(xaml);

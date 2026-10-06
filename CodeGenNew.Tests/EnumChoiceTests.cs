@@ -41,7 +41,7 @@ public class EnumChoiceTests
 
     private static async Task<string> Render(string template, TableModel table)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), table);
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table);
         Assert.IsTrue(result.Success, $"{template}: {string.Join(" | ", result.Errors)}");
         return result.GeneratedText!.Replace("\r\n", "\n");
     }
@@ -184,7 +184,7 @@ public class EnumChoiceTests
             Tables = [Table("Ticket", "public.ticket_status", "tools.\"odd\""), Table("Task", "public.ticket_status")]
         };
 
-        var result = await TemplateRunner.RunAsync(Repo.Template("SP_EnumCasts_v1.tt"), db);
+        var result = await Repo.Cache.RunAsync(Repo.Template("SP_EnumCasts_v1.tt"), db);
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         var file = GeneratedFiles.Split(result.GeneratedText!).Single();
 
@@ -200,11 +200,11 @@ public class EnumChoiceTests
     [TestMethod]
     public async Task The_cast_script_is_for_postgres_and_says_so_when_there_is_nothing_to_cast()
     {
-        var other = await TemplateRunner.RunAsync(Repo.Template("SP_EnumCasts_v1.tt"), new DatabaseModel { DatabaseName = "Acme", SchemaName = "dbo", Tables = [Sample.Holiday()] });
+        var other = await Repo.Cache.RunAsync(Repo.Template("SP_EnumCasts_v1.tt"), new DatabaseModel { DatabaseName = "Acme", SchemaName = "dbo", Tables = [Sample.Holiday()] });
         Assert.IsFalse(other.Success);
         StringAssert.Contains(string.Join(" | ", other.Errors), "PostgreSQL");
 
-        var none = await TemplateRunner.RunAsync(Repo.Template("SP_EnumCasts_v1.tt"),
+        var none = await Repo.Cache.RunAsync(Repo.Template("SP_EnumCasts_v1.tt"),
             new DatabaseModel { DatabaseName = "Acme", SchemaName = "public", Dialect = SqlDialect.PostgreSql, Tables = [Sample.Holiday()] });
         Assert.IsTrue(none.Success, string.Join(" | ", none.Errors));
         Expect.Contains(none.GeneratedText!, "nothing to cast");

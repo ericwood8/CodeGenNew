@@ -26,7 +26,7 @@ public class FSharpTemplateTests
 
     private static async Task<string> Render(string template, TableModel table, ProjectSettings? project = null)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, project ?? Project());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table, project ?? Project());
         Assert.IsTrue(result.Success, $"{template}: {string.Join(" | ", result.Errors)}");
         return result.GeneratedText!.Replace("\r\n", "\n");
     }
@@ -95,7 +95,7 @@ public class FSharpTemplateTests
     [TestMethod]
     public async Task The_rop_module_is_written_once_with_the_projects_namespace()
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template("FS_Rop_v1.tt"), Project(("FSharpNamespace", "Shop.Core")));
+        var result = await Repo.Cache.RunAsync(Repo.Template("FS_Rop_v1.tt"), Project(("FSharpNamespace", "Shop.Core")));
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string fs = result.GeneratedText!.Replace("\r\n", "\n");
 

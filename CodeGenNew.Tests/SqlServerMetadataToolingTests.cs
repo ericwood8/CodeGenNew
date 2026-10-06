@@ -26,8 +26,8 @@ public class SqlServerMetadataToolingTests
         Tables = tables.Length > 0 ? tables.ToList() : [Gadget(), Sample.DonateLeave()]
     };
 
-    private static async Task<TemplateResult> Run(string template, TableModel table, ProjectSettings project) => await TemplateRunner.RunAsync(Repo.Template(template), table, project);
-    private static async Task<TemplateResult> Run(string template, DatabaseModel database, ProjectSettings project) => await TemplateRunner.RunAsync(Repo.Template(template), database, project);
+    private static async Task<TemplateResult> Run(string template, TableModel table, ProjectSettings project) => await Repo.Cache.RunAsync(Repo.Template(template), table, project);
+    private static async Task<TemplateResult> Run(string template, DatabaseModel database, ProjectSettings project) => await Repo.Cache.RunAsync(Repo.Template(template), database, project);
 
     private static string Text(TemplateResult result)
     {

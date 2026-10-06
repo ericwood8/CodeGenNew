@@ -31,7 +31,7 @@ public class ApiExtrasTemplateTests
 
     private static async Task<string> Render(string template, TableModel table, ProjectSettings? project = null)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, project ?? Project());
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table, project ?? Project());
         Assert.IsTrue(result.Success, $"{template}: {string.Join(" | ", result.Errors)}");
         return result.GeneratedText!.Replace("\r\n", "\n");
     }
@@ -76,7 +76,7 @@ public class ApiExtrasTemplateTests
     [TestMethod]
     public async Task The_request_file_is_refused_for_a_table_with_no_api()
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template("API_Http_v1.tt"), Sample.CompositeKey(), Project());
+        var result = await Repo.Cache.RunAsync(Repo.Template("API_Http_v1.tt"), Sample.CompositeKey(), Project());
 
         Assert.IsFalse(result.Success);
         Assert.IsTrue(result.Errors.Any(e => e.Contains("API_Crud")));
@@ -122,7 +122,7 @@ public class ApiExtrasTemplateTests
     {
         var keyless = Sample.Table("Log", [Sample.Column("Text", SqlDbType.NVarChar, characters: 50, ordinal: 1)]);
 
-        var result = await TemplateRunner.RunAsync(Repo.Template("CS_Faker_v1.tt"), keyless, Project());
+        var result = await Repo.Cache.RunAsync(Repo.Template("CS_Faker_v1.tt"), keyless, Project());
 
         Assert.IsFalse(result.Success);
         Assert.IsTrue(result.Errors.Any(e => e.Contains("primary key")));
@@ -146,7 +146,7 @@ public class ApiExtrasTemplateTests
         Expect.Contains(md, "| 3 | `Name` | nvarchar(50) | no |  |  | at most 50 characters |  | The name on the account. |");
 
         var database = new DatabaseModel { DatabaseName = "Acme", SchemaName = "dbo", Tables = [described] };
-        var result = await TemplateRunner.RunAsync(Repo.Template("API_OpenApi_v1.tt"), database, Project());
+        var result = await Repo.Cache.RunAsync(Repo.Template("API_OpenApi_v1.tt"), database, Project());
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         var document = new OpenApiStringReader().Read(result.GeneratedText!.Replace("\r\n", "\n").Replace("@@@FILE openapi.yaml@@@\n", ""), out var diagnostic);
         Assert.AreEqual(0, diagnostic.Errors.Count);
@@ -226,8 +226,8 @@ public class ApiExtrasTemplateTests
     [TestMethod]
     public async Task The_production_profile_adds_files_and_no_package_only_when_asked()
     {
-        var plain = await TemplateRunner.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project());
-        var production = await TemplateRunner.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("ApiProduction", "true")));
+        var plain = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project());
+        var production = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("ApiProduction", "true")));
         Assert.IsTrue(plain.Success && production.Success, string.Join(" | ", plain.Errors.Concat(production.Errors)));
         string without = plain.GeneratedText!.Replace("\r\n", "\n"), with = production.GeneratedText!.Replace("\r\n", "\n");
 
@@ -249,8 +249,8 @@ public class ApiExtrasTemplateTests
     [TestMethod]
     public async Task The_program_files_add_the_package_the_filter_the_registration_and_the_swagger_page_when_asked()
     {
-        var plain = await TemplateRunner.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project());
-        var all = await TemplateRunner.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("ApiDocs", "true"), ("ApiValidation", "true"), ("ApiFakers", "true")));
+        var plain = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project());
+        var all = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("ApiDocs", "true"), ("ApiValidation", "true"), ("ApiFakers", "true")));
         Assert.IsTrue(plain.Success && all.Success, string.Join(" | ", plain.Errors.Concat(all.Errors)));
         string without = plain.GeneratedText!.Replace("\r\n", "\n"), with = all.GeneratedText!.Replace("\r\n", "\n");
 

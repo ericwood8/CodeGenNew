@@ -34,7 +34,7 @@ public class GridSortTests
 
     private static async Task<string> Render(string template, TableModel table)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), table);
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table);
         Assert.IsTrue(result.Success, $"{template}: {string.Join(" | ", result.Errors)}");
         return result.GeneratedText!.Replace("\r\n", "\n");
     }
@@ -186,8 +186,8 @@ public class GridSortTests
     public async Task The_shared_support_files_are_written_by_their_own_templates()
     {
         var db = new DatabaseModel { DatabaseName = "Acme", SchemaName = "dbo", Tables = [Line()] };
-        var react = await TemplateRunner.RunAsync(Repo.Template("TSX_GridSort_v1.tt"), db);
-        var angular = await TemplateRunner.RunAsync(Repo.Template("TS_GridSort_v1.tt"), db);
+        var react = await Repo.Cache.RunAsync(Repo.Template("TSX_GridSort_v1.tt"), db);
+        var angular = await Repo.Cache.RunAsync(Repo.Template("TS_GridSort_v1.tt"), db);
         Assert.IsTrue(react.Success && angular.Success, string.Join(" | ", react.Errors.Concat(angular.Errors)));
 
         var reactFile = GeneratedFiles.Split(react.GeneratedText!).Single();

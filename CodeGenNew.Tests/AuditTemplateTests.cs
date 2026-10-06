@@ -24,7 +24,7 @@ public class AuditTemplateTests
 
     private static async Task<(bool Success, string Text)> Run(string template, TableModel table, ProjectSettings project)
     {
-        var result = await TemplateRunner.RunAsync(Repo.Template(template), table, project);
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table, project);
         return (result.Success, result.Success ? result.GeneratedText!.Replace("\r\n", "\n") : string.Join(" | ", result.Errors));
     }
 

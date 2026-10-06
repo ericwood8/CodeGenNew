@@ -11,7 +11,7 @@ namespace CodeGenNew.Tests;
 public class TemplateRenderingTests
 {
     private static async Task<TemplateResult> Run(string templateFile, TableModel model) =>
-        await TemplateRunner.RunAsync(Repo.Template(templateFile), model);
+        await Repo.Cache.RunAsync(Repo.Template(templateFile), model);
 
     private static async Task<string> Render(string templateFile, TableModel model)
     {
@@ -30,20 +30,22 @@ public class TemplateRenderingTests
 
     // ------------------------------------------------------------------ every template
 
+    public static IEnumerable<string> ShippedTemplateStems() =>
+        TemplateCatalog.Discover(Repo.TemplatesDirectory).Select(t => t.FileStem);
+
     [TestMethod]
-    public async Task Every_shipped_template_compiles_and_runs()
+    [DynamicData(nameof(ShippedTemplateStems))]
+    public async Task Every_shipped_template_compiles_and_runs(string stem)
     {
         // A template that does not compile reports "error CS...."; a deliberate refusal is a plain message. Neither may be the former.
+        var template = TemplateCatalog.Discover(Repo.TemplatesDirectory).Single(t => t.FileStem == stem);
         var table = Sample.DonateLeave();
-        foreach (var template in TemplateCatalog.Discover(Repo.TemplatesDirectory))
-        {
-            // A database-level template is given every table instead of one.
-            var result = template.Config.DatabaseOnly
-                ? await TemplateRunner.RunAsync(template.FilePath, new DatabaseModel { DatabaseName = "Acme", SchemaName = "dbo", Tables = [table] })
-                : await Run(template.FileStem + ".tt", template.Config.NeedsRowData ? Sample.Roles() : table);
-            string errors = string.Join(" | ", result.Errors);
-            Assert.DoesNotContain("error CS", errors, $"{template.FileStem} does not compile: {errors}");
-        }
+        // A database-level template is given every table instead of one.
+        var result = template.Config.DatabaseOnly
+            ? await Repo.Cache.RunAsync(template.FilePath, new DatabaseModel { DatabaseName = "Acme", SchemaName = "dbo", Tables = [table] })
+            : await Run(template.FileStem + ".tt", template.Config.NeedsRowData ? Sample.Roles() : table);
+        string errors = string.Join(" | ", result.Errors);
+        Assert.DoesNotContain("error CS", errors, $"{template.FileStem} does not compile: {errors}");
     }
 
     // ------------------------------------------------------------------ stored procedures
@@ -1670,7 +1672,7 @@ public class TemplateRenderingTests
     {
         var project = ProjectSettings.FromValues([new("ProjectName", "Acme"), new("ComponentsFolder", "screens"), new("ModelsFolder", "types")]);
 
-        var result = await TemplateRunner.RunAsync(Repo.Template("TS_Component_v1.tt"), Sample.Holiday(), project);
+        var result = await Repo.Cache.RunAsync(Repo.Template("TS_Component_v1.tt"), Sample.Holiday(), project);
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         var files = GeneratedFiles.Split(result.GeneratedText!);

@@ -120,7 +120,7 @@ public class PythonTests
             });
             var request = new ConnectionRequest { Provider = DatabaseProvider.Sqlite, ServerName = "", DatabaseName = database };
             var provider = SchemaProviderFactory.Create(request, Path.Combine(Repo.Root, "SpecialLogicColumns.config"));
-            var report = await ProjectGenerator.RunAsync(provider, Repo.TemplatesDirectory, new GenerateOptions
+            var report = await Repo.GenerateAsync(provider, new GenerateOptions
             {
                 Project = project, Stacks = ["Python"], OutputDirectory = output, DatabaseName = database, Schema = "main", Essentials = true
             });

@@ -47,7 +47,7 @@ public class EfConfigurationAndCsvTests
                 values[key] = value;
             var request = new ConnectionRequest { Provider = DatabaseProvider.Sqlite, ServerName = "", DatabaseName = database };
             var provider = SchemaProviderFactory.Create(request, Path.Combine(Repo.Root, "SpecialLogicColumns.config"));
-            var report = await ProjectGenerator.RunAsync(provider, Repo.TemplatesDirectory, new GenerateOptions
+            var report = await Repo.GenerateAsync(provider, new GenerateOptions
             {
                 Project = ProjectSettings.FromValues(values), Stacks = ["Api"], OutputDirectory = output, DatabaseName = database, Schema = "main", OnlyTemplates = only.Split(',')
             });
@@ -133,7 +133,7 @@ public class EfConfigurationAndCsvTests
         async Task<string> Program(params (string Key, string Value)[] values)
         {
             var settings = values.Select(v => new KeyValuePair<string, string>(v.Key, v.Value)).Append(new("ProjectName", "Acme"));
-            var result = await TemplateRunner.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), ProjectSettings.FromValues(settings));
+            var result = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), ProjectSettings.FromValues(settings));
             Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
             return GeneratedFiles.Split(result.GeneratedText!).Single(f => f.RelativePath.EndsWith("Program.cs")).Content;
         }

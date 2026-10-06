@@ -195,7 +195,7 @@ public class PostgresIntegrationTests
             // every function the generator writes for the table runs in the database: the real names are what the SQL says
             foreach (string template in new[] { "SP_Insert_v1.tt", "SP_Update_v1.tt", "SP_Save_v1.tt", "SP_Delete_v1.tt", "SP_Clone_v1.tt", "SP_Search_v1.tt", "SP_Lookup_v1.tt" })
             {
-                var result = await CodeGenNew.TemplateEngine.TemplateRunner.RunAsync(Repo.Template(template), without, ProjectSettings.FromValues([new("ProjectName", "Snake")]));
+                var result = await Repo.Cache.RunAsync(Repo.Template(template), without, ProjectSettings.FromValues([new("ProjectName", "Snake")]));
                 Assert.IsTrue(result.Success, $"{template}: {string.Join(" | ", result.Errors)}");
                 await Run(result.GeneratedText!);
             }
