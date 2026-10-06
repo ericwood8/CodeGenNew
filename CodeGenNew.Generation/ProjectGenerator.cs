@@ -7,7 +7,7 @@ namespace CodeGenNew.Generation;
 public sealed class GenerateOptions
 {
     public required ProjectSettings Project { get; init; }
-    /// <summary> The stacks to generate (Api, WinUI3, React, Angular). </summary>
+    /// <summary> The stacks to generate (Api, WinUI3, React, Angular, Blazor, Rust). </summary>
     public required IReadOnlyList<string> Stacks { get; init; }
     /// <summary> The folder every stack folder sits under (the stack folders come from the project's OutputApi, OutputWinUI3 ... settings). </summary>
     public required string OutputDirectory { get; init; }

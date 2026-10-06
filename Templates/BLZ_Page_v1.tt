@@ -1,0 +1,371 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_Page_v1.tt
+    // Generates: Pages/<Table>Page.razor   (the path is written by the template; point the output folder at the Blazor app's folder)
+    // The Blazor counterpart of TSX_Page: a grid with Edit, Clone and Delete, Add New, a search bar with a box per searchable column, paging, sortable headers, and an add / edit form
+    // (EditForm with the Input components) with a drop-down for each foreign key that has a lookup. Calls the table's BLZ_Client. A foreign key to the table itself stays a plain box and a column
+    // with no input (binary) is left off the form; the form is one panel, not tabs.
+    // Full notes: Docs/TemplateNotes/BLZ_Page_v1.md
+    // ==========================================================================================
+
+    string LowerFirst(string s) => s.Length == 0 ? s : char.ToLowerInvariant(s[0]) + s[1..];
+    string Words(string s) => Labels.Words(s);
+    bool IsDate(ColumnModel c) => c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
+    bool IsNumber(ColumnModel c) => c.SqlType is SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt
+        or SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real;
+    bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
+    int Chars(ColumnModel c) => c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
+    bool IsMultiline(ColumnModel c) => IsText(c) && Chars(c) >= 100;
+    bool HasInput(ColumnModel c) => c.CSharpBase() is not ("byte[]" or "object");
+    string Label(string columnName) => Words(Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", ""));
+    string Ident(string name) => Regex.Replace(name, "[^A-Za-z0-9]", "");
+    bool IsHiddenParent(string table) => Project.HiddenParents is { } hidden && hidden.Contains(table, StringComparer.OrdinalIgnoreCase);
+
+    if (BlazorNames.Refusal(Model, Project) is { } reason)
+    {
+        Error($"BLZ_Page writes no screen for [{Model.SchemaName}].[{Model.TableName}]: {reason}");
+    }
+    else
+    {
+        var keyColumn = Model.PrimaryKeyColumns[0];
+        string type = BlazorNames.TypeName(Model.TableName);
+        string ns = BlazorNames.Namespace(Project);
+        string title = Words(type);
+        string key = keyColumn.CSharpName();
+        string keyCs = keyColumn.CSharpBase();
+        const int pageSize = 20;
+
+        var searchFields = Model.SearchableColumns.Select(c => (Column: c, Param: LowerFirst(c.Name), Field: "filter" + Ident(c.Name), Label: Label(c.Name))).ToList();
+
+        var fkByColumn = Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1)
+            .GroupBy(f => f.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        var shown = Model.Columns
+            .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && HasInput(c)
+                        && !(fkByColumn.TryGetValue(c.Name, out var hidden) && IsHiddenParent(hidden.ReferencedTable)))
+            .OrderBy(c => c.Name == "Name" ? 0 : 1).ThenBy(c => c.OrdinalPosition)
+            .ToList();
+
+        // A foreign key is a drop-down when the parent has display columns and the project does not say otherwise; the table's own parent (a tree) stays a plain box.
+        ForeignKeyModel LookupOf(ColumnModel c) =>
+            fkByColumn.TryGetValue(c.Name, out var fk)
+            && !fk.ReferencedTable.Equals(Model.TableName, StringComparison.OrdinalIgnoreCase)
+            && !(Project.NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape) ?? false)
+            && fk.ReferencedDisplayColumns.Count > 0
+                ? fk : null;
+        var parents = shown.Select(LookupOf).Where(fk => fk is not null)
+            .GroupBy(fk => fk.ReferencedTable, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+            .Select(fk => new
+            {
+                Table = fk.ReferencedTable,
+                Type = BlazorNames.TypeName(fk.ReferencedTable),
+                Field = "lookup" + Ident(BlazorNames.TypeName(fk.ReferencedTable)),
+                IdType = Model.Columns.First(col => col.Name.Equals(fk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)).CSharpBase(),
+                KeyProp = fk.ReferencedColumns[0],
+                DisplayProp = fk.ReferencedDisplayColumns[0]
+            }).ToList();
+        var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
+
+        var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
+        if (gridColumns.Count == 0) gridColumns = shown.ToList();
+        gridColumns = gridColumns.ForGrid();
+        var sortable = gridColumns.Where(SearchSort.IsSortable).ToList();
+        bool canClone = CloneShape.CanClone(Model, Project);
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s.Replace("§T", type).Replace("§K", key).Replace("§N", title)).Append('\n');
+
+        L($"@@@FILE Pages/{type}Page.razor@@@");
+        L($"@page \"/{ScreenNames.Route(Model.TableName)}\"");
+        L($"@using {ns}.Models");
+        L($"@using {ns}.Services");
+        L("@inject §TClient Client");
+        foreach (var p in parents)
+            L($"@inject {p.Type}Client {p.Field}Client");
+        L("@inject IJSRuntime Js");
+        L();
+        L($"<PageTitle>{title.Pluralize()}</PageTitle>");
+        L();
+        L($"<h1>{title.Pluralize()}</h1>");
+        L("<button type=\"button\" @onclick=\"Add\">Add New §N</button>");
+        if (searchFields.Count > 0)
+        {
+            L();
+            L("<div class=\"search\">");
+            foreach (var f in searchFields)
+                L($"    <input type=\"text\" placeholder=\"Search by {f.Label}\" aria-label=\"Search by {f.Label}\" @bind=\"{f.Field}\" @bind:event=\"oninput\" />");
+            L("    <button type=\"button\" @onclick=\"SearchAsync\">Search</button>");
+            L("    <button type=\"button\" @onclick=\"ClearSearchAsync\">Clear</button>");
+            L("</div>");
+        }
+        L();
+        L("@if (message is not null && row is null)");
+        L("{");
+        L("    <p class=\"error\">@message</p>");
+        L("}");
+        L();
+        L("<table>");
+        L("    <thead>");
+        L("        <tr>");
+        foreach (var c in gridColumns)
+        {
+            string caption = GridCaption.For(c, c.SqlType == SqlDbType.Bit ? Label(c.Name) + "?" : Label(c.Name));
+            if (sortable.Contains(c))
+                L($"            <th><button type=\"button\" class=\"sort\" @onclick='() => SortAsync(\"{c.Name}\")'>{caption} @Arrow(\"{c.Name}\")</button></th>");
+            else
+                L($"            <th>{caption}</th>");
+        }
+        L("            <th>Actions</th>");
+        L("        </tr>");
+        L("    </thead>");
+        L("    <tbody>");
+        L("        @foreach (var item in items)");
+        L("        {");
+        L("            <tr>");
+        foreach (var c in gridColumns)
+        {
+            string prop = $"item.{c.CSharpName()}";
+            string cell;
+            var lookup = LookupOf(c);
+            if (lookup is not null) cell = $"@Name{parentOf[lookup.ReferencedTable].Type}({prop})";
+            else if (c.SqlType == SqlDbType.Bit) cell = c.IsNullable ? $"@({prop} is null ? \"\" : {prop} == true ? \"Yes\" : \"No\")" : $"@({prop} ? \"Yes\" : \"No\")";
+            else if (IsDate(c)) cell = $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd\")";
+            else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"N{(c.IsCurrencyColumn ? NumericClassifier.CurrencyDigits(c) : 2)}\")";
+            else cell = $"@{prop}";
+            L($"                <td>{cell}</td>");
+        }
+        L("                <td>");
+        L("                    <button type=\"button\" @onclick=\"() => Edit(item)\">Edit</button>");
+        if (canClone)
+            L("                    <button type=\"button\" @onclick=\"() => CloneAsync(item)\">Clone</button>");
+        L("                    <button type=\"button\" @onclick=\"() => DeleteAsync(item)\">Delete</button>");
+        L("                </td>");
+        L("            </tr>");
+        L("        }");
+        L("    </tbody>");
+        L("</table>");
+        L();
+        L("<div class=\"paging\">");
+        L("    <button type=\"button\" disabled=\"@(pageNumber <= 1)\" @onclick=\"() => LoadAsync(pageNumber - 1)\">Previous</button>");
+        L("    <span>Page @pageNumber of @totalPages</span>");
+        L("    <button type=\"button\" disabled=\"@(pageNumber >= totalPages)\" @onclick=\"() => LoadAsync(pageNumber + 1)\">Next</button>");
+        L("</div>");
+        L();
+        L("@if (row is not null)");
+        L("{");
+        L("    <div class=\"editor\" role=\"dialog\" aria-label=\"@(isNew ? \"Add\" : \"Edit\") §N\">");
+        L("        <h2>@(isNew ? \"Add\" : \"Edit\") §N</h2>");
+        L("        @if (message is not null)");
+        L("        {");
+        L("            <p class=\"error\" role=\"alert\">@message</p>");
+        L("        }");
+        L("        <EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\">");
+        foreach (var c in shown)
+        {
+            string id = ScreenNames.Stem(Model.TableName) + "-" + Ident(c.Name).ToLowerInvariant();
+            string label = c.SqlType == SqlDbType.Bit ? Label(c.Name) + "?" : Label(c.Name);
+            string bind = $"row.{c.CSharpName()}";
+            string required = c.IsNullable ? "" : " required";
+            string input;
+            var lookup = LookupOf(c);
+            if (lookup is not null)
+            {
+                var p = parentOf[lookup.ReferencedTable];
+                string blank = c.IsNullable ? "<option value=\"\">None</option>" : $"<option value=\"@(default({c.CSharpBase()}))\">Select</option>";
+                input = $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\">{blank}@foreach (var parent in {p.Field}) {{ <option value=\"@parent.{p.KeyProp}\">@parent.{p.DisplayProp}</option> }}</InputSelect>";
+            }
+            else if (c.HasChoices && c.CSharpBase() == "string")
+            {
+                // A column whose values the database lists (a CHECK list, a MySQL enum) is a drop-down of them; the blank first entry keeps a new row from silently taking the first value.
+                string choices = string.Join("", c.Choices!.Select(choice => $"<option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>"));
+                input = $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\"{required}><option value=\"\"></option>{choices}</InputSelect>";
+            }
+            else if (c.SqlType == SqlDbType.Bit)
+            {
+                input = c.IsNullable
+                    ? $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\"><option value=\"\"></option><option value=\"true\">Yes</option><option value=\"false\">No</option></InputSelect>"
+                    : $"<InputCheckbox id=\"{id}\" @bind-Value=\"{bind}\" />";
+            }
+            else if (IsDate(c))
+                input = $"<InputDate id=\"{id}\" @bind-Value=\"{bind}\"{required} />";
+            else if (IsNumber(c))
+                input = $"<InputNumber id=\"{id}\" @bind-Value=\"{bind}\"{required} />";
+            else if (c.CSharpBase() == "string")
+            {
+                string max = Chars(c) is > 0 and < 4000 ? $" maxlength=\"{Chars(c)}\"" : "";
+                input = IsMultiline(c)
+                    ? $"<InputTextArea id=\"{id}\" @bind-Value=\"{bind}\"{max}{required} />"
+                    : $"<InputText id=\"{id}\" @bind-Value=\"{bind}\"{max}{required} />";
+            }
+            else
+                input = $"<input id=\"{id}\" @bind=\"{bind}\"{required} />";
+            L($"            <div class=\"field\"><label for=\"{id}\">{label}</label>{input}</div>");
+        }
+        L("            <div class=\"actions\">");
+        L("                <button type=\"submit\">Save</button>");
+        L("                <button type=\"button\" @onclick=\"Cancel\">Cancel</button>");
+        L("            </div>");
+        L("        </EditForm>");
+        L("    </div>");
+        L("}");
+        L();
+        L("@code {");
+        L($"    private const int PageSize = {pageSize};");
+        L("    private List<§T> items = [];");
+        foreach (var p in parents)
+            L($"    private List<{p.Type}> {p.Field} = [];");
+        L("    private §T? row;");
+        L("    private bool isNew;");
+        L("    private string? message;");
+        L("    private int pageNumber = 1;");
+        L("    private int totalPages = 1;");
+        L("    private string? sortBy;");
+        L("    private bool descending;");
+        foreach (var f in searchFields)
+            L($"    private string? {f.Field};");
+        L();
+        L("    protected override async Task OnInitializedAsync()");
+        L("    {");
+        foreach (var p in parents)
+            L($"        try {{ {p.Field} = await {p.Field}Client.GetAllAsync(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
+        L("        await LoadAsync();");
+        L("    }");
+        L();
+        if (searchFields.Count > 0)
+        {
+            L("    private IReadOnlyDictionary<string, string?> Filters() => new Dictionary<string, string?>");
+            L("    {");
+            foreach (var f in searchFields)
+                L($"        [\"{f.Param}\"] = {f.Field},");
+            L("    };");
+        }
+        else
+        {
+            L("    private IReadOnlyDictionary<string, string?> Filters() => new Dictionary<string, string?>();");
+        }
+        L();
+        L("    private async Task LoadAsync(int target = 1)");
+        L("    {");
+        L("        try");
+        L("        {");
+        L("            var result = await Client.GetPageAsync(target, PageSize, Filters(), sortBy, descending);");
+        L("            items = result.Items;");
+        L("            pageNumber = result.Page;");
+        L("            totalPages = Math.Max(result.TotalPages, 1);");
+        L("            message = null;");
+        L("        }");
+        L($"        catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ message = \"Failed to load {title.ToLowerInvariant().Pluralize()}.\"; }}");
+        L("    }");
+        if (searchFields.Count > 0)
+        {
+            L();
+            L("    private async Task SearchAsync()");
+            L("    {");
+            L("        row = null;");
+            L("        await LoadAsync();");
+            L("    }");
+            L();
+            L("    private async Task ClearSearchAsync()");
+            L("    {");
+            foreach (var f in searchFields)
+                L($"        {f.Field} = null;");
+            L("        await LoadAsync();");
+            L("    }");
+        }
+        L();
+        L("    // Click a header to sort by it, click it again to flip the direction; the sort is kept while paging and searching.");
+        L("    private async Task SortAsync(string column)");
+        L("    {");
+        L("        descending = sortBy == column && !descending;");
+        L("        sortBy = column;");
+        L("        await LoadAsync();");
+        L("    }");
+        L();
+        L("    private string Arrow(string column) => sortBy != column ? \"\" : descending ? \"\\u25BC\" : \"\\u25B2\";");
+        foreach (var p in parents)
+        {
+            L();
+            L($"    private string Name{p.Type}({p.IdType}? id) => Convert.ToString({p.Field}.FirstOrDefault(p => Equals(p.{p.KeyProp}, id))?.{p.DisplayProp}) ?? \"\";");
+        }
+        L();
+        var adds = Model.Columns.Where(c => !c.IsPrimaryKey && !c.IsNullable && !c.IsComputed && !c.IsIdentity)
+            .Select(c => c.SqlType == SqlDbType.Bit && c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1" ? $"{c.CSharpName()} = true"
+                : IsDate(c) ? $"{c.CSharpName()} = DateTime.Today" : null)
+            .Where(s => s is not null).ToList();
+        L(adds.Count == 0 ? "    private void Add() => Edit(new §T(), true);" : $"    private void Add() => Edit(new §T {{ {string.Join(", ", adds)} }}, true);");
+        L();
+        L("    private void Edit(§T item, bool add = false)");
+        L("    {");
+        L("        row = add ? item : item.Copy();");
+        L("        isNew = add;");
+        L("        message = null;");
+        L("    }");
+        L();
+        L("    private void Cancel()");
+        L("    {");
+        L("        row = null;");
+        L("        message = null;");
+        L("    }");
+        L();
+        L("    private async Task SaveAsync()");
+        L("    {");
+        L("        if (row is null) return;");
+        L("        try");
+        L("        {");
+        L("            if (isNew) await Client.CreateAsync(row);");
+        L("            else await Client.UpdateAsync(row.§K, row);");
+        L("            row = null;");
+        L("            await LoadAsync(pageNumber);");
+        L("        }");
+        L("        catch (ApiException ex) { message = ex.Explain(\"saving\"); }");
+        L("        catch (HttpRequestException) { message = \"Problem while saving!\"; }");
+        L("    }");
+        L();
+        L("    private async Task DeleteAsync(§T item)");
+        L("    {");
+        L("        if (!await Js.InvokeAsync<bool>(\"confirm\", \"Are you sure you want to delete this?\")) return;");
+        L("        try");
+        L("        {");
+        L("            await Client.DeleteAsync(item.§K);");
+        L("            await LoadAsync(pageNumber);");
+        L("        }");
+        L("        catch (ApiException ex)");
+        L("        {");
+        L("            message = ex.Explain(\"deleting\");");
+        L("            if (ex.Status == 404) await LoadAsync(pageNumber);");
+        L("        }");
+        L("        catch (HttpRequestException) { message = \"Problem while deleting!\"; }");
+        L("    }");
+        if (canClone)
+        {
+            L();
+            L("    // The API copies the row; the copy opens in the form so the person changes what differs.");
+            L("    private async Task CloneAsync(§T item)");
+            L("    {");
+            L("        try");
+            L("        {");
+            L("            var copy = await Client.CloneAsync(item.§K);");
+            L("            await LoadAsync(pageNumber);");
+            L("            Edit(copy);");
+            L("        }");
+            L("        catch (ApiException ex)");
+            L("        {");
+            L("            message = ex.Explain(\"cloning\");");
+            L("            if (ex.Status == 404) await LoadAsync(pageNumber);");
+            L("        }");
+            L("        catch (HttpRequestException) { message = \"Problem while cloning!\"; }");
+            L("    }");
+        }
+        L("}");
+        Write(o.ToString());
+    }
+#>

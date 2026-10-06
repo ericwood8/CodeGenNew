@@ -19,6 +19,7 @@ public static class EssentialsCatalog
         ("WinUI3", "WinUI essentials"),
         ("React", "React essentials"),
         ("Angular", "Angular essentials"),
+        ("Blazor", "Blazor essentials"),
         ("Api", "API essentials"),
         ("Rust", "Rust essentials")
     ];

@@ -1,0 +1,18 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_EssentialGit_v1.tt
+    // Generates: .gitignore   (no table, no database: an essentials group; the output folder is the Blazor app's own folder)
+    // What a Blazor WebAssembly app keeps out of version control: the build output and the editor's and Visual Studio's own folders.
+    // ==========================================================================================
+#>
+@@@FILE .gitignore@@@
+bin/
+obj/
+.vs/
+*.user
+*.log
+.vscode/*
+!.vscode/extensions.json

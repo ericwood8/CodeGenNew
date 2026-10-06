@@ -20,7 +20,7 @@ public class CliOptions
 
     /// <summary> The first word of the command line when it is not a flag: <c>generate</c> (every file of a project) or <c>essentials</c> (the files no table drives); null for the one-template form. </summary>
     public string? Command { get; set; }
-    /// <summary> --stack: the stacks to generate (Api, WinUI3, React, Angular); empty = the project's Stacks setting. </summary>
+    /// <summary> --stack: the stacks to generate (Api, WinUI3, React, Angular, Blazor, Rust); empty = the project's Stacks setting. </summary>
     public List<string> Stacks { get; } = [];
     /// <summary> --essentials: a whole-project generate also writes the essentials groups. </summary>
     public bool Essentials { get; set; }

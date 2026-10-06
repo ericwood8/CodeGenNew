@@ -1,0 +1,56 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_EssentialSupport_v1.tt
+    // Generates: Services/ApiSupport.cs   (no table, no database: an essentials group; the output folder is the Blazor app's own folder)
+    // What every generated client and page shares: ApiException (the HTTP status of a failed call and a sentence for the screen), PagedResult<T> (the search endpoint's answer) and the helpers the
+    // clients use to read a response and the pages use to copy a row for editing.
+    // ==========================================================================================
+    string ns = BlazorNames.Namespace(Project);
+#>
+@@@FILE Services/ApiSupport.cs@@@
+using System.Net.Http.Json;
+using System.Text.Json;
+
+namespace <#= ns #>.Services;
+
+public class ApiException(int status, string message) : Exception(message)
+{
+    public int Status => status;
+
+    // The sentence a screen shows for a failed save, delete or clone.
+    public string Explain(string action) => Status switch
+    {
+        400 => action == "deleting" ? "It cannot be deleted because it is in use!" : "Some of the values are not acceptable!",
+        404 => "It no longer exists!",
+        _ => $"Problem while {action}!"
+    };
+}
+
+public class PagedResult<T>
+{
+    public List<T> Items { get; set; } = [];
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int TotalCount { get; set; }
+    public int TotalPages { get; set; }
+}
+
+public static class ApiSupport
+{
+    public static Task EnsureSuccessAsync(this HttpResponseMessage response) =>
+        response.IsSuccessStatusCode
+            ? Task.CompletedTask
+            : throw new ApiException((int)response.StatusCode, $"{(int)response.StatusCode} {response.ReasonPhrase}");
+
+    public static async Task<T> ReadAsync<T>(this HttpResponseMessage response)
+    {
+        await response.EnsureSuccessAsync();
+        return (await response.Content.ReadFromJsonAsync<T>())!;
+    }
+
+    // A copy of a row, so the form edits the copy and the grid keeps showing the saved row.
+    public static T Copy<T>(this T row) => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(row))!;
+}

@@ -206,7 +206,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `ListingName` | WinUI3_DirectoryListing: the class stem, e.g. Document (DocumentListPage); blank = Document |
 | `ListingFolder` | WinUI3_DirectoryListing: the folder whose files are listed (for example %LocalAppData%/Project/Name); blank = under LocalAppData |
 | `ListingPattern` | WinUI3_DirectoryListing: which files are listed; blank = *.* |
-| `Stacks` | stacks to generate: Api, WinUI3, React, Angular (comma-separated), e.g. Api,React |
+| `Stacks` | stacks to generate: Api, WinUI3, React, Angular, Blazor, Rust (comma-separated), e.g. Api,React |
 | `PlanAlso` | templates to run in a whole-project generate although their config leaves them out, e.g. SP_Insert,SP_Update |
 | `OutputApi` | folder of the API project under the output folder; blank = &lt;ProjectName&gt;.Api |
 | `OutputWinUI3` | folder of the WinUI3 app under the output folder; blank = &lt;ProjectName&gt;.App |
@@ -216,6 +216,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `RustCrateName` | the crate name of the Rust API; blank = the project name in snake_case |
 | `RustPort` | the port the Rust API listens on; blank = ApiPort (5080) |
 | `OutputAngular` | folder of the Angular app; blank = frontend |
+| `OutputBlazor` | folder of the Blazor WebAssembly app; blank = &lt;ProjectName&gt;.Blazor |
 | `OutputSql` | folder of the generated SQL; blank = sql |
 | `AppNamespace` | root namespace of the WinUI3 app; blank = &lt;ProjectName&gt;.App |
 | `DatabaseProvider` | SqlServer, PostgreSql, MySql or Sqlite (appsettings.json and the package reference); blank = SqlServer |
@@ -223,13 +224,15 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `DatabaseName` | database for appsettings.json (for SQLite the path of the database file); blank = the project name |
 | `DatabaseUser` | login for appsettings.json (never the password); blank = Windows authentication |
 | `ApiPort` | port the API listens on; blank = 5080 |
-| `DevPort` | port of the front end's dev server; blank = 5173 (React) or 4200 (Angular) |
+| `DevPort` | port of the front end's dev server; blank = 5173 (React), 4200 (Angular) or 5190 (Blazor) |
 | `ProjectTitle` | the web app's title; blank = the project name in words |
 | `BuildApi` | command that builds the API after a generate; blank = dotnet build -v q (none skips it) |
 | `BuildWinUI3` | command that builds the WinUI3 app after a generate; blank = dotnet build -v q |
 | `BuildReact` | command that builds the React app; blank = npm run build |
 | `BuildAngular` | command that builds the Angular app; blank = npm run build |
+| `BuildBlazor` | command that builds the Blazor app; blank = dotnet build -v q |
 | `TestApi` | command that tests the API; blank = no tests |
 | `TestWinUI3` | command that tests the WinUI3 app; blank = no tests |
 | `TestReact` | command that tests the React app; blank = npm test |
 | `TestAngular` | command that tests the Angular app; blank = npm test -- --watch=false |
+| `TestBlazor` | command that tests the Blazor app; blank = no tests |

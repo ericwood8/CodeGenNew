@@ -1,0 +1,72 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_Client_v1.tt
+    // Generates: Services/<Table>Client.cs   (the path is written by the template; point the output folder at the Blazor app's folder)
+    // The Blazor counterpart of TSX_Api: a class over the app's HttpClient with GetAll, GetPage (search, paging, sort), Get, Create, Update, Delete and, for a cloneable table, Clone.
+    // A failed call throws ApiException with the HTTP status (Services/ApiSupport.cs, the Support essentials group). The BaseAddress of the HttpClient is the API (wwwroot/appsettings.json).
+    // Full notes: Docs/TemplateNotes/BLZ_Client_v1.md
+    // ==========================================================================================
+
+    if (BlazorNames.Refusal(Model, Project) is { } reason)
+    {
+        Error($"BLZ_Client writes no client for [{Model.SchemaName}].[{Model.TableName}]: {reason}");
+    }
+    else
+    {
+        string type = BlazorNames.TypeName(Model.TableName);
+        string keyType = Model.PrimaryKeyColumns[0].SqlType == SqlDbType.Int ? "int" : "Guid";
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+
+        L($"@@@FILE Services/{type}Client.cs@@@");
+        L("using System.Net.Http.Json;");
+        L($"using {BlazorNames.Namespace(Project)}.Models;");
+        L();
+        L($"namespace {BlazorNames.Namespace(Project)}.Services;");
+        L();
+        L($"public class {type}Client(HttpClient http)");
+        L("{");
+        L($"    private const string Url = \"{BlazorNames.ApiRoute(Model.TableName)}\";");
+        L();
+        L($"    public async Task<List<{type}>> GetAllAsync() => await (await http.GetAsync(Url)).ReadAsync<List<{type}>>();");
+        L();
+        L($"    public async Task<{type}> GetAsync({keyType} id) => await (await http.GetAsync($\"{{Url}}/{{id}}\")).ReadAsync<{type}>();");
+        L();
+        L($"    public async Task<{type}> CreateAsync({type} row) => await (await http.PostAsJsonAsync(Url, row)).ReadAsync<{type}>();");
+        L();
+        L($"    public async Task UpdateAsync({keyType} id, {type} row) => await (await http.PutAsJsonAsync($\"{{Url}}/{{id}}\", row)).EnsureSuccessAsync();");
+        L();
+        L($"    public async Task DeleteAsync({keyType} id) => await (await http.DeleteAsync($\"{{Url}}/{{id}}\")).EnsureSuccessAsync();");
+        if (CloneShape.CanClone(Model, Project))
+        {
+            L();
+            L("    // A copy of the row, made by the API; the copy comes back.");
+            L($"    public async Task<{type}> CloneAsync({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{id}}/clone\", null)).ReadAsync<{type}>();");
+        }
+        L();
+        L("    // The filters are the search boxes of the screen, by the names the API's search endpoint reads; a blank filter is left out. sortBy is a column name.");
+        L($"    public async Task<PagedResult<{type}>> GetPageAsync(int page, int pageSize, IReadOnlyDictionary<string, string?>? filters = null, string? sortBy = null, bool descending = false)");
+        L("    {");
+        L("        var query = new List<string> { $\"pageNumber={page}\", $\"pageSize={pageSize}\" };");
+        L("        foreach (var (name, value) in filters ?? new Dictionary<string, string?>())");
+        L("            if (!string.IsNullOrWhiteSpace(value))");
+        L("                query.Add($\"{name}={Uri.EscapeDataString(value)}\");");
+        L("        if (sortBy is not null)");
+        L("        {");
+        L("            query.Add($\"sortBy={Uri.EscapeDataString(sortBy)}\");");
+        L("            query.Add($\"sortDir={(descending ? \"desc\" : \"asc\")}\");");
+        L("        }");
+        L($"        return await (await http.GetAsync($\"{{Url}}/search?{{string.Join('&', query)}}\")).ReadAsync<PagedResult<{type}>>();");
+        L("    }");
+        L("}");
+        Write(o.ToString());
+    }
+#>

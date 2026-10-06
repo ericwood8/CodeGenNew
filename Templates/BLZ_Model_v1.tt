@@ -1,0 +1,46 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_Model_v1.tt
+    // Generates: Models/<Table>.cs   (the path is written by the template; point the output folder at the Blazor app's folder)
+    // The Blazor counterpart of TS_Model: the class a table's JSON becomes in the browser, one property per column. The API writes camelCase and reads either case, so the property names are the
+    // column names. Every property gets a starting value that keeps the nullable checks quiet: "" for text, an empty array for binary.
+    // Full notes: Docs/TemplateNotes/BLZ_Model_v1.md
+    // ==========================================================================================
+
+    if (BlazorNames.Refusal(Model, Project) is { } reason)
+    {
+        Error($"BLZ_Model writes no class for [{Model.SchemaName}].[{Model.TableName}]: {reason}");
+    }
+    else
+    {
+        string type = BlazorNames.TypeName(Model.TableName);
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+
+        L($"@@@FILE Models/{type}.cs@@@");
+        L($"namespace {BlazorNames.Namespace(Project)}.Models;");
+        L();
+        L($"public class {type}");
+        L("{");
+        foreach (var c in Model.Columns)
+        {
+            string initial = c.IsNullable ? "" : c.CSharpBase() switch
+            {
+                "string" => " = \"\";",
+                "byte[]" => " = [];",
+                "object" => " = new();",
+                _ => ""
+            };
+            L($"    public {c.CSharp()} {c.CSharpName()} {{ get; set; }}{initial}");
+        }
+        L("}");
+        Write(o.ToString());
+    }
+#>

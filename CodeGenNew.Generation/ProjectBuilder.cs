@@ -23,6 +23,7 @@ public static class ProjectBuilder
         ("react", "test") => "npm test",
         ("angular", "build") => "npm run build",
         ("angular", "test") => "npm test -- --watch=false",
+        ("blazor", "build") => "dotnet build -v q",
         ("rust", "build") => "cargo check",
         ("rust", "test") => "cargo test",
         _ => null

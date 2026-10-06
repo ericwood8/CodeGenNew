@@ -1,0 +1,102 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_EssentialProject_v1.tt
+    // Generates: <ProjectName>.Blazor.csproj, Program.cs, App.razor, _Imports.razor, wwwroot/index.html, wwwroot/appsettings.json and Properties/launchSettings.json
+    // (no table, no database: an essentials group; the output folder is the Blazor app's own folder)
+    // A standalone Blazor WebAssembly app that calls the generated API with an HttpClient. The API's address is ApiBaseUrl in wwwroot/appsettings.json (settings ApiPort, default 5080); the dev server's
+    // port is DevPort (default 5190), and API_EssentialProgram allows that origin. Program.cs registers the clients that BLZ_Screens lists. Settings: ProjectName, ProjectTitle, ApiPort, DevPort.
+    // ==========================================================================================
+    string ns = BlazorNames.Namespace(Project);
+    string projectName = Project.ProjectName ?? "MyApp";
+#>
+@@@FILE <#= projectName #>.Blazor.csproj@@@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace><#= ns #></RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.*" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.*" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>
+@@@FILE Program.cs@@@
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using <#= ns #>;
+using <#= ns #>.Services;
+
+var builder = WebAssemblyHostBuilder.CreateDefault(args);
+builder.RootComponents.Add<App>("#app");
+builder.RootComponents.Add<HeadOutlet>("head::after");
+
+// The generated API; the address is in wwwroot/appsettings.json.
+string apiBase = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:<#= Project.ApiPort #>";
+builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(apiBase) });
+builder.Services.AddApiClients();
+
+await builder.Build().RunAsync();
+@@@FILE App.razor@@@
+<Router AppAssembly="typeof(Program).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <PageTitle>Not found</PageTitle>
+        <LayoutView Layout="typeof(Layout.MainLayout)">
+            <p role="alert">There is nothing at this address.</p>
+        </LayoutView>
+    </NotFound>
+</Router>
+@@@FILE _Imports.razor@@@
+@using System.Net.Http
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@using <#= ns #>
+@using <#= ns #>.Layout
+@@@FILE wwwroot/index.html@@@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><#= Project.ProjectTitle #></title>
+    <base href="/" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="icon" href="data:," />
+</head>
+<body>
+    <div id="app">Loading...</div>
+    <div id="blazor-error-ui">An unhandled error has occurred. <a href=".">Reload</a></div>
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+</html>
+@@@FILE wwwroot/appsettings.json@@@
+{
+  "ApiBaseUrl": "http://localhost:<#= Project.ApiPort #>"
+}
+@@@FILE Properties/launchSettings.json@@@
+{
+  "profiles": {
+    "http": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "applicationUrl": "http://localhost:<#= Project.DevPort("Blazor") #>",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

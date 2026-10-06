@@ -26,8 +26,8 @@ public class ProjectSettings
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
         "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiProduction", "ApiTests", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
-        "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputRust", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
-        "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "TestApi", "TestWinUI3", "TestReact", "TestAngular"
+        "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputRust", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
+        "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor"
     ];
 
     private readonly Dictionary<string, string> _values;
@@ -305,7 +305,7 @@ public class ProjectSettings
 
     // ---- generating a whole project (codegen generate) and the essentials files
 
-    /// <summary> The stacks a project generates (<c>Stacks=Api,React</c>): <c>Api</c>, <c>WinUI3</c>, <c>React</c>, <c>Angular</c>. Empty when not set (the command line then names them). </summary>
+    /// <summary> The stacks a project generates (<c>Stacks=Api,React</c>): <c>Api</c>, <c>WinUI3</c>, <c>React</c>, <c>Angular</c>, <c>Blazor</c>, <c>Rust</c>. Empty when not set (the command line then names them). </summary>
     public string[] Stacks => Explicit("Stacks") is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
 
     /// <summary> Templates a plan runs although their config does not put them in it (<c>PlanAlso=SP_Insert,SP_Update</c>: the PostgreSQL / MySQL routines nothing calls by default). </summary>
@@ -319,6 +319,7 @@ public class ProjectSettings
         "winui3" => Explicit("OutputWinUI3") ?? (ProjectName ?? "MyApp") + ".App",
         "react" => Explicit("OutputReact") ?? "frontend",
         "angular" => Explicit("OutputAngular") ?? "frontend",
+        "blazor" => Explicit("OutputBlazor") ?? (ProjectName ?? "MyApp") + ".Blazor",
         "rust" => Explicit("OutputRust") ?? (ProjectName ?? "MyApp") + ".Rust",
         "apitests" => Explicit("OutputApiTests") ?? (ProjectName ?? "MyApp") + ".Api.Tests",
         "sql" => Explicit("OutputSql") ?? "sql",
@@ -348,9 +349,10 @@ public class ProjectSettings
     public string DatabaseName => Explicit("DatabaseName") ?? ProjectName ?? "MyDatabase";
     public string? DatabaseUser => Explicit("DatabaseUser");
 
-    /// <summary> The port the API listens on (default 5080), the dev server's (React 5173, Angular 4200) and the window title of a web app. </summary>
+    /// <summary> The port the API listens on (default 5080), the dev server's (React 5173, Angular 4200, Blazor 5190) and the window title of a web app. </summary>
     public int ApiPort => int.TryParse(Explicit("ApiPort"), out int port) ? port : 5080;
-    public int DevPort(string stack) => int.TryParse(Explicit("DevPort"), out int port) ? port : stack.Equals("Angular", StringComparison.OrdinalIgnoreCase) ? 4200 : 5173;
+    public int DevPort(string stack) => int.TryParse(Explicit("DevPort"), out int port) ? port
+        : stack.Equals("Angular", StringComparison.OrdinalIgnoreCase) ? 4200 : stack.Equals("Blazor", StringComparison.OrdinalIgnoreCase) ? 5190 : 5173;
     public string ProjectTitle => Explicit("ProjectTitle") ?? System.Text.RegularExpressions.Regex.Replace(ProjectName ?? "My App", "(?<=[a-z0-9])(?=[A-Z])", " ");
 
     /// <summary> The command a stack's build or test step runs after a generate (<c>BuildReact=npm run build</c>, <c>TestApi=dotnet test</c>); null when the project says nothing (the stack's

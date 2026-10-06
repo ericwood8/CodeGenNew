@@ -47,6 +47,7 @@
                         <MenuFlyoutItem Text="WinUI essentials" Tag="WinUI3" Click="OnEssentialsClick" />
                         <MenuFlyoutItem Text="React essentials" Tag="React" Click="OnEssentialsClick" />
                         <MenuFlyoutItem Text="Angular essentials" Tag="Angular" Click="OnEssentialsClick" />
+                        <MenuFlyoutItem Text="Blazor essentials" Tag="Blazor" Click="OnEssentialsClick" />
                         <MenuFlyoutItem Text="API essentials" Tag="Api" Click="OnEssentialsClick" />
                     </MenuFlyout>
                 </AppBarButton.Flyout>
