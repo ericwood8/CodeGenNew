@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace CodeGenNew.Core;
 
 /// <summary>
@@ -128,9 +130,7 @@ public class ProjectSettings
         Explicit(key) ?? (ProjectName is { } name ? name + suffix : null);
 
     private string[]? List(string key) =>
-        Explicit(key) is { } text
-            ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            : ProjectName is null ? null : [];
+        Explicit(key) is not null ? Items(key) : ProjectName is null ? null : [];
 
     public string? ProjectName => Explicit("ProjectName");
 
@@ -142,13 +142,15 @@ public class ProjectSettings
     /// (what a SQL Server database with PascalCase names already says), so the generated names match across databases. Empty when not set. </summary>
     /// <summary> The tables that get a screen, in menu order (<c>Screens=CustomerMonthlySummary,SalesInvoice,Customer</c>). Empty when not set: the generated menu
     /// then lists every table that has an API and a search, alphabetically. </summary>
-    public string[] Screens => Explicit("Screens") is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
+    public string[] Screens => Items("Screens");
 
     /// <summary> Tables that get no Clone button even though they could (<c>NoCloneTables=Customer,SalesInvoice</c>): copying a customer or an invoice is rarely what is wanted. </summary>
-    public bool NoClone(string table) => Explicit("NoCloneTables") is { } text
-        && text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Contains(table, StringComparer.OrdinalIgnoreCase);
+    public bool NoClone(string table) => Items("NoCloneTables").Contains(table, StringComparer.OrdinalIgnoreCase);
 
-    private string[] Items(string key) => Explicit(key) is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
+    private readonly ConcurrentDictionary<string, string[]> _items = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary> The comma-separated list a key holds, split once; empty when the key is not set. </summary>
+    private string[] Items(string key) => _items.GetOrAdd(key, k => Explicit(k) is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : []);
 
     /// <summary> The databases a table's changes are copied to by SP_ReplicationTriggers (<c>ReplicationTargets=server1.Sales,server2.Sales</c>: linked server, then database). Empty when not set. </summary>
     public string[] ReplicationTargets => Items("ReplicationTargets");
@@ -171,7 +173,7 @@ public class ProjectSettings
     /// <summary> What each of those columns is set to, <c>{column}</c> standing for the column (<c>BulkUpdateExpression=UPPER({column})</c>, the default). </summary>
     public string BulkUpdateExpression => Explicit("BulkUpdateExpression") ?? "UPPER({column})";
 
-    public string[] Acronyms => Explicit("Acronyms") is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
+    public string[] Acronyms => Items("Acronyms");
 
     /// <summary> The namespace of the F# records FS_Entity writes (<c>FSharpNamespace=Shop.Domain</c>; derived from the project name as <c>Name.Domain</c>). </summary>
     public string? FSharpNamespace => Derived("FSharpNamespace", ".Domain");
@@ -269,7 +271,7 @@ public class ProjectSettings
     }
 
     /// <summary> The tables MD_Erd draws (<c>ErdTables=Customer,SalesInvoice</c>); empty: every table. </summary>
-    public string[] ErdTables => Explicit("ErdTables") is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
+    public string[] ErdTables => Items("ErdTables");
 
     public string? EntityNamespace => Derived("EntityNamespace", ".App.Entities");
 
@@ -306,7 +308,7 @@ public class ProjectSettings
 
     /// <summary> Columns left out of every table (<c>IgnoredColumns=Tags,Place.Location</c>: a column name for every table, or <c>Table.Column</c>): a type CodeGenNew cannot map
     /// (a PostgreSQL array, geometry) is listed here so the rest of the table still generates. A primary key column is never left out. </summary>
-    public string[] IgnoredColumns => Explicit("IgnoredColumns") is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
+    public string[] IgnoredColumns => Items("IgnoredColumns");
 
     /// <summary> WinUI3_DirectoryListing: the class stem (<c>DocumentListPage</c>), the folder whose files are listed (environment variables are expanded when the app runs) and
     /// the file pattern. Null when not set; the template then uses <c>Document</c>, <c>%LocalAppData%\&lt;ProjectName&gt;\&lt;ListingName&gt;</c> and <c>*.*</c>. </summary>
@@ -317,10 +319,10 @@ public class ProjectSettings
     // ---- generating a whole project (codegen generate) and the essentials files
 
     /// <summary> The stacks a project generates (<c>Stacks=Api,React</c>): <c>Api</c>, <c>WinUI3</c>, <c>React</c>, <c>Angular</c>, <c>Blazor</c>, <c>Rust</c>, <c>Python</c>. Empty when not set (the command line then names them). </summary>
-    public string[] Stacks => Explicit("Stacks") is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
+    public string[] Stacks => Items("Stacks");
 
     /// <summary> Templates a plan runs although their config does not put them in it (<c>PlanAlso=SP_Insert,SP_Update</c>: the PostgreSQL / MySQL routines nothing calls by default). </summary>
-    public string[] PlanAlso => Explicit("PlanAlso") is { } text ? text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [];
+    public string[] PlanAlso => Items("PlanAlso");
 
     /// <summary> Where a stack's files go (<c>OutputApi=InvoiceSystem.Api</c>; relative to the output folder of the run). Null: the default, <c>&lt;ProjectName&gt;.Api</c>, <c>&lt;ProjectName&gt;.App</c>,
     /// <c>frontend</c> (React and Angular) and <c>sql</c>. </summary>
@@ -383,8 +385,7 @@ public class ProjectSettings
 
     /// <summary> Money columns that can never be negative (<c>NonNegativeColumns=CreditLimit,Item.Cost</c>: a column name for every table, or <c>Table.Column</c> for one): their number box
     /// gets a minimum of 0. The schema cannot say so, because a check constraint is not read. </summary>
-    public bool IsNonNegative(string table, string column) => Explicit("NonNegativeColumns") is { } text
-        && text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+    public bool IsNonNegative(string table, string column) => Items("NonNegativeColumns")
             .Any(entry => entry.Equals(column, StringComparison.OrdinalIgnoreCase) || entry.Equals($"{table}.{column}", StringComparison.OrdinalIgnoreCase));
 
     public string? ViewsFolder => Explicit("ViewsFolder");

@@ -27,6 +27,7 @@ public sealed record RustClone(string Sql, IReadOnlyList<RustField> Overrides);
 public sealed class RustTable
 {
     private readonly DialectInfo _di;
+    private readonly Dictionary<ColumnModel, RustField> _fieldOf;
 
     private RustTable(TableModel model, ProjectSettings project)
     {
@@ -58,8 +59,12 @@ public sealed class RustTable
         Fields = fields;
         Skipped = skipped;
         Key = fields.First(f => f.Column.IsPrimaryKey);
+        var fieldOf = new Dictionary<ColumnModel, RustField>();
+        foreach (var field in fields)
+            fieldOf.TryAdd(field.Column, field);
+        _fieldOf = fieldOf;
         Navigations = EntityNavigations.Of(model, fk => project.NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape) ?? false)
-            .Where(n => fields.Any(f => f.Column == n.Column))
+            .Where(n => fieldOf.ContainsKey(n.Column))
             .Select(n => new RustNavigation(RustNames.Ident(RustNames.Snake(n.Role)), JsonNames.Camel(n.Role))).ToList();
         Returning = model.Dialect != SqlDialect.MySql;
         Table = _di.QuoteTable(model.SchemaName, model.DbTableName);
@@ -240,12 +245,12 @@ public sealed class RustTable
         Filters = plan.Filters.Select(f =>
         {
             var (before, after) = _di.ContainsParts(TextOf(f.Column));
-            string field = Fields.First(x => x.Column == f.Column).Name;
+            string field = _fieldOf[f.Column].Name;
             return new RustFilter(field, f.ParameterName, before, after);
         }).ToList();
 
         Sorts = SearchSort.Entries(Model)
-            .Where(e => Fields.Any(f => f.Column == e.Column))
+            .Where(e => _fieldOf.ContainsKey(e.Column))
             .Select(e =>
             {
                 string expression = e.Parent is { } fk

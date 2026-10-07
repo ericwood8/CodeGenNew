@@ -54,13 +54,17 @@ public sealed class PythonTable
         Written = fields.Where(f => !f.Column.IsIdentity && !f.Column.IsComputed).ToList();
         Updated = Written.Where(f => !f.Column.IsPrimaryKey).ToList();
 
+        var fieldOf = new Dictionary<ColumnModel, PythonField>();
+        foreach (var field in fields)
+            fieldOf.TryAdd(field.Column, field);
+
         var plan = SearchPlan.For(model, []);
         Filters = plan.Filters
-            .Where(f => f.Column.CSharpBase() == "string" && fields.Any(x => x.Column == f.Column))
-            .Select(f => new PythonFilter(fields.First(x => x.Column == f.Column), f.ParameterName)).ToList();
-        Sorts = plan.Sorts.Where(s => fields.Any(x => x.Column == s.Column))
-            .Select(s => new PythonSort(s.Name.ToLowerInvariant(), fields.First(x => x.Column == s.Column))).ToList();
-        DefaultOrder = plan.DefaultOrder.Where(c => fields.Any(x => x.Column == c)).Select(c => fields.First(x => x.Column == c)).ToList();
+            .Where(f => f.Column.CSharpBase() == "string" && fieldOf.ContainsKey(f.Column))
+            .Select(f => new PythonFilter(fieldOf[f.Column], f.ParameterName)).ToList();
+        Sorts = plan.Sorts.Where(s => fieldOf.ContainsKey(s.Column))
+            .Select(s => new PythonSort(s.Name.ToLowerInvariant(), fieldOf[s.Column])).ToList();
+        DefaultOrder = plan.DefaultOrder.Where(fieldOf.ContainsKey).Select(c => fieldOf[c]).ToList();
         if (DefaultOrder.Count == 0)
             DefaultOrder = [Key];
 
