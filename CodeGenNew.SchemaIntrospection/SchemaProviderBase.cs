@@ -63,19 +63,18 @@ public abstract class SchemaProviderBase : ISchemaProvider
         return columns.Where(c => c.IsPrimaryKey || !Listed(c)).ToList();
     }
 
-    private SpecialLogicRuleSet? _rules;
-    private DateTime _rulesStamp;
+    private (SpecialLogicRuleSet Rules, DateTime Stamp)? _loadedRules;
 
-    /// <summary> The special-logic rules, read again only when the config file changed since the last read. </summary>
+    /// <summary> The special-logic rules, read again only when the config file changed since the last read. Safe to call from
+    /// several tables being read at once: the rules and their stamp are swapped as one value. </summary>
     private SpecialLogicRuleSet LoadRules()
     {
         var stamp = File.Exists(_specialLogicColumnsConfigPath) ? File.GetLastWriteTimeUtc(_specialLogicColumnsConfigPath) : DateTime.MinValue;
-        if (_rules is null || stamp != _rulesStamp)
-        {
-            _rules = new SpecialLogicRuleSet(SpecialLogicColumnsConfig.Load(_specialLogicColumnsConfigPath));
-            _rulesStamp = stamp;
-        }
-        return _rules;
+        if (_loadedRules is { } loaded && loaded.Stamp == stamp)
+            return loaded.Rules;
+        var rules = new SpecialLogicRuleSet(SpecialLogicColumnsConfig.Load(_specialLogicColumnsConfigPath));
+        _loadedRules = (rules, stamp);
+        return rules;
     }
 
     protected string Named(string databaseName) => NameConverter.Apply(_naming, databaseName, _acronyms);
