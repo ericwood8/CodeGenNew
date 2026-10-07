@@ -29,7 +29,7 @@
 
 
     var tables = Database.ApiTables(Project)
-        .Where(t => t.PrimaryKeyColumns.Count == 1 && t.PrimaryKeyColumns[0].SqlType == SqlDbType.Int && !t.IsNameActiveTable)
+        .Where(t => t.PrimaryKeyColumns.Count == 1 && t.PrimaryKeyColumns[0].IsInt32Column && !t.IsNameActiveTable)
         .ToList();
     if (tables.Count == 0)
         Error("CS_CqrsHandlers found no table to write handlers for: none has an API of its own with a single int key.");

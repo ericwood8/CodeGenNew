@@ -58,9 +58,9 @@
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
     bool isNameActive = Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name")
-                      && Model.Columns.Any(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive");
+                      && Model.Columns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
 
-    if (keyColumn is null || keyColumn.SqlType != SqlDbType.Int)
+    if (keyColumn is null || !keyColumn.IsInt32Column)
     {
         Error($"WinUI3_MasterScreen needs a table with a single int primary key (CS_Repo's GenericRepo<T> takes a plain int id), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
@@ -105,7 +105,7 @@
             .ForGrid();
 
         ForeignKeyModel LookupOf(ColumnModel c) =>
-            c.SqlType == SqlDbType.Int
+            c.IsInt32Column
             && fkByColumn.TryGetValue(c.Name, out var fk)
             && !NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape)
             && fk.ReferencedDisplayColumns.Count > 0

@@ -29,7 +29,6 @@
     // SQL Server procedure, PostgreSQL function or MySQL procedure, by the source database.
     // Full notes: Docs/TemplateNotes/SP_Save_v1.md
 
-    bool IsTextLob(ColumnModel c) => c.SqlType is SqlDbType.Text or SqlDbType.NText;
     bool IsRowVersion(ColumnModel c) =>
         c.SqlTypeDeclaration.EqualsIgnoreCase("timestamp") ||
         c.SqlTypeDeclaration.EqualsIgnoreCase("rowversion");
@@ -118,7 +117,7 @@ BEGIN
 
 <#
     // Trim strings once, up front.
-    var trimColumns = parameterColumns.Where(c => c.IsStringColumn && !IsTextLob(c)).ToList();
+    var trimColumns = parameterColumns.Where(c => c.IsStringColumn && !c.IsLargeTextColumn).ToList();
     foreach (var c in trimColumns)
     {
         string trimmed = $"LTRIM(RTRIM({c.ParameterName}))";

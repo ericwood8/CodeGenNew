@@ -71,7 +71,7 @@
     {
         Error($"TSX_DetailMasterPage writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
     }
-    else if (keyColumn is null || keyColumn.SqlType is not (SqlDbType.Int or SqlDbType.UniqueIdentifier))
+    else if (keyColumn is null || !(keyColumn.IsInt32Column || keyColumn.IsGuidColumn))
     {
         Error($"TSX_DetailMasterPage needs a table with a single int or uniqueidentifier primary key (the routes take the id as {{id:int}} or {{id:guid}}), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
@@ -92,8 +92,8 @@
         string listName = variable.Pluralize();
         string setList = "set" + UpperFirst(listName);
         string keyProp = Camel(keyColumn.Name);
-        string keyTs = keyColumn.SqlType == SqlDbType.Int ? "number" : "string";
-        string emptyKey = keyColumn.SqlType == SqlDbType.Int ? "0" : "'00000000-0000-0000-0000-000000000000'";
+        string keyTs = keyColumn.IsInt32Column ? "number" : "string";
+        string emptyKey = keyColumn.IsInt32Column ? "0" : "'00000000-0000-0000-0000-000000000000'";
         string title = Words(baseName);
         bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"); // just for showError's message wording below
         const int pageSize = 20;
@@ -139,7 +139,7 @@
                     SetList = "set" + UpperFirst(pList),
                     NameMethod = LowerFirst(parentBase) + "Name",
                     KeyProp = Camel(fk.ReferencedColumns[0]),
-                    IdType = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).SqlType == SqlDbType.UniqueIdentifier ? "string" : "number",
+                    IdType = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).IsGuidColumn ? "string" : "number",
                     DisplayProp = Camel(fk.ReferencedDisplayColumns[0]),
                     Self = self
                 };
@@ -180,7 +180,7 @@
 
         string Id(ColumnModel c) => stem + "-" + Camel(c.Name).ToLowerInvariant();
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
-        string LabelOf(ColumnModel c) => c.SqlType == SqlDbType.Bit ? Label(c.Name) + "?" : Label(c.Name);
+        string LabelOf(ColumnModel c) => c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name);
         var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
         if (gridColumns.Count == 0) gridColumns = shown.ToList();
         // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
@@ -305,7 +305,7 @@
         foreach (var p in parents.Where(p => !p.Self))
             T($"    {p.ApiVar}.getAll().then({p.SetList}).catch(() => {{}});");
         T("    const openId = searchParams.get('edit');");
-        T($"    if (openId) {variable}Api.getById({(keyColumn.SqlType == SqlDbType.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Words(baseName).ToLowerInvariant()} no longer exists!'));");
+        T($"    if (openId) {variable}Api.getById({(keyColumn.IsInt32Column ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Words(baseName).ToLowerInvariant()} no longer exists!'));");
         T("  }, []);");
         T();
         T($"  const submit = async ({variable}: {baseName}): Promise<void> => {{");
@@ -370,7 +370,7 @@
         foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && !c.IsNullable && !c.IsComputed && !c.IsIdentity))
         {
             string value;
-            if (c.SqlType == SqlDbType.Bit) value = c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1" ? "true" : "false";
+            if (c.IsBooleanColumn) value = c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1" ? "true" : "false";
             else if (IsDate(c)) value = "new Date().toISOString().substring(0, 10)";
             else if (IsNumber(c)) value = "0";
             else value = "''";
@@ -550,7 +550,7 @@
             string cell;
             // A nullable column's value may be undefined: optional chaining keeps a strict (noUncheckedIndexedAccess/strictNullChecks) build compiling.
             if (lookup is not null) cell = $"{{{parentOf[lookup.ReferencedTable].NameMethod}({prop})}}";
-            else if (c.SqlType == SqlDbType.Bit) cell = $"{{{prop} ? 'Yes' : 'No'}}";
+            else if (c.IsBooleanColumn) cell = $"{{{prop} ? 'Yes' : 'No'}}";
             else if (IsDate(c)) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 10)}}";
             else if (c.IsCurrencyColumn && !c.IsIntegerColumn) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {d}, maximumFractionDigits: {d} }})}}"; }
             else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toFixed(2)}}";
@@ -638,7 +638,7 @@
                     T($"              <option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>");
                 T("            </select>");
             }
-            else if (c.SqlType == SqlDbType.Bit)
+            else if (c.IsBooleanColumn)
             {
                 T($"            <input");
                 T($"              id=\"{id}\"");
@@ -669,7 +669,7 @@
             else if (IsNumber(c))
             {
                 string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? "0." + new string('0', c.Scale!.Value - 1) + "1"
-                            : c.SqlType is SqlDbType.Money or SqlDbType.SmallMoney ? "0.01"
+                            : c.IsMoneyColumn ? "0.01"
                             : c.SqlType is SqlDbType.Float or SqlDbType.Real ? "any" : null;
                 T($"            <input");
                 T($"              id=\"{id}\"");

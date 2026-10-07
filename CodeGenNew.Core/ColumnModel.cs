@@ -58,6 +58,14 @@ public class ColumnModel
     public bool IsDateColumn { get; init; }
     public bool IsBooleanColumn { get; init; }
 
+    /// <summary> An int column (not bigint, smallint or tinyint: see <see cref="IsIntegerColumn"/> for every whole-number type). </summary>
+    public bool IsInt32Column => SqlType == System.Data.SqlDbType.Int;
+
+    public bool IsGuidColumn => SqlType == System.Data.SqlDbType.UniqueIdentifier;
+
+    /// <summary> A text or ntext column: the large-object text types a table cannot copy, compare or index like an ordinary string. </summary>
+    public bool IsLargeTextColumn => SqlType is System.Data.SqlDbType.Text or System.Data.SqlDbType.NText;
+
     /// <summary> The values a text column may hold when the database lists them (a MySQL <c>enum('a','b')</c>); null for any other column. A generated form
     /// shows such a column as a drop-down of these values instead of a free text box. </summary>
     public List<string>? Choices { get; init; }

@@ -22,7 +22,7 @@
     else
     {
         string type = BlazorNames.TypeName(Model.TableName);
-        string keyType = Model.PrimaryKeyColumns[0].SqlType == SqlDbType.Int ? "int" : "Guid";
+        string keyType = Model.PrimaryKeyColumns[0].IsInt32Column ? "int" : "Guid";
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
 

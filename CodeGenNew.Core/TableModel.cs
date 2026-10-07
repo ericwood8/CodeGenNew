@@ -55,8 +55,8 @@ public class TableModel
     public PrimaryKeyShape PrimaryKeyShape =>
         PrimaryKeyColumns.Count == 0 ? PrimaryKeyShape.None :
         PrimaryKeyColumns.Count > 1 ? PrimaryKeyShape.Composite :
-        PrimaryKeyColumns[0].SqlType == SqlDbType.UniqueIdentifier ? PrimaryKeyShape.SingleUniqueIdentifier :
-        PrimaryKeyColumns[0].SqlType is SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt ? PrimaryKeyShape.SingleInt :
+        PrimaryKeyColumns[0].IsGuidColumn ? PrimaryKeyShape.SingleUniqueIdentifier :
+        PrimaryKeyColumns[0].IsIntegerColumn ? PrimaryKeyShape.SingleInt :
         PrimaryKeyShape.SingleOther;
 
     /// <summary> A NOT NULL text column called exactly "Name" plus a NOT NULL bit column called exactly
@@ -68,7 +68,7 @@ public class TableModel
     /// existing inline checks were always written. </summary>
     public bool IsNameActiveTable => _isNameActiveTable ??=
         Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name") &&
-        Columns.Any(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive");
+        Columns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
 
     private bool? _isNameActiveTable;
     private bool? _isJunctionTable;

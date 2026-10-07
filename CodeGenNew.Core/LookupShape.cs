@@ -30,7 +30,7 @@ public readonly record struct LookupShape(bool LooksLikeLookup, long RowCount, b
 
         bool nameActive =
             columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name") &&
-            columns.Any(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive");
+            columns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
         if (nameActive)
             return false;
 

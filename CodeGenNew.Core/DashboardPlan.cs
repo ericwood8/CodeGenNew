@@ -212,7 +212,7 @@ public sealed class DashboardPlan
 
         /// <summary> The column as a number an aggregate accepts: PostgreSQL's money type has no AVG and no cast to double, so it becomes numeric first. </summary>
         private string Amount(ColumnModel column, string? alias = null) =>
-            di.Dialect == SqlDialect.PostgreSql && column.SqlType is SqlDbType.Money or SqlDbType.SmallMoney ? $"CAST({C(column, alias)} AS numeric)" : C(column, alias);
+            di.Dialect == SqlDialect.PostgreSql && column.IsMoneyColumn ? $"CAST({C(column, alias)} AS numeric)" : C(column, alias);
 
         private string CountSql(TableModel table, string label) => $"SELECT {Lit(label)} AS {QLabel}, {Number("COUNT(*)")} AS {QValue} FROM {T(table)}";
 

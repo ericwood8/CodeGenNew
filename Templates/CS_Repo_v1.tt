@@ -55,7 +55,7 @@
         string ClrType(ColumnModel c) => c.CSharp();
 
         var nameColumn = Model.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
-        var activeColumn = Model.Columns.FirstOrDefault(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive");
+        var activeColumn = Model.Columns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
         var searchableColumns = Model.SearchableColumns;
         // With AccessMode=Ef the search, the sort and the clone are LINQ over the context (CS_SearchQuery writes the query), not calls to the routines SP_Search and SP_Clone write.
         bool ef = Project.AccessModeFor(Model.Dialect) == AccessMode.Ef;
@@ -76,7 +76,7 @@
                 .Select(f => Model.Columns.First(c => c.Name.EqualsIgnoreCase(f.ReferencingColumns[0])))
                 .ToList();
             if (childKeys.Count == 1
-                && childKeys[0].SqlType == SqlDbType.Int && !childKeys[0].IsNullable && !childKeys[0].IsPrimaryKey)
+                && childKeys[0].IsInt32Column && !childKeys[0].IsNullable && !childKeys[0].IsPrimaryKey)
             {
                 var fkColumn = childKeys[0];
                 string parent = fkColumn.Name.EndsWith("Id", StringComparison.Ordinal) && fkColumn.Name.Length > 2 ? fkColumn.Name[..^2] : fkColumn.Name;

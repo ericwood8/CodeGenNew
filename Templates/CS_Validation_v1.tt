@@ -63,7 +63,7 @@
         if (!first) B();
         first = false;
 
-        bool isBit = c.SqlType == SqlDbType.Bit;
+        bool isBit = c.IsBooleanColumn;
         string words = Str(Words(c.Name, isBit));
         int chars = c.MaxLength is null ? 0 : (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value);
         bool isText = c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
@@ -78,7 +78,7 @@
         // integer keeps the plain limits of its SQL type, which a [Range] would only repeat.
         // (a CHECK constraint of the database says the same for any numeric column; a decimal gets it as double bounds)
         if ((c.NumericKind != NumericKind.None || c.Check is not null) && Project.RangeFor(c) is { } range) B($"    [Range({range.Min}, {range.Max})]");
-        else if (c.Check is { } check && !c.IsIntegerColumn && c.IsNumericColumn)
+        else if (c.Check is { } check && (c.IsNumericColumn || c.IsMoneyColumn))
             B($"    [Range({(check.Min is { } lo ? lo.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture) : "double.MinValue")}, {(check.Max is { } hi ? hi.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture) : "double.MaxValue")})]");
         B($"    public {ClrType(c)} {Id(c)} {{ get; set; }}");
     }

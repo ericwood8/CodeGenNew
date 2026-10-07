@@ -237,7 +237,7 @@ public static class PostgresProcedures
     public static string Clone(TableModel m)
     {
         var pk = m.PrimaryKeyColumns;
-        bool singleGuidKey = pk.Count == 1 && pk[0].SqlType == SqlDbType.UniqueIdentifier && !pk[0].IsIdentity;
+        bool singleGuidKey = pk.Count == 1 && pk[0].IsGuidColumn && !pk[0].IsIdentity;
         bool IsGenerated(ColumnModel c) => c.IsIdentity || (singleGuidKey && c == pk[0]);
         string CopyFrom(ColumnModel c) => Q("CopyFrom" + c.Name);
         string NewKey(ColumnModel c) => Q("New" + c.Name);

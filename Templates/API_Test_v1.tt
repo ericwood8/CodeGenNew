@@ -66,10 +66,10 @@
         bool HasRoomToGrow(ColumnModel c) => c.IsIntegerColumn && !c.IsPrimaryKey && ForeignKeyParentRoute(c, out string _).Length == 0
             && (Project.RangeFor(c) is not { } range || range.Max > long.Parse(ApiSampleValues.Value(c, Project), CultureInfo.InvariantCulture));
         var changed = bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength() > 0)
-            ?? bodyColumns.FirstOrDefault(c => c.SqlType == SqlDbType.Bit && !c.IsPrimaryKey)
+            ?? bodyColumns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsPrimaryKey)
             ?? bodyColumns.FirstOrDefault(HasRoomToGrow);
         string changedJson = changed is null ? "" : JsonNames.Camel(changed.Name);
-        string changedType = changed is null ? "" : changed.IsStringColumn ? "string" : changed.SqlType == SqlDbType.Bit ? "bool" : "long";
+        string changedType = changed is null ? "" : changed.IsStringColumn ? "string" : changed.IsBooleanColumn ? "bool" : "long";
 
         // limits the validators enforce, for the 400 tests
         var longText = Project.ApiValidation ? bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength() > 0) : null;

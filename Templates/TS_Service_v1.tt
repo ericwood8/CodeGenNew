@@ -45,7 +45,7 @@
     {
         Error($"TS_Service writes no service for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so it has no API to call.");
     }
-    else if (keyColumn is null || keyColumn.SqlType is not (SqlDbType.Int or SqlDbType.UniqueIdentifier))
+    else if (keyColumn is null || !(keyColumn.IsInt32Column || keyColumn.IsGuidColumn))
     {
         Error($"TS_Service needs a table with a single int or uniqueidentifier primary key (the routes take the id as {{id:int}} or {{id:guid}}), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
@@ -57,7 +57,7 @@
     else
     {
         string baseName = BaseName(Model.TableName);
-        string keyTs = keyColumn.SqlType == SqlDbType.Int ? "number" : "string";   // a uniqueidentifier key travels as a string
+        string keyTs = keyColumn.IsInt32Column ? "number" : "string";   // a uniqueidentifier key travels as a string
         string stem = baseName.ToLowerInvariant();
         string variable = LowerFirst(baseName);
         string lowerWords = Words(baseName).ToLowerInvariant();

@@ -209,13 +209,13 @@ public sealed class RustTable
         string q = _di.Quote(column.DbName);
         if (_di.Dialect == SqlDialect.PostgreSql)
         {
-            if (column.SqlType is SqlDbType.Money or SqlDbType.SmallMoney)
+            if (column.IsMoneyColumn)
                 return $"{q}::numeric AS {q}";
             if (column.DbEnumType is not null)
                 return $"{q}::text AS {q}";
         }
         // SQLite stores a whole number that was written to a DECIMAL or FLOAT column as an integer, and sqlx refuses to read an integer as a double: read the value as the real it means
-        if (_di.Dialect == SqlDialect.Sqlite && column.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real)
+        if (_di.Dialect == SqlDialect.Sqlite && (column.IsNumericColumn || column.IsMoneyColumn))
             return $"CAST({q} AS REAL) AS {q}";
         return q;
     }
@@ -226,7 +226,7 @@ public sealed class RustTable
         string p = _di.Placeholder(index);
         if (_di.Dialect != SqlDialect.PostgreSql)
             return p;
-        if (field.Column.SqlType is SqlDbType.Money or SqlDbType.SmallMoney)
+        if (field.Column.IsMoneyColumn)
             return $"{p}::numeric::money";
         if (field.Column.DbEnumType is { } type)
             return $"CAST({p}::text AS {string.Join(".", type.Split('.').Select(_di.Quote))})";

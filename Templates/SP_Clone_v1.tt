@@ -30,7 +30,6 @@
     // function or MySQL procedure, by the source database.
     // Full notes: Docs/TemplateNotes/SP_Clone_v1.md
 
-    bool IsTextLob(ColumnModel c) => c.SqlType is SqlDbType.Text or SqlDbType.NText;
     bool IsRowVersion(ColumnModel c) =>
         c.SqlTypeDeclaration.EqualsIgnoreCase("timestamp") ||
         c.SqlTypeDeclaration.EqualsIgnoreCase("rowversion");
@@ -40,7 +39,7 @@
     var pkColumns = Model.PrimaryKeyColumns;
 
     // ==== the new key: how each primary key column gets its value in the clone
-    bool singleGuidKey = pkColumns.Count == 1 && pkColumns[0].SqlType == SqlDbType.UniqueIdentifier && !pkColumns[0].IsIdentity;
+    bool singleGuidKey = pkColumns.Count == 1 && pkColumns[0].IsGuidColumn && !pkColumns[0].IsIdentity;
     bool IsGeneratedKey(ColumnModel c) => c.IsIdentity || (singleGuidKey && c == pkColumns[0]);
     string CopyFromParameter(ColumnModel c) => "@CopyFrom" + c.Name;
     string NewKeyParameter(ColumnModel c) => "@New" + c.Name;
@@ -61,11 +60,11 @@
     var copyable = Model.Columns.Where(c => !c.IsComputed && !IsRowVersion(c) && !c.IsIdentity).ToList();
     var createUserColumns = copyable.Where(c => c.IsCreateUserColumn).ToList();
     var overrideColumns = copyable
-        .Where(c => c.IsInUniqueIndex && !c.IsPrimaryKey && !IsRuleColumn(c) && !IsTextLob(c))
+        .Where(c => c.IsInUniqueIndex && !c.IsPrimaryKey && !IsRuleColumn(c) && !c.IsLargeTextColumn)
         .ToList();
 
     string Trimmed(ColumnModel c, string expression) =>
-        c.IsStringColumn && !IsTextLob(c) ? $"LTRIM(RTRIM({expression}))" : expression;
+        c.IsStringColumn && !c.IsLargeTextColumn ? $"LTRIM(RTRIM({expression}))" : expression;
 
     // ==== INSERT column/value pairs (a single list drives both halves so they cannot drift apart)
     var pairs = new List<(string Name, string Value)>();

@@ -65,7 +65,7 @@
                 if (Model.Dialect == SqlDialect.PostgreSql)
                     columnType = c.SqlTypeDeclaration;
             }
-            else if (c.SqlType is SqlDbType.Money or SqlDbType.SmallMoney)
+            else if (c.IsMoneyColumn)
                 columnType = c.SqlType == SqlDbType.Money ? "money" : "smallmoney";
             else if (c.SqlType == SqlDbType.Decimal)
             {

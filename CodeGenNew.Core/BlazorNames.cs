@@ -24,7 +24,7 @@ public static class BlazorNames
         if (!table.HasCrudApi(project))
             return $"[{table.SchemaName}].[{table.TableName}] has no API of its own (an enum, a lookup table or a table with no entity), so there is nothing for a Blazor client to call.";
         var key = table.PrimaryKeyColumns.Count == 1 ? table.PrimaryKeyColumns[0] : null;
-        if (key is null || key.SqlType is not (SqlDbType.Int or SqlDbType.UniqueIdentifier))
+        if (key is null || !(key.IsInt32Column || key.IsGuidColumn))
             return $"the routes take the id as {{id:int}} or {{id:guid}}, but [{table.SchemaName}].[{table.TableName}] has "
                 + (table.PrimaryKeyColumns.Count == 0 ? "no primary key." : table.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {key.SqlTypeDeclaration} primary key.");
         if (table.IsNameActiveTable)

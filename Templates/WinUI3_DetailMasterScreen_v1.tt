@@ -55,7 +55,7 @@
     int CurrencyDigits(ColumnModel c) => NumericClassifier.CurrencyDigits(c);
     // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is edited in a number box too: its value is a double
     // (NaN = blank), limited to what the column can hold (NumericClassifier.DecimalRange), and converted back on save.
-    bool UsesDecimalBox(ColumnModel c) => !c.IsIntegerColumn && !c.IsCurrencyColumn && c.SqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real;
+    bool UsesDecimalBox(ColumnModel c) => !c.IsCurrencyColumn && c.IsNumericColumn;
     int DecimalPlaces(ColumnModel c) => Math.Clamp(c.Scale ?? 2, 0, 8);
     string Words(string s) => Labels.Words(s);
     string Label(string columnName) => Words(Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", ""));
@@ -70,9 +70,9 @@
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
     bool isNameActive = Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name")
-                      && Model.Columns.Any(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive");
+                      && Model.Columns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
 
-    if (keyColumn is null || keyColumn.SqlType != SqlDbType.Int)
+    if (keyColumn is null || !keyColumn.IsInt32Column)
     {
         Error($"WinUI3_DetailMasterScreen needs a table with a single int primary key (CS_Repo's GenericRepo<T> takes a plain int id), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
@@ -108,7 +108,7 @@
         bool tabbed = pages.Count > 1;
 
         ForeignKeyModel LookupOf(ColumnModel c) =>
-            c.SqlType == SqlDbType.Int
+            c.IsInt32Column
             && fkByColumn.TryGetValue(c.Name, out var fk)
             && !NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape)
             && fk.ReferencedDisplayColumns.Count > 0
@@ -141,7 +141,7 @@
         // to InvoiceDate and asked for exactly this (2026-09-29).
         var children = Model.ChildForeignKeys
             .Where(fk => fk.ReferencingColumns.Count == 1
-                      && Model.Columns.Any(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[0]) && c.SqlType == SqlDbType.Int))
+                      && Model.Columns.Any(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[0]) && c.IsInt32Column))
             .Select(fk =>
             {
                 string selfFkColumn = fk.ReferencingColumns[0];

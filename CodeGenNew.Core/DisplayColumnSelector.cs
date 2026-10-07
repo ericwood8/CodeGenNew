@@ -21,7 +21,7 @@ public static class DisplayColumnSelector
 
         var fallback = columns.FirstOrDefault(c =>
             c.IsStringColumn && !IsKey(c) && !c.IsAuditColumn && !c.IsNullable && !c.IsLongTextColumn
-            && c.SqlType is not (System.Data.SqlDbType.Text or System.Data.SqlDbType.NText));
+            && !c.IsLargeTextColumn);
         return fallback is null ? [] : [fallback];
     }
 }

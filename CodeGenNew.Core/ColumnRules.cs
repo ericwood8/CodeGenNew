@@ -68,7 +68,7 @@ public static class ColumnRules
         {
             rule = new ColumnRule { Min = range.Min, Max = range.Max };
         }
-        else if (column.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real)
+        else if (column.IsNumericColumn || column.IsMoneyColumn)
         {
             if (column.Check is { } check)
                 rule = new ColumnRule { Min = check.Min, MinStrict = check.MinStrict, Max = check.Max, MaxStrict = check.MaxStrict };

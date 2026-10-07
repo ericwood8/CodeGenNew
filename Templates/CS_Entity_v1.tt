@@ -58,7 +58,7 @@
 
         // ==== base class
         var nameColumn = Model.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
-        var activeColumn = Model.Columns.FirstOrDefault(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive");
+        var activeColumn = Model.Columns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
         bool nameActive = nameColumn is not null && activeColumn is not null;
         string baseClass = nameActive ? baseNameActiveEntity : baseEntity;
 
@@ -130,7 +130,7 @@
         foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && !fkByColumn.ContainsKey(c.Name) && !(nameActive && (c == nameColumn || c == activeColumn))))
         {
             B();
-            bool isBit = c.SqlType == SqlDbType.Bit;
+            bool isBit = c.IsBooleanColumn;
             string words = Str(Words(c.Name, isBit));
             int chars = c.CharacterLength();
             bool isText = c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
@@ -146,7 +146,7 @@
                 if (Model.Dialect == SqlDialect.PostgreSql)
                     columnType = c.SqlTypeDeclaration;
             }
-            else if (c.SqlType is SqlDbType.Money or SqlDbType.SmallMoney)
+            else if (c.IsMoneyColumn)
             {
                 B("    [DisplayFormat(ApplyFormatInEditMode = true)]");
                 B("    [DataType(DataType.Currency)]");

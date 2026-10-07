@@ -11,14 +11,14 @@ public static class GridCaption
     public static string For(ColumnModel column, string spacedWords)
     {
         string words = spacedWords;
-        if (column.SqlType is System.Data.SqlDbType.Date or System.Data.SqlDbType.DateTime or System.Data.SqlDbType.DateTime2 or System.Data.SqlDbType.SmallDateTime)
+        if (column.IsDateColumn)
         {
             var kept = words.Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(w => !w.EqualsIgnoreCase("Date")).ToArray();
             if (kept.Length > 0)
                 words = string.Join(' ', kept);
         }
         string caption = From(words);
-        if (column.SqlType == System.Data.SqlDbType.Bit)
+        if (column.IsBooleanColumn)
         {
             // "Is Taxable" -> "Taxable?": the question mark already says it is a yes/no, so a leading "Is" is dropped.
             if (caption.StartsWithIgnoreCase("Is ") && caption.Length > 3)

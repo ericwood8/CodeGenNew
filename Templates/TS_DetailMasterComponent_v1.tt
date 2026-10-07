@@ -70,7 +70,7 @@
     {
         Error($"TS_DetailMasterComponent writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
     }
-    else if (keyColumn is null || keyColumn.SqlType is not (SqlDbType.Int or SqlDbType.UniqueIdentifier))
+    else if (keyColumn is null || !(keyColumn.IsInt32Column || keyColumn.IsGuidColumn))
     {
         Error($"TS_DetailMasterComponent needs a table with a single int or uniqueidentifier primary key (the routes take the id as {{id:int}} or {{id:guid}}), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
@@ -90,8 +90,8 @@
         string variable = LowerFirst(baseName);        // holiday
         string listName = variable.Pluralize();        // holidays
         string keyProp = Camel(keyColumn.Name);         // holidayId
-        string keyTs = keyColumn.SqlType == SqlDbType.Int ? "number" : "string";
-        string emptyKey = keyColumn.SqlType == SqlDbType.Int ? "0" : "'00000000-0000-0000-0000-000000000000'";
+        string keyTs = keyColumn.IsInt32Column ? "number" : "string";
+        string emptyKey = keyColumn.IsInt32Column ? "0" : "'00000000-0000-0000-0000-000000000000'";
         string title = Words(baseName);
         bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"); // just for showError's message wording below
         const int pageSize = 20;
@@ -136,7 +136,7 @@
                     List = LowerFirst(parentBase).Pluralize(),
                     NameMethod = LowerFirst(parentBase) + "Name",
                     KeyProp = Camel(fk.ReferencedColumns[0]),
-                    IdType = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).SqlType == SqlDbType.UniqueIdentifier ? "string" : "number",
+                    IdType = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).IsGuidColumn ? "string" : "number",
                     DisplayProp = Camel(fk.ReferencedDisplayColumns[0]),
                     Self = self
                 };
@@ -178,7 +178,7 @@
         // ==== naming on the page
         string Id(ColumnModel c) => variable + UpperFirst(Camel(c.Name));
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
-        string LabelOf(ColumnModel c) => c.SqlType == SqlDbType.Bit ? Label(c.Name) + "?" : Label(c.Name);
+        string LabelOf(ColumnModel c) => c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name);
         var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
         if (gridColumns.Count == 0) gridColumns = shown.ToList();
         // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
@@ -241,7 +241,7 @@
             var lookup = LookupOf(c);
             string cell;
             if (lookup is not null) cell = $"{{{{ {parentOf[lookup.ReferencedTable].NameMethod}({prop}) }}}}";
-            else if (c.SqlType == SqlDbType.Bit) cell = $"{{{{ {prop} ? \"Yes\" : \"No\" }}}}";
+            else if (c.IsBooleanColumn) cell = $"{{{{ {prop} ? \"Yes\" : \"No\" }}}}";
             else if (IsDate(c)) cell = $"{{{{ {prop} | date:'MM/dd/yyyy' }}}}";
             else if (c.IsCurrencyColumn && !c.IsIntegerColumn) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{d}-{d}' }}}}"; }
             else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{{ {prop} | number:'1.2-2' }}}}";
@@ -308,7 +308,7 @@
                     H($"                    <option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>");
                 H("                </select>");
             }
-            else if (c.SqlType == SqlDbType.Bit)
+            else if (c.IsBooleanColumn)
             {
                 H($"                <input type=\"checkbox\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\">");
             }
@@ -326,7 +326,7 @@
             else if (IsNumber(c))
             {
                 string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? " step=\"" + "0." + new string('0', c.Scale!.Value - 1) + "1\""
-                            : c.SqlType is SqlDbType.Money or SqlDbType.SmallMoney ? " step=\"0.01\""
+                            : c.IsMoneyColumn ? " step=\"0.01\""
                             : c.SqlType is SqlDbType.Float or SqlDbType.Real ? " step=\"any\"" : "";
                 // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
                 string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\""
@@ -470,7 +470,7 @@
         T("    const params = this.route.snapshot.queryParamMap;");
         T("    this.backTo = params.get('back');");
         T("    const openId = params.get('edit');");
-        T($"    if (openId) this.{variable}Service.getById({(keyColumn.SqlType == SqlDbType.Int ? "Number(openId)" : "openId")}).subscribe((row) => this.edit(row));");
+        T($"    if (openId) this.{variable}Service.getById({(keyColumn.IsInt32Column ? "Number(openId)" : "openId")}).subscribe((row) => this.edit(row));");
         T("    this.load();");
         foreach (var p in parents.Where(p => !p.Self))
             T($"    this.{p.ServiceVar}.getAll().subscribe((data) => {{ this.{p.List} = data; }});");
@@ -585,7 +585,7 @@
         foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && !c.IsNullable && !c.IsComputed && !c.IsIdentity))
         {
             string value;
-            if (c.SqlType == SqlDbType.Bit) value = c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1" ? "true" : "false";
+            if (c.IsBooleanColumn) value = c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1" ? "true" : "false";
             else if (IsDate(c)) value = "new Date().toISOString().substring(0, 10)";
             else if (IsNumber(c)) value = "0";
             else value = "''";

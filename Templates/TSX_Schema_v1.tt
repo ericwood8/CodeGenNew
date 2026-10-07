@@ -41,7 +41,7 @@
             else
             {
                 o.Append("z.string()");
-                if (c.SqlType == SqlDbType.UniqueIdentifier)
+                if (c.IsGuidColumn)
                     o.Append(".uuid(" + Str(label + " is not a GUID.") + ")");
             }
 

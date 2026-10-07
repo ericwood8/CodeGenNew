@@ -16,19 +16,18 @@ public static class TemplateHelpers
 
     public static bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
 
-    public static bool IsNumber(ColumnModel c) => c.SqlType is SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt
-        or SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real;
+    public static bool IsNumber(ColumnModel c) => c.IsIntegerColumn || c.IsNumericColumn || c.IsMoneyColumn;
 
     public static bool IsDate(ColumnModel c) => c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
 
-    public static bool IsGuid(ColumnModel c) => c.SqlType == SqlDbType.UniqueIdentifier;
+    public static bool IsGuid(ColumnModel c) => c.IsGuidColumn;
 
-    public static bool IsBit(ColumnModel c) => c.SqlType == SqlDbType.Bit;
+    public static bool IsBit(ColumnModel c) => c.IsBooleanColumn;
 
     public static bool IsEditableType(ColumnModel c) => IsDate(c) || IsNumber(c) || IsGuid(c) || IsBit(c) || IsText(c);
 
     /// <summary> A decimal, float or real column that is not money. </summary>
-    public static bool IsPlainDecimal(ColumnModel c) => !c.IsIntegerColumn && !c.IsCurrencyColumn && c.SqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real;
+    public static bool IsPlainDecimal(ColumnModel c) => !c.IsCurrencyColumn && c.IsNumericColumn;
 
     public static int Chars(ColumnModel c) => c.CharacterLength();
 

@@ -112,7 +112,7 @@
         L("        <tr>");
         foreach (var c in gridColumns)
         {
-            string caption = GridCaption.For(c, c.SqlType == SqlDbType.Bit ? Label(c.Name) + "?" : Label(c.Name));
+            string caption = GridCaption.For(c, c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name));
             if (sortable.Contains(c))
                 L($"            <th><button type=\"button\" class=\"sort\" @onclick='() => SortAsync(\"{c.Name}\")'>{caption} @Arrow(\"{c.Name}\")</button></th>");
             else
@@ -131,7 +131,7 @@
             string cell;
             var lookup = LookupOf(c);
             if (lookup is not null) cell = $"@Name{parentOf[lookup.ReferencedTable].Type}({prop})";
-            else if (c.SqlType == SqlDbType.Bit) cell = c.IsNullable ? $"@({prop} is null ? \"\" : {prop} == true ? \"Yes\" : \"No\")" : $"@({prop} ? \"Yes\" : \"No\")";
+            else if (c.IsBooleanColumn) cell = c.IsNullable ? $"@({prop} is null ? \"\" : {prop} == true ? \"Yes\" : \"No\")" : $"@({prop} ? \"Yes\" : \"No\")";
             else if (IsDate(c)) cell = $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd\")";
             else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"N{(c.IsCurrencyColumn ? NumericClassifier.CurrencyDigits(c) : 2)}\")";
             else cell = $"@{prop}";
@@ -166,7 +166,7 @@
         foreach (var c in shown)
         {
             string id = ScreenNames.Stem(Model.TableName) + "-" + Ident(c.Name).ToLowerInvariant();
-            string label = c.SqlType == SqlDbType.Bit ? Label(c.Name) + "?" : Label(c.Name);
+            string label = c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name);
             string bind = $"row.{c.CSharpName()}";
             string required = c.IsNullable ? "" : " required";
             string input;
@@ -183,7 +183,7 @@
                 string choices = string.Join("", c.Choices!.Select(choice => $"<option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>"));
                 input = $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\"{required}><option value=\"\"></option>{choices}</InputSelect>";
             }
-            else if (c.SqlType == SqlDbType.Bit)
+            else if (c.IsBooleanColumn)
             {
                 input = c.IsNullable
                     ? $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\"><option value=\"\"></option><option value=\"true\">Yes</option><option value=\"false\">No</option></InputSelect>"
@@ -292,7 +292,7 @@
         }
         L();
         var adds = Model.Columns.Where(c => !c.IsPrimaryKey && !c.IsNullable && !c.IsComputed && !c.IsIdentity)
-            .Select(c => c.SqlType == SqlDbType.Bit && c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1" ? $"{c.CSharpName()} = true"
+            .Select(c => c.IsBooleanColumn && c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1" ? $"{c.CSharpName()} = true"
                 : IsDate(c) ? $"{c.CSharpName()} = DateTime.Today" : null)
             .Where(s => s is not null).ToList();
         L(adds.Count == 0 ? "    private void Add() => Edit(new §T(), true);" : $"    private void Add() => Edit(new §T {{ {string.Join(", ", adds)} }}, true);");

@@ -40,14 +40,14 @@
     // ==========================================================================================
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
-    bool supported = keyColumn is not null && keyColumn.SqlType == SqlDbType.Int
+    bool supported = keyColumn is not null && keyColumn.IsInt32Column
                      && !NoRepository(Model.TableName, Model.LookupShape);
     if (NoRepository(Model.TableName, Model.LookupShape))
     {
         Error($"API_Crud writes no API for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noRepositoryTables (an enum, a *Type lookup table, or a table with no entity class), so it has no repository for the handlers to use.");
     }
     else if (Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name")
-             && Model.Columns.Any(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive"))
+             && Model.Columns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive"))
     {
         supported = false;
         Error($"API_Crud is for plain tables. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its API needs duplicate-name checks and trimming; write that API by hand.");
