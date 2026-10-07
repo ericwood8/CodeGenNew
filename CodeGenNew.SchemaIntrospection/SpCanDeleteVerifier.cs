@@ -3,11 +3,7 @@ using Microsoft.Data.SqlClient;
 
 namespace CodeGenNew.SchemaIntrospection;
 
-public enum SpCanDeleteStatus
-{
-    Verified,
-    NotFoundOrWrongSignature
-}
+public enum SpCanDeleteStatus { Verified, NotFoundOrWrongSignature }
 
 /// <summary>
 /// Verifies, once per (server, database) rather than on every connection, whether spCanDelete exists

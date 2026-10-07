@@ -2,13 +2,7 @@ using System.Data;
 
 namespace CodeGenNew.Core;
 
-public enum SqlDialect
-{
-    SqlServer,
-    PostgreSql,
-    MySql,
-    Sqlite
-}
+public enum SqlDialect { SqlServer, PostgreSql, MySql, Sqlite }
 
 /// <summary> Everything a template needs to know about one selected table, built fresh by CodeGenNew.SchemaIntrospection each time a table is selected. </summary>
 public class TableModel

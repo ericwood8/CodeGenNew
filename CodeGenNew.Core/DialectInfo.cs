@@ -1,12 +1,7 @@
 namespace CodeGenNew.Core;
 
 /// <summary> The units a date can be grouped into, for a trend over time. </summary>
-public enum DateBucket
-{
-    Day,
-    Month,
-    Year
-}
+public enum DateBucket { Day, Month, Year }
 
 /// <summary> What differs between the databases when a template writes SQL text itself (a repository that carries its own statements, a query for a dashboard) and not
 /// through the provider's own routines. Every member answers one question, so a template stays free of per-database branches. </summary>

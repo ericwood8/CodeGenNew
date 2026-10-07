@@ -3,13 +3,7 @@ using System.Data;
 namespace CodeGenNew.Core;
 
 /// <summary> A text column whose name says what it holds, so its value can be checked for that shape. </summary>
-public enum TextShape
-{
-    None,
-    Email,
-    Phone,
-    Url
-}
+public enum TextShape { None, Email, Phone, Url }
 
 /// <summary> What the schema says a column's value must be: the one fact list behind the validators of every language (FluentValidation, zod, Angular). </summary>
 public sealed record ColumnRule
