@@ -63,6 +63,21 @@ public abstract class SchemaProviderBase : ISchemaProvider
         return columns.Where(c => c.IsPrimaryKey || !Listed(c)).ToList();
     }
 
+    private SpecialLogicRuleSet? _rules;
+    private DateTime _rulesStamp;
+
+    /// <summary> The special-logic rules, read again only when the config file changed since the last read. </summary>
+    private SpecialLogicRuleSet LoadRules()
+    {
+        var stamp = File.Exists(_specialLogicColumnsConfigPath) ? File.GetLastWriteTimeUtc(_specialLogicColumnsConfigPath) : DateTime.MinValue;
+        if (_rules is null || stamp != _rulesStamp)
+        {
+            _rules = new SpecialLogicRuleSet(SpecialLogicColumnsConfig.Load(_specialLogicColumnsConfigPath));
+            _rulesStamp = stamp;
+        }
+        return _rules;
+    }
+
     protected string Named(string databaseName) => NameConverter.Apply(_naming, databaseName, _acronyms);
     private static string? WhenDifferent(string databaseName, string named) => databaseName == named ? null : databaseName;
 
@@ -123,7 +138,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
         var foreignKeys = await ReadForeignKeysAsync(connection, schemaName, tableName, cancellationToken);
         var childForeignKeys = await ReadChildForeignKeysAsync(connection, schemaName, tableName, cancellationToken);
 
-        var rules = SpecialLogicColumnsConfig.Load(_specialLogicColumnsConfigPath);
+        var rules = LoadRules();
         if (includeReferencedDisplayColumns)
         {
             if (childForeignKeys.Count > 0)
@@ -190,9 +205,9 @@ public abstract class SchemaProviderBase : ISchemaProvider
         };
     }
 
-    private static int? RankInCategory(List<SpecialLogicRule> rules, string category, string columnName)
+    private static int? RankInCategory(SpecialLogicRuleSet rules, string category, string columnName)
     {
-        var rule = rules.FirstOrDefault(r => r.Category.EqualsIgnoreCase(category) && !r.IsPairRule);
+        var rule = rules.PerColumn(category);
         return rule?.MatchRank(columnName);
     }
 
@@ -207,7 +222,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
     /// <summary> For each foreign key, reads the referenced table's columns (one catalog query per distinct table) and
     /// records which of them are its display columns. </summary>
     private async Task<List<ForeignKeyModel>> AttachReferencedDisplayColumnsAsync(
-        DbConnection connection, List<ForeignKeyModel> foreignKeys, List<SpecialLogicRule> rules, bool includeDisplayColumns, CancellationToken cancellationToken)
+        DbConnection connection, List<ForeignKeyModel> foreignKeys, SpecialLogicRuleSet rules, bool includeDisplayColumns, CancellationToken cancellationToken)
     {
         var displayColumnsByTable = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         var displayDbColumnsByTable = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
@@ -260,7 +275,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
     /// AttachReferencedDisplayColumnsAsync already uses for the primary table's own drop-downs, reused per child
     /// table instead of per referenced table. One extra catalog round-trip per distinct child table. </summary>
     private async Task<List<ChildForeignKeyModel>> AttachChildTableOwnKeysAsync(
-        DbConnection connection, List<ChildForeignKeyModel> childForeignKeys, List<SpecialLogicRule> rules, CancellationToken cancellationToken)
+        DbConnection connection, List<ChildForeignKeyModel> childForeignKeys, SpecialLogicRuleSet rules, CancellationToken cancellationToken)
     {
         var result = new List<ChildForeignKeyModel>();
         foreach (var child in childForeignKeys)
@@ -291,16 +306,16 @@ public abstract class SchemaProviderBase : ISchemaProvider
         return result;
     }
 
-    private static bool MatchesCategory(List<SpecialLogicRule> rules, string category, string columnName)
+    private static bool MatchesCategory(SpecialLogicRuleSet rules, string category, string columnName)
     {
-        var rule = rules.FirstOrDefault(r => r.Category.EqualsIgnoreCase(category) && !r.IsPairRule);
+        var rule = rules.PerColumn(category);
         return rule is not null && rule.MatchesColumnRule(columnName);
     }
 
     private static (bool, ColumnModel?, ColumnModel?) EvaluatePair(
-        List<SpecialLogicRule> rules, string category, List<string> columnNames, List<ColumnModel> columns)
+        SpecialLogicRuleSet rules, string category, List<string> columnNames, List<ColumnModel> columns)
     {
-        var rule = rules.FirstOrDefault(r => r.Category.EqualsIgnoreCase(category) && r.IsPairRule);
+        var rule = rules.Pair(category);
         if (rule is null)
             return (false, null, null);
 
@@ -352,7 +367,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
         return range;
     }
 
-    private ColumnModel BuildColumnModel(RawColumn raw, List<SpecialLogicRule> rules)
+    private ColumnModel BuildColumnModel(RawColumn raw, SpecialLogicRuleSet rules)
     {
         var sqlType = SqlTypeClassifier.MapSqlTypeName(raw.SqlTypeName);
         bool isInteger = SqlTypeClassifier.IsIntegerColumn(sqlType);

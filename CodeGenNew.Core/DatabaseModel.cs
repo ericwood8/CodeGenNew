@@ -10,13 +10,27 @@ public class DatabaseModel
     public required List<TableModel> Tables { get; init; }
 
     /// <summary> The tables that get an entity class, a repository and an API: a table with a single-column primary key. </summary>
-    public List<TableModel> EntityTables => Tables.Where(t => t.PrimaryKeyColumns.Count == 1).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    public List<TableModel> EntityTables => _entityTables ??= Tables.Where(t => t.PrimaryKeyColumns.Count == 1).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    private List<TableModel>? _entityTables;
+    private Dictionary<string, TableModel>? _entityTablesByName;
 
     /// <summary> The tables with a composite primary key (a junction table): CS_Entity writes an entity for them and the context names the key in OnModelCreating, but they get no repository or API. </summary>
-    public List<TableModel> CompositeKeyTables => Tables.Where(t => t.PrimaryKeyColumns.Count > 1).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    public List<TableModel> CompositeKeyTables => _compositeKeyTables ??= Tables.Where(t => t.PrimaryKeyColumns.Count > 1).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    private List<TableModel>? _compositeKeyTables;
 
     /// <summary> Every table the context has a DbSet for: <see cref="EntityTables"/> and <see cref="CompositeKeyTables"/>, by name. </summary>
-    public List<TableModel> ContextTables => EntityTables.Concat(CompositeKeyTables).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    public List<TableModel> ContextTables => _contextTables ??= EntityTables.Concat(CompositeKeyTables).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    private List<TableModel>? _contextTables;
+
+    private Dictionary<string, TableModel> EntityTablesByName => _entityTablesByName ??= BuildByName(EntityTables);
+
+    private static Dictionary<string, TableModel> BuildByName(List<TableModel> tables)
+    {
+        var byName = new Dictionary<string, TableModel>(StringComparer.OrdinalIgnoreCase);
+        foreach (var table in tables)
+            byName.TryAdd(table.TableName, table);
+        return byName;
+    }
 
     /// <summary> The tables API_Crud writes an API for: a single int key, no name/active shape, and not an enum or other table the project
     /// says has no repository. API_Search is registered for the same tables. </summary>
@@ -34,12 +48,12 @@ public class DatabaseModel
             return SearchApiTables(project).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
 
         return project.Screens
-            .Select(name => EntityTables.FirstOrDefault(t => t.TableName.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            .Select(name => EntityTablesByName.GetValueOrDefault(name))
             .OfType<TableModel>().ToList();
     }
 
     public List<string> UnknownScreens(ProjectSettings project) => project.Screens
-        .Where(name => !EntityTables.Any(t => t.TableName.Equals(name, StringComparison.OrdinalIgnoreCase))).ToList();
+        .Where(name => !EntityTablesByName.ContainsKey(name)).ToList();
 
     /// <summary> Whether the table's screen is the master-detail kind (its add/edit dialog also shows the child tables): the project's <c>DetailMasterTables</c>
     /// when it lists any, else every table that has at least one child table. </summary>
@@ -53,11 +67,14 @@ public class DatabaseModel
             : hasChildTables;
 
     /// <summary> Child tables a master-detail screen in <paramref name="screens"/> links to, but that have no screen themselves (the link would open nothing). </summary>
-    public static List<string> ChildrenWithoutScreen(IReadOnlyList<TableModel> screens, ProjectSettings project) => screens
-        .Where(t => IsDetailMaster(t, project))
-        .SelectMany(t => t.ChildForeignKeys.Select(c => $"{c.ReferencingTable} (a child of {t.TableName})"))
-        .Where(text => !screens.Any(s => text.StartsWith(s.TableName + " ", StringComparison.Ordinal)))
-        .Distinct().ToList();
+    public static List<string> ChildrenWithoutScreen(IReadOnlyList<TableModel> screens, ProjectSettings project)
+    {
+        var screenNames = screens.Select(s => s.TableName).ToHashSet(StringComparer.Ordinal);
+        return screens
+            .Where(t => IsDetailMaster(t, project))
+            .SelectMany(t => t.ChildForeignKeys.Where(c => !screenNames.Contains(c.ReferencingTable)).Select(c => $"{c.ReferencingTable} (a child of {t.TableName})"))
+            .Distinct().ToList();
+    }
 
     /// <summary> The enum / lookup tables the project (or the schema's shape) says have no API of their own. </summary>
     public List<TableModel> EnumTables(ProjectSettings project) => EntityTables

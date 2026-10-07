@@ -19,16 +19,16 @@ public static class ProjectPlan
     /// <summary> The tables a <see cref="PlanTableSet"/> stands for in <paramref name="database"/>, by name. </summary>
     public static List<TableModel> Tables(PlanTableSet set, DatabaseModel database, ProjectSettings project)
     {
-        var screens = database.ScreenTables(project);
+        List<TableModel> Screens() => database.ScreenTables(project);
         return set switch
         {
             PlanTableSet.Entity => database.EntityTables.Where(t => project.NoRepository(t.TableName, t.LookupShape) != true).ToList(),
             PlanTableSet.Context => database.EntityTables.Where(t => project.NoRepository(t.TableName, t.LookupShape) != true).Concat(database.CompositeKeyTables).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),
             PlanTableSet.Api => database.ApiTables(project),
             PlanTableSet.Search => database.SearchApiTables(project),
-            PlanTableSet.Screen => screens,
-            PlanTableSet.ScreenDetailMaster => screens.Where(t => DatabaseModel.IsDetailMaster(t, project)).ToList(),
-            PlanTableSet.ScreenForm => screens.Where(t => !DatabaseModel.IsDetailMaster(t, project)).ToList(),
+            PlanTableSet.Screen => Screens(),
+            PlanTableSet.ScreenDetailMaster => Screens().Where(t => DatabaseModel.IsDetailMaster(t, project)).ToList(),
+            PlanTableSet.ScreenForm => Screens().Where(t => !DatabaseModel.IsDetailMaster(t, project)).ToList(),
             PlanTableSet.Junction => database.Tables.Where(t => t.IsJunctionTable).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),
             PlanTableSet.Enum => database.EnumTables(project),
             PlanTableSet.Audit => database.Tables.Where(t => t.IsAuditTable).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),

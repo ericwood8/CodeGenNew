@@ -83,9 +83,17 @@ public static class ProjectGenerator
         bool partial = options.OnlyTemplates is { Count: > 0 } || options.Tables is { Count: > 0 };
         if (options.Tables is { Count: > 0 } wantedTables)
         {
-            foreach (string name in wantedTables.Where(n => !database.Tables.Any(t => t.TableName.Equals(n, StringComparison.OrdinalIgnoreCase) || t.DbTableName.Equals(n, StringComparison.OrdinalIgnoreCase))))
+            var knownNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var t in database.Tables)
+            {
+                knownNames.Add(t.TableName);
+                knownNames.Add(t.DbTableName);
+            }
+            foreach (string name in wantedTables.Where(n => !knownNames.Contains(n)))
                 report.Warnings.Add($"--table {name}: no such table in [{options.Schema}].");
-            bool Wanted(string table) => database.Tables.Any(t => t.TableName == table && wantedTables.Any(n => n.Equals(t.TableName, StringComparison.OrdinalIgnoreCase) || n.Equals(t.DbTableName, StringComparison.OrdinalIgnoreCase)));
+            var wantedSet = wantedTables.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var wantedGenerated = database.Tables.Where(t => wantedSet.Contains(t.TableName) || wantedSet.Contains(t.DbTableName)).Select(t => t.TableName).ToHashSet(StringComparer.Ordinal);
+            bool Wanted(string table) => wantedGenerated.Contains(table);
             steps = steps.Where(s => !s.IsDatabaseLevel).Select(s => s with { TableNames = s.TableNames.Where(Wanted).ToList() }).Where(s => s.TableNames.Count > 0).ToList();
         }
         if (options.OnlyTemplates is { Count: > 0 } only)
@@ -95,6 +103,9 @@ public static class ProjectGenerator
         }
 
         // a table's model is built per depth a template asks for (its rows, its parents' display columns); most templates share the one in the database model
+        var tablesByName = new Dictionary<string, TableModel>(StringComparer.Ordinal);
+        foreach (var t in database.Tables)
+            tablesByName.TryAdd(t.TableName, t);
         var models = new Dictionary<(string Table, bool Rows, bool Display), TableModel>();
         async Task<TableModel> ModelOf(string tableName, bool rows, bool display)
         {
@@ -102,8 +113,8 @@ public static class ProjectGenerator
             if (models.TryGetValue(key, out var cached))
                 return cached;
             var model = !rows && !display
-                ? database.Tables.First(t => t.TableName == tableName)
-                : await provider.BuildTableModelAsync(options.Schema, database.Tables.First(t => t.TableName == tableName).DbTableName, rows, display, cancellationToken);
+                ? tablesByName[tableName]
+                : await provider.BuildTableModelAsync(options.Schema, tablesByName[tableName].DbTableName, rows, display, cancellationToken);
             return models[key] = model;
         }
 

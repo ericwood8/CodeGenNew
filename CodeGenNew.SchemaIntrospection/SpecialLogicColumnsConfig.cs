@@ -55,6 +55,22 @@ public class SpecialLogicRule
     }
 }
 
+/// <summary> The rules of one config file looked up by category: the first per-column rule and the first pair rule of each, found once instead of by a scan of every rule for every column. </summary>
+public sealed class SpecialLogicRuleSet
+{
+    private readonly Dictionary<string, SpecialLogicRule> _perColumn = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, SpecialLogicRule> _pair = new(StringComparer.OrdinalIgnoreCase);
+
+    public SpecialLogicRuleSet(IEnumerable<SpecialLogicRule> rules)
+    {
+        foreach (var rule in rules)
+            (rule.IsPairRule ? _pair : _perColumn).TryAdd(rule.Category, rule);
+    }
+
+    public SpecialLogicRule? PerColumn(string category) => _perColumn.GetValueOrDefault(category);
+    public SpecialLogicRule? Pair(string category) => _pair.GetValueOrDefault(category);
+}
+
 /// <summary> Parses SpecialLogicColumns.config and matches column names against a pattern. </summary>
 public static class SpecialLogicColumnsConfig
 {

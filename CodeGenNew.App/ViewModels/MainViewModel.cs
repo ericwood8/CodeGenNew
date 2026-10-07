@@ -26,6 +26,9 @@ public partial class MainViewModel : ObservableObject
     public IconProvider Icons { get; }
     public ObservableCollection<TableNodeViewModel> Tables { get; } = [];
 
+    /// <summary> The schema most of the connected database's tables are in (the first one when tied), worked out once per connection; null until tables are loaded. </summary>
+    public string? MainSchema { get; private set; }
+
     [ObservableProperty]
     private string _databaseLabel = "(not connected)";
 
@@ -76,6 +79,8 @@ public partial class MainViewModel : ObservableObject
             Tables.Clear();
             foreach (var summary in summaries)
                 Tables.Add(new TableNodeViewModel(summary, Icons, LoadColumnSummariesAsync));
+
+            MainSchema = Tables.Count == 0 ? null : Tables.GroupBy(t => t.SchemaName).OrderByDescending(g => g.Count()).First().Key;
 
             StatusMessage = $"Loaded {Tables.Count} table(s).";
 
@@ -143,11 +148,10 @@ public partial class MainViewModel : ObservableObject
     /// writes its file under the output folder. Returns the first file written, or null (StatusMessage says why). </summary>
     public async Task<string?> RunDatabaseTemplateAsync(TemplateInfo template)
     {
-        if (_connectionRequest is null || Tables.Count == 0)
+        if (_connectionRequest is null || MainSchema is not { } schema)
             return null;
 
         IsBusy = true;
-        string schema = Tables.GroupBy(t => t.SchemaName).OrderByDescending(g => g.Count()).First().Key;
         StatusMessage = $"Generating '{template.Name}' for every table of [{schema}]...";
         try
         {
@@ -182,9 +186,8 @@ public partial class MainViewModel : ObservableObject
     /// <summary> The view model of the Generate All dialog for the connected database (its main schema: the one most tables are in), or null when nothing is connected. </summary>
     public GenerateAllDialogViewModel? CreateGenerateAllViewModel(Microsoft.UI.Dispatching.DispatcherQueue dispatcher)
     {
-        if (_connectionRequest is not { } request || Tables.Count == 0)
+        if (_connectionRequest is not { } request || MainSchema is not { } schema)
             return null;
-        string schema = Tables.GroupBy(t => t.SchemaName).OrderByDescending(g => g.Count()).First().Key;
         return new GenerateAllDialogViewModel(_settings.ProjectsDirectory, _settings.TemplatesDirectory, _settings.OutputDirectory, _settings.Current.LastProject,
             project => SchemaProviderFactory.Create(request, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns),
             schema, request.DatabaseName, dispatcher);
