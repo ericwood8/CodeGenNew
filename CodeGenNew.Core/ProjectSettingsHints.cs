@@ -7,7 +7,7 @@ public static class ProjectSettingsHints
     /// <summary> The settings that are true or false: the settings screen shows a check box for each. </summary>
     public static IReadOnlySet<string> BooleanKeys { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTests", "Dashboard", "DashboardStrip"
+        "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "Dashboard", "DashboardStrip"
     };
 
     /// <summary> The caption of a setting with the words apart: "DashboardStrip" -> "Dashboard Strip". </summary>
@@ -45,6 +45,7 @@ public static class ProjectSettingsHints
         ["ApiDocs"] = "The plan also writes openapi.yaml (API_OpenApi) and the API serves it with a Swagger UI page at /docs.",
         ["ApiFakers"] = "The plan also writes a Bogus fake-data generator per table (CS_Faker) and the generated project references Bogus.",
         ["ApiProduction"] = "The API project also gets a production profile (Problem Details, health checks at /health/live and /health/ready, rate limiting, response compression, security headers) and a Dockerfile. Nothing beyond ASP.NET Core is referenced.",
+        ["ApiTelemetry"] = "The API project also gets OpenTelemetry traces, metrics and logs (Telemetry.cs) and references the OpenTelemetry packages. Nothing is sent until OTEL_EXPORTER_OTLP_ENDPOINT names a collector (environment variable or appsettings.json).",
         ["ApiTests"] = "The plan also writes an integration test class per table (API_Test) and a test project (MSTest and Microsoft.AspNetCore.Mvc.Testing) beside the API. SQLite tests run over a copy of the database file; other databases need <ProjectName>_TEST_CONNECTION (a scratch copy) or the tests report themselves as inconclusive.",
         ["OutputApiTests"] = "folder of the API test project under the output folder; blank = <ProjectName>.Api.Tests",
         ["ApiHttp"] = "The plan also writes a .http request file per table (API_Http).",

@@ -247,6 +247,27 @@ public class ApiExtrasTemplateTests
     }
 
     [TestMethod]
+    public async Task The_telemetry_switch_adds_the_packages_the_registration_and_the_class_only_when_asked()
+    {
+        var plain = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project());
+        var telemetry = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("ApiTelemetry", "true")));
+        Assert.IsTrue(plain.Success && telemetry.Success, string.Join(" | ", plain.Errors.Concat(telemetry.Errors)));
+        string without = plain.GeneratedText!.Replace("\r\n", "\n"), with = telemetry.GeneratedText!.Replace("\r\n", "\n");
+
+        foreach (string part in new[] { "OpenTelemetry", "AddTelemetry", "Telemetry.cs" })
+            Expect.DoesNotContain(without, part);
+
+        Expect.Contains(with, "<PackageReference Include=\"OpenTelemetry.Extensions.Hosting\" Version=\"1.19.1\" />");
+        Expect.Contains(with, "<PackageReference Include=\"OpenTelemetry.Exporter.OpenTelemetryProtocol\" Version=\"1.19.1\" />");
+        Expect.Contains(with, "builder.AddTelemetry();\n\nvar app = builder.Build();");
+        Expect.Contains(with, "@@@FILE Telemetry.cs@@@");
+        Expect.Contains(with, "resource.AddService(\"Acme.Api\")");
+        Expect.Contains(with, "builder.Configuration[\"OTEL_EXPORTER_OTLP_ENDPOINT\"]");
+        Expect.Contains(with, "telemetry.UseOtlpExporter();");
+        Assert.IsFalse(Project(("ApiTelemetry", "true")).ImpliedPlanTemplates.Any(), "no template is implied: it is part of the essentials");
+    }
+
+    [TestMethod]
     public async Task The_program_files_add_the_package_the_filter_the_registration_and_the_swagger_page_when_asked()
     {
         var plain = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project());

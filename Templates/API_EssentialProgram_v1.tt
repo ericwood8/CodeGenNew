@@ -9,7 +9,8 @@
     // The web API project: the project file with the EF Core provider of the project's DatabaseProvider, Program.cs (the generated context and registration, JSON options that do not follow
     // entity loops, CORS for the front ends the project's Stacks name), appsettings.json (the connection string without a password, the port from ApiPort) and the global usings the generated
     // classes assume. ApiTests=true makes Program public for the test project. ApiProduction=true adds ProductionProfile.cs, a Dockerfile and a .dockerignore, using only what ships in ASP.NET Core (no package is added).
-    // Settings: DatabaseProvider, DatabaseServer, DatabaseName, DatabaseUser, ApiPort, ApiProduction, Stacks and the namespaces.
+    // ApiTelemetry=true adds Telemetry.cs (OpenTelemetry traces, metrics and logs) and the OpenTelemetry packages.
+    // Settings: DatabaseProvider, DatabaseServer, DatabaseName, DatabaseUser, ApiPort, ApiProduction, ApiTelemetry, Stacks and the namespaces.
     // ==========================================================================================
     string projectName = Project.ProjectName ?? "MyApp";
     string apiNamespace = Project.ApiNamespace ?? projectName + ".Api.Apis";
@@ -73,6 +74,16 @@
     {
 #>
     <PackageReference Include="Bogus" Version="35.6.3" />
+<#
+    }
+    if (Project.ApiTelemetry)
+    {
+#>
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.19.1" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.19.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.19.0" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="1.19.0" />
 <#
     }
 #>
@@ -145,6 +156,14 @@ builder.AddProductionProfile();
 #>
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
     policy.WithOrigins(<#= origins #>).AllowAnyHeader().AllowAnyMethod()));
+
+<#
+    }
+    if (Project.ApiTelemetry)
+    {
+#>
+// Traces, metrics and logs; exported over OTLP when OTEL_EXPORTER_OTLP_ENDPOINT names a collector (see Telemetry.cs).
+builder.AddTelemetry();
 
 <#
     }
@@ -302,6 +321,46 @@ public class ValidationFilter<T> : IEndpointFilter where T : class
     }
 #>
 <#
+    if (Project.ApiTelemetry)
+    {
+#>
+@@@FILE Telemetry.cs@@@
+using OpenTelemetry;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+
+namespace <#= apiNamespace #>;
+
+/// <summary> OpenTelemetry traces, metrics and logs for the API: ASP.NET Core requests, outgoing HTTP calls and the .NET runtime, with the health endpoints left out of the traces. They are exported over OTLP only when OTEL_EXPORTER_OTLP_ENDPOINT names a collector (an environment variable or appsettings.json); without one nothing is sent. </summary>
+public static class Telemetry
+{
+    public static WebApplicationBuilder AddTelemetry(this WebApplicationBuilder builder)
+    {
+        builder.Logging.AddOpenTelemetry(options =>
+        {
+            options.IncludeScopes = true;
+            options.IncludeFormattedMessage = true;
+        });
+
+        var telemetry = builder.Services.AddOpenTelemetry()
+            .ConfigureResource(resource => resource.AddService("<#= projectName #>.Api"))
+            .WithTracing(tracing => tracing
+                .AddAspNetCoreInstrumentation(options => options.Filter = context => !context.Request.Path.StartsWithSegments("/health"))
+                .AddHttpClientInstrumentation())
+            .WithMetrics(metrics => metrics
+                .AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation()
+                .AddRuntimeInstrumentation());
+
+        if (!string.IsNullOrEmpty(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
+            telemetry.UseOtlpExporter();
+
+        return builder;
+    }
+}
+<#
+    }
     if (Project.ApiProduction)
     {
 #>

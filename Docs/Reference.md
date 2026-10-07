@@ -185,6 +185,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `ApiFakers` | true: the plan also writes a Bogus fake-data generator per table (CS_Faker) and the generated project references Bogus |
 | `ProjectDocs` | true: the plan also writes a data dictionary page per table and the ER diagram (MD_DataDictionary, MD_Erd) |
 | `ApiProduction` | true: the API project also gets a production profile (ProductionProfile.cs: Problem Details, health checks, rate limiting, response compression, security headers) and a Dockerfile; no package is added |
+| `ApiTelemetry` | true: the API project also gets OpenTelemetry traces, metrics and logs (Telemetry.cs) and references the OpenTelemetry packages; they are exported over OTLP only when `OTEL_EXPORTER_OTLP_ENDPOINT` names a collector |
 | `ApiTests` | true: the plan also writes an integration test class per table (API_Test) and the test project (Tests essentials group) beside the API; folder `OutputApiTests`, default `<ProjectName>.Api.Tests` |
 | `ApiValidation` | true: the plan also writes a FluentValidation validator per table (CS_Validator) and the create and update endpoints run them (400 with the messages) |
 | `ApiCsv` | true: the plan also writes CSV export and import endpoints for every table (API_Csv) and Program.cs maps them: GET /api/&lt;table&gt;/export.csv and POST /api/&lt;table&gt;/import. Regenerate after ticking |
