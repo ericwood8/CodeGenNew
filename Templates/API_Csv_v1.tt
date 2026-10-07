@@ -35,7 +35,7 @@
         foreach (var c in table.Columns.OrderBy(c => c.OrdinalPosition).Where(c => c.CSharpBase() is not ("byte[]" or "object")))
         {
             bool import = !c.IsIdentity && !c.IsComputed && c.SqlType != SqlDbType.Timestamp;
-            int length = c.CSharpBase() == "string" ? c.CharacterLength() : 0;
+            int length = c.CSharpBase() == "string" ? c.CharacterLength : 0;
             parts.Add($"new(\"{c.Name}\", {(import ? "true" : "false")}, {(import && !c.IsNullable ? "true" : "false")}, {(c.IsNullable ? "true" : "false")}, {length})");
         }
         return string.Join(", ", parts);

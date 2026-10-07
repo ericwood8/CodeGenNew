@@ -55,7 +55,7 @@
                 return $"ApiFixture.NewKey({Math.Max(1, high / 2).ToString(CultureInfo.InvariantCulture)}, {high.ToString(CultureInfo.InvariantCulture)})";
             }
             if (IsFreeText(c))
-                return $"ApiFixture.Unique({ApiSampleValues.Json(ApiSampleValues.Text(c))}, {c.CharacterLength()})";
+                return $"ApiFixture.Unique({ApiSampleValues.Json(ApiSampleValues.Text(c))}, {c.CharacterLength})";
             string parentRoute = ForeignKeyParentRoute(c, out string parentKey);
             if (parentRoute.Length > 0)
                 return $"await ApiFixture.ExistingKeyAsync({ApiSampleValues.Json(parentRoute)}, {ApiSampleValues.Json(parentKey)}, {sample})";
@@ -65,14 +65,14 @@
         // the one column the update step changes: a free text column, else a bit column, else a whole number that has room to go up by one
         bool HasRoomToGrow(ColumnModel c) => c.IsIntegerColumn && !c.IsPrimaryKey && ForeignKeyParentRoute(c, out string _).Length == 0
             && (Project.RangeFor(c) is not { } range || range.Max > long.Parse(ApiSampleValues.Value(c, Project), CultureInfo.InvariantCulture));
-        var changed = bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength() > 0)
+        var changed = bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0)
             ?? bodyColumns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsPrimaryKey)
             ?? bodyColumns.FirstOrDefault(HasRoomToGrow);
         string changedJson = changed is null ? "" : JsonNames.Camel(changed.Name);
         string changedType = changed is null ? "" : changed.IsStringColumn ? "string" : changed.IsBooleanColumn ? "bool" : "long";
 
         // limits the validators enforce, for the 400 tests
-        var longText = Project.ApiValidation ? bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength() > 0) : null;
+        var longText = Project.ApiValidation ? bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0) : null;
         ColumnModel? ranged = null;
         long over = 0;
         if (Project.ApiValidation)
@@ -130,7 +130,7 @@ public class <#= singular #>ApiTests
             if (changedType == "string")
             {
 #>
-            string after = ApiFixture.Unique("Changed", <#= changed.CharacterLength() #>);
+            string after = ApiFixture.Unique("Changed", <#= changed.CharacterLength #>);
 <#
             }
             else
@@ -190,7 +190,7 @@ public class <#= singular #>ApiTests
     {
         ApiFixture.RequireDatabase();
         var body = await NewBodyAsync();
-        body[<#= ApiSampleValues.Json(JsonNames.Camel(longText.Name)) #>] = new string('x', <#= longText.CharacterLength() + 1 #>);
+        body[<#= ApiSampleValues.Json(JsonNames.Camel(longText.Name)) #>] = new string('x', <#= longText.CharacterLength + 1 #>);
         using var response = await ApiFixture.Client.PostAsJsonAsync(Route, body);
         Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
     }

@@ -50,7 +50,7 @@ public static class CloneCall
 
     // The column's length in characters (a Unicode column reports bytes); 0 when it has no limit.
     private static int Characters(ColumnModel c) =>
-        c.MaxLength is > 0 ? (c.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? c.MaxLength.Value / 2 : c.MaxLength.Value) : 0;
+        Math.Max(0, c.CharacterLength);
 
     private static string CreateUserValue(ColumnModel c) => c.IsStringColumn ? "createUser ?? \"\"" : "DBNull.Value";
 

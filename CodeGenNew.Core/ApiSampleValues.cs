@@ -26,26 +26,29 @@ public static class ApiSampleValues
         if (c.IsStringColumn)
         {
             string text = Text(c);
-            int chars = c.CharacterLength();
+            int chars = c.CharacterLength;
             if (chars > 0 && text.Length > chars)
                 text = text[..chars];
             return Json(text);
         }
         if (c.IsIntegerColumn)
             return project.RangeFor(c) is { } range ? Math.Max(range.Min, Math.Min(1, range.Max)).ToString(CultureInfo.InvariantCulture) : "1";
+        if (c.IsNumericColumn || c.IsMoneyColumn)
+        {
+            double value = 1;
+            if (c.Check is { } check)
+            {
+                if (check.Min is { } min && value <= min)
+                    value = check.MinStrict ? min + 1 : min;
+                if (check.Max is { } max && value > max)
+                    value = max;
+            }
+            return value.ToString("R", CultureInfo.InvariantCulture);
+        }
+        if (c.IsBooleanColumn)
+            return "false";
         switch (c.SqlType)
         {
-            case SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Float or SqlDbType.Real:
-                double value = 1;
-                if (c.Check is { } check)
-                {
-                    if (check.Min is { } min && value <= min)
-                        value = check.MinStrict ? min + 1 : min;
-                    if (check.Max is { } max && value > max)
-                        value = max;
-                }
-                return value.ToString("R", CultureInfo.InvariantCulture);
-            case SqlDbType.Bit: return "false";
             case SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime: return "\"2026-01-15T00:00:00\"";
             case SqlDbType.DateTimeOffset: return "\"2026-01-15T00:00:00+00:00\"";
             case SqlDbType.Time: return "\"08:00:00\"";

@@ -125,9 +125,9 @@ public class ColumnTypesTests
     [TestMethod]
     public void A_unicode_length_is_halved_and_an_unknown_one_is_zero()
     {
-        Assert.AreEqual(50, Of(SqlDbType.NVarChar, characters: 50).CharacterLength());   // the sample stores 100 bytes
-        Assert.AreEqual(50, Of(SqlDbType.VarChar, characters: 50).CharacterLength());
-        Assert.AreEqual(0, Of(SqlDbType.Int).CharacterLength());
+        Assert.AreEqual(50, Of(SqlDbType.NVarChar, characters: 50).CharacterLength);   // the sample stores 100 bytes
+        Assert.AreEqual(50, Of(SqlDbType.VarChar, characters: 50).CharacterLength);
+        Assert.AreEqual(0, Of(SqlDbType.Int).CharacterLength);
     }
 
     [TestMethod]

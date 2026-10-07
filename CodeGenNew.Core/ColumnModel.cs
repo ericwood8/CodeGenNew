@@ -63,6 +63,11 @@ public class ColumnModel
 
     public bool IsGuidColumn => SqlType == System.Data.SqlDbType.UniqueIdentifier;
 
+    /// <summary> A text column's length in characters. The schema reader states the length of a Unicode column (<c>nchar</c>, <c>nvarchar</c>) in bytes, so it is halved; 0 when the length is not known,
+    /// and a negative number for <c>varchar(max)</c> (callers test <c>&gt; 0</c>). </summary>
+    public int CharacterLength =>
+        MaxLength is null ? 0 : SqlType is System.Data.SqlDbType.NChar or System.Data.SqlDbType.NVarChar ? MaxLength.Value / 2 : MaxLength.Value;
+
     /// <summary> A text or ntext column: the large-object text types a table cannot copy, compare or index like an ordinary string. </summary>
     public bool IsLargeTextColumn => SqlType is System.Data.SqlDbType.Text or System.Data.SqlDbType.NText;
 
@@ -97,7 +102,7 @@ public class ColumnModel
         IsStringColumn
         && (SqlType is System.Data.SqlDbType.Text or System.Data.SqlDbType.NText
             || MaxLength is -1
-            || (MaxLength is { } bytes && (SqlType is System.Data.SqlDbType.NChar or System.Data.SqlDbType.NVarChar ? bytes / 2 : bytes) >= 500)
+            || CharacterLength >= 500
             || Array.Exists(LongTextNameEndings, s => Name.EndsWithIgnoreCase(s)));
 
     private static readonly string[] LongTextNameEndings = ["Note", "Notes", "Comment", "Comments", "Remarks", "Memo"];

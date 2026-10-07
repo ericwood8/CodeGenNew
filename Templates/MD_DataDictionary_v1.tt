@@ -33,7 +33,7 @@
         var parts = new List<string>();
         if (c.IsStringColumn)
         {
-            int chars = c.CharacterLength();
+            int chars = c.CharacterLength;
             if (chars > 0)
                 parts.Add("at most " + chars + " characters");
         }

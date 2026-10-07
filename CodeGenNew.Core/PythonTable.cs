@@ -153,7 +153,7 @@ public sealed class PythonTable
             case SqlDbType.UniqueIdentifier:
                 return ("UUID", "Uuid");
             case SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar:
-                int length = column.CharacterLength();
+                int length = column.CharacterLength;
                 return ("str", length > 0 ? $"String({length})" : "Text");
             case SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml:
                 return ("str", "Text");
@@ -193,7 +193,7 @@ public sealed class PythonTable
             else if (overrides.Contains(column))
             {
                 freed.Add(field);
-                int length = column.CharacterLength();
+                int length = column.CharacterLength;
                 value = $"suggest_free(session, {Class}.{field.Name}, source.{field.Name}, {length})";
                 if (column.IsNullable)
                     value = $"None if source.{field.Name} is None else {value}";

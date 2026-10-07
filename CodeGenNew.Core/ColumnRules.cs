@@ -59,7 +59,7 @@ public static class ColumnRules
             rule = new ColumnRule
             {
                 Required = !column.IsNullable,
-                MaxLength = Math.Max(0, column.CharacterLength()),
+                MaxLength = Math.Max(0, column.CharacterLength),
                 Choices = column.HasChoices ? column.Choices : null,
                 Shape = shape
             };

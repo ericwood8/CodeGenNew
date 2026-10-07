@@ -76,7 +76,7 @@
             {
                 if (Model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration is "json" or "jsonb")
                     columnType = c.SqlTypeDeclaration;
-                int chars = c.CharacterLength();
+                int chars = c.CharacterLength;
                 if (chars > 0)
                     chain.Add($".HasMaxLength({chars})");
             }

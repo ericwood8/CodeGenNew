@@ -92,7 +92,7 @@
                         values.Add($"    private static readonly string[] {array} = [{string.Join(", ", c.Choices!.Select(Str))}];");
                         return $"f.PickRandom({array})";
                     }
-                    int chars = c.CharacterLength();
+                    int chars = c.CharacterLength;
                     return Text(c) + (chars > 0 ? $".ClampLength(max: {chars})" : "");
                 case "int" or "short" or "byte" or "long":
                     var (low, high) = IntegerBounds(c);

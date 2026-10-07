@@ -55,7 +55,7 @@
         if (c.IsIdentity)
             settings.Add("AutoIncrement = true");
         if (BaseType(c) == "string" && c.MaxLength is > 0)
-            settings.Add("MaxLength = " + c.CharacterLength());
+            settings.Add("MaxLength = " + c.CharacterLength);
         L("        Columns.Add(new DataColumn(" + Quote(c.DbName) + ", typeof(" + BaseType(c) + ")) { " + string.Join(", ", settings) + " });");
     }
     if (Model.PrimaryKeyColumns.Count > 0)

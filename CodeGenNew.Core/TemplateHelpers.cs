@@ -29,7 +29,7 @@ public static class TemplateHelpers
     /// <summary> A decimal, float or real column that is not money. </summary>
     public static bool IsPlainDecimal(ColumnModel c) => !c.IsCurrencyColumn && c.IsNumericColumn;
 
-    public static int Chars(ColumnModel c) => c.CharacterLength();
+    public static int Chars(ColumnModel c) => c.CharacterLength;
 
     public static bool IsMultiline(ColumnModel c) => IsText(c) && Chars(c) >= 100;
 

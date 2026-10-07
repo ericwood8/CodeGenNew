@@ -60,7 +60,7 @@
 
             if (type == "string" && format is null && c.SqlType != SqlDbType.Time)
             {
-                int chars = c.CharacterLength();
+                int chars = c.CharacterLength;
                 if (chars > 0)
                     L(pad + "maxLength: " + chars);
                 if (c.HasChoices)

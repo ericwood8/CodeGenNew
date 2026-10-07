@@ -124,7 +124,7 @@
         Line(mysql ? "    let query = sqlx::query(CLONE);" : $"    let query = sqlx::query_scalar::<_, {keyType}>(CLONE);");
         foreach (var f in cloneStatement.Overrides)
         {
-            int chars = f.Column.CharacterLength();
+            int chars = f.Column.CharacterLength;
             string name = f.Name.Replace("r#", "");
             string fitted = chars > 3 ? $"{{ let v = value.as_str(); if v.chars().count() > {chars - 3} {{ &v[..v.char_indices().nth({chars - 3}).map_or(v.len(), |(i, _)| i)] }} else {{ v }} }}" : "value.as_str()";
             if (f.IsOption)

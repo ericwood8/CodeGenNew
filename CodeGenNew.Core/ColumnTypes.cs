@@ -100,11 +100,6 @@ public static class ColumnTypes
         SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText or SqlDbType.Xml => ("string", null),
         _ => (null, null)
     };
-
-    /// <summary> A text column's length in characters. The schema reader states the length of a Unicode column (<c>nchar</c>, <c>nvarchar</c>) in bytes, so it is halved; 0 when the length is not known,
-    /// and a negative number for <c>varchar(max)</c> (callers test <c>&gt; 0</c>). </summary>
-    public static int CharacterLength(this ColumnModel column) =>
-        column.MaxLength is null ? 0 : column.SqlType is SqlDbType.NChar or SqlDbType.NVarChar ? column.MaxLength.Value / 2 : column.MaxLength.Value;
 }
 
 /// <summary> Captions made from names. </summary>

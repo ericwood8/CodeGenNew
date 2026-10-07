@@ -75,7 +75,7 @@
         {
             if (!c.IsNullable)
                 Add("String.IsNullOrWhiteSpace {v}", label + " is required.");
-            int chars = c.CharacterLength();
+            int chars = c.CharacterLength;
             if (chars > 0 && !c.IsLongTextColumn)
                 Add($"not (isNull {{v}}) && {{v}}.Length > {chars}", $"{label} must be at most {chars} characters.");
         }

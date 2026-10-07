@@ -26,7 +26,7 @@ public static class CloneEf
 
         foreach (var c in overrides)
         {
-            int chars = c.CharacterLength();
+            int chars = c.CharacterLength;
             string value = $"source.{c.CSharpName()}";
             string fitted = chars > 3 ? $"{value}.Length > {chars - 3} ? {value}[..{chars - 3}] : {value}" : value;
             o.Add($"        string? unique{c.Name} = {value} is null ? null : await SuggestUnique{c.Name}({fitted});");
