@@ -90,7 +90,9 @@ public class ColumnModel
         && (SqlType is System.Data.SqlDbType.Text or System.Data.SqlDbType.NText
             || MaxLength is -1
             || (MaxLength is { } bytes && (SqlType is System.Data.SqlDbType.NChar or System.Data.SqlDbType.NVarChar ? bytes / 2 : bytes) >= 500)
-            || new[] { "Note", "Notes", "Comment", "Comments", "Remarks", "Memo" }.Any(s => Name.EndsWith(s, StringComparison.OrdinalIgnoreCase)));
+            || Array.Exists(LongTextNameEndings, s => Name.EndsWith(s, StringComparison.OrdinalIgnoreCase)));
+
+    private static readonly string[] LongTextNameEndings = ["Note", "Notes", "Comment", "Comments", "Remarks", "Memo"];
 
     /// <summary> Name-pattern match for create/modify/delete/activate/inactivate tracking columns
     /// (e.g. CreateDate, ModifiedBy, InactivatedDate). </summary>

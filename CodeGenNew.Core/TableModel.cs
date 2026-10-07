@@ -66,9 +66,14 @@ public class TableModel
     /// TemplateConfig.RequiresNotNameActiveTable (Docs/Reference.md section 3) for which templates that rules
     /// out and why. Exact-name match, not a SpecialLogicColumns.config pattern rule, matching how the
     /// existing inline checks were always written. </summary>
-    public bool IsNameActiveTable =>
+    public bool IsNameActiveTable => _isNameActiveTable ??=
         Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name") &&
         Columns.Any(c => c.SqlType == SqlDbType.Bit && !c.IsNullable && c.Name == "IsActive");
+
+    private bool? _isNameActiveTable;
+    private bool? _isJunctionTable;
+    private List<ColumnModel>? _junctionCandidateColumns;
+    private List<ForeignKeyModel>? _junctionForeignKeys;
 
     /// <summary> A column that records the row's creation and a column that records a later change (see <see cref="AuditTableShape"/>): the tables SP_AuditTable is offered for. </summary>
     public bool IsAuditTable => AuditTableShape.IsAuditTable(Columns.Select(c => c.Name));
@@ -120,7 +125,7 @@ public class TableModel
     /// surrogate-id key (an identity PK plus two plain FK columns, e.g. dbo.NameBaseGroupXref's ID +
     /// NameBaseID + GroupID -- confirmed against a real database, 2026-09-25; the surrogate-id shape turned
     /// out to be the one a real table actually used, not the composite-key shape originally assumed). </summary>
-    private List<ColumnModel> JunctionCandidateColumns =>
+    private List<ColumnModel> JunctionCandidateColumns => _junctionCandidateColumns ??=
         Columns.Where(c => !c.IsComputed && !c.IsAuditColumn && !(c.IsIdentity && c.IsPrimaryKey)).ToList();
 
     /// <summary> A many-to-many "junction"/"bridge" table: exactly two JunctionCandidateColumns, each
@@ -130,7 +135,7 @@ public class TableModel
     /// describes a table whose key duplicates a parent's own composite key, not a many-to-many association.
     /// Purely structural (no name-pattern guessing), unlike most SpecialLogicColumns.config categories. See
     /// The junction editor screen is the UI pattern this supports. </summary>
-    public bool IsJunctionTable =>
+    public bool IsJunctionTable => _isJunctionTable ??=
         JunctionCandidateColumns.Count == 2 &&
         JunctionCandidateColumns.All(c => ForeignKeys.Any(fk =>
             fk.ReferencingColumns.Count == 1 && fk.ReferencingColumns[0].EqualsIgnoreCase(c.Name)));
@@ -139,7 +144,7 @@ public class TableModel
     /// JunctionCandidateColumns order) -- use this instead of ForeignKeys directly, since a junction table
     /// could rarely have another FK that isn't part of the association itself (e.g. a non-audit-named
     /// CreatedByUserId). Empty when IsJunctionTable is false. </summary>
-    public List<ForeignKeyModel> JunctionForeignKeys =>
+    public List<ForeignKeyModel> JunctionForeignKeys => _junctionForeignKeys ??=
         !IsJunctionTable ? [] : JunctionCandidateColumns
             .Select(c => ForeignKeys.First(fk => fk.ReferencingColumns.Count == 1 && fk.ReferencingColumns[0].EqualsIgnoreCase(c.Name)))
             .ToList();
