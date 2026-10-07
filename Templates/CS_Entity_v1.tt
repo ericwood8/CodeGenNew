@@ -165,7 +165,7 @@
                 if (Model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration is "json" or "jsonb")
                     columnType = c.SqlTypeDeclaration;                if (chars > 0) B($"    [StringLength({chars})]");
                 if (multiline) B("    [DataType(DataType.MultilineText)]");
-                else if (c.Name.Contains("Phone", StringComparison.OrdinalIgnoreCase)) B("    [DataType(DataType.PhoneNumber)]");
+                else if (c.Name.ContainsIgnoreCase("Phone")) B("    [DataType(DataType.PhoneNumber)]");
             }
             else if (c.SqlType == SqlDbType.Timestamp)
             {
@@ -180,8 +180,8 @@
             {
                 string d = c.DatabaseDefaultSql.Trim('(', ')', ' ');
                 // SQL Server writes a bit default as ((1)) / ((0)); PostgreSQL writes true / false.
-                if (d == "1" || d.Equals("true", StringComparison.OrdinalIgnoreCase)) initializer = " = true;";
-                else if (d == "0" || d.Equals("false", StringComparison.OrdinalIgnoreCase)) initializer = " = false;";
+                if (d == "1" || d.EqualsIgnoreCase("true")) initializer = " = true;";
+                else if (d == "0" || d.EqualsIgnoreCase("false")) initializer = " = false;";
             }
             if (ColumnAttribute(c, columnType) is { } columnAttribute) B(columnAttribute);
             bool needsRequired = !c.IsNullable && !c.IsComputed && !c.IsIdentity && c.SqlType != SqlDbType.Timestamp;

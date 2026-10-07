@@ -53,7 +53,7 @@
         string Text(ColumnModel c)
         {
             string name = c.Name;
-            bool Has(params string[] words) => words.Any(w => name.Contains(w, StringComparison.OrdinalIgnoreCase));
+            bool Has(params string[] words) => words.Any(w => name.ContainsIgnoreCase(w));
             if (Has("Email")) return "f.Internet.Email()";
             if (Has("Phone", "Fax", "Mobile")) return "f.Phone.PhoneNumber()";
             if (Has("Url", "Website", "Link")) return "f.Internet.Url()";

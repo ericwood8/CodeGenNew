@@ -66,7 +66,7 @@ public static class ArgumentParser
                     int equals = setting.IndexOf('=');
                     if (equals <= 0)
                         throw new ArgumentParseException($"--set takes Key=Value, not '{setting}'.");
-                    string key = ProjectSettings.Keys.FirstOrDefault(k => k.Equals(setting[..equals].Trim(), StringComparison.OrdinalIgnoreCase))
+                    string key = ProjectSettings.Keys.FirstOrDefault(k => k.EqualsIgnoreCase(setting[..equals].Trim()))
                         ?? throw new ArgumentParseException($"Unknown project setting '{setting[..equals].Trim()}' in --set. Known keys: {string.Join(", ", ProjectSettings.Keys)}.");
                     overrides[key] = setting[(equals + 1)..];
                     break;

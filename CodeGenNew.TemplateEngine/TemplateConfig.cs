@@ -242,7 +242,7 @@ public class TemplateConfig
                 outputRoot = value.Length > 0 ? value : "Stack";
             else if (key.EqualsIgnoreCase("OutputFolder"))
                 outputFolders[""] = value;
-            else if (key.StartsWith("OutputFolder.", StringComparison.OrdinalIgnoreCase))
+            else if (key.StartsWithIgnoreCase("OutputFolder."))
                 outputFolders[key["OutputFolder.".Length..]] = value;
             else if (key.EqualsIgnoreCase("EssentialsGroup"))
                 essentialsGroup = value.Length > 0 ? value : null;

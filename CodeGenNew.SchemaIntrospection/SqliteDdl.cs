@@ -1,3 +1,4 @@
+using CodeGenNew.Core;
 using System.Text;
 
 namespace CodeGenNew.SchemaIntrospection;
@@ -26,7 +27,7 @@ public static class SqliteDdl
 
         string body = createSql[(open + 1)..close];
         string options = createSql[(close + 1)..];
-        bool withoutRowId = options.Contains("WITHOUT", StringComparison.OrdinalIgnoreCase) && options.Contains("ROWID", StringComparison.OrdinalIgnoreCase);
+        bool withoutRowId = options.ContainsIgnoreCase("WITHOUT") && options.ContainsIgnoreCase("ROWID");
         bool strict = System.Text.RegularExpressions.Regex.IsMatch(options, @"\bSTRICT\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         var checks = new List<CheckConstraint>();
@@ -44,7 +45,7 @@ public static class SqliteDdl
     }
 
     private static bool StartsWithKeyword(string text, string keyword) =>
-        text.StartsWith(keyword, StringComparison.OrdinalIgnoreCase) && (text.Length == keyword.Length || !char.IsLetterOrDigit(text[keyword.Length]) && text[keyword.Length] != '_');
+        text.StartsWithIgnoreCase(keyword) && (text.Length == keyword.Length || !char.IsLetterOrDigit(text[keyword.Length]) && text[keyword.Length] != '_');
 
     /// <summary> The name a column definition starts with, unquoted. </summary>
     private static string? FirstIdentifier(string segment)

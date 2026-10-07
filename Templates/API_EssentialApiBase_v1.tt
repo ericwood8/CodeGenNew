@@ -39,13 +39,13 @@ public abstract class BaseApi<T> where T : class
     /// already ends in a bare "s" (ItemStatus) is left as it is. </summary>
     private static string Pluralize(string word) => word switch
     {
-        _ when word.EndsWith("y", StringComparison.OrdinalIgnoreCase) && word.Length > 1 && !"aeiou".Contains(char.ToLowerInvariant(word[^2]))
+        _ when word.EndsWithIgnoreCase("y") && word.Length > 1 && !"aeiou".Contains(char.ToLowerInvariant(word[^2]))
             => word[..^1] + "ies",
-        _ when word.EndsWith("ss", StringComparison.OrdinalIgnoreCase) || word.EndsWith("x", StringComparison.OrdinalIgnoreCase)
-            || word.EndsWith("z", StringComparison.OrdinalIgnoreCase) || word.EndsWith("ch", StringComparison.OrdinalIgnoreCase)
-            || word.EndsWith("sh", StringComparison.OrdinalIgnoreCase)
+        _ when word.EndsWithIgnoreCase("ss") || word.EndsWithIgnoreCase("x")
+            || word.EndsWithIgnoreCase("z") || word.EndsWithIgnoreCase("ch")
+            || word.EndsWithIgnoreCase("sh")
             => word + "es",
-        _ when word.EndsWith("s", StringComparison.OrdinalIgnoreCase) => word,
+        _ when word.EndsWithIgnoreCase("s") => word,
         _ => word + "s"
     };
 }

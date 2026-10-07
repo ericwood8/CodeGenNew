@@ -66,7 +66,7 @@ public static class ProjectPlan
     /// <summary> "SP_Insert", "SP_Insert_v1" and "SP_Insert_v1.tt" are the same template. </summary>
     private static string Normalize(string name)
     {
-        string stem = name.EndsWith(".tt", StringComparison.OrdinalIgnoreCase) ? name[..^3] : name;
+        string stem = name.EndsWithIgnoreCase(".tt") ? name[..^3] : name;
         return TemplateCatalog.ParseName(stem).BaseName;
     }
 }

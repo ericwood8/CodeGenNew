@@ -12,7 +12,7 @@ public static class CloneEf
         var overrides = CloneShape.OverrideColumns(m);
         var active = m.HasActiveInactivePair ? m.ActiveColumn : null;
         var inactiveDate = m.HasActiveInactivePair ? m.InactiveDateColumn : null;
-        bool activeNegative = active is not null && active.Name.Contains("Inactive", StringComparison.OrdinalIgnoreCase);
+        bool activeNegative = active is not null && active.IsInactive;
 
         var o = new List<string>
         {

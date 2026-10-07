@@ -82,7 +82,7 @@ public static class GenerateCommand
             var all = EssentialsCatalog.Groups(templatesDirectory, stack);
             if (options.Groups.Count > 0)
             {
-                foreach (string wanted in options.Groups.Where(w => !all.Any(g => g.Name.Equals(w, StringComparison.OrdinalIgnoreCase))))
+                foreach (string wanted in options.Groups.Where(w => !all.Any(g => g.Name.EqualsIgnoreCase(w))))
                     Console.Error.WriteLine($"Warning: {stack} essentials have no group '{wanted}' (try --list).");
                 all = all.Where(g => options.Groups.Contains(g.Name, StringComparer.OrdinalIgnoreCase)).ToList();
             }
@@ -190,7 +190,7 @@ public static class GenerateCommand
         string root = Path.GetFullPath(outputDirectory);
         foreach (var outcome in outcomes)
         {
-            string shown = outcome.FullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase) ? outcome.FullPath[root.Length..].TrimStart('\\', '/') : outcome.FullPath;
+            string shown = outcome.FullPath.StartsWithIgnoreCase(root) ? outcome.FullPath[root.Length..].TrimStart('\\', '/') : outcome.FullPath;
             Console.WriteLine($"{outcome.Kind,-10} {shown}");
         }
     }

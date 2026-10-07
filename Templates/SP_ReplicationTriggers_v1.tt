@@ -42,7 +42,7 @@
     else
     {
         bool Unreadable(ColumnModel c) => c.IsComputed || c.SqlType is SqlDbType.Text or SqlDbType.NText or SqlDbType.Image or SqlDbType.Timestamp
-            || c.SqlTypeDeclaration.Equals("rowversion", StringComparison.OrdinalIgnoreCase);
+            || c.SqlTypeDeclaration.EqualsIgnoreCase("rowversion");
         var columns = Model.Columns.Where(c => !Unreadable(c)).ToList();
         var key = Model.PrimaryKeyColumns.ToList();
         var nonKey = columns.Where(c => !key.Contains(c)).ToList();

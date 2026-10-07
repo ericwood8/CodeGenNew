@@ -39,12 +39,12 @@
     // CompanyName; a leading "E_" / "SY_" on the table name is ignored, so SY_Role -> RoleName); then the display column
     // ranked best by SpecialLogicColumns.config; then any text column whose name ends in "Name"
     string tableStem = System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(Model.TableName, "^E_", ""), "^SY_", "");
-    ColumnModel TextColumnNamed(string name) => Model.Columns.FirstOrDefault(c => c.IsStringColumn && c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+    ColumnModel TextColumnNamed(string name) => Model.Columns.FirstOrDefault(c => c.IsStringColumn && c.Name.EqualsIgnoreCase(name));
     var nameColumn = TextColumnNamed("Name")
                      ?? TextColumnNamed(Model.TableName + "Name")
                      ?? TextColumnNamed(tableStem + "Name")
                      ?? Model.Columns.Where(c => c.IsStringColumn && c.IsDisplayColumn).OrderBy(c => c.DisplayRank).FirstOrDefault()
-                     ?? Model.Columns.FirstOrDefault(c => c.IsStringColumn && c.Name.EndsWith("Name", StringComparison.OrdinalIgnoreCase));
+                     ?? Model.Columns.FirstOrDefault(c => c.IsStringColumn && c.Name.EndsWithIgnoreCase("Name"));
 
     var problems = new List<string>();
     if (keyColumn is null || underlying is null)

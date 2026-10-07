@@ -268,7 +268,7 @@ public sealed class RustTable
         var overrides = CloneShape.OverrideColumns(m);
         var active = m.HasActiveInactivePair ? m.ActiveColumn : null;
         var inactiveDate = m.HasActiveInactivePair ? m.InactiveDateColumn : null;
-        bool activeNegative = active is not null && active.Name.Contains("Inactive", StringComparison.OrdinalIgnoreCase);
+        bool activeNegative = active is not null && active.IsInactive;
         var columns = new List<string>();
         var values = new List<string>();
         var bound = new List<RustField>();

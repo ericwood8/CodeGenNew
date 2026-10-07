@@ -33,12 +33,12 @@
         string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
         string L(string text) => "'" + text.Replace("'", "''") + "'";
         bool Rewritable(ColumnModel c) => !c.IsComputed && !c.IsIdentity && !c.IsPrimaryKey
-            && !c.SqlTypeDeclaration.Equals("rowversion", StringComparison.OrdinalIgnoreCase) && c.SqlType != SqlDbType.Timestamp;
+            && !c.SqlTypeDeclaration.EqualsIgnoreCase("rowversion") && c.SqlType != SqlDbType.Timestamp;
 
         var targets = new List<(TableModel Table, ColumnModel Column)>();
         foreach (var table in Database.Tables.OrderBy(t => t.SchemaName, StringComparer.OrdinalIgnoreCase).ThenBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
             foreach (string name in Project.BulkUpdateColumns)
-                if (table.Columns.FirstOrDefault(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) is { } column && Rewritable(column))
+                if (table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(name)) is { } column && Rewritable(column))
                     targets.Add((table, column));
 
         var sb = new StringBuilder();

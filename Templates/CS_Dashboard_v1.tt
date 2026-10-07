@@ -112,7 +112,7 @@
     Line();
     Line("        var chosen = table is null");
     Line("            ? Definitions.Where(d => d.OnDashboard)");
-    Line("            : Definitions.Where(d => d.OnStrip && d.Table.Equals(table, StringComparison.OrdinalIgnoreCase));");
+    Line("            : Definitions.Where(d => d.OnStrip && d.Table.EqualsIgnoreCase(table));");
     Line("        var result = new DashboardResult();");
     Line("        foreach (var d in chosen)");
     Line("        {");

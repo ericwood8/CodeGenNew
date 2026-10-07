@@ -58,8 +58,8 @@ public abstract class SchemaProviderBase : ISchemaProvider
         if (IgnoredColumns is not { Count: > 0 } ignored)
             return columns;
         bool Listed(RawColumn c) => ignored.Any(entry =>
-            entry.Equals(c.Name, StringComparison.OrdinalIgnoreCase) || entry.Equals($"{tableName}.{c.Name}", StringComparison.OrdinalIgnoreCase)
-            || entry.Equals(Named(c.Name), StringComparison.OrdinalIgnoreCase) || entry.Equals($"{Named(tableName)}.{Named(c.Name)}", StringComparison.OrdinalIgnoreCase));
+            entry.EqualsIgnoreCase(c.Name) || entry.EqualsIgnoreCase($"{tableName}.{c.Name}")
+            || entry.EqualsIgnoreCase(Named(c.Name)) || entry.EqualsIgnoreCase($"{Named(tableName)}.{Named(c.Name)}"));
         return columns.Where(c => c.IsPrimaryKey || !Listed(c)).ToList();
     }
 
@@ -335,7 +335,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
         foreach (var (column, definition) in checks)
         {
             string? name = column ?? CheckConstraintParser.SingleColumn(definition);
-            if (name is null || !columns.Any(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            if (name is null || !columns.Any(c => c.Name.EqualsIgnoreCase(name)))
                 continue;
             if (!byColumn.TryGetValue(name, out var list))
                 byColumn[name] = list = [];

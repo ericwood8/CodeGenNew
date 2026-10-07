@@ -13,7 +13,7 @@ public static class DatabaseModelBuilder
         this ISchemaProvider provider, string databaseName, string schemaName, CancellationToken cancellationToken = default)
     {
         var summaries = (await provider.ListTablesAsync(cancellationToken))
-            .Where(s => s.SchemaName.Equals(schemaName, StringComparison.OrdinalIgnoreCase))
+            .Where(s => s.SchemaName.EqualsIgnoreCase(schemaName))
             .ToList();
 
         var tables = new TableModel[summaries.Count];

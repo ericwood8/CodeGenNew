@@ -17,7 +17,7 @@
     string server = Project.DatabaseServer ?? "localhost";
     string portFlag = new string((char)45, 2) + "port";   // a template line may not hold two hyphens in a row (see TemplateDashTests)
     string Str(string text) => PythonNames.Str(text);
-    var stacks = Project.Stacks.Where(s => s.Equals("React", StringComparison.OrdinalIgnoreCase) || s.Equals("Angular", StringComparison.OrdinalIgnoreCase) || s.Equals("Blazor", StringComparison.OrdinalIgnoreCase)).ToList();
+    var stacks = Project.Stacks.Where(s => s.EqualsIgnoreCase("React") || s.EqualsIgnoreCase("Angular") || s.EqualsIgnoreCase("Blazor")).ToList();
     if (stacks.Count == 0) stacks = ["React"];
     string origins = string.Join(", ", stacks.Select(s => Str($"http://localhost:{Project.DevPort(s)}")));
 #>

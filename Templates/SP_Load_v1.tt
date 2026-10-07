@@ -31,8 +31,8 @@
         throw new System.InvalidOperationException("SP_Load.tt needs the table's rows; its .tt.config must say NeedsRowData=true.");
 
     bool IsRowVersion(ColumnModel c) =>
-        c.SqlTypeDeclaration.Equals("timestamp", System.StringComparison.OrdinalIgnoreCase) ||
-        c.SqlTypeDeclaration.Equals("rowversion", System.StringComparison.OrdinalIgnoreCase);
+        c.SqlTypeDeclaration.EqualsIgnoreCase("timestamp") ||
+        c.SqlTypeDeclaration.EqualsIgnoreCase("rowversion");
 
     // Loaded columns: everything assignable, minus an unwanted modified-date/modified-user column.
     var loadColumns = Model.Columns.Where(c => !c.IsComputed && !IsRowVersion(c) && !c.IsModifiedDateColumn && !c.IsModifiedUserColumn).ToList();

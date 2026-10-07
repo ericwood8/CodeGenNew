@@ -44,7 +44,7 @@
     inactivationTriggerColumns.AddRange(Model.Columns.Where(c => c.IsInactiveReasonColumn));
 
     bool hasInactivationForcing = Model.HasActiveInactivePair && Model.ActiveColumn is not null && inactivationTriggerColumns.Count > 0;
-    string InactivatedLiteral(ColumnModel c) => c.Name.Contains("Inactive", StringComparison.OrdinalIgnoreCase) ? "1" : "0";
+    string InactivatedLiteral(ColumnModel c) => c.IsInactive ? "1" : "0";
 
     string VarCharLength(ColumnModel c)
     {

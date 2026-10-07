@@ -36,15 +36,15 @@
             : $"Server={Project.DatabaseServer};Database={Project.DatabaseName};Trusted_Connection=True;TrustServerCertificate=True;"
     };
     // the front ends that call this API from another origin
-    var stacks = Project.Stacks.Where(s => s.Equals("React", StringComparison.OrdinalIgnoreCase) || s.Equals("Angular", StringComparison.OrdinalIgnoreCase) || s.Equals("Blazor", StringComparison.OrdinalIgnoreCase)).ToList();
+    var stacks = Project.Stacks.Where(s => s.EqualsIgnoreCase("React") || s.EqualsIgnoreCase("Angular") || s.EqualsIgnoreCase("Blazor")).ToList();
     if (stacks.Count == 0) stacks = ["React"];
     string origins = string.Join(", ", stacks.Select(s => $"\"http://localhost:{Project.DevPort(s)}\""));
-    var proxied = stacks.Where(s => !s.Equals("Blazor", StringComparison.OrdinalIgnoreCase)).ToList();   // the dev servers that forward /api; a Blazor app calls the API itself
+    var proxied = stacks.Where(s => !s.EqualsIgnoreCase("Blazor")).ToList();   // the dev servers that forward /api; a Blazor app calls the API itself
     string frontEnd = string.Join(" / ", proxied.Select(s => s == "Angular" ? "Angular" : "React"));
     string contextName = Project.ContextName ?? "AppContext";
     // the Dockerfile flag, built from parts: a template line may not hold two hyphens in a row (see TemplateDashTests)
     string fromBuild = new string('-', 2) + "from=build";
-    string proxyFile = proxied.Count > 0 && proxied[0].Equals("Angular", StringComparison.OrdinalIgnoreCase) ? "frontend/proxy.conf.json" : "frontend/vite.config.ts";
+    string proxyFile = proxied.Count > 0 && proxied[0].EqualsIgnoreCase("Angular") ? "frontend/proxy.conf.json" : "frontend/vite.config.ts";
     string corsNote = proxied.Count == 0 ? "The Blazor app calls this API from its own origin, which is allowed below."
         : $"The {frontEnd} dev server proxies /api here (see {proxyFile}), so CORS only matters if the front end is served elsewhere." + (stacks.Count > proxied.Count ? " The Blazor app calls this API directly, so its origin is allowed below." : "");
 #>

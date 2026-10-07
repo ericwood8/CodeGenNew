@@ -30,12 +30,12 @@ public static class EssentialsCatalog
     {
         string wanted = text.Trim().Replace(" ", "").ToLowerInvariant();
         if (wanted is "winui" or "winui3" or "winui-3") return "WinUI3";
-        return Stacks.Select(s => s.Stack).FirstOrDefault(s => s.Equals(wanted, StringComparison.OrdinalIgnoreCase));
+        return Stacks.Select(s => s.Stack).FirstOrDefault(s => s.EqualsIgnoreCase(wanted));
     }
 
     /// <summary> The groups of one stack, in a stable order (the template's name). </summary>
     public static List<EssentialsGroup> Groups(string templatesDirectory, string stack) => All(templatesDirectory)
-        .Where(g => g.Stack.Equals(stack, StringComparison.OrdinalIgnoreCase)).ToList();
+        .Where(g => g.Stack.EqualsIgnoreCase(stack)).ToList();
 
     public static List<EssentialsGroup> All(string templatesDirectory) => TemplateCatalog.Discover(templatesDirectory)
         .Where(t => t.Config.NoDatabase && t.Config.EssentialsGroup is not null)
@@ -49,7 +49,7 @@ public static class EssentialsCatalog
 
     /// <summary> The settings root a group writes under: its stack, or the <c>OutputRoot</c> its config names (<c>ApiTests</c>: the test project beside the API). </summary>
     private static string RootOf(EssentialsGroup group) =>
-        group.Template.Config.OutputRoot.Equals("Stack", StringComparison.OrdinalIgnoreCase) ? group.Stack : group.Template.Config.OutputRoot;
+        group.Template.Config.OutputRoot.EqualsIgnoreCase("Stack") ? group.Stack : group.Template.Config.OutputRoot;
 
     /// <summary> The files the groups assume (<c>Needs</c> in their configs) that are not under the stack's folder, one warning per missing file, saying which group needs it and which template writes
     /// it. Called after the groups were written, so a file one group writes for another is not reported. </summary>

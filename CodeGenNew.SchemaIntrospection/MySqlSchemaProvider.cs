@@ -122,7 +122,7 @@ public class MySqlSchemaProvider : SchemaProviderBase
             return null;
 
         string d = columnDefault.Trim();
-        if (extra.Contains("DEFAULT_GENERATED", StringComparison.OrdinalIgnoreCase))
+        if (extra.ContainsIgnoreCase("DEFAULT_GENERATED"))
         {
             string lower = d.ToLowerInvariant();
             if (lower.StartsWith("current_timestamp") || lower.StartsWith("now(") || lower.StartsWith("localtimestamp")) return "getdate()";
@@ -355,11 +355,11 @@ public class MySqlSchemaProvider : SchemaProviderBase
             string columnType = reader.GetString(3);
             string extra = Text(9) ?? "";
             var (sqlType, maxLength, precision, scale, declaration) = MapType(dataType, columnType, Long(4), (int?)Long(5), (int?)Long(6));
-            if (sqlType == "decimal" && dataType.StartsWith("bigint", StringComparison.OrdinalIgnoreCase)) { precision = 20; scale = 0; }
+            if (sqlType == "decimal" && dataType.StartsWithIgnoreCase("bigint")) { precision = 20; scale = 0; }
             bool isString = sqlType is "varchar" or "char";
             string? columnDefault = Text(8);
-            bool identity = extra.Contains("auto_increment", StringComparison.OrdinalIgnoreCase);
-            bool generated = extra.Contains("GENERATED", StringComparison.OrdinalIgnoreCase) && !extra.Contains("DEFAULT_GENERATED", StringComparison.OrdinalIgnoreCase);
+            bool identity = extra.ContainsIgnoreCase("auto_increment");
+            bool generated = extra.ContainsIgnoreCase("GENERATED") && !extra.ContainsIgnoreCase("DEFAULT_GENERATED");
 
             results.Add(new RawColumn(
                 Name: columnName,

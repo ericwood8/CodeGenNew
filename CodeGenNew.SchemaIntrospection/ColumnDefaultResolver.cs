@@ -34,11 +34,11 @@ public static class ColumnDefaultResolver
         while (expr.StartsWith('(') && expr.EndsWith(')'))
             expr = expr[1..^1].Trim();
 
-        if (expr.Equals("getdate()", StringComparison.OrdinalIgnoreCase))
+        if (expr.EqualsIgnoreCase("getdate()"))
             return "DateTime.Now";
-        if (expr.Equals("getutcdate()", StringComparison.OrdinalIgnoreCase))
+        if (expr.EqualsIgnoreCase("getutcdate()"))
             return "DateTime.UtcNow";
-        if (expr.Equals("newid()", StringComparison.OrdinalIgnoreCase))
+        if (expr.EqualsIgnoreCase("newid()"))
             return "Guid.NewGuid()";
 
         if (decimal.TryParse(expr, out decimal numericValue))

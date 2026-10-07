@@ -110,7 +110,7 @@ public class PostgresSchemaProvider : SchemaProviderBase
     {
         // Quoted values hold anything, so judge the shape on the definition with every value emptied out.
         string shape = StringLiteral.Replace(constraintDefinition, "''");
-        if (!shape.Contains("= ANY", StringComparison.OrdinalIgnoreCase) || !shape.Contains("ARRAY[", StringComparison.OrdinalIgnoreCase))
+        if (!shape.ContainsIgnoreCase("= ANY") || !shape.ContainsIgnoreCase("ARRAY["))
             return null;
         if (Regex.IsMatch(shape, @"\b(OR|AND|NOT)\b|<>|!=|<|>", RegexOptions.IgnoreCase))
             return null;

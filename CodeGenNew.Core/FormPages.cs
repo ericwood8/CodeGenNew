@@ -14,7 +14,7 @@ public static class FormPages
     public const string NotesHeader = "Notes";
 
     public static bool IsBillingOrShipping(ColumnModel c) =>
-        c.Name.StartsWith("Billing", StringComparison.OrdinalIgnoreCase) || c.Name.StartsWith("Shipping", StringComparison.OrdinalIgnoreCase);
+        c.Name.StartsWithIgnoreCase("Billing") || c.Name.StartsWithIgnoreCase("Shipping");
 
     /// <param name="columns"> The columns the form shows, in the order they should appear. </param>
     public static List<FormPage> For(IReadOnlyList<ColumnModel> columns)

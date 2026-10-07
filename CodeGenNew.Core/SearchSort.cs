@@ -27,7 +27,7 @@ public static class SearchSort
 
     // A single-column foreign key whose parent has a display column: the grid shows the parent's name, so that is what to sort by.
     private static ForeignKeyModel? ParentOf(TableModel m, ColumnModel c) => m.ForeignKeys.FirstOrDefault(fk =>
-        fk.ReferencingColumns.Count == 1 && fk.ReferencingColumns[0].Equals(c.Name, StringComparison.OrdinalIgnoreCase)
+        fk.ReferencingColumns.Count == 1 && fk.ReferencingColumns[0].EqualsIgnoreCase(c.Name)
         && fk.ReferencedColumns.Count == 1 && fk.ReferencedDisplayColumns.Count > 0);
 
     private static string DisplayDbColumn(ForeignKeyModel fk) => fk.ReferencedDisplayDbColumns[0];

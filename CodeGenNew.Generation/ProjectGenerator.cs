@@ -98,7 +98,7 @@ public static class ProjectGenerator
         }
         if (options.OnlyTemplates is { Count: > 0 } only)
         {
-            var wanted = only.Select(n => TemplateCatalog.ParseName(n.EndsWith(".tt", StringComparison.OrdinalIgnoreCase) ? n[..^3] : n).BaseName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var wanted = only.Select(n => TemplateCatalog.ParseName(n.EndsWithIgnoreCase(".tt") ? n[..^3] : n).BaseName).ToHashSet(StringComparer.OrdinalIgnoreCase);
             steps = steps.Where(s => wanted.Contains(s.Template.Name)).ToList();
         }
 
@@ -224,7 +224,7 @@ public static class ProjectGenerator
         var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (string stack in step.Stacks)
         {
-            string root = config.OutputRoot.Equals("Stack", StringComparison.OrdinalIgnoreCase) ? stack : config.OutputRoot;
+            string root = config.OutputRoot.EqualsIgnoreCase("Stack") ? stack : config.OutputRoot;
             string folder = Path.Combine(options.OutputDirectory, options.Project.OutputFolderOf(root), config.OutputFolderFor(stack));
             if (!written.Add(Path.GetFullPath(folder)))
                 continue;

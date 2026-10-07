@@ -553,7 +553,7 @@ public partial class <#= table #>DetailViewModel : ObservableObject
 <#
         foreach (var p in parents)
         {
-            var lookupColumnsForThisParent = shown.Where(c => LookupOf(c) is ForeignKeyModel fk && fk.ReferencedTable.Equals(p.Table, StringComparison.OrdinalIgnoreCase)).ToList();
+            var lookupColumnsForThisParent = shown.Where(c => LookupOf(c) is ForeignKeyModel fk && fk.ReferencedTable.EqualsIgnoreCase(p.Table)).ToList();
 #>
         <#= p.OptionsProp #>.Clear();
         foreach (var row in await _context.Set<<#= p.Table #>>().OrderBy(r => r.<#= p.DisplayProp #>).ToListAsync())

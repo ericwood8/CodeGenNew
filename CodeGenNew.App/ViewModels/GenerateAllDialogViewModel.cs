@@ -156,7 +156,7 @@ public partial class GenerateAllDialogViewModel : StatusMessageViewModel
             var report = await Task.Run(() => ProjectGenerator.RunAsync(provider, _templatesDirectory, options, message => _dispatcher.TryEnqueue(() => Progress = message)));
 
             string root = Path.GetFullPath(OutputDirectory);
-            string Shown(string full) => full.StartsWith(root, StringComparison.OrdinalIgnoreCase) ? full[root.Length..].TrimStart('\\', '/') : full;
+            string Shown(string full) => full.StartsWithIgnoreCase(root) ? full[root.Length..].TrimStart('\\', '/') : full;
             foreach (var file in report.AllFiles.Where(f => f.Kind != FileOutcomeKind.Unchanged))
                 Results.Add(new ResultRow($"{file.Kind}: {Shown(file.FullPath)}", file.Diff));
             foreach (var stale in report.Stale)

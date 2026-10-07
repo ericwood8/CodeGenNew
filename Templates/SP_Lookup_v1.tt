@@ -52,7 +52,7 @@
         string name = fk.ReferencingColumns[0];
         foreach (string suffix in new[] { "EnumID", "ID" })
         {
-            if (name.Length > suffix.Length && name.EndsWith(suffix, System.StringComparison.OrdinalIgnoreCase))
+            if (name.Length > suffix.Length && name.EndsWithIgnoreCase(suffix))
             {
                 name = name[..^suffix.Length];
                 break;
@@ -60,7 +60,7 @@
         }
 
         string tail = "_" + fk.ReferencedTable;
-        if (name.Length > tail.Length && name.EndsWith(tail, System.StringComparison.OrdinalIgnoreCase))
+        if (name.Length > tail.Length && name.EndsWithIgnoreCase(tail))
             name = name[..^tail.Length];
 
         name = name.TrimEnd('_');
@@ -68,7 +68,7 @@
     }
 
     string TrimTablePrefix(string column, string table) =>
-        column.Length > table.Length && column.StartsWith(table, System.StringComparison.OrdinalIgnoreCase) ? column[table.Length..] : column;
+        column.Length > table.Length && column.StartsWithIgnoreCase(table) ? column[table.Length..] : column;
 
     var selectItems = new List<string>();
     var outputNames = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
@@ -100,7 +100,7 @@
     foreach (var fk in Model.ForeignKeys)
     {
         var fkColumns = fk.ReferencingColumns
-            .Select(name => Model.Columns.FirstOrDefault(c => c.Name.Equals(name, System.StringComparison.OrdinalIgnoreCase)))
+            .Select(name => Model.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(name)))
             .ToList();
         if (fkColumns.Any(c => c is null))
             continue; // a column the model does not carry (e.g. a replication column)
@@ -150,7 +150,7 @@
     string activeFilter = "";
     if (activeColumn is not null)
     {
-        bool negativePolarity = activeColumn.Name.Contains("Inactive", System.StringComparison.OrdinalIgnoreCase);
+        bool negativePolarity = activeColumn.IsInactive;
         string activeValue = negativePolarity ? "0" : "1";
         if (activeColumn.IsStringColumn)
             activeValue = $"'{activeValue}'";

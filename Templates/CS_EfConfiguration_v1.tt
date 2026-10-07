@@ -34,7 +34,7 @@
         string Str(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
         string entity = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
         bool schemaNamed = Model.Dialect is SqlDialect.SqlServer or SqlDialect.PostgreSql
-            && !Model.SchemaName.Equals(Model.Dialect == SqlDialect.SqlServer ? "dbo" : "public", StringComparison.OrdinalIgnoreCase);
+            && !Model.SchemaName.EqualsIgnoreCase(Model.Dialect == SqlDialect.SqlServer ? "dbo" : "public");
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
@@ -100,7 +100,7 @@
         {
             if (index.Columns.SequenceEqual(keyNames, StringComparer.OrdinalIgnoreCase))
                 continue;
-            var columns = index.Columns.Select(name => Model.Columns.FirstOrDefault(c => c.DbName.Equals(name, StringComparison.OrdinalIgnoreCase))).ToList();
+            var columns = index.Columns.Select(name => Model.Columns.FirstOrDefault(c => c.DbName.EqualsIgnoreCase(name))).ToList();
             if (columns.Any(c => c is null))
                 continue;
             string key = columns.Count == 1 ? $"e.{Id(columns[0]!)}" : $"new {{ {string.Join(", ", columns.Select(c => "e." + Id(c!)))} }}";

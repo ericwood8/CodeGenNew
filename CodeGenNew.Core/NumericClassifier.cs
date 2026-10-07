@@ -33,7 +33,7 @@ public static class NumericClassifier
         {
             if (exact.Contains(name, StringComparer.OrdinalIgnoreCase))
                 return kind;
-            if (suffixes.Any(s => name.Length > s.Length && name.EndsWith(s, StringComparison.OrdinalIgnoreCase)))
+            if (suffixes.Any(s => name.Length > s.Length && name.EndsWithIgnoreCase(s)))
                 return kind;
         }
         return NumericKind.None;
@@ -48,10 +48,10 @@ public static class NumericClassifier
     public static bool IsCurrencyName(string columnName)
     {
         string name = columnName.Replace("_", "");
-        if (CurrencyNameParts.Any(p => name.Contains(p, StringComparison.OrdinalIgnoreCase)))
+        if (CurrencyNameParts.Any(p => name.ContainsIgnoreCase(p)))
             return true;
-        return name.StartsWith("Total", StringComparison.OrdinalIgnoreCase)
-            && !NotMoneyAfterTotal.Any(p => name.Contains(p, StringComparison.OrdinalIgnoreCase));
+        return name.StartsWithIgnoreCase("Total")
+            && !NotMoneyAfterTotal.Any(p => name.ContainsIgnoreCase(p));
     }
 
     /// <summary> How many decimal places a currency column is shown with: the column's own scale for a decimal, two for money / smallmoney

@@ -32,8 +32,8 @@
 
     bool IsTextLob(ColumnModel c) => c.SqlType is SqlDbType.Text or SqlDbType.NText;
     bool IsRowVersion(ColumnModel c) =>
-        c.SqlTypeDeclaration.Equals("timestamp", System.StringComparison.OrdinalIgnoreCase) ||
-        c.SqlTypeDeclaration.Equals("rowversion", System.StringComparison.OrdinalIgnoreCase);
+        c.SqlTypeDeclaration.EqualsIgnoreCase("timestamp") ||
+        c.SqlTypeDeclaration.EqualsIgnoreCase("rowversion");
     string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
 
     string table = $"{Q(Model.SchemaName)}.{Q(Model.TableName)}";
@@ -49,7 +49,7 @@
     bool hasActivePair = Model.HasActiveInactivePair && Model.ActiveColumn is not null;
     var activeColumn = hasActivePair ? Model.ActiveColumn : null;
     var inactiveDateColumn = hasActivePair ? Model.InactiveDateColumn : null;
-    bool activeNegative = activeColumn is not null && activeColumn.Name.Contains("Inactive", System.StringComparison.OrdinalIgnoreCase);
+    bool activeNegative = activeColumn is not null && activeColumn.IsInactive;
     string Literal(ColumnModel c, string value) => c.IsStringColumn ? $"'{value}'" : value;
 
     // Columns a clone handles by rule rather than by copying (or overriding) the source's value.

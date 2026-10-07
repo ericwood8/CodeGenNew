@@ -79,7 +79,7 @@ public sealed class DashboardPlan
 
     /// <summary> The cards for one table's own screen: its count, money, ratio and status widgets, best first. </summary>
     public IReadOnlyList<DashboardWidget> StripOf(string table) => Candidates
-        .Where(w => w.IsCard && w.Kind != DashboardWidgetKind.ChildCount && w.Table.Equals(table, StringComparison.OrdinalIgnoreCase))
+        .Where(w => w.IsCard && w.Kind != DashboardWidgetKind.ChildCount && w.Table.EqualsIgnoreCase(table))
         .Take(MaxStripCards).ToList();
 
     /// <summary> The tables with a strip, in name order. </summary>
@@ -141,9 +141,9 @@ public sealed class DashboardPlan
             foreach (string text in project.DashboardMeasures)
             {
                 var measure = ParseMeasure(text);
-                var table = measure is null ? null : database.Tables.FirstOrDefault(t => t.TableName.Equals(measure.Table, StringComparison.OrdinalIgnoreCase));
-                var column = table?.Columns.FirstOrDefault(c => c.Name.Equals(measure!.Column, StringComparison.OrdinalIgnoreCase));
-                var dateColumn = measure?.DateColumn is null ? null : table?.Columns.FirstOrDefault(c => c.Name.Equals(measure.DateColumn, StringComparison.OrdinalIgnoreCase));
+                var table = measure is null ? null : database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(measure.Table));
+                var column = table?.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(measure!.Column));
+                var dateColumn = measure?.DateColumn is null ? null : table?.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(measure.DateColumn));
                 if (measure is null || table is null || column is null || (measure.DateColumn is not null && dateColumn is null))
                 {
                     _problems.Add($"DashboardMeasures lists '{text}', which is not Table.Column:aggregate or Table.Column:aggregate:DateColumn:day|month|year naming a column of the database.");
@@ -223,7 +223,7 @@ public sealed class DashboardPlan
         /// percentage or a factor says nothing when added up. Below <see cref="MinMoneyNameScore"/> the column is not a dashboard measure. </summary>
         private static int MoneyNameScore(string name)
         {
-            bool Has(string word) => name.Contains(word, StringComparison.OrdinalIgnoreCase);
+            bool Has(string word) => name.ContainsIgnoreCase(word);
             if (Has("Rate") || Has("Percent") || Has("Pct") || Has("Ratio") || Has("Factor") || Has("Limit") || Has("Quantity"))
                 return 0;
             int score = Has("Total") ? 100 : Has("Balance") ? 70 : Has("Amount") ? (Has("Tax") ? 25 : 60) : Has("Price") ? 40 : Has("Cost") ? 35 : Has("Fee") || Has("Freight") ? 25 : 0;
@@ -238,13 +238,13 @@ public sealed class DashboardPlan
             .OrderByDescending(c => MoneyNameScore(c.Name)).ThenBy(c => c.OrdinalPosition).FirstOrDefault();
 
         private static bool IsForeignKey(TableModel table, ColumnModel column) =>
-            table.ForeignKeys.Any(fk => fk.ReferencingColumns.Any(c => c.Equals(column.Name, StringComparison.OrdinalIgnoreCase)));
+            table.ForeignKeys.Any(fk => fk.ReferencingColumns.Any(c => c.EqualsIgnoreCase(column.Name)));
 
         private static ColumnModel? DateOf(TableModel table)
         {
             var dates = table.Columns.Where(c => c.IsDateColumn && !c.IsPrimaryKey && !c.IsAuditColumn && !IsForeignKey(table, c)).ToList();
-            return dates.FirstOrDefault(c => !c.IsNullable && c.Name.Contains("Date", StringComparison.OrdinalIgnoreCase))
-                ?? dates.FirstOrDefault(c => c.Name.Contains("Date", StringComparison.OrdinalIgnoreCase))
+            return dates.FirstOrDefault(c => !c.IsNullable && c.Name.ContainsIgnoreCase("Date"))
+                ?? dates.FirstOrDefault(c => c.Name.ContainsIgnoreCase("Date"))
                 ?? dates.FirstOrDefault()
                 ?? table.Columns.FirstOrDefault(c => c.IsCreateDateColumn && c.IsDateColumn);
         }
@@ -252,8 +252,8 @@ public sealed class DashboardPlan
         private void ChildCount(TableModel parent)
         {
             var child = parent.ChildForeignKeys
-                .Where(fk => fk.ReferencingColumns.Count == 1 && !fk.ReferencingTable.Equals(parent.TableName, StringComparison.OrdinalIgnoreCase))
-                .Select(fk => database.Tables.FirstOrDefault(t => t.TableName.Equals(fk.ReferencingTable, StringComparison.OrdinalIgnoreCase)))
+                .Where(fk => fk.ReferencingColumns.Count == 1 && !fk.ReferencingTable.EqualsIgnoreCase(parent.TableName))
+                .Select(fk => database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(fk.ReferencingTable)))
                 .OfType<TableModel>().Where(t => t.HasPrimaryKey)
                 .OrderByDescending(t => t.LookupShape.RowCount).ThenBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
             if (child is null)
@@ -285,13 +285,13 @@ public sealed class DashboardPlan
 
             foreach (var fk in table.ForeignKeys.Where(fk => fk.ReferencingColumns.Count == 1 && !table.IsSelfReferencing(fk)).Take(4))
             {
-                var parent = database.Tables.FirstOrDefault(t => t.TableName.Equals(fk.ReferencedTable, StringComparison.OrdinalIgnoreCase));
+                var parent = database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(fk.ReferencedTable));
                 var display = parent is null ? null : DisplayOf(parent);
-                var key = parent?.PrimaryKeyColumns.FirstOrDefault(c => c.Name.Equals(fk.ReferencedColumns[0], StringComparison.OrdinalIgnoreCase));
+                var key = parent?.PrimaryKeyColumns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[0]));
                 if (parent is null || display is null || key is null || IsSmallLookup(parent))
                     continue;
 
-                var fkColumn = table.Columns.First(c => c.Name.Equals(fk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase));
+                var fkColumn = table.Columns.First(c => c.Name.EqualsIgnoreCase(fk.ReferencingColumns[0]));
                 string topSql = $"SELECT COALESCE({C(display, "p")}, '(none)') AS {QLabel}, {Number("SUM(" + Amount(money, "t") + ")")} AS {QValue} FROM {T(table)} t INNER JOIN {T(parent)} p ON {C(key, "p")} = {C(fkColumn, "t")} "
                     + $"GROUP BY {C(display, "p")} ORDER BY SUM({Amount(money, "t")}) DESC {di.Paging("0", TopRows.ToString())}";
                 Add(DashboardWidgetKind.TopBy, $"{title} by {Words(parent.TableName)}", table, fkColumn.Name,
@@ -315,13 +315,13 @@ public sealed class DashboardPlan
 
             foreach (var fk in table.ForeignKeys.Where(fk => fk.ReferencingColumns.Count == 1 && !table.IsSelfReferencing(fk)))
             {
-                var parent = database.Tables.FirstOrDefault(t => t.TableName.Equals(fk.ReferencedTable, StringComparison.OrdinalIgnoreCase));
+                var parent = database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(fk.ReferencedTable));
                 var display = parent is null ? null : DisplayOf(parent);
-                var key = parent?.PrimaryKeyColumns.FirstOrDefault(c => c.Name.Equals(fk.ReferencedColumns[0], StringComparison.OrdinalIgnoreCase));
+                var key = parent?.PrimaryKeyColumns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[0]));
                 if (parent is null || display is null || key is null || !IsSmallLookup(parent))
                     continue;
 
-                var fkColumn = table.Columns.First(c => c.Name.Equals(fk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase));
+                var fkColumn = table.Columns.First(c => c.Name.EqualsIgnoreCase(fk.ReferencingColumns[0]));
                 string sql = $"SELECT COALESCE({C(display, "p")}, '(none)') AS {QLabel}, {Number("COUNT(*)")} AS {QValue} FROM {T(table)} t INNER JOIN {T(parent)} p ON {C(key, "p")} = {C(fkColumn, "t")} "
                     + $"GROUP BY {C(display, "p")} ORDER BY COUNT(*) DESC";
                 Add(DashboardWidgetKind.Breakdown, $"{Plural(table.TableName)} by {ColumnWords(fkColumn)}", table, fkColumn.Name,

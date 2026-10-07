@@ -196,7 +196,7 @@ public class ProjectSettings
     /// <summary> The namespace of the Bogus fakers CS_Faker writes: <c>FakerNamespace</c>, or <c>Name.App.Fakers</c>. </summary>
     public string? FakerNamespace => Derived("FakerNamespace", ".App.Fakers");
 
-    private bool Flag(string key) => Explicit(key) is { } text && (text.Equals("true", StringComparison.OrdinalIgnoreCase) || text == "1" || text.Equals("yes", StringComparison.OrdinalIgnoreCase));
+    private bool Flag(string key) => Explicit(key) is { } text && (text.EqualsIgnoreCase("true") || text == "1" || text.EqualsIgnoreCase("yes"));
 
     /// <summary> <c>ApiDocs=true</c>: the plan also writes <c>openapi.yaml</c> (API_OpenApi) and the API serves it with a Swagger UI page at <c>/docs</c>. </summary>
     public bool ApiDocs => Flag("ApiDocs");
@@ -366,15 +366,15 @@ public class ProjectSettings
     /// <summary> The port the API listens on (default 5080), the dev server's (React 5173, Angular 4200, Blazor 5190) and the window title of a web app. </summary>
     public int ApiPort => int.TryParse(Explicit("ApiPort"), out int port) ? port : 5080;
     public int DevPort(string stack) => int.TryParse(Explicit("DevPort"), out int port) ? port
-        : stack.Equals("Angular", StringComparison.OrdinalIgnoreCase) ? 4200 : stack.Equals("Blazor", StringComparison.OrdinalIgnoreCase) ? 5190 : 5173;
+        : stack.EqualsIgnoreCase("Angular") ? 4200 : stack.EqualsIgnoreCase("Blazor") ? 5190 : 5173;
     public string ProjectTitle => Explicit("ProjectTitle") ?? System.Text.RegularExpressions.Regex.Replace(ProjectName ?? "My App", "(?<=[a-z0-9])(?=[A-Z])", " ");
 
     /// <summary> The command a stack's build or test step runs after a generate (<c>BuildReact=npm run build</c>, <c>TestApi=dotnet test</c>); null when the project says nothing (the stack's
     /// default applies), an empty string or <c>none</c> to switch the step off. <paramref name="step"/> is <c>build</c> or <c>test</c>. </summary>
     public string? StepCommand(string step, string stack)
     {
-        string key = (step.Equals("test", StringComparison.OrdinalIgnoreCase) ? "Test" : "Build") + stack;
-        return _values.FirstOrDefault(v => v.Key.Equals(key, StringComparison.OrdinalIgnoreCase)).Value;
+        string key = (step.EqualsIgnoreCase("test") ? "Test" : "Build") + stack;
+        return _values.FirstOrDefault(v => v.Key.EqualsIgnoreCase(key)).Value;
     }
 
     public string ApiFolder => Explicit("ApiFolder") ?? "api";
@@ -386,7 +386,7 @@ public class ProjectSettings
     /// <summary> Money columns that can never be negative (<c>NonNegativeColumns=CreditLimit,Item.Cost</c>: a column name for every table, or <c>Table.Column</c> for one): their number box
     /// gets a minimum of 0. The schema cannot say so, because a check constraint is not read. </summary>
     public bool IsNonNegative(string table, string column) => Items("NonNegativeColumns")
-            .Any(entry => entry.Equals(column, StringComparison.OrdinalIgnoreCase) || entry.Equals($"{table}.{column}", StringComparison.OrdinalIgnoreCase));
+            .Any(entry => entry.EqualsIgnoreCase(column) || entry.EqualsIgnoreCase($"{table}.{column}"));
 
     public string? ViewsFolder => Explicit("ViewsFolder");
     public string? ViewModelsFolder => Explicit("ViewModelsFolder");
@@ -430,7 +430,7 @@ public class ProjectSettings
         foreach (string pair in List("ChildGridTitles") ?? [])
         {
             int equals = pair.IndexOf('=');
-            if (equals > 0 && equals < pair.Length - 1 && pair[..equals].Trim().Equals($"{parentTable}.{childTable}", StringComparison.OrdinalIgnoreCase))
+            if (equals > 0 && equals < pair.Length - 1 && pair[..equals].Trim().EqualsIgnoreCase($"{parentTable}.{childTable}"))
                 return pair[(equals + 1)..].Trim();
         }
         return fallback;
@@ -513,14 +513,14 @@ public class ProjectSettings
         Explicit("EnumNameSuffixes") is not null ? List("EnumNameSuffixes")! : ["Type", "Types", "Code", "Codes", "Status", "Kind"];
 
     private bool NameSaysEnum(string table) =>
-        EnumNameSuffixes.Any(s => table.Length > s.Length && table.EndsWith(s, StringComparison.OrdinalIgnoreCase));
+        EnumNameSuffixes.Any(s => table.Length > s.Length && table.EndsWithIgnoreCase(s));
 
     public int EnumMaxRows => int.TryParse(Explicit("EnumMaxRows"), out int rows) ? rows : DefaultEnumMaxRows;
 
     /// <summary> The tables listed in the project file as enums, or null when it does not list any (then the schema
     /// decides, see <see cref="IsEnumTable"/>). </summary>
     public string[]? EnumTables => Explicit("EnumTables") is null ? null
-        : List("EnumTables") is { Length: 1 } one && one[0].Equals("none", StringComparison.OrdinalIgnoreCase) ? [] : List("EnumTables");
+        : List("EnumTables") is { Length: 1 } one && one[0].EqualsIgnoreCase("none") ? [] : List("EnumTables");
 
     /// <summary> Whether <paramref name="table"/> is one of this project's enum tables -- the ones with no entity,
     /// repository or API of their own. Null when no project is chosen (the caller keeps its own built-in list). A

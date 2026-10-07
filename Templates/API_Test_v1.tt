@@ -31,7 +31,7 @@
 
         // a text value that is not a fixed format: it can take a unique ending
         bool IsFreeText(ColumnModel c) => c.IsStringColumn && !c.HasChoices && !c.IsPrimaryKey
-            && !new[] { "Email", "Phone", "Fax", "Url", "Website" }.Any(word => c.Name.Contains(word, StringComparison.OrdinalIgnoreCase));
+            && !new[] { "Email", "Phone", "Fax", "Url", "Website" }.Any(word => c.Name.ContainsIgnoreCase(word));
 
         string ForeignKeyParentRoute(ColumnModel c, out string parentKey)
         {

@@ -63,7 +63,7 @@
     var hardcodedInsertColumns = new List<(string Name, string Value)>();
     if (Model.HasActiveInactivePair && Model.ActiveColumn is not null)
     {
-        bool isNegativePolarity = Model.ActiveColumn.Name.Contains("Inactive", StringComparison.OrdinalIgnoreCase);
+        bool isNegativePolarity = Model.ActiveColumn.IsInactive;
         hardcodedInsertColumns.Add((Model.ActiveColumn.Name, isNegativePolarity ? "0" : "1"));
     }
     foreach (var adminCol in Model.Columns.Where(c => c.IsAdminFlagColumn))

@@ -40,7 +40,7 @@
     };
     // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     modelFileOf = Project.ModelFileOverrides ?? modelFileOf;
-    bool IsHiddenParent(string table) => Project.HiddenParents is { } hidden ? hidden.Contains(table, StringComparer.OrdinalIgnoreCase) : table.Equals(hiddenParent, StringComparison.OrdinalIgnoreCase);
+    bool IsHiddenParent(string table) => Project.HiddenParents is { } hidden ? hidden.Contains(table, StringComparer.OrdinalIgnoreCase) : table.EqualsIgnoreCase(hiddenParent);
     // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
     // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
     // only used when no project is chosen.
@@ -123,7 +123,7 @@
             .Select(fk =>
             {
                 string parentBase = BaseName(fk.ReferencedTable);
-                bool self = fk.ReferencedTable.Equals(Model.TableName, StringComparison.OrdinalIgnoreCase);
+                bool self = fk.ReferencedTable.EqualsIgnoreCase(Model.TableName);
                 return new
                 {
                     Table = fk.ReferencedTable,
@@ -135,7 +135,7 @@
                     List = LowerFirst(parentBase).Pluralize(),
                     NameMethod = LowerFirst(parentBase) + "Name",
                     KeyProp = Camel(fk.ReferencedColumns[0]),
-                    IdType = Model.Columns.First(col => col.Name.Equals(fk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)).SqlType == SqlDbType.UniqueIdentifier ? "string" : "number",
+                    IdType = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).SqlType == SqlDbType.UniqueIdentifier ? "string" : "number",
                     DisplayProp = Camel(fk.ReferencedDisplayColumns[0]),
                     Self = self
                 };

@@ -90,7 +90,7 @@ public class ColumnModel
         && (SqlType is System.Data.SqlDbType.Text or System.Data.SqlDbType.NText
             || MaxLength is -1
             || (MaxLength is { } bytes && (SqlType is System.Data.SqlDbType.NChar or System.Data.SqlDbType.NVarChar ? bytes / 2 : bytes) >= 500)
-            || Array.Exists(LongTextNameEndings, s => Name.EndsWith(s, StringComparison.OrdinalIgnoreCase)));
+            || Array.Exists(LongTextNameEndings, s => Name.EndsWithIgnoreCase(s)));
 
     private static readonly string[] LongTextNameEndings = ["Note", "Notes", "Comment", "Comments", "Remarks", "Memo"];
 
@@ -133,6 +133,9 @@ public class ColumnModel
     /// <summary> Matches SpecialLogicColumns.config category "InactiveReasonColumn" -- e.g.
     /// InactiveReasonNoteText. Excluded from Insert parameters and left NULL (see Docs/Reference.md section 5). </summary>
     public bool IsInactiveReasonColumn { get; init; }
+
+    /// <summary> The name says the flag is negative: an "Inactive" column (IsInactive, InactiveFlag) is set to 1 to turn a row off, where an "Active" column is set to 1 to keep it on. </summary>
+    public bool IsInactive => Name.ContainsIgnoreCase("Inactive");
 
     /// <summary> Matches SpecialLogicColumns.config category "AdminFlagColumn" -- e.g. IsAdmin. Excluded
     /// from Insert parameters and hardcoded to "not admin" (0/False), regardless of caller input, so a

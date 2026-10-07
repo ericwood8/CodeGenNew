@@ -82,5 +82,5 @@ public static class ColumnRules
         return says ? rule : null;
     }
 
-    private static bool Names(ColumnModel column, params string[] words) => words.Any(word => column.Name.Contains(word, StringComparison.OrdinalIgnoreCase));
+    private static bool Names(ColumnModel column, params string[] words) => words.Any(word => column.Name.ContainsIgnoreCase(word));
 }

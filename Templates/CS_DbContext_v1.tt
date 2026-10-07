@@ -52,7 +52,7 @@
     {
         if (!Project.PluralDbSets) return table.TableName;
         string plural = table.TableName.Pluralize();
-        return Database.Tables.Any(t => t != table && t.TableName.Equals(plural, StringComparison.OrdinalIgnoreCase)) ? table.TableName : plural;
+        return Database.Tables.Any(t => t != table && t.TableName.EqualsIgnoreCase(plural)) ? table.TableName : plural;
     }
     foreach (var table in Database.ContextTables)
         Line($"    public DbSet<{table.TableName}> {SetName(table)} => Set<{table.TableName}>();");

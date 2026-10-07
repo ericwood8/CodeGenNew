@@ -22,7 +22,7 @@
         .Where(t => wanted.Length == 0 || wanted.Contains(t.TableName, StringComparer.OrdinalIgnoreCase))
         .OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
     var drawn = tables.Select(t => t.TableName).ToHashSet(StringComparer.OrdinalIgnoreCase);
-    var unknown = wanted.Where(w => !Database.Tables.Any(t => t.TableName.Equals(w, StringComparison.OrdinalIgnoreCase))).ToList();
+    var unknown = wanted.Where(w => !Database.Tables.Any(t => t.TableName.EqualsIgnoreCase(w))).ToList();
 
     if (unknown.Count > 0)
     {
@@ -54,7 +54,7 @@
         {
             foreach (var fk in table.ForeignKeys.Where(f => drawn.Contains(f.ReferencedTable)))
             {
-                bool optional = fk.ReferencingColumns.All(name => table.Columns.FirstOrDefault(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.IsNullable ?? false);
+                bool optional = fk.ReferencingColumns.All(name => table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(name))?.IsNullable ?? false);
                 L("    " + Name(fk.ReferencedTable) + (optional ? " |o" + line + "o{ " : " ||" + line + "o{ ") + Name(table.TableName) + " : \"" + string.Join(", ", fk.ReferencingColumns).Replace("\"", "'") + "\"");
             }
         }

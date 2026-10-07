@@ -77,7 +77,7 @@ public partial class ProjectSettingRowViewModel : ObservableObject
     /// <summary> The choice a single-choice setting holds; none when the file holds a value that is not on the list, which stays as it is until another choice is picked. </summary>
     public SettingChoice? SelectedChoice
     {
-        get => Choices.FirstOrDefault(c => c.Value.Equals(Value.Trim(), StringComparison.OrdinalIgnoreCase));
+        get => Choices.FirstOrDefault(c => c.Value.EqualsIgnoreCase(Value.Trim()));
         set
         {
             if (value is not null)
@@ -109,7 +109,7 @@ public partial class ProjectSettingRowViewModel : ObservableObject
         if (_syncing)
             return;
         var kept = Value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Where(name => !Options.Any(o => o.Value.Equals(name, StringComparison.OrdinalIgnoreCase)));
+            .Where(name => !Options.Any(o => o.Value.EqualsIgnoreCase(name)));
         Value = string.Join(",", Options.Where(o => o.IsChecked).Select(o => o.Value).Concat(kept));
     }
 }
@@ -156,7 +156,7 @@ public partial class ProjectSettingsDialogViewModel : StatusMessageViewModel
         Tabs = ProjectSettingGroups.All
             .Select(g => (g.Title, g.Description, (IReadOnlyList<ProjectSettingRowViewModel>)Rows
                 .Where(r => ProjectSettingGroups.TabOf(r.Key) == g.Title)
-                .OrderBy(r => Array.FindIndex(g.Keys, k => k.Equals(r.Key, StringComparison.OrdinalIgnoreCase)) is var i and >= 0 ? i : int.MaxValue)
+                .OrderBy(r => Array.FindIndex(g.Keys, k => k.EqualsIgnoreCase(r.Key)) is var i and >= 0 ? i : int.MaxValue)
                 .ToList()))
             .ToList();
 

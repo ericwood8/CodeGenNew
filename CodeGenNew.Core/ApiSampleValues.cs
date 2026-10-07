@@ -13,9 +13,9 @@ public static class ApiSampleValues
     /// <summary> The text a string column's example is made of, before it is cut to the column's length. </summary>
     public static string Text(ColumnModel column) =>
         column.HasChoices ? column.Choices![0]
-        : column.Name.Contains("Email", StringComparison.OrdinalIgnoreCase) ? "someone@example.com"
-        : column.Name.Contains("Phone", StringComparison.OrdinalIgnoreCase) || column.Name.Contains("Fax", StringComparison.OrdinalIgnoreCase) ? "555-0100"
-        : column.Name.Contains("Url", StringComparison.OrdinalIgnoreCase) || column.Name.Contains("Website", StringComparison.OrdinalIgnoreCase) ? "https://example.com"
+        : column.Name.ContainsIgnoreCase("Email") ? "someone@example.com"
+        : column.Name.ContainsIgnoreCase("Phone") || column.Name.ContainsIgnoreCase("Fax") ? "555-0100"
+        : column.Name.ContainsIgnoreCase("Url") || column.Name.ContainsIgnoreCase("Website") ? "https://example.com"
         : "Sample " + Labels.Words(column.Name).ToLowerInvariant();
 
     /// <summary> The example value of a column as JSON text (which is also a valid C# literal for every type but a null). A key is 0 for an identity column and 1 otherwise. </summary>

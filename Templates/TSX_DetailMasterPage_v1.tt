@@ -40,7 +40,7 @@
     };
     // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     modelFileOf = Project.ModelFileOverrides ?? modelFileOf;
-    bool IsHiddenParent(string table) => Project.HiddenParents is { } hidden ? hidden.Contains(table, StringComparer.OrdinalIgnoreCase) : table.Equals(hiddenParent, StringComparison.OrdinalIgnoreCase);
+    bool IsHiddenParent(string table) => Project.HiddenParents is { } hidden ? hidden.Contains(table, StringComparer.OrdinalIgnoreCase) : table.EqualsIgnoreCase(hiddenParent);
     // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
     // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
     // only used when no project is chosen.
@@ -126,7 +126,7 @@
             .Select(fk =>
             {
                 string parentBase = BaseName(fk.ReferencedTable);
-                bool self = fk.ReferencedTable.Equals(Model.TableName, StringComparison.OrdinalIgnoreCase);
+                bool self = fk.ReferencedTable.EqualsIgnoreCase(Model.TableName);
                 string pList = LowerFirst(parentBase).Pluralize();
                 return new
                 {
@@ -139,7 +139,7 @@
                     SetList = "set" + UpperFirst(pList),
                     NameMethod = LowerFirst(parentBase) + "Name",
                     KeyProp = Camel(fk.ReferencedColumns[0]),
-                    IdType = Model.Columns.First(col => col.Name.Equals(fk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)).SqlType == SqlDbType.UniqueIdentifier ? "string" : "number",
+                    IdType = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).SqlType == SqlDbType.UniqueIdentifier ? "string" : "number",
                     DisplayProp = Camel(fk.ReferencedDisplayColumns[0]),
                     Self = self
                 };
@@ -162,7 +162,7 @@
                 // The child's OTHER foreign keys that point at a table with a display column are shown as that name (a customer's purchase history lists item numbers, not item ids);
                 // the grid's own foreign key (always this row), the child's own key and every other id column are left out, as in the WinUI3 grid.
                 Lookups = fk.ReferencingTableForeignKeys
-                    .Where(o => o.ReferencingColumns.Count == 1 && !o.ReferencingColumns[0].Equals(fk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)
+                    .Where(o => o.ReferencingColumns.Count == 1 && !o.ReferencingColumns[0].EqualsIgnoreCase(fk.ReferencingColumns[0])
                                 && o.ReferencedDisplayColumns.Count > 0 && !NoApi(o.ReferencedTable, default))
                     .Select(o => (Column: Camel(o.ReferencingColumns[0]), Route: ApiRoute(o.ReferencedTable), Key: Camel(o.ReferencedColumns[0]), Display: Camel(o.ReferencedDisplayColumns[0]))).ToList(),
                 Hidden = fk.ReferencingColumns.Concat(fk.ReferencingPrimaryKeyColumns)

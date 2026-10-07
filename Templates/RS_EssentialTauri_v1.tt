@@ -14,7 +14,7 @@
     // Settings: RustCrateName, Stacks, OutputRust, OutputReact, OutputAngular, ProjectTitle, ProjectName.
     // ==========================================================================================
     string crate = Project.RustCrateName;
-    bool angular = Project.Stacks.Any(s => s.Equals("Angular", StringComparison.OrdinalIgnoreCase)) && !Project.Stacks.Any(s => s.Equals("React", StringComparison.OrdinalIgnoreCase));
+    bool angular = Project.Stacks.Any(s => s.EqualsIgnoreCase("Angular")) && !Project.Stacks.Any(s => s.EqualsIgnoreCase("React"));
     int depth = Project.OutputFolderOf("rust").Split('/', '\\').Count(p => p.Length > 0 && p != ".") + 1;   // from desktop/ up to the folder the stacks sit in
     string frontend = string.Concat(Enumerable.Repeat("../", depth)) + (angular ? Project.OutputFolderOf("angular") + "/dist/frontend/browser" : Project.OutputFolderOf("react") + "/dist");
     string title = Project.ProjectTitle;

@@ -21,7 +21,7 @@
     string Str(string text) => PythonNames.Str(text);
 
     bool schemaNamed = Model.Dialect is SqlDialect.SqlServer or SqlDialect.PostgreSql
-        && !Model.SchemaName.Equals(Model.Dialect == SqlDialect.SqlServer ? "dbo" : "public", StringComparison.OrdinalIgnoreCase);
+        && !Model.SchemaName.EqualsIgnoreCase(Model.Dialect == SqlDialect.SqlServer ? "dbo" : "public");
 
     var saTypes = t.Fields.Select(f => System.Text.RegularExpressions.Regex.Match(f.SqlAlchemyType, "^[A-Za-z]+").Value).Where(n => n != "PgEnum").Distinct().OrderBy(n => n, StringComparer.Ordinal).ToList();
     bool anyServerGenerated = t.Fields.Any(f => f.ReadOnly);

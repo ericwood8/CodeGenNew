@@ -34,7 +34,7 @@
 
     // With Dashboard=true the dashboard is the first screen; with DashboardStrip=true each table that has cards shows them above its list page.
     bool dashboard = Project.Dashboard;
-    var stripTables = Project.DashboardStrip ? DashboardPlan.Build(Database, Project).StripTables.Where(name => screens.Any(t => t.TableName.Equals(name, StringComparison.OrdinalIgnoreCase))).ToHashSet(StringComparer.OrdinalIgnoreCase) : new HashSet<string>();
+    var stripTables = Project.DashboardStrip ? DashboardPlan.Build(Database, Project).StripTables.Where(name => screens.Any(t => t.TableName.EqualsIgnoreCase(name))).ToHashSet(StringComparer.OrdinalIgnoreCase) : new HashSet<string>();
 
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');

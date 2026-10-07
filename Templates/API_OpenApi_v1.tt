@@ -99,7 +99,7 @@
             var taken = new HashSet<string>(table.Columns.Select(c => c.Name), StringComparer.OrdinalIgnoreCase) { table.TableName };
             foreach (var fk in table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1))
             {
-                var column = table.Columns.FirstOrDefault(c => c.Name.Equals(fk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase));
+                var column = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(fk.ReferencingColumns[0]));
                 if (column is null || column.IsPrimaryKey || !apiNames.Contains(fk.ReferencedTable) || (Project.NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape) ?? false))
                     continue;
                 string role = column.Name.Length > 2 && column.Name.EndsWith("Id", StringComparison.Ordinal) ? column.Name[..^2] : column.Name + "Ref";

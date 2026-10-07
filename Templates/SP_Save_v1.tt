@@ -31,8 +31,8 @@
 
     bool IsTextLob(ColumnModel c) => c.SqlType is SqlDbType.Text or SqlDbType.NText;
     bool IsRowVersion(ColumnModel c) =>
-        c.SqlTypeDeclaration.Equals("timestamp", StringComparison.OrdinalIgnoreCase) ||
-        c.SqlTypeDeclaration.Equals("rowversion", StringComparison.OrdinalIgnoreCase);
+        c.SqlTypeDeclaration.EqualsIgnoreCase("timestamp") ||
+        c.SqlTypeDeclaration.EqualsIgnoreCase("rowversion");
 
     // A single identity key (or an identity column inside a composite key) is the OUTPUT parameter.
     var identityKey = Model.PrimaryKeyColumns.FirstOrDefault(c => c.IsIdentity);
@@ -50,7 +50,7 @@
     var activeCol = hasActivePair ? Model.ActiveColumn : null;
 
     // Literal for "inactive"/"active" in the active-flag column's own polarity (IsInactive-style is inverted).
-    bool activeIsNegativePolarity = activeCol is not null && activeCol.Name.Contains("Inactive", StringComparison.OrdinalIgnoreCase);
+    bool activeIsNegativePolarity = activeCol is not null && activeCol.IsInactive;
     string Literal(ColumnModel c, string value) => c.IsStringColumn ? $"'{value}'" : value;
     string inactiveLiteral = activeCol is null ? "" : Literal(activeCol, activeIsNegativePolarity ? "1" : "0");
     string activeLiteral = activeCol is null ? "" : Literal(activeCol, activeIsNegativePolarity ? "0" : "1");

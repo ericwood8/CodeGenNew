@@ -52,7 +52,7 @@
         // A foreign key is a drop-down when the parent has display columns and the project does not say otherwise; the table's own parent (a tree) stays a plain box.
         ForeignKeyModel LookupOf(ColumnModel c) =>
             fkByColumn.TryGetValue(c.Name, out var fk)
-            && !fk.ReferencedTable.Equals(Model.TableName, StringComparison.OrdinalIgnoreCase)
+            && !fk.ReferencedTable.EqualsIgnoreCase(Model.TableName)
             && !(Project.NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape) ?? false)
             && fk.ReferencedDisplayColumns.Count > 0
                 ? fk : null;
@@ -63,7 +63,7 @@
                 Table = fk.ReferencedTable,
                 Type = BlazorNames.TypeName(fk.ReferencedTable),
                 Field = "lookup" + Ident(BlazorNames.TypeName(fk.ReferencedTable)),
-                IdType = Model.Columns.First(col => col.Name.Equals(fk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)).CSharpBase(),
+                IdType = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).CSharpBase(),
                 KeyProp = fk.ReferencedColumns[0],
                 DisplayProp = fk.ReferencedDisplayColumns[0]
             }).ToList();

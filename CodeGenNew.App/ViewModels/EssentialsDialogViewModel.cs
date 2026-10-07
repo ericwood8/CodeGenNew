@@ -115,7 +115,7 @@ public partial class EssentialsDialogViewModel : StatusMessageViewModel
         string root = System.IO.Path.GetFullPath(OutputDirectory);
         foreach (var outcome in run.Outcomes)
         {
-            string shown = outcome.FullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase) ? outcome.FullPath[root.Length..].TrimStart('\\', '/') : outcome.FullPath;
+            string shown = outcome.FullPath.StartsWithIgnoreCase(root) ? outcome.FullPath[root.Length..].TrimStart('\\', '/') : outcome.FullPath;
             Results.Add(new ResultRow($"{outcome.Kind}: {shown}" + (outcome.Diff is not null && outcome.Kind == FileOutcomeKind.Skipped ? " (differs: select it to see how)" : ""), outcome.Diff));
         }
         foreach (var (group, errors) in run.Failures)

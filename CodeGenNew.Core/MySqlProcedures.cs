@@ -23,7 +23,7 @@ public static class MySqlProcedures
         string.Join(" AND ", keys.Select(k => $"{(alias is null ? "" : Q(alias) + ".")}{Col(k)} = {value(k)}"));
 
     private static string Flag(ColumnModel c, bool value) =>
-        c.IsStringColumn ? (c.Name.Contains("Admin", StringComparison.OrdinalIgnoreCase) ? (value ? "'True'" : "'False'") : (value ? "'1'" : "'0'")) : (value ? "1" : "0");
+        c.IsStringColumn ? (c.Name.ContainsIgnoreCase("Admin") ? (value ? "'True'" : "'False'") : (value ? "'1'" : "'0'")) : (value ? "1" : "0");
 
     private static string Trimmed(ColumnModel c, string expression) => c.IsStringColumn ? $"TRIM({expression})" : expression;
 
@@ -94,7 +94,7 @@ public static class MySqlProcedures
         var pairs = parameterColumns.Select(c => (Name: c.DbName, Value: Trimmed(c, P(c))))
             .Concat(autoTouched.Select(c => (Name: c.DbName, Value: "NOW()"))).ToList();
         if (m.HasActiveInactivePair && m.ActiveColumn is { } active)
-            pairs.Add((active.DbName, Flag(active, !active.Name.Contains("Inactive", StringComparison.OrdinalIgnoreCase))));
+            pairs.Add((active.DbName, Flag(active, !active.IsInactive)));
         foreach (var admin in m.Columns.Where(c => c.IsAdminFlagColumn))
             pairs.Add((admin.DbName, Flag(admin, false)));
 
@@ -130,7 +130,7 @@ public static class MySqlProcedures
         foreach (var c in setColumns) sets.Add($"{Col(c)} = COALESCE({Trimmed(c, P(c))}, {Col(c)})");
         if (m.HasActiveInactivePair && m.ActiveColumn is { } active)
         {
-            bool negative = active.Name.Contains("Inactive", StringComparison.OrdinalIgnoreCase);
+            bool negative = active.IsInactive;
             string own = $"COALESCE({Trimmed(active, P(active))}, {Col(active)})";
             sets.Add(triggers.Count > 0
                 ? $"{Col(active)} = CASE WHEN {string.Join(" OR ", triggers.Select(c => $"{P(c)} IS NOT NULL"))} THEN {Flag(active, negative)} ELSE {own} END"
@@ -165,7 +165,7 @@ public static class MySqlProcedures
         var pk = m.PrimaryKeyColumns;
         bool hasActive = m.HasActiveInactivePair && m.ActiveColumn is not null;
         var active = hasActive ? m.ActiveColumn : null;
-        bool negative = active is not null && active.Name.Contains("Inactive", StringComparison.OrdinalIgnoreCase);
+        bool negative = active is not null && active.IsInactive;
 
         string Supplied(ColumnModel c) => c.IsStringColumn ? $"CHAR_LENGTH({P(c)}) > 0" : $"{P(c)} IS NOT NULL";
         var triggers = new List<ColumnModel>();
@@ -248,7 +248,7 @@ public static class MySqlProcedures
         bool hasActive = m.HasActiveInactivePair && m.ActiveColumn is not null;
         var active = hasActive ? m.ActiveColumn : null;
         var inactiveDate = hasActive ? m.InactiveDateColumn : null;
-        bool negative = active is not null && active.Name.Contains("Inactive", StringComparison.OrdinalIgnoreCase);
+        bool negative = active is not null && active.IsInactive;
         bool IsRule(ColumnModel c) =>
             c.IsCreateDateColumn || c.IsLastChangedDateColumn || c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsCreateUserColumn
             || c.IsInactiveReasonColumn || c.IsAdminFlagColumn || c == active || c == inactiveDate
@@ -366,14 +366,14 @@ public static class MySqlProcedures
             if (fk.ReferencingColumns.Count != 1) return fk.ReferencedTable;
             string name = fk.ReferencingColumns[0];
             foreach (string suffix in new[] { "EnumID", "ID", "Id" })
-                if (name.Length > suffix.Length && name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)) { name = name[..^suffix.Length]; break; }
+                if (name.Length > suffix.Length && name.EndsWithIgnoreCase(suffix)) { name = name[..^suffix.Length]; break; }
             string tail = "_" + fk.ReferencedTable;
-            if (name.Length > tail.Length && name.EndsWith(tail, StringComparison.OrdinalIgnoreCase)) name = name[..^tail.Length];
+            if (name.Length > tail.Length && name.EndsWithIgnoreCase(tail)) name = name[..^tail.Length];
             name = name.TrimEnd('_');
             return name.Length > 0 ? name : fk.ReferencedTable;
         }
         string TrimTablePrefix(string column, string table) =>
-            column.Length > table.Length && column.StartsWith(table, StringComparison.OrdinalIgnoreCase) ? column[table.Length..] : column;
+            column.Length > table.Length && column.StartsWithIgnoreCase(table) ? column[table.Length..] : column;
 
         var select = new List<string>();
         var outputNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -395,7 +395,7 @@ public static class MySqlProcedures
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var fk in m.ForeignKeys)
         {
-            var columns = fk.ReferencingColumns.Select(n => m.Columns.FirstOrDefault(c => c.Name.Equals(n, StringComparison.OrdinalIgnoreCase))).ToList();
+            var columns = fk.ReferencingColumns.Select(n => m.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(n))).ToList();
             if (columns.Any(c => c is null)) continue;
             if (!seen.Add(string.Join(",", fk.ReferencingColumns) + ">" + fk.ReferencedSchema + "." + fk.ReferencedTable)) continue;
             foreignKeys.Add((Unique(aliases, Role(fk)), fk, columns!));
@@ -425,7 +425,7 @@ public static class MySqlProcedures
         string activeFilter = "";
         if (active is not null)
         {
-            bool negative = active.Name.Contains("Inactive", StringComparison.OrdinalIgnoreCase);
+            bool negative = active.IsInactive;
             string value = Flag(active, !negative);
             string test = active.IsNullable ? $"COALESCE({BaseCol(active)}, {value}) = {value}" : $"{BaseCol(active)} = {value}";
             activeFilter = $"({Q("pblnIncludeInactive")} = 1 OR {test})";
@@ -446,7 +446,7 @@ public static class MySqlProcedures
     // The database name of one of a referenced table's display columns (the model lists them under the generated names and, in parallel, the real ones).
     private static string DatabaseNameOf(ForeignKeyModel fk, string generatedName)
     {
-        int i = fk.ReferencedDisplayColumns.FindIndex(c => c.Equals(generatedName, StringComparison.OrdinalIgnoreCase));
+        int i = fk.ReferencedDisplayColumns.FindIndex(c => c.EqualsIgnoreCase(generatedName));
         return i >= 0 ? fk.ReferencedDisplayDbColumns[i] : generatedName;
     }
 
@@ -461,8 +461,8 @@ public static class MySqlProcedures
 
         var anchorFk = m.JunctionForeignKeys[0];
         var targetFk = m.JunctionForeignKeys[1];
-        var anchor = m.Columns.First(c => c.Name.Equals(anchorFk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase));
-        var target = m.Columns.First(c => c.Name.Equals(targetFk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase));
+        var anchor = m.Columns.First(c => c.Name.EqualsIgnoreCase(anchorFk.ReferencingColumns[0]));
+        var target = m.Columns.First(c => c.Name.EqualsIgnoreCase(targetFk.ReferencingColumns[0]));
         string anchorParam = Q("Anchor" + anchor.Name);
         string targetParam = Q("Target" + target.Name);
         string targetKey = targetFk.ReferencedDbColumns[0];

@@ -169,7 +169,7 @@ public sealed class PythonTable
         var overrides = CloneShape.OverrideColumns(m);
         var active = m.HasActiveInactivePair ? m.ActiveColumn : null;
         var inactiveDate = m.HasActiveInactivePair ? m.InactiveDateColumn : null;
-        bool activeNegative = active is not null && active.Name.Contains("Inactive", StringComparison.OrdinalIgnoreCase);
+        bool activeNegative = active is not null && active.IsInactive;
         var values = new List<(PythonField, string)>();
         var freed = new List<PythonField>();
 

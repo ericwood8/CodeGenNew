@@ -15,8 +15,8 @@ public sealed class JunctionEf
         _model = model;
         var anchorFk = model.JunctionForeignKeys[0];
         _targetForeignKey = model.JunctionForeignKeys[1];
-        _anchor = model.Columns.First(c => c.Name.Equals(anchorFk.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase));
-        _target = model.Columns.First(c => c.Name.Equals(_targetForeignKey.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase));
+        _anchor = model.Columns.First(c => c.Name.EqualsIgnoreCase(anchorFk.ReferencingColumns[0]));
+        _target = model.Columns.First(c => c.Name.EqualsIgnoreCase(_targetForeignKey.ReferencingColumns[0]));
     }
 
     private string Entity => _model.IsCSharpReservedWordName ? "@" + _model.TableName : _model.TableName;

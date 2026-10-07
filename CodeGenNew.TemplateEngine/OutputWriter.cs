@@ -1,3 +1,4 @@
+using CodeGenNew.Core;
 namespace CodeGenNew.TemplateEngine;
 
 /// <summary> What happened to one file a generation wanted to write. </summary>
@@ -39,7 +40,7 @@ public static class OutputWriter
         foreach (var (relativePath, content) in files)
         {
             string full = Path.GetFullPath(Path.Combine(folder, relativePath));
-            if (!full.StartsWith(Path.GetFullPath(folder), StringComparison.OrdinalIgnoreCase))
+            if (!full.StartsWithIgnoreCase(Path.GetFullPath(folder)))
                 throw new InvalidDataException($"The path '{relativePath}' leaves the output folder.");
 
             FileOutcomeKind kind;

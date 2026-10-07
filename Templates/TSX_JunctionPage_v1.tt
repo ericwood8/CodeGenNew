@@ -35,8 +35,8 @@
 
     var anchorFk = Model.JunctionForeignKeys[0];
     var targetFk = Model.JunctionForeignKeys[1];
-    var anchorColumn = Model.Columns.First(c => c.Name.Equals(anchorFk.ReferencingColumns[0], System.StringComparison.OrdinalIgnoreCase));
-    var targetColumn = Model.Columns.First(c => c.Name.Equals(targetFk.ReferencingColumns[0], System.StringComparison.OrdinalIgnoreCase));
+    var anchorColumn = Model.Columns.First(c => c.Name.EqualsIgnoreCase(anchorFk.ReferencingColumns[0]));
+    var targetColumn = Model.Columns.First(c => c.Name.EqualsIgnoreCase(targetFk.ReferencingColumns[0]));
     string anchorTs = CSharpToTs(anchorColumn.SqlType);
     string targetTs = CSharpToTs(targetColumn.SqlType);
     string targetRole = targetFk.ReferencedTable;

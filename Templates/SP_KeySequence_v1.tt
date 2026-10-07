@@ -25,7 +25,7 @@
     else
     {
         var listed = Project.KeySequenceTables
-            .Select(name => (Name: name, Table: Database.Tables.FirstOrDefault(t => t.TableName.Equals(name, StringComparison.OrdinalIgnoreCase))))
+            .Select(name => (Name: name, Table: Database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(name))))
             .ToList();
         var unknown = listed.Where(l => l.Table is null).Select(l => l.Name).ToList();
         var unsuitable = listed.Where(l => l.Table is not null && (l.Table.PrimaryKeyShape != PrimaryKeyShape.SingleInt || l.Table.PrimaryKeyColumns[0].IsIdentity)).Select(l => l.Name).ToList();

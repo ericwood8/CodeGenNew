@@ -35,8 +35,8 @@ public static class ProjectBuilder
     {
         string? custom = project.StepCommand(step, stack);
         if (custom is not null)
-            return custom.Length == 0 || custom.Equals("none", StringComparison.OrdinalIgnoreCase) ? null : custom;
-        if (step == "test" && stack.Equals("Api", StringComparison.OrdinalIgnoreCase) && project.ApiTests)
+            return custom.Length == 0 || custom.EqualsIgnoreCase("none") ? null : custom;
+        if (step == "test" && stack.EqualsIgnoreCase("Api") && project.ApiTests)
             return $"dotnet test \"{Path.GetRelativePath(project.OutputFolderOf("api"), project.OutputFolderOf("apitests"))}\" -v q";
         return DefaultCommand(stack, step);
     }
@@ -54,7 +54,7 @@ public static class ProjectBuilder
                 continue;
             }
 
-            bool web = stack.Equals("React", StringComparison.OrdinalIgnoreCase) || stack.Equals("Angular", StringComparison.OrdinalIgnoreCase);
+            bool web = stack.EqualsIgnoreCase("React") || stack.EqualsIgnoreCase("Angular");
             if (web && (build || test) && !Directory.Exists(Path.Combine(folder, "node_modules")))
             {
                 progress?.Invoke($"{stack}: npm install");
@@ -72,7 +72,7 @@ public static class ProjectBuilder
                 progress?.Invoke($"{stack}: {command}");
                 var result = await RunCommandAsync(stack, step, command, folder, cancellationToken);
                 // a WinUI 3 build after a column or control changed can fail on stale generated *.g.cs files in obj: clear it and build again (the second build is the one that counts)
-                if (!result.Success && step == "build" && stack.Equals("WinUI3", StringComparison.OrdinalIgnoreCase) && Directory.Exists(Path.Combine(folder, "obj")))
+                if (!result.Success && step == "build" && stack.EqualsIgnoreCase("WinUI3") && Directory.Exists(Path.Combine(folder, "obj")))
                 {
                     progress?.Invoke($"{stack}: clearing obj and building again");
                     Directory.Delete(Path.Combine(folder, "obj"), recursive: true);

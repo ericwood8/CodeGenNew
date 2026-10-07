@@ -11,7 +11,7 @@ public static class CloneShape
     // SQL Server's timestamp is a row version the database sets; in PostgreSQL, MySQL and SQLite a timestamp is an ordinary date and time
     private static bool IsRowVersion(TableModel m, ColumnModel c) =>
         m.Dialect == SqlDialect.SqlServer
-        && (c.SqlTypeDeclaration.Equals("timestamp", StringComparison.OrdinalIgnoreCase) || c.SqlTypeDeclaration.Equals("rowversion", StringComparison.OrdinalIgnoreCase));
+        && (c.SqlTypeDeclaration.EqualsIgnoreCase("timestamp") || c.SqlTypeDeclaration.EqualsIgnoreCase("rowversion"));
 
     // A column the clone sets by rule (a create date, the active flag, the deleted flag ...), not by copying or overriding the source's value.
     private static bool IsRuleColumn(TableModel m, ColumnModel c)

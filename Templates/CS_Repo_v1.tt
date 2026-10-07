@@ -73,7 +73,7 @@
             var childKeys = Model.ForeignKeys
                 .Where(f => f.ReferencingColumns.Count == 1
                             && !NoRepository(f.ReferencedTable, f.ReferencedLookupShape))
-                .Select(f => Model.Columns.First(c => c.Name.Equals(f.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)))
+                .Select(f => Model.Columns.First(c => c.Name.EqualsIgnoreCase(f.ReferencingColumns[0])))
                 .ToList();
             if (childKeys.Count == 1
                 && childKeys[0].SqlType == SqlDbType.Int && !childKeys[0].IsNullable && !childKeys[0].IsPrimaryKey)

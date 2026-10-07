@@ -29,7 +29,7 @@
 
     bool Unreadable(ColumnModel c) => c.IsComputed
         || (dialect == SqlDialect.SqlServer && (c.SqlType is SqlDbType.Text or SqlDbType.NText or SqlDbType.Image or SqlDbType.Timestamp
-            || c.SqlTypeDeclaration.Equals("rowversion", StringComparison.OrdinalIgnoreCase)));
+            || c.SqlTypeDeclaration.EqualsIgnoreCase("rowversion")));
     var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).Where(c => !Unreadable(c)).ToList();
 
     if (!Model.IsAuditTable)
