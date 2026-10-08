@@ -1,6 +1,6 @@
 # CodeGenNew
 
-A C# code generator for a developer's own box: point it at a **SQL Server, PostgreSQL, MySQL or SQLite** database, pick a table, and generate code from **T4 templates** — SQL stored procedures, C# entities, enums, repositories and minimal-API classes, the Angular TypeScript model, service and screen for the same table, and a React counterpart of that same screen family. It has a WinUI 3 desktop app (right-click a table in a TreeView) and a scriptable command-line tool, `codegen`, that does the same without the GUI.
+A C# code generator for a developer's own box: point it at a **SQL Server, PostgreSQL, MySQL or SQLite** database, pick a table, and generate code from **T4 templates** — SQL stored procedures, C# entities, enums, repos and minimal-API classes, Rust pieces, the Angular TypeScript model, service and screen for the same table, and a React counterpart of that same screen family. It has a WinUI 3 desktop app (right-click a table in a TreeView) and a scriptable command-line tool, `codegen`, that does the same without the GUI.
 
 It replaces a series of hand-rolled "write lines to a text file with substitutions and smart loops" generators with a real templating engine (T4 via `Mono.TextTemplating`), while staying simple and portable (unpackaged, no installer) and easy to extend: a new template is just a new `.tt` file — no code changes.
 
