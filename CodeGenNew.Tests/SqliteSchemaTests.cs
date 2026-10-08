@@ -30,7 +30,7 @@ public class SqliteSchemaTests
 
         Assert.IsTrue(parsed.WithoutRowId);
         Assert.IsTrue(parsed.Strict);
-        Assert.AreEqual(3, parsed.Checks.Count);
+        Assert.HasCount(3, parsed.Checks);
         Assert.AreEqual(("Price", "\"Price\" >= 0 AND \"Price\" <= 100"), (parsed.Checks[0].Column, parsed.Checks[0].Expression));
         Assert.AreEqual("Kind", parsed.Checks[1].Column);
         Assert.AreEqual("Kind IN ('a,b', 'it''s (ok)')", parsed.Checks[1].Expression);
@@ -43,10 +43,10 @@ public class SqliteSchemaTests
     {
         var parsed = SqliteDdl.Parse("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT)");
 
-        Assert.AreEqual(0, parsed.Checks.Count);
+        Assert.IsEmpty(parsed.Checks);
         Assert.IsFalse(parsed.WithoutRowId);
         Assert.IsFalse(parsed.Strict);
-        Assert.AreEqual(0, SqliteDdl.Parse(null).Checks.Count);
+        Assert.IsEmpty(SqliteDdl.Parse(null).Checks);
     }
 
     // ------------------------------------------------------------------ the declared types
@@ -145,7 +145,7 @@ public class SqliteSchemaTests
         {
             var tables = (await Provider(path).ListTablesAsync()).ToDictionary(t => t.TableName);
 
-            Assert.AreEqual(4, tables.Count);
+            Assert.HasCount(4, tables);
             Assert.AreEqual(PrimaryKeyShape.SingleInt, tables["Customer"].PrimaryKeyShape);
             Assert.AreEqual(PrimaryKeyShape.Composite, tables["CustomerTag"].PrimaryKeyShape);
             Assert.IsTrue(tables["CustomerTag"].IsJunctionTable);
@@ -222,9 +222,9 @@ public class SqliteSchemaTests
             var model = await Provider(path).BuildTableModelAsync("main", "CustomerTag");
 
             Assert.IsTrue(model.IsJunctionTable);
-            Assert.AreEqual(2, model.PrimaryKeyColumns.Count);
+            Assert.HasCount(2, model.PrimaryKeyColumns);
             Assert.IsFalse(model.Columns.Any(c => c.IsIdentity));
-            Assert.AreEqual(2, model.ForeignKeys.Count);
+            Assert.HasCount(2, model.ForeignKeys);
             Assert.IsTrue(model.IsIndexed(["CustomerId", "TagId"]));
         }
         finally

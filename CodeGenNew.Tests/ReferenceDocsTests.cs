@@ -18,14 +18,14 @@ public class ReferenceDocsTests
     public void Every_project_setting_key_has_a_hint()
     {
         var missing = ProjectSettings.Keys.Where(k => !ProjectSettingsHints.All.TryGetValue(k, out string? hint) || string.IsNullOrWhiteSpace(hint)).ToList();
-        Assert.AreEqual(0, missing.Count, "keys without a hint in ProjectSettingsHints: " + string.Join(", ", missing));
+        Assert.IsEmpty(missing, "keys without a hint in ProjectSettingsHints: " + string.Join(", ", missing));
     }
 
     [TestMethod]
     public void Every_hint_belongs_to_a_known_key()
     {
         var unknown = ProjectSettingsHints.All.Keys.Where(h => !ProjectSettings.Keys.Contains(h, StringComparer.OrdinalIgnoreCase)).ToList();
-        Assert.AreEqual(0, unknown.Count, "hints for keys that no longer exist: " + string.Join(", ", unknown));
+        Assert.IsEmpty(unknown, "hints for keys that no longer exist: " + string.Join(", ", unknown));
     }
 
     [TestMethod]
@@ -33,7 +33,7 @@ public class ReferenceDocsTests
     {
         string text = File.ReadAllText(RepositoryFile("Docs", "Reference.md"));
         var missing = ProjectSettings.Keys.Where(k => !text.Contains($"| `{k}` |", StringComparison.Ordinal)).ToList();
-        Assert.AreEqual(0, missing.Count, "Docs/Reference.md section 8 has no line for: " + string.Join(", ", missing));
+        Assert.IsEmpty(missing, "Docs/Reference.md section 8 has no line for: " + string.Join(", ", missing));
     }
 
     [TestMethod]
@@ -49,6 +49,6 @@ public class ReferenceDocsTests
             .ToList();
         Assert.IsGreaterThan(10, keys.Count, "no .tt.config keys were found");
         var missing = keys.Where(k => !text.Contains($"`{k}", StringComparison.Ordinal)).ToList();
-        Assert.AreEqual(0, missing.Count, "Docs/Reference.md section 3 does not mention: " + string.Join(", ", missing));
+        Assert.IsEmpty(missing, "Docs/Reference.md section 3 does not mention: " + string.Join(", ", missing));
     }
 }

@@ -84,7 +84,7 @@ public class SchemaDocumentTemplateTests
 
         var document = new OpenApiStringReader().Read(yaml.Replace("@@@FILE openapi.yaml@@@\n", ""), out var diagnostic);
 
-        Assert.AreEqual(0, diagnostic.Errors.Count, string.Join(" | ", diagnostic.Errors.Select(e => e.Pointer + ": " + e.Message)));
+        Assert.IsEmpty(diagnostic.Errors, string.Join(" | ", diagnostic.Errors.Select(e => e.Pointer + ": " + e.Message)));
         Assert.AreEqual("http://localhost:5123", document.Servers.Single().Url);
         CollectionAssert.IsSubsetOf(
             new[] { "/api/customers", "/api/customers/{id}", "/api/customers/search", "/api/customerstatus", "/api/customerstatus/{id}" }, document.Paths.Keys.ToArray());
@@ -103,7 +103,7 @@ public class SchemaDocumentTemplateTests
         var schema = document.Components.Schemas["Customer"];
 
         CollectionAssert.IsSubsetOf(new[] { "customerId", "customerStatusId", "name", "tier", "weight", "added" }, schema.Required.ToArray());
-        Assert.IsFalse(schema.Required.Contains("billingEmail"));
+        Assert.DoesNotContain("billingEmail", schema.Required);
         Assert.AreEqual("integer", schema.Properties["customerId"].Type);
         Assert.AreEqual(50, schema.Properties["name"].MaxLength);
         Assert.IsTrue(schema.Properties["billingEmail"].Nullable);
@@ -112,7 +112,7 @@ public class SchemaDocumentTemplateTests
         Assert.AreEqual(1m, schema.Properties["rating"].Minimum);
         Assert.AreEqual(5m, schema.Properties["rating"].Maximum);
         CollectionAssert.AreEqual(new[] { "Gold", "Silver", "Bronze" }, schema.Properties["tier"].Enum.Select(e => ((Microsoft.OpenApi.Any.OpenApiString)e).Value).ToArray());
-        Assert.AreEqual(true, schema.Properties["weight"].ExclusiveMinimum);   // CHECK (Weight > 0) stays strict
+        Assert.IsTrue(schema.Properties["weight"].ExclusiveMinimum);   // CHECK (Weight > 0) stays strict
         Assert.AreEqual("date-time", schema.Properties["added"].Format);
         Assert.AreEqual("CustomerStatus", schema.Properties["customerStatus"].Reference.Id);   // the navigation property of the entity
     }
@@ -201,7 +201,7 @@ public class SchemaDocumentTemplateTests
         Expect.Contains(md, "    CustomerStatus ||--o{ Customer : \"CustomerStatusId\"");
         Expect.Contains(md, "    Customer {\n        int CustomerId PK\n        int CustomerStatusId FK\n        nvarchar Name\n        varchar BillingEmail \"null\"");
         Expect.Contains(md, "decimal CreditLimit \"null\"");
-        Assert.IsTrue(md.TrimEnd().EndsWith("```"));
+        Assert.EndsWith("```", md.TrimEnd());
     }
 
     [TestMethod]

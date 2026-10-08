@@ -73,7 +73,7 @@ public class SqliteGenerationTests
             StringAssert.Contains(File.ReadAllText(Path.Combine(output, "Shop.Api", "appsettings.json")), "Data Source=shop.db");
             string registration = File.ReadAllText(Path.Combine(output, "Shop.Api", "Apis", "ApiRegistration.cs"));
             StringAssert.Contains(registration, "new CustomerTagJunctionApi<CustomerTag>().Register(app);");
-            Assert.IsFalse(File.ReadAllText(Path.Combine(output, "Shop.Api", "Repositories", "CustomerRepo.cs")).Contains("FromSqlRaw"));
+            Assert.DoesNotContain("FromSqlRaw", File.ReadAllText(Path.Combine(output, "Shop.Api", "Repositories", "CustomerRepo.cs")));
         }
         finally
         {

@@ -26,7 +26,7 @@ public static class BlazorNames
         var key = table.PrimaryKeyColumns.Count == 1 ? table.PrimaryKeyColumns[0] : null;
         if (key is null || !(key.IsInt32Column || key.IsGuidColumn))
             return $"the routes take the id as {{id:int}} or {{id:guid}}, but [{table.SchemaName}].[{table.TableName}] has "
-                + (table.PrimaryKeyColumns.Count == 0 ? "no primary key." : table.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {key.SqlTypeDeclaration} primary key.");
+                + (key is not null ? $"a {key.SqlTypeDeclaration} primary key." : table.PrimaryKeyColumns.Count == 0 ? "no primary key." : "a composite primary key.");
         if (table.IsNameActiveTable)
             return $"[{table.SchemaName}].[{table.TableName}] has a Name and an IsActive column, so its real API is hand-maintained and has no plain getAll(); write its client by hand.";
         return null;

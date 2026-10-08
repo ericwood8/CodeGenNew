@@ -77,7 +77,7 @@ public class PostgresIntegrationTests
     {
         var model = await Provider().BuildTableModelAsync("public", "CustomerStatus", includeRowData: true);
 
-        Assert.AreEqual(2, model.Rows.Count);
+        Assert.HasCount(2, model.Rows);
         Assert.IsTrue(model.Rows.Any(r => Equals(r[1], "Good Standing")));
     }
 
@@ -200,7 +200,7 @@ public class PostgresIntegrationTests
                 await Run(result.GeneratedText!);
             }
             await using var count = new Npgsql.NpgsqlCommand("SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'codegen_snake_test'", connection);
-            Assert.IsTrue((long)(await count.ExecuteScalarAsync())! >= 7);
+            Assert.IsGreaterThanOrEqualTo(7, (long)(await count.ExecuteScalarAsync())!);
         }
         finally
         {

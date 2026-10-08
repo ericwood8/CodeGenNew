@@ -72,7 +72,7 @@ public class GenerateAllFollowUpTests
         StringAssert.Contains(diff, "--- file.txt");
         StringAssert.Contains(diff, "- five\n+ FIVE\n");
         StringAssert.Contains(diff, "  four\n");
-        Assert.IsFalse(diff.Contains("  ten"), "a line far from the change is not shown");
+        Assert.DoesNotContain("  ten", diff, "a line far from the change is not shown");
     }
 
     [TestMethod]
@@ -114,7 +114,7 @@ public class GenerateAllFollowUpTests
         using var temp = new TempFolder();
         var first = await Repo.GenerateAsync(new FakeProvider(Department(), Employee()), Options(temp.Path));
         Assert.IsTrue(first.ManifestWritten);
-        Assert.AreEqual(0, first.Stale.Count);
+        Assert.IsEmpty(first.Stale);
         Assert.IsTrue(File.Exists(GenerationManifest.PathFor(temp.Path)));
 
         // the Employee table is dropped; someone edited its repository by hand
@@ -146,7 +146,7 @@ public class GenerateAllFollowUpTests
         string manifest = File.ReadAllText(GenerationManifest.PathFor(temp.Path));
 
         var partial = await Repo.GenerateAsync(new FakeProvider(Department()), Options(temp.Path, change: o => o.Only = ["CS_Entity"]));
-        Assert.AreEqual(0, partial.Stale.Count, "a run of part of the plan cannot tell what is stale");
+        Assert.IsEmpty(partial.Stale, "a run of part of the plan cannot tell what is stale");
         StringAssert.Contains(File.ReadAllText(GenerationManifest.PathFor(temp.Path)), "Employee.cs");   // the earlier entries are kept
 
         File.WriteAllText(GenerationManifest.PathFor(temp.Path), manifest);
@@ -180,7 +180,7 @@ public class GenerateAllFollowUpTests
         File.WriteAllText(System.IO.Path.Combine(app, "MainWindow.Screens.cs"), "// generated");
         Directory.CreateDirectory(System.IO.Path.Combine(app, "Data"));
         File.WriteAllText(System.IO.Path.Combine(app, "Data", "AcmeContext.cs"), "// generated");
-        Assert.AreEqual(0, (await EssentialsCatalog.GenerateAsync(main, Project(), temp.Path)).Warnings.Count);
+        Assert.IsEmpty((await EssentialsCatalog.GenerateAsync(main, Project(), temp.Path)).Warnings);
     }
 
     // ------------------------------------------------------------------ build and test
@@ -224,7 +224,7 @@ public class GenerateAllFollowUpTests
 
         StringAssert.Contains(summary, "error CS0103");
         StringAssert.Contains(summary, "Tests  9 passed");
-        Assert.IsFalse(summary.Contains("lots of noise"));
+        Assert.DoesNotContain("lots of noise", summary);
     }
 
     // ------------------------------------------------------------------ more essentials groups

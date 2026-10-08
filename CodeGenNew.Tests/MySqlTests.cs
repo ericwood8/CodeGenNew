@@ -123,8 +123,8 @@ public class NamingStyleTests
     public void The_project_lists_its_acronyms_and_none_is_the_default()
     {
         CollectionAssert.AreEqual(new[] { "PO", "UPC", "MSRP" }, ProjectSettings.Parse("ProjectName=X\nAcronyms=PO, UPC ,MSRP").Acronyms);
-        Assert.AreEqual(0, ProjectSettings.None.Acronyms.Length);
-        Assert.AreEqual(0, ProjectSettings.Parse("ProjectName=X").Acronyms.Length);
+        Assert.IsEmpty(ProjectSettings.None.Acronyms);
+        Assert.IsEmpty(ProjectSettings.Parse("ProjectName=X").Acronyms);
     }
 
     [TestMethod]
@@ -342,8 +342,8 @@ public class MySqlIntegrationTests
         CollectionAssert.AreEqual(new[] { "CustomerId" }, customer.ReferencingColumns);
         CollectionAssert.AreEqual(new[] { "customer_id" }, customer.ReferencingDbColumns);
         Assert.AreEqual("customer", customer.ReferencedDbTable);
-        Assert.IsTrue(customer.ReferencedDisplayColumns.Count > 0);
-        Assert.AreEqual(customer.ReferencedDisplayColumns.Count, customer.ReferencedDisplayDbColumns.Count);
+        Assert.IsNotEmpty(customer.ReferencedDisplayColumns);
+        Assert.HasCount(customer.ReferencedDisplayColumns.Count, customer.ReferencedDisplayDbColumns);
     }
 
     [TestMethod]
@@ -358,6 +358,6 @@ public class MySqlIntegrationTests
         Assert.AreEqual(SqlDbType.DateTime2, customer.Columns.Single(c => c.Name == "DateAdded").SqlType);
 
         var status = await provider.BuildTableModelAsync(database, "customer_status", includeRowData: true);
-        Assert.AreEqual(2, status.Rows.Count);
+        Assert.HasCount(2, status.Rows);
     }
 }

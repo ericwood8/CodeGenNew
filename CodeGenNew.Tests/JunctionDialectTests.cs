@@ -105,6 +105,6 @@ public class TemplateDashTests
                     offenders.Add($"{Path.GetFileName(path)}:{number}: {line.Trim()}");
             }
         }
-        Assert.AreEqual(0, offenders.Count, string.Join("\n", offenders.Take(10)));
+        Assert.IsEmpty(offenders, string.Join("\n", offenders.Take(10)));
     }
 }

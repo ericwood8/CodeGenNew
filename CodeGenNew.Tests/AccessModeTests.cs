@@ -117,7 +117,7 @@ public class AccessModeTests
 
         var navigations = EntityNavigations.Of(table, fk => false);
 
-        Assert.AreEqual(1, navigations.Count, "OwnerId would be Owner, which is a column");
+        Assert.HasCount(1, navigations, "OwnerId would be Owner, which is a column");
         Assert.AreEqual(("Code", "CodeRef", "CodeTable"), (navigations[0].Column.Name, navigations[0].Role, navigations[0].Type));
     }
 

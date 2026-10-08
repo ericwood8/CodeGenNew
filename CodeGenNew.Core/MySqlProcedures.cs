@@ -395,10 +395,10 @@ public static class MySqlProcedures
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var fk in m.ForeignKeys)
         {
-            var columns = fk.ReferencingColumns.Select(n => m.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(n))).ToList();
-            if (columns.Any(c => c is null)) continue;
+            var columns = fk.ReferencingColumns.Select(n => m.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(n))).OfType<ColumnModel>().ToList();
+            if (columns.Count != fk.ReferencingColumns.Count) continue;
             if (!seen.Add(string.Join(",", fk.ReferencingColumns) + ">" + fk.ReferencedSchema + "." + fk.ReferencedTable)) continue;
-            foreignKeys.Add((Unique(aliases, Role(fk)), fk, columns!));
+            foreignKeys.Add((Unique(aliases, Role(fk)), fk, columns));
         }
 
         var joins = new List<string>();

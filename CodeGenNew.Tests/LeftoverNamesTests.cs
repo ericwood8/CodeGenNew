@@ -46,7 +46,7 @@ public class LeftoverNamesTests
                     found.Add($"{Path.GetRelativePath(Repo.Root, file)}: {match.Value}");
         }
 
-        Assert.AreEqual(0, found.Count, "Leftover names:\n" + string.Join("\n", found));
+        Assert.IsEmpty(found, "Leftover names:\n" + string.Join("\n", found));
     }
 
     [TestMethod]
@@ -55,7 +55,7 @@ public class LeftoverNamesTests
         var files = ShippedFiles(Repo.Root).Select(f => Path.GetRelativePath(Repo.Root, f)).ToList();
 
         Assert.IsTrue(files.Any(f => f.EndsWith("API_Crud_v1.tt")), "templates are scanned");
-        Assert.IsTrue(files.Contains("README.md"), "the readme is scanned");
+        Assert.Contains("README.md", files, "the readme is scanned");
         Assert.IsTrue(files.Any(f => f.EndsWith("LeftoverNamesTests.cs")), "the test project is scanned");
     }
 }

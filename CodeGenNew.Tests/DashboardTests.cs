@@ -185,12 +185,12 @@ public class DashboardTests
             var (_, database) = await ReadAsync(path);
             var plan = DashboardPlan.Build(database, Project(("Screens", "Customer,Invoice,InvoiceLine,Promotion")));
 
-            Assert.IsTrue(plan.Widgets.Count(w => w.IsCard) <= DashboardPlan.MaxCards);
-            Assert.IsTrue(plan.Widgets.Count(w => w.Kind == DashboardWidgetKind.Money) <= DashboardPlan.MaxMoneyCards);
-            Assert.IsTrue(plan.Widgets.Count(w => w.Kind == DashboardWidgetKind.Breakdown) <= DashboardPlan.MaxBreakdowns);
-            Assert.IsTrue(plan.Widgets.Count(w => w.Kind == DashboardWidgetKind.Trend) <= DashboardPlan.MaxTrends);
-            Assert.IsTrue(plan.Widgets.Count(w => w.Kind == DashboardWidgetKind.Recent) <= DashboardPlan.MaxRecent);
-            Assert.IsTrue(plan.Candidates.Count > plan.Widgets.Count, "the caps left something out");
+            Assert.IsLessThanOrEqualTo(DashboardPlan.MaxCards, plan.Widgets.Count(w => w.IsCard));
+            Assert.IsLessThanOrEqualTo(DashboardPlan.MaxMoneyCards, plan.Widgets.Count(w => w.Kind == DashboardWidgetKind.Money));
+            Assert.IsLessThanOrEqualTo(DashboardPlan.MaxBreakdowns, plan.Widgets.Count(w => w.Kind == DashboardWidgetKind.Breakdown));
+            Assert.IsLessThanOrEqualTo(DashboardPlan.MaxTrends, plan.Widgets.Count(w => w.Kind == DashboardWidgetKind.Trend));
+            Assert.IsLessThanOrEqualTo(DashboardPlan.MaxRecent, plan.Widgets.Count(w => w.Kind == DashboardWidgetKind.Recent));
+            Assert.IsGreaterThan(plan.Widgets.Count, plan.Candidates.Count, "the caps left something out");
             Assert.AreEqual(plan.Widgets.Count, plan.Widgets.Select(w => w.Id).Distinct().Count(), "ids are unique");
 
             var kinds = plan.Widgets.Select(w => w.IsCard ? 0 : w.Kind is DashboardWidgetKind.TopBy or DashboardWidgetKind.Breakdown ? 1 : w.Kind == DashboardWidgetKind.Trend ? 2 : 3).ToList();
@@ -233,15 +233,15 @@ public class DashboardTests
 
             var measured = DashboardPlan.Build(database, Project(("Screens", "Customer,Invoice"),
                 ("DashboardMeasures", "Invoice.TotalAmount:max,Invoice.TotalAmount:sum:InvoiceDate:month")));
-            Assert.AreEqual(0, measured.Problems.Count, string.Join(" | ", measured.Problems));
+            Assert.IsEmpty(measured.Problems, string.Join(" | ", measured.Problems));
             var kinds = measured.Widgets.Where(w => w.Id.Contains("measure")).ToList();
-            Assert.AreEqual(2, kinds.Count);
+            Assert.HasCount(2, kinds);
             Assert.AreEqual(400, Points(path, kinds.Single(w => w.Kind == DashboardWidgetKind.Money).Sql)["Max"]!.Value, 1e-9);
-            Assert.AreEqual(3, Points(path, kinds.Single(w => w.Kind == DashboardWidgetKind.Trend).Sql).Count);
+            Assert.HasCount(3, Points(path, kinds.Single(w => w.Kind == DashboardWidgetKind.Trend).Sql));
             Assert.AreEqual(1, measured.Widgets.Count(w => w.Table == "Invoice" && w.Kind == DashboardWidgetKind.Money), "the measure replaces the automatic widget of its kind");
 
             var refused = DashboardPlan.Build(database, Project(("DashboardMeasures", "Invoice.Nope:sum,Invoice.TotalAmount:median")));
-            Assert.AreEqual(2, refused.Problems.Count);
+            Assert.HasCount(2, refused.Problems);
         }
         finally
         {
@@ -352,7 +352,7 @@ public class DashboardTests
                 Assert.IsTrue(off.Success, string.Join(" | ", off.Errors));
                 var offFiles = Directory.GetFiles(plain, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(plain, f).ToLowerInvariant()).ToList();
                 Assert.IsFalse(offFiles.Any(f => f.Contains("dashboard")), "no dashboard file without the setting: " + string.Join(", ", offFiles.Where(f => f.Contains("dashboard"))));
-                Assert.IsFalse(File.ReadAllText(Path.Combine(plain, "Api", "Apis", "ApiRegistration.cs")).Contains("Dashboard"));
+                Assert.DoesNotContain("Dashboard", File.ReadAllText(Path.Combine(plain, "Api", "Apis", "ApiRegistration.cs")));
             }
             finally
             {

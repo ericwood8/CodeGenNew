@@ -139,7 +139,7 @@ public class BlazorTests
             string menu = Read("Shop.Blazor/Layout/NavMenu.razor");
             Expect.Contains(menu, "<NavLink href=\"customer\">Customer</NavLink>");
             Expect.Contains(menu, "<NavLink href=\"region\">Region</NavLink>");
-            Assert.IsTrue(menu.IndexOf("customer", StringComparison.Ordinal) < menu.IndexOf("region", StringComparison.Ordinal), "the Screens setting orders the menu");
+            Assert.IsLessThan(menu.IndexOf("region", StringComparison.Ordinal), menu.IndexOf("customer", StringComparison.Ordinal), "the Screens setting orders the menu");
             Expect.Contains(Read("Shop.Blazor/Pages/Home.razor"), "NavigateTo(\"customer\", replace: true)");
 
             string registration = Read("Shop.Blazor/Services/ApiClients.cs");

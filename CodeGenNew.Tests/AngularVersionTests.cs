@@ -26,11 +26,11 @@ public class AngularVersionTests
 
         string converted = AngularControlFlow.Convert(html);
 
-        Assert.IsTrue(converted.Contains("@if (selectedRow.id) {"), converted);
-        Assert.IsTrue(converted.Contains("} @else {"), converted);
-        Assert.IsTrue(converted.Contains("<p><em>Save first.</em></p>"), converted);
-        Assert.IsFalse(converted.Contains("ng-template"), converted);
-        Assert.IsFalse(converted.Contains("*ng"), converted);
+        Assert.Contains("@if (selectedRow.id) {", converted, converted);
+        Assert.Contains("} @else {", converted, converted);
+        Assert.Contains("<p><em>Save first.</em></p>", converted, converted);
+        Assert.DoesNotContain("ng-template", converted, converted);
+        Assert.DoesNotContain("*ng", converted, converted);
     }
 
     [TestMethod]
@@ -40,10 +40,10 @@ public class AngularVersionTests
 
         string converted = AngularControlFlow.Convert(html);
 
-        Assert.IsFalse(converted.Contains("*ng"), converted);
-        Assert.IsTrue(converted.Contains("@if (selectedRow) {"), converted);
-        Assert.IsTrue(converted.Contains("@for (p of parents; track $index) {"), converted);
-        Assert.IsTrue(converted.Contains("<dialog (cancel)=\"a > b\">"), converted);
+        Assert.DoesNotContain("*ng", converted, converted);
+        Assert.Contains("@if (selectedRow) {", converted, converted);
+        Assert.Contains("@for (p of parents; track $index) {", converted, converted);
+        Assert.Contains("<dialog (cancel)=\"a > b\">", converted, converted);
         Assert.AreEqual(converted.Split('{').Length - 1 - converted.Split("{{").Length + 1, converted.Split('}').Length - 1 - converted.Split("}}").Length + 1, "every block is closed");
     }
 

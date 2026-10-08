@@ -132,12 +132,12 @@ public class GenerateAllTests
         Assert.IsTrue(File.Exists(System.IO.Path.Combine(temp.Path, "frontend", "src", "models", "employee.ts")));
         Assert.IsTrue(File.Exists(System.IO.Path.Combine(temp.Path, "frontend", "src", "pages", "DepartmentDetailMasterPage.tsx")));
         Assert.IsTrue(File.Exists(System.IO.Path.Combine(temp.Path, "sql", "Employee_Search.sql")));
-        Assert.IsTrue(first.Count(FileOutcomeKind.Created) > 20);
+        Assert.IsGreaterThan(20, first.Count(FileOutcomeKind.Created));
         Assert.AreEqual(0, first.Count(FileOutcomeKind.Updated));
 
         var second = await Repo.GenerateAsync(provider, options);
         Assert.AreEqual(0, second.Count(FileOutcomeKind.Created) + second.Count(FileOutcomeKind.Updated), "nothing changed, so nothing is written");
-        Assert.IsTrue(second.Count(FileOutcomeKind.Unchanged) > 20);
+        Assert.IsGreaterThan(20, second.Count(FileOutcomeKind.Unchanged));
     }
 
     [TestMethod]
@@ -152,7 +152,7 @@ public class GenerateAllTests
         });
 
         Assert.AreEqual(2, dry.Count(FileOutcomeKind.WouldWrite));
-        Assert.AreEqual(0, Directory.GetFileSystemEntries(temp.Path).Length);
+        Assert.IsEmpty(Directory.GetFileSystemEntries(temp.Path));
         CollectionAssert.AreEquivalent(new[] { "CS_Entity" }, dry.Steps.Select(s => s.Template).Distinct().ToList());
     }
 
@@ -183,7 +183,7 @@ public class GenerateAllTests
     public void Each_stack_has_its_essentials_groups_and_a_stack_is_found_by_its_usual_names()
     {
         foreach (var (stack, _) in EssentialsCatalog.Stacks)
-            Assert.IsTrue(EssentialsCatalog.Groups(Repo.TemplatesDirectory, stack).Count >= 2, stack);
+            Assert.IsGreaterThanOrEqualTo(2, EssentialsCatalog.Groups(Repo.TemplatesDirectory, stack).Count, stack);
 
         CollectionAssert.IsSubsetOf(new[] { "App", "MainWindow", "Project", "BaseClasses", "DirectoryListing" }, EssentialsCatalog.Groups(Repo.TemplatesDirectory, "WinUI3").Select(g => g.Name).ToList());
         CollectionAssert.IsSubsetOf(new[] { "Shell", "Styles", "Support", "Build" }, EssentialsCatalog.Groups(Repo.TemplatesDirectory, "React").Select(g => g.Name).ToList());
@@ -234,7 +234,7 @@ public class GenerateAllTests
         StringAssert.Contains(File.ReadAllText(System.IO.Path.Combine(temp.Path, "frontend", "proxy.conf.json")), "http://localhost:5090");
         string appTs = File.ReadAllText(System.IO.Path.Combine(temp.Path, "frontend", "src", "app", "app.ts"));
         StringAssert.Contains(appTs, "ChangeDetectionStrategy.Eager");
-        Assert.IsFalse(appTs.Contains("standalone: true"));
+        Assert.DoesNotContain("standalone: true", appTs);
         StringAssert.Contains(File.ReadAllText(System.IO.Path.Combine(temp.Path, "frontend", "src", "app", "app.html")), "@for (");
     }
 

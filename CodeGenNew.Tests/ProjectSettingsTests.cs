@@ -24,7 +24,7 @@ public class ProjectSettingsTests
         Assert.AreEqual("Api Docs", ProjectSettingsHints.Caption("ApiDocs"));
         foreach (string key in new[] { "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "Dashboard", "DashboardStrip" })
         {
-            Assert.IsTrue(ProjectSettingsHints.BooleanKeys.Contains(key), key);
+            Assert.Contains(key, ProjectSettingsHints.BooleanKeys, key);
             Assert.IsFalse(ProjectSettingsHints.All[key].StartsWith("true", StringComparison.OrdinalIgnoreCase), key + " hint should explain, not give the value");
         }
         Assert.IsTrue(ProjectSettingsHints.BooleanKeys.All(k => ProjectSettings.Keys.Contains(k)));
@@ -37,9 +37,9 @@ public class ProjectSettingsTests
         foreach (var (key, (kind, choices)) in ProjectSettingChoices.All)
         {
             Assert.IsTrue(ProjectSettings.Keys.Contains(key), key);
-            Assert.IsFalse(ProjectSettingsHints.BooleanKeys.Contains(key), key);
+            Assert.DoesNotContain(key, ProjectSettingsHints.BooleanKeys, key);
             if (kind is SettingKind.Radio)
-                Assert.IsTrue(choices.Length <= 3, key + " has more than three choices: use a drop-down");
+                Assert.IsLessThanOrEqualTo(3, choices.Length, key + " has more than three choices: use a drop-down");
             if (kind is SettingKind.Radio or SettingKind.Dropdown)
                 Assert.AreEqual("", choices[0].Value, key + " starts with the not-set choice");
         }
@@ -59,7 +59,7 @@ public class ProjectSettingsTests
         foreach (int value in new[] { none.MinYear, none.MaxYear, none.EnumMaxRows, none.ApiPort, none.RustPort, none.DevPort("React"), none.DevPort("Angular") })
             Assert.IsTrue(value >= 1 && value <= 65535 || value <= 9999, value.ToString());
         Assert.IsTrue(none.MinYear >= ProjectSettingChoices.Numbers["MinYear"].Min && none.MaxYear <= ProjectSettingChoices.Numbers["MaxYear"].Max);
-        Assert.IsTrue(none.EnumMaxRows <= ProjectSettingChoices.Numbers["EnumMaxRows"].Max);
+        Assert.IsLessThanOrEqualTo(ProjectSettingChoices.Numbers["EnumMaxRows"].Max, none.EnumMaxRows);
     }
 
     [TestMethod]

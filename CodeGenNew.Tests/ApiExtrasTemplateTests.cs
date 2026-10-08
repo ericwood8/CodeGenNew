@@ -149,7 +149,7 @@ public class ApiExtrasTemplateTests
         var result = await Repo.Cache.RunAsync(Repo.Template("API_OpenApi_v1.tt"), database, Project());
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         var document = new OpenApiStringReader().Read(result.GeneratedText!.Replace("\r\n", "\n").Replace("@@@FILE openapi.yaml@@@\n", ""), out var diagnostic);
-        Assert.AreEqual(0, diagnostic.Errors.Count);
+        Assert.IsEmpty(diagnostic.Errors);
         Assert.AreEqual("Somebody who buys.", document.Components.Schemas["Customer"].Description);
         Assert.AreEqual("The name on the account.", document.Components.Schemas["Customer"].Properties["name"].Description);
     }
@@ -193,7 +193,7 @@ public class ApiExtrasTemplateTests
             Assert.IsTrue(all.ContainsKey(name), name);
         }
         CollectionAssert.AreEqual(new[] { "Customer" }, all["API_Http"].TableNames.ToArray());
-        Assert.AreEqual(0, all["API_OpenApi"].TableNames.Count, "a whole-database template runs once");
+        Assert.IsEmpty(all["API_OpenApi"].TableNames, "a whole-database template runs once");
     }
 
     [TestMethod]
@@ -243,7 +243,7 @@ public class ApiExtrasTemplateTests
         Expect.Contains(with, "\"RateLimit\": {\n    \"PermitsPerMinute\": 100\n  },");
         Expect.Contains(with, "public class DatabaseHealthCheck(AcmeContext context) : IHealthCheck");
         Expect.Contains(with, "ENV Urls=http://+:8080 \\\n    ASPNETCORE_FORWARDEDHEADERS_ENABLED=true");
-        Assert.AreEqual(without.Split("PackageReference").Length, with.Split("PackageReference").Length, "no package is added");
+        Assert.HasCount(without.Split("PackageReference").Length, with.Split("PackageReference"), "no package is added");
     }
 
     [TestMethod]

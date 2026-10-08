@@ -204,11 +204,11 @@ public class RustTests
         foreach (var dialect in new[] { SqlDialect.SqlServer, SqlDialect.PostgreSql, SqlDialect.MySql, SqlDialect.Sqlite })
         {
             var (before, after) = DialectInfo.For(dialect).ContainsParts("t.x");
-            Assert.IsTrue(before.StartsWith("t.x "), dialect + ": " + before);
-            Assert.IsTrue(after.Contains("ESCAPE"), dialect + ": " + after);
+            Assert.StartsWith("t.x ", before, dialect + ": " + before);
+            Assert.Contains("ESCAPE", after, dialect + ": " + after);
         }
 
-        Assert.IsTrue(DialectInfo.For(SqlDialect.MySql).ContainsParts("c").After.Contains("ESCAPE '\\\\'"), "a backslash is itself an escape in a MySQL string, so the character is written twice");
+        Assert.Contains("ESCAPE '\\\\'", DialectInfo.For(SqlDialect.MySql).ContainsParts("c").After, "a backslash is itself an escape in a MySQL string, so the character is written twice");
     }
 
     // ------------------------------------------------------------------ the plan and the files
@@ -224,13 +224,13 @@ public class RustTests
 
         var validated = ProjectPlan.Build(templates, database, Project(("ApiValidation", "true")), ["Rust"]).Select(s => s.Template.Name).ToList();
         CollectionAssert.Contains(validated, "RS_Validate");
-        Assert.IsFalse(plain.Contains("RS_Validate"));
+        Assert.DoesNotContain("RS_Validate", plain);
 
         var api = ProjectPlan.Build(templates, database, Project(), ["Api"]).Select(s => s.Template.Name).ToList();
         Assert.IsFalse(api.Any(n => n.StartsWith("RS_")));
 
         var sqlServer = new DatabaseModel { DatabaseName = "Acme", SchemaName = "dbo", Dialect = SqlDialect.SqlServer, Tables = [Account(SqlDialect.SqlServer)] };
-        Assert.AreEqual(0, ProjectPlan.Build(templates, sqlServer, Project(), ["Rust"]).Count, "nothing in the Rust stack is written for SQL Server");
+        Assert.IsEmpty(ProjectPlan.Build(templates, sqlServer, Project(), ["Rust"]), "nothing in the Rust stack is written for SQL Server");
     }
 
     [TestMethod]
