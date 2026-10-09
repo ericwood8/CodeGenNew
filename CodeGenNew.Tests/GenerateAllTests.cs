@@ -188,7 +188,7 @@ public class GenerateAllTests
         CollectionAssert.IsSubsetOf(new[] { "App", "MainWindow", "Project", "BaseClasses", "DirectoryListing" }, EssentialsCatalog.Groups(Repo.TemplatesDirectory, "WinUI3").Select(g => g.Name).ToList());
         CollectionAssert.IsSubsetOf(new[] { "Shell", "Styles", "Support", "Build" }, EssentialsCatalog.Groups(Repo.TemplatesDirectory, "React").Select(g => g.Name).ToList());
         CollectionAssert.IsSubsetOf(new[] { "Shell", "Config", "Styles" }, EssentialsCatalog.Groups(Repo.TemplatesDirectory, "Angular").Select(g => g.Name).ToList());
-        CollectionAssert.IsSubsetOf(new[] { "Program", "BaseApi", "BaseClasses" }, EssentialsCatalog.Groups(Repo.TemplatesDirectory, "Api").Select(g => g.Name).ToList());
+        CollectionAssert.IsSubsetOf(new[] { "Program", "BaseApi", "CrudApi", "BaseClasses" }, EssentialsCatalog.Groups(Repo.TemplatesDirectory, "Api").Select(g => g.Name).ToList());
         Assert.IsFalse(EssentialsCatalog.Groups(Repo.TemplatesDirectory, "WinUI3").Single(g => g.Name == "DirectoryListing").DefaultOn, "an optional group is not ticked");
         Assert.AreEqual("WinUI3", EssentialsCatalog.FindStack("winui"));
         Assert.AreEqual("React", EssentialsCatalog.FindStack("react"));

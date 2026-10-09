@@ -79,16 +79,13 @@
     {
         Error($"TS_DetailMasterComponent needs at least one other table with a foreign key pointing back at [{Model.SchemaName}].[{Model.TableName}]; none was found - use TS_Component instead.");
     }
-    else if (Model.IsNameActiveTable)
-    {
-        Error($"TS_DetailMasterComponent assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all); write this screen by hand.");
-    }
     else
     {
+        // A table with a Name and an IsActive column (a department and its teams) has no search endpoint: its screen is on NameActiveCrudScreen (see TS_Component), with no paging or sorting of its own grid.
+        bool nameActive = Model.IsNameActiveTable;
         string baseName = BaseName(Model.TableName);
         string stem = baseName.ToLowerInvariant();
         string variable = LowerFirst(baseName);        // holiday
-        string listName = variable.Pluralize();        // holidays
         string keyProp = Camel(keyColumn.Name);         // holidayId
         string keyTs = keyColumn.IsInt32Column ? "number" : "string";
         string emptyKey = keyColumn.IsInt32Column ? "0" : "'00000000-0000-0000-0000-000000000000'";
@@ -96,10 +93,11 @@
         bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"); // just for showError's message wording below
         const int pageSize = 20;
         // The same paging and search bar as TS_Component: one text box per searchable column (Model.SearchableColumns), paged by the API's /search endpoint.
-        var searchFields = Model.SearchableColumns
-            .Select(c => new { ParamName = LowerFirst(c.Name), c.Name, Label = Label(c.Name) })
-            .ToList();
-        bool canSearch = searchFields.Count > 0;
+        // The Search list protocol (ListProtocol=Search) has one search box for the whole table; the server decides which columns it matches.
+        var searchFields = Project.ListSearchProtocol
+            ? new List<(string ParamName, string Name, string Label)> { ("search", "search", "") }
+            : Model.SearchableColumns.Select(c => (ParamName: LowerFirst(c.Name), c.Name, Label: Label(c.Name))).ToList();
+        bool canSearch = !nameActive && searchFields.Count > 0;
         // The route of a table's own page ("SalesInvoice" -> "sales-invoice"): the project's routing has one route per generated page, named this way.
         string PageRoute(string table) => Words(BaseName(table)).ToLowerInvariant().Replace(' ', '-');
         string selfRoute = PageRoute(Model.TableName);
@@ -135,23 +133,29 @@
                     ServiceFile = parentBase.ToLowerInvariant() + ".service",
                     List = LowerFirst(parentBase).Pluralize(),
                     NameMethod = LowerFirst(parentBase) + "Name",
-                    KeyProp = Camel(fk.ReferencedColumns[0]),
+                    // a drop-down over a parent with a whole-number key reads the parent's lookup list ({ id, name }: GET <route>/lookup) instead of every column of every row
+                    Lookup = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).IsGuidColumn is false && fk.ReferencedColumns.Count == 1 && !NoApi(fk.ReferencedTable, fk.ReferencedLookupShape),
+                    KeyProp = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).IsGuidColumn is false && fk.ReferencedColumns.Count == 1 && !NoApi(fk.ReferencedTable, fk.ReferencedLookupShape) ? "id" : Camel(fk.ReferencedColumns[0]),
                     IdType = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).IsGuidColumn ? "string" : "number",
-                    DisplayProp = Camel(fk.ReferencedDisplayColumns[0]),
+                    DisplayProp = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).IsGuidColumn is false && fk.ReferencedColumns.Count == 1 && !NoApi(fk.ReferencedTable, fk.ReferencedLookupShape) ? "name" : Camel(fk.ReferencedDisplayColumns[0]),
                     Self = self
                 };
             }).ToList();
         var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
 
-        var children = Model.ChildForeignKeys
-            .Where(fk => fk.ReferencingColumns.Count == 1 && !NoApi(fk.ReferencingTable, default))
+        var childKeys = Model.ChildForeignKeys.Where(fk => fk.ReferencingColumns.Count == 1 && !NoApi(fk.ReferencingTable, default)).ToList();
+        // a child table that references this table twice (a donation has a donor and a recipient) gets one grid per foreign key, named by the role the column plays
+        string RoleOf(ChildForeignKeyModel fk) => childKeys.Count(o => o.ReferencingTable.EqualsIgnoreCase(fk.ReferencingTable)) > 1
+            ? System.Text.RegularExpressions.Regex.Replace(fk.ReferencingColumns[0], "Id$", "").Replace("_", "")
+            : "";
+        var children = childKeys
             .Select(fk => new
             {
                 Table = fk.ReferencingTable,
                 // The heading of the grid: the table's name, or the project's ChildGridTitles entry (a CustomerItem table reads "Item Purchase History" under a customer and "Who Purchased?" under an item).
-                Title = Project.ChildGridTitle(Model.TableName, fk.ReferencingTable, Words(BaseName(fk.ReferencingTable))),
-                Var = LowerFirst(BaseName(fk.ReferencingTable)),
-                MethodName = BaseName(fk.ReferencingTable),
+                Title = Project.ChildGridTitle(Model.TableName, fk.ReferencingTable, Words(BaseName(fk.ReferencingTable)) + (RoleOf(fk) == "" ? "" : " (" + Words(RoleOf(fk)) + ")")),
+                Var = LowerFirst(BaseName(fk.ReferencingTable) + RoleOf(fk)),
+                MethodName = BaseName(fk.ReferencingTable) + RoleOf(fk),
                 Route = ApiRoute(fk.ReferencingTable),
                 PageRoute = PageRoute(fk.ReferencingTable),
                 KeyProp = fk.ReferencingPrimaryKeyColumns.Count == 1 ? Camel(fk.ReferencingPrimaryKeyColumns[0]) : null,
@@ -161,7 +165,10 @@
                 Lookups = fk.ReferencingTableForeignKeys
                     .Where(o => o.ReferencingColumns.Count == 1 && !o.ReferencingColumns[0].EqualsIgnoreCase(fk.ReferencingColumns[0])
                                 && o.ReferencedDisplayColumns.Count > 0 && !NoApi(o.ReferencedTable, default))
-                    .Select(o => (Column: Camel(o.ReferencingColumns[0]), Route: ApiRoute(o.ReferencedTable), Key: Camel(o.ReferencedColumns[0]), Display: Camel(o.ReferencedDisplayColumns[0]))).ToList(),
+                    // a whole-number key: the parent's lookup list ({ id, name }) names the ids; any other key reads the rows
+                    .Select(o => fk.ReferencingTableColumns.Any(c => c.Name.EqualsIgnoreCase(o.ReferencingColumns[0]) && c.IsGuidColumn)
+                        ? (Column: Camel(o.ReferencingColumns[0]), Route: ApiRoute(o.ReferencedTable), Key: Camel(o.ReferencedColumns[0]), Display: Camel(o.ReferencedDisplayColumns[0]))
+                        : (Column: Camel(o.ReferencingColumns[0]), Route: ApiRoute(o.ReferencedTable) + "/lookup", Key: "id", Display: "name")).ToList(),
                 Hidden = fk.ReferencingColumns.Concat(fk.ReferencingPrimaryKeyColumns)
                     .Concat(fk.ReferencingTableForeignKeys.SelectMany(o => o.ReferencingColumns)
                         .Except(fk.ReferencingTableForeignKeys.Where(o => o.ReferencingColumns.Count == 1 && o.ReferencedDisplayColumns.Count > 0 && !NoApi(o.ReferencedTable, default))
@@ -184,9 +191,10 @@
         // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
         gridColumns = gridColumns.ForGrid();
         // A grid column's header sorts the grid unless it is long text or binary (SearchSort.IsSortable; long text never is in a grid anyway).
-        var sortableColumns = gridColumns.Where(SearchSort.IsSortable).ToList();
+        var sortableColumns = nameActive ? new List<ColumnModel>() : gridColumns.Where(SearchSort.IsSortable).ToList();
         // A Clone button beside Edit and Delete for the tables CloneShape allows (the service has clone(id), API_Crud / CS_Repo write the server side).
-        bool canClone = CloneShape.CanClone(Model, Project);
+        bool canClone = !nameActive && CloneShape.CanClone(Model, Project);
+        string rowsExpression = nameActive ? "visibleRows" : "rows";
         // The form is tabbed (Main / Billing & Shipping / Notes) when it has more than one kind of field: see FormPages.
         var formPages = FormPages.For(shown);
         bool tabbed = formPages.Count > 1;
@@ -212,15 +220,25 @@
             H("    <!-- Search -->");
             H("    <div class=\"form-group form-group-search dept\">");
             foreach (var f in searchFields)
-                H($"        <input type=\"text\" class=\"form-control\" placeholder=\"Search by {f.Label}\" [(ngModel)]=\"filters.{f.ParamName}\" />");
+                H($"        <input type=\"text\" class=\"form-control\" placeholder=\"Search{(f.Label == "" ? "" : " by " + f.Label)}\" [(ngModel)]=\"filters.{f.ParamName}\" />");
             H("        <button class=\"btn btn-outline-secondary\" type=\"button\" (click)=\"search()\"> Search </button>");
+            H("        <button class=\"btn btn-outline-secondary\" type=\"button\" (click)=\"clearSearch()\"> Clear </button>");
+            H("    </div>");
+        }
+        if (nameActive)
+        {
+            H();
+            H("    <!-- Search -->");
+            H("    <div class=\"form-group form-group-search dept\">");
+            H("        <input type=\"text\" class=\"form-control\" placeholder=\"Search by Name\" [(ngModel)]=\"searchText\" />");
+            H("        <label class=\"active-only\"><input type=\"checkbox\" name=\"activeOnly\" [(ngModel)]=\"activeOnly\" /> Active only</label>");
             H("        <button class=\"btn btn-outline-secondary\" type=\"button\" (click)=\"clearSearch()\"> Clear </button>");
             H("    </div>");
         }
         H();
         H("    <!-- Grid -->");
         // A right-click on the grid opens a small menu with Clear sort; a click on a sortable header sorts by it (again: flips the direction).
-        H("    <table (contextmenu)=\"openSortMenu($event)\">");
+        H(nameActive ? "    <table>" : "    <table (contextmenu)=\"openSortMenu($event)\">");
         H("        <thead>");
         H("            <tr>");
         foreach (var c in gridColumns)
@@ -234,7 +252,7 @@
         H("            </tr>");
         H("        </thead>");
         H("        <tbody>");
-        H($"            <tr *ngFor=\"let {variable} of {listName}\">");
+        H($"            <tr *ngFor=\"let {variable} of {rowsExpression}\">");
         foreach (var c in gridColumns)
         {
             string prop = $"{variable}.{Camel(c.Name)}";
@@ -257,18 +275,25 @@
         H("            </tr>");
         H("        </tbody>");
         H("    </table>");
-        H("    <p *ngIf=\"loaded && totalCount === 0\" class=\"no-rows\">Nothing found.</p>");
-        H("    <ul *ngIf=\"sortMenu\" class=\"sort-menu\" role=\"menu\" [style.left.px]=\"sortMenu.x\" [style.top.px]=\"sortMenu.y\">");
-        H("        <li role=\"none\"><button type=\"button\" role=\"menuitem\" [disabled]=\"!sort\" (click)=\"clearSort()\">Clear sort</button></li>");
-        H("    </ul>");
-        H();
-        H("    <mat-paginator");
-        H("        [length]=\"totalCount\"");
-        H("        [pageSize]=\"pageSize\"");
-        H("        [pageSizeOptions]=\"[10, 20, 50, 100]\"");
-        H("        [pageIndex]=\"pageIndex\"");
-        H("        (page)=\"onPageChange($event)\">");
-        H("    </mat-paginator>");
+        if (nameActive)
+        {
+            H("    <p *ngIf=\"loaded && visibleRows.length === 0\" class=\"no-rows\">Nothing found.</p>");
+        }
+        else
+        {
+            H("    <p *ngIf=\"loaded && totalCount === 0\" class=\"no-rows\">Nothing found.</p>");
+            H("    <ul *ngIf=\"sortMenu\" class=\"sort-menu\" role=\"menu\" [style.left.px]=\"sortMenu.x\" [style.top.px]=\"sortMenu.y\">");
+            H("        <li role=\"none\"><button type=\"button\" role=\"menuitem\" [disabled]=\"!sort\" (click)=\"clearSort()\">Clear sort</button></li>");
+            H("    </ul>");
+            H();
+            H("    <mat-paginator");
+            H("        [length]=\"totalCount\"");
+            H("        [pageSize]=\"pageSize\"");
+            H("        [pageSizeOptions]=\"[10, 20, 50, 100]\"");
+            H("        [pageIndex]=\"pageIndex\"");
+            H("        (page)=\"onPageChange($event)\">");
+            H("    </mat-paginator>");
+        }
         H();
         H("    <!-- Add/Edit Form -->");
         // The add/edit form is a modal <dialog> (native, no library): it opens over the page, wherever the grid is scrolled to, and Escape cancels it.
@@ -401,7 +426,34 @@
         spec.Append($"  beforeEach(async () => {{\n    await TestBed.configureTestingModule({{\n      imports: [{cls}],\n      providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations(), provideRouter([])]\n    }})\n    .compileComponents();\n\n");
         spec.Append($"    fixture = TestBed.createComponent({cls});\n    component = fixture.componentInstance;\n    fixture.detectChanges();\n  }});\n\n");
         // Server paging: the first page is asked for, and a page past the end (the last row of the last page was deleted) falls back to the last page there is.
-        var pagingSpecs = new[]
+        // The project's list protocol decides how the request and the answer are written.
+        bool searchProtocol = Project.ListSearchProtocol;
+        int specPageBase = searchProtocol ? Project.PageBase : 1;
+        string specPageParam = Project.PageParameter;
+        string specSizeParam = Project.PageSizeParameter;
+        string Asked(int page, string? size = null) => $"(r) => r.url === 'api/{stem.Pluralize()}' && r.params.get('{specPageParam}') === '{page - 1 + specPageBase}'" + (size is null ? "" : $" && r.params.get('{specSizeParam}') === '{size}'");
+        string Reply(int page, string size, int total, int pages) => $"{{ '{Project.ItemsMember}': [], '{Project.TotalMember}': {total} }}";
+        var pagingSpecs = searchProtocol ? new[]
+        {
+            "  it('asks the server for the first page', () => {",
+            "    const http = TestBed.inject(HttpTestingController);",
+            $"    const request = http.expectOne({Asked(1)});",
+            $"    expect(request.request.params.get('{specSizeParam}')).toBe(String(component.pageSize));",
+            $"    request.flush({Reply(1, "component.pageSize", 0, 0)});",
+            "    expect(component.totalCount).toBe(0);",
+            "  });",
+            "",
+            "  it('goes back to the last page there is when the page it asked for is past the end', () => {",
+            "    const http = TestBed.inject(HttpTestingController);",
+            $"    http.expectOne({Asked(1)}).flush({Reply(1, "component.pageSize", 0, 0)});",
+            "    component.onPageChange({ pageIndex: 3, pageSize: 10, length: 25 });",
+            $"    http.expectOne({Asked(4, "10")})",
+            $"      .flush({Reply(4, "10", 25, 3)});",
+            $"    const lastPage = http.expectOne({Asked(3)});",
+            "    expect(component.pageIndex).toBe(2);",
+            $"    lastPage.flush({Reply(3, "10", 25, 3)});",
+            "  });",
+        } : new[]
         {
             "  it('asks the server for the first page', () => {",
             "    const http = TestBed.inject(HttpTestingController);",
@@ -423,52 +475,75 @@
             "    lastPage.flush({ items: [], page: 3, pageSize: 10, totalCount: 25, totalPages: 3 });",
             "  });",
         };
-        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", pagingSpecs) + "\n});\n");
+        // A name/active screen reads the whole list from the table's route and narrows it on the page.
+        var listSpecs = new[]
+        {
+            "  it('reads the whole list and narrows it by name and by active', () => {",
+            "    const http = TestBed.inject(HttpTestingController);",
+            $"    // a drop-down over this table itself (a manager) reads the list as well, so every request for it is answered",
+            $"    http.match((r) => r.method === 'GET' && r.url === 'api/{stem.Pluralize()}').forEach((request) => request.flush([",
+            "      { name: 'Alpha', isActive: true },",
+            "      { name: 'Alphabet', isActive: false },",
+            "      { name: 'Beta', isActive: true }",
+            "    ]));",
+            "    expect(component.visibleRows.length).toBe(3);",
+            "    component.searchText = 'alpha';",
+            "    expect(component.visibleRows.length).toBe(2);",
+            "    component.activeOnly = true;",
+            "    expect(component.visibleRows.length).toBe(1);",
+            "    component.clearSearch();",
+            "    expect(component.visibleRows.length).toBe(3);",
+            "  });",
+        };
+        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? listSpecs : pagingSpecs) + "\n});\n");
 
         // ================= ts
-        T("import { ChangeDetectionStrategy, Component, ElementRef, HostListener, ViewChild } from '@angular/core';");
-        T("import { GridSort, loadSort, nextSort, saveSort" + (children.Count > 0 ? ", sortRows" : "") + " } from '../../grid-sort';");
-        T("import { ActivatedRoute, Router } from '@angular/router';");
+        // A short class on PagedCrudScreen (components/crud-screen.ts, TS_EssentialCrud): the rows, the open row, add / edit / submit / delete / clone / cancel, the way back to the page that opened a row,
+        // the page, the sort and the search boxes are the base's. This class names its service and key and keeps what is the table's own: the starting row, the date boxes, the drop-down lists and the child grids.
+        string keyGeneric = keyColumn.IsInt32Column ? "" : ", string";
+        T("import { ChangeDetectionStrategy, Component, " + (children.Count > 0 ? "HostListener, " : "") + "inject } from '@angular/core';");
+        if (children.Count > 0) T("import { GridSort, loadSort, nextSort, saveSort, sortRows } from '../../grid-sort';");
         T($"import {{ {baseName} }} from '../../{modelsFolder}/{stem}';");
         T($"import {{ {baseName}Service }} from '../../{servicesFolder}/{stem}.service';");
+        if (parents.Any(p => p.Lookup)) T($"import {{ Lookup }} from '../../{servicesFolder}/crud.service';");
         foreach (var p in parents.Where(p => !p.Self))
         {
-            T($"import {{ {p.Type} }} from '../../{modelsFolder}/{p.ModelFile}';");
+            if (!p.Lookup) T($"import {{ {p.Type} }} from '../../{modelsFolder}/{p.ModelFile}';");
             T($"import {{ {p.Service} }} from '../../{servicesFolder}/{p.ServiceFile}';");
         }
         if (children.Count > 0) T("import { HttpClient } from '@angular/common/http';");
         T("import { CommonModule } from '@angular/common';");
         T("import { FormsModule } from '@angular/forms';");
-        T("import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';");
+        if (!nameActive) T("import { MatPaginatorModule } from '@angular/material/paginator';");
+        T($"import {{ {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")} }} from '../crud-screen';");
+        if (children.Count > 0) T($"import {{ apiMessage }} from '../../{servicesFolder}/api-error';");
         T();
         T("@Component({");
         T($"  selector: 'app-{stem}-detail-master',");
         if (Project.AngularStandaloneFlag) T("  standalone: true,");
         T($"  changeDetection: ChangeDetectionStrategy.{Project.AngularEagerStrategy}, // plain properties change inside subscribe callbacks: keep eager checking when OnPush is the default (Angular 22)");
-        T("  imports: [ CommonModule, FormsModule, MatPaginatorModule ],");
+        T(nameActive ? "  imports: [ CommonModule, FormsModule ]," : "  imports: [ CommonModule, FormsModule, MatPaginatorModule ],");
         T($"  templateUrl: './{stem}-detail-master.component.html',");
         T($"  styleUrl: './{stem}-detail-master.component.css'");
         T("})");
-        T($"export class {cls} {{");
-        T($"  {listName}: {baseName}[] = [];");
+        T($"export class {cls} extends {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")}<{baseName}{keyGeneric}> {{");
+        T($"  protected readonly service = inject({baseName}Service);");
+        T($"  protected readonly noun = '{Words(baseName).ToLowerInvariant()}';");
+        T($"  protected readonly idKey = '{keyProp}';");
+        if (!keyColumn.IsInt32Column) T($"  protected override readonly emptyKey: string = {emptyKey};");
+        T($"  protected readonly gridKey = '{stem}'; // the grid's saved sort is kept in the browser under this key (see grid-sort.ts)");
+        if (!nameActive) T($"  readonly sortableColumns = [{string.Join(", ", sortableColumns.Select(c => "'" + c.Name + "'"))}]; // the columns whose header sorts the grid");
+        if (!nameActive && Project.DefaultSort(Model.TableName) is { } defaultSort)
+            T($"  protected override readonly defaultSort = {{ column: '{defaultSort.Column}', descending: {(defaultSort.Descending ? "true" : "false")} }}; // the project's DefaultSorts: the sort until the person sorts");
+        T($"  protected override readonly badInputMessage = '{(hasName ? "Name is bad or has special characters!" : "Some of the values are not acceptable!")}';");
+        if (canSearch) T($"  override filters = {{ {string.Join(", ", searchFields.Select(f => $"{f.ParamName}: ''"))} }};");
+        if (!nameActive && pageSize != 20) T($"  override pageSize = {pageSize};");
+        foreach (var p in parents)
+            T($"  {p.List}: {(p.Lookup ? "Lookup" : p.Type)}[] = [];");
         foreach (var p in parents.Where(p => !p.Self))
-            T($"  {p.List}: {p.Type}[] = [];");
-        T($"  selectedRow: {baseName} | null = null;");
+            T($"  private readonly {p.ServiceVar} = inject({p.Service});");
+        if (children.Count > 0) T("  private readonly http = inject(HttpClient);");
         if (tabbed) T("  activeTab = 0; // the form tab showing");
-        T("  // The edit form is a modal <dialog> that is only in the page while a row is being edited: open it as soon as it is rendered.");
-        T("  @ViewChild('editDialog') set editDialog(element: ElementRef<HTMLDialogElement> | undefined) {");
-        T("    if (element && !element.nativeElement.open) element.nativeElement.showModal();");
-        T("  }");
-        T("  private backTo: string | null = null; // set when another page's grid opened this row (?edit=<id>&back=<that page>)");
-        if (canSearch) T($"  filters = {{ {string.Join(", ", searchFields.Select(f => $"{f.ParamName}: ''"))} }};");
-        T($"  pageSize = {pageSize};");
-        T("  pageIndex = 0;"); // mat-paginator is 0-based; the API's pageNumber is 1-based
-        T("  totalCount = 0;");
-        T("  loaded = false; // true once a page has arrived, so the empty-grid message is not shown while waiting");
-        T($"  readonly gridKey = '{stem}'; // the grid's saved sort is kept in the browser under this key (see grid-sort.ts)");
-        T($"  readonly sortableColumns = [{string.Join(", ", sortableColumns.Select(c => "'" + c.Name + "'"))}]; // the columns whose header sorts the grid");
-        T("  sort: GridSort | null = loadSort(this.gridKey, this.sortableColumns);");
-        T("  sortMenu: { x: number; y: number } | null = null; // the right-click menu (Clear sort), where it is open");
         if (children.Count > 0)
         {
             T("  // The child grids hold all their rows, so each sorts them in the browser; its sort is saved under the grid's key plus the child's name.");
@@ -484,137 +559,18 @@
                 T($"  {child.Var}Names: Record<string, Record<string, string>> = {{}};");
         }
         T();
-        var ctorArgs = new List<string> { $"private {variable}Service: {baseName}Service" };
-        ctorArgs.AddRange(parents.Where(p => !p.Self).Select(p => $"private {p.ServiceVar}: {p.Service}"));
-        ctorArgs.Add("private router: Router");
-        ctorArgs.Add("private route: ActivatedRoute");
-        if (children.Count > 0) ctorArgs.Add("private http: HttpClient");
-        T($"  constructor({string.Join(", ", ctorArgs)}) {{ }}");
-        T();
-        T("  ngOnInit(): void {");
-        T("    // Opened from another page's grid (?edit=<id>&back=<that page>): open this row, and go back to that page when the form is saved or cancelled.");
-        T("    const params = this.route.snapshot.queryParamMap;");
-        T("    this.backTo = params.get('back');");
-        T("    const openId = params.get('edit');");
-        T($"    if (openId) this.{variable}Service.getById({(keyColumn.IsInt32Column ? "Number(openId)" : "openId")}).subscribe((row) => this.edit(row));");
-        T("    this.load();");
-        foreach (var p in parents.Where(p => !p.Self))
-            T($"    this.{p.ServiceVar}.getAll().subscribe((data) => {{ this.{p.List} = data; }});");
-        T("  }");
-        T();
         {
-            string filterArgs = string.Concat(searchFields.Select(f => $", this.filters.{f.ParamName}"));
-            T("  private load(): void {");
-            T($"    this.{variable}Service.getPage(this.pageIndex + 1, this.pageSize{filterArgs}, this.sort?.column, this.sort?.descending).subscribe((result) => {{");
-            T("      // the last row of the last page was deleted, or rows were removed elsewhere: the page asked for is past the end, so show the last page there is");
-            T("      if (result.items.length === 0 && result.totalCount > 0 && this.pageIndex > 0) {");
-            T("        this.pageIndex = Math.ceil(result.totalCount / this.pageSize) - 1;");
-            T("        this.load();");
-            T("        return;");
-            T("      }");
-            T($"      this.{listName} = result.items;");
-            T("      this.totalCount = result.totalCount;");
-            T("      this.loaded = true;");
-            T("    });");
-            T("  }");
-            T();
-            T("  onPageChange(event: PageEvent): void {");
-            T("    this.pageIndex = event.pageIndex;");
-            T("    this.pageSize = event.pageSize;");
-            T("    this.load();");
-            T("  }");
-            // Click a column header to sort by it, click it again to flip the direction; the right-click menu clears the sort. The sort is saved (grid-sort.ts),
-            // kept when paging and when the filters change, and applied by the server; a change goes back to page 1.
-            T();
-            T("  sortBy(column: string): void {");
-            T("    this.sort = nextSort(this.sort, column);");
-            T("    saveSort(this.gridKey, this.sort);");
-            T("    this.pageIndex = 0;");
-            T("    this.load();");
-            T("  }");
-            T();
-            T("  clearSort(): void {");
-            T("    this.sort = null;");
-            T("    saveSort(this.gridKey, null);");
-            T("    this.sortMenu = null;");
-            T("    this.pageIndex = 0;");
-            T("    this.load();");
-            T("  }");
-            T();
-            T("  openSortMenu(event: MouseEvent): void {");
-            T("    event.preventDefault();");
-            T("    this.sortMenu = { x: event.clientX, y: event.clientY };");
-            T("  }");
-            T();
-            T("  @HostListener('document:click')");
-            T("  @HostListener('document:keydown.escape')");
-            T("  closeSortMenu(): void {");
-            T("    this.sortMenu = null;");
-            T("  }");
-            T();
-            T("  sortMark(column: string): string {");
-            T("    return this.sort?.column === column ? (this.sort.descending ? ' \\u25BC' : ' \\u25B2') : '';");
-            T("  }");
-            T();
-            T("  ariaSort(column: string): 'ascending' | 'descending' | null {");
-            T("    return this.sort?.column === column ? (this.sort.descending ? 'descending' : 'ascending') : null;");
-            T("  }");
+            var parentsToLoad = parents.ToList();   // a drop-down over this table itself (a manager) is read through the screen's own service
+            if (parentsToLoad.Count > 0)
+            {
+                T("  protected override start(): void {");
+                T("    super.start();");
+                foreach (var p in parentsToLoad)
+                    T($"    this.{(p.Self ? "service" : p.ServiceVar)}.{(p.Lookup ? "getLookup" : "getAll")}().subscribe((data) => {{ this.{p.List} = data; }});");
+                T("  }");
+                T();
+            }
         }
-        T();
-        T($"  submit({variable}: {baseName}): void {{");
-        T($"    if ({variable}.{keyProp}) {{");
-        T($"      this.{variable}Service.update({variable}.{keyProp}, {variable}).subscribe({{");
-        T("        next: () => {");
-        T("          console.log(\"Updated successfully!\");");
-        T("          this.load();");
-        T("          this.goBack();");
-        T("        },");
-        T("        error: (error) => this.showError(\"updating\", error)");
-        T("      });");
-        T("    }");
-        T("    else {");
-        T($"      {variable}.{keyProp} = {emptyKey};");
-        T($"      this.{variable}Service.create({variable}).subscribe({{");
-        T("        next: () => { this.load(); this.goBack(); },");
-        T("        error: (error) => this.showError(\"adding\", error)");
-        T("      });");
-        T("    }");
-        T("    this.selectedRow = null;");
-        T("  }");
-        T();
-        T($"  delete(id: {keyTs}): void {{");
-        T("    if (confirm(\"Are you sure you want to delete this?\")) {");
-        T($"      this.{variable}Service.delete(id).subscribe({{");
-        T("        next: () => {");
-        T("          console.log(\"Deleted successfully!\");");
-        T("          this.load(); // read the page again: the total, the rows that move up and the last page all change");
-        T("        },");
-        T("        error: (error) => {");
-        T("          if (error.status == 400) { alert(\"It cannot be deleted because it is in use!\"); }");
-        T("          else if (error.status == 404) { alert(\"It no longer exists!\"); this.load(); }");
-        T("          else { alert(\"Problem while deleting! \" + error.message); }");
-        T("        }");
-        T("      });");
-        T("    }");
-        T("  }");
-        if (canClone)
-        {
-            // Clone copies the row on the server and returns the copy: it is in the grid, and open in the form at once so the person changes what differs.
-            T();
-            T($"  clone(id: {keyTs}): void {{");
-            T($"    this.{variable}Service.clone(id).subscribe({{");
-            T("      next: (copy) => {");
-            T("        this.load();");
-            T("        this.edit(copy);");
-            T("      },");
-            T("      error: (error) => {");
-            T("        if (error.status == 404) { alert(\"It no longer exists!\"); this.load(); }");
-            T("        else { alert(\"Problem while cloning! \" + error.message); }");
-            T("      }");
-            T("    });");
-            T("  }");
-        }
-        T();
         var adds = new List<string>();
         foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && !c.IsNullable && !c.IsComputed && !c.IsIdentity))
         {
@@ -625,57 +581,48 @@
             else value = "''";
             adds.Add($"{Camel(c.Name)}: {value}");
         }
-        T("  add(): void {");
-        if (tabbed) T("    this.activeTab = 0;");
-        T(adds.Count == 0 ? "    this.selectedRow = { };" : $"    this.selectedRow = {{ {string.Join(", ", adds)} }};");
-        foreach (var child in children)
-        {
-            T($"    this.{child.Var}Rows = [];");
-            T($"    this.{child.Var}Columns = [];");
-        }
+        T($"  protected newRow(): {baseName} {{");
+        T(adds.Count == 0 ? "    return { };" : $"    return {{ {string.Join(", ", adds)} }};");
         T("  }");
-        T();
-        T($"  edit({variable}: {baseName}): void {{");
-        if (tabbed) T("    this.activeTab = 0;");
-        T($"    this.selectedRow = {{ ...{variable} }};");
         var dateColumns = shown.Where(IsDate).ToList();
         if (dateColumns.Count > 0)
         {
+            T();
+            T($"  protected override prepareEdit(copy: {baseName}): {baseName} {{");
             T("    // the date box wants yyyy-MM-dd; the API sends a full timestamp");
             foreach (var c in dateColumns)
             {
-                string prop = $"this.selectedRow.{Camel(c.Name)}";
+                string prop = $"copy.{Camel(c.Name)}";
                 if (c.IsNullable) T($"    if ({prop}) {{ {prop} = {prop}.substring(0, 10); }}");
                 else T($"    {prop} = {prop}.substring(0, 10);");
             }
+            T("    return copy;");
+            T("  }");
         }
-        foreach (var child in children)
-            T($"    this.load{child.MethodName}({variable}.{keyProp}!);");
-        T("  }");
-        T();
-        T("  cancel(): void {");
-        T("    this.selectedRow = null;");
-        T("    this.goBack();");
-        T("  }");
-        T();
-        T("  // Back to the page whose grid opened this row, if any.");
-        T("  private goBack(): void {");
-        T("    if (this.backTo) this.router.navigateByUrl(this.backTo);");
-        T("  }");
-        if (canSearch)
+        if (tabbed)
         {
             T();
-            T("  search(): void {");
-            T("    this.selectedRow = null;");
-            T("    this.pageIndex = 0;");
-            T("    this.load();");
+            T("  protected override opened(): void {");
+            T("    this.activeTab = 0;");
+            T("  }");
+        }
+        if (children.Count > 0)
+        {
+            // a new row has no child rows yet; an opened row shows the ones that point at it
+            T();
+            T("  override add(): void {");
+            T("    super.add();");
+            foreach (var child in children)
+            {
+                T($"    this.{child.Var}Rows = [];");
+                T($"    this.{child.Var}Columns = [];");
+            }
             T("  }");
             T();
-            T("  clearSearch(): void {");
-            foreach (var f in searchFields)
-                T($"    this.filters.{f.ParamName} = '';");
-            T("    this.pageIndex = 0;");
-            T("    this.load();");
+            T($"  override edit({variable}: {baseName}): void {{");
+            T($"    super.edit({variable});");
+            foreach (var child in children)
+                T($"    this.load{child.MethodName}({variable}.{keyProp}!);");
             T("  }");
         }
         foreach (var p in parents)
@@ -712,10 +659,10 @@
                 T("  }");
                 T();
                 T($"  delete{child.MethodName}(row: any): void {{");
-                T("    if (!confirm(\"Are you sure you want to delete this?\")) return;");
+                T("    if (!this.notifier.confirm('Are you sure you want to delete this?')) return;");
                 T($"    this.http.delete(`{apiPrefix}/{child.Route}/${{row['{child.KeyProp}']}}`).subscribe({{");
                 T($"      next: () => this.load{child.MethodName}(this.selectedRow!.{keyProp}!),");
-                T("      error: (error) => alert(error.status == 400 ? \"It cannot be deleted because it is in use!\" : \"Problem while deleting! \" + error.message)");
+                T("      error: (error) => this.notifier.error(apiMessage(error, error.status == 400 ? 'It cannot be deleted because it is in use!' : 'Problem while deleting! ' + error.message))");
                 T("    });");
                 T("  }");
             }
@@ -796,12 +743,6 @@
             T("    return typeof value === 'string' ? value.replace(/^(\\d{4}-\\d{2}-\\d{2})T.*$/, '$1') : String(value);");
             T("  }");
         }
-        T();
-        T("  private showError(action: string, error: any): void {");
-        T($"    if (error.status == 400) {{ alert(\"{(hasName ? "Name is bad or has special characters!" : "Some of the values are not acceptable!")}\"); }}");
-        T($"    else if (error.status == 404) {{ alert(\"This {Words(baseName).ToLowerInvariant()} no longer exists!\"); this.load(); }}");
-        T("    else { alert(\"Problem while \" + action + \"! \" + error.message); }");
-        T("  }");
         T("}");
 
         var o = new StringBuilder();

@@ -52,5 +52,8 @@ public static class ProjectSettingChoices
             ["AccessMode"] = (SettingKind.Radio, [NotSet("Routines"), new("Routines", "Routines"), new("Ef", "Ef")]),
             ["NamingStyle"] = (SettingKind.Radio, [NotSet("as is"), new("AsIs", "As is"), new("Pascal", "Pascal")]),
             ["DbSetNames"] = (SettingKind.Radio, [NotSet("the table name"), new("Plural", "Plural")]),
+            ["ListProtocol"] = (SettingKind.Radio, [NotSet("Columns"), new("Columns", "Columns"), new("Search", "Search")]),
+            ["PageBase"] = (SettingKind.Radio, [NotSet("0 for Search"), new("0", "0, a page index"), new("1", "1, a page number")]),
+            ["Toasts"] = (SettingKind.Radio, [NotSet("browser dialogs"), new("ngx-toastr", "ngx-toastr")]),
         };
 }

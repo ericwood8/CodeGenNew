@@ -38,9 +38,33 @@ What it does NOT do: the entity, its DbSet in the context and the line in ApiReg
 Register() are written by hand. Nor does it write business rules (validation, defaults, name/duplicate checks); a
 table that needs them keeps a hand-maintained API class - generate this one only for the plain shape.
 
-The handlers use <Table>Repo (generate it with CS_Repo), which must sit on GenericRepo: GetAll, GetAllOrderByDescending and
-the delete check live there. A name/active table (a NOT NULL text Name plus a NOT NULL bit IsActive - NameActiveRepo)
-has no GetAll and does its own duplicate-name and trimming work in its API, so it stops with an error and stays
-hand-maintained. So does a table with no repository (enum / *Type lookup tables, tables with no entity).
+The handlers use <Table>Repo (generate it with CS_Repo), which sits on GenericRepo: GetAll, GetAllOrderByDescending and
+the delete check live there. A name/active table (a NOT NULL text Name plus a NOT NULL bit IsActive) has a NameActiveRepo
+instead and gets `public class DepartmentApi : NameActiveCrudApi<Department, DepartmentRepo>` (see "Name and IsActive tables" below).
+A table with no repository (enum / *Type lookup tables, tables with no entity) stops with an error.
 Requires a table with a single int primary key (routes are {id:int}). Anything else stops with an error.
 ```
+
+## Now a short class on CrudApi
+
+The template no longer writes the five endpoints and their handlers into every table's file. It writes `public class CustomerApi : CrudApi<Customer, CustomerRepo>` with `NewRepo`, `Key`, `NewestFirst` when the table has a NOT NULL date column to order by, `CanClone` / `CloneAsync` when the table has a clone routine, and `CanFindByName` / `FindByNameAsync` when it has a NOT NULL text Name. Everything described above (routes, answers, paging, ordering) is now `Apis/CrudApi.cs`, written once by the API essentials group `crudapi` (see API_EssentialCrudApi_v1.md); run that group first or the generated classes do not compile. The refusals are unchanged (a name/active table, a table with no repository, a key that is not a single int).
+
+`GET <route>/{name}` is new: the Angular and React services' `findByName` called it, and no generated API answered it. It lists the rows whose name starts with the text (the repository's `GetByName`); a number in that place is still an id.
+
+## Name and IsActive tables
+
+A table with a NOT NULL text `Name` and a NOT NULL bit `IsActive` (a department, a team, an employee, a project) is written as a short class on `NameActiveCrudApi<TEntity, TRepo>` (Apis/CrudApi.cs, the CrudApi essentials group) over its `NameActiveRepo` (the NameActive essentials group):
+
+```csharp
+public class DepartmentTeamApi : NameActiveCrudApi<DepartmentTeam, DepartmentTeamRepo>
+{
+    protected override DepartmentTeamRepo NewRepo(AppContext context) => new(context);
+    protected override Expression<Func<DepartmentTeam, int>> Key => c => c.DepartmentTeamId;
+}
+```
+
+The base answers `GET <route>` (every row by name), `GET <route>/active`, `GET <route>/{id}`, `GET <route>/{name}` (the active rows that start with the text), `POST`, `PUT` and `DELETE`. The name is trimmed and may not be empty (400); a second active row with the same name is a 409 problem whose `detail` the Angular screens show as it is; a delete that a foreign key blocks is a 400 problem. There is no search endpoint, clone or newest-first order for these tables. `PlanTables=AspNetApi` runs the template for them (and `API_Registration` lists them); the Rust, Python, Blazor and React stacks still leave them out. A table listed in `NoApiTables` (a user table with password hashes) gets no class.
+
+## Lookup
+
+A table with a display column (`DisplayColumnSelector`: the column its drop-downs show) gets `CanLookup => true` and a `LookupQuery` that orders by that column and reads `new LookupItem(key, display, IsActive or null)`. A text display column is read as it is (`?? ""` when nullable); any other type is `ToString()`. A table with no display column has no `/lookup` route and its screens' drop-downs would not be asked either.

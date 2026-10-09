@@ -147,10 +147,11 @@ public class TemplateConfigTests
     [TestMethod]
     public void The_shipped_configs_that_assume_a_plain_getAll_style_backend_refuse_name_active_tables()
     {
-        Assert.IsTrue(TemplateConfig.Load(Repo.Template("TS_Service_v1.tt.config")).RequiresNotNameActiveTable);
-        Assert.IsTrue(TemplateConfig.Load(Repo.Template("TS_Component_v1.tt.config")).RequiresNotNameActiveTable);
-        Assert.IsTrue(TemplateConfig.Load(Repo.Template("TS_DetailMasterComponent_v1.tt.config")).RequiresNotNameActiveTable);
-        Assert.IsTrue(TemplateConfig.Load(Repo.Template("API_Crud_v1.tt.config")).RequiresNotNameActiveTable);
+        // the ASP.NET API and the Angular templates handle a name/active table (NameActiveCrudApi, NameActiveCrudScreen)
+        Assert.IsFalse(TemplateConfig.Load(Repo.Template("TS_Service_v1.tt.config")).RequiresNotNameActiveTable);
+        Assert.IsFalse(TemplateConfig.Load(Repo.Template("TS_Component_v1.tt.config")).RequiresNotNameActiveTable);
+        Assert.IsFalse(TemplateConfig.Load(Repo.Template("TS_DetailMasterComponent_v1.tt.config")).RequiresNotNameActiveTable);
+        Assert.IsFalse(TemplateConfig.Load(Repo.Template("API_Crud_v1.tt.config")).RequiresNotNameActiveTable);
         Assert.IsTrue(TemplateConfig.Load(Repo.Template("WinUI3_MasterScreen_v1.tt.config")).RequiresNotNameActiveTable);
         Assert.IsTrue(TemplateConfig.Load(Repo.Template("WinUI3_DetailScreen_v1.tt.config")).RequiresNotNameActiveTable);
         Assert.IsTrue(TemplateConfig.Load(Repo.Template("WinUI3_DetailMasterScreen_v1.tt.config")).RequiresNotNameActiveTable);
@@ -366,9 +367,9 @@ public class TemplateCatalogTests
 
         var groups = offered.GroupBy(t => t.SubmenuGroup).ToDictionary(g => g.Key!, g => g.Count());
         Assert.AreEqual(17, groups["SP"]);
-        Assert.AreEqual(13, groups["API"]);
-        Assert.AreEqual(19, groups["CS"]);
-        Assert.AreEqual(15, groups["TS"]);
+        Assert.AreEqual(14, groups["API"]);
+        Assert.AreEqual(20, groups["CS"]);
+        Assert.AreEqual(16, groups["TS"]);
         Assert.AreEqual(10, groups["WinUI3"]);
         Assert.AreEqual(2, groups["FS"]);
         Assert.AreEqual(5, groups["MD"]);

@@ -27,7 +27,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
         "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputRust", "OutputPython", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildPython", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestPython"
     ];
@@ -289,6 +289,43 @@ public class ProjectSettings
     /// <summary> The major version of Angular the project runs (<c>AngularVersion=22</c>); null when the project does not say, which keeps the output every Angular version from 18 accepts
     /// (<c>standalone: true</c>, <c>*ngIf</c> / <c>*ngFor</c>, the default change detection spelled <c>Default</c>, the animation providers in the specs). </summary>
     public int? AngularVersion => int.TryParse(Explicit("AngularVersion"), out int version) && version > 0 ? version : null;
+
+    /// <summary> <c>Toasts=ngx-toastr</c>: the Angular screens show what the API refuses as toasts from the ngx-toastr package; otherwise the browser's own dialogs. </summary>
+    public bool ToastrToasts => string.Equals(Explicit("Toasts"), "ngx-toastr", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary> <c>ListProtocol=Search</c>: the Angular client asks a list the way many existing APIs answer it (<c>GET &lt;route&gt;?pageIndex=0&amp;pageSize=25&amp;sort=name:desc&amp;search=text</c>, one search box,
+    /// the page answered as <c>{ data, count }</c>); the default <c>Columns</c> is <c>GET &lt;route&gt;/search?pageNumber&amp;pageSize&amp;&lt;one parameter per searchable column&gt;&amp;sortBy&amp;sortDir</c> answered as
+    /// <c>{ items, totalCount, ... }</c> (what API_Search and CrudApi write). </summary>
+    public bool ListSearchProtocol => string.Equals(Explicit("ListProtocol"), "Search", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary> The names a Search-protocol list uses in the query string and the answer; each setting changes one name and the defaults are the common ones. </summary>
+    public string PageParameter => Explicit("PageParameter") ?? (PageBase == 0 ? "pageIndex" : "pageNumber");
+    public string PageSizeParameter => Explicit("PageSizeParameter") ?? "pageSize";
+    public string SortParameter => Explicit("SortParameter") ?? "sort";
+    public string SearchParameter => Explicit("SearchParameter") ?? "search";
+    public string ItemsMember => Explicit("ItemsMember") ?? "data";
+    public string TotalMember => Explicit("TotalMember") ?? "count";
+
+    /// <summary> 0 when the first page is page 0 (<c>pageIndex</c>), 1 when it is page 1 (<c>pageNumber</c>); the Search protocol's default is 0. </summary>
+    public int PageBase => Explicit("PageBase") == "1" ? 1 : 0;
+
+    /// <summary> The sort a screen starts with when the person has left none (<c>DefaultSorts=TimeSheet=WhenEntered:desc,Holiday=Name</c>: table, an equals sign, the column and optionally <c>:asc</c> or <c>:desc</c>).
+    /// Null when the table has none. </summary>
+    public (string Column, bool Descending)? DefaultSort(string table)
+    {
+        foreach (string pair in List("DefaultSorts") ?? [])
+        {
+            int equals = pair.IndexOf('=');
+            if (equals <= 0 || equals == pair.Length - 1 || !pair[..equals].Trim().EqualsIgnoreCase(table))
+                continue;
+            string sort = pair[(equals + 1)..].Trim();
+            int colon = sort.IndexOf(':');
+            string column = (colon < 0 ? sort : sort[..colon]).Trim();
+            bool descending = colon >= 0 && sort[(colon + 1)..].Trim().EqualsIgnoreCase("desc");
+            return column.Length == 0 ? null : (column, descending);
+        }
+        return null;
+    }
 
     /// <summary> Version 19 made every component standalone, so <c>standalone: true</c> is redundant from there on. </summary>
     public bool AngularStandaloneFlag => AngularVersion is null or < 19;

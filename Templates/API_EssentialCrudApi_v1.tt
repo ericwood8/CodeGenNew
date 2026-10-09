@@ -1,0 +1,375 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // API_EssentialCrudApi_v1.tt
+    // Generates: Apis/CrudApi.cs   (no table, no database: an essentials group)
+    // CrudApi<TEntity, TRepo>, the base of the per-table API classes API_Crud writes: it registers the five standard endpoints (list or one page of the list, get by id, create, update, delete,
+    // clone for a table that can be cloned, and find by name for a table with a Name) and holds the one set of answers (201 with a Location, 400 when the id in the route and in the body disagree, 404, 400 for a row that is
+    // in use). A generated class names its repository, its key and the column that lists newest first, and nothing else. NameActiveCrudApi<TEntity, TRepo> is the same for a table
+    // with a Name and an IsActive column (its repository is a NameActiveRepo): the list, the active list, find by name, and the 409 problem for a duplicate name. Needs BaseApi (API_EssentialApiBase), the generic repository
+    // (CS_EssentialBase), the NameActive group for NameActiveCrudApi and, when ApiValidation is on, ValidationFilter (API_EssentialProgram).
+    // Full notes: Docs/TemplateNotes/API_EssentialCrudApi_v1.md
+    // ==========================================================================================
+    string projectName = Project.ProjectName ?? "MyApp";
+    string apiNamespace = Project.ApiNamespace ?? projectName + ".Api.Apis";
+    string entityNamespace = Project.EntityNamespace ?? projectName + ".Api.Entities";
+    string repoNamespace = Project.RepoNamespace ?? projectName + ".Api.Repositories";
+    string contextNamespace = Project.ContextNamespace ?? projectName + ".Api.Data";
+    string contextType = Project.ContextName ?? "AppContext";
+    string baseNameActiveEntity = Project.BaseNameActiveEntity ?? "BaseNameActiveEntity";
+    string validation(string when) => Project.ApiValidation ? when : "";
+#>
+@@@FILE Apis/CrudApi.cs@@@
+namespace <#= apiNamespace #>;
+
+using System.Linq.Expressions;
+using <#= contextNamespace #>;
+using <#= entityNamespace #>;
+using <#= repoNamespace #>;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+/// <summary> One page of rows, in the shape the search endpoints answer with. </summary>
+public record CrudPage<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalCount, int TotalPages);
+
+/// <summary> What <c>GET &lt;route&gt;/lookup</c> answers for each row: the key, the text a person recognises the row by, and whether the row is active (null for a table with no IsActive column). A drop-down needs no more. </summary>
+public record LookupItem(int Id, string Name, bool? IsActive = null);
+
+/// <summary>
+/// The five endpoints every table's API answers, written once. A class for a table (API_Crud writes it) says its repository (<see cref="NewRepo"/>), its key (<see cref="Key"/>)
+/// and, if the list should come newest first, the date column to order by (<see cref="NewestFirst"/>); a table that can be cloned also says so (<see cref="CanClone"/>).
+/// Anything a table does differently (a rule before a save, a route of its own) is an override or a class of its own: this one only holds what every table shares.
+/// </summary>
+public abstract class CrudApi<TEntity, TRepo> : BaseApi<TEntity>
+    where TEntity : BaseEntity
+    where TRepo : GenericRepo<TEntity>
+{
+    // the most rows one page may hold; a larger pageSize is lowered to this
+    private const int MaxPageSize = 1000;
+
+    private string _route = "";
+    private Func<TEntity, int>? _keyOf;
+
+    /// <summary> The table's repository over this request's context. </summary>
+    protected abstract TRepo NewRepo(<#= contextType #> context);
+
+    /// <summary> The primary key property: <c>c =&gt; c.CustomerId</c>. </summary>
+    protected abstract Expression<Func<TEntity, int>> Key { get; }
+
+    /// <summary> The date column the list comes newest first by (<c>c =&gt; c.WhenEntered</c>); null lists in key order. </summary>
+    protected virtual Expression<Func<TEntity, DateTime>>? NewestFirst => null;
+
+    /// <summary> True for a table that has a clone routine: <c>POST &lt;route&gt;/{id}/clone</c> copies a row and answers with the copy. </summary>
+    protected virtual bool CanClone => false;
+
+    /// <summary> Copies the row and returns the new key (the repository's <c>CloneAsync</c>); only called when <see cref="CanClone"/> is true. </summary>
+    protected virtual Task<int> CloneAsync(TRepo repo, int id) => throw new NotSupportedException();
+
+    /// <summary> True for a table that answers <c>GET &lt;route&gt;/lookup</c> (<see cref="LookupQuery"/>): only the key and the display column are read, for the drop-downs and the "name of" columns of other screens. </summary>
+    protected virtual bool CanLookup => false;
+
+    /// <summary> The rows as lookup items, in the order a drop-down lists them (<c>rows.OrderBy(c =&gt; c.Name).Select(c =&gt; new LookupItem(c.CustomerId, c.Name))</c>); only called when <see cref="CanLookup"/> is true. </summary>
+    protected virtual IQueryable<LookupItem> LookupQuery(IQueryable<TEntity> rows) => throw new NotSupportedException();
+
+    /// <summary> True for a table whose rows have a Name (the repository's <c>GetByName</c>): <c>GET &lt;route&gt;/{name}</c> lists the rows whose name starts with the text. </summary>
+    protected virtual bool CanFindByName => false;
+
+    /// <summary> The rows whose name starts with the text (the repository's <c>GetByName</c>); only called when <see cref="CanFindByName"/> is true. </summary>
+    protected virtual Task<List<TEntity>> FindByNameAsync(TRepo repo, string name) => throw new NotSupportedException();
+
+    private int KeyOf(TEntity row) => (_keyOf ??= Key.Compile())(row);
+
+    public override void Register(WebApplication app)
+    {
+        BreakIntoStrings(out string singular, out string plural, out string apiSubDir);
+        _route = _apiSubDir;
+
+        // Get all
+        app.MapGet(apiSubDir, ([FromServices] <#= contextType #> context, [FromQuery] int? pageNumber, [FromQuery] int? pageSize) => GetAllAsync(context, pageNumber, pageSize))
+        .WithName($"Get{plural}")
+        .WithOpenApi()
+        .Produces<IEnumerable<TEntity>>()
+        .Produces<CrudPage<TEntity>>()
+        .ProducesProblem(400)
+        .ProducesProblem(404)
+        .ProducesProblem(500);
+
+        // Get by ID
+        app.MapGet(apiSubDir + "/{id:int}", ([FromServices] <#= contextType #> context, int id) => GetByIdAsync(context, id))
+        .WithName($"Get{singular}ById")
+        .WithOpenApi()
+        .Produces<TEntity>()
+        .ProducesProblem(404)
+        .ProducesProblem(500);
+
+        // Create new
+        app.MapPost(apiSubDir, ([FromServices] <#= contextType #> context, [FromBody] TEntity newRow) => CreateAsync(context, newRow))
+        .WithName($"Create{singular}")
+        .WithOpenApi()
+<#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(500);
+
+        // Update existing
+        app.MapPut(apiSubDir + "/{id:int}", ([FromServices] <#= contextType #> context, int id, [FromBody] TEntity updatedRow) => UpdateAsync(context, id, updatedRow))
+        .WithName($"Update{singular}")
+        .WithOpenApi()
+<#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(400)
+        .ProducesProblem(404)
+        .ProducesProblem(500);
+
+        // Delete
+        app.MapDelete(apiSubDir + "/{id:int}", ([FromServices] <#= contextType #> context, int id) => DeleteAsync(context, id))
+        .WithName($"Delete{singular}")
+        .WithOpenApi()
+        .ProducesProblem(404)
+        .ProducesProblem(500);
+
+        if (CanLookup)
+        {
+            // Lookup: the key and the display column of every row; "lookup" is not a name, so it is never the find-by-name route's
+            app.MapGet(apiSubDir + "/lookup", ([FromServices] <#= contextType #> context) => LookupAsync(context))
+            .WithName($"Get{plural}Lookup")
+            .WithOpenApi()
+            .Produces<IEnumerable<LookupItem>>()
+            .ProducesProblem(500);
+        }
+
+        if (CanFindByName)
+        {
+            // Find by name: a number in that place is an id (the int constraint wins), anything else is the start of a name; "search" is the search route's
+            app.MapGet(apiSubDir + "/{name}", ([FromServices] <#= contextType #> context, string name) => FindByNameRowsAsync(context, name))
+            .WithName($"Get{plural}ByName")
+            .WithOpenApi()
+            .Produces<IEnumerable<TEntity>>()
+            .ProducesProblem(500);
+        }
+
+        if (CanClone)
+        {
+            // Clone: copy a row into a new one and return it (the grids' Clone button opens the copy in the edit form)
+            app.MapPost(apiSubDir + "/{id:int}/clone", ([FromServices] <#= contextType #> context, int id) => CloneRowAsync(context, id))
+            .WithName($"Clone{singular}")
+            .WithOpenApi()
+            .ProducesProblem(404)
+            .ProducesProblem(500);
+        }
+    }
+
+    /// <summary>
+    /// Every row as a plain array (drop-downs and small tables use this), or, when pageNumber or pageSize is given, one page of them with the total:
+    /// the table's route with pageNumber=2 and pageSize=50 in the query string. The page is ordered like the array and by the key, so pages do not overlap; a big table is read a page at a time.
+    /// </summary>
+    private async Task<IResult> GetAllAsync(<#= contextType #> context, int? pageNumber, int? pageSize)
+    {
+        if (pageNumber is not null || pageSize is not null)
+        {
+            // 0 or less is an error inside the database (FETCH NEXT 0 ROWS) and a huge size reads the whole table: keep it between 1 and MaxPageSize
+            int size = Math.Clamp(pageSize ?? 100, 1, MaxPageSize);
+            int number = pageNumber ?? 1;
+            if (number < 1)
+                return Results.Problem(statusCode: 400, title: "Invalid page", detail: "pageNumber must be 1 or greater.");
+            if ((long)(number - 1) * size > int.MaxValue)
+                return Results.Problem(statusCode: 400, title: "Invalid page", detail: "pageNumber is too large for that pageSize.");
+
+            IQueryable<TEntity> all = context.Set<TEntity>().AsNoTracking();
+            int totalCount = await all.CountAsync();
+            var ordered = NewestFirst is { } newest ? all.OrderByDescending(newest).ThenBy(Key) : all.OrderBy(Key);
+            var page = await ordered.Skip((number - 1) * size).Take(size).ToListAsync();
+            return Results.Ok(new CrudPage<TEntity>(page, number, size, totalCount, totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)size)));
+        }
+
+        var repo = NewRepo(context);
+        var rows = NewestFirst is { } order ? await repo.GetAllOrderByDescending(order) : await repo.GetAll();
+        return Results.Ok(rows);
+    }
+
+    private async Task<IResult> GetByIdAsync(<#= contextType #> context, int id)
+    {
+        var row = await NewRepo(context).GetByIdAsync(id);
+        return row != null ? Results.Ok(row) : Results.NotFound();
+    }
+
+    private async Task<IResult> CreateAsync(<#= contextType #> context, TEntity newRow)
+    {
+        await NewRepo(context).AddAsync(newRow);
+        return Results.Created($"/api{_route}/{KeyOf(newRow)}", newRow);
+    }
+
+    private async Task<IResult> UpdateAsync(<#= contextType #> context, int id, TEntity updatedRow)
+    {
+        if (KeyOf(updatedRow) != id)
+            return Results.BadRequest(); // 400 error if the id in the URL and the id in the body disagree
+
+        var repo = NewRepo(context);
+        if (!await repo.ExistsAsync(id))
+            return Results.NotFound(); // 404 error if there is no row with that id
+        var postUpdate = await repo.UpdateAsync(id, updatedRow);
+        return Results.Ok(postUpdate);
+    }
+
+    private async Task<IResult> DeleteAsync(<#= contextType #> context, int id)
+    {
+        var successNum = await NewRepo(context).DeleteAsync(typeof(TEntity).Name, id);
+        if (successNum == 0)
+            return Results.Ok();
+        else if (successNum == -1)
+            return Results.NotFound(); // cannot delete because does not exist
+        else
+            return Results.BadRequest(); // cannot delete because "in use"
+    }
+
+    private async Task<IResult> LookupAsync(<#= contextType #> context) => Results.Ok(await LookupQuery(context.Set<TEntity>().AsNoTracking()).ToListAsync());
+
+    private async Task<IResult> FindByNameRowsAsync(<#= contextType #> context, string name) => Results.Ok(await FindByNameAsync(NewRepo(context), name));
+
+    private async Task<IResult> CloneRowAsync(<#= contextType #> context, int id)
+    {
+        var repo = NewRepo(context);
+        if (!await repo.ExistsAsync(id))
+            return Results.NotFound(); // 404 error if there is no row to copy
+        int newId = await CloneAsync(repo, id);
+        var copy = await repo.GetByIdAsync(newId);
+        return Results.Created($"/api{_route}/{newId}", copy);
+    }
+}
+
+/// <summary>
+/// The endpoints of a table with a Name and an IsActive column (its repository is a NameActiveRepo), written once: the list (by name), the active list (<c>GET &lt;route&gt;/active</c>), the lookup list (<c>GET &lt;route&gt;/lookup</c>),
+/// one row, find by name (<c>GET &lt;route&gt;/{name}</c>, the active rows that start with the text), create, update and delete. A name is trimmed and may not be empty (400); a second active row
+/// with the same name is refused with a 409 problem whose detail the screens show as it is. A class for a table (API_Crud writes it) says only its repository and its key.
+/// </summary>
+public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
+    where TEntity : <#= baseNameActiveEntity #>
+    where TRepo : NameActiveRepo<TEntity>
+{
+    private string _route = "";
+    private Func<TEntity, int>? _keyOf;
+
+    /// <summary> The table's repository over this request's context. </summary>
+    protected abstract TRepo NewRepo(<#= contextType #> context);
+
+    /// <summary> The primary key property: <c>c =&gt; c.DepartmentId</c>. </summary>
+    protected abstract Expression<Func<TEntity, int>> Key { get; }
+
+    private int KeyOf(TEntity row) => (_keyOf ??= Key.Compile())(row);
+
+    public override void Register(WebApplication app)
+    {
+        BreakIntoStrings(out string singular, out string plural, out string apiSubDir);
+        _route = _apiSubDir;
+
+        app.MapGet(apiSubDir, ([FromServices] <#= contextType #> context) => GetAllAsync(context))
+        .WithName($"Get{plural}")
+        .WithOpenApi()
+        .Produces<IEnumerable<TEntity>>()
+        .ProducesProblem(500);
+
+        app.MapGet(apiSubDir + "/active", ([FromServices] <#= contextType #> context) => GetAllActiveAsync(context))
+        .WithName($"GetActive{plural}")
+        .WithOpenApi()
+        .Produces<IEnumerable<TEntity>>()
+        .ProducesProblem(500);
+
+        app.MapGet(apiSubDir + "/lookup", ([FromServices] <#= contextType #> context) => LookupAsync(context))
+        .WithName($"Get{plural}Lookup")
+        .WithOpenApi()
+        .Produces<IEnumerable<LookupItem>>()
+        .ProducesProblem(500);
+
+        app.MapGet(apiSubDir + "/{id:int}", ([FromServices] <#= contextType #> context, int id) => GetByIdAsync(context, id))
+        .WithName($"Get{singular}ById")
+        .WithOpenApi()
+        .Produces<TEntity>()
+        .ProducesProblem(404)
+        .ProducesProblem(500);
+
+        app.MapPost(apiSubDir, ([FromServices] <#= contextType #> context, [FromBody] TEntity newRow) => CreateAsync(context, newRow))
+        .WithName($"Create{singular}")
+        .WithOpenApi()
+<#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(400)
+        .ProducesProblem(409)
+        .ProducesProblem(500);
+
+        app.MapPut(apiSubDir + "/{id:int}", ([FromServices] <#= contextType #> context, int id, [FromBody] TEntity updatedRow) => UpdateAsync(context, id, updatedRow))
+        .WithName($"Update{singular}")
+        .WithOpenApi()
+<#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(400)
+        .ProducesProblem(404)
+        .ProducesProblem(409)
+        .ProducesProblem(500);
+
+        app.MapDelete(apiSubDir + "/{id:int}", ([FromServices] <#= contextType #> context, int id) => DeleteAsync(context, id))
+        .WithName($"Delete{singular}")
+        .WithOpenApi()
+        .ProducesProblem(400)
+        .ProducesProblem(404)
+        .ProducesProblem(500);
+
+        // Find by name: a number in that place is an id (the int constraint wins), anything else is the start of a name; "active" is the active list's
+        app.MapGet(apiSubDir + "/{name}", ([FromServices] <#= contextType #> context, string name) => FindByNameAsync(context, name))
+        .WithName($"Get{plural}ByName")
+        .WithOpenApi()
+        .Produces<IEnumerable<TEntity>>()
+        .ProducesProblem(500);
+    }
+
+    private async Task<IResult> GetAllAsync(<#= contextType #> context) => Results.Ok(await NewRepo(context).GetAll());
+
+    private async Task<IResult> GetAllActiveAsync(<#= contextType #> context) => Results.Ok(await NewRepo(context).GetAllActive());
+
+    /// <summary> Every row by name as { id, name, isActive }: only the key, the name and the flag are read. </summary>
+    private async Task<IResult> LookupAsync(<#= contextType #> context)
+    {
+        string keyName = context.Model.FindEntityType(typeof(TEntity))!.FindPrimaryKey()!.Properties[0].Name;
+        var rows = await context.Set<TEntity>().AsNoTracking().OrderBy(c => c.Name)
+            .Select(c => new LookupItem(EF.Property<int>(c, keyName), c.Name, c.IsActive)).ToListAsync();
+        return Results.Ok(rows);
+    }
+
+    private async Task<IResult> GetByIdAsync(<#= contextType #> context, int id)
+    {
+        var row = await NewRepo(context).GetByIdAsync(id);
+        return row != null ? Results.Ok(row) : Results.NotFound();
+    }
+
+    private async Task<IResult> FindByNameAsync(<#= contextType #> context, string name) => Results.Ok(await NewRepo(context).GetByName(name));
+
+    private async Task<IResult> CreateAsync(<#= contextType #> context, TEntity newRow)
+    {
+        if (string.IsNullOrWhiteSpace(newRow.Name))
+            return Results.Problem(statusCode: 400, title: "Name is required", detail: "The name cannot be empty.");
+
+        if (!await NewRepo(context).AddAsync(newRow))
+            return DuplicateName(newRow.Name);
+        return Results.Created($"/api{_route}/{KeyOf(newRow)}", newRow);
+    }
+
+    private async Task<IResult> UpdateAsync(<#= contextType #> context, int id, TEntity updatedRow)
+    {
+        if (KeyOf(updatedRow) != id)
+            return Results.Problem(statusCode: 400, title: "Invalid id", detail: "The id in the route and the id in the body disagree.");
+        if (string.IsNullOrWhiteSpace(updatedRow.Name))
+            return Results.Problem(statusCode: 400, title: "Name is required", detail: "The name cannot be empty.");
+
+        var repo = NewRepo(context);
+        if (!await repo.ExistsAsync(id))
+            return Results.NotFound();
+        var saved = await repo.UpdateAsync(id, updatedRow);
+        return saved is null ? DuplicateName(updatedRow.Name) : Results.Ok(saved); // null: another active row has that name
+    }
+
+    private async Task<IResult> DeleteAsync(<#= contextType #> context, int id)
+    {
+        int result = await NewRepo(context).DeleteAsync(typeof(TEntity).Name, id);
+        return result switch
+        {
+            0 => Results.Ok(),
+            -1 => Results.NotFound(),
+            _ => Results.Problem(statusCode: 400, title: "In use", detail: "It cannot be deleted because it is in use.")
+        };
+    }
+
+    private static IResult DuplicateName(string name) =>
+        Results.Problem(statusCode: 409, title: "Duplicate name", detail: $"An active row named '{name.Trim()}' already exists.");
+}

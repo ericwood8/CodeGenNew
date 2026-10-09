@@ -649,11 +649,11 @@ public class TemplateRenderingTests
         Expect.Contains(html, "*ngFor=\"let row of sortedChildRows('departmentTeam', departmentTeamRows)\"");
         Expect.Contains(html, "Save this Department first to see its Department Team rows.");
 
-        Expect.Contains(ts, "export class DepartmentDetailMasterComponent {");
+        Expect.Contains(ts, "export class DepartmentDetailMasterComponent extends PagedCrudScreen<Department> {");
         Expect.Contains(ts, "departmentTeamRows: any[] = [];");
         Expect.Contains(ts, "departmentTeamColumns: string[] = [];");
         Expect.Contains(ts, "import { HttpClient } from '@angular/common/http';");
-        Expect.Contains(ts, "private http: HttpClient");
+        Expect.Contains(ts, "private readonly http = inject(HttpClient);");
         Expect.Contains(ts, "this.loadDepartmentTeam(department.departmentId!);");
         Expect.Contains(ts, "private loadDepartmentTeam(parentId: number): void {");
         Expect.Contains(ts, "this.http.get<any[]>('api/departmentteams').subscribe({");
@@ -703,24 +703,33 @@ public class TemplateRenderingTests
     public async Task TS_Component_calls_the_method_TS_Service_actually_generates_for_a_lookup_parent()
     {
         string parentServiceTs = await Render("TS_Service_v1.tt", Sample.Employee());
+        string baseTs = (await CrudScreenTests.Essential())["crud.service.ts"];
         string componentTs = GeneratedFiles.Split(await Render("TS_Component_v1.tt", Sample.DonateLeave()))
             .Single(f => f.RelativePath.EndsWith(".component.ts")).Content;
 
         string calledMethod = CalledServiceMethod(componentTs, "employeeService");
 
-        Expect.Contains(parentServiceTs, $"{calledMethod}(): Observable<Employee[]>");
+        // the call is the base's (CrudService), and the Employee service is on that base
+        Expect.Contains(parentServiceTs, "extends NamedCrudService<Employee>");
+        // a parent with a whole-number key is read through its lookup list: id and name only
+        Assert.AreEqual("getLookup", calledMethod);
+        Expect.Contains(baseTs, "getLookup(): Observable<Lookup[]>");
     }
 
     [TestMethod]
     public async Task TS_DetailMasterComponent_calls_the_method_TS_Service_actually_generates_for_a_lookup_parent()
     {
         string parentServiceTs = await Render("TS_Service_v1.tt", Sample.Employee());
+        string baseTs = (await CrudScreenTests.Essential())["crud.service.ts"];
         string componentTs = GeneratedFiles.Split(await Render("TS_DetailMasterComponent_v1.tt", Sample.TimeSheetWithEmployeeAndDetail()))
             .Single(f => f.RelativePath.EndsWith(".component.ts")).Content;
 
         string calledMethod = CalledServiceMethod(componentTs, "employeeService");
 
-        Expect.Contains(parentServiceTs, $"{calledMethod}(): Observable<Employee[]>");
+        Expect.Contains(parentServiceTs, "extends NamedCrudService<Employee>");
+        // a parent with a whole-number key is read through its lookup list: id and name only
+        Assert.AreEqual("getLookup", calledMethod);
+        Expect.Contains(baseTs, "getLookup(): Observable<Lookup[]>");
     }
 
     // ------------------------------------------------------------------ API_Junction
@@ -928,9 +937,9 @@ public class TemplateRenderingTests
         string cs = await Render("API_Crud_v1.tt", Sample.DonateLeave());
 
         Expect.Contains(cs, "namespace MyApp.ApiService.Apis;");
-        Expect.Contains(cs, "public class E_DonateLeaveApi<T> : BaseApi<T> where T : class");
-        Expect.Contains(cs, "E_DonateLeaveRepo repo = new(context);");
-        Expect.DoesNotContain(cs, "GenericRepo<");
+        Expect.Contains(cs, "public class E_DonateLeaveApi : CrudApi<E_DonateLeave, E_DonateLeaveRepo>");
+        Expect.Contains(cs, "protected override E_DonateLeaveRepo NewRepo(MyAppContext context) => new(context);");
+        Expect.DoesNotContain(cs, "MapGet");   // the endpoints are CrudApi's
     }
 
     [TestMethod]
@@ -938,7 +947,7 @@ public class TemplateRenderingTests
     {
         string cs = await Render("API_Crud_v1.tt", Sample.DonateLeave());
 
-        Expect.Contains(cs, "repo.GetAllOrderByDescending(c => c.WhenDonated)");
+        Expect.Contains(cs, "protected override Expression<Func<E_DonateLeave, DateTime>> NewestFirst => c => c.WhenDonated;");
     }
 
     [TestMethod]
@@ -948,18 +957,16 @@ public class TemplateRenderingTests
 
         string cs = await Render("API_Crud_v1.tt", table);
 
-        Expect.Contains(cs, "var rows = await repo.GetAll();");
+        Expect.DoesNotContain(cs, "NewestFirst");   // no date column: CrudApi lists in key order
     }
 
     [TestMethod]
-    public async Task Update_checks_the_id_and_that_the_row_exists_and_get_by_id_can_be_404()
+    public async Task The_key_the_base_checks_the_update_against_is_the_tables_primary_key()
     {
         string cs = await Render("API_Crud_v1.tt", Sample.DonateLeave());
 
-        Expect.Contains(cs, "if (updatedRow.DonateLeaveId != id)");
-        Expect.Contains(cs, "if (!await repo.ExistsAsync(id))");
-        Expect.Contains(cs, "return row != null ? Results.Ok(row) : Results.NotFound();");
-        Expect.Contains(cs, "repo.DeleteAsync(\"E_DonateLeave\", id)");
+        // the id check, the 404s and the delete are CrudApi's (CrudApiTests); the table says which property is its key
+        Expect.Contains(cs, "protected override Expression<Func<E_DonateLeave, int>> Key => c => c.DonateLeaveId;");
     }
 
     [TestMethod]
@@ -967,7 +974,6 @@ public class TemplateRenderingTests
     {
         StringAssert.Contains(await Refusal("API_Crud_v1.tt", Sample.CompositeKey()), "single int primary key");
         StringAssert.Contains(await Refusal("API_Crud_v1.tt", Sample.Roles()), "noRepositoryTables");
-        StringAssert.Contains(await Refusal("API_Crud_v1.tt", Sample.DepartmentTeam()), "IsActive");
     }
 
     // ------------------------------------------------------------------ project settings: the usings list
@@ -1402,11 +1408,11 @@ public class TemplateRenderingTests
         var donate = GeneratedFiles.Split(await Render("TS_Service_v1.tt", Sample.DonateLeave())).Single();
 
         Assert.AreEqual("services/holiday.service.ts", holiday.RelativePath);
-        Expect.Contains(holiday.Content, "private apiUrl = 'api/holidays';");
-        Expect.Contains(holiday.Content, "findByName(name: string): Observable<Holiday[]>");
+        Expect.Contains(holiday.Content, "super(http, 'api/holidays');");
+        Expect.Contains(holiday.Content, "extends NamedCrudService<Holiday>");     // find-by-name (encoded) is NamedCrudService's
         Assert.AreEqual("services/donateleave.service.ts", donate.RelativePath);
-        Expect.Contains(donate.Content, "private apiUrl = 'api/donateleaves';");
-        Expect.DoesNotContain(donate.Content, "findByName");
+        Expect.Contains(donate.Content, "super(http, 'api/donateleaves');");
+        Expect.DoesNotContain(donate.Content, "NamedCrudService");
     }
 
     [TestMethod]
@@ -1414,8 +1420,11 @@ public class TemplateRenderingTests
     {
         var file = GeneratedFiles.Split(await Render("TS_Service_v1.tt", Sample.DonateLeave())).Single();
 
-        foreach (string method in new[] { "getAll()", "getById(id: number)", "create(", "update(id: number", "delete(id: number)" })
-            Expect.Contains(file.Content, method);
+        // the five calls are one class's (CrudService), so every service has the same method names
+        Expect.Contains(file.Content, "extends CrudService<DonateLeave>");
+        string baseTs = (await CrudScreenTests.Essential())["crud.service.ts"];
+        foreach (string method in new[] { "getAll()", "getById(id: K)", "create(", "update(id: K", "delete(id: K)" })
+            Expect.Contains(baseTs, method);
     }
 
     [TestMethod]
@@ -1425,11 +1434,11 @@ public class TemplateRenderingTests
         var address = GeneratedFiles.Split(await Render("TS_Service_v1.tt", Sample.Address())).Single();
         var settingsSales = GeneratedFiles.Split(await Render("TS_Service_v1.tt", Sample.SettingsSales())).Single();
 
-        Expect.Contains(movies.Content, "private apiUrl = 'api/movies';"); // already plural: left alone
+        Expect.Contains(movies.Content, "super(http, 'api/movies');"); // already plural: left alone
         Expect.DoesNotContain(movies.Content, "'api/moviess'");
-        Expect.Contains(address.Content, "private apiUrl = 'api/addresses';"); // singular ending in "ss": gets "es"
+        Expect.Contains(address.Content, "super(http, 'api/addresses');"); // singular ending in "ss": gets "es"
         Expect.DoesNotContain(address.Content, "'api/address'");
-        Expect.Contains(settingsSales.Content, "private apiUrl = 'api/settingssales';"); // bare trailing "s": left alone
+        Expect.Contains(settingsSales.Content, "super(http, 'api/settingssales');"); // bare trailing "s": left alone
         Expect.DoesNotContain(settingsSales.Content, "'api/settingssaless'");
     }
 
@@ -1437,20 +1446,15 @@ public class TemplateRenderingTests
     public async Task TS_Service_adds_getPage_only_when_the_table_has_a_searchable_column()
     {
         var withSearch = GeneratedFiles.Split(await Render("TS_Service_v1.tt", Sample.Holiday())).Single();
-        Expect.Contains(withSearch.Content, "import { HttpClient, HttpParams } from '@angular/common/http';");
-        Expect.Contains(withSearch.Content, "export interface HolidayPagedResult {");
+        Expect.Contains(withSearch.Content, "export type HolidayPagedResult = PagedResult<Holiday>;");
         Expect.Contains(withSearch.Content, "getPage(pageNumber: number, pageSize: number, sY_IsoCountry_Alpha3Code?: string, name?: string, sortBy?: string, sortDescending?: boolean): Observable<HolidayPagedResult> {");
-        Expect.Contains(withSearch.Content, "let params = new HttpParams().set('pageNumber', pageNumber).set('pageSize', pageSize);");
-        Expect.Contains(withSearch.Content, "if (sY_IsoCountry_Alpha3Code) { params = params.set('sY_IsoCountry_Alpha3Code', sY_IsoCountry_Alpha3Code); }");
-        Expect.Contains(withSearch.Content, "if (name) { params = params.set('name', name); }");
-        Expect.Contains(withSearch.Content, "return this.http.get<HolidayPagedResult>(`${this.apiUrl}/search`, { params });");
+        Expect.Contains(withSearch.Content, "return this.searchPage({ pageNumber, pageSize, filters: { sY_IsoCountry_Alpha3Code, name }, sortBy, sortDescending });");
 
         // Pagination and searchability are separate concerns (found live needing pagination alone on such a
         // table, 2026-09-28): getPage/PagedResult always exist, just with zero filter parameters.
         var allNumeric = Sample.Table("Metric", [Sample.Column("MetricId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("Value", SqlDbType.Int, ordinal: 2)]);
         var withoutSearch = GeneratedFiles.Split(await Render("TS_Service_v1.tt", allNumeric)).Single();
-        Expect.Contains(withoutSearch.Content, "import { HttpClient, HttpParams } from '@angular/common/http';");
-        Expect.Contains(withoutSearch.Content, "export interface MetricPagedResult {");
+        Expect.Contains(withoutSearch.Content, "export type MetricPagedResult = PagedResult<Metric>;");
         Expect.Contains(withoutSearch.Content, "getPage(pageNumber: number, pageSize: number, sortBy?: string, sortDescending?: boolean): Observable<MetricPagedResult> {");
     }
 
@@ -1464,10 +1468,8 @@ public class TemplateRenderingTests
 
         Expect.Contains(model.Content, "    accountRefID?: string; // Optional for new ones");
         Assert.AreEqual("services/accountref.service.ts", service.RelativePath);
-        Expect.Contains(service.Content, "private apiUrl = 'api/accountrefs';");
-        Expect.Contains(service.Content, "getById(id: string)");
-        Expect.Contains(service.Content, "update(id: string, accountRef: AccountRef)");
-        Expect.Contains(service.Content, "delete(id: string)");
+        Expect.Contains(service.Content, "super(http, 'api/accountrefs');");
+        Expect.Contains(service.Content, "extends CrudService<AccountRef, string>");     // getById, update and delete take the key as a string
         Expect.DoesNotContain(service.Content, "id: number");
     }
 
@@ -1476,8 +1478,8 @@ public class TemplateRenderingTests
     {
         var ts = GeneratedFiles.Split(await Render("TS_Component_v1.tt", Sample.AccountRef())).Single(f => f.RelativePath.EndsWith("accountref.component.ts")).Content;
 
-        Expect.Contains(ts, "delete(id: string): void");
-        Expect.Contains(ts, "accountRef.accountRefID = '00000000-0000-0000-0000-000000000000';");
+        Expect.Contains(ts, "extends PagedCrudScreen<AccountRef, string>");     // delete(id: string) is the base's
+        Expect.Contains(ts, "protected override readonly emptyKey: string = '00000000-0000-0000-0000-000000000000';");
         Expect.DoesNotContain(ts, "accountRefID = 0");
     }
 
@@ -1501,29 +1503,7 @@ public class TemplateRenderingTests
     }
 
     // ------------------------------------------------------------------ name/active tables (Name + IsActive):
-    // their real API is always hand-maintained and commonly has no plain getAll() at all (see TS_Service.tt's
-    // header comment and Docs/Reference.md section 3's RequiresNotNameActiveTable), so every template that
-    // assumes a plain getAll()-style backend refuses one, matching API_Crud.tt's own long-standing refusal.
-
-    [TestMethod]
-    public async Task TS_Service_refuses_a_name_active_table()
-    {
-        StringAssert.Contains(await Refusal("TS_Service_v1.tt", Sample.DepartmentTeam()), "NameActiveRepo");
-    }
-
-    [TestMethod]
-    public async Task TS_Component_refuses_a_name_active_table()
-    {
-        StringAssert.Contains(await Refusal("TS_Component_v1.tt", Sample.DepartmentTeam()), "NameActiveRepo");
-    }
-
-    [TestMethod]
-    public async Task TS_DetailMasterComponent_refuses_a_name_active_table_even_though_it_has_child_tables()
-    {
-        // Has children (so it would otherwise pass) -- confirms the name/active check is actually reached,
-        // not shadowed by an earlier refusal.
-        StringAssert.Contains(await Refusal("TS_DetailMasterComponent_v1.tt", Sample.NameActiveTableWithChildren()), "NameActiveRepo");
-    }
+    // the Angular service and screens are written for them (NameActiveTests); the other front ends still refuse them.
 
     // ------------------------------------------------------------------ TS_Component
 
@@ -1554,8 +1534,8 @@ public class TemplateRenderingTests
         Expect.Contains(html, "<input type=\"date\" id=\"donateLeaveWhenDonated\"");
         Expect.Contains(html, "| date:'MM/dd/yyyy'");
         Expect.Contains(html, "<textarea id=\"donateLeaveNote\"");     // 100 characters: long text
-        Expect.Contains(ts, "private employeeService: EmployeeService");
-        Expect.Contains(ts, "this.selectedRow.whenDonated = this.selectedRow.whenDonated.substring(0, 10);");
+        Expect.Contains(ts, "private readonly employeeService = inject(EmployeeService);");
+        Expect.Contains(ts, "copy.whenDonated = copy.whenDonated.substring(0, 10);");
         Expect.Contains(ts, "employeeName(id?: number)");
         Expect.DoesNotContain(ts, "}, (error)");   // never the deprecated two-callback subscribe
     }
@@ -1627,13 +1607,9 @@ public class TemplateRenderingTests
         Expect.Contains(html, "[length]=\"totalCount\"");
         Expect.Contains(html, "[pageIndex]=\"pageIndex\"");
         Expect.Contains(html, "(page)=\"onPageChange($event)\"");
-        Expect.Contains(ts, "import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';");
+        Expect.Contains(ts, "import { MatPaginatorModule } from '@angular/material/paginator';");
         Expect.Contains(ts, "imports: [ CommonModule, FormsModule, MatPaginatorModule ],");
-        Expect.Contains(ts, "pageIndex = 0;");
-        Expect.Contains(ts, "totalCount = 0;");
-        Expect.Contains(ts, "this.holidayService.getPage(this.pageIndex + 1, this.pageSize, this.filters.sY_IsoCountry_Alpha3Code, this.filters.name, this.sort?.column, this.sort?.descending).subscribe((result) => {");
-        Expect.Contains(ts, "onPageChange(event: PageEvent): void {");
-        Expect.Contains(ts, "this.pageIndex = event.pageIndex;");
+        Expect.Contains(ts, "extends PagedCrudScreen<Holiday>");     // the page, the total, onPageChange and the request for a page are the base's (CrudScreenTests)
         Expect.DoesNotContain(ts, "getAll()");
         Expect.Contains(spec, "import { provideNoopAnimations } from '@angular/platform-browser/animations';");
         Expect.Contains(spec, "providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations(), provideRouter([])]");
@@ -1652,13 +1628,7 @@ public class TemplateRenderingTests
         Expect.Contains(html, "(click)=\"clearSearch()\"");
         Expect.DoesNotContain(html, "searchText");
 
-        Expect.Contains(ts, "filters = { sY_IsoCountry_Alpha3Code: '', name: '' };");
-        Expect.Contains(ts, "search(): void {");
-        Expect.Contains(ts, "this.selectedRow = null;");
-        Expect.Contains(ts, "this.pageIndex = 0;");
-        Expect.Contains(ts, "clearSearch(): void {");
-        Expect.Contains(ts, "this.filters.sY_IsoCountry_Alpha3Code = '';");
-        Expect.Contains(ts, "this.filters.name = '';");
+        Expect.Contains(ts, "override filters = { sY_IsoCountry_Alpha3Code: '', name: '' };");     // search() and clearSearch() are the base's
         Expect.DoesNotContain(ts, "findByName");
     }
 
@@ -1675,8 +1645,8 @@ public class TemplateRenderingTests
 
         Expect.Contains(html, "<mat-paginator");
         Expect.DoesNotContain(html, "form-group-search");
-        Expect.Contains(ts, "import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';");
-        Expect.Contains(ts, "this.metricService.getPage(this.pageIndex + 1, this.pageSize, this.sort?.column, this.sort?.descending).subscribe((result) => {");
+        Expect.Contains(ts, "import { MatPaginatorModule } from '@angular/material/paginator';");
+        Expect.Contains(ts, "extends PagedCrudScreen<Metric>");
         Expect.DoesNotContain(ts, "filters");
         Expect.DoesNotContain(ts, "clearSearch");
         Expect.DoesNotContain(ts, "getAll()");
@@ -1701,9 +1671,10 @@ public class TemplateRenderingTests
         var movies = GeneratedFiles.Split(await Render("TS_Component_v1.tt", Sample.Movies())).ToDictionary(f => Path.GetFileName(f.RelativePath));
         var address = GeneratedFiles.Split(await Render("TS_Component_v1.tt", Sample.Address())).ToDictionary(f => Path.GetFileName(f.RelativePath));
 
-        Expect.Contains(movies["movies.component.ts"].Content, "movies: Movies[] = [];"); // already plural: left alone
+        // the rows of every grid are the base's `rows`; the names of the table's own words still follow the plural rule
         Expect.DoesNotContain(movies["movies.component.ts"].Content, "moviess");
-        Expect.Contains(address["address.component.ts"].Content, "addresses: Address[] = [];"); // singular ending in "ss": gets "es"
+        Expect.Contains(movies["movies.component.html"].Content, "let movies of rows");
+        Expect.Contains(address["address.component.html"].Content, "let address of rows");
         Expect.DoesNotContain(address["address.component.ts"].Content, "addresss:");
 
         // The <h1> heading has the identical bug (a literal "+ s"), found live against the real, already-plural

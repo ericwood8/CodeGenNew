@@ -36,6 +36,12 @@ same method names on every service so a component never has to remember which on
   - findByName exists on the server for the name-based tables, so it is generated for every table with a text column
     called Name; the plain (API_Crud) tables have none.
 
+A table with a Name and an IsActive column is on `NameActiveCrudService` (adds `getAllActive()`, `GET <route>/active`) and has no `getPage`: its API answers the whole list.
+
 Not written: calls for extra routes a hand-written API adds (DepartmentService.getTeams, TimeSheetDetailService's
 "by timesheet" call, a filtered search); a service that needs those stays hand-maintained.
 ```
+
+## Now a short class on CrudService
+
+The service is `export class HolidayService extends NamedCrudService<Holiday>` (`CrudService` when the table has no NOT NULL text Name; a uniqueidentifier key adds `, string`). It names the route and keeps the typed `getPage(pageNumber, pageSize, <filters>, sortBy, sortDescending)`, which calls the base's `searchPage`. getAll, getById, create, update, delete, clone and findByName are the base's (crud.service.ts, written by the Crud essentials group; see TS_EssentialCrud_v1.md), so the service file is about twenty lines. findByName is generated for a NOT NULL text Name only, the same condition as the repository's GetByName and the API's `GET <route>/{name}`.

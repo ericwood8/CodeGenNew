@@ -5,3 +5,4 @@
 3. Drive it with `Browser.md`; the Material components need `provideAnimationsAsync()` or the page renders blank (the build does not warn).
 4. Check the same list as for React: limits, drop-downs, dates, delete of a row in use.
 5. Stop the servers; drop the scratch copy.
+6. For a project on another Angular version run `Test-AngularVersion.ps1 -Version <n>`: it installs, builds and tests the generated app for that version (the `AngularVersion` setting).

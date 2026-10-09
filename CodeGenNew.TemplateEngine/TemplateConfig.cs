@@ -297,6 +297,8 @@ public enum PlanTableSet
     Context,
     /// <summary> The tables that get a CRUD API (<see cref="CodeGenNew.Core.DatabaseModel.ApiTables"/>). </summary>
     Api,
+    /// <summary> The tables the ASP.NET API serves: the <see cref="Api"/> tables and the name/active tables (<see cref="CodeGenNew.Core.DatabaseModel.AspNetApiTables"/>). </summary>
+    AspNetApi,
     /// <summary> The tables that also get a search routine and endpoint (a lookup table does not). </summary>
     Search,
     /// <summary> The tables with a screen (the project's Screens setting, else every table with a search). </summary>

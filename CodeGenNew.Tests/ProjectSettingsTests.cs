@@ -770,7 +770,7 @@ public class ProjectSettingsTests
         Expect.Contains(react.GeneratedText!, "orderApi.getPage(targetPage, sizeValue, filterValues, sortValue)");
         Expect.Contains(angular.GeneratedText!, "placeholder=\"Search by Customer PO\"");
         Expect.Contains(angular.GeneratedText!, "<mat-paginator");
-        Expect.Contains(angular.GeneratedText!, "getPage(this.pageIndex + 1, this.pageSize");
+        Expect.Contains(angular.GeneratedText!, "extends PagedCrudScreen<Order>");
     }
 
     [TestMethod]
@@ -803,7 +803,7 @@ public class ProjectSettingsTests
         var result = await Repo.Cache.RunAsync(Repo.Template(template), TabbedTable(), With());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
-        Expect.Contains(result.GeneratedText!, "import { ChangeDetectionStrategy, Component, ElementRef, HostListener, ViewChild } from '@angular/core';");
+        Expect.Contains(result.GeneratedText!, "import { ChangeDetectionStrategy, Component, ");
         Expect.Contains(result.GeneratedText!, "changeDetection: ChangeDetectionStrategy.Default,");
     }
 
@@ -820,7 +820,7 @@ public class ProjectSettingsTests
         string text = result.GeneratedText!;
         Expect.Contains(text, opening);
         Expect.Contains(text, "</dialog>");
-        Expect.Contains(text, template.StartsWith("TSX") ? "el.showModal()" : "showModal()");
+        Expect.Contains(text, template.StartsWith("TSX") ? "el.showModal()" : "#editDialog");   // an Angular screen's base opens it (CrudScreenTests)
         
     }
 

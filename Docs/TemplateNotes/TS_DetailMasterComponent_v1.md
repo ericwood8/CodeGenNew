@@ -35,3 +35,13 @@ Requires a primary key that is a single int or uniqueidentifier column (same as 
 at least one table in TableModel.ChildForeignKeys (TableModel.HasAtLeastOneChildForeignKey) - a table
 with none is exactly what TS_Component.tt is for.
 ```
+
+## Now a short class on PagedCrudScreen
+
+Same change as TS_Component: the class extends `PagedCrudScreen<T>`; it adds `add()` and `edit()` overrides that clear or load the child grids, and keeps the child-grid members (rows, columns, per-grid sort, captions, cells) as before.
+
+## Name and IsActive parents, repeated children, self references
+
+- A parent with a Name and an IsActive column (a department with its teams) is on `NameActiveCrudScreen` like `TS_Component` describes: the same name box, "Active only" check box and `visibleRows`, no paging or sorting of the parent grid. The child grids are unchanged.
+- A child table that references the parent twice (a donation has a donor and a recipient) gets one grid per foreign key; the second and later grids are named by the column's role (`donateFromEmployee`) and titled `Donate Leave (Donate From Employee)`.
+- A foreign key to the table itself (an employee's manager) is a drop-down read through the screen's own service.

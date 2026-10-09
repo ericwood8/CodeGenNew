@@ -33,8 +33,11 @@
     // ==========================================================================================
     // API_Crud_v1.tt
     // Generates: <TableName>Api.cs   (see OutputName in API_Crud_v1.tt.config)
-    // A minimal-API class for one table: GET all, GET one, POST, PUT and DELETE over the table's repository (<Entity>Repo from CS_Repo).
-    // Needs a single int primary key (the routes are {id:int}); a name/active table or a table with no repository stops with an error.
+    // A short class on CrudApi (Apis/CrudApi.cs, written by API_EssentialCrudApi) for one table: it names the table's repository (<Entity>Repo from CS_Repo), its key and the date column the list comes newest
+    // first by, and says whether the table can be cloned, found by name or looked up (GET <route>/lookup answers { id, name, isActive }: only the key and the display column are read) (GET <route>/{name}, for a table with a Name). The five endpoints (GET all or one page, GET one, POST, PUT, DELETE, and POST clone) and their answers are in CrudApi, written once.
+    // A table with a NOT NULL Name and a NOT NULL IsActive column (its repository is a NameActiveRepo) gets a class on NameActiveCrudApi (the same file): the name is trimmed and checked, a second active row with
+    // the same name is a 409 problem, and the list, the active list (GET <route>/active) and find by name are its routes. It names its repository and key only.
+    // Needs a single int primary key (the routes are {id:int}); a table with no repository stops with an error.
     // Does not write the entity, its DbSet or the registration line (CS_Entity, CS_DbContext and API_Registration do), nor any business rule.
     // Full notes: Docs/TemplateNotes/API_Crud_v1.md
     // ==========================================================================================
@@ -46,12 +49,6 @@
     {
         Error($"API_Crud writes no API for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noRepositoryTables (an enum, a *Type lookup table, or a table with no entity class), so it has no repository for the handlers to use.");
     }
-    else if (Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name")
-             && Model.Columns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive"))
-    {
-        supported = false;
-        Error($"API_Crud is for plain tables. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its API needs duplicate-name checks and trimming; write that API by hand.");
-    }
     else if (!supported)
     {
         Error($"API_Crud needs a table with a single int primary key, but [{Model.SchemaName}].[{Model.TableName}] has "
@@ -62,8 +59,14 @@
 
     string usingLines = string.Concat(usings.Select(u => $"using {u};\n"));
 
+    // A table with a Name and an IsActive column: NameActiveRepo is its repository, NameActiveCrudApi its base (no clone, no search; CloneShape leaves it out).
+    bool nameActive = supported && Model.IsNameActiveTable;
+
     // A table with a database-assigned int key and a clone routine gets POST <route>/{id}/clone (CloneShape; CS_Repo writes CloneAsync for the same tables).
-    bool canClone = supported && CloneShape.CanClone(Model, Project);
+    bool canClone = supported && !nameActive && CloneShape.CanClone(Model, Project);
+
+    // CS_Repo writes GetByName for a table with a NOT NULL text Name (the services' findByName calls GET <route>/{name}).
+    bool canFindByName = supported && !nameActive && Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
 
     string entity = Model.TableName;
     string keyProperty = keyColumn?.Name ?? "";
@@ -71,194 +74,67 @@
     // ==== the column GetAll sorts by (see above)
     bool IsSortableDate(ColumnModel c) =>
         c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
-    var sortColumn = Model.Columns
+    var sortColumn = nameActive ? null : Model.Columns
         .Where(c => IsSortableDate(c) && !c.IsNullable && !c.IsComputed && !c.IsAuditColumn
                     && !c.IsCreateDateColumn && !c.IsModifiedDateColumn && !c.IsLastChangedDateColumn)
         .OrderBy(c => c.OrdinalPosition)
         .FirstOrDefault();
+
+    // GET <route>/lookup answers { id, name, isActive } (only the key, the display column and the flag are read) for a table with a display column (DisplayColumnSelector); a Name and IsActive table always has one.
+    var displayColumn = supported && !nameActive ? Model.DisplayColumns.FirstOrDefault() : null;   // the column the screens' drop-downs show (ForeignKeyModel.ReferencedDisplayColumns[0])
+    var activeColumn = Model.Columns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
+    string lookupName = displayColumn is null ? ""
+        : displayColumn.IsStringColumn ? $"c.{displayColumn.Name}" + (displayColumn.IsNullable ? " ?? \"\"" : "")
+        : displayColumn.IsNullable ? $"c.{displayColumn.Name} == null ? \"\" : c.{displayColumn.Name}.ToString()!"
+        : $"c.{displayColumn.Name}.ToString()";
 
     if (supported)
     {
 #>
 namespace <#= apiNamespace #>;
 
-<#= usingLines #>using Microsoft.EntityFrameworkCore;
-using static Microsoft.AspNetCore.Http.TypedResults;
+<#= usingLines #>using System.Linq.Expressions;
 
-/// <summary> One page of <#= entity #> rows, in the shape the search endpoints answer with. </summary>
-public record <#= entity #>Page(IReadOnlyList<<#= entity #>> Items, int Page, int PageSize, int TotalCount, int TotalPages);
-
-public class <#= entity #>Api<T> : BaseApi<T> where T : class
+/// <summary> The API of <#= entity #>: the endpoints and their answers are <#= nameActive ? "NameActiveCrudApi's (a Name and IsActive table: the duplicate-name rule)" : "CrudApi's" #> (Apis/CrudApi.cs, the CrudApi essentials group); this class says which repository and key it uses. </summary>
+public class <#= entity #>Api : <#= nameActive ? "NameActiveCrudApi" : "CrudApi" #><<#= entity #>, <#= entity #>Repo>
 {
-    // the most rows one page may hold; a larger pageSize is lowered to this
-    private const int MaxPageSize = 1000;
+    protected override <#= entity #>Repo NewRepo(<#= contextType #> context) => new(context);
 
-    public override void Register(WebApplication app)
-    {
-        BreakIntoStrings(out string singular, out string plural, out string _apiSubDir);
-
-        // Get all
-        app.MapGet(_apiSubDir, GetAll)
-       .WithName($"Get{plural}")
-       .WithOpenApi()
-       .Produces<IEnumerable<T>>()
-       .Produces<<#= entity #>Page>()
-       .ProducesProblem(400)
-       .ProducesProblem(404)
-       .ProducesProblem(500);
-
-        // Get by ID
-        app.MapGet(_apiSubDir + "/{id:int}", GetById)
-        .WithName($"Get{singular}ById")
-        .WithOpenApi()
-        .Produces<T>()
-        .ProducesProblem(404)
-        .ProducesProblem(500);
-
-        // Create new
-        app.MapPost(_apiSubDir, CreateRow)
-        .WithName($"Create{singular}")
-        .WithOpenApi()
-<#
-        if (Project.ApiValidation)
-        {
-#>
-        .AddEndpointFilter<ValidationFilter<<#= entity #>>>()
-<#
-        }
-#>
-        .ProducesProblem(500);
-
-        // Update existing
-        app.MapPut(_apiSubDir + "/{id:int}", UpdateRow)
-        .WithName($"Update{singular}")
-        .WithOpenApi()
-<#
-        if (Project.ApiValidation)
-        {
-#>
-        .AddEndpointFilter<ValidationFilter<<#= entity #>>>()
-<#
-        }
-#>
-        .ProducesProblem(400)
-        .ProducesProblem(404)
-        .ProducesProblem(500);
-
-        // Delete
-        app.MapDelete(_apiSubDir + "/{id:int}", DeleteRow)
-        .WithName($"Delete{singular}")
-        .WithOpenApi()
-        .ProducesProblem(404)
-        .ProducesProblem(500);
-<#
-        if (canClone)
-        {
-#>
-
-        // Clone: copy a row into a new one and return it (the grids' Clone button opens the copy in the edit form)
-        app.MapPost(_apiSubDir + "/{id:int}/clone", CloneRow)
-        .WithName($"Clone{singular}")
-        .WithOpenApi()
-        .ProducesProblem(404)
-        .ProducesProblem(500);
-<#
-        }
-#>
-    }
-
-    /// <summary>
-    /// Every row as a plain array (drop-downs and small tables use this), or, when pageNumber or pageSize is given, one page of them with the total:
-    /// the table's route with pageNumber=2 and pageSize=50 in the query string. The page is ordered like the array and by the key, so pages do not overlap; a big table is read a page at a time.
-    /// </summary>
-    private static async Task<IResult> GetAll([FromServices] <#= contextType #> context, [FromQuery] int? pageNumber = null, [FromQuery] int? pageSize = null)
-    {
-        if (pageNumber is not null || pageSize is not null)
-        {
-            // 0 or less is an error inside the database (FETCH NEXT 0 ROWS) and a huge size reads the whole table: keep it between 1 and MaxPageSize
-            int size = Math.Clamp(pageSize ?? 100, 1, MaxPageSize);
-            int number = pageNumber ?? 1;
-            if (number < 1)
-                return Results.Problem(statusCode: 400, title: "Invalid page", detail: "pageNumber must be 1 or greater.");
-            if ((long)(number - 1) * size > int.MaxValue)
-                return Results.Problem(statusCode: 400, title: "Invalid page", detail: "pageNumber is too large for that pageSize.");
-
-            IQueryable<<#= entity #>> all = context.Set<<#= entity #>>().AsNoTracking();
-            int totalCount = await all.CountAsync();
-            var page = await <#= sortColumn is not null ? "all.OrderByDescending(c => c." + sortColumn.Name + ").ThenBy(c => c." + keyProperty + ")" : "all.OrderBy(c => c." + keyProperty + ")" #>
-                .Skip((number - 1) * size).Take(size).ToListAsync();
-            return Ok(new <#= entity #>Page(page, number, size, totalCount, totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)size)));
-        }
-
-        <#= entity #>Repo repo = new(context);
+    protected override Expression<Func<<#= entity #>, int>> Key => c => c.<#= keyProperty #>;
 <#
         if (sortColumn is not null)
         {
 #>
-        var rows = await repo.GetAllOrderByDescending(c => c.<#= sortColumn.Name #>);
+
+    protected override Expression<Func<<#= entity #>, DateTime>> NewestFirst => c => c.<#= sortColumn.Name #>;
 <#
         }
-        else
+        if (displayColumn is not null)
         {
 #>
-        var rows = await repo.GetAll();
+
+    protected override bool CanLookup => true;
+
+    protected override IQueryable<LookupItem> LookupQuery(IQueryable<<#= entity #>> rows) =>
+        rows.OrderBy(c => <#= lookupName #>).Select(c => new LookupItem(c.<#= keyProperty #>, <#= lookupName #>, <#= activeColumn is null ? "null" : "c." + activeColumn.Name #>));
 <#
         }
+        if (canFindByName)
+        {
 #>
-        return Ok(rows);
-    }
 
-    private static async Task<IResult> GetById([FromServices] <#= contextType #> context, int id)
-    {
-        <#= entity #>Repo repo = new(context);
-        var row = await repo.GetByIdAsync(id);
-        return row != null ? Results.Ok(row) : Results.NotFound();
-    }
+    protected override bool CanFindByName => true;
 
-    private static async Task<IResult> CreateRow([FromServices] <#= contextType #> context, [FromBody] <#= entity #> newRow)
-    {
-        <#= entity #>Repo repo = new(context);
-        await repo.AddAsync(newRow);
-        return Results.Created($"/api{_apiSubDir}/{newRow.<#= keyProperty #>}", newRow);
-    }
-
-    private static async Task<IResult> UpdateRow([FromServices] <#= contextType #> context, int id, [FromBody] <#= entity #> updatedRow)
-    {
-        if (updatedRow.<#= keyProperty #> != id)
-            return Results.BadRequest(); // 400 error if the id in the URL and the id in the body disagree
-
-        <#= entity #>Repo repo = new(context);
-        if (!await repo.ExistsAsync(id))
-            return Results.NotFound(); // 404 error if there is no row with that id
-        var postUpdate = await repo.UpdateAsync(id, updatedRow);
-        return Results.Ok(postUpdate);
-    }
-
-    private static async Task<IResult> DeleteRow([FromServices] <#= contextType #> context, int id)
-    {
-        <#= entity #>Repo repo = new(context);
-        var successNum = await repo.DeleteAsync("<#= entity #>", id);
-        if (successNum == 0)
-            return Results.Ok();
-        else if (successNum == -1)
-            return Results.NotFound(); // cannot delete because does not exist
-        else
-            return Results.BadRequest(); // cannot delete because "in use"
-    }
+    protected override Task<List<<#= entity #>>> FindByNameAsync(<#= entity #>Repo repo, string name) => repo.GetByName(name);
 <#
+        }
         if (canClone)
         {
 #>
 
-    private static async Task<IResult> CloneRow([FromServices] <#= contextType #> context, int id)
-    {
-        <#= entity #>Repo repo = new(context);
-        if (!await repo.ExistsAsync(id))
-            return Results.NotFound(); // 404 error if there is no row to copy
-        int newId = await repo.CloneAsync(id);
-        var copy = await repo.GetByIdAsync(newId);
-        return Results.Created($"/api{_apiSubDir}/{newId}", copy);
-    }
+    protected override bool CanClone => true;
+
+    protected override Task<int> CloneAsync(<#= entity #>Repo repo, int id) => repo.CloneAsync(id);
 <#
         }
 #>

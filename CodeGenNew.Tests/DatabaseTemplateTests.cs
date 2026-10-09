@@ -91,7 +91,7 @@ public class DatabaseTemplateTests
     {
         string cs = await Render("API_Registration_v1.tt", Database(SqlDialect.PostgreSql), Project(("EnumTables", "SY_Role")));
 
-        Expect.Contains(cs, "new E_DonateLeaveApi<E_DonateLeave>().Register(app);");
+        Expect.Contains(cs, "new E_DonateLeaveApi().Register(app);");
         Expect.Contains(cs, "new E_DonateLeaveSearchApi<E_DonateLeave>().Register(app);");
         Expect.DoesNotContain(cs, "SY_Role");     // an enum has an entity and a DbSet but no API
         Expect.DoesNotContain(cs, "Junction");    // a composite key has none of them
@@ -108,7 +108,7 @@ public class DatabaseTemplateTests
             Tables = [In(Sample.Roles(), SqlDialect.SqlServer, new LookupShape(LooksLikeLookup: true, RowCount: 3))]
         }, Project(("EnumTables", "none")));
 
-        Expect.Contains(cs, "new SY_RoleApi<SY_Role>().Register(app);");
+        Expect.Contains(cs, "new SY_RoleApi().Register(app);");
         Expect.DoesNotContain(cs, "SY_RoleSearchApi");
     }
 

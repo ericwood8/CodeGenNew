@@ -32,8 +32,9 @@
     // ==========================================================================================
     // TS_Service_v1.tt
     // Generates: services/<table>.service.ts   (an Angular injectable; the path is written by the template, point the output folder at src/app)
-    // The HttpClient wrapper for one table's API with the same method names on every service (getAll, getPage, getById, create, update, delete,
-    // findByName for a table with a Name column, clone for a cloneable table), so a component never has to remember which one a table uses.
+    // A short class on CrudService / NamedCrudService (services/crud.service.ts, written by TS_EssentialCrud): the route, and getPage with the table's own search boxes as typed parameters.
+    // The calls every service has (getAll, getById, create, update, delete, clone, searchPage, and findByName for a table with a Name column) are the base's, so a component never has to remember which one a table uses.
+    // A table with a Name and an IsActive column is on NameActiveCrudService (adds getAllActive, GET <route>/active) and has no getPage: its API (NameActiveCrudApi) answers the whole list.
     // Imports the model from models/<table>. Folder names come from the project's ServicesFolder and ModelsFolder.
     // Full notes: Docs/TemplateNotes/TS_Service_v1.md
     // ==========================================================================================
@@ -50,10 +51,6 @@
         Error($"TS_Service needs a table with a single int or uniqueidentifier primary key (the routes take the id as {{id:int}} or {{id:guid}}), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
     }
-    else if (Model.IsNameActiveTable)
-    {
-        Error($"TS_Service assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all); write this service by hand.");
-    }
     else
     {
         string baseName = BaseName(Model.TableName);
@@ -61,88 +58,48 @@
         string stem = baseName.ToLowerInvariant();
         string variable = LowerFirst(baseName);
         string lowerWords = Words(baseName).ToLowerInvariant();
-        bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name");
+        bool hasName = Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");   // the API's GetByName (CS_Repo) exists for a NOT NULL Name
         // Pagination: getPage always exists, once SP_Search.tt/API_Search.tt do; pagination and searchability are separate concerns.
         // Search: filters is simply empty for a table with no searchable column.
-        var filters = Model.SearchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
+        // The Search list protocol (ListProtocol=Search) has one search box for the whole table; the server decides which columns it matches.
+        var filters = Project.ListSearchProtocol
+            ? new[] { new { ParamName = "search", Name = "search" } }.ToList()
+            : Model.SearchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
 
+        // The five calls, clone and the page request are crud.service.ts's (TS_EssentialCrud); this class names the route and keeps the typed calls that are the table's own.
+        bool nameActive = Model.IsNameActiveTable;
+        string serviceBase = nameActive ? "NameActiveCrudService" : hasName ? "NamedCrudService" : "CrudService";
+        string baseClass = serviceBase + "<" + baseName + (keyTs == "number" ? "" : ", " + keyTs) + ">";
         L($"@@@FILE {servicesFolder}/{stem}.service.ts@@@");
         L("import { Injectable } from '@angular/core';");
-        L("import { HttpClient, HttpParams } from '@angular/common/http';");
-        L("import { Observable } from 'rxjs';");
+        L("import { HttpClient } from '@angular/common/http';");
+        if (!Model.IsNameActiveTable) L("import { Observable } from 'rxjs';");
         L($"import {{ {baseName} }} from '../{modelsFolder}/{stem}';");
+        L(nameActive ? $"import {{ {serviceBase} }} from './crud.service';" : $"import {{ {serviceBase}, PagedResult }} from './crud.service';");
         L();
-        L($"export interface {baseName}PagedResult {{");
-        L($"    items: {baseName}[];");
-        L("    page: number;");
-        L("    pageSize: number;");
-        L("    totalCount: number;");
-        L("    totalPages: number;");
-        L("}");
-        L();
+        if (!nameActive)
+        {
+            L($"export type {baseName}PagedResult = PagedResult<{baseName}>;");
+            L();
+        }
         L("@Injectable({");
         L("    providedIn: 'root',");
         L("})");
-        L($"export class {baseName}Service {{");
-        L($"    private apiUrl = '{apiPrefix}/{stem.Pluralize()}'; // Replace with your API URL");
-        L();
-        L("    constructor(private http: HttpClient) { }");
-        L();
-        L($"    // Get all {lowerWords.Pluralize()}");
-        L($"    getAll(): Observable<{baseName}[]> {{");
-        L($"        return this.http.get<{baseName}[]>(this.apiUrl);");
+        L($"export class {baseName}Service extends {baseClass} {{");
+        L("    constructor(http: HttpClient) {");
+        L($"        super(http, '{apiPrefix}/{stem.Pluralize()}'); // Replace with your API URL");
         L("    }");
-        L();
-        L($"    // Get a {lowerWords} by ID");
-        L($"    getById(id: {keyTs}): Observable<{baseName}> {{");
-        L($"        return this.http.get<{baseName}>(`${{this.apiUrl}}/${{id}}`);");
-        L("    }");
-        L();
-        L($"    // Create a new {lowerWords}");
-        L($"    create({variable}: {baseName}): Observable<{baseName}> {{");
-        L($"        return this.http.post<{baseName}>(this.apiUrl, {variable});");
-        L("    }");
-        L();
-        L($"    // Update a {lowerWords}");
-        L($"    update(id: {keyTs}, {variable}: {baseName}): Observable<{baseName}> {{");
-        L($"        return this.http.put<{baseName}>(`${{this.apiUrl}}/${{id}}`, {variable});");
-        L("    }");
-        L();
-        L($"    // Delete a {lowerWords}");
-        L($"    delete(id: {keyTs}): Observable<void> {{");
-        L("        return this.http.delete<void>(`${this.apiUrl}/${id}`);");
-        L("    }");
-        // clone(id): copy a row into a new one and get the copy back (POST api/<route>/{id}/clone, API_Crud); only for the tables CloneShape says can be cloned.
-        if (CloneShape.CanClone(Model, Project))
-        {
-            L();
-            L($"    // Copy a {lowerWords} into a new one and return the copy");
-            L($"    clone(id: {keyTs}): Observable<{baseName}> {{");
-            L($"        return this.http.post<{baseName}>(`${{this.apiUrl}}/${{id}}/clone`, null);");
-            L("    }");
-        }
-        if (hasName)
-        {
-            L();
-            L("    // Find by Name");
-            L($"    findByName(name: string): Observable<{baseName}[]> {{");
-            L($"        return this.http.get<{baseName}[]>(`${{this.apiUrl}}/${{name}}`);");
-            L("    }");
-        }
+        if (!nameActive)
         {
             string filterParams = string.Concat(filters.Select(f => $", {f.ParamName}?: string"));
             L();
             L($"    // Get one page of {lowerWords.Pluralize()}, optionally filtered by any combination of the searchable columns");
             // sortBy / sortDescending: the grid's chosen sort (a column name, "asc" or "desc"); left out of the request when there is none (the default order).
             L($"    getPage(pageNumber: number, pageSize: number{filterParams}, sortBy?: string, sortDescending?: boolean): Observable<{baseName}PagedResult> {{");
-            L("        let params = new HttpParams().set('pageNumber', pageNumber).set('pageSize', pageSize);");
-            foreach (var f in filters)
-                L($"        if ({f.ParamName}) {{ params = params.set('{f.ParamName}', {f.ParamName}); }}");
-            L("        if (sortBy) { params = params.set('sortBy', sortBy).set('sortDir', sortDescending ? 'desc' : 'asc'); }");
-            L($"        return this.http.get<{baseName}PagedResult>(`${{this.apiUrl}}/search`, {{ params }});");
+            L($"        return this.searchPage({{ pageNumber, pageSize, filters: {{ {string.Join(", ", filters.Select(f => f.ParamName))} }}, sortBy, sortDescending }});".Replace("{  }", "{}"));
             L("    }");
         }
         L("}");

@@ -215,12 +215,13 @@ public class ApiExtrasTemplateTests
     [TestMethod]
     public async Task The_create_and_update_endpoints_run_the_validators_only_when_asked()
     {
-        var plain = await Render("API_Crud_v1.tt", Sample.DonateLeave(), Project());
-        var validated = await Render("API_Crud_v1.tt", Sample.DonateLeave(), Project(("ApiValidation", "true")));
+        // the endpoints are CrudApi's (API_EssentialCrudApi); the validation filter is part of that file, so the setting decides it there
+        var plain = await CrudApiTests.Essential();
+        var validated = await CrudApiTests.Essential(("ApiValidation", "true"));
 
         Expect.DoesNotContain(plain, "ValidationFilter");
-        Assert.AreEqual(2, validated.Split("AddEndpointFilter<ValidationFilter<E_DonateLeave>>()").Length - 1, "the create and the update, not the reads or the delete");
-        Expect.Contains(validated, "app.MapPost(_apiSubDir, CreateRow)\n        .WithName($\"Create{singular}\")\n        .WithOpenApi()\n        .AddEndpointFilter<ValidationFilter<E_DonateLeave>>()");
+        Assert.AreEqual(4, validated.Split("AddEndpointFilter<ValidationFilter<TEntity>>()").Length - 1, "the create and the update of CrudApi and of NameActiveCrudApi, not the reads or the delete");
+        Expect.Contains(validated, "app.MapPost(apiSubDir, ([FromServices] AcmeContext context, [FromBody] TEntity newRow) => CreateAsync(context, newRow))\n        .WithName($\"Create{singular}\")\n        .WithOpenApi()\n        .AddEndpointFilter<ValidationFilter<TEntity>>()");
     }
 
     [TestMethod]

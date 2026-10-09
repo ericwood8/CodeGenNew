@@ -121,16 +121,15 @@ public class CloneTests
         string api = await Render("API_Crud_v1.tt", Account());
         Expect.Contains(repo, "public async Task<int> CloneAsync(int id");
         Expect.Contains(repo, "public async Task<string> SuggestUniqueCode(string desired)");   // the unique text column's suggestion CloneAsync uses
-        Expect.Contains(api, "app.MapPost(_apiSubDir + \"/{id:int}/clone\", CloneRow)");
-        Expect.Contains(api, "int newId = await repo.CloneAsync(id);");
-        Expect.Contains(api, "return Results.Created($\"/api{_apiSubDir}/{newId}\", copy);");
+        Expect.Contains(api, "protected override bool CanClone => true;");
+        Expect.Contains(api, "protected override Task<int> CloneAsync(AccountRepo repo, int id) => repo.CloneAsync(id);");   // the route itself is CrudApi's
 
         string noRepo = await Render("CS_Repo_v1.tt", Account(), Project(("NoCloneTables", "Account")));
         string noApi = await Render("API_Crud_v1.tt", Account(), Project(("NoCloneTables", "Account")));
         Expect.DoesNotContain(noRepo, "CloneAsync");
-        Expect.DoesNotContain(noApi, "clone");
+        Expect.DoesNotContain(noApi, "Clone");
 
-        Expect.DoesNotContain(await Render("API_Crud_v1.tt", Account(uniqueNumber: true)), "/clone");
+        Expect.DoesNotContain(await Render("API_Crud_v1.tt", Account(uniqueNumber: true)), "CanClone");
     }
 
     [TestMethod]
@@ -140,8 +139,10 @@ public class CloneTests
         var angular = GeneratedFiles.Split(await Render("TS_Service_v1.tt", Account())).Single().Content;
 
         Expect.Contains(react, "clone: (id: number) => request<Account>(`${apiUrl}/${id}/clone`, { method: 'POST' }),");
-        Expect.Contains(angular, "clone(id: number): Observable<Account> {");
-        Expect.Contains(angular, "this.http.post<Account>(`${this.apiUrl}/${id}/clone`, null)");
+        string baseTs = (await CrudScreenTests.Essential())["crud.service.ts"];
+        Expect.Contains(baseTs, "clone(id: K): Observable<T> {");     // every service has clone: the base's
+        Expect.Contains(baseTs, "this.http.post<T>(`${this.apiUrl}/${id}/clone`, null)");
+        Expect.Contains(angular, "CrudService<Account>");
         Expect.DoesNotContain(GeneratedFiles.Split(await Render("TSX_Api_v1.tt", Account(), Project(("NoCloneTables", "Account")))).Single().Content, "clone");
     }
 
@@ -166,8 +167,8 @@ public class CloneTests
         string files = await Render(template, template.Contains("DetailMaster") ? WithChild(Account()) : Account());
 
         Expect.Contains(files, "<button (click)=\"clone(account.accountId!)\" class=\"btn-action\">Clone</button>");
-        Expect.Contains(files, "this.accountService.clone(id).subscribe({");
-        Expect.Contains(files, "this.edit(copy);");
+        Expect.Contains(files, "extends PagedCrudScreen<Account>");     // clone(id) and opening the copy are the base's
+        Expect.DoesNotContain(files, "this.accountService.clone");
     }
 
     [TestMethod]

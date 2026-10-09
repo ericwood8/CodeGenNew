@@ -26,18 +26,17 @@ public class PagedGridTests
     {
         string files = AllFiles(await Render("TS_Component_v1.tt", Sample.Holiday()));
 
-        // delete: no local filter that leaves the total and the page short
-        Expect.Contains(files, "this.load(); // read the page again");
+        // delete reads the page again, a page past the end falls back to the last page there is, and the page size the person picks is used: all in the base (CrudScreenTests)
+        string screen = (await CrudScreenTests.Essential())["crud-screen.ts"];
+        Expect.Contains(screen, "next: () => this.load(), // read the page again");
         Expect.DoesNotContain(files, ".filter((p) => p.");
-        // a page past the end falls back to the last page there is
-        Expect.Contains(files, "if (result.items.length === 0 && result.totalCount > 0 && this.pageIndex > 0) {");
-        Expect.Contains(files, "this.pageIndex = Math.ceil(result.totalCount / this.pageSize) - 1;");
-        // the page size the person picks is used
-        Expect.Contains(files, "this.pageSize = event.pageSize;");
+        Expect.Contains(screen, "if (result.items.length === 0 && result.totalCount > 0 && this.pageIndex > 0) {");
+        Expect.Contains(screen, "this.pageIndex = Math.ceil(result.totalCount / this.pageSize) - 1;");
+        Expect.Contains(screen, "this.pageSize = event.pageSize;");
         Expect.Contains(files, "[pageSizeOptions]=\"[10, 20, 50, 100]\"");
         // an empty result says so, but not before the first page has arrived
         Expect.Contains(files, "<p *ngIf=\"loaded && totalCount === 0\" class=\"no-rows\">Nothing found.</p>");
-        Expect.Contains(files, "this.loaded = true;");
+        Expect.Contains(screen, "this.loaded = true;");
         // and the generated spec checks the server is asked for a page, and the step back
         Expect.Contains(files, "it('asks the server for the first page'");
         Expect.Contains(files, "it('goes back to the last page there is when the page it asked for is past the end'");
@@ -49,10 +48,9 @@ public class PagedGridTests
     {
         string template = File.ReadAllText(Repo.Template("TS_DetailMasterComponent_v1.tt")).ReplaceLineEndings("\n");
 
-        Expect.Contains(template, "this.load(); // read the page again");
-        Expect.DoesNotContain(template, "this.{listName}.filter((p) => p.{keyProp} !== id)");
-        Expect.Contains(template, "this.pageIndex = Math.ceil(result.totalCount / this.pageSize) - 1;");
-        Expect.Contains(template, "this.pageSize = event.pageSize;");
+        // the paging, the step back and the page size are PagedCrudScreen's, which this screen extends
+        Expect.Contains(template, "\"PagedCrudScreen\"");   // a name/active parent is on NameActiveCrudScreen instead
+        Expect.DoesNotContain(template, "this.pageIndex = Math.ceil(");
         Expect.Contains(template, "Nothing found.</p>");
         Expect.Contains(template, "it('asks the server for the first page'");
     }
@@ -132,25 +130,6 @@ public class PagedGridTests
         }
 
         Assert.AreEqual(Bar("WinUI3_MasterScreen_v1.tt"), Bar("WinUI3_DetailMasterScreen_v1.tt"));
-    }
-
-    [TestMethod]
-    public async Task API_Crud_answers_a_page_when_asked_and_the_whole_table_otherwise()
-    {
-        string cs = await Render("API_Crud_v1.tt", Sample.DonateLeave());
-
-        Expect.Contains(cs, "private static async Task<IResult> GetAll([FromServices]");
-        Expect.Contains(cs, "[FromQuery] int? pageNumber = null, [FromQuery] int? pageSize = null)");
-        Expect.Contains(cs, "if (pageNumber is not null || pageSize is not null)");
-        Expect.Contains(cs, "int size = Math.Clamp(pageSize ?? 100, 1, MaxPageSize);");
-        Expect.Contains(cs, "private const int MaxPageSize = 1000;");
-        Expect.Contains(cs, "return Results.Problem(statusCode: 400, title: \"Invalid page\", detail: \"pageNumber must be 1 or greater.\");");
-        Expect.Contains(cs, "context.Set<E_DonateLeave>().AsNoTracking()");
-        Expect.Contains(cs, "public record E_DonateLeavePage(IReadOnlyList<E_DonateLeave> Items, int Page, int PageSize, int TotalCount, int TotalPages);");
-        Expect.Contains(cs, ".ThenBy(c => c.DonateLeaveId)");
-        // no paging parameter: the unchanged call that returns every row as an array
-        Expect.Contains(cs, "var rows = await repo.GetAllOrderByDescending(");
-        Expect.Contains(cs, "return Ok(rows);");
     }
 
     [TestMethod]

@@ -33,6 +33,8 @@ form that opens under the grid.
     bit at its database default.
   - Errors: alert(), as in the other screens: 400 = bad value (the API's own rejection), 404 = gone, delete's 400 = "in use".
 
+A table with a Name and an IsActive column has no search endpoint (its API is `NameActiveCrudApi`): its screen is a short class on `NameActiveCrudScreen` that reads the whole list, with a name box and an "Active only" check box that narrow it on the page (`visibleRows`), an IsActive check box in the form, and no paging or sorting. `Screens` must list such a table for it to get a screen (the default list is the tables with a search endpoint). A foreign key to the table itself (an employee's manager) is a drop-down read through the screen's own service.
+
 Not written, so a screen that needs any of these stays hand-maintained: a detail grid (Department's teams, Project's
 tasks, TimeSheet's lines), drop-downs that depend on each other (Employee's team follows its department), fields that
 are computed on screen, and the route / sidebar entry / app.config line that show the screen (ComponentChecklist.txt
@@ -68,3 +70,11 @@ page 0 and re-fetches with the current filter values, and a Clear button that em
 re-fetches unfiltered. A table with no searchable column gets no search UI at all, but still pages
 through every row via the plain, unfiltered getPage() call.
 ```
+
+## Now a short class on PagedCrudScreen
+
+The component class is `export class HolidayComponent extends PagedCrudScreen<Holiday>`. It injects its service and names the `noun`, `idKey`, `gridKey` and `sortableColumns`, the `filters` (one box per searchable column), `newRow()`, `prepareEdit` (date boxes), `opened` (tabs), `start` (parent lists for the drop-downs) and the name-of methods. Loading, paging, sorting, add / edit / submit / delete / clone / cancel, the dialog, the way back and the error messages are in crud-screen.ts (Crud essentials group; see TS_EssentialCrud_v1.md). The html reads `rows`. A generated screen is 50 to 60 lines instead of about 300. The behaviour described above is unchanged.
+
+## Drop-downs read the lookup list
+
+A drop-down over a parent with a whole-number key (and an API) is filled from `getLookup()` (`GET <route>/lookup`: `{ id, name, isActive }`) instead of `getAll()`, so a big parent table is not sent in full to fill a list; the "name of" method reads the same list. The option uses `p.id` and `p.name`, the list is typed `Lookup[]` (from `crud.service.ts`) and the parent's model is no longer imported for it. A parent with a guid key keeps `getAll()`. A foreign key to the table itself reads its own lookup. `TS_DetailMasterComponent` does the same for its drop-downs, and its child grids name an id from the parent's `/lookup` list.

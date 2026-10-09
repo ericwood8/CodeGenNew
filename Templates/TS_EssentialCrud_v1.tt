@@ -1,0 +1,943 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TS_EssentialCrud_v1.tt
+    // Generates: src/app/services/crud.service.ts, crud.service.spec.ts, api-error.ts, api-error.spec.ts, notifier.ts and src/app/components/crud-screen.ts, crud-screen.spec.ts   (no table, no database: an essentials group; the folders are the project's ServicesFolder and ComponentsFolder)
+    // The base files the generated Angular services (TS_Service) and screens (TS_Component) are short classes on:
+    //   CrudService<T, K>        the five calls every table's API answers (getAll, getById, create, update, delete), getLookup (id and name only, for drop-downs), clone, and searchPage (GET <route>/search with the page, the filters and the sort);
+    //   NamedCrudService<T, K>   adds findByName for a table whose rows have a Name (the name is URL-encoded);
+    //   NameActiveCrudService<T, K>  adds getAllActive for a table with a Name and an IsActive column (GET <route>/active);
+    //   apiMessage(error, fallback)  the API's own words for a refusal (RFC 9457 problem details: detail, or the field errors joined), or the fallback;
+    //   Notifier                 error / info / confirm: the browser's dialogs, or ngx-toastr toasts when the project sets Toasts=ngx-toastr (confirm stays a dialog);
+    //   CrudScreen<T, K>         a list-and-form screen: the rows, the open row (always a copy), the edit dialog, add / edit / submit / delete / clone / cancel, the way back to the page that
+    //                            opened a row (?edit=<id>&back=<page>), and one set of messages for what the API refuses, in the API's own words when it gives them;
+    //   PagedCrudScreen<T, K>    adds what a server-paged grid needs: the page, one box per searchable column, the sort (kept between visits), the arrows and the Clear sort menu;
+    //   NameActiveCrudScreen<T, K>  adds what a Name and IsActive table needs on the unpaged list: a name box and an "active only" check box that narrow the rows on the page (visibleRows).
+    // A screen names its service, what a row is called, its key property and a new row, and overrides only what is its own (prepare, prepareEdit, start, opened).
+    // The specs test the bases once (the request of each call, the answers shown, paging, sorting) instead of every screen; they are written once and kept with the bases.
+    // Needs grid-sort.ts (TS_GridSort) and Angular Material's paginator (the paged grid's page event).
+    // Full notes: Docs/TemplateNotes/TS_EssentialCrud_v1.md
+    // ==========================================================================================
+    string servicesFolder = Project.ServicesFolder;
+    string componentsFolder = Project.ComponentsFolder;
+    bool toasts = Project.ToastrToasts;
+    // The list protocol (ListProtocol): Columns is what API_Search and CrudApi answer; Search is an existing API (?pageIndex&pageSize&sort=name:desc&search=text answering { data, count }).
+    bool search = Project.ListSearchProtocol;
+    int pageBase = search ? Project.PageBase : 1;
+    string pageParam = search ? Project.PageParameter : "pageNumber";
+    string pageExpr = pageBase == 1 ? "query.pageNumber" : "query.pageNumber - 1";
+    string sizeParam = search ? Project.PageSizeParameter : "pageSize";
+    string sortParam = Project.SortParameter;
+    string searchParam = Project.SearchParameter;
+    string itemsMember = Project.ItemsMember;
+    string totalMember = Project.TotalMember;
+#>
+@@@FILE src/app/<#= servicesFolder #>/crud.service.ts@@@
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { Observable<#= search ? ", map" : "" #> } from 'rxjs';
+
+/** One page of rows (what API_Search / CrudApi answer; the Search protocol builds it from the answer's members). */
+export interface PagedResult<T> {
+    items: T[];
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+}
+
+<# if (search) { #>
+/** What the list takes: the page (1-based, as the screens count; it is written the way the API counts), the text typed in the search box (`filters['search']`) and the sort. */
+<# } else { #>
+/** One row of a lookup list (GET <route>/lookup): the key, the text a person recognises the row by, and whether the row is active (absent for a table with no IsActive column). */
+export interface Lookup {
+    id: number;
+    name: string;
+    isActive?: boolean | null;
+}
+
+/** What the search endpoint takes: the page (1-based), the text typed in each search box (empty ones are left out) and the sort. */
+<# } #>
+export interface PageQuery {
+    pageNumber: number;
+    pageSize: number;
+    filters?: Record<string, string | undefined>;
+    sortBy?: string;
+    sortDescending?: boolean;
+}
+
+/**
+ * The calls every table's API answers. A service for a table extends this with its route and the typed calls that are its own (a page with the table's own search boxes as
+ * parameters). K is the type of the key: a number, or a string for a uniqueidentifier key.
+ */
+export abstract class CrudService<T, K extends number | string = number> {
+    protected constructor(protected readonly http: HttpClient, protected readonly apiUrl: string) { }
+
+    // Get all the rows
+    getAll(): Observable<T[]> {
+        return this.http.get<T[]>(this.apiUrl);
+    }
+
+    // Get the key and the display column of every row, for a drop-down or a "name of" column (a table with a display column answers it; the key is a number)
+    getLookup(): Observable<Lookup[]> {
+        return this.http.get<Lookup[]>(`${this.apiUrl}/lookup`);
+    }
+
+    // Get a row by ID
+    getById(id: K): Observable<T> {
+        return this.http.get<T>(`${this.apiUrl}/${id}`);
+    }
+
+    // Create a new row
+    create(row: T): Observable<T> {
+        return this.http.post<T>(this.apiUrl, row);
+    }
+
+    // Update a row
+    update(id: K, row: T): Observable<T> {
+        return this.http.put<T>(`${this.apiUrl}/${id}`, row);
+    }
+
+    // Delete a row
+    delete(id: K): Observable<void> {
+        return this.http.delete<void>(`${this.apiUrl}/${id}`);
+    }
+
+    // Copy a row into a new one and return the copy (only a table whose API has the clone route: API_Crud writes it for the tables CloneShape allows)
+    clone(id: K): Observable<T> {
+        return this.http.post<T>(`${this.apiUrl}/${id}/clone`, null);
+    }
+
+<# if (search) { #>
+    // Get one page of rows: the page, the search text and the sort (column:asc or column:desc) in the query string; the rows and the total are read from the answer's members
+    searchPage(query: PageQuery): Observable<PagedResult<T>> {
+        let params = new HttpParams().set('<#= pageParam #>', <#= pageExpr #>).set('<#= sizeParam #>', query.pageSize);
+        const text = (query.filters?.['search'] ?? '').trim();
+        if (text) { params = params.set('<#= searchParam #>', text); }
+        if (query.sortBy) { params = params.set('<#= sortParam #>', query.sortBy + (query.sortDescending ? ':desc' : ':asc')); }
+        return this.http.get<Record<string, unknown>>(this.apiUrl, { params }).pipe(
+            map((body) => {
+                const items = (body['<#= itemsMember #>'] ?? []) as T[];
+                const totalCount = Number(body['<#= totalMember #>'] ?? items.length);
+                return { items, page: query.pageNumber, pageSize: query.pageSize, totalCount, totalPages: Math.ceil(totalCount / query.pageSize) };
+            })
+        );
+    }
+<# } else { #>
+    // Get one page of rows, filtered by any combination of the searchable columns and sorted by the server
+    searchPage(query: PageQuery): Observable<PagedResult<T>> {
+        let params = new HttpParams().set('pageNumber', query.pageNumber).set('pageSize', query.pageSize);
+        for (const [name, value] of Object.entries(query.filters ?? {})) {
+            if (value) { params = params.set(name, value); }
+        }
+        if (query.sortBy) { params = params.set('sortBy', query.sortBy).set('sortDir', query.sortDescending ? 'desc' : 'asc'); }
+        return this.http.get<PagedResult<T>>(`${this.apiUrl}/search`, { params });
+    }
+<# } #>
+}
+
+/** A table whose rows have a name: finds the rows with a name. The name is encoded, so a space or a slash cannot change the route. */
+export abstract class NamedCrudService<T, K extends number | string = number> extends CrudService<T, K> {
+    // Find by Name
+    findByName(name: string): Observable<T[]> {
+        return this.http.get<T[]>(`${this.apiUrl}/${encodeURIComponent(name)}`);
+    }
+}
+
+/** A table with a Name and an IsActive column (NameActiveCrudApi): the rows that are active, for the drop-downs other screens fill. */
+export abstract class NameActiveCrudService<T, K extends number | string = number> extends NamedCrudService<T, K> {
+    // Get the active rows, by name
+    getAllActive(): Observable<T[]> {
+        return this.http.get<T[]>(`${this.apiUrl}/active`);
+    }
+}
+@@@FILE src/app/<#= servicesFolder #>/api-error.ts@@@
+/**
+ * The text to show for a refused request. The API answers a refusal as RFC 9457 problem details: `detail` is the message of a business rule or a duplicate name (409, 422), and
+ * `errors` holds the messages of the values that failed validation, per field. Anything else (no body, a network error) gets the fallback.
+ */
+export function apiMessage(error: unknown, fallback: string): string {
+  const body = (error as { error?: unknown } | null | undefined)?.error;
+  if (body && typeof body === 'object') {
+    const problem = body as { detail?: unknown; errors?: unknown };
+    if (typeof problem.detail === 'string' && problem.detail.trim()) return problem.detail;
+    if (problem.errors && typeof problem.errors === 'object') {
+      const messages = Object.values(problem.errors as Record<string, unknown>)
+        .flat()
+        .filter((message): message is string => typeof message === 'string' && message.trim() !== '');
+      if (messages.length > 0) return messages.join(' ');
+    }
+  }
+  return fallback;
+}
+@@@FILE src/app/<#= servicesFolder #>/api-error.spec.ts@@@
+import { apiMessage } from './api-error';
+
+describe('apiMessage', () => {
+  it('uses the detail of a problem', () => {
+    expect(apiMessage({ status: 409, error: { title: 'Conflict', detail: 'An active record named A already exists.' } }, 'fallback')).toBe('An active record named A already exists.');
+  });
+
+  it('joins the field messages of a validation problem', () => {
+    const error = { status: 400, error: { errors: { Name: ['Name is required.'], Code: ['Code is too long.'] } } };
+    expect(apiMessage(error, 'fallback')).toBe('Name is required. Code is too long.');
+  });
+
+  it('prefers the detail to the field messages', () => {
+    expect(apiMessage({ error: { detail: 'Detail', errors: { Name: ['Field'] } } }, 'fallback')).toBe('Detail');
+  });
+
+  it('falls back when there is no problem body', () => {
+    expect(apiMessage({ status: 500, message: 'Server error', error: null }, 'fallback')).toBe('fallback');
+    expect(apiMessage({ error: 'plain text' }, 'fallback')).toBe('fallback');
+    expect(apiMessage({ error: { detail: '  ', errors: {} } }, 'fallback')).toBe('fallback');
+    expect(apiMessage(undefined, 'fallback')).toBe('fallback');
+  });
+});
+@@@FILE src/app/<#= servicesFolder #>/notifier.ts@@@
+<# if (toasts) { #>
+import { Injectable, Injector, inject } from '@angular/core';
+import { ToastrService } from 'ngx-toastr';
+
+/**
+ * How a screen tells the person something: an error or a note is a toast (ngx-toastr, provided in app.config.ts); a question is the browser's confirm dialog. The toast service is
+ * looked up when the first toast is shown, so a screen under test does not need the toastr providers until it shows one.
+ */
+@Injectable({ providedIn: 'root' })
+export class Notifier {
+  private readonly injector = inject(Injector);
+
+  error(text: string): void {
+    this.injector.get(ToastrService).error(text);
+  }
+
+  info(text: string): void {
+    this.injector.get(ToastrService).info(text);
+  }
+
+  confirm(text: string): boolean {
+    return confirm(text);
+  }
+}
+<# } else { #>
+import { Injectable } from '@angular/core';
+
+/** How a screen tells the person something: the browser's own dialogs. Set `Toasts=ngx-toastr` in the project settings for toasts, or provide another Notifier. */
+@Injectable({ providedIn: 'root' })
+export class Notifier {
+  error(text: string): void {
+    alert(text);
+  }
+
+  info(text: string): void {
+    alert(text);
+  }
+
+  confirm(text: string): boolean {
+    return confirm(text);
+  }
+}
+<# } #>
+@@@FILE src/app/<#= componentsFolder #>/crud-screen.ts@@@
+import { Directive, ElementRef, HostListener, OnInit, ViewChild, inject } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { PageEvent } from '@angular/material/paginator';
+import { GridSort, loadSort, nextSort, saveSort } from '../grid-sort';
+import { CrudService } from '../<#= servicesFolder #>/crud.service';
+import { apiMessage } from '../<#= servicesFolder #>/api-error';
+import { Notifier } from '../<#= servicesFolder #>/notifier';
+
+/**
+ * What every list-and-form screen does: show the rows, open one in the edit dialog (a copy), save it (add or update), delete it, clone it, go back to the page that
+ * opened it, and say why when the API refuses. A screen extends this with its service and its words and overrides only what is its own:
+ *
+ *   `service`, `noun`, `idKey`, `newRow()`  are required;
+ *   `prepare(row, isNew)`      fixes up a row before it is sent;
+ *   `prepareEdit(copy)`        fixes up the copy that goes into the form (a date for the date box);
+ *   `start()`                  loads what else the screen needs (the drop-down lists) as well as the rows;
+ *   `opened()`                 runs when the form opens (go back to the first tab);
+ *   `badInputMessage`, `emptyKey`  the words for a 400 when the API gives none, and the "no key yet" value of a uniqueidentifier key.
+ *
+ * A refusal is shown in the API's own words (its problem details: a duplicate name, a validation message, a business rule); the fixed words are only for an answer with none.
+ */
+@Directive()
+export abstract class CrudScreen<T, K extends number | string = number> implements OnInit {
+  rows: T[] = [];
+  selectedRow: T | null = null;
+  loaded = false; // true once the rows have arrived, so the empty-grid message is not shown while waiting
+
+  protected abstract readonly service: CrudService<T, K>;
+  /** What a row is called in a message, in lower case: "time sheet". */
+  protected abstract readonly noun: string;
+  /** The property that holds the row's key. */
+  protected abstract readonly idKey: keyof T & string;
+  /** The key of a row that has none yet: the API assigns the real one. */
+  protected readonly emptyKey: K = 0 as K;
+  /** What the message says when the API refuses the values (400). */
+  protected readonly badInputMessage: string = 'Some of the values are not acceptable!';
+
+  protected readonly router = inject(Router);
+  protected readonly notifier = inject(Notifier);
+  private readonly route = inject(ActivatedRoute);
+  private backTo: string | null = null; // set when another page's grid opened this row (?edit=<id>&back=<that page>)
+
+  // The edit form is a modal <dialog> that is only in the page while a row is being edited: open it as soon as it is rendered.
+  @ViewChild('editDialog') set editDialog(element: ElementRef<HTMLDialogElement> | undefined) {
+    if (element && !element.nativeElement.open) element.nativeElement.showModal();
+  }
+
+  protected abstract newRow(): T;
+
+  ngOnInit(): void {
+    // Opened from another page's grid (?edit=<id>&back=<that page>): open this row, and go back to that page when the form is saved or cancelled.
+    const params = this.route.snapshot.queryParamMap;
+    this.backTo = params.get('back');
+    const openId = params.get('edit');
+    if (openId) this.service.getById((typeof this.emptyKey === 'number' ? Number(openId) : openId) as K).subscribe((row) => this.edit(row));
+    this.start();
+  }
+
+  protected start(): void {
+    this.load();
+  }
+
+  protected load(): void {
+    this.service.getAll().subscribe((rows) => { this.rows = rows; this.loaded = true; });
+  }
+
+  protected prepare(row: T, isNew: boolean): void { }
+
+  protected prepareEdit(copy: T): T {
+    return copy;
+  }
+
+  protected opened(): void { }
+
+  add(): void {
+    this.selectedRow = this.newRow();
+    this.opened();
+  }
+
+  edit(row: T): void {
+    // edit a COPY: changing the row itself would change what the grid shows
+    this.selectedRow = this.prepareEdit({ ...row });
+    this.opened();
+  }
+
+  cancel(): void {
+    this.selectedRow = null;
+    this.goBack();
+  }
+
+  submit(row: T): void {
+    const isNew = !this.idOf(row);
+    this.prepare(row, isNew);
+    if (isNew) {
+      (row as Record<string, unknown>)[this.idKey] = this.emptyKey;
+    }
+    const call = isNew ? this.service.create(row) : this.service.update(this.idOf(row)!, row);
+    call.subscribe({
+      // the form stays open when the API refuses, so what was typed is not lost
+      next: () => { this.selectedRow = null; this.load(); this.goBack(); },
+      error: (error) => this.showError(isNew ? 'adding' : 'updating', error)
+    });
+  }
+
+  delete(id: K): void {
+    if (!this.notifier.confirm('Are you sure you want to delete this?')) {
+      return;
+    }
+    this.service.delete(id).subscribe({
+      next: () => this.load(), // read the page again: the total, the rows that move up and the last page all change
+      error: (error) => {
+        if (error.status == 400) { this.notifier.error(apiMessage(error, 'It cannot be deleted because it is in use!')); }
+        else if (error.status == 404) { this.notifier.error(apiMessage(error, 'It no longer exists!')); this.load(); }
+        else { this.notifier.error(apiMessage(error, 'Problem while deleting! ' + error.message)); }
+      }
+    });
+  }
+
+  /** Copies the row on the server and opens the copy in the form at once, so the person changes what differs. */
+  clone(id: K): void {
+    this.service.clone(id).subscribe({
+      next: (copy) => { this.load(); this.edit(copy); },
+      error: (error) => {
+        if (error.status == 404) { this.notifier.error(apiMessage(error, 'It no longer exists!')); this.load(); }
+        else { this.notifier.error(apiMessage(error, 'Problem while cloning! ' + error.message)); }
+      }
+    });
+  }
+
+  protected idOf(row: T): K | undefined {
+    return row[this.idKey] as K | undefined;
+  }
+
+  // Back to the page whose grid opened this row, if any.
+  private goBack(): void {
+    if (this.backTo) this.router.navigateByUrl(this.backTo);
+  }
+
+  protected showError(action: string, error: { status?: number; message?: string; error?: unknown }): void {
+    if (error.status == 400) { this.notifier.error(apiMessage(error, this.badInputMessage)); }
+    else if (error.status == 404) { this.notifier.error(apiMessage(error, `This ${this.noun} no longer exists!`)); this.selectedRow = null; this.load(); }
+    else { this.notifier.error(apiMessage(error, 'Problem while ' + action + '! ' + error.message)); }
+  }
+}
+
+/**
+ * A screen whose rows are paged, filtered and sorted by the server: it holds only the page it shows. Adds the page, one search box per searchable column (`filters`), the sort
+ * (kept in the browser between visits, see grid-sort.ts), the sort arrows and the right-click "Clear sort" menu, and the fall-back to the last page when the page asked for is
+ * past the end. A screen says its `gridKey` (where the sort is remembered), the `sortableColumns` and the starting `filters` (one empty text per search parameter of the service).
+ */
+@Directive()
+export abstract class PagedCrudScreen<T, K extends number | string = number> extends CrudScreen<T, K> {
+  protected abstract readonly gridKey: string;
+  abstract readonly sortableColumns: string[];
+
+  /** The sort the grid starts with until the person sorts it (the project's DefaultSorts); null starts in the API's own order. */
+  protected readonly defaultSort: GridSort | null = null;
+
+  filters: Record<string, string> = {};
+  pageSize = 20;
+  pageIndex = 0; // mat-paginator is 0-based; the API's pageNumber is 1-based
+  totalCount = 0;
+  sort: GridSort | null = null; // the sort the person left (set in start)
+  sortMenu: { x: number; y: number } | null = null; // the right-click menu (Clear sort), where it is open
+
+  protected override start(): void {
+    this.sort = loadSort(this.gridKey, this.sortableColumns) ?? this.defaultSort;
+    super.start();
+  }
+
+  protected override load(): void {
+    this.service.searchPage({ pageNumber: this.pageIndex + 1, pageSize: this.pageSize, filters: this.filters, sortBy: this.sort?.column, sortDescending: this.sort?.descending }).subscribe((result) => {
+      // the last row of the last page was deleted, or rows were removed elsewhere: the page asked for is past the end, so show the last page there is
+      if (result.items.length === 0 && result.totalCount > 0 && this.pageIndex > 0) {
+        this.pageIndex = Math.ceil(result.totalCount / this.pageSize) - 1;
+        this.load();
+        return;
+      }
+      this.rows = result.items;
+      this.totalCount = result.totalCount;
+      this.loaded = true;
+      this.pageLoaded();
+    });
+  }
+
+  /** Called when a page has arrived (a screen that adds names to its rows does it here). */
+  protected pageLoaded(): void { }
+
+  onPageChange(event: PageEvent): void {
+    this.pageIndex = event.pageIndex;
+    this.pageSize = event.pageSize;
+    this.load();
+  }
+
+  search(): void {
+    this.selectedRow = null;
+    this.pageIndex = 0;
+    this.load();
+  }
+
+  clearSearch(): void {
+    for (const name of Object.keys(this.filters)) {
+      this.filters[name] = '';
+    }
+    this.pageIndex = 0;
+    this.load();
+  }
+
+  // Click a column header to sort by it, click it again to flip the direction; the right-click menu clears the sort. The sort is saved, kept when paging and when the
+  // filters change, and applied by the server; a change goes back to page 1.
+  sortBy(column: string): void {
+    this.sort = nextSort(this.sort, column);
+    saveSort(this.gridKey, this.sort);
+    this.pageIndex = 0;
+    this.load();
+  }
+
+  clearSort(): void {
+    this.sort = null;
+    saveSort(this.gridKey, null);
+    this.sortMenu = null;
+    this.pageIndex = 0;
+    this.load();
+  }
+
+  openSortMenu(event: MouseEvent): void {
+    event.preventDefault();
+    this.sortMenu = { x: event.clientX, y: event.clientY };
+  }
+
+  @HostListener('document:click')
+  @HostListener('document:keydown.escape')
+  closeSortMenu(): void {
+    this.sortMenu = null;
+  }
+
+  sortMark(column: string): string {
+    return this.sort?.column === column ? (this.sort.descending ? ' ▼' : ' ▲') : '';
+  }
+
+  ariaSort(column: string): 'ascending' | 'descending' | null {
+    return this.sort?.column === column ? (this.sort.descending ? 'descending' : 'ascending') : null;
+  }
+}
+
+/**
+ * A screen for a table with a Name and an IsActive column. The API answers the whole list (the table is a short list of names), so the screen narrows it itself: `searchText` keeps the
+ * rows whose name contains the text, `activeOnly` keeps the active ones. The grid shows `visibleRows`.
+ */
+@Directive()
+export abstract class NameActiveCrudScreen<T extends { name: string; isActive: boolean }, K extends number | string = number> extends CrudScreen<T, K> {
+  searchText = '';
+  activeOnly = false;
+
+  get visibleRows(): T[] {
+    const text = this.searchText.trim().toLowerCase();
+    return this.rows.filter((row) => (!this.activeOnly || row.isActive) && (text === '' || row.name.toLowerCase().includes(text)));
+  }
+
+  clearSearch(): void {
+    this.searchText = '';
+    this.activeOnly = false;
+  }
+}
+@@@FILE src/app/<#= servicesFolder #>/crud.service.spec.ts@@@
+import { TestBed } from '@angular/core/testing';
+import { HttpClient, HttpParams, provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { CrudService, NameActiveCrudService, NamedCrudService } from './crud.service';
+
+interface Row { rowId?: number; name: string; isActive: boolean; }
+
+class RowService extends NameActiveCrudService<Row> {
+  constructor(http: HttpClient) { super(http, 'api/rows'); }
+}
+
+class PlainService extends CrudService<Row> {
+  constructor(http: HttpClient) { super(http, 'api/plain'); }
+}
+
+class NamedService extends NamedCrudService<Row> {
+  constructor(http: HttpClient) { super(http, 'api/named'); }
+}
+
+// the list protocol of this project (ListProtocol=<#= search ? "Search" : "Columns" #>): where the list is asked, how the page, the filters and the sort are written
+const LIST_PATH = '<#= search ? "" : "/search" #>';
+const PAGE_PARAM = '<#= pageParam #>';
+const PAGE_BASE = <#= pageBase #>;
+const SIZE_PARAM = '<#= sizeParam #>';
+const FILTER_KEY = '<#= search ? "search" : "name" #>';   // the key of the box in `filters`
+const FILTER_PARAM = '<#= search ? searchParam : "name" #>';   // the query parameter it is written as
+
+const sortOf = (params: HttpParams): { column: string | null; direction: string | null } => {
+<# if (search) { #>
+  const [column, direction] = (params.get('<#= sortParam #>') ?? '').split(':');
+  return column ? { column, direction: direction ?? null } : { column: null, direction: null };
+<# } else { #>
+  return { column: params.get('sortBy'), direction: params.get('sortDir') };
+<# } #>
+};
+
+describe('CrudService', () => {
+  let http: HttpTestingController;
+  let service: RowService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+    http = TestBed.inject(HttpTestingController);
+    service = new RowService(TestBed.inject(HttpClient));
+  });
+
+  afterEach(() => http.verify());
+
+  it('gets every row and one row', () => {
+    service.getAll().subscribe();
+    expect(http.expectOne('api/rows').request.method).toBe('GET');
+
+    service.getById(7).subscribe();
+    expect(http.expectOne('api/rows/7').request.method).toBe('GET');
+  });
+
+  it('creates with a POST of the row and updates with a PUT to the id', () => {
+    const row: Row = { name: 'A', isActive: true };
+    service.create(row).subscribe();
+    const post = http.expectOne('api/rows');
+    expect(post.request.method).toBe('POST');
+    expect(post.request.body).toEqual(row);
+
+    service.update(3, { ...row, rowId: 3 }).subscribe();
+    const put = http.expectOne('api/rows/3');
+    expect(put.request.method).toBe('PUT');
+    expect(put.request.body).toEqual({ ...row, rowId: 3 });
+  });
+
+  it('deletes by id and clones by posting to the clone route', () => {
+    service.delete(4).subscribe();
+    expect(http.expectOne('api/rows/4').request.method).toBe('DELETE');
+
+    service.clone(5).subscribe();
+    const clone = http.expectOne('api/rows/5/clone');
+    expect(clone.request.method).toBe('POST');
+    expect(clone.request.body).toBeNull();
+  });
+
+  it('searches with the page, leaves out empty filters and writes the sort', () => {
+    service.searchPage({ pageNumber: 2, pageSize: 25, filters: { [FILTER_KEY]: 'ab', city: '', other: undefined }, sortBy: 'name', sortDescending: true }).subscribe();
+    const request = http.expectOne((r) => r.url === 'api/rows' + LIST_PATH);
+    expect(request.request.params.get(PAGE_PARAM)).toBe(String(2 - 1 + PAGE_BASE));
+    expect(request.request.params.get(SIZE_PARAM)).toBe('25');
+    expect(request.request.params.get(FILTER_PARAM)).toBe('ab');
+    expect(request.request.params.has('city')).toBe(false);
+    expect(request.request.params.has('other')).toBe(false);
+    expect(sortOf(request.request.params)).toEqual({ column: 'name', direction: 'desc' });
+  });
+
+  it('writes no sort when there is none, and ascending when it is not descending', () => {
+    service.searchPage({ pageNumber: 1, pageSize: 10 }).subscribe();
+    expect(sortOf(http.expectOne((r) => r.url === 'api/rows' + LIST_PATH).request.params)).toEqual({ column: null, direction: null });
+
+    service.searchPage({ pageNumber: 1, pageSize: 10, sortBy: 'name' }).subscribe();
+    expect(sortOf(http.expectOne((r) => r.url === 'api/rows' + LIST_PATH).request.params)).toEqual({ column: 'name', direction: 'asc' });
+  });
+
+<# if (search) { #>
+  it('leaves out a search text that is only spaces', () => {
+    service.searchPage({ pageNumber: 1, pageSize: 10, filters: { [FILTER_KEY]: '   ' } }).subscribe();
+    expect(http.expectOne((r) => r.url === 'api/rows' + LIST_PATH).request.params.has(FILTER_PARAM)).toBe(false);
+  });
+
+  it('reads the rows and the total from the members the API answers with', () => {
+    let page: { items: Row[]; page: number; totalCount: number; totalPages: number } | undefined;
+    service.searchPage({ pageNumber: 3, pageSize: 10 }).subscribe((result) => { page = result; });
+    http.expectOne((r) => r.url === 'api/rows').flush({ '<#= itemsMember #>': [{ name: 'A', isActive: true }], '<#= totalMember #>': 25 });
+
+    expect(page?.items.length).toBe(1);
+    expect(page?.totalCount).toBe(25);
+    expect(page?.totalPages).toBe(3);
+    expect(page?.page).toBe(3);
+  });
+<# } #>
+
+  it('finds by name with the name encoded, so a space or a slash cannot change the route', () => {
+    service.findByName('a b/c').subscribe();
+    expect(http.expectOne('api/rows/a%20b%2Fc').request.method).toBe('GET');
+  });
+
+  it('asks for the active rows of a name and active table', () => {
+    service.getAllActive().subscribe();
+    expect(http.expectOne('api/rows/active').request.method).toBe('GET');
+  });
+
+  it('keeps the plain and the named services to their own calls', () => {
+    const plain = new PlainService(TestBed.inject(HttpClient));
+    expect('findByName' in plain).toBe(false);
+    const named = new NamedService(TestBed.inject(HttpClient));
+    expect('getAllActive' in named).toBe(false);
+    expect('findByName' in named).toBe(true);
+  });
+});
+@@@FILE src/app/<#= componentsFolder #>/crud-screen.spec.ts@@@
+import { TestBed } from '@angular/core/testing';
+import { HttpClient, HttpParams, provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { inject } from '@angular/core';
+import { provideRouter } from '@angular/router';
+import { CrudService } from '../<#= servicesFolder #>/crud.service';
+import { Notifier } from '../<#= servicesFolder #>/notifier';
+import { CrudScreen, NameActiveCrudScreen, PagedCrudScreen } from './crud-screen';
+
+interface Item { itemId?: number; name: string; isActive: boolean; }
+
+class ItemService extends CrudService<Item> {
+  constructor(http: HttpClient) { super(http, 'api/items'); }
+}
+
+// the list protocol of this project (ListProtocol=<#= search ? "Search" : "Columns" #>)
+const LIST_URL = 'api/items<#= search ? "" : "/search" #>';
+const PAGE_PARAM = '<#= pageParam #>';
+const PAGE_BASE = <#= pageBase #>;
+const SIZE_PARAM = '<#= sizeParam #>';
+const FILTER_KEY = '<#= search ? "search" : "name" #>';   // the key of the box in `filters`
+const FILTER_PARAM = '<#= search ? searchParam : "name" #>';   // the query parameter it is written as
+
+const sortOf = (params: HttpParams): { column: string | null; direction: string | null } => {
+<# if (search) { #>
+  const [column, direction] = (params.get('<#= sortParam #>') ?? '').split(':');
+  return column ? { column, direction: direction ?? null } : { column: null, direction: null };
+<# } else { #>
+  return { column: params.get('sortBy'), direction: params.get('sortDir') };
+<# } #>
+};
+
+/** What the list answers for a page, in this project's protocol. */
+const answer = (items: Item[], totalCount: number, page: number, pageSize: number) =>
+<# if (search) { #>
+  ({ '<#= itemsMember #>': items, '<#= totalMember #>': totalCount });
+<# } else { #>
+  ({ items, page, pageSize, totalCount, totalPages: Math.ceil(totalCount / pageSize) });
+<# } #>
+
+class ItemScreen extends CrudScreen<Item> {
+  protected readonly service = new ItemService(inject(HttpClient));
+  protected readonly noun = 'item';
+  protected readonly idKey = 'itemId';
+  protected newRow(): Item { return { name: '', isActive: true }; }
+}
+
+class PagedItemScreen extends PagedCrudScreen<Item> {
+  protected readonly service = new ItemService(inject(HttpClient));
+  protected readonly noun = 'item';
+  protected readonly idKey = 'itemId';
+  protected readonly gridKey = 'spec-items';
+  readonly sortableColumns = ['name'];
+  override filters = { [FILTER_KEY]: '' };
+  protected newRow(): Item { return { name: '', isActive: true }; }
+}
+
+class DefaultSortItemScreen extends PagedItemScreen {
+  protected override readonly defaultSort = { column: 'name', descending: true };
+}
+
+class NameActiveItemScreen extends NameActiveCrudScreen<Item> {
+  protected readonly service = new ItemService(inject(HttpClient));
+  protected readonly noun = 'item';
+  protected readonly idKey = 'itemId';
+  protected newRow(): Item { return { name: '', isActive: true }; }
+}
+
+const conflict = { status: 409, statusText: 'Conflict' };
+
+describe('the screen bases', () => {
+  let http: HttpTestingController;
+  let errors: string[];
+  let confirmAnswer: boolean;
+
+  const create = <S>(screen: new () => S): S => TestBed.runInInjectionContext(() => new screen());
+
+  beforeEach(() => {
+    localStorage.clear();
+    errors = [];
+    confirmAnswer = true;
+    const notifier = { error: (text: string) => { errors.push(text); }, info: (text: string) => { errors.push(text); }, confirm: () => confirmAnswer };
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]), { provide: Notifier, useValue: notifier }]
+    });
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  describe('CrudScreen', () => {
+    it('shows the API\'s own words for a refusal and keeps the form open', () => {
+      const screen = create(ItemScreen);
+      screen.add();
+      screen.selectedRow!.name = 'Alpha';
+      screen.submit(screen.selectedRow!);
+
+      const post = http.expectOne('api/items');
+      expect(post.request.method).toBe('POST');
+      post.flush({ title: 'Duplicate name', status: 409, detail: 'An active row named \'Alpha\' already exists.' }, conflict);
+
+      expect(errors).toContain('An active row named \'Alpha\' already exists.');
+      expect(screen.selectedRow).not.toBeNull();   // what was typed is not lost
+    });
+
+    it('joins the messages of a validation problem', () => {
+      const screen = create(ItemScreen);
+      screen.add();
+      screen.submit(screen.selectedRow!);
+      http.expectOne('api/items').flush({ errors: { Name: ['Name is required.'], Code: ['Code is too long.'] } }, { status: 400, statusText: 'Bad Request' });
+
+      expect(errors).toContain('Name is required. Code is too long.');
+    });
+
+    it('uses its own words when the API gives none', () => {
+      const screen = create(ItemScreen);
+      screen.add();
+      screen.submit(screen.selectedRow!);
+      http.expectOne('api/items').flush(null, { status: 400, statusText: 'Bad Request' });
+
+      expect(errors).toContain('Some of the values are not acceptable!');
+    });
+
+    it('closes the form and reads the rows again after a save', () => {
+      const screen = create(ItemScreen);
+      screen.add();
+      screen.submit(screen.selectedRow!);
+      http.expectOne('api/items').flush({ itemId: 1, name: '', isActive: true });
+
+      expect(screen.selectedRow).toBeNull();
+      http.expectOne((r) => r.method === 'GET' && r.url === 'api/items').flush([{ itemId: 1, name: '', isActive: true }]);
+      expect(screen.rows.length).toBe(1);
+    });
+
+    it('closes the form and reads the rows again when the row it saves is gone', () => {
+      const screen = create(ItemScreen);
+      screen.edit({ itemId: 5, name: 'Old', isActive: true });
+      screen.submit(screen.selectedRow!);
+      http.expectOne('api/items/5').flush(null, { status: 404, statusText: 'Not Found' });
+
+      expect(errors).toContain('This item no longer exists!');
+      expect(screen.selectedRow).toBeNull();
+      http.expectOne((r) => r.method === 'GET' && r.url === 'api/items').flush([]);
+    });
+
+    it('edits a copy, so the grid row does not change until it is saved', () => {
+      const screen = create(ItemScreen);
+      const row: Item = { itemId: 5, name: 'Old', isActive: true };
+      screen.edit(row);
+      screen.selectedRow!.name = 'New';
+
+      expect(row.name).toBe('Old');
+    });
+
+    it('does not delete when the person says no, and shows why when the API refuses', () => {
+      const screen = create(ItemScreen);
+      confirmAnswer = false;
+      screen.delete(3);
+      http.expectNone('api/items/3');
+
+      confirmAnswer = true;
+      screen.delete(3);
+      http.expectOne('api/items/3').flush({ detail: 'It is used by a time sheet.' }, { status: 400, statusText: 'Bad Request' });
+      expect(errors).toContain('It is used by a time sheet.');
+    });
+
+    it('says the row is in use when a 400 comes with no words, and reads again when it is gone', () => {
+      const screen = create(ItemScreen);
+      screen.delete(3);
+      http.expectOne('api/items/3').flush(null, { status: 400, statusText: 'Bad Request' });
+      expect(errors).toContain('It cannot be deleted because it is in use!');
+
+      screen.delete(4);
+      http.expectOne('api/items/4').flush(null, { status: 404, statusText: 'Not Found' });
+      expect(errors).toContain('It no longer exists!');
+      http.expectOne((r) => r.method === 'GET' && r.url === 'api/items').flush([]);
+    });
+
+    it('opens the copy of a clone in the form', () => {
+      const screen = create(ItemScreen);
+      screen.clone(2);
+      http.expectOne('api/items/2/clone').flush({ itemId: 9, name: 'Copy', isActive: true });
+
+      expect(screen.selectedRow?.itemId).toBe(9);
+      http.expectOne((r) => r.method === 'GET' && r.url === 'api/items').flush([]);
+    });
+  });
+
+  describe('PagedCrudScreen', () => {
+    // page 1 of the screen is whatever the API calls its first page
+    const search = (page: number) => http.expectOne((r) => r.url === LIST_URL && r.params.get(PAGE_PARAM) === String(page - 1 + PAGE_BASE));
+
+    it('asks for the first page, with the page size, the filters that have text and the sort', () => {
+      const screen = create(PagedItemScreen);
+      screen.ngOnInit();
+      const first = search(1);
+      expect(first.request.params.get(SIZE_PARAM)).toBe('20');
+      expect(first.request.params.has(FILTER_PARAM)).toBe(false);
+      first.flush(answer([], 0, 1, 20));
+      expect(screen.loaded).toBe(true);
+
+      screen.filters[FILTER_KEY] = 'ab';
+      screen.search();
+      const filtered = search(1);
+      expect(filtered.request.params.get(FILTER_PARAM)).toBe('ab');
+      filtered.flush(answer([], 0, 1, 20));
+    });
+
+    it('falls back to the last page when the page asked for is past the end', () => {
+      const screen = create(PagedItemScreen);
+      screen.ngOnInit();
+      search(1).flush(answer([], 0, 1, 10));
+
+      screen.onPageChange({ pageIndex: 3, pageSize: 10, length: 25 });
+      expect(screen.pageSize).toBe(10);
+      search(4).flush(answer([], 25, 4, 10));
+
+      expect(screen.pageIndex).toBe(2);
+      search(3).flush(answer([{ itemId: 21, name: 'x', isActive: true }], 25, 3, 10));
+      expect(screen.rows.length).toBe(1);
+      expect(screen.totalCount).toBe(25);
+    });
+
+    it('sorts from a header, flips on a second click, remembers the sort and goes back to page 1', () => {
+      const screen = create(PagedItemScreen);
+      screen.ngOnInit();
+      search(1).flush(answer([], 0, 1, 20));
+
+      screen.sortBy('name');
+      const ascending = search(1);
+      expect(sortOf(ascending.request.params)).toEqual({ column: 'name', direction: 'asc' });
+      ascending.flush(answer([], 0, 1, 20));
+      expect(screen.sortMark('name')).toBe(' ▲');
+
+      screen.sortBy('name');
+      const descending = search(1);
+      expect(sortOf(descending.request.params)).toEqual({ column: 'name', direction: 'desc' });
+      descending.flush(answer([], 0, 1, 20));
+      expect(screen.ariaSort('name')).toBe('descending');
+
+      const again = create(PagedItemScreen);   // a later visit starts with the sort the person left
+      again.ngOnInit();
+      expect(sortOf(search(1).request.params)).toEqual({ column: 'name', direction: 'desc' });
+    });
+
+    it('clears the sort', () => {
+      const screen = create(PagedItemScreen);
+      screen.ngOnInit();
+      search(1).flush(answer([], 0, 1, 20));
+      screen.sortBy('name');
+      search(1).flush(answer([], 0, 1, 20));
+
+      screen.clearSort();
+      const cleared = search(1);
+      expect(sortOf(cleared.request.params)).toEqual({ column: null, direction: null });
+      cleared.flush(answer([], 0, 1, 20));
+      expect(screen.sort).toBeNull();
+    });
+
+    it('ignores a saved sort for a column the grid cannot sort by', () => {
+      localStorage.setItem('gridSort:spec-items', JSON.stringify([{ column: 'secret', descending: true }]));
+      const screen = create(PagedItemScreen);
+      screen.ngOnInit();
+
+      const first = search(1);
+      expect(sortOf(first.request.params)).toEqual({ column: null, direction: null });
+      first.flush(answer([], 0, 1, 20));
+      expect(screen.sort).toBeNull();
+    });
+
+    it('starts with the default sort until the person sorts', () => {
+      const screen = create(DefaultSortItemScreen);
+      screen.ngOnInit();
+
+      const first = search(1);
+      expect(sortOf(first.request.params)).toEqual({ column: 'name', direction: 'desc' });
+      first.flush(answer([], 0, 1, 20));
+      expect(screen.ariaSort('name')).toBe('descending');
+    });
+  });
+
+  describe('NameActiveCrudScreen', () => {
+    it('narrows the list by name and by active on the page', () => {
+      const screen = create(NameActiveItemScreen);
+      screen.ngOnInit();
+      http.expectOne((r) => r.method === 'GET' && r.url === 'api/items').flush([
+        { itemId: 1, name: 'Alpha', isActive: true },
+        { itemId: 2, name: 'Alphabet', isActive: false },
+        { itemId: 3, name: 'Beta', isActive: true }
+      ]);
+
+      expect(screen.visibleRows.length).toBe(3);
+      screen.searchText = ' ALPHA ';
+      expect(screen.visibleRows.map((r) => r.name)).toEqual(['Alpha', 'Alphabet']);
+      screen.activeOnly = true;
+      expect(screen.visibleRows.map((r) => r.name)).toEqual(['Alpha']);
+      screen.clearSearch();
+      expect(screen.visibleRows.length).toBe(3);
+    });
+  });
+});

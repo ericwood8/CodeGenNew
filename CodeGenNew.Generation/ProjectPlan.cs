@@ -25,6 +25,7 @@ public static class ProjectPlan
             PlanTableSet.Entity => database.EntityTables.Where(t => project.NoRepository(t.TableName, t.LookupShape) != true).ToList(),
             PlanTableSet.Context => database.EntityTables.Where(t => project.NoRepository(t.TableName, t.LookupShape) != true).Concat(database.CompositeKeyTables).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),
             PlanTableSet.Api => database.ApiTables(project),
+            PlanTableSet.AspNetApi => database.AspNetApiTables(project),
             PlanTableSet.Search => database.SearchApiTables(project),
             PlanTableSet.Screen => Screens(),
             PlanTableSet.ScreenDetailMaster => Screens().Where(t => DatabaseModel.IsDetailMaster(t, project)).ToList(),

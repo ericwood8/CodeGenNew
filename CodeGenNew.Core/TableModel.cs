@@ -43,6 +43,11 @@ public class TableModel
     public bool HasCrudApi(ProjectSettings project) =>
         PrimaryKeyShape == PrimaryKeyShape.SingleInt && !IsNameActiveTable && project.NoRepository(TableName, LookupShape) != true;
 
+    /// <summary> True when API_Crud writes a name/active API for the table (a <c>NameActiveCrudApi</c> over its <c>NameActiveRepo</c>): a single whole-number key, the Name and IsActive shape, not an enum and not a table the project lists in <c>NoApiTables</c> (a user table with password hashes stays out).and not a table the project lists in <c>NoApiTables</c> (a user table with password hashes stays out).
+    /// Only the ASP.NET API and the Angular templates handle these tables; the other stacks still leave them out (<see cref="HasCrudApi"/> is false for them). </summary>
+    public bool HasNameActiveApi(ProjectSettings project) =>
+        PrimaryKeyShape == PrimaryKeyShape.SingleInt && IsNameActiveTable && project.NoRepository(TableName, LookupShape) != true && project.NoApi(TableName, LookupShape) != true;
+
     /// <summary> True when the table also gets a search endpoint (API_Search): it has an API and is not a bare lookup table. </summary>
     public bool HasSearchApi(ProjectSettings project) => HasCrudApi(project) && !LookupShape.LooksLikeLookup;
 

@@ -120,7 +120,7 @@ public class GridSortTests
         Expect.Contains(tsx, "params.set('sortBy', sort.column);");
         Expect.Contains(tsx, "params.set('sortDir', sort.descending ? 'desc' : 'asc');");
         Expect.Contains(ts, "sortBy?: string, sortDescending?: boolean");
-        Expect.Contains(ts, "params = params.set('sortBy', sortBy).set('sortDir', sortDescending ? 'desc' : 'asc');");
+        Expect.Contains((await CrudScreenTests.Essential())["crud.service.ts"], "params = params.set('sortBy', query.sortBy).set('sortDir', query.sortDescending ? 'desc' : 'asc');");
     }
 
     [TestMethod]
@@ -151,12 +151,10 @@ public class GridSortTests
         var table = Line();
         string files = await Render(template, template.Contains("DetailMaster") ? WithChild(table) : table);
 
-        Expect.Contains(files, "import { GridSort, loadSort, nextSort, saveSort");
         Expect.Contains(files, "<table (contextmenu)=\"openSortMenu($event)\">");
         Expect.Contains(files, "(click)=\"sortBy('Description')\">Description{{ sortMark('Description') }}</button>");
         Expect.DoesNotContain(files, "sortBy('Notes')");
-        Expect.Contains(files, "this.sort?.column, this.sort?.descending)");
-        Expect.Contains(files, "@HostListener('document:click')");
+        Expect.Contains(files, "extends PagedCrudScreen<");     // the sort, its saving and the menu's close are the base's (CrudScreenTests)
         Expect.Contains(files, "(click)=\"clearSort()\">Clear sort</button>");
         Expect.Contains(files, ".sort-menu {");                      // the component's own style sheet
     }
@@ -191,7 +189,9 @@ public class GridSortTests
         Assert.IsTrue(react.Success && angular.Success, string.Join(" | ", react.Errors.Concat(angular.Errors)));
 
         var reactFile = GeneratedFiles.Split(react.GeneratedText!).Single();
-        var angularFile = GeneratedFiles.Split(angular.GeneratedText!).Single();
+        var angularFiles = GeneratedFiles.Split(angular.GeneratedText!);
+        CollectionAssert.AreEquivalent(new[] { "grid-sort.ts", "grid-sort.spec.ts" }, angularFiles.Select(f => f.RelativePath).ToArray());
+        var angularFile = angularFiles.Single(f => f.RelativePath == "grid-sort.ts");
         Assert.AreEqual("components/gridSort.tsx", reactFile.RelativePath);
         Assert.AreEqual("grid-sort.ts", angularFile.RelativePath);
         foreach (string text in new[] { reactFile.Content, angularFile.Content })

@@ -5,7 +5,7 @@
 <#
     // ==========================================================================================
     // TS_GridSort_v1.tt
-    // Generates: grid-sort.ts   (point the output folder at the Angular app's src\app folder; the components import it as '../../grid-sort')
+    // Generates: grid-sort.ts and grid-sort.spec.ts   (point the output folder at the Angular app's src\app folder; the components import it as '../../grid-sort')
     // The shared sort helpers every component imports: the saved sort (browser local storage), the next-sort rule and the client-side row sort the child
     // grids use. One file for the whole project.
     // Full notes: Docs/TemplateNotes/TS_GridSort_v1.md
@@ -69,3 +69,61 @@ export function sortRows<T extends Record<string, unknown>>(rows: T[], sort: Gri
   };
   return [...rows].sort((x, y) => (sort.descending ? -1 : 1) * compare(value(x), value(y)));
 }
+@@@FILE grid-sort.spec.ts@@@
+import { loadSort, nextSort, saveSort, sortRows } from './grid-sort';
+
+describe('grid-sort', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('sorts another column ascending and flips the direction of the sorted one', () => {
+    expect(nextSort(null, 'name')).toEqual({ column: 'name', descending: false });
+    expect(nextSort({ column: 'name', descending: false }, 'name')).toEqual({ column: 'name', descending: true });
+    expect(nextSort({ column: 'name', descending: true }, 'name')).toEqual({ column: 'name', descending: false });
+    expect(nextSort({ column: 'name', descending: true }, 'city')).toEqual({ column: 'city', descending: false });
+  });
+
+  it('remembers a sort and forgets it again', () => {
+    saveSort('grid', { column: 'name', descending: true });
+    expect(loadSort('grid')).toEqual({ column: 'name', descending: true });
+
+    saveSort('grid', null);
+    expect(loadSort('grid')).toBeNull();
+  });
+
+  it('keeps one sort per grid', () => {
+    saveSort('one', { column: 'a', descending: false });
+    expect(loadSort('two')).toBeNull();
+  });
+
+  it('ignores a saved column the grid cannot sort by', () => {
+    saveSort('grid', { column: 'secret', descending: false });
+    expect(loadSort('grid', ['name', 'city'])).toBeNull();
+    expect(loadSort('grid', ['secret'])).toEqual({ column: 'secret', descending: false });
+  });
+
+  it('ignores unreadable storage', () => {
+    localStorage.setItem('gridSort:grid', '{not json');
+    expect(loadSort('grid')).toBeNull();
+    localStorage.setItem('gridSort:grid', JSON.stringify([{ column: 5 }]));
+    expect(loadSort('grid')).toBeNull();
+  });
+
+  it('sorts rows by value: numbers as numbers, text without case, no before yes, nothing first', () => {
+    const numbers = [{ n: 10 }, { n: 9 }, { n: null }];
+    expect(sortRows(numbers, { column: 'n', descending: false }).map((r) => r.n)).toEqual([null, 9, 10]);
+    expect(sortRows(numbers, { column: 'n', descending: true }).map((r) => r.n)).toEqual([10, 9, null]);
+
+    const text = [{ t: 'b' }, { t: 'A' }, { t: 'c' }];
+    expect(sortRows(text, { column: 't', descending: false }).map((r) => r.t)).toEqual(['A', 'b', 'c']);
+
+    const flags = [{ f: true }, { f: false }];
+    expect(sortRows(flags, { column: 'f', descending: false }).map((r) => r.f)).toEqual([false, true]);
+  });
+
+  it('sorts a column that shows a name by the name, and leaves the rows alone with no sort', () => {
+    const rows = [{ id: 1 }, { id: 2 }];
+    expect(sortRows(rows, { column: 'id', descending: false }, { '1': 'Zed', '2': 'Amy' }).map((r) => r.id)).toEqual([2, 1]);
+    expect(sortRows(rows, null)).toBe(rows);
+    expect(rows.map((r) => r.id)).toEqual([1, 2]);   // the rows given are not changed
+  });
+});

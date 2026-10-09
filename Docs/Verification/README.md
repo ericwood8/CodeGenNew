@@ -12,6 +12,7 @@ A build and a unit test cannot see a blank drop-down, a number box that takes a 
 | `Test-OpenApiRoutes.ps1` | Checks the generated `openapi.yaml` against the running API: every documented GET answers 200, every `PUT /{id}` 400, and the schema's properties are in a real row's JSON. Apply the generated SQL to the scratch database first. |
 | `Test-RustBuild.ps1` | The Rust stack: generates the crate of a PostgreSQL, MySQL or SQLite database with `codegen generate --essentials`, compiles it with `cargo build` (in a Visual Studio developer environment that has the C++ libraries) and runs `Test-ApiCrud.ps1` against the binary (`-Executable`). Needs a Rust toolchain. `Test-OpenApiRoutes.ps1` takes `-Executable` too. |
 | `Test-SqliteStack.ps1` | The SQLite counterpart of the API check: generates the API of a SQLite file with `codegen generate`, builds it and runs `Test-ApiCrud.ps1` against a scratch copy of the file. No server is needed. |
+| `Test-AngularVersion.ps1` | Generates the Angular app of a project for one Angular version (`-Version 18` to `22`) into a scratch folder, runs `npm install`, `ng build` and `ng test` (Karma with ChromeHeadless up to 20, Vitest from 21) and exits 1 on the first failure. It reads the database, never writes to it. |
 | `Browser.md` | Snippets for driving and reading a React / Angular page from the browser's console. |
 | `Recipes/` | The steps per stack: `Api.md`, `React.md`, `Angular.md`, `WinUI3.md`. |
 

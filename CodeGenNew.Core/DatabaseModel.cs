@@ -36,6 +36,9 @@ public class DatabaseModel
     /// says has no repository. API_Search is registered for the same tables. </summary>
     public List<TableModel> ApiTables(ProjectSettings project) => EntityTables.Where(t => t.HasCrudApi(project)).ToList();
 
+    /// <summary> The tables the ASP.NET API serves: <see cref="ApiTables"/> and the name/active tables (<see cref="TableModel.HasNameActiveApi"/>), which the other stacks do not handle. </summary>
+    public List<TableModel> AspNetApiTables(ProjectSettings project) => EntityTables.Where(t => t.HasCrudApi(project) || t.HasNameActiveApi(project)).ToList();
+
     /// <summary> The tables that also get a search endpoint: the API tables minus bare lookup tables (a few rows, no pager worth having; the
     /// samples write no search function for them). </summary>
     public List<TableModel> SearchApiTables(ProjectSettings project) => ApiTables(project).Where(t => t.HasSearchApi(project)).ToList();

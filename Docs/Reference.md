@@ -48,7 +48,7 @@ One per template, same base name, plain `key=value` lines, `#` comments. A missi
 | `RequiresJunctionTable` | false | only for a many-to-many table: excluding computed, audit and surrogate identity-key columns, exactly two columns remain and each is covered by its own single-column foreign key (a natural composite key and an identity key plus two foreign keys both count; one composite foreign key over both columns does not) |
 | `RequiresChildTables` | false | only when another table has a foreign key back at this one (master-detail screens) |
 | `RequiresAuditTable` | false | only for a table with audit columns: one that records its creation (a name starting `Create`, like CreateDate or CreateUser) and one that records a later change (a name with `Modif` or `Change`, or starting `Update`, like ModifiedDate or UpdatedBy) |
-| `RequiresNotNameActiveTable` | false | hidden for a "name/active" table (a NOT NULL text column `Name` and a NOT NULL bit column `IsActive`). Its repository is a `NameActiveRepo` with duplicate-name checks and trimming a template cannot supply, so `API_Crud` refuses it and every screen that assumes a plain list / get / create / update / delete backend sets this. `CS_Entity` and `CS_Repo` support both shapes. |
+| `RequiresNotNameActiveTable` | false | hidden for a "name/active" table (a NOT NULL text column `Name` and a NOT NULL bit column `IsActive`). Its repository is a `NameActiveRepo` with duplicate-name checks and trimming a template cannot supply, so the screens that assume a plain list / get / create / update / delete backend (WinUI3, React, Blazor, Rust, Python) set this. `API_Crud` and the Angular service and screens write a variant for it (`NameActiveCrudApi`, `NameActiveCrudScreen`) and do not set it. `CS_Entity` and `CS_Repo` support both shapes. |
 | `Dialects` | all | the databases the template is for (`SqlServer`, `PostgreSql`, `MySql`, `Sqlite`); a plan skips it silently for another one, the menu does not offer it, and a single run is refused with the reason |
 | `Dashboard` | true: the plan also writes the dashboard: its queries (CS_Dashboard, SP_Dashboard), the GET /api/dashboard endpoint (API_Dashboard), a page and menu entry per front end (TSX_Dashboard, TS_Dashboard, WinUI3_DashboardPage) and a Markdown page listing the widgets (MD_Dashboard) |
 | `DashboardStrip` | true (with Dashboard): each table screen shows that table's two or three cards above its grid |
@@ -83,7 +83,7 @@ One per template, same base name, plain `key=value` lines, `#` comments. A missi
 | Key | Meaning |
 |---|---|
 | `Stacks` | the stacks that include the template (`Api`, `WinUI3`, `React`, `Angular`); empty means run by hand only |
-| `PlanTables` | which tables a plan runs it for (entity tables, `Context`: the entity tables and the composite-key junction tables, tables with an API, tables with a screen ...); ignored for database-level and no-database templates |
+| `PlanTables` | which tables a plan runs it for (entity tables, `Context`: the entity tables and the composite-key junction tables, tables with an API, `AspNetApi`: those and the name/active tables, tables with a screen ...); ignored for database-level and no-database templates |
 | `InPlan` | default true; `false` joins a plan only through the project's `PlanAlso` or a flag that implies it |
 | `EssentialsGroup`, `Description`, `EssentialsDefault` | the template is one file group of a stack's essentials: its menu name, one line on what it writes, and whether it is ticked the first time |
 | `Needs` | files (relative to the stack folder, `{Context}` for the context name) that the group assumes another run wrote; a run warns when one is missing |
@@ -206,6 +206,16 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `PagesFolder` | React folder for the pages; blank = pages |
 | `DbSetNames` | Plural = Customers, blank = the table name (Customer) |
 | `AngularVersion` | major version of Angular, e.g. 22; blank = output that every version from 18 accepts |
+| `Toasts` | Angular: ngx-toastr shows the API's refusals as toasts (the package is added to package.json and provideToastr to app.config.ts); blank = the browser's alert and confirm dialogs, no package |
+| `ListProtocol` | Angular: Columns (what API_Search writes: GET <route>/search with a parameter per column) or Search (an existing API: GET <route>?pageIndex&pageSize&sort=name:desc&search=text, one search box); blank = Columns |
+| `PageParameter` | ListProtocol=Search: the query parameter that holds the page; blank = pageIndex (pageNumber with PageBase 1) |
+| `PageSizeParameter` | ListProtocol=Search: the query parameter that holds the page size; blank = pageSize |
+| `SortParameter` | ListProtocol=Search: the query parameter that holds the sort (column:asc or column:desc); blank = sort |
+| `SearchParameter` | ListProtocol=Search: the query parameter that holds the search text; blank = search |
+| `PageBase` | ListProtocol=Search: 0 when the first page is 0, 1 when it is 1; blank = 0 |
+| `ItemsMember` | ListProtocol=Search: the member of the answer that holds the rows of the page; blank = data |
+| `TotalMember` | ListProtocol=Search: the member of the answer that holds the number of rows in all; blank = count |
+| `DefaultSorts` | Table=Column:asc\|desc pairs, comma-separated (TimeSheet=WhenEntered:desc,Holiday=Name): the sort an Angular grid starts with until the person sorts it |
 | `IgnoredColumns` | comma-separated columns to leave out (Tags, or Place.Location): a type CodeGenNew cannot map, such as an array or geometry |
 | `ListingName` | WinUI3_DirectoryListing: the class stem, e.g. Document (DocumentListPage); blank = Document |
 | `ListingFolder` | WinUI3_DirectoryListing: the folder whose files are listed (for example %LocalAppData%/Project/Name); blank = under LocalAppData |

@@ -1,18 +1,64 @@
 <#@ template language="C#" #>
 <#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
 <#
     // ==========================================================================================
     // TS_EssentialBuild_v1.tt
     // Generates: package.json, angular.json, tsconfig.json, tsconfig.app.json and tsconfig.spec.json   (no table, no database: an essentials group; the output folder is the Angular app's own folder)
-    // The build files of an Angular app as `ng new` writes them for Angular 22 (standalone components, the unit-test builder with Vitest, no Karma), plus Angular Material, whose prebuilt theme is a
-    // style of the build, and the dev server's proxy start script. The @angular package ranges follow the project's AngularVersion (default 22); the TypeScript and Vitest ranges are the ones
-    // that release uses, so for an older version check them against its own `ng new`.
+    // The build files of an Angular app as `ng new` writes them (standalone components), plus Angular Material, whose prebuilt theme is a style of the build, and the dev server's proxy start
+    // script. The package ranges, the builders and the test runner follow the project's AngularVersion (default 22) through one table, AngularVersions in Core: Angular 18 and 19 build with
+    // @angular-devkit/build-angular and test with Karma and Jasmine, 20 builds with @angular/build and still tests with Karma, 21 and 22 test with the Vitest unit-test builder.
+    // Full notes: Docs/TemplateNotes/TS_EssentialBuild_v1.md
     // ==========================================================================================
     string dd = new string('-', 2);   // the command-line flags below start with two hyphens
-    int version = Project.AngularVersion ?? 22;
-    string typescript = version >= 22 ? "~6.0.2" : version == 21 ? "~5.9.2" : version == 20 ? "~5.8.2" : "~5.6.2";
+    int version = Project.AngularVersion ?? AngularVersions.Newest;
+    var ng = AngularVersions.For(version);
+    bool karma = ng.Runner == AngularTestRunner.Karma;
+    bool toasts = Project.ToastrToasts;
     string packageName = System.Text.RegularExpressions.Regex.Replace(Project.ProjectName ?? "my-app", "(?<=[a-z0-9])(?=[A-Z])", "-").ToLowerInvariant() + "-angular";
+
+    var dependencies = new List<string>
+    {
+        $"\"@angular/common\": \"^{version}.0.0\"",
+        $"\"@angular/compiler\": \"^{version}.0.0\"",
+        $"\"@angular/core\": \"^{version}.0.0\"",
+        $"\"@angular/forms\": \"^{version}.0.0\"",
+        $"\"@angular/platform-browser\": \"^{version}.0.0\"",
+        $"\"@angular/router\": \"^{version}.0.0\"",
+        "\"rxjs\": \"~7.8.0\"",
+        "\"tslib\": \"^2.3.0\"",
+        $"\"zone.js\": \"{ng.ZoneJs}\"",
+        $"\"@angular/material\": \"{ng.Material}\"",
+        $"\"@angular/cdk\": \"{ng.Cdk}\""
+    };
+    if (ng.AnimationsPackage) dependencies.Add($"\"@angular/animations\": \"^{version}.0.0\"");
+    if (ng.PlatformBrowserDynamic) dependencies.Add($"\"@angular/platform-browser-dynamic\": \"^{version}.0.0\"");
+    if (toasts) dependencies.Add($"\"ngx-toastr\": \"{ng.Toastr}\"");
+
+    var devDependencies = new List<string>
+    {
+        $"\"{ng.BuildPackage}\": \"^{version}.0.0\"",
+        $"\"@angular/cli\": \"^{version}.0.0\"",
+        $"\"@angular/compiler-cli\": \"^{version}.0.0\"",
+        $"\"typescript\": \"{ng.TypeScript}\""
+    };
+    if (karma)
+        devDependencies.AddRange(["\"@types/jasmine\": \"~5.1.0\"", "\"jasmine-core\": \"~5.2.0\"", "\"karma\": \"~6.4.0\"", "\"karma-chrome-launcher\": \"~3.2.0\"",
+            "\"karma-coverage\": \"~2.2.0\"", "\"karma-jasmine\": \"~5.1.0\"", "\"karma-jasmine-html-reporter\": \"~2.1.0\""]);
+    else
+        devDependencies.AddRange(["\"jsdom\": \"^28.0.0\"", "\"vitest\": \"^4.0.8\""]);
+
+    // ngx-toastr 20 names Angular 21 as its peer; the override lets it sit beside a newer Angular
+    string overrides = toasts && ng.ToastrNeedsPeerOverride
+        ? ",\n  \"overrides\": {\n    \"ngx-toastr\": {\n      \"@angular/common\": \"$@angular/common\",\n      \"@angular/core\": \"$@angular/core\"\n    }\n  }"
+        : "";
+    string testBlock = "\"builder\": \"" + ng.TestBuilder + "\""
+        + (karma ? ",\n          \"options\": {\n            \"polyfills\": [\n              \"zone.js\",\n              \"zone.js/testing\"\n            ],\n            \"tsConfig\": \"tsconfig.spec.json\"\n          }" : "");
+    string moduleOptions = ng.ModulePreserve ? "\"module\": \"preserve\"" : "\"module\": \"ES2022\",\n    \"moduleResolution\": \"bundler\"";
+    string specTypes = karma ? "jasmine" : "vitest/globals";
+    string outputPath = ng.OutputPathRequired ? "            \"outputPath\": \"dist/frontend\",\n            \"index\": \"src/index.html\",\n" : "";   // Angular 18 asks for both
+    string toastStyle = toasts ? "              \"node_modules/ngx-toastr/toastr.css\",\n" : "";
 #>
 @@@FILE package.json@@@
 {
@@ -27,26 +73,11 @@
   },
   "private": true,
   "dependencies": {
-    "@angular/common": "^<#= version #>.0.0",
-    "@angular/compiler": "^<#= version #>.0.0",
-    "@angular/core": "^<#= version #>.0.0",
-    "@angular/forms": "^<#= version #>.0.0",
-    "@angular/platform-browser": "^<#= version #>.0.0",
-    "@angular/router": "^<#= version #>.0.0",
-    "rxjs": "~7.8.0",
-    "tslib": "^2.3.0",
-    "zone.js": "~0.16.0",
-    "@angular/material": "^<#= version #>.0.0",
-    "@angular/cdk": "^<#= version #>.0.0"
+    <#= string.Join(",\n    ", dependencies) #>
   },
   "devDependencies": {
-    "@angular/build": "^<#= version #>.0.0",
-    "@angular/cli": "^<#= version #>.0.0",
-    "@angular/compiler-cli": "^<#= version #>.0.0",
-    "jsdom": "^28.0.0",
-    "typescript": "<#= typescript #>",
-    "vitest": "^4.0.8"
-  }
+    <#= string.Join(",\n    ", devDependencies) #>
+  }<#= overrides #>
 }
 @@@FILE angular.json@@@
 {
@@ -65,9 +96,9 @@
       "prefix": "app",
       "architect": {
         "build": {
-          "builder": "@angular/build:application",
+          "builder": "<#= ng.ApplicationBuilder #>",
           "options": {
-            "browser": "src/main.ts",
+<#= outputPath #>            "browser": "src/main.ts",
             "polyfills": [
               "zone.js"
             ],
@@ -80,7 +111,7 @@
             ],
             "styles": [
               "node_modules/@angular/material/prebuilt-themes/azure-blue.css",
-              "src/styles.css"
+<#= toastStyle #>              "src/styles.css"
             ]
           },
           "configurations": {
@@ -108,7 +139,7 @@
           "defaultConfiguration": "production"
         },
         "serve": {
-          "builder": "@angular/build:dev-server",
+          "builder": "<#= ng.DevServerBuilder #>",
           "configurations": {
             "production": {
               "buildTarget": "frontend:build:production"
@@ -120,7 +151,7 @@
           "defaultConfiguration": "development"
         },
         "test": {
-          "builder": "@angular/build:unit-test"
+          <#= testBlock #>
         }
       }
     }
@@ -141,7 +172,7 @@
     "experimentalDecorators": true,
     "importHelpers": true,
     "target": "ES2022",
-    "module": "preserve"
+    <#= moduleOptions #>
   },
   "angularCompilerOptions": {
     "enableI18nLegacyMessageIdFormat": false,
@@ -180,7 +211,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "types": [
-      "vitest/globals"
+      "<#= specTypes #>"
     ]
   },
   "include": [

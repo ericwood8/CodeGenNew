@@ -59,7 +59,7 @@
         string keyTs = keyColumn.IsInt32Column ? "number" : "string";   // a uniqueidentifier key travels as a string
         string stem = baseName.ToLowerInvariant();
         string variable = LowerFirst(baseName);
-        bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name");
+        bool hasName = Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");   // the API's GetByName (CS_Repo) exists for a NOT NULL Name
         // Pagination: getPage always exists, once SP_Search.tt/API_Search.tt do; pagination and searchability are separate concerns.
         // Search: filters is simply empty for a table with no searchable column.
         var filters = Model.SearchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
