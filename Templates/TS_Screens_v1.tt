@@ -38,7 +38,15 @@
     // With Dashboard=true the dashboard is the first screen; with DashboardStrip=true each table that has cards is hosted with them above its screen.
     var stripTables = Project.DashboardStrip ? DashboardPlan.Build(Database, Project).StripTables.Where(name => screens.Any(t => t.TableName.EqualsIgnoreCase(name))).ToHashSet(StringComparer.OrdinalIgnoreCase) : new HashSet<string>();
 
+    // Auth=true: every generated route has the guard of the Auth group, and /login is the sign-in page.
+    bool auth = Project.Auth;
+    string guard = auth ? ", canActivate: [authGuard]" : "";
     Line("import { Routes } from '@angular/router';");
+    if (auth)
+    {
+        Line($"import {{ LoginComponent }} from './{componentsFolder}/login/login.component';");
+        Line($"import {{ authGuard }} from './{Project.ServicesFolder}/auth.guard';");
+    }
     if (Project.Dashboard)
         Line($"import {{ DashboardComponent }} from './{componentsFolder}/dashboard/dashboard.component';");
     if (stripTables.Count > 0)
@@ -59,11 +67,13 @@
     Line("];");
     Line();
     Line("export const routes: Routes = [");
+    if (auth)
+        Line("  { path: 'login', component: LoginComponent },");
     Line("  { path: '', pathMatch: 'full', redirectTo: screens[0].path },");
     if (stripTables.Count > 0)
-        Line("  ...screens.map((s) => (s.strip ? { path: s.path, component: ScreenWithStripComponent, data: { table: s.strip, screen: s.component } } : { path: s.path, component: s.component })),");
+        Line("  ...screens.map((s) => (s.strip ? { path: s.path, component: ScreenWithStripComponent, data: { table: s.strip, screen: s.component }" + guard + " } : { path: s.path, component: s.component" + guard + " })),");
     else
-        Line("  ...screens.map((s) => ({ path: s.path, component: s.component })),");
+        Line("  ...screens.map((s) => ({ path: s.path, component: s.component" + guard + " })),");
     Line("];");
     Write(sb.ToString());
 #>

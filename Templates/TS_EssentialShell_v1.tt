@@ -8,8 +8,10 @@
     // The Angular shell: the page, the bootstrap, and the root component with the menu (the hamburger button opens and closes it, the choice is remembered in the browser) around the router outlet.
     // The screens (route, menu text) are imported from app.routes.ts, which TS_Screens writes from the project's Screens setting. The standalone flag, the eager strategy's name and the
     // control flow follow the project's AngularVersion. Setting: ProjectTitle (the page title).
+    // Auth=true: the menu and the hamburger show only to a signed-in person, and the top bar shows the user's name with a Sign out button (the Auth group's AuthService).
     // ==========================================================================================
     bool controlFlow = Project.AngularControlFlow;
+    bool auth = Project.Auth;
     string imports = "RouterOutlet, RouterLink, RouterLinkActive" + (controlFlow ? "" : ", NgFor, NgIf");
     string html = @"<div class=""app"" [class.menu-closed]=""!menuOpen"">
   <nav class=""rail"" *ngIf=""menuOpen"">
@@ -18,6 +20,23 @@
   <!-- The router puts the screen next to the outlet, not inside it: the wrapper is what sits in the second grid column. -->
   <div class=""screen"">
     <button type=""button"" class=""hamburger"" aria-label=""Toggle the menu"" [attr.aria-expanded]=""menuOpen"" (click)=""toggleMenu()"">&#9776;</button>
+    <router-outlet />
+  </div>
+</div>
+";
+    if (auth)
+        html = @"<div class=""app"" [class.menu-closed]=""!menuOpen || !auth.isLoggedIn()"">
+  <nav class=""rail"" *ngIf=""menuOpen && auth.isLoggedIn()"">
+    <a *ngFor=""let screen of screens"" [routerLink]=""'/' + screen.path"" routerLinkActive=""active"">{{ screen.label }}</a>
+  </nav>
+  <!-- The router puts the screen next to the outlet, not inside it: the wrapper is what sits in the second grid column. -->
+  <div class=""screen"">
+    <div class=""topbar"" *ngIf=""auth.isLoggedIn()"">
+      <button type=""button"" class=""hamburger"" aria-label=""Toggle the menu"" [attr.aria-expanded]=""menuOpen"" (click)=""toggleMenu()"">&#9776;</button>
+      <span class=""spacer""></span>
+      <span class=""user"">{{ auth.user()?.name }}</span>
+      <button type=""button"" class=""signout"" (click)=""auth.logout()"">Sign out</button>
+    </div>
     <router-outlet />
   </div>
 </div>
@@ -46,12 +65,15 @@ import { App } from './app/app';
 bootstrapApplication(App, appConfig)
   .catch((err) => console.error(err));
 @@@FILE src/app/app.ts@@@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component<#= auth ? ", inject" : "" #> } from '@angular/core';
 <# if (!controlFlow) { #>
 import { NgFor, NgIf } from '@angular/common';
 <# } #>
 import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { screens } from './app.routes';
+<# if (auth) { #>
+import { AuthService } from './<#= Project.ServicesFolder #>/auth.service';
+<# } #>
 
 // The menu opens and closes with the hamburger button (like the WinUI3 pane); the choice is remembered in the browser.
 function readMenuOpen(): boolean {
@@ -72,6 +94,9 @@ function readMenuOpen(): boolean {
 })
 export class App {
   protected readonly screens = screens;
+<# if (auth) { #>
+  protected readonly auth = inject(AuthService);
+<# } #>
   protected menuOpen = readMenuOpen();
 
   protected toggleMenu(): void {
@@ -89,3 +114,10 @@ export class App {
 .app.menu-closed { grid-template-columns: 1fr; }
 .hamburger { margin: 8px 24px 0; padding: 4px 10px; font-size: 20px; line-height: 1; background: none; border: 1px solid transparent; border-radius: 4px; color: inherit; cursor: pointer; }
 .hamburger:hover { background: #8883; }
+<# if (auth) { #>
+.topbar { display: flex; align-items: center; gap: 12px; padding: 0 24px 0 0; }
+.topbar .hamburger { margin: 8px 24px 0; }
+.topbar .spacer { flex: 1; }
+.topbar .signout { padding: 4px 10px; background: none; border: 1px solid #8886; border-radius: 4px; color: inherit; cursor: pointer; }
+.topbar .signout:hover { background: #8883; }
+<# } #>

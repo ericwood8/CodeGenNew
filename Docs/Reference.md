@@ -206,6 +206,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `PagesFolder` | React folder for the pages; blank = pages |
 | `DbSetNames` | Plural = Customers, blank = the table name (Customer) |
 | `AngularVersion` | major version of Angular, e.g. 22; blank = output that every version from 18 accepts |
+| `Auth` | Angular: the app signs in. Writes the Auth group (auth service, token interceptor, route guard, login page; sessionStorage), adds the interceptor to app.config.ts, a guard on every generated route and the user name with Sign out to the shell. Needs POST api/auth/login answering { token, expiresUtc, user: { name } }. Regenerate the project; essentials already written are kept (use --replace for the shell and config). |
 | `Toasts` | Angular: ngx-toastr shows the API's refusals as toasts (the package is added to package.json and provideToastr to app.config.ts); blank = the browser's alert and confirm dialogs, no package |
 | `ListProtocol` | Angular: Columns (what API_Search writes: GET <route>/search with a parameter per column) or Search (an existing API: GET <route>?pageIndex&pageSize&sort=name:desc&search=text, one search box); blank = Columns |
 | `PageParameter` | ListProtocol=Search: the query parameter that holds the page; blank = pageIndex (pageNumber with PageBase 1) |

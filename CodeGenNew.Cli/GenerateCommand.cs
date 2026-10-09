@@ -87,7 +87,7 @@ public static class GenerateCommand
                 all = all.Where(g => options.Groups.Contains(g.Name, StringComparer.OrdinalIgnoreCase)).ToList();
             }
             else
-                all = all.Where(g => g.DefaultOn).ToList();
+                all = all.Where(g => EssentialsCatalog.IsOnFor(g, project)).ToList();
             groups.AddRange(all);
         }
         if (groups.Count == 0)

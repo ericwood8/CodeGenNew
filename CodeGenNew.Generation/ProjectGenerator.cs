@@ -156,7 +156,7 @@ public static class ProjectGenerator
             if (options.EssentialsGroups is { Count: > 0 } named)
                 groups = groups.Where(g => named.Contains(g.Name, StringComparer.OrdinalIgnoreCase)).ToList();
             else
-                groups = groups.Where(g => g.DefaultOn).ToList();
+                groups = groups.Where(g => EssentialsCatalog.IsOnFor(g, project)).ToList();
             progress?.Invoke("Essentials...");
             report.Essentials = await EssentialsCatalog.GenerateAsync(groups, project, options.OutputDirectory, options.ReplaceEssentials, options.DryRun, options.WithDiff, cancellationToken);
         }

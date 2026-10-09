@@ -120,6 +120,7 @@ public static class DefaultAssetSeeder
         "TSX_EssentialBuild_v1.tt", "TSX_EssentialBuild_v1.tt.config",
         "TS_EssentialShell_v1.tt", "TS_EssentialShell_v1.tt.config",
         "TS_EssentialConfig_v1.tt", "TS_EssentialConfig_v1.tt.config",
+        "TS_EssentialAuth_v1.tt", "TS_EssentialAuth_v1.tt.config",
         "TS_EssentialCrud_v1.tt", "TS_EssentialCrud_v1.tt.config",
         "TS_EssentialStyles_v1.tt", "TS_EssentialStyles_v1.tt.config",
         "API_EssentialProgram_v1.tt", "API_EssentialProgram_v1.tt.config",

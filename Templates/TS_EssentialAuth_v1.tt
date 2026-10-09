@@ -1,0 +1,437 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TS_EssentialAuth_v1.tt
+    // Generates: the sign-in of an Angular app   (no table, no database: an essentials group, not ticked by default; Auth=true in the project turns it on)
+    //   <ServicesFolder>/auth.service.ts      the session (token and user in sessionStorage, so the sign-in ends with the tab), login(), logout(), user, isLoggedIn;
+    //   <ServicesFolder>/auth.interceptor.ts  adds Authorization: Bearer to every call to api/ and signs the person out when the API answers 401;
+    //   <ServicesFolder>/auth.guard.ts        sends a person who is not signed in to /login;
+    //   <ModelsFolder>/auth.ts                AuthUser and LoginResponse;
+    //   <ComponentsFolder>/login/             the sign-in page.
+    // The API answers POST api/auth/login with { token, expiresUtc, user: { name, ... } } (a 401 for a wrong password, a 429 for too many tries). The user table, password hashing and the first
+    // administrator stay hand-written. With Auth=true the Config group adds the interceptor, TS_Screens puts the guard on every generated route and the Shell shows the user with Sign out.
+    // Needs nothing but Angular and RxJS. Full notes: Docs/TemplateNotes/TS_EssentialAuth_v1.md
+    // ==========================================================================================
+    string servicesFolder = Project.ServicesFolder;
+    string modelsFolder = Project.ModelsFolder;
+    string componentsFolder = Project.ComponentsFolder;
+    string storageKey = (Project.ProjectName ?? "app").ToLowerInvariant() + ".auth";
+    bool controlFlow = Project.AngularControlFlow;
+    string loginHtml = Project.AdaptAngularHtml(@"<div class=""login-container"">
+  <h1>Sign in</h1>
+  <form (ngSubmit)=""signIn()"" #loginForm=""ngForm"">
+    <div class=""form-group"">
+      <label for=""userName"">User name</label>
+      <input id=""userName"" name=""userName"" type=""text"" [(ngModel)]=""userName"" autocomplete=""username"" required autofocus>
+    </div>
+    <div class=""form-group"">
+      <label for=""password"">Password</label>
+      <input id=""password"" name=""password"" type=""password"" [(ngModel)]=""password"" autocomplete=""current-password"" required>
+    </div>
+    <p class=""error"" role=""alert"" *ngIf=""message"">{{ message }}</p>
+    <button type=""submit"" class=""btn"" [disabled]=""busy || !loginForm.form.valid"">Sign in</button>
+  </form>
+</div>
+");
+#>
+@@@FILE src/app/<#= modelsFolder #>/auth.ts@@@
+/** Who is signed in. The API sends at least the name; anything else it sends (a role, an employee id) is kept and can be read as `user['role']`. */
+export interface AuthUser {
+  name: string;
+  role?: string;
+  [key: string]: unknown;
+}
+
+/** What POST api/auth/login answers. */
+export interface LoginResponse {
+  token: string;
+  /** When the token stops being good (UTC, ISO 8601); a session that is past it is dropped on the next visit. */
+  expiresUtc?: string;
+  user: AuthUser;
+}
+@@@FILE src/app/<#= servicesFolder #>/auth.service.ts@@@
+import { Injectable, computed, inject, signal } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Router } from '@angular/router';
+import { Observable, tap } from 'rxjs';
+import { AuthUser, LoginResponse } from '../<#= modelsFolder #>/auth';
+
+const storageKey = '<#= storageKey #>';
+
+/** The session saved by an earlier visit of this tab, unless it has expired or cannot be read. */
+function restore(): LoginResponse | null {
+  try {
+    const saved = sessionStorage.getItem(storageKey);
+    if (!saved) { return null; }
+    const response = JSON.parse(saved) as LoginResponse;
+    if (response.expiresUtc && new Date(response.expiresUtc).getTime() <= Date.now()) {
+      sessionStorage.removeItem(storageKey);
+      return null;
+    }
+    return response.token ? response : null;
+  } catch {
+    return null;
+  }
+}
+
+@Injectable({ providedIn: 'root' })
+export class AuthService {
+  private readonly http = inject(HttpClient);
+  private readonly router = inject(Router);
+  private readonly session = signal<LoginResponse | null>(restore());
+
+  readonly user = computed<AuthUser | null>(() => this.session()?.user ?? null);
+  readonly isLoggedIn = computed(() => this.session() !== null);
+
+  get token(): string | null {
+    return this.session()?.token ?? null;
+  }
+
+  login(userName: string, password: string): Observable<LoginResponse> {
+    return this.http.post<LoginResponse>('api/auth/login', { userName, password }).pipe(
+      tap((response) => {
+        this.session.set(response);
+        // sessionStorage: the sign-in ends when the tab closes
+        try { sessionStorage.setItem(storageKey, JSON.stringify(response)); } catch { /* storage unavailable: the sign-in lasts until the page is reloaded */ }
+      })
+    );
+  }
+
+  logout(): void {
+    this.session.set(null);
+    try { sessionStorage.removeItem(storageKey); } catch { /* nothing saved */ }
+    this.router.navigate(['/login']);
+  }
+}
+@@@FILE src/app/<#= servicesFolder #>/auth.interceptor.ts@@@
+import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
+import { inject } from '@angular/core';
+import { catchError, throwError } from 'rxjs';
+import { AuthService } from './auth.service';
+
+/** Sends the token with every call to the API, and signs the person out when the API says it is no longer good. */
+export const authInterceptor: HttpInterceptorFn = (request, next) => {
+  const auth = inject(AuthService);
+  const isApiCall = request.url.startsWith('api/');
+  const token = auth.token;
+
+  if (isApiCall && token) {
+    request = request.clone({ setHeaders: { Authorization: `Bearer ${token}` } });
+  }
+
+  return next(request).pipe(
+    catchError((error: HttpErrorResponse) => {
+      if (error.status === 401 && isApiCall && !request.url.endsWith('/auth/login')) {
+        auth.logout();
+      }
+      return throwError(() => error);
+    })
+  );
+};
+@@@FILE src/app/<#= servicesFolder #>/auth.guard.ts@@@
+import { inject } from '@angular/core';
+import { CanActivateFn, Router } from '@angular/router';
+import { AuthService } from './auth.service';
+
+/** Lets a signed-in person through; anyone else goes to the sign-in page. */
+export const authGuard: CanActivateFn = () => {
+  const auth = inject(AuthService);
+  return auth.isLoggedIn() ? true : inject(Router).createUrlTree(['/login']);
+};
+@@@FILE src/app/<#= componentsFolder #>/login/login.component.ts@@@
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+<# if (!controlFlow) { #>
+import { NgIf } from '@angular/common';
+<# } #>
+import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
+import { AuthService } from '../../<#= servicesFolder #>/auth.service';
+
+@Component({
+  selector: 'app-login',
+<# if (Project.AngularStandaloneFlag) { #>
+  standalone: true,
+<# } #>
+  changeDetection: ChangeDetectionStrategy.<#= Project.AngularEagerStrategy #>, // plain properties change inside subscribe callbacks
+  imports: [FormsModule<#= controlFlow ? "" : ", NgIf" #>],
+  templateUrl: './login.component.html',
+  styleUrl: './login.component.css'
+})
+export class LoginComponent {
+  private readonly auth = inject(AuthService);
+  private readonly router = inject(Router);
+
+  userName = '';
+  password = '';
+  message = '';
+  busy = false;
+
+  signIn(): void {
+    this.message = '';
+    this.busy = true;
+    this.auth.login(this.userName, this.password).subscribe({
+      next: () => {
+        this.busy = false;
+        this.router.navigate(['/']);
+      },
+      error: (error) => {
+        this.busy = false;
+        this.password = '';
+        if (error.status === 429) { this.message = 'Too many tries. Wait a minute and try again.'; }
+        else if (error.status === 401) { this.message = 'The user name or password is not right.'; }
+        else { this.message = 'Could not sign in right now.'; }
+      }
+    });
+  }
+}
+@@@FILE src/app/<#= componentsFolder #>/login/login.component.html@@@
+<#= loginHtml #>@@@FILE src/app/<#= componentsFolder #>/login/login.component.css@@@
+.login-container { max-width: 360px; margin: 64px auto; padding: 0 16px; }
+.login-container .form-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.login-container .error { color: #b00020; margin: 0 0 12px; }
+@@@FILE src/app/<#= servicesFolder #>/auth.service.spec.ts@@@
+import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { Router } from '@angular/router';
+import { AuthService } from './auth.service';
+
+const storageKey = '<#= storageKey #>';
+const response = { token: 'abc', expiresUtc: '2999-01-01T00:00:00Z', user: { name: 'Pat' } };
+
+describe('AuthService', () => {
+  let http: HttpTestingController;
+  let navigated: unknown[][];
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    navigated = [];
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting(), { provide: Router, useValue: { navigate: (commands: unknown[]) => { navigated.push(commands); return Promise.resolve(true); } } }]
+    });
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('starts signed out', () => {
+    const auth = TestBed.inject(AuthService);
+    expect(auth.isLoggedIn()).toBe(false);
+    expect(auth.token).toBeNull();
+    expect(auth.user()).toBeNull();
+  });
+
+  it('signs in: posts the name and password, keeps the token and the user, and remembers them for the tab', () => {
+    const auth = TestBed.inject(AuthService);
+    auth.login('pat', 'secret').subscribe();
+    const request = http.expectOne('api/auth/login');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ userName: 'pat', password: 'secret' });
+    request.flush(response);
+
+    expect(auth.isLoggedIn()).toBe(true);
+    expect(auth.token).toBe('abc');
+    expect(auth.user()?.name).toBe('Pat');
+    expect(JSON.parse(sessionStorage.getItem(storageKey) ?? 'null').token).toBe('abc');
+  });
+
+  it('stays signed out when the API refuses the sign-in', () => {
+    const auth = TestBed.inject(AuthService);
+    auth.login('pat', 'wrong').subscribe({ error: () => undefined });
+    http.expectOne('api/auth/login').flush(null, { status: 401, statusText: 'Unauthorized' });
+
+    expect(auth.isLoggedIn()).toBe(false);
+    expect(sessionStorage.getItem(storageKey)).toBeNull();
+  });
+
+  it('signs out: forgets the session and goes to the sign-in page', () => {
+    const auth = TestBed.inject(AuthService);
+    auth.login('pat', 'secret').subscribe();
+    http.expectOne('api/auth/login').flush(response);
+
+    auth.logout();
+
+    expect(auth.isLoggedIn()).toBe(false);
+    expect(sessionStorage.getItem(storageKey)).toBeNull();
+    expect(navigated).toEqual([['/login']]);
+  });
+
+  it('picks up a session saved by an earlier visit of the tab', () => {
+    sessionStorage.setItem(storageKey, JSON.stringify(response));
+    const auth = TestBed.inject(AuthService);
+
+    expect(auth.isLoggedIn()).toBe(true);
+    expect(auth.user()?.name).toBe('Pat');
+  });
+
+  it('drops a session that has expired or cannot be read', () => {
+    sessionStorage.setItem(storageKey, JSON.stringify({ ...response, expiresUtc: '2000-01-01T00:00:00Z' }));
+    expect(TestBed.inject(AuthService).isLoggedIn()).toBe(false);
+    expect(sessionStorage.getItem(storageKey)).toBeNull();
+
+    TestBed.resetTestingModule();
+    sessionStorage.setItem(storageKey, '{not json');
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), { provide: Router, useValue: {} }] });
+    expect(TestBed.inject(AuthService).isLoggedIn()).toBe(false);
+  });
+});
+@@@FILE src/app/<#= servicesFolder #>/auth.interceptor.spec.ts@@@
+import { TestBed } from '@angular/core/testing';
+import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { Router } from '@angular/router';
+import { authInterceptor } from './auth.interceptor';
+
+const storageKey = '<#= storageKey #>';
+
+describe('authInterceptor', () => {
+  let http: HttpTestingController;
+  let client: HttpClient;
+  let navigated: unknown[][];
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    sessionStorage.setItem(storageKey, JSON.stringify({ token: 'abc', user: { name: 'Pat' } }));
+    navigated = [];
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(withInterceptors([authInterceptor])),
+        provideHttpClientTesting(),
+        { provide: Router, useValue: { navigate: (commands: unknown[]) => { navigated.push(commands); return Promise.resolve(true); } } }
+      ]
+    });
+    http = TestBed.inject(HttpTestingController);
+    client = TestBed.inject(HttpClient);
+  });
+
+  afterEach(() => http.verify());
+
+  it('sends the token with a call to the API', () => {
+    client.get('api/things').subscribe();
+    expect(http.expectOne('api/things').request.headers.get('Authorization')).toBe('Bearer abc');
+  });
+
+  it('does not send the token anywhere else', () => {
+    client.get('https://example.com/other').subscribe();
+    expect(http.expectOne('https://example.com/other').request.headers.has('Authorization')).toBe(false);
+  });
+
+  it('signs the person out when the API answers 401', () => {
+    client.get('api/things').subscribe({ error: () => undefined });
+    http.expectOne('api/things').flush(null, { status: 401, statusText: 'Unauthorized' });
+
+    expect(sessionStorage.getItem(storageKey)).toBeNull();
+    expect(navigated).toEqual([['/login']]);
+  });
+
+  it('leaves a refused sign-in to the login page', () => {
+    client.post('api/auth/login', {}).subscribe({ error: () => undefined });
+    http.expectOne('api/auth/login').flush(null, { status: 401, statusText: 'Unauthorized' });
+
+    expect(navigated).toEqual([]);
+  });
+
+  it('passes other errors on unchanged', () => {
+    let status = 0;
+    client.get('api/things').subscribe({ error: (error) => { status = error.status; } });
+    http.expectOne('api/things').flush(null, { status: 500, statusText: 'Server Error' });
+
+    expect(status).toBe(500);
+    expect(navigated).toEqual([]);
+  });
+});
+@@@FILE src/app/<#= servicesFolder #>/auth.guard.spec.ts@@@
+import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { ActivatedRouteSnapshot, RouterStateSnapshot, Router } from '@angular/router';
+import { authGuard } from './auth.guard';
+
+const storageKey = '<#= storageKey #>';
+const login = { target: '/login' };
+
+describe('authGuard', () => {
+  const run = () => TestBed.runInInjectionContext(() => authGuard({} as ActivatedRouteSnapshot, {} as RouterStateSnapshot));
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting(), { provide: Router, useValue: { createUrlTree: (commands: string[]) => ({ target: commands[0] }) } }]
+    });
+  });
+
+  it('sends a person who is not signed in to the sign-in page', () => {
+    expect(run()).toEqual(login as never);
+  });
+
+  it('lets a signed-in person through', () => {
+    sessionStorage.setItem(storageKey, JSON.stringify({ token: 'abc', user: { name: 'Pat' } }));
+    expect(run()).toBe(true);
+  });
+});
+@@@FILE src/app/<#= componentsFolder #>/login/login.component.spec.ts@@@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { Router } from '@angular/router';
+import { LoginComponent } from './login.component';
+
+describe('LoginComponent', () => {
+  let component: LoginComponent;
+  let fixture: ComponentFixture<LoginComponent>;
+  let http: HttpTestingController;
+  let navigated: unknown[][];
+
+  beforeEach(async () => {
+    sessionStorage.clear();
+    navigated = [];
+    await TestBed.configureTestingModule({
+      imports: [LoginComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting(), { provide: Router, useValue: { navigate: (commands: unknown[]) => { navigated.push(commands); return Promise.resolve(true); } } }]
+    }).compileComponents();
+    http = TestBed.inject(HttpTestingController);
+    fixture = TestBed.createComponent(LoginComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  });
+
+  afterEach(() => http.verify());
+
+  const submit = (status: number) => {
+    component.userName = 'pat';
+    component.password = 'secret';
+    component.signIn();
+    const request = http.expectOne('api/auth/login');
+    if (status === 200) { request.flush({ token: 'abc', user: { name: 'Pat' } }); }
+    else { request.flush(null, { status, statusText: 'x' }); }
+  };
+
+  it('should create', () => {
+    expect(component).toBeTruthy();
+  });
+
+  it('goes to the first screen after a sign-in', () => {
+    submit(200);
+    expect(component.busy).toBe(false);
+    expect(navigated).toEqual([['/']]);
+  });
+
+  it('says the name or password is wrong on a 401 and clears the password', () => {
+    submit(401);
+    expect(component.message).toBe('The user name or password is not right.');
+    expect(component.password).toBe('');
+    expect(navigated).toEqual([]);
+  });
+
+  it('says to wait on a 429', () => {
+    submit(429);
+    expect(component.message).toBe('Too many tries. Wait a minute and try again.');
+  });
+
+  it('has a general message for anything else', () => {
+    submit(500);
+    expect(component.message).toBe('Could not sign in right now.');
+  });
+});

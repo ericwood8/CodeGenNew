@@ -7,17 +7,22 @@
     // Generates: src/app/app.config.ts and proxy.conf.json   (no table, no database: an essentials group)
     // The application config (HttpClient for every generated service, the router with the routes TS_Screens writes) and the dev server's proxy, which forwards /api to the API on the project's
     // ApiPort (default 5080). The zone-based change detection is written for every version; a zoneless app removes that line.
+    // Auth=true registers the token interceptor of the Auth group (provideHttpClient(withInterceptors([authInterceptor]))).
     // Toasts=ngx-toastr adds provideToastr() (and, before Angular 21, the animations that version of the package draws with).
     // ==========================================================================================
     bool toasts = Project.ToastrToasts;
+    bool auth = Project.Auth;
     var ng = AngularVersions.For(Project.AngularVersion ?? AngularVersions.Newest);   // provideBrowserGlobalErrorListeners exists from Angular 20
     bool toastAnimations = toasts && ng.Version < 21;
 #>
 @@@FILE src/app/app.config.ts@@@
 import { ApplicationConfig, <# if (ng.GlobalErrorListeners) { #>provideBrowserGlobalErrorListeners, <# } #>provideZoneChangeDetection } from '@angular/core';
-import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClient<#= auth ? ", withInterceptors" : "" #> } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
 import { routes } from './app.routes';
+<# if (auth) { #>
+import { authInterceptor } from './<#= Project.ServicesFolder #>/auth.interceptor';
+<# } #>
 <# if (toastAnimations) { #>
 import { provideAnimations } from '@angular/platform-browser/animations';
 <# } #>
@@ -32,7 +37,7 @@ export const appConfig: ApplicationConfig = {
     provideBrowserGlobalErrorListeners(),
 <# } #>
     provideZoneChangeDetection({ eventCoalescing: true }),
-    provideHttpClient(),
+    provideHttpClient(<#= auth ? "withInterceptors([authInterceptor])" : "" #>),
 <# if (toastAnimations) { #>
     provideAnimations(),
 <# } #>

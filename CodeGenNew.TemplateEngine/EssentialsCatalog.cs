@@ -33,6 +33,10 @@ public static class EssentialsCatalog
         return Stacks.Select(s => s.Stack).FirstOrDefault(s => s.EqualsIgnoreCase(wanted));
     }
 
+    /// <summary> Whether a run that names no groups writes this one: it is ticked by default, or a project setting turns it on (<c>Auth=true</c> adds the Auth group). </summary>
+    public static bool IsOnFor(EssentialsGroup group, ProjectSettings project) =>
+        group.DefaultOn || project.ImpliedEssentialsGroups.Contains(group.Name, StringComparer.OrdinalIgnoreCase);
+
     /// <summary> The groups of one stack, in a stable order (the template's name). </summary>
     public static List<EssentialsGroup> Groups(string templatesDirectory, string stack) => All(templatesDirectory)
         .Where(g => g.Stack.EqualsIgnoreCase(stack)).ToList();

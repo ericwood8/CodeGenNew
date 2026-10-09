@@ -369,7 +369,7 @@ public class TemplateCatalogTests
         Assert.AreEqual(17, groups["SP"]);
         Assert.AreEqual(14, groups["API"]);
         Assert.AreEqual(20, groups["CS"]);
-        Assert.AreEqual(16, groups["TS"]);
+        Assert.AreEqual(17, groups["TS"]);
         Assert.AreEqual(10, groups["WinUI3"]);
         Assert.AreEqual(2, groups["FS"]);
         Assert.AreEqual(5, groups["MD"]);

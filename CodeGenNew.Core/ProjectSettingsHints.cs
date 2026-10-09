@@ -7,7 +7,7 @@ public static class ProjectSettingsHints
     /// <summary> The settings that are true or false: the settings screen shows a check box for each. </summary>
     public static IReadOnlySet<string> BooleanKeys { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "Dashboard", "DashboardStrip"
+        "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "Dashboard", "DashboardStrip", "Auth"
     };
 
     /// <summary> The caption of a setting with the words apart: "DashboardStrip" -> "Dashboard Strip". </summary>
@@ -85,6 +85,7 @@ public static class ProjectSettingsHints
         ["ItemsMember"] = "ListProtocol=Search: the member of the answer that holds the rows of the page; blank = data",
         ["TotalMember"] = "ListProtocol=Search: the member of the answer that holds the number of rows in all; blank = count",
         ["DefaultSorts"] = "Table=Column:asc|desc pairs, comma-separated (TimeSheet=WhenEntered:desc,Holiday=Name): the sort an Angular grid starts with until the person sorts it",
+        ["Auth"] = "Angular: the app signs in. Writes the Auth group (auth service, token interceptor, route guard, login page; sessionStorage), adds the interceptor to app.config.ts, a guard on every generated route and the user name with Sign out to the shell. Needs POST api/auth/login answering { token, expiresUtc, user: { name } }. Regenerate the project; essentials already written are kept (use --replace for the shell and config).",
         ["Toasts"] = "Angular: ngx-toastr shows the API's refusals as toasts (the package is added to package.json and provideToastr to app.config.ts); blank = the browser's alert and confirm dialogs, no package",
         ["IgnoredColumns"] = "comma-separated columns to leave out (Tags, or Place.Location): a type CodeGenNew cannot map, such as an array or geometry",
         ["ListingName"] = "WinUI3_DirectoryListing: the class stem, e.g. Document (DocumentListPage); blank = Document",
