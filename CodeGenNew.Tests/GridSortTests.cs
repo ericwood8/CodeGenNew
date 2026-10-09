@@ -137,7 +137,7 @@ public class GridSortTests
         Expect.Contains(tsx, "<SortHeader label=\"Description\" column=\"Description\" sort={sort} onSort={sortBy} />");
         Expect.DoesNotContain(tsx, "column=\"Notes\"");
         Expect.Contains(tsx, "const [sort, setSort] = useState<GridSort | null>(() => loadSort(gridKey, sortableColumns));");
-        Expect.Contains(tsx, "sortValue: GridSort | null = sort)");   // paging and searching read the current sort
+        Expect.Contains(tsx, "sortValue: GridSort | null = sort, sizeValue: number = pageSize)");   // paging and searching read the current sort and page size
         Expect.Contains(tsx, "load(1, filters, next);");             // a click goes back to page 1 with the new sort
         Expect.Contains(tsx, "load(1, filters, null);");             // Clear sort
         Expect.Contains(tsx, "<GridMenu sort={sort} onClear={clearSort}>");

@@ -161,7 +161,8 @@ public class AccessModeTests
         string ef = await Render("CS_Repo_v1.tt", Customer());
         Expect.Contains(ef, "var query = CustomerSearchQuery.Filter(_dbSet, accountNumber, name, email);");
         Expect.Contains(ef, "int totalCount = await query.CountAsync();");
-        Expect.Contains(ef, ".Skip((Math.Max(pageNumber, 1) - 1) * size).Take(size).ToListAsync();");
+        Expect.Contains(ef, "int size = Math.Clamp(pageSize, 1, 1000);");
+        Expect.Contains(ef, ".Skip((Math.Clamp(pageNumber, 1, int.MaxValue / size) - 1) * size).Take(size).ToListAsync();");
         Expect.Contains(ef, "_dbSet.Add(copy);\n        await _context.SaveChangesAsync();\n        return copy.CustomerId;");
         Expect.DoesNotContain(ef, "FromSqlRaw");
         Expect.DoesNotContain(ef, "ExecuteSqlRawAsync");
@@ -182,13 +183,24 @@ public class AccessModeTests
 
         Expect.Contains(ef, "using Acme.App.Repositories;");
         Expect.DoesNotContain(ef, "using Microsoft.Data.SqlClient;");
-        Expect.Contains(ef, "var query = CustomerSearchQuery.Filter(context.Set<Customer>(), accountNumber, name, email);");
+        Expect.Contains(ef, "var query = CustomerSearchQuery.Filter(context.Set<Customer>().AsNoTracking(), accountNumber, name, email);");
         Expect.Contains(ef, "var items = await CustomerSearchQuery.Sort(query, sortColumn, sortDescending)");
         Expect.DoesNotContain(ef, "SqlQueryRaw");
+        Expect.Contains(ef, "context.Set<Customer>().AsNoTracking()");
+        Expect.Contains(ef, "pageSize = Math.Clamp(pageSize, 1, MaxPageSize);");
 
         string routines = await Render("API_Search_v1.tt", Customer(SqlDialect.SqlServer));
         Expect.Contains(routines, "using Microsoft.Data.SqlClient;");
         Expect.Contains(routines, "EXEC [dbo].[Customer_Search]");
+        Expect.Contains(routines, ".AsNoTracking()   // the rows go straight to JSON: nothing to track");
+    }
+
+    [TestMethod]
+    public async Task The_repository_search_keeps_the_page_inside_what_the_database_accepts()
+    {
+        string routines = await Render("CS_Repo_v1.tt", Customer(SqlDialect.SqlServer));
+        Expect.Contains(routines, "pageSize = Math.Clamp(pageSize, 1, 1000);");
+        Expect.Contains(routines, "pageNumber = Math.Clamp(pageNumber, 1, int.MaxValue / pageSize);");
     }
 
     private static TableModel Junction(SqlDialect dialect) => Sample.Table("CustomerTag",

@@ -82,10 +82,17 @@
 #>
 namespace <#= apiNamespace #>;
 
-<#= usingLines #>using static Microsoft.AspNetCore.Http.TypedResults;
+<#= usingLines #>using Microsoft.EntityFrameworkCore;
+using static Microsoft.AspNetCore.Http.TypedResults;
+
+/// <summary> One page of <#= entity #> rows, in the shape the search endpoints answer with. </summary>
+public record <#= entity #>Page(IReadOnlyList<<#= entity #>> Items, int Page, int PageSize, int TotalCount, int TotalPages);
 
 public class <#= entity #>Api<T> : BaseApi<T> where T : class
 {
+    // the most rows one page may hold; a larger pageSize is lowered to this
+    private const int MaxPageSize = 1000;
+
     public override void Register(WebApplication app)
     {
         BreakIntoStrings(out string singular, out string plural, out string _apiSubDir);
@@ -95,6 +102,8 @@ public class <#= entity #>Api<T> : BaseApi<T> where T : class
        .WithName($"Get{plural}")
        .WithOpenApi()
        .Produces<IEnumerable<T>>()
+       .Produces<<#= entity #>Page>()
+       .ProducesProblem(400)
        .ProducesProblem(404)
        .ProducesProblem(500);
 
@@ -158,8 +167,29 @@ public class <#= entity #>Api<T> : BaseApi<T> where T : class
 #>
     }
 
-    private static async Task<IResult> GetAll([FromServices] <#= contextType #> context)
+    /// <summary>
+    /// Every row as a plain array (drop-downs and small tables use this), or, when pageNumber or pageSize is given, one page of them with the total:
+    /// the table's route with pageNumber=2 and pageSize=50 in the query string. The page is ordered like the array and by the key, so pages do not overlap; a big table is read a page at a time.
+    /// </summary>
+    private static async Task<IResult> GetAll([FromServices] <#= contextType #> context, [FromQuery] int? pageNumber = null, [FromQuery] int? pageSize = null)
     {
+        if (pageNumber is not null || pageSize is not null)
+        {
+            // 0 or less is an error inside the database (FETCH NEXT 0 ROWS) and a huge size reads the whole table: keep it between 1 and MaxPageSize
+            int size = Math.Clamp(pageSize ?? 100, 1, MaxPageSize);
+            int number = pageNumber ?? 1;
+            if (number < 1)
+                return Results.Problem(statusCode: 400, title: "Invalid page", detail: "pageNumber must be 1 or greater.");
+            if ((long)(number - 1) * size > int.MaxValue)
+                return Results.Problem(statusCode: 400, title: "Invalid page", detail: "pageNumber is too large for that pageSize.");
+
+            IQueryable<<#= entity #>> all = context.Set<<#= entity #>>().AsNoTracking();
+            int totalCount = await all.CountAsync();
+            var page = await <#= sortColumn is not null ? "all.OrderByDescending(c => c." + sortColumn.Name + ").ThenBy(c => c." + keyProperty + ")" : "all.OrderBy(c => c." + keyProperty + ")" #>
+                .Skip((number - 1) * size).Take(size).ToListAsync();
+            return Ok(new <#= entity #>Page(page, number, size, totalCount, totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)size)));
+        }
+
         <#= entity #>Repo repo = new(context);
 <#
         if (sortColumn is not null)

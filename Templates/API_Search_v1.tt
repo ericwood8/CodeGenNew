@@ -56,6 +56,9 @@ public record <#= entity #>SearchResult(IReadOnlyList<<#= entity #>> Items, int 
 
 public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
 {
+    // the most rows one page may hold; a larger pageSize is lowered to this
+    private const int MaxPageSize = 1000;
+
     public override void Register(WebApplication app)
     {
         BreakIntoStrings(out string _singular, out string plural, out string _apiSubDir);
@@ -83,8 +86,14 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
         [FromQuery] string? sortBy = null,
         [FromQuery] string? sortDir = null)
     {
+        // A page size of 0 or less is an error inside the database (FETCH NEXT 0 ROWS) and a huge one reads the whole table: keep it between 1 and MaxPageSize.
+        // The answer carries the size that was used, so a caller that asked for more sees the cap.
+        pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
         if (pageNumber < 1)
-            return Results.BadRequest("pageNumber must be 1 or greater.");
+            return Results.Problem(statusCode: 400, title: "Invalid page", detail: "pageNumber must be 1 or greater.");
+        // the first row of the page is a 32 bit number in the database (OFFSET), so a page number this large would be an overflow error there
+        if ((long)(pageNumber - 1) * pageSize > int.MaxValue)
+            return Results.Problem(statusCode: 400, title: "Invalid page", detail: "pageNumber is too large for that pageSize.");
 
         // The grid's chosen sort: a column name and "asc" / "desc". The routine compares the name with its own list of sortable columns, so an unknown or
         // missing name just gives the default order; the name is never pasted into SQL.
@@ -95,8 +104,7 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
     if (ef)
     {
 #>
-        pageSize = Math.Max(pageSize, 1);
-        var query = <#= entity #>SearchQuery.Filter(context.Set<<#= entity #>>()<#= efFilters #>);
+        var query = <#= entity #>SearchQuery.Filter(context.Set<<#= entity #>>().AsNoTracking()<#= efFilters #>);
         int totalCount = await query.CountAsync();
         var items = await <#= entity #>SearchQuery.Sort(query, sortColumn, sortDescending)
             .Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync();
@@ -131,6 +139,7 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
             .FromSqlRaw(
                 "<#= call.SearchSql #>",
                 parameters)
+            .AsNoTracking()   // the rows go straight to JSON: nothing to track
             .ToListAsync();
 
         // Explicitly typed (not "var ... = new[]"): with zero searchable columns this array has zero elements,

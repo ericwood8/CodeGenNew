@@ -31,6 +31,16 @@ WinUI3_DetailScreen.tt, since its repository (NameActiveRepo) has no GetAll for 
 What it does NOT do: sorting, or opening from a NavigationView/Frame - add the Page to your own
 navigation the way you would any other.
 
+The bar under the grid (found by moving a real server to server paging): the label reads "Page 2 of 5 (98 rows)", or "Nothing found." once the first page has
+arrived and no row matches; a "Rows per page" box (10, 20, 50, 100) reads the first page again with the size picked (PageSize is a view model property, the
+bar raises PageSizeChanged); and a delete that empties the last page falls back to the last page there is instead of showing "Page 3 of 2". The bar is
+generated here and by WinUI3_DetailMasterScreen with the same text (a test keeps the two equal).
+
+The bar under the grid (found by moving a real server to server paging): the label reads "Page 2 of 5 (98 rows)", or "Nothing found." once the first page has
+arrived and no row matches; a "Rows per page" box (10, 20, 50, 100) reads the first page again with the size picked (PageSize is a view model property, the
+bar raises PageSizeChanged); and a delete that empties the last page falls back to the last page there is instead of showing "Page 3 of 2". The bar is
+generated here and by WinUI3_DetailMasterScreen with the same text (a test keeps the two equal).
+
 Pagination: the grid always loads one page at a time
 through CS_Repo.tt's SearchAsync instead of GetAll(), with a PaginationBar underneath. **Update
 (2026-09-28):** pagination no longer requires a searchable column - a table with none (e.g. a

@@ -20,7 +20,13 @@ implementations. SqlQueryRaw<T> works for any shape whose property names match t
 entity or not, without the target project's DbContext needing to register anything new - the same
 property API_Junction.tt's own <Table>JunctionItem DTO already relies on.
 
-pageNumber < 1 is rejected with 400.
+The page limits (found on a real server whose first version failed on a page size of 0 and accepted any size):
+- pageSize is kept between 1 and 1000 (MaxPageSize) with Math.Clamp; 0 or less is an error inside the database (FETCH NEXT 0 ROWS) and a huge size reads the
+  whole table. The answer carries the size that was used, so a caller that asked for more sees the cap. CS_Repo.SearchAsync clamps the same way.
+- pageNumber < 1 is rejected with a 400 problem (title "Invalid page"), and so is a page number whose first row does not fit in the 32 bit OFFSET
+  ((pageNumber - 1) * pageSize > int.MaxValue), which was an overflow error (500) in the database.
+- The rows are read AsNoTracking: they go straight to JSON, so there is nothing to track (CS_Repo.SearchAsync keeps tracking: its caller may edit the rows).
+- An unknown sortBy still gives the default order on purpose (a grid may hold a saved sort for a column that no longer exists); the name is never pasted into SQL.
 Requires a primary key and a table, not a view (SP_Search.tt's own restrictions - this calls that
 procedure directly, so the same shape is required). A table with no searchable column still gets this
 endpoint - pagination and searchability are separate concerns (SP_Search.tt's own header comment) -

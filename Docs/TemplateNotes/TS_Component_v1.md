@@ -38,6 +38,12 @@ tasks, TimeSheet's lines), drop-downs that depend on each other (Employee's team
 are computed on screen, and the route / sidebar entry / app.config line that show the screen (ComponentChecklist.txt
 steps 4-6).
 
+When the rows change under the grid (found by moving a real server to server paging): a delete reads the page again (load()) instead of removing the row locally, so the
+total, the rows that move up and the last page stay right; a page past the end (the last row of the last page was deleted) falls back to the last page there
+is; the page size picked in the paginator (10, 20, 50, 100) is used; and "Nothing found." is shown when the server answers with no rows, but not before the
+first page has arrived (loaded). The generated spec checks the first request (pageNumber 1, the page size) and the fall back. TS_DetailMasterComponent,
+TSX_Page, TSX_DetailMasterPage and BLZ_Page do the same delete and fall back (the pager of the React and Blazor pages has no page size choice or empty message).
+
 Pagination: the grid always loads one page at a time
 through TS_Service.tt's getPage instead of getAll(), with Angular Material's mat-paginator underneath -
 @angular/material is a real, already-installed dependency of the Angular project this family is

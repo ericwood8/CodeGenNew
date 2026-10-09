@@ -1218,6 +1218,8 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         <Button Content="Previous" Click="OnPreviousClick" IsEnabled="{x:Bind CanGoPrevious, Mode=OneWay}" />
         <TextBlock Text="{x:Bind PageLabel, Mode=OneWay}" VerticalAlignment="Center" />
         <Button Content="Next" Click="OnNextClick" IsEnabled="{x:Bind CanGoNext, Mode=OneWay}" />
+        <TextBlock Text="Rows per page" VerticalAlignment="Center" Margin="16,0,0,0" />
+        <ComboBox x:Name="PageSizeBox" Width="80" AutomationProperties.Name="Rows per page" SelectionChanged="OnPageSizeSelected" />
     </StackPanel>
 </UserControl>
 @@@FILE <#= viewsFolder #>/PaginationBar.xaml.cs@@@
@@ -1234,6 +1236,17 @@ public sealed partial class PaginationBar : UserControl
     public static readonly DependencyProperty CanGoNextProperty =
         DependencyProperty.Register(nameof(CanGoNext), typeof(bool), typeof(PaginationBar), new PropertyMetadata(false));
 
+    public static readonly DependencyProperty PageSizeProperty =
+        DependencyProperty.Register(nameof(PageSize), typeof(int), typeof(PaginationBar), new PropertyMetadata(20, OnPageSizeChanged));
+
+    /// <summary> The page sizes the person can pick under the grid. </summary>
+    public int[] PageSizeChoices { get; } = [10, 20, 50, 100];
+
+    public int PageSize { get => (int)GetValue(PageSizeProperty); set => SetValue(PageSizeProperty, value); }
+
+    /// <summary> Raised when the person picks another page size; the page reads its first page again with it. </summary>
+    public event EventHandler<int>? PageSizeChanged;
+
     public string PageLabel { get => (string)GetValue(PageLabelProperty); set => SetValue(PageLabelProperty, value); }
     public bool CanGoPrevious { get => (bool)GetValue(CanGoPreviousProperty); set => SetValue(CanGoPreviousProperty, value); }
     public bool CanGoNext { get => (bool)GetValue(CanGoNextProperty); set => SetValue(CanGoNextProperty, value); }
@@ -1241,7 +1254,20 @@ public sealed partial class PaginationBar : UserControl
     public event RoutedEventHandler? PreviousClicked;
     public event RoutedEventHandler? NextClicked;
 
-    public PaginationBar() => InitializeComponent();
+    public PaginationBar()
+    {
+        InitializeComponent();
+        PageSizeBox.ItemsSource = PageSizeChoices;
+        PageSizeBox.SelectedItem = PageSize;
+    }
+
+    private static void OnPageSizeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) => ((PaginationBar)d).PageSizeBox.SelectedItem = (int)e.NewValue;
+
+    private void OnPageSizeSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (PageSizeBox.SelectedItem is int size && size != PageSize)
+            PageSizeChanged?.Invoke(this, size);
+    }
 
     private void OnPreviousClick(object sender, RoutedEventArgs e) => PreviousClicked?.Invoke(this, e);
     private void OnNextClick(object sender, RoutedEventArgs e) => NextClicked?.Invoke(this, e);

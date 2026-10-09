@@ -212,7 +212,8 @@
             T($"import {{ {p.ApiVar} }} from '../{apiFolder}/{p.ApiFile}';");
         }
         T();
-        T($"const pageSize = {pageSize};");
+        T($"const initialPageSize = {pageSize};");
+        T("const pageSizeChoices = [10, 20, 50, 100]; // the page sizes the person can pick under the grid");
         T($"const gridKey = '{stem}'; // the grid's saved sort is kept in the browser under this key (see components/gridSort.tsx)");
         T($"const sortableColumns = [{string.Join(", ", sortableColumns.Select(c => "'" + c.Name + "'"))}]; // the columns whose header sorts the grid");
         T();
@@ -276,6 +277,8 @@
         if (canSearch) T($"  const [filters, setFilters] = useState({{ {filterInit} }});");
         T("  const [page, setPage] = useState(1);");
         T("  const [totalPages, setTotalPages] = useState(1);");
+        T("  const [pageSize, setPageSize] = useState(initialPageSize);");
+        T("  const [loaded, setLoaded] = useState(false); // true once a page has arrived, so \"Nothing found.\" is not shown while waiting");
         T("  const [error, setError] = useState<string | null>(null);");
         T("  const [sort, setSort] = useState<GridSort | null>(() => loadSort(gridKey, sortableColumns));");
         T("  // Opened from another page's grid (?edit=<id>&back=<that page>): open this row, and go back to that page when the form is saved or cancelled.");
@@ -292,11 +295,14 @@
         }
         T();
         // The sort (like the filters) is read from state by default; a change passes its new value explicitly because state is not updated yet.
-        T($"  const load = (targetPage: number = 1{(canSearch ? ", filterValues: typeof filters = filters" : "")}, sortValue: GridSort | null = sort) => {{");
-        T($"    {variable}Api.getPage(targetPage, pageSize, {(canSearch ? "filterValues" : "{}")}, sortValue).then((result) => {{");
+        T($"  const load = (targetPage: number = 1{(canSearch ? ", filterValues: typeof filters = filters" : "")}, sortValue: GridSort | null = sort, sizeValue: number = pageSize) => {{");
+        T($"    {variable}Api.getPage(targetPage, sizeValue, {(canSearch ? "filterValues" : "{}")}, sortValue).then((result) => {{");
+        T("      // the last row of the last page was deleted, or rows were removed elsewhere: the page asked for is past the end, so show the last page there is");
+        T($"      if (result.items.length === 0 && result.totalCount > 0 && targetPage > 1) {{ load(result.totalPages{(canSearch ? ", filterValues" : "")}, sortValue, sizeValue); return; }}");
         T($"      {setList}(result.items);");
         T("      setPage(result.page);");
         T("      setTotalPages(result.totalPages);");
+        T("      setLoaded(true);");
         T($"    }}).catch(() => setError('Failed to load {Words(baseName).ToLowerInvariant().Pluralize()}.'));");
         T("  };");
         T();
@@ -334,7 +340,7 @@
         T("    if (!confirm('Are you sure you want to delete this?')) return;");
         T("    try {");
         T($"      await {variable}Api.delete(id);");
-        T($"      {setList}(({listName}) => {listName}.filter((p) => p.{keyProp} !== id));");
+        T("      load(page); // read the page again: the total, the rows that move up and the last page all change");
         T("    } catch (err) {");
         T("      if (err instanceof ApiError && err.status === 400) {");
         T("        setError('It cannot be deleted because it is in use!');");
@@ -575,6 +581,13 @@
         T("        onPrevious={() => load(page - 1)}");
         T("        onNext={() => load(page + 1)}");
         T("      />");
+        T("      <label className=\"page-size\">");
+        T("        Rows per page");
+        T($"        <select value={{pageSize}} onChange={{(event) => {{ const size = Number(event.target.value); setPageSize(size); load(1{(canSearch ? ", filters" : "")}, sort, size); }}}}>");
+        T("          {pageSizeChoices.map((size) => <option key={size} value={size}>{size}</option>)}");
+        T("        </select>");
+        T("      </label>");
+        T($"      {{loaded && {listName}.length === 0 && <p className=\"no-rows\">Nothing found.</p>}}");
         T();
         // The add/edit form is a modal <dialog> (native, no library): it opens over the page, wherever the grid is scrolled to, and Escape cancels it.
         T("      {selectedRow && (");

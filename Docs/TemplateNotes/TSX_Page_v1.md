@@ -55,6 +55,16 @@ TSX_DetailMasterPage.tt for that gap), drop-downs that depend on each other, fie
 and the route / nav-link line that shows the screen (a project wires each page into App.tsx's
 <Routes> by hand; a generated page is not self-registering).
 
+Around the bar: a "Rows per page" box (10, 20, 50, 100; load() takes the size as its last argument because the state is not updated yet), "Nothing found." once
+the first page has arrived with no rows, a delete that reads the page again, and a page past the end that falls back to the last page there is. These are
+written in the page, not in PaginationBar.tsx: that file belongs to the essentials (written once, never overwritten), so a project made earlier keeps the old
+bar and a new prop on it would not compile.
+
+Around the bar: a "Rows per page" box (10, 20, 50, 100; load() takes the size as its last argument because the state is not updated yet), "Nothing found." once
+the first page has arrived with no rows, a delete that reads the page again, and a page past the end that falls back to the last page there is. These are
+written in the page, not in PaginationBar.tsx: that file belongs to the essentials (written once, never overwritten), so a project made earlier keeps the old
+bar and a new prop on it would not compile.
+
 Pagination: the grid always loads one page at a time
 through TSX_Api.tt's getPage instead of getAll(), with a Previous/Next PaginationBar underneath,
 matching the usual page/totalPages control. **Update (2026-09-28):**

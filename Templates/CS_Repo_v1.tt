@@ -168,9 +168,9 @@
                     "    {",
                     $"        var query = {queryClass}.Filter(_dbSet{filterArguments});",
                     "        int totalCount = await query.CountAsync();",
-                    "        int size = Math.Max(pageSize, 1);",
+                    "        int size = Math.Clamp(pageSize, 1, 1000);   // 0 or less is an error in the database, a huge page reads the whole table",
                     $"        var items = await {queryClass}.Sort(query, sortColumn, sortDescending)",
-                    "            .Skip((Math.Max(pageNumber, 1) - 1) * size).Take(size).ToListAsync();",
+                    "            .Skip((Math.Clamp(pageNumber, 1, int.MaxValue / size) - 1) * size).Take(size).ToListAsync();",
                     "        return (items, totalCount);",
                     "    }"
                 });
@@ -184,6 +184,10 @@
             {
                 $"    public async Task<(List<{entity}> Items, int TotalCount)> SearchAsync({string.Join(", ", signatureParams)})",
                 "    {",
+                "        // the routine adds up (pageNumber - 1) * pageSize as a 32 bit number and fetches pageSize rows: keep both inside what it accepts",
+                "        pageSize = Math.Clamp(pageSize, 1, 1000);",
+                "        pageNumber = Math.Clamp(pageNumber, 1, int.MaxValue / pageSize);",
+                "",
                 "        var parameters = new[]",
                 "        {"
             };

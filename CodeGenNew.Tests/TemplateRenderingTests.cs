@@ -464,7 +464,9 @@ public class TemplateRenderingTests
         Expect.Contains(codeBehind, "private async void OnPreviousClick(object sender, RoutedEventArgs e) => await ViewModel.PreviousPageAsync();");
         Expect.Contains(codeBehind, "private async void OnNextClick(object sender, RoutedEventArgs e) => await ViewModel.NextPageAsync();");
 
-        Expect.Contains(viewModel, "private const int PageSize = 20;");
+        Expect.Contains(viewModel, "private int _pageSize = 20;");
+        Expect.Contains(viewModel, "public static readonly int[] PageSizeChoices = [10, 20, 50, 100];");
+        Expect.Contains(viewModel, "Nothing found.");
         Expect.Contains(viewModel, "public bool CanGoPrevious => PageNumber > 1;");
         Expect.Contains(viewModel, "public bool CanGoNext => PageNumber < TotalPages;");
         Expect.Contains(viewModel, "var (rows, totalCount) = await _repo.SearchAsync(sY_IsoCountry_Alpha3Code: string.IsNullOrWhiteSpace(SY_IsoCountry_Alpha3CodeFilter) ? null : SY_IsoCountry_Alpha3CodeFilter, name: string.IsNullOrWhiteSpace(NameFilter) ? null : NameFilter, pageNumber: PageNumber, pageSize: PageSize, sortColumn: _sortColumn, sortDescending: _sortDescending);");
@@ -811,7 +813,20 @@ public class TemplateRenderingTests
         string cs = await Render("API_Search_v1.tt", Sample.Holiday());
 
         Expect.Contains(cs, "if (pageNumber < 1)");
-        Expect.Contains(cs, "return Results.BadRequest(\"pageNumber must be 1 or greater.\");");
+        Expect.Contains(cs, "return Results.Problem(statusCode: 400, title: \"Invalid page\", detail: \"pageNumber must be 1 or greater.\");");
+        Expect.Contains(cs, "pageNumber is too large for that pageSize.");
+    }
+
+    [TestMethod]
+    public async Task API_Search_keeps_the_page_size_between_one_and_the_cap_and_reads_without_tracking()
+    {
+        string cs = await Render("API_Search_v1.tt", Sample.Holiday());
+
+        Expect.Contains(cs, "private const int MaxPageSize = 1000;");
+        Expect.Contains(cs, "pageSize = Math.Clamp(pageSize, 1, MaxPageSize);");
+        Expect.Contains(cs, "if ((long)(pageNumber - 1) * pageSize > int.MaxValue)");
+        Expect.Contains(cs, ".AsNoTracking()");
+        Expect.DoesNotContain(cs, "Results.BadRequest(");
     }
 
     // ------------------------------------------------------------------ TS_JunctionComponent
@@ -1881,11 +1896,12 @@ public class TemplateRenderingTests
         string test = files.Single(f => f.RelativePath.EndsWith("Page.test.tsx")).Content;
 
         Expect.Contains(tsx, "import { PaginationBar } from '../components/PaginationBar';");
-        Expect.Contains(tsx, "const pageSize = 20;");
+        Expect.Contains(tsx, "const initialPageSize = 20;");
+        Expect.Contains(tsx, "const pageSizeChoices = [10, 20, 50, 100];");
         Expect.Contains(tsx, "const [page, setPage] = useState(1);");
         Expect.Contains(tsx, "const [totalPages, setTotalPages] = useState(1);");
-        Expect.Contains(tsx, "const load = (targetPage: number = 1, filterValues: typeof filters = filters, sortValue: GridSort | null = sort) => {");
-        Expect.Contains(tsx, "holidayApi.getPage(targetPage, pageSize, filterValues, sortValue).then((result) => {");
+        Expect.Contains(tsx, "const load = (targetPage: number = 1, filterValues: typeof filters = filters, sortValue: GridSort | null = sort, sizeValue: number = pageSize) => {");
+        Expect.Contains(tsx, "holidayApi.getPage(targetPage, sizeValue, filterValues, sortValue).then((result) => {");
         Expect.Contains(tsx, "<PaginationBar");
         Expect.Contains(tsx, "onPrevious={() => load(page - 1)}");
         Expect.Contains(tsx, "onNext={() => load(page + 1)}");
@@ -1927,8 +1943,8 @@ public class TemplateRenderingTests
         string test = files.Single(f => f.RelativePath.EndsWith("Page.test.tsx")).Content;
 
         Expect.Contains(tsx, "import { PaginationBar } from '../components/PaginationBar';");
-        Expect.Contains(tsx, "const load = (targetPage: number = 1, sortValue: GridSort | null = sort) => {");
-        Expect.Contains(tsx, "metricApi.getPage(targetPage, pageSize, {}, sortValue).then((result) => {");
+        Expect.Contains(tsx, "const load = (targetPage: number = 1, sortValue: GridSort | null = sort, sizeValue: number = pageSize) => {");
+        Expect.Contains(tsx, "metricApi.getPage(targetPage, sizeValue, {}, sortValue).then((result) => {");
         Expect.Contains(tsx, "<PaginationBar");
         Expect.DoesNotContain(tsx, "filters");
         Expect.DoesNotContain(tsx, "clearSearch");

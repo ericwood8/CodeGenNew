@@ -767,7 +767,7 @@ public class ProjectSettingsTests
         Assert.IsTrue(react.Success && angular.Success);
         Expect.Contains(react.GeneratedText!, "placeholder=\"Search by Customer PO\"");
         Expect.Contains(react.GeneratedText!, "<PaginationBar");
-        Expect.Contains(react.GeneratedText!, "orderApi.getPage(targetPage, pageSize, filterValues, sortValue)");
+        Expect.Contains(react.GeneratedText!, "orderApi.getPage(targetPage, sizeValue, filterValues, sortValue)");
         Expect.Contains(angular.GeneratedText!, "placeholder=\"Search by Customer PO\"");
         Expect.Contains(angular.GeneratedText!, "<mat-paginator");
         Expect.Contains(angular.GeneratedText!, "getPage(this.pageIndex + 1, this.pageSize");

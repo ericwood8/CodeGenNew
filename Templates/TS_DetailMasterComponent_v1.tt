@@ -257,6 +257,7 @@
         H("            </tr>");
         H("        </tbody>");
         H("    </table>");
+        H("    <p *ngIf=\"loaded && totalCount === 0\" class=\"no-rows\">Nothing found.</p>");
         H("    <ul *ngIf=\"sortMenu\" class=\"sort-menu\" role=\"menu\" [style.left.px]=\"sortMenu.x\" [style.top.px]=\"sortMenu.y\">");
         H("        <li role=\"none\"><button type=\"button\" role=\"menuitem\" [disabled]=\"!sort\" (click)=\"clearSort()\">Clear sort</button></li>");
         H("    </ul>");
@@ -264,6 +265,7 @@
         H("    <mat-paginator");
         H("        [length]=\"totalCount\"");
         H("        [pageSize]=\"pageSize\"");
+        H("        [pageSizeOptions]=\"[10, 20, 50, 100]\"");
         H("        [pageIndex]=\"pageIndex\"");
         H("        (page)=\"onPageChange($event)\">");
         H("    </mat-paginator>");
@@ -393,12 +395,35 @@
 
         // ================= spec
         string cls = baseName + "DetailMasterComponent";
-        spec.Append("import { ComponentFixture, TestBed } from '@angular/core/testing';\nimport { provideHttpClient } from '@angular/common/http';\nimport { provideHttpClientTesting } from '@angular/common/http/testing';\nimport { provideRouter } from '@angular/router';\nimport { provideNoopAnimations } from '@angular/platform-browser/animations';\n\n");
+        spec.Append("import { ComponentFixture, TestBed } from '@angular/core/testing';\nimport { provideHttpClient } from '@angular/common/http';\nimport { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';\nimport { provideRouter } from '@angular/router';\nimport { provideNoopAnimations } from '@angular/platform-browser/animations';\n\n");
         spec.Append($"import {{ {cls} }} from './{stem}-detail-master.component';\n\n");
         spec.Append($"describe('{cls}', () => {{\n  let component: {cls};\n  let fixture: ComponentFixture<{cls}>;\n\n");
         spec.Append($"  beforeEach(async () => {{\n    await TestBed.configureTestingModule({{\n      imports: [{cls}],\n      providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations(), provideRouter([])]\n    }})\n    .compileComponents();\n\n");
         spec.Append($"    fixture = TestBed.createComponent({cls});\n    component = fixture.componentInstance;\n    fixture.detectChanges();\n  }});\n\n");
-        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n});\n");
+        // Server paging: the first page is asked for, and a page past the end (the last row of the last page was deleted) falls back to the last page there is.
+        var pagingSpecs = new[]
+        {
+            "  it('asks the server for the first page', () => {",
+            "    const http = TestBed.inject(HttpTestingController);",
+            "    const request = http.expectOne((r) => r.url.endsWith('/search'));",
+            "    expect(request.request.params.get('pageNumber')).toBe('1');",
+            "    expect(request.request.params.get('pageSize')).toBe(String(component.pageSize));",
+            "    request.flush({ items: [], page: 1, pageSize: component.pageSize, totalCount: 0, totalPages: 0 });",
+            "    expect(component.totalCount).toBe(0);",
+            "  });",
+            "",
+            "  it('goes back to the last page there is when the page it asked for is past the end', () => {",
+            "    const http = TestBed.inject(HttpTestingController);",
+            "    http.expectOne((r) => r.url.endsWith('/search')).flush({ items: [], page: 1, pageSize: component.pageSize, totalCount: 0, totalPages: 0 });",
+            "    component.onPageChange({ pageIndex: 3, pageSize: 10, length: 25 });",
+            "    http.expectOne((r) => r.url.endsWith('/search') && r.params.get('pageNumber') === '4' && r.params.get('pageSize') === '10')",
+            "      .flush({ items: [], page: 4, pageSize: 10, totalCount: 25, totalPages: 3 });",
+            "    const lastPage = http.expectOne((r) => r.url.endsWith('/search') && r.params.get('pageNumber') === '3');",
+            "    expect(component.pageIndex).toBe(2);",
+            "    lastPage.flush({ items: [], page: 3, pageSize: 10, totalCount: 25, totalPages: 3 });",
+            "  });",
+        };
+        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", pagingSpecs) + "\n});\n");
 
         // ================= ts
         T("import { ChangeDetectionStrategy, Component, ElementRef, HostListener, ViewChild } from '@angular/core';");
@@ -439,6 +464,7 @@
         T($"  pageSize = {pageSize};");
         T("  pageIndex = 0;"); // mat-paginator is 0-based; the API's pageNumber is 1-based
         T("  totalCount = 0;");
+        T("  loaded = false; // true once a page has arrived, so the empty-grid message is not shown while waiting");
         T($"  readonly gridKey = '{stem}'; // the grid's saved sort is kept in the browser under this key (see grid-sort.ts)");
         T($"  readonly sortableColumns = [{string.Join(", ", sortableColumns.Select(c => "'" + c.Name + "'"))}]; // the columns whose header sorts the grid");
         T("  sort: GridSort | null = loadSort(this.gridKey, this.sortableColumns);");
@@ -480,13 +506,21 @@
             string filterArgs = string.Concat(searchFields.Select(f => $", this.filters.{f.ParamName}"));
             T("  private load(): void {");
             T($"    this.{variable}Service.getPage(this.pageIndex + 1, this.pageSize{filterArgs}, this.sort?.column, this.sort?.descending).subscribe((result) => {{");
+            T("      // the last row of the last page was deleted, or rows were removed elsewhere: the page asked for is past the end, so show the last page there is");
+            T("      if (result.items.length === 0 && result.totalCount > 0 && this.pageIndex > 0) {");
+            T("        this.pageIndex = Math.ceil(result.totalCount / this.pageSize) - 1;");
+            T("        this.load();");
+            T("        return;");
+            T("      }");
             T($"      this.{listName} = result.items;");
             T("      this.totalCount = result.totalCount;");
+            T("      this.loaded = true;");
             T("    });");
             T("  }");
             T();
             T("  onPageChange(event: PageEvent): void {");
             T("    this.pageIndex = event.pageIndex;");
+            T("    this.pageSize = event.pageSize;");
             T("    this.load();");
             T("  }");
             // Click a column header to sort by it, click it again to flip the direction; the right-click menu clears the sort. The sort is saved (grid-sort.ts),
@@ -553,7 +587,7 @@
         T($"      this.{variable}Service.delete(id).subscribe({{");
         T("        next: () => {");
         T("          console.log(\"Deleted successfully!\");");
-        T($"          this.{listName} = this.{listName}.filter((p) => p.{keyProp} !== id);");
+        T("          this.load(); // read the page again: the total, the rows that move up and the last page all change");
         T("        },");
         T("        error: (error) => {");
         T("          if (error.status == 400) { alert(\"It cannot be deleted because it is in use!\"); }");

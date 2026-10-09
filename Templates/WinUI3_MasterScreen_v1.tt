@@ -305,8 +305,10 @@
                     PageLabel="{x:Bind ViewModel.PageLabel, Mode=OneWay}"
                     CanGoPrevious="{x:Bind ViewModel.CanGoPrevious, Mode=OneWay}"
                     CanGoNext="{x:Bind ViewModel.CanGoNext, Mode=OneWay}"
+                    PageSize="{x:Bind ViewModel.PageSize, Mode=OneWay}"
                     PreviousClicked="OnPreviousClick"
-                    NextClicked="OnNextClick" />
+                    NextClicked="OnNextClick"
+                    PageSizeChanged="OnPageSizeChanged" />
             </Border>
         </Grid>
     </Grid>
@@ -453,6 +455,8 @@ public sealed partial class <#= table #>ListPage : Page
     private async void OnPreviousClick(object sender, RoutedEventArgs e) => await ViewModel.PreviousPageAsync();
 
     private async void OnNextClick(object sender, RoutedEventArgs e) => await ViewModel.NextPageAsync();
+
+    private async void OnPageSizeChanged(object? sender, int size) => await ViewModel.ChangePageSizeAsync(size);
 <#
         if (canSearch)
         {
@@ -510,7 +514,11 @@ public partial class <#= table #>ListViewModel : ObservableObject
     private string? _errorMessage;
     public bool HasError => ErrorMessage is not null;
 
-    private const int PageSize = <#= pageSize #>;
+    /// <summary> The page sizes the person can pick under the grid (PaginationBar). </summary>
+    public static readonly int[] PageSizeChoices = [10, 20, 50, 100];
+
+    [ObservableProperty]
+    private int _pageSize = <#= pageSize #>;
 
     [NotifyPropertyChangedFor(nameof(CanGoPrevious))]
     [NotifyPropertyChangedFor(nameof(CanGoNext))]
@@ -526,7 +534,16 @@ public partial class <#= table #>ListViewModel : ObservableObject
 
     public bool CanGoPrevious => PageNumber > 1;
     public bool CanGoNext => PageNumber < TotalPages;
-    public string PageLabel => $"Page {PageNumber} of {TotalPages}";
+    [NotifyPropertyChangedFor(nameof(PageLabel))]
+    [ObservableProperty]
+    private int _totalRows;
+
+    // false until the first page has been read, so "Nothing found." is not shown while waiting
+    [NotifyPropertyChangedFor(nameof(PageLabel))]
+    [ObservableProperty]
+    private bool _hasLoaded;
+
+    public string PageLabel => !HasLoaded ? "" : TotalRows == 0 ? "Nothing found." : $"Page {PageNumber} of {TotalPages} ({TotalRows} rows)";
 <#
         foreach (var f in searchFields)
         {
@@ -602,6 +619,14 @@ public partial class <#= table #>ListViewModel : ObservableObject
 #>
         var (rows, totalCount) = await _repo.SearchAsync(<#= filterArgs #>pageNumber: PageNumber, pageSize: PageSize, sortColumn: _sortColumn, sortDescending: _sortDescending);
         TotalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)PageSize);
+        if (rows.Count == 0 && totalCount > 0 && PageNumber > TotalPages)
+        {
+            // the last row of the last page was deleted: show the last page there is
+            PageNumber = TotalPages;
+            (rows, totalCount) = await _repo.SearchAsync(<#= filterArgs #>pageNumber: PageNumber, pageSize: PageSize, sortColumn: _sortColumn, sortDescending: _sortDescending);
+        }
+        TotalRows = totalCount;
+        HasLoaded = true;
 
         foreach (var e in rows)
         {
@@ -710,6 +735,15 @@ public partial class <#= table #>ListViewModel : ObservableObject
 <#
         }
 #>
+    /// <summary> The person picked another page size under the grid: the first page is read again with it. </summary>
+    public async Task ChangePageSizeAsync(int size)
+    {
+        if (size == PageSize) return;
+        PageSize = size;
+        PageNumber = 1;
+        await LoadAsync();
+    }
+
     public async Task PreviousPageAsync()
     {
         if (!CanGoPrevious) return;
@@ -807,6 +841,8 @@ public static class GridSortStore
         <Button Content="Previous" Click="OnPreviousClick" IsEnabled="{x:Bind CanGoPrevious, Mode=OneWay}" />
         <TextBlock Text="{x:Bind PageLabel, Mode=OneWay}" VerticalAlignment="Center" />
         <Button Content="Next" Click="OnNextClick" IsEnabled="{x:Bind CanGoNext, Mode=OneWay}" />
+        <TextBlock Text="Rows per page" VerticalAlignment="Center" Margin="16,0,0,0" />
+        <ComboBox x:Name="PageSizeBox" Width="80" AutomationProperties.Name="Rows per page" SelectionChanged="OnPageSizeSelected" />
     </StackPanel>
 </UserControl>
 @@@FILE <#= viewsFolder #>/PaginationBar.xaml.cs@@@
@@ -823,6 +859,17 @@ public sealed partial class PaginationBar : UserControl
     public static readonly DependencyProperty CanGoNextProperty =
         DependencyProperty.Register(nameof(CanGoNext), typeof(bool), typeof(PaginationBar), new PropertyMetadata(false));
 
+    public static readonly DependencyProperty PageSizeProperty =
+        DependencyProperty.Register(nameof(PageSize), typeof(int), typeof(PaginationBar), new PropertyMetadata(20, OnPageSizeChanged));
+
+    /// <summary> The page sizes the person can pick under the grid. </summary>
+    public int[] PageSizeChoices { get; } = [10, 20, 50, 100];
+
+    public int PageSize { get => (int)GetValue(PageSizeProperty); set => SetValue(PageSizeProperty, value); }
+
+    /// <summary> Raised when the person picks another page size; the page reads its first page again with it. </summary>
+    public event EventHandler<int>? PageSizeChanged;
+
     public string PageLabel { get => (string)GetValue(PageLabelProperty); set => SetValue(PageLabelProperty, value); }
     public bool CanGoPrevious { get => (bool)GetValue(CanGoPreviousProperty); set => SetValue(CanGoPreviousProperty, value); }
     public bool CanGoNext { get => (bool)GetValue(CanGoNextProperty); set => SetValue(CanGoNextProperty, value); }
@@ -830,7 +877,20 @@ public sealed partial class PaginationBar : UserControl
     public event RoutedEventHandler? PreviousClicked;
     public event RoutedEventHandler? NextClicked;
 
-    public PaginationBar() => InitializeComponent();
+    public PaginationBar()
+    {
+        InitializeComponent();
+        PageSizeBox.ItemsSource = PageSizeChoices;
+        PageSizeBox.SelectedItem = PageSize;
+    }
+
+    private static void OnPageSizeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) => ((PaginationBar)d).PageSizeBox.SelectedItem = (int)e.NewValue;
+
+    private void OnPageSizeSelected(object sender, SelectionChangedEventArgs e)
+    {
+        if (PageSizeBox.SelectedItem is int size && size != PageSize)
+            PageSizeChanged?.Invoke(this, size);
+    }
 
     private void OnPreviousClick(object sender, RoutedEventArgs e) => PreviousClicked?.Invoke(this, e);
     private void OnNextClick(object sender, RoutedEventArgs e) => NextClicked?.Invoke(this, e);
