@@ -151,7 +151,7 @@ public class FrontEndDockerTemplateTests
     [TestMethod]
     public async Task Each_front_end_builds_with_node_and_is_served_by_nginx_with_the_api_forwarded()
     {
-        foreach ((string template, string dist) in new[] { ("TSX_EssentialDocker_v1.tt", "/app/dist /usr/share/nginx/html"), ("TS_EssentialDocker_v1.tt", "/app/dist/frontend/browser /usr/share/nginx/html") })
+        foreach ((string template, string dist, string proxy) in new[] { ("TSX_EssentialDocker_v1.tt", "/app/dist /usr/share/nginx/html", "proxy_pass http://api_backend;"), ("TS_EssentialDocker_v1.tt", "/app/dist/frontend/browser /usr/share/nginx/html", "proxy_pass http://api_backend;") })
         {
             var result = await Repo.Cache.RunAsync(Repo.Template(template), Project());
             Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
@@ -162,9 +162,29 @@ public class FrontEndDockerTemplateTests
             Expect.Contains(text, "COPY --from=build " + dist);
             Expect.Contains(text, "ENV API_UPSTREAM=api:8080");
             Expect.Contains(text, "@@@FILE nginx.conf.template@@@");
-            Expect.Contains(text, "proxy_pass http://${API_UPSTREAM};");
+            Expect.Contains(text, proxy);
             Expect.Contains(text, "try_files $uri $uri/ /index.html;");
             Expect.Contains(text, "@@@FILE .dockerignore@@@\nnode_modules/");
+        }
+    }
+
+    [TestMethod]
+    public async Task Each_front_end_nginx_config_compresses_caches_hashed_files_and_keeps_the_api_connection_open()
+    {
+        // Vite writes its hashed files under /assets/; Angular puts an 8 character hash in the file name
+        foreach ((string template, string hashedFiles) in new[] { ("TSX_EssentialDocker_v1.tt", "location /assets/ {"), ("TS_EssentialDocker_v1.tt", "location ~ \"-[A-Z0-9]{8}\\.(?:js|css|woff2?)$\" {") })
+        {
+            var result = await Repo.Cache.RunAsync(Repo.Template(template), Project());
+            Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+            string text = result.GeneratedText!.Replace("\r\n", "\n");
+
+            Expect.Contains(text, "gzip on;");
+            Expect.Contains(text, "gzip_proxied any;");
+            Expect.Contains(text, "gzip_types application/javascript");
+            Expect.Contains(text, hashedFiles + "\n        add_header Cache-Control \"public, max-age=31536000, immutable\";");
+            Expect.Contains(text, "location = /index.html {\n        add_header Cache-Control \"no-cache\";");
+            Expect.Contains(text, "upstream api_backend {\n    server ${API_UPSTREAM};\n    keepalive 16;");
+            Expect.Contains(text, "proxy_http_version 1.1;\n        proxy_set_header Connection \"\";");
         }
     }
 
