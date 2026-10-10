@@ -33,3 +33,15 @@ Requires a primary key that is a single int, uniqueidentifier or text column (sa
 least one table in TableModel.ChildForeignKeys (TableModel.HasAtLeastOneChildForeignKey) - a table with
 none is exactly what TSX_Page.tt is for.
 ```
+
+## Credentials and long text
+
+A text column named like a credential (`ColumnModel.IsCredentialColumn`: a name with `Password` in it, or ending in `Salt`, `Secret`, `ApiKey` or `Token`) is in neither the grid, the form nor the search bar. A row that is edited keeps the value it was read with. A grid that would show fewer than `GridColumns.MinColumns` (3) columns because its text is 100 characters or longer is filled up with the first of those columns.
+
+## The Search list protocol
+
+With `ListProtocol=Search` the search bar is one box (`filters.search`, placeholder `Search`) instead of one box per searchable column; the API decides which columns it matches (`SearchColumns`, `SearchBox`). Paging, the Clear button and the sort are as before.
+
+## Editable child rows (`EditableChildren`)
+
+A child table the project lists in `EditableChildren` (`Project.ProjectTask`) is a table of inputs inside the form instead of a read-only grid under it, the same rule as the Angular page (`EditableChild` in Core: the columns, which child is editable). One input per child column except its key, the link to the parent, computed, identity and audit columns: a text box, a date, a number with its limits, a check box, a drop-down of the values the database lists, and for the child's own foreign key a drop-down read from `GET /api/<parents>/lookup` (a uniqueidentifier key keeps a plain box). **Add** appends a row with a value for every NOT NULL column, **Remove** drops it; nothing is saved until **Submit**, which sends the rows under the child's plural name (`projectTasks`) in the body of the create or update. The API makes the table match the list (a row with its key is changed, a row without one is added, a row left out is removed, all in one transaction), so the grid and the form stay in step after Submit. The inputs carry `required` like the main fields, so the browser refuses a blank one; a refused save (400) keeps the dialog open with the message. A child that is not listed keeps its read-only grid and its "Save this row first" note. The page needs the `CrudApi` group refreshed with `--replace` for a project that already has it. Run in a scratch React app: edit a row (change one task, remove one, add one), add a row with a task, and a blank required field refused.

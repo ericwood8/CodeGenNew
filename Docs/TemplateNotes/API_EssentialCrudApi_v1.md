@@ -64,3 +64,7 @@ Every refusal is a problem-details answer (RFC 9457), so the client shows the `d
 - **Validation:** the endpoint filter only sees a body of the entity type, so with an input type the entity's validator is a service of the handler (`IValidator<TEntity>? validator`).
 - **Editable children:** the body is read into the input type.
 - Without `Dtos` the file is what it was.
+
+## The Search list protocol
+
+With `ListProtocol=Search` the list route (`GET <route>`) takes the project's parameter names (`PageParameter`, `PageSizeParameter`, `SortParameter` as `column:asc` or `column:desc`, `SearchParameter`) and answers a page as `{ <ItemsMember>, <TotalMember> }`; the first page is `PageBase`. A search text or a sort without a page answers the matching rows as a plain array, and a call with none of them still answers every row, so the drop-downs are unchanged. The search text is trimmed and lower-cased and handed to `SearchRows`; the sort name is handed to `SortRows` and followed by the key, so pages do not overlap; a name that is not a sortable column gives the default order. Both are hooks a table's class overrides (API_Crud writes them). A project that already has `Apis/CrudApi.cs` needs `essentials --groups crudapi --replace`. API_Search still writes its `/search` route; nothing calls it in this protocol.

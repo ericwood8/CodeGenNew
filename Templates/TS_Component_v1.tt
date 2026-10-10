@@ -108,7 +108,7 @@
         // ==== the columns on the screen: Name first, then table order
         var shown = Model.Columns
             .Where(c => (textKey && c.IsPrimaryKey)
-                        || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity
+                        || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && !c.IsCredentialColumn
                             && !(fkByColumn.TryGetValue(c.Name, out var hfk) && IsHiddenParent(hfk.ReferencedTable))))
             .OrderBy(c => textKey && c.IsPrimaryKey ? 0 : c.Name == "Name" ? 1 : 2).ThenBy(c => c.OrdinalPosition)
             .ToList();
@@ -153,9 +153,8 @@
         string Id(ColumnModel c) => variable + UpperFirst(Camel(c.Name));   // holidayName
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
         string LabelOf(ColumnModel c) => c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name);
-        var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
-        // long text is left out of the grid to keep it readable - unless that would leave nothing to show but the buttons
-        if (gridColumns.Count == 0) gridColumns = shown.ToList();
+        // multi-line text is left out of the grid to keep it readable, unless that leaves it with fewer than GridColumns.MinColumns columns
+        var gridColumns = GridColumns.Choose(shown, IsMultiline);
         // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
         gridColumns = gridColumns.ForGrid();
         // A grid column's header sorts the grid unless it is long text or binary (SearchSort.IsSortable; long text never is in a grid anyway).
@@ -269,7 +268,7 @@
         // a typed key is set on a new row too, so the screen's `adding` (not the key) says which heading
         string headingTest = textKey ? "adding ? 'Add' : 'Edit'" : "selectedRow." + keyProp + " ? 'Edit' : 'Add'";
         H($"        <h2>{{{{{headingTest}}}}} {title}</h2>");
-        H($"        <form id=\"{variable}Form\" (ngSubmit)=\"submit(selectedRow)\">");
+        H($"        <form id=\"{variable}Form\" ngNativeValidate (ngSubmit)=\"submit(selectedRow)\">");
         if (tabbed)
         {
             H("            <div role=\"tablist\" class=\"form-tabs\">");
@@ -279,7 +278,7 @@
         }
         for (int pageIndex = 0; pageIndex < formPages.Count; pageIndex++)
         {
-        if (tabbed) H($"            <div role=\"tabpanel\" [hidden]=\"activeTab !== {pageIndex}\">");
+        if (tabbed) H($"            <div role=\"tabpanel\" data-tab=\"{pageIndex}\" [hidden]=\"activeTab !== {pageIndex}\">");
         foreach (var c in formPages[pageIndex].Columns)
         {
             string id = Id(c);
@@ -351,7 +350,7 @@
         if (tabbed) H("            </div>");
         }
         H();
-        H("            <button type=\"submit\" class=\"btn\">Submit</button>");
+        H("            <button type=\"submit\" class=\"btn\"" + (tabbed ? " (click)=\"revealInvalidTab($event)\"" : "") + ">Submit</button>");
         H("            <button type=\"button\" (click)=\"cancel()\" class=\"btn btn-outline\">Cancel</button>");
         H("        </form>");
         H("    </dialog>");
@@ -488,7 +487,16 @@
             T($"  {p.List}: {(p.Lookup ? p.LookupType : p.Type)}[] = [];");
         foreach (var p in parents.Where(p => !p.Self))
             T($"  private readonly {p.ServiceVar} = inject({p.Service});");
-        if (tabbed) T("  activeTab = 0; // the form tab showing");
+        if (tabbed)
+        {
+            T("  activeTab = 0; // the form tab showing");
+            T();
+            T("  // A required field on a tab that is not showing blocks the submit without a visible message: show the tab that holds the first invalid field.");
+            T("  revealInvalidTab(event: Event): void {");
+            T("    const panel = (event.currentTarget as HTMLButtonElement).form?.querySelector(':invalid')?.closest('[role=\"tabpanel\"]');");
+            T("    if (panel) { this.activeTab = Number(panel.getAttribute('data-tab')); }");
+            T("  }");
+        }
         T();
         {
             var parentsToLoad = parents.ToList();   // a drop-down over this table itself (a manager) is read through the screen's own service

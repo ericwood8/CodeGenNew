@@ -99,9 +99,13 @@
         // TSX_Api.tt's own filters object property order exactly. Empty for a table with no searchable
         // column - canSearch below gates the search bar UI specifically; pagination itself is unconditional
         // (see the header comment's 2026-09-28 update).
-        var searchFields = Model.SearchableColumns
-            .Select(c => new { ParamName = LowerFirst(c.Name), c.Name, Label = Label(c.Name) })
-            .ToList();
+        // The Search list protocol (ListProtocol=Search) has one search box for the whole table; the server decides which columns it matches.
+        bool listSearch = Project.ListSearchProtocol;
+        var searchFields = listSearch
+            ? new[] { new { ParamName = "search", Name = "search", Label = "" } }.ToList()
+            : Model.SearchableColumns
+                .Select(c => new { ParamName = LowerFirst(c.Name), c.Name, Label = Label(c.Name) })
+                .ToList();
         bool canSearch = searchFields.Count > 0;
 
         var fkByColumn = Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1)
@@ -110,7 +114,7 @@
 
         var shown = Model.Columns
             .Where(c => (textKey && c.IsPrimaryKey)
-                        || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity
+                        || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && !c.IsCredentialColumn
                             && !(fkByColumn.TryGetValue(c.Name, out var hfk) && IsHiddenParent(hfk.ReferencedTable))))
             .OrderBy(c => textKey && c.IsPrimaryKey ? 0 : c.Name == "Name" ? 1 : 2).ThenBy(c => c.OrdinalPosition)
             .ToList();
@@ -149,8 +153,7 @@
         string Id(ColumnModel c) => stem + "-" + Camel(c.Name).ToLowerInvariant();
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
         string LabelOf(ColumnModel c) => c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name);
-        var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
-        if (gridColumns.Count == 0) gridColumns = shown.ToList();
+        var gridColumns = GridColumns.Choose(shown, IsMultiline);
         // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
         gridColumns = gridColumns.ForGrid();
         // A grid column's header sorts the grid unless it is long text or binary (SearchSort.IsSortable; long text never is in a grid anyway).
@@ -403,8 +406,9 @@
             {
                 T("        <input");
                 T("          type=\"text\"");
-                T($"          placeholder=\"Search by {f.Label}\"");
-                T($"          aria-label=\"Search by {f.Label}\"");
+                string searchLabel = listSearch ? "Search" : $"Search by {f.Label}";
+                T($"          placeholder=\"{searchLabel}\"");
+                T($"          aria-label=\"{searchLabel}\"");
                 T($"          value={{filters.{f.ParamName}}}");
                 T($"          onChange={{(event) => setFilters({{ ...filters, {f.ParamName}: event.target.value }})}}");
                 T("        />");

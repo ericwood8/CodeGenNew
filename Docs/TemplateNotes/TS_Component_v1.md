@@ -81,3 +81,11 @@ The component class is `export class HolidayComponent extends PagedCrudScreen<Ho
 ## Drop-downs read the lookup list
 
 A drop-down over a parent with a whole-number key (and an API) is filled from `getLookup()` (`GET <route>/lookup`: `{ id, name, isActive }`) instead of `getAll()`, so a big parent table is not sent in full to fill a list; the "name of" method reads the same list. The option uses `p.id` and `p.name`, the list is typed `Lookup[]` (from `crud.service.ts`) and the parent's model is no longer imported for it. A parent with a guid key keeps `getAll()`. A foreign key to the table itself reads its own lookup. `TS_DetailMasterComponent` does the same for its drop-downs, and its child grids name an id from the parent's `/lookup` list.
+
+## Required fields and the form
+
+The form carries `ngNativeValidate`, which gives back the browser's own check that Angular's `novalidate` switches off: a blank required field (a drop-down whose foreign key starts unset, an empty name) stops the submit with the browser's message instead of being posted and refused by the API. In a tabbed form the Submit button first opens the tab of the first invalid field (`revealInvalidTab`, from the `data-tab` of each panel), because a field on a hidden tab would otherwise block the submit silently. Nothing in the essentials changed.
+
+## Credentials and long text
+
+A text column named like a credential (`ColumnModel.IsCredentialColumn`: a name with `Password` in it, or ending in `Salt`, `Secret`, `ApiKey` or `Token`) is in neither the grid, the form nor the search bar. A row that is edited keeps the value it was read with; a new row starts with `''`. A table that must not be read at all belongs in `NoApiTables`. A grid that would show fewer than `GridColumns.MinColumns` (3) columns because its text is 100 characters or longer is filled up with the first of those columns (a column of 500 characters or more, or one named like a note, stays out).

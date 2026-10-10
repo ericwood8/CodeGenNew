@@ -34,6 +34,9 @@
     // the create and update handlers receive the entity's validator themselves, because the endpoint filter only sees a body of the entity type
     string validatorParameter = dtos && Project.ApiValidation ? ", [FromServices] IValidator<TEntity>? validator" : "";
     string validatorArgument = dtos && Project.ApiValidation ? ", validator" : "";
+    // ListProtocol=Search: the list route takes the parameter names of the project's list protocol and answers { data, count }; the table's class says what the search box matches and what can be sorted
+    bool listSearch = Project.ListSearchProtocol;
+    int firstPage = Project.PageBase;
 #>
 @@@FILE Apis/CrudApi.cs@@@
 namespace <#= apiNamespace #>;
@@ -238,6 +241,19 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 
     /// <summary> The rows as lookup items, in the order a drop-down lists them (<c>rows.OrderBy(c =&gt; c.Name).Select(c =&gt; new LookupItem(c.CustomerId, c.Name))</c>); only called when <see cref="CanLookup"/> is true. </summary>
     protected virtual IQueryable<LookupItem<TKey>> LookupQuery(IQueryable<TEntity> rows) => throw new NotSupportedException();
+<#
+    if (listSearch)
+    {
+#>
+
+    /// <summary> The rows that contain the search text in any of the columns the search box matches (the lower-cased, trimmed text is compared); the rows as they are when the table matches nothing. </summary>
+    protected virtual IQueryable<TEntity> SearchRows(IQueryable<TEntity> rows, string text) => rows;
+
+    /// <summary> The rows ordered by the column of that name (case ignored), or null for a name that is not one of the table's sortable columns, which gives the default order. </summary>
+    protected virtual IOrderedQueryable<TEntity>? SortRows(IQueryable<TEntity> rows, string column, bool descending) => null;
+<#
+    }
+#>
 
     /// <summary> True for a table whose rows have a Name (the repository's <c>GetByName</c>): <c>GET &lt;route&gt;/{name}</c> lists the rows whose name starts with the text. Not for a text key: <c>/{id}</c> and <c>/{name}</c> would be the same route. </summary>
     protected virtual bool CanFindByName => false;
@@ -340,12 +356,25 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
         _route = _apiSubDir;
 <#= auth("        if (Owner is not null)\n            _http = app.Services.GetRequiredService<IHttpContextAccessor>();\n") #>
         // Get all
+<#
+    if (listSearch)
+    {
+#>
+        app.MapGet(apiSubDir, ([FromServices] <#= contextType #> context, [FromQuery(Name = "<#= Project.PageParameter #>")] int? pageNumber, [FromQuery(Name = "<#= Project.PageSizeParameter #>")] int? pageSize,
+            [FromQuery(Name = "<#= Project.SortParameter #>")] string? sort, [FromQuery(Name = "<#= Project.SearchParameter #>")] string? search) => GetAllAsync(context, pageNumber, pageSize, sort, search))
+<#
+    }
+    else
+    {
+#>
         app.MapGet(apiSubDir, ([FromServices] <#= contextType #> context, [FromQuery] int? pageNumber, [FromQuery] int? pageSize) => GetAllAsync(context, pageNumber, pageSize))
+<#
+    }
+#>
         .WithName($"Get{plural}")
         .WithOpenApi()
         .Produces<IEnumerable<<#= output #>>>()
-        .Produces<CrudPage<<#= output #>>>()
-        .ProducesProblem(400)
+<#= listSearch ? "        .Produces<Dictionary<string, object?>>()\n" : "        .Produces<CrudPage<" + output + ">>()\n" #>        .ProducesProblem(400)
         .ProducesProblem(404)
         .ProducesProblem(500);
 
@@ -440,6 +469,77 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
         }
     }
 
+<#
+    if (listSearch)
+    {
+#>
+    /// <summary>
+    /// Every row as a plain array (drop-downs and small tables use this). With a search text or a sort the rows that match, in that order; with a page (<#= Project.PageParameter #> counted from <#= firstPage #>, <#= Project.PageSizeParameter #>) one page of
+    /// them, answered as { <#= Project.ItemsMember #>, <#= Project.TotalMember #> }. The order ends with the key, so pages do not overlap.
+    /// </summary>
+    private async Task<IResult> GetAllAsync(<#= contextType #> context, int? pageNumber, int? pageSize, string? sort, string? search)
+    {
+<#= auth("        var owners = await VisibleOwnersAsync();\n") #>        bool paged = pageNumber is not null || pageSize is not null;
+        if (paged || !string.IsNullOrWhiteSpace(search) || !string.IsNullOrWhiteSpace(sort))
+        {
+            IQueryable<TEntity> rows = <#= Project.ApiAuth ? "Scope(context.Set<TEntity>().AsNoTracking(), owners)" : "context.Set<TEntity>().AsNoTracking()" #>;
+            if (!string.IsNullOrWhiteSpace(search))
+                rows = SearchRows(rows, search.Trim().ToLower());
+            var ordered = SortedRows(rows, sort) ?? (NewestFirst is { } newest ? rows.OrderByDescending(newest).ThenBy(Key) : rows.OrderBy(Key));
+            if (!paged)
+            {
+                var listed = await ordered.ToListAsync();
+                return Results.Ok(<#= mapAll("listed") #>);
+            }
+
+            // 0 or less is an error inside the database (FETCH NEXT 0 ROWS) and a huge size reads the whole table: keep it between 1 and MaxPageSize
+            int size = Math.Clamp(pageSize ?? 100, 1, MaxPageSize);
+            int number = pageNumber ?? <#= firstPage #>;
+            if (number < <#= firstPage #>)
+                return Results.Problem(statusCode: 400, title: "Invalid page", detail: "<#= Project.PageParameter #> must be <#= firstPage #> or greater.");
+            if ((long)(number - <#= firstPage #>) * size > int.MaxValue)
+                return Results.Problem(statusCode: 400, title: "Invalid page", detail: "<#= Project.PageParameter #> is too large for that <#= Project.PageSizeParameter #>.");
+
+            int totalCount = await rows.CountAsync();
+            var page = await ordered.Skip((number - <#= firstPage #>) * size).Take(size).ToListAsync();
+            return Results.Ok(new Dictionary<string, object?> { ["<#= Project.ItemsMember #>"] = <#= mapAll("page") #>, ["<#= Project.TotalMember #>"] = totalCount });
+        }
+
+<#
+        if (Project.ApiAuth)
+        {
+#>
+        if (owners is not null)
+        {
+            IQueryable<TEntity> mine = Scope(context.Set<TEntity>().AsNoTracking(), owners);
+            return Results.Ok(<#= dtos ? "(" : "" #>await (NewestFirst is { } newestFirst ? mine.OrderByDescending(newestFirst).ThenBy(Key) : mine.OrderBy(Key)).ToListAsync()<#= dtos ? ").Select(ToOutput).ToList()" : "" #>);
+        }
+
+<#
+        }
+#>
+        var repo = NewRepo(context);
+        var all = NewestFirst is { } order ? await repo.GetAllOrderByDescending(order) : await repo.GetAll();
+        return Results.Ok(<#= mapAll("all") #>);
+    }
+
+    /// <summary> The sort the caller asked for (<c>name:desc</c>: the column, then asc or desc) followed by the key, or null when there is none or the table has no such column. </summary>
+    private IOrderedQueryable<TEntity>? SortedRows(IQueryable<TEntity> rows, string? sort)
+    {
+        if (string.IsNullOrWhiteSpace(sort))
+            return null;
+        int colon = sort.LastIndexOf(':');
+        string column = (colon < 0 ? sort : sort[..colon]).Trim();
+        if (column.Length > <#= SearchSort.MaxNameLength #>)
+            return null;
+        bool descending = colon >= 0 && string.Equals(sort[(colon + 1)..].Trim(), "desc", StringComparison.OrdinalIgnoreCase);
+        return SortRows(rows, column, descending)?.ThenBy(Key);
+    }
+<#
+    }
+    else
+    {
+#>
     /// <summary>
     /// Every row as a plain array (drop-downs and small tables use this), or, when pageNumber or pageSize is given, one page of them with the total:
     /// the table's route with pageNumber=2 and pageSize=50 in the query string. The page is ordered like the array and by the key, so pages do not overlap; a big table is read a page at a time.
@@ -480,6 +580,9 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
         var rows = NewestFirst is { } order ? await repo.GetAllOrderByDescending(order) : await repo.GetAll();
         return Results.Ok(<#= mapAll("rows") #>);
     }
+<#
+    }
+#>
 
     private async Task<IResult> GetByIdAsync(<#= contextType #> context, TKey id)
     {

@@ -83,7 +83,7 @@ public static class ProjectSettingsHints
         ["ComponentsFolder"] = "React / Angular folder for the shared components and Angular screens; blank = components",
         ["PagesFolder"] = "React folder for the pages; blank = pages",
         ["AngularVersion"] = "major version of Angular, e.g. 22; blank = output that every version from 18 accepts",
-        ["ListProtocol"] = "Angular: Columns (what API_Search writes: GET <route>/search with a parameter per column) or Search (an existing API: GET <route>?pageIndex&pageSize&sort=name:desc&search=text, one search box); blank = Columns",
+        ["ListProtocol"] = "Columns (what API_Search writes: GET <route>/search with a parameter per column) or Search (GET <route>?pageIndex&pageSize&sort=name:desc&search=text, one search box, answered as { data, count }): the generated API, Angular and React all follow it; the API needs essentials --groups crudapi --replace; blank = Columns",
         ["PageParameter"] = "ListProtocol=Search: the query parameter that holds the page; blank = pageIndex (pageNumber with PageBase 1)",
         ["PageSizeParameter"] = "ListProtocol=Search: the query parameter that holds the page size; blank = pageSize",
         ["SortParameter"] = "ListProtocol=Search: the query parameter that holds the sort (column:asc or column:desc); blank = sort",
@@ -91,6 +91,7 @@ public static class ProjectSettingsHints
         ["PageBase"] = "ListProtocol=Search: 0 when the first page is 0, 1 when it is 1; blank = 0",
         ["ItemsMember"] = "ListProtocol=Search: the member of the answer that holds the rows of the page; blank = data",
         ["TotalMember"] = "ListProtocol=Search: the member of the answer that holds the number of rows in all; blank = count",
+        ["SearchColumns"] = "ListProtocol=Search: Table=Column or Table=Parent.Column pairs, comma-separated (TimeSheet=Notes,TimeSheet=Employee.Name): what the one search box matches; blank = the table's searchable text columns and the display column of its parents",
         ["DefaultSorts"] = "Table=Column:asc|desc pairs, comma-separated (TimeSheet=WhenEntered:desc,Holiday=Name): the sort an Angular grid starts with until the person sorts it",
         ["DockerUpstreamVariable"] = "The Docker group's nginx reads the API's address from this environment variable, and it holds a whole address (https://host:8443), the way .NET Aspire names a service (services__shopapi__https__0); blank = API_UPSTREAM, which holds host:port",
         ["Auth"] = "Angular: the app signs in. Writes the Auth group (auth service, token interceptor, route guard, login page; sessionStorage), adds the interceptor to app.config.ts, a guard on every generated route and the user name with Sign out to the shell. Needs POST api/auth/login answering { token, expiresUtc, user: { name } }. Regenerate the project; essentials already written are kept (use --replace for the shell and config).",
@@ -137,7 +138,7 @@ public static class ProjectSettingsHints
         ["Acronyms"] = "comma-separated words the Pascal style keeps upper-case whole (PO,UPC,MSRP)",
         ["Screens"] = "comma-separated tables that get a screen, in menu order; blank = every table that has an API and a search, alphabetically",
         ["NoCloneTables"] = "comma-separated tables that get no Clone button although they could (Customer,SalesInvoice)",
-        ["EditableChildren"] = "comma-separated child tables whose rows are added, changed and removed inside the parent's form and saved with it in one request: the child (ProjectTask), or Parent.Child (Department.DepartmentTeam) for a child that also points at another table. The child needs an identity whole-number key and one NOT NULL link to the parent; Angular only so far; blank = every child grid is read-only. Refresh the CrudApi group with --replace",
+        ["EditableChildren"] = "comma-separated child tables whose rows are added, changed and removed inside the parent's form and saved with it in one request: the child (ProjectTask), or Parent.Child (Department.DepartmentTeam) for a child that also points at another table. The child needs an identity whole-number key and one NOT NULL link to the parent; Angular and React (the master-detail page); blank = every child grid is read-only. Refresh the CrudApi group with --replace",
         ["SeedTables"] = "comma-separated tables whose current rows are written as seed data, a parent before its children (Region,Currency): a class per table that adds its rows when the table is empty and the class that runs them all. The rows are read when you generate, so load them first; an identity key is numbered again from 1. Blank = nothing is seeded",
         ["ChildGridTitles"] = "Parent.Child=Title pairs, comma-separated, for a child grid whose table name does not say what the rows mean (Customer.CustomerItem=Item Purchase History)"
     };

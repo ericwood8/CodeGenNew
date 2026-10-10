@@ -51,7 +51,8 @@
     // ==========================================================================================
     // TSX_DetailMasterPage_v1.tt
     // Generates: pages/<Table>DetailMasterPage.tsx plus its test file (the paths are written by the template; point the output folder at the React src folder)
-    // TSX_Page's grid, search, paging and modal add/edit form, plus one read-only grid per child table under the form while a row is edited.
+    // TSX_Page's grid, search, paging and modal add/edit form, plus one read-only grid per child table under the form while a row is edited. A child the project lists in EditableChildren
+    // (Department.DepartmentTeam) is an editable table inside the form instead, saved with the row in one request (EditableChild in Core, the rule the API's create and update use too).
     // The React counterpart of TS_DetailMasterComponent. Needs a table with at least one child foreign key.
     // Full notes: Docs/TemplateNotes/TSX_DetailMasterPage_v1.md
     // ==========================================================================================
@@ -102,9 +103,13 @@
         bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"); // just for showError's message wording below
         const int pageSize = 20;
         // The same paging and search bar as TSX_Page: one text box per searchable column (Model.SearchableColumns), paged by the API's /search endpoint.
-        var searchFields = Model.SearchableColumns
-            .Select(c => new { ParamName = LowerFirst(c.Name), c.Name, Label = Label(c.Name) })
-            .ToList();
+        // The Search list protocol (ListProtocol=Search) has one search box for the whole table; the server decides which columns it matches.
+        bool listSearch = Project.ListSearchProtocol;
+        var searchFields = listSearch
+            ? new[] { new { ParamName = "search", Name = "search", Label = "" } }.ToList()
+            : Model.SearchableColumns
+                .Select(c => new { ParamName = LowerFirst(c.Name), c.Name, Label = Label(c.Name) })
+                .ToList();
         bool canSearch = searchFields.Count > 0;
         // The route of a table's own page ("SalesInvoice" -> "sales-invoice"): the hand-written App.tsx has one route per generated page, named this way.
         string PageRoute(string table) => Words(BaseName(table)).ToLowerInvariant().Replace(' ', '-');
@@ -116,7 +121,7 @@
 
         var shown = Model.Columns
             .Where(c => (textKey && c.IsPrimaryKey)
-                        || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity
+                        || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && !c.IsCredentialColumn
                             && !(fkByColumn.TryGetValue(c.Name, out var hfk) && IsHiddenParent(hfk.ReferencedTable))))
             .OrderBy(c => textKey && c.IsPrimaryKey ? 0 : c.Name == "Name" ? 1 : 2).ThenBy(c => c.OrdinalPosition)
             .ToList();
@@ -151,11 +156,13 @@
             }).ToList();
         var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
 
-        var children = Model.ChildForeignKeys
-            .Where(fk => fk.ReferencingColumns.Count == 1 && !NoApi(fk.ReferencingTable, default))
+        var childKeys = Model.ChildForeignKeys.Where(fk => fk.ReferencingColumns.Count == 1 && !NoApi(fk.ReferencingTable, default)).ToList();
+        var children = childKeys
             .Select(fk => new
             {
                 Table = fk.ReferencingTable,
+                // the property of the save request that holds this child's rows when the table is edited in the form (EditableChildren)
+                JsonName = EditableChild.JsonName(fk),
                 // The heading of the grid: the table's name, or the project's ChildGridTitles entry (a CustomerItem table reads "Item Purchase History" under a customer and "Who Purchased?" under an item).
                 Title = Project.ChildGridTitle(Model.TableName, fk.ReferencingTable, Words(BaseName(fk.ReferencingTable))),
                 Var = LowerFirst(BaseName(fk.ReferencingTable)),
@@ -190,8 +197,46 @@
         string Id(ColumnModel c) => stem + "-" + Camel(c.Name).ToLowerInvariant();
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
         string LabelOf(ColumnModel c) => c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name);
-        var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
-        if (gridColumns.Count == 0) gridColumns = shown.ToList();
+
+        // EditableChildren: the child tables whose rows are added, changed and removed inside this form and sent with it in one request (EditableChild, the rule the API's create and update use too);
+        // every other child keeps its read-only grid under the form
+        var editableLinks = childKeys.Where(fk => EditableChild.IsEditable(Model, fk, Project)).ToList();
+        bool IsEditableChild(string table) => editableLinks.Any(fk => fk.ReferencingTable.EqualsIgnoreCase(table));
+        var gridChildren = children.Where(ch => !IsEditableChild(ch.Table)).ToList();
+        var editableChildren = children.Where(ch => IsEditableChild(ch.Table)).ToList();
+        ChildForeignKeyModel LinkOf(string table) => editableLinks.First(fk => fk.ReferencingTable.EqualsIgnoreCase(table));
+        // a child's own foreign key is a drop-down over the parent's lookup list ({ id, name }), unless its key is a uniqueidentifier
+        ForeignKeyModel EditLookupOf(ChildForeignKeyModel link, ColumnModel c) => c.IsGuidColumn ? null
+            : link.ReferencingTableForeignKeys.FirstOrDefault(o => o.ReferencingColumns.Count == 1 && o.ReferencingColumns[0].EqualsIgnoreCase(c.Name)
+                && o.ReferencedDisplayColumns.Count > 0 && !NoApi(o.ReferencedTable, o.ReferencedLookupShape) && !NoLookup(o.ReferencedTable, o.ReferencedLookupShape));
+        string ChildInput(ChildForeignKeyModel link, string childVar, string method, ColumnModel c)
+        {
+            string prop = Camel(c.Name);
+            string aria = $"aria-label=\"{GridCaption.For(c, LabelOf(c))}\"";
+            string req = c.IsNullable ? "" : " required";
+            string change(string value) => $"change{method}(row, {{ {prop}: {value} }})";
+            string number = "event.target.value === '' ? null : Number(event.target.value)";
+            if (EditLookupOf(link, c) is not null)
+                return $"<select {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change(IsNumber(c) ? number : "event.target.value || null")}}}{req}><option value=\"\"></option>{{({childVar}Options['{prop}'] ?? []).map((p) => <option key={{p.id}} value={{p.id}}>{{p.name}}</option>)}}</select>";
+            if (c.HasChoices)
+                return $"<select {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change(c.IsNullable ? "event.target.value || null" : "event.target.value")}}}{req}><option value=\"\"></option>{string.Concat(c.Choices!.Select(choice => $"<option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>"))}</select>";
+            if (c.IsBooleanColumn)
+                return $"<input type=\"checkbox\" {aria} checked={{!!row.{prop}}} onChange={{(event) => {change("event.target.checked")}}} />";
+            if (IsDate(c))
+                return $"<input type=\"date\" {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change("event.target.value || null")}}}{req} />";
+            if (IsNumber(c))
+            {
+                string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? " step=\"" + "0." + new string('0', c.Scale!.Value - 1) + "1\""
+                            : c.IsMoneyColumn ? " step=\"0.01\""
+                            : c.SqlType is SqlDbType.Float or SqlDbType.Real ? " step=\"any\"" : "";
+                string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\""
+                    : IsPlainDecimal(c) ? $" min=\"{Inv(NumericClassifier.DecimalRange(c).Min)}\" max=\"{Inv(NumericClassifier.DecimalRange(c).Max)}\"" : "";
+                return $"<input type=\"number\" {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change(number)}}}{step}{range}{req} />";
+            }
+            string max = IsText(c) && Chars(c) > 0 ? $" maxLength={{{Chars(c)}}}" : "";
+            return $"<input type=\"text\" {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change("event.target.value")}}}{max}{req} />";
+        }
+        var gridColumns = GridColumns.Choose(shown, IsMultiline);
         // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
         gridColumns = gridColumns.ForGrid();
         // A grid column's header sorts the grid unless it is long text or binary (SearchSort.IsSortable; long text never is in a grid anyway).
@@ -213,7 +258,7 @@
         T($"import {{ {variable}Api }} from '../{apiFolder}/{stem}Api';");
         T($"import {{ ApiError, request }} from '../{apiFolder}/client';");
         T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
-        T($"import {{ GridMenu, SortHeader, loadSort, nextSort, saveSort, sortRows }} from '../{componentsFolder}/gridSort';");
+        T($"import {{ GridMenu, SortHeader, loadSort, nextSort, saveSort{(gridChildren.Count > 0 ? ", sortRows" : "")} }} from '../{componentsFolder}/gridSort';");
         T($"import type {{ GridSort }} from '../{componentsFolder}/gridSort';");
         foreach (var p in parents.Where(p => !p.Self))
         {
@@ -226,17 +271,17 @@
         T($"const gridKey = '{stem}'; // the grid's saved sort is kept in the browser under this key (see components/gridSort.tsx)");
         T($"const sortableColumns = [{string.Join(", ", sortableColumns.Select(c => "'" + c.Name + "'"))}]; // the columns whose header sorts the grid");
         T();
-        if (children.Count > 0)
+        if (gridChildren.Count > 0)
         {
-            var allCurrency = children.SelectMany(ch => ch.Currency).GroupBy(m => m.Name).Select(g => g.First()).ToList();
-            var allLongText = children.SelectMany(ch => ch.LongText).Distinct().ToList();
+            var allCurrency = gridChildren.SelectMany(ch => ch.Currency).GroupBy(m => m.Name).Select(g => g.First()).ToList();
+            var allLongText = gridChildren.SelectMany(ch => ch.LongText).Distinct().ToList();
             T("// Child grids show whatever keys the API returns; these helpers caption them, leave out long text, limit them to 20 and format money and dates.");
             T("const childCurrencyDigits: Record<string, number> = { " + string.Join(", ", allCurrency.Select(m => m.Name + ": " + m.Digits)) + " };");
-            var allCaptions = children.SelectMany(ch => ch.Captions).GroupBy(m => m.Name).Select(g => g.First()).ToList();
+            var allCaptions = gridChildren.SelectMany(ch => ch.Captions).GroupBy(m => m.Name).Select(g => g.First()).ToList();
             T("const childCaptions: Record<string, string> = { " + string.Join(", ", allCaptions.Select(m => m.Name + ": '" + m.Caption.Replace("'", "\'") + "'")) + " };");
             T("const childLongTextColumns: string[] = [" + string.Join(", ", allLongText.Select(n => "'" + n + "'")) + "];");
             T();
-            foreach (var child in children)
+            foreach (var child in gridChildren)
             {
                 T($"const {child.Var}Hidden: string[] = [" + string.Join(", ", child.Hidden.Select(n => "'" + n + "'")) + "];");
             }
@@ -296,13 +341,20 @@
         T("  const [searchParams] = useSearchParams();");
         T("  const navigate = useNavigate();");
         T("  const backTo = searchParams.get('back');");
-        foreach (var child in children)
+        foreach (var child in gridChildren)
         {
             T($"  const [{child.Var}Rows, set{child.MethodName}Rows] = useState<any[]>([]);");
             T($"  const [{child.Var}Columns, set{child.MethodName}Columns] = useState<string[]>([]);");
             T($"  const [{child.Var}Sort, set{child.MethodName}Sort] = useState<GridSort | null>(() => loadSort(gridKey + '.{child.Var}'));");
             if (child.Lookups.Count > 0)
                 T($"  const [{child.Var}Names, set{child.MethodName}Names] = useState<Record<string, Record<string, string>>>({{}});");
+        }
+        foreach (var child in editableChildren)
+        {
+            // the rows of the form's own child list: plain objects the inputs edit, sent with the row (withChildren below)
+            T($"  const [{child.Var}Rows, set{child.MethodName}Rows] = useState<any[]>([]);");
+            if (EditableChild.Columns(LinkOf(child.Table)).Any(c => EditLookupOf(LinkOf(child.Table), c) is not null))
+                T($"  const [{child.Var}Options, set{child.MethodName}Options] = useState<Record<string, {{ id: any; name: string }}[]>>({{}});");
         }
         T();
         // The sort (like the filters) is read from state by default; a change passes its new value explicitly because state is not updated yet.
@@ -321,28 +373,39 @@
         T("    load();");
         foreach (var p in parents.Where(p => !p.Self))
             T($"    {p.ApiVar}.getAll().then({p.SetList}).catch(() => {{}});");
+        foreach (var child in editableChildren)
+            foreach (var c in EditableChild.Columns(LinkOf(child.Table)))
+                if (EditLookupOf(LinkOf(child.Table), c) is { } lookup)
+                    T($"    request<any[]>('{apiPrefix}/{ApiRoute(lookup.ReferencedTable)}/lookup').then((items) => set{child.MethodName}Options((options) => ({{ ...options, {Camel(c.Name)}: items.map((i) => ({{ id: i['id'], name: String(i['name'] ?? '') }})) }}))).catch(() => {{}});");
         T("    const openId = searchParams.get('edit');");
         T($"    if (openId) {variable}Api.getById({(keyType.Kind == KeyKind.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Words(baseName).ToLowerInvariant()} no longer exists!'));");
         T("  }, []);");
         T();
+        // The child lists of EditableChildren go in the body of the save with the row; the API makes each child table match its list.
+        string body = editableChildren.Count > 0 ? $"withChildren({variable})" : variable;
+        if (editableChildren.Count > 0)
+        {
+            T($"  const withChildren = (row: {baseName}): {baseName} => ({{ ...row, {string.Join(", ", editableChildren.Select(ch => $"{ch.JsonName}: {ch.Var}Rows"))} }}) as {baseName};");
+            T();
+        }
         T($"  const submit = async ({variable}: {baseName}): Promise<void> => {{");
         T("    setError(null);");
         T($"    try {{");
         if (textKey)
         {
             T("      if (adding) {");
-            T($"        await {variable}Api.create({variable});");
+            T($"        await {variable}Api.create({body});");
             T("      } else {");
-            T($"        await {variable}Api.update({variable}.{keyProp}!, {variable});");
+            T($"        await {variable}Api.update({variable}.{keyProp}!, {body});");
             T("      }");
         }
         else
         {
             T($"      if ({variable}.{keyProp}) {{");
-            T($"        await {variable}Api.update({variable}.{keyProp}, {variable});");
+            T($"        await {variable}Api.update({variable}.{keyProp}, {body});");
             T("      } else {");
             T($"        {variable}.{keyProp} = {emptyKey};");
-            T($"        await {variable}Api.create({variable});");
+            T($"        await {variable}Api.create({body});");
             T("      }");
         }
         T("      setSelectedRow(null);");
@@ -412,7 +475,7 @@
         foreach (var child in children)
         {
             T($"    set{child.MethodName}Rows([]);");
-            T($"    set{child.MethodName}Columns([]);");
+            if (!IsEditableChild(child.Table)) T($"    set{child.MethodName}Columns([]);");
         }
         T("  };");
         T();
@@ -477,7 +540,36 @@
             T($"    return {p.List}.find((p) => p.{p.KeyProp} === id)?.{p.DisplayProp} ?? '';");
             T("  };");
         }
-        foreach (var child in children)
+        foreach (var child in editableChildren)
+        {
+            var link = LinkOf(child.Table);
+            var editColumns = EditableChild.Columns(link);
+            var childDates = editColumns.Where(IsDate).ToList();
+            var defaults = new List<string>();
+            foreach (var c in editColumns.Where(c => !c.IsNullable))
+            {
+                if (EditLookupOf(link, c) is not null) defaults.Add($"{Camel(c.Name)}: null");
+                else if (c.IsBooleanColumn) defaults.Add($"{Camel(c.Name)}: {(c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1" ? "true" : "false")}");
+                else if (IsDate(c)) defaults.Add($"{Camel(c.Name)}: new Date().toISOString().substring(0, 10)");
+                else if (IsNumber(c)) defaults.Add($"{Camel(c.Name)}: 0");
+                else defaults.Add($"{Camel(c.Name)}: ''");
+            }
+            T();
+            T($"  // {child.Title} are part of this form: the rows that point at the row being edited are read once, edited here and sent with the row under '{child.JsonName}'.");
+            T("  // The API makes the table match the list: a row with its key is changed, a row without one is added, a row left out is removed.");
+            T($"  const load{child.MethodName} = (parentId: {keyTs}) => {{");
+            T($"    request<any[]>('{apiPrefix}/{child.Route}').then((rows) => {{");
+            T($"      set{child.MethodName}Rows(rows.filter((r) => r['{child.FkProp}'] === parentId).map((r) => ({{ ...r{string.Concat(childDates.Select(c => $", {Camel(c.Name)}: r['{Camel(c.Name)}']?.substring(0, 10) ?? null"))} }})));");
+            T("    }).catch(() => {});");
+            T("  };");
+            T();
+            T($"  const add{child.MethodName} = () => set{child.MethodName}Rows((rows) => [...rows, {{ {string.Join(", ", defaults)} }}]);");
+            T();
+            T($"  const change{child.MethodName} = (row: any, values: Record<string, unknown>) => set{child.MethodName}Rows((rows) => rows.map((r) => (r === row ? {{ ...r, ...values }} : r)));");
+            T();
+            T($"  const remove{child.MethodName} = (row: any) => set{child.MethodName}Rows((rows) => rows.filter((r) => r !== row));");
+        }
+        foreach (var child in gridChildren)
         {
             T();
             T($"  // {child.Title} rows whose {child.FkProp} matches the row being edited - the whole table is loaded and");
@@ -547,8 +639,9 @@
             {
                 T("        <input");
                 T("          type=\"text\"");
-                T($"          placeholder=\"Search by {f.Label}\"");
-                T($"          aria-label=\"Search by {f.Label}\"");
+                string searchLabel = listSearch ? "Search" : $"Search by {f.Label}";
+                T($"          placeholder=\"{searchLabel}\"");
+                T($"          aria-label=\"{searchLabel}\"");
                 T($"          value={{filters.{f.ParamName}}}");
                 T($"          onChange={{(event) => setFilters({{ ...filters, {f.ParamName}: event.target.value }})}}");
                 T("        />");
@@ -784,6 +877,31 @@
         }
         if (tabbed) T("            </div>");
         }
+        foreach (var child in editableChildren)
+        {
+            // the child's rows are part of the form: Submit saves them with the row, in one request
+            var link = LinkOf(child.Table);
+            var editColumns = EditableChild.Columns(link);
+            T();
+            T("            <fieldset>");
+            T($"              <legend>{child.Title}</legend>");
+            T("              <table>");
+            T("                <thead>");
+            T("                  <tr>" + string.Concat(editColumns.Select(c => $"<th>{GridCaption.For(c, LabelOf(c))}</th>")) + "<th></th></tr>");
+            T("                </thead>");
+            T("                <tbody>");
+            T($"                  {{{child.Var}Rows.map((row, index) => (");
+            T("                    <tr key={index}>");
+            foreach (var c in editColumns)
+                T($"                      <td>{ChildInput(link, child.Var, child.MethodName, c)}</td>");
+            T($"                      <td><button type=\"button\" onClick={{() => remove{child.MethodName}(row)}}>Remove</button></td>");
+            T("                    </tr>");
+            T("                  ))}");
+            T("                </tbody>");
+            T("              </table>");
+            T($"              <button type=\"button\" onClick={{add{child.MethodName}}}>Add {Words(BaseName(child.Table))}</button>");
+            T("            </fieldset>");
+        }
         T();
         T("            <div className=\"form-buttons\">");
         T(tabbed ? "              <button type=\"submit\" onClick={revealInvalidTab}>Submit</button>" : "              <button type=\"submit\">Submit</button>");
@@ -791,8 +909,9 @@
         T("            </div>");
         T("          </form>");
         T();
-        T("          {/* Child grids: TableModel.ChildForeignKeys, one per table, columns discovered at run time */}");
-        foreach (var child in children)
+        if (gridChildren.Count > 0)
+            T("          {/* Child grids: TableModel.ChildForeignKeys, one per table, columns discovered at run time */}");
+        foreach (var child in gridChildren)
         {
             // the child grids show once the row is saved (a typed key is set on a new row too, so `adding` says which)
             T(textKey ? "          {!adding ? (" : $"          {{selectedRow.{keyProp} ? (");
@@ -835,7 +954,7 @@
         // ================= test
         var test = new StringBuilder();
         void S(string s = "") => test.Append(s).Append('\n');
-        S(textKey ? "import { fireEvent, render, screen } from '@testing-library/react';" : "import { render, screen } from '@testing-library/react';");
+        S(textKey || editableChildren.Count > 0 ? "import { fireEvent, render, screen } from '@testing-library/react';" : "import { render, screen } from '@testing-library/react';");
         S("import { MemoryRouter } from 'react-router-dom';");
         S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
         S($"import {{ {baseName}DetailMasterPage }} from '../{baseName}DetailMasterPage';");
@@ -871,14 +990,29 @@
             S($"    fireEvent.click(await screen.findByText('Add New {title}'));");
             S($"    expect(await screen.findByText('Add {title}')).toBeInTheDocument();");
             S($"    expect(screen.getByLabelText('{LabelOf(keyColumn)}')).not.toHaveAttribute('readonly');");
-            if (children.Count > 0)
-                S($"    expect(screen.getAllByText(/Save this {title} first/)).toHaveLength({children.Count});");   // one note per child grid
+            if (gridChildren.Count > 0)
+                S($"    expect(screen.getAllByText(/Save this {title} first/)).toHaveLength({gridChildren.Count});");   // one note per child grid
             S("    fireEvent.click(screen.getByText('Cancel'));");
             S("    fireEvent.click(await screen.findByText('Edit'));");
             S($"    expect(await screen.findByText('Edit {title}')).toBeInTheDocument();");
             S($"    expect(screen.getByLabelText('{LabelOf(keyColumn)}')).toHaveAttribute('readonly');");
-            if (children.Count > 0)
+            if (gridChildren.Count > 0)
                 S($"    expect(screen.queryAllByText(/Save this {title} first/)).toHaveLength(0);");
+            S("  });");
+        }
+        foreach (var child in editableChildren)
+        {
+            // the rows of an editable child list are part of the form: they can be added and removed before the row is saved; jsdom has no showModal, so the test gives the dialog one that just opens it
+            S();
+            S($"  it('adds and removes {child.Title.ToLowerInvariant()} rows in the form', async () => {{");
+            S("    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };");
+            S($"    render(<MemoryRouter><{baseName}DetailMasterPage /></MemoryRouter>);");
+            S($"    fireEvent.click(await screen.findByText('Add New {title}'));");
+            S($"    fireEvent.click(await screen.findByText('Add {Words(BaseName(child.Table))}'));");
+            S($"    fireEvent.click(screen.getByText('Add {Words(BaseName(child.Table))}'));");
+            S("    expect(screen.getAllByText('Remove')).toHaveLength(2);");
+            S("    fireEvent.click(screen.getAllByText('Remove')[0]);");
+            S("    expect(screen.getAllByText('Remove')).toHaveLength(1);");
             S("  });");
         }
         S("});");

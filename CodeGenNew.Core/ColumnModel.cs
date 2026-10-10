@@ -107,6 +107,13 @@ public class ColumnModel
 
     private static readonly string[] LongTextNameEndings = ["Note", "Notes", "Comment", "Comments", "Remarks", "Memo"];
 
+    /// <summary> A text column that holds a credential, judged by its name (a name with Password in it, or one that ends in Salt, Secret, ApiKey or Token): the generated screens show it neither in the grid nor in the form,
+    /// and a row that is edited keeps the value it was read with. Keep such a table out of the API with <c>NoApiTables</c> when its rows must not be read at all. </summary>
+    public bool IsCredentialColumn =>
+        IsStringColumn && (Name.ContainsIgnoreCase("Password") || Array.Exists(CredentialNameEndings, s => Name.EndsWithIgnoreCase(s)));
+
+    private static readonly string[] CredentialNameEndings = ["Salt", "Secret", "ApiKey", "Token"];
+
     /// <summary> Name-pattern match for create/modify/delete/activate/inactivate tracking columns
     /// (e.g. CreateDate, ModifiedBy, InactivatedDate). </summary>
     public bool IsAuditColumn { get; init; }

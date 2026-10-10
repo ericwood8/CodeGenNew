@@ -53,3 +53,11 @@ Same change as TS_Component: the class extends `PagedCrudScreen<T>`; it adds `ad
 - A parent with a Name and an IsActive column (a department with its teams) is on `NameActiveCrudScreen` like `TS_Component` describes: the same name box, "Active only" check box and `visibleRows`, no paging or sorting of the parent grid. The child grids are unchanged.
 - A child table that references the parent twice (a donation has a donor and a recipient) gets one grid per foreign key; the second and later grids are named by the column's role (`donateFromEmployee`) and titled `Donate Leave (Donate From Employee)`.
 - A foreign key to the table itself (an employee's manager) is a drop-down read through the screen's own service.
+
+## Required fields and the form
+
+The form carries `ngNativeValidate`, which gives back the browser's own check that Angular's `novalidate` switches off: a blank required field (a drop-down whose foreign key starts unset, an empty name) stops the submit with the browser's message instead of being posted and refused by the API. In a tabbed form the Submit button first opens the tab of the first invalid field (`revealInvalidTab`, from the `data-tab` of each panel), because a field on a hidden tab would otherwise block the submit silently. Nothing in the essentials changed.
+
+## Credentials and long text
+
+A text column named like a credential (`ColumnModel.IsCredentialColumn`: a name with `Password` in it, or ending in `Salt`, `Secret`, `ApiKey` or `Token`) is in neither the grid, the form nor the search bar. A row that is edited keeps the value it was read with; a new row starts with `''`. A table that must not be read at all belongs in `NoApiTables`. A grid that would show fewer than `GridColumns.MinColumns` (3) columns because its text is 100 characters or longer is filled up with the first of those columns (a column of 500 characters or more, or one named like a note, stays out).

@@ -10,3 +10,7 @@
 A text key (a country or currency code) is the first field and a grid column: an `InputText` that is typed on a new row and `readonly` on an existing one (the page already keeps `isNew`); a duplicate key (409) says "A country with this alpha3 code already exists!". A drop-down over a text-key parent holds codes and starts on a blank "Select" (`value=""`).
 
 The row being edited is a copy (`ApiSupport.Copy`), so Cancel leaves the grid as it was. Limits are in `BLZ_Screens_v1.md`.
+
+## Credentials and long text
+
+A text column named like a credential (`ColumnModel.IsCredentialColumn`: a name with `Password` in it, or ending in `Salt`, `Secret`, `ApiKey` or `Token`) is in neither the grid, the form nor the search bar. A row that is edited keeps the value it was read with. A grid that would show fewer than `GridColumns.MinColumns` (3) columns because its text is 100 characters or longer is filled up with the first of those columns.

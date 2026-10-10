@@ -45,7 +45,7 @@
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         var shown = Model.Columns
             .Where(c => (textKey && c.IsPrimaryKey)
-                        || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && HasInput(c)
+                        || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && !c.IsCredentialColumn && HasInput(c)
                             && !(fkByColumn.TryGetValue(c.Name, out var hidden) && IsHiddenParent(hidden.ReferencedTable))))
             .OrderBy(c => textKey && c.IsPrimaryKey ? 0 : c.Name == "Name" ? 1 : 2).ThenBy(c => c.OrdinalPosition)
             .ToList();
@@ -70,8 +70,7 @@
             }).ToList();
         var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
 
-        var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
-        if (gridColumns.Count == 0) gridColumns = shown.ToList();
+        var gridColumns = GridColumns.Choose(shown, IsMultiline);
         gridColumns = gridColumns.ForGrid();
         var sortable = gridColumns.Where(SearchSort.IsSortable).ToList();
         bool canClone = CloneShape.CanClone(Model, Project);

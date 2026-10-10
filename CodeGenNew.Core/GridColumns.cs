@@ -7,6 +7,23 @@ public static class GridColumns
 {
     public const int MaxColumns = 18;
 
+    /// <summary> A grid with fewer columns than this is filled up with the table's multi-line text columns (100 characters or more), so a table whose text is all long still shows what each row is. </summary>
+    public const int MinColumns = 3;
+
+    /// <summary> The columns a grid starts from, before <see cref="ForGrid"/>: those that are not multi-line text, and, when that leaves fewer than <see cref="MinColumns"/>, the first multi-line ones that are not long text
+    /// (in the order given) up to that many; a table with no other column shows them all. </summary>
+    public static List<ColumnModel> Choose(IReadOnlyList<ColumnModel> shown, Func<ColumnModel, bool> isMultiline)
+    {
+        var plain = shown.Where(c => !isMultiline(c)).ToList();
+        if (plain.Count == 0)
+            return shown.ToList();
+        int visible = plain.Count(c => !c.IsLongTextColumn);   // ForGrid drops the long ones afterwards
+        if (visible >= MinColumns)
+            return plain;
+        var fill = shown.Where(c => isMultiline(c) && !c.IsLongTextColumn).Take(MinColumns - visible).ToHashSet();
+        return shown.Where(c => plain.Contains(c) || fill.Contains(c)).ToList();
+    }
+
     /// <summary> The columns for a grid. A table whose columns are ALL long text would otherwise get an empty grid, so then (and only then) its long-text columns are used. </summary>
     public static List<ColumnModel> ForGrid(this IEnumerable<ColumnModel> columns)
     {

@@ -2,6 +2,7 @@
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
 <#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="System.Data" #>
 <#@ import namespace="CodeGenNew.Core" #>
 <#
@@ -93,6 +94,12 @@
     // EditableChildren: the child tables a form of this table saves in the same request (EditableChild, the one rule the Angular screen asks too)
     var editableChildren = supported ? EditableChild.Of(Model, Project) : [];
 
+    // ListProtocol=Search: the one search box matches SearchBox's columns and the grid sorts by SearchPlan's (the same names the Columns protocol sorts by)
+    bool listSearch = supported && !nameActive && Project.ListSearchProtocol;
+    var searchNavigations = listSearch ? EntityNavigations.Of(Model, fk => Project.NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape) ?? false) : new List<EntityNavigation>();
+    var searchPlan = listSearch ? SearchPlan.For(Model, searchNavigations) : null;
+    var searchTerms = listSearch ? SearchBox.For(Model, Project, searchNavigations) : new List<SearchBoxTerm>();
+
     // ==== the column GetAll sorts by (see above)
     bool IsSortableDate(ColumnModel c) =>
         c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
@@ -173,6 +180,38 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
 #>
 
     protected override Expression<Func<<#= entity #>, DateTime>> NewestFirst => c => c.<#= sortColumn.Name #>;
+<#
+        }
+        if (listSearch && searchTerms.Count > 0)
+        {
+#>
+
+    protected override IQueryable<<#= entity #>> SearchRows(IQueryable<<#= entity #>> rows, string text) =>
+        rows.Where(t => <#= string.Join("\n            || ", searchTerms.Select(term => searchTerms.Count > 1 ? "(" + term.Condition("t", "text") + ")" : term.Condition("t", "text"))) #>);
+<#
+        }
+        if (listSearch && searchPlan!.Sorts.Count > 0)
+        {
+#>
+
+    protected override IOrderedQueryable<<#= entity #>>? SortRows(IQueryable<<#= entity #>> rows, string column, bool descending)
+    {
+        switch (column.ToLowerInvariant())
+        {
+<#
+            foreach (var sort in searchPlan.Sorts)
+            {
+                string path = sort.ParentPath is { } parent ? "t." + parent.Replace(".", "!.") : "t." + sort.Column.CSharpName();
+#>
+            case "<#= sort.Name.ToLowerInvariant().Replace("\\", "\\\\").Replace("\"", "\\\"") #>":
+                return descending ? rows.OrderByDescending(t => <#= path #>) : rows.OrderBy(t => <#= path #>);
+<#
+            }
+#>
+            default:
+                return null;
+        }
+    }
 <#
         }
         if (displayColumn is not null)

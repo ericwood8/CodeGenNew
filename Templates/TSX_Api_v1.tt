@@ -66,7 +66,11 @@
         bool hasName = keyType.Kind != KeyKind.Text && Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
         // Pagination: getPage always exists, once SP_Search.tt/API_Search.tt do; pagination and searchability are separate concerns.
         // Search: filters is simply empty for a table with no searchable column.
-        var filters = Model.SearchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
+        // ListProtocol=Search: one search box, so one filter (the server decides which columns it matches); the answer { data, count } is turned into the same paged result
+        bool listSearch = Project.ListSearchProtocol;
+        var filters = listSearch
+            ? new[] { new { ParamName = "search", Name = "search" } }.ToList()
+            : Model.SearchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
@@ -115,16 +119,34 @@
             // sort: the grid's chosen sort (a column name and a direction); left out of the request when there is none (the default order).
             L($"  getPage: (pageNumber: number, pageSize: number, {filtersName}: {{{(filterType.Length > 0 ? " " + filterType + " " : "")}}} = {{}}, sort: {{ column: string; descending: boolean }} | null = null) => {{");
             L("    const params = new URLSearchParams();");
-            L("    params.set('pageNumber', String(pageNumber));");
-            L("    params.set('pageSize', String(pageSize));");
-            foreach (var f in filters)
-                L($"    if (filters.{f.ParamName}) params.set('{f.ParamName}', filters.{f.ParamName});");
-            L("    if (sort) {");
-            L("      params.set('sortBy', sort.column);");
-            L("      params.set('sortDir', sort.descending ? 'desc' : 'asc');");
-            L("    }");
-            L($"    return request<{baseName}PagedResult>(`${{apiUrl}}/search?${{params.toString()}}`);");
-            L("  },");
+            if (listSearch)
+            {
+                L($"    params.set('{Project.PageParameter}', String(pageNumber{(Project.PageBase == 0 ? " - 1" : "")}));");
+                L($"    params.set('{Project.PageSizeParameter}', String(pageSize));");
+                L($"    if (filters.search) params.set('{Project.SearchParameter}', filters.search);");
+                L("    if (sort) {");
+                L($"      params.set('{Project.SortParameter}', sort.column + (sort.descending ? ':desc' : ':asc'));");
+                L("    }");
+                L("    return request<Record<string, unknown>>(`${apiUrl}?${params.toString()}`).then((body) => {");
+                L($"      const items = (body['{Project.ItemsMember}'] as {baseName}[] | undefined) ?? [];");
+                L($"      const totalCount = Number(body['{Project.TotalMember}'] ?? 0);");
+                L("      return { items, page: pageNumber, pageSize, totalCount, totalPages: totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize) };");
+                L("    });");
+                L("  },");
+            }
+            else
+            {
+                L("    params.set('pageNumber', String(pageNumber));");
+                L("    params.set('pageSize', String(pageSize));");
+                foreach (var f in filters)
+                    L($"    if (filters.{f.ParamName}) params.set('{f.ParamName}', filters.{f.ParamName});");
+                L("    if (sort) {");
+                L("      params.set('sortBy', sort.column);");
+                L("      params.set('sortDir', sort.descending ? 'desc' : 'asc');");
+                L("    }");
+                L($"    return request<{baseName}PagedResult>(`${{apiUrl}}/search?${{params.toString()}}`);");
+                L("  },");
+            }
         }
         L("};");
         Write(o.ToString());

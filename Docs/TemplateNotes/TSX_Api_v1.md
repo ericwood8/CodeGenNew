@@ -51,3 +51,7 @@ src/api/client.ts, which is exactly that shape:
 Not written: calls for extra routes a hand-written client adds (a parent-scoped list, a filtered search);
 an api module that needs those stays hand-maintained.
 ```
+
+## The Search list protocol
+
+With `ListProtocol=Search`, `getPage(pageNumber, pageSize, { search }, sort)` asks `GET <route>` with the project's parameter names (`PageParameter` counted from `PageBase`, `PageSizeParameter`, `SearchParameter`, `SortParameter` as `column:asc` or `column:desc`) and reads the rows and the total from `ItemsMember` and `TotalMember`. The answer is turned into the same `{ items, page, pageSize, totalCount, totalPages }` the pages already read, so a page does not know the protocol. `getAll` is the plain list route and is unchanged.

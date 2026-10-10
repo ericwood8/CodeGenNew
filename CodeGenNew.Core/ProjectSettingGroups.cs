@@ -29,7 +29,7 @@ public static class ProjectSettingGroups
         new("WinUI3", "This tab has the view and view-model namespaces and folders, detail-master tables and the directory listing.",
             ["ViewNamespace", "ViewModelNamespace", "ViewsFolder", "ViewModelsFolder", "DetailMasterTables", "ListingName", "ListingFolder", "ListingPattern"]),
         new("Web", "This tab has the React and Angular folders, Angular version, toasts, sign-in, the container's API variable, the list protocol and dev port.",
-            ["ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "DevPort"]),
+            ["ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "DevPort"]),
         new("Output", "This tab has Stacks (which front ends and APIs are generated), plan-also, the output folders, and the Rust crate and port.",
             ["Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputRust", "OutputPython", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql"]),
         new("Build", "This tab has the build and test commands.",
