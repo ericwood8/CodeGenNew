@@ -197,6 +197,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `AuthAdminRole` | with `ApiAuth`: the role that sees and changes every row of an owned table; blank: Administrator |
 | `ApiValidation` | true: the plan also writes a FluentValidation validator per table (CS_Validator) and the create and update endpoints run them (400 with the messages) |
 | `ApiCsv` | true: the plan also writes CSV export and import endpoints for every table (API_Csv) and Program.cs maps them: GET /api/&lt;table&gt;/export.csv and POST /api/&lt;table&gt;/import. Regenerate after ticking |
+| `Dtos` | true: a table's CRUD API takes an input type (`<Table>Input`: only the columns a caller may set, not the identity key, computed or audit columns) and answers a transfer class (`<Table>Dto`: every column, no navigation). The plan also writes CS_Dto, CS_DtoInput and CS_Mapper; needs the Api stack. Regenerate after ticking |
 | `EfConfigurations` | true: the plan also writes an IEntityTypeConfiguration per table (CS_EfConfiguration) and the context applies them from the assembly; composite keys move into them. Regenerate after ticking |
 | `AccessMode` | Routines or Ef: how search, sort, paging, clone and the junction editors reach the database. Ef uses LINQ over the context and needs no routine in the database; SQLite always uses it; blank = Routines |
 | `DtoNamespace` | the namespace of the data-transfer classes and mappers (CS_Dto, CS_Mapper, CS_DataContractDto, CS_TypedDataRow, CS_SerializationDtos; default &lt;ProjectName&gt;.App.Dtos) |

@@ -110,6 +110,7 @@ public static class DefaultAssetSeeder
         "CS_Faker_v1.tt", "CS_Faker_v1.tt.config",
         "CS_Seed_v1.tt", "CS_Seed_v1.tt.config",
         "CS_SeedData_v1.tt", "CS_SeedData_v1.tt.config",
+        "CS_DtoInput_v1.tt", "CS_DtoInput_v1.tt.config",
         "FS_Entity_v1.tt", "FS_Entity_v1.tt.config",
         "FS_Rop_v1.tt", "FS_Rop_v1.tt.config",
         "WinUI3_DirectoryListing_v1.tt", "WinUI3_DirectoryListing_v1.tt.config",

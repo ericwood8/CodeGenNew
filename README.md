@@ -67,7 +67,7 @@ Everything else (entities, repositories, API, Angular, React, Blazor, WinUI3) is
 
 ## What it generates
 
-Ninety-one templates ship in `Templates\` (the no-database essentials groups described below come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
+Ninety-two templates ship in `Templates\` (the no-database essentials groups described below come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
 
 | Group | Template | Writes |
 |---|---|---|
@@ -113,6 +113,7 @@ Ninety-one templates ship in `Templates\` (the no-database essentials groups des
 | `CS` | `CS_Seed` | `TableSeed.cs` - the rows a small table holds when you generate, as a class that adds them when the table is empty (a lookup table that is not an enum); the project's `SeedTables` names the tables, a parent before its children. |
 | `CS` | `CS_SeedData` | `SeedData.cs` - whole-database: runs the seed class of every seeded table and `app.SeedGeneratedDataAsync()` for Program.cs. |
 | `CS` | `CS_Dto` | `TableDto.cs` - a plain transfer class filled from any `IDataRecord`: a `Populate` method (required columns, then optional ones), an `IsIdentical` comparer over the columns that matter, a `ToString` on the display column. |
+| `CS` | `CS_DtoInput` | `TableInput.cs` - `Dtos=true`: the request body of a table's create and update (only the columns a caller may set) with `ToEntity()` and `ApplyTo(entity)`; the API answers the `CS_Dto` class. |
 | `CS` | `CS_Mapper` | `TableMapping.cs` - a static class copying a table between its entity (`CS_Entity`) and its transfer class (`CS_Dto`): `ToDto`, `ToEntity`, list versions and `FromReader`. |
 | `CS` | `CS_MapperlyMapper` | `TableMapper.cs` - the Mapperly counterpart of `CS_Mapper`: a `[Mapper]` partial class (`ToDto`, `ToEntity`, `ProjectToDto`) whose bodies Mapperly writes at compile time. |
 | `CS` | `CS_DataContractDto` | `TableContract.cs` - a `[DataContract]` class with four constructors (empty, from a `DataRow`, from a reader row, copy), for a WCF-style service. |

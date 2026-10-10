@@ -10,6 +10,8 @@
     // in use). A generated class names its repository, its key and the column that lists newest first, and nothing else. NameActiveCrudApi<TEntity, TRepo> is the same for a table
     // with a Name and an IsActive column (its repository is a NameActiveRepo): the list, the active list, find by name, and the 409 problem for a duplicate name. Needs BaseApi (API_EssentialApiBase), the generic repository
     // (CS_EssentialBase), the NameActive group for NameActiveCrudApi and, when ApiValidation is on, ValidationFilter (API_EssentialProgram).
+    // With Dtos=true, CrudApi gets an input and an output type (CrudApi<TEntity, TRepo, TInput, TOutput> for an int key): the create and update bodies bind the input, an update copies it onto the row that is
+    // there (so the columns it leaves out keep their values), and every answer is the output type. CrudApi<TEntity, TRepo> keeps taking and answering the entity.
     // Full notes: Docs/TemplateNotes/API_EssentialCrudApi_v1.md
     // ==========================================================================================
     string projectName = Project.ProjectName ?? "MyApp";
@@ -23,6 +25,15 @@
     string auth(string when) => Project.ApiAuth ? when : "";
     // EditableChildren: a form saves the rows of some child tables together with the parent (ChildRows); written only when the project lists a child
     bool children = Project.EditableChildren.Length > 0;
+    // Dtos: a table's API can take an input type and answer an output type (CS_DtoInput, CS_Dto) instead of its entity; the entity-typed classes below stay for a table that does not
+    bool dtos = Project.Dtos;
+    string input = dtos ? "TInput" : "TEntity";
+    string output = dtos ? "TOutput" : "TEntity";
+    string map(string row) => dtos ? $"ToOutput({row})" : row;
+    string mapAll(string rows) => dtos ? $"{rows}.Select(ToOutput).ToList()" : rows;
+    // the create and update handlers receive the entity's validator themselves, because the endpoint filter only sees a body of the entity type
+    string validatorParameter = dtos && Project.ApiValidation ? ", [FromServices] IValidator<TEntity>? validator" : "";
+    string validatorArgument = dtos && Project.ApiValidation ? ", validator" : "";
 #>
 @@@FILE Apis/CrudApi.cs@@@
 namespace <#= apiNamespace #>;
@@ -46,6 +57,12 @@ using Microsoft.Extensions.Options;
 using FluentValidation;
 <#
         }
+    }
+    else if (dtos && Project.ApiValidation)
+    {
+#>
+using FluentValidation;
+<#
     }
 #>
 
@@ -187,11 +204,11 @@ public static class ChildRowsSupport
 /// a table that can be cloned also says so (<see cref="CanClone"/>). Anything a table does differently (a rule before a save, a route of its own) is an override or a class of its own: this one
 /// only holds what every table shares. A table with an int key derives from <c>CrudApi&lt;TEntity, TRepo&gt;</c> below. A text key is chosen by the person: a create without one is a 400, with one that exists a 409.
 /// </summary>
-public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
+public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput" : "" #>> : BaseApi<TEntity>
     where TEntity : BaseEntity
     where TRepo : GenericRepo<TEntity, TKey>
     where TKey : notnull
-{
+<#= dtos ? "    where TInput : class\n    where TOutput : class\n" : "" #>{
     // the most rows one page may hold; a larger pageSize is lowered to this
     private const int MaxPageSize = 1000;
 
@@ -232,6 +249,28 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
 
     private static bool SameKey(TKey a, TKey b) => EqualityComparer<TKey>.Default.Equals(a, b);
 <#
+    if (dtos)
+    {
+#>
+
+    // true for a table that takes and answers its entity (the CrudApi classes without an input type): the three members below are then only identities
+    private static readonly bool InputIsEntity = typeof(TInput) == typeof(TEntity);
+
+    /// <summary> The answer for a row (the transfer class: <c>CustomerMapping.ToDto(row)!</c>). </summary>
+    protected abstract TOutput ToOutput(TEntity row);
+
+    /// <summary> A new row from a create's body (<c>input.ToEntity()</c>). </summary>
+    protected abstract TEntity ToEntity(TInput input);
+
+    /// <summary> Copies an update's body onto the row that is there (<c>input.ApplyTo(row)</c>); a column the input leaves out keeps its value. </summary>
+    protected abstract void Apply(TInput input, TEntity row);
+
+    /// <summary> Sets the columns no caller may set (who and when created or changed) on a row built from an input, before it is validated and saved; the generated code sets none, so a NOT NULL audit column needs this override, a trigger or a column default EF Core knows about. </summary>
+    protected virtual void Stamp(TEntity row, bool isNew)
+    {
+    }
+<#
+    }
     if (Project.ApiAuth)
     {
 #>
@@ -304,8 +343,8 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
         app.MapGet(apiSubDir, ([FromServices] <#= contextType #> context, [FromQuery] int? pageNumber, [FromQuery] int? pageSize) => GetAllAsync(context, pageNumber, pageSize))
         .WithName($"Get{plural}")
         .WithOpenApi()
-        .Produces<IEnumerable<TEntity>>()
-        .Produces<CrudPage<TEntity>>()
+        .Produces<IEnumerable<<#= output #>>>()
+        .Produces<CrudPage<<#= output #>>>()
         .ProducesProblem(400)
         .ProducesProblem(404)
         .ProducesProblem(500);
@@ -314,7 +353,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
         app.MapGet(apiSubDir + IdSegment, ([FromServices] <#= contextType #> context, TKey id) => GetByIdAsync(context, id))
         .WithName($"Get{singular}ById")
         .WithOpenApi()
-        .Produces<TEntity>()
+        .Produces<<#= output #>>()
         .ProducesProblem(404)
         .ProducesProblem(500);
 
@@ -325,14 +364,14 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
 #>
         // a table with child lists reads its body as JSON, so the lists can be saved with the row (ChildRowsSupport)
         (EditableChildren.Count > 0
-            ? app.MapPost(apiSubDir, ([FromServices] <#= contextType #> context, HttpRequest request) => CreateWithChildrenAsync(context, request))
-            : app.MapPost(apiSubDir, ([FromServices] <#= contextType #> context, [FromBody] TEntity newRow) => CreateAsync(context, newRow)))
+            ? app.MapPost(apiSubDir, ([FromServices] <#= contextType #> context, HttpRequest request<#= validatorParameter #>) => CreateWithChildrenAsync(context, request<#= validatorArgument #>))
+            : app.MapPost(apiSubDir, ([FromServices] <#= contextType #> context, [FromBody] <#= input #> newRow<#= validatorParameter #>) => CreateAsync(context, newRow<#= validatorArgument #>)))
 <#
     }
     else
     {
 #>
-        app.MapPost(apiSubDir, ([FromServices] <#= contextType #> context, [FromBody] TEntity newRow) => CreateAsync(context, newRow))
+        app.MapPost(apiSubDir, ([FromServices] <#= contextType #> context, [FromBody] <#= input #> newRow<#= validatorParameter #>) => CreateAsync(context, newRow<#= validatorArgument #>))
 <#
     }
 #>
@@ -346,14 +385,14 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
     {
 #>
         (EditableChildren.Count > 0
-            ? app.MapPut(apiSubDir + IdSegment, ([FromServices] <#= contextType #> context, TKey id, HttpRequest request) => UpdateWithChildrenAsync(context, id, request))
-            : app.MapPut(apiSubDir + IdSegment, ([FromServices] <#= contextType #> context, TKey id, [FromBody] TEntity updatedRow) => UpdateAsync(context, id, updatedRow)))
+            ? app.MapPut(apiSubDir + IdSegment, ([FromServices] <#= contextType #> context, TKey id, HttpRequest request<#= validatorParameter #>) => UpdateWithChildrenAsync(context, id, request<#= validatorArgument #>))
+            : app.MapPut(apiSubDir + IdSegment, ([FromServices] <#= contextType #> context, TKey id, [FromBody] <#= input #> updatedRow<#= validatorParameter #>) => UpdateAsync(context, id, updatedRow<#= validatorArgument #>)))
 <#
     }
     else
     {
 #>
-        app.MapPut(apiSubDir + IdSegment, ([FromServices] <#= contextType #> context, TKey id, [FromBody] TEntity updatedRow) => UpdateAsync(context, id, updatedRow))
+        app.MapPut(apiSubDir + IdSegment, ([FromServices] <#= contextType #> context, TKey id, [FromBody] <#= input #> updatedRow<#= validatorParameter #>) => UpdateAsync(context, id, updatedRow<#= validatorArgument #>))
 <#
     }
 #>
@@ -386,7 +425,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
             app.MapGet(apiSubDir + "/{name}", ([FromServices] <#= contextType #> context, string name) => FindByNameRowsAsync(context, name))
             .WithName($"Get{plural}ByName")
             .WithOpenApi()
-            .Produces<IEnumerable<TEntity>>()
+            .Produces<IEnumerable<<#= output #>>>()
             .ProducesProblem(500);
         }
 
@@ -421,7 +460,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
             int totalCount = await all.CountAsync();
             var ordered = NewestFirst is { } newest ? all.OrderByDescending(newest).ThenBy(Key) : all.OrderBy(Key);
             var page = await ordered.Skip((number - 1) * size).Take(size).ToListAsync();
-            return Results.Ok(new CrudPage<TEntity>(page, number, size, totalCount, totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)size)));
+            return Results.Ok(new CrudPage<<#= output #>>(<#= mapAll("page") #>, number, size, totalCount, totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)size)));
         }
 
 <#
@@ -431,7 +470,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
         if (owners is not null)
         {
             IQueryable<TEntity> mine = Scope(context.Set<TEntity>().AsNoTracking(), owners);
-            return Results.Ok(await (NewestFirst is { } newestFirst ? mine.OrderByDescending(newestFirst).ThenBy(Key) : mine.OrderBy(Key)).ToListAsync());
+            return Results.Ok(<#= dtos ? "(" : "" #>await (NewestFirst is { } newestFirst ? mine.OrderByDescending(newestFirst).ThenBy(Key) : mine.OrderBy(Key)).ToListAsync()<#= dtos ? ").Select(ToOutput).ToList()" : "" #>);
         }
 
 <#
@@ -439,13 +478,13 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
 #>
         var repo = NewRepo(context);
         var rows = NewestFirst is { } order ? await repo.GetAllOrderByDescending(order) : await repo.GetAll();
-        return Results.Ok(rows);
+        return Results.Ok(<#= mapAll("rows") #>);
     }
 
     private async Task<IResult> GetByIdAsync(<#= contextType #> context, TKey id)
     {
 <#= auth("        if (await RefuseOtherOwnersAsync(context, id) is { } refused)\n            return refused;\n\n") #>        var row = await NewRepo(context).GetByIdAsync(id);
-        return row != null ? Results.Ok(row) : Results.NotFound();
+        return row != null ? Results.Ok(<#= map("row") #>) : Results.NotFound();
     }
 
 <#
@@ -455,24 +494,32 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
     /// <summary> The child lists the project edits with the row (<c>ChildRows</c>); a create or update whose body holds a list saves it in the same transaction. </summary>
     protected virtual IReadOnlyList<ChildRows<TKey>> EditableChildren => [];
 
-    private async Task<IResult> CreateWithChildrenAsync(<#= contextType #> context, HttpRequest request)
+    private async Task<IResult> CreateWithChildrenAsync(<#= contextType #> context, HttpRequest request<#= validatorParameter #>)
     {
-        var (row, body, problem) = await ChildRowsSupport.ReadAsync<TEntity>(request);
-        return problem ?? await CreateAsync(context, row!, body);
+        var (row, body, problem) = await ChildRowsSupport.ReadAsync<<#= input #>>(request);
+        return problem ?? await CreateAsync(context, row!<#= validatorArgument #>, body);
     }
 
-    private async Task<IResult> UpdateWithChildrenAsync(<#= contextType #> context, TKey id, HttpRequest request)
+    private async Task<IResult> UpdateWithChildrenAsync(<#= contextType #> context, TKey id, HttpRequest request<#= validatorParameter #>)
     {
-        var (row, body, problem) = await ChildRowsSupport.ReadAsync<TEntity>(request);
-        return problem ?? await UpdateAsync(context, id, row!, body);
+        var (row, body, problem) = await ChildRowsSupport.ReadAsync<<#= input #>>(request);
+        return problem ?? await UpdateAsync(context, id, row!<#= validatorArgument #>, body);
     }
 
 <#
     }
 #>
-    private async Task<IResult> CreateAsync(<#= contextType #> context, TEntity newRow<#= children ? ", ChildBody? children = null" : "" #>)
+    private async Task<IResult> CreateAsync(<#= contextType #> context, <#= input #> <#= dtos ? "newInput" : "newRow" #><#= validatorParameter #><#= children ? ", ChildBody? children = null" : "" #>)
     {
 <#
+    if (dtos)
+    {
+#>
+        var newRow = ToEntity(newInput);
+        if (!InputIsEntity)
+            Stamp(newRow, true);
+<#
+    }
     if (Project.ApiAuth)
     {
 #>
@@ -484,6 +531,18 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
                 SetOwner(newRow, owners[0]);
             else if (!owners.Contains(OwnerOf(newRow)))
                 return NotYours();
+        }
+
+<#
+    }
+    if (dtos && Project.ApiValidation)
+    {
+#>
+        if (!InputIsEntity && validator is not null)
+        {
+            var result = await validator.ValidateAsync(newRow);
+            if (!result.IsValid)
+                return Results.ValidationProblem(result.ToDictionary());
         }
 
 <#
@@ -520,11 +579,34 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
 <#
     }
 #>
-        return Results.Created($"/api{_route}/{KeyOf(newRow)}", newRow);
+        return Results.Created($"/api{_route}/{KeyOf(newRow)}", <#= map("newRow") #>);
     }
 
-    private async Task<IResult> UpdateAsync(<#= contextType #> context, TKey id, TEntity updatedRow<#= children ? ", ChildBody? children = null" : "" #>)
+    private async Task<IResult> UpdateAsync(<#= contextType #> context, TKey id, <#= input #> updatedRow<#= validatorParameter #><#= children ? ", ChildBody? children = null" : "" #>)
     {
+<#
+    if (dtos)
+    {
+#>
+        if (!InputIsEntity)
+        {
+            // an input holds only the columns a caller may set: they are copied onto the row that is there, so every other column keeps its value
+            var current = await NewRepo(context).GetByIdAsync(id);
+            if (current is null)
+                return Results.NotFound();
+            Apply(updatedRow, current);
+            Stamp(current, false);
+            return await UpdateRowAsync(context, id, current<#= validatorArgument #><#= children ? ", children" : "" #>);
+        }
+
+        return await UpdateRowAsync(context, id, ToEntity(updatedRow)<#= validatorArgument #><#= children ? ", children" : "" #>);
+    }
+
+    private async Task<IResult> UpdateRowAsync(<#= contextType #> context, TKey id, TEntity updatedRow<#= validatorParameter #><#= children ? ", ChildBody? children = null" : "" #>)
+    {
+<#
+    }
+#>
         if (!SameKey(KeyOf(updatedRow), id))
             return Results.BadRequest(); // 400 error if the id in the URL and the id in the body disagree
 
@@ -545,6 +627,18 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
         if (!await repo.ExistsAsync(id))
             return Results.NotFound(); // 404 error if there is no row with that id
 <#
+    if (dtos && Project.ApiValidation)
+    {
+#>
+
+        if (!InputIsEntity && validator is not null)
+        {
+            var result = await validator.ValidateAsync(updatedRow);
+            if (!result.IsValid)
+                return Results.ValidationProblem(result.ToDictionary());
+        }
+<#
+    }
     if (children)
     {
 #>
@@ -565,7 +659,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
 <#
     }
 #>
-        return Results.Ok(postUpdate);
+        return Results.Ok(<#= map("postUpdate") #>);
     }
 
     private async Task<IResult> DeleteAsync(<#= contextType #> context, TKey id)
@@ -589,7 +683,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
     private async Task<IResult> FindByNameRowsAsync(<#= contextType #> context, string name)
     {
         var rows = await FindByNameAsync(NewRepo(context), name);
-        return Results.Ok(await VisibleOwnersAsync() is { } owners ? rows.Where(r => owners.Contains(OwnerOf(r))).ToList() : rows);
+        return Results.Ok(<#= dtos ? "(" : "" #>await VisibleOwnersAsync() is { } owners ? rows.Where(r => owners.Contains(OwnerOf(r))).ToList() : rows<#= dtos ? ").Select(ToOutput).ToList()" : "" #>);
     }
 <#
     }
@@ -598,7 +692,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
 #>
     private async Task<IResult> LookupAsync(<#= contextType #> context) => Results.Ok(await LookupQuery(context.Set<TEntity>().AsNoTracking()).ToListAsync());
 
-    private async Task<IResult> FindByNameRowsAsync(<#= contextType #> context, string name) => Results.Ok(await FindByNameAsync(NewRepo(context), name));
+    private async Task<IResult> FindByNameRowsAsync(<#= contextType #> context, string name) => Results.Ok(<#= dtos ? "(" : "" #>await FindByNameAsync(NewRepo(context), name)<#= dtos ? ").Select(ToOutput).ToList()" : "" #>);
 <#
     }
 #>
@@ -610,9 +704,38 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
             return Results.NotFound(); // 404 error if there is no row to copy
         var newId = await CloneAsync(repo, id);
         var copy = await repo.GetByIdAsync(newId);
-        return Results.Created($"/api{_route}/{newId}", copy);
+        return Results.Created($"/api{_route}/{newId}", <#= dtos ? "copy is null ? null : ToOutput(copy)" : "copy" #>);
     }
 }
+<#
+    if (dtos)
+    {
+#>
+
+/// <summary> <see cref="CrudApi{TEntity, TRepo, TKey, TInput, TOutput}"/> for a table that takes and answers its entity (a hand-written API, or a table without an input type). </summary>
+public abstract class CrudApi<TEntity, TRepo, TKey> : CrudApi<TEntity, TRepo, TKey, TEntity, TEntity>
+    where TEntity : BaseEntity
+    where TRepo : GenericRepo<TEntity, TKey>
+    where TKey : notnull
+{
+    protected override TEntity ToOutput(TEntity row) => row;
+
+    protected override TEntity ToEntity(TEntity input) => input;
+
+    protected override void Apply(TEntity input, TEntity row) => throw new NotSupportedException();
+}
+
+/// <summary> <see cref="CrudApi{TEntity, TRepo, TKey, TInput, TOutput}"/> for a table with an int key, the common case of an API with an input type and an output type: every generated API class of such a table derives from this. </summary>
+public abstract class CrudApi<TEntity, TRepo, TInput, TOutput> : CrudApi<TEntity, TRepo, int, TInput, TOutput>
+    where TEntity : BaseEntity
+    where TRepo : GenericRepo<TEntity>
+    where TInput : class
+    where TOutput : class
+{
+}
+<#
+    }
+#>
 
 /// <summary> <see cref="CrudApi{TEntity, TRepo, TKey}"/> for a table with an int key, the common case: every generated API class of such a table derives from this. </summary>
 public abstract class CrudApi<TEntity, TRepo> : CrudApi<TEntity, TRepo, int>

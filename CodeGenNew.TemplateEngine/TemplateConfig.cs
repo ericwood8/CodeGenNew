@@ -320,6 +320,8 @@ public enum PlanTableSet
     ScreenDetailMaster,
     /// <summary> The tables the project's <c>SeedTables</c> names (<see cref="CodeGenNew.Core.DatabaseModel.SeedTables"/>). </summary>
     Seed,
+    /// <summary> The tables whose API takes an input type and answers a transfer class (<see cref="CodeGenNew.Core.DatabaseModel.DtoTables"/>). </summary>
+    Dto,
     /// <summary> The many-to-many junction tables. </summary>
     Junction,
     /// <summary> The enum (lookup) tables the project turns into C# enums. </summary>

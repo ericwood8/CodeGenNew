@@ -54,3 +54,13 @@ Every refusal is a problem-details answer (RFC 9457), so the client shows the `d
 ## The lookup route
 
 `GET <route>/lookup` answers `[{ "id": 3, "name": "Admin", "isActive": true }]` for the drop-downs and the "name of" columns of other screens: only the key, the display column and the IsActive flag are read (`LookupItem(int Id, string Name, bool? IsActive)`; `isActive` is null for a table with no such column). `CrudApi` answers it when the class says `CanLookup` and gives `LookupQuery(rows)`; `NameActiveCrudApi` always does, ordered by name. Every row is listed, inactive ones too (with the flag), so the name of an inactive parent still shows in a grid. `lookup` is a literal, so it wins over find-by-name.
+
+## Input and output types (`Dtos=true`)
+
+`CrudApi<TEntity, TRepo, TKey, TInput, TOutput>` binds the create and update bodies as `TInput` and answers `TOutput` (the list, a page, one row, the find by name, a create's 201, an update and a clone); `CrudApi<TEntity, TRepo, TInput, TOutput>` is the int-key form. `CrudApi<TEntity, TRepo>` and `CrudApi<TEntity, TRepo, TKey>` still take and answer the entity (they derive from the five-argument class with the entity as both types), so a hand-written API keeps working. A generated class names the three conversions: `ToOutput(row)`, `ToEntity(input)` and `Apply(input, row)` (`API_Crud_v1.md`, `CS_DtoInput_v1.md`).
+
+- **Update:** the row is loaded, `Apply` copies the input onto it, `Stamp(row, false)` runs, and the usual checks (owner, 404, validator) and the save follow. The columns the input leaves out keep their values.
+- **Create:** `ToEntity`, `Stamp(row, true)`, the owner check, the validator, then the save.
+- **Validation:** the endpoint filter only sees a body of the entity type, so with an input type the entity's validator is a service of the handler (`IValidator<TEntity>? validator`).
+- **Editable children:** the body is read into the input type.
+- Without `Dtos` the file is what it was.

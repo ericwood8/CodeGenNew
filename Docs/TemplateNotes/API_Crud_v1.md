@@ -72,3 +72,5 @@ The base answers `GET <route>` (every row by name), `GET <route>/active`, `GET <
 ## Lookup
 
 A table with a display column (`DisplayColumnSelector`: the column its drop-downs show) gets `CanLookup => true` and a `LookupQuery` that orders by that column and reads `new LookupItem(key, display, IsActive or null)`. A text display column is read as it is (`?? ""` when nullable); any other type is `ToString()`. A table with no display column has no `/lookup` route and its screens' drop-downs would not be asked either.
+
+With `Dtos=true` a table that has a plain CRUD API (not a name and active table) derives from `CrudApi<Entity, EntityRepo, EntityInput, EntityDto>` (`CrudApi<Entity, EntityRepo, Key, EntityInput, EntityDto>` for a Guid or text key), adds the `DtoNamespace` to its usings and names the three conversions: `ToOutput` (`EntityMapping.ToDto(row)!`), `ToEntity` (`input.ToEntity()`) and `Apply` (`input.ApplyTo(row)`). `DtoShape` in Core is the rule the three DTO templates ask too (`CS_DtoInput_v1.md`).

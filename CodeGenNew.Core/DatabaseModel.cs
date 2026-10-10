@@ -63,6 +63,9 @@ public class DatabaseModel
             .OfType<TableModel>().ToList();
     }
 
+    /// <summary> The tables whose CRUD API takes an input type and answers a transfer class (<see cref="DtoShape.Uses"/>): the tables CS_Dto, CS_DtoInput and CS_Mapper run for in the plan. </summary>
+    public List<TableModel> DtoTables(ProjectSettings project) => EntityTables.Where(t => DtoShape.Uses(t, project)).ToList();
+
     /// <summary> The tables the project's <c>SeedTables</c> names, in that order (a parent before its children), that have an entity: the tables <c>CS_Seed</c> and <c>CS_SeedData</c> write the rows of. </summary>
     public List<TableModel> SeedTables(ProjectSettings project) => project.SeedTables
         .Select(name => EntityTablesByName.GetValueOrDefault(name))

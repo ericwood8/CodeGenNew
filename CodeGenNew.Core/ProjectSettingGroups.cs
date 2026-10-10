@@ -23,7 +23,7 @@ public static class ProjectSettingGroups
         new("Database", "This tab has the provider, server, name, user, access mode, replication, temporal, key-sequence and bulk-update settings.",
             ["DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "AccessMode", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression"]),
         new("API", "This tab has docs, HTTP, fakers, validation, CSV, EF configurations, production profile, telemetry, API tests, project docs, folder, port, and the sign-in with its owned tables and claim names.",
-            ["ApiDocs", "ApiHttp", "ApiFakers", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ProjectDocs", "ApiFolder", "ApiPort", "ApiAuth", "OwnedTables", "OwnerColumn", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole"]),
+            ["ApiDocs", "ApiHttp", "ApiFakers", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ProjectDocs", "ApiFolder", "ApiPort", "ApiAuth", "OwnedTables", "OwnerColumn", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "Dtos"]),
         new("Dashboard", "This tab has Dashboard, Dashboard Strip, Dashboard Measures and No Dashboard Tables.",
             ["Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables"]),
         new("WinUI3", "This tab has the view and view-model namespaces and folders, detail-master tables and the directory listing.",

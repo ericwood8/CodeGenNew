@@ -34,6 +34,7 @@ public static class ProjectPlan
             PlanTableSet.ScreenDetailMaster => Screens().Where(t => DatabaseModel.IsDetailMaster(t, project)).ToList(),
             PlanTableSet.ScreenForm => Screens().Where(t => !DatabaseModel.IsDetailMaster(t, project)).ToList(),
             PlanTableSet.Seed => database.SeedTables(project),
+            PlanTableSet.Dto => database.DtoTables(project),
             PlanTableSet.Junction => database.Tables.Where(t => t.IsJunctionTable).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),
             PlanTableSet.Enum => database.EnumTables(project),
             PlanTableSet.Audit => database.Tables.Where(t => t.IsAuditTable).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),

@@ -1,0 +1,65 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project. A project settings file (EntityNamespace, DtoNamespace, or ProjectName) overrides them.
+    // ==========================================================================================
+    string entityNamespace = Project.EntityNamespace ?? "MyApp.Common.Entities";
+    string dtoNamespace = Project.DtoNamespace ?? "MyApp.Dtos";
+
+    // ==========================================================================================
+    // CS_DtoInput_v1.tt
+    // Generates: <TableName>Input.cs   (see OutputName in CS_DtoInput_v1.tt.config)
+    // The request body of one table's create and update endpoints when the project sets Dtos=true: one property per column a caller may set (DtoShape.InputColumns: not computed, not a version stamp,
+    // not audit / create / modify, not an identity key; the owner column of an owned table stays, the API checks it against the caller's owners), ToEntity() for a create and ApplyTo(entity) for an update, which copies those columns onto the row that is
+    // already there and so leaves every other column as it is. A key the person chooses (text, Guid) is read by ToEntity and never changed by ApplyTo.
+    // Does not write the answer (CS_Dto is the output type) or the CRUD API (API_Crud). Needs a primary key, like the entity class.
+    // Full notes: Docs/TemplateNotes/CS_DtoInput_v1.md
+    // ==========================================================================================
+
+    if (Model.PrimaryKeyColumns.Count == 0)
+    {
+        Error($"CS_DtoInput needs a table with a primary key, but [{Model.SchemaName}].[{Model.TableName}] has none.");
+    }
+    else
+    {
+        var columns = DtoShape.InputColumns(Model);
+        var settable = columns.Where(c => !c.IsPrimaryKey).ToList();
+        string entity = Model.TableName;
+        string className = Model.TableName + "Input";
+        string Default(ColumnModel c) => !c.IsNullable && c.CSharpBase() == "string" ? " = \"\";" : !c.IsNullable && c.CSharpBase() == "byte[]" ? " = [];" : "";
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+
+        L("using " + entityNamespace + ";");
+        L();
+        L("namespace " + dtoNamespace + ";");
+        L();
+        L("/// <summary> What a caller may set when it creates or changes a row of " + Model.QuotedName + ". </summary>");
+        L("public class " + className);
+        L("{");
+        foreach (var c in columns)
+            L("    public " + c.CSharp() + " " + c.CSharpName() + " { get; set; }" + Default(c));
+        L();
+        L("    public " + entity + " ToEntity() => new()");
+        L("    {");
+        foreach (var c in columns)
+            L("        " + c.CSharpName() + " = " + c.CSharpName() + ",");
+        L("    };");
+        L();
+        L("    /// <summary> Copies the columns a caller may set onto <paramref name=\"entity\"/>; every other column keeps its value. </summary>");
+        L("    public void ApplyTo(" + entity + " entity)");
+        L("    {");
+        foreach (var c in settable)
+            L("        entity." + c.CSharpName() + " = " + c.CSharpName() + ";");
+        L("    }");
+        L("}");
+        Write(o.ToString());
+    }
+#>

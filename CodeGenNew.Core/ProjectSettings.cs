@@ -27,7 +27,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiAuth", "OwnedTables", "OwnerColumn", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiAuth", "OwnedTables", "OwnerColumn", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
         "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputRust", "OutputPython", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildPython", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestPython"
     ];
@@ -225,6 +225,9 @@ public class ProjectSettings
     /// <summary> <c>ApiCsv=true</c>: the plan also writes CSV export and import endpoints (API_Csv), and Program.cs maps them. </summary>
     public bool ApiCsv => Flag("ApiCsv");
 
+    /// <summary> <c>Dtos=true</c>: a table's CRUD API takes an input type (only the columns a caller may set) and answers an output type (the transfer class, no navigation); see <see cref="DtoShape"/>. </summary>
+    public bool Dtos => Flag("Dtos");
+
     /// <summary> <c>EfConfigurations=true</c>: the plan also writes an <c>IEntityTypeConfiguration</c> per table (CS_EfConfiguration), and the context applies them with <c>ApplyConfigurationsFromAssembly</c>. </summary>
     public bool EfConfigurations => Flag("EfConfigurations");
 
@@ -264,6 +267,7 @@ public class ProjectSettings
             if (ProjectDocs) { yield return "MD_DataDictionary"; yield return "MD_Erd"; }
             if (ApiValidation) { yield return "CS_Validator"; yield return "RS_Validate"; yield return "PY_Validate"; }
             if (ApiCsv) yield return "API_Csv";
+            if (Dtos) { yield return "CS_Dto"; yield return "CS_DtoInput"; yield return "CS_Mapper"; }
             if (SeedTables.Length > 0) { yield return "CS_Seed"; yield return "CS_SeedData"; }
             if (EfConfigurations) yield return "CS_EfConfiguration";
             if (Dashboard)

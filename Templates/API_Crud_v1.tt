@@ -59,6 +59,11 @@
                     : $"a {Model.PrimaryKeyColumns[0].SqlTypeDeclaration} primary key."));
     }
 
+    // Dtos: the API takes <Table>Input (CS_DtoInput) and answers <Table>Dto (CS_Dto) in the DtoNamespace; DtoShape is the one rule the DTO templates ask too
+    bool dtos = supported && !Model.IsNameActiveTable && DtoShape.Uses(Model, Project);
+    if (dtos)
+        usings = usings.Append(Project.DtoNamespace ?? "MyApp.Dtos").ToArray();
+
     string usingLines = string.Concat(usings.Select(u => $"using {u};\n"));
 
     // A table with a Name and an IsActive column: NameActiveRepo is its repository, NameActiveCrudApi its base (no clone, no search; CloneShape leaves it out).
@@ -77,6 +82,8 @@
     // the int key keeps the original two-argument base and the non-generic LookupItem; any other key names its type
     string apiBase = nameActive ? "NameActiveCrudApi" : "CrudApi";
     string keyArgument = nameActive || keyCSharp == "int" ? "" : ", " + keyCSharp;
+    // an API with an input and an output type names both after its repository (and its key, unless it is an int)
+    string dtoArguments = dtos ? $", {Model.TableName}Input, {Model.TableName}Dto" : "";
     string lookupItem = keyCSharp == "int" ? "LookupItem" : "LookupItem<" + keyCSharp + ">";
 
     // ApiAuth with OwnedTables: a caller reaches only the rows of the owners the IOwnerScope allows (the owner column; a Name and IsActive table is never scoped)
@@ -111,9 +118,22 @@ namespace <#= apiNamespace #>;
 <#= usingLines #>using System.Linq.Expressions;
 
 /// <summary> The API of <#= entity #>: the endpoints and their answers are <#= nameActive ? "NameActiveCrudApi's (a Name and IsActive table: the duplicate-name rule)" : "CrudApi's" #> (Apis/CrudApi.cs, the CrudApi essentials group); this class says which repository and key it uses. </summary>
-public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<#= keyArgument #>>
+public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<#= keyArgument #><#= dtoArguments #>>
 {
     protected override <#= entity #>Repo NewRepo(<#= contextType #> context) => new(context);
+<#
+        if (dtos)
+        {
+#>
+
+    protected override <#= entity #>Dto ToOutput(<#= entity #> row) => <#= entity #>Mapping.ToDto(row)!;
+
+    protected override <#= entity #> ToEntity(<#= entity #>Input input) => input.ToEntity();
+
+    protected override void Apply(<#= entity #>Input input, <#= entity #> row) => input.ApplyTo(row);
+<#
+        }
+#>
 
     protected override Expression<Func<<#= entity #>, <#= keyCSharp #>>> Key => c => c.<#= keyProperty #>;
 <#
