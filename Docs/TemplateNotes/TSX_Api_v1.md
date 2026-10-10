@@ -39,11 +39,14 @@ src/api/client.ts, which is exactly that shape:
     Angular dependency, so it is reused as-is for a React project; no separate React model template exists).
   - URL: apiPrefix + "/" + the lower-cased name, pluralized (CodeGenNew.Core.Pluralizer.Pluralize) - identical route
     convention to TS_Service.tt (same backend, same BaseApi.BreakIntoStrings-registered route).
-  - Key: an int key is a number, a uniqueidentifier key a string (the route takes {id:guid}; the api
-    assigns the value on create - a new row is sent with the empty GUID, an int key is sent as 0). Any
-    other key (composite, or a natural text key the person would have to type) is refused.
+  - Key: read from Core's KeyType. An int key is a number, a uniqueidentifier key a string (the route takes
+    {id:guid}; the api assigns the value on create - a new row is sent with the empty GUID, an int key is
+    sent as 0). A text key (a country or currency code) is a string the person types; it is put in the
+    path with encodeURIComponent, so a space or an & in a code reaches the route intact. A composite key
+    is refused.
   - findByName exists on the server for the name-based tables, so it is generated for every table with a
-    text column called Name; the plain (API_Crud) tables have none.
+    text column called Name; the plain (API_Crud) tables have none, and a text key table has none either
+    (GET <route>/{id} and GET <route>/{name} would be the same route).
 
 Not written: calls for extra routes a hand-written client adds (a parent-scoped list, a filtered search);
 an api module that needs those stays hand-maintained.

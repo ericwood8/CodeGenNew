@@ -189,6 +189,8 @@ impl From<axum::extract::rejection::JsonRejection> for ApiError {
 pub enum ApiError {
     NotFound,
     BadRequest(String),
+    /// A row with that key already exists (a text key the person typed): 409.
+    Conflict(String),
     /// Problems by property name: answered in the form ASP.NET's validation problem has.
     Validation(Vec<(&'static str, &'static str)>),
     Database(sqlx::Error),
@@ -214,6 +216,7 @@ impl IntoResponse for ApiError {
         match self {
             ApiError::NotFound => StatusCode::NOT_FOUND.into_response(),
             ApiError::BadRequest(message) => (StatusCode::BAD_REQUEST, message).into_response(),
+            ApiError::Conflict(message) => (StatusCode::CONFLICT, message).into_response(),
             ApiError::Validation(problems) => {
                 let mut errors = serde_json::Map::new();
                 for (property, message) in problems {
@@ -244,6 +247,14 @@ pub fn created<T: Serialize>(location: String, value: T) -> Response {
         response.headers_mut().insert(header::LOCATION, location);
     }
     response
+}
+
+/// A text key as one segment of a path: everything but letters, digits and - . _ ~ is written as %XX, so a space or a slash in a key reaches the route intact.
+pub fn path_segment(value: &str) -> String {
+    value
+        .bytes()
+        .map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") })
+        .collect()
 }
 
 /// A filter value that is present and not just spaces.

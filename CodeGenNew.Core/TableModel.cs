@@ -43,6 +43,11 @@ public class TableModel
     public bool HasCrudApi(ProjectSettings project) =>
         PrimaryKeyShape == PrimaryKeyShape.SingleInt && !IsNameActiveTable && project.NoRepository(TableName, LookupShape) != true;
 
+    /// <summary> True when API_Crud writes an API for a table whose single key is a uniqueidentifier or text (<c>CrudApi&lt;TEntity, TRepo, TKey&gt;</c>), under the same exclusions as <see cref="HasCrudApi"/>.
+    /// Only the ASP.NET API handles these tables so far; the other stacks (<see cref="HasCrudApi"/> is false for them) are moved to <see cref="KeyType"/> one at a time (spec item 103). </summary>
+    public bool HasKeyedCrudApi(ProjectSettings project) =>
+        PrimaryKeyShape is PrimaryKeyShape.SingleUniqueIdentifier or PrimaryKeyShape.SingleText && !IsNameActiveTable && project.NoRepository(TableName, LookupShape) != true;
+
     /// <summary> True when API_Crud writes a name/active API for the table (a <c>NameActiveCrudApi</c> over its <c>NameActiveRepo</c>): a single whole-number key, the Name and IsActive shape, not an enum and not a table the project lists in <c>NoApiTables</c> (a user table with password hashes stays out).and not a table the project lists in <c>NoApiTables</c> (a user table with password hashes stays out).
     /// Only the ASP.NET API and the Angular templates handle these tables; the other stacks still leave them out (<see cref="HasCrudApi"/> is false for them). </summary>
     public bool HasNameActiveApi(ProjectSettings project) =>
@@ -51,12 +56,29 @@ public class TableModel
     /// <summary> True when the table also gets a search endpoint (API_Search): it has an API and is not a bare lookup table. </summary>
     public bool HasSearchApi(ProjectSettings project) => HasCrudApi(project) && !LookupShape.LooksLikeLookup;
 
+    /// <summary> True when the ASP.NET API has a plain CRUD API for the table, whatever its key (int, uniqueidentifier or text): the tables the request files, API tests and API documents list. </summary>
+    public bool HasCrudApiOfAnyKey(ProjectSettings project) => HasCrudApi(project) || HasKeyedCrudApi(project);
+
+    /// <summary> True when that API also has a search endpoint, whatever the key. </summary>
+    public bool HasSearchApiOfAnyKey(ProjectSettings project) => HasSearchApi(project) || HasKeyedSearchApi(project);
+
+    /// <summary> The same rule for a table with a uniqueidentifier or text key (<see cref="HasKeyedCrudApi"/>); only the stacks listed in <see cref="KeyType.StackHandlesEveryKey"/> use it. </summary>
+    public bool HasKeyedSearchApi(ProjectSettings project) => HasKeyedCrudApi(project) && !LookupShape.LooksLikeLookup;
+
     public PrimaryKeyShape PrimaryKeyShape =>
         PrimaryKeyColumns.Count == 0 ? PrimaryKeyShape.None :
         PrimaryKeyColumns.Count > 1 ? PrimaryKeyShape.Composite :
         PrimaryKeyColumns[0].IsGuidColumn ? PrimaryKeyShape.SingleUniqueIdentifier :
         PrimaryKeyColumns[0].IsIntegerColumn ? PrimaryKeyShape.SingleInt :
+        PrimaryKeyColumns[0].IsStringColumn && !PrimaryKeyColumns[0].IsLargeTextColumn ? PrimaryKeyShape.SingleText :
         PrimaryKeyShape.SingleOther;
+
+    /// <summary> How the key travels through every layer (C#, TypeScript and Python types, route segment, empty value); null when the table has no single key of a supported type. </summary>
+    public KeyType? PrimaryKeyType => KeyType.Of(this);
+
+    /// <summary> The key type of a single-column foreign key of this table: the type of the referencing column, which is the type of the key it points at. A drop-down, a "name of" lookup
+    /// and a child grid compare codes to codes through it. Null when the foreign key has several columns, the column is not here, or its type is not a key type. </summary>
+    public KeyType? ForeignKeyType(ForeignKeyModel foreignKey) => KeyType.OfForeignKey(Columns, foreignKey);
 
     /// <summary> A NOT NULL text column called exactly "Name" plus a NOT NULL bit column called exactly
     /// "IsActive" -- the one shape test repeated identically across API_Crud.tt, CS_Entity.tt, CS_Repo.tt and

@@ -42,8 +42,14 @@ global stylesheet rather than a per-component one, so an empty per-page .css her
     generated sibling file, called by name - same cross-template contract TS_Component.tt already has
     with TS_Service.tt), showing the parent's display column; the grid shows the same name instead of
     the id. A parent listed in noLookupParents stays a plain number box.
-  - Key: an int key is a number, a uniqueidentifier key a string, same rule as TSX_Api.tt. The screen
-    loads ALL rows (no paging), the same simplification TS_Component.tt makes.
+  - Key: an int key is a number, a uniqueidentifier key a string, same rule as TSX_Api.tt (Core's
+    KeyType). A text key is the first field and a grid column: typed on a new row, read-only on an
+    existing one. Because a typed key is set on a new row too, the page keeps an `adding` flag (set by
+    Add New, cleared by Edit) and uses it for the heading, for create versus update and for the read-only
+    box; a duplicate key (the API answers 409) says "A country with this code already exists!". A
+    foreign key to a text key parent is a <select> of codes (string ids, a blank first choice). The
+    generated test opens the form for a new and for an existing row and checks the key box is open and
+    then read-only (jsdom has no showModal, so the test gives the dialog one that only opens it).
   - Dates: the API sends and takes "2025-12-25T00:00:00" strings; the date box wants "2025-12-25", so
     edit() trims the time off. Shown in the grid as the same trimmed 10 characters (no date-formatting
     library assumed) rather than TS_Component.tt's locale-formatted date pipe - a deliberately smaller

@@ -21,13 +21,13 @@
     // Full notes: Docs/TemplateNotes/API_OpenApi_v1.md
     // ==========================================================================================
 
-    var tables = Database.ApiTables(Project).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
-    var searchTables = Database.SearchApiTables(Project).Select(t => t.TableName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    var tables = Database.CrudApiTables(Project).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    var searchTables = tables.Where(t => t.HasSearchApiOfAnyKey(Project)).Select(t => t.TableName).ToHashSet(StringComparer.OrdinalIgnoreCase);
     var apiNames = tables.Select(t => t.TableName).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     if (tables.Count == 0)
     {
-        Error("API_OpenApi found no table that has an API (a single whole-number key, not an enum or a name/active table): there is nothing to describe.");
+        Error("API_OpenApi found no table that has an API (a single int, uniqueidentifier or text key, not an enum or a name/active table): there is nothing to describe.");
     }
     else
     {
@@ -163,16 +163,14 @@
             Problems("        ", problems);
         }
 
-        string[] IdParameter() =>
-        [
-            "      parameters:",
-            "        - name: id",
-            "          in: path",
-            "          required: true",
-            "          schema:",
-            "            type: integer",
-            "            format: int32"
-        ];
+        string[] IdParameter(ColumnModel key)
+        {
+            var (type, format) = key.JsonSchema();
+            var lines = new List<string> { "      parameters:", "        - name: id", "          in: path", "          required: true", "          schema:", "            type: " + type };
+            if (format is not null)
+                lines.Add("            format: " + format);
+            return lines.ToArray();
+        }
 
         L("openapi: 3.0.3");
         L("info:");
@@ -194,14 +192,14 @@
             Operation("post", "Create" + singular, singular, "Add a " + singular, singular, "201", "The new row.", singular, false, [500]);
 
             L("  " + route + "/{id}:");
-            Operation("get", "Get" + singular + "ById", singular, "One " + singular, null, "200", "The row.", singular, false, [404, 500], IdParameter());
-            Operation("put", "Update" + singular, singular, "Change a " + singular + " (the key in the body must be the id)", singular, "200", "The changed row.", singular, false, [400, 404, 500], IdParameter());
-            Operation("delete", "Delete" + singular, singular, "Remove a " + singular + " (400 when it is in use)", null, "200", "Removed.", null, false, [400, 404, 500], IdParameter());
+            Operation("get", "Get" + singular + "ById", singular, "One " + singular, null, "200", "The row.", singular, false, [404, 500], IdParameter(key));
+            Operation("put", "Update" + singular, singular, "Change a " + singular + " (the key in the body must be the id)", singular, "200", "The changed row.", singular, false, [400, 404, 500], IdParameter(key));
+            Operation("delete", "Delete" + singular, singular, "Remove a " + singular + " (400 when it is in use)", null, "200", "Removed.", null, false, [400, 404, 500], IdParameter(key));
 
             if (CloneShape.CanClone(table, Project))
             {
                 L("  " + route + "/{id}/clone:");
-                Operation("post", "Clone" + singular, singular, "Copy a " + singular + " into a new row", null, "201", "The copy.", singular, false, [404, 500], IdParameter());
+                Operation("post", "Clone" + singular, singular, "Copy a " + singular + " into a new row", null, "201", "The copy.", singular, false, [404, 500], IdParameter(key));
             }
 
             if (searchTables.Contains(table.TableName))

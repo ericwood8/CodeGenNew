@@ -18,39 +18,36 @@
     // Full notes: Docs/TemplateNotes/API_Http_v1.md
     // ==========================================================================================
 
-    if (!Model.HasCrudApi(Project))
+    if (!Model.HasCrudApiOfAnyKey(Project))
     {
-        Error($"API_Http writes requests for the tables API_Crud writes an API for (a single whole-number key, not an enum or a name/active table), and [{Model.SchemaName}].[{Model.TableName}] is not one.");
+        Error($"API_Http writes requests for the tables API_Crud writes an API for (a single int, uniqueidentifier or text key, not an enum or a name/active table), and [{Model.SchemaName}].[{Model.TableName}] is not one.");
     }
     else
     {
         string singular = Model.TableName;
+        string idVar = ApiRequests.IdVariable(Model);
         string plural = singular.Pluralize();
         string route = "/api/" + plural.ToLowerInvariant();
         var key = Model.PrimaryKeyColumns[0];
         string words = Labels.Words(singular);
 
-        // the request body: every column that cannot be NULL (and is not computed), by its JSON name; the key from {{id}} for an update
-        string Body(bool update)
-        {
-            var lines = ApiSampleValues.BodyColumns(Model).Select(c => "  " + ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + (update && c.IsPrimaryKey ? "{{id}}" : ApiSampleValues.Value(c, Project)));
-            return "{\n" + string.Join(",\n", lines) + "\n}";
-        }
+        // the request body: every column that cannot be NULL (and is not computed), by its JSON name; the key from the id variable for an update
+        string Body(bool update) => ApiRequests.Body(Model, Project, update);
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
 
         L("@host = http://localhost:" + Project.ApiPort);
-        L("@id = 1");
+        L("@" + idVar + " = " + ApiSampleValues.SampleId(Model));   // the key the add request creates: 1, a GUID, or a text key's example
         L();
         L("### All " + plural);
         L("GET {{host}}" + route);
         L("Accept: application/json");
         L();
         L("### One " + words.ToLowerInvariant() + " by its id");
-        L("GET {{host}}" + route + "/{{id}}");
+        L("GET {{host}}" + route + "/{{" + idVar + "}}");
         L("Accept: application/json");
-        if (Model.HasSearchApi(Project))
+        if (Model.HasSearchApiOfAnyKey(Project))
         {
             var search = Model.SearchableColumns;
             string filters = string.Concat(search.Take(2).Select(c => char.ToLowerInvariant(c.Name[0]) + c.Name[1..] + "=&"));
@@ -68,18 +65,18 @@
         L(Body(false));
         L();
         L("### Change a " + words.ToLowerInvariant() + " (the key in the body must be the id)");
-        L("PUT {{host}}" + route + "/{{id}}");
+        L("PUT {{host}}" + route + "/{{" + idVar + "}}");
         L("Content-Type: application/json");
         L();
         L(Body(true));
         L();
         L("### Remove a " + words.ToLowerInvariant() + " (400 when another row uses it)");
-        L("DELETE {{host}}" + route + "/{{id}}");
+        L("DELETE {{host}}" + route + "/{{" + idVar + "}}");
         if (CloneShape.CanClone(Model, Project))
         {
             L();
             L("### Copy a " + words.ToLowerInvariant() + " into a new row");
-            L("POST {{host}}" + route + "/{{id}}/clone");
+            L("POST {{host}}" + route + "/{{" + idVar + "}}/clone");
         }
         Write(o.ToString());
     }

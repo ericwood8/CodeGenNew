@@ -72,9 +72,10 @@
     bool isNameActive = Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name")
                       && Model.Columns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
 
-    if (keyColumn is null || !keyColumn.IsInt32Column)
+    var keyType = KeyType.Of(Model);   // how the key travels: a text key is typed by the person on a new row and read-only afterwards
+    if (keyColumn is null || keyType is null)
     {
-        Error($"WinUI3_DetailMasterScreen needs a table with a single int primary key (CS_Repo's GenericRepo<T> takes a plain int id), but [{Model.SchemaName}].[{Model.TableName}] has "
+        Error($"WinUI3_DetailMasterScreen needs a table with a single int, uniqueidentifier or text primary key (CS_Repo's GenericRepo<T, TKey> takes it as the id), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
     }
     else if (isNameActive)
@@ -90,6 +91,7 @@
         string table = Model.TableName;
         string title = Words(table);
         string keyProp = keyColumn.Name;
+        bool textKey = keyType.Kind == KeyKind.Text;
 
         // GroupBy + First, not ToDictionary: a real table can have more than one FK constraint on the same
         // column pointing at the same parent (seen live against a second production database's dbo.Products
@@ -99,8 +101,8 @@
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
         var shown = Model.Columns
-            .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && IsEditableType(c))
-            .OrderBy(c => c.OrdinalPosition)
+            .Where(c => (textKey && c.IsPrimaryKey) || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && IsEditableType(c)))
+            .OrderBy(c => textKey && c.IsPrimaryKey ? 0 : 1).ThenBy(c => c.OrdinalPosition)
             .ToList();
 
         // A form with more than one kind of field is tabbed (Main / Billing & Shipping / Notes): see FormPages. A narrow table keeps its single column.
@@ -108,7 +110,7 @@
         bool tabbed = pages.Count > 1;
 
         ForeignKeyModel LookupOf(ColumnModel c) =>
-            c.IsInt32Column
+            KeyType.Of(c) is not null
             && fkByColumn.TryGetValue(c.Name, out var fk)
             && !NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape)
             && fk.ReferencedDisplayColumns.Count > 0
@@ -120,6 +122,9 @@
             {
                 Table = fk.ReferencedTable,
                 OptionsProp = fk.ReferencedTable + "Options",
+                // the C# type of the key the drop-down offers (int, long, Guid or string) and the option class that holds it: the int one keeps its original name
+                KeyCs = Model.ForeignKeyType(fk)!.CSharp,
+                OptionClass = table + "DetailMasterLookupOption" + (Model.ForeignKeyType(fk)!.CSharp == "int" ? "" : char.ToUpperInvariant(Model.ForeignKeyType(fk)!.CSharp[0]) + Model.ForeignKeyType(fk)!.CSharp[1..]),
                 KeyProp = fk.ReferencedColumns[0],
                 DisplayProp = fk.ReferencedDisplayColumns[0]
             }).ToList();
@@ -141,7 +146,7 @@
         // to InvoiceDate and asked for exactly this (2026-09-29).
         var children = Model.ChildForeignKeys
             .Where(fk => fk.ReferencingColumns.Count == 1
-                      && Model.Columns.Any(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[0]) && c.IsInt32Column))
+                      && Model.Columns.Any(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[0]) && KeyType.Of(c) is not null))
             .Select(fk =>
             {
                 string selfFkColumn = fk.ReferencingColumns[0];
@@ -159,6 +164,7 @@
                         ReferencedTable = ofk.ReferencedTable,
                         KeyProp = ofk.ReferencedColumns[0],
                         DisplayProp = ofk.ReferencedDisplayColumns[0],
+                        KeyCs = KeyType.OfForeignKey(fk.ReferencingTableColumns, ofk)?.CSharp ?? "int",   // the type of the id the child row holds
                         LookupVar = FieldVar(fk.ReferencingTable) + ofk.ReferencedTable + "Names",
                         // "CustomerId" -> "Customer": the same Label() this template already uses for the
                         // parent form's own field headers (and WinUI3_MasterScreen.tt uses for its list grid's
@@ -186,6 +192,7 @@
                     Var = FieldVar(fk.ReferencingTable),
                     FkColumn = selfFkColumn,
                     ParentKeyColumn = fk.ReferencedColumns[0],
+                    ParentKeyCs = Model.Columns.First(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[0])).CSharpBase(),   // int, Guid or string: the type the grid's filter compares
                     HideColumns = hideColumns,
                     Resolvable = resolvable,
                     // What the schema says about the child's columns: money shows as currency, long text goes last.
@@ -326,8 +333,10 @@
             else
             {
                 string maxLen = IsText(c) && Chars(c) > 0 ? $" MaxLength=\"{Chars(c)}\"" : "";
+                // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
+                string readOnly = textKey && c.IsPrimaryKey ? " IsReadOnly=\"{x:Bind ViewModel.IsExisting}\"" : "";
 #>
-            <TextBox Header="<#= label #>" Text="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"<#= maxLen #> />
+            <TextBox Header="<#= label #>" Text="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"<#= maxLen #><#= readOnly #> />
 <#
             }
         }
@@ -626,6 +635,21 @@ public class <#= table #>DetailMasterLookupOption
     public int Id { get; set; }
     public string Text { get; set; } = "";
 }
+<#
+        // a drop-down over a parent whose key is not an int (a country or currency code, a GUID) has an option class of its own
+        foreach (string optionKey in parents.Select(p => p.KeyCs).Where(k => k != "int").Distinct())
+        {
+#>
+
+/// <summary> One entry of a <#= table #>DetailMasterDialog drop-down whose ids are <#= optionKey #>: an id plus the text to show for it. </summary>
+public class <#= table #>DetailMasterLookupOption<#= char.ToUpperInvariant(optionKey[0]) + optionKey[1..] #>
+{
+    public <#= optionKey #> Id { get; set; }<#= optionKey == "string" ? " = \"\";" : "" #>
+    public string Text { get; set; } = "";
+}
+<#
+        }
+#>
 
 /// <summary> One row of a child grid: a display string per scalar EF property of the child entity (see this
 /// template's header comment for why the columns are discovered at run time, via EF's own metadata, instead
@@ -653,13 +677,22 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
     private readonly <#= table #>? _editing;
 
     public string DialogTitle => _editing is null ? "Add <#= title #>" : "Edit <#= title #>";
+<#
+        if (textKey)
+        {
+#>
+    /// <summary> True when the row was read from the database: its key can no longer be changed. </summary>
+    public bool IsExisting => _editing is not null;
+<#
+        }
+#>
     public Visibility IsAddModeVisibility => _editing is null ? Visibility.Visible : Visibility.Collapsed;
 
 <#
         foreach (var p in parents)
         {
 #>
-    public ObservableCollection<<#= table #>DetailMasterLookupOption> <#= p.OptionsProp #> { get; } = [];
+    public ObservableCollection<<#= p.OptionClass #>> <#= p.OptionsProp #> { get; } = [];
 <#
         }
         foreach (var child in children)
@@ -770,7 +803,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         {
             var lookup = LookupOf(c);
             string prop = c.Name;
-            string fieldType = lookup is not null ? "int?" : IsBit(c) ? "bool?" : (UsesNumberBox(c) || UsesCurrencyBox(c) || UsesDecimalBox(c)) ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
+            string fieldType = lookup is not null ? parentOf[lookup.ReferencedTable].KeyCs + "?" : IsBit(c) ? "bool?" : (UsesNumberBox(c) || UsesCurrencyBox(c) || UsesDecimalBox(c)) ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
 #>
     [ObservableProperty]
     private <#= fieldType #> _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #><#= fieldType == "double" ? " = double.NaN" : "" #>;
@@ -858,7 +891,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 #>
         <#= p.OptionsProp #>.Clear();
         foreach (var row in await _context.Set<<#= p.Table #>>().OrderBy(r => r.<#= p.DisplayProp #>).ToListAsync())
-            <#= p.OptionsProp #>.Add(new <#= table #>DetailMasterLookupOption { Id = row.<#= p.KeyProp #>, Text = row.<#= p.DisplayProp #>?.ToString() ?? "" });
+            <#= p.OptionsProp #>.Add(new <#= p.OptionClass #> { Id = row.<#= p.KeyProp #>, Text = row.<#= p.DisplayProp #>?.ToString() ?? "" });
 <#
             if (lookupColumnsForThisParent.Count > 0)
             {
@@ -920,8 +953,9 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         _<#= child.Var #>SortColumn = savedSort?.Column;
         _<#= child.Var #>SortDescending = savedSort?.Descending ?? false;
 
-        var rows = await _context.Set<<#= child.Table #>>()
-            .Where(c => EF.Property<int>(c, "<#= child.FkColumn #>") == _editing!.<#= child.ParentKeyColumn #>)
+        // Not tracked: the grid only reads these rows, and a tracked child would be deleted along with its parent (EF cascades a required foreign key to the rows it tracks) when the list page deletes the parent.
+        var rows = await _context.Set<<#= child.Table #>>().AsNoTracking()
+            .Where(c => EF.Property<<#= child.ParentKeyCs #>>(c, "<#= child.FkColumn #>") == _editing!.<#= child.ParentKeyColumn #>)
             .ToListAsync();
         foreach (var row in rows)
         {
@@ -933,18 +967,15 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         if (child.Resolvable.Count > 0)
         {
 #>
-                if (raw is int rawId)
-                {
 <#
             foreach (var r in child.Resolvable)
             {
 #>
-                    if (name == "<#= r.Column #>")
-                        return <#= r.LookupVar #>.TryGetValue(rawId, out string? resolved<#= r.Column #>) ? resolved<#= r.Column #> : rawId.ToString();
+                if (name == "<#= r.Column #>" && raw is <#= r.KeyCs #> rawId<#= r.Column #>)
+                    return <#= r.LookupVar #>.TryGetValue(rawId<#= r.Column #>, out string? resolved<#= r.Column #>) ? resolved<#= r.Column #> : rawId<#= r.Column #>.ToString();
 <#
             }
 #>
-                }
 <#
         }
 #>
@@ -1019,7 +1050,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
                 {
 #>
         if (<#= prop #> is null) { ErrorMessage = "<#= label #> is required."; return false; }
-        entity.<#= prop #> = <#= prop #>.Value;
+        entity.<#= prop #> = <#= prop #><#= parentOf[lookup.ReferencedTable].KeyCs == "string" ? "" : ".Value" #>;
 <#
                 }
                 else
@@ -1202,6 +1233,19 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         }
 #>
 
+<#
+        if (textKey)
+        {
+#>
+        if (_editing is null && await _repo.ExistsAsync(entity.<#= keyProp #>))
+        {
+            ErrorMessage = "A <#= title.ToLowerInvariant() #> with this <#= Label(keyColumn.Name).ToLowerInvariant() #> already exists.";
+            return false;
+        }
+
+<#
+        }
+#>
         if (_editing is null)
             await _repo.AddAsync(entity);
         else

@@ -60,7 +60,10 @@
         // With AccessMode=Ef the search, the sort and the clone are LINQ over the context (CS_SearchQuery writes the query), not calls to the routines SP_Search and SP_Clone write.
         bool ef = Project.AccessModeFor(Model.Dialect) == AccessMode.Ef;
         bool nameActive = nameColumn is not null && activeColumn is not null;
-        string baseRepo = nameActive ? "NameActiveRepo" : "GenericRepo";
+        // the base follows the key (KeyType): GenericRepo<Entity> for an int key, GenericRepo<Entity, string> / <Entity, Guid> / <Entity, long> for the others
+        var keyType = Model.PrimaryKeyType;
+        string baseRepo = nameActive ? $"NameActiveRepo<{entity}>" : keyType?.RepoBase(entity) ?? $"GenericRepo<{entity}>";
+        string keyCSharp = keyType?.CSharp ?? "int";
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
@@ -111,7 +114,7 @@
             if (paramName.IsCSharpReservedWord()) paramName = "@" + paramName;
             methods.Add(new[]
             {
-                $"    public async Task<bool> HasDuplicate{c.Name}({ClrType(c)} {paramName}, int excludeId)",
+                $"    public async Task<bool> HasDuplicate{c.Name}({ClrType(c)} {paramName}, {keyCSharp} excludeId)",
                 "    {",
                 $"        return await _dbSet.AnyAsync(t => t.{c.Name} == {paramName} && t.{Model.PrimaryKeyColumns[0].Name} != excludeId);",
                 "    }"
@@ -252,7 +255,7 @@
         // it, which it can only do if that class is declared partial. Without this, every generated repo in a
         // WinUI3 target project gets "Class {Table}Repo implements WinRT interfaces but ... isn't marked
         // partial" - found live, building a real WinUI3 target project (2026-09-27).
-        L($"public partial class {Model.TableName}Repo : {baseRepo}<{entity}>");
+        L($"public partial class {Model.TableName}Repo : {baseRepo}");
         L("{");
         L($"    public {Model.TableName}Repo({contextType} context) : base(context)");
         L("    {");

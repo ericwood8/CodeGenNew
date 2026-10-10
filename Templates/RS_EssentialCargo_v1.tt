@@ -44,7 +44,7 @@ serde_json = "1.0.151"
 sqlx = { version = "0.9.0", default-features = false, features = [<#= sqlxFeatures #>] }
 tokio = { version = "1.53.2", features = ["macros", "net", "rt-multi-thread"] }
 tower-http = { version = "0.7.1", features = ["cors", "fs"] }
-uuid = { version = "1", features = ["serde"] }
+uuid = { version = "1", features = ["serde", "v4"] }
 @@@FILE .env.example@@@
 # Copy to .env (git ignores it) to run the API with these values; the process environment wins over this file.
 <#= connection #>

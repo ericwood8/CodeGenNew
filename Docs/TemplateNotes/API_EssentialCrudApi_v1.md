@@ -2,7 +2,7 @@
 
 The `CrudApi` group of the API essentials: one file for the whole project, `Apis/CrudApi.cs`. No table and no database are needed (`codegen essentials --stack api --groups crudapi --project <name> -o <project root>`; `-o` is the project root, the project's `OutputApi` folder is added).
 
-`CrudApi<TEntity, TRepo>` is the base of the class `API_Crud` writes for each table (`CustomerApi : CrudApi<Customer, CustomerRepo>`). It holds what every plain table shares, written once:
+`CrudApi<TEntity, TRepo, TKey>` is the base of the class `API_Crud` writes for each table, over the key's type (int, long, Guid or string; the route is `{id:int}`, `{id:long}`, `{id:guid}` or `{id}`). `CrudApi<TEntity, TRepo>` is its int shortcut (`CustomerApi : CrudApi<Customer, CustomerRepo>`), so a table with an int key reads as it always did. A text key is chosen by the person: a create with an empty key answers 400 and with a key that exists 409. `LookupItem<TKey>` carries the key of the lookup route; `LookupItem` is the int form. It holds what every plain table shares, written once (the routes below show `{id:int}`):
 
 ```text
 GET    <route>             every row as an array; with pageNumber and/or pageSize, one page as { items, page, pageSize, totalCount, totalPages } (CrudPage<T>)

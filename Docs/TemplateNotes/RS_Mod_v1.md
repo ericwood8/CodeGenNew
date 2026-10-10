@@ -1,6 +1,6 @@
 # RS_Mod_v1
 
-`src/models/mod.rs`, `src/repos/mod.rs`, `src/routes/mod.rs` and (with `ApiValidation=true`) `src/validation/mod.rs`: the module lists of the crate and the router that merges the router of every table. A new table is a regenerate; `main.rs` lists nothing. The tables are those that have an API (single int key, not a name/active table, not an enum).
+`src/models/mod.rs`, `src/repos/mod.rs`, `src/routes/mod.rs` and (with `ApiValidation=true`) `src/validation/mod.rs`: the module lists of the crate and the router that merges the router of every table. A new table is a regenerate; `main.rs` lists nothing. The tables are those that have an API (a single int, uniqueidentifier or text key, not a name/active table, not an enum).
 
 The essentials add the files no table drives: `Cargo.toml` (the dependencies pinned to the versions this release was built with, in one place; the sqlx features of the project's `DatabaseProvider`), `.env.example` (the variables the API reads, no password), `.gitignore`, `src/lib.rs` (the router over a pool, CORS for the front ends' dev servers, `/openapi.yaml` when `ApiDocs=true`, the built front end from `FRONTEND_DIR`, `run()`), `src/main.rs` (calls `run()`; the library lets a desktop shell embed the same router) and `src/support.rs` (the pool type, the connection, `ApiError`, the JSON forms of dates, the LIKE escape). They are written once and kept, because they are edited by hand afterwards (`codegen essentials --stack rust`, groups `Cargo` and `Main`).
 

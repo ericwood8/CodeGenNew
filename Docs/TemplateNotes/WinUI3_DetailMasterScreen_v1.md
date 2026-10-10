@@ -35,7 +35,13 @@ WinUI3_MasterScreen.tt always opens the OTHER dialog, <TableName>DetailDialog (W
 point its OnAddClick/OnEditClick at <TableName>DetailMasterDialog by hand if you want the master screen
 to open this one instead.
 
-Requires a primary key that is a single, non-composite INT column, refuses a "name/active" table (same
+Requires a primary key that is a single, non-composite int, uniqueidentifier or text column (a text key is typed on a new
+row and read-only afterwards, and a foreign key of any key type is a drop-down, as in WinUI3_DetailScreen.tt; each child grid filters on EF.Property of the type of the
+key it points at and names a child row's own foreign key through a dictionary keyed by the type of the id it holds), refuses a "name/active" table (same
 reasons as WinUI3_DetailScreen.tt), and requires at least one table in TableModel.ChildForeignKeys
 (TableModel.HasAtLeastOneChildForeignKey) - a table with none is exactly WinUI3_DetailScreen.tt's job.
+
+The child rows are read with AsNoTracking: they are only shown, and a tracked child would be deleted along with its
+parent (EF cascades a required foreign key to the rows it tracks) when the list page deletes the parent from the same
+context.
 ```

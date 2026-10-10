@@ -31,7 +31,7 @@ TS_Component.tt already makes for its own grid.
 Only loaded once the row being edited has a real key (a brand-new, unsaved row has no child rows
 yet); the child sections show a "save first" message instead while adding.
 
-Requires a primary key that is a single int or uniqueidentifier column (same as TS_Component.tt) and
+Requires a primary key that is a single int, uniqueidentifier or text column (same as TS_Component.tt; for a text key see there: the key box, `keyChosen`, and the child grids shown once the row is saved, `!adding`) and
 at least one table in TableModel.ChildForeignKeys (TableModel.HasAtLeastOneChildForeignKey) - a table
 with none is exactly what TS_Component.tt is for.
 ```

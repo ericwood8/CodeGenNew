@@ -10,14 +10,14 @@
     // PY_Mod_v1.tt
     // Generates: app/models/__init__.py, app/schemas/__init__.py, app/routes/__init__.py and, with ApiValidation=true, app/validation/__init__.py   (whole-database; the paths are written by the template)
     // The package lists of the API: the models are all imported (so SQLAlchemy knows every table), and routes.routers is the list of every table's router, which main.py includes. A new table is a
-    // regenerate; main.py lists nothing. The tables are those that have an API (a single int key, not a name/active table, not an enum).
+    // regenerate; main.py lists nothing. The tables are those that have an API (a single int, uniqueidentifier or text key, not a name/active table, not an enum).
     // Full notes: Docs/TemplateNotes/PY_Routes_v1.md
     // ==========================================================================================
 
-    var tables = Database.ApiTables(Project)
+    var tables = Database.CrudApiTables(Project)
         .Select(t => PythonTable.Of(t, Project)).OrderBy(t => t.Module, StringComparer.Ordinal).ToList();
     if (tables.Count == 0)
-        Error("PY_Mod found no table to list: none has an API of its own with a single int key.");
+        Error("PY_Mod found no table to list: none has an API of its own with a single int, uniqueidentifier or text key.");
 
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');

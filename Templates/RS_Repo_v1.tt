@@ -18,9 +18,11 @@
 
     var t = RustTable.Of(Model, Project);
     bool mysql = Model.Dialect == SqlDialect.MySql;
-    bool search = Model.HasSearchApi(Project);
+    bool search = Model.HasSearchApiOfAnyKey(Project);
     string key = t.Key.Name;
     string keyType = t.Key.Type;
+    bool textKey = KeyType.Of(Model)!.Kind == KeyKind.Text;
+    string keyArg = textKey ? "&str" : keyType;   // a text key is passed by reference, so it can be used again after a bind
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
     string Binds(IEnumerable<RustField> fields) => string.Concat(fields.Select(f => $".bind(&row.{f.Name})"));
@@ -59,7 +61,7 @@
     Line($"    sqlx::query_as::<_, {t.Struct}>(SELECT_ALL).fetch_all(pool).await");
     Line("}");
     Line();
-    Line($"pub async fn get_by_id(pool: &Pool, id: {keyType}) -> Result<Option<{t.Struct}>, sqlx::Error> {{");
+    Line($"pub async fn get_by_id(pool: &Pool, id: {keyArg}) -> Result<Option<{t.Struct}>, sqlx::Error> {{");
     Line($"    sqlx::query_as::<_, {t.Struct}>(SELECT_ONE).bind(id).fetch_optional(pool).await");
     Line("}");
     Line();
@@ -69,13 +71,16 @@
     if (mysql)
     {
         Line($"    let result = sqlx::query(INSERT){Binds(t.Written)}.execute(pool).await?;");
-        Line($"    get_by_id(pool, result.last_insert_id() as {keyType}).await?.ok_or(sqlx::Error::RowNotFound)");
+        // a text or Guid key is in the row, so the row is read by the key it was written with; a whole-number one is generated and comes from the connection
+        Line(KeyType.Of(Model)!.Kind == KeyKind.Int
+            ? $"    get_by_id(pool, result.last_insert_id() as {keyType}).await?.ok_or(sqlx::Error::RowNotFound)"
+            : $"    let _ = result;\n    get_by_id(pool, {(textKey ? "&" : "")}row.{key}).await?.ok_or(sqlx::Error::RowNotFound)");
     }
     else
         Line($"    sqlx::query_as::<_, {t.Struct}>(INSERT){Binds(t.Written)}.fetch_one(pool).await");
     Line("}");
     Line();
-    Line($"pub async fn update(pool: &Pool, id: {keyType}, row: &{t.Struct}) -> Result<Option<{t.Struct}>, sqlx::Error> {{");
+    Line($"pub async fn update(pool: &Pool, id: {keyArg}, row: &{t.Struct}) -> Result<Option<{t.Struct}>, sqlx::Error> {{");
     if (mysql)
     {
         Line($"    sqlx::query(UPDATE){Binds(t.Updated)}.bind(id).execute(pool).await?;");
@@ -85,7 +90,7 @@
         Line($"    sqlx::query_as::<_, {t.Struct}>(UPDATE){Binds(t.Updated)}.bind(id).fetch_optional(pool).await");
     Line("}");
     Line();
-    Line($"pub async fn delete(pool: &Pool, id: {keyType}) -> Result<u64, sqlx::Error> {{");
+    Line($"pub async fn delete(pool: &Pool, id: {keyArg}) -> Result<u64, sqlx::Error> {{");
     Line("    Ok(sqlx::query(DELETE).bind(id).execute(pool).await?.rows_affected())");
     Line("}");
 

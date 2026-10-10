@@ -22,7 +22,7 @@
     // route opens. A master-detail screen whose child table has no screen gets a WARNING comment at the top.
     // Full notes: Docs/TemplateNotes/TS_Screens_v1.md
 
-    var screens = Database.ScreenTables(Project);
+    var screens = Database.ScreenTables(Project, "Angular");
     foreach (string name in Database.UnknownScreens(Project))
         Error($"The Screens setting lists '{name}', which is not a table of the database with a single-column primary key.");
     if (screens.Count == 0)

@@ -16,9 +16,9 @@
     // Full notes: Docs/TemplateNotes/API_Test_v1.md
     // ==========================================================================================
 
-    if (!Model.HasCrudApi(Project))
+    if (!Model.HasCrudApiOfAnyKey(Project))
     {
-        Error($"API_Test writes tests for the tables API_Crud writes an API for (a single whole-number key, not an enum or a name/active table), and [{Model.SchemaName}].[{Model.TableName}] is not one.");
+        Error($"API_Test writes tests for the tables API_Crud writes an API for (a single int, uniqueidentifier or text key, not an enum or a name/active table), and [{Model.SchemaName}].[{Model.TableName}] is not one.");
     }
     else
     {
@@ -27,17 +27,28 @@
         string route = "/api/" + singular.Pluralize().ToLowerInvariant();
         var key = Model.PrimaryKeyColumns[0];
         string keyJson = JsonNames.Camel(key.Name);
+        var keyType = KeyType.Of(Model)!;
+        bool intKey = keyType.Kind == KeyKind.Int;
+        string keyCs = intKey ? "long" : "string";                                  // a guid travels as the text of the JSON
+        string idRef = intKey ? "id" : "Uri.EscapeDataString(id)";                  // the key as it goes into a route
+        string absentKey = keyType.Kind switch                                      // a key no row has, for the 404 test
+        {
+            KeyKind.Int => "int.MaxValue",
+            KeyKind.Guid => "Guid.NewGuid()",
+            _ => $"Uri.EscapeDataString(new string('~', {Math.Max(1, Math.Min(key.CharacterLength > 0 ? key.CharacterLength : 3, 12))}))"
+        };
         var bodyColumns = ApiSampleValues.BodyColumns(Model);
 
         // a text value that is not a fixed format: it can take a unique ending
         bool IsFreeText(ColumnModel c) => c.IsStringColumn && !c.HasChoices && !c.IsPrimaryKey
+            && !Model.ForeignKeys.Any(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name)
             && !new[] { "Email", "Phone", "Fax", "Url", "Website" }.Any(word => c.Name.ContainsIgnoreCase(word));
 
         string ForeignKeyParentRoute(ColumnModel c, out string parentKey)
         {
             parentKey = "";
             var fk = Model.ForeignKeys.FirstOrDefault(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name && f.ReferencedColumns.Count == 1);
-            if (fk is null || fk.ReferencedTable == Model.TableName || !c.IsIntegerColumn || Project.NoRepository(fk.ReferencedTable, fk.ReferencedLookupShape) == true)
+            if (fk is null || fk.ReferencedTable == Model.TableName || !(c.IsIntegerColumn || c.IsStringColumn) || Project.NoRepository(fk.ReferencedTable, fk.ReferencedLookupShape) == true)
                 return "";
             parentKey = JsonNames.Camel(fk.ReferencedColumns[0]);
             return "/api/" + fk.ReferencedTable.Pluralize().ToLowerInvariant();
@@ -48,6 +59,10 @@
             string sample = ApiSampleValues.Value(c, Project);
             if (c.IsPrimaryKey)
             {
+                if (keyType.Kind == KeyKind.Guid)
+                    return "Guid.NewGuid()";
+                if (keyType.Kind == KeyKind.Text)
+                    return $"ApiFixture.NewCode({(c.CharacterLength > 0 ? c.CharacterLength : 8)})";
                 if (c.IsIdentity)
                     return sample;
                 var range = NumericClassifier.TypeRange(c.SqlType);
@@ -58,7 +73,7 @@
                 return $"ApiFixture.Unique({ApiSampleValues.Json(ApiSampleValues.Text(c))}, {c.CharacterLength})";
             string parentRoute = ForeignKeyParentRoute(c, out string parentKey);
             if (parentRoute.Length > 0)
-                return $"await ApiFixture.ExistingKeyAsync({ApiSampleValues.Json(parentRoute)}, {ApiSampleValues.Json(parentKey)}, {sample})";
+                return $"await ApiFixture.{(c.IsStringColumn ? "ExistingCodeAsync" : "ExistingKeyAsync")}({ApiSampleValues.Json(parentRoute)}, {ApiSampleValues.Json(parentKey)}, {sample})";
             return sample;
         }
 
@@ -116,10 +131,10 @@ public class <#= singular #>ApiTests
         using var created = await client.PostAsJsonAsync(Route, await NewBodyAsync());
         Assert.AreEqual(HttpStatusCode.Created, created.StatusCode, await created.Content.ReadAsStringAsync());
         var row = (await created.Content.ReadFromJsonAsync<JsonObject>())!;
-        long id = row[<#= ApiSampleValues.Json(keyJson) #>]!.GetValue<long>();
+        <#= keyCs #> id = row[<#= ApiSampleValues.Json(keyJson) #>]!.GetValue<<#= keyCs #>>();
         try
         {
-            using var read = await client.GetAsync($"{Route}/{id}");
+            using var read = await client.GetAsync($"{Route}/{<#= idRef #>}");
             Assert.AreEqual(HttpStatusCode.OK, read.StatusCode, "the new row can be read");
 <#
         if (changed is not null)
@@ -141,10 +156,10 @@ public class <#= singular #>ApiTests
             }
 #>
             row[<#= ApiSampleValues.Json(changedJson) #>] = after;
-            using var updated = await client.PutAsJsonAsync($"{Route}/{id}", row);
+            using var updated = await client.PutAsJsonAsync($"{Route}/{<#= idRef #>}", row);
             Assert.AreEqual(HttpStatusCode.OK, updated.StatusCode, await updated.Content.ReadAsStringAsync());
 
-            var again = (await client.GetFromJsonAsync<JsonObject>($"{Route}/{id}"))!;
+            var again = (await client.GetFromJsonAsync<JsonObject>($"{Route}/{<#= idRef #>}"))!;
             Assert.AreEqual(after, again[<#= ApiSampleValues.Json(changedJson) #>]!.GetValue<<#= changedType #>>(), "the change was saved");
 <#
         }
@@ -152,10 +167,10 @@ public class <#= singular #>ApiTests
         }
         finally
         {
-            using var removed = await client.DeleteAsync($"{Route}/{id}");
+            using var removed = await client.DeleteAsync($"{Route}/{<#= idRef #>}");
         }
 
-        using var gone = await client.GetAsync($"{Route}/{id}");
+        using var gone = await client.GetAsync($"{Route}/{<#= idRef #>}");
         Assert.AreEqual(HttpStatusCode.NotFound, gone.StatusCode, "the removed row is gone");
     }
 
@@ -163,7 +178,7 @@ public class <#= singular #>ApiTests
     public async Task A_row_that_is_not_there_answers_404()
     {
         ApiFixture.RequireDatabase();
-        using var response = await ApiFixture.Client.GetAsync($"{Route}/{int.MaxValue}");
+        using var response = await ApiFixture.Client.GetAsync($"{Route}/{<#= absentKey #>}");
         Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
     }
 <#

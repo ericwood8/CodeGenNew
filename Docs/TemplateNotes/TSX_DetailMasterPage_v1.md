@@ -23,9 +23,13 @@ generation time - the same "read the shape at run time, not generation time" ide
 families already use for this exact gap.
 
 Only loaded once the row being edited has a real key (a brand-new, unsaved row has no child rows yet);
-the child sections show a "save first" message instead while adding.
+the child sections show a "save first" message instead while adding. A text key is typed on a new row,
+so the key cannot say whether the row is new: the page has an `adding` flag (set by Add New, cleared by
+Edit) that picks the heading, the create or update call, the read-only key box and the child grids. The
+links to a child's own page and back (?edit=<key>&back=...) encode a text key, the parent's and the
+child's, and so does the child's delete route.
 
-Requires a primary key that is a single int or uniqueidentifier column (same as TSX_Page.tt) and at
+Requires a primary key that is a single int, uniqueidentifier or text column (same as TSX_Page.tt) and at
 least one table in TableModel.ChildForeignKeys (TableModel.HasAtLeastOneChildForeignKey) - a table with
 none is exactly what TSX_Page.tt is for.
 ```

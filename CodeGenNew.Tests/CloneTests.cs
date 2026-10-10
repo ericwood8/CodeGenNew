@@ -141,7 +141,7 @@ public class CloneTests
         Expect.Contains(react, "clone: (id: number) => request<Account>(`${apiUrl}/${id}/clone`, { method: 'POST' }),");
         string baseTs = (await CrudScreenTests.Essential())["crud.service.ts"];
         Expect.Contains(baseTs, "clone(id: K): Observable<T> {");     // every service has clone: the base's
-        Expect.Contains(baseTs, "this.http.post<T>(`${this.apiUrl}/${id}/clone`, null)");
+        Expect.Contains(baseTs, "this.http.post<T>(`${this.apiUrl}/${encodeURIComponent(id)}/clone`, null)");
         Expect.Contains(angular, "CrudService<Account>");
         Expect.DoesNotContain(GeneratedFiles.Split(await Render("TSX_Api_v1.tt", Account(), Project(("NoCloneTables", "Account")))).Single().Content, "clone");
     }

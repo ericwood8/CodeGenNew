@@ -42,16 +42,18 @@
     // Full notes: Docs/TemplateNotes/API_Crud_v1.md
     // ==========================================================================================
 
+    // the key's C# type, route and kind come from KeyType (Core): an int, a bigint, a uniqueidentifier or a text key
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
-    bool supported = keyColumn is not null && keyColumn.IsInt32Column
-                     && !NoRepository(Model.TableName, Model.LookupShape);
+    var keyType = Model.PrimaryKeyType;
+    bool supported = keyType is not null && !NoRepository(Model.TableName, Model.LookupShape)
+                     && (!Model.IsNameActiveTable || keyColumn!.IsInt32Column);   // a Name and IsActive table stays int-keyed
     if (NoRepository(Model.TableName, Model.LookupShape))
     {
         Error($"API_Crud writes no API for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noRepositoryTables (an enum, a *Type lookup table, or a table with no entity class), so it has no repository for the handlers to use.");
     }
     else if (!supported)
     {
-        Error($"API_Crud needs a table with a single int primary key, but [{Model.SchemaName}].[{Model.TableName}] has "
+        Error($"API_Crud needs a table with a single int, uniqueidentifier or text primary key (a Name and IsActive table needs an int one), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "no primary key." : Model.PrimaryKeyColumns.Count > 1
                     ? "a composite primary key (" + string.Join(", ", Model.PrimaryKeyColumns.Select(c => c.Name)) + ")."
                     : $"a {Model.PrimaryKeyColumns[0].SqlTypeDeclaration} primary key."));
@@ -66,10 +68,16 @@
     bool canClone = supported && !nameActive && CloneShape.CanClone(Model, Project);
 
     // CS_Repo writes GetByName for a table with a NOT NULL text Name (the services' findByName calls GET <route>/{name}).
-    bool canFindByName = supported && !nameActive && Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
+    // a text key has no find-by-name route: GET <route>/{id} and GET <route>/{name} would be the same route
+    bool canFindByName = supported && !nameActive && keyType!.Kind != KeyKind.Text && Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
 
     string entity = Model.TableName;
     string keyProperty = keyColumn?.Name ?? "";
+    string keyCSharp = keyType?.CSharp ?? "int";
+    // the int key keeps the original two-argument base and the non-generic LookupItem; any other key names its type
+    string apiBase = nameActive ? "NameActiveCrudApi" : "CrudApi";
+    string keyArgument = nameActive || keyCSharp == "int" ? "" : ", " + keyCSharp;
+    string lookupItem = keyCSharp == "int" ? "LookupItem" : "LookupItem<" + keyCSharp + ">";
 
     // ==== the column GetAll sorts by (see above)
     bool IsSortableDate(ColumnModel c) =>
@@ -96,11 +104,11 @@ namespace <#= apiNamespace #>;
 <#= usingLines #>using System.Linq.Expressions;
 
 /// <summary> The API of <#= entity #>: the endpoints and their answers are <#= nameActive ? "NameActiveCrudApi's (a Name and IsActive table: the duplicate-name rule)" : "CrudApi's" #> (Apis/CrudApi.cs, the CrudApi essentials group); this class says which repository and key it uses. </summary>
-public class <#= entity #>Api : <#= nameActive ? "NameActiveCrudApi" : "CrudApi" #><<#= entity #>, <#= entity #>Repo>
+public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<#= keyArgument #>>
 {
     protected override <#= entity #>Repo NewRepo(<#= contextType #> context) => new(context);
 
-    protected override Expression<Func<<#= entity #>, int>> Key => c => c.<#= keyProperty #>;
+    protected override Expression<Func<<#= entity #>, <#= keyCSharp #>>> Key => c => c.<#= keyProperty #>;
 <#
         if (sortColumn is not null)
         {
@@ -115,8 +123,8 @@ public class <#= entity #>Api : <#= nameActive ? "NameActiveCrudApi" : "CrudApi"
 
     protected override bool CanLookup => true;
 
-    protected override IQueryable<LookupItem> LookupQuery(IQueryable<<#= entity #>> rows) =>
-        rows.OrderBy(c => <#= lookupName #>).Select(c => new LookupItem(c.<#= keyProperty #>, <#= lookupName #>, <#= activeColumn is null ? "null" : "c." + activeColumn.Name #>));
+    protected override IQueryable<<#= lookupItem #>> LookupQuery(IQueryable<<#= entity #>> rows) =>
+        rows.OrderBy(c => <#= lookupName #>).Select(c => new <#= lookupItem #>(c.<#= keyProperty #>, <#= lookupName #>, <#= activeColumn is null ? "null" : "c." + activeColumn.Name #>));
 <#
         }
         if (canFindByName)

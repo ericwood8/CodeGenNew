@@ -29,9 +29,10 @@ public class CrudApiTests
 
         Expect.Contains(cs, "@@@FILE Apis/CrudApi.cs@@@");
         Expect.Contains(cs, "namespace Acme.ApiService.Apis;");
-        Expect.Contains(cs, "public abstract class CrudApi<TEntity, TRepo> : BaseApi<TEntity>");
-        Expect.Contains(cs, "where TRepo : GenericRepo<TEntity>");
-        foreach (string call in new[] { "app.MapGet(apiSubDir,", "app.MapGet(apiSubDir + \"/{id:int}\",", "app.MapPost(apiSubDir,", "app.MapPut(apiSubDir + \"/{id:int}\",", "app.MapDelete(apiSubDir + \"/{id:int}\"," })
+        Expect.Contains(cs, "public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>");
+        Expect.Contains(cs, "public abstract class CrudApi<TEntity, TRepo> : CrudApi<TEntity, TRepo, int>");
+        Expect.Contains(cs, "where TRepo : GenericRepo<TEntity, TKey>");
+        foreach (string call in new[] { "app.MapGet(apiSubDir,", "app.MapGet(apiSubDir + IdSegment,", "app.MapPost(apiSubDir,", "app.MapPut(apiSubDir + IdSegment,", "app.MapDelete(apiSubDir + IdSegment," })
             Expect.Contains(cs, call);
         Expect.Contains(cs, "AcmeContext context");
     }
@@ -96,7 +97,7 @@ public class CrudApiTests
 
         Expect.Contains(cs, "protected virtual bool CanClone => false;");
         Expect.Contains(cs, "if (CanClone)");
-        Expect.Contains(cs, "app.MapPost(apiSubDir + \"/{id:int}/clone\",");
+        Expect.Contains(cs, "app.MapPost(apiSubDir + IdSegment + \"/clone\",");
         Expect.Contains(cs, "return Results.Created($\"/api{_route}/{newId}\", copy);");
     }
 

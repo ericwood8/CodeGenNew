@@ -24,9 +24,12 @@ form that opens under the grid.
     display column (the one CodeGenNew picks for a Lookup: Name, ShortDescr ...); the grid shows the same name instead of
     the id. A parent that is an enum/lookup table, or whose screen needs cascading drop-downs, is listed in
     noLookupParents and its foreign key stays a plain number box.
-  - Key: an int key is a number, a uniqueidentifier key a string (the route takes {id:guid}; the api assigns the value on
-    create - a new row is sent with the empty GUID, as an int key is sent as 0). Any other key (composite, or a natural
-    text key the person would have to type) is refused. The screen loads ALL rows (no paging), so it suits tables of
+  - Key (read from `KeyType`): an int key is a number, a uniqueidentifier key a string (the route takes {id:guid}; the api assigns the value on
+    create - a new row is sent with the empty GUID, as an int key is sent as 0). A text key (a country or currency code) is a string the
+    person types: it is the first field and a column of the grid, editable on a new row and read-only on an existing one (`[readonly]="!adding"`),
+    a new row starts with `''`, and the screen says `keyChosen = true` so the key is sent as typed. The heading and the child-grid test use the base's
+    `adding` (a typed key is set on a new row too, so the key cannot say whether the row is new). A refused duplicate (409) shows the API's own words and
+    keeps the form open. Any other key (composite, a date) is refused. The screen loads ALL rows (no paging), so it suits tables of
     hundreds or a few thousand rows, not tens of thousands.
   - Dates: the API sends and takes "2025-12-25T00:00:00" strings; the date box wants "2025-12-25", so edit() trims the
     time off and the grid formats with the date pipe. A new row starts today, a new number at 0, a new text at "", a new

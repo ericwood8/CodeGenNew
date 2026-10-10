@@ -15,9 +15,9 @@
     // Full notes: Docs/TemplateNotes/MD_Postman_v1.md
     // ==========================================================================================
 
-    var tables = Database.ApiTables(Project);
+    var tables = Database.CrudApiTables(Project);
     if (tables.Count == 0)
-        Error("MD_Postman found no table to write requests for: none has an API of its own (a single whole-number key, not an enum or a name/active table).");
+        Error("MD_Postman found no table to write requests for: none has an API of its own (a single int, uniqueidentifier or text key, not an enum or a name/active table).");
 
     string J(string s) => ApiRequests.JsonString(s);
     string name = (Project.ProjectName ?? "My") + " API";
@@ -78,7 +78,10 @@
     L("  ],");
     L("  \"variable\": [");
     L($"    {{ \"key\": \"baseUrl\", \"value\": \"http://localhost:{Project.ApiPort}\" }},");
-    L("    { \"key\": \"id\", \"value\": \"1\" }");
+    var idVariables = new List<(string Name, string Value)> { ("id", "1") };
+    idVariables.AddRange(tables.Where(t => ApiRequests.IdVariable(t) != "id").Select(t => (ApiRequests.IdVariable(t), ApiSampleValues.SampleId(t))));
+    for (int v = 0; v < idVariables.Count; v++)
+        L("    { \"key\": " + J(idVariables[v].Name) + ", \"value\": " + J(idVariables[v].Value) + " }" + (v < idVariables.Count - 1 ? "," : ""));
     L("  ]");
     L("}");
     Write(o.ToString());

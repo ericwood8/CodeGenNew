@@ -7,4 +7,6 @@
 - **Form:** a panel over the page with an `EditForm`. `InputText` (`InputTextArea` for a column of 100 characters or more), `InputNumber`, `InputDate`, `InputCheckbox`, an `InputSelect` of the parent's display column for a foreign key, and of the listed values for a column that has choices. A required column carries `required`. Add New starts date columns at today and yes / no columns at their default.
 - **Errors:** a failed load, save, delete or clone shows a sentence (`ApiException.Explain`); deleting a row that is in use says so.
 
+A text key (a country or currency code) is the first field and a grid column: an `InputText` that is typed on a new row and `readonly` on an existing one (the page already keeps `isNew`); a duplicate key (409) says "A country with this alpha3 code already exists!". A drop-down over a text-key parent holds codes and starts on a blank "Select" (`value=""`).
+
 The row being edited is a copy (`ApiSupport.Copy`), so Cancel leaves the grid as it was. Limits are in `BLZ_Screens_v1.md`.

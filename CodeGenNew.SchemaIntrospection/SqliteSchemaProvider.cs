@@ -95,17 +95,8 @@ public class SqliteSchemaProvider : SchemaProviderBase
         return d;
     }
 
-    private static PrimaryKeyShape ShapeOf(int primaryKeyColumns, string? declaredType) => primaryKeyColumns switch
-    {
-        0 => PrimaryKeyShape.None,
-        > 1 => PrimaryKeyShape.Composite,
-        _ => MapType(declaredType).SqlTypeName switch
-        {
-            "uniqueidentifier" => PrimaryKeyShape.SingleUniqueIdentifier,
-            "int" or "bigint" or "smallint" or "tinyint" => PrimaryKeyShape.SingleInt,
-            _ => PrimaryKeyShape.SingleOther
-        }
-    };
+    private static PrimaryKeyShape ShapeOf(int primaryKeyColumns, string? declaredType) =>
+        PrimaryKeyShapes.Classify(primaryKeyColumns, primaryKeyColumns == 1 ? MapType(declaredType).SqlTypeName : null);
 
     private static readonly Regex FlagName = new(@"^(is|has|can|should)[_A-Z0-9]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 

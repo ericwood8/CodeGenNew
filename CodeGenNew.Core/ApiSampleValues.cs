@@ -21,7 +21,9 @@ public static class ApiSampleValues
     /// <summary> The example value of a column as JSON text (which is also a valid C# literal for every type but a null). A key is 0 for an identity column and 1 otherwise. </summary>
     public static string Value(ColumnModel c, ProjectSettings project)
     {
-        if (c.IsPrimaryKey)
+        if (c.IsPrimaryKey && c.IsStringColumn)
+            return Json(KeyText(c));
+        if (c.IsPrimaryKey && !c.IsGuidColumn)
             return c.IsIdentity ? "0" : "1";
         if (c.IsStringColumn)
         {
@@ -56,6 +58,20 @@ public static class ApiSampleValues
             case SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Timestamp: return "\"AA==\"";
             default: return "null";
         }
+    }
+
+    /// <summary> The example of a text key: the sample words with no spaces (it goes into a route), cut to the column's length. </summary>
+    public static string KeyText(ColumnModel key)
+    {
+        string text = Text(key).Replace(' ', '_');
+        return key.CharacterLength > 0 && text.Length > key.CharacterLength ? text[..key.CharacterLength] : text;
+    }
+
+    /// <summary> The key the request files put in their <c>id</c> variable: the row the "add" request creates (1, a GUID ending in 1, or the text key's example). </summary>
+    public static string SampleId(TableModel table)
+    {
+        var key = table.PrimaryKeyColumns[0];
+        return key.IsStringColumn ? KeyText(key) : key.IsGuidColumn ? "00000000-0000-0000-0000-000000000001" : "1";
     }
 
     /// <summary> The columns a create or update body carries: every column that cannot be NULL and is not computed, plus the key. </summary>

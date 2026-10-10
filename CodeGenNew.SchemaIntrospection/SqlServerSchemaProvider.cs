@@ -49,17 +49,8 @@ public class SqlServerSchemaProvider : SchemaProviderBase
     // A single primary key column's SQL type name -> PrimaryKeyShape, matching TableModel.PrimaryKeyShape's
     // own rule exactly (only reachable with pkColumnCount == 1, so a null/other type name means "some other,
     // natural-key type" rather than "no primary key").
-    private static PrimaryKeyShape ClassifyPrimaryKeyShape(int pkColumnCount, string? pkColumnTypeName) => pkColumnCount switch
-    {
-        0 => PrimaryKeyShape.None,
-        > 1 => PrimaryKeyShape.Composite,
-        _ => pkColumnTypeName switch
-        {
-            "uniqueidentifier" => PrimaryKeyShape.SingleUniqueIdentifier,
-            "int" or "bigint" or "smallint" or "tinyint" => PrimaryKeyShape.SingleInt,
-            _ => PrimaryKeyShape.SingleOther
-        }
-    };
+    private static PrimaryKeyShape ClassifyPrimaryKeyShape(int pkColumnCount, string? pkColumnTypeName) =>
+        PrimaryKeyShapes.Classify(pkColumnCount, pkColumnTypeName);
 
     /// <summary> Lists user tables (system/framework tables filtered out via SystemTableFilter) for the
     /// TreeView. Read-only; a full TableModel is only built for the one table actually selected. </summary>

@@ -17,7 +17,9 @@ The shared plumbing (GenericRepo<T> / NameActiveRepo<T> and their interfaces) is
 per-table, so this template only writes the thin per-table class on top of it:
   - Base class: a table with a NOT NULL text column called Name AND a NOT NULL bit column called IsActive uses
     NameActiveRepo<Entity> (which brings GetByName, GetAllActive and the duplicate-name check); any other table uses
-    GenericRepo<Entity>. This is the same test CS_Entity uses to choose BaseNameActiveEntity / BaseEntity, and the
+    GenericRepo<Entity> for an int key and GenericRepo<Entity, TKey> for any other (a text key is GenericRepo<Country, string>,
+    a uniqueidentifier GenericRepo<Row, Guid>, a bigint GenericRepo<Row, long>; TKey comes from KeyType in Core, and the
+    duplicate-value checks take the same type). This is the same test CS_Entity uses to choose BaseNameActiveEntity / BaseEntity, and the
     entity has to derive from the matching base for the repo to compile.
   - Extra queries, only where the COLUMNS alone say what to write:
       * a name/active table that hangs off exactly one parent through a NOT NULL int foreign key (a "child" table:

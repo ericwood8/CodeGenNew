@@ -6,7 +6,7 @@ They are the base classes that the generated services (`TS_Service`) and screens
 
 ## crud.service.ts
 
-- `CrudService<T, K = number>` (K is `string` for a uniqueidentifier key): `getAll`, `getById`, `create`, `update`, `delete`, `clone`, and `searchPage(query)`, which calls `GET <route>/search` with `pageNumber`, `pageSize`, one parameter per search box that has text, and `sortBy` / `sortDir` only when there is a sort.
+- `CrudService<T, K = number>` (K is `string` for a uniqueidentifier or text key; the key is URL-encoded in the route, and `getLookup()` answers `Lookup<K>[]`, ids of type K): `getAll`, `getById`, `create`, `update`, `delete`, `clone`, and `searchPage(query)`, which calls `GET <route>/search` with `pageNumber`, `pageSize`, one parameter per search box that has text, and `sortBy` / `sortDir` only when there is a sort.
 - `NamedCrudService<T, K>` adds `findByName(name)`, `GET <route>/{name}` with the name URL-encoded (`API_Crud` answers it for a table with a NOT NULL `Name`).
 - `NameActiveCrudService<T, K>` adds `getAllActive()`, `GET <route>/active`, for a table with a Name and an IsActive column.
 - `PagedResult<T>` and `PageQuery`, the shapes the search endpoint answers and takes.
@@ -18,7 +18,7 @@ They are the base classes that the generated services (`TS_Service`) and screens
 
 ## crud-screen.ts
 
-- `CrudScreen<T, K>`: the rows, the open row (always a copy), the edit dialog, `add`, `edit`, `submit`, `delete`, `clone`, `cancel`, the way back to the page that opened a row (`?edit=<id>&back=<page>`), and one set of messages for what the API refuses, shown through the `Notifier` in the API's own words when it gives them (`apiMessage`) and otherwise as 400 bad value, 404 gone, 400 on delete = in use. A screen supplies `service`, `noun`, `idKey`, `newRow()`, and may override `emptyKey`, `badInputMessage`, `prepare`, `prepareEdit`, `start`, `opened`.
+- `CrudScreen<T, K>`: `adding` says the open row is new (set by `add`, cleared by `edit`), and `keyChosen` (true for a text key) sends a new row's key as the person typed it instead of replacing it with `emptyKey`, so a typed key never turns a create into an update; the rows, the open row (always a copy), the edit dialog, `add`, `edit`, `submit`, `delete`, `clone`, `cancel`, the way back to the page that opened a row (`?edit=<id>&back=<page>`), and one set of messages for what the API refuses, shown through the `Notifier` in the API's own words when it gives them (`apiMessage`) and otherwise as 400 bad value, 404 gone, 400 on delete = in use. A screen supplies `service`, `noun`, `idKey`, `newRow()`, and may override `emptyKey`, `badInputMessage`, `prepare`, `prepareEdit`, `start`, `opened`.
 - `PagedCrudScreen<T, K>` adds what a server-paged grid needs: the page and its size, one box per searchable column (`filters`), the sort from `grid-sort.ts` (kept between visits under `gridKey`; `sortableColumns` say which headers sort), the right-click Clear sort menu, a fall back to the last page when the current one has no rows, and `pageLoaded()`.
 
 - `NameActiveCrudScreen<T, K>` (T has `name` and `isActive`) is the screen of a Name and IsActive table: it reads the whole list and narrows it on the page with `searchText` and `activeOnly` (`visibleRows`, `clearSearch()`).

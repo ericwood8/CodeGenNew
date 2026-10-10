@@ -122,6 +122,10 @@ AS
 
 <#
     var pkCheckColumn = Model.PrimaryKeyColumns.First();
+    // The key goes into the dynamic statement as text: a number as it is, anything else (a text or uniqueidentifier key) as a quoted literal with its quotes doubled.
+    string KeyTest(ColumnModel pk) => pk.IsIntegerColumn || pk.IsNumericColumn
+        ? $"[{pk.Name}] = ' + {pk.ParameterName} + '"
+        : $"[{pk.Name}] = ''' + REPLACE(RTRIM(LTRIM({pk.ParameterName})), '''', '''''') + '''";
 #>
 	IF <#= pkCheckColumn.ParameterName #> IS NOT NULL
 	BEGIN
@@ -177,7 +181,7 @@ AS
 	        IF RIGHT(@strSetStatement, 1) = ','
 	            SET @strSetStatement = LEFT(@strSetStatement, LEN(@strSetStatement) - 1);
 
-	        SET @strUpdate = @strUpdate + @strSetStatement + ' WHERE (<#= string.Join(" AND ", Model.PrimaryKeyColumns.Select(pk => $"[{pk.Name}] = ' + {pk.ParameterName} + '")) #>)';
+	        SET @strUpdate = @strUpdate + @strSetStatement + ' WHERE (<#= string.Join(" AND ", Model.PrimaryKeyColumns.Select(KeyTest)) #>)';
 	        EXEC (@strUpdate);
 
 	        IF @@ERROR = 0

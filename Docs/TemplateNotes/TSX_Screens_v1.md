@@ -13,5 +13,6 @@ and renders the menu links and the <Route> elements from it, so adding a table i
 button, the layout and the rest of App.tsx stay hand-written.
   - route: ScreenNames.Route, the same text TSX_DetailMasterPage uses to link a child row to its screen, so a link and a menu entry cannot disagree;
   - page: <Base>DetailMasterPage for a master-detail table, <Base>Page for any other (TSX_DetailMasterPage / TSX_Page file names).
+The tables are Database.ScreenTables(Project, "React"): a table with a uniqueidentifier or text key is listed because React reads KeyType (KeyType.StackHandlesEveryKey).
 A master-detail screen whose child table has no screen is named in a comment at the top of the file: its child-row link would open nothing.
 ```

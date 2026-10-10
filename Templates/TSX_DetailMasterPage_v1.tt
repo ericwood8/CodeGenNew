@@ -67,13 +67,14 @@
     string ApiRoute(string table) => BaseName(table).ToLowerInvariant().Pluralize();
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
+    var keyType = KeyType.Of(Model);   // how the key travels: a number, or a string for a uniqueidentifier or a text key
     if (NoApi(Model.TableName, Model.LookupShape))
     {
         Error($"TSX_DetailMasterPage writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
     }
-    else if (keyColumn is null || !(keyColumn.IsInt32Column || keyColumn.IsGuidColumn))
+    else if (keyColumn is null || keyType is null)
     {
-        Error($"TSX_DetailMasterPage needs a table with a single int or uniqueidentifier primary key (the routes take the id as {{id:int}} or {{id:guid}}), but [{Model.SchemaName}].[{Model.TableName}] has "
+        Error($"TSX_DetailMasterPage needs a table with a single int, uniqueidentifier or text primary key (the routes take the id as {{id:int}}, {{id:guid}} or {{id}}), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
     }
     else if (!Model.HasAtLeastOneChildForeignKey)
@@ -92,8 +93,11 @@
         string listName = variable.Pluralize();
         string setList = "set" + UpperFirst(listName);
         string keyProp = Camel(keyColumn.Name);
-        string keyTs = keyColumn.IsInt32Column ? "number" : "string";
-        string emptyKey = keyColumn.IsInt32Column ? "0" : "'00000000-0000-0000-0000-000000000000'";
+        string keyTs = keyType.TypeScript;
+        string emptyKey = keyType.TypeScriptEmpty;     // "no key yet": the API assigns the real one (a text key is typed by the person, so a new row starts with '')
+        bool textKey = keyType.Kind == KeyKind.Text;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
+        // a text key is put in a link as a query value, so a character such as & or # cannot end it early
+        string keyInLink = textKey ? $"encodeURIComponent(selectedRow?.{Camel(keyColumn.Name)} ?? '')" : $"selectedRow?.{Camel(keyColumn.Name)}";
         string title = Words(baseName);
         bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"); // just for showError's message wording below
         const int pageSize = 20;
@@ -111,9 +115,10 @@
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
         var shown = Model.Columns
-            .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity
-                        && !(fkByColumn.TryGetValue(c.Name, out var hfk) && IsHiddenParent(hfk.ReferencedTable)))
-            .OrderBy(c => c.Name == "Name" ? 0 : 1).ThenBy(c => c.OrdinalPosition)
+            .Where(c => (textKey && c.IsPrimaryKey)
+                        || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity
+                            && !(fkByColumn.TryGetValue(c.Name, out var hfk) && IsHiddenParent(hfk.ReferencedTable))))
+            .OrderBy(c => textKey && c.IsPrimaryKey ? 0 : c.Name == "Name" ? 1 : 2).ThenBy(c => c.OrdinalPosition)
             .ToList();
 
         ForeignKeyModel LookupOf(ColumnModel c) =>
@@ -139,7 +144,7 @@
                     SetList = "set" + UpperFirst(pList),
                     NameMethod = LowerFirst(parentBase) + "Name",
                     KeyProp = Camel(fk.ReferencedColumns[0]),
-                    IdType = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).IsGuidColumn ? "string" : "number",
+                    IdType = Model.ForeignKeyType(fk)?.TypeScript ?? "number",
                     DisplayProp = Camel(fk.ReferencedDisplayColumns[0]),
                     Self = self
                 };
@@ -158,6 +163,10 @@
                 Route = ApiRoute(fk.ReferencingTable),
                 PageRoute = PageRoute(fk.ReferencingTable),
                 KeyProp = fk.ReferencingPrimaryKeyColumns.Count == 1 ? Camel(fk.ReferencingPrimaryKeyColumns[0]) : null,
+                // a child with a text key has it encoded into the links and the delete route
+                KeyText = fk.ReferencingPrimaryKeyColumns.Count == 1
+                    && fk.ReferencingTableColumns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(fk.ReferencingPrimaryKeyColumns[0])) is { } childKey
+                    && KeyType.Of(childKey)?.Kind == KeyKind.Text,
                 FkProp = Camel(fk.ReferencingColumns[0]),
                 // The child's OTHER foreign keys that point at a table with a display column are shown as that name (a customer's purchase history lists item numbers, not item ids);
                 // the grid's own foreign key (always this row), the child's own key and every other id column are left out, as in the WinUI3 grid.
@@ -264,6 +273,8 @@
         foreach (var p in parents.Where(p => !p.Self))
             T($"  const [{p.List}, {p.SetList}] = useState<{p.Type}[]>([]);");
         T($"  const [selectedRow, setSelectedRow] = useState<{baseName} | null>(null);");
+        // a typed key is set on a new row too, so the key can no longer say whether the row is new: `adding` does
+        if (textKey) T("  const [adding, setAdding] = useState(false); // true while the form holds a new row, whose key the person types");
         if (tabbed)
         {
             T("  const [tab, setTab] = useState(0); // the form tab showing");
@@ -311,18 +322,29 @@
         foreach (var p in parents.Where(p => !p.Self))
             T($"    {p.ApiVar}.getAll().then({p.SetList}).catch(() => {{}});");
         T("    const openId = searchParams.get('edit');");
-        T($"    if (openId) {variable}Api.getById({(keyColumn.IsInt32Column ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Words(baseName).ToLowerInvariant()} no longer exists!'));");
+        T($"    if (openId) {variable}Api.getById({(keyType.Kind == KeyKind.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Words(baseName).ToLowerInvariant()} no longer exists!'));");
         T("  }, []);");
         T();
         T($"  const submit = async ({variable}: {baseName}): Promise<void> => {{");
         T("    setError(null);");
         T($"    try {{");
-        T($"      if ({variable}.{keyProp}) {{");
-        T($"        await {variable}Api.update({variable}.{keyProp}, {variable});");
-        T("      } else {");
-        T($"        {variable}.{keyProp} = {emptyKey};");
-        T($"        await {variable}Api.create({variable});");
-        T("      }");
+        if (textKey)
+        {
+            T("      if (adding) {");
+            T($"        await {variable}Api.create({variable});");
+            T("      } else {");
+            T($"        await {variable}Api.update({variable}.{keyProp}!, {variable});");
+            T("      }");
+        }
+        else
+        {
+            T($"      if ({variable}.{keyProp}) {{");
+            T($"        await {variable}Api.update({variable}.{keyProp}, {variable});");
+            T("      } else {");
+            T($"        {variable}.{keyProp} = {emptyKey};");
+            T($"        await {variable}Api.create({variable});");
+            T("      }");
+        }
         T("      setSelectedRow(null);");
         T("      load(page);");
         T("      if (backTo) navigate(backTo);");
@@ -373,6 +395,7 @@
         }
         T();
         var adds = new List<string>();
+        if (textKey) adds.Add($"{keyProp}: ''");
         foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && !c.IsNullable && !c.IsComputed && !c.IsIdentity))
         {
             string value;
@@ -384,6 +407,7 @@
         }
         T("  const add = () => {");
         if (tabbed) T("    setTab(0);");
+        if (textKey) T("    setAdding(true);");
         T(adds.Count == 0 ? "    setSelectedRow({});" : $"    setSelectedRow({{ {string.Join(", ", adds)} }});");
         foreach (var child in children)
         {
@@ -394,6 +418,7 @@
         T();
         T($"  const edit = ({variable}: {baseName}) => {{");
         if (tabbed) T("    setTab(0);");
+        if (textKey) T("    setAdding(false);");
         T($"    const row = {{ ...{variable} }};");
         var dateColumns = shown.Where(IsDate).ToList();
         if (dateColumns.Count > 0)
@@ -484,13 +509,14 @@
                 T();
                 T($"  // Edit opens the {child.Title}'s own page on that row; saving or cancelling there comes back here with this {title} open again.");
                 T($"  const edit{child.MethodName} = (row: any) => {{");
-                T($"    navigate(`/{child.PageRoute}?edit=${{row['{child.KeyProp}']}}&back=${{encodeURIComponent(`/{selfRoute}?edit=${{selectedRow?.{keyProp}}}`)}}`);");
+                string childKeyInLink = child.KeyText ? $"encodeURIComponent(row['{child.KeyProp}'])" : $"row['{child.KeyProp}']";
+                T($"    navigate(`/{child.PageRoute}?edit=${{{childKeyInLink}}}&back=${{encodeURIComponent(`/{selfRoute}?edit=${{{keyInLink}}}`)}}`);");
                 T("  };");
                 T();
                 T($"  const delete{child.MethodName} = async (row: any): Promise<void> => {{");
                 T("    if (!confirm('Are you sure you want to delete this?')) return;");
                 T("    try {");
-                T($"      await request<void>(`{apiPrefix}/{child.Route}/${{row['{child.KeyProp}']}}`, {{ method: 'DELETE' }});");
+                T($"      await request<void>(`{apiPrefix}/{child.Route}/${{{(child.KeyText ? $"encodeURIComponent(row['{child.KeyProp}'])" : $"row['{child.KeyProp}']")}}}`, {{ method: 'DELETE' }});");
                 T($"      load{child.MethodName}(selectedRow!.{keyProp}!);");
                 T("    } catch (err) {");
                 T("      setError(err instanceof ApiError && err.status === 400 ? 'It cannot be deleted because it is in use!' : 'Problem while deleting!');");
@@ -502,6 +528,8 @@
         T("  const showError = (action: string, err: unknown) => {");
         T($"    if (err instanceof ApiError && err.status === 400) {{ setError({(hasName ? "'Name is bad or has special characters!'" : "'Some of the values are not acceptable!'")}); }}");
         T($"    else if (err instanceof ApiError && err.status === 404) {{ setError('This {Words(baseName).ToLowerInvariant()} no longer exists!'); load(page); }}");
+        // a typed key can already be taken: the API answers 409
+        if (textKey) T($"    else if (err instanceof ApiError && err.status === 409) {{ setError('A {Words(baseName).ToLowerInvariant()} with this {Label(keyColumn.Name).ToLowerInvariant()} already exists!'); }}");
         T("    else { setError('Problem while ' + action + '!'); }");
         T("  };");
         T();
@@ -596,7 +624,7 @@
         T("          onCancel={(event) => { event.preventDefault(); cancel(); }}");
         T("        >");
         T("          {error && <p role=\"alert\">{error}</p>}");
-        T($"          <h2>{{selectedRow.{keyProp} ? 'Edit' : 'Add'}} {title}</h2>");
+        T($"          <h2>{{{(textKey ? "adding ? 'Add' : 'Edit'" : $"selectedRow.{keyProp} ? 'Edit' : 'Add'")}}} {title}</h2>");
         T("          <form onSubmit={handleSubmit}>");
         if (tabbed)
         {
@@ -614,7 +642,22 @@
             string prop = Camel(c.Name);
             var lookup = LookupOf(c);
             T("            <label htmlFor=\"" + id + "\">" + LabelOf(c) + "</label>");
-            if (lookup is not null)
+            if (textKey && c.IsPrimaryKey)
+            {
+                // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
+                T($"            <input");
+                T($"              id=\"{id}\"");
+                T("              type=\"text\"");
+                T($"              aria-label=\"{LabelOf(c)}\"");
+                T($"              value={{selectedRow.{prop} ?? ''}}");
+                T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
+                if (Chars(c) > 0) T($"              maxLength={{{Chars(c)}}}");
+                T("              readOnly={!adding}");
+                T($"              placeholder=\"{PlaceholderFor(c)}\"");
+                T("              required");
+                T("            />");
+            }
+            else if (lookup is not null)
             {
                 var p = parentOf[lookup.ReferencedTable];
                 // A blank choice means "none": undefined for a nullable column (0 would be a key that does not exist); a required column starts blank too (0 shows as blank, and
@@ -751,7 +794,8 @@
         T("          {/* Child grids: TableModel.ChildForeignKeys, one per table, columns discovered at run time */}");
         foreach (var child in children)
         {
-            T($"          {{selectedRow.{keyProp} ? (");
+            // the child grids show once the row is saved (a typed key is set on a new row too, so `adding` says which)
+            T(textKey ? "          {!adding ? (" : $"          {{selectedRow.{keyProp} ? (");
             T("            <div>");
             T($"              <h3>{child.Title}</h3>");
             T($"              <GridMenu sort={{{child.Var}Sort}} onClear={{clear{child.MethodName}Sort}}>");
@@ -791,7 +835,7 @@
         // ================= test
         var test = new StringBuilder();
         void S(string s = "") => test.Append(s).Append('\n');
-        S("import { render, screen } from '@testing-library/react';");
+        S(textKey ? "import { fireEvent, render, screen } from '@testing-library/react';" : "import { render, screen } from '@testing-library/react';");
         S("import { MemoryRouter } from 'react-router-dom';");
         S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
         S($"import {{ {baseName}DetailMasterPage }} from '../{baseName}DetailMasterPage';");
@@ -814,6 +858,29 @@
         S($"    render(<MemoryRouter><{baseName}DetailMasterPage /></MemoryRouter>);");
         S($"    expect(await screen.findByText('{title.Pluralize()}')).toBeInTheDocument();");
         S("  });");
+        if (textKey)
+        {
+            // the key is typed on a new row and read-only on an existing one, and the child grids wait for the row to be saved; jsdom has no showModal, so the test gives the dialog one that just opens it
+            string sampleKey = ApiSampleValues.KeyText(keyColumn);
+            string sampleRow = "{ " + string.Join(", ", adds.Select((a, i) => i == 0 ? $"{keyProp}: '{sampleKey}'" : a)) + " }";
+            S();
+            S($"  it('lets the person type the key of a new {Words(baseName).ToLowerInvariant()}, does not let them change it afterwards, and shows the child grids only for a saved row', async () => {{");
+            S("    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };");
+            S($"    vi.spyOn({variable}Api, 'getPage').mockResolvedValue({{ items: [{sampleRow}], page: 1, pageSize: {pageSize}, totalCount: 1, totalPages: 1 }});");
+            S($"    render(<MemoryRouter><{baseName}DetailMasterPage /></MemoryRouter>);");
+            S($"    fireEvent.click(await screen.findByText('Add New {title}'));");
+            S($"    expect(await screen.findByText('Add {title}')).toBeInTheDocument();");
+            S($"    expect(screen.getByLabelText('{LabelOf(keyColumn)}')).not.toHaveAttribute('readonly');");
+            if (children.Count > 0)
+                S($"    expect(screen.getAllByText(/Save this {title} first/)).toHaveLength({children.Count});");   // one note per child grid
+            S("    fireEvent.click(screen.getByText('Cancel'));");
+            S("    fireEvent.click(await screen.findByText('Edit'));");
+            S($"    expect(await screen.findByText('Edit {title}')).toBeInTheDocument();");
+            S($"    expect(screen.getByLabelText('{LabelOf(keyColumn)}')).toHaveAttribute('readonly');");
+            if (children.Count > 0)
+                S($"    expect(screen.queryAllByText(/Save this {title} first/)).toHaveLength(0);");
+            S("  });");
+        }
         S("});");
 
         var o = new StringBuilder();

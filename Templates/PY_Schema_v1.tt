@@ -26,7 +26,7 @@
         if (f.IsNullable || f.ReadOnly)
             return "None";
         if (f.Column.IsPrimaryKey)
-            return f.Annotation == "UUID" ? "UUID(int=0)" : "0";
+            return f.Annotation == "UUID" ? "UUID(int=0)" : f.Annotation == "str" ? "" : "0";   // a text key has no default: the person types it
         return "";
     }
 

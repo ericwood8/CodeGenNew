@@ -69,13 +69,14 @@
     }
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
+    var keyType = KeyType.Of(Model);   // how the key travels: a number, or a string for a uniqueidentifier or a text key
     if (NoApi(Model.TableName, Model.LookupShape))
     {
         Error($"TS_Component writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
     }
-    else if (keyColumn is null || !(keyColumn.IsInt32Column || keyColumn.IsGuidColumn))
+    else if (keyColumn is null || keyType is null)
     {
-        Error($"TS_Component needs a table with a single int or uniqueidentifier primary key (the routes take the id as {{id:int}} or {{id:guid}}), but [{Model.SchemaName}].[{Model.TableName}] has "
+        Error($"TS_Component needs a table with a single int, uniqueidentifier or text primary key (the routes take the id as {{id:int}}, {{id:guid}} or {{id}}), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
     }
     else
@@ -85,8 +86,8 @@
         string stem = baseName.ToLowerInvariant();
         string variable = LowerFirst(baseName);        // holiday
         string keyProp = Camel(keyColumn.Name);        // holidayId
-        string keyTs = keyColumn.IsInt32Column ? "number" : "string";                       // a uniqueidentifier key travels as a string
-        string emptyKey = keyColumn.IsInt32Column ? "0" : "'00000000-0000-0000-0000-000000000000'"; // "no key yet": the API assigns the real one
+        string emptyKey = keyType.TypeScriptEmpty;     // "no key yet": the API assigns the real one (a text key is typed by the person, so a new row starts with '')
+        bool textKey = keyType.Kind == KeyKind.Text;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
         string title = Words(baseName);                // Time Sheet
         bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"); // just for showError's message wording below
         int pageSize = 20;
@@ -106,9 +107,10 @@
 
         // ==== the columns on the screen: Name first, then table order
         var shown = Model.Columns
-            .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity
-                        && !(fkByColumn.TryGetValue(c.Name, out var hfk) && IsHiddenParent(hfk.ReferencedTable)))
-            .OrderBy(c => c.Name == "Name" ? 0 : 1).ThenBy(c => c.OrdinalPosition)
+            .Where(c => (textKey && c.IsPrimaryKey)
+                        || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity
+                            && !(fkByColumn.TryGetValue(c.Name, out var hfk) && IsHiddenParent(hfk.ReferencedTable))))
+            .OrderBy(c => textKey && c.IsPrimaryKey ? 0 : c.Name == "Name" ? 1 : 2).ThenBy(c => c.OrdinalPosition)
             .ToList();
 
         // ==== lookups: one list + one "name of" method per distinct parent table
@@ -123,6 +125,10 @@
             {
                 string parentBase = BaseName(fk.ReferencedTable);
                 bool self = fk.ReferencedTable.EqualsIgnoreCase(Model.TableName);
+                // a drop-down over a parent with a whole-number or text key reads the parent's lookup list ({ id, name }: GET <route>/lookup) instead of every column of every row
+                var fkColumn = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0]));
+                bool viaLookup = !fkColumn.IsGuidColumn && fk.ReferencedColumns.Count == 1 && !NoApi(fk.ReferencedTable, fk.ReferencedLookupShape);
+                string idType = Model.ForeignKeyType(fk)?.TypeScript ?? "number";
                 return new
                 {
                     Table = fk.ReferencedTable,
@@ -133,11 +139,11 @@
                     ServiceFile = parentBase.ToLowerInvariant() + ".service",
                     List = LowerFirst(parentBase).Pluralize(),
                     NameMethod = LowerFirst(parentBase) + "Name",
-                    // a drop-down over a parent with a whole-number key reads the parent's lookup list ({ id, name }: GET <route>/lookup) instead of every column of every row
-                    Lookup = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).IsGuidColumn is false && fk.ReferencedColumns.Count == 1 && !NoApi(fk.ReferencedTable, fk.ReferencedLookupShape),
-                    KeyProp = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).IsGuidColumn is false && fk.ReferencedColumns.Count == 1 && !NoApi(fk.ReferencedTable, fk.ReferencedLookupShape) ? "id" : Camel(fk.ReferencedColumns[0]),
-                    IdType = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).IsGuidColumn ? "string" : "number",
-                    DisplayProp = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).IsGuidColumn is false && fk.ReferencedColumns.Count == 1 && !NoApi(fk.ReferencedTable, fk.ReferencedLookupShape) ? "name" : Camel(fk.ReferencedDisplayColumns[0]),
+                    Lookup = viaLookup,
+                    LookupType = idType == "number" ? "Lookup" : $"Lookup<{idType}>",
+                    KeyProp = viaLookup ? "id" : Camel(fk.ReferencedColumns[0]),
+                    IdType = idType,
+                    DisplayProp = viaLookup ? "name" : Camel(fk.ReferencedDisplayColumns[0]),
                     Self = self
                 };
             }).ToList();
@@ -260,7 +266,9 @@
         H("    <!-- Add/Edit Form -->");
         // The add/edit form is a modal <dialog> (native, no library): it opens over the page, wherever the grid is scrolled to, and Escape cancels it.
         H("    <dialog *ngIf=\"selectedRow\" #editDialog class=\"form-container\" (cancel)=\"$event.preventDefault(); cancel()\">");
-        H($"        <h2>{{{{selectedRow.{keyProp} ? 'Edit' : 'Add'}}}} {title}</h2>");
+        // a typed key is set on a new row too, so the screen's `adding` (not the key) says which heading
+        string headingTest = textKey ? "adding ? 'Add' : 'Edit'" : "selectedRow." + keyProp + " ? 'Edit' : 'Add'";
+        H($"        <h2>{{{{{headingTest}}}}} {title}</h2>");
         H($"        <form id=\"{variable}Form\" (ngSubmit)=\"submit(selectedRow)\">");
         if (tabbed)
         {
@@ -280,7 +288,13 @@
             var lookup = LookupOf(c);
             H("            <div class=\"form-group\">");
             H($"                <label for=\"{id}\">{LabelOf(c)}</label>");
-            if (lookup is not null)
+            if (textKey && c.IsPrimaryKey)
+            {
+                // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
+                string max = Chars(c) > 0 ? $" maxlength=\"{Chars(c)}\"" : "";
+                H($"                <input type=\"text\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{max} [readonly]=\"!adding\" placeholder=\"{PlaceholderFor(c)}\"{req}>");
+            }
+            else if (lookup is not null)
             {
                 var p = parentOf[lookup.ReferencedTable];
                 H($"                <select id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
@@ -431,7 +445,7 @@
         // ================= ts
         // The screen is a short class on PagedCrudScreen (components/crud-screen.ts, written by TS_EssentialCrud): the rows, the open row, add / edit / submit / delete / clone / cancel, the way back to
         // the page that opened a row, the page, the sort and the search boxes are the base's. This class names its service and key and keeps what is the table's own: the starting row, the date boxes, the drop-down lists.
-        string keyGeneric = keyColumn.IsInt32Column ? "" : ", string";
+        string keyGeneric = keyType.Kind == KeyKind.Int ? "" : ", " + keyType.TypeScript;
         T("import { ChangeDetectionStrategy, Component, inject } from '@angular/core';");
         T($"import {{ {baseName} }} from '../../{modelsFolder}/{stem}';");
         T($"import {{ {baseName}Service }} from '../../{servicesFolder}/{stem}.service';");
@@ -458,7 +472,8 @@
         T($"  protected readonly service = inject({baseName}Service);");
         T($"  protected readonly noun = '{Words(baseName).ToLowerInvariant()}';");
         T($"  protected readonly idKey = '{keyProp}';");
-        if (!keyColumn.IsInt32Column) T($"  protected override readonly emptyKey: string = {emptyKey};");
+        if (keyType.Kind != KeyKind.Int) T($"  protected override readonly emptyKey: {keyType.TypeScript} = {emptyKey};");
+        if (textKey) T("  protected override readonly keyChosen = true; // the person types the key of a new row: it is sent as typed");
         if (!nameActive)
         {
             T($"  protected readonly gridKey = '{stem}'; // the grid's saved sort is kept in the browser under this key (see grid-sort.ts)");
@@ -470,7 +485,7 @@
         if (canSearch) T($"  override filters = {{ {string.Join(", ", searchFields.Select(f => $"{f.ParamName}: ''"))} }};");
         if (!nameActive && pageSize != 20) T($"  override pageSize = {pageSize};");
         foreach (var p in parents)
-            T($"  {p.List}: {(p.Lookup ? "Lookup" : p.Type)}[] = [];");
+            T($"  {p.List}: {(p.Lookup ? p.LookupType : p.Type)}[] = [];");
         foreach (var p in parents.Where(p => !p.Self))
             T($"  private readonly {p.ServiceVar} = inject({p.Service});");
         if (tabbed) T("  activeTab = 0; // the form tab showing");
@@ -489,6 +504,7 @@
         }
         // newRow(): every required property gets a starting value
         var adds = new List<string>();
+        if (textKey) adds.Add($"{keyProp}: {emptyKey}");
         foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && !c.IsNullable && !c.IsComputed && !c.IsIdentity))
         {
             string value;

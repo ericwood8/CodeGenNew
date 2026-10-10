@@ -42,7 +42,7 @@ The handlers use <Table>Repo (generate it with CS_Repo), which sits on GenericRe
 the delete check live there. A name/active table (a NOT NULL text Name plus a NOT NULL bit IsActive) has a NameActiveRepo
 instead and gets `public class DepartmentApi : NameActiveCrudApi<Department, DepartmentRepo>` (see "Name and IsActive tables" below).
 A table with no repository (enum / *Type lookup tables, tables with no entity) stops with an error.
-Requires a table with a single int primary key (routes are {id:int}). Anything else stops with an error.
+Requires a table with a single int, uniqueidentifier or text primary key; the route, the `Key` expression and the base class follow the key (`KeyType` in Core): `{id:int}` and `CrudApi<Customer, CustomerRepo>` for an int, `{id:guid}` and `CrudApi<Row, RowRepo, Guid>`, `{id}` and `CrudApi<Country, CountryRepo, string>` for text (a bigint is `{id:long}`). A text key table has no find-by-name route (`/{id}` and `/{name}` would be the same route); a create with an empty key is a 400 and with a key that exists a 409, and a key with a `/` or `.` is not supported in the route. Only the ASP.NET API serves a guid or text key table so far (`TableModel.HasKeyedCrudApi`; it has no `/search` or clone). Anything else stops with an error (a composite key, a key of another type, a name/active table whose key is not an int).
 ```
 
 ## Now a short class on CrudApi

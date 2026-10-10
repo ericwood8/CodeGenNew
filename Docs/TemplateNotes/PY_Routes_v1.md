@@ -20,7 +20,7 @@ Run it: `pip install -r requirements.txt`, then `uvicorn app.main:app --port <Ap
 
 ## Limits
 
-- Tables with an API of their own and a single int key only (the tables the other stacks serve); a name/active table, a composite key, a GUID key and an enum table get nothing.
+- Tables with an API of their own and a single int, uniqueidentifier or text key (the tables the other stacks serve; the key is `int`, `UUID` or `str` by Core's `KeyType`); a name/active table, a composite key and an enum table get nothing. A text key is chosen by the person: a create with a blank key is 400 ("Key is required") and with one that exists is 409 ("Duplicate key"), and the Location header encodes it; a GUID posted as the empty GUID is given a new one.
 - A binary column, a PostgreSQL `money` column and a type CodeGenNew cannot map are left out of the model and the schema (a comment in the model lists them).
 - Sorting by a foreign key sorts by the key, not by the name the grid shows.
 - Not generated: tests, migrations (Alembic), authentication, a mirror of `ApiDocs`'s `openapi.yaml` (FastAPI serves its own at `/openapi.json`), navigation properties (relationships) and the dashboard, CSV and CQRS pieces of the .NET API.

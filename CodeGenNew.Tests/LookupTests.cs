@@ -21,9 +21,10 @@ public class LookupTests
     {
         string cs = await CrudApiTests.Essential();
 
-        Expect.Contains(cs, "public record LookupItem(int Id, string Name, bool? IsActive = null);");
+        Expect.Contains(cs, "public record LookupItem<TKey>(TKey Id, string Name, bool? IsActive = null);");
+        Expect.Contains(cs, "public record LookupItem(int Id, string Name, bool? IsActive = null) : LookupItem<int>(Id, Name, IsActive);");
         Expect.Contains(cs, "protected virtual bool CanLookup => false;");
-        Expect.Contains(cs, "protected virtual IQueryable<LookupItem> LookupQuery(IQueryable<TEntity> rows) => throw new NotSupportedException();");
+        Expect.Contains(cs, "protected virtual IQueryable<LookupItem<TKey>> LookupQuery(IQueryable<TEntity> rows) => throw new NotSupportedException();");
         Expect.Contains(cs, "app.MapGet(apiSubDir + \"/lookup\",");
         Expect.Contains(cs, "if (CanLookup)");
         Expect.Contains(cs, "LookupQuery(context.Set<TEntity>().AsNoTracking()).ToListAsync()");
@@ -63,8 +64,8 @@ public class LookupTests
     {
         string service = (await CrudScreenTests.Essential())["crud.service.ts"];
 
-        Expect.Contains(service, "export interface Lookup {");
-        Expect.Contains(service, "getLookup(): Observable<Lookup[]> {");
+        Expect.Contains(service, "export interface Lookup<K extends number | string = number> {");
+        Expect.Contains(service, "getLookup(): Observable<Lookup<K>[]> {");
         Expect.Contains(service, "`${this.apiUrl}/lookup`");
     }
 

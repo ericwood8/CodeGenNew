@@ -16,6 +16,7 @@ Behavior (see Docs/Reference.md sections 5 and 7):
     (standard T-SQL escaping) before being concatenated into the dynamic SQL text, per the
     "trim strings" and "strip bad characters" rules in the original spec.
   - Composite primary keys are supported: the WHERE clause AND-joins every PK column.
+  - The SQL Server statement is built as text, so a text or uniqueidentifier key is written into the WHERE as a quoted literal with its quotes doubled; a whole-number key is written as it is.
   - Deviation from the original single-PK worked example: this generalized version returns
     1 on success / 0 on failure, rather than echoing back the (single) ID parameter, since a
     composite key has no single value to echo.

@@ -15,17 +15,17 @@ public static class BlazorNames
     /// <summary> The API route of a table, as the generated API serves it: <c>/api/customers</c>. </summary>
     public static string ApiRoute(string table) => "/api/" + ScreenNames.Stem(table).Pluralize();
 
-    /// <summary> Whether the table gets a model and a client: the API has CRUD for it, its single key is an int or a guid (the routes take <c>{id:int}</c> or <c>{id:guid}</c>) and it is not a name / active table. </summary>
+    /// <summary> Whether the table gets a model and a client: the API has CRUD for it, its single key is an int, a guid or text (the routes take <c>{id:int}</c>, <c>{id:guid}</c> or <c>{id}</c>) and it is not a name / active table. </summary>
     public static bool HasClient(TableModel table, ProjectSettings project) => Refusal(table, project) is null;
 
     /// <summary> The reason a table gets no client, or null. </summary>
     public static string? Refusal(TableModel table, ProjectSettings project)
     {
-        if (!table.HasCrudApi(project))
+        if (!table.HasCrudApiOfAnyKey(project))
             return $"[{table.SchemaName}].[{table.TableName}] has no API of its own (an enum, a lookup table or a table with no entity), so there is nothing for a Blazor client to call.";
         var key = table.PrimaryKeyColumns.Count == 1 ? table.PrimaryKeyColumns[0] : null;
-        if (key is null || !(key.IsInt32Column || key.IsGuidColumn))
-            return $"the routes take the id as {{id:int}} or {{id:guid}}, but [{table.SchemaName}].[{table.TableName}] has "
+        if (key is null || KeyType.Of(key) is null)
+            return $"the routes take the id as {{id:int}}, {{id:guid}} or {{id}} (text), but [{table.SchemaName}].[{table.TableName}] has "
                 + (key is not null ? $"a {key.SqlTypeDeclaration} primary key." : table.PrimaryKeyColumns.Count == 0 ? "no primary key." : "a composite primary key.");
         if (table.IsNameActiveTable)
             return $"[{table.SchemaName}].[{table.TableName}] has a Name and an IsActive column, so its real API is hand-maintained and has no plain getAll(); write its client by hand.";

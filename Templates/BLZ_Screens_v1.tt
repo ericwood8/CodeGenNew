@@ -14,12 +14,12 @@
     // Full notes: Docs/TemplateNotes/BLZ_Screens_v1.md
     // ==========================================================================================
 
-    var screens = Database.ScreenTables(Project);
+    var screens = Database.ScreenTables(Project, "Blazor");
     foreach (string name in Database.UnknownScreens(Project))
         Error($"The Screens setting lists '{name}', which is not a table of the database with a single-column primary key.");
     if (screens.Count == 0)
         Error("BLZ_Screens found no table to list: no table has an API and a search endpoint, and the project's Screens setting is empty.");
-    var clients = Database.ApiTables(Project).Where(t => BlazorNames.HasClient(t, Project)).ToList();
+    var clients = Database.CrudApiTables(Project).Where(t => BlazorNames.HasClient(t, Project)).ToList();
 
     var o = new StringBuilder();
     void L(string s = "") => o.Append(s).Append('\n');

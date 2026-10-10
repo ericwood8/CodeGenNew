@@ -15,6 +15,10 @@ public enum PrimaryKeyRequirement
     /// TS_DetailMasterComponent.tt: their routes take the id as {id:int} or {id:guid}. </summary>
     SingleIntOrGuid,
 
+    /// <summary> A single int, uniqueidentifier or text column: every key <see cref="KeyType"/> describes. A template that reads its key's C#, TypeScript or route form from
+    /// <see cref="KeyType"/> instead of testing for an int asks for this. </summary>
+    SingleIntGuidOrText,
+
     /// <summary> A single int column only. API_Crud.tt and the WinUI3 CRUD-screen family: their repository
     /// calls (GenericRepo&lt;T&gt;'s GetById/UpdateAsync/DeleteAsync) all take a plain int. </summary>
     SingleInt
@@ -128,8 +132,9 @@ public class TemplateConfig
     public bool PrimaryKeyShapeSatisfies(PrimaryKeyShape shape) => RequiredPrimaryKeyShape switch
     {
         null => true,
-        PrimaryKeyRequirement.SingleColumn => shape is PrimaryKeyShape.SingleInt or PrimaryKeyShape.SingleUniqueIdentifier or PrimaryKeyShape.SingleOther,
+        PrimaryKeyRequirement.SingleColumn => shape is PrimaryKeyShape.SingleInt or PrimaryKeyShape.SingleUniqueIdentifier or PrimaryKeyShape.SingleText or PrimaryKeyShape.SingleOther,
         PrimaryKeyRequirement.SingleIntOrGuid => shape is PrimaryKeyShape.SingleInt or PrimaryKeyShape.SingleUniqueIdentifier,
+        PrimaryKeyRequirement.SingleIntGuidOrText => shape is PrimaryKeyShape.SingleInt or PrimaryKeyShape.SingleUniqueIdentifier or PrimaryKeyShape.SingleText,
         PrimaryKeyRequirement.SingleInt => shape == PrimaryKeyShape.SingleInt,
         _ => true
     };
@@ -297,10 +302,14 @@ public enum PlanTableSet
     Context,
     /// <summary> The tables that get a CRUD API (<see cref="CodeGenNew.Core.DatabaseModel.ApiTables"/>). </summary>
     Api,
+    /// <summary> The tables with a plain CRUD API of any key type (<see cref="CodeGenNew.Core.DatabaseModel.CrudApiTables"/>): the <see cref="Api"/> tables and the guid and text key tables. </summary>
+    CrudApi,
     /// <summary> The tables the ASP.NET API serves: the <see cref="Api"/> tables and the name/active tables (<see cref="CodeGenNew.Core.DatabaseModel.AspNetApiTables"/>). </summary>
     AspNetApi,
     /// <summary> The tables that also get a search routine and endpoint (a lookup table does not). </summary>
     Search,
+    /// <summary> The <see cref="Search"/> tables and the uniqueidentifier and text key tables that have a search (<see cref="CodeGenNew.Core.DatabaseModel.AspNetSearchApiTables"/>). </summary>
+    AspNetSearch,
     /// <summary> The tables with a screen (the project's Screens setting, else every table with a search). </summary>
     Screen,
     /// <summary> The screens whose dialog has no child grids. </summary>

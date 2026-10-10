@@ -60,9 +60,10 @@
     bool isNameActive = Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name")
                       && Model.Columns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
 
-    if (keyColumn is null || !keyColumn.IsInt32Column)
+    var keyType = KeyType.Of(Model);   // how the key travels: its C# type (int, long, Guid or string) is the type of the row id and of the Edit / Delete buttons' Tag
+    if (keyColumn is null || keyType is null)
     {
-        Error($"WinUI3_MasterScreen needs a table with a single int primary key (CS_Repo's GenericRepo<T> takes a plain int id), but [{Model.SchemaName}].[{Model.TableName}] has "
+        Error($"WinUI3_MasterScreen needs a table with a single int, uniqueidentifier or text primary key (CS_Repo's GenericRepo<T, TKey> takes it as the id), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
     }
     else if (isNameActive)
@@ -76,6 +77,8 @@
         // The dialog Add/Edit opens: the table's Detail-Master dialog when it has one (DatabaseModel.IsDetailMaster, the rule WinUI3_DetailMasterScreen's plan uses), else its plain Detail dialog.
         string editDialog = table + (DatabaseModel.IsDetailMaster(Model, Project) ? "DetailMasterDialog" : "DetailDialog");
         string keyProp = keyColumn.Name;
+        string keyCs = keyType.CSharp;
+        bool textKey = keyType.Kind == KeyKind.Text;   // the key is a column of the grid: the person typed it and it means something
         int pageSize = 20;
         // One TextBox + one ViewModel filter property per searchable column, in the same order as
         // Model.SearchableColumns (matching TS_Component.tt/TSX_Page.tt). Field/Prop follow the same
@@ -99,13 +102,13 @@
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
         var shown = Model.Columns
-            .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && IsEditableType(c))
-            .OrderBy(c => c.OrdinalPosition)
+            .Where(c => (textKey && c.IsPrimaryKey) || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && IsEditableType(c)))
+            .OrderBy(c => textKey && c.IsPrimaryKey ? 0 : 1).ThenBy(c => c.OrdinalPosition)
             // The grid shows at most 20 columns and never a long text column (a Notes column, varchar(max), ...): see GridColumns.
             .ForGrid();
 
         ForeignKeyModel LookupOf(ColumnModel c) =>
-            c.IsInt32Column
+            KeyType.Of(c) is not null
             && fkByColumn.TryGetValue(c.Name, out var fk)
             && !NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape)
             && fk.ReferencedDisplayColumns.Count > 0
@@ -399,7 +402,7 @@ public sealed partial class <#= table #>ListPage : Page
 
     private async void OnEditClick(object sender, RoutedEventArgs e)
     {
-        int id = (int)((Button)sender).Tag;
+        <#= keyCs #> id = (<#= keyCs #>)((Button)sender).Tag;
         var entity = await _context.Set<<#= table #>>().FindAsync(id);
         if (entity is null)
             return;
@@ -416,7 +419,7 @@ public sealed partial class <#= table #>ListPage : Page
     // Clone copies the row (CloneAsync -> <#= table #>_Clone) and opens the copy in the edit dialog at once, so the person changes what differs.
     private async void OnCloneClick(object sender, RoutedEventArgs e)
     {
-        int id = (int)((Button)sender).Tag;
+        <#= keyCs #> id = (<#= keyCs #>)((Button)sender).Tag;
         int? newId = await ViewModel.CloneAsync(id);
         await ViewModel.LoadAsync();
         if (newId is null)
@@ -436,7 +439,7 @@ public sealed partial class <#= table #>ListPage : Page
 #>
     private async void OnDeleteClick(object sender, RoutedEventArgs e)
     {
-        int id = (int)((Button)sender).Tag;
+        <#= keyCs #> id = (<#= keyCs #>)((Button)sender).Tag;
         var confirm = new ContentDialog
         {
             XamlRoot = XamlRoot,
@@ -498,7 +501,7 @@ namespace <#= viewModelNamespace #>;
 /// display string per WinUI3_DetailScreen.tt field, in the same order as the page's header. </summary>
 public class <#= table #>ListRow
 {
-    public int Id { get; init; }
+    public <#= keyCs #> Id { get; init; }<#= keyCs == "string" ? " = \"\";" : "" #>
     public List<string> Cells { get; init; } = [];
 }
 
@@ -644,7 +647,7 @@ public partial class <#= table #>ListViewModel : ObservableObject
                 if (c.IsNullable)
                 {
 #>
-                e.<#= prop #> is int <#= varName #>Id && <#= p.NamesDictionary #>.TryGetValue(<#= varName #>Id, out var <#= varName #>Name) ? <#= varName #>Name : "",
+                e.<#= prop #> is <#= c.CSharpBase() #> <#= varName #>Id && <#= p.NamesDictionary #>.TryGetValue(<#= varName #>Id, out var <#= varName #>Name) ? <#= varName #>Name : "",
 <#
                 }
                 else
@@ -701,7 +704,7 @@ public partial class <#= table #>ListViewModel : ObservableObject
         }
     }
 
-    public async Task DeleteAsync(int id)
+    public async Task DeleteAsync(<#= keyCs #> id)
     {
         ErrorMessage = null;
         int result = await _repo.DeleteAsync("<#= table #>", id);

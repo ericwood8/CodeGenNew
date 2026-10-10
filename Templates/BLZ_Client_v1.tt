@@ -22,7 +22,10 @@
     else
     {
         string type = BlazorNames.TypeName(Model.TableName);
-        string keyType = Model.PrimaryKeyColumns[0].IsInt32Column ? "int" : "Guid";
+        var key = KeyType.Of(Model)!;
+        string keyType = key.CSharp;   // int, long, Guid or string
+        // a text key can hold characters a route treats as its own (a space, a slash, a question mark): it is escaped into the path
+        string id = key.Kind == KeyKind.Text ? "Uri.EscapeDataString(id)" : "id";
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
 
@@ -38,18 +41,18 @@
         L();
         L($"    public async Task<List<{type}>> GetAllAsync() => await (await http.GetAsync(Url)).ReadAsync<List<{type}>>();");
         L();
-        L($"    public async Task<{type}> GetAsync({keyType} id) => await (await http.GetAsync($\"{{Url}}/{{id}}\")).ReadAsync<{type}>();");
+        L($"    public async Task<{type}> GetAsync({keyType} id) => await (await http.GetAsync($\"{{Url}}/{{{id}}}\")).ReadAsync<{type}>();");
         L();
         L($"    public async Task<{type}> CreateAsync({type} row) => await (await http.PostAsJsonAsync(Url, row)).ReadAsync<{type}>();");
         L();
-        L($"    public async Task UpdateAsync({keyType} id, {type} row) => await (await http.PutAsJsonAsync($\"{{Url}}/{{id}}\", row)).EnsureSuccessAsync();");
+        L($"    public async Task UpdateAsync({keyType} id, {type} row) => await (await http.PutAsJsonAsync($\"{{Url}}/{{{id}}}\", row)).EnsureSuccessAsync();");
         L();
-        L($"    public async Task DeleteAsync({keyType} id) => await (await http.DeleteAsync($\"{{Url}}/{{id}}\")).EnsureSuccessAsync();");
+        L($"    public async Task DeleteAsync({keyType} id) => await (await http.DeleteAsync($\"{{Url}}/{{{id}}}\")).EnsureSuccessAsync();");
         if (CloneShape.CanClone(Model, Project))
         {
             L();
             L("    // A copy of the row, made by the API; the copy comes back.");
-            L($"    public async Task<{type}> CloneAsync({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{id}}/clone\", null)).ReadAsync<{type}>();");
+            L($"    public async Task<{type}> CloneAsync({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{{id}}}/clone\", null)).ReadAsync<{type}>();");
         }
         L();
         L("    // The filters are the search boxes of the screen, by the names the API's search endpoint reads; a blank filter is left out. sortBy is a column name.");

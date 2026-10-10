@@ -48,7 +48,7 @@
     foreach (var t in tables)
         Line($"        new {t.TableName}Api().Register(app);");
     Line();
-    foreach (var t in Database.SearchApiTables(Project).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
+    foreach (var t in Database.AspNetSearchApiTables(Project).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
         Line($"        new {t.TableName}SearchApi<{t.TableName}>().Register(app);");
     var junctions = Database.Tables.Where(t => t.IsJunctionTable).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
     if (junctions.Count > 0)

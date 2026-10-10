@@ -87,3 +87,6 @@ prefix is already claimed by viewModelNamespace for <TableName>ListRow's own Dat
 for PaginationBar fails to compile (WMC0001: Unknown type 'PaginationBar' in XML namespace
 '...ViewModels').
 ```
+
+The row id (the ListRow's Id and the Edit / Clone / Delete buttons' Tag) has the key's C# type (int, long, Guid or string, Core's KeyType). A text key is also the first column
+of the grid: the person typed it and it means something.

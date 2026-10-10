@@ -36,19 +36,27 @@ public class DatabaseModel
     /// says has no repository. API_Search is registered for the same tables. </summary>
     public List<TableModel> ApiTables(ProjectSettings project) => EntityTables.Where(t => t.HasCrudApi(project)).ToList();
 
-    /// <summary> The tables the ASP.NET API serves: <see cref="ApiTables"/> and the name/active tables (<see cref="TableModel.HasNameActiveApi"/>), which the other stacks do not handle. </summary>
-    public List<TableModel> AspNetApiTables(ProjectSettings project) => EntityTables.Where(t => t.HasCrudApi(project) || t.HasNameActiveApi(project)).ToList();
+    /// <summary> The tables with a plain CRUD API of any key type (<see cref="TableModel.HasCrudApiOfAnyKey"/>); not the name/active tables. </summary>
+    public List<TableModel> CrudApiTables(ProjectSettings project) => EntityTables.Where(t => t.HasCrudApiOfAnyKey(project)).ToList();
+
+    /// <summary> The tables the ASP.NET API serves:<see cref="ApiTables"/>, the name/active tables (<see cref="TableModel.HasNameActiveApi"/>) and the tables with a uniqueidentifier or text key (<see cref="TableModel.HasKeyedCrudApi"/>), which the other stacks do not handle yet. </summary>
+    public List<TableModel> AspNetApiTables(ProjectSettings project) => EntityTables.Where(t => t.HasCrudApi(project) || t.HasNameActiveApi(project) || t.HasKeyedCrudApi(project)).ToList();
 
     /// <summary> The tables that also get a search endpoint: the API tables minus bare lookup tables (a few rows, no pager worth having; the
     /// samples write no search function for them). </summary>
     public List<TableModel> SearchApiTables(ProjectSettings project) => ApiTables(project).Where(t => t.HasSearchApi(project)).ToList();
 
+    /// <summary> The tables the ASP.NET API gives a search endpoint: <see cref="SearchApiTables"/> and the uniqueidentifier and text key tables that are not bare lookups. </summary>
+    public List<TableModel> AspNetSearchApiTables(ProjectSettings project) => EntityTables.Where(t => t.HasSearchApi(project) || t.HasKeyedSearchApi(project)).ToList();
+
     /// <summary> The tables that get a screen and a menu entry, in menu order: the project's <c>Screens</c> list when it has one, else every table that has an API and
-    /// a search endpoint, alphabetically. A listed name that is not a table with a single-column key is in <see cref="UnknownScreens"/>. </summary>
-    public List<TableModel> ScreenTables(ProjectSettings project)
+    /// a search endpoint, alphabetically. A listed name that is not a table with a single-column key is in <see cref="UnknownScreens"/>.
+    /// <paramref name="stacks"/> names the stack(s) asking; when all of them handle every key type (<see cref="KeyType.StackHandlesEveryKey"/>) the tables with a uniqueidentifier or text key are listed too. </summary>
+    public List<TableModel> ScreenTables(ProjectSettings project, params string?[] stacks)
     {
         if (project.Screens.Length == 0)
-            return SearchApiTables(project).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+            return (KeyType.StackHandlesEveryKey(stacks) ? AspNetSearchApiTables(project) : SearchApiTables(project))
+                .OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
 
         return project.Screens
             .Select(name => EntityTablesByName.GetValueOrDefault(name))

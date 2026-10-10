@@ -127,17 +127,8 @@ public class PostgresSchemaProvider : SchemaProviderBase
     private static bool IsSerialDefault(string? columnDefault) => columnDefault is not null && columnDefault.StartsWith("nextval(", StringComparison.OrdinalIgnoreCase);
 
     // A single primary key column's PostgreSQL type -> PrimaryKeyShape, matching TableModel.PrimaryKeyShape's own rule.
-    private static PrimaryKeyShape ClassifyPrimaryKeyShape(int pkColumnCount, string? pkUdtName) => pkColumnCount switch
-    {
-        0 => PrimaryKeyShape.None,
-        > 1 => PrimaryKeyShape.Composite,
-        _ => MapType(pkUdtName ?? "", null, null, null).SqlTypeName switch
-        {
-            "uniqueidentifier" => PrimaryKeyShape.SingleUniqueIdentifier,
-            "int" or "bigint" or "smallint" or "tinyint" => PrimaryKeyShape.SingleInt,
-            _ => PrimaryKeyShape.SingleOther
-        }
-    };
+    private static PrimaryKeyShape ClassifyPrimaryKeyShape(int pkColumnCount, string? pkUdtName) =>
+        PrimaryKeyShapes.Classify(pkColumnCount, pkColumnCount == 1 ? MapType(pkUdtName ?? "", null, null, null).SqlTypeName : null);
 
     // ========== the table list ==============
 

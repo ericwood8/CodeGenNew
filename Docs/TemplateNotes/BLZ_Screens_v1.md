@@ -4,7 +4,7 @@ The Blazor stack: a standalone **Blazor WebAssembly** app (.NET 10) that calls t
 
 - `Layout/NavMenu.razor`: one link per screen, in the order of the project's `Screens` setting (the same list `TSX_Screens` uses);
 - `Pages/Home.razor`: the address `/` goes to the first screen;
-- `Services/ApiClients.cs`: `AddApiClients()`, which registers the client of every table that has one (the tables with an API of their own, a single int or guid key, not a name / active table).
+- `Services/ApiClients.cs`: `AddApiClients()`, which registers the client of every table that has one (the tables with an API of their own, a single int, guid or text key, not a name / active table).
 
 The rest of the stack:
 

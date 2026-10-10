@@ -17,10 +17,13 @@
     // ==========================================================================================
 
     var t = PythonTable.Of(Model, Project);
-    bool search = Model.HasSearchApi(Project);
+    bool search = Model.HasSearchApiOfAnyKey(Project);
     bool validate = Project.ApiValidation;
     string key = t.Key.Name;
-    string keyType = "int";   // the routes take {id:int}: RequiredPrimaryKeyShape=SingleInt
+    var kt = KeyType.Of(Model)!;   // how the key travels: int, UUID or str, in the path, the body and the Location header
+    string keyType = kt.Python;
+    bool textKey = kt.Kind == KeyKind.Text;
+    bool guidKey = kt.Kind == KeyKind.Guid;
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
     string Str(string text) => PythonNames.Str(text);
@@ -29,7 +32,11 @@
     var clonedDates = new[] { "datetime", "date" }.Where(w => t.Clone?.Any(c => c.Value.StartsWith(w + ".")) == true).ToList();
     if (clonedDates.Count > 0)
         Line($"from datetime import {string.Join(", ", clonedDates)}");
-    if (clonedDates.Count > 0)
+    if (textKey)
+        Line("from urllib.parse import quote");
+    if (guidKey)
+        Line("from uuid import UUID, uuid4");
+    if (clonedDates.Count > 0 || textKey || guidKey)
         Line();
     bool castsEnum = search && t.Filters.Any(f => f.Field.Column.DbEnumType is not null);
     var sqlalchemy = new List<string> { "select" };
@@ -130,7 +137,21 @@
     Line($"def create(body: {t.Schema}, response: Response, session: Session = Depends(get_session)):");
     if (validate)
         Line("    validate(body)");
+    if (textKey)
+    {
+        // a text key is chosen by the person: a blank one is refused and one that exists is a conflict (the answers the ASP.NET API gives)
+        Line($"    if not body.{key}.strip():");
+        Line("        raise ApiError(400, \"Key is required\")");
+        Line($"    if session.get({t.Class}, body.{key}) is not None:");
+        Line("        raise ApiError(409, \"Duplicate key\")");
+    }
     Line($"    row = {t.Class}(**body.columns())");
+    if (guidKey)
+    {
+        // a new row is posted with the empty GUID: the API assigns the real one
+        Line($"    if row.{key} == UUID(int=0):");
+        Line($"        row.{key} = uuid4()");
+    }
     Line("    session.add(row)");
     Line("    try:");
     Line("        session.commit()");
@@ -138,7 +159,9 @@
     Line("        session.rollback()");
     Line("        raise ApiError(400, IN_USE)");
     Line("    session.refresh(row)");
-    Line($"    response.headers[\"Location\"] = f\"{t.Route}/{{row.{key}}}\"");
+    Line(textKey
+        ? $"    response.headers[\"Location\"] = f\"{t.Route}/{{quote(row.{key}, safe='')}}\""
+        : $"    response.headers[\"Location\"] = f\"{t.Route}/{{row.{key}}}\"");
     Line("    return row");
     Line();
     Line();

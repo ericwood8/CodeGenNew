@@ -26,6 +26,7 @@ The page limits (found on a real server whose first version failed on a page siz
 - pageNumber < 1 is rejected with a 400 problem (title "Invalid page"), and so is a page number whose first row does not fit in the 32 bit OFFSET
   ((pageNumber - 1) * pageSize > int.MaxValue), which was an overflow error (500) in the database.
 - The rows are read AsNoTracking: they go straight to JSON, so there is nothing to track (CS_Repo.SearchAsync keeps tracking: its caller may edit the rows).
+- The key is not part of the route (`/search` is a literal and beats `/{id}`), so a table with a uniqueidentifier or text key gets the same endpoint (`DatabaseModel.AspNetSearchApiTables`); the key is only the tie-break of the sort. A text key literally spelled `search` could not be fetched by id.
 - An unknown sortBy still gives the default order on purpose (a grid may hold a saved sort for a column that no longer exists); the name is never pasted into SQL.
 Requires a primary key and a table, not a view (SP_Search.tt's own restrictions - this calls that
 procedure directly, so the same shape is required). A table with no searchable column still gets this

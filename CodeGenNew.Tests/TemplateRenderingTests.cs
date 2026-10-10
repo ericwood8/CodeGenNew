@@ -340,7 +340,7 @@ public class TemplateRenderingTests
     {
         string message = await Refusal("WinUI3_DetailScreen_v1.tt", Sample.CompositeKey());
 
-        StringAssert.Contains(message, "single int primary key");
+        StringAssert.Contains(message, "single int, uniqueidentifier or text primary key");
     }
 
     [TestMethod]
@@ -550,7 +550,7 @@ public class TemplateRenderingTests
 
         string message = await Refusal("WinUI3_DetailMasterScreen_v1.tt", table);
 
-        StringAssert.Contains(message, "single int primary key");
+        StringAssert.Contains(message, "single int, uniqueidentifier or text primary key");
     }
 
     [TestMethod]
@@ -594,8 +594,8 @@ public class TemplateRenderingTests
         Expect.Contains(viewModel, "private static readonly string[] HideFromOrderLineGrid = [ \"OrderId\", \"OrderLineId\", \"WarehouseId\" ];");
         Expect.Contains(viewModel, "var orderLineProductNames = await _context.Set<Product>().ToDictionaryAsync(r => r.ProductId, r => r.ProductName?.ToString() ?? \"\");");
         Expect.Contains(viewModel, ".Where(name => !HideFromOrderLineGrid.Contains(name, StringComparer.OrdinalIgnoreCase))");
-        Expect.Contains(viewModel, "if (name == \"ProductId\")");
-        Expect.Contains(viewModel, "orderLineProductNames.TryGetValue(rawId, out string? resolvedProductId) ? resolvedProductId : rawId.ToString()");
+        Expect.Contains(viewModel, "if (name == \"ProductId\" && raw is int rawIdProductId)");
+        Expect.Contains(viewModel, "orderLineProductNames.TryGetValue(rawIdProductId, out string? resolvedProductId) ? resolvedProductId : rawIdProductId.ToString()");
         // Never resolved for the unresolvable one -- no lookup dictionary, no per-column branch for it.
         Expect.DoesNotContain(viewModel, "WarehouseNames");
         Expect.DoesNotContain(viewModel, "name == \"WarehouseId\"");
@@ -628,7 +628,7 @@ public class TemplateRenderingTests
 
         string message = await Refusal("TS_DetailMasterComponent_v1.tt", table);
 
-        StringAssert.Contains(message, "single int or uniqueidentifier primary key");
+        StringAssert.Contains(message, "single int, uniqueidentifier or text primary key");
     }
 
     [TestMethod]
@@ -713,7 +713,7 @@ public class TemplateRenderingTests
         Expect.Contains(parentServiceTs, "extends NamedCrudService<Employee>");
         // a parent with a whole-number key is read through its lookup list: id and name only
         Assert.AreEqual("getLookup", calledMethod);
-        Expect.Contains(baseTs, "getLookup(): Observable<Lookup[]>");
+        Expect.Contains(baseTs, "getLookup(): Observable<Lookup<K>[]>");
     }
 
     [TestMethod]
@@ -729,7 +729,7 @@ public class TemplateRenderingTests
         Expect.Contains(parentServiceTs, "extends NamedCrudService<Employee>");
         // a parent with a whole-number key is read through its lookup list: id and name only
         Assert.AreEqual("getLookup", calledMethod);
-        Expect.Contains(baseTs, "getLookup(): Observable<Lookup[]>");
+        Expect.Contains(baseTs, "getLookup(): Observable<Lookup<K>[]>");
     }
 
     // ------------------------------------------------------------------ API_Junction
@@ -972,7 +972,7 @@ public class TemplateRenderingTests
     [TestMethod]
     public async Task The_api_refuses_what_it_cannot_write_and_says_why()
     {
-        StringAssert.Contains(await Refusal("API_Crud_v1.tt", Sample.CompositeKey()), "single int primary key");
+        StringAssert.Contains(await Refusal("API_Crud_v1.tt", Sample.CompositeKey()), "single int, uniqueidentifier or text primary key");
         StringAssert.Contains(await Refusal("API_Crud_v1.tt", Sample.Roles()), "noRepositoryTables");
     }
 
@@ -1495,11 +1495,10 @@ public class TemplateRenderingTests
     }
 
     [TestMethod]
-    public async Task A_key_the_person_would_type_or_a_composite_key_is_still_refused_by_the_screen_and_the_service()
+    public async Task A_composite_key_is_still_refused_by_the_screen_and_the_service()
     {
-        StringAssert.Contains(await Refusal("TS_Component_v1.tt", Sample.NaturalKey()), "int or uniqueidentifier");
-        StringAssert.Contains(await Refusal("TS_Service_v1.tt", Sample.NaturalKey()), "int or uniqueidentifier");
         StringAssert.Contains(await Refusal("TS_Component_v1.tt", Sample.CompositeKey()), "composite primary key");
+        StringAssert.Contains(await Refusal("TS_Service_v1.tt", Sample.CompositeKey()), "composite primary key");
     }
 
     // ------------------------------------------------------------------ name/active tables (Name + IsActive):
@@ -1732,7 +1731,7 @@ public class TemplateRenderingTests
     [TestMethod]
     public async Task TSX_Api_refuses_the_same_tables_TS_Service_refuses()
     {
-        StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.NaturalKey()), "int or uniqueidentifier");
+        StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.CompositeKey()), "single int, uniqueidentifier or text primary key");
         StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.CompositeKey()), "composite primary key");
         StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.DepartmentTeam()), "NameActiveRepo");
         StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.Roles()), "noApiTables");
@@ -1854,7 +1853,7 @@ public class TemplateRenderingTests
     [TestMethod]
     public async Task TSX_Page_refuses_the_same_tables_TS_Component_refuses()
     {
-        StringAssert.Contains(await Refusal("TSX_Page_v1.tt", Sample.NaturalKey()), "int or uniqueidentifier");
+        StringAssert.Contains(await Refusal("TSX_Page_v1.tt", Sample.CompositeKey()), "single int, uniqueidentifier or text primary key");
         StringAssert.Contains(await Refusal("TSX_Page_v1.tt", Sample.CompositeKey()), "composite primary key");
         StringAssert.Contains(await Refusal("TSX_Page_v1.tt", Sample.DepartmentTeam()), "NameActiveRepo");
     }

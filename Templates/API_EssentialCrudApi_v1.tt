@@ -35,28 +35,36 @@ using Microsoft.EntityFrameworkCore;
 public record CrudPage<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalCount, int TotalPages);
 
 /// <summary> What <c>GET &lt;route&gt;/lookup</c> answers for each row: the key, the text a person recognises the row by, and whether the row is active (null for a table with no IsActive column). A drop-down needs no more. </summary>
-public record LookupItem(int Id, string Name, bool? IsActive = null);
+public record LookupItem<TKey>(TKey Id, string Name, bool? IsActive = null);
+
+/// <summary> <see cref="LookupItem{TKey}"/> for a table with an int key, the common case. </summary>
+public record LookupItem(int Id, string Name, bool? IsActive = null) : LookupItem<int>(Id, Name, IsActive);
 
 /// <summary>
-/// The five endpoints every table's API answers, written once. A class for a table (API_Crud writes it) says its repository (<see cref="NewRepo"/>), its key (<see cref="Key"/>)
-/// and, if the list should come newest first, the date column to order by (<see cref="NewestFirst"/>); a table that can be cloned also says so (<see cref="CanClone"/>).
-/// Anything a table does differently (a rule before a save, a route of its own) is an override or a class of its own: this one only holds what every table shares.
+/// The five endpoints every table's API answers, written once, for a table whose key is a <typeparamref name="TKey"/> (int, long, Guid or string). A class for a table
+/// (API_Crud writes it) says its repository (<see cref="NewRepo"/>), its key (<see cref="Key"/>) and, if the list should come newest first, the date column to order by (<see cref="NewestFirst"/>);
+/// a table that can be cloned also says so (<see cref="CanClone"/>). Anything a table does differently (a rule before a save, a route of its own) is an override or a class of its own: this one
+/// only holds what every table shares. A table with an int key derives from <c>CrudApi&lt;TEntity, TRepo&gt;</c> below. A text key is chosen by the person: a create without one is a 400, with one that exists a 409.
 /// </summary>
-public abstract class CrudApi<TEntity, TRepo> : BaseApi<TEntity>
+public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
     where TEntity : BaseEntity
-    where TRepo : GenericRepo<TEntity>
+    where TRepo : GenericRepo<TEntity, TKey>
+    where TKey : notnull
 {
     // the most rows one page may hold; a larger pageSize is lowered to this
     private const int MaxPageSize = 1000;
 
+    // the route constraint of the key: {id:int}, {id:long}, {id:guid}, and none for text ({id})
+    private static readonly string IdSegment = "/{id" + (typeof(TKey) == typeof(int) ? ":int" : typeof(TKey) == typeof(long) ? ":long" : typeof(TKey) == typeof(Guid) ? ":guid" : "") + "}";
+
     private string _route = "";
-    private Func<TEntity, int>? _keyOf;
+    private Func<TEntity, TKey>? _keyOf;
 
     /// <summary> The table's repository over this request's context. </summary>
     protected abstract TRepo NewRepo(<#= contextType #> context);
 
     /// <summary> The primary key property: <c>c =&gt; c.CustomerId</c>. </summary>
-    protected abstract Expression<Func<TEntity, int>> Key { get; }
+    protected abstract Expression<Func<TEntity, TKey>> Key { get; }
 
     /// <summary> The date column the list comes newest first by (<c>c =&gt; c.WhenEntered</c>); null lists in key order. </summary>
     protected virtual Expression<Func<TEntity, DateTime>>? NewestFirst => null;
@@ -65,21 +73,23 @@ public abstract class CrudApi<TEntity, TRepo> : BaseApi<TEntity>
     protected virtual bool CanClone => false;
 
     /// <summary> Copies the row and returns the new key (the repository's <c>CloneAsync</c>); only called when <see cref="CanClone"/> is true. </summary>
-    protected virtual Task<int> CloneAsync(TRepo repo, int id) => throw new NotSupportedException();
+    protected virtual Task<TKey> CloneAsync(TRepo repo, TKey id) => throw new NotSupportedException();
 
     /// <summary> True for a table that answers <c>GET &lt;route&gt;/lookup</c> (<see cref="LookupQuery"/>): only the key and the display column are read, for the drop-downs and the "name of" columns of other screens. </summary>
     protected virtual bool CanLookup => false;
 
     /// <summary> The rows as lookup items, in the order a drop-down lists them (<c>rows.OrderBy(c =&gt; c.Name).Select(c =&gt; new LookupItem(c.CustomerId, c.Name))</c>); only called when <see cref="CanLookup"/> is true. </summary>
-    protected virtual IQueryable<LookupItem> LookupQuery(IQueryable<TEntity> rows) => throw new NotSupportedException();
+    protected virtual IQueryable<LookupItem<TKey>> LookupQuery(IQueryable<TEntity> rows) => throw new NotSupportedException();
 
-    /// <summary> True for a table whose rows have a Name (the repository's <c>GetByName</c>): <c>GET &lt;route&gt;/{name}</c> lists the rows whose name starts with the text. </summary>
+    /// <summary> True for a table whose rows have a Name (the repository's <c>GetByName</c>): <c>GET &lt;route&gt;/{name}</c> lists the rows whose name starts with the text. Not for a text key: <c>/{id}</c> and <c>/{name}</c> would be the same route. </summary>
     protected virtual bool CanFindByName => false;
 
     /// <summary> The rows whose name starts with the text (the repository's <c>GetByName</c>); only called when <see cref="CanFindByName"/> is true. </summary>
     protected virtual Task<List<TEntity>> FindByNameAsync(TRepo repo, string name) => throw new NotSupportedException();
 
-    private int KeyOf(TEntity row) => (_keyOf ??= Key.Compile())(row);
+    private TKey KeyOf(TEntity row) => (_keyOf ??= Key.Compile())(row);
+
+    private static bool SameKey(TKey a, TKey b) => EqualityComparer<TKey>.Default.Equals(a, b);
 
     public override void Register(WebApplication app)
     {
@@ -97,7 +107,7 @@ public abstract class CrudApi<TEntity, TRepo> : BaseApi<TEntity>
         .ProducesProblem(500);
 
         // Get by ID
-        app.MapGet(apiSubDir + "/{id:int}", ([FromServices] <#= contextType #> context, int id) => GetByIdAsync(context, id))
+        app.MapGet(apiSubDir + IdSegment, ([FromServices] <#= contextType #> context, TKey id) => GetByIdAsync(context, id))
         .WithName($"Get{singular}ById")
         .WithOpenApi()
         .Produces<TEntity>()
@@ -111,7 +121,7 @@ public abstract class CrudApi<TEntity, TRepo> : BaseApi<TEntity>
 <#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(500);
 
         // Update existing
-        app.MapPut(apiSubDir + "/{id:int}", ([FromServices] <#= contextType #> context, int id, [FromBody] TEntity updatedRow) => UpdateAsync(context, id, updatedRow))
+        app.MapPut(apiSubDir + IdSegment, ([FromServices] <#= contextType #> context, TKey id, [FromBody] TEntity updatedRow) => UpdateAsync(context, id, updatedRow))
         .WithName($"Update{singular}")
         .WithOpenApi()
 <#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(400)
@@ -119,7 +129,7 @@ public abstract class CrudApi<TEntity, TRepo> : BaseApi<TEntity>
         .ProducesProblem(500);
 
         // Delete
-        app.MapDelete(apiSubDir + "/{id:int}", ([FromServices] <#= contextType #> context, int id) => DeleteAsync(context, id))
+        app.MapDelete(apiSubDir + IdSegment, ([FromServices] <#= contextType #> context, TKey id) => DeleteAsync(context, id))
         .WithName($"Delete{singular}")
         .WithOpenApi()
         .ProducesProblem(404)
@@ -131,7 +141,7 @@ public abstract class CrudApi<TEntity, TRepo> : BaseApi<TEntity>
             app.MapGet(apiSubDir + "/lookup", ([FromServices] <#= contextType #> context) => LookupAsync(context))
             .WithName($"Get{plural}Lookup")
             .WithOpenApi()
-            .Produces<IEnumerable<LookupItem>>()
+            .Produces<IEnumerable<LookupItem<TKey>>>()
             .ProducesProblem(500);
         }
 
@@ -148,7 +158,7 @@ public abstract class CrudApi<TEntity, TRepo> : BaseApi<TEntity>
         if (CanClone)
         {
             // Clone: copy a row into a new one and return it (the grids' Clone button opens the copy in the edit form)
-            app.MapPost(apiSubDir + "/{id:int}/clone", ([FromServices] <#= contextType #> context, int id) => CloneRowAsync(context, id))
+            app.MapPost(apiSubDir + IdSegment + "/clone", ([FromServices] <#= contextType #> context, TKey id) => CloneRowAsync(context, id))
             .WithName($"Clone{singular}")
             .WithOpenApi()
             .ProducesProblem(404)
@@ -184,7 +194,7 @@ public abstract class CrudApi<TEntity, TRepo> : BaseApi<TEntity>
         return Results.Ok(rows);
     }
 
-    private async Task<IResult> GetByIdAsync(<#= contextType #> context, int id)
+    private async Task<IResult> GetByIdAsync(<#= contextType #> context, TKey id)
     {
         var row = await NewRepo(context).GetByIdAsync(id);
         return row != null ? Results.Ok(row) : Results.NotFound();
@@ -192,13 +202,22 @@ public abstract class CrudApi<TEntity, TRepo> : BaseApi<TEntity>
 
     private async Task<IResult> CreateAsync(<#= contextType #> context, TEntity newRow)
     {
-        await NewRepo(context).AddAsync(newRow);
+        var repo = NewRepo(context);
+        if (KeyOf(newRow) is string chosen)
+        {
+            // a text key is typed by the person: it cannot be empty and cannot be one that exists
+            if (string.IsNullOrWhiteSpace(chosen))
+                return Results.Problem(statusCode: 400, title: "Key is required", detail: "The key cannot be empty.");
+            if (await repo.ExistsAsync(KeyOf(newRow)))
+                return Results.Problem(statusCode: 409, title: "Duplicate key", detail: $"A row with the key '{chosen}' already exists.");
+        }
+        await repo.AddAsync(newRow);
         return Results.Created($"/api{_route}/{KeyOf(newRow)}", newRow);
     }
 
-    private async Task<IResult> UpdateAsync(<#= contextType #> context, int id, TEntity updatedRow)
+    private async Task<IResult> UpdateAsync(<#= contextType #> context, TKey id, TEntity updatedRow)
     {
-        if (KeyOf(updatedRow) != id)
+        if (!SameKey(KeyOf(updatedRow), id))
             return Results.BadRequest(); // 400 error if the id in the URL and the id in the body disagree
 
         var repo = NewRepo(context);
@@ -208,7 +227,7 @@ public abstract class CrudApi<TEntity, TRepo> : BaseApi<TEntity>
         return Results.Ok(postUpdate);
     }
 
-    private async Task<IResult> DeleteAsync(<#= contextType #> context, int id)
+    private async Task<IResult> DeleteAsync(<#= contextType #> context, TKey id)
     {
         var successNum = await NewRepo(context).DeleteAsync(typeof(TEntity).Name, id);
         if (successNum == 0)
@@ -223,15 +242,22 @@ public abstract class CrudApi<TEntity, TRepo> : BaseApi<TEntity>
 
     private async Task<IResult> FindByNameRowsAsync(<#= contextType #> context, string name) => Results.Ok(await FindByNameAsync(NewRepo(context), name));
 
-    private async Task<IResult> CloneRowAsync(<#= contextType #> context, int id)
+    private async Task<IResult> CloneRowAsync(<#= contextType #> context, TKey id)
     {
         var repo = NewRepo(context);
         if (!await repo.ExistsAsync(id))
             return Results.NotFound(); // 404 error if there is no row to copy
-        int newId = await CloneAsync(repo, id);
+        var newId = await CloneAsync(repo, id);
         var copy = await repo.GetByIdAsync(newId);
         return Results.Created($"/api{_route}/{newId}", copy);
     }
+}
+
+/// <summary> <see cref="CrudApi{TEntity, TRepo, TKey}"/> for a table with an int key, the common case: every generated API class of such a table derives from this. </summary>
+public abstract class CrudApi<TEntity, TRepo> : CrudApi<TEntity, TRepo, int>
+    where TEntity : BaseEntity
+    where TRepo : GenericRepo<TEntity>
+{
 }
 
 /// <summary>

@@ -134,17 +134,8 @@ public class MySqlSchemaProvider : SchemaProviderBase
         return isString ? "'" + d.Replace("'", "''") + "'" : d;
     }
 
-    private static PrimaryKeyShape ClassifyPrimaryKeyShape(int pkColumnCount, string? pkDataType, string? pkColumnType) => pkColumnCount switch
-    {
-        0 => PrimaryKeyShape.None,
-        > 1 => PrimaryKeyShape.Composite,
-        _ => MapType(pkDataType ?? "", pkColumnType ?? "", null, null, null).SqlTypeName switch
-        {
-            "uniqueidentifier" => PrimaryKeyShape.SingleUniqueIdentifier,
-            "int" or "bigint" or "smallint" or "tinyint" => PrimaryKeyShape.SingleInt,
-            _ => PrimaryKeyShape.SingleOther
-        }
-    };
+    private static PrimaryKeyShape ClassifyPrimaryKeyShape(int pkColumnCount, string? pkDataType, string? pkColumnType) =>
+        PrimaryKeyShapes.Classify(pkColumnCount, pkColumnCount == 1 ? MapType(pkDataType ?? "", pkColumnType ?? "", null, null, null).SqlTypeName : null);
 
     // =============== the table list ===============
 

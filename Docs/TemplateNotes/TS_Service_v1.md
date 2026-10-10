@@ -30,9 +30,9 @@ same method names on every service so a component never has to remember which on
     (E_TimeSheet -> TimeSheetService, services/timesheet.service.ts); the interface is imported from models/<table>.ts.
   - URL: "api/" + the lower-cased name, pluralized (CodeGenNew.Core.Pluralizer.Pluralize) - what BaseApi.BreakIntoStrings
     registers on the server (the Angular dev proxy turns "api/..." into the server's own route).
-  - Key: an int key is a number, a uniqueidentifier key a string (the route takes {id:guid}; the api assigns the value on
-    create - a new row is sent with the empty GUID, as an int key is sent as 0). Any other key (composite, or a natural
-    text key the person would have to type) is refused.
+  - Key (read from `KeyType`): an int key is a number, a uniqueidentifier key a string (the route takes {id:guid}; the api assigns the value on
+    create - a new row is sent with the empty GUID, as an int key is sent as 0). A text key is a string the person types (the route takes {id}).
+    A text key has no findByName (`GET <route>/{name}` would be `GET <route>/{id}`). Any other key (composite, a date) is refused.
   - findByName exists on the server for the name-based tables, so it is generated for every table with a text column
     called Name; the plain (API_Crud) tables have none.
 
@@ -44,4 +44,4 @@ Not written: calls for extra routes a hand-written API adds (DepartmentService.g
 
 ## Now a short class on CrudService
 
-The service is `export class HolidayService extends NamedCrudService<Holiday>` (`CrudService` when the table has no NOT NULL text Name; a uniqueidentifier key adds `, string`). It names the route and keeps the typed `getPage(pageNumber, pageSize, <filters>, sortBy, sortDescending)`, which calls the base's `searchPage`. getAll, getById, create, update, delete, clone and findByName are the base's (crud.service.ts, written by the Crud essentials group; see TS_EssentialCrud_v1.md), so the service file is about twenty lines. findByName is generated for a NOT NULL text Name only, the same condition as the repository's GetByName and the API's `GET <route>/{name}`.
+The service is `export class HolidayService extends NamedCrudService<Holiday>` (`CrudService` when the table has no NOT NULL text Name; a uniqueidentifier or text key adds `, string`, and a text key is never on `NamedCrudService`). It names the route and keeps the typed `getPage(pageNumber, pageSize, <filters>, sortBy, sortDescending)`, which calls the base's `searchPage`. getAll, getById, create, update, delete, clone and findByName are the base's (crud.service.ts, written by the Crud essentials group; see TS_EssentialCrud_v1.md), so the service file is about twenty lines. findByName is generated for a NOT NULL text Name only, the same condition as the repository's GetByName and the API's `GET <route>/{name}`.

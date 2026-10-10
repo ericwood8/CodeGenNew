@@ -17,16 +17,18 @@ public static class ProjectPlan
     public static IReadOnlyList<string> KnownStacks { get; } = ["Api", "WinUI3", "React", "Angular", "Blazor", "Rust", "Python"];
 
     /// <summary> The tables a <see cref="PlanTableSet"/> stands for in <paramref name="database"/>, by name. </summary>
-    public static List<TableModel> Tables(PlanTableSet set, DatabaseModel database, ProjectSettings project)
+    public static List<TableModel> Tables(PlanTableSet set, DatabaseModel database, ProjectSettings project, params string[] stacks)
     {
-        List<TableModel> Screens() => database.ScreenTables(project);
+        List<TableModel> Screens() => database.ScreenTables(project, stacks);
         return set switch
         {
             PlanTableSet.Entity => database.EntityTables.Where(t => project.NoRepository(t.TableName, t.LookupShape) != true).ToList(),
             PlanTableSet.Context => database.EntityTables.Where(t => project.NoRepository(t.TableName, t.LookupShape) != true).Concat(database.CompositeKeyTables).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),
             PlanTableSet.Api => database.ApiTables(project),
+            PlanTableSet.CrudApi => database.CrudApiTables(project),
             PlanTableSet.AspNetApi => database.AspNetApiTables(project),
             PlanTableSet.Search => database.SearchApiTables(project),
+            PlanTableSet.AspNetSearch => database.AspNetSearchApiTables(project),
             PlanTableSet.Screen => Screens(),
             PlanTableSet.ScreenDetailMaster => Screens().Where(t => DatabaseModel.IsDetailMaster(t, project)).ToList(),
             PlanTableSet.ScreenForm => Screens().Where(t => !DatabaseModel.IsDetailMaster(t, project)).ToList(),
@@ -58,7 +60,7 @@ public static class ProjectPlan
             if (config.AccessMode is { } mode && mode != project.AccessModeFor(database.Dialect) && !also.Contains(Normalize(template.Name)))
                 continue;
 
-            var tableNames = config.DatabaseOnly ? [] : Tables(config.PlanTables, database, project).Select(t => t.TableName).ToList();
+            var tableNames = config.DatabaseOnly ? [] : Tables(config.PlanTables, database, project, [.. config.Stacks]).Select(t => t.TableName).ToList();
             steps.Add(new PlanStep(template, belongs, tableNames));
         }
         return steps;

@@ -347,11 +347,11 @@ public class TableModelPrimaryKeyShapeTests
     }
 
     [TestMethod]
-    public void A_single_natural_text_key_is_single_other()
+    public void A_single_natural_text_key_is_single_text()
     {
         var table = Sample.NaturalKey();
 
-        Assert.AreEqual(PrimaryKeyShape.SingleOther, table.PrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyShape.SingleText, table.PrimaryKeyShape);
     }
 }
 

@@ -13,7 +13,7 @@
     // Full notes: Docs/TemplateNotes/RS_Mod_v1.md
     // ==========================================================================================
 
-    var modules = Database.ApiTables(Project).Select(t => RustNames.Snake(t.TableName)).OrderBy(m => m, StringComparer.Ordinal).ToList();
+    var modules = Database.CrudApiTables(Project).Select(t => RustNames.Snake(t.TableName)).OrderBy(m => m, StringComparer.Ordinal).ToList();
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
 

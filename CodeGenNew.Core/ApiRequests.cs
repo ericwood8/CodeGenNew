@@ -11,15 +11,21 @@ public static class ApiRequests
     /// <summary> The route of a table's API: <c>/api/customers</c>. </summary>
     public static string Route(TableModel table) => "/api/" + table.TableName.Pluralize().ToLowerInvariant();
 
-    /// <summary> The requests of a table that has an API of its own (<see cref="TableModel.HasCrudApi"/>): all, one, search (a table that has one), add, change, remove and copy (a table that can be cloned). </summary>
+    /// <summary> The variable that holds the key in a request file: <c>id</c> for a whole-number key, and <c>countryId</c> (the table's name) for a guid or text key, so one collection that holds
+    /// tables with different kinds of key can give each its own example. </summary>
+    public static string IdVariable(TableModel table) =>
+        table.PrimaryKeyColumns.Count == 1 && table.PrimaryKeyColumns[0].IsIntegerColumn ? "id" : JsonNames.Camel(table.TableName) + "Id";
+
+    /// <summary> The requests of a table that has an API of its own (<see cref="TableModel.HasCrudApiOfAnyKey"/>): all, one, search (a table that has one), add, change, remove and copy (a table that can be cloned). </summary>
     public static List<ApiRequest> For(TableModel model, ProjectSettings project)
     {
         string route = Route(model);
         string plural = model.TableName.Pluralize();
         string one = Labels.Words(model.TableName).ToLowerInvariant();
         string a = "aeiou".Contains(one[0]) ? "an" : "a";
-        var requests = new List<ApiRequest> { new($"All {plural}", "GET", route, null), new($"One {one} by its id", "GET", route + "/{{id}}", null) };
-        if (model.HasSearchApi(project))
+        string id = "{{" + IdVariable(model) + "}}";
+        var requests = new List<ApiRequest> { new($"All {plural}", "GET", route, null), new($"One {one} by its id", "GET", route + "/" + id, null) };
+        if (model.HasSearchApiOfAnyKey(project))
         {
             var search = model.SearchableColumns;
             string filters = string.Concat(search.Take(2).Select(c => JsonNames.Camel(c.Name) + "=&"));
@@ -27,17 +33,18 @@ public static class ApiRequests
             requests.Add(new($"Search {plural}", "GET", route + "/search?" + filters + "pageNumber=1&pageSize=20" + sort, null));
         }
         requests.Add(new($"Add {a} {one}", "POST", route, Body(model, project, update: false)));
-        requests.Add(new($"Change {a} {one}", "PUT", route + "/{{id}}", Body(model, project, update: true)));
-        requests.Add(new($"Remove {a} {one}", "DELETE", route + "/{{id}}", null));
+        requests.Add(new($"Change {a} {one}", "PUT", route + "/" + id, Body(model, project, update: true)));
+        requests.Add(new($"Remove {a} {one}", "DELETE", route + "/" + id, null));
         if (CloneShape.CanClone(model, project))
-            requests.Add(new($"Copy {a} {one}", "POST", route + "/{{id}}/clone", null));
+            requests.Add(new($"Copy {a} {one}", "POST", route + "/" + id + "/clone", null));
         return requests;
     }
 
-    /// <summary> The create or update body: a value for every column that cannot be NULL, by its JSON name; the key is <c>{{id}}</c> for an update. </summary>
+    /// <summary> The create or update body: a value for every column that cannot be NULL, by its JSON name; the key is the table's id variable (<see cref="IdVariable"/>) for an update, quoted unless it is a number. </summary>
     public static string Body(TableModel model, ProjectSettings project, bool update)
     {
-        var lines = ApiSampleValues.BodyColumns(model).Select(c => "  " + ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + (update && c.IsPrimaryKey ? "{{id}}" : ApiSampleValues.Value(c, project)));
+        string id = "{{" + IdVariable(model) + "}}";
+        var lines = ApiSampleValues.BodyColumns(model).Select(c => "  " + ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + (update && c.IsPrimaryKey ? (c.IsIntegerColumn ? id : "\"" + id + "\"") : ApiSampleValues.Value(c, project)));
         return "{\n" + string.Join(",\n", lines) + "\n}";
     }
 

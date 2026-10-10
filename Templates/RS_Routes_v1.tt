@@ -17,9 +17,13 @@
     // ==========================================================================================
 
     var t = RustTable.Of(Model, Project);
-    bool search = Model.HasSearchApi(Project);
+    bool search = Model.HasSearchApiOfAnyKey(Project);
     bool validate = Project.ApiValidation;
     string keyType = t.Key.Type;
+    var kind = KeyType.Of(Model)!.Kind;
+    bool textKey = kind == KeyKind.Text;
+    bool guidKey = kind == KeyKind.Guid;
+    string idArg = textKey ? "&id" : "id";   // a text key is passed by reference
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
 
@@ -33,7 +37,7 @@
     Line("};");
     Line($"use crate::models::{t.Module}::{t.Struct};");
     Line($"use crate::repos::{t.Module} as repo;");
-    Line("use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
+    Line(textKey ? "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created, path_segment};" : "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
     if (validate)
         Line($"use crate::validation::{t.Module}::validate;");
     if (search)
@@ -54,16 +58,35 @@
     Line("}");
     Line();
     Line($"async fn get_by_id(State(pool): State<Pool>, Path(id): Path<{keyType}>) -> ApiResult<Json<{t.Struct}>> {{");
-    Line("    repo::get_by_id(&pool, id).await?.map(Json).ok_or(ApiError::NotFound)");
+    Line($"    repo::get_by_id(&pool, {idArg}).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");
     Line();
-    Line($"async fn create(State(pool): State<Pool>, ApiJson(row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    Line($"async fn create(State(pool): State<Pool>, ApiJson({(guidKey ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
     if (validate)
     {
         Line("    validate(&row)?;");
     }
+    if (textKey)
+    {
+        // a text key is chosen by the person: a blank one is refused and one that exists is a conflict (the answers the ASP.NET API gives)
+        Line($"    if row.{t.Key.Name}.trim().is_empty() {{");
+        Line("        return Err(ApiError::BadRequest(\"Key is required\".into()));");
+        Line("    }");
+        Line($"    if repo::get_by_id(&pool, &row.{t.Key.Name}).await?.is_some() {{");
+        Line("        return Err(ApiError::Conflict(\"Duplicate key\".into()));");
+        Line("    }");
+    }
+    if (guidKey)
+    {
+        // a new row is posted with the empty GUID: the API assigns the real one
+        Line($"    if row.{t.Key.Name}.is_nil() {{");
+        Line($"        row.{t.Key.Name} = uuid::Uuid::new_v4();");
+        Line("    }");
+    }
     Line("    let row = repo::insert(&pool, &row).await?;");
-    Line($"    Ok(created(format!(\"{t.Route}/{{}}\", row.{t.Key.Name}), row))");
+    Line(textKey
+        ? $"    Ok(created(format!(\"{t.Route}/{{}}\", path_segment(&row.{t.Key.Name})), row))"
+        : $"    Ok(created(format!(\"{t.Route}/{{}}\", row.{t.Key.Name}), row))");
     Line("}");
     Line();
     Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>, ApiJson(row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
@@ -72,11 +95,11 @@
     Line("    }");
     if (validate)
         Line("    validate(&row)?;");
-    Line("    repo::update(&pool, id, &row).await?.map(Json).ok_or(ApiError::NotFound)");
+    Line($"    repo::update(&pool, {idArg}, &row).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");
     Line();
     Line($"async fn delete(State(pool): State<Pool>, Path(id): Path<{keyType}>) -> ApiResult<StatusCode> {{");
-    Line("    match repo::delete(&pool, id).await? {");
+    Line($"    match repo::delete(&pool, {idArg}).await? {{");
     Line("        0 => Err(ApiError::NotFound),");
     Line("        _ => Ok(StatusCode::OK),");
     Line("    }");

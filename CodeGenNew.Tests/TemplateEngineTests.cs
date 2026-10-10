@@ -122,13 +122,13 @@ public class TemplateConfigTests
     public void The_shipped_configs_restrict_the_key_shape_they_actually_need()
     {
         Assert.AreEqual(PrimaryKeyRequirement.SingleColumn, TemplateConfig.Load(Repo.Template("TS_Model_v1.tt.config")).RequiredPrimaryKeyShape);
-        Assert.AreEqual(PrimaryKeyRequirement.SingleIntOrGuid, TemplateConfig.Load(Repo.Template("TS_Service_v1.tt.config")).RequiredPrimaryKeyShape);
-        Assert.AreEqual(PrimaryKeyRequirement.SingleIntOrGuid, TemplateConfig.Load(Repo.Template("TS_Component_v1.tt.config")).RequiredPrimaryKeyShape);
-        Assert.AreEqual(PrimaryKeyRequirement.SingleIntOrGuid, TemplateConfig.Load(Repo.Template("TS_DetailMasterComponent_v1.tt.config")).RequiredPrimaryKeyShape);
-        Assert.AreEqual(PrimaryKeyRequirement.SingleInt, TemplateConfig.Load(Repo.Template("API_Crud_v1.tt.config")).RequiredPrimaryKeyShape);
-        Assert.AreEqual(PrimaryKeyRequirement.SingleInt, TemplateConfig.Load(Repo.Template("WinUI3_MasterScreen_v1.tt.config")).RequiredPrimaryKeyShape);
-        Assert.AreEqual(PrimaryKeyRequirement.SingleInt, TemplateConfig.Load(Repo.Template("WinUI3_DetailScreen_v1.tt.config")).RequiredPrimaryKeyShape);
-        Assert.AreEqual(PrimaryKeyRequirement.SingleInt, TemplateConfig.Load(Repo.Template("WinUI3_DetailMasterScreen_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyRequirement.SingleIntGuidOrText, TemplateConfig.Load(Repo.Template("TS_Service_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyRequirement.SingleIntGuidOrText, TemplateConfig.Load(Repo.Template("TS_Component_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyRequirement.SingleIntGuidOrText, TemplateConfig.Load(Repo.Template("TS_DetailMasterComponent_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyRequirement.SingleIntGuidOrText, TemplateConfig.Load(Repo.Template("API_Crud_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyRequirement.SingleIntGuidOrText, TemplateConfig.Load(Repo.Template("WinUI3_MasterScreen_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyRequirement.SingleIntGuidOrText, TemplateConfig.Load(Repo.Template("WinUI3_DetailScreen_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.AreEqual(PrimaryKeyRequirement.SingleIntGuidOrText, TemplateConfig.Load(Repo.Template("WinUI3_DetailMasterScreen_v1.tt.config")).RequiredPrimaryKeyShape);
         // Junction/child-grid data access goes by the two FK columns or the child's own FK, never the table's
         // own primary key shape, so these are deliberately unrestricted.
         Assert.IsNull(TemplateConfig.Load(Repo.Template("SP_Junction_v1.tt.config")).RequiredPrimaryKeyShape);

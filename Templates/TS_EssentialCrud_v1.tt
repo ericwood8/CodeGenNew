@@ -47,16 +47,16 @@ export interface PagedResult<T> {
     totalPages: number;
 }
 
-<# if (search) { #>
-/** What the list takes: the page (1-based, as the screens count; it is written the way the API counts), the text typed in the search box (`filters['search']`) and the sort. */
-<# } else { #>
-/** One row of a lookup list (GET <route>/lookup): the key, the text a person recognises the row by, and whether the row is active (absent for a table with no IsActive column). */
-export interface Lookup {
-    id: number;
+/** One row of a lookup list (GET <route>/lookup): the key (a number, or a string for a text or uniqueidentifier key), the text a person recognises the row by, and whether the row is active (absent for a table with no IsActive column). */
+export interface Lookup<K extends number | string = number> {
+    id: K;
     name: string;
     isActive?: boolean | null;
 }
 
+<# if (search) { #>
+/** What the list takes: the page (1-based, as the screens count; it is written the way the API counts), the text typed in the search box (`filters['search']`) and the sort. */
+<# } else { #>
 /** What the search endpoint takes: the page (1-based), the text typed in each search box (empty ones are left out) and the sort. */
 <# } #>
 export interface PageQuery {
@@ -69,7 +69,7 @@ export interface PageQuery {
 
 /**
  * The calls every table's API answers. A service for a table extends this with its route and the typed calls that are its own (a page with the table's own search boxes as
- * parameters). K is the type of the key: a number, or a string for a uniqueidentifier key.
+ * parameters). K is the type of the key: a number, or a string for a uniqueidentifier or text key. The key is encoded in the route, so a space or a slash in a text key cannot change it.
  */
 export abstract class CrudService<T, K extends number | string = number> {
     protected constructor(protected readonly http: HttpClient, protected readonly apiUrl: string) { }
@@ -79,14 +79,14 @@ export abstract class CrudService<T, K extends number | string = number> {
         return this.http.get<T[]>(this.apiUrl);
     }
 
-    // Get the key and the display column of every row, for a drop-down or a "name of" column (a table with a display column answers it; the key is a number)
-    getLookup(): Observable<Lookup[]> {
-        return this.http.get<Lookup[]>(`${this.apiUrl}/lookup`);
+    // Get the key and the display column of every row, for a drop-down or a "name of" column (a table with a display column answers it; the key is of type K)
+    getLookup(): Observable<Lookup<K>[]> {
+        return this.http.get<Lookup<K>[]>(`${this.apiUrl}/lookup`);
     }
 
     // Get a row by ID
     getById(id: K): Observable<T> {
-        return this.http.get<T>(`${this.apiUrl}/${id}`);
+        return this.http.get<T>(`${this.apiUrl}/${encodeURIComponent(id)}`);
     }
 
     // Create a new row
@@ -96,17 +96,17 @@ export abstract class CrudService<T, K extends number | string = number> {
 
     // Update a row
     update(id: K, row: T): Observable<T> {
-        return this.http.put<T>(`${this.apiUrl}/${id}`, row);
+        return this.http.put<T>(`${this.apiUrl}/${encodeURIComponent(id)}`, row);
     }
 
     // Delete a row
     delete(id: K): Observable<void> {
-        return this.http.delete<void>(`${this.apiUrl}/${id}`);
+        return this.http.delete<void>(`${this.apiUrl}/${encodeURIComponent(id)}`);
     }
 
     // Copy a row into a new one and return the copy (only a table whose API has the clone route: API_Crud writes it for the tables CloneShape allows)
     clone(id: K): Observable<T> {
-        return this.http.post<T>(`${this.apiUrl}/${id}/clone`, null);
+        return this.http.post<T>(`${this.apiUrl}/${encodeURIComponent(id)}/clone`, null);
     }
 
 <# if (search) { #>
@@ -257,7 +257,8 @@ import { Notifier } from '../<#= servicesFolder #>/notifier';
  *   `prepareEdit(copy)`        fixes up the copy that goes into the form (a date for the date box);
  *   `start()`                  loads what else the screen needs (the drop-down lists) as well as the rows;
  *   `opened()`                 runs when the form opens (go back to the first tab);
- *   `badInputMessage`, `emptyKey`  the words for a 400 when the API gives none, and the "no key yet" value of a uniqueidentifier key.
+ *   `badInputMessage`, `emptyKey`  the words for a 400 when the API gives none, and the "no key yet" value of a uniqueidentifier key;
+ *   `keyChosen`                true for a text key: the person types it on a new row, so it is sent as typed and `adding` (not an empty key) says the row is new.
  *
  * A refusal is shown in the API's own words (its problem details: a duplicate name, a validation message, a business rule); the fixed words are only for an answer with none.
  */
@@ -274,6 +275,10 @@ export abstract class CrudScreen<T, K extends number | string = number> implemen
   protected abstract readonly idKey: keyof T & string;
   /** The key of a row that has none yet: the API assigns the real one. */
   protected readonly emptyKey: K = 0 as K;
+  /** True when the person types the key of a new row (a text key); the key is then sent as typed instead of being replaced by `emptyKey`. */
+  protected readonly keyChosen: boolean = false;
+  /** True while the form holds a new row (opened by `add`), false while it holds an existing one: a typed key must not turn a new row into an update. */
+  adding = false;
   /** What the message says when the API refuses the values (400). */
   protected readonly badInputMessage: string = 'Some of the values are not acceptable!';
 
@@ -315,12 +320,14 @@ export abstract class CrudScreen<T, K extends number | string = number> implemen
   protected opened(): void { }
 
   add(): void {
+    this.adding = true;
     this.selectedRow = this.newRow();
     this.opened();
   }
 
   edit(row: T): void {
     // edit a COPY: changing the row itself would change what the grid shows
+    this.adding = false;
     this.selectedRow = this.prepareEdit({ ...row });
     this.opened();
   }
@@ -331,9 +338,9 @@ export abstract class CrudScreen<T, K extends number | string = number> implemen
   }
 
   submit(row: T): void {
-    const isNew = !this.idOf(row);
+    const isNew = this.adding || !this.idOf(row);
     this.prepare(row, isNew);
-    if (isNew) {
+    if (isNew && !this.keyChosen) {
       (row as Record<string, unknown>)[this.idKey] = this.emptyKey;
     }
     const call = isNew ? this.service.create(row) : this.service.update(this.idOf(row)!, row);
@@ -524,6 +531,12 @@ class NamedService extends NamedCrudService<Row> {
   constructor(http: HttpClient) { super(http, 'api/named'); }
 }
 
+interface Country { alpha3Code?: string; name: string; }
+
+class CountryService extends CrudService<Country, string> {
+  constructor(http: HttpClient) { super(http, 'api/countries'); }
+}
+
 // the list protocol of this project (ListProtocol=<#= search ? "Search" : "Columns" #>): where the list is asked, how the page, the filters and the sort are written
 const LIST_PATH = '<#= search ? "" : "/search" #>';
 const PAGE_PARAM = '<#= pageParam #>';
@@ -582,6 +595,23 @@ describe('CrudService', () => {
     const clone = http.expectOne('api/rows/5/clone');
     expect(clone.request.method).toBe('POST');
     expect(clone.request.body).toBeNull();
+  });
+
+  it('puts a text key in the route encoded, and reads its lookup with text ids', () => {
+    const countries = new CountryService(TestBed.inject(HttpClient));
+    countries.getById('CAN').subscribe();
+    expect(http.expectOne('api/countries/CAN').request.method).toBe('GET');
+
+    countries.update('A B/C', { alpha3Code: 'A B/C', name: 'X' }).subscribe();
+    expect(http.expectOne('api/countries/A%20B%2FC').request.method).toBe('PUT');
+
+    countries.delete('CAN').subscribe();
+    expect(http.expectOne('api/countries/CAN').request.method).toBe('DELETE');
+
+    let ids: string[] = [];
+    countries.getLookup().subscribe((rows) => { ids = rows.map((row) => row.id); });
+    http.expectOne('api/countries/lookup').flush([{ id: 'CAN', name: 'Canada' }]);
+    expect(ids).toEqual(['CAN']);
   });
 
   it('searches with the page, leaves out empty filters and writes the sort', () => {
@@ -685,6 +715,22 @@ class ItemScreen extends CrudScreen<Item> {
   protected readonly noun = 'item';
   protected readonly idKey = 'itemId';
   protected newRow(): Item { return { name: '', isActive: true }; }
+}
+
+interface Country { alpha3Code?: string; name: string; }
+
+class CountryService extends CrudService<Country, string> {
+  constructor(http: HttpClient) { super(http, 'api/countries'); }
+}
+
+// a table with a text key: the person types the key of a new row
+class CountryScreen extends CrudScreen<Country, string> {
+  protected readonly service = new CountryService(inject(HttpClient));
+  protected readonly noun = 'country';
+  protected readonly idKey = 'alpha3Code';
+  protected override readonly emptyKey: string = '';
+  protected override readonly keyChosen = true;
+  protected newRow(): Country { return { alpha3Code: '', name: '' }; }
 }
 
 class PagedItemScreen extends PagedCrudScreen<Item> {
@@ -825,6 +871,35 @@ describe('the screen bases', () => {
 
       expect(screen.selectedRow?.itemId).toBe(9);
       http.expectOne((r) => r.method === 'GET' && r.url === 'api/items').flush([]);
+    });
+
+    it('creates a new row with the text key the person typed, not an update to it', () => {
+      const screen = create(CountryScreen);
+      screen.add();
+      expect(screen.adding).toBe(true);
+      screen.selectedRow!.alpha3Code = 'CAN';
+      screen.selectedRow!.name = 'Canada';
+      screen.submit(screen.selectedRow!);
+
+      const post = http.expectOne('api/countries');
+      expect(post.request.method).toBe('POST');
+      expect(post.request.body).toEqual({ alpha3Code: 'CAN', name: 'Canada' });
+      post.flush({ title: 'Duplicate key', status: 409, detail: 'A row with that key already exists.' }, conflict);
+      expect(errors).toContain('A row with that key already exists.');
+      expect(screen.selectedRow).not.toBeNull();
+    });
+
+    it('updates a row opened for editing with a PUT to its text key', () => {
+      const screen = create(CountryScreen);
+      screen.edit({ alpha3Code: 'CAN', name: 'Canada' });
+      expect(screen.adding).toBe(false);
+      screen.selectedRow!.name = 'Canada (north)';
+      screen.submit(screen.selectedRow!);
+
+      const put = http.expectOne('api/countries/CAN');
+      expect(put.request.method).toBe('PUT');
+      put.flush({ alpha3Code: 'CAN', name: 'Canada (north)' });
+      http.expectOne((r) => r.method === 'GET' && r.url === 'api/countries').flush([]);
     });
   });
 

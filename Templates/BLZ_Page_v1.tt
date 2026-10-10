@@ -35,7 +35,7 @@
         string ns = BlazorNames.Namespace(Project);
         string title = Words(type);
         string key = keyColumn.CSharpName();
-        string keyCs = keyColumn.CSharpBase();
+        bool textKey = KeyType.Of(Model)!.Kind == KeyKind.Text;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
         const int pageSize = 20;
 
         var searchFields = Model.SearchableColumns.Select(c => (Column: c, Param: LowerFirst(c.Name), Field: "filter" + Ident(c.Name), Label: Label(c.Name))).ToList();
@@ -44,9 +44,10 @@
             .GroupBy(f => f.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         var shown = Model.Columns
-            .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && HasInput(c)
-                        && !(fkByColumn.TryGetValue(c.Name, out var hidden) && IsHiddenParent(hidden.ReferencedTable)))
-            .OrderBy(c => c.Name == "Name" ? 0 : 1).ThenBy(c => c.OrdinalPosition)
+            .Where(c => (textKey && c.IsPrimaryKey)
+                        || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && HasInput(c)
+                            && !(fkByColumn.TryGetValue(c.Name, out var hidden) && IsHiddenParent(hidden.ReferencedTable))))
+            .OrderBy(c => textKey && c.IsPrimaryKey ? 0 : c.Name == "Name" ? 1 : 2).ThenBy(c => c.OrdinalPosition)
             .ToList();
 
         // A foreign key is a drop-down when the parent has display columns and the project does not say otherwise; the table's own parent (a tree) stays a plain box.
@@ -184,10 +185,16 @@
             string required = c.IsNullable ? "" : " required";
             string input;
             var lookup = LookupOf(c);
-            if (lookup is not null)
+            if (textKey && c.IsPrimaryKey)
+            {
+                // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
+                string max = Chars(c) is > 0 and < 4000 ? $" maxlength=\"{Chars(c)}\"" : "";
+                input = $"<InputText id=\"{id}\" @bind-Value=\"{bind}\"{max} readonly=\"@(!isNew)\" required />";
+            }
+            else if (lookup is not null)
             {
                 var p = parentOf[lookup.ReferencedTable];
-                string blank = c.IsNullable ? "<option value=\"\">None</option>" : $"<option value=\"@(default({c.CSharpBase()}))\">Select</option>";
+                string blank = c.IsNullable ? "<option value=\"\">None</option>" : c.CSharpBase() == "string" ? "<option value=\"\">Select</option>" : $"<option value=\"@(default({c.CSharpBase()}))\">Select</option>";
                 input = $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\">{blank}@foreach (var parent in {p.Field}) {{ <option value=\"@parent.{p.KeyProp}\">@parent.{p.DisplayProp}</option> }}</InputSelect>";
             }
             else if (c.HasChoices && c.CSharpBase() == "string")
@@ -342,6 +349,9 @@
         L("            row = null;");
         L("            await LoadAsync(pageNumber);");
         L("        }");
+        // a typed key can already be taken: the API answers 409
+        if (textKey)
+            L($"        catch (ApiException ex) when (ex.Status == 409) {{ message = \"A {title.ToLowerInvariant()} with this {Label(keyColumn.Name).ToLowerInvariant()} already exists!\"; }}");
         L("        catch (ApiException ex) { message = ex.Explain(\"saving\"); }");
         L("        catch (HttpRequestException) { message = \"Problem while saving!\"; }");
         L("    }");

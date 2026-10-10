@@ -25,11 +25,12 @@ using System.Linq.Expressions;
 
 namespace <#= repoNamespace #>;
 
-public interface IGenericRepo<T> where T : BaseEntity
+/// <summary> The repository of a table whose key is a <typeparamref name="TKey"/> (int, long, Guid or string). </summary>
+public interface IGenericRepo<T, TKey> where T : BaseEntity where TKey : notnull
 {
-    public T GetById(int id);
-    public Task<T?> GetByIdAsync(int id);
-    public Task<bool> ExistsAsync(int id);
+    public T GetById(TKey id);
+    public Task<T?> GetByIdAsync(TKey id);
+    public Task<bool> ExistsAsync(TKey id);
     public T Get(Expression<Func<T, bool>> predicate);
     public Task<T?> GetAsync(Expression<Func<T, bool>> predicate);
 
@@ -37,12 +38,17 @@ public interface IGenericRepo<T> where T : BaseEntity
 
     public Task<bool> AddAsync(T newRow);
 
-    public Task<T> UpdateAsync(int id, T rowToUpdate);
+    public Task<T> UpdateAsync(TKey id, T rowToUpdate);
 
-    public Task<int> DeleteAsync(string deleteFromTable, int deleteId);
+    public Task<int> DeleteAsync(string deleteFromTable, TKey deleteId);
 
     public int Count();
     public Task<int> CountAsync();
+}
+
+/// <summary> The repository of a table with an int key, the common case. </summary>
+public interface IGenericRepo<T> : IGenericRepo<T, int> where T : BaseEntity
+{
 }
 @@@FILE Repositories/GenericRepo.cs@@@
 using System.Linq.Expressions;
@@ -51,8 +57,9 @@ using <#= contextNamespace #>;
 namespace <#= repoNamespace #>;
 
 /// <summary> Repository for any table: the shared base every generated <Table>Repo (CS_Repo) derives from. DeleteAsync attempts the delete and catches the foreign-key violation EF Core
-/// reports as a DbUpdateException, returning the "in use" result the generated screens expect (0 = deleted, -1 = no longer exists, 1 = in use). </summary>
-public class GenericRepo<T> : IGenericRepo<T>, IDisposable where T : BaseEntity
+/// reports as a DbUpdateException, returning the "in use" result the generated screens expect (0 = deleted, -1 = no longer exists, 1 = in use). The key's type is <typeparamref name="TKey"/>
+/// (int, long, Guid or string: see <c>GenericRepo&lt;T&gt;</c> for the int shortcut); a generated repository names the one its table's key has. </summary>
+public class GenericRepo<T, TKey> : IGenericRepo<T, TKey>, IDisposable where T : BaseEntity where TKey : notnull
 {
     protected readonly <#= contextType #> _context;
     protected readonly DbSet<T> _dbSet;
@@ -64,14 +71,18 @@ public class GenericRepo<T> : IGenericRepo<T>, IDisposable where T : BaseEntity
         _dbSet = _context.Set<T>();
     }
 
-    public T GetById(int id) => _dbSet.Find(id)!;
+    public T GetById(TKey id) => _dbSet.Find(id)!;
 
-    public async Task<T?> GetByIdAsync(int id) => await _dbSet.FindAsync(id);
+    public async Task<T?> GetByIdAsync(TKey id) => await _dbSet.FindAsync(id);
 
-    public async Task<bool> ExistsAsync(int id)
+    public async Task<bool> ExistsAsync(TKey id)
     {
+        // EF.Property<TKey>(e, keyName) == id, built as an expression because == is not defined for an open generic type
         string keyName = _context.Model.FindEntityType(typeof(T))!.FindPrimaryKey()!.Properties[0].Name;
-        return await _dbSet.AsNoTracking().AnyAsync(e => EF.Property<int>(e, keyName) == id);
+        var row = Expression.Parameter(typeof(T), "e");
+        var key = Expression.Call(typeof(EF), nameof(EF.Property), [typeof(TKey)], row, Expression.Constant(keyName));
+        var sameKey = Expression.Lambda<Func<T, bool>>(Expression.Equal(key, Expression.Constant(id, typeof(TKey))), row);
+        return await _dbSet.AsNoTracking().AnyAsync(sameKey);
     }
 
     public T Get(Expression<Func<T, bool>> predicate) => _dbSet.FirstOrDefault(predicate)!;
@@ -80,7 +91,7 @@ public class GenericRepo<T> : IGenericRepo<T>, IDisposable where T : BaseEntity
 
     public async Task<List<T>> GetAll() => await _dbSet.ToListAsync();
 
-    public async Task<List<T>> GetAllOrderBy<TKey>(Expression<Func<T, TKey>> key) => await _dbSet.OrderBy(key).ToListAsync();
+    public async Task<List<T>> GetAllOrderBy<TOrder>(Expression<Func<T, TOrder>> key) => await _dbSet.OrderBy(key).ToListAsync();
 
     /// <summary> Newest first; takes a non-nullable DateTime column (what the generated API classes sort by). </summary>
     public async Task<List<T>> GetAllOrderByDescending(Expression<Func<T, DateTime>> key) => await _dbSet.OrderByDescending(key).ToListAsync();
@@ -92,7 +103,7 @@ public class GenericRepo<T> : IGenericRepo<T>, IDisposable where T : BaseEntity
         return true;
     }
 
-    public async Task<T> UpdateAsync(int id, T rowToUpdate)
+    public async Task<T> UpdateAsync(TKey id, T rowToUpdate)
     {
         _context.Entry(rowToUpdate).State = EntityState.Modified;
         await _context.SaveChangesAsync();
@@ -100,7 +111,7 @@ public class GenericRepo<T> : IGenericRepo<T>, IDisposable where T : BaseEntity
     }
 
     /// <summary> 0 = deleted, -1 = row no longer exists, 1 = blocked by a foreign key elsewhere ("in use"). </summary>
-    public async Task<int> DeleteAsync(string deleteFromTable, int deleteId)
+    public async Task<int> DeleteAsync(string deleteFromTable, TKey deleteId)
     {
         var rowToDelete = GetById(deleteId);
         if (rowToDelete is null)
@@ -137,5 +148,13 @@ public class GenericRepo<T> : IGenericRepo<T>, IDisposable where T : BaseEntity
     {
         Dispose(true);
         GC.SuppressFinalize(this);
+    }
+}
+
+/// <summary> The repository of a table with an int key, the common case: every generated repository of such a table derives from this. A table with another key type derives from <c>GenericRepo&lt;T, TKey&gt;</c>. </summary>
+public class GenericRepo<T> : GenericRepo<T, int>, IGenericRepo<T> where T : BaseEntity
+{
+    public GenericRepo(<#= contextType #> context) : base(context)
+    {
     }
 }

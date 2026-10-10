@@ -24,9 +24,9 @@
     // Program.cs maps them with app.MapCsvEndpoints() when ApiCsv=true. Full notes: Docs/TemplateNotes/API_Csv_v1.md
     // ==========================================================================================
 
-    var tables = Database.ApiTables(Project).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    var tables = Database.CrudApiTables(Project).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
     if (tables.Count == 0)
-        Error("API_Csv found no table to write endpoints for: none has an API of its own (a single whole-number key, not an enum or a name/active table).");
+        Error("API_Csv found no table to write endpoints for: none has an API of its own (a single int, uniqueidentifier or text key, not an enum or a name/active table).");
     bool validate = Project.ApiValidation;
 
     string Columns(TableModel table)
@@ -167,7 +167,7 @@ public static class CsvSupport
         var positions = new List<(CsvColumn Column, int At)>();
         foreach (var column in columns.Where(c => c.Import))
         {
-            int at = header.FindIndex(h => h.EqualsIgnoreCase(column.Name));
+            int at = header.FindIndex(h => string.Equals(h, column.Name, StringComparison.OrdinalIgnoreCase));
             if (at >= 0)
                 positions.Add((column, at));
             else if (column.Required)

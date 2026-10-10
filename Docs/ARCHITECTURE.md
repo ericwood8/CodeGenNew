@@ -52,7 +52,7 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 
 **One vocabulary.** Every provider reads its own catalog (`sys.*`, `information_schema` plus `pg_catalog`, `information_schema`) and reports a column as a `RawColumn` whose type is a **SQL Server type name** whatever the source database is. Classification (integer, money, string, date, boolean) and the C#, F# and TypeScript mappings are therefore written once. A database whose spelling of the declaration differs supplies an override for the SQL text only. A type with no mapping (an array, a geometry) is reported as a warning, and the `IgnoredColumns` setting leaves it out.
 
-**What the model holds.** Columns with type, length, precision, nullability, identity, computed definition, default, CHECK range or list, description; primary key and its shape (`None`, `Composite`, `SingleInt`, `SingleUniqueIdentifier`, `SingleOther`); foreign keys in both directions; indexes (key columns, for the unindexed-foreign-key script); display columns; whether the table is a many-to-many junction, a lookup (enum-like) table, or a name/active table; the dialect. Rows are read only when a template's config asks (`NeedsRowData`, capped at 5000 rows).
+**What the model holds.** Columns with type, length, precision, nullability, identity, computed definition, default, CHECK range or list, description; primary key and its shape (`None`, `Composite`, `SingleInt`, `SingleUniqueIdentifier`, `SingleText`, `SingleOther`; `KeyType` says how the key travels in C#, TypeScript and Python; `KeyType.StackHandlesEveryKey` lists the stacks whose templates read it, so the screens and menu entries of guid and text key tables are listed only for those: Api, Angular, React, Blazor and WinUI3 so far); foreign keys in both directions; indexes (key columns, for the unindexed-foreign-key script); display columns; whether the table is a many-to-many junction, a lookup (enum-like) table, or a name/active table; the dialect. Rows are read only when a template's config asks (`NeedsRowData`, capped at 5000 rows).
 
 **Names.** `NamingStyle=Pascal` converts `snake_case` to `PascalCase` (with an `Acronyms` list); the model carries both the generated name and the database name (`DbTableName`, `DbName`), and SQL text always uses the second.
 
@@ -80,7 +80,7 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 | Key | Meaning |
 |---|---|
 | `RequiresPrimaryKey`, `TableOnly` | hide the template for a table without a key, or for a view (both default to true) |
-| `RequiredPrimaryKeyShape` | `SingleColumn`, `SingleIntOrGuid` or `SingleInt`: the key shape the generated routes need |
+| `RequiredPrimaryKeyShape` | `SingleColumn`, `SingleIntOrGuid`, `SingleIntGuidOrText` or `SingleInt`: the key shape the generated routes need |
 | `RequiresJunctionTable`, `RequiresChildTables`, `RequiresAuditTable`, `RequiresNotNameActiveTable` | shape restrictions for the specialised templates |
 | `NeedsRowData`, `NeedsReferencedDisplayColumns` | ask the schema reader for more (rows; the display columns of parent tables) |
 | `DatabaseOnly`, `NoDatabase` | one file for the whole database, or no database at all |
