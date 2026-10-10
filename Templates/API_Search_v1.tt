@@ -45,6 +45,8 @@
     // With AccessMode=Ef the search is LINQ over the context (the CS_SearchQuery class of this table), not a call to the routines SP_Search writes.
     bool ef = Project.AccessModeFor(Model.Dialect) == AccessMode.Ef;
     var efFilters = string.Concat(filters.Select(f => ", " + f.ParamName));
+    // ApiAuth with OwnedTables: only the rows of the owners the caller may act for. The routines cannot take an owner, so the routine form answers 403 to a caller who is limited to some owners.
+    var ownerColumn = OwnedTable.OwnerColumn(Model, Project);
 #>
 namespace <#= apiNamespace #>;
 
@@ -74,6 +76,12 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
     private static async Task<IResult> Search(
         [FromServices] <#= contextType #> context,
 <#
+    if (ownerColumn is not null)
+    {
+#>
+        HttpContext http,
+<#
+    }
     foreach (var f in filters)
     {
 #>
@@ -101,10 +109,39 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
         bool sortDescending = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase);
 
 <#
+    if (ownerColumn is not null)
+    {
+#>
+        int[]? owners = (await http.RequestServices.GetRequiredService<IOwnerScope>().VisibleOwnersAsync(http.User, http.RequestAborted))?.ToArray();
+<#
+        if (!ef)
+        {
+#>
+        if (owners is not null)
+            return Results.Problem(statusCode: 403, title: "Search is not scoped", detail: "The search routine cannot limit the rows to an owner; use AccessMode=Ef or sign in as the administrator.");
+
+<#
+        }
+        else
+        {
+#>
+
+<#
+        }
+    }
     if (ef)
     {
 #>
         var query = <#= entity #>SearchQuery.Filter(context.Set<<#= entity #>>().AsNoTracking()<#= efFilters #>);
+<#
+        if (ownerColumn is not null)
+        {
+#>
+        if (owners is not null)
+            query = query.Where(row => owners.Contains(row.<#= ownerColumn.Name #>));
+<#
+        }
+#>
         int totalCount = await query.CountAsync();
         var items = await <#= entity #>SearchQuery.Sort(query, sortColumn, sortDescending)
             .Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync();

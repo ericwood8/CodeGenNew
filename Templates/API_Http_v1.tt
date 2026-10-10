@@ -14,7 +14,7 @@
     // A request file for one table's API, for Visual Studio, Visual Studio Code (REST Client) and Rider: get all, get one, search, create, update, delete and (where the clone routine exists) clone,
     // against http://localhost:<ApiPort>. The create and update bodies hold one value for every column that cannot be NULL, shaped by the column (a choice from its CHECK list, a number inside its
     // range, an email address for an email column); a nullable column is left out. Change the host and the id at the top; run the requests one by one.
-    // Writes for the tables API_Crud writes an API for, with the routes the API templates use. Does not log in: add the Authorization header yourself if the API has authentication.
+    // Writes for the tables API_Crud writes an API for, with the routes the API templates use. Does not log in: with ApiAuth=true every request carries Authorization: Bearer {{token}} and the token variable at the top is yours to fill from POST /api/auth/login.
     // Full notes: Docs/TemplateNotes/API_Http_v1.md
     // ==========================================================================================
 
@@ -78,6 +78,20 @@
             L("### Copy a " + words.ToLowerInvariant() + " into a new row");
             L("POST {{host}}" + route + "/{{" + idVar + "}}/clone");
         }
-        Write(o.ToString());
+        string text = o.ToString();
+        if (Project.ApiAuth)
+        {
+            // every request carries the token that POST /api/auth/login answered (paste it below)
+            var withToken = new StringBuilder();
+            withToken.Append("@token = paste the token from POST /api/auth/login here\n");
+            foreach (string line in text.Split('\n'))
+            {
+                withToken.Append(line).Append('\n');
+                if (line.StartsWith("GET {{host}}") || line.StartsWith("POST {{host}}") || line.StartsWith("PUT {{host}}") || line.StartsWith("DELETE {{host}}"))
+                    withToken.Append("Authorization: Bearer {{token}}\n");
+            }
+            text = withToken.ToString().TrimEnd('\n') + "\n";
+        }
+        Write(text);
     }
 #>

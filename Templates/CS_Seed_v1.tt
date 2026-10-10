@@ -1,0 +1,86 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // CS_Seed_v1.tt
+    // Generates: <TableName>Seed.cs   (see OutputName in CS_Seed_v1.tt.config)
+    // The rows a small table holds now, as a class that adds them to the table when it is empty (the rows are read when you generate, NeedsRowData): for a lookup table that is not an enum
+    // (a region, a currency), so a new database starts with them. The project's SeedTables names the tables, a parent before its children; CS_SeedData writes the class that runs them all.
+    // An identity key is left out and numbered by the database, in the order of the rows, so a table with another table pointing at its keys should hold keys 1, 2, 3 ... when it is read;
+    // the class says when it does not. Needs a table with rows, at most 1000 of them. Does not write the entity or the context.
+    // Full notes: Docs/TemplateNotes/CS_Seed_v1.md
+    // ==========================================================================================
+    const int MaxRows = 1000;
+    string projectName = Project.ProjectName ?? "MyApp";
+    string entityNamespace = Project.EntityNamespace ?? projectName + ".App.Entities";
+    string contextNamespace = Project.ContextNamespace ?? projectName + ".App.Data";
+    string contextType = Project.ContextName ?? projectName + "Context";
+
+    var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
+    if (!Model.HasRowData)
+        Error($"CS_Seed cannot seed [{Model.SchemaName}].[{Model.TableName}]: its rows were not read (the template's .tt.config must say NeedsRowData=true).");
+    else if (Model.Rows.Count == 0)
+        Error($"CS_Seed cannot seed [{Model.SchemaName}].[{Model.TableName}]: the table is empty, and the seed class is its rows - load the data first, then generate again.");
+    else if (Model.Rows.Count > MaxRows)
+        Error($"CS_Seed seeds at most {MaxRows} rows, but [{Model.SchemaName}].[{Model.TableName}] holds {Model.Rows.Count}; a table that large is data to load, not to seed.");
+    else
+    {
+        // the columns the entity has a value for: not the identity key (the database numbers it) and not a computed column
+        var columns = Model.Columns.Where(c => !c.IsIdentity && !c.IsComputed).ToList();
+        string Property(ColumnModel c) => (c.IsCSharpReservedWordName ? "@" : "") + c.Name;
+
+        // the rows in key order, so a regenerate writes the same file whatever order the database returned them in
+        var rows = Model.Rows.AsEnumerable();
+        int keyIndex = keyColumn is null ? -1 : Model.Columns.IndexOf(keyColumn);
+        if (keyIndex >= 0)
+            rows = rows.OrderBy(r => r[keyIndex] as IComparable, Comparer<IComparable>.Create((a, b) => a is null ? (b is null ? 0 : -1) : b is null ? 1 : a.CompareTo(b)));
+        var rowList = rows.ToList();
+
+        // an identity key is numbered again: the rows keep their order, so a foreign key to them stays right only when the source keys were 1, 2, 3 ...
+        string renumbered = "";
+        if (keyColumn is { IsIdentity: true } && keyIndex >= 0)
+        {
+            var keys = rowList.Select(r => Convert.ToInt64(r[keyIndex], System.Globalization.CultureInfo.InvariantCulture)).ToList();
+            if (!keys.SequenceEqual(Enumerable.Range(1, keys.Count).Select(i => (long)i)))
+                renumbered = $" The keys the rows had ({string.Join(", ", keys.Take(10))}{(keys.Count > 10 ? ", ..." : "")}) are numbered again from 1 in this order, so a table that points at them needs the same numbers.";
+        }
+
+        var o = new StringBuilder();
+        void L(string text = "") => o.Append(text).Append('\n');
+        string entity = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
+        L($"namespace {contextNamespace};");
+        L();
+        L($"using {entityNamespace};");
+        L("using Microsoft.EntityFrameworkCore;");
+        L();
+        L($"/// <summary> The {rowList.Count} row{(rowList.Count == 1 ? "" : "s")} {Model.TableName} held when CS_Seed wrote this. <see cref=\"SeedAsync\"/> adds them when the table is empty, so running it again changes nothing.{renumbered} </summary>");
+        L($"public static class {Model.TableName}Seed");
+        L("{");
+        L("    /// <summary> The rows, new objects on every call. </summary>");
+        L($"    public static List<{entity}> NewRows() =>");
+        L("    [");
+        foreach (var row in rowList)
+        {
+            var set = columns.Select(c => (Column: c, Literal: CSharpLiteral.Format(c, row[Model.Columns.IndexOf(c)])))
+                .Where(x => x.Literal is not null).Select(x => $"{Property(x.Column)} = {x.Literal}");
+            L($"        new {entity} {{ {string.Join(", ", set)} }},");
+        }
+        L("    ];");
+        L();
+        L($"    public static async Task SeedAsync({contextType} context, CancellationToken cancellationToken = default)");
+        L("    {");
+        L($"        if (await context.Set<{entity}>().AnyAsync(cancellationToken))");
+        L("            return;");
+        L();
+        L($"        context.Set<{entity}>().AddRange(NewRows());");
+        L("        await context.SaveChangesAsync(cancellationToken);");
+        L("    }");
+        L("}");
+        Write(o.ToString());
+    }
+#>

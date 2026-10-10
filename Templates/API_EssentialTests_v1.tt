@@ -47,6 +47,38 @@ global using System.Net;
 global using System.Net.Http.Json;
 global using System.Text.Json.Nodes;
 global using Microsoft.VisualStudio.TestTools.UnitTesting;
+<#
+        if (Project.ApiAuth)
+        {
+#>
+@@@FILE AuthApiTests.cs@@@
+namespace <#= projectName #>.Api.Tests;
+
+/// <summary> The sign-in (ApiAuth=true): a right password gives a token, a wrong one is 401, an empty body is 400. </summary>
+[TestClass]
+public class AuthApiTests
+{
+    [TestMethod]
+    public async Task A_wrong_password_answers_401()
+    {
+        ApiFixture.RequireDatabase();
+        using var anonymous = ApiFixture.Anonymous();
+        using var response = await anonymous.PostAsJsonAsync("/api/auth/login", new { userName = "test-admin", password = Guid.NewGuid().ToString("N") });
+        Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [TestMethod]
+    public async Task A_blank_user_name_answers_400()
+    {
+        ApiFixture.RequireDatabase();
+        using var anonymous = ApiFixture.Anonymous();
+        using var response = await anonymous.PostAsJsonAsync("/api/auth/login", new { userName = "", password = "x" });
+        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+}
+<#
+        }
+#>
 @@@FILE ApiFixture.cs@@@
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -57,6 +89,14 @@ namespace <#= projectName #>.Api.Tests;
 public static class ApiFixture
 {
     private const string ConnectionVariable = "<#= variable #>";
+<#
+        if (Project.ApiAuth)
+        {
+#>
+    private const string AdminUserName = "test-admin";
+<#
+        }
+#>
 
     private static WebApplicationFactory<Program>? _factory;
 <#
@@ -72,7 +112,7 @@ public static class ApiFixture
     public static bool HasDatabase { get; private set; }
 
     [AssemblyInitialize]
-    public static void Start(TestContext context)
+    public static <#= Project.ApiAuth ? "async Task" : "void" #> Start(TestContext context)
     {
         string? connection = Environment.GetEnvironmentVariable(ConnectionVariable);
 <#
@@ -102,9 +142,33 @@ public static class ApiFixture
 
         Environment.SetEnvironmentVariable("ConnectionStrings__DbConnectionString", connection);
         Environment.SetEnvironmentVariable("RateLimit__PermitsPerMinute", "1000000");
+<#
+        if (Project.ApiAuth)
+        {
+#>
+        // ApiAuth: a key and an administrator made for this run only, then a real sign-in; every test's client carries the token
+        string password = Guid.NewGuid().ToString("N");
+        Environment.SetEnvironmentVariable("Jwt__Key", Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"));
+        Environment.SetEnvironmentVariable("Bootstrap__AdminUserName", AdminUserName);
+        Environment.SetEnvironmentVariable("Bootstrap__AdminPassword", password);
+        _factory = new WebApplicationFactory<Program>();
+        Client = _factory.CreateClient();
+        var login = await Client.PostAsJsonAsync("/api/auth/login", new { userName = AdminUserName, password });
+        login.EnsureSuccessStatusCode();
+        string token = (await login.Content.ReadFromJsonAsync<JsonObject>())!["token"]!.GetValue<string>();
+        Client.DefaultRequestHeaders.Authorization = new("Bearer", token);
+        HasDatabase = true;
+<#
+        }
+        else
+        {
+#>
         _factory = new WebApplicationFactory<Program>();
         Client = _factory.CreateClient();
         HasDatabase = true;
+<#
+        }
+#>
     }
 
     [AssemblyCleanup]
@@ -129,6 +193,16 @@ public static class ApiFixture
 #>
     }
 
+<#
+        if (Project.ApiAuth)
+        {
+#>
+    /// <summary> A client with no token, for the tests that show a call is refused without one. </summary>
+    public static HttpClient Anonymous() => _factory!.CreateClient();
+
+<#
+        }
+#>
     /// <summary> Skips the test (inconclusive) when there is no scratch database to run against. </summary>
     public static void RequireDatabase()
     {

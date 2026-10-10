@@ -1,5 +1,7 @@
 # API_Test_v1 and API_EssentialTests_v1
 
+With `ApiAuth=true` the fixture sets a signing key and an administrator made for the run (random values, nothing saved), signs in once and gives every test a client with the token; `ApiFixture.Anonymous()` is a client without one, each table has a test that its list answers 401 without a token, and `AuthApiTests` covers a wrong password (401) and a blank name (400).
+
 An integration test class per table (`<Table>ApiTests.cs`) and the test project around them. `ApiTests=true` in the project file adds both to a whole-project run (or name `API_Test` in `PlanAlso` and run the `Tests` essentials group). The files go to their own project folder, `OutputApiTests` (default `<ProjectName>.Api.Tests`), beside the API; the template config says `OutputRoot=ApiTests`.
 
 - **What a class tests:** a row is added (201), read (200), changed (200, read back) and removed (a 404 afterwards); a row that is not there answers 404; the search answers a page; and with `ApiValidation=true` a text longer than its column and an integer past its CHECK range answer 400. The row is removed in a `finally`, so a failed run leaves nothing behind.

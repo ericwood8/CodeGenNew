@@ -79,6 +79,13 @@
     string keyArgument = nameActive || keyCSharp == "int" ? "" : ", " + keyCSharp;
     string lookupItem = keyCSharp == "int" ? "LookupItem" : "LookupItem<" + keyCSharp + ">";
 
+    // ApiAuth with OwnedTables: a caller reaches only the rows of the owners the IOwnerScope allows (the owner column; a Name and IsActive table is never scoped)
+    var ownerColumn = supported && !nameActive ? OwnedTable.OwnerColumn(Model, Project) : null;
+    bool ownerUnusable = supported && !nameActive && OwnedTable.IsListedButUnusable(Model, Project);
+
+    // EditableChildren: the child tables a form of this table saves in the same request (EditableChild, the one rule the Angular screen asks too)
+    var editableChildren = supported ? EditableChild.Of(Model, Project) : [];
+
     // ==== the column GetAll sorts by (see above)
     bool IsSortableDate(ColumnModel c) =>
         c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
@@ -110,6 +117,37 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
 
     protected override Expression<Func<<#= entity #>, <#= keyCSharp #>>> Key => c => c.<#= keyProperty #>;
 <#
+        if (ownerColumn is not null)
+        {
+#>
+
+    protected override Expression<Func<<#= entity #>, int>>? Owner => c => c.<#= ownerColumn.Name #>;
+<#
+        }
+        else if (ownerUnusable)
+        {
+#>
+
+    // OwnedTables names this table, but it has no NOT NULL whole-number column named <#= Project.OwnerColumn #> (OwnerColumn), so its rows are not scoped to the signed-in person.
+<#
+        }
+        if (editableChildren.Count > 0)
+        {
+#>
+
+    protected override IReadOnlyList<ChildRows<<#= keyCSharp #>>> EditableChildren =>
+    [
+<#
+            foreach (var child in editableChildren)
+            {
+#>
+        new ChildRows<<#= keyCSharp #>, <#= child.ReferencingTable #>>("<#= EditableChild.JsonName(child) #>", c => c.<#= child.ReferencingPrimaryKeyColumns[0] #>, c => c.<#= child.ReferencingColumns[0] #>),
+<#
+            }
+#>
+    ];
+<#
+        }
         if (sortColumn is not null)
         {
 #>

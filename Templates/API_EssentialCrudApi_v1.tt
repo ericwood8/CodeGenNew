@@ -20,6 +20,9 @@
     string contextType = Project.ContextName ?? "AppContext";
     string baseNameActiveEntity = Project.BaseNameActiveEntity ?? "BaseNameActiveEntity";
     string validation(string when) => Project.ApiValidation ? when : "";
+    string auth(string when) => Project.ApiAuth ? when : "";
+    // EditableChildren: a form saves the rows of some child tables together with the parent (ChildRows); written only when the project lists a child
+    bool children = Project.EditableChildren.Length > 0;
 #>
 @@@FILE Apis/CrudApi.cs@@@
 namespace <#= apiNamespace #>;
@@ -30,6 +33,21 @@ using <#= entityNamespace #>;
 using <#= repoNamespace #>;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+<#
+    if (children)
+    {
+#>
+using System.Text.Json;
+using Microsoft.Extensions.Options;
+<#
+        if (Project.ApiValidation)
+        {
+#>
+using FluentValidation;
+<#
+        }
+    }
+#>
 
 /// <summary> One page of rows, in the shape the search endpoints answer with. </summary>
 public record CrudPage<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalCount, int TotalPages);
@@ -39,6 +57,129 @@ public record LookupItem<TKey>(TKey Id, string Name, bool? IsActive = null);
 
 /// <summary> <see cref="LookupItem{TKey}"/> for a table with an int key, the common case. </summary>
 public record LookupItem(int Id, string Name, bool? IsActive = null) : LookupItem<int>(Id, Name, IsActive);
+<#
+    if (children)
+    {
+#>
+
+/// <summary> The request body of a create or update that carries child lists: the raw JSON the lists are read from and the serializer options the API uses for every other body. </summary>
+public sealed record ChildBody(JsonElement Json, JsonSerializerOptions Options);
+
+/// <summary> A child list could not be applied (a row that is not one of the parent's); the answer is a 400 with the message. </summary>
+public sealed class ChildRowsException(string message) : Exception(message);
+
+/// <summary>
+/// The rows of one child table that a parent's form saves together with the parent (the project's EditableChildren). The request body holds them as a list under <see cref="Name"/> (<c>departmentTeams</c>);
+/// a body that leaves the list out leaves the child rows alone.
+/// </summary>
+public abstract class ChildRows<TKey> where TKey : notnull
+{
+    /// <summary> The property of the request body that holds the list. </summary>
+    public abstract string Name { get; }
+
+    /// <summary> Makes the child table hold exactly the rows of <paramref name="rows"/> for the parent: a row with a key is changed, a row without one is added and the parent's other rows are removed. Saves nothing: the caller saves everything in one transaction. </summary>
+    public abstract Task ApplyAsync(DbContext context, TKey parentId, JsonElement rows, JsonSerializerOptions options);
+}
+
+/// <summary> <see cref="ChildRows{TKey}"/> for the child entity <typeparamref name="TChild"/>: its identity key and the property that links it to the parent (<c>c =&gt; c.DepartmentId</c>). </summary>
+public sealed class ChildRows<TKey, TChild>(string name, Expression<Func<TChild, int>> key, Expression<Func<TChild, TKey>> parent) : ChildRows<TKey>
+    where TKey : notnull
+    where TChild : class, new()
+{
+    public override string Name => name;
+
+    public override async Task ApplyAsync(DbContext context, TKey parentId, JsonElement rows, JsonSerializerOptions options)
+    {
+        var sent = rows.Deserialize<List<TChild>>(options) ?? [];
+        var keyOf = key.Compile();
+        var value = Expression.Parameter(typeof(TKey));
+        var setParent = Expression.Lambda<Action<TChild, TKey>>(Expression.Assign(parent.Body, value), parent.Parameters[0], value).Compile();
+        var ofParent = Expression.Lambda<Func<TChild, bool>>(Expression.Equal(parent.Body, Expression.Constant(parentId, typeof(TKey))), parent.Parameters);
+        var existing = await context.Set<TChild>().Where(ofParent).ToListAsync();
+        var byKey = existing.ToDictionary(keyOf);
+        var kept = new HashSet<int>();
+
+        foreach (var row in sent)
+        {
+            setParent(row, parentId);
+            int id = keyOf(row);
+            if (id == 0)
+            {
+                // only this row is added: an object the body holds for the parent (or any navigation) would drag its own graph in
+                var entry = context.Entry(row);
+                foreach (var navigation in entry.Navigations)
+                    navigation.CurrentValue = null;
+                entry.State = EntityState.Added;
+            }
+            else if (byKey.TryGetValue(id, out var current) && kept.Add(id))
+                context.Entry(current).CurrentValues.SetValues(row);
+            else
+                throw new ChildRowsException($"The row with the key {id} is not one of this row's {name}.");
+        }
+        context.RemoveRange(existing.Where(row => !kept.Contains(keyOf(row))));
+    }
+}
+
+/// <summary> What CrudApi and NameActiveCrudApi share when the project has editable children: reading the body and saving the lists with the parent. </summary>
+public static class ChildRowsSupport
+{
+    /// <summary> The body as the parent row plus the child lists' JSON, or a problem answer when it cannot be read<#= Project.ApiValidation ? " or the parent's validator refuses it" : "" #>. </summary>
+    public static async Task<(TEntity? Row, ChildBody? Body, IResult? Problem)> ReadAsync<TEntity>(HttpRequest request) where TEntity : class
+    {
+        var options = request.HttpContext.RequestServices.GetRequiredService<IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>>().Value.SerializerOptions;
+        try
+        {
+            using var document = await JsonDocument.ParseAsync(request.Body, cancellationToken: request.HttpContext.RequestAborted);
+            var json = document.RootElement.Clone();
+            if (json.ValueKind != JsonValueKind.Object || json.Deserialize<TEntity>(options) is not { } row)
+                return (null, null, Results.Problem(statusCode: 400, title: "Invalid body", detail: "The request needs a JSON object."));
+<#
+        if (Project.ApiValidation)
+        {
+#>
+            var validator = request.HttpContext.RequestServices.GetService<IValidator<TEntity>>();
+            if (validator is not null)
+            {
+                var result = await validator.ValidateAsync(row, request.HttpContext.RequestAborted);
+                if (!result.IsValid)
+                    return (null, null, Results.ValidationProblem(result.ToDictionary()));
+            }
+<#
+        }
+#>
+            return (row, new ChildBody(json, options), null);
+        }
+        catch (JsonException error)
+        {
+            return (null, null, Results.Problem(statusCode: 400, title: "Invalid body", detail: error.Message));
+        }
+    }
+
+    /// <summary> Applies every list the body holds and saves, answering 400 when a row is not the parent's or the database refuses one (a row left out that is still in use). Null when all is saved. </summary>
+    public static async Task<IResult?> SaveAsync<TKey>(DbContext context, IEnumerable<ChildRows<TKey>> lists, TKey parentId, ChildBody body) where TKey : notnull
+    {
+        try
+        {
+            foreach (var list in lists)
+                if (body.Json.TryGetProperty(list.Name, out var rows) && rows.ValueKind == JsonValueKind.Array)
+                    await list.ApplyAsync(context, parentId, rows, body.Options);
+            await context.SaveChangesAsync();
+            return null;
+        }
+        catch (ChildRowsException error)
+        {
+            return Results.Problem(statusCode: 400, title: "Invalid rows", detail: error.Message);
+        }
+        catch (DbUpdateException)
+        {
+            context.ChangeTracker.Clear();
+            return Results.Problem(statusCode: 400, title: "Rows refused", detail: "A row that was left out is still in use, or the database refused a value.");
+        }
+    }
+}
+<#
+    }
+#>
 
 /// <summary>
 /// The five endpoints every table's API answers, written once, for a table whose key is a <typeparamref name="TKey"/> (int, long, Guid or string). A class for a table
@@ -90,12 +231,75 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
     private TKey KeyOf(TEntity row) => (_keyOf ??= Key.Compile())(row);
 
     private static bool SameKey(TKey a, TKey b) => EqualityComparer<TKey>.Default.Equals(a, b);
+<#
+    if (Project.ApiAuth)
+    {
+#>
+
+    /// <summary> The column that holds the owner of a row (<c>c =&gt; c.EmployeeId</c>) for a table the project lists in OwnedTables: a caller reads and changes only the rows of the owners the <see cref="IOwnerScope"/> allows (403 for another owner's row). Null: the rows belong to no one. </summary>
+    protected virtual Expression<Func<TEntity, int>>? Owner => null;
+
+    private IHttpContextAccessor? _http;
+    private Func<TEntity, int>? _ownerOf;
+    private Action<TEntity, int>? _setOwner;
+
+    private HttpContext Http => _http!.HttpContext!;
+
+    private int OwnerOf(TEntity row) => (_ownerOf ??= Owner!.Compile())(row);
+
+    private void SetOwner(TEntity row, int owner)
+    {
+        if (_setOwner is null)
+        {
+            var column = Owner!;   // a property that builds a new expression on every read: take one and use its body and parameter together
+            var value = Expression.Parameter(typeof(int));
+            _setOwner = Expression.Lambda<Action<TEntity, int>>(Expression.Assign(column.Body, value), column.Parameters[0], value).Compile();
+        }
+        _setOwner(row, owner);
+    }
+
+    /// <summary> The owner ids the caller may reach; null when there is no restriction (the table has no owner, or the caller sees every owner). </summary>
+    private async Task<int[]?> VisibleOwnersAsync()
+    {
+        if (Owner is null)
+            return null;
+        var owners = await Http.RequestServices.GetRequiredService<IOwnerScope>().VisibleOwnersAsync(Http.User, Http.RequestAborted);
+        return owners?.ToArray();
+    }
+
+    private IQueryable<TEntity> Scope(IQueryable<TEntity> rows, int[]? owners)
+    {
+        if (owners is null)
+            return rows;
+        var owner = Owner!;
+        var contains = Expression.Call(typeof(Enumerable), nameof(Enumerable.Contains), [typeof(int)], Expression.Constant(owners), owner.Body);
+        return rows.Where(Expression.Lambda<Func<TEntity, bool>>(contains, owner.Parameters));
+    }
+
+    /// <summary> Null when the caller may touch the row with this key; 404 when there is no such row and 403 when it is another owner's. </summary>
+    private async Task<IResult?> RefuseOtherOwnersAsync(<#= contextType #> context, TKey id)
+    {
+        var owners = await VisibleOwnersAsync();
+        if (owners is null)
+            return null;
+        var key = Key;
+        var sameKey = Expression.Lambda<Func<TEntity, bool>>(Expression.Equal(key.Body, Expression.Constant(id, typeof(TKey))), key.Parameters);
+        var found = await context.Set<TEntity>().AsNoTracking().Where(sameKey).Select(Owner!).Take(1).ToListAsync();
+        if (found.Count == 0)
+            return Results.NotFound();
+        return owners.Contains(found[0]) ? null : NotYours();
+    }
+
+    private static IResult NotYours() => Results.Problem(statusCode: 403, title: "Not your row", detail: "That row belongs to someone you may not act for.");
+<#
+    }
+#>
 
     public override void Register(WebApplication app)
     {
         BreakIntoStrings(out string singular, out string plural, out string apiSubDir);
         _route = _apiSubDir;
-
+<#= auth("        if (Owner is not null)\n            _http = app.Services.GetRequiredService<IHttpContextAccessor>();\n") #>
         // Get all
         app.MapGet(apiSubDir, ([FromServices] <#= contextType #> context, [FromQuery] int? pageNumber, [FromQuery] int? pageSize) => GetAllAsync(context, pageNumber, pageSize))
         .WithName($"Get{plural}")
@@ -115,13 +319,44 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
         .ProducesProblem(500);
 
         // Create new
+<#
+    if (children)
+    {
+#>
+        // a table with child lists reads its body as JSON, so the lists can be saved with the row (ChildRowsSupport)
+        (EditableChildren.Count > 0
+            ? app.MapPost(apiSubDir, ([FromServices] <#= contextType #> context, HttpRequest request) => CreateWithChildrenAsync(context, request))
+            : app.MapPost(apiSubDir, ([FromServices] <#= contextType #> context, [FromBody] TEntity newRow) => CreateAsync(context, newRow)))
+<#
+    }
+    else
+    {
+#>
         app.MapPost(apiSubDir, ([FromServices] <#= contextType #> context, [FromBody] TEntity newRow) => CreateAsync(context, newRow))
+<#
+    }
+#>
         .WithName($"Create{singular}")
         .WithOpenApi()
 <#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(500);
 
         // Update existing
+<#
+    if (children)
+    {
+#>
+        (EditableChildren.Count > 0
+            ? app.MapPut(apiSubDir + IdSegment, ([FromServices] <#= contextType #> context, TKey id, HttpRequest request) => UpdateWithChildrenAsync(context, id, request))
+            : app.MapPut(apiSubDir + IdSegment, ([FromServices] <#= contextType #> context, TKey id, [FromBody] TEntity updatedRow) => UpdateAsync(context, id, updatedRow)))
+<#
+    }
+    else
+    {
+#>
         app.MapPut(apiSubDir + IdSegment, ([FromServices] <#= contextType #> context, TKey id, [FromBody] TEntity updatedRow) => UpdateAsync(context, id, updatedRow))
+<#
+    }
+#>
         .WithName($"Update{singular}")
         .WithOpenApi()
 <#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(400)
@@ -172,7 +407,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
     /// </summary>
     private async Task<IResult> GetAllAsync(<#= contextType #> context, int? pageNumber, int? pageSize)
     {
-        if (pageNumber is not null || pageSize is not null)
+<#= auth("        var owners = await VisibleOwnersAsync();\n") #>        if (pageNumber is not null || pageSize is not null)
         {
             // 0 or less is an error inside the database (FETCH NEXT 0 ROWS) and a huge size reads the whole table: keep it between 1 and MaxPageSize
             int size = Math.Clamp(pageSize ?? 100, 1, MaxPageSize);
@@ -182,13 +417,26 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
             if ((long)(number - 1) * size > int.MaxValue)
                 return Results.Problem(statusCode: 400, title: "Invalid page", detail: "pageNumber is too large for that pageSize.");
 
-            IQueryable<TEntity> all = context.Set<TEntity>().AsNoTracking();
+            IQueryable<TEntity> all = <#= Project.ApiAuth ? "Scope(context.Set<TEntity>().AsNoTracking(), owners)" : "context.Set<TEntity>().AsNoTracking()" #>;
             int totalCount = await all.CountAsync();
             var ordered = NewestFirst is { } newest ? all.OrderByDescending(newest).ThenBy(Key) : all.OrderBy(Key);
             var page = await ordered.Skip((number - 1) * size).Take(size).ToListAsync();
             return Results.Ok(new CrudPage<TEntity>(page, number, size, totalCount, totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)size)));
         }
 
+<#
+    if (Project.ApiAuth)
+    {
+#>
+        if (owners is not null)
+        {
+            IQueryable<TEntity> mine = Scope(context.Set<TEntity>().AsNoTracking(), owners);
+            return Results.Ok(await (NewestFirst is { } newestFirst ? mine.OrderByDescending(newestFirst).ThenBy(Key) : mine.OrderBy(Key)).ToListAsync());
+        }
+
+<#
+    }
+#>
         var repo = NewRepo(context);
         var rows = NewestFirst is { } order ? await repo.GetAllOrderByDescending(order) : await repo.GetAll();
         return Results.Ok(rows);
@@ -196,12 +444,51 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
 
     private async Task<IResult> GetByIdAsync(<#= contextType #> context, TKey id)
     {
-        var row = await NewRepo(context).GetByIdAsync(id);
+<#= auth("        if (await RefuseOtherOwnersAsync(context, id) is { } refused)\n            return refused;\n\n") #>        var row = await NewRepo(context).GetByIdAsync(id);
         return row != null ? Results.Ok(row) : Results.NotFound();
     }
 
-    private async Task<IResult> CreateAsync(<#= contextType #> context, TEntity newRow)
+<#
+    if (children)
     {
+#>
+    /// <summary> The child lists the project edits with the row (<c>ChildRows</c>); a create or update whose body holds a list saves it in the same transaction. </summary>
+    protected virtual IReadOnlyList<ChildRows<TKey>> EditableChildren => [];
+
+    private async Task<IResult> CreateWithChildrenAsync(<#= contextType #> context, HttpRequest request)
+    {
+        var (row, body, problem) = await ChildRowsSupport.ReadAsync<TEntity>(request);
+        return problem ?? await CreateAsync(context, row!, body);
+    }
+
+    private async Task<IResult> UpdateWithChildrenAsync(<#= contextType #> context, TKey id, HttpRequest request)
+    {
+        var (row, body, problem) = await ChildRowsSupport.ReadAsync<TEntity>(request);
+        return problem ?? await UpdateAsync(context, id, row!, body);
+    }
+
+<#
+    }
+#>
+    private async Task<IResult> CreateAsync(<#= contextType #> context, TEntity newRow<#= children ? ", ChildBody? children = null" : "" #>)
+    {
+<#
+    if (Project.ApiAuth)
+    {
+#>
+        var owners = await VisibleOwnersAsync();
+        if (owners is not null)
+        {
+            // a caller who may act for one owner and left the owner blank creates the row for that owner
+            if (OwnerOf(newRow) == 0 && owners.Length == 1)
+                SetOwner(newRow, owners[0]);
+            else if (!owners.Contains(OwnerOf(newRow)))
+                return NotYours();
+        }
+
+<#
+    }
+#>
         var repo = NewRepo(context);
         if (KeyOf(newRow) is string chosen)
         {
@@ -211,25 +498,79 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
             if (await repo.ExistsAsync(KeyOf(newRow)))
                 return Results.Problem(statusCode: 409, title: "Duplicate key", detail: $"A row with the key '{chosen}' already exists.");
         }
+<#
+    if (children)
+    {
+#>
+        // the row and its child lists are saved together or not at all
+        await using var transaction = children is null ? null : await context.Database.BeginTransactionAsync();
         await repo.AddAsync(newRow);
+        if (children is not null)
+        {
+            if (await ChildRowsSupport.SaveAsync(context, EditableChildren, KeyOf(newRow), children) is { } refusedLists)
+                return refusedLists;
+            await transaction!.CommitAsync();
+        }
+<#
+    }
+    else
+    {
+#>
+        await repo.AddAsync(newRow);
+<#
+    }
+#>
         return Results.Created($"/api{_route}/{KeyOf(newRow)}", newRow);
     }
 
-    private async Task<IResult> UpdateAsync(<#= contextType #> context, TKey id, TEntity updatedRow)
+    private async Task<IResult> UpdateAsync(<#= contextType #> context, TKey id, TEntity updatedRow<#= children ? ", ChildBody? children = null" : "" #>)
     {
         if (!SameKey(KeyOf(updatedRow), id))
             return Results.BadRequest(); // 400 error if the id in the URL and the id in the body disagree
 
+<#
+    if (Project.ApiAuth)
+    {
+#>
+        if (await RefuseOtherOwnersAsync(context, id) is { } refused)
+            return refused;
+        // the row stays with an owner the caller may act for: it cannot be handed to anyone else
+        if (await VisibleOwnersAsync() is { } owners && !owners.Contains(OwnerOf(updatedRow)))
+            return NotYours();
+
+<#
+    }
+#>
         var repo = NewRepo(context);
         if (!await repo.ExistsAsync(id))
             return Results.NotFound(); // 404 error if there is no row with that id
+<#
+    if (children)
+    {
+#>
+        await using var transaction = children is null ? null : await context.Database.BeginTransactionAsync();
         var postUpdate = await repo.UpdateAsync(id, updatedRow);
+        if (children is not null)
+        {
+            if (await ChildRowsSupport.SaveAsync(context, EditableChildren, id, children) is { } refusedLists)
+                return refusedLists;
+            await transaction!.CommitAsync();
+        }
+<#
+    }
+    else
+    {
+#>
+        var postUpdate = await repo.UpdateAsync(id, updatedRow);
+<#
+    }
+#>
         return Results.Ok(postUpdate);
     }
 
     private async Task<IResult> DeleteAsync(<#= contextType #> context, TKey id)
     {
-        var successNum = await NewRepo(context).DeleteAsync(typeof(TEntity).Name, id);
+<#= auth("        if (await RefuseOtherOwnersAsync(context, id) is { } refused)\n            return refused;\n\n") #>        var successNum = await NewRepo(context).DeleteAsync(typeof(TEntity).Name, id);
         if (successNum == 0)
             return Results.Ok();
         else if (successNum == -1)
@@ -238,13 +579,33 @@ public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>
             return Results.BadRequest(); // cannot delete because "in use"
     }
 
+<#
+    if (Project.ApiAuth)
+    {
+#>
+    private async Task<IResult> LookupAsync(<#= contextType #> context) =>
+        Results.Ok(await LookupQuery(Scope(context.Set<TEntity>().AsNoTracking(), await VisibleOwnersAsync())).ToListAsync());
+
+    private async Task<IResult> FindByNameRowsAsync(<#= contextType #> context, string name)
+    {
+        var rows = await FindByNameAsync(NewRepo(context), name);
+        return Results.Ok(await VisibleOwnersAsync() is { } owners ? rows.Where(r => owners.Contains(OwnerOf(r))).ToList() : rows);
+    }
+<#
+    }
+    else
+    {
+#>
     private async Task<IResult> LookupAsync(<#= contextType #> context) => Results.Ok(await LookupQuery(context.Set<TEntity>().AsNoTracking()).ToListAsync());
 
     private async Task<IResult> FindByNameRowsAsync(<#= contextType #> context, string name) => Results.Ok(await FindByNameAsync(NewRepo(context), name));
+<#
+    }
+#>
 
     private async Task<IResult> CloneRowAsync(<#= contextType #> context, TKey id)
     {
-        var repo = NewRepo(context);
+<#= auth("        if (await RefuseOtherOwnersAsync(context, id) is { } refused)\n            return refused;\n\n") #>        var repo = NewRepo(context);
         if (!await repo.ExistsAsync(id))
             return Results.NotFound(); // 404 error if there is no row to copy
         var newId = await CloneAsync(repo, id);
@@ -310,14 +671,44 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
         .ProducesProblem(404)
         .ProducesProblem(500);
 
+<#
+    if (children)
+    {
+#>
+        (EditableChildren.Count > 0
+            ? app.MapPost(apiSubDir, ([FromServices] <#= contextType #> context, HttpRequest request) => CreateWithChildrenAsync(context, request))
+            : app.MapPost(apiSubDir, ([FromServices] <#= contextType #> context, [FromBody] TEntity newRow) => CreateAsync(context, newRow)))
+<#
+    }
+    else
+    {
+#>
         app.MapPost(apiSubDir, ([FromServices] <#= contextType #> context, [FromBody] TEntity newRow) => CreateAsync(context, newRow))
+<#
+    }
+#>
         .WithName($"Create{singular}")
         .WithOpenApi()
 <#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(400)
         .ProducesProblem(409)
         .ProducesProblem(500);
 
+<#
+    if (children)
+    {
+#>
+        (EditableChildren.Count > 0
+            ? app.MapPut(apiSubDir + "/{id:int}", ([FromServices] <#= contextType #> context, int id, HttpRequest request) => UpdateWithChildrenAsync(context, id, request))
+            : app.MapPut(apiSubDir + "/{id:int}", ([FromServices] <#= contextType #> context, int id, [FromBody] TEntity updatedRow) => UpdateAsync(context, id, updatedRow)))
+<#
+    }
+    else
+    {
+#>
         app.MapPut(apiSubDir + "/{id:int}", ([FromServices] <#= contextType #> context, int id, [FromBody] TEntity updatedRow) => UpdateAsync(context, id, updatedRow))
+<#
+    }
+#>
         .WithName($"Update{singular}")
         .WithOpenApi()
 <#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(400)
@@ -361,17 +752,60 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
 
     private async Task<IResult> FindByNameAsync(<#= contextType #> context, string name) => Results.Ok(await NewRepo(context).GetByName(name));
 
-    private async Task<IResult> CreateAsync(<#= contextType #> context, TEntity newRow)
+<#
+    if (children)
+    {
+#>
+    /// <summary> The child lists the project edits with the row (<c>ChildRows</c>); a create or update whose body holds a list saves it in the same transaction. </summary>
+    protected virtual IReadOnlyList<ChildRows<int>> EditableChildren => [];
+
+    private async Task<IResult> CreateWithChildrenAsync(<#= contextType #> context, HttpRequest request)
+    {
+        var (row, body, problem) = await ChildRowsSupport.ReadAsync<TEntity>(request);
+        return problem ?? await CreateAsync(context, row!, body);
+    }
+
+    private async Task<IResult> UpdateWithChildrenAsync(<#= contextType #> context, int id, HttpRequest request)
+    {
+        var (row, body, problem) = await ChildRowsSupport.ReadAsync<TEntity>(request);
+        return problem ?? await UpdateAsync(context, id, row!, body);
+    }
+
+<#
+    }
+#>
+    private async Task<IResult> CreateAsync(<#= contextType #> context, TEntity newRow<#= children ? ", ChildBody? children = null" : "" #>)
     {
         if (string.IsNullOrWhiteSpace(newRow.Name))
             return Results.Problem(statusCode: 400, title: "Name is required", detail: "The name cannot be empty.");
 
+<#
+    if (children)
+    {
+#>
+        await using var transaction = children is null ? null : await context.Database.BeginTransactionAsync();
         if (!await NewRepo(context).AddAsync(newRow))
             return DuplicateName(newRow.Name);
+        if (children is not null)
+        {
+            if (await ChildRowsSupport.SaveAsync(context, EditableChildren, KeyOf(newRow), children) is { } refusedLists)
+                return refusedLists;
+            await transaction!.CommitAsync();
+        }
+<#
+    }
+    else
+    {
+#>
+        if (!await NewRepo(context).AddAsync(newRow))
+            return DuplicateName(newRow.Name);
+<#
+    }
+#>
         return Results.Created($"/api{_route}/{KeyOf(newRow)}", newRow);
     }
 
-    private async Task<IResult> UpdateAsync(<#= contextType #> context, int id, TEntity updatedRow)
+    private async Task<IResult> UpdateAsync(<#= contextType #> context, int id, TEntity updatedRow<#= children ? ", ChildBody? children = null" : "" #>)
     {
         if (KeyOf(updatedRow) != id)
             return Results.Problem(statusCode: 400, title: "Invalid id", detail: "The id in the route and the id in the body disagree.");
@@ -381,8 +815,31 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
         var repo = NewRepo(context);
         if (!await repo.ExistsAsync(id))
             return Results.NotFound();
+<#
+    if (children)
+    {
+#>
+        await using var transaction = children is null ? null : await context.Database.BeginTransactionAsync();
+        var saved = await repo.UpdateAsync(id, updatedRow);
+        if (saved is null)
+            return DuplicateName(updatedRow.Name); // null: another active row has that name
+        if (children is not null)
+        {
+            if (await ChildRowsSupport.SaveAsync(context, EditableChildren, id, children) is { } refusedLists)
+                return refusedLists;
+            await transaction!.CommitAsync();
+        }
+        return Results.Ok(saved);
+<#
+    }
+    else
+    {
+#>
         var saved = await repo.UpdateAsync(id, updatedRow);
         return saved is null ? DuplicateName(updatedRow.Name) : Results.Ok(saved); // null: another active row has that name
+<#
+    }
+#>
     }
 
     private async Task<IResult> DeleteAsync(<#= contextType #> context, int id)

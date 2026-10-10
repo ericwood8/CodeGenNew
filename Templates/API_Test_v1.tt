@@ -182,6 +182,20 @@ public class <#= singular #>ApiTests
         Assert.AreEqual(HttpStatusCode.NotFound, response.StatusCode);
     }
 <#
+        if (Project.ApiAuth)
+        {
+#>
+
+    [TestMethod]
+    public async Task Without_a_token_the_list_answers_401()
+    {
+        ApiFixture.RequireDatabase();
+        using var anonymous = ApiFixture.Anonymous();
+        using var response = await anonymous.GetAsync(Route);
+        Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+<#
+        }
         if (Model.HasSearchApi(Project))
         {
 #>

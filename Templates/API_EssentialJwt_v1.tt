@@ -1,0 +1,266 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // API_EssentialJwt_v1.tt
+    // Generates: Apis/Auth.cs and Apis/OwnerScope.cs   (no table, no database: an essentials group, not ticked by default; ApiAuth=true in the project turns it on)
+    // The API half of the sign-in the Angular Auth group calls: POST /api/auth/login answers { token, expiresUtc, user: { name, role, ownerId } } (400 for a blank body, 401 for a wrong
+    // password, 429 after too many wrong tries), the JWT bearer wiring (AddGeneratedAuth, in Program.cs through the Program group) and a fallback policy that makes every other endpoint
+    // need a token. IOwnerScope says which owners' rows the caller may see; the default allows the administrator role everything and anyone else only the owner id in their token.
+    // Not generated on purpose: user storage. IUserDirectory is the one thing to implement (a user table, a password hash, a role, an owner id); the default is a single administrator
+    // from Bootstrap:AdminUserName and Bootstrap:AdminPassword, which is how the first sign-in is made. Passwords are hashed with PBKDF2 (PasswordService.Hash makes a value for a user table).
+    // Settings: ApiAuth, AuthRoleClaim, AuthOwnerClaim, AuthAdminRole and the namespaces. The signing key is Jwt:Key (at least 32 characters; an environment variable, never a file).
+    // Needs the package Microsoft.AspNetCore.Authentication.JwtBearer (the Program group adds it). Full notes: Docs/TemplateNotes/API_EssentialJwt_v1.md
+    // ==========================================================================================
+    string projectName = Project.ProjectName ?? "MyApp";
+    string apiNamespace = Project.ApiNamespace ?? projectName + ".Api.Apis";
+    string roleClaim = Project.AuthRoleClaim;
+    string ownerClaim = Project.AuthOwnerClaim;
+    string adminRole = Project.AuthAdminRole;
+    string minimumKeyLength = "32";
+#>
+@@@FILE Apis/Auth.cs@@@
+namespace <#= apiNamespace #>;
+
+using System.Collections.Concurrent;
+using System.Security.Claims;
+using System.Security.Cryptography;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.IdentityModel.JsonWebTokens;
+using Microsoft.IdentityModel.Tokens;
+
+/// <summary> The body of POST /api/auth/login. </summary>
+public record LoginRequest(string? UserName, string? Password);
+
+/// <summary> Who signed in, as the front end shows it: the name, the role and the owner id (the person's employee id) when the user has one. </summary>
+public record AuthUser(string Name, string? Role, int? OwnerId);
+
+/// <summary> What POST /api/auth/login answers: the bearer token, when it stops being good and who it is for. </summary>
+public record LoginResponse(string Token, DateTime ExpiresUtc, AuthUser User);
+
+/// <summary> A person who can sign in. <see cref="PasswordHash"/> is what <see cref="PasswordService.Hash"/> made; <see cref="Role"/> and <see cref="OwnerId"/> go into the token. </summary>
+public record DirectoryUser(string UserName, string PasswordHash, string? Role, int? OwnerId);
+
+/// <summary> Where the people who can sign in are kept. Register your own (a user table) before AddGeneratedAuth; the default knows only the bootstrap administrator. </summary>
+public interface IUserDirectory
+{
+    Task<DirectoryUser?> FindAsync(string userName, CancellationToken cancellationToken = default);
+}
+
+/// <summary> The Jwt section of the configuration. The key is the only required value and belongs in an environment variable (<c>Jwt__Key</c>). </summary>
+public class JwtOptions
+{
+    public const int MinimumKeyLength = <#= minimumKeyLength #>;
+    public const int DefaultExpiresMinutes = 480;
+
+    public string Key { get; set; } = "";
+    public string Issuer { get; set; } = "<#= projectName #>.Api";
+    public string Audience { get; set; } = "<#= projectName #>";
+    public int ExpiresMinutes { get; set; } = DefaultExpiresMinutes;
+
+    public void Validate()
+    {
+        if (Key.Length < MinimumKeyLength)
+            throw new InvalidOperationException($"Jwt:Key must be at least {MinimumKeyLength} characters. Set the environment variable Jwt__Key; do not write the key into appsettings.json.");
+    }
+}
+
+/// <summary> The claim names and the role the sign-in uses (the project's AuthRoleClaim, AuthOwnerClaim and AuthAdminRole settings). </summary>
+public static class AuthNames
+{
+    public const string RoleClaim = "<#= roleClaim #>";
+    public const string OwnerClaim = "<#= ownerClaim #>";
+    public const string NameClaim = "name";
+    public const string AdminRole = "<#= adminRole #>";
+    public const string AdministratorPolicy = "Administrator";
+}
+
+/// <summary> Hashes and checks passwords with PBKDF2 and SHA-256 (<c>pbkdf2-sha256$iterations$salt$hash</c>, the last two in base64). </summary>
+public static class PasswordService
+{
+    private const string Scheme = "pbkdf2-sha256";
+    private const int Iterations = 600_000;
+    private const int SaltBytes = 16;
+    private const int HashBytes = 32;
+
+    public static string Hash(string password)
+    {
+        byte[] salt = RandomNumberGenerator.GetBytes(SaltBytes);
+        byte[] hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, Iterations, HashAlgorithmName.SHA256, HashBytes);
+        return $"{Scheme}${Iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
+    }
+
+    public static bool Verify(string password, string stored)
+    {
+        string[] parts = stored.Split('$');
+        if (parts.Length != 4 || parts[0] != Scheme || !int.TryParse(parts[1], out int iterations) || iterations < 1)
+            return false;
+        try
+        {
+            byte[] salt = Convert.FromBase64String(parts[2]);
+            byte[] expected = Convert.FromBase64String(parts[3]);
+            byte[] actual = Rfc2898DeriveBytes.Pbkdf2(password, salt, iterations, HashAlgorithmName.SHA256, expected.Length);
+            return CryptographicOperations.FixedTimeEquals(actual, expected);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+}
+
+/// <summary> The one user the default directory knows: Bootstrap:AdminUserName with Bootstrap:AdminPassword (environment variables <c>Bootstrap__AdminUserName</c> and <c>Bootstrap__AdminPassword</c>), in the administrator role. With neither set nobody can sign in. </summary>
+public class BootstrapDirectory : IUserDirectory
+{
+    private readonly DirectoryUser? _admin;
+
+    public BootstrapDirectory(IConfiguration configuration)
+    {
+        string? name = configuration["Bootstrap:AdminUserName"];
+        string? password = configuration["Bootstrap:AdminPassword"];
+        if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrEmpty(password))
+            _admin = new DirectoryUser(name.Trim(), PasswordService.Hash(password), AuthNames.AdminRole, null);
+    }
+
+    public Task<DirectoryUser?> FindAsync(string userName, CancellationToken cancellationToken = default) =>
+        Task.FromResult(_admin is not null && string.Equals(_admin.UserName, userName.Trim(), StringComparison.OrdinalIgnoreCase) ? _admin : null);
+}
+
+/// <summary> Counts wrong passwords per user name and address so a guess cannot be repeated without limit: after <see cref="MaxFailures"/> in a minute the sign-in answers 429 until the minute is over. </summary>
+public class LoginThrottle
+{
+    public const int MaxFailures = 5;
+    private static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
+    private readonly ConcurrentDictionary<string, (int Count, DateTime Since)> _failures = new();
+
+    public bool IsBlocked(string key) =>
+        _failures.TryGetValue(key, out var entry) && DateTime.UtcNow - entry.Since < Window && entry.Count >= MaxFailures;
+
+    public void Failed(string key) =>
+        _failures.AddOrUpdate(key, _ => (1, DateTime.UtcNow), (_, entry) => DateTime.UtcNow - entry.Since >= Window ? (1, DateTime.UtcNow) : (entry.Count + 1, entry.Since));
+
+    public void Succeeded(string key) => _failures.TryRemove(key, out _);
+}
+
+/// <summary> The bearer wiring: the token check, a fallback policy that makes every endpoint need a signed-in caller (the sign-in itself and any endpoint marked AllowAnonymous excepted) and the Administrator policy. </summary>
+public static class AuthSetup
+{
+    /// <summary> Call it in Program.cs. A project with its own user table registers its <see cref="IUserDirectory"/> first: the default is added only when none is there. </summary>
+    public static WebApplicationBuilder AddGeneratedAuth(this WebApplicationBuilder builder)
+    {
+        var jwt = builder.Configuration.GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions();
+        jwt.Validate();
+        var services = builder.Services;
+        services.AddSingleton(jwt);
+
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
+        {
+            options.MapInboundClaims = false;
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidIssuer = jwt.Issuer,
+                ValidAudience = jwt.Audience,
+                IssuerSigningKey = SigningKey(jwt),
+                NameClaimType = AuthNames.NameClaim,
+                RoleClaimType = AuthNames.RoleClaim,
+                ClockSkew = TimeSpan.FromMinutes(1)
+            };
+        });
+        services.AddAuthorization(options =>
+        {
+            options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();
+            options.AddPolicy(AuthNames.AdministratorPolicy, policy => policy.RequireRole(AuthNames.AdminRole));
+        });
+
+        services.AddHttpContextAccessor();
+        services.TryAddScoped<IUserDirectory, BootstrapDirectory>();
+        services.TryAddSingleton<LoginThrottle>();
+        services.TryAddScoped<IOwnerScope, ClaimsOwnerScope>();
+        return builder;
+    }
+
+    internal static SymmetricSecurityKey SigningKey(JwtOptions jwt) => new(System.Text.Encoding.UTF8.GetBytes(jwt.Key));
+}
+
+/// <summary> POST /api/auth/login. </summary>
+public static class AuthEndpoints
+{
+    // checked when the user is unknown, so a wrong user name takes as long to answer as a wrong password
+    private static readonly string UnknownUserHash = PasswordService.Hash(Guid.NewGuid().ToString());
+
+    public static void MapAuthEndpoints(this WebApplication app)
+    {
+        app.MapPost("/api/auth/login", LoginAsync)
+        .AllowAnonymous()
+        .WithName("Login")
+        .Produces<LoginResponse>()
+        .ProducesProblem(400)
+        .ProducesProblem(401)
+        .ProducesProblem(429);
+    }
+
+    private static async Task<IResult> LoginAsync([FromBody] LoginRequest request, HttpContext http, [FromServices] IUserDirectory directory,
+        [FromServices] LoginThrottle throttle, [FromServices] JwtOptions jwt)
+    {
+        if (string.IsNullOrWhiteSpace(request.UserName) || string.IsNullOrEmpty(request.Password))
+            return Results.Problem(statusCode: 400, title: "Sign-in needs a user name and a password");
+
+        string key = request.UserName.Trim().ToLowerInvariant() + "|" + http.Connection.RemoteIpAddress;
+        if (throttle.IsBlocked(key))
+            return Results.Problem(statusCode: 429, title: "Too many attempts", detail: "Wait a minute and try again.");
+
+        var user = await directory.FindAsync(request.UserName, http.RequestAborted);
+        bool passwordMatches = PasswordService.Verify(request.Password, user?.PasswordHash ?? UnknownUserHash);
+        if (user is null || !passwordMatches)
+        {
+            throttle.Failed(key);
+            return Results.Problem(statusCode: 401, title: "Wrong user name or password");
+        }
+
+        throttle.Succeeded(key);
+        var claims = new List<Claim> { new("sub", user.UserName), new(AuthNames.NameClaim, user.UserName) };
+        if (!string.IsNullOrEmpty(user.Role)) claims.Add(new Claim(AuthNames.RoleClaim, user.Role));
+        if (user.OwnerId is int owner) claims.Add(new Claim(AuthNames.OwnerClaim, owner.ToString()));
+
+        DateTime expires = DateTime.UtcNow.AddMinutes(jwt.ExpiresMinutes);
+        string token = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
+        {
+            Subject = new ClaimsIdentity(claims),
+            Issuer = jwt.Issuer,
+            Audience = jwt.Audience,
+            Expires = expires,
+            SigningCredentials = new SigningCredentials(AuthSetup.SigningKey(jwt), SecurityAlgorithms.HmacSha256)
+        });
+        return Results.Ok(new LoginResponse(token, expires, new AuthUser(user.UserName, user.Role, user.OwnerId)));
+    }
+}
+@@@FILE Apis/OwnerScope.cs@@@
+namespace <#= apiNamespace #>;
+
+using System.Security.Claims;
+
+/// <summary>
+/// Which owners' rows the caller may read and change in a table the project lists in OwnedTables. Null means every owner (no restriction); otherwise the owner ids allowed, and a caller
+/// with none sees nothing. Replace it for a rule the token cannot carry (a manager sees the people who report to them): register your own before AddGeneratedAuth.
+/// </summary>
+public interface IOwnerScope
+{
+    Task<IReadOnlyCollection<int>?> VisibleOwnersAsync(ClaimsPrincipal user, CancellationToken cancellationToken = default);
+}
+
+/// <summary> The default scope: the administrator role sees every owner, anyone else only the owner id in their token (the <see cref="AuthNames.OwnerClaim"/> claim). </summary>
+public class ClaimsOwnerScope : IOwnerScope
+{
+    public Task<IReadOnlyCollection<int>?> VisibleOwnersAsync(ClaimsPrincipal user, CancellationToken cancellationToken = default)
+    {
+        if (user.IsInRole(AuthNames.AdminRole))
+            return Task.FromResult<IReadOnlyCollection<int>?>(null);
+
+        IReadOnlyCollection<int> own = int.TryParse(user.FindFirstValue(AuthNames.OwnerClaim), out int owner) ? [owner] : [];
+        return Task.FromResult<IReadOnlyCollection<int>?>(own);
+    }
+}

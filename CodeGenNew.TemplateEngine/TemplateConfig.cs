@@ -310,12 +310,16 @@ public enum PlanTableSet
     Search,
     /// <summary> The <see cref="Search"/> tables and the uniqueidentifier and text key tables that have a search (<see cref="CodeGenNew.Core.DatabaseModel.AspNetSearchApiTables"/>). </summary>
     AspNetSearch,
+    /// <summary> The <see cref="Entity"/> tables the project gives an API to (not the ones <c>NoApiTables</c> names): what a front end's model, service and api module are written for, since an app never receives a row of the others. </summary>
+    Client,
     /// <summary> The tables with a screen (the project's Screens setting, else every table with a search). </summary>
     Screen,
     /// <summary> The screens whose dialog has no child grids. </summary>
     ScreenForm,
     /// <summary> The screens whose dialog also shows child grids. </summary>
     ScreenDetailMaster,
+    /// <summary> The tables the project's <c>SeedTables</c> names (<see cref="CodeGenNew.Core.DatabaseModel.SeedTables"/>). </summary>
+    Seed,
     /// <summary> The many-to-many junction tables. </summary>
     Junction,
     /// <summary> The enum (lookup) tables the project turns into C# enums. </summary>

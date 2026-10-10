@@ -1,5 +1,7 @@
 # API_Csv_v1
 
+With `ApiAuth=true` every route needs a token, and the export and import of a table in `OwnedTables` need the `Administrator` policy (they read or add the rows of every owner).
+
 `Apis/Csv.cs`: CSV export and import for every table that has an API of its own (any key: a text key is exported and read like any other column; a duplicate key makes the whole import refuse), with no package. Whole-database. Opt in with `ApiCsv=true` (the plan writes the file and `Program.cs` calls `app.MapCsvEndpoints()`) or `PlanAlso=API_Csv` (then add the call yourself).
 
 - **Export:** `GET /api/<table>/export.csv` returns every row as `text/csv` (`<table>.csv`): a header line of the property names, RFC 4180 quoting, UTF-8, dates as `2026-01-15T00:00:00`, yes / no as `true` / `false`, numbers without a culture. Binary columns are left out.

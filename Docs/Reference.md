@@ -83,7 +83,7 @@ One per template, same base name, plain `key=value` lines, `#` comments. A missi
 | Key | Meaning |
 |---|---|
 | `Stacks` | the stacks that include the template (`Api`, `WinUI3`, `React`, `Angular`); empty means run by hand only |
-| `PlanTables` | which tables a plan runs it for (entity tables, `Context`: the entity tables and the composite-key junction tables, tables with an API, `AspNetApi`: those, the name/active tables and the guid and text key tables, `AspNetSearch`: the tables with a search endpoint, guid and text key tables included, tables with a screen (a guid or text key table is listed for the stacks in `KeyType.StackHandlesEveryKey`: Api, Angular, React, Blazor and WinUI3 so far) ...); ignored for database-level and no-database templates |
+| `PlanTables` | which tables a plan runs it for (entity tables, `Client`: the entity tables the project gives an API to (a front end's model, service and api module), `Context`: the entity tables and the composite-key junction tables, tables with an API, `AspNetApi`: those, the name/active tables and the guid and text key tables, `AspNetSearch`: the tables with a search endpoint, guid and text key tables included, tables with a screen (a guid or text key table is listed for the stacks in `KeyType.StackHandlesEveryKey`: Api, Angular, React, Blazor and WinUI3 so far) ...); ignored for database-level and no-database templates |
 | `InPlan` | default true; `false` joins a plan only through the project's `PlanAlso` or a flag that implies it |
 | `EssentialsGroup`, `Description`, `EssentialsDefault` | the template is one file group of a stack's essentials: its menu name, one line on what it writes, and whether it is ticked the first time |
 | `Needs` | files (relative to the stack folder, `{Context}` for the context name) that the group assumes another run wrote; a run warns when one is missing |
@@ -164,6 +164,8 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `EnumNameSuffixes` | comma-separated name endings that mark an enum table; blank = Type, Types, Code, Codes, Status, Kind |
 | `HiddenParents` | comma-separated tables whose foreign key columns the TypeScript forms hide |
 | `ModelFileOverrides` | Table=file pairs for model files not named after the table, e.g. DepartmentTeam=department,ProjectTask=project |
+| `EditableChildren` | comma-separated child tables whose rows are added, changed and removed inside the parent's form and saved with it in one request: the child (ProjectTask), or Parent.Child (Department.DepartmentTeam) for a child that also points at another table. The child needs an identity whole-number key and one NOT NULL link to the parent; Angular only so far; blank: every child grid is read-only. Refresh the `CrudApi` group with `--replace` |
+| `SeedTables` | comma-separated tables whose current rows are written as seed data, a parent before its children (Region,Currency): `CS_Seed` writes a class per table (`Seeding/<Table>Seed.cs`) that adds its rows when the table is empty, and `CS_SeedData` the class that runs them all and `app.SeedAsync()`. The rows are read when you generate; an identity key is numbered again from 1. Blank: nothing is seeded |
 | `ChildGridTitles` | Parent.Child=Title pairs, comma-separated, for a child grid whose table name does not say what the rows mean (Customer.CustomerItem=Item Purchase History) |
 | `BaseEntity` | base class of generated entities; blank = BaseEntity |
 | `BaseNameActiveEntity` | base class for Name + IsActive tables; blank = BaseNameActiveEntity |
@@ -187,6 +189,12 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `ApiProduction` | true: the API project also gets a production profile (ProductionProfile.cs: Problem Details, health checks, rate limiting, response compression, security headers) and a Dockerfile; no package is added |
 | `ApiTelemetry` | true: the API project also gets OpenTelemetry traces, metrics and logs (Telemetry.cs) and references the OpenTelemetry packages; they are exported over OTLP only when `OTEL_EXPORTER_OTLP_ENDPOINT` names a collector |
 | `ApiTests` | true: the plan also writes an integration test class per table (API_Test) and the test project (Tests essentials group) beside the API; folder `OutputApiTests`, default `<ProjectName>.Api.Tests` |
+| `ApiAuth` | true: the API signs people in. JWT bearer wiring, `POST /api/auth/login` and a fallback policy that makes every other endpoint need a token (the `Jwt` essentials group and the package `Microsoft.AspNetCore.Authentication.JwtBearer`). The signing key is `Jwt:Key` (an environment variable, never a file); the first administrator is `Bootstrap:AdminUserName` and `Bootstrap:AdminPassword`; register your own `IUserDirectory` for real users. Regenerate the project and refresh the `CrudApi` and `Program` groups with `--replace` |
+| `OwnedTables` | with `ApiAuth`: comma-separated tables whose rows belong to a person (TimeSheet,Expense). A caller reads and writes only the rows the `IOwnerScope` allows (their own, or everyone's for the administrator role); blank: no table is scoped |
+| `OwnerColumn` | with `OwnedTables`: the NOT NULL whole-number column that holds a row's owner; blank: EmployeeId |
+| `AuthRoleClaim` | with `ApiAuth`: the token claim that carries the person's role; blank: role |
+| `AuthOwnerClaim` | with `ApiAuth`: the token claim that carries the owner id; blank: employeeId |
+| `AuthAdminRole` | with `ApiAuth`: the role that sees and changes every row of an owned table; blank: Administrator |
 | `ApiValidation` | true: the plan also writes a FluentValidation validator per table (CS_Validator) and the create and update endpoints run them (400 with the messages) |
 | `ApiCsv` | true: the plan also writes CSV export and import endpoints for every table (API_Csv) and Program.cs maps them: GET /api/&lt;table&gt;/export.csv and POST /api/&lt;table&gt;/import. Regenerate after ticking |
 | `EfConfigurations` | true: the plan also writes an IEntityTypeConfiguration per table (CS_EfConfiguration) and the context applies them from the assembly; composite keys move into them. Regenerate after ticking |
@@ -206,6 +214,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `PagesFolder` | React folder for the pages; blank = pages |
 | `DbSetNames` | Plural = Customers, blank = the table name (Customer) |
 | `AngularVersion` | major version of Angular, e.g. 22; blank = output that every version from 18 accepts |
+| `DockerUpstreamVariable` | the environment variable the Docker group's nginx reads the API's address from; it holds a whole address (`https://host:8443`), the way .NET Aspire names a service (`services__shopapi__https__0`), and nginx passes to it as it is; blank: `API_UPSTREAM`, which holds `host:port` behind an `upstream` block with keepalive |
 | `Auth` | Angular: the app signs in. Writes the Auth group (auth service, token interceptor, route guard, login page; sessionStorage), adds the interceptor to app.config.ts, a guard on every generated route and the user name with Sign out to the shell. Needs POST api/auth/login answering { token, expiresUtc, user: { name } }. Regenerate the project; essentials already written are kept (use --replace for the shell and config). |
 | `Toasts` | Angular: ngx-toastr shows the API's refusals as toasts (the package is added to package.json and provideToastr to app.config.ts); blank = the browser's alert and confirm dialogs, no package |
 | `ListProtocol` | Angular: Columns (what API_Search writes: GET <route>/search with a parameter per column) or Search (an existing API: GET <route>?pageIndex&pageSize&sort=name:desc&search=text, one search box); blank = Columns |

@@ -10,6 +10,10 @@
     // and any other path gets index.html for the router. Needs no package and no secret. Image tags are the ones current when this was written; change them there.
     // ==========================================================================================
     string fromBuild = new string('-', 2) + "from=build";   // a template line may not hold two hyphens in a row (see TemplateDashTests)
+    // the variable nginx reads the API from: API_UPSTREAM holds host:port (an upstream block with keepalive); a variable the project names (DockerUpstreamVariable) holds a whole address such as https://host:8443
+    string upstreamVariable = Project.DockerUpstreamVariable;
+    bool upstreamIsAddress = Project.DockerUpstreamIsAddress;
+    string upstreamDefault = upstreamIsAddress ? "http://api:8080" : "api:8080";
 #>
 @@@FILE Dockerfile@@@
 FROM node:24-alpine AS build
@@ -22,14 +26,21 @@ RUN npm run build
 FROM nginx:alpine
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY <#= fromBuild #> /app/dist/frontend/browser /usr/share/nginx/html
-ENV API_UPSTREAM=api:8080
+ENV <#= upstreamVariable #>=<#= upstreamDefault #>
 EXPOSE 80
 @@@FILE nginx.conf.template@@@
+<#
+    if (!upstreamIsAddress)
+    {
+#>
 upstream api_backend {
-    server ${API_UPSTREAM};
+    server ${<#= upstreamVariable #>};
     keepalive 16;
 }
 
+<#
+    }
+#>
 server {
     listen 80;
     root /usr/share/nginx/html;
@@ -55,7 +66,7 @@ server {
     }
 
     location /api/ {
-        proxy_pass http://api_backend;
+        proxy_pass <#= upstreamIsAddress ? "${" + upstreamVariable + "}" : "http://api_backend" #>;
         # HTTP/1.1 and an empty Connection header let nginx keep its connections to the API open (the upstream block above sets keepalive).
         proxy_http_version 1.1;
         proxy_set_header Connection "";

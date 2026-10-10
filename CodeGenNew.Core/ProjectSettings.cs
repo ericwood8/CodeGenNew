@@ -27,7 +27,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiAuth", "OwnedTables", "OwnerColumn", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
         "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputRust", "OutputPython", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildPython", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestPython"
     ];
@@ -264,6 +264,7 @@ public class ProjectSettings
             if (ProjectDocs) { yield return "MD_DataDictionary"; yield return "MD_Erd"; }
             if (ApiValidation) { yield return "CS_Validator"; yield return "RS_Validate"; yield return "PY_Validate"; }
             if (ApiCsv) yield return "API_Csv";
+            if (SeedTables.Length > 0) { yield return "CS_Seed"; yield return "CS_SeedData"; }
             if (EfConfigurations) yield return "CS_EfConfiguration";
             if (Dashboard)
             {
@@ -272,6 +273,13 @@ public class ProjectSettings
             }
         }
     }
+
+    /// <summary> The child tables whose rows are edited inside their parent's form and saved with it in one request (<c>EditableChildren=DepartmentTeam</c>); see <see cref="EditableChild"/>. Empty: every child grid is read-only. </summary>
+    public string[] EditableChildren => Items("EditableChildren");
+
+    /// <summary> The tables whose current rows are written as seed data (<c>SeedTables=Region,Currency</c>, a parent before its children): <c>CS_Seed</c> writes a class per table that adds its rows when the table is
+    /// empty and <c>CS_SeedData</c> the class that runs them all. Empty: nothing is seeded. </summary>
+    public string[] SeedTables => Items("SeedTables");
 
     /// <summary> The tables MD_Erd draws (<c>ErdTables=Customer,SalesInvoice</c>); empty: every table. </summary>
     public string[] ErdTables => Items("ErdTables");
@@ -293,14 +301,42 @@ public class ProjectSettings
     /// <summary> <c>Toasts=ngx-toastr</c>: the Angular screens show what the API refuses as toasts from the ngx-toastr package; otherwise the browser's own dialogs. </summary>
     public bool Auth => Flag("Auth");
 
+    public const string DefaultDockerUpstreamVariable = "API_UPSTREAM";
+
+    /// <summary> The environment variable the front end container's nginx reads the API from (<c>DockerUpstreamVariable=services__shopapi__https__0</c>, the name .NET Aspire service discovery gives); blank is <c>API_UPSTREAM</c>. </summary>
+    public string DockerUpstreamVariable => Explicit("DockerUpstreamVariable") is { Length: > 0 } name ? name : DefaultDockerUpstreamVariable;
+
+    /// <summary> True when the project names its own variable: it holds a whole address (<c>https://host:8443</c>) that nginx passes to as it is, not the <c>host:port</c> of the default variable's upstream block. </summary>
+    public bool DockerUpstreamIsAddress => !string.Equals(DockerUpstreamVariable, DefaultDockerUpstreamVariable, StringComparison.Ordinal);   // environment variable names are case sensitive on Linux
+
     /// <summary> The optional essentials groups a setting turns on, as if the group were named on the command line: <c>Auth=true</c> adds the Angular sign-in group. </summary>
     public IEnumerable<string> ImpliedEssentialsGroups
     {
         get
         {
             if (Auth) yield return "Auth";
+            if (ApiAuth) yield return "Jwt";
         }
     }
+
+    public const string DefaultOwnerColumn = "EmployeeId";
+    public const string DefaultRoleClaim = "role";
+    public const string DefaultOwnerClaim = "employeeId";
+    public const string DefaultAdminRole = "Administrator";
+
+    /// <summary> <c>ApiAuth=true</c>: the API signs people in (JWT bearer, <c>POST /api/auth/login</c>, the Jwt essentials group) and every endpoint but the sign-in needs a token. </summary>
+    public bool ApiAuth => Flag("ApiAuth");
+
+    /// <summary> The tables whose rows belong to a person (<c>OwnedTables=TimeSheet,Expense</c>): with <see cref="ApiAuth"/> a caller reads and writes only the rows of the owners the owner scope allows. </summary>
+    public string[] OwnedTables => Items("OwnedTables");
+
+    /// <summary> The whole-number column that holds a row's owner in an owned table (<c>OwnerColumn=EmployeeId</c>, the default). </summary>
+    public string OwnerColumn => Explicit("OwnerColumn") ?? DefaultOwnerColumn;
+
+    /// <summary> The claim that carries the person's role and the one that carries the owner id (their employee id), and the role that sees every row. </summary>
+    public string AuthRoleClaim => Explicit("AuthRoleClaim") ?? DefaultRoleClaim;
+    public string AuthOwnerClaim => Explicit("AuthOwnerClaim") ?? DefaultOwnerClaim;
+    public string AuthAdminRole => Explicit("AuthAdminRole") ?? DefaultAdminRole;
 
     public bool ToastrToasts => string.Equals(Explicit("Toasts"), "ngx-toastr", StringComparison.OrdinalIgnoreCase);
 

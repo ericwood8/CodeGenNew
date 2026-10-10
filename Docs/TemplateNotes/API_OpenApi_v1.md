@@ -1,5 +1,7 @@
 # API_OpenApi_v1
 
+With `ApiAuth=true` the document declares the `bearerAuth` scheme for every operation, the open `POST /api/auth/login` route (400, 401 and 429) and the `LoginRequest`, `LoginResponse` and `AuthUser` schemas.
+
 One OpenAPI 3.0 document (`openapi.yaml`) for the whole database, written from the schema by the same rules the API templates use.
 
 - **Paths:** for every table `API_Crud` writes an API for (a single int, uniqueidentifier or text key, not an enum or a name/active table; the `{id}` parameter is an integer, a string, or a string of format uuid by the key): `GET` and `POST /api/<plural>`, `GET`, `PUT` and `DELETE /api/<plural>/{id}`, `POST /api/<plural>/{id}/clone` where the clone routine exists, and `GET /api/<plural>/search` where `API_Search` writes one (an optional query parameter per searchable column, `pageNumber`, `pageSize`, `sortBy`, `sortDir`; the result is a `<Table>SearchResult` of `items`, `page`, `pageSize`, `totalCount`, `totalPages`). The plural is the one `Pluralizer` gives (a word that already ends in `s` stays as it is: `/api/customerstatus`).

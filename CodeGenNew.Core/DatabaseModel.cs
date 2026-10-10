@@ -63,6 +63,11 @@ public class DatabaseModel
             .OfType<TableModel>().ToList();
     }
 
+    /// <summary> The tables the project's <c>SeedTables</c> names, in that order (a parent before its children), that have an entity: the tables <c>CS_Seed</c> and <c>CS_SeedData</c> write the rows of. </summary>
+    public List<TableModel> SeedTables(ProjectSettings project) => project.SeedTables
+        .Select(name => EntityTablesByName.GetValueOrDefault(name))
+        .OfType<TableModel>().Where(t => project.NoRepository(t.TableName, t.LookupShape) != true).ToList();
+
     public List<string> UnknownScreens(ProjectSettings project) => project.Screens
         .Where(name => !EntityTablesByName.ContainsKey(name)).ToList();
 

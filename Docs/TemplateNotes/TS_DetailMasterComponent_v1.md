@@ -1,5 +1,13 @@
 # TS_DetailMasterComponent_v1
 
+## Editable child rows (`EditableChildren`)
+
+The project setting `EditableChildren=Department.DepartmentTeam,ProjectTask` makes the listed child tables part of the parent's form instead of a read-only grid under it: a table of inputs inside the form (one column per child column except its key, the link to the parent, computed, identity and audit columns), **Add** and **Remove** buttons, and the rows go in the request body of **Submit** with the row, in one request. A child's own foreign key is a drop-down over the parent table's lookup list (a uniqueidentifier key keeps a plain box), a date is a date box, a yes/no column a check box. Rows are plain objects held in `<child>Rows`; `prepare` puts the list into the body under the child's name in the plural (`departmentTeams`, `EditableChild.JsonName`). A child that is not listed keeps its read-only grid, under the form, beside the editable one.
+
+The API half is `CrudApi` / `NameActiveCrudApi` (`API_EssentialCrudApi_v1.md`): `API_Crud` writes `EditableChildren` on the parent's class from the same rule (`EditableChild` in Core), and create and update read the lists: a row with its key is changed, a row without one is added, a row left out is removed, all in one transaction with the parent. A row left out that is still in use (another table points at it) refuses the whole save with a 400 and nothing changes; the form stays open with the API's message. A body that has no list leaves the child rows alone.
+
+A child qualifies when it has a single identity whole-number key and one NOT NULL link to the parent of the parent's key type, and is the parent's only link to that table. Name it `Parent.Child` when the child also points at another table (a team points at its department and its region); a plain child name counts only for a child that belongs to one table. Columns the form leaves out but the database requires without a default (a NOT NULL audit column) are the project's to fill. Angular only so far; the React detail-master page keeps its read-only grids.
+
 The full design notes that used to head the template. The template keeps a short summary.
 
 ```text

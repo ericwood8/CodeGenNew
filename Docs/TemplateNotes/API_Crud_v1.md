@@ -1,5 +1,9 @@
 # API_Crud_v1
 
+With `ApiAuth=true`, a table named in `OwnedTables` that has the NOT NULL whole-number `OwnerColumn` (default `EmployeeId`) gets `Owner => c => c.EmployeeId`, and `CrudApi` then scopes its rows to the signed-in person (`API_EssentialJwt_v1.md`). A listed table without the column gets a comment saying so. `OwnedTable` in Core is the one rule.
+
+With `EditableChildren` the parent's class also says which child lists its create and update save with the row (`protected override IReadOnlyList<ChildRows<int>> EditableChildren`, one `new ChildRows<int, DepartmentTeam>("departmentTeams", c => c.DepartmentTeamId, c => c.DepartmentId)` per child, from the `EditableChild` rule the Angular form uses too). The config asks for the referenced display columns because the rule reads the child's columns.
+
 The full design notes that used to head the template. The template keeps a short summary.
 
 ```text

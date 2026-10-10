@@ -52,6 +52,7 @@
     // Generates the four files of an Angular component in components/<table>-detail-master/ (the paths are written by the template, point the output folder at src/app)
     // TS_Component's grid, search, paging and add/edit form, plus one read-only grid per child table under the form while a row is edited, sortable
     // and clickable (a row opens its own screen). The Angular counterpart of WinUI3_DetailMasterScreen. Needs a table with at least one child foreign key.
+    // A child the project lists in EditableChildren (Department.DepartmentTeam) is an editable table inside the form instead, saved with the row in one request (see EditableChild in Core).
     // Full notes: Docs/TemplateNotes/TS_DetailMasterComponent_v1.md
     // ==========================================================================================
 
@@ -165,6 +166,8 @@
                 Title = Project.ChildGridTitle(Model.TableName, fk.ReferencingTable, Words(BaseName(fk.ReferencingTable)) + (RoleOf(fk) == "" ? "" : " (" + Words(RoleOf(fk)) + ")")),
                 Var = LowerFirst(BaseName(fk.ReferencingTable) + RoleOf(fk)),
                 MethodName = BaseName(fk.ReferencingTable) + RoleOf(fk),
+                // the property of the save request that holds this child's rows when the table is edited in the form (EditableChildren)
+                JsonName = EditableChild.JsonName(fk),
                 Route = ApiRoute(fk.ReferencingTable),
                 PageRoute = PageRoute(fk.ReferencingTable),
                 KeyProp = fk.ReferencingPrimaryKeyColumns.Count == 1 ? Camel(fk.ReferencingPrimaryKeyColumns[0]) : null,
@@ -198,6 +201,43 @@
         string Id(ColumnModel c) => variable + UpperFirst(Camel(c.Name));
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
         string LabelOf(ColumnModel c) => c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name);
+
+        // EditableChildren: the child tables whose rows are added, changed and removed inside this form and sent with it in one request (EditableChild, the rule the API's create and update use too);
+        // every other child keeps its read-only grid under the form
+        var editableLinks = childKeys.Where(fk => EditableChild.IsEditable(Model, fk, Project)).ToList();
+        bool IsEditableChild(string table) => editableLinks.Any(fk => fk.ReferencingTable.EqualsIgnoreCase(table));
+        var gridChildren = children.Where(ch => !IsEditableChild(ch.Table)).ToList();
+        var editableChildren = children.Where(ch => IsEditableChild(ch.Table)).ToList();
+        ChildForeignKeyModel LinkOf(string table) => editableLinks.First(fk => fk.ReferencingTable.EqualsIgnoreCase(table));
+        // a child's own foreign key is a drop-down over the parent's lookup list ({ id, name }), unless its key is a uniqueidentifier
+        ForeignKeyModel EditLookupOf(ChildForeignKeyModel link, ColumnModel c) => c.IsGuidColumn ? null
+            : link.ReferencingTableForeignKeys.FirstOrDefault(o => o.ReferencingColumns.Count == 1 && o.ReferencingColumns[0].EqualsIgnoreCase(c.Name)
+                && o.ReferencedDisplayColumns.Count > 0 && !NoApi(o.ReferencedTable, o.ReferencedLookupShape) && !NoLookup(o.ReferencedTable, o.ReferencedLookupShape));
+        string ChildInput(ChildForeignKeyModel link, string childVar, ColumnModel c)
+        {
+            string model = $"row.{Camel(c.Name)}";
+            string name = $"[name]=\"'{childVar}{UpperFirst(Camel(c.Name))}' + {childVar}Rows.indexOf(row)\"";
+            string req = c.IsNullable ? "" : " required";
+            if (EditLookupOf(link, c) is not null)
+                return $"<select {name} [(ngModel)]=\"{model}\"{req}>{(c.IsNullable ? "<option [ngValue]=\"null\"></option>" : "")}<option *ngFor=\"let p of {childVar}Options['{Camel(c.Name)}']\" [ngValue]=\"p.id\">{{{{p.name}}}}</option></select>";
+            if (c.HasChoices)
+                return $"<select {name} [(ngModel)]=\"{model}\"{req}>{(c.IsNullable ? "<option [ngValue]=\"null\"></option>" : "<option value=\"\"></option>")}{string.Concat(c.Choices!.Select(choice => $"<option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>"))}</select>";
+            if (c.IsBooleanColumn)
+                return $"<input type=\"checkbox\" {name} [(ngModel)]=\"{model}\">";
+            if (IsDate(c))
+                return $"<input type=\"date\" {name} [(ngModel)]=\"{model}\"{req}>";
+            if (IsNumber(c))
+            {
+                string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? " step=\"" + "0." + new string('0', c.Scale!.Value - 1) + "1\""
+                            : c.IsMoneyColumn ? " step=\"0.01\""
+                            : c.SqlType is SqlDbType.Float or SqlDbType.Real ? " step=\"any\"" : "";
+                string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\""
+                    : IsPlainDecimal(c) ? $" min=\"{Inv(NumericClassifier.DecimalRange(c).Min)}\" max=\"{Inv(NumericClassifier.DecimalRange(c).Max)}\"" : "";
+                return $"<input type=\"number\" {name} [(ngModel)]=\"{model}\"{step}{range}{req}>";
+            }
+            string max = IsText(c) && Chars(c) > 0 ? $" maxlength=\"{Chars(c)}\"" : "";
+            return $"<input type=\"text\" {name} [(ngModel)]=\"{model}\"{max}{req}>";
+        }
         var gridColumns = shown.Where(c => !IsMultiline(c)).ToList();
         if (gridColumns.Count == 0) gridColumns = shown.ToList();
         // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
@@ -393,13 +433,37 @@
         }
         if (tabbed) H("            </div>");
         }
+        foreach (var child in editableChildren)
+        {
+            // the child's rows are part of the form: Submit saves them with the row, in one request
+            var link = LinkOf(child.Table);
+            var editColumns = EditableChild.Columns(link);
+            H();
+            H("            <fieldset class=\"child-edit\">");
+            H($"                <legend>{child.Title}</legend>");
+            H("                <table>");
+            H("                    <thead>");
+            H("                        <tr>" + string.Concat(editColumns.Select(c => $"<th>{GridCaption.For(c, LabelOf(c))}</th>")) + "<th></th></tr>");
+            H("                    </thead>");
+            H("                    <tbody>");
+            H($"                        <tr *ngFor=\"let row of {child.Var}Rows\">");
+            foreach (var c in editColumns)
+                H($"                            <td>{ChildInput(link, child.Var, c)}</td>");
+            H($"                            <td><button type=\"button\" class=\"btn-action delete\" (click)=\"remove{child.MethodName}(row)\">Remove</button></td>");
+            H("                        </tr>");
+            H("                    </tbody>");
+            H("                </table>");
+            H($"                <button type=\"button\" class=\"btn btn-outline\" (click)=\"add{child.MethodName}()\">Add {Words(BaseName(child.Table))}</button>");
+            H("            </fieldset>");
+        }
         H();
         H("            <button type=\"submit\" class=\"btn\">Submit</button>");
         H("            <button type=\"button\" (click)=\"cancel()\" class=\"btn btn-outline\">Cancel</button>");
         H("        </form>");
         H();
-        H("        <!-- Child grids: TableModel.ChildForeignKeys, one per table, columns discovered at run time -->");
-        foreach (var child in children)
+        if (gridChildren.Count > 0)
+            H("        <!-- Child grids: TableModel.ChildForeignKeys, one per table, columns discovered at run time -->");
+        foreach (var child in gridChildren)
         {
             H($"        <div class=\"child-grid\" *ngIf=\"{savedTest}; else save{child.MethodName}First\">");
             H($"            <h3>{child.Title}</h3>");
@@ -514,14 +578,33 @@
             "    expect(component.visibleRows.length).toBe(3);",
             "  });",
         };
-        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? listSpecs : pagingSpecs) + "\n});\n");
+        // an editable child list: rows can be added and removed in the form, and the list goes into the body of the save
+        var childSpecs = new List<string>();
+        foreach (var child in editableChildren)
+        {
+            childSpecs.Add("");
+            childSpecs.Add($"  it('keeps the {child.Title.ToLowerInvariant()} rows in the form and sends them with the row', () => {{");
+            childSpecs.Add("    component.add();");
+            childSpecs.Add($"    component.add{child.MethodName}();");
+            childSpecs.Add($"    component.add{child.MethodName}();");
+            childSpecs.Add($"    expect(component.{child.Var}Rows.length).toBe(2);");
+            childSpecs.Add($"    component.remove{child.MethodName}(component.{child.Var}Rows[0]);");
+            childSpecs.Add($"    expect(component.{child.Var}Rows.length).toBe(1);");
+            childSpecs.Add("    // eslint-disable-next-line @typescript-eslint/no-explicit-any");
+            childSpecs.Add("    const row = component.selectedRow as any;");
+            childSpecs.Add("    // eslint-disable-next-line @typescript-eslint/no-explicit-any");
+            childSpecs.Add("    (component as any).prepare(row, true);");
+            childSpecs.Add($"    expect(row['{child.JsonName}'].length).toBe(1);");
+            childSpecs.Add("  });");
+        }
+        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? listSpecs : pagingSpecs) + (childSpecs.Count > 0 ? "\n" + string.Join("\n", childSpecs) : "") + "\n});\n");
 
         // ================= ts
         // A short class on PagedCrudScreen (components/crud-screen.ts, TS_EssentialCrud): the rows, the open row, add / edit / submit / delete / clone / cancel, the way back to the page that opened a row,
         // the page, the sort and the search boxes are the base's. This class names its service and key and keeps what is the table's own: the starting row, the date boxes, the drop-down lists and the child grids.
         string keyGeneric = keyType.Kind == KeyKind.Int ? "" : ", " + keyType.TypeScript;
-        T("import { ChangeDetectionStrategy, Component, " + (children.Count > 0 ? "HostListener, " : "") + "inject } from '@angular/core';");
-        if (children.Count > 0) T("import { GridSort, loadSort, nextSort, saveSort, sortRows } from '../../grid-sort';");
+        T("import { ChangeDetectionStrategy, Component, " + (gridChildren.Count > 0 ? "HostListener, " : "") + "inject } from '@angular/core';");
+        if (gridChildren.Count > 0) T("import { GridSort, loadSort, nextSort, saveSort, sortRows } from '../../grid-sort';");
         T($"import {{ {baseName} }} from '../../{modelsFolder}/{stem}';");
         T($"import {{ {baseName}Service }} from '../../{servicesFolder}/{stem}.service';");
         if (parents.Any(p => p.Lookup)) T($"import {{ Lookup }} from '../../{servicesFolder}/crud.service';");
@@ -535,7 +618,7 @@
         T("import { FormsModule } from '@angular/forms';");
         if (!nameActive) T("import { MatPaginatorModule } from '@angular/material/paginator';");
         T($"import {{ {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")} }} from '../crud-screen';");
-        if (children.Count > 0) T($"import {{ apiMessage }} from '../../{servicesFolder}/api-error';");
+        if (gridChildren.Any(ch => ch.KeyProp is not null)) T($"import {{ apiMessage }} from '../../{servicesFolder}/api-error';");
         T();
         T("@Component({");
         T($"  selector: 'app-{stem}-detail-master',");
@@ -564,13 +647,13 @@
             T($"  private readonly {p.ServiceVar} = inject({p.Service});");
         if (children.Count > 0) T("  private readonly http = inject(HttpClient);");
         if (tabbed) T("  activeTab = 0; // the form tab showing");
-        if (children.Count > 0)
+        if (gridChildren.Count > 0)
         {
             T("  // The child grids hold all their rows, so each sorts them in the browser; its sort is saved under the grid's key plus the child's name.");
-            T("  childSorts: Record<string, GridSort | null> = { " + string.Join(", ", children.Select(ch => $"{ch.Var}: loadSort(this.gridKey + '.{ch.Var}')")) + " };");
+            T("  childSorts: Record<string, GridSort | null> = { " + string.Join(", ", gridChildren.Select(ch => $"{ch.Var}: loadSort(this.gridKey + '.{ch.Var}')")) + " };");
             T("  childSortMenu: { child: string; x: number; y: number } | null = null; // the child grid's right-click menu, where it is open");
         }
-        foreach (var child in children)
+        foreach (var child in gridChildren)
         {
             T($"  {child.Var}Rows: any[] = [];");
             T($"  {child.Var}Columns: string[] = [];");
@@ -578,15 +661,26 @@
             if (child.Lookups.Count > 0)
                 T($"  {child.Var}Names: Record<string, Record<string, string>> = {{}};");
         }
+        foreach (var child in editableChildren)
+        {
+            // the rows of the form's own child list: plain objects the inputs edit, sent with the row (prepare below)
+            T($"  {child.Var}Rows: any[] = [];");
+            if (EditableChild.Columns(LinkOf(child.Table)).Any(c => EditLookupOf(LinkOf(child.Table), c) is not null))
+                T($"  {child.Var}Options: Record<string, {{ id: any; name: string }}[]> = {{}};");
+        }
         T();
         {
             var parentsToLoad = parents.ToList();   // a drop-down over this table itself (a manager) is read through the screen's own service
-            if (parentsToLoad.Count > 0)
+            var optionLoads = editableChildren.SelectMany(child => EditableChild.Columns(LinkOf(child.Table))
+                .Select(c => (Child: child, Column: c, Lookup: EditLookupOf(LinkOf(child.Table), c))).Where(x => x.Lookup is not null)).ToList();
+            if (parentsToLoad.Count > 0 || optionLoads.Count > 0)
             {
                 T("  protected override start(): void {");
                 T("    super.start();");
                 foreach (var p in parentsToLoad)
                     T($"    this.{(p.Self ? "service" : p.ServiceVar)}.{(p.Lookup ? "getLookup" : "getAll")}().subscribe((data) => {{ this.{p.List} = data; }});");
+                foreach (var (child, column, lookup) in optionLoads)
+                    T($"    this.http.get<any[]>('{apiPrefix}/{ApiRoute(lookup.ReferencedTable)}/lookup').subscribe((items) => {{ this.{child.Var}Options = {{ ...this.{child.Var}Options, {Camel(column.Name)}: items.map((i) => ({{ id: i['id'], name: String(i['name'] ?? '') }})) }}; }});");
                 T("  }");
                 T();
             }
@@ -636,7 +730,7 @@
             foreach (var child in children)
             {
                 T($"    this.{child.Var}Rows = [];");
-                T($"    this.{child.Var}Columns = [];");
+                if (!IsEditableChild(child.Table)) T($"    this.{child.Var}Columns = [];");
             }
             T("  }");
             T();
@@ -654,7 +748,51 @@
             T($"    return this.{p.List}.find((p) => p.{p.KeyProp} === id)?.{p.DisplayProp} ?? '';");
             T("  }");
         }
-        foreach (var child in children)
+        foreach (var child in editableChildren)
+        {
+            var link = LinkOf(child.Table);
+            var editColumns = EditableChild.Columns(link);
+            var childDates = editColumns.Where(IsDate).ToList();
+            var defaults = new List<string>();
+            foreach (var c in editColumns.Where(c => !c.IsNullable))
+            {
+                if (EditLookupOf(link, c) is not null) defaults.Add($"{Camel(c.Name)}: null");
+                else if (c.IsBooleanColumn) defaults.Add($"{Camel(c.Name)}: {(c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1" ? "true" : "false")}");
+                else if (IsDate(c)) defaults.Add($"{Camel(c.Name)}: new Date().toISOString().substring(0, 10)");
+                else if (IsNumber(c)) defaults.Add($"{Camel(c.Name)}: 0");
+                else defaults.Add($"{Camel(c.Name)}: ''");
+            }
+            T();
+            T($"  // {child.Title} are part of this form: the rows that point at the row being edited are read once, edited here and sent with the row under '{child.JsonName}'.");
+            T($"  // The API makes the table match the list: a row with its key is changed, a row without one is added, a row left out is removed.");
+            T($"  private load{child.MethodName}(parentId: {keyTs}): void {{");
+            T($"    this.http.get<any[]>('{apiPrefix}/{child.Route}').subscribe({{");
+            T("      next: (rows) => {");
+            T($"        this.{child.Var}Rows = rows.filter((r: any) => r['{child.FkProp}'] === parentId).map((r: any) => ({{ ...r{string.Concat(childDates.Select(c => $", {Camel(c.Name)}: r['{Camel(c.Name)}']?.substring(0, 10) ?? null"))} }}));");
+            T("      },");
+            T("      error: (e) => console.error(e)");
+            T("    });");
+            T("  }");
+            T();
+            T($"  add{child.MethodName}(): void {{");
+            T($"    this.{child.Var}Rows = [...this.{child.Var}Rows, {{ {string.Join(", ", defaults)} }}];");
+            T("  }");
+            T();
+            T($"  remove{child.MethodName}(row: any): void {{");
+            T($"    this.{child.Var}Rows = this.{child.Var}Rows.filter((r) => r !== row);");
+            T("  }");
+        }
+        if (editableChildren.Count > 0)
+        {
+            T();
+            T("  // the child lists go in the request body with the row");
+            T($"  protected override prepare(row: {baseName}, isNew: boolean): void {{");
+            T("    super.prepare(row, isNew);");
+            foreach (var child in editableChildren)
+                T($"    (row as unknown as Record<string, unknown>)['{child.JsonName}'] = this.{child.Var}Rows;");
+            T("  }");
+        }
+        foreach (var child in gridChildren)
         {
             T();
             T($"  // {child.Title} rows whose {child.FkProp} matches the row being edited - the whole table is loaded and");
@@ -690,10 +828,10 @@
                 T("  }");
             }
         }
-        if (children.Count > 0)
+        if (gridChildren.Count > 0)
         {
-            var allCurrency = children.SelectMany(ch => ch.Currency).GroupBy(m => m.Name).Select(g => g.First()).ToList();
-            var allLongText = children.SelectMany(ch => ch.LongText).Distinct().ToList();
+            var allCurrency = gridChildren.SelectMany(ch => ch.Currency).GroupBy(m => m.Name).Select(g => g.First()).ToList();
+            var allLongText = gridChildren.SelectMany(ch => ch.LongText).Distinct().ToList();
             // A click on a header sorts by it (again: flips the direction), the right-click menu clears the sort; the sort is saved (grid-sort.ts).
             T();
             T("  sortChildBy(child: string, column: string): void {");
@@ -736,7 +874,7 @@
             T();
             T("  // Child grids show whatever keys the API returns; these members caption them, leave out long text, limit them to 20 and format money and dates.");
             T("  private readonly childCurrencyDigits: Record<string, number> = { " + string.Join(", ", allCurrency.Select(m => m.Name + ": " + m.Digits)) + " };");
-            var allCaptions = children.SelectMany(ch => ch.Captions).GroupBy(m => m.Name).Select(g => g.First()).ToList();
+            var allCaptions = gridChildren.SelectMany(ch => ch.Captions).GroupBy(m => m.Name).Select(g => g.First()).ToList();
             T("  private readonly childCaptions: Record<string, string> = { " + string.Join(", ", allCaptions.Select(m => m.Name + ": '" + m.Caption.Replace("'", "\'") + "'")) + " };");
             T("  private readonly childLongTextColumns: string[] = [" + string.Join(", ", allLongText.Select(n => "'" + n + "'")) + "];");
             T();
@@ -770,6 +908,8 @@
 
         var o = new StringBuilder();
         o.Append($"@@@FILE {componentsFolder}/{stem}-detail-master/{stem}-detail-master.component.css@@@\n").Append(GridSortStyles.Css);
+        if (editableChildren.Count > 0)
+            o.Append("\n.child-edit { margin: 1rem 0; border: 1px solid #ccc; }\n.child-edit table { width: 100%; }\n.child-edit td { padding: 2px 4px; }\n.child-edit input[type=text], .child-edit input[type=number], .child-edit input[type=date], .child-edit select { width: 100%; box-sizing: border-box; }\n");
         o.Append($"@@@FILE {componentsFolder}/{stem}-detail-master/{stem}-detail-master.component.html@@@\n").Append(Project.AdaptAngularHtml(html.ToString()));
         o.Append($"@@@FILE {componentsFolder}/{stem}-detail-master/{stem}-detail-master.component.spec.ts@@@\n").Append(Project.AdaptAngularSpec(spec.ToString()));
         o.Append($"@@@FILE {componentsFolder}/{stem}-detail-master/{stem}-detail-master.component.ts@@@\n").Append(ts);

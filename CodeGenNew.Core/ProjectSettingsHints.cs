@@ -7,7 +7,7 @@ public static class ProjectSettingsHints
     /// <summary> The settings that are true or false: the settings screen shows a check box for each. </summary>
     public static IReadOnlySet<string> BooleanKeys { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "Dashboard", "DashboardStrip", "Auth"
+        "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiAuth", "Dashboard", "DashboardStrip", "Auth"
     };
 
     /// <summary> The caption of a setting with the words apart: "DashboardStrip" -> "Dashboard Strip". </summary>
@@ -47,7 +47,13 @@ public static class ProjectSettingsHints
         ["ApiProduction"] = "The API project also gets a production profile (Problem Details, health checks at /health/live and /health/ready, rate limiting, response compression, security headers) and a Dockerfile. Nothing beyond ASP.NET Core is referenced.",
         ["ApiTelemetry"] = "The API project also gets OpenTelemetry traces, metrics and logs (Telemetry.cs) and references the OpenTelemetry packages. Nothing is sent until OTEL_EXPORTER_OTLP_ENDPOINT names a collector (environment variable or appsettings.json).",
         ["ApiTests"] = "The plan also writes an integration test class per table (API_Test) and a test project (MSTest and Microsoft.AspNetCore.Mvc.Testing) beside the API. SQLite tests run over a copy of the database file; other databases need <ProjectName>_TEST_CONNECTION (a scratch copy) or the tests report themselves as inconclusive.",
-        ["OutputApiTests"] = "folder of the API test project under the output folder; blank = <ProjectName>.Api.Tests",
+        ["ApiAuth"] = "The API signs people in: JWT bearer wiring, POST /api/auth/login, and every other endpoint needs a token (the Jwt essentials group; the package Microsoft.AspNetCore.Authentication.JwtBearer). The signing key comes from Jwt:Key (an environment variable, never a file) and the first administrator from Bootstrap:AdminUserName and Bootstrap:AdminPassword; register your own IUserDirectory for real users. Regenerate the project and refresh the CrudApi and Program groups with --replace.",
+        ["OwnedTables"] = "With ApiAuth: comma-separated tables whose rows belong to a person (TimeSheet,Expense). A caller reads and writes only the rows of the owners the IOwnerScope allows (their own, or everyone's for the administrator role); blank = no table is scoped",
+        ["OwnerColumn"] = "With OwnedTables: the NOT NULL whole-number column that holds a row's owner; blank = EmployeeId",
+        ["AuthRoleClaim"] = "With ApiAuth: the name of the token claim that carries the person's role; blank = role",
+        ["AuthOwnerClaim"] = "With ApiAuth: the name of the token claim that carries the owner id (the person's employee id); blank = employeeId",
+        ["AuthAdminRole"] = "With ApiAuth: the role that sees and changes every row of an owned table; blank = Administrator",
+        ["OutputApiTests"] ="folder of the API test project under the output folder; blank = <ProjectName>.Api.Tests",
         ["ApiHttp"] = "The plan also writes a .http request file per table (API_Http).",
         ["ProjectDocs"] = "The plan also writes a data dictionary page per table and the ER diagram (MD_DataDictionary, MD_Erd).",
         ["ApiValidation"] = "The plan also writes a FluentValidation validator per table (CS_Validator) and the create and update endpoints run them (400 with the messages).",
@@ -85,6 +91,7 @@ public static class ProjectSettingsHints
         ["ItemsMember"] = "ListProtocol=Search: the member of the answer that holds the rows of the page; blank = data",
         ["TotalMember"] = "ListProtocol=Search: the member of the answer that holds the number of rows in all; blank = count",
         ["DefaultSorts"] = "Table=Column:asc|desc pairs, comma-separated (TimeSheet=WhenEntered:desc,Holiday=Name): the sort an Angular grid starts with until the person sorts it",
+        ["DockerUpstreamVariable"] = "The Docker group's nginx reads the API's address from this environment variable, and it holds a whole address (https://host:8443), the way .NET Aspire names a service (services__shopapi__https__0); blank = API_UPSTREAM, which holds host:port",
         ["Auth"] = "Angular: the app signs in. Writes the Auth group (auth service, token interceptor, route guard, login page; sessionStorage), adds the interceptor to app.config.ts, a guard on every generated route and the user name with Sign out to the shell. Needs POST api/auth/login answering { token, expiresUtc, user: { name } }. Regenerate the project; essentials already written are kept (use --replace for the shell and config).",
         ["Toasts"] = "Angular: ngx-toastr shows the API's refusals as toasts (the package is added to package.json and provideToastr to app.config.ts); blank = the browser's alert and confirm dialogs, no package",
         ["IgnoredColumns"] = "comma-separated columns to leave out (Tags, or Place.Location): a type CodeGenNew cannot map, such as an array or geometry",
@@ -129,6 +136,8 @@ public static class ProjectSettingsHints
         ["Acronyms"] = "comma-separated words the Pascal style keeps upper-case whole (PO,UPC,MSRP)",
         ["Screens"] = "comma-separated tables that get a screen, in menu order; blank = every table that has an API and a search, alphabetically",
         ["NoCloneTables"] = "comma-separated tables that get no Clone button although they could (Customer,SalesInvoice)",
+        ["EditableChildren"] = "comma-separated child tables whose rows are added, changed and removed inside the parent's form and saved with it in one request: the child (ProjectTask), or Parent.Child (Department.DepartmentTeam) for a child that also points at another table. The child needs an identity whole-number key and one NOT NULL link to the parent; Angular only so far; blank = every child grid is read-only. Refresh the CrudApi group with --replace",
+        ["SeedTables"] = "comma-separated tables whose current rows are written as seed data, a parent before its children (Region,Currency): a class per table that adds its rows when the table is empty and the class that runs them all. The rows are read when you generate, so load them first; an identity key is numbered again from 1. Blank = nothing is seeded",
         ["ChildGridTitles"] = "Parent.Child=Title pairs, comma-separated, for a child grid whose table name does not say what the rows mean (Customer.CustomerItem=Item Purchase History)"
     };
 }

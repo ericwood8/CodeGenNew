@@ -10,7 +10,8 @@
     // entity loops, CORS for the front ends the project's Stacks name), appsettings.json (the connection string without a password, the port from ApiPort) and the global usings the generated
     // classes assume. ApiTests=true makes Program public for the test project. ApiProduction=true adds ProductionProfile.cs, a Dockerfile and a .dockerignore, using only what ships in ASP.NET Core (no package is added).
     // ApiTelemetry=true adds Telemetry.cs (OpenTelemetry traces, metrics and logs) and the OpenTelemetry packages.
-    // Settings: DatabaseProvider, DatabaseServer, DatabaseName, DatabaseUser, ApiPort, ApiProduction, ApiTelemetry, Stacks and the namespaces.
+    // ApiAuth=true adds the JwtBearer package, builder.AddGeneratedAuth(), the authentication and authorization middleware and the login route (the Jwt group's Auth.cs), and marks the health and document routes AllowAnonymous.
+    // Settings: DatabaseProvider, DatabaseServer, DatabaseName, DatabaseUser, ApiPort, ApiProduction, ApiTelemetry, ApiAuth, Stacks and the namespaces.
     // ==========================================================================================
     string projectName = Project.ProjectName ?? "MyApp";
     string apiNamespace = Project.ApiNamespace ?? projectName + ".Api.Apis";
@@ -43,6 +44,8 @@
     var proxied = stacks.Where(s => !s.EqualsIgnoreCase("Blazor")).ToList();   // the dev servers that forward /api; a Blazor app calls the API itself
     string frontEnd = string.Join(" / ", proxied.Select(s => s == "Angular" ? "Angular" : "React"));
     string contextName = Project.ContextName ?? "AppContext";
+    // with ApiAuth the fallback policy asks for a token everywhere, so the documents and health checks say they are open
+    string anonymous = Project.ApiAuth ? ".AllowAnonymous()" : "";
     // the Dockerfile flag, built from parts: a template line may not hold two hyphens in a row (see TemplateDashTests)
     string fromBuild = new string('-', 2) + "from=build";
     string proxyFile = proxied.Count > 0 && proxied[0].EqualsIgnoreCase("Angular") ? "frontend/proxy.conf.json" : "frontend/vite.config.ts";
@@ -64,6 +67,12 @@
   <ItemGroup>
     <PackageReference Include="<#= providerPackage #>" />
 <#
+    if (Project.ApiAuth)
+    {
+#>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
+<#
+    }
     if (Project.ApiValidation)
     {
 #>
@@ -130,6 +139,17 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 <#
     }
 #>
+<#
+    if (Project.ApiAuth)
+    {
+#>
+// Sign-in (Auth.cs, the Jwt group): the bearer token check and a policy that makes every endpoint but POST /api/auth/login need a token. Jwt:Key comes from the environment variable Jwt__Key.
+// A project with its own user table registers its IUserDirectory before this line.
+builder.AddGeneratedAuth();
+
+<#
+    }
+#>
 // Entities point at each other (an invoice at its customer, a customer at its invoices); do not follow the loop when writing JSON.
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
@@ -183,6 +203,14 @@ app.UseCors();
     {
 #>
 app.UseRateLimiter();
+<#
+    }
+    if (Project.ApiAuth)
+    {
+#>
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapAuthEndpoints();   // Auth.cs: POST /api/auth/login
 <#
     }
 #>
@@ -272,9 +300,9 @@ public static class OpenApiDocs
             if (!File.Exists(path))
                 path = Path.Combine(environment.ContentRootPath, "openapi.yaml");
             return File.Exists(path) ? Results.File(path, "application/yaml") : Results.NotFound();
-        }).ExcludeFromDescription();
+        }).ExcludeFromDescription()<#= anonymous #>;
 
-        app.MapGet("/docs", () => Results.Content(Page, "text/html")).ExcludeFromDescription();
+        app.MapGet("/docs", () => Results.Content(Page, "text/html")).ExcludeFromDescription()<#= anonymous #>;
     }
 
     // Swagger UI from a CDN: the page needs a network connection, the document does not.
@@ -422,8 +450,8 @@ public static class ProductionProfile
     /// <summary> /health/live answers while the process runs; /health/ready also reaches the database. </summary>
     public static WebApplication MapProductionHealth(this WebApplication app)
     {
-        app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).ExcludeFromDescription();
-        app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).ExcludeFromDescription();
+        app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).ExcludeFromDescription()<#= anonymous #>;
+        app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") }).ExcludeFromDescription()<#= anonymous #>;
         return app;
     }
 }

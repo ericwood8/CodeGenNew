@@ -179,7 +179,43 @@
         L("  description: " + Quote("Written by codegen from the schema of " + Database.DatabaseName + ". Run it again when a table or an API template changes."));
         L("servers:");
         L("  - url: http://localhost:" + Project.ApiPort);
+        if (Project.ApiAuth)
+        {
+            L("security:");
+            L("  - bearerAuth: []");
+        }
         L("paths:");
+        if (Project.ApiAuth)
+        {
+            L("  /api/auth/login:");
+            L("    post:");
+            L("      operationId: Login");
+            L("      tags: [Auth]");
+            L("      summary: " + Quote("Sign in and get a bearer token"));
+            L("      security: []");
+            L("      requestBody:");
+            L("        required: true");
+            L("        content:");
+            L("          application/json:");
+            L("            schema:");
+            L("              $ref: '#/components/schemas/LoginRequest'");
+            L("      responses:");
+            L("        '200':");
+            L("          description: " + Quote("The token and who it is for."));
+            L("          content:");
+            L("            application/json:");
+            L("              schema:");
+            L("                $ref: '#/components/schemas/LoginResponse'");
+            foreach (int status in new[] { 400, 401, 429 })
+            {
+                L("        '" + status + "':");
+                L("          description: " + Quote(status == 400 ? "A user name or password is missing." : status == 401 ? "Wrong user name or password." : "Too many wrong tries; wait a minute."));
+                L("          content:");
+                L("            application/problem+json:");
+                L("              schema:");
+                L("                $ref: '#/components/schemas/ProblemDetails'");
+            }
+        }
         foreach (var table in tables)
         {
             string singular = table.TableName;
@@ -226,7 +262,36 @@
         }
 
         L("components:");
+        if (Project.ApiAuth)
+        {
+            L("  securitySchemes:");
+            L("    bearerAuth:");
+            L("      type: http");
+            L("      scheme: bearer");
+            L("      bearerFormat: JWT");
+        }
         L("  schemas:");
+        if (Project.ApiAuth)
+        {
+            L("    LoginRequest:");
+            L("      type: object");
+            L("      properties:");
+            L("        userName: { type: string }");
+            L("        password: { type: string }");
+            L("    AuthUser:");
+            L("      type: object");
+            L("      properties:");
+            L("        name: { type: string }");
+            L("        role: { type: string, nullable: true }");
+            L("        ownerId: { type: integer, format: int32, nullable: true }");
+            L("    LoginResponse:");
+            L("      type: object");
+            L("      properties:");
+            L("        token: { type: string }");
+            L("        expiresUtc: { type: string, format: date-time }");
+            L("        user:");
+            L("          $ref: '#/components/schemas/AuthUser'");
+        }
         L("    ProblemDetails:");
         L("      type: object");
         L("      properties:");

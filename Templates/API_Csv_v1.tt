@@ -17,7 +17,7 @@
     // API_Csv_v1.tt
     // Generates: Csv.cs   (whole-database; the path is written by the template)
     // CSV export and import for every table that has an API of its own, with no package: GET /api/<table>/export.csv writes every row (a header line of the property names, RFC 4180 quoting,
-    // UTF-8) and POST /api/<table>/import reads a CSV body (text/csv, or the first file of a multipart form) and adds its rows. The import is all or nothing: a row that does not convert
+    // UTF-8) and POST /api/<table>/import reads a CSV body (text/csv, or the first file of a multipart form) and adds its rows. With ApiAuth the routes of a table in OwnedTables are for the administrator role only. The import is all or nothing: a row that does not convert
     // (a number, a date, a yes / no, a missing required value, a text longer than its column) or that the validator refuses (ApiValidation=true) is reported by its row number, and then nothing
     // is saved; a 400 lists the problems. Identity and computed columns are not read. A text cell that starts with = + - or @ is exported with a leading apostrophe, so a spreadsheet does not run it,
     // and the apostrophe is dropped again on import. At most 10000 rows an import. The API is the project's: add authorization to the endpoints yourself.
@@ -28,6 +28,10 @@
     if (tables.Count == 0)
         Error("API_Csv found no table to write endpoints for: none has an API of its own (a single int, uniqueidentifier or text key, not an enum or a name/active table).");
     bool validate = Project.ApiValidation;
+    // with ApiAuth every route needs a token already; the CSV routes of an owned table read or add the rows of every owner, so only the administrator policy may call them
+    bool auth = Project.ApiAuth;
+    string adminOnly = auth ? ".AdminOnly(adminOnly)" : "";
+    string adminParameter = auth ? ", bool adminOnly" : "";
 
     string Columns(TableModel table)
     {
@@ -288,19 +292,29 @@ public static class CsvEndpoints
     {
         string entity = t.TableName;
 #>
-        MapTable<<#= entity #>, <#= contextType #>>(app, "<#= ApiRequests.Route(t) #>", "<#= t.TableName.Pluralize().ToLowerInvariant() #>", [<#= Columns(t) #>]);
+        MapTable<<#= entity #>, <#= contextType #>>(app, "<#= ApiRequests.Route(t) #>", "<#= t.TableName.Pluralize().ToLowerInvariant() #>", [<#= Columns(t) #>]<#= auth ? ", " + (OwnedTable.OwnerColumn(t, Project) is null ? "false" : "true") : "" #>);
 <#
     }
 #>
     }
+<#
+    if (auth)
+    {
+#>
 
-    private static void MapTable<T, TContext>(WebApplication app, string route, string file, CsvColumn[] columns) where T : class, new() where TContext : DbContext
+    private static RouteHandlerBuilder AdminOnly(this RouteHandlerBuilder builder, bool adminOnly) =>
+        adminOnly ? builder.RequireAuthorization(AuthNames.AdministratorPolicy) : builder;
+<#
+    }
+#>
+
+    private static void MapTable<T, TContext>(WebApplication app, string route, string file, CsvColumn[] columns<#= adminParameter #>) where T : class, new() where TContext : DbContext
     {
         app.MapGet(route + "/export.csv", async (TContext context) =>
         {
             var rows = await context.Set<T>().AsNoTracking().ToListAsync();
             return Results.File(Encoding.UTF8.GetBytes(CsvSupport.Export(rows, columns)), "text/csv; charset=utf-8", file + ".csv");
-        }).WithName("Export" + file + "Csv");
+        }).WithName("Export" + file + "Csv")<#= adminOnly #>;
 
         app.MapPost(route + "/import", async (HttpRequest request, TContext context) =>
         {
@@ -347,6 +361,6 @@ public static class CsvEndpoints
                 return Results.BadRequest(new { imported = 0, errors = new[] { "The database refused the rows (a missing parent row, or a value that must be unique). Nothing was imported." } });
             }
             return Results.Ok(new { imported = import.Rows.Count });
-        }).WithName("Import" + file + "Csv");
+        }).WithName("Import" + file + "Csv")<#= adminOnly #>;
     }
 }

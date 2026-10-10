@@ -23,6 +23,7 @@ public static class ProjectPlan
         return set switch
         {
             PlanTableSet.Entity => database.EntityTables.Where(t => project.NoRepository(t.TableName, t.LookupShape) != true).ToList(),
+            PlanTableSet.Client => database.EntityTables.Where(t => project.NoRepository(t.TableName, t.LookupShape) != true && project.NoApi(t.TableName, t.LookupShape) != true).ToList(),
             PlanTableSet.Context => database.EntityTables.Where(t => project.NoRepository(t.TableName, t.LookupShape) != true).Concat(database.CompositeKeyTables).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),
             PlanTableSet.Api => database.ApiTables(project),
             PlanTableSet.CrudApi => database.CrudApiTables(project),
@@ -32,6 +33,7 @@ public static class ProjectPlan
             PlanTableSet.Screen => Screens(),
             PlanTableSet.ScreenDetailMaster => Screens().Where(t => DatabaseModel.IsDetailMaster(t, project)).ToList(),
             PlanTableSet.ScreenForm => Screens().Where(t => !DatabaseModel.IsDetailMaster(t, project)).ToList(),
+            PlanTableSet.Seed => database.SeedTables(project),
             PlanTableSet.Junction => database.Tables.Where(t => t.IsJunctionTable).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),
             PlanTableSet.Enum => database.EnumTables(project),
             PlanTableSet.Audit => database.Tables.Where(t => t.IsAuditTable).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),

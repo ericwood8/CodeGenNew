@@ -1,5 +1,7 @@
 # API_Http_v1
 
+With `ApiAuth=true` the file starts with `@token = paste the token from POST /api/auth/login here` and every request carries `Authorization: Bearer {{token}}`.
+
 A `.http` request file per table (`<Table>.http`, under `http` in a plan), for Visual Studio, Visual Studio Code (REST Client) and Rider.
 
 - **Requests:** all rows, one row by `{{id}}`, search (the first two searchable columns as filters, `pageNumber`, `pageSize`, `sortBy`, `sortDir`) where `API_Search` writes one, create, update, delete and, where the clone routine exists, clone. The host is `http://localhost:<ApiPort>`; `@host` and `@id` are at the top.

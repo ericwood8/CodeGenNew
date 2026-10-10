@@ -23,4 +23,4 @@ Essentials are written once and kept, so a project whose Shell and Config exist 
 
 ## What the API has to do
 
-`POST api/auth/login` with `{ userName, password }` answers `{ token, expiresUtc, user: { name, ... } }`, 401 for a wrong name or password, 429 for too many tries; every other `api/` route answers 401 without a valid bearer token. The generated ASP.NET API does not do this yet (JWT bearer wiring, `/auth/login` and `RequireAuthorization()` are the API half); the user table, password hashing and the first administrator stay hand-written.
+`POST api/auth/login` with `{ userName, password }` answers `{ token, expiresUtc, user: { name, ... } }`, 401 for a wrong name or password, 429 for too many tries; every other `api/` route answers 401 without a valid bearer token. The generated ASP.NET API does this with `ApiAuth=true` (the `Jwt` group, `API_EssentialJwt_v1.md`: JWT bearer wiring, the login route and a fallback policy that asks for a token everywhere); the user table stays hand-written, and the project registers its `IUserDirectory`.
