@@ -19,11 +19,6 @@
     string[] usings = { };
     string viewsFolder = "Views";
     string viewModelsFolder = "ViewModels";
-    string[] noLookupParents =
-    {
-        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
-        "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role", "DepartmentTeam", "ProjectTask"
-    };
     // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     viewNamespace = Project.ViewNamespace ?? viewNamespace;
     viewModelNamespace = Project.ViewModelNamespace ?? viewModelNamespace;
@@ -32,10 +27,6 @@
     usings = Project.Usings ?? usings;
     viewsFolder = Project.ViewsFolder ?? viewsFolder;
     viewModelsFolder = Project.ViewModelsFolder ?? viewModelsFolder;
-    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
-    // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
-    // only used when no project is chosen.
-    bool NoLookup(string table, LookupShape shape) => Project.NoLookup(table, shape) ?? noLookupParents.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
     // ==========================================================================================
@@ -51,15 +42,11 @@
     bool UsesNumberBox(ColumnModel c) => c.IsIntegerColumn && !IsBit(c);
     // A currency column (money, or a decimal whose name says money) is also edited in a number box, formatted as currency in code-behind
     // (a NumberFormatter cannot be declared in XAML; CurrencyNumberFormatter.cs, written alongside, formats as currency and also reads a plain number), and converted back to a decimal rounded to the column's scale on save.
-    bool UsesCurrencyBox(ColumnModel c) => c.IsCurrencyColumn && !c.IsIntegerColumn;
     int CurrencyDigits(ColumnModel c) => NumericClassifier.CurrencyDigits(c);
     // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is edited in a number box too: its value is a double
     // (NaN = blank), limited to what the column can hold (NumericClassifier.DecimalRange), and converted back on save.
     bool UsesDecimalBox(ColumnModel c) => !c.IsCurrencyColumn && c.IsNumericColumn;
     int DecimalPlaces(ColumnModel c) => Math.Clamp(c.Scale ?? 2, 0, 8);
-    string Words(string s) => Labels.Words(s);
-    string Label(string columnName) => Words(Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", ""));
-    string FieldVar(string name) => char.ToLowerInvariant(name[0]) + name[1..];
 
     string CSharpNumericType(ColumnModel c) => c.SqlType switch
     {
@@ -69,8 +56,7 @@
     };
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
-    bool isNameActive = Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name")
-                      && Model.Columns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
+    bool isNameActive = Model.IsNameActiveTable;
 
     var keyType = KeyType.Of(Model);   // how the key travels: a text key is typed by the person on a new row and read-only afterwards
     if (keyColumn is null || keyType is null)
@@ -89,35 +75,21 @@
     else
     {
         string table = Model.TableName;
-        string title = Words(table);
+        string title = Labels.Words(table);
         string keyProp = keyColumn.Name;
         bool textKey = keyType.Kind == KeyKind.Text;
 
-        // GroupBy + First, not ToDictionary: a real table can have more than one FK constraint on the same
-        // column pointing at the same parent (seen live against a second production database's dbo.Products
-        // table) - ToDictionary would throw on the duplicate key.
-        var fkByColumn = Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1)
-            .GroupBy(f => f.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        // What the form is made of (its columns, the foreign key behind each, the drop-downs and their parents) is decided in Core for every stack.
+        var form = FormModel.For(Model, Project);
+        var fkByColumn = form.ForeignKeysByColumn;
 
-        var shown = Model.Columns
-            .Where(c => (textKey && c.IsPrimaryKey) || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && IsEditableType(c)))
-            .OrderBy(c => textKey && c.IsPrimaryKey ? 0 : 1).ThenBy(c => c.OrdinalPosition)
-            .ToList();
+        var shown = form.Columns.ToList();
 
         // A form with more than one kind of field is tabbed (Main / Billing & Shipping / Notes): see FormPages. A narrow table keeps its single column.
         var pages = FormPages.For(shown).Select(p => (Header: p.Header.Replace("&", "&amp;"), Columns: p.Columns)).ToList();
         bool tabbed = pages.Count > 1;
 
-        ForeignKeyModel LookupOf(ColumnModel c) =>
-            KeyType.Of(c) is not null
-            && fkByColumn.TryGetValue(c.Name, out var fk)
-            && !NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape)
-            && fk.ReferencedDisplayColumns.Count > 0
-                ? fk : null;
-
-        var parents = shown.Select(c => LookupOf(c)).Where(fk => fk is not null)
-            .GroupBy(fk => fk.ReferencedTable, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+        var parents = form.Parents
             .Select(fk => new
             {
                 Table = fk.ReferencedTable,
@@ -144,63 +116,44 @@
         // template's own parent drop-downs resolve a display name for THIS table's foreign keys. Found live:
         // a real user looking at the generated grid saw SalesInvoiceId/CustomerId/CustomerMonthlySummaryId next
         // to InvoiceDate and asked for exactly this (2026-09-29).
-        var children = Model.ChildForeignKeys
-            .Where(fk => fk.ReferencingColumns.Count == 1
-                      && Model.Columns.Any(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[0]) && KeyType.Of(c) is not null))
-            .Select(fk =>
+        // The child tables, decided in Core for every stack (ChildGrid): which ones get a grid, its heading and role, its key, and the foreign keys shown as names.
+        var children = ChildGrid.For(Model, Project)
+            // the grid's filter compares the parent's key, so that column must be a usable key
+            .Where(g => Model.Columns.Any(c => c.Name.EqualsIgnoreCase(g.Link.ReferencedColumns[0]) && KeyType.Of(c) is not null))
+            .Select(g =>
             {
-                string selfFkColumn = fk.ReferencingColumns[0];
-                // Every OTHER foreign key on the child table - not the one pointing back to this (parent)
-                // table, which is handled separately below (it's always the same value for every row shown,
-                // since the grid is already filtered to this one parent).
-                var otherFks = fk.ReferencingTableForeignKeys
-                    .Where(ofk => !(ofk.ReferencingColumns.Count == 1 && ofk.ReferencingColumns[0].EqualsIgnoreCase(selfFkColumn)))
-                    .ToList();
-                var resolvable = otherFks
-                    .Where(ofk => ofk.ReferencingColumns.Count == 1 && ofk.ReferencedDisplayColumns.Count > 0)
-                    .Select(ofk => new
-                    {
-                        Column = ofk.ReferencingColumns[0],
-                        ReferencedTable = ofk.ReferencedTable,
-                        KeyProp = ofk.ReferencedColumns[0],
-                        DisplayProp = ofk.ReferencedDisplayColumns[0],
-                        KeyCs = KeyType.OfForeignKey(fk.ReferencingTableColumns, ofk)?.CSharp ?? "int",   // the type of the id the child row holds
-                        LookupVar = FieldVar(fk.ReferencingTable) + ofk.ReferencedTable + "Names",
-                        // "CustomerId" -> "Customer": the same Label() this template already uses for the
-                        // parent form's own field headers (and WinUI3_MasterScreen.tt uses for its list grid's
-                        // resolved-name column) - a resolved column's NAME is known at generation time (unlike
-                        // every other column in this grid, which is only discovered later via EF reflection),
-                        // so it gets the same nicer header instead of the raw "...Id" property name.
-                        Label = GridCaption.From(Label(ofk.ReferencingColumns[0]))
-                    }).ToList();
-
-                // A List, not a HashSet: keeps the generated HideFrom<Table>Grid array in a fixed, predictable
-                // order (self FK, then primary key, then unresolvable other FKs) instead of whatever order a
-                // hash-based set happens to enumerate in, so regenerating the same table twice produces
-                // identical output.
-                var hideColumns = new List<string> { selfFkColumn };
-                hideColumns.AddRange(fk.ReferencingPrimaryKeyColumns);
-                hideColumns.AddRange(otherFks.SelectMany(o => o.ReferencingColumns).Except(resolvable.Select(r => r.Column), StringComparer.OrdinalIgnoreCase));
-                hideColumns = hideColumns.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                var fk = g.Link;
+                string gridVar = TemplateHelpers.LowerFirst(g.Table + g.Role);
+                var resolvable = g.Lookups.Select(l => new
+                {
+                    Column = l.ColumnName,
+                    ReferencedTable = l.ParentTable,
+                    KeyProp = l.ParentKeyName,
+                    DisplayProp = l.ParentDisplayName,
+                    KeyCs = l.ColumnKeyType?.CSharp ?? "int",   // the type of the id the child row holds
+                    LookupVar = gridVar + l.ParentTable + "Names",
+                    // "CustomerId" -> "Customer": a resolved column's name is known at generation time, so it gets a nicer header than the raw property name
+                    Label = GridCaption.From(Labels.Column(l.ColumnName))
+                }).ToList();
 
                 return new
                 {
                     Table = fk.ReferencingTable,
                     HasChildren = fk.ReferencingTableHasChildren,
-                    // The heading of the grid: the table's own name, or the project's ChildGridTitles entry.
-                    Title = Project.ChildGridTitle(Model.TableName, fk.ReferencingTable, Words(fk.ReferencingTable)),
-                    Var = FieldVar(fk.ReferencingTable),
-                    FkColumn = selfFkColumn,
+                    Title = g.Title,
+                    Var = gridVar,
+                    FkColumn = fk.ReferencingColumns[0],
                     ParentKeyColumn = fk.ReferencedColumns[0],
                     ParentKeyCs = Model.Columns.First(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[0])).CSharpBase(),   // int, Guid or string: the type the grid's filter compares
-                    HideColumns = hideColumns,
+                    // in a fixed order (this row's key, the child's own key, then the ids that are not named), so regenerating the same table twice gives identical output
+                    HideColumns = g.HiddenColumns.ToList(),
                     Resolvable = resolvable,
                     // What the schema says about the child's columns: money shows as currency, long text goes last.
-                    Currency = fk.ReferencingTableColumns.Where(c => c.IsCurrencyColumn && !c.IsIntegerColumn)
+                    Currency = fk.ReferencingTableColumns.Where(c => c.IsMoneyAmount)
                         .Select(c => (Name: c.Name, Digits: NumericClassifier.CurrencyDigits(c))).ToList(),
                     LongText = fk.ReferencingTableColumns.Where(c => c.IsLongTextColumn).Select(c => c.Name).ToList(),
                     // The caption each child column gets (date columns lose "Date", yes/no columns end in "?", Number -> #, Percent -> %).
-                    Captions = fk.ReferencingTableColumns.Select(c => (Name: c.Name, Caption: GridCaption.For(c, Label(c.Name)))).ToList()
+                    Captions = fk.ReferencingTableColumns.Select(c => (Name: c.Name, Caption: GridCaption.For(c, Labels.Column(c.Name)))).ToList()
                 };
             }).ToList();
 #>
@@ -257,9 +210,9 @@
             }
         foreach (var c in page.Columns)
         {
-            var lookup = LookupOf(c);
+            var lookup = form.LookupOf(c);
             string prop = c.Name;
-            string label = Label(c.Name);
+            string label = Labels.Column(c.Name);
             if (c.IsSystemStampColumn)
             {
                 // who made the row and when it changed: the system writes it, so it is text, not a box
@@ -287,7 +240,7 @@
                       SelectedItem="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
 <#
             }
-            else if (UsesCurrencyBox(c))
+            else if (form.IsMoneyInput(c))
             {
 #>
             <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
@@ -464,7 +417,7 @@
 using <#= viewModelNamespace #>;
 using Microsoft.UI.Xaml.Controls;
 <#
-        var currencyColumns = shown.Where(UsesCurrencyBox).ToList();
+        var currencyColumns = shown.Where(form.IsMoneyInput).ToList();
         foreach (string u in usings)
         {
 #>
@@ -821,9 +774,9 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 <#
         foreach (var c in shown)
         {
-            var lookup = LookupOf(c);
+            var lookup = form.LookupOf(c);
             string prop = c.Name;
-            string fieldType = lookup is not null ? parentOf[lookup.ReferencedTable].KeyCs + "?" : IsBit(c) ? "bool?" : (UsesNumberBox(c) || UsesCurrencyBox(c) || UsesDecimalBox(c)) ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
+            string fieldType = lookup is not null ? parentOf[lookup.ReferencedTable].KeyCs + "?" : IsBit(c) ? "bool?" : (UsesNumberBox(c) || form.IsMoneyInput(c) || UsesDecimalBox(c)) ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
 #>
     [ObservableProperty]
     private <#= fieldType #> _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #><#= fieldType == "double" ? " = double.NaN" : "" #>;
@@ -848,7 +801,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 <#
         foreach (var c in shown)
         {
-            var lookup = LookupOf(c);
+            var lookup = form.LookupOf(c);
             string prop = c.Name;
             if (lookup is not null)
             {
@@ -858,7 +811,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
                 // just a timing quirk): the box renders as if empty even though editing.{prop} is correct,
                 // until the person types in it (found live clicking through a real running app, 2026-09-28).
             }
-            else if (UsesCurrencyBox(c))
+            else if (form.IsMoneyInput(c))
             {
 #>
             <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? (double)editing.{prop}.Value : double.NaN" : $"(double)editing.{prop}" #>;
@@ -907,7 +860,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 <#
         foreach (var p in parents)
         {
-            var lookupColumnsForThisParent = shown.Where(c => LookupOf(c) is ForeignKeyModel fk && fk.ReferencedTable.EqualsIgnoreCase(p.Table)).ToList();
+            var lookupColumnsForThisParent = shown.Where(c => form.LookupOf(c) is ForeignKeyModel fk && fk.ReferencedTable.EqualsIgnoreCase(p.Table)).ToList();
 #>
         <#= p.OptionsProp #>.Clear();
         foreach (var row in await _context.Set<<#= p.Table #>>().OrderBy(r => r.<#= p.DisplayProp #>).ToListAsync())
@@ -1061,9 +1014,9 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 <#
         foreach (var c in shown)
         {
-            var lookup = LookupOf(c);
+            var lookup = form.LookupOf(c);
             string prop = c.Name;
-            string label = Label(c.Name);
+            string label = Labels.Column(c.Name);
             if (lookup is not null)
             {
                 if (!c.IsNullable)
@@ -1080,7 +1033,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 <#
                 }
             }
-            else if (UsesCurrencyBox(c))
+            else if (form.IsMoneyInput(c))
             {
 #>
         if (double.IsNaN(<#= prop #>))
@@ -1259,7 +1212,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 #>
         if (_editing is null && await _repo.ExistsAsync(entity.<#= keyProp #>))
         {
-            ErrorMessage = "A <#= title.ToLowerInvariant() #> with this <#= Label(keyColumn.Name).ToLowerInvariant() #> already exists.";
+            ErrorMessage = "A <#= title.ToLowerInvariant() #> with this <#= Labels.Column(keyColumn.Name).ToLowerInvariant() #> already exists.";
             return false;
         }
 

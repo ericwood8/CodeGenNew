@@ -670,4 +670,16 @@ public class ProjectSettings
     public bool? NoNavigation(string table, LookupShape shape) => Resolve("NoNavigationTables", table, shape);
     /// <summary> A foreign key to this table is a plain number box rather than a drop-down of its rows. </summary>
     public bool? NoLookup(string table, LookupShape shape) => Resolve("NoLookupParents", table, shape);
+
+    /// <summary> <see cref="NoApi"/> as a plain yes / no: a table that no project setting or lookup shape excludes has an API. </summary>
+    public bool NoApiFor(string table, LookupShape shape) => NoApi(table, shape) ?? false;
+    /// <summary> <see cref="NoRepository"/> as a plain yes / no. </summary>
+    public bool NoRepositoryFor(string table, LookupShape shape) => NoRepository(table, shape) ?? false;
+    /// <summary> <see cref="NoNavigation"/> as a plain yes / no. </summary>
+    public bool NoNavigationFor(string table, LookupShape shape) => NoNavigation(table, shape) ?? false;
+    /// <summary> <see cref="NoLookup"/> as a plain yes / no. </summary>
+    public bool NoLookupFor(string table, LookupShape shape) => NoLookup(table, shape) ?? false;
+
+    /// <summary> The file (without its extension) of the TypeScript model that holds this table's interface: the project's <c>ModelFileOverrides</c> entry, else <paramref name="conventionalFile"/>. </summary>
+    public string ModelFileOf(string table, string conventionalFile) => ModelFileOverrides is { } map && map.TryGetValue(table, out var file) ? file : conventionalFile;
 }

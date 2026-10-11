@@ -260,7 +260,7 @@ Open the `.tt` file (or the app's *Templates* button → Edit), change those lin
 | `baseEntity`, `baseNameActiveEntity` | `CS_Entity` | the base classes your entities derive from |
 | `modelsFolder`, `servicesFolder`, `componentsFolder`, `apiPrefix` | `TS_*` | where the Angular files go and the API URL prefix |
 | `pagesFolder`, `apiFolder`, `componentsFolder`, `apiPrefix` | `TSX_*` | where the React files go and the API URL prefix |
-| `noNavigationTables`, `noRepositoryTables`, `noApiTables`, `noLookupParents` | several | tables that are enums, lookups or have no entity, and so get no navigation property, repository, API or screen |
+| `NoNavigationTables`, `NoRepositoryTables`, `NoApiTables`, `NoLookupParents` | several | tables that are enums, lookups or have no entity, and so get no navigation property, repository, API or screen |
 
 The templates also assume the shape of the sample project's plumbing: a generic repository with `GetAll`, `GetByIdAsync`, `ExistsAsync` and `DeleteAsync`, a `BaseApi<T>` that registers routes, Angular's own `HttpClient`, and — for `TSX_*` only, since React has no framework-supplied HTTP client — a shared `request<T>(path, init)`/`ApiError` pair the target project must already have (`import { request } from './client'`). Each template's header comment says what it assumes and what it deliberately does **not** write (collection navigations, hand-written business rules, detail grids), so you know what stays yours.
 

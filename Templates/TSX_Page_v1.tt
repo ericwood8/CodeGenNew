@@ -18,34 +18,6 @@
     string componentsFolder = Project.ComponentsFolder;
     string modelsFolder = Project.ModelsFolder;
     string apiFolder = Project.ApiFolder;
-    // Tables that have no API (C# enums, other *Type lookup tables, tables with no entity): no screen is written for them.
-    string[] noApiTables =
-    {
-        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
-        "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
-    };
-    // A foreign key to one of these is a plain number/text box, not a drop-down.
-    string[] noLookupParents =
-    {
-        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
-        "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role", "DepartmentTeam", "ProjectTask"
-    };
-    // A foreign key to this table is left off the screen (a styling id no one edits).
-    string hiddenParent = "SY_Display";
-    // Parents whose interface lives in another table's model file: table -> file name (without .ts).
-    var modelFileOf = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["DepartmentTeam"] = "department",
-        ["ProjectTask"] = "project"
-    };
-    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
-    modelFileOf = Project.ModelFileOverrides ?? modelFileOf;
-    bool IsHiddenParent(string table) => Project.HiddenParents is { } hidden ? hidden.Contains(table, StringComparer.OrdinalIgnoreCase) : table.EqualsIgnoreCase(hiddenParent);
-    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
-    // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
-    // only used when no project is chosen.
-    bool NoApi(string table, LookupShape shape) => Project.NoApi(table, shape) ?? noApiTables.Contains(table, StringComparer.OrdinalIgnoreCase);
-    bool NoLookup(string table, LookupShape shape) => Project.NoLookup(table, shape) ?? noLookupParents.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
     // ==========================================================================================
@@ -57,20 +29,13 @@
     // Full notes: Docs/TemplateNotes/TSX_Page_v1.md
     // ==========================================================================================
 
-    string Words(string s) => Labels.Words(s);
-    string Camel(string name) => JsonNames.Camel(name);
     // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is limited to what the column can hold (a percentage to 0-100).
-    string Label(string columnName)
-    {
-        string s = Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", "");
-        return Words(s);
-    }
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
     var keyType = KeyType.Of(Model);   // how the key travels: a number, or a string for a uniqueidentifier or a text key
-    if (NoApi(Model.TableName, Model.LookupShape))
+    if (Project.NoApiFor(Model.TableName, Model.LookupShape))
     {
-        Error($"TSX_Page writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
+        Error($"TSX_Page writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is an enum or excluded by the NoApiTables setting (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
     }
     else if (keyColumn is null || keyType is null)
     {
@@ -88,11 +53,11 @@
         string variable = LowerFirst(baseName);        // holiday
         string listName = variable.Pluralize();        // holidays
         string setList = "set" + UpperFirst(listName);  // setHolidays
-        string keyProp = Camel(keyColumn.Name);         // holidayId
+        string keyProp = JsonNames.Camel(keyColumn.Name);         // holidayId
         string keyTs = keyType.TypeScript;
         string emptyKey = keyType.TypeScriptEmpty;     // "no key yet": the API assigns the real one (a text key is typed by the person, so a new row starts with '')
         bool textKey = keyType.Kind == KeyKind.Text;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
-        string title = Words(baseName);                // Time Sheet
+        string title = Labels.Words(baseName);                // Time Sheet
         bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"); // just for showError's message wording below
         const int pageSize = 20;
         // Same order as Model.SearchableColumns (not "Name first" like the form fields below) - matches
@@ -104,28 +69,17 @@
         var searchFields = listSearch
             ? new[] { new { ParamName = "search", Name = "search", Label = "" } }.ToList()
             : Model.SearchableColumns
-                .Select(c => new { ParamName = LowerFirst(c.Name), c.Name, Label = Label(c.Name) })
+                .Select(c => new { ParamName = LowerFirst(c.Name), c.Name, Label = Labels.Column(c.Name) })
                 .ToList();
         bool canSearch = searchFields.Count > 0;
 
-        var fkByColumn = Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1)
-            .GroupBy(f => f.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        // What the form is made of (its columns, the foreign key behind each, the drop-downs and their parents) is decided in Core for every stack.
+        var form = FormModel.For(Model, Project);
+        var fkByColumn = form.ForeignKeysByColumn;
 
-        var shown = Model.Columns
-            .Where(c => (textKey && c.IsPrimaryKey)
-                        || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && !c.IsCredentialColumn
-                            && !(fkByColumn.TryGetValue(c.Name, out var hfk) && IsHiddenParent(hfk.ReferencedTable))))
-            .OrderBy(c => textKey && c.IsPrimaryKey ? 0 : c.Name == "Name" ? 1 : 2).ThenBy(c => c.OrdinalPosition)
-            .ToList();
+        var shown = form.Columns.ToList();
 
-        ForeignKeyModel LookupOf(ColumnModel c) =>
-            fkByColumn.TryGetValue(c.Name, out var fk)
-            && !NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape)
-            && fk.ReferencedDisplayColumns.Count > 0
-                ? fk : null;
-        var parents = shown.Select(c => LookupOf(c)).Where(fk => fk is not null)
-            .GroupBy(fk => fk.ReferencedTable, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+        var parents = form.Parents
             .Select(fk =>
             {
                 string parentBase = BaseName(fk.ReferencedTable);
@@ -135,29 +89,24 @@
                 {
                     Table = fk.ReferencedTable,
                     Type = parentBase,
-                    ModelFile = modelFileOf.TryGetValue(fk.ReferencedTable, out var mf) ? mf : parentBase.ToLowerInvariant(),
+                    ModelFile = Project.ModelFileOf(fk.ReferencedTable, parentBase.ToLowerInvariant()),
                     ApiVar = LowerFirst(parentBase) + "Api",
                     ApiFile = parentBase.ToLowerInvariant() + "Api",
                     List = pList,
                     SetList = "set" + UpperFirst(pList),
                     NameMethod = LowerFirst(parentBase) + "Name",
-                    KeyProp = Camel(fk.ReferencedColumns[0]),
+                    KeyProp = JsonNames.Camel(fk.ReferencedColumns[0]),
                     IdType = Model.ForeignKeyType(fk)?.TypeScript ?? "number",
-                    DisplayProp = Camel(fk.ReferencedDisplayColumns[0]),
+                    DisplayProp = JsonNames.Camel(fk.ReferencedDisplayColumns[0]),
                     Self = self
                 };
             }).ToList();
         var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
 
         // ==== naming on the page
-        string Id(ColumnModel c) => stem + "-" + Camel(c.Name).ToLowerInvariant();
-        string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
-        string LabelOf(ColumnModel c) => c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name);
-        // a money column that is not a whole number is edited in the money box (CurrencyInput), unless it is a foreign key, a list of choices or the typed key
-        bool IsCurrencyField(ColumnModel c) => c.IsCurrencyColumn && !c.IsIntegerColumn && IsNumber(c) && !c.IsSystemStampColumn && LookupOf(c) is null && !c.HasChoices && !(textKey && c.IsPrimaryKey);
-        var gridColumns = GridColumns.Choose(shown, IsMultiline);
-        // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
-        gridColumns = gridColumns.ForGrid();
+        string Id(ColumnModel c) => stem + "-" + JsonNames.Camel(c.Name).ToLowerInvariant();
+        // The grid shows at most 20 columns and never a long text column (a Notes column, ...), and multi-line text only when that leaves fewer than GridColumns.MinColumns: see GridColumns.
+        var gridColumns = GridColumns.For(shown);
         // A grid column's header sorts the grid unless it is long text or binary (SearchSort.IsSortable; long text never is in a grid anyway).
         var sortableColumns = gridColumns.Where(SearchSort.IsSortable).ToList();
         // A Clone button beside Edit and Delete for the tables CloneShape allows (the api has clone(id), API_Crud / CS_Repo write the server side).
@@ -177,7 +126,7 @@
         T($"import {{ {variable}Api }} from '../{apiFolder}/{stem}Api';");
         T($"import {{ ApiError }} from '../{apiFolder}/client';");
         T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
-        if (shown.Any(IsCurrencyField))
+        if (shown.Any(form.IsMoneyInput))
             T($"import {{ CurrencyInput }} from '../{componentsFolder}/CurrencyInput';");
         T($"import {{ GridMenu, SortHeader, loadSort, nextSort, saveSort }} from '../{componentsFolder}/gridSort';");
         T($"import type {{ GridSort }} from '../{componentsFolder}/gridSort';");
@@ -230,7 +179,7 @@
         T("      setPage(result.page);");
         T("      setTotalPages(result.totalPages);");
         T("      setLoaded(true);");
-        T($"    }}).catch(() => setError('Failed to load {Words(baseName).ToLowerInvariant().Pluralize()}.'));");
+        T($"    }}).catch(() => setError('Failed to load {Labels.Words(baseName).ToLowerInvariant().Pluralize()}.'));");
         T("  };");
         T();
         T("  useEffect(() => {");
@@ -238,7 +187,7 @@
         foreach (var p in parents.Where(p => !p.Self))
             T($"    {p.ApiVar}.getAll().then({p.SetList}).catch(() => {{}});");
         T("    const openId = searchParams.get('edit');");
-        T($"    if (openId) {variable}Api.getById({(keyType.Kind == KeyKind.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Words(baseName).ToLowerInvariant()} no longer exists!'));");
+        T($"    if (openId) {variable}Api.getById({(keyType.Kind == KeyKind.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'));");
         T("  }, []);");
         T();
         T($"  const submit = async ({variable}: {baseName}): Promise<void> => {{");
@@ -320,7 +269,7 @@
             else if (IsDate(c)) value = "new Date().toISOString().substring(0, 10)";
             else if (IsNumber(c)) value = "0";
             else value = "''";
-            adds.Add($"{Camel(c.Name)}: {value}");
+            adds.Add($"{JsonNames.Camel(c.Name)}: {value}");
         }
         T("  const add = () => {");
         if (tabbed) T("    setTab(0);");
@@ -338,7 +287,7 @@
             T("    // the date box wants yyyy-MM-dd; the API sends a full timestamp");
             foreach (var c in dateColumns)
             {
-                string prop = $"row.{Camel(c.Name)}";
+                string prop = $"row.{JsonNames.Camel(c.Name)}";
                 if (c.IsNullable) T($"    if ({prop}) {{ {prop} = {prop}.substring(0, 10); }}");
                 else T($"    {prop} = {prop}.substring(0, 10);");
             }
@@ -390,9 +339,9 @@
         T();
         T("  const showError = (action: string, err: unknown) => {");
         T($"    if (err instanceof ApiError && err.status === 400) {{ setError({(hasName ? "'Name is bad or has special characters!'" : "'Some of the values are not acceptable!'")}); }}");
-        T($"    else if (err instanceof ApiError && err.status === 404) {{ setError('This {Words(baseName).ToLowerInvariant()} no longer exists!'); load(page); }}");
+        T($"    else if (err instanceof ApiError && err.status === 404) {{ setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'); load(page); }}");
         // a typed key can already be taken: the API answers 409
-        if (textKey) T($"    else if (err instanceof ApiError && err.status === 409) {{ setError('A {Words(baseName).ToLowerInvariant()} with this {Label(keyColumn.Name).ToLowerInvariant()} already exists!'); }}");
+        if (textKey) T($"    else if (err instanceof ApiError && err.status === 409) {{ setError('A {Labels.Words(baseName).ToLowerInvariant()} with this {Labels.Column(keyColumn.Name).ToLowerInvariant()} already exists!'); }}");
         T("    else { setError('Problem while ' + action + '!'); }");
         T("  };");
         T();
@@ -431,9 +380,9 @@
         foreach (var c in gridColumns)
         {
             if (sortableColumns.Contains(c))
-                T($"            <SortHeader label=\"{GridCaption.For(c, LabelOf(c))}\" column=\"{c.Name}\" sort={{sort}} onSort={{sortBy}} />");
+                T($"            <SortHeader label=\"{GridCaption.For(c, Labels.Field(c))}\" column=\"{c.Name}\" sort={{sort}} onSort={{sortBy}} />");
             else
-                T($"            <th>{GridCaption.For(c, LabelOf(c))}</th>");
+                T($"            <th>{GridCaption.For(c, Labels.Field(c))}</th>");
         }
         T("            <th>Actions</th>");
         T("          </tr>");
@@ -443,14 +392,14 @@
         T($"            <tr key={{{variable}.{keyProp}}}>");
         foreach (var c in gridColumns)
         {
-            string prop = $"{variable}.{Camel(c.Name)}";
-            var lookup = LookupOf(c);
+            string prop = $"{variable}.{JsonNames.Camel(c.Name)}";
+            var lookup = form.LookupOf(c);
             string cell;
             // A nullable column's value may be undefined: optional chaining keeps a strict (noUncheckedIndexedAccess/strictNullChecks) build compiling.
             if (lookup is not null) cell = $"{{{parentOf[lookup.ReferencedTable].NameMethod}({prop})}}";
             else if (c.IsBooleanColumn) cell = $"{{{prop} ? 'Yes' : 'No'}}";
             else if (IsDate(c)) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 10)}}";
-            else if (c.IsCurrencyColumn && !c.IsIntegerColumn) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
+            else if (c.IsMoneyAmount) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
             else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toFixed(2)}}";
             else cell = $"{{{prop}}}";
             T($"              <td>{cell}</td>");
@@ -503,33 +452,33 @@
         foreach (var c in formPages[pageIndex].Columns)
         {
             string id = Id(c);
-            string prop = Camel(c.Name);
-            var lookup = LookupOf(c);
+            string prop = JsonNames.Camel(c.Name);
+            var lookup = form.LookupOf(c);
             if (c.IsSystemStampColumn)
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
                 string stampValue = c.IsDateColumn ? $"{{selectedRow.{prop} ? new Date(selectedRow.{prop}).toLocaleString() : ''}}" : $"{{selectedRow.{prop} ?? ''}}";
                 T($"            {{{(textKey ? "!adding" : $"selectedRow.{keyProp}")} && (");
                 T("              <>");
-                T("                <label htmlFor=\"" + id + "\">" + LabelOf(c) + "</label>");
+                T("                <label htmlFor=\"" + id + "\">" + Labels.Field(c) + "</label>");
                 T($"                <span id=\"{id}\">{stampValue}</span>");
                 T("              </>");
                 T("            )}");
                 continue;
             }
-            T("            <label htmlFor=\"" + id + "\">" + LabelOf(c) + "</label>");
+            T("            <label htmlFor=\"" + id + "\">" + Labels.Field(c) + "</label>");
             if (textKey && c.IsPrimaryKey)
             {
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
                 T($"            <input");
                 T($"              id=\"{id}\"");
                 T("              type=\"text\"");
-                T($"              aria-label=\"{LabelOf(c)}\"");
+                T($"              aria-label=\"{Labels.Field(c)}\"");
                 T($"              value={{selectedRow.{prop} ?? ''}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
                 if (Chars(c) > 0) T($"              maxLength={{{Chars(c)}}}");
                 T("              readOnly={!adding}");
-                T($"              placeholder=\"{PlaceholderFor(c)}\"");
+                T($"              placeholder=\"{Labels.Placeholder(c)}\"");
                 T("              required");
                 T("            />");
             }
@@ -544,7 +493,7 @@
                 string blankTest = p.IdType == "number" && !c.IsNullable ? "||" : "??";
                 T($"            <select");
                 T($"              id=\"{id}\"");
-                T($"              aria-label=\"{LabelOf(c)}\"");
+                T($"              aria-label=\"{Labels.Field(c)}\"");
                 T($"              value={{selectedRow.{prop} {blankTest} ''}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: {numeric} }})}}");
                 if (!c.IsNullable) T("              required");
@@ -560,7 +509,7 @@
                 // A column whose values the database lists (a MySQL enum) is a drop-down of them; the blank first entry keeps a new row from silently taking the first value.
                 T($"            <select");
                 T($"              id=\"{id}\"");
-                T($"              aria-label=\"{LabelOf(c)}\"");
+                T($"              aria-label=\"{Labels.Field(c)}\"");
                 T($"              value={{selectedRow.{prop} ?? ''}}");
                 T(c.IsNullable ? $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value || undefined }})}}" : $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
                 if (!c.IsNullable) T("              required");
@@ -575,7 +524,7 @@
                 T($"            <input");
                 T($"              id=\"{id}\"");
                 T("              type=\"checkbox\"");
-                T($"              aria-label=\"{LabelOf(c)}\"");
+                T($"              aria-label=\"{Labels.Field(c)}\"");
                 T($"              checked={{!!selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.checked }})}}");
                 T("            />");
@@ -587,7 +536,7 @@
                 T($"            <input");
                 T($"              id=\"{id}\"");
                 T("              type=\"date\"");
-                T($"              aria-label=\"{LabelOf(c)}\"");
+                T($"              aria-label=\"{Labels.Field(c)}\"");
                 T(c.IsNullable ? $"              value={{selectedRow.{prop} ?? ''}}" : $"              value={{selectedRow.{prop}}}");
                 T(c.IsNullable ? $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value || undefined }})}}" : $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
                 if (!c.IsNullable) T("              required");
@@ -598,13 +547,13 @@
                     T("            </div>");
                 }
             }
-            else if (IsCurrencyField(c))
+            else if (form.IsMoneyInput(c))
             {
                 // the money box shows $1,234.50 and takes the plain number; the limits are the column's CHECK constraint, or 0 for a column the project lists as never negative
                 var (moneyMin, moneyMax) = Project.MoneyLimits(Model.TableName, c);
                 T($"            <CurrencyInput");
                 T($"              id=\"{id}\"");
-                T($"              label=\"{LabelOf(c)}\"");
+                T($"              label=\"{Labels.Field(c)}\"");
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(value) => setSelectedRow({{ ...selectedRow, {prop}: value ?? {(c.IsNullable ? "undefined" : "0")} }})}}");
                 T($"              digits={{{NumericClassifier.CurrencyDigits(c)}}}");
@@ -622,7 +571,7 @@
                 T($"            <input");
                 T($"              id=\"{id}\"");
                 T("              type=\"number\"");
-                T($"              aria-label=\"{LabelOf(c)}\"");
+                T($"              aria-label=\"{Labels.Field(c)}\"");
                 if (Project.NumberBoxCharacters(c) is { } boxWidth) T($"              style={{{{ width: '{boxWidth}ch' }}}}");
                 if (step is not null) T($"              step=\"{step}\"");
                 // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
@@ -637,7 +586,7 @@
                     T($"              min=\"{Inv(decMin)}\"");
                     T($"              max=\"{Inv(decMax)}\"");
                 }
-                else if (c.IsCurrencyColumn && !c.IsIntegerColumn && Project.MoneyLimits(Model.TableName, c) is var (moneyMin, moneyMax))
+                else if (c.IsMoneyAmount && Project.MoneyLimits(Model.TableName, c) is var (moneyMin, moneyMax))
                 {
                     // what the column's CHECK constraint says, or a minimum of 0 for a column the project lists as never negative
                     if (moneyMin is { } lo) T($"              min=\"{Inv(lo)}\"");
@@ -645,7 +594,7 @@
                 }
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: Number(event.target.value) }})}}");
-                T($"              placeholder=\"{PlaceholderFor(c)}\"");
+                T($"              placeholder=\"{Labels.Placeholder(c)}\"");
                 if (!c.IsNullable) T("              required");
                 T("            />");
             }
@@ -653,11 +602,11 @@
             {
                 T($"            <textarea");
                 T($"              id=\"{id}\"");
-                T($"              aria-label=\"{LabelOf(c)}\"");
+                T($"              aria-label=\"{Labels.Field(c)}\"");
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
                 T($"              maxLength={{{Chars(c)}}}");
-                T($"              placeholder=\"{PlaceholderFor(c)}\"");
+                T($"              placeholder=\"{Labels.Placeholder(c)}\"");
                 if (!c.IsNullable) T("              required");
                 T("            />");
             }
@@ -666,11 +615,11 @@
                 T($"            <input");
                 T($"              id=\"{id}\"");
                 T("              type=\"text\"");
-                T($"              aria-label=\"{LabelOf(c)}\"");
+                T($"              aria-label=\"{Labels.Field(c)}\"");
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");
                 if (IsText(c) && Chars(c) > 0) T($"              maxLength={{{Chars(c)}}}");
-                T($"              placeholder=\"{PlaceholderFor(c)}\"");
+                T($"              placeholder=\"{Labels.Placeholder(c)}\"");
                 if (!c.IsNullable) T("              required");
                 T("            />");
             }
@@ -721,17 +670,17 @@
             string sampleKey = ApiSampleValues.KeyText(keyColumn);
             string sampleRow = "{ " + string.Join(", ", adds.Select((a, i) => i == 0 ? $"{keyProp}: '{sampleKey}'" : a)) + " }";
             S();
-            S($"  it('lets the person type the key of a new {Words(baseName).ToLowerInvariant()} and does not let them change it afterwards', async () => {{");
+            S($"  it('lets the person type the key of a new {Labels.Words(baseName).ToLowerInvariant()} and does not let them change it afterwards', async () => {{");
             S("    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };");
             S($"    vi.spyOn({variable}Api, 'getPage').mockResolvedValue({{ items: [{sampleRow}], page: 1, pageSize: {pageSize}, totalCount: 1, totalPages: 1 }});");
             S($"    render(<MemoryRouter><{baseName}Page /></MemoryRouter>);");
             S($"    fireEvent.click(await screen.findByText('Add New {title}'));");
             S($"    expect(await screen.findByText('Add {title}')).toBeInTheDocument();");
-            S($"    expect(screen.getByLabelText('{LabelOf(keyColumn)}')).not.toHaveAttribute('readonly');");
+            S($"    expect(screen.getByLabelText('{Labels.Field(keyColumn)}')).not.toHaveAttribute('readonly');");
             S("    fireEvent.click(screen.getByText('Cancel'));");
             S("    fireEvent.click(await screen.findByText('Edit'));");
             S($"    expect(await screen.findByText('Edit {title}')).toBeInTheDocument();");
-            S($"    expect(screen.getByLabelText('{LabelOf(keyColumn)}')).toHaveAttribute('readonly');");
+            S($"    expect(screen.getByLabelText('{Labels.Field(keyColumn)}')).toHaveAttribute('readonly');");
             S("  });");
         }
         S("});");

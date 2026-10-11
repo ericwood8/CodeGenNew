@@ -21,9 +21,9 @@ public class TemplateRenderingTests
         return result.GeneratedText!.Replace("\r\n", "\n");
     }
 
-    private static async Task<string> Refusal(string templateFile, TableModel model)
+    private static async Task<string> Refusal(string templateFile, TableModel model, ProjectSettings? project = null)
     {
-        var result = await Run(templateFile, model);
+        var result = project is null ? await Run(templateFile, model) : await Repo.Cache.RunAsync(Repo.Template(templateFile), model, project);
         Assert.IsFalse(result.Success, $"{templateFile} should have refused {model.TableName}");
         return string.Join(" | ", result.Errors);
     }
@@ -1121,7 +1121,10 @@ public class TemplateRenderingTests
     [TestMethod]
     public async Task A_foreign_key_to_a_lookup_table_stays_a_plain_column_and_a_named_table_gets_ToString()
     {
-        string cs = await Render("CS_Entity_v1.tt", Sample.Holiday());
+        var project = ProjectSettings.FromValues([new("ProjectName", "Acme"), new("NoNavigationTables", "SY_ISOCountry")]);
+        var result = await Repo.Cache.RunAsync(Repo.Template("CS_Entity_v1.tt"), Sample.Holiday(), project);
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string cs = result.GeneratedText!.Replace("\r\n", "\n");
 
         Expect.Contains(cs, "    public required string SY_IsoCountry_Alpha3Code { get; set; }");
         Expect.DoesNotContain(cs, "SY_ISOCountry?");
@@ -1396,7 +1399,7 @@ public class TemplateRenderingTests
     [TestMethod]
     public async Task A_model_refuses_tables_the_app_never_receives()
     {
-        StringAssert.Contains(await Refusal("TS_Model_v1.tt", Sample.Roles()), "noApiTables");
+        StringAssert.Contains(await Refusal("TS_Model_v1.tt", Sample.Roles(), ProjectSettings.FromValues([new("ProjectName", "Acme"), new("NoApiTables", "SY_Role")])), "NoApiTables");
     }
 
     // ------------------------------------------------------------------ TS_Service
@@ -1734,7 +1737,7 @@ public class TemplateRenderingTests
         StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.CompositeKey()), "single int, uniqueidentifier or text primary key");
         StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.CompositeKey()), "composite primary key");
         StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.DepartmentTeam()), "NameActiveRepo");
-        StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.Roles()), "noApiTables");
+        StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.Roles(), ProjectSettings.FromValues([new("ProjectName", "Acme"), new("NoApiTables", "SY_Role")])), "NoApiTables");
     }
 
     [TestMethod]

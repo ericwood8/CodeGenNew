@@ -28,7 +28,7 @@ The shape of one row as the API sends and receives it:
     required, matching the C# entity's "required" properties, which the API refuses to bind without.
   - One optional navigation property per single-column foreign key (employee?: Employee), named for the FK's role, of
     the parent's interface, imported from its model file - unless the parent is an enum / lookup table listed in
-    noNavigationTables, in which case the foreign key stays a plain number/string.
+    the NoNavigationTables setting, in which case the foreign key stays a plain number/string.
 
 Not written: DisplayName / validation attributes, or extra fields a screen adds to a row (TimeSheetDetail's
 projectName); an interface that needs those stays hand-maintained.

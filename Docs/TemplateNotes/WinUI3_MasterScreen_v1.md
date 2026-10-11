@@ -15,7 +15,7 @@ The grid's columns are exactly WinUI3_DetailScreen.tt's own field list (every co
 key, computed and identity columns), so the two screens always agree on what a row looks like. A
 foreign key column shows the parent's display column (looked up once per parent into a dictionary, the
 same idea as TS_Component's "name of" methods) instead of the raw id - unless it's listed in
-noLookupParents, which shows the id number instead.
+the NoLookupParents setting, which shows the id number instead.
 
 Not a DataGrid: WinUI3 has none built in without a third-party package this template can't assume your
 project has, so each row is a plain Grid of TextBlocks with the same column widths as the header, laid

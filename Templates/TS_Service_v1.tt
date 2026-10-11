@@ -16,17 +16,6 @@
     string servicesFolder = Project.ServicesFolder;
     string modelsFolder = Project.ModelsFolder;
     string apiPrefix = "api";
-    // Tables that have no API (C# enums, other *Type lookup tables, tables with no entity): no service is written for them.
-    string[] noApiTables =
-    {
-        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
-        "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
-    };
-    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
-    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
-    // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
-    // only used when no project is chosen.
-    bool NoApi(string table, LookupShape shape) => Project.NoApi(table, shape) ?? noApiTables.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
     // ==========================================================================================
@@ -39,13 +28,12 @@
     // Full notes: Docs/TemplateNotes/TS_Service_v1.md
     // ==========================================================================================
 
-    string Words(string s) => System.Text.RegularExpressions.Regex.Replace(s, "(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", " ");
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
     var keyType = KeyType.Of(Model);   // how the key travels: a number, or a string for a uniqueidentifier or a text key
-    if (NoApi(Model.TableName, Model.LookupShape))
+    if (Project.NoApiFor(Model.TableName, Model.LookupShape))
     {
-        Error($"TS_Service writes no service for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so it has no API to call.");
+        Error($"TS_Service writes no service for [{Model.SchemaName}].[{Model.TableName}]: it is an enum or excluded by the NoApiTables setting (an enum, a *Type lookup table, or a table with no entity class), so it has no API to call.");
     }
     else if (keyColumn is null || keyType is null)
     {
@@ -58,7 +46,7 @@
         string keyTs = keyType.TypeScript;
         string stem = baseName.ToLowerInvariant();
         string variable = LowerFirst(baseName);
-        string lowerWords = Words(baseName).ToLowerInvariant();
+        string lowerWords = Labels.Words(baseName).ToLowerInvariant();
         // the API's GetByName (CS_Repo) exists for a NOT NULL Name, and not for a text key (GET <route>/{name} would be GET <route>/{id})
         bool hasName = Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name") && keyType.Kind != KeyKind.Text;
         // Pagination: getPage always exists, once SP_Search.tt/API_Search.tt do; pagination and searchability are separate concerns.

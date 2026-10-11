@@ -96,6 +96,9 @@ public class ColumnModel
     /// NumericClassifier.IsCurrencyName). A generated form edits it in a currency-formatted number box. </summary>
     public bool IsCurrencyColumn { get; init; }
 
+    /// <summary> A money column that holds an amount with decimals (not a whole-number column the name merely calls money): shown with the currency symbol and edited in a money box. </summary>
+    public bool IsMoneyAmount => IsCurrencyColumn && !IsIntegerColumn;
+
     /// <summary> A text column that can be very long: varchar/nvarchar(max), text/ntext, 500 or more characters, or a name that says it is a
     /// note (ends in Note, Notes, Comment, Comments, Remarks or Memo). Grids list these columns last so a long value cannot push the others off screen; a form puts them on its own "Notes" tab. </summary>
     public bool IsLongTextColumn =>

@@ -117,4 +117,13 @@ public static class Labels
         s = WordBreak.Replace(s.Replace('_', ' '), " ");
         return Regex.Replace(s, " +", " ").Trim();
     }
+
+    /// <summary> The caption of a column: <c>SY_</c> and a trailing <c>Id</c> dropped, then as words (<c>CustomerId</c> is "Customer", <c>BillingAddress</c> is "Billing Address"). </summary>
+    public static string Column(string columnName) => Words(Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", ""));
+
+    /// <summary> The caption of a field on a form: the column's caption, with a question mark for a yes / no column (<c>IsTaxable</c> is "Is Taxable?"). </summary>
+    public static string Field(ColumnModel column) => column.IsBooleanColumn ? Column(column.Name) + "?" : Column(column.Name);
+
+    /// <summary> The hint inside an empty text box: "Enter credit limit". </summary>
+    public static string Placeholder(ColumnModel column) => "Enter " + Column(column.Name).ToLowerInvariant();
 }

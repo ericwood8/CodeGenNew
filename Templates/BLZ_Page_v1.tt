@@ -18,14 +18,10 @@
     // Full notes: Docs/TemplateNotes/BLZ_Page_v1.md
     // ==========================================================================================
 
-    string Words(string s) => Labels.Words(s);
     // a money column that is not a whole number is shown with the currency symbol in the grid
-    bool IsMoney(ColumnModel c) => c.IsCurrencyColumn && !c.IsIntegerColumn && c.SqlType is not SqlDbType.Bit;
     string Symbol() => Project.CurrencyCode == "USD" ? "$" : Project.CurrencyCode + " ";
     bool HasInput(ColumnModel c) => c.CSharpBase() is not ("byte[]" or "object");
-    string Label(string columnName) => Words(Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", ""));
     string Ident(string name) => Regex.Replace(name, "[^A-Za-z0-9]", "");
-    bool IsHiddenParent(string table) => Project.HiddenParents is { } hidden && hidden.Contains(table, StringComparer.OrdinalIgnoreCase);
 
     if (BlazorNames.Refusal(Model, Project) is { } reason)
     {
@@ -36,32 +32,20 @@
         var keyColumn = Model.PrimaryKeyColumns[0];
         string type = BlazorNames.TypeName(Model.TableName);
         string ns = BlazorNames.Namespace(Project);
-        string title = Words(type);
+        string title = Labels.Words(type);
         string key = keyColumn.CSharpName();
         bool textKey = KeyType.Of(Model)!.Kind == KeyKind.Text;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
         const int pageSize = 20;
 
-        var searchFields = Model.SearchableColumns.Select(c => (Column: c, Param: LowerFirst(c.Name), Field: "filter" + Ident(c.Name), Label: Label(c.Name))).ToList();
+        var searchFields = Model.SearchableColumns.Select(c => (Column: c, Param: LowerFirst(c.Name), Field: "filter" + Ident(c.Name), Label: Labels.Column(c.Name))).ToList();
 
-        var fkByColumn = Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1)
-            .GroupBy(f => f.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-        var shown = Model.Columns
-            .Where(c => (textKey && c.IsPrimaryKey)
-                        || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && !c.IsCredentialColumn && HasInput(c)
-                            && !(fkByColumn.TryGetValue(c.Name, out var hidden) && IsHiddenParent(hidden.ReferencedTable))))
-            .OrderBy(c => textKey && c.IsPrimaryKey ? 0 : c.Name == "Name" ? 1 : 2).ThenBy(c => c.OrdinalPosition)
-            .ToList();
+        // What the form is made of (its columns, the foreign key behind each, the drop-downs and their parents) is decided in Core for every stack.
+        var form = FormModel.For(Model, Project);
+        var fkByColumn = form.ForeignKeysByColumn;
+        var shown = form.Columns.ToList();
 
         // A foreign key is a drop-down when the parent has display columns and the project does not say otherwise; the table's own parent (a tree) stays a plain box.
-        ForeignKeyModel LookupOf(ColumnModel c) =>
-            fkByColumn.TryGetValue(c.Name, out var fk)
-            && !fk.ReferencedTable.EqualsIgnoreCase(Model.TableName)
-            && !(Project.NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape) ?? false)
-            && fk.ReferencedDisplayColumns.Count > 0
-                ? fk : null;
-        var parents = shown.Select(LookupOf).Where(fk => fk is not null)
-            .GroupBy(fk => fk.ReferencedTable, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+        var parents = form.Parents
             .Select(fk => new
             {
                 Table = fk.ReferencedTable,
@@ -73,51 +57,39 @@
             }).ToList();
         var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
 
-        var gridColumns = GridColumns.Choose(shown, IsMultiline);
-        gridColumns = gridColumns.ForGrid();
+        var gridColumns = GridColumns.For(shown);
         var sortable = gridColumns.Where(SearchSort.IsSortable).ToList();
         bool canClone = CloneShape.CanClone(Model, Project);
 
-        // A money box edits a money column that is not a foreign key, a list of choices, a stamp or the typed key.
-        bool MoneyBox(ColumnModel c) => IsMoney(c) && IsNumber(c) && !c.IsSystemStampColumn && LookupOf(c) is null && !c.HasChoices && !(textKey && c.IsPrimaryKey);
-        bool usesMoneyBox = shown.Any(MoneyBox);
+        bool usesMoneyBox = shown.Any(form.IsMoneyInput);
 
         // The child tables: each is a read-only grid under the form while a row is edited (as the React page does). The whole child table is read and filtered here by this row's key.
-        bool HasClientShape(ChildForeignKeyModel fk) =>
-            fk.ReferencingColumns.Count == 1 && fk.ReferencingPrimaryKeyColumns.Count == 1 && !fk.ReferencingTable.EqualsIgnoreCase(Model.TableName)
-            && fk.ReferencingTableColumns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(fk.ReferencingPrimaryKeyColumns[0])) is { } childKey && KeyType.Of(childKey) is not null
-            && !(fk.ReferencingTableColumns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name") && fk.ReferencingTableColumns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive"))
-            && Project.NoApi(fk.ReferencingTable, default) != true && Project.NoRepository(fk.ReferencingTable, default) != true;
-        bool HasLookupParent(ForeignKeyModel o, ChildForeignKeyModel fk) =>
-            o.ReferencingColumns.Count == 1 && !o.ReferencingColumns[0].EqualsIgnoreCase(fk.ReferencingColumns[0]) && !o.ReferencedTable.EqualsIgnoreCase(fk.ReferencingTable)
-            && o.ReferencedDisplayColumns.Count > 0 && !(Project.NoLookup(o.ReferencedTable, o.ReferencedLookupShape) ?? false) && Project.NoApi(o.ReferencedTable, default) != true;
-        var children = Model.ChildForeignKeys.Where(HasClientShape)
-            .GroupBy(fk => fk.ReferencingTable, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
-            .Select(fk =>
+        // The child must have a client of its own: a plain table with a usable key, not a name / active table (whose API has no plain list).
+        var children = ChildGrid.For(Model, Project)
+            .Where(g => g.KeyColumn is not null && g.KeyType is not null && !g.IsNameActive && !Project.NoRepositoryFor(g.Table, default))
+            .Select(g =>
             {
-                string childType = BlazorNames.TypeName(fk.ReferencingTable);
-                var lookups = fk.ReferencingTableForeignKeys.Where(o => HasLookupParent(o, fk))
-                    .Select(o => (Column: o.ReferencingColumns[0], Type: BlazorNames.TypeName(o.ReferencedTable), Field: "childLookup" + Ident(BlazorNames.TypeName(o.ReferencedTable)),
-                                  IdType: fk.ReferencingTableColumns.First(col => col.Name.EqualsIgnoreCase(o.ReferencingColumns[0])).CSharpBase(), KeyProp: o.ReferencedColumns[0], DisplayProp: o.ReferencedDisplayColumns[0]))
+                string childType = BlazorNames.TypeName(g.Table);
+                var lookups = g.Lookups
+                    .Select(l => (Column: l.ColumnName, Type: BlazorNames.TypeName(l.ParentTable), Field: "childLookup" + Ident(BlazorNames.TypeName(l.ParentTable)),
+                                  IdType: l.Column!.CSharpBase(), KeyProp: l.ParentKeyName, DisplayProp: l.ParentDisplayName))
                     .ToList();
-                var otherForeignKeys = fk.ReferencingTableForeignKeys.SelectMany(o => o.ReferencingColumns).Except(lookups.Select(l => l.Column), StringComparer.OrdinalIgnoreCase).ToList();
-                var columns = fk.ReferencingTableColumns
-                    .Where(c => !fk.ReferencingPrimaryKeyColumns.Any(k => k.EqualsIgnoreCase(c.Name)) && !c.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])
-                                && !c.IsCredentialColumn && HasInput(c) && !otherForeignKeys.Contains(c.Name, StringComparer.OrdinalIgnoreCase))
+                var columns = g.Link.ReferencingTableColumns
+                    .Where(c => !g.HiddenColumns.Contains(c.Name, StringComparer.OrdinalIgnoreCase) && !c.IsCredentialColumn && HasInput(c))
                     .ToList();
                 return new
                 {
-                    Link = fk,
+                    Link = g.Link,
                     Type = childType,
-                    Var = "child" + Ident(childType),
-                    Title = Project.ChildGridTitle(Model.TableName, fk.ReferencingTable, Words(childType)),
-                    FkProp = fk.ReferencingTableColumns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).CSharpName(),
-                    KeyProp = fk.ReferencingTableColumns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingPrimaryKeyColumns[0])).CSharpName(),
-                    Route = ScreenNames.Route(fk.ReferencingTable),
+                    Var = "child" + Ident(childType + g.Role),
+                    Title = g.Title,
+                    FkProp = g.ForeignKeyColumn!.CSharpName(),
+                    KeyProp = g.KeyColumn!.CSharpName(),
+                    Route = ScreenNames.Route(g.Table),
                     // Edit opens the child's own page, which exists unless the project's Screens setting leaves it out
-                    HasPage = Project.Screens.Length == 0 || Project.Screens.Contains(fk.ReferencingTable, StringComparer.OrdinalIgnoreCase),
+                    HasPage = Project.Screens.Length == 0 || Project.Screens.Contains(g.Table, StringComparer.OrdinalIgnoreCase),
                     Lookups = lookups,
-                    Columns = GridColumns.Choose(columns, IsMultiline).ForGrid()
+                    Columns = GridColumns.For(columns)
                 };
             }).ToList();
         var childLookups = children.SelectMany(ch => ch.Lookups).GroupBy(l => l.Field).Select(g => g.First()).ToList();
@@ -128,7 +100,7 @@
             if (lookupCall is not null) return "@" + lookupCall;
             if (c.IsBooleanColumn) return c.IsNullable ? $"@({prop} is null ? \"\" : {prop} == true ? \"Yes\" : \"No\")" : $"@({prop} ? \"Yes\" : \"No\")";
             if (IsDate(c)) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd\")";
-            if (IsMoney(c)) return $"@Money({prop}, {NumericClassifier.CurrencyDigits(c)})";
+            if (c.IsMoneyAmount) return $"@Money({prop}, {NumericClassifier.CurrencyDigits(c)})";
             if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"N2\")";
             return $"@{prop}";
         }
@@ -177,7 +149,7 @@
         L("        <tr>");
         foreach (var c in gridColumns)
         {
-            string caption = GridCaption.For(c, c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name));
+            string caption = GridCaption.For(c, Labels.Field(c));
             if (sortable.Contains(c))
                 L($"            <th><button type=\"button\" class=\"sort\" @onclick='() => SortAsync(\"{c.Name}\")'>{caption} @Arrow(\"{c.Name}\")</button></th>");
             else
@@ -193,7 +165,7 @@
         foreach (var c in gridColumns)
         {
             string prop = $"item.{c.CSharpName()}";
-            var lookup = LookupOf(c);
+            var lookup = form.LookupOf(c);
             string cell = Cell(c, prop, lookup is not null ? $"Name{parentOf[lookup.ReferencedTable].Type}({prop})" : null);
             L($"                <td>{cell}</td>");
         }
@@ -239,11 +211,11 @@
         foreach (var c in shown)
         {
             string id = ScreenNames.Stem(Model.TableName) + "-" + Ident(c.Name).ToLowerInvariant();
-            string label = c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name);
+            string label = Labels.Field(c);
             string bind = $"row.{c.CSharpName()}";
             string required = c.IsNullable ? "" : " required";
             string input;
-            var lookup = LookupOf(c);
+            var lookup = form.LookupOf(c);
             if (c.IsSystemStampColumn)
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
@@ -277,7 +249,7 @@
             }
             else if (IsDate(c))
                 input = $"<InputDate id=\"{id}\" @bind-Value=\"{bind}\"{required} />";
-            else if (MoneyBox(c))
+            else if (form.IsMoneyInput(c))
                 input = $"<CurrencyInput id=\"{id}\" @bind-Value=\"{bind}\" Digits=\"{NumericClassifier.CurrencyDigits(c)}\" Symbol=\"{Symbol()}\"{required} />";
             else if (IsNumber(c))
             {
@@ -318,7 +290,7 @@
                 L("                    <thead>");
                 L("                        <tr>");
                 foreach (var c in ch.Columns)
-                    L($"                            <th>{GridCaption.For(c, c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name))}</th>");
+                    L($"                            <th>{GridCaption.For(c, Labels.Field(c))}</th>");
                 L("                            <th>Actions</th>");
                 L("                        </tr>");
                 L("                    </thead>");
@@ -454,7 +426,7 @@
             L();
             L($"    private string Name{l.Field}({l.IdType}? id) => Convert.ToString({l.Field}.FirstOrDefault(p => Equals(p.{l.KeyProp}, id))?.{l.DisplayProp}) ?? \"\";");
         }
-        if (gridColumns.Any(IsMoney) || children.Any(ch => ch.Columns.Any(IsMoney)))
+        if (gridColumns.Any(c => c.IsMoneyAmount) || children.Any(ch => ch.Columns.Any(c => c.IsMoneyAmount)))
         {
             L();
             L("    // Money in the grid: the currency symbol, thousands separators and the column's decimals.");
@@ -548,7 +520,7 @@
         L("        }");
         // a typed key can already be taken: the API answers 409
         if (textKey)
-            L($"        catch (ApiException ex) when (ex.Status == 409) {{ message = \"A {title.ToLowerInvariant()} with this {Label(keyColumn.Name).ToLowerInvariant()} already exists!\"; }}");
+            L($"        catch (ApiException ex) when (ex.Status == 409) {{ message = \"A {title.ToLowerInvariant()} with this {Labels.Column(keyColumn.Name).ToLowerInvariant()} already exists!\"; }}");
         L("        catch (ApiException ex) { message = ex.Explain(\"saving\"); }");
         L("        catch (HttpRequestException) { message = \"Problem while saving!\"; }");
         L("    }");

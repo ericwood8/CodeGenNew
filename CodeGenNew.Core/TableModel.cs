@@ -87,9 +87,12 @@ public class TableModel
     /// TemplateConfig.RequiresNotNameActiveTable (Docs/Reference.md section 3) for which templates that rules
     /// out and why. Exact-name match, not a SpecialLogicColumns.config pattern rule, matching how the
     /// existing inline checks were always written. </summary>
-    public bool IsNameActiveTable => _isNameActiveTable ??=
-        Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name") &&
-        Columns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
+    public bool IsNameActiveTable => _isNameActiveTable ??= HasNameActiveShape(Columns);
+
+    /// <summary> Whether these columns are those of a name / active table (see <see cref="IsNameActiveTable"/>): lets a template ask the question of a child table, whose columns it holds but not its model. </summary>
+    public static bool HasNameActiveShape(IEnumerable<ColumnModel> columns) =>
+        columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name") &&
+        columns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
 
     private bool? _isNameActiveTable;
     private bool? _isJunctionTable;

@@ -18,34 +18,6 @@
     string componentsFolder = Project.ComponentsFolder;
     string servicesFolder = Project.ServicesFolder;
     string modelsFolder = Project.ModelsFolder;
-    // Tables that have no API (C# enums, other *Type lookup tables, tables with no entity): no screen is written for them.
-    string[] noApiTables =
-    {
-        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
-        "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
-    };
-    // A foreign key to one of these is a plain number/text box, not a drop-down.
-    string[] noLookupParents =
-    {
-        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
-        "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role", "DepartmentTeam", "ProjectTask"
-    };
-    // A foreign key to this table is left off the screen (a styling id no one edits).
-    string hiddenParent = "SY_Display";
-    // Parents whose interface lives in another table's model file: table -> file name (without .ts).
-    var modelFileOf = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["DepartmentTeam"] = "department",
-        ["ProjectTask"] = "project"
-    };
-    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
-    modelFileOf = Project.ModelFileOverrides ?? modelFileOf;
-    bool IsHiddenParent(string table) => Project.HiddenParents is { } hidden ? hidden.Contains(table, StringComparer.OrdinalIgnoreCase) : table.EqualsIgnoreCase(hiddenParent);
-    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
-    // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
-    // only used when no project is chosen.
-    bool NoApi(string table, LookupShape shape) => Project.NoApi(table, shape) ?? noApiTables.Contains(table, StringComparer.OrdinalIgnoreCase);
-    bool NoLookup(string table, LookupShape shape) => Project.NoLookup(table, shape) ?? noLookupParents.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
     // ==========================================================================================
@@ -59,20 +31,13 @@
     // Full notes: Docs/TemplateNotes/TS_Component_v1.md
     // ==========================================================================================
 
-    string Words(string s) => Labels.Words(s);
-    string Camel(string name) => JsonNames.Camel(name);
     // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is limited to what the column can hold (a percentage to 0-100).
-    string Label(string columnName)
-    {
-        string s = Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", "");
-        return Words(s);
-    }
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
     var keyType = KeyType.Of(Model);   // how the key travels: a number, or a string for a uniqueidentifier or a text key
-    if (NoApi(Model.TableName, Model.LookupShape))
+    if (Project.NoApiFor(Model.TableName, Model.LookupShape))
     {
-        Error($"TS_Component writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
+        Error($"TS_Component writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is an enum or excluded by the NoApiTables setting (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
     }
     else if (keyColumn is null || keyType is null)
     {
@@ -85,10 +50,10 @@
         string baseName = BaseName(Model.TableName);
         string stem = baseName.ToLowerInvariant();
         string variable = LowerFirst(baseName);        // holiday
-        string keyProp = Camel(keyColumn.Name);        // holidayId
+        string keyProp = JsonNames.Camel(keyColumn.Name);        // holidayId
         string emptyKey = keyType.TypeScriptEmpty;     // "no key yet": the API assigns the real one (a text key is typed by the person, so a new row starts with '')
         bool textKey = keyType.Kind == KeyKind.Text;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
-        string title = Words(baseName);                // Time Sheet
+        string title = Labels.Words(baseName);                // Time Sheet
         bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"); // just for showError's message wording below
         int pageSize = 20;
         // Same order as Model.SearchableColumns (not "Name first" like the form fields below) - getPage's
@@ -98,42 +63,31 @@
         // The Search list protocol (ListProtocol=Search) has one search box for the whole table; the server decides which columns it matches.
         var searchFields = Project.ListSearchProtocol
             ? new List<(string ParamName, string Name, string Label)> { ("search", "search", "") }
-            : Model.SearchableColumns.Select(c => (ParamName: LowerFirst(c.Name), c.Name, Label: Label(c.Name))).ToList();
+            : Model.SearchableColumns.Select(c => (ParamName: LowerFirst(c.Name), c.Name, Label: Labels.Column(c.Name))).ToList();
         bool canSearch = !nameActive && searchFields.Count > 0;
 
-        var fkByColumn = Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1)
-            .GroupBy(f => f.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        // What the form is made of (its columns, the foreign key behind each, the drop-downs and their parents) is decided in Core for every stack.
+        var form = FormModel.For(Model, Project);
+        var fkByColumn = form.ForeignKeysByColumn;
 
         // ==== the columns on the screen: Name first, then table order
-        var shown = Model.Columns
-            .Where(c => (textKey && c.IsPrimaryKey)
-                        || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && !c.IsCredentialColumn
-                            && !(fkByColumn.TryGetValue(c.Name, out var hfk) && IsHiddenParent(hfk.ReferencedTable))))
-            .OrderBy(c => textKey && c.IsPrimaryKey ? 0 : c.Name == "Name" ? 1 : 2).ThenBy(c => c.OrdinalPosition)
-            .ToList();
+        var shown = form.Columns.ToList();
 
         // ==== lookups: one list + one "name of" method per distinct parent table
-        ForeignKeyModel LookupOf(ColumnModel c) =>
-            fkByColumn.TryGetValue(c.Name, out var fk)
-            && !NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape)
-            && fk.ReferencedDisplayColumns.Count > 0
-                ? fk : null;
-        var parents = shown.Select(c => LookupOf(c)).Where(fk => fk is not null)
-            .GroupBy(fk => fk.ReferencedTable, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+        var parents = form.Parents
             .Select(fk =>
             {
                 string parentBase = BaseName(fk.ReferencedTable);
                 bool self = fk.ReferencedTable.EqualsIgnoreCase(Model.TableName);
                 // a drop-down over a parent with a whole-number or text key reads the parent's lookup list ({ id, name }: GET <route>/lookup) instead of every column of every row
                 var fkColumn = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0]));
-                bool viaLookup = !fkColumn.IsGuidColumn && fk.ReferencedColumns.Count == 1 && !NoApi(fk.ReferencedTable, fk.ReferencedLookupShape);
+                bool viaLookup = !fkColumn.IsGuidColumn && fk.ReferencedColumns.Count == 1 && !Project.NoApiFor(fk.ReferencedTable, fk.ReferencedLookupShape);
                 string idType = Model.ForeignKeyType(fk)?.TypeScript ?? "number";
                 return new
                 {
                     Table = fk.ReferencedTable,
                     Type = parentBase,
-                    ModelFile = modelFileOf.TryGetValue(fk.ReferencedTable, out var mf) ? mf : parentBase.ToLowerInvariant(),
+                    ModelFile = Project.ModelFileOf(fk.ReferencedTable, parentBase.ToLowerInvariant()),
                     Service = parentBase + "Service",
                     ServiceVar = LowerFirst(parentBase) + "Service",
                     ServiceFile = parentBase.ToLowerInvariant() + ".service",
@@ -141,25 +95,19 @@
                     NameMethod = LowerFirst(parentBase) + "Name",
                     Lookup = viaLookup,
                     LookupType = idType == "number" ? "Lookup" : $"Lookup<{idType}>",
-                    KeyProp = viaLookup ? "id" : Camel(fk.ReferencedColumns[0]),
+                    KeyProp = viaLookup ? "id" : JsonNames.Camel(fk.ReferencedColumns[0]),
                     IdType = idType,
-                    DisplayProp = viaLookup ? "name" : Camel(fk.ReferencedDisplayColumns[0]),
+                    DisplayProp = viaLookup ? "name" : JsonNames.Camel(fk.ReferencedDisplayColumns[0]),
                     Self = self
                 };
             }).ToList();
         var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
 
         // ==== naming on the page
-        string Id(ColumnModel c) => variable + UpperFirst(Camel(c.Name));   // holidayName
-        string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
-        string LabelOf(ColumnModel c) => c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name);
-        // a money column that is not a whole number is edited in the money box (appCurrency), unless it is a foreign key, a list of choices or the typed key
-        bool IsCurrencyField(ColumnModel c) => c.IsCurrencyColumn && !c.IsIntegerColumn && IsNumber(c) && !c.IsSystemStampColumn && LookupOf(c) is null && !c.HasChoices && !(textKey && c.IsPrimaryKey);
-        // multi-line text is left out of the grid to keep it readable, unless that leaves it with fewer than GridColumns.MinColumns columns
-        bool UsesCurrencyBox() => shown.Any(IsCurrencyField);
-        var gridColumns = GridColumns.Choose(shown, IsMultiline);
-        // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
-        gridColumns = gridColumns.ForGrid();
+        string Id(ColumnModel c) => variable + UpperFirst(JsonNames.Camel(c.Name));   // holidayName
+        bool UsesCurrencyBox() => shown.Any(form.IsMoneyInput);
+        // The grid shows at most 20 columns and never a long text column (a Notes column, ...), and multi-line text only when that leaves fewer than GridColumns.MinColumns: see GridColumns.
+        var gridColumns = GridColumns.For(shown);
         // A grid column's header sorts the grid unless it is long text or binary (SearchSort.IsSortable; long text never is in a grid anyway).
         var sortableColumns = nameActive ? new List<ColumnModel>() : gridColumns.Where(SearchSort.IsSortable).ToList();
         // A Clone button beside Edit and Delete for the tables CloneShape allows (the service has clone(id), API_Crud / CS_Repo write the server side).
@@ -214,9 +162,9 @@
         foreach (var c in gridColumns)
         {
             if (sortableColumns.Contains(c))
-                H($"                <th [attr.aria-sort]=\"ariaSort('{c.Name}')\"><button type=\"button\" class=\"sort-header\" (click)=\"sortBy('{c.Name}')\">{GridCaption.For(c, LabelOf(c))}{{{{ sortMark('{c.Name}') }}}}</button></th>");
+                H($"                <th [attr.aria-sort]=\"ariaSort('{c.Name}')\"><button type=\"button\" class=\"sort-header\" (click)=\"sortBy('{c.Name}')\">{GridCaption.For(c, Labels.Field(c))}{{{{ sortMark('{c.Name}') }}}}</button></th>");
             else
-                H($"                <th>{GridCaption.For(c, LabelOf(c))}</th>");
+                H($"                <th>{GridCaption.For(c, Labels.Field(c))}</th>");
         }
         H("                <th>Actions</th>");
         H("            </tr>");
@@ -225,13 +173,13 @@
         H($"            <tr *ngFor=\"let {variable} of {rowsExpression}\">");
         foreach (var c in gridColumns)
         {
-            string prop = $"{variable}.{Camel(c.Name)}";
-            var lookup = LookupOf(c);
+            string prop = $"{variable}.{JsonNames.Camel(c.Name)}";
+            var lookup = form.LookupOf(c);
             string cell;
             if (lookup is not null) cell = $"{{{{ {parentOf[lookup.ReferencedTable].NameMethod}({prop}) }}}}";
             else if (c.IsBooleanColumn) cell = $"{{{{ {prop} ? \"Yes\" : \"No\" }}}}";
             else if (IsDate(c)) cell = $"{{{{ {prop} | date:'MM/dd/yyyy' }}}}";
-            else if (c.IsCurrencyColumn && !c.IsIntegerColumn) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{Math.Min(2, d)}-{d}' }}}}"; }
+            else if (c.IsMoneyAmount) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{Math.Min(2, d)}-{d}' }}}}"; }
             else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{{ {prop} | number:'1.2-2' }}}}";
             else cell = $"{{{{ {prop} }}}}";
             H($"                <td>{cell}</td>");
@@ -285,26 +233,26 @@
         foreach (var c in formPages[pageIndex].Columns)
         {
             string id = Id(c);
-            string model = $"selectedRow.{Camel(c.Name)}";
+            string model = $"selectedRow.{JsonNames.Camel(c.Name)}";
             string req = c.IsNullable ? "" : " required";
-            var lookup = LookupOf(c);
+            var lookup = form.LookupOf(c);
             if (c.IsSystemStampColumn)
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
                 string stampValue = c.IsDateColumn ? "{{ " + model + " | date:'medium' }}" : "{{ " + model + " }}";
                 H($"            <div class=\"form-group\" *ngIf=\"{(textKey ? "!adding" : "selectedRow." + keyProp)}\">");
-                H($"                <label for=\"{id}\">{LabelOf(c)}</label>");
+                H($"                <label for=\"{id}\">{Labels.Field(c)}</label>");
                 H($"                <span id=\"{id}\">{stampValue}</span>");
                 H("            </div>");
                 continue;
             }
             H("            <div class=\"form-group\">");
-            H($"                <label for=\"{id}\">{LabelOf(c)}</label>");
+            H($"                <label for=\"{id}\">{Labels.Field(c)}</label>");
             if (textKey && c.IsPrimaryKey)
             {
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
                 string max = Chars(c) > 0 ? $" maxlength=\"{Chars(c)}\"" : "";
-                H($"                <input type=\"text\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{max} [readonly]=\"!adding\" placeholder=\"{PlaceholderFor(c)}\"{req}>");
+                H($"                <input type=\"text\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{max} [readonly]=\"!adding\" placeholder=\"{Labels.Placeholder(c)}\"{req}>");
             }
             else if (lookup is not null)
             {
@@ -338,7 +286,7 @@
                     H("                </div>");
                 }
             }
-            else if (IsCurrencyField(c))
+            else if (form.IsMoneyInput(c))
             {
                 // the money box shows $1,234.50 and takes the plain number; the limits are the column's CHECK constraint, or 0 for a column the project lists as never negative
                 var (moneyMin, moneyMax) = Project.MoneyLimits(Model.TableName, c);
@@ -353,18 +301,18 @@
                 // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
                 string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\""
                     : IsPlainDecimal(c) ? $" min=\"{Inv(NumericClassifier.DecimalRange(c).Min)}\" max=\"{Inv(NumericClassifier.DecimalRange(c).Max)}\""
-                    : c.IsCurrencyColumn && !c.IsIntegerColumn ? Project.MoneyLimitHtml(Model.TableName, c) : "";
+                    : c.IsMoneyAmount ? Project.MoneyLimitHtml(Model.TableName, c) : "";
                 string width = Project.NumberBoxCharacters(c) is { } boxWidth ? $" style=\"width: {boxWidth}ch\"" : "";
-                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{step}{range}{width} placeholder=\"{PlaceholderFor(c)}\"{req}>");
+                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{step}{range}{width} placeholder=\"{Labels.Placeholder(c)}\"{req}>");
             }
             else if (IsMultiline(c))
             {
-                H($"                <textarea id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\" maxlength=\"{Chars(c)}\" placeholder=\"{PlaceholderFor(c)}\"{req}></textarea>");
+                H($"                <textarea id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\" maxlength=\"{Chars(c)}\" placeholder=\"{Labels.Placeholder(c)}\"{req}></textarea>");
             }
             else
             {
                 string max = IsText(c) && Chars(c) > 0 ? $" maxlength=\"{Chars(c)}\"" : "";
-                H($"                <input type=\"text\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{max} placeholder=\"{PlaceholderFor(c)}\"{req}>");
+                H($"                <input type=\"text\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{max} placeholder=\"{Labels.Placeholder(c)}\"{req}>");
             }
             H("            </div>");
         }
@@ -491,7 +439,7 @@
         T("})");
         T($"export class {cls} extends {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")}<{baseName}{keyGeneric}> {{");
         T($"  protected readonly service = inject({baseName}Service);");
-        T($"  protected readonly noun = '{Words(baseName).ToLowerInvariant()}';");
+        T($"  protected readonly noun = '{Labels.Words(baseName).ToLowerInvariant()}';");
         T($"  protected readonly idKey = '{keyProp}';");
         if (keyType.Kind != KeyKind.Int) T($"  protected override readonly emptyKey: {keyType.TypeScript} = {emptyKey};");
         if (textKey) T("  protected override readonly keyChosen = true; // the person types the key of a new row: it is sent as typed");
@@ -542,7 +490,7 @@
             else if (IsDate(c)) value = "new Date().toISOString().substring(0, 10)";
             else if (IsNumber(c)) value = "0";
             else value = "''";
-            adds.Add($"{Camel(c.Name)}: {value}");
+            adds.Add($"{JsonNames.Camel(c.Name)}: {value}");
         }
         T($"  protected newRow(): {baseName} {{");
         T(adds.Count == 0 ? "    return { };" : $"    return {{ {string.Join(", ", adds)} }};");
@@ -555,7 +503,7 @@
             T("    // the date box wants yyyy-MM-dd; the API sends a full timestamp");
             foreach (var c in dateColumns)
             {
-                string prop = $"copy.{Camel(c.Name)}";
+                string prop = $"copy.{JsonNames.Camel(c.Name)}";
                 if (c.IsNullable) T($"    if ({prop}) {{ {prop} = {prop}.substring(0, 10); }}");
                 else T($"    {prop} = {prop}.substring(0, 10);");
             }

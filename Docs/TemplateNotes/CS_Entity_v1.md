@@ -29,7 +29,7 @@ How each part is decided:
     ROLE - the column name without its trailing "Id" (DonateFrom_EmployeeId -> DonateFrom_Employee, ManagerId ->
     Manager) - of the referenced table's type, always nullable ("Employee?"; the FK column itself says whether the
     row is required) with [ForeignKey(nameof(<role>))] on the FK column. A foreign key to a table listed in
-    noNavigationTables below (an enum, or a table with no entity class) stays a plain int/string column.
+    the NoNavigationTables setting (an enum, or a table with no entity class) stays a plain int/string column.
   - Other columns: C# type from the SQL type; "required" when NOT NULL (it becomes "T?" / "string?" when nullable);
     Display(Name/Description) from the column name split into words ("WhenDonated" -> "When Donated", a bit column's
     "Is" prefix dropped); dates get DisplayFormat + DataType.Date; decimal/numeric get DisplayFormat and Precision(p, s);

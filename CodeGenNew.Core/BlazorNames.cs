@@ -13,7 +13,7 @@ public static class BlazorNames
     public static string TypeName(string table) => ScreenNames.BaseName(table);
 
     /// <summary> The API route of a table, as the generated API serves it: <c>/api/customers</c>. </summary>
-    public static string ApiRoute(string table) => "/api/" + ScreenNames.Stem(table).Pluralize();
+    public static string ApiRoute(string table) => "/api/" + ScreenNames.ApiRoute(table);
 
     /// <summary> Whether the table gets a model and a client: the API has CRUD for it, its single key is an int, a guid or text (the routes take <c>{id:int}</c>, <c>{id:guid}</c> or <c>{id}</c>) and it is not a name / active table. </summary>
     public static bool HasClient(TableModel table, ProjectSettings project) => Refusal(table, project) is null;

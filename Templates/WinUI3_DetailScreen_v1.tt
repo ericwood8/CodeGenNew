@@ -22,13 +22,6 @@
     // Folders under the WinUI3 project root (where -o points) the generated files go in.
     string viewsFolder = "Views";
     string viewModelsFolder = "ViewModels";
-    // A foreign key to one of these is a plain number box, not a drop-down (an enum/lookup parent, or a
-    // parent whose own screen needs cascading drop-downs this template can't build).
-    string[] noLookupParents =
-    {
-        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
-        "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role", "DepartmentTeam", "ProjectTask"
-    };
     // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     viewNamespace = Project.ViewNamespace ?? viewNamespace;
     viewModelNamespace = Project.ViewModelNamespace ?? viewModelNamespace;
@@ -37,10 +30,6 @@
     usings = Project.Usings ?? usings;
     viewsFolder = Project.ViewsFolder ?? viewsFolder;
     viewModelsFolder = Project.ViewModelsFolder ?? viewModelsFolder;
-    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
-    // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
-    // only used when no project is chosen.
-    bool NoLookup(string table, LookupShape shape) => Project.NoLookup(table, shape) ?? noLookupParents.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
     // ==========================================================================================
@@ -56,14 +45,11 @@
     bool UsesNumberBox(ColumnModel c) => c.IsIntegerColumn && !IsBit(c);
     // A currency column (money, or a decimal whose name says money) is also edited in a number box, formatted as currency in code-behind
     // (a NumberFormatter cannot be declared in XAML; CurrencyNumberFormatter.cs, written alongside, formats as currency and also reads a plain number), and converted back to a decimal rounded to the column's scale on save.
-    bool UsesCurrencyBox(ColumnModel c) => c.IsCurrencyColumn && !c.IsIntegerColumn;
     int CurrencyDigits(ColumnModel c) => NumericClassifier.CurrencyDigits(c);
     // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is edited in a number box too: its value is a double
     // (NaN = blank), limited to what the column can hold (NumericClassifier.DecimalRange), and converted back on save.
     bool UsesDecimalBox(ColumnModel c) => !c.IsCurrencyColumn && c.IsNumericColumn;
     int DecimalPlaces(ColumnModel c) => Math.Clamp(c.Scale ?? 2, 0, 8);
-    string Words(string s) => Labels.Words(s);
-    string Label(string columnName) => Words(Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", ""));
 
     string CSharpNumericType(ColumnModel c) => c.SqlType switch
     {
@@ -73,8 +59,7 @@
     };
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
-    bool isNameActive = Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name")
-                      && Model.Columns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
+    bool isNameActive = Model.IsNameActiveTable;
 
     var keyType = KeyType.Of(Model);   // how the key travels: a text key is typed by the person on a new row and read-only afterwards
     if (keyColumn is null || keyType is null)
@@ -89,39 +74,21 @@
     else
     {
         string table = Model.TableName;
-        string title = Words(table);
+        string title = Labels.Words(table);
         string keyProp = keyColumn.Name;
         bool textKey = keyType.Kind == KeyKind.Text;
 
-        // GroupBy + First, not ToDictionary: a real table can have more than one FK constraint on the same
-        // column pointing at the same parent (seen live against a second production database's dbo.Products
-        // table, e.g. two separate constraints both named differently but both from DOIProductTypeID to
-        // ProductTypes.ID) - ToDictionary would throw on the duplicate key.
-        var fkByColumn = Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1)
-            .GroupBy(f => f.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        // What the form is made of (its columns, the foreign key behind each, the drop-downs and their parents) is decided in Core for every stack.
+        var form = FormModel.For(Model, Project);
+        var fkByColumn = form.ForeignKeysByColumn;
 
-        var shown = Model.Columns
-            .Where(c => (textKey && c.IsPrimaryKey) || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && IsEditableType(c)))
-            .OrderBy(c => textKey && c.IsPrimaryKey ? 0 : 1).ThenBy(c => c.OrdinalPosition)
-            .ToList();
+        var shown = form.Columns.ToList();
 
         // A form with more than one kind of field is tabbed (Main / Billing & Shipping / Notes): see FormPages. A narrow table keeps its single column.
         var pages = FormPages.For(shown).Select(p => (Header: p.Header.Replace("&", "&amp;"), Columns: p.Columns)).ToList();
         bool tabbed = pages.Count > 1;
 
-        // Only an int-typed foreign key becomes a drop-down: the ViewModel binds every lookup field as int?
-        // (ComboBox.SelectedValue needs a concrete CLR type, and this project's foreign keys - like CS_Repo's
-        // GenericRepo<T> itself - are assumed to be plain ints, never a Guid or natural-text key).
-        ForeignKeyModel LookupOf(ColumnModel c) =>
-            KeyType.Of(c) is not null
-            && fkByColumn.TryGetValue(c.Name, out var fk)
-            && !NoLookup(fk.ReferencedTable, fk.ReferencedLookupShape)
-            && fk.ReferencedDisplayColumns.Count > 0
-                ? fk : null;
-
-        var parents = shown.Select(c => LookupOf(c)).Where(fk => fk is not null)
-            .GroupBy(fk => fk.ReferencedTable, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+        var parents = form.Parents
             .Select(fk => new
             {
                 Table = fk.ReferencedTable,
@@ -198,9 +165,9 @@
             }
         foreach (var c in page.Columns)
         {
-            var lookup = LookupOf(c);
+            var lookup = form.LookupOf(c);
             string prop = c.Name;
-            string label = Label(c.Name);
+            string label = Labels.Column(c.Name);
             if (c.IsSystemStampColumn)
             {
                 // who made the row and when it changed: the system writes it, so it is text, not a box
@@ -228,7 +195,7 @@
                       SelectedItem="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
 <#
             }
-            else if (UsesCurrencyBox(c))
+            else if (form.IsMoneyInput(c))
             {
 #>
             <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
@@ -331,7 +298,7 @@
 using <#= viewModelNamespace #>;
 using Microsoft.UI.Xaml.Controls;
 <#
-        var currencyColumns = shown.Where(UsesCurrencyBox).ToList();
+        var currencyColumns = shown.Where(form.IsMoneyInput).ToList();
         foreach (string u in usings)
         {
 #>
@@ -507,9 +474,9 @@ public partial class <#= table #>DetailViewModel : ObservableObject
 <#
         foreach (var c in shown)
         {
-            var lookup = LookupOf(c);
+            var lookup = form.LookupOf(c);
             string prop = c.Name;
-            string fieldType = lookup is not null ? parentOf[lookup.ReferencedTable].KeyCs + "?" : IsBit(c) ? "bool?" : (UsesNumberBox(c) || UsesCurrencyBox(c) || UsesDecimalBox(c)) ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
+            string fieldType = lookup is not null ? parentOf[lookup.ReferencedTable].KeyCs + "?" : IsBit(c) ? "bool?" : (UsesNumberBox(c) || form.IsMoneyInput(c) || UsesDecimalBox(c)) ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
 #>
     [ObservableProperty]
     private <#= fieldType #> _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #><#= fieldType == "double" ? " = double.NaN" : "" #>;
@@ -534,7 +501,7 @@ public partial class <#= table #>DetailViewModel : ObservableObject
 <#
         foreach (var c in shown)
         {
-            var lookup = LookupOf(c);
+            var lookup = form.LookupOf(c);
             string prop = c.Name;
             if (lookup is not null)
             {
@@ -544,7 +511,7 @@ public partial class <#= table #>DetailViewModel : ObservableObject
                 // just a timing quirk): the box renders as if empty even though editing.{prop} is correct,
                 // until the person types in it (found live clicking through a real running app, 2026-09-28).
             }
-            else if (UsesCurrencyBox(c))
+            else if (form.IsMoneyInput(c))
             {
 #>
             <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? (double)editing.{prop}.Value : double.NaN" : $"(double)editing.{prop}" #>;
@@ -604,7 +571,7 @@ public partial class <#= table #>DetailViewModel : ObservableObject
 <#
         foreach (var p in parents)
         {
-            var lookupColumnsForThisParent = shown.Where(c => LookupOf(c) is ForeignKeyModel fk && fk.ReferencedTable.EqualsIgnoreCase(p.Table)).ToList();
+            var lookupColumnsForThisParent = shown.Where(c => form.LookupOf(c) is ForeignKeyModel fk && fk.ReferencedTable.EqualsIgnoreCase(p.Table)).ToList();
 #>
         <#= p.OptionsProp #>.Clear();
         foreach (var row in await _context.Set<<#= p.Table #>>().OrderBy(r => r.<#= p.DisplayProp #>).ToListAsync())
@@ -643,9 +610,9 @@ public partial class <#= table #>DetailViewModel : ObservableObject
 <#
         foreach (var c in shown)
         {
-            var lookup = LookupOf(c);
+            var lookup = form.LookupOf(c);
             string prop = c.Name;
-            string label = Label(c.Name);
+            string label = Labels.Column(c.Name);
             if (lookup is not null)
             {
                 if (!c.IsNullable)
@@ -662,7 +629,7 @@ public partial class <#= table #>DetailViewModel : ObservableObject
 <#
                 }
             }
-            else if (UsesCurrencyBox(c))
+            else if (form.IsMoneyInput(c))
             {
 #>
         if (double.IsNaN(<#= prop #>))
@@ -841,7 +808,7 @@ public partial class <#= table #>DetailViewModel : ObservableObject
 #>
         if (_editing is null && await _repo.ExistsAsync(entity.<#= keyProp #>))
         {
-            ErrorMessage = "A <#= title.ToLowerInvariant() #> with this <#= Label(keyColumn.Name).ToLowerInvariant() #> already exists.";
+            ErrorMessage = "A <#= title.ToLowerInvariant() #> with this <#= Labels.Column(keyColumn.Name).ToLowerInvariant() #> already exists.";
             return false;
         }
 

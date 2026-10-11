@@ -14,7 +14,7 @@ public static class TemplateHelpers
     /// <summary> A table's name without the E_ or SY_ prefix some databases put on it. </summary>
     public static string BaseName(string table) => Regex.Replace(Regex.Replace(table, "^E_", ""), "^SY_", "");
 
-    public static bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
+    public static bool IsText(ColumnModel c) => c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar or SqlDbType.Text or SqlDbType.NText;
 
     public static bool IsNumber(ColumnModel c) => c.IsIntegerColumn || c.IsNumericColumn || c.IsMoneyColumn;
 

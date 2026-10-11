@@ -41,7 +41,7 @@ global stylesheet rather than a per-component one, so an empty per-page .css her
   - Foreign keys: a <select> of the parent's rows, loaded from the parent's own <parent>Api.getAll() (the
     generated sibling file, called by name - same cross-template contract TS_Component.tt already has
     with TS_Service.tt), showing the parent's display column; the grid shows the same name instead of
-    the id. A parent listed in noLookupParents stays a plain number box.
+    the id. A parent listed in the NoLookupParents setting stays a plain number box.
   - Key: an int key is a number, a uniqueidentifier key a string, same rule as TSX_Api.tt (Core's
     KeyType). A text key is the first field and a grid column: typed on a new row, read-only on an
     existing one. Because a typed key is set on a new row too, the page keeps an `adding` flag (set by

@@ -24,6 +24,9 @@ public static class GridColumns
         return shown.Where(c => plain.Contains(c) || fill.Contains(c)).ToList();
     }
 
+    /// <summary> The columns a generated grid shows for these form columns: <see cref="Choose"/> with the shared rule for multi-line text, then <see cref="ForGrid"/>. Every stack asks this one question. </summary>
+    public static List<ColumnModel> For(IReadOnlyList<ColumnModel> columns) => Choose(columns, TemplateHelpers.IsMultiline).ForGrid();
+
     /// <summary> The columns for a grid. A table whose columns are ALL long text would otherwise get an empty grid, so then (and only then) its long-text columns are used. </summary>
     public static List<ColumnModel> ForGrid(this IEnumerable<ColumnModel> columns)
     {

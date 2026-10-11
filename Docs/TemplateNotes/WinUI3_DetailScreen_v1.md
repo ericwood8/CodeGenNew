@@ -12,7 +12,7 @@ the same idea plus child grids for tables that hang off this one):
 
 Column selection mirrors TS_Component.tt (its Angular add/edit form): every column except the primary
 key, computed and identity columns. A foreign key becomes a ComboBox of the parent's rows (skipped for
-a table listed in noLookupParents, which stays a plain number box); a bit column becomes a CheckBox.
+a table in the NoLookupParents setting, which stays a plain number box); a bit column becomes a CheckBox.
 
 Field binding: WinUI3's compiled x:Bind cannot convert a TextBox's string Text to a numeric, date or
 Guid property without a converter class this template cannot assume your project has, so every

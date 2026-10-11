@@ -23,7 +23,7 @@ form that opens under the grid.
   - Foreign keys: a drop-down of the parent's rows, loaded from the parent's service (its getAll), showing the parent's
     display column (the one CodeGenNew picks for a Lookup: Name, ShortDescr ...); the grid shows the same name instead of
     the id. A parent that is an enum/lookup table, or whose screen needs cascading drop-downs, is listed in
-    noLookupParents and its foreign key stays a plain number box.
+    the NoLookupParents setting and its foreign key stays a plain number box.
   - Key (read from `KeyType`): an int key is a number, a uniqueidentifier key a string (the route takes {id:guid}; the api assigns the value on
     create - a new row is sent with the empty GUID, as an int key is sent as 0). A text key (a country or currency code) is a string the
     person types: it is the first field and a column of the grid, editable on a new row and read-only on an existing one (`[readonly]="!adding"`),

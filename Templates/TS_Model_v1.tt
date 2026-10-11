@@ -14,31 +14,6 @@
     // ==========================================================================================
     // Folders under the Angular app root (where -o points) that the generated files go in.
     string modelsFolder = Project.ModelsFolder;
-    // Tables that have no API (C# enums, other *Type lookup tables, tables with no entity): no model is written for them.
-    string[] noApiTables =
-    {
-        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
-        "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
-    };
-    // A foreign key to one of these stays a plain column: no navigation property.
-    string[] noNavigationTables =
-    {
-        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_Display", "SY_ISOCountry",
-        "SY_RequestStatusType", "SY_RequestType", "SY_ResponseType", "SY_Role"
-    };
-    // Interfaces that live in another table's model file: table -> file name (without .ts).
-    var modelFileOf = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["DepartmentTeam"] = "department",
-        ["ProjectTask"] = "project"
-    };
-    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
-    modelFileOf = Project.ModelFileOverrides ?? modelFileOf;
-    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
-    // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
-    // only used when no project is chosen.
-    bool NoApi(string table, LookupShape shape) => Project.NoApi(table, shape) ?? noApiTables.Contains(table, StringComparer.OrdinalIgnoreCase);
-    bool NoNavigation(string table, LookupShape shape) => Project.NoNavigation(table, shape) ?? noNavigationTables.Contains(table, StringComparer.OrdinalIgnoreCase);
     // ==========================================================================================
 
     // ==========================================================================================
@@ -49,13 +24,12 @@
     // Full notes: Docs/TemplateNotes/TS_Model_v1.md
     // ==========================================================================================
 
-    string Camel(string name) => JsonNames.Camel(name);
     string TsType(ColumnModel c) => c.TypeScript();
 
     var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
-    if (NoApi(Model.TableName, Model.LookupShape))
+    if (Project.NoApiFor(Model.TableName, Model.LookupShape))
     {
-        Error($"TS_Model writes no model for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noApiTables (an enum, a *Type lookup table, or a table with no entity class), so the app never receives a row of it.");
+        Error($"TS_Model writes no model for [{Model.SchemaName}].[{Model.TableName}]: it is an enum or excluded by the NoApiTables setting (an enum, a *Type lookup table, or a table with no entity class), so the app never receives a row of it.");
     }
     else if (keyColumn is null)
     {
@@ -69,17 +43,17 @@
             .ToDictionary(f => f.ReferencingColumns[0], f => f, StringComparer.OrdinalIgnoreCase);
 
         // navigation properties: one per foreign key whose parent is not an enum/lookup table
-        var takenNames = new HashSet<string>(Model.Columns.Select(c => Camel(c.Name)), StringComparer.Ordinal);
+        var takenNames = new HashSet<string>(Model.Columns.Select(c => JsonNames.Camel(c.Name)), StringComparer.Ordinal);
         var navigations = new List<(string Property, string Type, string File)>();
         foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && fkByColumn.ContainsKey(c.Name)))
         {
             var fk = fkByColumn[c.Name];
-            if (NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape)) continue;
+            if (Project.NoNavigationFor(fk.ReferencedTable, fk.ReferencedLookupShape)) continue;
             string role = c.Name.Length > 2 && c.Name.EndsWith("Id", StringComparison.Ordinal) ? c.Name[..^2] : c.Name + "Ref";
-            string property = Camel(role);
+            string property = JsonNames.Camel(role);
             if (!takenNames.Add(property)) continue;
             string type = BaseName(fk.ReferencedTable);
-            string file = modelFileOf.TryGetValue(fk.ReferencedTable, out var f) ? f : type.ToLowerInvariant();
+            string file = Project.ModelFileOf(fk.ReferencedTable, type.ToLowerInvariant());
             navigations.Add((property, type, file));
         }
 
@@ -101,7 +75,7 @@
         foreach (var c in Model.Columns)
         {
             bool optional = c.IsPrimaryKey || c.IsNullable;
-            L($"    {Camel(c.Name)}{(optional ? "?" : "")}: {TsType(c)};{(c.IsPrimaryKey ? " // Optional for new ones" : "")}");
+            L($"    {JsonNames.Camel(c.Name)}{(optional ? "?" : "")}: {TsType(c)};{(c.IsPrimaryKey ? " // Optional for new ones" : "")}");
         }
         foreach (var n in navigations)
             L($"    {n.Property}?: {n.Type};");
