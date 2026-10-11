@@ -23,8 +23,8 @@ public class ApiException(int status, string message) : Exception(message)
     // The sentence a screen shows for a failed save, delete or clone.
     public string Explain(string action) => Status switch
     {
-        400 => action == "deleting" ? "It cannot be deleted because it is in use!" : "Some of the values are not acceptable!",
-        404 => "It no longer exists!",
+        <#= HttpStatus.BadRequest #> => action == "deleting" ? "It cannot be deleted because it is in use!" : "Some of the values are not acceptable!",
+        <#= HttpStatus.NotFound #> => "It no longer exists!",
         _ => $"Problem while {action}!"
     };
 }

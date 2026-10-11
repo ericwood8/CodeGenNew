@@ -174,7 +174,7 @@ def register_error_handlers(app: FastAPI) -> None:
         errors: dict[str, list[str]] = {}
         for name, message in error.problems:
             errors.setdefault(name, []).append(message)
-        return _problem(400, "One or more validation errors occurred.", errors)
+        return _problem(<#= HttpStatus.BadRequest #>, "One or more validation errors occurred.", errors)
 
     @app.exception_handler(RequestValidationError)
     async def request_error(request: Request, error: RequestValidationError) -> JSONResponse:
@@ -182,7 +182,7 @@ def register_error_handlers(app: FastAPI) -> None:
         for item in error.errors():
             name = str(item["loc"][-1]) if item.get("loc") else "body"
             errors.setdefault(name, []).append(item["msg"])
-        return _problem(400, "One or more validation errors occurred.", errors)
+        return _problem(<#= HttpStatus.BadRequest #>, "One or more validation errors occurred.", errors)
 
 
 def escape_like(text: str) -> str:

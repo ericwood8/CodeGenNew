@@ -123,7 +123,7 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
 
   return next(request).pipe(
     catchError((error: HttpErrorResponse) => {
-      if (error.status === 401 && isApiCall && !request.url.endsWith('/auth/login')) {
+      if (error.status === <#= HttpStatus.Unauthorized #> && isApiCall && !request.url.endsWith('/auth/login')) {
         auth.logout();
       }
       return throwError(() => error);
@@ -179,8 +179,8 @@ export class LoginComponent {
       error: (error) => {
         this.busy = false;
         this.password = '';
-        if (error.status === 429) { this.message = 'Too many tries. Wait a minute and try again.'; }
-        else if (error.status === 401) { this.message = 'The user name or password is not right.'; }
+        if (error.status === <#= HttpStatus.TooManyRequests #>) { this.message = 'Too many tries. Wait a minute and try again.'; }
+        else if (error.status === <#= HttpStatus.Unauthorized #>) { this.message = 'The user name or password is not right.'; }
         else { this.message = 'Could not sign in right now.'; }
       }
     });
@@ -240,7 +240,7 @@ describe('AuthService', () => {
   it('stays signed out when the API refuses the sign-in', () => {
     const auth = TestBed.inject(AuthService);
     auth.login('pat', 'wrong').subscribe({ error: () => undefined });
-    http.expectOne('api/auth/login').flush(null, { status: 401, statusText: 'Unauthorized' });
+    http.expectOne('api/auth/login').flush(null, { status: <#= HttpStatus.Unauthorized #>, statusText: 'Unauthorized' });
 
     expect(auth.isLoggedIn()).toBe(false);
     expect(sessionStorage.getItem(storageKey)).toBeNull();
@@ -320,7 +320,7 @@ describe('authInterceptor', () => {
 
   it('signs the person out when the API answers 401', () => {
     client.get('api/things').subscribe({ error: () => undefined });
-    http.expectOne('api/things').flush(null, { status: 401, statusText: 'Unauthorized' });
+    http.expectOne('api/things').flush(null, { status: <#= HttpStatus.Unauthorized #>, statusText: 'Unauthorized' });
 
     expect(sessionStorage.getItem(storageKey)).toBeNull();
     expect(navigated).toEqual([['/login']]);
@@ -328,7 +328,7 @@ describe('authInterceptor', () => {
 
   it('leaves a refused sign-in to the login page', () => {
     client.post('api/auth/login', {}).subscribe({ error: () => undefined });
-    http.expectOne('api/auth/login').flush(null, { status: 401, statusText: 'Unauthorized' });
+    http.expectOne('api/auth/login').flush(null, { status: <#= HttpStatus.Unauthorized #>, statusText: 'Unauthorized' });
 
     expect(navigated).toEqual([]);
   });
@@ -336,9 +336,9 @@ describe('authInterceptor', () => {
   it('passes other errors on unchanged', () => {
     let status = 0;
     client.get('api/things').subscribe({ error: (error) => { status = error.status; } });
-    http.expectOne('api/things').flush(null, { status: 500, statusText: 'Server Error' });
+    http.expectOne('api/things').flush(null, { status: <#= HttpStatus.InternalServerError #>, statusText: 'Server Error' });
 
-    expect(status).toBe(500);
+    expect(status).toBe(<#= HttpStatus.InternalServerError #>);
     expect(navigated).toEqual([]);
   });
 });
@@ -404,7 +404,7 @@ describe('LoginComponent', () => {
     component.password = 'secret';
     component.signIn();
     const request = http.expectOne('api/auth/login');
-    if (status === 200) { request.flush({ token: 'abc', user: { name: 'Pat' } }); }
+    if (status === <#= HttpStatus.Ok #>) { request.flush({ token: 'abc', user: { name: 'Pat' } }); }
     else { request.flush(null, { status, statusText: 'x' }); }
   };
 
@@ -413,25 +413,25 @@ describe('LoginComponent', () => {
   });
 
   it('goes to the first screen after a sign-in', () => {
-    submit(200);
+    submit(<#= HttpStatus.Ok #>);
     expect(component.busy).toBe(false);
     expect(navigated).toEqual([['/']]);
   });
 
   it('says the name or password is wrong on a 401 and clears the password', () => {
-    submit(401);
+    submit(<#= HttpStatus.Unauthorized #>);
     expect(component.message).toBe('The user name or password is not right.');
     expect(component.password).toBe('');
     expect(navigated).toEqual([]);
   });
 
   it('says to wait on a 429', () => {
-    submit(429);
+    submit(<#= HttpStatus.TooManyRequests #>);
     expect(component.message).toBe('Too many tries. Wait a minute and try again.');
   });
 
   it('has a general message for anything else', () => {
-    submit(500);
+    submit(<#= HttpStatus.InternalServerError #>);
     expect(component.message).toBe('Could not sign in right now.');
   });
 });

@@ -225,6 +225,40 @@ public class ApiExtrasTemplateTests
     }
 
     [TestMethod]
+    public async Task Every_project_answers_errors_as_problem_details_and_a_refused_write_says_why()
+    {
+        foreach (var (dialect, provider, exception, value, names) in new[]
+        {
+            (SqlDialect.SqlServer, "SqlServer", "Microsoft.Data.SqlClient.SqlException database", "database.Number", new[] { "private const int UniqueConstraint = 2627;", "private const int ForeignKeyViolation = 547;", "private const int StringTruncated = 8152;", "private const int NullNotAllowed = 515;" }),
+            (SqlDialect.PostgreSql, "PostgreSql", "Npgsql.PostgresException database", "database.SqlState", new[] { "private const string UniqueViolation = \"23505\";", "private const string ForeignKeyViolation = \"23503\";", "private const string StringDataRightTruncation = \"22001\";", "private const string NotNullViolation = \"23502\";" }),
+            (SqlDialect.MySql, "MySql", "MySql.Data.MySqlClient.MySqlException database", "database.Number", new[] { "private const int DuplicateEntry = 1062;", "private const int RowIsReferenced = 1451;", "private const int DataTooLong = 1406;", "private const int ColumnCannotBeNull = 1048;" }),
+            (SqlDialect.Sqlite, "Sqlite", "Microsoft.Data.Sqlite.SqliteException database", "database.SqliteExtendedErrorCode", new[] { "private const int UniqueConstraint = 2067;", "private const int ForeignKeyConstraint = 787;", "private const int NotNullConstraint = 1299;" })
+        })
+        {
+            var result = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("DatabaseProvider", provider)));
+            Assert.IsTrue(result.Success, dialect + ": " + string.Join(" | ", result.Errors));
+            string text = result.GeneratedText!.Replace("\r\n", "\n");
+            var files = GeneratedFiles.Split(text).ToDictionary(f => f.RelativePath, f => f.Content.Replace("\r\n", "\n"));
+            string problems = files["Problems.cs"];
+            Expect.Contains(problems, "if (error is not " + exception + ")");
+            Expect.Contains(problems, "return " + value + " switch");
+            foreach (string name in names)
+                Expect.Contains(problems, name);
+            Expect.Contains(problems, "Constraint.ForeignKey when removing => Problem(StatusCodes.Status409Conflict, \"" + ProblemTypes.InUse + "\", \"In use\"");
+            Expect.Contains(problems, "Constraint.TooLong => Problem(StatusCodes.Status400BadRequest, \"" + ProblemTypes.ValueTooLong + "\", \"Value too long\"");
+            Expect.Contains(problems, "Constraint.Required => Problem(StatusCodes.Status400BadRequest, \"" + ProblemTypes.ValueRequired + "\", \"Value required\"");
+            Expect.Contains(problems, "Constraint.ForeignKey => Problem(StatusCodes.Status400BadRequest, \"" + ProblemTypes.RelatedRowMissing + "\", \"Related row missing\"");
+            Expect.Contains(problems, "public sealed class ApiExceptionHandler(IProblemDetailsService problems, IHostEnvironment environment, ILogger<ApiExceptionHandler> logger) : IExceptionHandler");
+            Expect.Contains(problems, "if (environment.IsDevelopment())");
+            Expect.Contains(problems, "problem.Extensions[\"trace\"] = exception.ToString();");
+
+            string program = files["Program.cs"];
+            Expect.Contains(program, "builder.Services.AddApiProblems();");
+            Expect.Contains(program, "var app = builder.Build();\napp.UseApiProblems();");
+        }
+    }
+
+    [TestMethod]
     public async Task The_production_profile_adds_files_and_no_package_only_when_asked()
     {
         var plain = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project());
@@ -239,7 +273,7 @@ public class ApiExtrasTemplateTests
         Expect.Contains(with, "@@@FILE Dockerfile@@@");
         Expect.Contains(with, "@@@FILE .dockerignore@@@");
         Expect.Contains(with, "builder.AddProductionProfile();");
-        Expect.Contains(with, "var app = builder.Build();\napp.UseProductionProfile();\napp.UseCors();\napp.UseRateLimiter();");
+        Expect.Contains(with, "var app = builder.Build();\napp.UseApiProblems();\napp.UseProductionProfile();\napp.UseCors();\napp.UseRateLimiter();");
         Expect.Contains(with, "app.MapProductionHealth();");
         Expect.Contains(with, "\"RateLimit\": {\n    \"PermitsPerMinute\": 100\n  },");
         Expect.Contains(with, "public class DatabaseHealthCheck(AcmeContext context) : IHealthCheck");

@@ -72,7 +72,7 @@ public class CrudApiTests
         Expect.Contains(cs, "if (pageNumber is not null || pageSize is not null)");
         Expect.Contains(cs, "int size = Math.Clamp(pageSize ?? 100, 1, MaxPageSize);");
         Expect.Contains(cs, "private const int MaxPageSize = 1000;");
-        Expect.Contains(cs, "return Results.Problem(statusCode: 400, title: \"Invalid page\", detail: \"pageNumber must be 1 or greater.\");");
+        Expect.Contains(cs, "return Results.Problem(statusCode: 400, type: \"" + ProblemTypes.InvalidPage + "\", title: \"Invalid page\", detail: \"pageNumber must be 1 or greater.\");");
         Expect.Contains(cs, "context.Set<TEntity>().AsNoTracking()");
         Expect.Contains(cs, "public record CrudPage<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalCount, int TotalPages);");
         Expect.Contains(cs, "all.OrderByDescending(newest).ThenBy(Key)");   // the page is ordered by the key too, so pages do not overlap

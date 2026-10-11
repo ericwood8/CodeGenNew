@@ -71,8 +71,8 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
         .WithName($"Search{plural}")
         .WithOpenApi()
         .Produces<<#= entity #>SearchResult>()
-        .ProducesProblem(400)
-        .ProducesProblem(500);
+        .ProducesProblem(<#= HttpStatus.BadRequest #>)
+        .ProducesProblem(<#= HttpStatus.InternalServerError #>);
     }
 
     private static async Task<IResult> Search(
@@ -100,10 +100,10 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
         // The answer carries the size that was used, so a caller that asked for more sees the cap.
         pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
         if (pageNumber < 1)
-            return Results.Problem(statusCode: 400, title: "Invalid page", detail: "pageNumber must be 1 or greater.");
+            return Results.Problem(statusCode: <#= HttpStatus.BadRequest #>, type: "<#= ProblemTypes.InvalidPage #>", title: "Invalid page", detail: "pageNumber must be 1 or greater.");
         // the first row of the page is a 32 bit number in the database (OFFSET), so a page number this large would be an overflow error there
         if ((long)(pageNumber - 1) * pageSize > int.MaxValue)
-            return Results.Problem(statusCode: 400, title: "Invalid page", detail: "pageNumber is too large for that pageSize.");
+            return Results.Problem(statusCode: <#= HttpStatus.BadRequest #>, type: "<#= ProblemTypes.InvalidPage #>", title: "Invalid page", detail: "pageNumber is too large for that pageSize.");
 
         // The grid's chosen sort: a column name and "asc" / "desc". The routine compares the name with its own list of sortable columns, so an unknown or
         // missing name just gives the default order; the name is never pasted into SQL.
@@ -120,7 +120,7 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
         {
 #>
         if (owners is not null)
-            return Results.Problem(statusCode: 403, title: "Search is not scoped", detail: "The search routine cannot limit the rows to an owner; use AccessMode=Ef or sign in as the administrator.");
+            return Results.Problem(statusCode: <#= HttpStatus.Forbidden #>, type: "<#= ProblemTypes.SearchNotScoped #>", title: "Search is not scoped", detail: "The search routine cannot limit the rows to an owner; use AccessMode=Ef or sign in as the administrator.");
 
 <#
         }

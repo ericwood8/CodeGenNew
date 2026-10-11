@@ -25,7 +25,7 @@ public static class Program
             Console.Error.WriteLine($"Error: {ex.Message}");
             Console.Error.WriteLine();
             ArgumentParser.PrintUsage(Console.Error);
-            return 1;
+            return ExitCodes.Failure;
         }
 
         string baseDirectory = AppHome.Resolve(AppContext.BaseDirectory);   // the program's folder, or the user's own folder for an installed tool
@@ -53,7 +53,7 @@ public static class Program
         if (template is null)
         {
             Console.Error.WriteLine($"Error: template '{options.Template}' was not found in '{templatesDirectory}'.");
-            return 1;
+            return ExitCodes.Failure;
         }
 
         // The project is read first: its NamingStyle decides the names the schema reader gives tables and columns.
@@ -68,7 +68,7 @@ public static class Program
             catch (FileNotFoundException ex)
             {
                 Console.Error.WriteLine($"Error: {ex.Message} Create it, or list the existing ones in '{projectsDirectory}'.");
-                return 1;
+                return ExitCodes.Failure;
             }
         }
         if (options.ProjectOverrides.Count > 0)
@@ -82,7 +82,7 @@ public static class Program
             Console.Error.WriteLine($"Error: {missing}");
             Console.Error.WriteLine();
             ArgumentParser.PrintUsage(Console.Error);
-            return 1;
+            return ExitCodes.Failure;
         }
 
         string? password = options.Password;
@@ -112,7 +112,7 @@ public static class Program
         if (!template.Config.DatabaseOnly && string.IsNullOrWhiteSpace(options.Table))
         {
             Console.Error.WriteLine($"Error: -t/--table is required for template '{template.Name}'.");
-            return 1;
+            return ExitCodes.Failure;
         }
 
         TableModel? model = null;
@@ -133,7 +133,7 @@ public static class Program
         if (!schemaReadOutcome.Success || (model is null && database is null))
         {
             Console.Error.WriteLine(schemaReadOutcome.Message);
-            return 1;
+            return ExitCodes.Failure;
         }
 
         // spCanDelete is a SQL Server stored procedure of the author's own tooling; PostgreSQL and MySQL have no such check.
@@ -173,7 +173,7 @@ public static class Program
         if (refusal is not null)
         {
             Console.Error.WriteLine($"Error: template '{template.Name}' can't be used for [{options.Schema}].[{options.Table}]: {refusal}");
-            return 1;
+            return ExitCodes.Failure;
         }
 
         Console.WriteLine($"Generating '{template.Name}' for [{options.Schema}].[{options.Table}]...");
@@ -183,7 +183,7 @@ public static class Program
             Console.Error.WriteLine("Template generation failed:");
             foreach (string error in result.Errors)
                 Console.Error.WriteLine($"  {error}");
-            return 1;
+            return ExitCodes.Failure;
         }
 
         List<string> writtenFiles;
@@ -194,13 +194,13 @@ public static class Program
         catch (InvalidDataException ex)
         {
             Console.Error.WriteLine($"Template output could not be written: {ex.Message}");
-            return 1;
+            return ExitCodes.Failure;
         }
         foreach (string writtenFile in writtenFiles)
             Console.WriteLine($"Wrote {writtenFile}");
         Console.WriteLine("Done. codegen never modifies the target database or any other application -- " +
                            "review the generated file above and apply it yourself if you're happy with it.");
-        return 0;
+        return ExitCodes.Success;
     }
 
     /// <summary> A database-level template (DbContext, API registration): one run over every table of the schema. The file is named after the
@@ -214,7 +214,7 @@ public static class Program
             Console.Error.WriteLine("Template generation failed:");
             foreach (string error in result.Errors)
                 Console.Error.WriteLine($"  {error}");
-            return 1;
+            return ExitCodes.Failure;
         }
 
         List<string> writtenFiles;
@@ -225,12 +225,12 @@ public static class Program
         catch (InvalidDataException ex)
         {
             Console.Error.WriteLine($"Template output could not be written: {ex.Message}");
-            return 1;
+            return ExitCodes.Failure;
         }
         foreach (string writtenFile in writtenFiles)
             Console.WriteLine($"Wrote {writtenFile}");
         Console.WriteLine("Done. review the generated files and add them to your project yourself.");
-        return 0;
+        return ExitCodes.Success;
     }
 
     private static async Task<int> GenerateDatabaseAsync(TemplateInfo template, DatabaseModel database, ProjectSettings project, string outputDirectory)
@@ -242,7 +242,7 @@ public static class Program
             Console.Error.WriteLine("Template generation failed:");
             foreach (string error in result.Errors)
                 Console.Error.WriteLine($"  {error}");
-            return 1;
+            return ExitCodes.Failure;
         }
 
         List<string> writtenFiles;
@@ -253,11 +253,11 @@ public static class Program
         catch (InvalidDataException ex)
         {
             Console.Error.WriteLine($"Template output could not be written: {ex.Message}");
-            return 1;
+            return ExitCodes.Failure;
         }
         foreach (string writtenFile in writtenFiles)
             Console.WriteLine($"Wrote {writtenFile}");
         Console.WriteLine("Done. codegen never modifies the target database or any other application -- review the generated file and apply it yourself.");
-        return 0;
+        return ExitCodes.Success;
     }
 }

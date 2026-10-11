@@ -98,8 +98,8 @@ public class ApiAuthTests
         Expect.Contains(auth, "app.MapPost(\"/api/auth/login\", LoginAsync)");
         Expect.Contains(auth, ".AllowAnonymous()");
         Expect.Contains(auth, "public record LoginResponse(string Token, DateTime ExpiresUtc, AuthUser User);");
-        Expect.Contains(auth, "Results.Problem(statusCode: 401, title: \"Wrong user name or password\")");
-        Expect.Contains(auth, "Results.Problem(statusCode: 429, title: \"Too many attempts\"");
+        Expect.Contains(auth, "Results.Problem(statusCode: 401, type: \"" + ProblemTypes.WrongCredentials + "\", title: \"Wrong user name or password\")");
+        Expect.Contains(auth, "Results.Problem(statusCode: 429, type: \"" + ProblemTypes.TooManyAttempts + "\", title: \"Too many attempts\"");
         Expect.Contains(auth, "options.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build();");
         Expect.Contains(auth, "options.MapInboundClaims = false;");
         Expect.Contains(auth, "public const string RoleClaim = \"role\";");
@@ -153,7 +153,7 @@ public class ApiAuthTests
         Expect.Contains(with, "protected virtual Expression<Func<TEntity, int>>? Owner => null;");
         Expect.Contains(with, "GetRequiredService<IOwnerScope>().VisibleOwnersAsync(Http.User, Http.RequestAborted)");
         Expect.Contains(with, "private async Task<IResult?> RefuseOtherOwnersAsync(AcmeContext context, TKey id)");
-        Expect.Contains(with, "Results.Problem(statusCode: 403, title: \"Not your row\"");
+        Expect.Contains(with, "Results.Problem(statusCode: 403, type: \"" + ProblemTypes.NotYours + "\", title: \"Not your row\"");
         Expect.Contains(with, "var key = Key;");
         Expect.Contains(with, "var column = Owner!;");
         // every route that reaches one row asks first
@@ -260,7 +260,7 @@ public class ApiAuthTests
         string search = await RenderTable("API_Search_v1.tt", Detail(), On, Owned, ("AccessMode", "Ef"));
         Expect.Contains(search, "query = query.Where(row => context.Set<TimeSheet>().Any(p => p.TimeSheetId == row.TimeSheetId && owners.Contains(p.EmployeeId)));");
         string routines = await RenderTable("API_Search_v1.tt", Detail(), On, Owned);
-        Expect.Contains(routines, "title: \"Search is not scoped\"");
+        Expect.Contains(routines, "type: \"" + ProblemTypes.SearchNotScoped + "\", title: \"Search is not scoped\"");
     }
 
     [TestMethod]
@@ -372,7 +372,7 @@ public class ApiAuthTests
         Expect.DoesNotContain(search, "Search is not scoped");
 
         string routines = await RenderTable("API_Search_v1.tt", TimeSheet(), On, Owned);
-        Expect.Contains(routines, "if (owners is not null)\n            return Results.Problem(statusCode: 403, title: \"Search is not scoped\"");
+        Expect.Contains(routines, "if (owners is not null)\n            return Results.Problem(statusCode: 403, type: \"" + ProblemTypes.SearchNotScoped + "\", title: \"Search is not scoped\"");
         Expect.DoesNotContain(routines, "owners.Contains");
 
         var unlisted = await Generate("API_Search", ("AccessMode", "Ef"), ("OwnedTables", "Employee"), ("OwnedChildren", "false"));

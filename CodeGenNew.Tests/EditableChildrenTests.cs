@@ -143,7 +143,7 @@ public class EditableChildrenTests
         Assert.AreEqual(4, CountOf(with, "if (await ChildRowsSupport.SaveAsync(context, EditableChildren,"));
         Assert.AreEqual(4, CountOf(with, "await transaction!.CommitAsync();"));
         Expect.Contains(with, "(EditableChildren.Count > 0\n            ? app.MapPost(apiSubDir, ([FromServices] AcmeContext context, HttpRequest request) => CreateWithChildrenAsync(context, request))");
-        Expect.Contains(with, "Results.Problem(statusCode: 400, title: \"Rows refused\"");
+        Expect.Contains(with, "catch (DbUpdateException error)\n        {\n            context.ChangeTracker.Clear();\n            return ApiProblems.ToResult(error);");
         Expect.DoesNotContain(with, "FluentValidation");
 
         string withValidation = await CrudApiTests.Essential(("EditableChildren", "Department.DepartmentTeam"), ("ApiValidation", "true"));

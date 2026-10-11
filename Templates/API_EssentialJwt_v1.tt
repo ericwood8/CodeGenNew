@@ -198,27 +198,27 @@ public static class AuthEndpoints
         .AllowAnonymous()
         .WithName("Login")
         .Produces<LoginResponse>()
-        .ProducesProblem(400)
-        .ProducesProblem(401)
-        .ProducesProblem(429);
+        .ProducesProblem(<#= HttpStatus.BadRequest #>)
+        .ProducesProblem(<#= HttpStatus.Unauthorized #>)
+        .ProducesProblem(<#= HttpStatus.TooManyRequests #>);
     }
 
     private static async Task<IResult> LoginAsync([FromBody] LoginRequest request, HttpContext http, [FromServices] IUserDirectory directory,
         [FromServices] LoginThrottle throttle, [FromServices] JwtOptions jwt)
     {
         if (string.IsNullOrWhiteSpace(request.UserName) || string.IsNullOrEmpty(request.Password))
-            return Results.Problem(statusCode: 400, title: "Sign-in needs a user name and a password");
+            return Results.Problem(statusCode: <#= HttpStatus.BadRequest #>, type: "<#= ProblemTypes.SignInIncomplete #>", title: "Sign-in needs a user name and a password");
 
         string key = request.UserName.Trim().ToLowerInvariant() + "|" + http.Connection.RemoteIpAddress;
         if (throttle.IsBlocked(key))
-            return Results.Problem(statusCode: 429, title: "Too many attempts", detail: "Wait a minute and try again.");
+            return Results.Problem(statusCode: <#= HttpStatus.TooManyRequests #>, type: "<#= ProblemTypes.TooManyAttempts #>", title: "Too many attempts", detail: "Wait a minute and try again.");
 
         var user = await directory.FindAsync(request.UserName, http.RequestAborted);
         bool passwordMatches = PasswordService.Verify(request.Password, user?.PasswordHash ?? UnknownUserHash);
         if (user is null || !passwordMatches)
         {
             throttle.Failed(key);
-            return Results.Problem(statusCode: 401, title: "Wrong user name or password");
+            return Results.Problem(statusCode: <#= HttpStatus.Unauthorized #>, type: "<#= ProblemTypes.WrongCredentials #>", title: "Wrong user name or password");
         }
 
         throttle.Succeeded(key);

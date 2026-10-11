@@ -42,7 +42,7 @@ public static class DashboardApi
         .WithName("GetDashboard")
         .WithOpenApi()
         .Produces<DashboardResult>()
-        .ProducesProblem(500);
+        .ProducesProblem(<#= HttpStatus.InternalServerError #>);
     }
 
     private static async Task<IResult> Get([FromServices] <#= contextType #> context, string? table)

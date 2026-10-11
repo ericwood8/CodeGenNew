@@ -200,9 +200,9 @@
         T($"      await {ReactNames.ApiVar(Model.TableName)}.delete(id);");
         T("      load(page); // read the page again: the total, the rows that move up and the last page all change");
         T("    } catch (err) {");
-        T("      if (err instanceof ApiError && err.status === 400) {");
+        T($"      if (err instanceof ApiError && err.status === {HttpStatus.BadRequest}) {{");
         T("        setError('It cannot be deleted because it is in use!');");
-        T("      } else if (err instanceof ApiError && err.status === 404) {");
+        T($"      }} else if (err instanceof ApiError && err.status === {HttpStatus.NotFound}) {{");
         T("        setError('It no longer exists!');");
         T("        load(page);");
         T("      } else {");
@@ -220,7 +220,7 @@
             T("      load(page);");
             T("      edit(copy);");
             T("    } catch (err) {");
-            T("      if (err instanceof ApiError && err.status === 404) {");
+            T($"      if (err instanceof ApiError && err.status === {HttpStatus.NotFound}) {{");
             T("        setError('It no longer exists!');");
             T("        load(page);");
             T("      } else {");
@@ -299,10 +299,10 @@
         }
         T();
         T("  const showError = (action: string, err: unknown) => {");
-        T($"    if (err instanceof ApiError && err.status === 400) {{ setError({(hasName ? "'Name is bad or has special characters!'" : "'Some of the values are not acceptable!'")}); }}");
-        T($"    else if (err instanceof ApiError && err.status === 404) {{ setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'); load(page); }}");
+        T($"    if (err instanceof ApiError && err.status === {HttpStatus.BadRequest}) {{ setError({(hasName ? "'Name is bad or has special characters!'" : "'Some of the values are not acceptable!'")}); }}");
+        T($"    else if (err instanceof ApiError && err.status === {HttpStatus.NotFound}) {{ setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'); load(page); }}");
         // a typed key can already be taken: the API answers 409
-        if (textKey) T($"    else if (err instanceof ApiError && err.status === 409) {{ setError('A {Labels.Words(baseName).ToLowerInvariant()} with this {Labels.Column(keyColumn.Name).ToLowerInvariant()} already exists!'); }}");
+        if (textKey) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.Conflict}) {{ setError('A {Labels.Words(baseName).ToLowerInvariant()} with this {Labels.Column(keyColumn.Name).ToLowerInvariant()} already exists!'); }}");
         T("    else { setError('Problem while ' + action + '!'); }");
         T("  };");
         T();

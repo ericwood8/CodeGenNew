@@ -92,7 +92,7 @@
         Line();
         Line("    IF " + string.Join(" OR ", key.Select(c => "UPDATE(" + Q(c.Name) + ")")));
         Line("    BEGIN");
-        Line("        RAISERROR('Unable to modify the primary key of " + Model.TableName.Replace("'", "''") + ": it identifies the row on the other servers.', 16, 1);");
+        Line("        RAISERROR('Unable to modify the primary key of " + Model.TableName.Replace("'", "''") + ": it identifies the row on the other servers.', " + SqlErrorCodes.RuleSeverity + ", " + SqlErrorCodes.RuleState + ");");
         Line("        ROLLBACK TRANSACTION;");
         Line("        RETURN;");
         Line("    END");

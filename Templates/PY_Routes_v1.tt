@@ -102,7 +102,7 @@
             Line($"    {f.Field.Name}: str | None = Query(None, alias=\"{f.Query}\"),");
         Line("):");
         Line("    if page_number < 1:");
-        Line("        raise ApiError(400, \"pageNumber must be 1 or greater.\")");
+        Line($"        raise ApiError({HttpStatus.BadRequest}, \"pageNumber must be 1 or greater.\")");
         Line("    page_size = max(1, min(page_size, MAX_PAGE_SIZE))");
         Line($"    statement = select({t.Class})");
         foreach (var f in t.Filters)
@@ -129,11 +129,11 @@
     Line($"def get_by_id(id: {keyType}, session: Session = Depends(get_session)):");
     Line($"    row = session.get({t.Class}, id)");
     Line("    if row is None:");
-    Line("        raise ApiError(404, \"Not found.\")");
+    Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
     Line("    return row");
     Line();
     Line();
-    Line($"@router.post(\"{t.Route}\", response_model={t.Schema}, status_code=201)");
+    Line($"@router.post(\"{t.Route}\", response_model={t.Schema}, status_code={HttpStatus.Created})");
     Line($"def create(body: {t.Schema}, response: Response, session: Session = Depends(get_session)):");
     if (validate)
         Line("    validate(body)");
@@ -141,9 +141,9 @@
     {
         // a text key is chosen by the person: a blank one is refused and one that exists is a conflict (the answers the ASP.NET API gives)
         Line($"    if not body.{key}.strip():");
-        Line("        raise ApiError(400, \"Key is required\")");
+        Line($"        raise ApiError({HttpStatus.BadRequest}, \"Key is required\")");
         Line($"    if session.get({t.Class}, body.{key}) is not None:");
-        Line("        raise ApiError(409, \"Duplicate key\")");
+        Line($"        raise ApiError({HttpStatus.Conflict}, \"Duplicate key\")");
     }
     Line($"    row = {t.Class}(**body.columns())");
     if (guidKey)
@@ -157,7 +157,7 @@
     Line("        session.commit()");
     Line("    except IntegrityError:");
     Line("        session.rollback()");
-    Line("        raise ApiError(400, IN_USE)");
+    Line($"        raise ApiError({HttpStatus.BadRequest}, IN_USE)");
     Line("    session.refresh(row)");
     Line(textKey
         ? $"    response.headers[\"Location\"] = f\"{t.Route}/{{quote(row.{key}, safe='')}}\""
@@ -168,19 +168,19 @@
     Line($"@router.put(\"{t.Route}/{{id}}\", response_model={t.Schema})");
     Line($"def update(id: {keyType}, body: {t.Schema}, session: Session = Depends(get_session)):");
     Line($"    if body.{key} != id:");
-    Line("        raise ApiError(400, \"The id in the URL and the id in the body differ.\")");
+    Line($"        raise ApiError({HttpStatus.BadRequest}, \"The id in the URL and the id in the body differ.\")");
     if (validate)
         Line("    validate(body)");
     Line($"    row = session.get({t.Class}, id)");
     Line("    if row is None:");
-    Line("        raise ApiError(404, \"Not found.\")");
+    Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
     Line("    for name, value in body.changes().items():");
     Line("        setattr(row, name, value)");
     Line("    try:");
     Line("        session.commit()");
     Line("    except IntegrityError:");
     Line("        session.rollback()");
-    Line("        raise ApiError(400, IN_USE)");
+    Line($"        raise ApiError({HttpStatus.BadRequest}, IN_USE)");
     Line("    session.refresh(row)");
     Line("    return row");
     Line();
@@ -189,25 +189,25 @@
     Line($"def delete(id: {keyType}, session: Session = Depends(get_session)):");
     Line($"    row = session.get({t.Class}, id)");
     Line("    if row is None:");
-    Line("        raise ApiError(404, \"Not found.\")");
+    Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
     Line("    session.delete(row)");
     Line("    try:");
     Line("        session.commit()");
     Line("    except IntegrityError:");
     Line("        session.rollback()");
-    Line("        raise ApiError(400, \"It cannot be deleted because it is in use.\")");
-    Line("    return Response(status_code=200)");
+    Line($"        raise ApiError({HttpStatus.BadRequest}, \"It cannot be deleted because it is in use.\")");
+    Line($"    return Response(status_code={HttpStatus.Ok})");
 
     if (t.Clone is { } cloned)
     {
         Line();
         Line();
-        Line($"@router.post(\"{t.Route}/{{id}}/clone\", response_model={t.Schema}, status_code=201)");
+        Line($"@router.post(\"{t.Route}/{{id}}/clone\", response_model={t.Schema}, status_code={HttpStatus.Created})");
         Line($"def clone_row(id: {keyType}, response: Response, session: Session = Depends(get_session)):");
         Line("    \"\"\"Copies a row into a new one and returns it. A unique text column gets a free value so the copy can be saved.\"\"\"");
         Line($"    source = session.get({t.Class}, id)");
         Line("    if source is None:");
-        Line("        raise ApiError(404, \"Not found.\")");
+        Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
         Line($"    row = {t.Class}(");
         foreach (var (field, value) in cloned)
             Line($"        {field.Name}={value},");

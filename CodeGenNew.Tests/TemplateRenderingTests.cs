@@ -822,7 +822,7 @@ public class TemplateRenderingTests
         string cs = await Render("API_Search_v1.tt", Sample.Holiday());
 
         Expect.Contains(cs, "if (pageNumber < 1)");
-        Expect.Contains(cs, "return Results.Problem(statusCode: 400, title: \"Invalid page\", detail: \"pageNumber must be 1 or greater.\");");
+        Expect.Contains(cs, "return Results.Problem(statusCode: 400, type: \"" + ProblemTypes.InvalidPage + "\", title: \"Invalid page\", detail: \"pageNumber must be 1 or greater.\");");
         Expect.Contains(cs, "pageNumber is too large for that pageSize.");
     }
 

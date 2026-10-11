@@ -509,7 +509,7 @@
         L("        }");
         // a typed key can already be taken: the API answers 409
         if (textKey)
-            L($"        catch (ApiException ex) when (ex.Status == 409) {{ message = \"A {title.ToLowerInvariant()} with this {Labels.Column(keyColumn.Name).ToLowerInvariant()} already exists!\"; }}");
+            L($"        catch (ApiException ex) when (ex.Status == {HttpStatus.Conflict}) {{ message = \"A {title.ToLowerInvariant()} with this {Labels.Column(keyColumn.Name).ToLowerInvariant()} already exists!\"; }}");
         L("        catch (ApiException ex) { message = ex.Explain(\"saving\"); }");
         L("        catch (HttpRequestException) { message = \"Problem while saving!\"; }");
         L("    }");
@@ -534,7 +534,7 @@
         L("        catch (ApiException ex)");
         L("        {");
         L("            message = ex.Explain(\"deleting\");");
-        L("            if (ex.Status == 404) await LoadAsync(pageNumber);");
+        L($"            if (ex.Status == {HttpStatus.NotFound}) await LoadAsync(pageNumber);");
         L("        }");
         L("        catch (HttpRequestException) { message = \"Problem while deleting!\"; }");
         L("    }");
@@ -553,7 +553,7 @@
             L("        catch (ApiException ex)");
             L("        {");
             L("            message = ex.Explain(\"cloning\");");
-            L("            if (ex.Status == 404) await LoadAsync(pageNumber);");
+            L($"            if (ex.Status == {HttpStatus.NotFound}) await LoadAsync(pageNumber);");
             L("        }");
             L("        catch (HttpRequestException) { message = \"Problem while cloning!\"; }");
             L("    }");

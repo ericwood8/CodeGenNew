@@ -176,11 +176,11 @@ import { apiMessage } from './api-error';
 
 describe('apiMessage', () => {
   it('uses the detail of a problem', () => {
-    expect(apiMessage({ status: 409, error: { title: 'Conflict', detail: 'An active record named A already exists.' } }, 'fallback')).toBe('An active record named A already exists.');
+    expect(apiMessage({ status: <#= HttpStatus.Conflict #>, error: { title: 'Conflict', detail: 'An active record named A already exists.' } }, 'fallback')).toBe('An active record named A already exists.');
   });
 
   it('joins the field messages of a validation problem', () => {
-    const error = { status: 400, error: { errors: { Name: ['Name is required.'], Code: ['Code is too long.'] } } };
+    const error = { status: <#= HttpStatus.BadRequest #>, error: { errors: { Name: ['Name is required.'], Code: ['Code is too long.'] } } };
     expect(apiMessage(error, 'fallback')).toBe('Name is required. Code is too long.');
   });
 
@@ -189,7 +189,7 @@ describe('apiMessage', () => {
   });
 
   it('falls back when there is no problem body', () => {
-    expect(apiMessage({ status: 500, message: 'Server error', error: null }, 'fallback')).toBe('fallback');
+    expect(apiMessage({ status: <#= HttpStatus.InternalServerError #>, message: 'Server error', error: null }, 'fallback')).toBe('fallback');
     expect(apiMessage({ error: 'plain text' }, 'fallback')).toBe('fallback');
     expect(apiMessage({ error: { detail: '  ', errors: {} } }, 'fallback')).toBe('fallback');
     expect(apiMessage(undefined, 'fallback')).toBe('fallback');
@@ -358,8 +358,8 @@ export abstract class CrudScreen<T, K extends number | string = number> implemen
     this.service.delete(id).subscribe({
       next: () => this.load(), // read the page again: the total, the rows that move up and the last page all change
       error: (error) => {
-        if (error.status == 400) { this.notifier.error(apiMessage(error, 'It cannot be deleted because it is in use!')); }
-        else if (error.status == 404) { this.notifier.error(apiMessage(error, 'It no longer exists!')); this.load(); }
+        if (error.status == <#= HttpStatus.BadRequest #>) { this.notifier.error(apiMessage(error, 'It cannot be deleted because it is in use!')); }
+        else if (error.status == <#= HttpStatus.NotFound #>) { this.notifier.error(apiMessage(error, 'It no longer exists!')); this.load(); }
         else { this.notifier.error(apiMessage(error, 'Problem while deleting! ' + error.message)); }
       }
     });
@@ -370,7 +370,7 @@ export abstract class CrudScreen<T, K extends number | string = number> implemen
     this.service.clone(id).subscribe({
       next: (copy) => { this.load(); this.edit(copy); },
       error: (error) => {
-        if (error.status == 404) { this.notifier.error(apiMessage(error, 'It no longer exists!')); this.load(); }
+        if (error.status == <#= HttpStatus.NotFound #>) { this.notifier.error(apiMessage(error, 'It no longer exists!')); this.load(); }
         else { this.notifier.error(apiMessage(error, 'Problem while cloning! ' + error.message)); }
       }
     });
@@ -386,8 +386,8 @@ export abstract class CrudScreen<T, K extends number | string = number> implemen
   }
 
   protected showError(action: string, error: { status?: number; message?: string; error?: unknown }): void {
-    if (error.status == 400) { this.notifier.error(apiMessage(error, this.badInputMessage)); }
-    else if (error.status == 404) { this.notifier.error(apiMessage(error, `This ${this.noun} no longer exists!`)); this.selectedRow = null; this.load(); }
+    if (error.status == <#= HttpStatus.BadRequest #>) { this.notifier.error(apiMessage(error, this.badInputMessage)); }
+    else if (error.status == <#= HttpStatus.NotFound #>) { this.notifier.error(apiMessage(error, `This ${this.noun} no longer exists!`)); this.selectedRow = null; this.load(); }
     else { this.notifier.error(apiMessage(error, 'Problem while ' + action + '! ' + error.message)); }
   }
 }
@@ -843,7 +843,7 @@ class NameActiveItemScreen extends NameActiveCrudScreen<Item> {
   protected newRow(): Item { return { name: '', isActive: true }; }
 }
 
-const conflict = { status: 409, statusText: 'Conflict' };
+const conflict = { status: <#= HttpStatus.Conflict #>, statusText: 'Conflict' };
 
 describe('the screen bases', () => {
   let http: HttpTestingController;
@@ -874,7 +874,7 @@ describe('the screen bases', () => {
 
       const post = http.expectOne('api/items');
       expect(post.request.method).toBe('POST');
-      post.flush({ title: 'Duplicate name', status: 409, detail: 'An active row named \'Alpha\' already exists.' }, conflict);
+      post.flush({ title: 'Duplicate name', status: <#= HttpStatus.Conflict #>, detail: 'An active row named \'Alpha\' already exists.' }, conflict);
 
       expect(errors).toContain('An active row named \'Alpha\' already exists.');
       expect(screen.selectedRow).not.toBeNull();   // what was typed is not lost
@@ -884,7 +884,7 @@ describe('the screen bases', () => {
       const screen = create(ItemScreen);
       screen.add();
       screen.submit(screen.selectedRow!);
-      http.expectOne('api/items').flush({ errors: { Name: ['Name is required.'], Code: ['Code is too long.'] } }, { status: 400, statusText: 'Bad Request' });
+      http.expectOne('api/items').flush({ errors: { Name: ['Name is required.'], Code: ['Code is too long.'] } }, { status: <#= HttpStatus.BadRequest #>, statusText: 'Bad Request' });
 
       expect(errors).toContain('Name is required. Code is too long.');
     });
@@ -893,7 +893,7 @@ describe('the screen bases', () => {
       const screen = create(ItemScreen);
       screen.add();
       screen.submit(screen.selectedRow!);
-      http.expectOne('api/items').flush(null, { status: 400, statusText: 'Bad Request' });
+      http.expectOne('api/items').flush(null, { status: <#= HttpStatus.BadRequest #>, statusText: 'Bad Request' });
 
       expect(errors).toContain('Some of the values are not acceptable!');
     });
@@ -913,7 +913,7 @@ describe('the screen bases', () => {
       const screen = create(ItemScreen);
       screen.edit({ itemId: 5, name: 'Old', isActive: true });
       screen.submit(screen.selectedRow!);
-      http.expectOne('api/items/5').flush(null, { status: 404, statusText: 'Not Found' });
+      http.expectOne('api/items/5').flush(null, { status: <#= HttpStatus.NotFound #>, statusText: 'Not Found' });
 
       expect(errors).toContain('This item no longer exists!');
       expect(screen.selectedRow).toBeNull();
@@ -937,18 +937,18 @@ describe('the screen bases', () => {
 
       confirmAnswer = true;
       screen.delete(3);
-      http.expectOne('api/items/3').flush({ detail: 'It is used by a time sheet.' }, { status: 400, statusText: 'Bad Request' });
+      http.expectOne('api/items/3').flush({ detail: 'It is used by a time sheet.' }, { status: <#= HttpStatus.BadRequest #>, statusText: 'Bad Request' });
       expect(errors).toContain('It is used by a time sheet.');
     });
 
     it('says the row is in use when a 400 comes with no words, and reads again when it is gone', () => {
       const screen = create(ItemScreen);
       screen.delete(3);
-      http.expectOne('api/items/3').flush(null, { status: 400, statusText: 'Bad Request' });
+      http.expectOne('api/items/3').flush(null, { status: <#= HttpStatus.BadRequest #>, statusText: 'Bad Request' });
       expect(errors).toContain('It cannot be deleted because it is in use!');
 
       screen.delete(4);
-      http.expectOne('api/items/4').flush(null, { status: 404, statusText: 'Not Found' });
+      http.expectOne('api/items/4').flush(null, { status: <#= HttpStatus.NotFound #>, statusText: 'Not Found' });
       expect(errors).toContain('It no longer exists!');
       http.expectOne((r) => r.method === 'GET' && r.url === 'api/items').flush([]);
     });
@@ -973,7 +973,7 @@ describe('the screen bases', () => {
       const post = http.expectOne('api/countries');
       expect(post.request.method).toBe('POST');
       expect(post.request.body).toEqual({ alpha3Code: 'CAN', name: 'Canada' });
-      post.flush({ title: 'Duplicate key', status: 409, detail: 'A row with that key already exists.' }, conflict);
+      post.flush({ title: 'Duplicate key', status: <#= HttpStatus.Conflict #>, detail: 'A row with that key already exists.' }, conflict);
       expect(errors).toContain('A row with that key already exists.');
       expect(screen.selectedRow).not.toBeNull();
     });

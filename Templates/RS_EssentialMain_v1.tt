@@ -227,7 +227,7 @@ impl IntoResponse for ApiError {
                 let body = serde_json::json!({
                     "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1",
                     "title": "One or more validation errors occurred.",
-                    "status": 400,
+                    "status": <#= HttpStatus.BadRequest #>,
                     "errors": errors,
                 });
                 let mut response = (StatusCode::BAD_REQUEST, Json(body)).into_response();

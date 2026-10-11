@@ -154,8 +154,8 @@ public class KeyTypeTests
         Expect.Contains(cs, "public abstract class CrudApi<TEntity, TRepo> : CrudApi<TEntity, TRepo, int>");
         Expect.Contains(cs, "typeof(TKey) == typeof(int) ? \":int\" : typeof(TKey) == typeof(long) ? \":long\" : typeof(TKey) == typeof(Guid) ? \":guid\" : \"\"");
         Expect.Contains(cs, "if (!SameKey(KeyOf(updatedRow), id))");
-        Expect.Contains(cs, "title: \"Key is required\"");
-        Expect.Contains(cs, "statusCode: 409, title: \"Duplicate key\"");
+        Expect.Contains(cs, "type: \"" + ProblemTypes.KeyRequired + "\", title: \"Key is required\"");
+        Expect.Contains(cs, "statusCode: 409, type: \"" + ProblemTypes.DuplicateKey + "\", title: \"Duplicate key\"");
     }
 
     [TestMethod]

@@ -75,11 +75,11 @@ public class NameActiveTests
         Expect.Contains(cs, "where TRepo : NameActiveRepo<TEntity>");
         Expect.Contains(cs, "app.MapGet(apiSubDir + \"/active\",");
         Expect.Contains(cs, "app.MapGet(apiSubDir + \"/{name}\",");
-        Expect.Contains(cs, "Results.Problem(statusCode: 409, title: \"Duplicate name\"");
+        Expect.Contains(cs, "Results.Problem(statusCode: 409, type: \"" + ProblemTypes.DuplicateName + "\", title: \"Duplicate name\"");
         Expect.Contains(cs, "if (string.IsNullOrWhiteSpace(newRow.Name))");
         Expect.Contains(cs, "if (!await NewRepo(context).AddAsync(newRow))");
         Expect.Contains(cs, "return saved is null ? DuplicateName(updatedRow.Name) : Results.Ok(saved);");
-        Expect.Contains(cs, "Results.Problem(statusCode: 400, title: \"In use\"");
+        Expect.Contains(cs, "Results.Problem(statusCode: 400, type: \"" + ProblemTypes.InUse + "\", title: \"In use\"");
 
         string validated = await CrudApiTests.Essential(("ApiValidation", "true"));
         Assert.IsGreaterThan(cs.Split("ValidationFilter<TEntity>").Length, validated.Split("ValidationFilter<TEntity>").Length);

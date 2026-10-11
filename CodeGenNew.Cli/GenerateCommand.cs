@@ -14,7 +14,7 @@ public static class GenerateCommand
         if (options.Command == "essentials" && options.List)
         {
             PrintEssentials(templatesDirectory);
-            return 0;
+            return ExitCodes.Success;
         }
 
         var project = ProjectSettings.None;
@@ -25,7 +25,7 @@ public static class GenerateCommand
             catch (FileNotFoundException ex)
             {
                 Console.Error.WriteLine($"Error: {ex.Message} Create it, or list the existing ones in '{projectsDirectory}'.");
-                return 1;
+                return ExitCodes.Failure;
             }
         }
         if (options.ProjectOverrides.Count > 0)
@@ -35,7 +35,7 @@ public static class GenerateCommand
         if (stackError is not null)
         {
             Console.Error.WriteLine($"Error: {stackError}");
-            return 1;
+            return ExitCodes.Failure;
         }
 
         return options.Command == "essentials"
@@ -93,7 +93,7 @@ public static class GenerateCommand
         if (groups.Count == 0)
         {
             Console.Error.WriteLine("Error: nothing to generate: no essentials group matches.");
-            return 1;
+            return ExitCodes.Failure;
         }
 
         Console.WriteLine($"Essentials: {string.Join(", ", groups.Select(g => $"{g.Stack}/{g.Name}"))}{(options.DryRun ? " (dry run)" : "")}");
@@ -114,7 +114,7 @@ public static class GenerateCommand
         if (ArgumentParser.MissingConnection(options) is { } missing)
         {
             Console.Error.WriteLine($"Error: {missing}");
-            return 1;
+            return ExitCodes.Failure;
         }
 
         string? password = options.Password;

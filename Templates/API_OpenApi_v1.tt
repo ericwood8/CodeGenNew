@@ -114,7 +114,7 @@
             foreach (int code in codes)
             {
                 L(indent + CSharpText.Quote(code.ToString()) + ":");
-                L(indent + "  description: " + CSharpText.Quote(code switch { 400 => "The request is not valid.", 404 => "There is no such row.", _ => "The server failed." }));
+                L(indent + "  description: " + CSharpText.Quote(code switch { HttpStatus.BadRequest => "The request is not valid.", HttpStatus.NotFound => "There is no such row.", _ => "The server failed." }));
                 L(indent + "  content:");
                 L(indent + "    application/problem+json:");
                 L(indent + "      schema:");
@@ -199,16 +199,16 @@
             L("            schema:");
             L("              $ref: '#/components/schemas/LoginRequest'");
             L("      responses:");
-            L("        '200':");
+            L($"        '{HttpStatus.Ok}':");
             L("          description: " + CSharpText.Quote("The token and who it is for."));
             L("          content:");
             L("            application/json:");
             L("              schema:");
             L("                $ref: '#/components/schemas/LoginResponse'");
-            foreach (int status in new[] { 400, 401, 429 })
+            foreach (int status in new[] { HttpStatus.BadRequest, HttpStatus.Unauthorized, HttpStatus.TooManyRequests })
             {
                 L("        '" + status + "':");
-                L("          description: " + CSharpText.Quote(status == 400 ? "A user name or password is missing." : status == 401 ? "Wrong user name or password." : "Too many wrong tries; wait a minute."));
+                L("          description: " + CSharpText.Quote(status == HttpStatus.BadRequest ? "A user name or password is missing." : status == HttpStatus.Unauthorized ? "Wrong user name or password." : "Too many wrong tries; wait a minute."));
                 L("          content:");
                 L("            application/problem+json:");
                 L("              schema:");
@@ -223,18 +223,18 @@
             var key = table.PrimaryKeyColumns[0];
 
             L("  " + route + ":");
-            Operation("get", "Get" + plural, singular, "All " + plural, null, "200", "Every row.", singular, true, [404, 500]);
-            Operation("post", "Create" + singular, singular, "Add a " + singular, singular, "201", "The new row.", singular, false, [500]);
+            Operation("get", "Get" + plural, singular, "All " + plural, null, HttpStatus.Ok.ToString(), "Every row.", singular, true, [HttpStatus.NotFound, HttpStatus.InternalServerError]);
+            Operation("post", "Create" + singular, singular, "Add a " + singular, singular, HttpStatus.Created.ToString(), "The new row.", singular, false, [HttpStatus.InternalServerError]);
 
             L("  " + route + "/{id}:");
-            Operation("get", "Get" + singular + "ById", singular, "One " + singular, null, "200", "The row.", singular, false, [404, 500], IdParameter(key));
-            Operation("put", "Update" + singular, singular, "Change a " + singular + " (the key in the body must be the id)", singular, "200", "The changed row.", singular, false, [400, 404, 500], IdParameter(key));
-            Operation("delete", "Delete" + singular, singular, "Remove a " + singular + " (400 when it is in use)", null, "200", "Removed.", null, false, [400, 404, 500], IdParameter(key));
+            Operation("get", "Get" + singular + "ById", singular, "One " + singular, null, HttpStatus.Ok.ToString(), "The row.", singular, false, [HttpStatus.NotFound, HttpStatus.InternalServerError], IdParameter(key));
+            Operation("put", "Update" + singular, singular, "Change a " + singular + " (the key in the body must be the id)", singular, HttpStatus.Ok.ToString(), "The changed row.", singular, false, [HttpStatus.BadRequest, HttpStatus.NotFound, HttpStatus.InternalServerError], IdParameter(key));
+            Operation("delete", "Delete" + singular, singular, "Remove a " + singular + " (400 when it is in use)", null, HttpStatus.Ok.ToString(), "Removed.", null, false, [HttpStatus.BadRequest, HttpStatus.NotFound, HttpStatus.InternalServerError], IdParameter(key));
 
             if (CloneShape.CanClone(table, Project))
             {
                 L("  " + route + "/{id}/clone:");
-                Operation("post", "Clone" + singular, singular, "Copy a " + singular + " into a new row", null, "201", "The copy.", singular, false, [404, 500], IdParameter(key));
+                Operation("post", "Clone" + singular, singular, "Copy a " + singular + " into a new row", null, HttpStatus.Created.ToString(), "The copy.", singular, false, [HttpStatus.NotFound, HttpStatus.InternalServerError], IdParameter(key));
             }
 
             if (searchTables.Contains(table.TableName))
@@ -256,7 +256,7 @@
                     "        - name: sortDir", "          in: query", "          schema:", "            type: string", "            enum: [asc, desc]"
                 ]);
                 L("  " + route + "/search:");
-                Operation("get", "Search" + plural, singular, "Search " + plural + " (paged)", null, "200", "A page of rows.", singular + "SearchResult", false, [400, 500], parameters.ToArray());
+                Operation("get", "Search" + plural, singular, "Search " + plural + " (paged)", null, HttpStatus.Ok.ToString(), "A page of rows.", singular + "SearchResult", false, [HttpStatus.BadRequest, HttpStatus.InternalServerError], parameters.ToArray());
             }
         }
 

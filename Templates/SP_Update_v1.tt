@@ -96,7 +96,7 @@ AS
 	IF (<#= startCol.ParameterName #> IS NOT NULL AND <#= endCol.ParameterName #> IS NOT NULL
 	    AND CAST(<#= startCol.ParameterName #> AS DATETIME) > CAST(<#= endCol.ParameterName #> AS DATETIME))
 	BEGIN
-		RAISERROR('[<#= startCol.Name #>] must not be later than [<#= endCol.Name #>].', 16, 1);
+		RAISERROR('[<#= startCol.Name #>] must not be later than [<#= endCol.Name #>].', <#= SqlErrorCodes.RuleSeverity #>, <#= SqlErrorCodes.RuleState #>);
 		RETURN 0;
 	END
 <#
@@ -113,7 +113,7 @@ AS
 	         OR (CAST(<#= inDate.ParameterName #> AS DATETIME) = CAST(<#= outDate.ParameterName #> AS DATETIME)
 	             AND CAST(<#= inTime.ParameterName #> AS TIME) > CAST(<#= outTime.ParameterName #> AS TIME))))
 	BEGIN
-		RAISERROR('[<#= inDate.Name #>]/[<#= inTime.Name #>] must not be later than [<#= outDate.Name #>]/[<#= outTime.Name #>].', 16, 1);
+		RAISERROR('[<#= inDate.Name #>]/[<#= inTime.Name #>] must not be later than [<#= outDate.Name #>]/[<#= outTime.Name #>].', <#= SqlErrorCodes.RuleSeverity #>, <#= SqlErrorCodes.RuleState #>);
 		RETURN 0;
 	END
 <#

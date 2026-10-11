@@ -712,7 +712,7 @@
                 T("    if (!this.notifier.confirm('Are you sure you want to delete this?')) return;");
                 T($"    this.http.delete(`{apiPrefix}/{child.ApiRoute}/${{{childKey}}}`).subscribe({{");
                 T($"      next: () => this.load{child.Name}(this.selectedRow!.{keyProp}!),");
-                T("      error: (error) => this.notifier.error(apiMessage(error, error.status == 400 ? 'It cannot be deleted because it is in use!' : 'Problem while deleting! ' + error.message))");
+                T($"      error: (error) => this.notifier.error(apiMessage(error, error.status == {HttpStatus.BadRequest} ? 'It cannot be deleted because it is in use!' : 'Problem while deleting! ' + error.message))");
                 T("    });");
                 T("  }");
             }
