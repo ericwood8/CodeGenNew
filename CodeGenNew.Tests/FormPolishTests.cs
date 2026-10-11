@@ -94,6 +94,49 @@ public class FormPolishTests
     }
 
     [TestMethod]
+    public async Task The_blazor_grid_shows_money_with_the_currency_symbol_and_a_tinyint_is_a_short()
+    {
+        var table = Sample.Table("Invoice",
+        [
+            Sample.Column("InvoiceId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("Freight", SqlDbType.Decimal, precision: 18, scale: 2, ordinal: 2, currency: true),
+            Sample.Column("Quarter", SqlDbType.TinyInt, nullable: true, ordinal: 3)
+        ]);
+        string page = (await Run("BLZ_Page_v1.tt", table, Project())).Single(f => f.Key.EndsWith(".razor")).Value;
+        Expect.Contains(page, "<td>@Money(item.Freight, 2)</td>");
+        Expect.Contains(page, "<CurrencyInput id=\"invoice-freight\" @bind-Value=\"row.Freight\" Digits=\"2\" Symbol=\"$\" required />");
+        Expect.Contains(page, "<ValidationSummary />");
+        Expect.Contains(page, "private static string Money(decimal? value, int digits)");
+        Expect.Contains(page, "\"$\" + Math.Abs(value.Value)");
+
+        string model = (await Run("BLZ_Model_v1.tt", table, Project())).Single(f => f.Key.EndsWith("Invoice.cs")).Value;
+        Expect.Contains(model, "public short? Quarter { get; set; }");   // InputNumber has no byte
+    }
+
+    [TestMethod]
+    public async Task The_blazor_page_of_a_master_shows_a_read_only_grid_of_each_child_under_the_form()
+    {
+        string page = (await Run("BLZ_Page_v1.tt", Invoice(Lines(4)), Project())).Single(f => f.Key.EndsWith(".razor")).Value;
+        Expect.Contains(page, "@inject InvoiceLineClient childInvoiceLineClient");
+        Expect.Contains(page, "<h3>Invoice Line</h3>");
+        Expect.Contains(page, "<th>Item Price</th>");
+        Expect.Contains(page, "<td>@Money(line.ItemPrice, 8)</td>");
+        Expect.Contains(page, "(await childInvoiceLineClient.GetAllAsync()).Where(line => line.InvoiceId == rowKey).ToList()");
+        Expect.Contains(page, "if (!add) await LoadChildrenAsync();");
+        Expect.Contains(page, "<button type=\"button\" @onclick=\"() => EditchildInvoiceLine(line)\">Edit</button>");
+        Expect.Contains(page, "<button type=\"button\" @onclick=\"() => DeletechildInvoiceLine(line)\">Delete</button>");
+        Expect.Contains(page, "await childInvoiceLineClient.DeleteAsync(line.InvoiceLineId);");
+        Expect.Contains(page, "Navigation.NavigateTo(\"/invoice-line?edit=\" + Uri.EscapeDataString(Convert.ToString(line.InvoiceLineId)!) + \"&back=\" + Uri.EscapeDataString(back));");
+        Expect.Contains(page, "[Parameter, SupplyParameterFromQuery(Name = \"edit\")] public string? EditId { get; set; }");
+        Expect.Contains(page, "Edit(await Client.GetAsync(int.Parse(EditId)))");
+        Expect.Contains(page, "if (Back is not null) Navigation.NavigateTo(Back);");
+        Expect.DoesNotContain(page, "<th>Invoice Line Id</th>");   // the child's own key and the foreign key back to this row are left out
+
+        string plain = (await Run("BLZ_Page_v1.tt", Invoice(), Project())).Single(f => f.Key.EndsWith(".razor")).Value;
+        Expect.DoesNotContain(plain, "LoadChildrenAsync");
+    }
+
+    [TestMethod]
     public async Task The_winui3_dialog_shows_the_stamp_as_text_and_has_bold_buttons()
     {
         string xaml = (await Run("WinUI3_DetailScreen_v1.tt", Invoice(), Project())).Single(f => f.Key.EndsWith("DetailDialog.xaml")).Value;

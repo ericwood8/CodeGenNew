@@ -38,7 +38,9 @@
                 "object" => " = new();",
                 _ => ""
             };
-            L($"    public {c.CSharp()} {c.CSharpName()} {{ get; set; }}{initial}");
+            // InputNumber has no byte: a tinyint column is a short, which the API still reads and writes as the same JSON number
+            string propertyType = c.SqlType == System.Data.SqlDbType.TinyInt ? (c.IsNullable ? "short?" : "short") : c.CSharp();
+            L($"    public {propertyType} {c.CSharpName()} {{ get; set; }}{initial}");
         }
         L("}");
         Write(o.ToString());

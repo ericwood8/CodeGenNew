@@ -19,6 +19,9 @@
     // ==========================================================================================
 
     string Words(string s) => Labels.Words(s);
+    // a money column that is not a whole number is shown with the currency symbol in the grid
+    bool IsMoney(ColumnModel c) => c.IsCurrencyColumn && !c.IsIntegerColumn && c.SqlType is not SqlDbType.Bit;
+    string Symbol() => Project.CurrencyCode == "USD" ? "$" : Project.CurrencyCode + " ";
     bool HasInput(ColumnModel c) => c.CSharpBase() is not ("byte[]" or "object");
     string Label(string columnName) => Words(Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", ""));
     string Ident(string name) => Regex.Replace(name, "[^A-Za-z0-9]", "");
@@ -75,6 +78,61 @@
         var sortable = gridColumns.Where(SearchSort.IsSortable).ToList();
         bool canClone = CloneShape.CanClone(Model, Project);
 
+        // A money box edits a money column that is not a foreign key, a list of choices, a stamp or the typed key.
+        bool MoneyBox(ColumnModel c) => IsMoney(c) && IsNumber(c) && !c.IsSystemStampColumn && LookupOf(c) is null && !c.HasChoices && !(textKey && c.IsPrimaryKey);
+        bool usesMoneyBox = shown.Any(MoneyBox);
+
+        // The child tables: each is a read-only grid under the form while a row is edited (as the React page does). The whole child table is read and filtered here by this row's key.
+        bool HasClientShape(ChildForeignKeyModel fk) =>
+            fk.ReferencingColumns.Count == 1 && fk.ReferencingPrimaryKeyColumns.Count == 1 && !fk.ReferencingTable.EqualsIgnoreCase(Model.TableName)
+            && fk.ReferencingTableColumns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(fk.ReferencingPrimaryKeyColumns[0])) is { } childKey && KeyType.Of(childKey) is not null
+            && !(fk.ReferencingTableColumns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name") && fk.ReferencingTableColumns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive"))
+            && Project.NoApi(fk.ReferencingTable, default) != true && Project.NoRepository(fk.ReferencingTable, default) != true;
+        bool HasLookupParent(ForeignKeyModel o, ChildForeignKeyModel fk) =>
+            o.ReferencingColumns.Count == 1 && !o.ReferencingColumns[0].EqualsIgnoreCase(fk.ReferencingColumns[0]) && !o.ReferencedTable.EqualsIgnoreCase(fk.ReferencingTable)
+            && o.ReferencedDisplayColumns.Count > 0 && !(Project.NoLookup(o.ReferencedTable, o.ReferencedLookupShape) ?? false) && Project.NoApi(o.ReferencedTable, default) != true;
+        var children = Model.ChildForeignKeys.Where(HasClientShape)
+            .GroupBy(fk => fk.ReferencingTable, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
+            .Select(fk =>
+            {
+                string childType = BlazorNames.TypeName(fk.ReferencingTable);
+                var lookups = fk.ReferencingTableForeignKeys.Where(o => HasLookupParent(o, fk))
+                    .Select(o => (Column: o.ReferencingColumns[0], Type: BlazorNames.TypeName(o.ReferencedTable), Field: "childLookup" + Ident(BlazorNames.TypeName(o.ReferencedTable)),
+                                  IdType: fk.ReferencingTableColumns.First(col => col.Name.EqualsIgnoreCase(o.ReferencingColumns[0])).CSharpBase(), KeyProp: o.ReferencedColumns[0], DisplayProp: o.ReferencedDisplayColumns[0]))
+                    .ToList();
+                var otherForeignKeys = fk.ReferencingTableForeignKeys.SelectMany(o => o.ReferencingColumns).Except(lookups.Select(l => l.Column), StringComparer.OrdinalIgnoreCase).ToList();
+                var columns = fk.ReferencingTableColumns
+                    .Where(c => !fk.ReferencingPrimaryKeyColumns.Any(k => k.EqualsIgnoreCase(c.Name)) && !c.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])
+                                && !c.IsCredentialColumn && HasInput(c) && !otherForeignKeys.Contains(c.Name, StringComparer.OrdinalIgnoreCase))
+                    .ToList();
+                return new
+                {
+                    Link = fk,
+                    Type = childType,
+                    Var = "child" + Ident(childType),
+                    Title = Project.ChildGridTitle(Model.TableName, fk.ReferencingTable, Words(childType)),
+                    FkProp = fk.ReferencingTableColumns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).CSharpName(),
+                    KeyProp = fk.ReferencingTableColumns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingPrimaryKeyColumns[0])).CSharpName(),
+                    Route = ScreenNames.Route(fk.ReferencingTable),
+                    // Edit opens the child's own page, which exists unless the project's Screens setting leaves it out
+                    HasPage = Project.Screens.Length == 0 || Project.Screens.Contains(fk.ReferencingTable, StringComparer.OrdinalIgnoreCase),
+                    Lookups = lookups,
+                    Columns = GridColumns.Choose(columns, IsMultiline).ForGrid()
+                };
+            }).ToList();
+        var childLookups = children.SelectMany(ch => ch.Lookups).GroupBy(l => l.Field).Select(g => g.First()).ToList();
+
+        // A cell of a grid row: the lookup's name for a foreign key, yes / no, a date, money with its symbol, or the value.
+        string Cell(ColumnModel c, string prop, string lookupCall)
+        {
+            if (lookupCall is not null) return "@" + lookupCall;
+            if (c.IsBooleanColumn) return c.IsNullable ? $"@({prop} is null ? \"\" : {prop} == true ? \"Yes\" : \"No\")" : $"@({prop} ? \"Yes\" : \"No\")";
+            if (IsDate(c)) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd\")";
+            if (IsMoney(c)) return $"@Money({prop}, {NumericClassifier.CurrencyDigits(c)})";
+            if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"N2\")";
+            return $"@{prop}";
+        }
+
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s.Replace("§T", type).Replace("§K", key).Replace("§N", title)).Append('\n');
 
@@ -82,10 +140,17 @@
         L($"@page \"/{ScreenNames.Route(Model.TableName)}\"");
         L($"@using {ns}.Models");
         L($"@using {ns}.Services");
+        if (usesMoneyBox)
+            L($"@using {ns}.Components");
         L("@inject §TClient Client");
         foreach (var p in parents)
             L($"@inject {p.Type}Client {p.Field}Client");
+        foreach (var ch in children)
+            L($"@inject {ch.Type}Client {ch.Var}Client");
+        foreach (var l in childLookups)
+            L($"@inject {l.Type}Client {l.Field}Client");
         L("@inject IJSRuntime Js");
+        L("@inject NavigationManager Navigation");
         L();
         L($"<PageTitle>{title.Pluralize()}</PageTitle>");
         L();
@@ -128,13 +193,8 @@
         foreach (var c in gridColumns)
         {
             string prop = $"item.{c.CSharpName()}";
-            string cell;
             var lookup = LookupOf(c);
-            if (lookup is not null) cell = $"@Name{parentOf[lookup.ReferencedTable].Type}({prop})";
-            else if (c.IsBooleanColumn) cell = c.IsNullable ? $"@({prop} is null ? \"\" : {prop} == true ? \"Yes\" : \"No\")" : $"@({prop} ? \"Yes\" : \"No\")";
-            else if (IsDate(c)) cell = $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd\")";
-            else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"N{(c.IsCurrencyColumn ? NumericClassifier.CurrencyDigits(c) : 2)}\")";
-            else cell = $"@{prop}";
+            string cell = Cell(c, prop, lookup is not null ? $"Name{parentOf[lookup.ReferencedTable].Type}({prop})" : null);
             L($"                <td>{cell}</td>");
         }
         L("                <td>");
@@ -217,6 +277,8 @@
             }
             else if (IsDate(c))
                 input = $"<InputDate id=\"{id}\" @bind-Value=\"{bind}\"{required} />";
+            else if (MoneyBox(c))
+                input = $"<CurrencyInput id=\"{id}\" @bind-Value=\"{bind}\" Digits=\"{NumericClassifier.CurrencyDigits(c)}\" Symbol=\"{Symbol()}\"{required} />";
             else if (IsNumber(c))
             {
                 string width = Project.NumberBoxCharacters(c) is { } boxWidth ? $" style=\"width: {boxWidth}ch\"" : "";
@@ -233,11 +295,56 @@
                 input = $"<input id=\"{id}\" @bind=\"{bind}\"{required} />";
             L($"            <div class=\"field\"><label for=\"{id}\">{label}</label>{input}</div>");
         }
+        L("            <ValidationSummary />");
         L("            <div class=\"actions\">");
         L("                <button type=\"submit\">Save</button>");
         L("                <button type=\"button\" @onclick=\"Cancel\">Cancel</button>");
         L("            </div>");
         L("        </EditForm>");
+        if (children.Count > 0)
+        {
+            L("        @if (!isNew)");
+            L("        {");
+            foreach (var ch in children)
+            {
+                L($"            <h3>{ch.Title}</h3>");
+                L($"            @if ({ch.Var}Rows.Count == 0)");
+                L("            {");
+                L("                <p class=\"no-rows\">Nothing found.</p>");
+                L("            }");
+                L("            else");
+                L("            {");
+                L("                <table>");
+                L("                    <thead>");
+                L("                        <tr>");
+                foreach (var c in ch.Columns)
+                    L($"                            <th>{GridCaption.For(c, c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name))}</th>");
+                L("                            <th>Actions</th>");
+                L("                        </tr>");
+                L("                    </thead>");
+                L("                    <tbody>");
+                L($"                        @foreach (var line in {ch.Var}Rows)");
+                L("                        {");
+                L("                            <tr>");
+                foreach (var c in ch.Columns)
+                {
+                    string prop = $"line.{c.CSharpName()}";
+                    var l = ch.Lookups.FirstOrDefault(x => x.Column.EqualsIgnoreCase(c.Name));
+                    L($"                                <td>{Cell(c, prop, l.Field is not null ? $"Name{l.Field}({prop})" : null)}</td>");
+                }
+                L("                                <td>");
+                if (ch.HasPage)
+                    L($"                                    <button type=\"button\" @onclick=\"() => Edit{ch.Var}(line)\">Edit</button>");
+                L($"                                    <button type=\"button\" @onclick=\"() => Delete{ch.Var}(line)\">Delete</button>");
+                L("                                </td>");
+                L("                            </tr>");
+                L("                        }");
+                L("                    </tbody>");
+                L("                </table>");
+                L("            }");
+            }
+            L("        }");
+        }
         L("    </div>");
         L("}");
         L();
@@ -248,6 +355,10 @@
         L("    private List<§T> items = [];");
         foreach (var p in parents)
             L($"    private List<{p.Type}> {p.Field} = [];");
+        foreach (var ch in children)
+            L($"    private List<{ch.Type}> {ch.Var}Rows = [];");
+        foreach (var l in childLookups)
+            L($"    private List<{l.Type}> {l.Field} = [];");
         L("    private §T? row;");
         L("    private bool isNew;");
         L("    private string? message;");
@@ -255,6 +366,9 @@
         L("    private int totalPages = 1;");
         L("    private string? sortBy;");
         L("    private bool descending;");
+        L("    // Opened from another page's grid (?edit=<id>&back=<that page>): open this row, and go back to that page when the form is saved or cancelled.");
+        L("    [Parameter, SupplyParameterFromQuery(Name = \"edit\")] public string? EditId { get; set; }");
+        L("    [Parameter, SupplyParameterFromQuery(Name = \"back\")] public string? Back { get; set; }");
         foreach (var f in searchFields)
             L($"    private string? {f.Field};");
         L();
@@ -262,7 +376,14 @@
         L("    {");
         foreach (var p in parents)
             L($"        try {{ {p.Field} = await {p.Field}Client.GetAllAsync(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
+        foreach (var l in childLookups)
+            L($"        try {{ {l.Field} = await {l.Field}Client.GetAllAsync(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
         L("        await LoadAsync();");
+        L("        if (EditId is not null)");
+        L("        {");
+        L("            try { " + (children.Count > 0 ? "await " : "") + "Edit(await Client.GetAsync(" + (keyColumn.CSharpBase() == "string" ? "EditId" : keyColumn.CSharpBase() + ".Parse(EditId)") + ")); }");
+        L($"            catch (Exception ex) when (ex is ApiException or HttpRequestException or FormatException) {{ message = \"This {title.ToLowerInvariant()} no longer exists!\"; }}");
+        L("        }");
         L("    }");
         L();
         if (searchFields.Count > 0)
@@ -328,24 +449,90 @@
             L();
             L($"    private string Name{p.Type}({p.IdType}? id) => Convert.ToString({p.Field}.FirstOrDefault(p => Equals(p.{p.KeyProp}, id))?.{p.DisplayProp}) ?? \"\";");
         }
+        foreach (var l in childLookups)
+        {
+            L();
+            L($"    private string Name{l.Field}({l.IdType}? id) => Convert.ToString({l.Field}.FirstOrDefault(p => Equals(p.{l.KeyProp}, id))?.{l.DisplayProp}) ?? \"\";");
+        }
+        if (gridColumns.Any(IsMoney) || children.Any(ch => ch.Columns.Any(IsMoney)))
+        {
+            L();
+            L("    // Money in the grid: the currency symbol, thousands separators and the column's decimals.");
+            L($"    private static string Money(decimal? value, int digits) => value is null ? \"\" : (value < 0 ? \"-\" : \"\") + \"{Symbol()}\" + Math.Abs(value.Value).ToString(\"N\" + digits, System.Globalization.CultureInfo.InvariantCulture);");
+            L("    private static string Money(double? value, int digits) => value is null ? \"\" : Money((decimal)value.Value, digits);");
+        }
         L();
         var adds = Model.Columns.Where(c => !c.IsPrimaryKey && !c.IsNullable && !c.IsComputed && !c.IsIdentity)
             .Select(c => c.IsBooleanColumn && c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1" ? $"{c.CSharpName()} = true"
                 : IsDate(c) ? $"{c.CSharpName()} = DateTime.Today" : null)
             .Where(s => s is not null).ToList();
-        L(adds.Count == 0 ? "    private void Add() => Edit(new §T(), true);" : $"    private void Add() => Edit(new §T {{ {string.Join(", ", adds)} }}, true);");
-        L();
-        L("    private void Edit(§T item, bool add = false)");
-        L("    {");
-        L("        row = add ? item : item.Copy();");
-        L("        isNew = add;");
-        L("        message = null;");
-        L("    }");
+        string addNew = adds.Count == 0 ? "new §T()" : $"new §T {{ {string.Join(", ", adds)} }}";
+        if (children.Count == 0)
+        {
+            L($"    private void Add() => Edit({addNew}, true);");
+            L();
+            L("    private void Edit(§T item, bool add = false)");
+            L("    {");
+            L("        row = add ? item : item.Copy();");
+            L("        isNew = add;");
+            L("        message = null;");
+            L("    }");
+        }
+        else
+        {
+            L($"    private Task Add() => Edit({addNew}, true);");
+            L();
+            L("    private async Task Edit(§T item, bool add = false)");
+            L("    {");
+            L("        row = add ? item : item.Copy();");
+            L("        isNew = add;");
+            L("        message = null;");
+            foreach (var ch in children)
+                L($"        {ch.Var}Rows = [];");
+            L("        if (!add) await LoadChildrenAsync();");
+            L("    }");
+            L();
+            L("    // The child rows that point at the row being edited (the whole child table is read and filtered here).");
+            L("    private async Task LoadChildrenAsync()");
+            L("    {");
+            L("        if (row is null) return;");
+            L("        var rowKey = row.§K;");
+            foreach (var ch in children)
+                L($"        try {{ {ch.Var}Rows = (await {ch.Var}Client.GetAllAsync()).Where(line => line.{ch.FkProp} == rowKey).ToList(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ {ch.Var}Rows = []; }}");
+            L("    }");
+            foreach (var ch in children)
+            {
+                if (ch.HasPage)
+                {
+                    L();
+                    L($"    // Edit opens the {ch.Title}'s own page on that row; saving or cancelling there comes back here with this {title} open again.");
+                    L($"    private void Edit{ch.Var}({ch.Type} line)");
+                    L("    {");
+                    L($"        string back = \"/{ScreenNames.Route(Model.TableName)}?edit=\" + Uri.EscapeDataString(Convert.ToString(row!.§K)!);");
+                    L($"        Navigation.NavigateTo(\"/{ch.Route}?edit=\" + Uri.EscapeDataString(Convert.ToString(line.{ch.KeyProp})!) + \"&back=\" + Uri.EscapeDataString(back));");
+                    L("    }");
+                }
+
+                L();
+                L($"    private async Task Delete{ch.Var}({ch.Type} line)");
+                L("    {");
+                L("        if (!await Js.InvokeAsync<bool>(\"confirm\", \"Are you sure you want to delete this?\")) return;");
+                L("        try");
+                L("        {");
+                L($"            await {ch.Var}Client.DeleteAsync(line.{ch.KeyProp});");
+                L("            await LoadChildrenAsync();");
+                L("        }");
+                L("        catch (ApiException ex) { message = ex.Explain(\"deleting\"); }");
+                L("        catch (HttpRequestException) { message = \"Problem while deleting!\"; }");
+                L("    }");
+            }
+        }
         L();
         L("    private void Cancel()");
         L("    {");
         L("        row = null;");
         L("        message = null;");
+        L("        if (Back is not null) Navigation.NavigateTo(Back);");
         L("    }");
         L();
         L("    private async Task SaveAsync()");
@@ -357,6 +544,7 @@
         L("            else await Client.UpdateAsync(row.§K, row);");
         L("            row = null;");
         L("            await LoadAsync(pageNumber);");
+        L("            if (Back is not null) Navigation.NavigateTo(Back);");
         L("        }");
         // a typed key can already be taken: the API answers 409
         if (textKey)
@@ -399,7 +587,7 @@
             L("        {");
             L("            var copy = await Client.CloneAsync(item.§K);");
             L("            await LoadAsync(pageNumber);");
-            L("            Edit(copy);");
+            L(children.Count > 0 ? "            await Edit(copy);" : "            Edit(copy);");
             L("        }");
             L("        catch (ApiException ex)");
             L("        {");

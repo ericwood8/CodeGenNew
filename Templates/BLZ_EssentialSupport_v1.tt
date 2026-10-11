@@ -4,9 +4,9 @@
 <#
     // ==========================================================================================
     // BLZ_EssentialSupport_v1.tt
-    // Generates: Services/ApiSupport.cs   (no table, no database: an essentials group; the output folder is the Blazor app's own folder)
+    // Generates: Services/ApiSupport.cs and Components/CurrencyInput.razor   (no table, no database: an essentials group; the output folder is the Blazor app's own folder)
     // What every generated client and page shares: ApiException (the HTTP status of a failed call and a sentence for the screen), PagedResult<T> (the search endpoint's answer) and the helpers the
-    // clients use to read a response and the pages use to copy a row for editing.
+    // clients use to read a response and the pages use to copy a row for editing, and CurrencyInput (the money box of a form).
     // ==========================================================================================
     string ns = BlazorNames.Namespace(Project);
 #>
@@ -53,4 +53,65 @@ public static class ApiSupport
 
     // A copy of a row, so the form edits the copy and the grid keeps showing the saved row.
     public static T Copy<T>(this T row) => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(row))!;
+}
+@@@FILE Components/CurrencyInput.razor@@@
+@typeparam TValue
+@inherits InputBase<TValue>
+@using System.Globalization
+
+@* A money box: $1,234.50 while it is not being edited, the plain number while it is. Takes decimal, double and their nullable forms; text that is not an amount is refused with the form's validation message. *@
+<input @attributes="AdditionalAttributes" type="text" inputmode="decimal" class="@CssClass" value="@Shown" @onfocus="OnFocus" @onblur="OnBlur" @onchange="OnChange" />
+
+@code {
+    [Parameter] public int Digits { get; set; } = 2;
+    [Parameter] public string Symbol { get; set; } = "$";
+
+    private bool focused;
+
+    private static readonly CultureInfo Invariant = CultureInfo.InvariantCulture;
+
+    private string Shown => focused ? Plain : Pretty;
+
+    private string Plain => Value is null ? "" : Convert.ToDecimal(Value, Invariant).ToString("0.########", Invariant);
+
+    private string Pretty
+    {
+        get
+        {
+            if (Value is null) return "";
+            decimal amount = Convert.ToDecimal(Value, Invariant);
+            return (amount < 0 ? "-" : "") + Symbol + Math.Abs(amount).ToString("N" + Digits, Invariant);
+        }
+    }
+
+    private void OnFocus() => focused = true;
+
+    private void OnBlur() => focused = false;
+
+    private void OnChange(ChangeEventArgs args) => CurrentValueAsString = args.Value?.ToString();
+
+    protected override string? FormatValueAsString(TValue? value) => value is null ? "" : Convert.ToString(value, Invariant);
+
+    protected override bool TryParseValueFromString(string? value, out TValue result, out string? validationErrorMessage)
+    {
+        var target = Nullable.GetUnderlyingType(typeof(TValue)) ?? typeof(TValue);
+        string text = (value ?? "").Replace(Symbol, "").Replace(",", "").Replace(" ", "").Trim();
+        if (text.Length == 0 && Nullable.GetUnderlyingType(typeof(TValue)) is not null)
+        {
+            result = default!;
+            validationErrorMessage = null;
+            return true;
+        }
+
+        if (decimal.TryParse(text, NumberStyles.Number, Invariant, out decimal amount))
+        {
+            result = (TValue)Convert.ChangeType(amount, target, Invariant);
+            validationErrorMessage = null;
+            return true;
+        }
+
+        result = default!;
+        validationErrorMessage = "Enter an amount.";
+        return false;
+    }
 }
