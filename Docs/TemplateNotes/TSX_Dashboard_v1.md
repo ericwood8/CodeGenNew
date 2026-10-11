@@ -6,3 +6,5 @@ The React dashboard, written only for a project with `Dashboard=true`: `api/dash
 - A widget title links to the table's screen. A failed load shows a message on the page and nothing on a strip (the grid under it is what the person came for).
 - **Checked:** the page was generated for the SQL Server sample, built (`tsc` and `vite build`) and viewed in a browser against the running API: the cards, the two top lists and the strip above the Sales Invoice grid showed the numbers of `Dashboard.md`.
 - **Not done:** no Vitest test is written for the page.
+
+**Money and the Latest box.** A widget carries `isMoney` (the money cards, the by-parent rankings and a money trend; a count never), and the page formats those numbers as the project's `CurrencyCode` currency. The recent-rows panel spans two grid columns from 720px wide so its dates stay on one line. The same holds for Angular (currency pipe, `:host(.wide)`), WinUI3 (`C2`, column span 2) and Blazor.

@@ -36,7 +36,7 @@
     <li *ngFor=""let p of widget.points"">
       <span>{{ p.label }}</span>
       <span class=""dash-track"" aria-hidden=""true""><span class=""dash-fill"" [style.width]=""barWidth(p.value)""></span></span>
-      <span class=""dash-value"">{{ p.value | number:'1.0-2' }}</span>
+      <span class=""dash-value"">{{ widget.isMoney ? (p.value | currency:'" + Project.CurrencyCode + @"') : (p.value | number:'1.0-2') }}</span>
     </li>
   </ol>
 </section>
@@ -50,7 +50,7 @@
     <summary>Show the numbers</summary>
     <table>
       <tbody>
-        <tr *ngFor=""let p of widget.points""><td>{{ p.label }}</td><td>{{ p.value | number:'1.0-2' }}</td></tr>
+        <tr *ngFor=""let p of widget.points""><td>{{ p.label }}</td><td>{{ widget.isMoney ? (p.value | currency:'" + Project.CurrencyCode + @"') : (p.value | number:'1.0-2') }}</td></tr>
       </tbody>
     </table>
   </details>
@@ -67,7 +67,7 @@
   <dl>
     <div *ngFor=""let p of widget.points"">
       <dt>{{ p.label }}</dt>
-      <dd>{{ p.value | number:'1.0-2' }}</dd>
+      <dd>{{ widget.isMoney ? (p.value | currency:'" + Project.CurrencyCode + @"') : (p.value | number:'1.0-2') }}</dd>
     </div>
   </dl>
 </section>
@@ -115,6 +115,7 @@ export interface DashboardWidget {
     title: string;
     table: string;
     route: string;
+    isMoney: boolean;
     points: DashboardPoint[];
     rows: DashboardRow[];
 }
@@ -147,7 +148,8 @@ import { DashboardWidget } from '../../<#= servicesFolder #>/dashboard.service';
   selector: 'app-dashboard-widget',
 <#= detection #><#= standalone #>  imports: [CommonModule, RouterLink],
   templateUrl: './dashboard-widget.component.html',
-  styleUrl: './dashboard-widget.component.css'
+  styleUrl: './dashboard-widget.component.css',
+  host: { '[class.wide]': "layout === 'recent'" }
 })
 export class DashboardWidgetComponent {
   @Input({ required: true }) widget!: DashboardWidget;
@@ -205,6 +207,8 @@ export class DashboardWidgetComponent {
 .dash-spark polyline { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .dash-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .dash-recent li { display: flex; justify-content: space-between; gap: 12px; }
+.dash-recent li span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (min-width: 720px) { :host(.wide) { grid-column: span 2; } }
 .dash-panel details { margin-top: 8px; }
 .dash-panel summary { cursor: pointer; font-size: 0.85rem; opacity: 0.8; }
 @@@FILE <#= componentsFolder #>/dashboard/dashboard.component.ts@@@

@@ -203,6 +203,24 @@ public class DashboardTests
     }
 
     [TestMethod]
+    public async Task The_money_cards_rankings_and_trends_are_marked_as_money_and_the_counts_are_not()
+    {
+        string path = CreateDatabase();
+        try
+        {
+            var (_, database) = await ReadAsync(path);
+            var plan = DashboardPlan.Build(database, Project(("Screens", "Customer,Invoice,InvoiceLine,Promotion")));
+            Assert.IsTrue(plan.Candidates.Any(w => w.Kind == DashboardWidgetKind.Money && w.IsMoney));
+            Assert.IsTrue(plan.Candidates.Where(w => w.Kind is DashboardWidgetKind.Money or DashboardWidgetKind.TopBy).All(w => w.IsMoney));
+            Assert.IsTrue(plan.Candidates.Where(w => w.Kind is DashboardWidgetKind.Count or DashboardWidgetKind.Breakdown or DashboardWidgetKind.Ratio or DashboardWidgetKind.Status or DashboardWidgetKind.Recent).All(w => !w.IsMoney));
+        }
+        finally
+        {
+            Delete(path);
+        }
+    }
+
+    [TestMethod]
     public async Task A_lookup_table_gets_no_screen_widgets_and_a_money_column_that_is_a_limit_or_a_rate_is_not_a_measure()
     {
         string path = CreateDatabase();
@@ -306,13 +324,13 @@ public class DashboardTests
             var (provider, _) = await ReadAsync(path);
             var settings = new Dictionary<string, string>
             {
-                ["ProjectName"] = "Shop", ["DatabaseProvider"] = "Sqlite", ["DatabaseName"] = "shop.db", ["EnumTables"] = "none", ["Stacks"] = "Api,WinUI3,React,Angular",
+                ["ProjectName"] = "Shop", ["DatabaseProvider"] = "Sqlite", ["DatabaseName"] = "shop.db", ["EnumTables"] = "none", ["Stacks"] = "Api,WinUI3,React,Angular,Blazor", ["OutputBlazor"] = "blz",
                 ["OutputApi"] = "Api", ["OutputWinUI3"] = "App", ["OutputReact"] = "web", ["OutputAngular"] = "ng", ["Screens"] = "Customer,Invoice,InvoiceLine,Promotion",
                 ["Dashboard"] = "true", ["DashboardStrip"] = "true", ["ProjectDocs"] = "false"
             };
             var report = await Repo.GenerateAsync(provider, new GenerateOptions
             {
-                Project = ProjectSettings.FromValues(settings), Stacks = ["Api", "WinUI3", "React", "Angular"], OutputDirectory = output, DatabaseName = path, Schema = "main"
+                Project = ProjectSettings.FromValues(settings), Stacks = ["Api", "WinUI3", "React", "Angular", "Blazor"], OutputDirectory = output, DatabaseName = path, Schema = "main"
             });
 
             Assert.IsTrue(report.Success, string.Join(" | ", report.Errors));
@@ -323,6 +341,7 @@ public class DashboardTests
                 "App/Repositories/DashboardData.cs", "App/Views/DashboardPage.cs", "App/Views/DashboardWidgetViews.cs", "App/Views/DashboardStrip.cs",
                 "web/src/api/dashboardApi.ts", "web/src/pages/DashboardPage.tsx", "web/src/components/DashboardWidgetView.tsx", "web/src/components/DashboardStrip.tsx",
                 "ng/src/app/services/dashboard.service.ts", "ng/src/app/components/dashboard/dashboard.component.ts", "ng/src/app/components/dashboard-widget/dashboard-widget.component.html",
+                "blz/Services/DashboardClient.cs", "blz/Components/DashboardWidgetView.razor", "blz/Pages/Dashboard.razor",
                 "ng/src/app/components/dashboard-strip/dashboard-strip.component.ts", "ng/src/app/components/screen-with-strip/screen-with-strip.component.ts"
             })
                 CollectionAssert.Contains(files, expected);
@@ -336,6 +355,19 @@ public class DashboardTests
             Expect.Contains(Read("web/src/screens.tsx"), "<DashboardStrip table=\"Invoice\" />");
             Expect.Contains(Read("ng/src/app/app.routes.ts"), "{ path: 'dashboard', label: 'Dashboard', component: DashboardComponent },");
             Expect.Contains(Read("ng/src/app/app.routes.ts"), "strip: 'Invoice'");
+            // money is shown as currency on every stack, and the Latest box is wider than a card
+            Expect.Contains(Read("Api/Repositories/DashboardData.cs"), "public bool IsMoney { get; set; }");
+            Expect.Contains(Read("web/src/components/DashboardWidgetView.tsx"), "style: 'currency', currency: 'USD'");
+            Expect.Contains(Read("web/src/components/DashboardWidgetView.tsx"), "dash-panel dash-panel-wide");
+            Expect.Contains(Read("ng/src/app/components/dashboard-widget/dashboard-widget.component.html"), "widget.isMoney ? (p.value | currency:'USD')");
+            Expect.Contains(Read("ng/src/app/components/dashboard-widget/dashboard-widget.component.css"), ":host(.wide) { grid-column: span 2; }");
+            Expect.Contains(Read("App/Views/DashboardWidgetViews.cs"), "money ? \"C2\" : \"#,##0.##\"");
+            Expect.Contains(Read("App/Views/DashboardPage.cs"), "VariableSizedWrapGrid.SetColumnSpan");
+            Expect.Contains(Read("blz/Layout/NavMenu.razor"), "<NavLink href=\"dashboard\">Dashboard</NavLink>");
+            Expect.Contains(Read("blz/Services/ApiClients.cs"), "services.AddScoped<DashboardClient>();");
+            Expect.Contains(Read("blz/Pages/Home.razor"), "NavigateTo(\"dashboard\"");
+            Expect.Contains(Read("blz/Components/DashboardWidgetView.razor"), "CurrencySymbol = \"$\"");
+            Expect.Contains(Read("blz/Pages/Dashboard.razor"), "@@media (min-width: 720px) { .dash-panel-wide { grid-column: span 2; } }");
             string window = Read("App/MainWindow.Screens.cs");
             Expect.Contains(window, "private const string FirstScreen = \"Dashboard\";");
             Expect.Contains(window, "\"Dashboard\" => new DashboardPage(GoTo),");

@@ -26,7 +26,7 @@ public enum DashboardWidgetKind
 
 /// <summary> One thing the dashboard shows. <see cref="Sql"/> is one fixed statement without a parameter that returns <c>Label</c> and <c>Value</c> (a double), or <c>Label</c> and <c>Detail</c>
 /// (text) for <see cref="DashboardWidgetKind.Recent"/>. </summary>
-public sealed record DashboardWidget(string Id, DashboardWidgetKind Kind, string Title, string Table, string Why, string Sql, int Score)
+public sealed record DashboardWidget(string Id, DashboardWidgetKind Kind, string Title, string Table, string Why, string Sql, int Score, bool IsMoney = false)
 {
     public bool IsRows => Kind == DashboardWidgetKind.Recent;
     public bool IsCard => Kind is DashboardWidgetKind.Count or DashboardWidgetKind.ChildCount or DashboardWidgetKind.Money or DashboardWidgetKind.Ratio or DashboardWidgetKind.Status;
@@ -179,12 +179,12 @@ public sealed class DashboardPlan
             .OrderBy(x => x.w.IsCard ? 0 : x.w.Kind is DashboardWidgetKind.TopBy or DashboardWidgetKind.Breakdown ? 1 : x.w.Kind == DashboardWidgetKind.Trend ? 2 : 3)
             .ThenBy(x => x.i).Select(x => x.w).ToList();
 
-        private void Add(DashboardWidgetKind kind, string title, TableModel table, string? part, string why, string sql, int score)
+        private void Add(DashboardWidgetKind kind, string title, TableModel table, string? part, string why, string sql, int score, bool money = false)
         {
             string id = ScreenNames.Route(table.TableName) + "-" + ScreenNames.Route(kind.ToString()) + (part is null ? "" : "-" + ScreenNames.Route(part));
             for (int n = 2; !_ids.Add(id); n++)
                 id = id.TrimEnd('0', '1', '2', '3', '4', '5', '6', '7', '8', '9') + n;
-            _candidates.Add(new DashboardWidget(id, kind, title, table.TableName, why, sql, score));
+            _candidates.Add(new DashboardWidget(id, kind, title, table.TableName, why, sql, score, money));
         }
 
         /// <summary> Up to ten points for a table with more rows (a base-two logarithm, so a hundred rows is worth about as much as a thousand halves). </summary>
@@ -281,7 +281,7 @@ public sealed class DashboardPlan
             string sql = $"SELECT 'Total' AS {QLabel}, COALESCE({x}, 0) AS {QValue} FROM {T(table)} UNION ALL SELECT 'Average', COALESCE({a}, 0) FROM {T(table)} UNION ALL SELECT 'Largest', COALESCE({m}, 0) FROM {T(table)}";
             string title = $"{Words(table.TableName)} {ColumnWords(money)}";
             int nameScore = MoneyNameScore(money.Name);
-            Add(DashboardWidgetKind.Money, title, table, money.Name, $"{money.Name} is a money column, so its total, average and largest are the numbers a person looks for.", sql, 60 + nameScore / 4 - Penalty(table));
+            Add(DashboardWidgetKind.Money, title, table, money.Name, $"{money.Name} is a money column, so its total, average and largest are the numbers a person looks for.", sql, 60 + nameScore / 4 - Penalty(table), money: true);
 
             foreach (var fk in table.ForeignKeys.Where(fk => fk.ReferencingColumns.Count == 1 && !table.IsSelfReferencing(fk)).Take(4))
             {
@@ -295,7 +295,7 @@ public sealed class DashboardPlan
                 string topSql = $"SELECT COALESCE({C(display, "p")}, '(none)') AS {QLabel}, {Number("SUM(" + Amount(money, "t") + ")")} AS {QValue} FROM {T(table)} t INNER JOIN {T(parent)} p ON {C(key, "p")} = {C(fkColumn, "t")} "
                     + $"GROUP BY {C(display, "p")} ORDER BY SUM({Amount(money, "t")}) DESC {di.Paging("0", TopRows.ToString())}";
                 Add(DashboardWidgetKind.TopBy, $"{title} by {Words(parent.TableName)}", table, fkColumn.Name,
-                    $"{table.TableName} points at {parent.TableName}, so the money column can be added up per {Words(parent.TableName)} (the ten largest).", topSql, 55 + nameScore / 4 - Penalty(table));
+                    $"{table.TableName} points at {parent.TableName}, so the money column can be added up per {Words(parent.TableName)} (the ten largest).", topSql, 55 + nameScore / 4 - Penalty(table), money: true);
                 break;
             }
         }
@@ -353,7 +353,7 @@ public sealed class DashboardPlan
             string title = money is null ? $"{Plural(table.TableName)} per Month" : $"{Words(table.TableName)} {ColumnWords(money)} per Month";
             Add(DashboardWidgetKind.Trend, title, table, date.Name,
                 $"{date.Name} dates each {Words(table.TableName)} row" + (money is null ? ", so the rows can be counted per month." : $", so {money.Name} can be added up per month."),
-                TrendSql(table, date, DateBucket.Month, "sum", money), (money is null ? 50 : 55 + MoneyNameScore(money.Name) / 8) - Penalty(table));
+                TrendSql(table, date, DateBucket.Month, "sum", money), (money is null ? 50 : 55 + MoneyNameScore(money.Name) / 8) - Penalty(table), money is not null);
         }
 
         private void Ratio(TableModel table)
@@ -424,7 +424,7 @@ public sealed class DashboardPlan
             }
 
             string id = ScreenNames.Route(table.TableName) + "-measure-" + ScreenNames.Route(column.Name) + "-" + aggregate + (date is null ? "" : "-" + BucketWord(measure.Bucket!.Value).ToLowerInvariant());
-            return new DashboardWidget(id, kind, title, table.TableName, why, sql, int.MaxValue);
+            return new DashboardWidget(id, kind, title, table.TableName, why, sql, int.MaxValue, aggregate != "count");
         }
     }
 }

@@ -37,7 +37,7 @@ CLI argument parsing is hand-rolled rather than pulling in a library, given the 
 | Search call in generated C# | `EXEC` | `SELECT * FROM "f"(...)` | `CALL p(...)` | LINQ over the context (`CS_SearchQuery`) |
 | `API_Junction`, `WinUI3_JunctionEditor` | yes | yes (call the functions) | yes (call the procedures) | yes (LINQ over the context) |
 
-**Blazor.** `Stacks=Blazor` writes a standalone Blazor WebAssembly app (.NET 10) that calls the generated API: a model and an `HttpClient` client per table, a page with grid, search, sort, paging and an add / edit panel (foreign keys as drop-downs), the menu, and the essentials (project file, layout, styles, `.gitignore`). The API allows the app's origin (`DevPort`, default 5190). No tabs, master-detail grids or dashboard yet; see `Docs/TemplateNotes/BLZ_Screens_v1.md`.
+**Blazor.** `Stacks=Blazor` writes a standalone Blazor WebAssembly app (.NET 10) that calls the generated API: a model and an `HttpClient` client per table, a page with grid, search, sort, paging and an add / edit panel (foreign keys as drop-downs), the menu, and the essentials (project file, layout, styles, `.gitignore`). The API allows the app's origin (`DevPort`, default 5190). No tabs or master-detail grids yet; the dashboard comes with `Dashboard=true`; see `Docs/TemplateNotes/BLZ_Screens_v1.md`.
 
 **Python.** `Stacks=Python` writes a FastAPI API over SQLAlchemy 2.0 models and Pydantic 2 schemas for SQL Server, PostgreSQL, MySQL or SQLite: the same routes and JSON as the other stacks (so the React, Angular and Blazor apps call it unchanged), validation in the ASP.NET problem form, `requirements.txt` and the essentials (engine, error forms, CORS). The password comes from the environment, never a file. See `Docs/TemplateNotes/PY_Routes_v1.md`.
 
@@ -133,6 +133,7 @@ Ninety-two templates ship in `Templates\` (the no-database essentials groups des
 | `PY` | `PY_Mod` | the package lists and the list of routers that `main.py` includes. |
 | `BLZ` | `BLZ_Model`, `BLZ_Client` | `Models/Table.cs` and `Services/TableClient.cs` - the class a table's JSON becomes in the Blazor app and its `HttpClient` calls (get, search with paging and sort, create, update, delete, clone). |
 | `BLZ` | `BLZ_Page` | `Pages/TablePage.razor` - the Blazor screen: grid, search, sortable headers, paging, add / edit panel with drop-downs for foreign keys. |
+| `BLZ` | `BLZ_Dashboard` | the dashboard page for Blazor (`Services/DashboardClient.cs`, `Components/DashboardWidgetView.razor`, `Pages/Dashboard.razor`; money shown as currency; no strip above each grid). |
 | `BLZ` | `BLZ_Screens` | `Layout/NavMenu.razor`, `Pages/Home.razor` and `Services/ApiClients.cs` - whole-database: the menu in `Screens` order and the registration of every client. |
 | `CS` | `CS_EfConfiguration` | `Data/Configurations/TableConfiguration.cs` - an `IEntityTypeConfiguration` per table (table, key, column details, indexes); with `EfConfigurations=true` the context applies them with `ApplyConfigurationsFromAssembly`. |
 | `API` | `API_Csv` | `Apis/Csv.cs` - whole-database, `ApiCsv=true`: `GET /api/table/export.csv` and an all-or-nothing `POST /api/table/import` for every table, no package. |

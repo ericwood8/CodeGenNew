@@ -58,7 +58,7 @@ internal static class DashboardWidgetViews
 
     public static bool IsCard(DashboardWidgetData widget) => widget.Kind is "count" or "childCount" or "money" or "ratio" or "status";
 
-    private static string Format(double? value) => value is null ? "" : value.Value.ToString("#,##0.##", Culture);
+    private static string Format(double? value, bool money) => value is null ? "" : value.Value.ToString(money ? "C2" : "#,##0.##", Culture);
 
     private static Brush ThemeBrush(string key, Color fallback) =>
         Application.Current.Resources.TryGetValue(key, out var found) && found is Brush brush ? brush : new SolidColorBrush(fallback);
@@ -93,7 +93,7 @@ internal static class DashboardWidgetViews
             Background = ThemeBrush("SolidBackgroundFillColorSecondaryBrush", Color.FromArgb(0x20, 0x80, 0x80, 0x80)),
             BorderBrush = ThemeBrush("ControlStrokeColorSecondaryBrush", Color.FromArgb(0x40, 0x80, 0x80, 0x80)),
             MinWidth = 260,
-            MaxWidth = 420
+            MaxWidth = widget.Kind == "recent" ? 880 : 420
         };
     }
 
@@ -115,7 +115,7 @@ internal static class DashboardWidgetViews
         {
             var one = new StackPanel();
             one.Children.Add(new TextBlock { Text = point.Label, Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"] });
-            one.Children.Add(new TextBlock { Text = Format(point.Value), FontSize = 26, FontWeight = FontWeights.Bold });
+            one.Children.Add(new TextBlock { Text = Format(point.Value, widget.IsMoney), FontSize = 26, FontWeight = FontWeights.Bold });
             wrap.Children.Add(one);
         }
 
@@ -148,7 +148,7 @@ internal static class DashboardWidgetViews
             Grid.SetColumn(track, 1);
             row.Children.Add(track);
 
-            var value = new TextBlock { Text = Format(point.Value), FontWeight = FontWeights.SemiBold };
+            var value = new TextBlock { Text = Format(point.Value, widget.IsMoney), FontWeight = FontWeights.SemiBold };
             Grid.SetColumn(value, 2);
             row.Children.Add(value);
             body.Children.Add(row);
@@ -174,7 +174,7 @@ internal static class DashboardWidgetViews
         var numbers = new Expander { Header = "Show the numbers", HorizontalAlignment = HorizontalAlignment.Stretch };
         var list = new StackPanel();
         foreach (var point in widget.Points)
-            list.Children.Add(new TextBlock { Text = $"{point.Label}   {Format(point.Value)}" });
+            list.Children.Add(new TextBlock { Text = $"{point.Label}   {Format(point.Value, widget.IsMoney)}" });
         numbers.Content = list;
         body.Children.Add(numbers);
     }
@@ -189,7 +189,7 @@ internal static class DashboardWidgetViews
             line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             line.Children.Add(new TextBlock { Text = row.Label, TextTrimming = TextTrimming.CharacterEllipsis });
-            var detail = new TextBlock { Text = row.Detail };
+            var detail = new TextBlock { Text = row.Detail, TextWrapping = TextWrapping.NoWrap };
             Grid.SetColumn(detail, 1);
             line.Children.Add(detail);
             body.Children.Add(line);
@@ -245,7 +245,12 @@ public sealed class DashboardPage : Page
 
             var wrap = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = 440 };
             foreach (var widget in result.Widgets.Where(w => !DashboardWidgetViews.IsCard(w)))
-                wrap.Children.Add(DashboardWidgetViews.Build(widget, _navigate));
+            {
+                var view = DashboardWidgetViews.Build(widget, _navigate);
+                if (widget.Kind == "recent")
+                    VariableSizedWrapGrid.SetColumnSpan((FrameworkElement)view, 2);
+                wrap.Children.Add(view);
+            }
             _others.Content = wrap;
             if (result.Widgets.Count == 0)
                 _message.Text = "The schema suggests nothing to show.";

@@ -231,8 +231,8 @@ public class ProjectSettings
     /// <summary> <c>EfConfigurations=true</c>: the plan also writes an <c>IEntityTypeConfiguration</c> per table (CS_EfConfiguration), and the context applies them with <c>ApplyConfigurationsFromAssembly</c>. </summary>
     public bool EfConfigurations => Flag("EfConfigurations");
 
-    /// <summary> <c>Dashboard=true</c>: the plan also writes the dashboard (its queries, endpoint, page and a menu entry per front end, and a Markdown page and SQL script that list the widgets). </summary>
-    public bool Dashboard => Flag("Dashboard");
+    /// <summary> <c>Dashboard</c>, on unless the project says <c>Dashboard=false</c>: the plan also writes the dashboard (its queries, endpoint, page and a menu entry per front end, and a Markdown page and SQL script that list the widgets). </summary>
+    public bool Dashboard => Explicit("Dashboard") is not { } text || Flag("Dashboard");
 
     /// <summary> <c>DashboardStrip=true</c>: each screen of a table shows that table's two or three cards above its grid. Needs <see cref="Dashboard"/>. </summary>
     public bool DashboardStrip => Dashboard && Flag("DashboardStrip");
@@ -272,7 +272,7 @@ public class ProjectSettings
             if (EfConfigurations) yield return "CS_EfConfiguration";
             if (Dashboard)
             {
-                foreach (string name in new[] { "CS_Dashboard", "API_Dashboard", "TSX_Dashboard", "TS_Dashboard", "WinUI3_DashboardPage", "SP_Dashboard", "MD_Dashboard" })
+                foreach (string name in new[] { "CS_Dashboard", "API_Dashboard", "TSX_Dashboard", "TS_Dashboard", "WinUI3_DashboardPage", "BLZ_Dashboard", "SP_Dashboard", "MD_Dashboard" })
                     yield return name;
             }
         }

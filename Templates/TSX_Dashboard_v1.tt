@@ -46,6 +46,7 @@ export interface DashboardWidget {
   title: string;
   table: string;
   route: string;
+  isMoney: boolean;
   points: DashboardPoint[];
   rows: DashboardRow[];
 }
@@ -77,6 +78,8 @@ export const dashboardApi = {
 .dash-spark polyline { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .dash-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .dash-recent li { display: flex; justify-content: space-between; gap: 12px; }
+.dash-recent li span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (min-width: 720px) { .dash-panel-wide { grid-column: span 2; } }
 .dash-panel details { margin-top: 8px; }
 .dash-panel summary { cursor: pointer; font-size: 0.85rem; opacity: 0.8; }
 .dash-strip { margin-bottom: 12px; }
@@ -87,7 +90,9 @@ import type { DashboardWidget } from '../<#= apiFolder #>/dashboardApi';
 import './dashboard.css';
 
 const numberFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
-const format = (value: number | null): string => (value === null ? '' : numberFormat.format(value));
+const moneyFormat = new Intl.NumberFormat(undefined, { style: 'currency', currency: '<#= Project.CurrencyCode #>' });
+const formatter = (widget: DashboardWidget) => (value: number | null): string =>
+  (value === null ? '' : (widget.isMoney ? moneyFormat : numberFormat).format(value));
 
 // A line over the points of a trend, scaled to a 200 by 48 box; the numbers are in the table under it.
 function sparkPoints(values: number[]): string {
@@ -106,6 +111,7 @@ function Title({ widget }: { widget: DashboardWidget }) {
 // One widget: a card (count, childCount, money, ratio, status), a bar list (topBy, breakdown), a trend or the recent rows.
 export function DashboardWidgetView({ widget }: { widget: DashboardWidget }) {
   const points = widget.points;
+  const format = formatter(widget);
   switch (widget.kind) {
     case 'topBy':
     case 'breakdown': {
@@ -150,7 +156,7 @@ export function DashboardWidgetView({ widget }: { widget: DashboardWidget }) {
       );
     case 'recent':
       return (
-        <section className="dash-panel" aria-label={widget.title}>
+        <section className="dash-panel dash-panel-wide" aria-label={widget.title}>
           <Title widget={widget} />
           {widget.rows.length === 0 ? <p>No rows.</p> : (
             <ul className="dash-recent">
