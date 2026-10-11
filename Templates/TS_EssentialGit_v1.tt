@@ -5,14 +5,53 @@
     // ==========================================================================================
     // TS_EssentialGit_v1.tt
     // Generates: .gitignore   (no table, no database: an essentials group; the output folder is the Angular app's own folder)
-    // What an Angular app keeps out of version control: node_modules, the build output, the Angular CLI cache and local editor files.
+    // What an Angular app keeps out of version control: dependencies, build output and caches, logs, and the files of editors and operating systems, which are not the project's own.
+    // The list is the one `ng new` writes, so a project made by hand and one made here ignore the same files.
     // ==========================================================================================
 #>
 @@@FILE .gitignore@@@
-node_modules/
-dist/
-.angular/
-out-tsc/
+# Kept out of version control: dependencies, build output and caches, logs, and editor and operating-system files.
+
+# Compiled output
+/dist
+/tmp
+/out-tsc
+/bazel-out
+
+# Node
+/node_modules
+npm-debug.log
+yarn-error.log
 *.log
+
+# IDEs and editors
+.idea/
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# Visual Studio Code: shared project settings stay, personal ones do not
 .vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
 !.vscode/extensions.json
+!.vscode/mcp.json
+.history/*
+
+# Miscellaneous
+/.angular/cache
+.sass-cache/
+/connect.lock
+/coverage
+/libpeerconnection.log
+testem.log
+/typings
+__screenshots__/
+
+# System files
+.DS_Store
+Thumbs.db

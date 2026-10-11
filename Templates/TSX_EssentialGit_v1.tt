@@ -5,7 +5,7 @@
     // ==========================================================================================
     // TSX_EssentialGit_v1.tt
     // Generates: .gitignore   (no table, no database: an essentials group; the output folder is the React app's own folder)
-    // What a Vite + React app keeps out of version control: node_modules, the build output, TypeScript's incremental build file and local environment files.
+    // What a Vite + React app keeps out of version control: node_modules, the build output, TypeScript's incremental build file, local environment files, and the files of editors and operating systems.
     // ==========================================================================================
 #>
 @@@FILE .gitignore@@@
@@ -17,3 +17,6 @@ dist/
 *.log
 .vscode/*
 !.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db

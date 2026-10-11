@@ -5,7 +5,7 @@
     // ==========================================================================================
     // BLZ_EssentialGit_v1.tt
     // Generates: .gitignore   (no table, no database: an essentials group; the output folder is the Blazor app's own folder)
-    // What a Blazor WebAssembly app keeps out of version control: the build output and the editor's and Visual Studio's own folders.
+    // What a Blazor WebAssembly app keeps out of version control: the build output and the files of editors, Visual Studio and operating systems.
     // ==========================================================================================
 #>
 @@@FILE .gitignore@@@
@@ -16,3 +16,7 @@ obj/
 *.log
 .vscode/*
 !.vscode/extensions.json
+.idea/
+*.suo
+.DS_Store
+Thumbs.db
