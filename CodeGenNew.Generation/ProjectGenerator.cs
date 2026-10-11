@@ -102,6 +102,8 @@ public static class ProjectGenerator
             steps = steps.Where(s => wanted.Contains(s.Template.Name)).ToList();
         }
 
+        cache.Prepare(steps.Select(s => s.Template.FilePath).Distinct());
+
         // a table's model is built per depth a template asks for (its rows, its parents' display columns); most templates share the one in the database model
         var tablesByName = new Dictionary<string, TableModel>(StringComparer.Ordinal);
         foreach (var t in database.Tables)
@@ -158,7 +160,7 @@ public static class ProjectGenerator
             else
                 groups = groups.Where(g => EssentialsCatalog.IsOnFor(g, project)).ToList();
             progress?.Invoke("Essentials...");
-            report.Essentials = await EssentialsCatalog.GenerateAsync(groups, project, options.OutputDirectory, options.ReplaceEssentials, options.DryRun, options.WithDiff, cancellationToken);
+            report.Essentials = await EssentialsCatalog.GenerateAsync(groups, project, options.OutputDirectory, options.ReplaceEssentials, options.DryRun, options.WithDiff, cancellationToken, cache);
         }
         return report;
     }

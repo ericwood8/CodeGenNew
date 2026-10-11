@@ -20,13 +20,21 @@ internal static class Repo
     public static string TemplatesDirectory => Path.Combine(Root, "Templates");
     public static string Template(string fileName) => Path.Combine(TemplatesDirectory, fileName);
 
-    private static readonly Lazy<TemplateCache> SharedCache = new(() => new TemplateCache());
+    private static readonly Lazy<TemplateCache> SharedCache = new(() =>
+    {
+        var cache = new TemplateCache();
+        cache.Prepare(Directory.GetFiles(TemplatesDirectory, "*.tt"));
+        return cache;
+    });
 
-    /// <summary> Compiles each shipped template once for the whole test run. Tests run one at a time, so it needs no locking; a test that edits a template writes a copy to its own path and uses TemplateRunner. </summary>
+    /// <summary> Compiles each shipped template once for the whole test run (and keeps the compiled form on disk for the next run). A test that edits a template writes a copy to its own path and runs that through the same cache. </summary>
     public static TemplateCache Cache => SharedCache.Value;
 
     public static Task<GenerateReport> GenerateAsync(ISchemaProvider provider, GenerateOptions options, Action<string>? progress = null) =>
         ProjectGenerator.RunAsync(provider, TemplatesDirectory, options, progress, templateCache: Cache);
+
+    public static Task<EssentialsRun> EssentialsAsync(IEnumerable<EssentialsGroup> groups, ProjectSettings project, string outputDirectory, bool replace = false, bool dryRun = false, bool withDiff = false) =>
+        EssentialsCatalog.GenerateAsync(groups, project, outputDirectory, replace, dryRun, withDiff, templateCache: Cache);
 
     public static void DisposeCache()
     {

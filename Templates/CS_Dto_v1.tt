@@ -56,8 +56,6 @@
         meaningful = Model.PrimaryKeyColumns.ToList();
     var display = columns.Where(c => c.IsDisplayColumn).OrderBy(c => c.DisplayRank).FirstOrDefault() ?? columns.FirstOrDefault(c => BaseType(c) == "string") ?? Model.PrimaryKeyColumns.FirstOrDefault() ?? columns[0];
     string className = Model.TableName + "Dto";
-    string Default(ColumnModel c) => !c.IsNullable && BaseType(c) == "string" ? " = \"\";" : !c.IsNullable && BaseType(c) == "byte[]" ? " = [];" : "";
-    string Quote(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
 
     var o = new StringBuilder();
     void L(string s = "") => o.Append(s).Append('\n');
@@ -71,7 +69,7 @@
     L("public class " + className);
     L("{");
     foreach (var c in columns)
-        L("    public " + ClrType(c) + " " + Id(c) + " { get; set; }" + Default(c));
+        L("    public " + ClrType(c) + " " + Id(c) + " { get; set; }" + CSharpText.NotNullInitializer(c));
     L();
     L("    public " + className + "() { }");
     L();
@@ -85,7 +83,7 @@
     L("    {");
     L("        // required");
     foreach (var c in required)
-        L("        " + Id(c) + " = " + Read(c, "record.GetOrdinal(" + Quote(c.DbName) + ")") + ";");
+        L("        " + Id(c) + " = " + Read(c, "record.GetOrdinal(" + CSharpText.Quote(c.DbName) + ")") + ";");
     if (optional.Count > 0)
     {
         L();
@@ -93,7 +91,7 @@
         foreach (var c in optional)
         {
             string ordinal = "ordinal" + c.Name.Replace("@", "");
-            L("        int " + ordinal + " = record.GetOrdinal(" + Quote(c.DbName) + ");");
+            L("        int " + ordinal + " = record.GetOrdinal(" + CSharpText.Quote(c.DbName) + ");");
             L("        " + Id(c) + " = record.IsDBNull(" + ordinal + ") ? null : " + Read(c, ordinal) + ";");
         }
     }

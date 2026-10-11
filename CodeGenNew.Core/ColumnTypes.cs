@@ -103,23 +103,36 @@ public static class ColumnTypes
 }
 
 /// <summary> Captions made from names. </summary>
-public static class Labels
+public static partial class Labels
 {
-    private static readonly Regex WordBreak = new("(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])", RegexOptions.Compiled);
+    [GeneratedRegex("(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")]
+    private static partial Regex WordBreak();
+
+    [GeneratedRegex("^Is[A-Z]")]
+    private static partial Regex IsPrefix();
+
+    [GeneratedRegex(" +")]
+    private static partial Regex Spaces();
+
+    [GeneratedRegex("^SY_")]
+    private static partial Regex SystemPrefix();
+
+    [GeneratedRegex("Id$")]
+    private static partial Regex IdSuffix();
 
     /// <summary> A name as words: <c>CreditLimit</c> is "Credit Limit", <c>SY_Role</c> is "SY Role", <c>RequireCustomerPO</c> is "Require Customer PO". With <paramref name="isFlag"/> a leading
     /// <c>Is</c> is dropped first (<c>IsTaxable</c> is "Taxable"). </summary>
     public static string Words(string name, bool isFlag = false)
     {
         string s = name;
-        if (isFlag && Regex.IsMatch(s, "^Is[A-Z]"))
+        if (isFlag && IsPrefix().IsMatch(s))
             s = s[2..];
-        s = WordBreak.Replace(s.Replace('_', ' '), " ");
-        return Regex.Replace(s, " +", " ").Trim();
+        s = WordBreak().Replace(s.Replace('_', ' '), " ");
+        return Spaces().Replace(s, " ").Trim();
     }
 
     /// <summary> The caption of a column: <c>SY_</c> and a trailing <c>Id</c> dropped, then as words (<c>CustomerId</c> is "Customer", <c>BillingAddress</c> is "Billing Address"). </summary>
-    public static string Column(string columnName) => Words(Regex.Replace(Regex.Replace(columnName, "^SY_", ""), "Id$", ""));
+    public static string Column(string columnName) => Words(IdSuffix().Replace(SystemPrefix().Replace(columnName, ""), ""));
 
     /// <summary> The caption of a field on a form: the column's caption, with a question mark for a yes / no column (<c>IsTaxable</c> is "Is Taxable?"). </summary>
     public static string Field(ColumnModel column) => column.IsBooleanColumn ? Column(column.Name) + "?" : Column(column.Name);

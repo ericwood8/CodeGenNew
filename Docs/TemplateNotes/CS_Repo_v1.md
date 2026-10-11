@@ -46,8 +46,8 @@ per-table, so this template only writes the thin per-table class on top of it:
       * a table with at least one searchable (string, non-audit) column gets SearchAsync(...) - the same
         filter/pagination SP_Search.tt/SP_SearchCount.tt generate, called directly through the DbContext so an in-process WinUI3 screen and the web API's
         API_Search.tt endpoint share one implementation instead of two.
-  - No entity, no repo: a table listed in noRepositoryTables (the ones that are C# enums, the *Type lookup tables, and
-    tables with no entity class) stops with an error instead of writing a class that cannot compile.
+  - No entity, no repo: an enum or lookup table (or one the project lists in NoRepositoryTables; they have
+    no entity class) stops with an error instead of writing a class that cannot compile.
 
 What it does NOT do, so a repository that needs any of these stays hand-maintained: queries that Include navigation
 properties (GetAllIncludeTeams, GetAllIncludeDropdowns) - the entity's navigations are the developers' choice, and a

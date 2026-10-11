@@ -24,7 +24,6 @@
 
     string Id(ColumnModel c) => c.CSharpName();
     string BaseType(ColumnModel c) => c.CSharpBase();
-    string Quote(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
 
     var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
     string table = Model.TableName + "DataTable";
@@ -47,7 +46,7 @@
     foreach (var c in columns)
         L("    public DataColumn " + ColumnField(c) + " { get; private set; } = null!;");
     L();
-    L("    public " + table + "() : base(" + Quote(Model.TableName) + ")");
+    L("    public " + table + "() : base(" + CSharpText.Quote(Model.TableName) + ")");
     L("    {");
     foreach (var c in columns)
     {
@@ -56,10 +55,10 @@
             settings.Add("AutoIncrement = true");
         if (BaseType(c) == "string" && c.MaxLength is > 0)
             settings.Add("MaxLength = " + c.CharacterLength);
-        L("        Columns.Add(new DataColumn(" + Quote(c.DbName) + ", typeof(" + BaseType(c) + ")) { " + string.Join(", ", settings) + " });");
+        L("        Columns.Add(new DataColumn(" + CSharpText.Quote(c.DbName) + ", typeof(" + BaseType(c) + ")) { " + string.Join(", ", settings) + " });");
     }
     if (Model.PrimaryKeyColumns.Count > 0)
-        L("        PrimaryKey = [" + string.Join(", ", Model.PrimaryKeyColumns.Select(c => "Columns[" + Quote(c.DbName) + "]!")) + "];");
+        L("        PrimaryKey = [" + string.Join(", ", Model.PrimaryKeyColumns.Select(c => "Columns[" + CSharpText.Quote(c.DbName) + "]!")) + "];");
     L("        BindColumns();");
     L("    }");
     L();
@@ -67,7 +66,7 @@
     L("    private void BindColumns()");
     L("    {");
     foreach (var c in columns)
-        L("        " + ColumnField(c) + " = Columns[" + Quote(c.DbName) + "]!;");
+        L("        " + ColumnField(c) + " = Columns[" + CSharpText.Quote(c.DbName) + "]!;");
     L("    }");
     L();
     L("    public override DataTable Clone()");

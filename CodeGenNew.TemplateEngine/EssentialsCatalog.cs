@@ -73,15 +73,15 @@ public static class EssentialsCatalog
     }
 
     /// <summary> Runs the chosen groups and writes their files. Existing files are left alone unless <paramref name="replace"/> is set, because these files are edited by hand after the
-    /// first generation. A group whose template fails reports its errors and does not stop the others. </summary>
+    /// first generation. A <paramref name="templateCache"/> compiles each template once across calls. A group whose template fails reports its errors and does not stop the others. </summary>
     public static async Task<EssentialsRun> GenerateAsync(IEnumerable<EssentialsGroup> groups, ProjectSettings project, string outputDirectory, bool replace = false, bool dryRun = false,
-        bool withDiff = false, CancellationToken cancellationToken = default)
+        bool withDiff = false, CancellationToken cancellationToken = default, TemplateCache? templateCache = null)
     {
         var run = new EssentialsRun();
         var chosen = groups.ToList();
         foreach (var group in chosen)
         {
-            var result = await TemplateRunner.RunAsync(group.Template.FilePath, project, cancellationToken);
+            var result = templateCache is null ? await TemplateRunner.RunAsync(group.Template.FilePath, project, cancellationToken) : await templateCache.RunAsync(group.Template.FilePath, project, cancellationToken);
             if (!result.Success)
             {
                 run.Failures.Add((group, result.Errors));

@@ -31,7 +31,6 @@
     else
     {
         string Id(ColumnModel c) => c.CSharpName();
-        string Str(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
         string entity = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
         bool schemaNamed = Model.Dialect is SqlDialect.SqlServer or SqlDialect.PostgreSql
             && !Model.SchemaName.EqualsIgnoreCase(Model.Dialect == SqlDialect.SqlServer ? "dbo" : "public");
@@ -49,7 +48,7 @@
         L("{");
         L($"    public void Configure(EntityTypeBuilder<{entity}> builder)");
         L("    {");
-        L($"        builder.ToTable({Str(Model.DbTableName)}{(schemaNamed ? ", " + Str(Model.SchemaName) : "")});");
+        L($"        builder.ToTable({CSharpText.Quote(Model.DbTableName)}{(schemaNamed ? ", " + CSharpText.Quote(Model.SchemaName) : "")});");
         L(Model.PrimaryKeyColumns.Count == 1
             ? $"        builder.HasKey(e => e.{Id(Model.PrimaryKeyColumns[0])});"
             : $"        builder.HasKey(e => new {{ {string.Join(", ", Model.PrimaryKeyColumns.Select(c => "e." + Id(c)))} }});");
@@ -58,7 +57,7 @@
         {
             var chain = new List<string>();
             if (c.DatabaseName is not null)
-                chain.Add($".HasColumnName({Str(c.DatabaseName)})");
+                chain.Add($".HasColumnName({CSharpText.Quote(c.DatabaseName)})");
             string? columnType = null;
             if (c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime)
             {
@@ -81,7 +80,7 @@
                     chain.Add($".HasMaxLength({chars})");
             }
             if (columnType is not null)
-                chain.Insert(c.DatabaseName is not null ? 1 : 0, $".HasColumnType({Str(columnType)})");
+                chain.Insert(c.DatabaseName is not null ? 1 : 0, $".HasColumnType({CSharpText.Quote(columnType)})");
             if (c.SqlType == SqlDbType.Timestamp)
                 chain.Add(".IsRowVersion()");
             else if (c.IsComputed)
@@ -104,7 +103,7 @@
             if (columns.Any(c => c is null))
                 continue;
             string key = columns.Count == 1 ? $"e.{Id(columns[0]!)}" : $"new {{ {string.Join(", ", columns.Select(c => "e." + Id(c!)))} }}";
-            L($"        builder.HasIndex(e => {key}).HasDatabaseName({Str(index.Name)}){(index.IsUnique ? ".IsUnique()" : "")};");
+            L($"        builder.HasIndex(e => {key}).HasDatabaseName({CSharpText.Quote(index.Name)}){(index.IsUnique ? ".IsUnique()" : "")};");
         }
         L("    }");
         L("}");

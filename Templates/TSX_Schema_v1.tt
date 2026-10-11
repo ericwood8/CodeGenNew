@@ -18,7 +18,6 @@
     }
     else
     {
-        string Str(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
         string baseName = ScreenNames.BaseName(Model.TableName);
 
         string Field(ColumnModel c)
@@ -28,7 +27,7 @@
             var o = new StringBuilder();
             if (rule?.Choices is { Count: > 0 } choices)
             {
-                o.Append("z.enum([" + string.Join(", ", choices.Select(Str)) + "])");
+                o.Append("z.enum([" + string.Join(", ", choices.Select(CSharpText.Quote)) + "])");
             }
             else if (c.TypeScript() == "number")
             {
@@ -42,26 +41,26 @@
             {
                 o.Append("z.string()");
                 if (c.IsGuidColumn)
-                    o.Append(".uuid(" + Str(label + " is not a GUID.") + ")");
+                    o.Append(".uuid(" + CSharpText.Quote(label + " is not a GUID.") + ")");
             }
 
             if (rule is not null)
             {
                 bool anyText = rule.Choices is null;   // an enum is already one of its values
                 if (rule.Required && anyText)
-                    o.Append(".min(1, " + Str(label + " is required.") + ")");
+                    o.Append(".min(1, " + CSharpText.Quote(label + " is required.") + ")");
                 if (rule.MaxLength > 0 && anyText)
-                    o.Append(".max(" + rule.MaxLength + ", " + Str(label + " is longer than " + rule.MaxLength + " characters.") + ")");
+                    o.Append(".max(" + rule.MaxLength + ", " + CSharpText.Quote(label + " is longer than " + rule.MaxLength + " characters.") + ")");
                 if (rule.Shape == TextShape.Email)
-                    o.Append(".email(" + Str(label + " is not an email address.") + ")");
+                    o.Append(".email(" + CSharpText.Quote(label + " is not an email address.") + ")");
                 else if (rule.Shape == TextShape.Phone)
-                    o.Append(@".regex(/^[0-9+()\-.\s]{3,25}$/, " + Str(label + " is not a phone number.") + ")");
+                    o.Append(@".regex(/^[0-9+()\-.\s]{3,25}$/, " + CSharpText.Quote(label + " is not a phone number.") + ")");
                 else if (rule.Shape == TextShape.Url)
-                    o.Append(".url(" + Str(label + " is not a URL.") + ")");
+                    o.Append(".url(" + CSharpText.Quote(label + " is not a URL.") + ")");
                 if (rule.Min is { } min)
-                    o.Append((rule.MinStrict ? ".gt(" : ".min(") + Num(min) + ", " + Str(label + (rule.MinStrict ? " must be more than " : " must be at least ") + Num(min) + ".") + ")");
+                    o.Append((rule.MinStrict ? ".gt(" : ".min(") + Num(min) + ", " + CSharpText.Quote(label + (rule.MinStrict ? " must be more than " : " must be at least ") + Num(min) + ".") + ")");
                 if (rule.Max is { } max)
-                    o.Append((rule.MaxStrict ? ".lt(" : ".max(") + Num(max) + ", " + Str(label + (rule.MaxStrict ? " must be less than " : " must be at most ") + Num(max) + ".") + ")");
+                    o.Append((rule.MaxStrict ? ".lt(" : ".max(") + Num(max) + ", " + CSharpText.Quote(label + (rule.MaxStrict ? " must be less than " : " must be at most ") + Num(max) + ".") + ")");
             }
 
             if (c.IsNullable)

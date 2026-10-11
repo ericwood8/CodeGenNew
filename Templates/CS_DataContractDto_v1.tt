@@ -25,7 +25,6 @@
     string Id(ColumnModel c) => c.CSharpName();
     string BaseType(ColumnModel c) => c.CSharpBase();
     string ClrType(ColumnModel c) => c.CSharp();
-    string Quote(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
     // the value of <source>["Column"] as the property's type
     string FromObject(ColumnModel c, string value) => BaseType(c) switch
     {
@@ -45,7 +44,6 @@
         "byte[]" => $"(byte[]){value}",
         _ => value
     };
-    string Default(ColumnModel c) => !c.IsNullable && BaseType(c) == "string" ? " = \"\";" : !c.IsNullable && BaseType(c) == "byte[]" ? " = [];" : "";
 
     var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
     string className = Model.TableName + "Contract";
@@ -56,7 +54,7 @@
     {
         foreach (var c in columns)
         {
-            string value = source + "[" + Quote(c.DbName) + "]";
+            string value = source + "[" + CSharpText.Quote(c.DbName) + "]";
             L("        " + Id(c) + " = " + (c.IsNullable ? $"{value} is DBNull ? null : {FromObject(c, value)}" : FromObject(c, value)) + ";");
         }
     }
@@ -74,7 +72,7 @@
     foreach (var c in columns)
     {
         L("    [DataMember" + (c.IsNullable ? "" : "(IsRequired = true)") + "]");
-        L("    public " + ClrType(c) + " " + Id(c) + " { get; set; }" + Default(c));
+        L("    public " + ClrType(c) + " " + Id(c) + " { get; set; }" + CSharpText.NotNullInitializer(c));
         L();
     }
     L("    #region Constructors");

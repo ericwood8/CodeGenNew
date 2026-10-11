@@ -36,7 +36,6 @@
     var widgets = plan.Widgets.Concat(plan.Candidates.Where(w => strip.Contains(w.Id) && !onDashboard.Contains(w.Id))).ToList();
     var screenTables = Database.ScreenTables(Project).Select(t => t.TableName).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    string Esc(string text) => text.Replace("\\", "\\\\").Replace("\"", "\\\"");
     string Bool(bool value) => value ? "true" : "false";
 
     var sb = new StringBuilder();
@@ -61,8 +60,8 @@
     foreach (var w in widgets)
     {
         string route = screenTables.Contains(w.Table) ? ScreenNames.Route(w.Table) : "";
-        Line($"        new(\"{w.Id}\", \"{w.KindName}\", \"{Esc(w.Title)}\", \"{w.Table}\", \"{route}\", {Bool(w.IsMoney)}, {Bool(w.IsRows)}, {Bool(onDashboard.Contains(w.Id))}, {Bool(strip.Contains(w.Id))},");
-        Line($"            \"{Esc(w.Sql)}\"),");
+        Line($"        new(\"{w.Id}\", \"{w.KindName}\", \"{CSharpText.Escape(w.Title)}\", \"{w.Table}\", \"{route}\", {Bool(w.IsMoney)}, {Bool(w.IsRows)}, {Bool(onDashboard.Contains(w.Id))}, {Bool(strip.Contains(w.Id))},");
+        Line($"            \"{CSharpText.Escape(w.Sql)}\"),");
     }
     Line("    ];");
     Line();

@@ -247,7 +247,6 @@ The `SP`/`API`/`CS`/`TS`/`WinUI3` templates were written against a layered sampl
 string apiNamespace = "MyApp.ApiService.Apis";
 string contextType = "MyAppContext";
 string[] usings = { };          // namespaces the generated file must "using"
-string[] noRepositoryTables = { "ClearanceType", ... };
 ```
 
 Open the `.tt` file (or the app's *Templates* button → Edit), change those lines, and save; the next generation uses them — there is nothing to rebuild.

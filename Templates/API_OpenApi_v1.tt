@@ -31,7 +31,6 @@
     }
     else
     {
-        string Quote(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
         // a description is one line of text in the document
         string OneLine(string s) => System.Text.RegularExpressions.Regex.Replace(s, @"\s+", " ").Trim();
         string title = (Project.ProjectName is null ? Database.DatabaseName : Project.ProjectTitle) + " API";
@@ -46,10 +45,10 @@
             string pad = indent + "  ";
             L(indent + JsonNames.Camel(c.Name) + ":");
             if (!string.IsNullOrWhiteSpace(c.Description))
-                L(pad + "description: " + Quote(OneLine(c.Description)));
+                L(pad + "description: " + CSharpText.Quote(OneLine(c.Description)));
             if (type is null)
             {
-                L(pad + "description: " + Quote("A value of the database type " + c.SqlTypeDeclaration + "."));
+                L(pad + "description: " + CSharpText.Quote("A value of the database type " + c.SqlTypeDeclaration + "."));
                 return;
             }
             L(pad + "type: " + type);
@@ -67,7 +66,7 @@
                 {
                     L(pad + "enum:");
                     foreach (string choice in c.Choices!)
-                        L(pad + "  - " + Quote(choice));
+                        L(pad + "  - " + CSharpText.Quote(choice));
                 }
             }
             else if (c.IsIntegerColumn && (c.NumericKind != NumericKind.None || c.Check is not null) && Project.RangeFor(c) is { } range)
@@ -114,8 +113,8 @@
         {
             foreach (int code in codes)
             {
-                L(indent + Quote(code.ToString()) + ":");
-                L(indent + "  description: " + Quote(code switch { 400 => "The request is not valid.", 404 => "There is no such row.", _ => "The server failed." }));
+                L(indent + CSharpText.Quote(code.ToString()) + ":");
+                L(indent + "  description: " + CSharpText.Quote(code switch { 400 => "The request is not valid.", 404 => "There is no such row.", _ => "The server failed." }));
                 L(indent + "  content:");
                 L(indent + "    application/problem+json:");
                 L(indent + "      schema:");
@@ -127,8 +126,8 @@
         {
             L("    " + verb + ":");
             L("      operationId: " + operationId);
-            L("      summary: " + Quote(summary));
-            L("      tags: [" + Quote(tag) + "]");
+            L("      summary: " + CSharpText.Quote(summary));
+            L("      tags: [" + CSharpText.Quote(tag) + "]");
             if (parameters is not null)
                 foreach (string p in parameters)
                     L(p);
@@ -142,8 +141,8 @@
                 L("              $ref: '#/components/schemas/" + requestSchema + "'");
             }
             L("      responses:");
-            L("        " + Quote(okCode) + ":");
-            L("          description: " + Quote(okDescription));
+            L("        " + CSharpText.Quote(okCode) + ":");
+            L("          description: " + CSharpText.Quote(okDescription));
             if (okSchema is not null)
             {
                 L("          content:");
@@ -174,9 +173,9 @@
 
         L("openapi: 3.0.3");
         L("info:");
-        L("  title: " + Quote(title));
-        L("  version: " + Quote("1.0.0"));
-        L("  description: " + Quote("Written by codegen from the schema of " + Database.DatabaseName + ". Run it again when a table or an API template changes."));
+        L("  title: " + CSharpText.Quote(title));
+        L("  version: " + CSharpText.Quote("1.0.0"));
+        L("  description: " + CSharpText.Quote("Written by codegen from the schema of " + Database.DatabaseName + ". Run it again when a table or an API template changes."));
         L("servers:");
         L("  - url: http://localhost:" + Project.ApiPort);
         if (Project.ApiAuth)
@@ -191,7 +190,7 @@
             L("    post:");
             L("      operationId: Login");
             L("      tags: [Auth]");
-            L("      summary: " + Quote("Sign in and get a bearer token"));
+            L("      summary: " + CSharpText.Quote("Sign in and get a bearer token"));
             L("      security: []");
             L("      requestBody:");
             L("        required: true");
@@ -201,7 +200,7 @@
             L("              $ref: '#/components/schemas/LoginRequest'");
             L("      responses:");
             L("        '200':");
-            L("          description: " + Quote("The token and who it is for."));
+            L("          description: " + CSharpText.Quote("The token and who it is for."));
             L("          content:");
             L("            application/json:");
             L("              schema:");
@@ -209,7 +208,7 @@
             foreach (int status in new[] { 400, 401, 429 })
             {
                 L("        '" + status + "':");
-                L("          description: " + Quote(status == 400 ? "A user name or password is missing." : status == 401 ? "Wrong user name or password." : "Too many wrong tries; wait a minute."));
+                L("          description: " + CSharpText.Quote(status == 400 ? "A user name or password is missing." : status == 401 ? "Wrong user name or password." : "Too many wrong tries; wait a minute."));
                 L("          content:");
                 L("            application/problem+json:");
                 L("              schema:");
@@ -245,7 +244,7 @@
                 {
                     parameters.Add("        - name: " + char.ToLowerInvariant(c.Name[0]) + c.Name[1..]);
                     parameters.Add("          in: query");
-                    parameters.Add("          description: " + Quote("Rows whose " + c.Name + " contains this text."));
+                    parameters.Add("          description: " + CSharpText.Quote("Rows whose " + c.Name + " contains this text."));
                     parameters.Add("          schema:");
                     parameters.Add("            type: string");
                 }
@@ -253,7 +252,7 @@
                 [
                     "        - name: pageNumber", "          in: query", "          schema:", "            type: integer", "            minimum: 1", "            default: 1",
                     "        - name: pageSize", "          in: query", "          schema:", "            type: integer", "            default: 100",
-                    "        - name: sortBy", "          in: query", "          description: " + Quote("A column name; an unknown one gives the default order."), "          schema:", "            type: string",
+                    "        - name: sortBy", "          in: query", "          description: " + CSharpText.Quote("A column name; an unknown one gives the default order."), "          schema:", "            type: string",
                     "        - name: sortDir", "          in: query", "          schema:", "            type: string", "            enum: [asc, desc]"
                 ]);
                 L("  " + route + "/search:");
@@ -307,7 +306,7 @@
             L("    " + singular + ":");
             L("      type: object");
             if (!string.IsNullOrWhiteSpace(table.Description))
-                L("      description: " + Quote(OneLine(table.Description)));
+                L("      description: " + CSharpText.Quote(OneLine(table.Description)));
             if (required.Count > 0)
             {
                 L("      required:");

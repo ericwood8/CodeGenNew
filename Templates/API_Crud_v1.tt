@@ -15,20 +15,12 @@
     // Namespaces the generated file must "using" (for example "MyApp.Entities"; leave empty when the project supplies them through
     // global usings). Each entry becomes a using line in the generated file.
     string[] usings = { };
-    // Tables that have no repository (and so no API): C# enums, other *Type lookup tables, tables with no entity class.
-    string[] noRepositoryTables =
-    {
-        "ClearanceType", "ExpenseType", "LeaveType", "OvertimeType", "SY_RequestStatusType", "SY_RequestType",
-        "SY_ResponseType", "SY_Role", "SY_Display", "SY_ISOCountry", "SY_PerDiem", "sysdiagrams"
-    };
     // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     contextType = Project.ContextName ?? contextType;
     apiNamespace = Project.ApiNamespace ?? apiNamespace;
     usings = Project.Usings ?? usings;
-    // With a project chosen, which tables count as enums (no entity/repository/API of their own) comes from the project's
-    // EnumTables, else from what the schema says about each table (LookupShape) - not from the lists above, which are
-    // only used when no project is chosen.
-    bool NoRepository(string table, LookupShape shape) => Project.NoRepository(table, shape) ?? noRepositoryTables.Contains(table, StringComparer.OrdinalIgnoreCase);
+    // Which tables count as enums (no entity, repository or API of their own) comes from the project's EnumTables, else from the schema (LookupShape).
+    bool NoRepository(string table, LookupShape shape) => Project.NoRepositoryFor(table, shape);
     // ==========================================================================================
 
     // ==========================================================================================
@@ -50,7 +42,7 @@
                      && (!Model.IsNameActiveTable || keyColumn!.IsInt32Column);   // a Name and IsActive table stays int-keyed
     if (NoRepository(Model.TableName, Model.LookupShape))
     {
-        Error($"API_Crud writes no API for [{Model.SchemaName}].[{Model.TableName}]: it is listed in noRepositoryTables (an enum, a *Type lookup table, or a table with no entity class), so it has no repository for the handlers to use.");
+        Error($"API_Crud writes no API for [{Model.SchemaName}].[{Model.TableName}]: it is an enum or lookup table (an enum, a *Type lookup table, or a table with no entity class), so it has no repository for the handlers to use.");
     }
     else if (!supported)
     {

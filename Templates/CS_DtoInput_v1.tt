@@ -32,7 +32,6 @@
         var settable = columns.Where(c => !c.IsPrimaryKey).ToList();
         string entity = Model.TableName;
         string className = Model.TableName + "Input";
-        string Default(ColumnModel c) => !c.IsNullable && c.CSharpBase() == "string" ? " = \"\";" : !c.IsNullable && c.CSharpBase() == "byte[]" ? " = [];" : "";
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
@@ -45,7 +44,7 @@
         L("public class " + className);
         L("{");
         foreach (var c in columns)
-            L("    public " + c.CSharp() + " " + c.CSharpName() + " { get; set; }" + Default(c));
+            L("    public " + c.CSharp() + " " + c.CSharpName() + " { get; set; }" + CSharpText.NotNullInitializer(c));
         L();
         L("    public " + entity + " ToEntity() => new()");
         L("    {");

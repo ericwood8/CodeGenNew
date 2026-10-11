@@ -35,7 +35,6 @@
     // new <Name>ListPage() and shown in the main window's content area like the table screens. Needs the CommunityToolkit.Mvvm package.
     // ==========================================================================================
 
-    string Esc(string text) => text.Replace("\\", "\\\\").Replace("\"", "\\\"");
     string title = Regex.Replace(listingName, "(?<=[a-z0-9])(?=[A-Z])", " ").Pluralize();
     string singular = Regex.Replace(listingName, "(?<=[a-z0-9])(?=[A-Z])", " ");
 #>
@@ -256,8 +255,8 @@ namespace <#= viewModelNamespace #>;
 public partial class <#= listingName #>ListViewModel : ObservableObject
 {
     /// <summary> The folder the files live in (environment variables are expanded); it is created when it is missing. </summary>
-    public const string FolderTemplate = "<#= Esc(listingFolder) #>";
-    public const string Pattern = "<#= Esc(listingPattern) #>";
+    public const string FolderTemplate = "<#= CSharpText.Escape(listingFolder) #>";
+    public const string Pattern = "<#= CSharpText.Escape(listingPattern) #>";
 
     private string _sortColumn = "Name";
     private bool _sortDescending;

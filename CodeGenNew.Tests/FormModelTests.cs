@@ -128,7 +128,7 @@ public class FormModelTests
 
         var grids = ChildGrid.For(table, Project(("ChildGridTitles", "Account.Note=Remarks"), ("NoApiTables", "Audit"), ("EditableChildren", "Account.Note")));
 
-        Assert.AreEqual(1, grids.Count, "a child table the project gives no API has no grid");
+        Assert.HasCount(1, grids, "a child table the project gives no API has no grid");
         Assert.AreEqual("Remarks", grids[0].Title);
         Assert.IsTrue(grids[0].IsEditable);
     }

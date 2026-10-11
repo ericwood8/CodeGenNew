@@ -34,7 +34,6 @@
     else
     {
         string Id(ColumnModel c) => c.CSharpName();
-        string Str(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
         string Words(string name) => Labels.Words(name);
         // a number literal in the property's own type
         string Literal(ColumnModel c, double value) => c.SqlType switch
@@ -65,8 +64,8 @@
             if (rule.Choices is not null)
             {
                 string array = c.Name.Replace("@", "") + "Values";
-                values.Add($"    private static readonly string[] {array} = [{string.Join(", ", rule.Choices.Select(Str))}];");
-                parts.Add($".Must(value => value is null || {array}.Contains(value)).WithMessage({Str(label + " must be one of: " + string.Join(", ", rule.Choices) + ".")})");
+                values.Add($"    private static readonly string[] {array} = [{string.Join(", ", rule.Choices.Select(CSharpText.Quote))}];");
+                parts.Add($".Must(value => value is null || {array}.Contains(value)).WithMessage({CSharpText.Quote(label + " must be one of: " + string.Join(", ", rule.Choices) + ".")})");
             }
             else if (rule.Shape == TextShape.Email)
             {
@@ -74,11 +73,11 @@
             }
             else if (rule.Shape == TextShape.Phone)
             {
-                parts.Add(".Matches(@\"^[0-9+()\\-.\\s]{3,25}$\").WithMessage(" + Str(label + " is not a phone number.") + ")");
+                parts.Add(".Matches(@\"^[0-9+()\\-.\\s]{3,25}$\").WithMessage(" + CSharpText.Quote(label + " is not a phone number.") + ")");
             }
             else if (rule.Shape == TextShape.Url)
             {
-                parts.Add(".Must(value => value is null || Uri.IsWellFormedUriString(value, UriKind.Absolute)).WithMessage(" + Str(label + " is not a URL.") + ")");
+                parts.Add(".Must(value => value is null || Uri.IsWellFormedUriString(value, UriKind.Absolute)).WithMessage(" + CSharpText.Quote(label + " is not a URL.") + ")");
             }
 
             // a whole number or a latitude / longitude has both limits at once; a decimal's CHECK may state either, strictly or not

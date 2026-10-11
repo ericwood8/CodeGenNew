@@ -29,8 +29,6 @@
     string ClrType(ColumnModel c) => c.CSharp();
     // typeof() cannot take a nullable reference type: string? is typeof(string), int? stays typeof(int?)
     string TypeOf(ColumnModel c) => c.IsNullable && BaseType(c) is not ("string" or "byte[]" or "object") ? BaseType(c) + "?" : BaseType(c);
-    string Quote(string s) => "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
-    string Default(ColumnModel c) => !c.IsNullable && BaseType(c) == "string" ? " = \"\";" : !c.IsNullable && BaseType(c) == "byte[]" ? " = [];" : "";
 
     var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
     var o = new StringBuilder();
@@ -41,7 +39,7 @@
         {
             if (attribute(c) is { } a)
                 L("    " + a);
-            L("    public " + ClrType(c) + " " + Id(c) + " { get; set; }" + Default(c));
+            L("    public " + ClrType(c) + " " + Id(c) + " { get; set; }" + CSharpText.NotNullInitializer(c));
         }
     }
 
@@ -69,22 +67,22 @@
     L("    protected " + Model.TableName + "Serializable(SerializationInfo info, StreamingContext context)");
     L("    {");
     foreach (var c in columns)
-        L("        " + Id(c) + " = (" + ClrType(c) + ")info.GetValue(" + Quote(c.Name) + ", typeof(" + TypeOf(c) + "))" + (ClrType(c).EndsWith("?") ? "" : "!") + ";");
+        L("        " + Id(c) + " = (" + ClrType(c) + ")info.GetValue(" + CSharpText.Quote(c.Name) + ", typeof(" + TypeOf(c) + "))" + (ClrType(c).EndsWith("?") ? "" : "!") + ";");
     L("    }");
     L();
     L("    // SerializationInfo is a property bag: the names written here are the names read above");
     L("    public void GetObjectData(SerializationInfo info, StreamingContext context)");
     L("    {");
     foreach (var c in columns)
-        L("        info.AddValue(" + Quote(c.Name) + ", " + Id(c) + ", typeof(" + TypeOf(c) + "));");
+        L("        info.AddValue(" + CSharpText.Quote(c.Name) + ", " + Id(c) + ", typeof(" + TypeOf(c) + "));");
     L("    }");
     L("}");
     L();
     L("/// <summary> XmlSerializer attributes: the key as attributes, the other columns as elements. </summary>");
-    L("[Serializable, XmlRoot(" + Quote(Model.TableName) + ", IsNullable = false)]");
+    L("[Serializable, XmlRoot(" + CSharpText.Quote(Model.TableName) + ", IsNullable = false)]");
     L("public class " + Model.TableName + "Xml");
     L("{");
-    Properties(c => c.IsPrimaryKey ? "[XmlAttribute(" + Quote(c.Name) + ")]" : c.IsComputed ? "[XmlIgnore]" : "[XmlElement(" + Quote(c.Name) + ")]");
+    Properties(c => c.IsPrimaryKey ? "[XmlAttribute(" + CSharpText.Quote(c.Name) + ")]" : c.IsComputed ? "[XmlIgnore]" : "[XmlElement(" + CSharpText.Quote(c.Name) + ")]");
     L("}");
     Write(o.ToString());
 #>

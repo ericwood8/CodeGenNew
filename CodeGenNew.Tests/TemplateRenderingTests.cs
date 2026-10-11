@@ -973,7 +973,7 @@ public class TemplateRenderingTests
     public async Task The_api_refuses_what_it_cannot_write_and_says_why()
     {
         StringAssert.Contains(await Refusal("API_Crud_v1.tt", Sample.CompositeKey()), "single int, uniqueidentifier or text primary key");
-        StringAssert.Contains(await Refusal("API_Crud_v1.tt", Sample.Roles()), "noRepositoryTables");
+        StringAssert.Contains(await Refusal("API_Crud_v1.tt", Sample.Roles(), ProjectSettings.FromValues([new("ProjectName", "Acme"), new("NoRepositoryTables", "SY_Role")])), "enum or lookup table");
     }
 
     // ------------------------------------------------------------------ project settings: the usings list
@@ -991,7 +991,7 @@ public class TemplateRenderingTests
         Assert.Contains("string[] usings = { };", source, $"{template} has no usings setting");
         string custom = temp.File(template, source.Replace("string[] usings = { };", "string[] usings = { \"MyApp.Entities\", \"MyApp.Data\" };"));
 
-        var result = await TemplateRunner.RunAsync(custom, template == "API_Crud_v1.tt" ? Sample.DonateLeave() : Sample.Holiday());
+        var result = await Repo.Cache.RunAsync(custom, template == "API_Crud_v1.tt" ? Sample.DonateLeave() : Sample.Holiday());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         Expect.Contains(result.GeneratedText!, "using MyApp.Entities;");
@@ -1013,7 +1013,7 @@ public class TemplateRenderingTests
         string source = File.ReadAllText(Repo.Template("CS_Enum_v1.tt"));
         string custom = temp.File("CS_Enum_v1.tt", source.Replace("\"MyApp.Common.Enums\"", "\"MyApp.Lookups\""));
 
-        var result = await TemplateRunner.RunAsync(custom, Sample.Roles());
+        var result = await Repo.Cache.RunAsync(custom, Sample.Roles());
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         Expect.Contains(result.GeneratedText!, "namespace MyApp.Lookups;");
@@ -1116,6 +1116,14 @@ public class TemplateRenderingTests
         Expect.Contains(cs, "    [StringLength(100)]");   // 200 bytes of nvarchar are 100 characters
         Expect.Contains(cs, "    [DataType(DataType.MultilineText)]");
         Expect.Contains(cs, "    public string? Note { get; set; }");
+    }
+
+    [TestMethod]
+    public async Task A_not_null_string_starts_empty_so_the_constructor_leaves_nothing_null()
+    {
+        string cs = await Render("CS_Entity_v1.tt", Sample.Holiday());
+
+        Expect.Contains(cs, "    public required string Name { get; set; } = \"\";");
     }
 
     [TestMethod]
@@ -1248,7 +1256,7 @@ public class TemplateRenderingTests
     [TestMethod]
     public async Task No_repository_is_written_for_a_lookup_table()
     {
-        StringAssert.Contains(await Refusal("CS_Repo_v1.tt", Sample.Roles()), "noRepositoryTables");
+        StringAssert.Contains(await Refusal("CS_Repo_v1.tt", Sample.Roles(), ProjectSettings.FromValues([new("ProjectName", "Acme"), new("NoRepositoryTables", "SY_Role")])), "enum or lookup table");
     }
 
     [TestMethod]

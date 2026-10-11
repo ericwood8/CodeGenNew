@@ -171,7 +171,7 @@ public class GenerateAllFollowUpTests
         using var temp = new TempFolder();
         var main = EssentialsCatalog.Groups(Repo.TemplatesDirectory, "WinUI3").Where(g => g.Name == "MainWindow").ToList();
 
-        var first = await EssentialsCatalog.GenerateAsync(main, Project(), temp.Path);
+        var first = await Repo.EssentialsAsync(main, Project(), temp.Path);
 
         Assert.IsTrue(first.Warnings.Any(w => w.Contains("MainWindow.Screens.cs")));
         Assert.IsTrue(first.Warnings.Any(w => w.Contains("Data/AcmeContext.cs")), "the context's name comes from the project");
@@ -180,7 +180,7 @@ public class GenerateAllFollowUpTests
         File.WriteAllText(System.IO.Path.Combine(app, "MainWindow.Screens.cs"), "// generated");
         Directory.CreateDirectory(System.IO.Path.Combine(app, "Data"));
         File.WriteAllText(System.IO.Path.Combine(app, "Data", "AcmeContext.cs"), "// generated");
-        Assert.IsEmpty((await EssentialsCatalog.GenerateAsync(main, Project(), temp.Path)).Warnings);
+        Assert.IsEmpty((await Repo.EssentialsAsync(main, Project(), temp.Path)).Warnings);
     }
 
     // ------------------------------------------------------------------ build and test
@@ -237,7 +237,7 @@ public class GenerateAllFollowUpTests
         var wanted = new[] { ("Angular", "Build"), ("Api", "Launch"), ("Api", "EditorConfig"), ("React", "Git"), ("Angular", "Git") };
         var groups = wanted.Select(w => EssentialsCatalog.Groups(Repo.TemplatesDirectory, w.Item1).Single(g => g.Name == w.Item2)).ToList();
 
-        var run = await EssentialsCatalog.GenerateAsync(groups, project, temp.Path);
+        var run = await Repo.EssentialsAsync(groups, project, temp.Path);
 
         Assert.IsTrue(run.Success, string.Join("\n", run.Failures.SelectMany(f => f.Errors)));
         var package = JsonDocument.Parse(File.ReadAllText(System.IO.Path.Combine(temp.Path, "frontend", "package.json"))).RootElement;
