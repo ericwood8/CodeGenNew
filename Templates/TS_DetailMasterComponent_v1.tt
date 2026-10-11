@@ -30,8 +30,9 @@
 
     // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is limited to what the column can hold (a percentage to 0-100).
 
-    var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
-    var keyType = KeyType.Of(Model);   // how the key travels: a number, or a string for a uniqueidentifier or a text key
+    var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
+    var keyColumn = form.KeyColumn;
+    var keyType = form.KeyType;   // how the key travels: a number, or a string for a uniqueidentifier or a text key
     if (Project.NoApiFor(Model.TableName, Model.LookupShape))
     {
         Error($"TS_DetailMasterComponent writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is an enum or excluded by the NoApiTables setting (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
@@ -48,115 +49,45 @@
     else
     {
         // A table with a Name and an IsActive column (a department and its teams) has no search endpoint: its screen is on NameActiveCrudScreen (see TS_Component), with no paging or sorting of its own grid.
-        bool nameActive = Model.IsNameActiveTable;
-        string baseName = BaseName(Model.TableName);
-        string stem = baseName.ToLowerInvariant();
-        string variable = LowerFirst(baseName);        // holiday
+        bool nameActive = form.IsNameActive;
+        string baseName = form.BaseName;
+        string stem = form.Stem;
+        string variable = form.Variable;        // holiday
         string keyProp = JsonNames.Camel(keyColumn.Name);         // holidayId
         string keyTs = keyType.TypeScript;
         string emptyKey = keyType.TypeScriptEmpty;
-        bool textKey = keyType.Kind == KeyKind.Text;    // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
+        bool textKey = form.TextKey;    // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
         // the child grids and the "save first" note show once the row exists: for a typed key that is `!adding`, since the key is set on a new row too
         string savedTest = textKey ? "!adding" : "selectedRow." + keyProp;
-        string title = Labels.Words(baseName);
-        bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"); // just for showError's message wording below
+        string title = form.Title;
+        bool hasName = form.HasName; // just for showError's message wording below
         const int pageSize = 20;
         // The same paging and search bar as TS_Component: one text box per searchable column (Model.SearchableColumns), paged by the API's /search endpoint.
         // The Search list protocol (ListProtocol=Search) has one search box for the whole table; the server decides which columns it matches.
-        var searchFields = Project.ListSearchProtocol
-            ? new List<(string ParamName, string Name, string Label)> { ("search", "search", "") }
-            : Model.SearchableColumns.Select(c => (ParamName: LowerFirst(c.Name), c.Name, Label: Labels.Column(c.Name))).ToList();
+        var searchFields = form.WebSearchFields;
         bool canSearch = !nameActive && searchFields.Count > 0;
         // The route of a table's own page ("SalesInvoice" -> "sales-invoice"): the project's routing has one route per generated page, named this way.
         string selfRoute = ScreenNames.Route(Model.TableName);
 
-        // What the form is made of (its columns, the foreign key behind each, the drop-downs and their parents) is decided in Core for every stack.
-        var form = FormModel.For(Model, Project);
-        var fkByColumn = form.ForeignKeysByColumn;
+        var shown = form.Columns;
 
-        var shown = form.Columns.ToList();
-
-        var parents = form.Parents
-            .Select(fk =>
-            {
-                string parentBase = BaseName(fk.ReferencedTable);
-                bool self = fk.ReferencedTable.EqualsIgnoreCase(Model.TableName);
-                // a drop-down over a parent with a whole-number or text key reads the parent's lookup list ({ id, name }: GET <route>/lookup) instead of every column of every row
-                var fkColumn = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0]));
-                bool viaLookup = !fkColumn.IsGuidColumn && fk.ReferencedColumns.Count == 1 && !Project.NoApiFor(fk.ReferencedTable, fk.ReferencedLookupShape);
-                string idType = Model.ForeignKeyType(fk)?.TypeScript ?? "number";
-                return new
-                {
-                    Table = fk.ReferencedTable,
-                    Type = parentBase,
-                    ModelFile = Project.ModelFileOf(fk.ReferencedTable, parentBase.ToLowerInvariant()),
-                    Service = parentBase + "Service",
-                    ServiceVar = LowerFirst(parentBase) + "Service",
-                    ServiceFile = parentBase.ToLowerInvariant() + ".service",
-                    List = LowerFirst(parentBase).Pluralize(),
-                    NameMethod = LowerFirst(parentBase) + "Name",
-                    Lookup = viaLookup,
-                    LookupType = idType == "number" ? "Lookup" : $"Lookup<{idType}>",
-                    KeyProp = viaLookup ? "id" : JsonNames.Camel(fk.ReferencedColumns[0]),
-                    IdType = idType,
-                    DisplayProp = viaLookup ? "name" : JsonNames.Camel(fk.ReferencedDisplayColumns[0]),
-                    Self = self
-                };
-            }).ToList();
-        var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
+        var parents = form.Parents;
 
         // The child tables, decided in Core for every stack (ChildGrid): which ones get a grid, its heading and role, its key, and the foreign keys shown as names.
-        var childGrids = ChildGrid.For(Model, Project);
-        var children = childGrids
-            .Select(g => new
-            {
-                Table = g.Table,
-                // the property of the save request that holds this child's rows when the table is edited in the form (EditableChildren)
-                JsonName = EditableChild.JsonName(g.Link),
-                Title = g.Title,
-                Var = LowerFirst(g.Name),
-                MethodName = g.Name,
-                Route = ScreenNames.ApiRoute(g.Table),
-                PageRoute = ScreenNames.Route(g.Table),
-                KeyProp = g.KeyName is null ? null : JsonNames.Camel(g.KeyName),
-                // a child with a text key has it encoded into the links and the delete route
-                KeyIsText = g.KeyType?.Kind == KeyKind.Text,
-                FkProp = JsonNames.Camel(g.Link.ReferencingColumns[0]),
-                // a whole-number key is named by the parent's lookup list ({ id, name }); any other key reads the parent's rows
-                Lookups = g.Lookups.Select(l => l.UsesLookupEndpoint
-                    ? (Column: JsonNames.Camel(l.ColumnName), Route: ScreenNames.ApiRoute(l.ParentTable) + "/lookup", Key: "id", Display: "name")
-                    : (Column: JsonNames.Camel(l.ColumnName), Route: ScreenNames.ApiRoute(l.ParentTable), Key: JsonNames.Camel(l.ParentKeyName), Display: JsonNames.Camel(l.ParentDisplayName))).ToList(),
-                Hidden = g.HiddenColumns.Select(JsonNames.Camel).ToList(),
-                // What the schema says about the child's columns (their JSON names are camelCase): money shows as currency, long text goes last.
-                Currency = g.Link.ReferencingTableColumns.Where(c => c.IsMoneyAmount)
-                    .Select(c => (Name: JsonNames.Camel(c.Name), Digits: NumericClassifier.CurrencyDigits(c))).ToList(),
-                LongText = g.Link.ReferencingTableColumns.Where(c => c.IsLongTextColumn).Select(c => JsonNames.Camel(c.Name)).ToList(),
-                // The caption each child column gets (date columns lose "Date", yes/no columns end in "?", Number -> #, Percent -> %).
-                Captions = g.Link.ReferencingTableColumns.Select(c => (Name: JsonNames.Camel(c.Name), Caption: GridCaption.For(c, Labels.Column(c.Name)))).ToList()
-            }).ToList();
+        var children = ChildGrid.For(Model, Project);
 
-        // ==== naming on the page
-        string Id(ColumnModel c) => variable + UpperFirst(JsonNames.Camel(c.Name));
 
         // EditableChildren: the child tables whose rows are added, changed and removed inside this form and sent with it in one request (EditableChild, the rule the API's create and update use too);
         // every other child keeps its read-only grid under the form
-        var editableLinks = childGrids.Where(g => g.IsEditable).Select(g => g.Link).ToList();
-        bool IsEditableChild(string table) => editableLinks.Any(fk => fk.ReferencingTable.EqualsIgnoreCase(table));
-        var gridChildren = children.Where(ch => !IsEditableChild(ch.Table)).ToList();
-        var editableChildren = children.Where(ch => IsEditableChild(ch.Table)).ToList();
-        ChildForeignKeyModel LinkOf(string table) => editableLinks.First(fk => fk.ReferencingTable.EqualsIgnoreCase(table));
-        // a child's own foreign key is a drop-down over the parent's lookup list ({ id, name }), unless its key is a uniqueidentifier
-        ForeignKeyModel EditLookupOf(ChildForeignKeyModel link, ColumnModel c) => c.IsGuidColumn ? null
-            : link.ReferencingTableForeignKeys.FirstOrDefault(o => o.ReferencingColumns.Count == 1 && o.ReferencingColumns[0].EqualsIgnoreCase(c.Name)
-                && o.ReferencedDisplayColumns.Count > 0 && !Project.NoApiFor(o.ReferencedTable, o.ReferencedLookupShape) && !Project.NoLookupFor(o.ReferencedTable, o.ReferencedLookupShape));
-        // a money column of the child that is not a foreign key or a list of choices
-        bool IsChildCurrency(ChildForeignKeyModel link, ColumnModel c) => c.IsMoneyAmount && IsNumber(c) && EditLookupOf(link, c) is null && !c.HasChoices;
-        string ChildInput(ChildForeignKeyModel link, string childVar, ColumnModel c)
+        var gridChildren = children.Where(g => !g.IsEditable).ToList();
+        var editableChildren = children.Where(g => g.IsEditable).ToList();
+        string ChildInput(ChildGrid child, ColumnModel c)
         {
+            string childVar = child.Variable;
             string model = $"row.{JsonNames.Camel(c.Name)}";
             string name = $"[name]=\"'{childVar}{UpperFirst(JsonNames.Camel(c.Name))}' + {childVar}Rows.indexOf(row)\"";
             string req = c.IsNullable ? "" : " required";
-            if (EditLookupOf(link, c) is not null)
+            if (child.EditLookupOf(c) is not null)
                 return $"<select {name} [(ngModel)]=\"{model}\"{req}>{(c.IsNullable ? "<option [ngValue]=\"null\"></option>" : "")}<option *ngFor=\"let p of {childVar}Options['{JsonNames.Camel(c.Name)}']\" [ngValue]=\"p.id\">{{{{p.name}}}}</option></select>";
             if (c.HasChoices)
                 return $"<select {name} [(ngModel)]=\"{model}\"{req}>{(c.IsNullable ? "<option [ngValue]=\"null\"></option>" : "<option value=\"\"></option>")}{string.Concat(c.Choices!.Select(choice => $"<option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>"))}</select>";
@@ -164,36 +95,24 @@
                 return $"<input type=\"checkbox\" {name} [(ngModel)]=\"{model}\">";
             if (IsDate(c))
                 return $"<input type=\"date\" {name} [(ngModel)]=\"{model}\"{req}>";
-            if (IsChildCurrency(link, c))
+            if (child.IsMoneyInput(c))
             {
-                var (moneyMin, moneyMax) = Project.MoneyLimits(link.ReferencingTable, c);
-                return $"<input type=\"text\" inputmode=\"decimal\" {name} appCurrency currencyCode=\"{Project.CurrencyCode}\" [digits]=\"{NumericClassifier.CurrencyDigits(c)}\""
-                       + (moneyMin is { } lo ? $" [min]=\"{Inv(lo)}\"" : "") + (moneyMax is { } hi ? $" [max]=\"{Inv(hi)}\"" : "") + $" [(ngModel)]=\"{model}\"{req}>";
+                var money = child.MoneyBoxOf(c);
+                return $"<input type=\"text\" inputmode=\"decimal\" {name} appCurrency currencyCode=\"{money.Currency}\" [digits]=\"{money.Digits}\""
+                       + (money.Min is { } lo ? $" [min]=\"{lo}\"" : "") + (money.Max is { } hi ? $" [max]=\"{hi}\"" : "") + $" [(ngModel)]=\"{model}\"{req}>";
             }
             if (IsNumber(c))
-            {
-                string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? " step=\"" + "0." + new string('0', c.Scale!.Value - 1) + "1\""
-                            : c.IsMoneyColumn ? " step=\"0.01\""
-                            : c.SqlType is SqlDbType.Float or SqlDbType.Real ? " step=\"any\"" : "";
-                string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\""
-                    : IsPlainDecimal(c) ? $" min=\"{Inv(NumericClassifier.DecimalRange(c).Min)}\" max=\"{Inv(NumericClassifier.DecimalRange(c).Max)}\"" : "";
-                string width = Project.NumberBoxCharacters(c) is { } boxWidth ? $" style=\"width: {boxWidth}ch\"" : "";
-                return $"<input type=\"number\" {name} [(ngModel)]=\"{model}\"{step}{range}{width}{req}>";
-            }
+                return $"<input type=\"number\" {name} [(ngModel)]=\"{model}\"{child.NumberBoxOf(c).Html}{req}>";
             string max = IsText(c) && Chars(c) > 0 ? $" maxlength=\"{Chars(c)}\"" : "";
             return $"<input type=\"text\" {name} [(ngModel)]=\"{model}\"{max}{req}>";
         }
-        bool UsesCurrencyBox() => shown.Any(form.IsMoneyInput) || editableChildren.Any(ch => EditableChild.Columns(LinkOf(ch.Table)).Any(c => IsChildCurrency(LinkOf(ch.Table), c)));
-        // The grid shows at most 20 columns and never a long text column (a Notes column, ...), and multi-line text only when that leaves fewer than GridColumns.MinColumns: see GridColumns.
-        var gridColumns = GridColumns.For(shown);
-        // A grid column's header sorts the grid unless it is long text or binary (SearchSort.IsSortable; long text never is in a grid anyway).
-        var sortableColumns = nameActive ? new List<ColumnModel>() : gridColumns.Where(SearchSort.IsSortable).ToList();
-        // A Clone button beside Edit and Delete for the tables CloneShape allows (the service has clone(id), API_Crud / CS_Repo write the server side).
-        bool canClone = !nameActive && CloneShape.CanClone(Model, Project);
+        bool UsesCurrencyBox() => shown.Any(form.IsMoneyInput) || editableChildren.Any(ch => ch.EditColumns.Any(c => ch.IsMoneyInput(c)));
+        var gridColumns = form.GridColumns;
+        IReadOnlyList<ColumnModel> sortableColumns = nameActive ? [] : form.SortableColumns;
+        bool canClone = form.CanClone;
         string rowsExpression = nameActive ? "visibleRows" : "rows";
-        // The form is tabbed (Main / Billing & Shipping / Notes) when it has more than one kind of field: see FormPages.
-        var formPages = FormPages.For(shown);
-        bool tabbed = formPages.Count > 1;
+        var formPages = form.Pages;
+        bool tabbed = form.IsTabbed;
 
         var css = new StringBuilder();
         var html = new StringBuilder();
@@ -254,7 +173,7 @@
             string prop = $"{variable}.{JsonNames.Camel(c.Name)}";
             var lookup = form.LookupOf(c);
             string cell;
-            if (lookup is not null) cell = $"{{{{ {parentOf[lookup.ReferencedTable].NameMethod}({prop}) }}}}";
+            if (lookup is not null) cell = $"{{{{ {form.ParentOf(c)!.NameMethod}({prop}) }}}}";
             else if (c.IsBooleanColumn) cell = $"{{{{ {prop} ? \"Yes\" : \"No\" }}}}";
             else if (IsDate(c)) cell = $"{{{{ {prop} | date:'MM/dd/yyyy' }}}}";
             else if (c.IsMoneyAmount) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{Math.Min(2, d)}-{d}' }}}}"; }
@@ -309,11 +228,11 @@
         if (tabbed) H($"            <div role=\"tabpanel\" data-tab=\"{pageIndex}\" [hidden]=\"activeTab !== {pageIndex}\">");
         foreach (var c in formPages[pageIndex].Columns)
         {
-            string id = Id(c);
+            string id = form.FieldId(c);
             string model = $"selectedRow.{JsonNames.Camel(c.Name)}";
             string req = c.IsNullable ? "" : " required";
-            var lookup = form.LookupOf(c);
-            if (c.IsSystemStampColumn)
+            var kind = form.KindOf(c);
+            if (kind == FieldKind.SystemStamp)
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
                 string stampValue = c.IsDateColumn ? "{{ " + model + " | date:'medium' }}" : "{{ " + model + " }}";
@@ -325,21 +244,21 @@
             }
             H("            <div class=\"form-group\">");
             H($"                <label for=\"{id}\">{Labels.Field(c)}</label>");
-            if (textKey && c.IsPrimaryKey)
+            if (kind == FieldKind.TypedKey)
             {
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
                 string max = Chars(c) > 0 ? $" maxlength=\"{Chars(c)}\"" : "";
                 H($"                <input type=\"text\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{max} [readonly]=\"!adding\" placeholder=\"{Labels.Placeholder(c)}\"{req}>");
             }
-            else if (lookup is not null)
+            else if (kind == FieldKind.Lookup)
             {
-                var p = parentOf[lookup.ReferencedTable];
+                var p = form.ParentOf(c)!;
                 H($"                <select id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
                 if (c.IsNullable) H("                    <option [ngValue]=\"null\"></option>");
-                H($"                    <option *ngFor=\"let p of {p.List}\" [ngValue]=\"p.{p.KeyProp}\">{{{{p.{p.DisplayProp}}}}}</option>");
+                H($"                    <option *ngFor=\"let p of {p.List}\" [ngValue]=\"p.{p.KeyJson}\">{{{{p.{p.DisplayJson}}}}}</option>");
                 H("                </select>");
             }
-            else if (c.HasChoices)
+            else if (kind == FieldKind.Choices)
             {
                 // A column whose values the database lists (a MySQL enum) is a drop-down of them.
                 H($"                <select id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
@@ -348,11 +267,11 @@
                     H($"                    <option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>");
                 H("                </select>");
             }
-            else if (c.IsBooleanColumn)
+            else if (kind == FieldKind.Boolean)
             {
                 H($"                <input type=\"checkbox\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\">");
             }
-            else if (IsDate(c))
+            else if (kind == FieldKind.Date)
             {
                 // A nullable date has a Clear button on the same line, like WinUI3's calendar.
                 if (c.IsNullable) H("                <div class=\"date-with-clear\">");
@@ -363,26 +282,19 @@
                     H("                </div>");
                 }
             }
-            else if (form.IsMoneyInput(c))
+            else if (kind == FieldKind.Money)
             {
                 // the money box shows $1,234.50 and takes the plain number; the limits are the column's CHECK constraint, or 0 for a column the project lists as never negative
-                var (moneyMin, moneyMax) = Project.MoneyLimits(Model.TableName, c);
-                string limits = (moneyMin is { } lo ? $" [min]=\"{Inv(lo)}\"" : "") + (moneyMax is { } hi ? $" [max]=\"{Inv(hi)}\"" : "");
-                H($"                <input type=\"text\" inputmode=\"decimal\" id=\"{id}\" name=\"{id}\" appCurrency currencyCode=\"{Project.CurrencyCode}\" [digits]=\"{NumericClassifier.CurrencyDigits(c)}\"{limits} [(ngModel)]=\"{model}\"{req}>");
+                var money = MoneyBox.For(Model.TableName, c, Project);
+                string limits = (money.Min is { } lo ? $" [min]=\"{lo}\"" : "") + (money.Max is { } hi ? $" [max]=\"{hi}\"" : "");
+                H($"                <input type=\"text\" inputmode=\"decimal\" id=\"{id}\" name=\"{id}\" appCurrency currencyCode=\"{money.Currency}\" [digits]=\"{money.Digits}\"{limits} [(ngModel)]=\"{model}\"{req}>");
             }
-            else if (IsNumber(c))
+            else if (kind == FieldKind.Number)
             {
-                string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? " step=\"" + "0." + new string('0', c.Scale!.Value - 1) + "1\""
-                            : c.IsMoneyColumn ? " step=\"0.01\""
-                            : c.SqlType is SqlDbType.Float or SqlDbType.Real ? " step=\"any\"" : "";
                 // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
-                string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\""
-                    : IsPlainDecimal(c) ? $" min=\"{Inv(NumericClassifier.DecimalRange(c).Min)}\" max=\"{Inv(NumericClassifier.DecimalRange(c).Max)}\""
-                    : c.IsMoneyAmount ? Project.MoneyLimitHtml(Model.TableName, c) : "";
-                string width = Project.NumberBoxCharacters(c) is { } boxWidth ? $" style=\"width: {boxWidth}ch\"" : "";
-                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{step}{range}{width} placeholder=\"{Labels.Placeholder(c)}\"{req}>");
+                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{NumberBox.For(Model.TableName, c, Project).Html} placeholder=\"{Labels.Placeholder(c)}\"{req}>");
             }
-            else if (IsMultiline(c))
+            else if (kind == FieldKind.Multiline)
             {
                 H($"                <textarea id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\" maxlength=\"{Chars(c)}\" placeholder=\"{Labels.Placeholder(c)}\"{req}></textarea>");
             }
@@ -398,25 +310,24 @@
         foreach (var child in editableChildren)
         {
             // the child's rows are part of the form: Submit saves them with the row, in one request
-            var link = LinkOf(child.Table);
-            var editColumns = EditableChild.Columns(link);
+            var editColumns = child.EditColumns;
             H();
             H("            <fieldset class=\"child-edit\">");
             H($"                <legend>{child.Title}</legend>");
-            if (EditableChild.UsesCards(link))
+            if (EditableChild.UsesCards(child.Link))
             {
                 // too many columns for one table: each row is a block of labelled fields that wrap, so no box is squeezed
-                H($"                <div class=\"child-card\" *ngFor=\"let row of {child.Var}Rows\">");
+                H($"                <div class=\"child-card\" *ngFor=\"let row of {child.Variable}Rows\">");
                 H("                    <div class=\"child-card-head\">");
                 H($"                        <strong>{Labels.Words(BaseName(child.Table))}</strong>");
-                H($"                        <button type=\"button\" class=\"btn-action delete\" (click)=\"remove{child.MethodName}(row)\">Remove</button>");
+                H($"                        <button type=\"button\" class=\"btn-action delete\" (click)=\"remove{child.Name}(row)\">Remove</button>");
                 H("                    </div>");
                 H("                    <div class=\"child-card-fields\">");
                 foreach (var c in editColumns)
-                    H($"                        <label class=\"child-field{(IsMultiline(c) ? " child-field-wide" : "")}\"><span>{GridCaption.For(c, Labels.Field(c))}</span>{ChildInput(link, child.Var, c)}</label>");
+                    H($"                        <label class=\"child-field{(IsMultiline(c) ? " child-field-wide" : "")}\"><span>{GridCaption.For(c, Labels.Field(c))}</span>{ChildInput(child, c)}</label>");
                 H("                    </div>");
                 H("                </div>");
-                H($"                <button type=\"button\" class=\"btn btn-outline\" (click)=\"add{child.MethodName}()\">Add {Labels.Words(BaseName(child.Table))}</button>");
+                H($"                <button type=\"button\" class=\"btn btn-outline\" (click)=\"add{child.Name}()\">Add {Labels.Words(BaseName(child.Table))}</button>");
                 H("            </fieldset>");
                 continue;
             }
@@ -425,14 +336,14 @@
             H("                        <tr>" + string.Concat(editColumns.Select(c => $"<th>{GridCaption.For(c, Labels.Field(c))}</th>")) + "<th></th></tr>");
             H("                    </thead>");
             H("                    <tbody>");
-            H($"                        <tr *ngFor=\"let row of {child.Var}Rows\">");
+            H($"                        <tr *ngFor=\"let row of {child.Variable}Rows\">");
             foreach (var c in editColumns)
-                H($"                            <td>{ChildInput(link, child.Var, c)}</td>");
-            H($"                            <td><button type=\"button\" class=\"btn-action delete\" (click)=\"remove{child.MethodName}(row)\">Remove</button></td>");
+                H($"                            <td>{ChildInput(child, c)}</td>");
+            H($"                            <td><button type=\"button\" class=\"btn-action delete\" (click)=\"remove{child.Name}(row)\">Remove</button></td>");
             H("                        </tr>");
             H("                    </tbody>");
             H("                </table>");
-            H($"                <button type=\"button\" class=\"btn btn-outline\" (click)=\"add{child.MethodName}()\">Add {Labels.Words(BaseName(child.Table))}</button>");
+            H($"                <button type=\"button\" class=\"btn btn-outline\" (click)=\"add{child.Name}()\">Add {Labels.Words(BaseName(child.Table))}</button>");
             H("            </fieldset>");
         }
         H();
@@ -444,35 +355,35 @@
             H("        <!-- Child grids: TableModel.ChildForeignKeys, one per table, columns discovered at run time -->");
         foreach (var child in gridChildren)
         {
-            H($"        <div class=\"child-grid\" *ngIf=\"{savedTest}; else save{child.MethodName}First\">");
+            H($"        <div class=\"child-grid\" *ngIf=\"{savedTest}; else save{child.Name}First\">");
             H($"            <h3>{child.Title}</h3>");
             // The grid holds all its rows, so a header click sorts them in the browser; a right-click opens the Clear sort menu.
-            H($"            <table (contextmenu)=\"openChildSortMenu($event, '{child.Var}')\">");
+            H($"            <table (contextmenu)=\"openChildSortMenu($event, '{child.Variable}')\">");
             H("                <thead>");
-            H($"                    <tr><th *ngFor=\"let col of {child.Var}Columns\" [attr.aria-sort]=\"childAriaSort('{child.Var}', col)\"><button type=\"button\" class=\"sort-header\" (click)=\"sortChildBy('{child.Var}', col)\">{{{{caption(col)}}}}{{{{ childSortMark('{child.Var}', col) }}}}</button></th>{(child.KeyProp is not null ? "<th>Actions</th>" : "")}</tr>");
+            H($"                    <tr><th *ngFor=\"let col of {child.Variable}Columns\" [attr.aria-sort]=\"childAriaSort('{child.Variable}', col)\"><button type=\"button\" class=\"sort-header\" (click)=\"sortChildBy('{child.Variable}', col)\">{{{{caption(col)}}}}{{{{ childSortMark('{child.Variable}', col) }}}}</button></th>{(child.KeyJson is not null ? "<th>Actions</th>" : "")}</tr>");
             H("                </thead>");
             H("                <tbody>");
             // Clicking a row, or its Edit button, opens that row on its own page.
-            string shownRows = $"sortedChildRows('{child.Var}', {child.Var}Rows{(child.Lookups.Count > 0 ? $", {child.Var}Names" : "")})";
-            H(child.KeyProp is not null
-                ? $"                    <tr *ngFor=\"let row of {shownRows}\" (click)=\"edit{child.MethodName}(row)\" style=\"cursor: pointer\">"
+            string shownRows = $"sortedChildRows('{child.Variable}', {child.Variable}Rows{(child.Lookups.Count > 0 ? $", {child.Variable}Names" : "")})";
+            H(child.KeyJson is not null
+                ? $"                    <tr *ngFor=\"let row of {shownRows}\" (click)=\"edit{child.Name}(row)\" style=\"cursor: pointer\">"
                 : $"                    <tr *ngFor=\"let row of {shownRows}\">");
-            H($"                        <td *ngFor=\"let col of {child.Var}Columns\">{{{{cell(row[col], col{(child.Lookups.Count > 0 ? $", {child.Var}Names[col]" : "")})}}}}</td>");
-            if (child.KeyProp is not null)
+            H($"                        <td *ngFor=\"let col of {child.Variable}Columns\">{{{{cell(row[col], col{(child.Lookups.Count > 0 ? $", {child.Variable}Names[col]" : "")})}}}}</td>");
+            if (child.KeyJson is not null)
             {
                 H("                        <td>");
-                H($"                            <button type=\"button\" class=\"btn-action\" (click)=\"edit{child.MethodName}(row); $event.stopPropagation()\">Edit</button>");
-                H($"                            <button type=\"button\" class=\"btn-action delete\" (click)=\"delete{child.MethodName}(row); $event.stopPropagation()\">Delete</button>");
+                H($"                            <button type=\"button\" class=\"btn-action\" (click)=\"edit{child.Name}(row); $event.stopPropagation()\">Edit</button>");
+                H($"                            <button type=\"button\" class=\"btn-action delete\" (click)=\"delete{child.Name}(row); $event.stopPropagation()\">Delete</button>");
                 H("                        </td>");
             }
             H("                    </tr>");
             H("                </tbody>");
             H("            </table>");
-            H($"            <ul *ngIf=\"childSortMenu && childSortMenu.child === '{child.Var}'\" class=\"sort-menu\" role=\"menu\" [style.left.px]=\"childSortMenu.x\" [style.top.px]=\"childSortMenu.y\">");
-            H($"                <li role=\"none\"><button type=\"button\" role=\"menuitem\" [disabled]=\"!childSorts['{child.Var}']\" (click)=\"clearChildSort('{child.Var}')\">Clear sort</button></li>");
+            H($"            <ul *ngIf=\"childSortMenu && childSortMenu.child === '{child.Variable}'\" class=\"sort-menu\" role=\"menu\" [style.left.px]=\"childSortMenu.x\" [style.top.px]=\"childSortMenu.y\">");
+            H($"                <li role=\"none\"><button type=\"button\" role=\"menuitem\" [disabled]=\"!childSorts['{child.Variable}']\" (click)=\"clearChildSort('{child.Variable}')\">Clear sort</button></li>");
             H("            </ul>");
             H("        </div>");
-            H($"        <ng-template #save{child.MethodName}First><p><em>Save this {title} first to see its {child.Title} rows.</em></p></ng-template>");
+            H($"        <ng-template #save{child.Name}First><p><em>Save this {title} first to see its {child.Title} rows.</em></p></ng-template>");
         }
         H("    </dialog>");
         H("</div>");
@@ -564,11 +475,11 @@
             childSpecs.Add("");
             childSpecs.Add($"  it('keeps the {child.Title.ToLowerInvariant()} rows in the form and sends them with the row', () => {{");
             childSpecs.Add("    component.add();");
-            childSpecs.Add($"    component.add{child.MethodName}();");
-            childSpecs.Add($"    component.add{child.MethodName}();");
-            childSpecs.Add($"    expect(component.{child.Var}Rows.length).toBe(2);");
-            childSpecs.Add($"    component.remove{child.MethodName}(component.{child.Var}Rows[0]);");
-            childSpecs.Add($"    expect(component.{child.Var}Rows.length).toBe(1);");
+            childSpecs.Add($"    component.add{child.Name}();");
+            childSpecs.Add($"    component.add{child.Name}();");
+            childSpecs.Add($"    expect(component.{child.Variable}Rows.length).toBe(2);");
+            childSpecs.Add($"    component.remove{child.Name}(component.{child.Variable}Rows[0]);");
+            childSpecs.Add($"    expect(component.{child.Variable}Rows.length).toBe(1);");
             childSpecs.Add("    // eslint-disable-next-line @typescript-eslint/no-explicit-any");
             childSpecs.Add("    const row = component.selectedRow as any;");
             childSpecs.Add("    // eslint-disable-next-line @typescript-eslint/no-explicit-any");
@@ -585,12 +496,12 @@
         T("import { ChangeDetectionStrategy, Component, " + (gridChildren.Count > 0 ? "HostListener, " : "") + "inject } from '@angular/core';");
         if (gridChildren.Count > 0) T("import { GridSort, loadSort, nextSort, saveSort, sortRows } from '../../grid-sort';");
         T($"import {{ {baseName} }} from '../../{modelsFolder}/{stem}';");
-        T($"import {{ {baseName}Service }} from '../../{servicesFolder}/{stem}.service';");
-        if (parents.Any(p => p.Lookup)) T($"import {{ Lookup }} from '../../{servicesFolder}/crud.service';");
-        foreach (var p in parents.Where(p => !p.Self))
+        T($"import {{ {AngularNames.ServiceClass(Model.TableName)} }} from '../../{servicesFolder}/{AngularNames.ServiceFile(Model.TableName)}';");
+        if (parents.Any(p => p.UsesLookupEndpoint)) T($"import {{ Lookup }} from '../../{servicesFolder}/crud.service';");
+        foreach (var p in parents.Where(p => !p.IsSelf))
         {
-            if (!p.Lookup) T($"import {{ {p.Type} }} from '../../{modelsFolder}/{p.ModelFile}';");
-            T($"import {{ {p.Service} }} from '../../{servicesFolder}/{p.ServiceFile}';");
+            if (!p.UsesLookupEndpoint) T($"import {{ {p.BaseName} }} from '../../{modelsFolder}/{p.ModelFile}';");
+            T($"import {{ {AngularNames.ServiceClass(p.Table)} }} from '../../{servicesFolder}/{AngularNames.ServiceFile(p.Table)}';");
         }
         if (children.Count > 0) T("import { HttpClient } from '@angular/common/http';");
         T("import { CommonModule } from '@angular/common';");
@@ -598,7 +509,7 @@
         if (UsesCurrencyBox()) T("import { CurrencyInputDirective } from '../currency-input';");
         if (!nameActive) T("import { MatPaginatorModule } from '@angular/material/paginator';");
         T($"import {{ {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")} }} from '../crud-screen';");
-        if (gridChildren.Any(ch => ch.KeyProp is not null)) T($"import {{ apiMessage }} from '../../{servicesFolder}/api-error';");
+        if (gridChildren.Any(ch => ch.KeyJson is not null)) T($"import {{ apiMessage }} from '../../{servicesFolder}/api-error';");
         T();
         T("@Component({");
         T($"  selector: 'app-{stem}-detail-master',");
@@ -609,7 +520,7 @@
         T($"  styleUrl: './{stem}-detail-master.component.css'");
         T("})");
         T($"export class {cls} extends {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")}<{baseName}{keyGeneric}> {{");
-        T($"  protected readonly service = inject({baseName}Service);");
+        T($"  protected readonly service = inject({AngularNames.ServiceClass(Model.TableName)});");
         T($"  protected readonly noun = '{Labels.Words(baseName).ToLowerInvariant()}';");
         T($"  protected readonly idKey = '{keyProp}';");
         if (keyType.Kind != KeyKind.Int) T($"  protected override readonly emptyKey: {keyType.TypeScript} = {emptyKey};");
@@ -622,9 +533,9 @@
         if (canSearch) T($"  override filters = {{ {string.Join(", ", searchFields.Select(f => $"{f.ParamName}: ''"))} }};");
         if (!nameActive && pageSize != 20) T($"  override pageSize = {pageSize};");
         foreach (var p in parents)
-            T($"  {p.List}: {(p.Lookup ? p.LookupType : p.Type)}[] = [];");
-        foreach (var p in parents.Where(p => !p.Self))
-            T($"  private readonly {p.ServiceVar} = inject({p.Service});");
+            T($"  {p.List}: {(p.UsesLookupEndpoint ? p.LookupType : p.BaseName)}[] = [];");
+        foreach (var p in parents.Where(p => !p.IsSelf))
+            T($"  private readonly {AngularNames.ServiceField(p.Table)} = inject({AngularNames.ServiceClass(p.Table)});");
         if (children.Count > 0) T("  private readonly http = inject(HttpClient);");
         if (tabbed)
         {
@@ -639,56 +550,46 @@
         if (gridChildren.Count > 0)
         {
             T("  // The child grids hold all their rows, so each sorts them in the browser; its sort is saved under the grid's key plus the child's name.");
-            T("  childSorts: Record<string, GridSort | null> = { " + string.Join(", ", gridChildren.Select(ch => $"{ch.Var}: loadSort(this.gridKey + '.{ch.Var}')")) + " };");
+            T("  childSorts: Record<string, GridSort | null> = { " + string.Join(", ", gridChildren.Select(ch => $"{ch.Variable}: loadSort(this.gridKey + '.{ch.Variable}')")) + " };");
             T("  childSortMenu: { child: string; x: number; y: number } | null = null; // the child grid's right-click menu, where it is open");
         }
         foreach (var child in gridChildren)
         {
-            T($"  {child.Var}Rows: any[] = [];");
-            T($"  {child.Var}Columns: string[] = [];");
-            T($"  private readonly {child.Var}Hidden: string[] = [" + string.Join(", ", child.Hidden.Select(n => "'" + n + "'")) + "];");
+            T($"  {child.Variable}Rows: any[] = [];");
+            T($"  {child.Variable}Columns: string[] = [];");
+            T($"  private readonly {child.Variable}Hidden: string[] = [" + string.Join(", ", child.HiddenJson.Select(n => "'" + n + "'")) + "];");
             if (child.Lookups.Count > 0)
-                T($"  {child.Var}Names: Record<string, Record<string, string>> = {{}};");
+                T($"  {child.Variable}Names: Record<string, Record<string, string>> = {{}};");
         }
         foreach (var child in editableChildren)
         {
             // the rows of the form's own child list: plain objects the inputs edit, sent with the row (prepare below)
-            T($"  {child.Var}Rows: any[] = [];");
-            if (EditableChild.Columns(LinkOf(child.Table)).Any(c => EditLookupOf(LinkOf(child.Table), c) is not null))
-                T($"  {child.Var}Options: Record<string, {{ id: any; name: string }}[]> = {{}};");
+            T($"  {child.Variable}Rows: any[] = [];");
+            if (child.EditColumns.Any(c => child.EditLookupOf(c) is not null))
+                T($"  {child.Variable}Options: Record<string, {{ id: any; name: string }}[]> = {{}};");
         }
         T();
         {
             var parentsToLoad = parents.ToList();   // a drop-down over this table itself (a manager) is read through the screen's own service
-            var optionLoads = editableChildren.SelectMany(child => EditableChild.Columns(LinkOf(child.Table))
-                .Select(c => (Child: child, Column: c, Lookup: EditLookupOf(LinkOf(child.Table), c))).Where(x => x.Lookup is not null)).ToList();
+            var optionLoads = editableChildren.SelectMany(child => child.EditColumns
+                .Select(c => (Child: child, Column: c, Lookup: child.EditLookupOf(c))).Where(x => x.Lookup is not null)).ToList();
             if (parentsToLoad.Count > 0 || optionLoads.Count > 0)
             {
                 T("  protected override start(): void {");
                 T("    super.start();");
                 foreach (var p in parentsToLoad)
-                    T($"    this.{(p.Self ? "service" : p.ServiceVar)}.{(p.Lookup ? "getLookup" : "getAll")}().subscribe((data) => {{ this.{p.List} = data; }});");
+                    T($"    this.{(p.IsSelf ? "service" : AngularNames.ServiceField(p.Table))}.{(p.UsesLookupEndpoint ? "getLookup" : "getAll")}().subscribe((data) => {{ this.{p.List} = data; }});");
                 foreach (var (child, column, lookup) in optionLoads)
-                    T($"    this.http.get<any[]>('{apiPrefix}/{ScreenNames.ApiRoute(lookup.ReferencedTable)}/lookup').subscribe((items) => {{ this.{child.Var}Options = {{ ...this.{child.Var}Options, {JsonNames.Camel(column.Name)}: items.map((i) => ({{ id: i['id'], name: String(i['name'] ?? '') }})) }}; }});");
+                    T($"    this.http.get<any[]>('{apiPrefix}/{ScreenNames.ApiRoute(lookup.ReferencedTable)}/lookup').subscribe((items) => {{ this.{child.Variable}Options = {{ ...this.{child.Variable}Options, {JsonNames.Camel(column.Name)}: items.map((i) => ({{ id: i['id'], name: String(i['name'] ?? '') }})) }}; }});");
                 T("  }");
                 T();
             }
         }
-        var adds = new List<string>();
-        if (textKey) adds.Add($"{keyProp}: {emptyKey}");
-        foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && !c.IsNullable && !c.IsComputed && !c.IsIdentity))
-        {
-            string value;
-            if (c.IsBooleanColumn) value = c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1" ? "true" : "false";
-            else if (IsDate(c)) value = "new Date().toISOString().substring(0, 10)";
-            else if (IsNumber(c)) value = "0";
-            else value = "''";
-            adds.Add($"{JsonNames.Camel(c.Name)}: {value}");
-        }
+        var adds = form.NewRowTypeScript;
         T($"  protected newRow(): {baseName} {{");
         T(adds.Count == 0 ? "    return { };" : $"    return {{ {string.Join(", ", adds)} }};");
         T("  }");
-        var dateColumns = shown.Where(c => IsDate(c) && !c.IsSystemStampColumn).ToList();   // a stamp keeps the timestamp the API sent
+        var dateColumns = form.DateColumns;   // a stamp keeps the timestamp the API sent
         if (dateColumns.Count > 0)
         {
             T();
@@ -718,34 +619,33 @@
             T("    super.add();");
             foreach (var child in children)
             {
-                T($"    this.{child.Var}Rows = [];");
-                if (!IsEditableChild(child.Table)) T($"    this.{child.Var}Columns = [];");
+                T($"    this.{child.Variable}Rows = [];");
+                if (!child.IsEditable) T($"    this.{child.Variable}Columns = [];");
             }
             T("  }");
             T();
             T($"  override edit({variable}: {baseName}): void {{");
             T($"    super.edit({variable});");
             foreach (var child in children)
-                T($"    this.load{child.MethodName}({variable}.{keyProp}!);");
+                T($"    this.load{child.Name}({variable}.{keyProp}!);");
             T("  }");
         }
         foreach (var p in parents)
         {
             T();
-            T($"  // the name to show in place of a {p.Type} id");
-            T($"  {p.NameMethod}(id?: {p.IdType}): string {{");
-            T($"    return this.{p.List}.find((p) => p.{p.KeyProp} === id)?.{p.DisplayProp} ?? '';");
+            T($"  // the name to show in place of a {p.BaseName} id");
+            T($"  {p.NameMethod}(id?: {p.KeyTs}): string {{");
+            T($"    return this.{p.List}.find((p) => p.{p.KeyJson} === id)?.{p.DisplayJson} ?? '';");
             T("  }");
         }
         foreach (var child in editableChildren)
         {
-            var link = LinkOf(child.Table);
-            var editColumns = EditableChild.Columns(link);
+            var editColumns = child.EditColumns;
             var childDates = editColumns.Where(IsDate).ToList();
             var defaults = new List<string>();
             foreach (var c in editColumns.Where(c => !c.IsNullable))
             {
-                if (EditLookupOf(link, c) is not null) defaults.Add($"{JsonNames.Camel(c.Name)}: null");
+                if (child.EditLookupOf(c) is not null) defaults.Add($"{JsonNames.Camel(c.Name)}: null");
                 else if (c.IsBooleanColumn) defaults.Add($"{JsonNames.Camel(c.Name)}: {(c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1" ? "true" : "false")}");
                 else if (IsDate(c)) defaults.Add($"{JsonNames.Camel(c.Name)}: new Date().toISOString().substring(0, 10)");
                 else if (IsNumber(c)) defaults.Add($"{JsonNames.Camel(c.Name)}: 0");
@@ -754,21 +654,21 @@
             T();
             T($"  // {child.Title} are part of this form: the rows that point at the row being edited are read once, edited here and sent with the row under '{child.JsonName}'.");
             T($"  // The API makes the table match the list: a row with its key is changed, a row without one is added, a row left out is removed.");
-            T($"  private load{child.MethodName}(parentId: {keyTs}): void {{");
-            T($"    this.http.get<any[]>('{apiPrefix}/{child.Route}').subscribe({{");
+            T($"  private load{child.Name}(parentId: {keyTs}): void {{");
+            T($"    this.http.get<any[]>('{apiPrefix}/{child.ApiRoute}').subscribe({{");
             T("      next: (rows) => {");
-            T($"        this.{child.Var}Rows = rows.filter((r: any) => r['{child.FkProp}'] === parentId).map((r: any) => ({{ ...r{string.Concat(childDates.Select(c => $", {JsonNames.Camel(c.Name)}: r['{JsonNames.Camel(c.Name)}']?.substring(0, 10) ?? null"))} }}));");
+            T($"        this.{child.Variable}Rows = rows.filter((r: any) => r['{child.ForeignKeyJson}'] === parentId).map((r: any) => ({{ ...r{string.Concat(childDates.Select(c => $", {JsonNames.Camel(c.Name)}: r['{JsonNames.Camel(c.Name)}']?.substring(0, 10) ?? null"))} }}));");
             T("      },");
             T("      error: (e) => console.error(e)");
             T("    });");
             T("  }");
             T();
-            T($"  add{child.MethodName}(): void {{");
-            T($"    this.{child.Var}Rows = [...this.{child.Var}Rows, {{ {string.Join(", ", defaults)} }}];");
+            T($"  add{child.Name}(): void {{");
+            T($"    this.{child.Variable}Rows = [...this.{child.Variable}Rows, {{ {string.Join(", ", defaults)} }}];");
             T("  }");
             T();
-            T($"  remove{child.MethodName}(row: any): void {{");
-            T($"    this.{child.Var}Rows = this.{child.Var}Rows.filter((r) => r !== row);");
+            T($"  remove{child.Name}(row: any): void {{");
+            T($"    this.{child.Variable}Rows = this.{child.Variable}Rows.filter((r) => r !== row);");
             T("  }");
         }
         if (editableChildren.Count > 0)
@@ -778,40 +678,40 @@
             T($"  protected override prepare(row: {baseName}, isNew: boolean): void {{");
             T("    super.prepare(row, isNew);");
             foreach (var child in editableChildren)
-                T($"    (row as unknown as Record<string, unknown>)['{child.JsonName}'] = this.{child.Var}Rows;");
+                T($"    (row as unknown as Record<string, unknown>)['{child.JsonName}'] = this.{child.Variable}Rows;");
             T("  }");
         }
         foreach (var child in gridChildren)
         {
             T();
-            T($"  // {child.Title} rows whose {child.FkProp} matches the row being edited - the whole table is loaded and");
+            T($"  // {child.Title} rows whose {child.ForeignKeyJson} matches the row being edited - the whole table is loaded and");
             T("  // filtered client-side (same no-paging simplification TS_Component.tt's own grid makes), and the columns");
             T("  // shown are whatever keys the first row actually has, since this template never sees the child's own schema.");
-            T($"  private load{child.MethodName}(parentId: {keyTs}): void {{");
-            T($"    this.http.get<any[]>('{apiPrefix}/{child.Route}').subscribe({{");
+            T($"  private load{child.Name}(parentId: {keyTs}): void {{");
+            T($"    this.http.get<any[]>('{apiPrefix}/{child.ApiRoute}').subscribe({{");
             T("      next: (rows) => {");
-            T($"        this.{child.Var}Rows = rows.filter((r: any) => r['{child.FkProp}'] === parentId);");
-            T($"        this.{child.Var}Columns = this.{child.Var}Rows.length > 0 ? this.orderColumns(Object.keys(this.{child.Var}Rows[0]), this.{child.Var}Hidden) : [];");
+            T($"        this.{child.Variable}Rows = rows.filter((r: any) => r['{child.ForeignKeyJson}'] === parentId);");
+            T($"        this.{child.Variable}Columns = this.{child.Variable}Rows.length > 0 ? this.orderColumns(Object.keys(this.{child.Variable}Rows[0]), this.{child.Variable}Hidden) : [];");
             foreach (var lookup in child.Lookups)
-                T($"        this.http.get<any[]>('{apiPrefix}/{lookup.Route}').subscribe((items) => {{ this.{child.Var}Names = {{ ...this.{child.Var}Names, {lookup.Column}: Object.fromEntries(items.map((i) => [String(i['{lookup.Key}']), String(i['{lookup.Display}'] ?? '')])) }}; }});");
+                T($"        this.http.get<any[]>('{apiPrefix}/{lookup.WebRoute}').subscribe((items) => {{ this.{child.Variable}Names = {{ ...this.{child.Variable}Names, {lookup.ColumnJson}: Object.fromEntries(items.map((i) => [String(i['{lookup.WebKey}']), String(i['{lookup.WebDisplay}'] ?? '')])) }}; }});");
             T("      },");
             T("      error: (e) => console.error(e)");
             T("    });");
             T("  }");
-            if (child.KeyProp is not null)
+            if (child.KeyJson is not null)
             {
                 T();
                 T($"  // Edit opens the {child.Title}'s own page on that row; saving or cancelling there comes back here with this {title} open again.");
-                T($"  edit{child.MethodName}(row: any): void {{");
-                string childKey = child.KeyIsText ? $"encodeURIComponent(row['{child.KeyProp}'])" : $"row['{child.KeyProp}']";
+                T($"  edit{child.Name}(row: any): void {{");
+                string childKey = child.KeyIsText ? $"encodeURIComponent(row['{child.KeyJson}'])" : $"row['{child.KeyJson}']";
                 string selfKey = textKey ? $"encodeURIComponent(this.selectedRow?.{keyProp} ?? '')" : $"this.selectedRow?.{keyProp}";
                 T($"    this.router.navigateByUrl(`/{child.PageRoute}?edit=${{{childKey}}}&back=${{encodeURIComponent('/{selfRoute}?edit=' + {selfKey})}}`);");
                 T("  }");
                 T();
-                T($"  delete{child.MethodName}(row: any): void {{");
+                T($"  delete{child.Name}(row: any): void {{");
                 T("    if (!this.notifier.confirm('Are you sure you want to delete this?')) return;");
-                T($"    this.http.delete(`{apiPrefix}/{child.Route}/${{{childKey}}}`).subscribe({{");
-                T($"      next: () => this.load{child.MethodName}(this.selectedRow!.{keyProp}!),");
+                T($"    this.http.delete(`{apiPrefix}/{child.ApiRoute}/${{{childKey}}}`).subscribe({{");
+                T($"      next: () => this.load{child.Name}(this.selectedRow!.{keyProp}!),");
                 T("      error: (error) => this.notifier.error(apiMessage(error, error.status == 400 ? 'It cannot be deleted because it is in use!' : 'Problem while deleting! ' + error.message))");
                 T("    });");
                 T("  }");
@@ -819,8 +719,8 @@
         }
         if (gridChildren.Count > 0)
         {
-            var allCurrency = gridChildren.SelectMany(ch => ch.Currency).GroupBy(m => m.Name).Select(g => g.First()).ToList();
-            var allLongText = gridChildren.SelectMany(ch => ch.LongText).Distinct().ToList();
+            var allCurrency = gridChildren.SelectMany(ch => ch.MoneyColumns).GroupBy(m => m.Name).Select(g => g.First()).ToList();
+            var allLongText = gridChildren.SelectMany(ch => ch.LongTextJson).Distinct().ToList();
             // A click on a header sorts by it (again: flips the direction), the right-click menu clears the sort; the sort is saved (grid-sort.ts).
             T();
             T("  sortChildBy(child: string, column: string): void {");
@@ -899,7 +799,7 @@
         o.Append($"@@@FILE {componentsFolder}/{stem}-detail-master/{stem}-detail-master.component.css@@@\n").Append(GridSortStyles.Css);
         if (editableChildren.Count > 0)
             o.Append("\n.child-edit { margin: 1rem 0; border: 1px solid #ccc; }\n.child-edit table { width: 100%; }\n.child-edit td { padding: 2px 4px; }\n.child-edit input[type=text], .child-edit input[type=number], .child-edit input[type=date], .child-edit select { width: 100%; box-sizing: border-box; }\n");
-            if (editableChildren.Any(ch => EditableChild.UsesCards(LinkOf(ch.Table))))
+            if (editableChildren.Any(ch => EditableChild.UsesCards(ch.Link)))
                 o.Append(".child-card { border: 1px solid #8886; border-radius: 6px; padding: 4px 12px 12px; margin-bottom: 12px; }\n.child-card-head { display: flex; justify-content: space-between; align-items: center; }\n.child-card-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0 12px; }\n.child-field { display: flex; flex-direction: column; }\n.child-field-wide { grid-column: 1 / -1; }\n");
         o.Append($"@@@FILE {componentsFolder}/{stem}-detail-master/{stem}-detail-master.component.html@@@\n").Append(Project.AdaptAngularHtml(html.ToString()));
         o.Append($"@@@FILE {componentsFolder}/{stem}-detail-master/{stem}-detail-master.component.spec.ts@@@\n").Append(Project.AdaptAngularSpec(spec.ToString()));

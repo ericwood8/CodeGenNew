@@ -31,8 +31,9 @@
 
     // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is limited to what the column can hold (a percentage to 0-100).
 
-    var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
-    var keyType = KeyType.Of(Model);   // how the key travels: a number, or a string for a uniqueidentifier or a text key
+    var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
+    var keyColumn = form.KeyColumn;
+    var keyType = form.KeyType;   // how the key travels: a number, or a string for a uniqueidentifier or a text key
     if (Project.NoApiFor(Model.TableName, Model.LookupShape))
     {
         Error($"TSX_DetailMasterPage writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is an enum or excluded by the NoApiTables setting (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
@@ -52,115 +53,49 @@
     }
     else
     {
-        string baseName = BaseName(Model.TableName);
-        string stem = baseName.ToLowerInvariant();
-        string variable = LowerFirst(baseName);
+        string baseName = form.BaseName;
+        string stem = form.Stem;
+        string variable = form.Variable;
         string listName = variable.Pluralize();
-        string setList = "set" + UpperFirst(listName);
+        string setList = ReactNames.SetList(listName);
         string keyProp = JsonNames.Camel(keyColumn.Name);
         string keyTs = keyType.TypeScript;
         string emptyKey = keyType.TypeScriptEmpty;     // "no key yet": the API assigns the real one (a text key is typed by the person, so a new row starts with '')
-        bool textKey = keyType.Kind == KeyKind.Text;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
+        bool textKey = form.TextKey;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
         // a text key is put in a link as a query value, so a character such as & or # cannot end it early
         string keyInLink = textKey ? $"encodeURIComponent(selectedRow?.{JsonNames.Camel(keyColumn.Name)} ?? '')" : $"selectedRow?.{JsonNames.Camel(keyColumn.Name)}";
-        string title = Labels.Words(baseName);
-        bool hasName = Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"); // just for showError's message wording below
+        string title = form.Title;
+        bool hasName = form.HasName; // just for showError's message wording below
         const int pageSize = 20;
         // The same paging and search bar as TSX_Page: one text box per searchable column (Model.SearchableColumns), paged by the API's /search endpoint.
         // The Search list protocol (ListProtocol=Search) has one search box for the whole table; the server decides which columns it matches.
         bool listSearch = Project.ListSearchProtocol;
-        var searchFields = listSearch
-            ? new[] { new { ParamName = "search", Name = "search", Label = "" } }.ToList()
-            : Model.SearchableColumns
-                .Select(c => new { ParamName = LowerFirst(c.Name), c.Name, Label = Labels.Column(c.Name) })
-                .ToList();
+        var searchFields = form.WebSearchFields;
         bool canSearch = searchFields.Count > 0;
         // The route of a table's own page ("SalesInvoice" -> "sales-invoice"): the hand-written App.tsx has one route per generated page, named this way.
         string selfRoute = ScreenNames.Route(Model.TableName);
 
-        // What the form is made of (its columns, the foreign key behind each, the drop-downs and their parents) is decided in Core for every stack.
-        var form = FormModel.For(Model, Project);
-        var fkByColumn = form.ForeignKeysByColumn;
+        var shown = form.Columns;
 
-        var shown = form.Columns.ToList();
-
-        var parents = form.Parents
-            .Select(fk =>
-            {
-                string parentBase = BaseName(fk.ReferencedTable);
-                bool self = fk.ReferencedTable.EqualsIgnoreCase(Model.TableName);
-                string pList = LowerFirst(parentBase).Pluralize();
-                return new
-                {
-                    Table = fk.ReferencedTable,
-                    Type = parentBase,
-                    ModelFile = Project.ModelFileOf(fk.ReferencedTable, parentBase.ToLowerInvariant()),
-                    ApiVar = LowerFirst(parentBase) + "Api",
-                    ApiFile = parentBase.ToLowerInvariant() + "Api",
-                    List = pList,
-                    SetList = "set" + UpperFirst(pList),
-                    NameMethod = LowerFirst(parentBase) + "Name",
-                    KeyProp = JsonNames.Camel(fk.ReferencedColumns[0]),
-                    IdType = Model.ForeignKeyType(fk)?.TypeScript ?? "number",
-                    DisplayProp = JsonNames.Camel(fk.ReferencedDisplayColumns[0]),
-                    Self = self
-                };
-            }).ToList();
-        var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
+        var parents = form.Parents;
 
         // The child tables, decided in Core for every stack (ChildGrid): which ones get a grid, its heading and role, its key, and the foreign keys shown as names.
-        var childGrids = ChildGrid.For(Model, Project);
-        var children = childGrids
-            .Select(g => new
-            {
-                Table = g.Table,
-                // the property of the save request that holds this child's rows when the table is edited in the form (EditableChildren)
-                JsonName = EditableChild.JsonName(g.Link),
-                Title = g.Title,
-                Var = LowerFirst(g.Name),
-                MethodName = g.Name,
-                Route = ScreenNames.ApiRoute(g.Table),
-                PageRoute = ScreenNames.Route(g.Table),
-                KeyProp = g.KeyName is null ? null : JsonNames.Camel(g.KeyName),
-                // a child with a text key has it encoded into the links and the delete route
-                KeyIsText = g.KeyType?.Kind == KeyKind.Text,
-                FkProp = JsonNames.Camel(g.Link.ReferencingColumns[0]),
-                // a whole-number key is named by the parent's lookup list ({ id, name }); any other key reads the parent's rows
-                Lookups = g.Lookups.Select(l => l.UsesLookupEndpoint
-                    ? (Column: JsonNames.Camel(l.ColumnName), Route: ScreenNames.ApiRoute(l.ParentTable) + "/lookup", Key: "id", Display: "name")
-                    : (Column: JsonNames.Camel(l.ColumnName), Route: ScreenNames.ApiRoute(l.ParentTable), Key: JsonNames.Camel(l.ParentKeyName), Display: JsonNames.Camel(l.ParentDisplayName))).ToList(),
-                Hidden = g.HiddenColumns.Select(JsonNames.Camel).ToList(),
-                // What the schema says about the child's columns (their JSON names are camelCase): money shows as currency, long text goes last.
-                Currency = g.Link.ReferencingTableColumns.Where(c => c.IsMoneyAmount)
-                    .Select(c => (Name: JsonNames.Camel(c.Name), Digits: NumericClassifier.CurrencyDigits(c))).ToList(),
-                LongText = g.Link.ReferencingTableColumns.Where(c => c.IsLongTextColumn).Select(c => JsonNames.Camel(c.Name)).ToList(),
-                // The caption each child column gets (date columns lose "Date", yes/no columns end in "?", Number -> #, Percent -> %).
-                Captions = g.Link.ReferencingTableColumns.Select(c => (Name: JsonNames.Camel(c.Name), Caption: GridCaption.For(c, Labels.Column(c.Name)))).ToList()
-            }).ToList();
+        var children = ChildGrid.For(Model, Project);
 
-        string Id(ColumnModel c) => stem + "-" + JsonNames.Camel(c.Name).ToLowerInvariant();
 
         // EditableChildren: the child tables whose rows are added, changed and removed inside this form and sent with it in one request (EditableChild, the rule the API's create and update use too);
         // every other child keeps its read-only grid under the form
-        var editableLinks = childGrids.Where(g => g.IsEditable).Select(g => g.Link).ToList();
-        bool IsEditableChild(string table) => editableLinks.Any(fk => fk.ReferencingTable.EqualsIgnoreCase(table));
-        var gridChildren = children.Where(ch => !IsEditableChild(ch.Table)).ToList();
-        var editableChildren = children.Where(ch => IsEditableChild(ch.Table)).ToList();
-        ChildForeignKeyModel LinkOf(string table) => editableLinks.First(fk => fk.ReferencingTable.EqualsIgnoreCase(table));
-        // a child's own foreign key is a drop-down over the parent's lookup list ({ id, name }), unless its key is a uniqueidentifier
-        ForeignKeyModel EditLookupOf(ChildForeignKeyModel link, ColumnModel c) => c.IsGuidColumn ? null
-            : link.ReferencingTableForeignKeys.FirstOrDefault(o => o.ReferencingColumns.Count == 1 && o.ReferencingColumns[0].EqualsIgnoreCase(c.Name)
-                && o.ReferencedDisplayColumns.Count > 0 && !Project.NoApiFor(o.ReferencedTable, o.ReferencedLookupShape) && !Project.NoLookupFor(o.ReferencedTable, o.ReferencedLookupShape));
-        // a money column of the child that is not a foreign key or a list of choices
-        bool IsChildCurrency(ChildForeignKeyModel link, ColumnModel c) => c.IsMoneyAmount && IsNumber(c) && EditLookupOf(link, c) is null && !c.HasChoices;
-        string ChildInput(ChildForeignKeyModel link, string childVar, string method, ColumnModel c)
+        var gridChildren = children.Where(g => !g.IsEditable).ToList();
+        var editableChildren = children.Where(g => g.IsEditable).ToList();
+        string ChildInput(ChildGrid child, ColumnModel c)
         {
+            string childVar = child.Variable, method = child.Name;
             string prop = JsonNames.Camel(c.Name);
             string aria = $"aria-label=\"{GridCaption.For(c, Labels.Field(c))}\"";
             string req = c.IsNullable ? "" : " required";
             string change(string value) => $"change{method}(row, {{ {prop}: {value} }})";
             string number = "event.target.value === '' ? null : Number(event.target.value)";
-            if (EditLookupOf(link, c) is not null)
+            if (child.EditLookupOf(c) is not null)
                 return $"<select {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change(IsNumber(c) ? number : "event.target.value || null")}}}{req}><option value=\"\"></option>{{({childVar}Options['{prop}'] ?? []).map((p) => <option key={{p.id}} value={{p.id}}>{{p.name}}</option>)}}</select>";
             if (c.HasChoices)
                 return $"<select {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change(c.IsNullable ? "event.target.value || null" : "event.target.value")}}}{req}><option value=\"\"></option>{string.Concat(c.Choices!.Select(choice => $"<option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>"))}</select>";
@@ -168,34 +103,22 @@
                 return $"<input type=\"checkbox\" {aria} checked={{!!row.{prop}}} onChange={{(event) => {change("event.target.checked")}}} />";
             if (IsDate(c))
                 return $"<input type=\"date\" {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change("event.target.value || null")}}}{req} />";
-            if (IsChildCurrency(link, c))
+            if (child.IsMoneyInput(c))
             {
-                var (moneyMin, moneyMax) = Project.MoneyLimits(link.ReferencingTable, c);
-                return $"<CurrencyInput label=\"{GridCaption.For(c, Labels.Field(c))}\" value={{row.{prop}}} onChange={{(value) => {change("value ?? " + (c.IsNullable ? "null" : "0"))}}} digits={{{NumericClassifier.CurrencyDigits(c)}}} currency=\"{Project.CurrencyCode}\""
-                       + (moneyMin is { } lo ? $" min={{{Inv(lo)}}}" : "") + (moneyMax is { } hi ? $" max={{{Inv(hi)}}}" : "") + $"{req} />";
+                var money = child.MoneyBoxOf(c);
+                return $"<CurrencyInput label=\"{GridCaption.For(c, Labels.Field(c))}\" value={{row.{prop}}} onChange={{(value) => {change("value ?? " + (c.IsNullable ? "null" : "0"))}}} digits={{{money.Digits}}} currency=\"{money.Currency}\""
+                       + (money.Min is { } lo ? $" min={{{lo}}}" : "") + (money.Max is { } hi ? $" max={{{hi}}}" : "") + $"{req} />";
             }
             if (IsNumber(c))
-            {
-                string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? " step=\"" + "0." + new string('0', c.Scale!.Value - 1) + "1\""
-                            : c.IsMoneyColumn ? " step=\"0.01\""
-                            : c.SqlType is SqlDbType.Float or SqlDbType.Real ? " step=\"any\"" : "";
-                string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\""
-                    : IsPlainDecimal(c) ? $" min=\"{Inv(NumericClassifier.DecimalRange(c).Min)}\" max=\"{Inv(NumericClassifier.DecimalRange(c).Max)}\"" : "";
-                string width = Project.NumberBoxCharacters(c) is { } boxWidth ? $" style={{{{ width: '{boxWidth}ch' }}}}" : "";
-                return $"<input type=\"number\" {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change(number)}}}{step}{range}{width}{req} />";
-            }
+                return $"<input type=\"number\" {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change(number)}}}{child.NumberBoxOf(c).Jsx}{req} />";
             string max = IsText(c) && Chars(c) > 0 ? $" maxLength={{{Chars(c)}}}" : "";
             return $"<input type=\"text\" {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change("event.target.value")}}}{max}{req} />";
         }
-        // The grid shows at most 20 columns and never a long text column (a Notes column, ...), and multi-line text only when that leaves fewer than GridColumns.MinColumns: see GridColumns.
-        var gridColumns = GridColumns.For(shown);
-        // A grid column's header sorts the grid unless it is long text or binary (SearchSort.IsSortable; long text never is in a grid anyway).
-        var sortableColumns = gridColumns.Where(SearchSort.IsSortable).ToList();
-        // A Clone button beside Edit and Delete for the tables CloneShape allows (the api has clone(id), API_Crud / CS_Repo write the server side).
-        bool canClone = CloneShape.CanClone(Model, Project);
-        // The form is tabbed (Main / Billing & Shipping / Notes) when it has more than one kind of field: see FormPages.
-        var formPages = FormPages.For(shown);
-        bool tabbed = formPages.Count > 1;
+        var gridColumns = form.GridColumns;
+        var sortableColumns = form.SortableColumns;
+        bool canClone = form.CanClone;
+        var formPages = form.Pages;
+        bool tabbed = form.IsTabbed;
 
         var ts = new StringBuilder();
         void T(string s = "") => ts.Append(s).Append('\n');
@@ -205,17 +128,17 @@
         T("import type { FormEvent } from 'react';");
         T("import { useNavigate, useSearchParams } from 'react-router-dom';");
         T($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
-        T($"import {{ {variable}Api }} from '../{apiFolder}/{stem}Api';");
+        T($"import {{ {ReactNames.ApiVar(Model.TableName)} }} from '../{apiFolder}/{ReactNames.ApiFile(Model.TableName)}';");
         T($"import {{ ApiError, request }} from '../{apiFolder}/client';");
         T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
-        if (shown.Any(form.IsMoneyInput) || editableChildren.Any(ch => EditableChild.Columns(LinkOf(ch.Table)).Any(c => IsChildCurrency(LinkOf(ch.Table), c))))
+        if (shown.Any(form.IsMoneyInput) || editableChildren.Any(ch => ch.EditColumns.Any(c => ch.IsMoneyInput(c))))
             T($"import {{ CurrencyInput }} from '../{componentsFolder}/CurrencyInput';");
         T($"import {{ GridMenu, SortHeader, loadSort, nextSort, saveSort{(gridChildren.Count > 0 ? ", sortRows" : "")} }} from '../{componentsFolder}/gridSort';");
         T($"import type {{ GridSort }} from '../{componentsFolder}/gridSort';");
-        foreach (var p in parents.Where(p => !p.Self))
+        foreach (var p in parents.Where(p => !p.IsSelf))
         {
-            T($"import type {{ {p.Type} }} from '../{modelsFolder}/{p.ModelFile}';");
-            T($"import {{ {p.ApiVar} }} from '../{apiFolder}/{p.ApiFile}';");
+            T($"import type {{ {p.BaseName} }} from '../{modelsFolder}/{p.ModelFile}';");
+            T($"import {{ {ReactNames.ApiVar(p.Table)} }} from '../{apiFolder}/{ReactNames.ApiFile(p.Table)}';");
         }
         T();
         T($"const initialPageSize = {pageSize};");
@@ -225,8 +148,8 @@
         T();
         if (gridChildren.Count > 0)
         {
-            var allCurrency = gridChildren.SelectMany(ch => ch.Currency).GroupBy(m => m.Name).Select(g => g.First()).ToList();
-            var allLongText = gridChildren.SelectMany(ch => ch.LongText).Distinct().ToList();
+            var allCurrency = gridChildren.SelectMany(ch => ch.MoneyColumns).GroupBy(m => m.Name).Select(g => g.First()).ToList();
+            var allLongText = gridChildren.SelectMany(ch => ch.LongTextJson).Distinct().ToList();
             T("// Child grids show whatever keys the API returns; these helpers caption them, leave out long text, limit them to 20 and format money and dates.");
             T("const childCurrencyDigits: Record<string, number> = { " + string.Join(", ", allCurrency.Select(m => m.Name + ": " + m.Digits)) + " };");
             var allCaptions = gridChildren.SelectMany(ch => ch.Captions).GroupBy(m => m.Name).Select(g => g.First()).ToList();
@@ -235,7 +158,7 @@
             T();
             foreach (var child in gridChildren)
             {
-                T($"const {child.Var}Hidden: string[] = [" + string.Join(", ", child.Hidden.Select(n => "'" + n + "'")) + "];");
+                T($"const {child.Variable}Hidden: string[] = [" + string.Join(", ", child.HiddenJson.Select(n => "'" + n + "'")) + "];");
             }
             T();
             T("function orderColumns(keys: string[], hidden: string[]): string[] {");
@@ -267,8 +190,8 @@
         }
         T($"export function {baseName}DetailMasterPage() {{");
         T($"  const [{listName}, {setList}] = useState<{baseName}[]>([]);");
-        foreach (var p in parents.Where(p => !p.Self))
-            T($"  const [{p.List}, {p.SetList}] = useState<{p.Type}[]>([]);");
+        foreach (var p in parents.Where(p => !p.IsSelf))
+            T($"  const [{p.List}, {ReactNames.SetList(p.List)}] = useState<{p.BaseName}[]>([]);");
         T($"  const [selectedRow, setSelectedRow] = useState<{baseName} | null>(null);");
         // a typed key is set on a new row too, so the key can no longer say whether the row is new: `adding` does
         if (textKey) T("  const [adding, setAdding] = useState(false); // true while the form holds a new row, whose key the person types");
@@ -295,23 +218,23 @@
         T("  const backTo = searchParams.get('back');");
         foreach (var child in gridChildren)
         {
-            T($"  const [{child.Var}Rows, set{child.MethodName}Rows] = useState<any[]>([]);");
-            T($"  const [{child.Var}Columns, set{child.MethodName}Columns] = useState<string[]>([]);");
-            T($"  const [{child.Var}Sort, set{child.MethodName}Sort] = useState<GridSort | null>(() => loadSort(gridKey + '.{child.Var}'));");
+            T($"  const [{child.Variable}Rows, set{child.Name}Rows] = useState<any[]>([]);");
+            T($"  const [{child.Variable}Columns, set{child.Name}Columns] = useState<string[]>([]);");
+            T($"  const [{child.Variable}Sort, set{child.Name}Sort] = useState<GridSort | null>(() => loadSort(gridKey + '.{child.Variable}'));");
             if (child.Lookups.Count > 0)
-                T($"  const [{child.Var}Names, set{child.MethodName}Names] = useState<Record<string, Record<string, string>>>({{}});");
+                T($"  const [{child.Variable}Names, set{child.Name}Names] = useState<Record<string, Record<string, string>>>({{}});");
         }
         foreach (var child in editableChildren)
         {
             // the rows of the form's own child list: plain objects the inputs edit, sent with the row (withChildren below)
-            T($"  const [{child.Var}Rows, set{child.MethodName}Rows] = useState<any[]>([]);");
-            if (EditableChild.Columns(LinkOf(child.Table)).Any(c => EditLookupOf(LinkOf(child.Table), c) is not null))
-                T($"  const [{child.Var}Options, set{child.MethodName}Options] = useState<Record<string, {{ id: any; name: string }}[]>>({{}});");
+            T($"  const [{child.Variable}Rows, set{child.Name}Rows] = useState<any[]>([]);");
+            if (child.EditColumns.Any(c => child.EditLookupOf(c) is not null))
+                T($"  const [{child.Variable}Options, set{child.Name}Options] = useState<Record<string, {{ id: any; name: string }}[]>>({{}});");
         }
         T();
         // The sort (like the filters) is read from state by default; a change passes its new value explicitly because state is not updated yet.
         T($"  const load = (targetPage: number = 1{(canSearch ? ", filterValues: typeof filters = filters" : "")}, sortValue: GridSort | null = sort, sizeValue: number = pageSize) => {{");
-        T($"    {variable}Api.getPage(targetPage, sizeValue, {(canSearch ? "filterValues" : "{}")}, sortValue).then((result) => {{");
+        T($"    {ReactNames.ApiVar(Model.TableName)}.getPage(targetPage, sizeValue, {(canSearch ? "filterValues" : "{}")}, sortValue).then((result) => {{");
         T("      // the last row of the last page was deleted, or rows were removed elsewhere: the page asked for is past the end, so show the last page there is");
         T($"      if (result.items.length === 0 && result.totalCount > 0 && targetPage > 1) {{ load(result.totalPages{(canSearch ? ", filterValues" : "")}, sortValue, sizeValue); return; }}");
         T($"      {setList}(result.items);");
@@ -323,21 +246,21 @@
         T();
         T("  useEffect(() => {");
         T("    load();");
-        foreach (var p in parents.Where(p => !p.Self))
-            T($"    {p.ApiVar}.getAll().then({p.SetList}).catch(() => {{}});");
+        foreach (var p in parents.Where(p => !p.IsSelf))
+            T($"    {ReactNames.ApiVar(p.Table)}.getAll().then({ReactNames.SetList(p.List)}).catch(() => {{}});");
         foreach (var child in editableChildren)
-            foreach (var c in EditableChild.Columns(LinkOf(child.Table)))
-                if (EditLookupOf(LinkOf(child.Table), c) is { } lookup)
-                    T($"    request<any[]>('{apiPrefix}/{ScreenNames.ApiRoute(lookup.ReferencedTable)}/lookup').then((items) => set{child.MethodName}Options((options) => ({{ ...options, {JsonNames.Camel(c.Name)}: items.map((i) => ({{ id: i['id'], name: String(i['name'] ?? '') }})) }}))).catch(() => {{}});");
+            foreach (var c in child.EditColumns)
+                if (child.EditLookupOf(c) is { } lookup)
+                    T($"    request<any[]>('{apiPrefix}/{ScreenNames.ApiRoute(lookup.ReferencedTable)}/lookup').then((items) => set{child.Name}Options((options) => ({{ ...options, {JsonNames.Camel(c.Name)}: items.map((i) => ({{ id: i['id'], name: String(i['name'] ?? '') }})) }}))).catch(() => {{}});");
         T("    const openId = searchParams.get('edit');");
-        T($"    if (openId) {variable}Api.getById({(keyType.Kind == KeyKind.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'));");
+        T($"    if (openId) {ReactNames.ApiVar(Model.TableName)}.getById({(keyType.Kind == KeyKind.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'));");
         T("  }, []);");
         T();
         // The child lists of EditableChildren go in the body of the save with the row; the API makes each child table match its list.
         string body = editableChildren.Count > 0 ? $"withChildren({variable})" : variable;
         if (editableChildren.Count > 0)
         {
-            T($"  const withChildren = (row: {baseName}): {baseName} => ({{ ...row, {string.Join(", ", editableChildren.Select(ch => $"{ch.JsonName}: {ch.Var}Rows"))} }}) as {baseName};");
+            T($"  const withChildren = (row: {baseName}): {baseName} => ({{ ...row, {string.Join(", ", editableChildren.Select(ch => $"{ch.JsonName}: {ch.Variable}Rows"))} }}) as {baseName};");
             T();
         }
         T($"  const submit = async ({variable}: {baseName}): Promise<void> => {{");
@@ -346,18 +269,18 @@
         if (textKey)
         {
             T("      if (adding) {");
-            T($"        await {variable}Api.create({body});");
+            T($"        await {ReactNames.ApiVar(Model.TableName)}.create({body});");
             T("      } else {");
-            T($"        await {variable}Api.update({variable}.{keyProp}!, {body});");
+            T($"        await {ReactNames.ApiVar(Model.TableName)}.update({variable}.{keyProp}!, {body});");
             T("      }");
         }
         else
         {
             T($"      if ({variable}.{keyProp}) {{");
-            T($"        await {variable}Api.update({variable}.{keyProp}, {body});");
+            T($"        await {ReactNames.ApiVar(Model.TableName)}.update({variable}.{keyProp}, {body});");
             T("      } else {");
             T($"        {variable}.{keyProp} = {emptyKey};");
-            T($"        await {variable}Api.create({body});");
+            T($"        await {ReactNames.ApiVar(Model.TableName)}.create({body});");
             T("      }");
         }
         T("      setSelectedRow(null);");
@@ -376,7 +299,7 @@
         T($"  const remove = async (id: {keyTs}): Promise<void> => {{");
         T("    if (!confirm('Are you sure you want to delete this?')) return;");
         T("    try {");
-        T($"      await {variable}Api.delete(id);");
+        T($"      await {ReactNames.ApiVar(Model.TableName)}.delete(id);");
         T("      load(page); // read the page again: the total, the rows that move up and the last page all change");
         T("    } catch (err) {");
         T("      if (err instanceof ApiError && err.status === 400) {");
@@ -395,7 +318,7 @@
             T();
             T($"  const clone = async (id: {keyTs}): Promise<void> => {{");
             T("    try {");
-            T($"      const copy = await {variable}Api.clone(id);");
+            T($"      const copy = await {ReactNames.ApiVar(Model.TableName)}.clone(id);");
             T("      load(page);");
             T("      edit(copy);");
             T("    } catch (err) {");
@@ -409,25 +332,15 @@
             T("  };");
         }
         T();
-        var adds = new List<string>();
-        if (textKey) adds.Add($"{keyProp}: ''");
-        foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && !c.IsNullable && !c.IsComputed && !c.IsIdentity))
-        {
-            string value;
-            if (c.IsBooleanColumn) value = c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1" ? "true" : "false";
-            else if (IsDate(c)) value = "new Date().toISOString().substring(0, 10)";
-            else if (IsNumber(c)) value = "0";
-            else value = "''";
-            adds.Add($"{JsonNames.Camel(c.Name)}: {value}");
-        }
+        var adds = form.NewRowTypeScript;
         T("  const add = () => {");
         if (tabbed) T("    setTab(0);");
         if (textKey) T("    setAdding(true);");
         T(adds.Count == 0 ? "    setSelectedRow({});" : $"    setSelectedRow({{ {string.Join(", ", adds)} }});");
         foreach (var child in children)
         {
-            T($"    set{child.MethodName}Rows([]);");
-            if (!IsEditableChild(child.Table)) T($"    set{child.MethodName}Columns([]);");
+            T($"    set{child.Name}Rows([]);");
+            if (!child.IsEditable) T($"    set{child.Name}Columns([]);");
         }
         T("  };");
         T();
@@ -435,7 +348,7 @@
         if (tabbed) T("    setTab(0);");
         if (textKey) T("    setAdding(false);");
         T($"    const row = {{ ...{variable} }};");
-        var dateColumns = shown.Where(c => IsDate(c) && !c.IsSystemStampColumn).ToList();   // a stamp keeps the timestamp the API sent
+        var dateColumns = form.DateColumns;   // a stamp keeps the timestamp the API sent
         if (dateColumns.Count > 0)
         {
             T("    // the date box wants yyyy-MM-dd; the API sends a full timestamp");
@@ -448,7 +361,7 @@
         }
         T("    setSelectedRow(row);");
         foreach (var child in children)
-            T($"    load{child.MethodName}({variable}.{keyProp}!);");
+            T($"    load{child.Name}({variable}.{keyProp}!);");
         T("  };");
         T();
         T("  const cancel = () => {");
@@ -487,20 +400,19 @@
         foreach (var p in parents)
         {
             T();
-            T($"  // the name to show in place of a {p.Type} id");
-            T($"  const {p.NameMethod} = (id?: {p.IdType}): string => {{");
-            T($"    return {p.List}.find((p) => p.{p.KeyProp} === id)?.{p.DisplayProp} ?? '';");
+            T($"  // the name to show in place of a {p.BaseName} id");
+            T($"  const {p.NameMethod} = (id?: {p.KeyTs}): string => {{");
+            T($"    return {p.List}.find((p) => p.{JsonNames.Camel(p.KeyName)} === id)?.{JsonNames.Camel(p.DisplayName)} ?? '';");
             T("  };");
         }
         foreach (var child in editableChildren)
         {
-            var link = LinkOf(child.Table);
-            var editColumns = EditableChild.Columns(link);
+            var editColumns = child.EditColumns;
             var childDates = editColumns.Where(IsDate).ToList();
             var defaults = new List<string>();
             foreach (var c in editColumns.Where(c => !c.IsNullable))
             {
-                if (EditLookupOf(link, c) is not null) defaults.Add($"{JsonNames.Camel(c.Name)}: null");
+                if (child.EditLookupOf(c) is not null) defaults.Add($"{JsonNames.Camel(c.Name)}: null");
                 else if (c.IsBooleanColumn) defaults.Add($"{JsonNames.Camel(c.Name)}: {(c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1" ? "true" : "false")}");
                 else if (IsDate(c)) defaults.Add($"{JsonNames.Camel(c.Name)}: new Date().toISOString().substring(0, 10)");
                 else if (IsNumber(c)) defaults.Add($"{JsonNames.Camel(c.Name)}: 0");
@@ -509,59 +421,59 @@
             T();
             T($"  // {child.Title} are part of this form: the rows that point at the row being edited are read once, edited here and sent with the row under '{child.JsonName}'.");
             T("  // The API makes the table match the list: a row with its key is changed, a row without one is added, a row left out is removed.");
-            T($"  const load{child.MethodName} = (parentId: {keyTs}) => {{");
-            T($"    request<any[]>('{apiPrefix}/{child.Route}').then((rows) => {{");
-            T($"      set{child.MethodName}Rows(rows.filter((r) => r['{child.FkProp}'] === parentId).map((r) => ({{ ...r{string.Concat(childDates.Select(c => $", {JsonNames.Camel(c.Name)}: r['{JsonNames.Camel(c.Name)}']?.substring(0, 10) ?? null"))} }})));");
+            T($"  const load{child.Name} = (parentId: {keyTs}) => {{");
+            T($"    request<any[]>('{apiPrefix}/{child.ApiRoute}').then((rows) => {{");
+            T($"      set{child.Name}Rows(rows.filter((r) => r['{child.ForeignKeyJson}'] === parentId).map((r) => ({{ ...r{string.Concat(childDates.Select(c => $", {JsonNames.Camel(c.Name)}: r['{JsonNames.Camel(c.Name)}']?.substring(0, 10) ?? null"))} }})));");
             T("    }).catch(() => {});");
             T("  };");
             T();
-            T($"  const add{child.MethodName} = () => set{child.MethodName}Rows((rows) => [...rows, {{ {string.Join(", ", defaults)} }}]);");
+            T($"  const add{child.Name} = () => set{child.Name}Rows((rows) => [...rows, {{ {string.Join(", ", defaults)} }}]);");
             T();
-            T($"  const change{child.MethodName} = (row: any, values: Record<string, unknown>) => set{child.MethodName}Rows((rows) => rows.map((r) => (r === row ? {{ ...r, ...values }} : r)));");
+            T($"  const change{child.Name} = (row: any, values: Record<string, unknown>) => set{child.Name}Rows((rows) => rows.map((r) => (r === row ? {{ ...r, ...values }} : r)));");
             T();
-            T($"  const remove{child.MethodName} = (row: any) => set{child.MethodName}Rows((rows) => rows.filter((r) => r !== row));");
+            T($"  const remove{child.Name} = (row: any) => set{child.Name}Rows((rows) => rows.filter((r) => r !== row));");
         }
         foreach (var child in gridChildren)
         {
             T();
-            T($"  // {child.Title} rows whose {child.FkProp} matches the row being edited - the whole table is loaded and");
+            T($"  // {child.Title} rows whose {child.ForeignKeyJson} matches the row being edited - the whole table is loaded and");
             T("  // filtered client-side (same no-paging simplification TSX_Page.tt's own grid makes), and the columns");
             T("  // shown are whatever keys the first row actually has, since this template never sees the child's own schema.");
-            T($"  const load{child.MethodName} = (parentId: {keyTs}) => {{");
-            T($"    request<any[]>('{apiPrefix}/{child.Route}').then((rows) => {{");
-            T($"      const filtered = rows.filter((r) => r['{child.FkProp}'] === parentId);");
-            T($"      set{child.MethodName}Rows(filtered);");
-            T($"      set{child.MethodName}Columns(filtered.length > 0 ? orderColumns(Object.keys(filtered[0]), {child.Var}Hidden) : []);");
+            T($"  const load{child.Name} = (parentId: {keyTs}) => {{");
+            T($"    request<any[]>('{apiPrefix}/{child.ApiRoute}').then((rows) => {{");
+            T($"      const filtered = rows.filter((r) => r['{child.ForeignKeyJson}'] === parentId);");
+            T($"      set{child.Name}Rows(filtered);");
+            T($"      set{child.Name}Columns(filtered.length > 0 ? orderColumns(Object.keys(filtered[0]), {child.Variable}Hidden) : []);");
             foreach (var lookup in child.Lookups)
-                T($"      request<any[]>('{apiPrefix}/{lookup.Route}').then((items) => set{child.MethodName}Names((names) => ({{ ...names, {lookup.Column}: Object.fromEntries(items.map((i) => [String(i['{lookup.Key}']), String(i['{lookup.Display}'] ?? '')])) }}))).catch(() => {{}});");
+                T($"      request<any[]>('{apiPrefix}/{lookup.WebRoute}').then((items) => set{child.Name}Names((names) => ({{ ...names, {lookup.ColumnJson}: Object.fromEntries(items.map((i) => [String(i['{lookup.WebKey}']), String(i['{lookup.WebDisplay}'] ?? '')])) }}))).catch(() => {{}});");
             T("    }).catch(() => {});");
             T("  };");
             // The child grid holds all its rows, so a click on a header sorts them here (no trip to the server); the sort is saved like the main grid's.
             T();
-            T($"  const sort{child.MethodName}By = (column: string) => {{");
-            T($"    const next = nextSort({child.Var}Sort, column);");
-            T($"    set{child.MethodName}Sort(next);");
-            T($"    saveSort(gridKey + '.{child.Var}', next);");
+            T($"  const sort{child.Name}By = (column: string) => {{");
+            T($"    const next = nextSort({child.Variable}Sort, column);");
+            T($"    set{child.Name}Sort(next);");
+            T($"    saveSort(gridKey + '.{child.Variable}', next);");
             T("  };");
             T();
-            T($"  const clear{child.MethodName}Sort = () => {{");
-            T($"    set{child.MethodName}Sort(null);");
-            T($"    saveSort(gridKey + '.{child.Var}', null);");
+            T($"  const clear{child.Name}Sort = () => {{");
+            T($"    set{child.Name}Sort(null);");
+            T($"    saveSort(gridKey + '.{child.Variable}', null);");
             T("  };");
-            if (child.KeyProp is not null)
+            if (child.KeyJson is not null)
             {
                 T();
                 T($"  // Edit opens the {child.Title}'s own page on that row; saving or cancelling there comes back here with this {title} open again.");
-                T($"  const edit{child.MethodName} = (row: any) => {{");
-                string childKeyInLink = child.KeyIsText ? $"encodeURIComponent(row['{child.KeyProp}'])" : $"row['{child.KeyProp}']";
+                T($"  const edit{child.Name} = (row: any) => {{");
+                string childKeyInLink = child.KeyIsText ? $"encodeURIComponent(row['{child.KeyJson}'])" : $"row['{child.KeyJson}']";
                 T($"    navigate(`/{child.PageRoute}?edit=${{{childKeyInLink}}}&back=${{encodeURIComponent(`/{selfRoute}?edit=${{{keyInLink}}}`)}}`);");
                 T("  };");
                 T();
-                T($"  const delete{child.MethodName} = async (row: any): Promise<void> => {{");
+                T($"  const delete{child.Name} = async (row: any): Promise<void> => {{");
                 T("    if (!confirm('Are you sure you want to delete this?')) return;");
                 T("    try {");
-                T($"      await request<void>(`{apiPrefix}/{child.Route}/${{{(child.KeyIsText ? $"encodeURIComponent(row['{child.KeyProp}'])" : $"row['{child.KeyProp}']")}}}`, {{ method: 'DELETE' }});");
-                T($"      load{child.MethodName}(selectedRow!.{keyProp}!);");
+                T($"      await request<void>(`{apiPrefix}/{child.ApiRoute}/${{{(child.KeyIsText ? $"encodeURIComponent(row['{child.KeyJson}'])" : $"row['{child.KeyJson}']")}}}`, {{ method: 'DELETE' }});");
+                T($"      load{child.Name}(selectedRow!.{keyProp}!);");
                 T("    } catch (err) {");
                 T("      setError(err instanceof ApiError && err.status === 400 ? 'It cannot be deleted because it is in use!' : 'Problem while deleting!');");
                 T("    }");
@@ -628,7 +540,7 @@
             var lookup = form.LookupOf(c);
             string cell;
             // A nullable column's value may be undefined: optional chaining keeps a strict (noUncheckedIndexedAccess/strictNullChecks) build compiling.
-            if (lookup is not null) cell = $"{{{parentOf[lookup.ReferencedTable].NameMethod}({prop})}}";
+            if (lookup is not null) cell = $"{{{form.ParentOf(c)!.NameMethod}({prop})}}";
             else if (c.IsBooleanColumn) cell = $"{{{prop} ? 'Yes' : 'No'}}";
             else if (IsDate(c)) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 10)}}";
             else if (c.IsMoneyAmount) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
@@ -683,10 +595,10 @@
         if (tabbed) T($"            <div role=\"tabpanel\" data-tab=\"{pageIndex}\" hidden={{tab !== {pageIndex}}}>");
         foreach (var c in formPages[pageIndex].Columns)
         {
-            string id = Id(c);
+            string id = form.FieldId(c);
             string prop = JsonNames.Camel(c.Name);
-            var lookup = form.LookupOf(c);
-            if (c.IsSystemStampColumn)
+            var kind = form.KindOf(c);
+            if (kind == FieldKind.SystemStamp)
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
                 string stampValue = c.IsDateColumn ? $"{{selectedRow.{prop} ? new Date(selectedRow.{prop}).toLocaleString() : ''}}" : $"{{selectedRow.{prop} ?? ''}}";
@@ -699,7 +611,7 @@
                 continue;
             }
             T("            <label htmlFor=\"" + id + "\">" + Labels.Field(c) + "</label>");
-            if (textKey && c.IsPrimaryKey)
+            if (kind == FieldKind.TypedKey)
             {
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
                 T($"            <input");
@@ -714,15 +626,15 @@
                 T("              required");
                 T("            />");
             }
-            else if (lookup is not null)
+            else if (kind == FieldKind.Lookup)
             {
-                var p = parentOf[lookup.ReferencedTable];
+                var p = form.ParentOf(c)!;
                 // A blank choice means "none": undefined for a nullable column (0 would be a key that does not exist); a required column starts blank too (0 shows as blank, and
                 // the browser's required check then refuses it) instead of looking like the first parent is chosen while the row still holds 0.
-                string numeric = p.IdType == "number"
+                string numeric = p.KeyTs == "number"
                     ? (c.IsNullable ? "event.target.value === '' ? undefined : Number(event.target.value)" : "Number(event.target.value)")
                     : (c.IsNullable ? "event.target.value || undefined" : "event.target.value");
-                string blankTest = p.IdType == "number" && !c.IsNullable ? "||" : "??";
+                string blankTest = p.KeyTs == "number" && !c.IsNullable ? "||" : "??";
                 T($"            <select");
                 T($"              id=\"{id}\"");
                 T($"              aria-label=\"{Labels.Field(c)}\"");
@@ -732,11 +644,11 @@
                 T("            >");
                 T("              <option value=\"\"></option>");
                 T($"              {{{p.List}.map((p) => (");
-                T($"                <option key={{p.{p.KeyProp}}} value={{p.{p.KeyProp}}}>{{p.{p.DisplayProp}}}</option>");
+                T($"                <option key={{p.{JsonNames.Camel(p.KeyName)}}} value={{p.{JsonNames.Camel(p.KeyName)}}}>{{p.{JsonNames.Camel(p.DisplayName)}}}</option>");
                 T("              ))}");
                 T("            </select>");
             }
-            else if (c.HasChoices)
+            else if (kind == FieldKind.Choices)
             {
                 // A column whose values the database lists (a MySQL enum) is a drop-down of them; the blank first entry keeps a new row from silently taking the first value.
                 T($"            <select");
@@ -751,7 +663,7 @@
                     T($"              <option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>");
                 T("            </select>");
             }
-            else if (c.IsBooleanColumn)
+            else if (kind == FieldKind.Boolean)
             {
                 T($"            <input");
                 T($"              id=\"{id}\"");
@@ -761,7 +673,7 @@
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.checked }})}}");
                 T("            />");
             }
-            else if (IsDate(c))
+            else if (kind == FieldKind.Date)
             {
                 // A nullable date has a Clear button beside it (the date box's own clear is easy to miss, and WinUI3's calendar has a Clear button too).
                 if (c.IsNullable) T("            <div style={{ display: 'flex', gap: 8 }}>");
@@ -779,58 +691,41 @@
                     T("            </div>");
                 }
             }
-            else if (form.IsMoneyInput(c))
+            else if (kind == FieldKind.Money)
             {
                 // the money box shows $1,234.50 and takes the plain number; the limits are the column's CHECK constraint, or 0 for a column the project lists as never negative
-                var (moneyMin, moneyMax) = Project.MoneyLimits(Model.TableName, c);
+                var money = MoneyBox.For(Model.TableName, c, Project);
                 T($"            <CurrencyInput");
                 T($"              id=\"{id}\"");
                 T($"              label=\"{Labels.Field(c)}\"");
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(value) => setSelectedRow({{ ...selectedRow, {prop}: value ?? {(c.IsNullable ? "undefined" : "0")} }})}}");
-                T($"              digits={{{NumericClassifier.CurrencyDigits(c)}}}");
-                T($"              currency=\"{Project.CurrencyCode}\"");
-                if (moneyMin is { } lo) T($"              min={{{Inv(lo)}}}");
-                if (moneyMax is { } hi) T($"              max={{{Inv(hi)}}}");
+                T($"              digits={{{money.Digits}}}");
+                T($"              currency=\"{money.Currency}\"");
+                if (money.Min is { } lo) T($"              min={{{lo}}}");
+                if (money.Max is { } hi) T($"              max={{{hi}}}");
                 if (!c.IsNullable) T("              required");
                 T("            />");
             }
-            else if (IsNumber(c))
+            else if (kind == FieldKind.Number)
             {
-                string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? "0." + new string('0', c.Scale!.Value - 1) + "1"
-                            : c.IsMoneyColumn ? "0.01"
-                            : c.SqlType is SqlDbType.Float or SqlDbType.Real ? "any" : null;
+                var box = NumberBox.For(Model.TableName, c, Project);
                 T($"            <input");
                 T($"              id=\"{id}\"");
                 T("              type=\"number\"");
                 T($"              aria-label=\"{Labels.Field(c)}\"");
-                if (Project.NumberBoxCharacters(c) is { } boxWidth) T($"              style={{{{ width: '{boxWidth}ch' }}}}");
-                if (step is not null) T($"              step=\"{step}\"");
+                if (box.Characters is { } boxWidth) T($"              style={{{{ width: '{boxWidth}ch' }}}}");
+                if (box.Step is { } step) T($"              step=\"{step}\"");
                 // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
-                if (Project.RangeFor(c) is { } range)
-                {
-                    T($"              min=\"{range.Min}\"");
-                    T($"              max=\"{range.Max}\"");
-                }
-                else if (IsPlainDecimal(c))
-                {
-                    var (decMin, decMax) = NumericClassifier.DecimalRange(c);
-                    T($"              min=\"{Inv(decMin)}\"");
-                    T($"              max=\"{Inv(decMax)}\"");
-                }
-                else if (c.IsMoneyAmount && Project.MoneyLimits(Model.TableName, c) is var (moneyMin, moneyMax))
-                {
-                    // what the column's CHECK constraint says, or a minimum of 0 for a column the project lists as never negative
-                    if (moneyMin is { } lo) T($"              min=\"{Inv(lo)}\"");
-                    if (moneyMax is { } hi) T($"              max=\"{Inv(hi)}\"");
-                }
+                if (box.Min is { } min) T($"              min=\"{min}\"");
+                if (box.Max is { } max) T($"              max=\"{max}\"");
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: Number(event.target.value) }})}}");
                 T($"              placeholder=\"{Labels.Placeholder(c)}\"");
                 if (!c.IsNullable) T("              required");
                 T("            />");
             }
-            else if (IsMultiline(c))
+            else if (kind == FieldKind.Multiline)
             {
                 T($"            <textarea");
                 T($"              id=\"{id}\"");
@@ -861,27 +756,26 @@
         foreach (var child in editableChildren)
         {
             // the child's rows are part of the form: Submit saves them with the row, in one request
-            var link = LinkOf(child.Table);
-            var editColumns = EditableChild.Columns(link);
+            var editColumns = child.EditColumns;
             T();
             T("            <fieldset>");
             T($"              <legend>{child.Title}</legend>");
-            if (EditableChild.UsesCards(link))
+            if (EditableChild.UsesCards(child.Link))
             {
                 // too many columns for one table: each row is a block of labelled fields that wrap, so no box is squeezed
-                T($"              {{{child.Var}Rows.map((row, index) => (");
+                T($"              {{{child.Variable}Rows.map((row, index) => (");
                 T("                <div key={index} style={{ border: '1px solid #8886', borderRadius: 6, padding: '4px 12px 12px', marginBottom: 12 }}>");
                 T("                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>");
                 T($"                    <strong>{Labels.Words(BaseName(child.Table))} {{index + 1}}</strong>");
-                T($"                    <button type=\"button\" onClick={{() => remove{child.MethodName}(row)}}>Remove</button>");
+                T($"                    <button type=\"button\" onClick={{() => remove{child.Name}(row)}}>Remove</button>");
                 T("                  </div>");
                 T("                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(11rem, 1fr))', gap: '0 12px' }}>");
                 foreach (var c in editColumns)
-                    T($"                    <label style={{{{ display: 'flex', flexDirection: 'column'{(IsMultiline(c) ? ", gridColumn: '1 / -1'" : "")} }}}}><span>{GridCaption.For(c, Labels.Field(c))}</span>{ChildInput(link, child.Var, child.MethodName, c)}</label>");
+                    T($"                    <label style={{{{ display: 'flex', flexDirection: 'column'{(IsMultiline(c) ? ", gridColumn: '1 / -1'" : "")} }}}}><span>{GridCaption.For(c, Labels.Field(c))}</span>{ChildInput(child, c)}</label>");
                 T("                  </div>");
                 T("                </div>");
                 T("              ))}");
-                T($"              <button type=\"button\" onClick={{add{child.MethodName}}}>Add {Labels.Words(BaseName(child.Table))}</button>");
+                T($"              <button type=\"button\" onClick={{add{child.Name}}}>Add {Labels.Words(BaseName(child.Table))}</button>");
                 T("            </fieldset>");
                 continue;
             }
@@ -890,16 +784,16 @@
             T("                  <tr>" + string.Concat(editColumns.Select(c => $"<th>{GridCaption.For(c, Labels.Field(c))}</th>")) + "<th></th></tr>");
             T("                </thead>");
             T("                <tbody>");
-            T($"                  {{{child.Var}Rows.map((row, index) => (");
+            T($"                  {{{child.Variable}Rows.map((row, index) => (");
             T("                    <tr key={index}>");
             foreach (var c in editColumns)
-                T($"                      <td>{ChildInput(link, child.Var, child.MethodName, c)}</td>");
-            T($"                      <td><button type=\"button\" onClick={{() => remove{child.MethodName}(row)}}>Remove</button></td>");
+                T($"                      <td>{ChildInput(child, c)}</td>");
+            T($"                      <td><button type=\"button\" onClick={{() => remove{child.Name}(row)}}>Remove</button></td>");
             T("                    </tr>");
             T("                  ))}");
             T("                </tbody>");
             T("              </table>");
-            T($"              <button type=\"button\" onClick={{add{child.MethodName}}}>Add {Labels.Words(BaseName(child.Table))}</button>");
+            T($"              <button type=\"button\" onClick={{add{child.Name}}}>Add {Labels.Words(BaseName(child.Table))}</button>");
             T("            </fieldset>");
         }
         T();
@@ -917,22 +811,22 @@
             T(textKey ? "          {!adding ? (" : $"          {{selectedRow.{keyProp} ? (");
             T("            <div>");
             T($"              <h3>{child.Title}</h3>");
-            T($"              <GridMenu sort={{{child.Var}Sort}} onClear={{clear{child.MethodName}Sort}}>");
+            T($"              <GridMenu sort={{{child.Variable}Sort}} onClear={{clear{child.Name}Sort}}>");
             T("              <table>");
             T("                <thead>");
-            T($"                  <tr>{{{child.Var}Columns.map((col) => <SortHeader key={{col}} label={{caption(col)}} column={{col}} sort={{{child.Var}Sort}} onSort={{sort{child.MethodName}By}} />)}}{(child.KeyProp is not null ? "<th>Actions</th>" : "")}</tr>");
+            T($"                  <tr>{{{child.Variable}Columns.map((col) => <SortHeader key={{col}} label={{caption(col)}} column={{col}} sort={{{child.Variable}Sort}} onSort={{sort{child.Name}By}} />)}}{(child.KeyJson is not null ? "<th>Actions</th>" : "")}</tr>");
             T("                </thead>");
             T("                <tbody>");
-            T($"                  {{sortRows({child.Var}Rows, {child.Var}Sort{(child.Lookups.Count > 0 ? $", {child.Var}Names[{child.Var}Sort?.column ?? '']" : "")}).map((row, index) => (");
+            T($"                  {{sortRows({child.Variable}Rows, {child.Variable}Sort{(child.Lookups.Count > 0 ? $", {child.Variable}Names[{child.Variable}Sort?.column ?? '']" : "")}).map((row, index) => (");
             // Clicking a row, or its Edit button, opens that row on its own page.
-            T(child.KeyProp is not null ? $"                    <tr key={{index}} onClick={{() => edit{child.MethodName}(row)}} style={{{{ cursor: 'pointer' }}}}>" : "                    <tr key={index}>");
+            T(child.KeyJson is not null ? $"                    <tr key={{index}} onClick={{() => edit{child.Name}(row)}} style={{{{ cursor: 'pointer' }}}}>" : "                    <tr key={index}>");
             // A date-and-time string from the API (2026-09-27T00:00:00) shows as its date only.
-            T("                      {" + child.Var + "Columns.map((col) => <td key={col}>{formatChildCell(row[col], col" + (child.Lookups.Count > 0 ? ", " + child.Var + "Names[col]" : "") + ")}</td>)}");
-            if (child.KeyProp is not null)
+            T("                      {" + child.Variable + "Columns.map((col) => <td key={col}>{formatChildCell(row[col], col" + (child.Lookups.Count > 0 ? ", " + child.Variable + "Names[col]" : "") + ")}</td>)}");
+            if (child.KeyJson is not null)
             {
                 T("                      <td>");
-                T($"                        <button type=\"button\" onClick={{(event) => {{ event.stopPropagation(); edit{child.MethodName}(row); }}}}>Edit</button>");
-                T($"                        <button type=\"button\" onClick={{(event) => {{ event.stopPropagation(); void delete{child.MethodName}(row); }}}}>Delete</button>");
+                T($"                        <button type=\"button\" onClick={{(event) => {{ event.stopPropagation(); edit{child.Name}(row); }}}}>Edit</button>");
+                T($"                        <button type=\"button\" onClick={{(event) => {{ event.stopPropagation(); void delete{child.Name}(row); }}}}>Delete</button>");
                 T("                      </td>");
             }
             T("                    </tr>");
@@ -958,15 +852,15 @@
         S("import { MemoryRouter } from 'react-router-dom';");
         S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
         S($"import {{ {baseName}DetailMasterPage }} from '../{baseName}DetailMasterPage';");
-        S($"import {{ {variable}Api }} from '../../{apiFolder}/{stem}Api';");
-        foreach (var p in parents.Where(p => !p.Self))
-            S($"import {{ {p.ApiVar} }} from '../../{apiFolder}/{p.ApiFile}';");
+        S($"import {{ {ReactNames.ApiVar(Model.TableName)} }} from '../../{apiFolder}/{ReactNames.ApiFile(Model.TableName)}';");
+        foreach (var p in parents.Where(p => !p.IsSelf))
+            S($"import {{ {ReactNames.ApiVar(p.Table)} }} from '../../{apiFolder}/{ReactNames.ApiFile(p.Table)}';");
         S();
         S($"describe('{baseName}DetailMasterPage', () => {{");
         S("  beforeEach(() => {");
-        S($"    vi.spyOn({variable}Api, 'getPage').mockResolvedValue({{ items: [], page: 1, pageSize: {pageSize}, totalCount: 0, totalPages: 0 }});");
-        foreach (var p in parents.Where(p => !p.Self))
-            S($"    vi.spyOn({p.ApiVar}, 'getAll').mockResolvedValue([]);");
+        S($"    vi.spyOn({ReactNames.ApiVar(Model.TableName)}, 'getPage').mockResolvedValue({{ items: [], page: 1, pageSize: {pageSize}, totalCount: 0, totalPages: 0 }});");
+        foreach (var p in parents.Where(p => !p.IsSelf))
+            S($"    vi.spyOn({ReactNames.ApiVar(p.Table)}, 'getAll').mockResolvedValue([]);");
         S("  });");
         S();
         S("  afterEach(() => {");
@@ -985,7 +879,7 @@
             S();
             S($"  it('lets the person type the key of a new {Labels.Words(baseName).ToLowerInvariant()}, does not let them change it afterwards, and shows the child grids only for a saved row', async () => {{");
             S("    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };");
-            S($"    vi.spyOn({variable}Api, 'getPage').mockResolvedValue({{ items: [{sampleRow}], page: 1, pageSize: {pageSize}, totalCount: 1, totalPages: 1 }});");
+            S($"    vi.spyOn({ReactNames.ApiVar(Model.TableName)}, 'getPage').mockResolvedValue({{ items: [{sampleRow}], page: 1, pageSize: {pageSize}, totalCount: 1, totalPages: 1 }});");
             S($"    render(<MemoryRouter><{baseName}DetailMasterPage /></MemoryRouter>);");
             S($"    fireEvent.click(await screen.findByText('Add New {title}'));");
             S($"    expect(await screen.findByText('Add {title}')).toBeInTheDocument();");

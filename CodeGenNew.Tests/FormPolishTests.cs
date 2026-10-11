@@ -57,8 +57,8 @@ public class FormPolishTests
         string page = (await Run("TSX_Page_v1.tt", Invoice(), Project())).Single(f => f.Key.EndsWith("Page.tsx")).Value;
 
         Expect.Contains(page, "{selectedRow.invoiceId && (");
-        Expect.Contains(page, "<span id=\"invoice-createdate\">{selectedRow.createDate ? new Date(selectedRow.createDate).toLocaleString() : ''}</span>");
-        Expect.Contains(page, "<span id=\"invoice-createuser\">{selectedRow.createUser ?? ''}</span>");
+        Expect.Contains(page, "<span id=\"invoiceCreateDate\">{selectedRow.createDate ? new Date(selectedRow.createDate).toLocaleString() : ''}</span>");
+        Expect.Contains(page, "<span id=\"invoiceCreateUser\">{selectedRow.createUser ?? ''}</span>");
         Expect.DoesNotContain(page, "aria-label=\"Create Date\"");
         Expect.DoesNotContain(page, "aria-label=\"Create User\"");
         Expect.Contains(page, "<CurrencyInput");
@@ -88,9 +88,9 @@ public class FormPolishTests
     public async Task The_blazor_form_shows_the_stamp_as_text()
     {
         string page = (await Run("BLZ_Page_v1.tt", Invoice(), Project())).Single(f => f.Key.EndsWith(".razor")).Value;
-        Expect.Contains(page, "@if (!isNew) { <div class=\"field\"><label for=\"invoice-createdate\">Create Date</label><span id=\"invoice-createdate\">@row.CreateDate.ToString(\"g\")</span></div> }");
-        Expect.DoesNotContain(page, "<InputDate id=\"invoice-createdate\"");
-        Expect.Contains(page, "<InputNumber id=\"invoice-monthnumber\" @bind-Value=\"row.MonthNumber\" style=\"width: 7ch\" required />");
+        Expect.Contains(page, "@if (!isNew) { <div class=\"field\"><label for=\"invoiceCreateDate\">Create Date</label><span id=\"invoiceCreateDate\">@row.CreateDate.ToString(\"g\")</span></div> }");
+        Expect.DoesNotContain(page, "<InputDate id=\"invoiceCreateDate\"");
+        Expect.Contains(page, "<InputNumber id=\"invoiceMonthNumber\" @bind-Value=\"row.MonthNumber\" style=\"width: 7ch\" required />");
     }
 
     [TestMethod]
@@ -104,7 +104,7 @@ public class FormPolishTests
         ]);
         string page = (await Run("BLZ_Page_v1.tt", table, Project())).Single(f => f.Key.EndsWith(".razor")).Value;
         Expect.Contains(page, "<td>@Money(item.Freight, 2)</td>");
-        Expect.Contains(page, "<CurrencyInput id=\"invoice-freight\" @bind-Value=\"row.Freight\" Digits=\"2\" Symbol=\"$\" required />");
+        Expect.Contains(page, "<CurrencyInput id=\"invoiceFreight\" @bind-Value=\"row.Freight\" Digits=\"2\" Symbol=\"$\" required />");
         Expect.Contains(page, "<ValidationSummary />");
         Expect.Contains(page, "private static string Money(decimal? value, int digits)");
         Expect.Contains(page, "\"$\" + Math.Abs(value.Value)");

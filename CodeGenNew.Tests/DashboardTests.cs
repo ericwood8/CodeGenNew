@@ -268,6 +268,22 @@ public class DashboardTests
     }
 
     [TestMethod]
+    public void The_wire_contract_names_the_kinds_the_cards_and_the_classes_once()
+    {
+        CollectionAssert.AreEqual(new[] { "count", "childCount", "money", "topBy", "breakdown", "trend", "ratio", "status", "recent" }, DashboardWire.KindNames.ToArray());
+        CollectionAssert.AreEqual(new[] { "count", "childCount", "money", "ratio", "status" }, DashboardWire.CardKinds.ToArray());
+        CollectionAssert.AreEqual(new[] { "topBy", "breakdown" }, DashboardWire.BarKinds.ToArray());
+        Assert.AreEqual("\"count\" or \"childCount\" or \"money\" or \"ratio\" or \"status\"", DashboardWire.CardKindsCSharp);
+        Assert.AreEqual("['count', 'childCount', 'money', 'ratio', 'status']", DashboardWire.CardKindsTypeScript);
+        StringAssert.Contains(DashboardWire.TypeScript(2), "export type DashboardKind = 'count' | 'childCount' | 'money' | 'topBy' | 'breakdown' | 'trend' | 'ratio' | 'status' | 'recent';");
+        StringAssert.Contains(DashboardWire.TypeScript(4), "export interface DashboardWidgetData {\n    id: string;");
+        StringAssert.Contains(DashboardWire.CSharp(), "public partial class DashboardWidgetData");
+        StringAssert.Contains(DashboardWire.CSharp(), "Kind is count, childCount, money, topBy, breakdown, trend, ratio, status or recent");
+        Assert.IsTrue(new DashboardWidget("a", DashboardWidgetKind.Money, "t", "T", "", "", 0).IsCard, "the plan's widget asks the same rule");
+        Assert.IsFalse(new DashboardWidget("a", DashboardWidgetKind.Trend, "t", "T", "", "", 0).IsCard);
+    }
+
+    [TestMethod]
     public void A_measure_is_read_from_its_text()
     {
         Assert.AreEqual(new DashboardMeasure("Invoice", "TotalAmount", "sum", null, null), DashboardPlan.ParseMeasure("Invoice.TotalAmount:sum"));
@@ -368,6 +384,16 @@ public class DashboardTests
             Expect.Contains(Read("blz/Pages/Home.razor"), "NavigateTo(\"dashboard\"");
             Expect.Contains(Read("blz/Components/DashboardWidgetView.razor"), "CurrencySymbol = \"$\"");
             Expect.Contains(Read("blz/Pages/Dashboard.razor"), "@@media (min-width: 720px) { .dash-panel-wide { grid-column: span 2; } }");
+            // one contract for every stack: the server and the Blazor client write the same classes, React and Angular the same interfaces, and the pages the same style sheet
+            Expect.Contains(Read("Api/Repositories/DashboardData.cs"), DashboardWire.CSharp());
+            Expect.Contains(Read("App/Repositories/DashboardData.cs"), DashboardWire.CSharp());
+            Expect.Contains(Read("blz/Services/DashboardClient.cs"), DashboardWire.CSharp());
+            Expect.Contains(Read("web/src/api/dashboardApi.ts"), DashboardWire.TypeScript(2));
+            Expect.Contains(Read("ng/src/app/services/dashboard.service.ts"), DashboardWire.TypeScript(4));
+            Expect.Contains(Read("web/src/components/dashboard.css"), DashboardWire.Css("", true, ".dash-panel-wide"));
+            Expect.Contains(Read("ng/src/app/components/dashboard-widget/dashboard-widget.component.css"), DashboardWire.Css("", false, ":host(.wide)"));
+            Expect.Contains(Read("App/Views/DashboardWidgetViews.cs"), "widget.Kind is " + DashboardWire.CardKindsCSharp);
+            Expect.Contains(Read("web/src/components/DashboardWidgetView.tsx"), DashboardWire.CardKindsTypeScript + ".includes(widget.kind)");
             string window = Read("App/MainWindow.Screens.cs");
             Expect.Contains(window, "private const string FirstScreen = \"Dashboard\";");
             Expect.Contains(window, "\"Dashboard\" => new DashboardPage(GoTo),");

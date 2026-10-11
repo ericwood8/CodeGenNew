@@ -122,6 +122,20 @@ public class TableModel
     public required List<ForeignKeyModel> ForeignKeys { get; init; }
     public bool HasAtLeastOneForeignKey => ForeignKeys.Count > 0;
 
+    /// <summary> The table has a text column called Name that is NOT NULL: its repository has GetByName. </summary>
+    public bool HasRequiredNameColumn => Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
+
+    /// <summary> The API answers <c>GET &lt;route&gt;/{name}</c> and the clients have <c>findByName</c>: a table with a required Name that is not a name / active table. A text key has none, since
+    /// <c>GET &lt;route&gt;/{id}</c> and <c>GET &lt;route&gt;/{name}</c> would be one route. The API, the repository and every client ask this one question. </summary>
+    public bool CanFindByName => HasRequiredNameColumn && !IsNameActiveTable && KeyType.Of(this) is { Kind: not KeyKind.Text };
+
+    private Dictionary<string, ForeignKeyModel>? _foreignKeyByColumn;
+
+    /// <summary> The single-column foreign keys by the name of their column. A real table can have two constraints on one column, so the first one wins. </summary>
+    public IReadOnlyDictionary<string, ForeignKeyModel> ForeignKeyByColumn => _foreignKeyByColumn ??= ForeignKeys.Where(f => f.ReferencingColumns.Count == 1)
+        .GroupBy(f => f.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
     /// <summary> Other tables that have a foreign key pointing back at this one -- the mirror image of
     /// ForeignKeys. Always computed (not gated behind a template .tt.config flag), same as ForeignKeys. </summary>
     public required List<ChildForeignKeyModel> ChildForeignKeys { get; init; }

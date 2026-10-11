@@ -686,7 +686,7 @@ public class KeyTypeTests
     public async Task The_Blazor_page_of_a_text_key_table_types_the_key_on_a_new_row_and_locks_it_afterwards()
     {
         string razor = BlazorFiles(await Render("BLZ_Page_v1.tt", CountryWithName()))["CountryPage.razor"];
-        Expect.Contains(razor, "<InputText id=\"country-alpha3code\" @bind-Value=\"row.Alpha3Code\" maxlength=\"3\" readonly=\"@(!isNew)\" required />");
+        Expect.Contains(razor, "<InputText id=\"countryAlpha3Code\" @bind-Value=\"row.Alpha3Code\" maxlength=\"3\" readonly=\"@(!isNew)\" required />");
         Expect.Contains(razor, "<td>@item.Alpha3Code</td>");   // the key is a column of the grid
         Assert.IsLessThan(razor.IndexOf("row.Name", StringComparison.Ordinal), razor.IndexOf("row.Alpha3Code", StringComparison.Ordinal));   // the key is the first field
         Expect.Contains(razor, "catch (ApiException ex) when (ex.Status == 409) { message = \"A country with this alpha3 code already exists!\"; }");

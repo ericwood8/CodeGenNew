@@ -623,6 +623,9 @@ public class ProjectSettings
     /// <summary> The ISO 4217 code (USD, EUR, ...) a currency number box formats with. </summary>
     public string CurrencyCode => Explicit("CurrencyCode")?.ToUpperInvariant() ?? "USD";
 
+    /// <summary> What the Blazor pages print before an amount: <c>$</c> for dollars, else the code and a space (<c>EUR </c>). </summary>
+    public string CurrencySymbol => CurrencyCode == "USD" ? "$" : CurrencyCode + " ";
+
     public const int DefaultEnumMaxRows = 25;
 
     /// <summary> A lookup table with more rows than this is not treated as an enum, however small its shape. </summary>

@@ -43,7 +43,7 @@
 <section class=""dash-panel"" *ngIf=""layout === 'trend'"" [attr.aria-label]=""widget.title"">
   <h3><a [routerLink]=""link"">{{ widget.title }}</a></h3>
   <p *ngIf=""widget.points.length === 0"">No data.</p>
-  <svg *ngIf=""widget.points.length > 0"" class=""dash-spark"" viewBox=""0 0 200 48"" preserveAspectRatio=""none"" role=""img"" [attr.aria-label]=""summary"">
+  <svg *ngIf=""widget.points.length > 0"" class=""dash-spark"" viewBox=""0 0 " + DashboardWire.SparkWidth + " " + DashboardWire.SparkHeight + @""" preserveAspectRatio=""none"" role=""img"" [attr.aria-label]=""summary"">
     <polyline [attr.points]=""sparkPoints""></polyline>
   </svg>
   <details *ngIf=""widget.points.length > 0"">
@@ -97,33 +97,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
-export interface DashboardPoint {
-    label: string | null;
-    value: number | null;
-}
-
-export interface DashboardRow {
-    label: string | null;
-    detail: string | null;
-}
-
-export type DashboardKind = 'count' | 'childCount' | 'money' | 'topBy' | 'breakdown' | 'trend' | 'ratio' | 'status' | 'recent';
-
-export interface DashboardWidget {
-    id: string;
-    kind: DashboardKind;
-    title: string;
-    table: string;
-    route: string;
-    isMoney: boolean;
-    points: DashboardPoint[];
-    rows: DashboardRow[];
-}
-
-export interface DashboardResult {
-    widgets: DashboardWidget[];
-}
-
+<#= DashboardWire.TypeScript(4) #>
 @Injectable({
     providedIn: 'root',
 })
@@ -141,7 +115,7 @@ export class DashboardService {
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { DashboardWidget } from '../../<#= servicesFolder #>/dashboard.service';
+import { DashboardWidgetData } from '../../<#= servicesFolder #>/dashboard.service';
 
 // One widget: a card (count, childCount, money, ratio, status), a bar list (topBy, breakdown), a trend or the recent rows.
 @Component({
@@ -152,7 +126,7 @@ import { DashboardWidget } from '../../<#= servicesFolder #>/dashboard.service';
   host: { '[class.wide]': "layout === 'recent'" }
 })
 export class DashboardWidgetComponent {
-  @Input({ required: true }) widget!: DashboardWidget;
+  @Input({ required: true }) widget!: DashboardWidgetData;
 
   get layout(): 'bars' | 'trend' | 'recent' | 'card' {
     switch (this.widget.kind) {
@@ -174,15 +148,15 @@ export class DashboardWidgetComponent {
     return `${((value ?? 0) / largest) * 100}%`;
   }
 
-  // A line over the points of a trend, scaled to a 200 by 48 box; the numbers are in the table under it.
+  // A line over the points of a trend, scaled to a <#= DashboardWire.SparkWidth #> by <#= DashboardWire.SparkHeight #> box; the numbers are in the table under it.
   get sparkPoints(): string {
     const values = this.widget.points.map((p) => p.value ?? 0);
     if (values.length === 0) return '';
     const max = Math.max(...values, 0);
     const min = Math.min(...values, 0);
     const span = max - min || 1;
-    const step = values.length > 1 ? 200 / (values.length - 1) : 0;
-    return values.map((v, i) => `${(i * step).toFixed(1)},${(46 - ((v - min) / span) * 44).toFixed(1)}`).join(' ');
+    const step = values.length > 1 ? <#= DashboardWire.SparkWidth #> / (values.length - 1) : 0;
+    return values.map((v, i) => `${(i * step).toFixed(1)},${(<#= DashboardWire.SparkHeight - 2 #> - ((v - min) / span) * <#= DashboardWire.SparkHeight - 4 #>).toFixed(1)}`).join(' ');
   }
 
   get summary(): string {
@@ -191,30 +165,10 @@ export class DashboardWidgetComponent {
 }
 @@@FILE <#= componentsFolder #>/dashboard-widget/dashboard-widget.component.html@@@
 <#= widgetHtml #>@@@FILE <#= componentsFolder #>/dashboard-widget/dashboard-widget.component.css@@@
-.dash-card, .dash-panel { padding: 12px 16px; border: 1px solid #8886; border-radius: 6px; background: #8881; }
-.dash-card h3, .dash-panel h3 { margin: 0 0 8px; font-size: 1rem; }
-.dash-card a, .dash-panel a { color: inherit; text-decoration: none; }
-.dash-card a:hover, .dash-panel a:hover { text-decoration: underline; }
-.dash-card dl { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; }
-.dash-card dt { font-size: 0.85rem; opacity: 0.8; }
-.dash-card dd { margin: 0 0 4px; font-size: 1.6rem; font-weight: 700; }
-.dash-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.dash-bars li { display: grid; grid-template-columns: minmax(80px, 30%) 1fr auto; align-items: center; gap: 8px; }
-.dash-track { display: block; height: 10px; border-radius: 5px; background: #8883; }
-.dash-fill { display: block; height: 100%; border-radius: 5px; background: currentColor; opacity: 0.55; }
-.dash-value { font-variant-numeric: tabular-nums; font-weight: 600; }
-.dash-spark { width: 100%; height: 56px; }
-.dash-spark polyline { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; }
-.dash-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-.dash-recent li { display: flex; justify-content: space-between; gap: 12px; }
-.dash-recent li span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
-@media (min-width: 720px) { :host(.wide) { grid-column: span 2; } }
-.dash-panel details { margin-top: 8px; }
-.dash-panel summary { cursor: pointer; font-size: 0.85rem; opacity: 0.8; }
-@@@FILE <#= componentsFolder #>/dashboard/dashboard.component.ts@@@
+<#= DashboardWire.Css("", false, ":host(.wide)") #>@@@FILE <#= componentsFolder #>/dashboard/dashboard.component.ts@@@
 import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DashboardResult, DashboardService, DashboardWidget } from '../../<#= servicesFolder #>/dashboard.service';
+import { DashboardResult, DashboardService, DashboardWidgetData } from '../../<#= servicesFolder #>/dashboard.service';
 import { DashboardWidgetComponent } from '../dashboard-widget/dashboard-widget.component';
 
 @Component({
@@ -241,12 +195,12 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-  get cards(): DashboardWidget[] {
-    return (this.data?.widgets ?? []).filter((w) => ['count', 'childCount', 'money', 'ratio', 'status'].includes(w.kind));
+  get cards(): DashboardWidgetData[] {
+    return (this.data?.widgets ?? []).filter((w) => <#= DashboardWire.CardKindsTypeScript #>.includes(w.kind));
   }
 
-  get others(): DashboardWidget[] {
-    return (this.data?.widgets ?? []).filter((w) => !['count', 'childCount', 'money', 'ratio', 'status'].includes(w.kind));
+  get others(): DashboardWidgetData[] {
+    return (this.data?.widgets ?? []).filter((w) => !<#= DashboardWire.CardKindsTypeScript #>.includes(w.kind));
   }
 }
 @@@FILE <#= componentsFolder #>/dashboard/dashboard.component.html@@@
@@ -293,7 +247,7 @@ describe('DashboardComponent', () => {
 @@@FILE <#= componentsFolder #>/dashboard-strip/dashboard-strip.component.ts@@@
 import { ChangeDetectionStrategy, Component, Input, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DashboardService, DashboardWidget } from '../../<#= servicesFolder #>/dashboard.service';
+import { DashboardService, DashboardWidgetData } from '../../<#= servicesFolder #>/dashboard.service';
 import { DashboardWidgetComponent } from '../dashboard-widget/dashboard-widget.component';
 
 // The two or three cards of one table, above its grid. A failure shows nothing: the grid below is what the person came for.
@@ -305,7 +259,7 @@ import { DashboardWidgetComponent } from '../dashboard-widget/dashboard-widget.c
 })
 export class DashboardStripComponent implements OnChanges {
   @Input({ required: true }) table = '';
-  widgets: DashboardWidget[] = [];
+  widgets: DashboardWidgetData[] = [];
 
   constructor(private service: DashboardService) { }
 

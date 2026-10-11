@@ -19,9 +19,9 @@
     // ==========================================================================================
 
     // a money column that is not a whole number is shown with the currency symbol in the grid
-    string Symbol() => Project.CurrencyCode == "USD" ? "$" : Project.CurrencyCode + " ";
+    string Symbol() => Project.CurrencySymbol;
     bool HasInput(ColumnModel c) => c.CSharpBase() is not ("byte[]" or "object");
-    string Ident(string name) => Regex.Replace(name, "[^A-Za-z0-9]", "");
+    string Ident(string name) => BlazorNames.Identifier(name);
 
     if (BlazorNames.Refusal(Model, Project) is { } reason)
     {
@@ -29,37 +29,24 @@
     }
     else
     {
-        var keyColumn = Model.PrimaryKeyColumns[0];
-        string type = BlazorNames.TypeName(Model.TableName);
+        var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
+        var keyColumn = form.KeyColumn!;
+        string type = form.BaseName;
         string ns = BlazorNames.Namespace(Project);
-        string title = Labels.Words(type);
+        string title = form.Title;
         string key = keyColumn.CSharpName();
-        bool textKey = KeyType.Of(Model)!.Kind == KeyKind.Text;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
+        bool textKey = form.TextKey;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
         const int pageSize = 20;
 
-        var searchFields = Model.SearchableColumns.Select(c => (Column: c, Param: LowerFirst(c.Name), Field: "filter" + Ident(c.Name), Label: Labels.Column(c.Name))).ToList();
+        var searchFields = form.SearchFields.Select(f => (Column: f.Column!, f.ParamName, Field: "filter" + Ident(f.Name), f.Label)).ToList();
 
-        // What the form is made of (its columns, the foreign key behind each, the drop-downs and their parents) is decided in Core for every stack.
-        var form = FormModel.For(Model, Project);
-        var fkByColumn = form.ForeignKeysByColumn;
-        var shown = form.Columns.ToList();
+        var shown = form.Columns;
 
-        // A foreign key is a drop-down when the parent has display columns and the project does not say otherwise; the table's own parent (a tree) stays a plain box.
-        var parents = form.Parents
-            .Select(fk => new
-            {
-                Table = fk.ReferencedTable,
-                Type = BlazorNames.TypeName(fk.ReferencedTable),
-                Field = "lookup" + Ident(BlazorNames.TypeName(fk.ReferencedTable)),
-                IdType = Model.Columns.First(col => col.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])).CSharpBase(),
-                KeyProp = fk.ReferencedColumns[0],
-                DisplayProp = fk.ReferencedDisplayColumns[0]
-            }).ToList();
-        var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
+        var parents = form.Parents;
 
-        var gridColumns = GridColumns.For(shown);
-        var sortable = gridColumns.Where(SearchSort.IsSortable).ToList();
-        bool canClone = CloneShape.CanClone(Model, Project);
+        var gridColumns = form.GridColumns;
+        var sortable = form.SortableColumns;
+        bool canClone = form.CanClone;
 
         bool usesMoneyBox = shown.Any(form.IsMoneyInput);
 
@@ -71,7 +58,7 @@
             {
                 string childType = BlazorNames.TypeName(g.Table);
                 var lookups = g.Lookups
-                    .Select(l => (Column: l.ColumnName, Type: BlazorNames.TypeName(l.ParentTable), Field: "childLookup" + Ident(BlazorNames.TypeName(l.ParentTable)),
+                    .Select(l => (Column: l.ColumnName, Type: BlazorNames.TypeName(l.ParentTable), Field: BlazorNames.ChildLookupField(l.ParentTable),
                                   IdType: l.Column!.CSharpBase(), KeyProp: l.ParentKeyName, DisplayProp: l.ParentDisplayName))
                     .ToList();
                 var columns = g.Link.ReferencingTableColumns
@@ -81,7 +68,7 @@
                 {
                     Link = g.Link,
                     Type = childType,
-                    Var = "child" + Ident(childType + g.Role),
+                    Var = BlazorNames.ChildVariable(g),
                     Title = g.Title,
                     FkProp = g.ForeignKeyColumn!.CSharpName(),
                     KeyProp = g.KeyColumn!.CSharpName(),
@@ -116,7 +103,7 @@
             L($"@using {ns}.Components");
         L("@inject §TClient Client");
         foreach (var p in parents)
-            L($"@inject {p.Type}Client {p.Field}Client");
+            L($"@inject {p.BaseName}Client {BlazorNames.LookupField(p)}Client");
         foreach (var ch in children)
             L($"@inject {ch.Type}Client {ch.Var}Client");
         foreach (var l in childLookups)
@@ -166,7 +153,7 @@
         {
             string prop = $"item.{c.CSharpName()}";
             var lookup = form.LookupOf(c);
-            string cell = Cell(c, prop, lookup is not null ? $"Name{parentOf[lookup.ReferencedTable].Type}({prop})" : null);
+            string cell = Cell(c, prop, lookup is not null ? $"Name{form.ParentOf(c)!.BaseName}({prop})" : null);
             L($"                <td>{cell}</td>");
         }
         L("                <td>");
@@ -210,48 +197,48 @@
         L("        <EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\">");
         foreach (var c in shown)
         {
-            string id = ScreenNames.Stem(Model.TableName) + "-" + Ident(c.Name).ToLowerInvariant();
+            string id = form.FieldId(c);
             string label = Labels.Field(c);
             string bind = $"row.{c.CSharpName()}";
             string required = c.IsNullable ? "" : " required";
             string input;
-            var lookup = form.LookupOf(c);
-            if (c.IsSystemStampColumn)
+            var kind = form.KindOf(c);
+            if (kind == FieldKind.SystemStamp)
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
                 string stampText = IsDate(c) ? $"@{bind}{(c.IsNullable ? "?" : "")}.ToString(\"g\")" : $"@{bind}";
                 L($"            @if (!isNew) {{ <div class=\"field\"><label for=\"{id}\">{label}</label><span id=\"{id}\">{stampText}</span></div> }}");
                 continue;
             }
-            if (textKey && c.IsPrimaryKey)
+            if (kind == FieldKind.TypedKey)
             {
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
                 string max = Chars(c) is > 0 and < 4000 ? $" maxlength=\"{Chars(c)}\"" : "";
                 input = $"<InputText id=\"{id}\" @bind-Value=\"{bind}\"{max} readonly=\"@(!isNew)\" required />";
             }
-            else if (lookup is not null)
+            else if (kind == FieldKind.Lookup)
             {
-                var p = parentOf[lookup.ReferencedTable];
+                var p = form.ParentOf(c)!;
                 string blank = c.IsNullable ? "<option value=\"\">None</option>" : c.CSharpBase() == "string" ? "<option value=\"\">Select</option>" : $"<option value=\"@(default({c.CSharpBase()}))\">Select</option>";
-                input = $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\">{blank}@foreach (var parent in {p.Field}) {{ <option value=\"@parent.{p.KeyProp}\">@parent.{p.DisplayProp}</option> }}</InputSelect>";
+                input = $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\">{blank}@foreach (var parent in {BlazorNames.LookupField(p)}) {{ <option value=\"@parent.{p.KeyName}\">@parent.{p.DisplayName}</option> }}</InputSelect>";
             }
-            else if (c.HasChoices && c.CSharpBase() == "string")
+            else if (kind == FieldKind.Choices)
             {
                 // A column whose values the database lists (a CHECK list, a MySQL enum) is a drop-down of them; the blank first entry keeps a new row from silently taking the first value.
                 string choices = string.Join("", c.Choices!.Select(choice => $"<option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>"));
                 input = $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\"{required}><option value=\"\"></option>{choices}</InputSelect>";
             }
-            else if (c.IsBooleanColumn)
+            else if (kind == FieldKind.Boolean)
             {
                 input = c.IsNullable
                     ? $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\"><option value=\"\"></option><option value=\"true\">Yes</option><option value=\"false\">No</option></InputSelect>"
                     : $"<InputCheckbox id=\"{id}\" @bind-Value=\"{bind}\" />";
             }
-            else if (IsDate(c))
+            else if (kind == FieldKind.Date)
                 input = $"<InputDate id=\"{id}\" @bind-Value=\"{bind}\"{required} />";
-            else if (form.IsMoneyInput(c))
+            else if (kind == FieldKind.Money)
                 input = $"<CurrencyInput id=\"{id}\" @bind-Value=\"{bind}\" Digits=\"{NumericClassifier.CurrencyDigits(c)}\" Symbol=\"{Symbol()}\"{required} />";
-            else if (IsNumber(c))
+            else if (kind == FieldKind.Number)
             {
                 string width = Project.NumberBoxCharacters(c) is { } boxWidth ? $" style=\"width: {boxWidth}ch\"" : "";
                 input = $"<InputNumber id=\"{id}\" @bind-Value=\"{bind}\"{width}{required} />";
@@ -326,7 +313,7 @@
         L("    private bool loaded;   // true once a page has arrived, so \"Nothing found.\" is not shown while waiting");
         L("    private List<§T> items = [];");
         foreach (var p in parents)
-            L($"    private List<{p.Type}> {p.Field} = [];");
+            L($"    private List<{p.BaseName}> {BlazorNames.LookupField(p)} = [];");
         foreach (var ch in children)
             L($"    private List<{ch.Type}> {ch.Var}Rows = [];");
         foreach (var l in childLookups)
@@ -347,7 +334,7 @@
         L("    protected override async Task OnInitializedAsync()");
         L("    {");
         foreach (var p in parents)
-            L($"        try {{ {p.Field} = await {p.Field}Client.GetAllAsync(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
+            L($"        try {{ {BlazorNames.LookupField(p)} = await {BlazorNames.LookupField(p)}Client.GetAllAsync(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
         foreach (var l in childLookups)
             L($"        try {{ {l.Field} = await {l.Field}Client.GetAllAsync(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
         L("        await LoadAsync();");
@@ -363,7 +350,7 @@
             L("    private IReadOnlyDictionary<string, string?> Filters() => new Dictionary<string, string?>");
             L("    {");
             foreach (var f in searchFields)
-                L($"        [\"{f.Param}\"] = {f.Field},");
+                L($"        [\"{f.ParamName}\"] = {f.Field},");
             L("    };");
         }
         else
@@ -419,7 +406,7 @@
         foreach (var p in parents)
         {
             L();
-            L($"    private string Name{p.Type}({p.IdType}? id) => Convert.ToString({p.Field}.FirstOrDefault(p => Equals(p.{p.KeyProp}, id))?.{p.DisplayProp}) ?? \"\";");
+            L($"    private string Name{p.BaseName}({p.Column.CSharpBase()}? id) => Convert.ToString({BlazorNames.LookupField(p)}.FirstOrDefault(p => Equals(p.{p.KeyName}, id))?.{p.DisplayName}) ?? \"\";");
         }
         foreach (var l in childLookups)
         {

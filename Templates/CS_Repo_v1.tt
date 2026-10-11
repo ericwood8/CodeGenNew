@@ -95,7 +95,7 @@
                 });
             }
         }
-        else if (Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name"))
+        else if (Model.HasRequiredNameColumn)
         {
             methods.Add(new[]
             {

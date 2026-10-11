@@ -51,8 +51,6 @@
         string keyPath = keyType.Kind == KeyKind.Text ? "${encodeURIComponent(id)}" : "${id}";
         string stem = baseName.ToLowerInvariant();
         string variable = LowerFirst(baseName);
-        // the API's GetByName (CS_Repo) exists for a NOT NULL Name; a text key table has none (GET <route>/{id} and GET <route>/{name} would be one route)
-        bool hasName = keyType.Kind != KeyKind.Text && Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
         // Pagination: getPage always exists, once SP_Search.tt/API_Search.tt do; pagination and searchability are separate concerns.
         // Search: filters is simply empty for a table with no searchable column.
         // ListProtocol=Search: one search box, so one filter (the server decides which columns it matches); the answer { data, count } is turned into the same paged result
@@ -94,7 +92,7 @@
             L();
             L($"  clone: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/{keyPath}/clone`, {{ method: 'POST' }}),");
         }
-        if (hasName)
+        if (Model.CanFindByName)
         {
             L();
             L($"  findByName: (name: string) => request<{baseName}[]>(`${{apiUrl}}/${{name}}`),");

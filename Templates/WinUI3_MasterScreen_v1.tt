@@ -41,10 +41,11 @@
     // ==========================================================================================
 
 
-    var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
-    bool isNameActive = Model.IsNameActiveTable;
+    var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
+    var keyColumn = form.KeyColumn;
+    bool isNameActive = form.IsNameActive;
 
-    var keyType = KeyType.Of(Model);   // how the key travels: its C# type (int, long, Guid or string) is the type of the row id and of the Edit / Delete buttons' Tag
+    var keyType = form.KeyType;   // how the key travels: its C# type (int, long, Guid or string) is the type of the row id and of the Edit / Delete buttons' Tag
     if (keyColumn is null || keyType is null)
     {
         Error($"WinUI3_MasterScreen needs a table with a single int, uniqueidentifier or text primary key (CS_Repo's GenericRepo<T, TKey> takes it as the id), but [{Model.SchemaName}].[{Model.TableName}] has "
@@ -57,12 +58,12 @@
     else
     {
         string table = Model.TableName;
-        string title = Labels.Words(table);
+        string title = form.Title;
         // The dialog Add/Edit opens: the table's Detail-Master dialog when it has one (DatabaseModel.IsDetailMaster, the rule WinUI3_DetailMasterScreen's plan uses), else its plain Detail dialog.
         string editDialog = table + (DatabaseModel.IsDetailMaster(Model, Project) ? "DetailMasterDialog" : "DetailDialog");
         string keyProp = keyColumn.Name;
         string keyCs = keyType.CSharp;
-        bool textKey = keyType.Kind == KeyKind.Text;   // the key is a column of the grid: the person typed it and it means something
+        bool textKey = form.TextKey;   // the key is a column of the grid: the person typed it and it means something
         int pageSize = 20;
         // One TextBox + one ViewModel filter property per searchable column, in the same order as
         // Model.SearchableColumns (matching TS_Component.tt/TSX_Page.tt). Field/Prop follow the same
@@ -78,23 +79,10 @@
         int errorRow = canSearch ? 3 : 2;
         int gridRow = canSearch ? 4 : 3;
 
-        // What the form is made of (its columns, the foreign key behind each, the drop-downs and their parents) is decided in Core for every stack.
-        var form = FormModel.For(Model, Project);
-        var fkByColumn = form.ForeignKeysByColumn;
-
         // The grid shows at most 20 columns and never a long text column (a Notes column, varchar(max), ...), and multi-line text only when that leaves fewer than GridColumns.MinColumns: see GridColumns.
-        var shown = GridColumns.For(form.Columns);
+        var shown = form.GridColumns;
 
-        var parents = shown.Select(c => form.LookupOf(c)).Where(fk => fk is not null)
-            .GroupBy(fk => fk.ReferencedTable, StringComparer.OrdinalIgnoreCase).Select(g => g.First())
-            .Select(fk => new
-            {
-                Table = fk.ReferencedTable,
-                NamesDictionary = TemplateHelpers.LowerFirst(fk.ReferencedTable) + "Names",
-                KeyProp = fk.ReferencedColumns[0],
-                DisplayProp = fk.ReferencedDisplayColumns[0]
-            }).ToList();
-        var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
+        var parents = shown.Select(form.ParentOf).OfType<FormParent>().DistinctBy(p => p.Table, StringComparer.OrdinalIgnoreCase).ToList();
 
         if (!Model.HasReferencedDisplayColumns && parents.Count > 0)
             Error("WinUI3_MasterScreen needs the foreign-keyed tables' display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
@@ -583,7 +571,7 @@ public partial class <#= table #>ListViewModel : ObservableObject
         foreach (var p in parents)
         {
 #>
-        var <#= p.NamesDictionary #> = await _context.Set<<#= p.Table #>>().ToDictionaryAsync(r => r.<#= p.KeyProp #>, r => r.<#= p.DisplayProp #>?.ToString() ?? "");
+        var <#= WinUI3Names.NamesDictionary(p) #> = await _context.Set<<#= p.Table #>>().ToDictionaryAsync(r => r.<#= p.KeyName #>, r => r.<#= p.DisplayName #>?.ToString() ?? "");
 <#
         }
 #>
@@ -614,17 +602,17 @@ public partial class <#= table #>ListViewModel : ObservableObject
             string varName = TemplateHelpers.LowerFirst(prop);
             if (lookup is not null)
             {
-                var p = parentOf[lookup.ReferencedTable];
+                var p = form.ParentOf(c)!;
                 if (c.IsNullable)
                 {
 #>
-                e.<#= prop #> is <#= c.CSharpBase() #> <#= varName #>Id && <#= p.NamesDictionary #>.TryGetValue(<#= varName #>Id, out var <#= varName #>Name) ? <#= varName #>Name : "",
+                e.<#= prop #> is <#= c.CSharpBase() #> <#= varName #>Id && <#= WinUI3Names.NamesDictionary(p) #>.TryGetValue(<#= varName #>Id, out var <#= varName #>Name) ? <#= varName #>Name : "",
 <#
                 }
                 else
                 {
 #>
-                <#= p.NamesDictionary #>.TryGetValue(e.<#= prop #>, out var <#= varName #>Name) ? <#= varName #>Name : e.<#= prop #>.ToString(),
+                <#= WinUI3Names.NamesDictionary(p) #>.TryGetValue(e.<#= prop #>, out var <#= varName #>Name) ? <#= varName #>Name : e.<#= prop #>.ToString(),
 <#
                 }
             }

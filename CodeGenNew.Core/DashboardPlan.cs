@@ -29,10 +29,10 @@ public enum DashboardWidgetKind
 public sealed record DashboardWidget(string Id, DashboardWidgetKind Kind, string Title, string Table, string Why, string Sql, int Score, bool IsMoney = false)
 {
     public bool IsRows => Kind == DashboardWidgetKind.Recent;
-    public bool IsCard => Kind is DashboardWidgetKind.Count or DashboardWidgetKind.ChildCount or DashboardWidgetKind.Money or DashboardWidgetKind.Ratio or DashboardWidgetKind.Status;
+    public bool IsCard => DashboardWire.IsCard(Kind);
 
     /// <summary> The kind as the JSON and the pages name it: <c>count</c>, <c>childCount</c>, <c>topBy</c>. </summary>
-    public string KindName => JsonNames.Camel(Kind.ToString());
+    public string KindName => DashboardWire.KindName(Kind);
 }
 
 /// <summary> A measure the project names itself (<c>DashboardMeasures=SalesInvoice.TotalAmount:sum:InvoiceDate:month</c>): a table, a column, an aggregate and, for a trend, a date column and a bucket. </summary>

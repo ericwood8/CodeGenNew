@@ -55,10 +55,11 @@
         SqlDbType.Float => "double", SqlDbType.Real => "float", _ => "int"
     };
 
-    var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
-    bool isNameActive = Model.IsNameActiveTable;
+    var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
+    var keyColumn = form.KeyColumn;
+    bool isNameActive = form.IsNameActive;
 
-    var keyType = KeyType.Of(Model);   // how the key travels: a text key is typed by the person on a new row and read-only afterwards
+    var keyType = form.KeyType;   // how the key travels: a text key is typed by the person on a new row and read-only afterwards
     if (keyColumn is null || keyType is null)
     {
         Error($"WinUI3_DetailMasterScreen needs a table with a single int, uniqueidentifier or text primary key (CS_Repo's GenericRepo<T, TKey> takes it as the id), but [{Model.SchemaName}].[{Model.TableName}] has "
@@ -75,32 +76,17 @@
     else
     {
         string table = Model.TableName;
-        string title = Labels.Words(table);
+        string title = form.Title;
         string keyProp = keyColumn.Name;
-        bool textKey = keyType.Kind == KeyKind.Text;
+        bool textKey = form.TextKey;
 
-        // What the form is made of (its columns, the foreign key behind each, the drop-downs and their parents) is decided in Core for every stack.
-        var form = FormModel.For(Model, Project);
-        var fkByColumn = form.ForeignKeysByColumn;
-
-        var shown = form.Columns.ToList();
+        var shown = form.Columns;
 
         // A form with more than one kind of field is tabbed (Main / Billing & Shipping / Notes): see FormPages. A narrow table keeps its single column.
-        var pages = FormPages.For(shown).Select(p => (Header: p.Header.Replace("&", "&amp;"), Columns: p.Columns)).ToList();
+        var pages = form.Pages.Select(p => (Header: p.Header.Replace("&", "&amp;"), Columns: p.Columns)).ToList();
         bool tabbed = pages.Count > 1;
 
-        var parents = form.Parents
-            .Select(fk => new
-            {
-                Table = fk.ReferencedTable,
-                OptionsProp = fk.ReferencedTable + "Options",
-                // the C# type of the key the drop-down offers (int, long, Guid or string) and the option class that holds it: the int one keeps its original name
-                KeyCs = Model.ForeignKeyType(fk)!.CSharp,
-                OptionClass = table + "DetailMasterLookupOption" + (Model.ForeignKeyType(fk)!.CSharp == "int" ? "" : char.ToUpperInvariant(Model.ForeignKeyType(fk)!.CSharp[0]) + Model.ForeignKeyType(fk)!.CSharp[1..]),
-                KeyProp = fk.ReferencedColumns[0],
-                DisplayProp = fk.ReferencedDisplayColumns[0]
-            }).ToList();
-        var parentOf = parents.ToDictionary(p => p.Table, StringComparer.OrdinalIgnoreCase);
+        var parents = form.Parents;
 
         if (!Model.HasReferencedDisplayColumns && parents.Count > 0)
             Error("WinUI3_DetailMasterScreen needs the foreign-keyed tables' display columns for its drop-downs; its .tt.config must say NeedsReferencedDisplayColumns=true.");
@@ -210,10 +196,10 @@
             }
         foreach (var c in page.Columns)
         {
-            var lookup = form.LookupOf(c);
+            var kind = form.KindOf(c);
             string prop = c.Name;
             string label = Labels.Column(c.Name);
-            if (c.IsSystemStampColumn)
+            if (kind == FieldKind.SystemStamp)
             {
                 // who made the row and when it changed: the system writes it, so it is text, not a box
 #>
@@ -224,30 +210,30 @@
 <#
                 continue;
             }
-            if (lookup is not null)
+            if (kind == FieldKind.Lookup)
             {
-                var p = parentOf[lookup.ReferencedTable];
+                var p = form.ParentOf(c)!;
 #>
-            <ComboBox Header="<#= label #>" ItemsSource="{x:Bind ViewModel.<#= p.OptionsProp #>}"
+            <ComboBox Header="<#= label #>" ItemsSource="{x:Bind ViewModel.<#= WinUI3Names.OptionsProperty(p) #>}"
                       SelectedValuePath="Id" DisplayMemberPath="Text"
                       SelectedValue="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
 <#
             }
-            else if (c.HasChoices)
+            else if (kind == FieldKind.Choices)
             {
 #>
             <ComboBox Header="<#= label #>" ItemsSource="{x:Bind ViewModel.<#= prop #>Choices}"
                       SelectedItem="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
 <#
             }
-            else if (form.IsMoneyInput(c))
+            else if (kind == FieldKind.Money)
             {
 #>
             <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
                        <#= Project.MoneyLimitAttributes(table, c) #>ValidationMode="InvalidInputOverwritten" Width="180" HorizontalAlignment="Left" />
 <#
             }
-            else if (UsesDecimalBox(c))
+            else if (kind == FieldKind.Number && UsesDecimalBox(c))
             {
                 var (decMin, decMax) = NumericClassifier.DecimalRange(c);
                 int decDigits = Inv(decMax).Length + (c.SqlType == SqlDbType.Decimal ? DecimalPlaces(c) : 4);
@@ -258,7 +244,7 @@
                        SpinButtonPlacementMode="Inline" ValidationMode="InvalidInputOverwritten"<#= decWidth #> />
 <#
             }
-            else if (UsesNumberBox(c))
+            else if (kind == FieldKind.Number && UsesNumberBox(c))
             {
                 var range = Project.RangeFor(c)!.Value;
                 // Narrow to the widest number the range allows (a month is two digits, a year four) plus what the box itself needs
@@ -273,13 +259,13 @@
                        SpinButtonPlacementMode="Inline" ValidationMode="InvalidInputOverwritten"<#= width #> />
 <#
             }
-            else if (IsBit(c))
+            else if (kind == FieldKind.Boolean)
             {
 #>
             <CheckBox Content="<#= label #>?" IsChecked="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
 <#
             }
-            else if (IsDate(c))
+            else if (kind == FieldKind.Date)
             {
 #>
             <StackPanel Orientation="Horizontal" Spacing="8">
@@ -296,7 +282,7 @@
             </StackPanel>
 <#
             }
-            else if (IsMultiline(c))
+            else if (kind == FieldKind.Multiline)
             {
 #>
             <TextBox Header="<#= label #>" Text="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
@@ -603,7 +589,7 @@ using <#= u #>;
 namespace <#= viewModelNamespace #>;
 
 /// <summary> One entry of a <#= table #>DetailMasterDialog drop-down: an id plus the text to show for it. </summary>
-public class <#= table #>DetailMasterLookupOption
+public class <#= WinUI3Names.LookupOptionClass(table, "DetailMaster", "int") #>
 {
     public int Id { get; set; }
     public string Text { get; set; } = "";
@@ -615,7 +601,7 @@ public class <#= table #>DetailMasterLookupOption
 #>
 
 /// <summary> One entry of a <#= table #>DetailMasterDialog drop-down whose ids are <#= optionKey #>: an id plus the text to show for it. </summary>
-public class <#= table #>DetailMasterLookupOption<#= char.ToUpperInvariant(optionKey[0]) + optionKey[1..] #>
+public class <#= WinUI3Names.LookupOptionClass(table, "DetailMaster", optionKey) #>
 {
     public <#= optionKey #> Id { get; set; }<#= optionKey == "string" ? " = \"\";" : "" #>
     public string Text { get; set; } = "";
@@ -665,7 +651,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         foreach (var p in parents)
         {
 #>
-    public ObservableCollection<<#= p.OptionClass #>> <#= p.OptionsProp #> { get; } = [];
+    public ObservableCollection<<#= WinUI3Names.LookupOptionClass(table, "DetailMaster", p.KeyCs) #>> <#= WinUI3Names.OptionsProperty(p) #> { get; } = [];
 <#
         }
         foreach (var child in children)
@@ -776,7 +762,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         {
             var lookup = form.LookupOf(c);
             string prop = c.Name;
-            string fieldType = lookup is not null ? parentOf[lookup.ReferencedTable].KeyCs + "?" : IsBit(c) ? "bool?" : (UsesNumberBox(c) || form.IsMoneyInput(c) || UsesDecimalBox(c)) ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
+            string fieldType = lookup is not null ? form.ParentOf(c)!.KeyCs + "?" : IsBit(c) ? "bool?" : (UsesNumberBox(c) || form.IsMoneyInput(c) || UsesDecimalBox(c)) ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
 #>
     [ObservableProperty]
     private <#= fieldType #> _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #><#= fieldType == "double" ? " = double.NaN" : "" #>;
@@ -862,9 +848,9 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         {
             var lookupColumnsForThisParent = shown.Where(c => form.LookupOf(c) is ForeignKeyModel fk && fk.ReferencedTable.EqualsIgnoreCase(p.Table)).ToList();
 #>
-        <#= p.OptionsProp #>.Clear();
-        foreach (var row in await _context.Set<<#= p.Table #>>().OrderBy(r => r.<#= p.DisplayProp #>).ToListAsync())
-            <#= p.OptionsProp #>.Add(new <#= p.OptionClass #> { Id = row.<#= p.KeyProp #>, Text = row.<#= p.DisplayProp #>?.ToString() ?? "" });
+        <#= WinUI3Names.OptionsProperty(p) #>.Clear();
+        foreach (var row in await _context.Set<<#= p.Table #>>().OrderBy(r => r.<#= p.DisplayName #>).ToListAsync())
+            <#= WinUI3Names.OptionsProperty(p) #>.Add(new <#= WinUI3Names.LookupOptionClass(table, "DetailMaster", p.KeyCs) #> { Id = row.<#= p.KeyName #>, Text = row.<#= p.DisplayName #>?.ToString() ?? "" });
 <#
             if (lookupColumnsForThisParent.Count > 0)
             {
@@ -1023,7 +1009,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
                 {
 #>
         if (<#= prop #> is null) { ErrorMessage = "<#= label #> is required."; return false; }
-        entity.<#= prop #> = <#= prop #><#= parentOf[lookup.ReferencedTable].KeyCs == "string" ? "" : ".Value" #>;
+        entity.<#= prop #> = <#= prop #><#= form.ParentOf(c)!.KeyCs == "string" ? "" : ".Value" #>;
 <#
                 }
                 else

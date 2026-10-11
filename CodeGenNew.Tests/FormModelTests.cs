@@ -51,11 +51,11 @@ public class FormModelTests
         Assert.IsNotNull(form.LookupOf(table.Columns.First(c => c.Name == "ParentAccountId")), "a foreign key to the table itself is a drop-down too");
         Assert.IsTrue(form.IsSelfReference(form.LookupOf(table.Columns.First(c => c.Name == "ParentAccountId"))!));
         Assert.IsNull(form.LookupOf(table.Columns.First(c => c.Name == "Nickname")), "not a foreign key");
-        CollectionAssert.AreEqual(new[] { "Region", "Style", "Account" }, form.Parents.Select(p => p.ReferencedTable).ToArray(), "one parent per table, in column order");
+        CollectionAssert.AreEqual(new[] { "Region", "Style", "Account" }, form.Parents.Select(p => p.Table).ToArray(), "one parent per table, in column order");
 
         var plain = FormModel.For(table, Project(("NoLookupParents", "Region")));
         Assert.IsNull(plain.LookupOf(table.Columns.First(c => c.Name == "RegionId")), "NoLookupParents leaves a plain box");
-        CollectionAssert.DoesNotContain(plain.Parents.Select(p => p.ReferencedTable).ToList(), "Region");
+        CollectionAssert.DoesNotContain(plain.Parents.Select(p => p.Table).ToList(), "Region");
     }
 
     [TestMethod]
@@ -146,6 +146,185 @@ public class FormModelTests
         Assert.AreEqual("/api/salesinvoices", BlazorNames.ApiRoute("SalesInvoice"), "the Blazor clients and the React and Angular ones build the same route");
     }
 
+    [TestMethod]
+    public void A_parent_carries_what_every_stack_names_its_drop_down_from()
+    {
+        var table = Account();
+        var form = FormModel.For(table, Project(("HiddenParents", "Style")));
+        var region = form.Parents.First(p => p.Table == "Region");
+        Assert.AreEqual("Region", region.BaseName);
+        Assert.AreEqual("RegionId", region.Column.Name);
+        Assert.AreEqual("RegionId", region.KeyName);
+        Assert.AreEqual("Name", region.DisplayName);
+        Assert.AreEqual("regions", region.List);
+        Assert.AreEqual("regionName", region.NameMethod);
+        Assert.AreEqual("number", region.KeyTs);
+        Assert.AreEqual("int", region.KeyCs);
+        Assert.AreEqual("Lookup", region.LookupType);
+        Assert.IsTrue(region.UsesLookupEndpoint);
+        Assert.AreEqual("id", region.KeyJson);
+        Assert.AreEqual("name", region.DisplayJson);
+        Assert.IsFalse(region.IsSelf);
+        Assert.IsTrue(form.Parents.First(p => p.Table == "Account").IsSelf, "the manager of an account is an account");
+        Assert.AreSame(region, form.ParentOf(table.Columns.First(c => c.Name == "RegionId")));
+        Assert.IsNull(form.ParentOf(table.Columns.First(c => c.Name == "Nickname")));
+    }
+
+    [TestMethod]
+    public void A_parent_with_a_guid_key_reads_its_rows_not_the_lookup_list()
+    {
+        var table = Sample.Table("Pet",
+        [
+            Sample.Column("PetId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Text("Name", 2),
+            Sample.Column("OwnerId", SqlDbType.UniqueIdentifier, ordinal: 3)
+        ],
+        [Sample.ForeignKey("OwnerId", "Owner", "OwnerId", "Name")]);
+        var owner = FormModel.For(table, Project()).Parents.Single();
+        Assert.IsFalse(owner.UsesLookupEndpoint);
+        Assert.AreEqual("ownerId", owner.KeyJson);
+        Assert.AreEqual("name", owner.DisplayJson);
+    }
+
+    [TestMethod]
+    public void The_names_of_a_table_on_every_screen_come_from_the_model()
+    {
+        var table = Sample.Table("E_TimeSheet", [Sample.Column("TimeSheetId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Text("StartDate", 2)]);
+        var form = FormModel.For(table, Project());
+        Assert.AreEqual("TimeSheet", form.BaseName);
+        Assert.AreEqual("Time Sheet", form.Title);
+        Assert.AreEqual("time sheet", form.Noun);
+        Assert.AreEqual("timeSheet", form.Variable);
+        Assert.AreEqual("timesheet", form.Stem);
+        Assert.AreEqual("timeSheetStartDate", form.FieldId(table.Columns[1]), "the id of a field, on every web stack");
+        Assert.AreEqual("TimeSheetService", AngularNames.ServiceClass("E_TimeSheet"));
+        Assert.AreEqual("timesheet.service", AngularNames.ServiceFile("E_TimeSheet"));
+        Assert.AreEqual("timeSheetService", AngularNames.ServiceField("E_TimeSheet"));
+        Assert.AreEqual("timeSheetApi", ReactNames.ApiVar("E_TimeSheet"));
+        Assert.AreEqual("timesheetApi", ReactNames.ApiFile("E_TimeSheet"));
+        Assert.AreEqual("setCustomers", ReactNames.SetList("customers"));
+    }
+
+    [TestMethod]
+    public void Every_stack_gives_a_column_the_same_kind_of_editor()
+    {
+        var table = Sample.Table("Job",
+        [
+            Sample.Column("JobId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Text("Title", 2),
+            Sample.Column("RegionId", SqlDbType.Int, ordinal: 3),
+            Sample.Column("Status", SqlDbType.NVarChar, characters: 10, choices: ["Open", "Closed"], ordinal: 4),
+            Sample.Column("IsOpen", SqlDbType.Bit, ordinal: 5),
+            Sample.Column("Due", SqlDbType.DateTime, ordinal: 6),
+            Sample.Column("Budget", SqlDbType.Decimal, precision: 18, scale: 2, currency: true, ordinal: 7),
+            Sample.Column("MonthNumber", SqlDbType.Int, numericKind: NumericKind.Month, ordinal: 8),
+            Sample.Column("Notes", SqlDbType.NVarChar, characters: 4000, ordinal: 9),
+            Sample.Column("CreateDate", SqlDbType.DateTime, createDateColumn: true, ordinal: 10)
+        ],
+        [Sample.ForeignKey("RegionId", "Region", "RegionId", "Name")]);
+        var form = FormModel.For(table, Project());
+        FieldKind Kind(string name) => form.KindOf(table.Columns.First(c => c.Name == name));
+        Assert.AreEqual(FieldKind.Text, Kind("Title"));
+        Assert.AreEqual(FieldKind.Lookup, Kind("RegionId"));
+        Assert.AreEqual(FieldKind.Choices, Kind("Status"));
+        Assert.AreEqual(FieldKind.Boolean, Kind("IsOpen"));
+        Assert.AreEqual(FieldKind.Date, Kind("Due"));
+        Assert.AreEqual(FieldKind.Money, Kind("Budget"));
+        Assert.AreEqual(FieldKind.Number, Kind("MonthNumber"));
+        Assert.AreEqual(FieldKind.Multiline, Kind("Notes"));
+        Assert.AreEqual(FieldKind.SystemStamp, Kind("CreateDate"));
+
+        var country = Sample.Table("Country", [Sample.Column("Alpha3Code", SqlDbType.Char, primaryKey: true, characters: 3, ordinal: 1), Text("Name", 2)]);
+        Assert.AreEqual(FieldKind.TypedKey, FormModel.For(country, Project()).KindOf(country.Columns[0]));
+    }
+
+    [TestMethod]
+    public void A_number_box_carries_the_same_limits_on_every_web_stack()
+    {
+        var month = NumberBox.For("Job", Sample.Column("MonthNumber", SqlDbType.Int, numericKind: NumericKind.Month), Project());
+        Assert.IsNull(month.Step);
+        Assert.AreEqual("1", month.Min);
+        Assert.AreEqual("12", month.Max);
+        Assert.IsNotNull(month.Characters, "a month is a short box");
+        StringAssert.Contains(month.Html, " min=\"1\" max=\"12\" style=\"width: ");
+        StringAssert.Contains(month.Jsx, " min=\"1\" max=\"12\" style={{ width: '");
+
+        var rate = NumberBox.For("Job", Sample.Column("Rate", SqlDbType.Decimal, precision: 9, scale: 3), Project());
+        Assert.AreEqual("0.001", rate.Step);
+        Assert.AreEqual("-999999.999", rate.Min);
+        Assert.AreEqual("999999.999", rate.Max);
+
+        var money = MoneyBox.For("Job", Sample.Column("Budget", SqlDbType.Decimal, precision: 18, scale: 2, currency: true), Project());
+        Assert.AreEqual(2, money.Digits);
+        Assert.AreEqual("USD", money.Currency);
+        Assert.IsNull(money.Min);
+    }
+
+    [TestMethod]
+    public void A_new_row_starts_with_a_value_for_every_required_field_the_same_on_both_typescript_stacks()
+    {
+        var table = Account();
+        var form = FormModel.For(table, Project());
+        CollectionAssert.AreEqual(new[]
+        {
+            "nickname: ''", "name: ''", "passwordHash: ''", "regionId: 0", "styleId: 0", "balance: 0", "createDate: new Date().toISOString().substring(0, 10)"
+        }, form.NewRowTypeScript.ToArray());
+
+        var country = Sample.Table("Country", [Sample.Column("Alpha3Code", SqlDbType.Char, primaryKey: true, characters: 3, ordinal: 1), Text("Name", 2)]);
+        Assert.AreEqual("alpha3Code: ''", FormModel.For(country, Project()).NewRowTypeScript[0], "a typed key starts empty");
+    }
+
+    [TestMethod]
+    public void The_search_boxes_are_one_per_column_or_one_for_the_search_protocol()
+    {
+        var table = Account();
+        var plain = FormModel.For(table, Project());
+        CollectionAssert.AreEqual(table.SearchableColumns.Select(c => c.Name).ToArray(), plain.WebSearchFields.Select(f => f.Name).ToArray());
+        var box = FormModel.For(table, Project(("ListProtocol", "Search"))).WebSearchFields.Single();
+        Assert.AreEqual("search", box.ParamName);
+        Assert.IsNull(box.Column);
+    }
+
+    [TestMethod]
+    public void A_table_has_a_find_by_name_route_only_with_a_required_Name_a_non_text_key_and_no_active_flag()
+    {
+        TableModel Make(string key, bool nameNullable, bool active)
+        {
+            var columns = new List<ColumnModel>
+            {
+                key == "text" ? Sample.Column("Code", SqlDbType.Char, primaryKey: true, characters: 3, ordinal: 1) : Sample.Column("Id", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+                Text("Name", 2, nullable: nameNullable)
+            };
+            if (active) columns.Add(Sample.Column("IsActive", SqlDbType.Bit, ordinal: 3));
+            return Sample.Table("Thing", columns);
+        }
+        Assert.IsTrue(Make("int", false, false).CanFindByName);
+        Assert.IsFalse(Make("text", false, false).CanFindByName, "GET route/{id} and GET route/{name} would be one route");
+        Assert.IsFalse(Make("int", true, false).CanFindByName);
+        Assert.IsFalse(Make("int", false, true).CanFindByName, "a name / active table has its own API");
+    }
+
+    [TestMethod]
+    public void The_child_grids_carry_the_json_names_and_the_lookup_route_the_web_clients_read()
+    {
+        var items = Sample.ForeignKey("ItemId", "Item", "ItemId", "ItemNumber");
+        var table = Sample.Table("Account", [Sample.Column("AccountId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Text("Name", 2)],
+            childForeignKeys: [ChildLink("Transfer", "FromAccountId", items), ChildLink("Transfer", "ToAccountId", items)]);
+        var grid = ChildGrid.For(table, Project())[0];
+        Assert.AreEqual("transferFromAccount", grid.Variable);
+        Assert.AreEqual("transfers", grid.ApiRoute);
+        Assert.AreEqual("transfer", grid.PageRoute);
+        Assert.AreEqual("transferId", grid.KeyJson);
+        Assert.AreEqual("fromAccountId", grid.ForeignKeyJson);
+        var item = grid.Lookups.Single();
+        Assert.AreEqual("itemId", item.ColumnJson);
+        Assert.AreEqual("items/lookup", item.WebRoute);
+        Assert.AreEqual("id", item.WebKey);
+        Assert.AreEqual("name", item.WebDisplay);
+        Assert.IsNotNull(grid.EditLookupOf(grid.Link.ReferencingTableColumns.First(c => c.Name == "ItemId")));
+        Assert.IsNull(grid.EditLookupOf(grid.Link.ReferencingTableColumns.First(c => c.Name == "Memo")));
+    }
+
     // ------------------------------------------------------------------ the four stacks edit the same fields
 
     private static async Task<string> Rendered(string template, TableModel table, ProjectSettings project)
@@ -166,10 +345,11 @@ public class FormModelTests
         static string[] Fields(string text, string pattern) => System.Text.RegularExpressions.Regex.Matches(text, pattern)
             .Select(m => m.Groups[1].Value.ToLowerInvariant().Replace("-", "")).Where(f => f != "createdate" && f != "form").Distinct().Order().ToArray();
 
-        // the id of each input: account-nickname (React, Blazor), accountNickname (Angular); a WinUI3 field is a two-way binding of the view model
-        CollectionAssert.AreEqual(expected, Fields(await Rendered("TSX_Page_v1.tt", table, project), "id=\"account-([A-Za-z0-9]+)\""), "React");
-        CollectionAssert.AreEqual(expected, Fields(await Rendered("TS_Component_v1.tt", table, project), "id=\"account([A-Z][A-Za-z0-9]+)\""), "Angular");
-        CollectionAssert.AreEqual(expected, Fields(await Rendered("BLZ_Page_v1.tt", table, project), "id=\"account-([A-Za-z0-9]+)\""), "Blazor");
+        // the id of each input is accountNickname on every web stack (FormModel.FieldId); a WinUI3 field is a two-way binding of the view model
+        const string webId = "id=\"account([A-Z][A-Za-z0-9]+)\"";
+        CollectionAssert.AreEqual(expected, Fields(await Rendered("TSX_Page_v1.tt", table, project), webId), "React");
+        CollectionAssert.AreEqual(expected, Fields(await Rendered("TS_Component_v1.tt", table, project), webId), "Angular");
+        CollectionAssert.AreEqual(expected, Fields(await Rendered("BLZ_Page_v1.tt", table, project), webId), "Blazor");
         CollectionAssert.AreEqual(expected, Fields(await Rendered("WinUI3_DetailScreen_v1.tt", table, project), @"ViewModel\.(\w+), Mode=TwoWay"), "WinUI3");
     }
 }

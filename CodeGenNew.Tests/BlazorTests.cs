@@ -128,11 +128,11 @@ public class BlazorTests
             Expect.Contains(page, "@inject CustomerClient Client");
             Expect.Contains(page, "@inject RegionClient lookupRegionClient");
             Expect.Contains(page, "Search by Account Number");
-            Expect.Contains(page, "<InputSelect id=\"customer-regionid\" @bind-Value=\"row.RegionId\">");
-            Expect.Contains(page, "<InputText id=\"customer-accountnumber\" @bind-Value=\"row.AccountNumber\" maxlength=\"20\" required />");
-            Expect.Contains(page, "<InputCheckbox id=\"customer-istaxable\" @bind-Value=\"row.IsTaxable\" />");
-            Expect.Contains(page, "<InputDate id=\"customer-addedon\" @bind-Value=\"row.AddedOn\" required />");
-            Expect.Contains(page, "<InputTextArea id=\"customer-notes\" @bind-Value=\"row.Notes\" maxlength=\"500\" />");
+            Expect.Contains(page, "<InputSelect id=\"customerRegionId\" @bind-Value=\"row.RegionId\">");
+            Expect.Contains(page, "<InputText id=\"customerAccountNumber\" @bind-Value=\"row.AccountNumber\" maxlength=\"20\" required />");
+            Expect.Contains(page, "<InputCheckbox id=\"customerIsTaxable\" @bind-Value=\"row.IsTaxable\" />");
+            Expect.Contains(page, "<InputDate id=\"customerAddedOn\" @bind-Value=\"row.AddedOn\" required />");
+            Expect.Contains(page, "<InputTextArea id=\"customerNotes\" @bind-Value=\"row.Notes\" maxlength=\"500\" />");
             Expect.Contains(page, "<option value=\"a\">a</option>");
             Expect.DoesNotContain(page, "@page of");   // @page is a Razor directive: the field is pageNumber
 

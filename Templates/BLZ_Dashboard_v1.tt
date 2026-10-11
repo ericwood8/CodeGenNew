@@ -14,43 +14,17 @@
     // ==========================================================================================
 
     string ns = BlazorNames.Namespace(Project);
-    string symbol = Project.CurrencyCode == "USD" ? "$" : Project.CurrencyCode + " ";
+    string symbol = Project.CurrencySymbol;
 #>
 @@@FILE Services/DashboardClient.cs@@@
 using System.Net.Http.Json;
 
 namespace <#= ns #>.Services;
 
-public class DashboardPoint
+<#= DashboardWire.CSharp() #>
+public partial class DashboardWidgetData
 {
-    public string? Label { get; set; }
-    public double? Value { get; set; }
-}
-
-public class DashboardRow
-{
-    public string? Label { get; set; }
-    public string? Detail { get; set; }
-}
-
-// Kind is count, childCount, money, topBy, breakdown, trend, ratio, status or recent; a recent widget fills Rows, every other one Points. IsMoney: the numbers are amounts of money.
-public class DashboardWidget
-{
-    public string Id { get; set; } = "";
-    public string Kind { get; set; } = "";
-    public string Title { get; set; } = "";
-    public string Table { get; set; } = "";
-    public string Route { get; set; } = "";
-    public bool IsMoney { get; set; }
-    public List<DashboardPoint> Points { get; set; } = [];
-    public List<DashboardRow> Rows { get; set; } = [];
-
-    public bool IsCard => Kind is "count" or "childCount" or "money" or "ratio" or "status";
-}
-
-public class DashboardResult
-{
-    public List<DashboardWidget> Widgets { get; set; } = [];
+    public bool IsCard => Kind is <#= DashboardWire.CardKindsCSharp #>;
 }
 
 public class DashboardClient(HttpClient http)
@@ -96,7 +70,7 @@ public class DashboardClient(HttpClient http)
             }
             else
             {
-                <svg class="dash-spark" viewBox="0 0 200 48" preserveAspectRatio="none" role="img" aria-label="@Summary()">
+                <svg class="dash-spark" viewBox="0 0 <#= DashboardWire.SparkWidth #> <#= DashboardWire.SparkHeight #>" preserveAspectRatio="none" role="img" aria-label="@Summary()">
                     <polyline points="@SparkPoints()" />
                 </svg>
                 <details>
@@ -148,7 +122,7 @@ public class DashboardClient(HttpClient http)
 }
 
 @code {
-    [Parameter, EditorRequired] public DashboardWidget Widget { get; set; } = default!;
+    [Parameter, EditorRequired] public DashboardWidgetData Widget { get; set; } = default!;
 
     private const string CurrencySymbol = "<#= symbol #>";
 
@@ -178,15 +152,15 @@ public class DashboardClient(HttpClient http)
         return Math.Round((value ?? 0) / largest * 100, 1);
     }
 
-    // A line over the points of a trend, scaled to a 200 by 48 box; the numbers are in the table under it.
+    // A line over the points of a trend, scaled to a <#= DashboardWire.SparkWidth #> by <#= DashboardWire.SparkHeight #> box; the numbers are in the table under it.
     private string SparkPoints()
     {
         var values = Widget.Points.Select(p => p.Value ?? 0).ToList();
         if (values.Count == 0)
             return "";
         double max = Math.Max(values.Max(), 0), min = Math.Min(values.Min(), 0), span = max - min == 0 ? 1 : max - min;
-        double step = values.Count > 1 ? 200.0 / (values.Count - 1) : 0;
-        return string.Join(' ', values.Select((v, i) => (i * step).ToString("0.0", CultureInfo.InvariantCulture) + "," + (46 - (v - min) / span * 44).ToString("0.0", CultureInfo.InvariantCulture)));
+        double step = values.Count > 1 ? <#= DashboardWire.SparkWidth #>.0 / (values.Count - 1) : 0;
+        return string.Join(' ', values.Select((v, i) => (i * step).ToString("0.0", CultureInfo.InvariantCulture) + "," + (<#= DashboardWire.SparkHeight - 2 #> - (v - min) / span * <#= DashboardWire.SparkHeight - 4 #>).ToString("0.0", CultureInfo.InvariantCulture)));
     }
 
     private string Summary() => Widget.Title + ": " + string.Join(", ", Widget.Points.Select(p => p.Label + " " + Format(p.Value)));
@@ -200,28 +174,7 @@ public class DashboardClient(HttpClient http)
 <PageTitle>Dashboard</PageTitle>
 
 <style>
-    .dash-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 12px 0; }
-    .dash-card, .dash-panel { padding: 12px 16px; border: 1px solid #8886; border-radius: 6px; background: #8881; }
-    .dash-card h3, .dash-panel h3 { margin: 0 0 8px; font-size: 1rem; }
-    .dash-card a, .dash-panel a { color: inherit; text-decoration: none; }
-    .dash-card a:hover, .dash-panel a:hover { text-decoration: underline; }
-    .dash-card dl { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; }
-    .dash-card dt { font-size: 0.85rem; opacity: 0.8; }
-    .dash-card dd { margin: 0 0 4px; font-size: 1.6rem; font-weight: 700; }
-    .dash-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-    .dash-bars li { display: grid; grid-template-columns: minmax(80px, 30%) 1fr auto; align-items: center; gap: 8px; }
-    .dash-track { display: block; height: 10px; border-radius: 5px; background: #8883; }
-    .dash-fill { display: block; height: 100%; border-radius: 5px; background: currentColor; opacity: 0.55; }
-    .dash-value { font-variant-numeric: tabular-nums; font-weight: 600; }
-    .dash-spark { width: 100%; height: 56px; }
-    .dash-spark polyline { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; }
-    .dash-recent { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
-    .dash-recent li { display: flex; justify-content: space-between; gap: 12px; }
-    .dash-recent li span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .dash-panel details { margin-top: 8px; }
-    .dash-panel summary { cursor: pointer; font-size: 0.85rem; opacity: 0.8; }
-    @@media (min-width: 720px) { .dash-panel-wide { grid-column: span 2; } }
-</style>
+<#= DashboardWire.Css("    ", true, ".dash-panel-wide").Replace("@media", "@@media") #></style>
 
 <h1>Dashboard</h1>
 <button type="button" @onclick="LoadAsync">Refresh</button>

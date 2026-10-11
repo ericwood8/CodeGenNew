@@ -12,6 +12,18 @@ public static class BlazorNames
     /// <summary> The model class and the client's stem: "SalesInvoice", "E_Customer" -> "Customer". </summary>
     public static string TypeName(string table) => ScreenNames.BaseName(table);
 
+    /// <summary> A name with everything that is not a letter or digit taken out, so it is a C# identifier part. </summary>
+    public static string Identifier(string name) => System.Text.RegularExpressions.Regex.Replace(name, "[^A-Za-z0-9]", "");
+
+    /// <summary> The page field that holds the rows of a parent's drop-down: <c>lookupRegion</c>. </summary>
+    public static string LookupField(FormParent parent) => "lookup" + Identifier(TypeName(parent.Table));
+
+    /// <summary> The page field that holds the parent's rows a child grid names its foreign key from: <c>childLookupItem</c>. </summary>
+    public static string ChildLookupField(string parentTable) => "childLookup" + Identifier(TypeName(parentTable));
+
+    /// <summary> The page field that holds a child grid's rows: <c>childSalesInvoice</c>. </summary>
+    public static string ChildVariable(ChildGrid child) => "child" + Identifier(TypeName(child.Table) + child.Role);
+
     /// <summary> The API route of a table, as the generated API serves it: <c>/api/customers</c>. </summary>
     public static string ApiRoute(string table) => "/api/" + ScreenNames.ApiRoute(table);
 

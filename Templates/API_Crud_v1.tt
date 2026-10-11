@@ -73,9 +73,7 @@
     // A table with a database-assigned int key and a clone routine gets POST <route>/{id}/clone (CloneShape; CS_Repo writes CloneAsync for the same tables).
     bool canClone = supported && !nameActive && CloneShape.CanClone(Model, Project);
 
-    // CS_Repo writes GetByName for a table with a NOT NULL text Name (the services' findByName calls GET <route>/{name}).
-    // a text key has no find-by-name route: GET <route>/{id} and GET <route>/{name} would be the same route
-    bool canFindByName = supported && !nameActive && keyType!.Kind != KeyKind.Text && Model.Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
+    bool canFindByName = supported && Model.CanFindByName;
 
     string entity = Model.TableName;
     string keyProperty = keyColumn?.Name ?? "";

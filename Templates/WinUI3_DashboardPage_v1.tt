@@ -56,7 +56,7 @@ internal static class DashboardWidgetViews
 {
     private static readonly System.Globalization.CultureInfo Culture = System.Globalization.CultureInfo.CurrentCulture;
 
-    public static bool IsCard(DashboardWidgetData widget) => widget.Kind is "count" or "childCount" or "money" or "ratio" or "status";
+    public static bool IsCard(DashboardWidgetData widget) => widget.Kind is <#= DashboardWire.CardKindsCSharp #>;
 
     private static string Format(double? value, bool money) => value is null ? "" : value.Value.ToString(money ? "C2" : "#,##0.##", Culture);
 
@@ -165,11 +165,11 @@ internal static class DashboardWidgetViews
 
         var values = widget.Points.Select(p => p.Value ?? 0).ToList();
         double max = Math.Max(values.Max(), 0), min = Math.Min(values.Min(), 0), span = max - min == 0 ? 1 : max - min;
-        double step = values.Count > 1 ? 200.0 / (values.Count - 1) : 0;
+        double step = values.Count > 1 ? <#= DashboardWire.SparkWidth #>.0 / (values.Count - 1) : 0;
         var line = new Polyline { Stroke = ThemeBrush("TextFillColorPrimaryBrush", Colors.Gray), StrokeThickness = 2 };
         for (int i = 0; i < values.Count; i++)
-            line.Points.Add(new Windows.Foundation.Point(i * step, 46 - ((values[i] - min) / span) * 44));
-        body.Children.Add(new Canvas { Width = 200, Height = 48, Children = { line } });
+            line.Points.Add(new Windows.Foundation.Point(i * step, <#= DashboardWire.SparkHeight - 2 #> - ((values[i] - min) / span) * <#= DashboardWire.SparkHeight - 4 #>));
+        body.Children.Add(new Canvas { Width = <#= DashboardWire.SparkWidth #>, Height = <#= DashboardWire.SparkHeight #>, Children = { line } });
 
         var numbers = new Expander { Header = "Show the numbers", HorizontalAlignment = HorizontalAlignment.Stretch };
         var list = new StackPanel();
