@@ -272,7 +272,7 @@ public class ProjectSettings
             if (EfConfigurations) yield return "CS_EfConfiguration";
             if (Dashboard)
             {
-                foreach (string name in new[] { "CS_Dashboard", "API_Dashboard", "TSX_Dashboard", "TS_Dashboard", "WinUI3_DashboardPage", "BLZ_Dashboard", "SP_Dashboard", "MD_Dashboard" })
+                foreach (string name in new[] { "CS_Dashboard", "API_Dashboard", "TSX_Dashboard", "TS_Dashboard", "WinUI3_DashboardPage", "BLZ_Dashboard", "RS_Dashboard", "SP_Dashboard", "MD_Dashboard" })
                     yield return name;
             }
         }

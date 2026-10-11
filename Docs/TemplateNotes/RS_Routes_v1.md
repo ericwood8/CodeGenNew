@@ -18,3 +18,4 @@
 - With `ApiValidation=true` the create and update handlers call `validate` (`RS_Validate`) first and answer 400 in the ASP.NET validation-problem form.
 - The page size is limited to 1000 rows; the default is 100.
 - `RS_Mod` merges every table's `router()` into `routes::router()`.
+- With a front end to serve (`FRONTEND_DIR`), an `/api` path no route answers is a 404; every other unknown path is the front end's `index.html`. Without it a browser keeps the page as the answer of a route that was missing when it first asked.

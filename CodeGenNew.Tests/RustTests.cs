@@ -251,7 +251,9 @@ public class RustTests
         var database = new DatabaseModel { DatabaseName = "Acme", SchemaName = "public", Dialect = SqlDialect.PostgreSql, Tables = [Account(SqlDialect.PostgreSql)] };
 
         var plain = ProjectPlan.Build(templates, database, Project(("Stacks", "Rust")), ["Rust"]).Select(s => s.Template.Name).ToList();
-        CollectionAssert.AreEquivalent(new[] { "RS_Mod", "RS_Repo", "RS_Routes", "RS_Struct" }, plain);
+        CollectionAssert.AreEquivalent(new[] { "RS_Dashboard", "RS_Mod", "RS_Repo", "RS_Routes", "RS_Struct" }, plain, "the dashboard is on unless the project turns it off");
+        var noDashboard = ProjectPlan.Build(templates, database, Project(("Stacks", "Rust"), ("Dashboard", "false")), ["Rust"]).Select(s => s.Template.Name).ToList();
+        CollectionAssert.AreEquivalent(new[] { "RS_Mod", "RS_Repo", "RS_Routes", "RS_Struct" }, noDashboard);
 
         var validated = ProjectPlan.Build(templates, database, Project(("ApiValidation", "true")), ["Rust"]).Select(s => s.Template.Name).ToList();
         CollectionAssert.Contains(validated, "RS_Validate");
@@ -352,7 +354,15 @@ public class RustTests
             Expect.Contains(repo, "#[serde(rename = \"isActive\")]");
             Expect.Contains(routes, "validate(&row)?;");
             Expect.Contains(Read("Shop.Rust/src/routes/mod.rs"), ".merge(customer::router())");
+            Expect.Contains(Read("Shop.Rust/src/routes/mod.rs"), ".merge(dashboard::router())");
+            string dashboard = Read("Shop.Rust/src/routes/dashboard.rs");
+            Expect.Contains(dashboard, ".route(\"/api/dashboard\", get(dashboard))");
+            Expect.Contains(dashboard, "#[serde(rename = \"isMoney\")]");
+            Expect.Contains(dashboard, "const DEFINITIONS: &[Definition] = &[");
+            Expect.Contains(dashboard, "sqlx::query_as::<_, DashboardPoint>(d.sql)");
+            Expect.Contains(dashboard, "AS \"Label\"");
             Expect.Contains(Read("Shop.Rust/src/lib.rs"), "include_str!(\"../openapi.yaml\")");
+            Expect.Contains(Read("Shop.Rust/src/lib.rs"), "app.route(\"/api/{*rest}\"");
 
             string validation = Read("Shop.Rust/src/validation/customer.rs");
             Expect.Contains(validation, "must be one of: a, b.");

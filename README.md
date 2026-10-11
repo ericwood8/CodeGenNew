@@ -126,6 +126,7 @@ Ninety-two templates ship in `Templates\` (the no-database essentials groups des
 | `RS` | `RS_Repo` | `src/repos/table.rs` - the table's fixed SQL for the database that was read and the sqlx functions that run it: get, insert, update, delete, clone, and a search with filters, a fixed sort list and paging. |
 | `RS` | `RS_Routes` | `src/routes/table.rs` - the Axum handlers with the contract of the other stacks (201 and `Location`, 400, 404, `/search`, `/clone`). |
 | `RS` | `RS_Validate` | `src/validation/table.rs` - `validate`, the schema's rules for a row (`ApiValidation=true`); the answer is the ASP.NET validation problem. |
+| `RS` | `RS_Dashboard` | `src/routes/dashboard.rs` - `GET /api/dashboard` for the Rust stack: the widgets and statements of `DashboardPlan`, kept for a minute (`Dashboard=true`). |
 | `RS` | `RS_Mod` | the module lists and the router that merges every table's routes. |
 | `PY` | `PY_Model`, `PY_Schema` | `app/models/table.py` and `app/schemas/table.py` - the SQLAlchemy 2.0 class and the Pydantic 2 schema of a table, for the Python stack (all four databases). |
 | `PY` | `PY_Routes` | `app/routes/table.py` - the FastAPI router with the contract of the other stacks (201 and `Location`, 400, 404, clone, search with paging and sort). |

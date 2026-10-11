@@ -65,6 +65,8 @@ pub fn app(pool: Pool, frontend: Option<PathBuf>) -> Router {
     let mut app = router.with_state(pool);
     if let Some(folder) = frontend {
         let index = folder.join("index.html");
+        // an /api path no route answers is a 404, not the front end's page (a browser would keep that page as the answer of the route)
+        app = app.route("/api/{*rest}", axum::routing::any(|| async { axum::http::StatusCode::NOT_FOUND }));
         app = app.fallback_service(ServeDir::new(folder).fallback(ServeFile::new(index)));
     }
 

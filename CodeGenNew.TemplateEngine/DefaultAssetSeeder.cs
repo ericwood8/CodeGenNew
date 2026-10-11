@@ -80,6 +80,7 @@ public static class DefaultAssetSeeder
         "RS_Repo_v1.tt", "RS_Repo_v1.tt.config",
         "RS_Routes_v1.tt", "RS_Routes_v1.tt.config",
         "RS_Validate_v1.tt", "RS_Validate_v1.tt.config",
+        "RS_Dashboard_v1.tt", "RS_Dashboard_v1.tt.config",
         "RS_Mod_v1.tt", "RS_Mod_v1.tt.config",
         "CS_CqrsHandlers_v1.tt", "CS_CqrsHandlers_v1.tt.config",
         "CS_EfConfiguration_v1.tt", "CS_EfConfiguration_v1.tt.config",

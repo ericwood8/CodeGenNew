@@ -10,6 +10,7 @@
     // RS_Mod_v1.tt
     // Generates: src/models/mod.rs, src/repos/mod.rs, src/routes/mod.rs and, with ApiValidation=true, src/validation/mod.rs   (whole-database; the output folder is the Rust crate's folder)
     // The module lists of the Rust crate and the router that merges the router of every table, so main.rs lists nothing: a new table is a regenerate. The tables are those that have an API.
+    // With Dashboard=true the router also merges the dashboard's (src/routes/dashboard.rs, RS_Dashboard).
     // Full notes: Docs/TemplateNotes/RS_Mod_v1.md
     // ==========================================================================================
 
@@ -33,13 +34,15 @@
     Line("use axum::Router;");
     Line("use crate::support::Pool;");
     Line();
-    foreach (string m in modules)
+    // the dashboard (RS_Dashboard) is one route file for the whole database, merged with the tables' routers
+    var routeModules = Project.Dashboard ? modules.Append("dashboard").OrderBy(m => m, StringComparer.Ordinal).ToList() : modules;
+    foreach (string m in routeModules)
         Line($"pub mod {m};");
     Line();
     Line("/// The routes of every table, merged.");
     Line("pub fn router() -> Router<Pool> {");
     Line("    Router::new()");
-    foreach (string m in modules)
+    foreach (string m in routeModules)
         Line($"        .merge({m}::router())");
     Line("}");
     Write(sb.ToString());

@@ -1,0 +1,160 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Dashboard_v1.tt
+    // Generates: src/routes/dashboard.rs   (whole-database; the output folder is the Rust crate's folder; written only for a project with Dashboard=true)
+    // GET /api/dashboard answers every widget of the dashboard page in one call, and GET /api/dashboard?table=Customer the cards of that table's strip: the JSON of DashboardWire, the widgets
+    // DashboardPlan chose and the one fixed statement of each, kept for a minute. The same choice and the same statements as CS_Dashboard, so every stack shows the same numbers.
+    // Full notes: Docs/TemplateNotes/RS_Dashboard_v1.md
+    // ==========================================================================================
+
+    var plan = DashboardPlan.Build(Database, Project);
+    foreach (string problem in plan.Problems)
+        Error(problem);
+
+    var strip = Project.DashboardStrip ? plan.StripTables.SelectMany(plan.StripOf).Select(w => w.Id).ToHashSet() : new HashSet<string>();
+    var onDashboard = plan.Widgets.Select(w => w.Id).ToHashSet();
+    var widgets = plan.Widgets.Concat(plan.Candidates.Where(w => strip.Contains(w.Id) && !onDashboard.Contains(w.Id))).ToList();
+    var screenTables = Database.ScreenTables(Project).Select(t => t.TableName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    string Bool(bool value) => value ? "true" : "false";
+
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+
+    Line("@@@FILE src/routes/dashboard.rs@@@");
+    Line("use axum::{Json, Router, extract::{Query, State}, routing::get};");
+    Line("use serde::{Deserialize, Serialize};");
+    Line("use std::collections::HashMap;");
+    Line("use std::sync::{LazyLock, Mutex};");
+    Line("use std::time::{Duration, Instant};");
+    Line("use crate::support::{ApiResult, Pool};");
+    Line();
+    Line("/// One value of a widget: a label and a number (a count, a sum, one month of a trend).");
+    Line("#[derive(Debug, Clone, Serialize, sqlx::FromRow)]");
+    Line("pub struct DashboardPoint {");
+    Line("    #[sqlx(rename = \"Label\")]");
+    Line("    pub label: Option<String>,");
+    Line("    #[sqlx(rename = \"Value\")]");
+    Line("    pub value: Option<f64>,");
+    Line("}");
+    Line();
+    Line("/// One line of a recent-rows widget: what the row is called and its date.");
+    Line("#[derive(Debug, Clone, Serialize, sqlx::FromRow)]");
+    Line("pub struct DashboardRow {");
+    Line("    #[sqlx(rename = \"Label\")]");
+    Line("    pub label: Option<String>,");
+    Line("    #[sqlx(rename = \"Detail\")]");
+    Line("    pub detail: Option<String>,");
+    Line("}");
+    Line();
+    Line($"/// A widget with its data. Kind is {DashboardWire.KindSentence}; a recent widget fills rows, every other one points.");
+    Line("#[derive(Debug, Clone, Serialize)]");
+    Line("pub struct DashboardWidgetData {");
+    Line("    pub id: String,");
+    Line("    pub kind: String,");
+    Line("    pub title: String,");
+    Line("    pub table: String,");
+    Line("    pub route: String,");
+    Line("    #[serde(rename = \"isMoney\")]");
+    Line("    pub is_money: bool,");
+    Line("    pub points: Vec<DashboardPoint>,");
+    Line("    pub rows: Vec<DashboardRow>,");
+    Line("}");
+    Line();
+    Line("#[derive(Debug, Clone, Serialize)]");
+    Line("pub struct DashboardResult {");
+    Line("    pub widgets: Vec<DashboardWidgetData>,");
+    Line("}");
+    Line();
+    Line("struct Definition {");
+    Line("    id: &'static str,");
+    Line("    kind: &'static str,");
+    Line("    title: &'static str,");
+    Line("    table: &'static str,");
+    Line("    route: &'static str,");
+    Line("    is_money: bool,");
+    Line("    is_rows: bool,");
+    Line("    on_dashboard: bool,");
+    Line("    on_strip: bool,");
+    Line("    sql: &'static str,");
+    Line("}");
+    Line();
+    Line("// The widgets DashboardPlan chose from the schema's own facts, each with its one fixed statement (no parameter: a table named in the query string is only compared with this list).");
+    Line("const DEFINITIONS: &[Definition] = &[");
+    foreach (var w in widgets)
+    {
+        string route = screenTables.Contains(w.Table) ? ScreenNames.Route(w.Table) : "";
+        Line($"    Definition {{ id: \"{w.Id}\", kind: \"{w.KindName}\", title: \"{CSharpText.Escape(w.Title)}\", table: \"{w.Table}\", route: \"{route}\", is_money: {Bool(w.IsMoney)}, is_rows: {Bool(w.IsRows)}, on_dashboard: {Bool(onDashboard.Contains(w.Id))}, on_strip: {Bool(strip.Contains(w.Id))},");
+        Line($"        sql: {RustTable.Raw(w.Sql)} }},");
+    }
+    Line("];");
+    Line();
+    Line("const CACHE_FOR: Duration = Duration::from_secs(60);");
+    Line("static CACHE: LazyLock<Mutex<HashMap<String, (Instant, DashboardResult)>>> = LazyLock::new(|| Mutex::new(HashMap::new()));");
+    Line();
+    Line("pub fn router() -> Router<Pool> {");
+    Line("    Router::new().route(\"/api/dashboard\", get(dashboard))");
+    Line("}");
+    Line();
+    Line("#[derive(Deserialize)]");
+    Line("struct DashboardQuery {");
+    Line("    table: Option<String>,");
+    Line("}");
+    Line();
+    Line("async fn dashboard(State(pool): State<Pool>, Query(query): Query<DashboardQuery>) -> ApiResult<Json<DashboardResult>> {");
+    Line("    Ok(Json(load(&pool, query.table.as_deref()).await?))");
+    Line("}");
+    Line();
+    Line("/// The dashboard page's widgets, or with a table the cards of that table's strip (empty for a table that has none). The answer is kept for a minute per table.");
+    Line("async fn load(pool: &Pool, table: Option<&str>) -> Result<DashboardResult, sqlx::Error> {");
+    Line("    let chosen: Vec<&Definition> = DEFINITIONS");
+    Line("        .iter()");
+    Line("        .filter(|d| match table {");
+    Line("            None => d.on_dashboard,");
+    Line("            Some(name) => d.on_strip && d.table.eq_ignore_ascii_case(name),");
+    Line("        })");
+    Line("        .collect();");
+    Line("    // a table that has no strip is not cached, so a caller cannot grow the cache with names of its own");
+    Line("    if table.is_some() && chosen.is_empty() {");
+    Line("        return Ok(DashboardResult { widgets: Vec::new() });");
+    Line("    }");
+    Line();
+    Line("    let key = table.map(|name| format!(\"table:{}\", name.to_ascii_lowercase())).unwrap_or_default();");
+    Line("    if let Some((expires, cached)) = CACHE.lock().unwrap().get(&key) {");
+    Line("        if *expires > Instant::now() {");
+    Line("            return Ok(cached.clone());");
+    Line("        }");
+    Line("    }");
+    Line();
+    Line("    let mut widgets = Vec::new();");
+    Line("    for d in chosen {");
+    Line("        let (points, rows) = if d.is_rows {");
+    Line("            (Vec::new(), sqlx::query_as::<_, DashboardRow>(d.sql).fetch_all(pool).await?)");
+    Line("        } else {");
+    Line("            (sqlx::query_as::<_, DashboardPoint>(d.sql).fetch_all(pool).await?, Vec::new())");
+    Line("        };");
+    Line("        widgets.push(DashboardWidgetData {");
+    Line("            id: d.id.to_string(),");
+    Line("            kind: d.kind.to_string(),");
+    Line("            title: d.title.to_string(),");
+    Line("            table: d.table.to_string(),");
+    Line("            route: d.route.to_string(),");
+    Line("            is_money: d.is_money,");
+    Line("            points,");
+    Line("            rows,");
+    Line("        });");
+    Line("    }");
+    Line();
+    Line("    let result = DashboardResult { widgets };");
+    Line("    CACHE.lock().unwrap().insert(key, (Instant::now() + CACHE_FOR, result.clone()));");
+    Line("    Ok(result)");
+    Line("}");
+    Write(sb.ToString());
+#>
