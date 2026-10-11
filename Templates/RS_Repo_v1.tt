@@ -49,6 +49,8 @@
         foreach (var f in clone.Overrides)
             Line($"const EXISTS_{f.Name.ToUpperInvariant().Replace("R#", "")}: &str = {RustTable.Raw($"SELECT COUNT(*) FROM {t.Table} WHERE {di.Quote(f.Column.DbName)} = {di.Placeholder(1)}")};");
     }
+    if (t.LookupSql is not null)
+        Line($"const LOOKUP: &str = {RustTable.Raw(t.LookupSql)};");
     if (search)
     {
         Line($"const SEARCH_ITEMS: &str = {RustTable.Raw(t.SearchItems)};");
@@ -93,6 +95,22 @@
     Line($"pub async fn delete(pool: &Pool, id: {keyArg}) -> Result<u64, sqlx::Error> {{");
     Line("    Ok(sqlx::query(DELETE).bind(id).execute(pool).await?.rows_affected())");
     Line("}");
+    if (t.LookupSql is not null)
+    {
+        Line();
+        Line("/// One entry of the lookup list: the key, the name to show and the IsActive flag (null when the table has none).");
+        Line("#[derive(Debug, serde::Serialize, sqlx::FromRow)]");
+        Line("pub struct LookupItem {");
+        Line($"    pub id: {keyType},");
+        Line("    pub name: String,");
+        Line("    #[serde(rename = \"isActive\")]");
+        Line("    pub is_active: Option<bool>,");
+        Line("}");
+        Line();
+        Line("pub async fn lookup(pool: &Pool) -> Result<Vec<LookupItem>, sqlx::Error> {");
+        Line("    sqlx::query_as::<_, LookupItem>(LOOKUP).fetch_all(pool).await");
+        Line("}");
+    }
 
     if (t.Clone is { } cloneStatement)
     {

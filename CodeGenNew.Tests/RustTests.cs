@@ -177,6 +177,37 @@ public class RustTests
     }
 
     [TestMethod]
+    public void The_lookup_reads_the_key_the_display_column_as_text_and_the_active_flag_in_every_database()
+    {
+        string pg = RustTable.Of(Account(SqlDialect.PostgreSql), Project()).LookupSql!;
+        Assert.StartsWith("SELECT \"AccountId\" AS id, ", pg);
+        Expect.Contains(pg, " AS name, NULL AS is_active FROM \"public\".\"Account\" ORDER BY ");
+
+        string mysql = RustTable.Of(Account(SqlDialect.MySql), Project()).LookupSql!;
+        Expect.Contains(mysql, " AS name, NULL AS is_active FROM ");
+        Expect.DoesNotContain(mysql, "::");
+
+        var table = Sample.Table("Team",
+        [
+            Sample.Column("TeamId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("Size", SqlDbType.Int, nullable: true, ordinal: 2),
+            Sample.Column("IsActive", SqlDbType.Bit, ordinal: 3)
+        ], dialect: SqlDialect.Sqlite);
+        Assert.IsNull(RustTable.Of(table, Project()).LookupSql, "no display column, no lookup");
+
+        var named = Sample.Table("Team",
+        [
+            Sample.Column("TeamId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("Name", SqlDbType.NVarChar, nullable: true, characters: 40, ordinal: 2),
+            Sample.Column("IsActive", SqlDbType.Bit, ordinal: 3)
+        ], dialect: SqlDialect.Sqlite);
+        named.DisplayColumns.Add(named.Columns[1]);   // the reader would not choose an optional column; a project can still end up with one
+        string sqlite = RustTable.Of(named, Project()).LookupSql!;
+        Expect.Contains(sqlite, "COALESCE(\"Name\", '') AS name, \"IsActive\" AS is_active");
+        Expect.Contains(sqlite, "ORDER BY COALESCE(\"Name\", '')");
+    }
+
+    [TestMethod]
     public void A_clone_copies_the_row_gives_the_unique_text_a_bound_value_and_sets_the_create_date()
     {
         var t = RustTable.Of(Account(SqlDialect.PostgreSql), Project());
@@ -316,6 +347,9 @@ public class RustTests
 
             string routes = Read("Shop.Rust/src/routes/customer.rs");
             Expect.Contains(routes, ".route(\"/api/customers/search\", get(search))");
+            Expect.Contains(routes, ".route(\"/api/customers/lookup\", get(lookup))");
+            Expect.Contains(repo, "pub async fn lookup(pool: &Pool) -> Result<Vec<LookupItem>, sqlx::Error>");
+            Expect.Contains(repo, "#[serde(rename = \"isActive\")]");
             Expect.Contains(routes, "validate(&row)?;");
             Expect.Contains(Read("Shop.Rust/src/routes/mod.rs"), ".merge(customer::router())");
             Expect.Contains(Read("Shop.Rust/src/lib.rs"), "include_str!(\"../openapi.yaml\")");

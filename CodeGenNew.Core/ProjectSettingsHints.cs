@@ -134,6 +134,7 @@ public static class ProjectSettingsHints
         ["TestAngular"] = "command that tests the Angular app; blank = npm test -- --watch=false",
         ["TestBlazor"] = "command that tests the Blazor app; blank = no tests",
         ["TestPython"] = "command that tests the Python API; blank = no tests",
+        ["TestRust"] = "command that tests the Rust API; blank = cargo test",
         ["DbSetNames"] = "Plural = Customers, blank = the table name (Customer)",
         ["ProjectName"] = "the project's name (the file name of its .config); every blank namespace and folder is derived from it",
         ["NamingStyle"] = "AsIs (the database's names, the default) or Pascal (customer_item becomes CustomerItem; the SQL keeps the real names)",

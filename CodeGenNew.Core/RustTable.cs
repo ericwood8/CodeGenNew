@@ -88,6 +88,7 @@ public sealed class RustTable
         Delete = $"DELETE FROM {Table} WHERE {key} = {_di.Placeholder(1)}";
 
         BuildSearch(project);
+        BuildLookup();
         Clone = CloneShape.CanClone(model, project) ? BuildClone() : null;
     }
 
@@ -140,6 +141,10 @@ public sealed class RustTable
 
     /// <summary> The order that applies without a sort and follows a chosen one: the best display column, then the key. </summary>
     public string DefaultOrder { get; private set; } = "";
+
+    /// <summary> The statement behind <c>GET &lt;route&gt;/lookup</c>, the list the drop-downs and the "name of" columns of other screens read: <c>id</c>, <c>name</c> (the display column as text, blank when null)
+    /// and <c>is_active</c> (the IsActive flag, null when the table has none) of every row, ordered by name. Null when the table has no display column. </summary>
+    public string? LookupSql { get; private set; }
 
     /// <summary> Null when the table gets no Clone button (<see cref="CloneShape.CanClone"/>). </summary>
     public RustClone? Clone { get; }
@@ -260,6 +265,23 @@ public sealed class RustTable
             }).ToList();
 
         DefaultOrder = string.Join(", ", plan.DefaultOrder.Select(c => "t." + _di.Quote(c.DbName)));
+    }
+
+    private void BuildLookup()
+    {
+        var display = Model.DisplayColumns.FirstOrDefault(c => _fieldOf.ContainsKey(c));
+        if (display is null)
+            return;
+        string name = _di.Quote(display.DbName);
+        if (_di.Dialect == SqlDialect.PostgreSql && display.DbEnumType is not null)
+            name += "::text";
+        else if (!display.IsStringColumn)
+            name = _di.ToText(name);
+        if (display.IsNullable)
+            name = $"COALESCE({name}, '')";
+        var active = Model.Columns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive" && _fieldOf.ContainsKey(c));
+        string flag = active is null ? "NULL" : _di.Quote(active.DbName);
+        LookupSql = $"SELECT {_di.Quote(Key.Column.DbName)} AS id, {name} AS name, {flag} AS is_active FROM {Table} ORDER BY {name}";
     }
 
     private RustClone BuildClone()

@@ -11,7 +11,7 @@
     // Generates: src/routes/<table>.rs   (the template writes its own path with an @@@FILE marker; the output folder is the Rust crate's folder)
     // The Axum handlers of a table with the contract every stack of the project keeps (so the React, Angular and desktop front ends need no change): GET /api/<plural> (all rows), GET /{id},
     // POST (201 with a Location header and the new row), PUT /{id} (400 when the id in the body differs, 404 for no such row), DELETE /{id} (200, 404, or 400 when the row is in use),
-    // POST /{id}/clone (201 and the copy, a cloneable table) and GET /search with the filters, pageNumber, pageSize, sortBy and sortDir (a table with a search endpoint).
+    // POST /{id}/clone (201 and the copy, a cloneable table), GET /lookup ({ id, name, isActive } of every row, a table with a display column) and GET /search with the filters, pageNumber, pageSize, sortBy and sortDir (a table with a search endpoint).
     // With ApiValidation=true the create and update handlers run the table's validate (RS_Validate) and answer 400 with the problems.
     // Full notes: Docs/TemplateNotes/RS_Routes_v1.md
     // ==========================================================================================
@@ -48,6 +48,8 @@
     Line($"        .route(\"{t.Route}\", get(get_all).post(create))");
     if (search)
         Line($"        .route(\"{t.Route}/search\", get(search))");
+    if (t.LookupSql is not null)
+        Line($"        .route(\"{t.Route}/lookup\", get(lookup))");
     Line($"        .route(\"{t.Route}/{{id}}\", get(get_by_id).put(update).delete(delete))");
     if (t.Clone is not null)
         Line($"        .route(\"{t.Route}/{{id}}/clone\", post(clone_row))");
@@ -57,6 +59,13 @@
     Line("    Ok(Json(repo::get_all(&pool).await?))");
     Line("}");
     Line();
+    if (t.LookupSql is not null)
+    {
+        Line("async fn lookup(State(pool): State<Pool>) -> ApiResult<Json<Vec<repo::LookupItem>>> {");
+        Line("    Ok(Json(repo::lookup(&pool).await?))");
+        Line("}");
+        Line();
+    }
     Line($"async fn get_by_id(State(pool): State<Pool>, Path(id): Path<{keyType}>) -> ApiResult<Json<{t.Struct}>> {{");
     Line($"    repo::get_by_id(&pool, {idArg}).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");

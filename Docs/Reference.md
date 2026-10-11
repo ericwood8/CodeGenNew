@@ -260,9 +260,11 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `BuildAngular` | command that builds the Angular app; blank = npm run build |
 | `BuildBlazor` | command that builds the Blazor app; blank = dotnet build -v q |
 | `BuildPython` | command that checks the Python API after a generate; blank = python -m compileall -q app |
+| `BuildRust` | command that checks the Rust API after a generate; blank = cargo check (on Windows, a script that sets up the C++ build tools first, then runs cargo) |
 | `TestApi` | command that tests the API; blank = no tests |
 | `TestWinUI3` | command that tests the WinUI3 app; blank = no tests |
 | `TestReact` | command that tests the React app; blank = npm test |
 | `TestAngular` | command that tests the Angular app; blank = npm test -- --watch=false |
 | `TestBlazor` | command that tests the Blazor app; blank = no tests |
 | `TestPython` | command that tests the Python API; blank = no tests |
+| `TestRust` | command that tests the Rust API; blank = cargo test |

@@ -10,6 +10,7 @@
 | `PUT /api/<plural>/{id}` | the changed row; 400 when the id in the body differs, 404 for no such row |
 | `DELETE /api/<plural>/{id}` | 200, 404, or 400 when the row is in use (a foreign key) |
 | `POST /api/<plural>/{id}/clone` | 201 and the copy (a cloneable table) |
+| `GET /api/<plural>/lookup` | `[{ id, name, isActive }]` of every row ordered by name, for the drop-downs and the "name of" columns of other screens (a table with a display column; `RustTable.LookupSql`) |
 | `GET /api/<plural>/search` | `{ items, page, pageSize, totalCount, totalPages }`; 400 for `pageNumber` below 1 |
 
 - The plural is `Pluralizer` of the lower-cased table name without an `E_` or `SY_` prefix (a bare trailing `s` stays: `/api/customerstatus`), the rule the TypeScript clients use too.
