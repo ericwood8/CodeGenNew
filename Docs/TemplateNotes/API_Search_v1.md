@@ -1,6 +1,6 @@
 # API_Search_v1
 
-With `ApiAuth=true`, the search of a table in `OwnedTables` is limited to the owners the caller's `IOwnerScope` allows when `AccessMode=Ef` (a `Where` on the owner column). The search routines take no owner, so with routines a caller who is limited to some owners gets 403; the administrator role is not limited.
+With `ApiAuth=true`, the search of a table in `OwnedTables` is limited to the owners the caller's `IOwnerScope` allows when `AccessMode=Ef` (a `Where` on the owner column, or on the parent's owner for a table owned through its parent). The search routines take no owner, so with routines a caller who is limited to some owners gets 403; the administrator role is not limited.
 
 The full design notes that used to head the template. The template keeps a short summary.
 

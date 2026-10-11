@@ -2,6 +2,10 @@
 
 With `ApiAuth=true`, a table named in `OwnedTables` that has the NOT NULL whole-number `OwnerColumn` (default `EmployeeId`) gets `Owner => c => c.EmployeeId`, and `CrudApi` then scopes its rows to the signed-in person (`API_EssentialJwt_v1.md`). A listed table without the column gets a comment saying so. `OwnedTable` in Core is the one rule.
 
+An `OwnedTables` entry may name its own owner column, `DonateLeave:DonateFrom_EmployeeId`; an entry without one uses `OwnerColumn`.
+
+A table with no owner column of its own that has a NOT NULL single-column foreign key to a listed table (the first one, in column order) belongs to the owner of that parent row (`OwnedTable.Through`; `OwnedChildren=false` turns it off). Its class says `OwnedThroughParent => true` and writes `ScopeThroughParent` (the rows whose parent belongs to an allowed owner) and `ParentOwnerAsync` (the owner of the parent a row names). `CrudApi` then answers 403 for a row under another owner's parent, for a create or update that names such a parent (or one that does not exist), and lists only the allowed owners' rows. The rows of an editable child list are saved after the parent's own check and are tied to that parent. The parent is taken to have its owner column; only one level is followed.
+
 With `EditableChildren` the parent's class also says which child lists its create and update save with the row (`protected override IReadOnlyList<ChildRows<int>> EditableChildren`, one `new ChildRows<int, DepartmentTeam>("departmentTeams", c => c.DepartmentTeamId, c => c.DepartmentId)` per child, from the `EditableChild` rule the Angular form uses too). The config asks for the referenced display columns because the rule reads the child's columns.
 
 The full design notes that used to head the template. The template keeps a short summary.

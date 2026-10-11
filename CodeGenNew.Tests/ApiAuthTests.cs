@@ -47,6 +47,8 @@ public class ApiAuthTests
         Assert.IsFalse(plain.ApiAuth);
         Assert.IsEmpty(plain.OwnedTables);
         Assert.AreEqual("EmployeeId", plain.OwnerColumn);
+        Assert.IsTrue(plain.OwnedChildren);
+        Assert.IsFalse(Project(("OwnedChildren", "false")).OwnedChildren);
         Assert.AreEqual("role", plain.AuthRoleClaim);
         Assert.AreEqual("employeeId", plain.AuthOwnerClaim);
         Assert.AreEqual("Administrator", plain.AuthAdminRole);
@@ -156,9 +158,9 @@ public class ApiAuthTests
         Expect.Contains(with, "var column = Owner!;");
         // every route that reaches one row asks first
         Assert.AreEqual(4, CountOf(with, "if (await RefuseOtherOwnersAsync(context, id) is { } refused)"), "get, delete, clone and update");
-        Expect.Contains(with, "if (await VisibleOwnersAsync() is { } owners && !owners.Contains(OwnerOf(updatedRow)))");
+        Expect.Contains(with, "int? newOwner = OwnedThroughParent ? await ParentOwnerAsync(context, updatedRow) : OwnerOf(updatedRow);");
         Expect.Contains(with, "if (OwnerOf(newRow) == 0 && owners.Length == 1)");
-        Expect.Contains(with, "Scope(context.Set<TEntity>().AsNoTracking(), owners)");
+        Expect.Contains(with, "Scope(context, context.Set<TEntity>().AsNoTracking(), owners)");
 
         string without = await CrudApiTests.Essential();
         foreach (string text in new[] { "IOwnerScope", "Owner", "NotYours", "403" })
@@ -189,6 +191,93 @@ public class ApiAuthTests
         string unusable = await RenderTable("API_Crud_v1.tt", TimeSheet(ownerNullable: true), On, Owned);
         Expect.DoesNotContain(unusable, "Owner =>");
         Expect.Contains(unusable, "// OwnedTables names this table, but it has no NOT NULL whole-number column named EmployeeId (OwnerColumn), so its rows are not scoped to the signed-in person.");
+    }
+
+    private static TableModel Detail(bool parentIdNullable = false, string parent = "TimeSheet") => Sample.Table("TimeSheetDetail",
+    [
+        Sample.Column("TimeSheetDetailId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Sample.Column("TimeSheetId", SqlDbType.Int, nullable: parentIdNullable, ordinal: 2),
+        Sample.Column("Notes", SqlDbType.NVarChar, characters: 100, ordinal: 3)
+    ],
+    [Sample.ForeignKey("TimeSheetId", parent, "TimeSheetId")]);
+
+    private static TableModel DonateLeave() => Sample.Table("DonateLeave",
+    [
+        Sample.Column("DonateLeaveId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Sample.Column("DonateFrom_EmployeeId", SqlDbType.Int, ordinal: 2),
+        Sample.Column("DonateTo_EmployeeId", SqlDbType.Int, ordinal: 3)
+    ]);
+
+    [TestMethod]
+    public async Task An_entry_may_name_its_own_owner_column()
+    {
+        var project = Project(On, ("OwnedTables", "DonateLeave:DonateFrom_EmployeeId, TimeSheet"));
+        Assert.AreEqual("DonateFrom_EmployeeId", OwnedTable.OwnerColumn(DonateLeave(), project)!.Name);
+        Assert.AreEqual("EmployeeId", OwnedTable.OwnerColumn(TimeSheet(), project)!.Name, "an entry without a column uses OwnerColumn");
+        Assert.IsTrue(OwnedTable.IsListed(DonateLeave(), project));
+        Assert.IsNull(OwnedTable.OwnerColumn(DonateLeave(), Project(On, ("OwnedTables", "DonateLeave"))), "without the entry's column the default column is not there");
+
+        string api = await RenderTable("API_Crud_v1.tt", DonateLeave(), On, ("OwnedTables", "DonateLeave:DonateFrom_EmployeeId"));
+        Expect.Contains(api, "protected override Expression<Func<DonateLeave, int>>? Owner => c => c.DonateFrom_EmployeeId;");
+    }
+
+    [TestMethod]
+    public void A_table_under_an_owned_table_belongs_to_the_owner_of_its_parent()
+    {
+        var project = Project(On, Owned);
+        var link = OwnedTable.Through(Detail(), project)!;
+        Assert.AreEqual(new OwnerLink("TimeSheet", "TimeSheetId", "TimeSheetId", "EmployeeId"), link);
+        Assert.IsNull(OwnedTable.OwnerColumn(Detail(), project), "it has no owner column of its own");
+        Assert.IsTrue(OwnedTable.IsScoped(Detail(), project));
+        Assert.IsFalse(OwnedTable.IsListedButUnusable(Detail(), Project(On, ("OwnedTables", "TimeSheet, TimeSheetDetail"))));
+
+        Assert.IsNull(OwnedTable.Through(Detail(), Project(On, Owned, ("OwnedChildren", "false"))));
+        Assert.IsNull(OwnedTable.Through(Detail(parentIdNullable: true), project), "a nullable link leaves rows with no owner");
+        Assert.IsNull(OwnedTable.Through(Detail(parent: "Other"), project), "the parent is not owned");
+        Assert.IsNull(OwnedTable.Through(Detail(), Project(Owned)), "nothing is scoped without ApiAuth");
+        Assert.IsNull(OwnedTable.Through(TimeSheet(), project), "a table with its own owner column keeps it");
+        Assert.AreEqual("PersonId", OwnedTable.Through(Detail(), Project(On, ("OwnedTables", "TimeSheet:PersonId")))!.ParentOwner);
+    }
+
+    [TestMethod]
+    public async Task The_class_of_a_child_table_scopes_its_rows_through_the_parent()
+    {
+        string child = await RenderTable("API_Crud_v1.tt", Detail(), On, Owned);
+        Expect.Contains(child, "using Microsoft.EntityFrameworkCore;");
+        Expect.Contains(child, "protected override bool OwnedThroughParent => true;");
+        Expect.Contains(child, "rows.Where(c => context.Set<TimeSheet>().Any(p => p.TimeSheetId == c.TimeSheetId && owners.Contains(p.EmployeeId)));");
+        Expect.Contains(child, "await context.Set<TimeSheet>().Where(p => p.TimeSheetId == row.TimeSheetId).Select(p => (int?)p.EmployeeId).FirstOrDefaultAsync();");
+        Expect.DoesNotContain(child, "Owner =>");
+        Expect.DoesNotContain(child, "OwnedTables names this table");
+
+        foreach (var off in new[] { new[] { On, Owned, ("OwnedChildren", "false") }, new[] { Owned }, new[] { On } })
+        {
+            string plain = await RenderTable("API_Crud_v1.tt", Detail(), off);
+            Expect.DoesNotContain(plain, "OwnedThroughParent");
+            Expect.DoesNotContain(plain, "Microsoft.EntityFrameworkCore");
+        }
+
+        string search = await RenderTable("API_Search_v1.tt", Detail(), On, Owned, ("AccessMode", "Ef"));
+        Expect.Contains(search, "query = query.Where(row => context.Set<TimeSheet>().Any(p => p.TimeSheetId == row.TimeSheetId && owners.Contains(p.EmployeeId)));");
+        string routines = await RenderTable("API_Search_v1.tt", Detail(), On, Owned);
+        Expect.Contains(routines, "title: \"Search is not scoped\"");
+    }
+
+    [TestMethod]
+    public async Task CrudApi_scopes_a_child_table_through_its_parent_and_checks_before_it_saves_child_rows()
+    {
+        string cs = await CrudApiTests.Essential(On, ("EditableChildren", "Department.DepartmentTeam"));
+        Expect.Contains(cs, "protected virtual bool OwnedThroughParent => false;");
+        Expect.Contains(cs, "protected virtual IQueryable<TEntity> ScopeThroughParent(AcmeContext context, IQueryable<TEntity> rows, int[] owners) => rows.Where(_ => false);");
+        Expect.Contains(cs, "if (Owner is null && !OwnedThroughParent)");
+        Expect.Contains(cs, "return ScopeThroughParent(context, rows, owners);");
+        Expect.Contains(cs, "if (await ParentOwnerAsync(context, newRow) is not { } parentOwner || !owners.Contains(parentOwner))");
+        Expect.Contains(cs, "int? newOwner = OwnedThroughParent ? await ParentOwnerAsync(context, updatedRow) : OwnerOf(updatedRow);");
+        Expect.Contains(cs, "return await ScopeThroughParent(context, row, owners).AnyAsync() ? null : NotYours();");
+
+        // the lists of an editable child are saved after the parent's own owner check, and each row is tied to that parent
+        Assert.IsLessThan(cs.IndexOf("await ChildRowsSupport.SaveAsync(context, EditableChildren, KeyOf(newRow)", StringComparison.Ordinal), cs.IndexOf("return NotYours();", StringComparison.Ordinal));
+        Assert.IsLessThan(cs.IndexOf("await ChildRowsSupport.SaveAsync(context, EditableChildren, id, children)", StringComparison.Ordinal), cs.IndexOf("RefuseOtherOwnersAsync(context, id) is { } refused", cs.IndexOf("private async Task<IResult> UpdateAsync(", StringComparison.Ordinal), StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -286,7 +375,9 @@ public class ApiAuthTests
         Expect.Contains(routines, "if (owners is not null)\n            return Results.Problem(statusCode: 403, title: \"Search is not scoped\"");
         Expect.DoesNotContain(routines, "owners.Contains");
 
-        var unlisted = await Generate("API_Search", ("AccessMode", "Ef"), ("OwnedTables", "Employee"));
+        var unlisted = await Generate("API_Search", ("AccessMode", "Ef"), ("OwnedTables", "Employee"), ("OwnedChildren", "false"));
+        var underEmployee = await Generate("API_Search", ("AccessMode", "Ef"), ("OwnedTables", "Employee"));
+        Expect.Contains(Pick(underEmployee, "TimeSheetSearchApi.cs"), "context.Set<Employee>().Any(p => p.EmployeeId == row.EmployeeId && owners.Contains(p.EmployeeId))");
         Expect.DoesNotContain(Pick(unlisted, "TimeSheetSearchApi.cs"), "IOwnerScope");
         Expect.DoesNotContain(Pick(unlisted, "TimeSheetSearchApi.cs"), "HttpContext");
 
@@ -330,7 +421,7 @@ public class ApiAuthTests
     [TestMethod]
     public void A_setting_that_belongs_to_the_sign_in_is_on_the_API_tab()
     {
-        foreach (string key in new[] { "ApiAuth", "OwnedTables", "OwnerColumn", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole" })
+        foreach (string key in new[] { "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole" })
             Assert.AreEqual("API", ProjectSettingGroups.TabOf(key), key);
     }
 }

@@ -294,6 +294,15 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     /// <summary> The column that holds the owner of a row (<c>c =&gt; c.EmployeeId</c>) for a table the project lists in OwnedTables: a caller reads and changes only the rows of the owners the <see cref="IOwnerScope"/> allows (403 for another owner's row). Null: the rows belong to no one. </summary>
     protected virtual Expression<Func<TEntity, int>>? Owner => null;
 
+    /// <summary> True for a table whose rows belong to the owner of a parent row (a time sheet's detail rows) and have no owner column of their own: <see cref="ScopeThroughParent"/> and <see cref="ParentOwnerAsync"/> say how. </summary>
+    protected virtual bool OwnedThroughParent => false;
+
+    /// <summary> The rows whose parent belongs to one of these owners. The default keeps none, so a table that says <see cref="OwnedThroughParent"/> and forgets this never shows another person's rows. </summary>
+    protected virtual IQueryable<TEntity> ScopeThroughParent(<#= contextType #> context, IQueryable<TEntity> rows, int[] owners) => rows.Where(_ => false);
+
+    /// <summary> The owner of the parent row this row names; null when there is no such parent. </summary>
+    protected virtual Task<int?> ParentOwnerAsync(<#= contextType #> context, TEntity row) => Task.FromResult<int?>(null);
+
     private IHttpContextAccessor? _http;
     private Func<TEntity, int>? _ownerOf;
     private Action<TEntity, int>? _setOwner;
@@ -316,16 +325,18 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     /// <summary> The owner ids the caller may reach; null when there is no restriction (the table has no owner, or the caller sees every owner). </summary>
     private async Task<int[]?> VisibleOwnersAsync()
     {
-        if (Owner is null)
+        if (Owner is null && !OwnedThroughParent)
             return null;
         var owners = await Http.RequestServices.GetRequiredService<IOwnerScope>().VisibleOwnersAsync(Http.User, Http.RequestAborted);
         return owners?.ToArray();
     }
 
-    private IQueryable<TEntity> Scope(IQueryable<TEntity> rows, int[]? owners)
+    private IQueryable<TEntity> Scope(<#= contextType #> context, IQueryable<TEntity> rows, int[]? owners)
     {
         if (owners is null)
             return rows;
+        if (OwnedThroughParent)
+            return ScopeThroughParent(context, rows, owners);
         var owner = Owner!;
         var contains = Expression.Call(typeof(Enumerable), nameof(Enumerable.Contains), [typeof(int)], Expression.Constant(owners), owner.Body);
         return rows.Where(Expression.Lambda<Func<TEntity, bool>>(contains, owner.Parameters));
@@ -339,6 +350,13 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
             return null;
         var key = Key;
         var sameKey = Expression.Lambda<Func<TEntity, bool>>(Expression.Equal(key.Body, Expression.Constant(id, typeof(TKey))), key.Parameters);
+        if (OwnedThroughParent)
+        {
+            var row = context.Set<TEntity>().AsNoTracking().Where(sameKey);
+            if (!await row.AnyAsync())
+                return Results.NotFound();
+            return await ScopeThroughParent(context, row, owners).AnyAsync() ? null : NotYours();
+        }
         var found = await context.Set<TEntity>().AsNoTracking().Where(sameKey).Select(Owner!).Take(1).ToListAsync();
         if (found.Count == 0)
             return Results.NotFound();
@@ -354,7 +372,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     {
         BreakIntoStrings(out string singular, out string plural, out string apiSubDir);
         _route = _apiSubDir;
-<#= auth("        if (Owner is not null)\n            _http = app.Services.GetRequiredService<IHttpContextAccessor>();\n") #>
+<#= auth("        if (Owner is not null || OwnedThroughParent)\n            _http = app.Services.GetRequiredService<IHttpContextAccessor>();\n") #>
         // Get all
 <#
     if (listSearch)
@@ -482,7 +500,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 <#= auth("        var owners = await VisibleOwnersAsync();\n") #>        bool paged = pageNumber is not null || pageSize is not null;
         if (paged || !string.IsNullOrWhiteSpace(search) || !string.IsNullOrWhiteSpace(sort))
         {
-            IQueryable<TEntity> rows = <#= Project.ApiAuth ? "Scope(context.Set<TEntity>().AsNoTracking(), owners)" : "context.Set<TEntity>().AsNoTracking()" #>;
+            IQueryable<TEntity> rows = <#= Project.ApiAuth ? "Scope(context, context.Set<TEntity>().AsNoTracking(), owners)" : "context.Set<TEntity>().AsNoTracking()" #>;
             if (!string.IsNullOrWhiteSpace(search))
                 rows = SearchRows(rows, search.Trim().ToLower());
             var ordered = SortedRows(rows, sort) ?? (NewestFirst is { } newest ? rows.OrderByDescending(newest).ThenBy(Key) : rows.OrderBy(Key));
@@ -511,7 +529,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 #>
         if (owners is not null)
         {
-            IQueryable<TEntity> mine = Scope(context.Set<TEntity>().AsNoTracking(), owners);
+            IQueryable<TEntity> mine = Scope(context, context.Set<TEntity>().AsNoTracking(), owners);
             return Results.Ok(<#= dtos ? "(" : "" #>await (NewestFirst is { } newestFirst ? mine.OrderByDescending(newestFirst).ThenBy(Key) : mine.OrderBy(Key)).ToListAsync()<#= dtos ? ").Select(ToOutput).ToList()" : "" #>);
         }
 
@@ -556,7 +574,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
             if ((long)(number - 1) * size > int.MaxValue)
                 return Results.Problem(statusCode: 400, title: "Invalid page", detail: "pageNumber is too large for that pageSize.");
 
-            IQueryable<TEntity> all = <#= Project.ApiAuth ? "Scope(context.Set<TEntity>().AsNoTracking(), owners)" : "context.Set<TEntity>().AsNoTracking()" #>;
+            IQueryable<TEntity> all = <#= Project.ApiAuth ? "Scope(context, context.Set<TEntity>().AsNoTracking(), owners)" : "context.Set<TEntity>().AsNoTracking()" #>;
             int totalCount = await all.CountAsync();
             var ordered = NewestFirst is { } newest ? all.OrderByDescending(newest).ThenBy(Key) : all.OrderBy(Key);
             var page = await ordered.Skip((number - 1) * size).Take(size).ToListAsync();
@@ -569,7 +587,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 #>
         if (owners is not null)
         {
-            IQueryable<TEntity> mine = Scope(context.Set<TEntity>().AsNoTracking(), owners);
+            IQueryable<TEntity> mine = Scope(context, context.Set<TEntity>().AsNoTracking(), owners);
             return Results.Ok(<#= dtos ? "(" : "" #>await (NewestFirst is { } newestFirst ? mine.OrderByDescending(newestFirst).ThenBy(Key) : mine.OrderBy(Key)).ToListAsync()<#= dtos ? ").Select(ToOutput).ToList()" : "" #>);
         }
 
@@ -627,7 +645,13 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     {
 #>
         var owners = await VisibleOwnersAsync();
-        if (owners is not null)
+        if (owners is not null && OwnedThroughParent)
+        {
+            // the row goes under a parent of an owner the caller may act for
+            if (await ParentOwnerAsync(context, newRow) is not { } parentOwner || !owners.Contains(parentOwner))
+                return NotYours();
+        }
+        else if (owners is not null)
         {
             // a caller who may act for one owner and left the owner blank creates the row for that owner
             if (OwnerOf(newRow) == 0 && owners.Length == 1)
@@ -720,8 +744,12 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
         if (await RefuseOtherOwnersAsync(context, id) is { } refused)
             return refused;
         // the row stays with an owner the caller may act for: it cannot be handed to anyone else
-        if (await VisibleOwnersAsync() is { } owners && !owners.Contains(OwnerOf(updatedRow)))
-            return NotYours();
+        if (await VisibleOwnersAsync() is { } owners)
+        {
+            int? newOwner = OwnedThroughParent ? await ParentOwnerAsync(context, updatedRow) : OwnerOf(updatedRow);
+            if (newOwner is not { } given || !owners.Contains(given))
+                return NotYours();
+        }
 
 <#
     }
@@ -781,12 +809,20 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     {
 #>
     private async Task<IResult> LookupAsync(<#= contextType #> context) =>
-        Results.Ok(await LookupQuery(Scope(context.Set<TEntity>().AsNoTracking(), await VisibleOwnersAsync())).ToListAsync());
+        Results.Ok(await LookupQuery(Scope(context, context.Set<TEntity>().AsNoTracking(), await VisibleOwnersAsync())).ToListAsync());
 
     private async Task<IResult> FindByNameRowsAsync(<#= contextType #> context, string name)
     {
         var rows = await FindByNameAsync(NewRepo(context), name);
-        return Results.Ok(<#= dtos ? "(" : "" #>await VisibleOwnersAsync() is { } owners ? rows.Where(r => owners.Contains(OwnerOf(r))).ToList() : rows<#= dtos ? ").Select(ToOutput).ToList()" : "" #>);
+        if (await VisibleOwnersAsync() is { } owners)
+        {
+            var mine = new List<TEntity>();
+            foreach (var row in rows)
+                if ((OwnedThroughParent ? await ParentOwnerAsync(context, row) : OwnerOf(row)) is { } owner && owners.Contains(owner))
+                    mine.Add(row);
+            rows = mine;
+        }
+        return Results.Ok(<#= dtos ? "rows.Select(ToOutput).ToList()" : "rows" #>);
     }
 <#
     }

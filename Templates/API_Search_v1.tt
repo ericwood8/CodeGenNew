@@ -47,6 +47,8 @@
     var efFilters = string.Concat(filters.Select(f => ", " + f.ParamName));
     // ApiAuth with OwnedTables: only the rows of the owners the caller may act for. The routines cannot take an owner, so the routine form answers 403 to a caller who is limited to some owners.
     var ownerColumn = OwnedTable.OwnerColumn(Model, Project);
+    var ownerLink = OwnedTable.Through(Model, Project);
+    bool scoped = ownerColumn is not null || ownerLink is not null;
 #>
 namespace <#= apiNamespace #>;
 
@@ -76,7 +78,7 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
     private static async Task<IResult> Search(
         [FromServices] <#= contextType #> context,
 <#
-    if (ownerColumn is not null)
+    if (scoped)
     {
 #>
         HttpContext http,
@@ -109,7 +111,7 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
         bool sortDescending = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase);
 
 <#
-    if (ownerColumn is not null)
+    if (scoped)
     {
 #>
         int[]? owners = (await http.RequestServices.GetRequiredService<IOwnerScope>().VisibleOwnersAsync(http.User, http.RequestAborted))?.ToArray();
@@ -139,6 +141,13 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
 #>
         if (owners is not null)
             query = query.Where(row => owners.Contains(row.<#= ownerColumn.Name #>));
+<#
+        }
+        else if (ownerLink is not null)
+        {
+#>
+        if (owners is not null)
+            query = query.Where(row => context.Set<<#= ownerLink.ParentTable #>>().Any(p => p.<#= ownerLink.ParentKey #> == row.<#= ownerLink.ForeignKey #> && owners.Contains(p.<#= ownerLink.ParentOwner #>)));
 <#
         }
 #>

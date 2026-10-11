@@ -80,6 +80,9 @@
     // ApiAuth with OwnedTables: a caller reaches only the rows of the owners the IOwnerScope allows (the owner column; a Name and IsActive table is never scoped)
     var ownerColumn = supported && !nameActive ? OwnedTable.OwnerColumn(Model, Project) : null;
     bool ownerUnusable = supported && !nameActive && OwnedTable.IsListedButUnusable(Model, Project);
+    // a table with no owner column of its own, hanging off an owned table (the detail rows of a time sheet), belongs to the owner of its parent row
+    var ownerLink = supported && !nameActive ? OwnedTable.Through(Model, Project) : null;
+    string ownerUsing = ownerLink is not null && !usings.Contains("Microsoft.EntityFrameworkCore") ? "using Microsoft.EntityFrameworkCore;\n" : "";
 
     // EditableChildren: the child tables a form of this table saves in the same request (EditableChild, the one rule the Angular screen asks too)
     var editableChildren = supported ? EditableChild.Of(Model, Project) : [];
@@ -112,7 +115,7 @@
 #>
 namespace <#= apiNamespace #>;
 
-<#= usingLines #>using System.Linq.Expressions;
+<#= usingLines #><#= ownerUsing #>using System.Linq.Expressions;
 
 /// <summary> The API of <#= entity #>: the endpoints and their answers are <#= nameActive ? "NameActiveCrudApi's (a Name and IsActive table: the duplicate-name rule)" : "CrudApi's" #> (Apis/CrudApi.cs, the CrudApi essentials group); this class says which repository and key it uses. </summary>
 public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<#= keyArgument #><#= dtoArguments #>>
@@ -139,6 +142,20 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
 #>
 
     protected override Expression<Func<<#= entity #>, int>>? Owner => c => c.<#= ownerColumn.Name #>;
+<#
+        }
+        else if (ownerLink is not null)
+        {
+#>
+
+    // ApiAuth: the rows belong to the owner of their <#= ownerLink.ParentTable #> (<#= ownerLink.ParentOwner #>), so a caller reaches only the rows under a parent of an owner they may act for.
+    protected override bool OwnedThroughParent => true;
+
+    protected override IQueryable<<#= entity #>> ScopeThroughParent(<#= contextType #> context, IQueryable<<#= entity #>> rows, int[] owners) =>
+        rows.Where(c => context.Set<<#= ownerLink.ParentTable #>>().Any(p => p.<#= ownerLink.ParentKey #> == c.<#= ownerLink.ForeignKey #> && owners.Contains(p.<#= ownerLink.ParentOwner #>)));
+
+    protected override async Task<int?> ParentOwnerAsync(<#= contextType #> context, <#= entity #> row) =>
+        await context.Set<<#= ownerLink.ParentTable #>>().Where(p => p.<#= ownerLink.ParentKey #> == row.<#= ownerLink.ForeignKey #>).Select(p => (int?)p.<#= ownerLink.ParentOwner #>).FirstOrDefaultAsync();
 <#
         }
         else if (ownerUnusable)

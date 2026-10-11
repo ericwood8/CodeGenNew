@@ -292,7 +292,7 @@ public static class CsvEndpoints
     {
         string entity = t.TableName;
 #>
-        MapTable<<#= entity #>, <#= contextType #>>(app, "<#= ApiRequests.Route(t) #>", "<#= t.TableName.Pluralize().ToLowerInvariant() #>", [<#= Columns(t) #>]<#= auth ? ", " + (OwnedTable.OwnerColumn(t, Project) is null ? "false" : "true") : "" #>);
+        MapTable<<#= entity #>, <#= contextType #>>(app, "<#= ApiRequests.Route(t) #>", "<#= t.TableName.Pluralize().ToLowerInvariant() #>", [<#= Columns(t) #>]<#= auth ? ", " + (OwnedTable.IsScoped(t, Project) ? "true" : "false") : "" #>);
 <#
     }
 #>

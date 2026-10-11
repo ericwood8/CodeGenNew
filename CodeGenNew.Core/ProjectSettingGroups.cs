@@ -23,7 +23,7 @@ public static class ProjectSettingGroups
         new("Database", "This tab has the provider, server, name, user, access mode, replication, temporal, key-sequence and bulk-update settings.",
             ["DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "AccessMode", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression"]),
         new("API", "This tab has docs, HTTP, fakers, validation, CSV, EF configurations, production profile, telemetry, API tests, project docs, folder, port, and the sign-in with its owned tables and claim names.",
-            ["ApiDocs", "ApiHttp", "ApiFakers", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ProjectDocs", "ApiFolder", "ApiPort", "ApiAuth", "OwnedTables", "OwnerColumn", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "Dtos"]),
+            ["ApiDocs", "ApiHttp", "ApiFakers", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ProjectDocs", "ApiFolder", "ApiPort", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "Dtos"]),
         new("Dashboard", "This tab has Dashboard, Dashboard Strip, Dashboard Measures and No Dashboard Tables.",
             ["Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables"]),
         new("WinUI3", "This tab has the view and view-model namespaces and folders, detail-master tables and the directory listing.",
@@ -33,7 +33,7 @@ public static class ProjectSettingGroups
         new("Output", "This tab has Stacks (which front ends and APIs are generated), plan-also, the output folders, and the Rust crate and port.",
             ["Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputRust", "OutputPython", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql"]),
         new("Build", "This tab has the build and test commands.",
-            ["BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildPython", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestPython"]),
+            ["BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildPython", "BuildRust", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestPython", "TestRust"]),
     ];
 
     /// <summary> The title of the tab a key is shown on. </summary>
