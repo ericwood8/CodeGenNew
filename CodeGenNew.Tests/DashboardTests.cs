@@ -337,7 +337,7 @@ public class DashboardTests
             var files = Directory.GetFiles(output, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(output, f).Replace('\\', '/')).ToList();
             foreach (string expected in new[]
             {
-                "Api/Repositories/DashboardData.cs", "Api/Apis/DashboardApi.cs", "Api/docs/Dashboard.md", "sql/DashboardQueries.sql",
+                "Api/Repositories/DashboardData.cs", "Api/Apis/DashboardApi.cs", "Api/docs/Dashboard.md",
                 "App/Repositories/DashboardData.cs", "App/Views/DashboardPage.cs", "App/Views/DashboardWidgetViews.cs", "App/Views/DashboardStrip.cs",
                 "web/src/api/dashboardApi.ts", "web/src/pages/DashboardPage.tsx", "web/src/components/DashboardWidgetView.tsx", "web/src/components/DashboardStrip.tsx",
                 "ng/src/app/services/dashboard.service.ts", "ng/src/app/components/dashboard/dashboard.component.ts", "ng/src/app/components/dashboard-widget/dashboard-widget.component.html",
@@ -406,8 +406,9 @@ public class DashboardTests
     {
         var on = Project(("Dashboard", "true"));
         CollectionAssert.IsSubsetOf(new[] { "CS_Dashboard", "API_Dashboard", "TSX_Dashboard", "TS_Dashboard", "WinUI3_DashboardPage", "SP_Dashboard", "MD_Dashboard" }, on.ImpliedPlanTemplates.ToArray());
-        Assert.IsFalse(Project().ImpliedPlanTemplates.Any(n => n.Contains("Dashboard")));
-        Assert.IsFalse(Project(("DashboardStrip", "true")).DashboardStrip, "the strip needs the dashboard");
+        CollectionAssert.IsSubsetOf(new[] { "CS_Dashboard", "BLZ_Dashboard" }, Project().ImpliedPlanTemplates.ToArray(), "the dashboard is on unless the project turns it off");
+        Assert.IsFalse(Project(("Dashboard", "false")).ImpliedPlanTemplates.Any(n => n.Contains("Dashboard")));
+        Assert.IsFalse(Project(("Dashboard", "false"), ("DashboardStrip", "true")).DashboardStrip, "the strip needs the dashboard");
         Assert.IsTrue(Project(("Dashboard", "true"), ("DashboardStrip", "true")).DashboardStrip);
         CollectionAssert.AreEqual(new[] { "A", "B" }, Project(("NoDashboardTables", "A, B")).NoDashboardTables);
     }

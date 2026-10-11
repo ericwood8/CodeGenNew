@@ -83,7 +83,7 @@ public class BlazorTests
         {
             var project = ProjectSettings.FromValues(new Dictionary<string, string>
             {
-                ["ProjectName"] = "Shop", ["DatabaseProvider"] = "Sqlite", ["DatabaseName"] = "shop.db", ["EnumTables"] = "none", ["Stacks"] = "Blazor", ["Screens"] = "Customer,Region", ["ApiPort"] = "6001"
+                ["ProjectName"] = "Shop", ["DatabaseProvider"] = "Sqlite", ["DatabaseName"] = "shop.db", ["EnumTables"] = "none", ["Stacks"] = "Blazor", ["Screens"] = "Customer,Region", ["ApiPort"] = "6001", ["Dashboard"] = "false"
             });
             var request = new ConnectionRequest { Provider = DatabaseProvider.Sqlite, ServerName = "", DatabaseName = database };
             var provider = SchemaProviderFactory.Create(request, Path.Combine(Repo.Root, "SpecialLogicColumns.config"));

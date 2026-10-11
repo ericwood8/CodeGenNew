@@ -87,7 +87,7 @@ public class ScreenTemplateTests
     [TestMethod]
     public async Task WinUI3_adds_the_menu_entries_and_the_page_switch()
     {
-        string cs = await Render("WinUI3_Screens_v1.tt", Database(Sample.OrderWithLines(), Sample.DonateLeave()));
+        string cs = await Render("WinUI3_Screens_v1.tt", Database(Sample.OrderWithLines(), Sample.DonateLeave()), Project(("Dashboard", "false")));
 
         Expect.Contains(cs, "namespace Acme.App;");
         Expect.Contains(cs, "using Acme.App.Views;");
