@@ -38,9 +38,11 @@ form input[type='checkbox'] { align-self: flex-start; width: 18px; height: 18px;
 /* Submit and Cancel sit side by side under the last field. */
 .form-buttons { display: flex; gap: 8px; margin-top: 16px; }
 [role='tablist'] { display: flex; gap: 4px; margin-bottom: 4px; border-bottom: 1px solid #8884; }
-[role='tab'] { padding: 6px 14px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; border-bottom: 2px solid transparent; }
+[role='tab'] { padding: 6px 14px; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; cursor: pointer; border-bottom: 2px solid transparent; }
 [role='tab'][aria-selected='true'] { border-bottom-color: currentColor; }
-main button { padding: 4px 12px; font: inherit; }
+/* every button's caption is bold */
+button, [role='tab'] { font-weight: 700; }
+main button { padding: 4px 12px; font: inherit; font-weight: 700; }
 main > div > div > input { margin: 4px 6px 4px 0; padding: 6px 8px; font: inherit; }
 tbody tr:hover { background: #8881; }
 /* The Edit / Clone / Delete buttons on a grid row: shaded and bold. */
@@ -51,5 +53,7 @@ h3 { margin-top: 24px; }
 /* The add/edit form is a native modal <dialog>: it opens over the page wherever the grid is scrolled to. */
 dialog { width: min(920px, 94vw); max-height: 90vh; overflow: auto; box-sizing: border-box; padding: 8px 24px 24px; border: 1px solid #8886; border-radius: 8px; color: inherit; background: Canvas; }
 dialog::backdrop { background: rgb(0 0 0 / 0.45); }
-dialog form { margin-top: 0; }
+dialog form { margin-top: 0; max-width: none; }
+/* the fields stay a readable width; a table of child rows inside the form uses the whole dialog */
+dialog form > label, dialog form > input, dialog form > select, dialog form > textarea, dialog form [role='tabpanel'] { max-width: 640px; }
 dialog [role='alert'] { color: #c62828; font-weight: 600; }

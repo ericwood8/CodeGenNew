@@ -150,6 +150,14 @@ public class ColumnModel
     /// unconditionally, same as IsModifiedDateColumn. </summary>
     public bool IsLastChangedDateColumn { get; init; }
 
+    /// <summary> Who made the row and when it last changed (CreateDate, CreateUser, ModifiedDate, ModifiedBy, LastDateChanged ...): the system writes them, so a form shows them as text
+    /// (a label with the value) and never as a box a person can change. </summary>
+    public bool IsSystemStampColumn =>
+        IsCreateDateColumn || IsCreateUserColumn || IsModifiedDateColumn || IsModifiedUserColumn || IsLastChangedDateColumn
+        || (IsAuditColumn && Array.Exists(StampNameStarts, s => Name.StartsWithIgnoreCase(s)));
+
+    private static readonly string[] StampNameStarts = ["Create", "Modif", "Updated", "LastChang", "LastUpdat"];
+
     /// <summary> Matches SpecialLogicColumns.config category "InactiveReasonColumn" -- e.g.
     /// InactiveReasonNoteText. Excluded from Insert parameters and left NULL (see Docs/Reference.md section 5). </summary>
     public bool IsInactiveReasonColumn { get; init; }

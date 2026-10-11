@@ -23,7 +23,9 @@ tbody tr:hover { background: #8881; }
 td .btn-action { background: #8883; border: 1px solid #8886; border-radius: 4px; font-weight: 700; cursor: pointer; }
 td .btn-action:hover { background: #8885; }
 
-.btn, .btn-action, .btn-outline, .btn-outline-secondary { padding: 4px 12px; font: inherit; cursor: pointer; }
+/* every button's caption is bold */
+button { font-weight: 700; }
+.btn, .btn-action, .btn-outline, .btn-outline-secondary { padding: 4px 12px; font: inherit; font-weight: 700; cursor: pointer; }
 .btn-action { margin-right: 4px; padding: 2px 10px; }
 .btn.btn-outline, .btn-outline { background: none; }
 
@@ -48,7 +50,7 @@ td .btn-action:hover { background: #8885; }
 .form-control { padding: 6px 8px; font: inherit; }
 
 [role='tablist'] { display: flex; gap: 4px; margin-bottom: 4px; border-bottom: 1px solid #8884; }
-[role='tab'] { padding: 6px 14px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; border-bottom: 2px solid transparent; }
+[role='tab'] { padding: 6px 14px; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; cursor: pointer; border-bottom: 2px solid transparent; }
 [role='tab'][aria-selected='true'] { border-bottom-color: currentColor; }
 [role='tabpanel'][hidden] { display: none; }
 
@@ -57,3 +59,5 @@ td .btn-action:hover { background: #8885; }
 /* The add/edit form is a native modal <dialog>: it opens over the page wherever the grid is scrolled to. */
 dialog.form-container { width: min(920px, 94vw); max-width: none; max-height: 90vh; overflow: auto; box-sizing: border-box; margin: auto; padding: 8px 24px 24px; border: 1px solid #8886; border-radius: 8px; color: inherit; background: Canvas; }
 dialog.form-container::backdrop { background: rgb(0 0 0 / 0.45); }
+/* the fields stay a readable width; a table of child rows inside the form uses the whole dialog */
+dialog.form-container .form-group { max-width: 640px; }

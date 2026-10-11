@@ -20,6 +20,10 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+            <!-- every button's caption is bold -->
+            <Style TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="FontWeight" Value="Bold" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

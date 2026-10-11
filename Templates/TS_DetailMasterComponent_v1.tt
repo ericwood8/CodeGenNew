@@ -201,6 +201,8 @@
         string Id(ColumnModel c) => variable + UpperFirst(Camel(c.Name));
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
         string LabelOf(ColumnModel c) => c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name);
+        // a money column that is not a whole number is edited in the money box (appCurrency), unless it is a foreign key, a list of choices or the typed key
+        bool IsCurrencyField(ColumnModel c) => c.IsCurrencyColumn && !c.IsIntegerColumn && IsNumber(c) && !c.IsSystemStampColumn && LookupOf(c) is null && !c.HasChoices && !(textKey && c.IsPrimaryKey);
 
         // EditableChildren: the child tables whose rows are added, changed and removed inside this form and sent with it in one request (EditableChild, the rule the API's create and update use too);
         // every other child keeps its read-only grid under the form
@@ -213,6 +215,8 @@
         ForeignKeyModel EditLookupOf(ChildForeignKeyModel link, ColumnModel c) => c.IsGuidColumn ? null
             : link.ReferencingTableForeignKeys.FirstOrDefault(o => o.ReferencingColumns.Count == 1 && o.ReferencingColumns[0].EqualsIgnoreCase(c.Name)
                 && o.ReferencedDisplayColumns.Count > 0 && !NoApi(o.ReferencedTable, o.ReferencedLookupShape) && !NoLookup(o.ReferencedTable, o.ReferencedLookupShape));
+        // a money column of the child that is not a foreign key or a list of choices
+        bool IsChildCurrency(ChildForeignKeyModel link, ColumnModel c) => c.IsCurrencyColumn && !c.IsIntegerColumn && IsNumber(c) && EditLookupOf(link, c) is null && !c.HasChoices;
         string ChildInput(ChildForeignKeyModel link, string childVar, ColumnModel c)
         {
             string model = $"row.{Camel(c.Name)}";
@@ -226,6 +230,12 @@
                 return $"<input type=\"checkbox\" {name} [(ngModel)]=\"{model}\">";
             if (IsDate(c))
                 return $"<input type=\"date\" {name} [(ngModel)]=\"{model}\"{req}>";
+            if (IsChildCurrency(link, c))
+            {
+                var (moneyMin, moneyMax) = Project.MoneyLimits(link.ReferencingTable, c);
+                return $"<input type=\"text\" inputmode=\"decimal\" {name} appCurrency currencyCode=\"{Project.CurrencyCode}\" [digits]=\"{NumericClassifier.CurrencyDigits(c)}\""
+                       + (moneyMin is { } lo ? $" [min]=\"{Inv(lo)}\"" : "") + (moneyMax is { } hi ? $" [max]=\"{Inv(hi)}\"" : "") + $" [(ngModel)]=\"{model}\"{req}>";
+            }
             if (IsNumber(c))
             {
                 string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? " step=\"" + "0." + new string('0', c.Scale!.Value - 1) + "1\""
@@ -233,11 +243,13 @@
                             : c.SqlType is SqlDbType.Float or SqlDbType.Real ? " step=\"any\"" : "";
                 string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\""
                     : IsPlainDecimal(c) ? $" min=\"{Inv(NumericClassifier.DecimalRange(c).Min)}\" max=\"{Inv(NumericClassifier.DecimalRange(c).Max)}\"" : "";
-                return $"<input type=\"number\" {name} [(ngModel)]=\"{model}\"{step}{range}{req}>";
+                string width = Project.NumberBoxCharacters(c) is { } boxWidth ? $" style=\"width: {boxWidth}ch\"" : "";
+                return $"<input type=\"number\" {name} [(ngModel)]=\"{model}\"{step}{range}{width}{req}>";
             }
             string max = IsText(c) && Chars(c) > 0 ? $" maxlength=\"{Chars(c)}\"" : "";
             return $"<input type=\"text\" {name} [(ngModel)]=\"{model}\"{max}{req}>";
         }
+        bool UsesCurrencyBox() => shown.Any(IsCurrencyField) || editableChildren.Any(ch => EditableChild.Columns(LinkOf(ch.Table)).Any(c => IsChildCurrency(LinkOf(ch.Table), c)));
         var gridColumns = GridColumns.Choose(shown, IsMultiline);
         // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
         gridColumns = gridColumns.ForGrid();
@@ -312,7 +324,7 @@
             if (lookup is not null) cell = $"{{{{ {parentOf[lookup.ReferencedTable].NameMethod}({prop}) }}}}";
             else if (c.IsBooleanColumn) cell = $"{{{{ {prop} ? \"Yes\" : \"No\" }}}}";
             else if (IsDate(c)) cell = $"{{{{ {prop} | date:'MM/dd/yyyy' }}}}";
-            else if (c.IsCurrencyColumn && !c.IsIntegerColumn) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{d}-{d}' }}}}"; }
+            else if (c.IsCurrencyColumn && !c.IsIntegerColumn) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{Math.Min(2, d)}-{d}' }}}}"; }
             else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{{ {prop} | number:'1.2-2' }}}}";
             else cell = $"{{{{ {prop} }}}}";
             H($"                <td>{cell}</td>");
@@ -368,6 +380,16 @@
             string model = $"selectedRow.{Camel(c.Name)}";
             string req = c.IsNullable ? "" : " required";
             var lookup = LookupOf(c);
+            if (c.IsSystemStampColumn)
+            {
+                // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
+                string stampValue = c.IsDateColumn ? "{{ " + model + " | date:'medium' }}" : "{{ " + model + " }}";
+                H($"            <div class=\"form-group\" *ngIf=\"{(textKey ? "!adding" : "selectedRow." + keyProp)}\">");
+                H($"                <label for=\"{id}\">{LabelOf(c)}</label>");
+                H($"                <span id=\"{id}\">{stampValue}</span>");
+                H("            </div>");
+                continue;
+            }
             H("            <div class=\"form-group\">");
             H($"                <label for=\"{id}\">{LabelOf(c)}</label>");
             if (textKey && c.IsPrimaryKey)
@@ -408,6 +430,13 @@
                     H("                </div>");
                 }
             }
+            else if (IsCurrencyField(c))
+            {
+                // the money box shows $1,234.50 and takes the plain number; the limits are the column's CHECK constraint, or 0 for a column the project lists as never negative
+                var (moneyMin, moneyMax) = Project.MoneyLimits(Model.TableName, c);
+                string limits = (moneyMin is { } lo ? $" [min]=\"{Inv(lo)}\"" : "") + (moneyMax is { } hi ? $" [max]=\"{Inv(hi)}\"" : "");
+                H($"                <input type=\"text\" inputmode=\"decimal\" id=\"{id}\" name=\"{id}\" appCurrency currencyCode=\"{Project.CurrencyCode}\" [digits]=\"{NumericClassifier.CurrencyDigits(c)}\"{limits} [(ngModel)]=\"{model}\"{req}>");
+            }
             else if (IsNumber(c))
             {
                 string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? " step=\"" + "0." + new string('0', c.Scale!.Value - 1) + "1\""
@@ -417,7 +446,8 @@
                 string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\""
                     : IsPlainDecimal(c) ? $" min=\"{Inv(NumericClassifier.DecimalRange(c).Min)}\" max=\"{Inv(NumericClassifier.DecimalRange(c).Max)}\""
                     : c.IsCurrencyColumn && !c.IsIntegerColumn ? Project.MoneyLimitHtml(Model.TableName, c) : "";
-                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{step}{range} placeholder=\"{PlaceholderFor(c)}\"{req}>");
+                string width = Project.NumberBoxCharacters(c) is { } boxWidth ? $" style=\"width: {boxWidth}ch\"" : "";
+                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{step}{range}{width} placeholder=\"{PlaceholderFor(c)}\"{req}>");
             }
             else if (IsMultiline(c))
             {
@@ -440,6 +470,23 @@
             H();
             H("            <fieldset class=\"child-edit\">");
             H($"                <legend>{child.Title}</legend>");
+            if (EditableChild.UsesCards(link))
+            {
+                // too many columns for one table: each row is a block of labelled fields that wrap, so no box is squeezed
+                H($"                <div class=\"child-card\" *ngFor=\"let row of {child.Var}Rows\">");
+                H("                    <div class=\"child-card-head\">");
+                H($"                        <strong>{Words(BaseName(child.Table))}</strong>");
+                H($"                        <button type=\"button\" class=\"btn-action delete\" (click)=\"remove{child.MethodName}(row)\">Remove</button>");
+                H("                    </div>");
+                H("                    <div class=\"child-card-fields\">");
+                foreach (var c in editColumns)
+                    H($"                        <label class=\"child-field{(IsMultiline(c) ? " child-field-wide" : "")}\"><span>{GridCaption.For(c, LabelOf(c))}</span>{ChildInput(link, child.Var, c)}</label>");
+                H("                    </div>");
+                H("                </div>");
+                H($"                <button type=\"button\" class=\"btn btn-outline\" (click)=\"add{child.MethodName}()\">Add {Words(BaseName(child.Table))}</button>");
+                H("            </fieldset>");
+                continue;
+            }
             H("                <table>");
             H("                    <thead>");
             H("                        <tr>" + string.Concat(editColumns.Select(c => $"<th>{GridCaption.For(c, LabelOf(c))}</th>")) + "<th></th></tr>");
@@ -615,6 +662,7 @@
         if (children.Count > 0) T("import { HttpClient } from '@angular/common/http';");
         T("import { CommonModule } from '@angular/common';");
         T("import { FormsModule } from '@angular/forms';");
+        if (UsesCurrencyBox()) T("import { CurrencyInputDirective } from '../currency-input';");
         if (!nameActive) T("import { MatPaginatorModule } from '@angular/material/paginator';");
         T($"import {{ {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")} }} from '../crud-screen';");
         if (gridChildren.Any(ch => ch.KeyProp is not null)) T($"import {{ apiMessage }} from '../../{servicesFolder}/api-error';");
@@ -623,7 +671,7 @@
         T($"  selector: 'app-{stem}-detail-master',");
         if (Project.AngularStandaloneFlag) T("  standalone: true,");
         T($"  changeDetection: ChangeDetectionStrategy.{Project.AngularEagerStrategy}, // plain properties change inside subscribe callbacks: keep eager checking when OnPush is the default (Angular 22)");
-        T(nameActive ? "  imports: [ CommonModule, FormsModule ]," : "  imports: [ CommonModule, FormsModule, MatPaginatorModule ],");
+        T("  imports: [ CommonModule, FormsModule" + (UsesCurrencyBox() ? ", CurrencyInputDirective" : "") + (nameActive ? "" : ", MatPaginatorModule") + " ],");
         T($"  templateUrl: './{stem}-detail-master.component.html',");
         T($"  styleUrl: './{stem}-detail-master.component.css'");
         T("})");
@@ -707,7 +755,7 @@
         T($"  protected newRow(): {baseName} {{");
         T(adds.Count == 0 ? "    return { };" : $"    return {{ {string.Join(", ", adds)} }};");
         T("  }");
-        var dateColumns = shown.Where(IsDate).ToList();
+        var dateColumns = shown.Where(c => IsDate(c) && !c.IsSystemStampColumn).ToList();   // a stamp keeps the timestamp the API sent
         if (dateColumns.Count > 0)
         {
             T();
@@ -918,6 +966,8 @@
         o.Append($"@@@FILE {componentsFolder}/{stem}-detail-master/{stem}-detail-master.component.css@@@\n").Append(GridSortStyles.Css);
         if (editableChildren.Count > 0)
             o.Append("\n.child-edit { margin: 1rem 0; border: 1px solid #ccc; }\n.child-edit table { width: 100%; }\n.child-edit td { padding: 2px 4px; }\n.child-edit input[type=text], .child-edit input[type=number], .child-edit input[type=date], .child-edit select { width: 100%; box-sizing: border-box; }\n");
+            if (editableChildren.Any(ch => EditableChild.UsesCards(LinkOf(ch.Table))))
+                o.Append(".child-card { border: 1px solid #8886; border-radius: 6px; padding: 4px 12px 12px; margin-bottom: 12px; }\n.child-card-head { display: flex; justify-content: space-between; align-items: center; }\n.child-card-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0 12px; }\n.child-field { display: flex; flex-direction: column; }\n.child-field-wide { grid-column: 1 / -1; }\n");
         o.Append($"@@@FILE {componentsFolder}/{stem}-detail-master/{stem}-detail-master.component.html@@@\n").Append(Project.AdaptAngularHtml(html.ToString()));
         o.Append($"@@@FILE {componentsFolder}/{stem}-detail-master/{stem}-detail-master.component.spec.ts@@@\n").Append(Project.AdaptAngularSpec(spec.ToString()));
         o.Append($"@@@FILE {componentsFolder}/{stem}-detail-master/{stem}-detail-master.component.ts@@@\n").Append(ts);

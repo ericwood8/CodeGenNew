@@ -4,7 +4,7 @@
 <#
     // ==========================================================================================
     // TS_EssentialCrud_v1.tt
-    // Generates: src/app/services/crud.service.ts, crud.service.spec.ts, api-error.ts, api-error.spec.ts, notifier.ts and src/app/components/crud-screen.ts, crud-screen.spec.ts   (no table, no database: an essentials group; the folders are the project's ServicesFolder and ComponentsFolder)
+    // Generates: src/app/services/crud.service.ts, crud.service.spec.ts, api-error.ts, api-error.spec.ts, notifier.ts and src/app/components/crud-screen.ts, crud-screen.spec.ts, currency-input.ts (the money box directive)   (no table, no database: an essentials group; the folders are the project's ServicesFolder and ComponentsFolder)
     // The base files the generated Angular services (TS_Service) and screens (TS_Component) are short classes on:
     //   CrudService<T, K>        the five calls every table's API answers (getAll, getById, create, update, delete), getLookup (id and name only, for drop-downs), clone, and searchPage (GET <route>/search with the page, the filters and the sort);
     //   NamedCrudService<T, K>   adds findByName for a table whose rows have a Name (the name is URL-encoded);
@@ -509,6 +509,95 @@ export abstract class NameActiveCrudScreen<T extends { name: string; isActive: b
   clearSearch(): void {
     this.searchText = '';
     this.activeOnly = false;
+  }
+}
+@@@FILE src/app/<#= componentsFolder #>/currency-input.ts@@@
+import { Directive, ElementRef, HostListener, Input, forwardRef, inject } from '@angular/core';
+import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+
+/**
+ * The money box of a generated form: <input type="text" appCurrency currencyCode="USD" [digits]="2" [(ngModel)]="row.cost">. It shows $1,234.50 while the person is not typing in it and the plain number
+ * while they are; a value that is not a number, or outside min and max, is refused by the form's native validation.
+ */
+@Directive({
+<#= Project.AngularStandaloneFlag ? "  standalone: true," : "  // no standalone flag: every directive is standalone from Angular 19" #>
+  selector: 'input[appCurrency]',
+  providers: [{ provide: NG_VALUE_ACCESSOR, useExisting: forwardRef(() => CurrencyInputDirective), multi: true }]
+})
+export class CurrencyInputDirective implements ControlValueAccessor {
+  @Input() currencyCode = 'USD';
+  @Input() digits = 2;
+  @Input() min?: number;
+  @Input() max?: number;
+
+  private readonly box = inject<ElementRef<HTMLInputElement>>(ElementRef).nativeElement;
+  private value: number | null | undefined;
+  private editing = false;
+  private changed: (value: number | null) => void = () => {};
+  private touched: () => void = () => {};
+
+  writeValue(value: number | null | undefined): void {
+    this.value = value;
+    if (!this.editing) this.show();
+    this.check(value ?? null);
+  }
+
+  registerOnChange(fn: (value: number | null) => void): void {
+    this.changed = fn;
+  }
+
+  registerOnTouched(fn: () => void): void {
+    this.touched = fn;
+  }
+
+  setDisabledState(disabled: boolean): void {
+    this.box.disabled = disabled;
+  }
+
+  @HostListener('focus') onFocus(): void {
+    this.editing = true;
+    this.box.value = this.value === null || this.value === undefined ? '' : String(this.value);
+  }
+
+  @HostListener('blur') onBlur(): void {
+    this.editing = false;
+    this.show();
+    this.touched();
+  }
+
+  @HostListener('input') onInput(): void {
+    const amount = this.parse(this.box.value);
+    this.check(amount);
+    if (amount !== undefined) {
+      this.value = amount;
+      this.changed(amount);
+    }
+  }
+
+  private show(): void {
+    this.box.value = this.format(this.value);
+  }
+
+  private format(amount: number | null | undefined): string {
+    return amount === null || amount === undefined
+      ? ''
+      : amount.toLocaleString(undefined, { style: 'currency', currency: this.currencyCode, minimumFractionDigits: Math.min(2, this.digits), maximumFractionDigits: this.digits });
+  }
+
+  // null is a blank box, undefined is text that is not a number
+  private parse(typed: string): number | null | undefined {
+    const plain = typed.replace(/[^0-9.\-]/g, '');
+    if (plain === '') return typed.trim() === '' ? null : undefined;
+    const amount = Number(plain);
+    return Number.isNaN(amount) ? undefined : amount;
+  }
+
+  private check(amount: number | null | undefined): void {
+    let problem = '';
+    if (amount === undefined) problem = 'Enter an amount.';
+    else if (amount !== null && this.min !== undefined && amount < this.min) problem = 'The amount must be at least ' + this.format(this.min) + '.';
+    else if (amount !== null && this.max !== undefined && amount > this.max) problem = 'The amount must be at most ' + this.format(this.max) + '.';
+    this.box.setCustomValidity(problem);
   }
 }
 @@@FILE src/app/<#= servicesFolder #>/crud.service.spec.ts@@@

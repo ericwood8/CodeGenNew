@@ -197,6 +197,8 @@
         string Id(ColumnModel c) => stem + "-" + Camel(c.Name).ToLowerInvariant();
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
         string LabelOf(ColumnModel c) => c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name);
+        // a money column that is not a whole number is edited in the money box (CurrencyInput), unless it is a foreign key, a list of choices or the typed key
+        bool IsCurrencyField(ColumnModel c) => c.IsCurrencyColumn && !c.IsIntegerColumn && IsNumber(c) && !c.IsSystemStampColumn && LookupOf(c) is null && !c.HasChoices && !(textKey && c.IsPrimaryKey);
 
         // EditableChildren: the child tables whose rows are added, changed and removed inside this form and sent with it in one request (EditableChild, the rule the API's create and update use too);
         // every other child keeps its read-only grid under the form
@@ -209,6 +211,8 @@
         ForeignKeyModel EditLookupOf(ChildForeignKeyModel link, ColumnModel c) => c.IsGuidColumn ? null
             : link.ReferencingTableForeignKeys.FirstOrDefault(o => o.ReferencingColumns.Count == 1 && o.ReferencingColumns[0].EqualsIgnoreCase(c.Name)
                 && o.ReferencedDisplayColumns.Count > 0 && !NoApi(o.ReferencedTable, o.ReferencedLookupShape) && !NoLookup(o.ReferencedTable, o.ReferencedLookupShape));
+        // a money column of the child that is not a foreign key or a list of choices
+        bool IsChildCurrency(ChildForeignKeyModel link, ColumnModel c) => c.IsCurrencyColumn && !c.IsIntegerColumn && IsNumber(c) && EditLookupOf(link, c) is null && !c.HasChoices;
         string ChildInput(ChildForeignKeyModel link, string childVar, string method, ColumnModel c)
         {
             string prop = Camel(c.Name);
@@ -224,6 +228,12 @@
                 return $"<input type=\"checkbox\" {aria} checked={{!!row.{prop}}} onChange={{(event) => {change("event.target.checked")}}} />";
             if (IsDate(c))
                 return $"<input type=\"date\" {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change("event.target.value || null")}}}{req} />";
+            if (IsChildCurrency(link, c))
+            {
+                var (moneyMin, moneyMax) = Project.MoneyLimits(link.ReferencingTable, c);
+                return $"<CurrencyInput label=\"{GridCaption.For(c, LabelOf(c))}\" value={{row.{prop}}} onChange={{(value) => {change("value ?? " + (c.IsNullable ? "null" : "0"))}}} digits={{{NumericClassifier.CurrencyDigits(c)}}} currency=\"{Project.CurrencyCode}\""
+                       + (moneyMin is { } lo ? $" min={{{Inv(lo)}}}" : "") + (moneyMax is { } hi ? $" max={{{Inv(hi)}}}" : "") + $"{req} />";
+            }
             if (IsNumber(c))
             {
                 string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? " step=\"" + "0." + new string('0', c.Scale!.Value - 1) + "1\""
@@ -231,7 +241,8 @@
                             : c.SqlType is SqlDbType.Float or SqlDbType.Real ? " step=\"any\"" : "";
                 string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\""
                     : IsPlainDecimal(c) ? $" min=\"{Inv(NumericClassifier.DecimalRange(c).Min)}\" max=\"{Inv(NumericClassifier.DecimalRange(c).Max)}\"" : "";
-                return $"<input type=\"number\" {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change(number)}}}{step}{range}{req} />";
+                string width = Project.NumberBoxCharacters(c) is { } boxWidth ? $" style={{{{ width: '{boxWidth}ch' }}}}" : "";
+                return $"<input type=\"number\" {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change(number)}}}{step}{range}{width}{req} />";
             }
             string max = IsText(c) && Chars(c) > 0 ? $" maxLength={{{Chars(c)}}}" : "";
             return $"<input type=\"text\" {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change("event.target.value")}}}{max}{req} />";
@@ -258,6 +269,8 @@
         T($"import {{ {variable}Api }} from '../{apiFolder}/{stem}Api';");
         T($"import {{ ApiError, request }} from '../{apiFolder}/client';");
         T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
+        if (shown.Any(IsCurrencyField) || editableChildren.Any(ch => EditableChild.Columns(LinkOf(ch.Table)).Any(c => IsChildCurrency(LinkOf(ch.Table), c))))
+            T($"import {{ CurrencyInput }} from '../{componentsFolder}/CurrencyInput';");
         T($"import {{ GridMenu, SortHeader, loadSort, nextSort, saveSort{(gridChildren.Count > 0 ? ", sortRows" : "")} }} from '../{componentsFolder}/gridSort';");
         T($"import type {{ GridSort }} from '../{componentsFolder}/gridSort';");
         foreach (var p in parents.Where(p => !p.Self))
@@ -483,7 +496,7 @@
         if (tabbed) T("    setTab(0);");
         if (textKey) T("    setAdding(false);");
         T($"    const row = {{ ...{variable} }};");
-        var dateColumns = shown.Where(IsDate).ToList();
+        var dateColumns = shown.Where(c => IsDate(c) && !c.IsSystemStampColumn).ToList();   // a stamp keeps the timestamp the API sent
         if (dateColumns.Count > 0)
         {
             T("    // the date box wants yyyy-MM-dd; the API sends a full timestamp");
@@ -679,7 +692,7 @@
             if (lookup is not null) cell = $"{{{parentOf[lookup.ReferencedTable].NameMethod}({prop})}}";
             else if (c.IsBooleanColumn) cell = $"{{{prop} ? 'Yes' : 'No'}}";
             else if (IsDate(c)) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 10)}}";
-            else if (c.IsCurrencyColumn && !c.IsIntegerColumn) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {d}, maximumFractionDigits: {d} }})}}"; }
+            else if (c.IsCurrencyColumn && !c.IsIntegerColumn) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
             else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toFixed(2)}}";
             else cell = $"{{{prop}}}";
             T($"              <td>{cell}</td>");
@@ -734,6 +747,18 @@
             string id = Id(c);
             string prop = Camel(c.Name);
             var lookup = LookupOf(c);
+            if (c.IsSystemStampColumn)
+            {
+                // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
+                string stampValue = c.IsDateColumn ? $"{{selectedRow.{prop} ? new Date(selectedRow.{prop}).toLocaleString() : ''}}" : $"{{selectedRow.{prop} ?? ''}}";
+                T($"            {{{(textKey ? "!adding" : $"selectedRow.{keyProp}")} && (");
+                T("              <>");
+                T("                <label htmlFor=\"" + id + "\">" + LabelOf(c) + "</label>");
+                T($"                <span id=\"{id}\">{stampValue}</span>");
+                T("              </>");
+                T("            )}");
+                continue;
+            }
             T("            <label htmlFor=\"" + id + "\">" + LabelOf(c) + "</label>");
             if (textKey && c.IsPrimaryKey)
             {
@@ -815,6 +840,22 @@
                     T("            </div>");
                 }
             }
+            else if (IsCurrencyField(c))
+            {
+                // the money box shows $1,234.50 and takes the plain number; the limits are the column's CHECK constraint, or 0 for a column the project lists as never negative
+                var (moneyMin, moneyMax) = Project.MoneyLimits(Model.TableName, c);
+                T($"            <CurrencyInput");
+                T($"              id=\"{id}\"");
+                T($"              label=\"{LabelOf(c)}\"");
+                T($"              value={{selectedRow.{prop}}}");
+                T($"              onChange={{(value) => setSelectedRow({{ ...selectedRow, {prop}: value ?? {(c.IsNullable ? "undefined" : "0")} }})}}");
+                T($"              digits={{{NumericClassifier.CurrencyDigits(c)}}}");
+                T($"              currency=\"{Project.CurrencyCode}\"");
+                if (moneyMin is { } lo) T($"              min={{{Inv(lo)}}}");
+                if (moneyMax is { } hi) T($"              max={{{Inv(hi)}}}");
+                if (!c.IsNullable) T("              required");
+                T("            />");
+            }
             else if (IsNumber(c))
             {
                 string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? "0." + new string('0', c.Scale!.Value - 1) + "1"
@@ -824,6 +865,7 @@
                 T($"              id=\"{id}\"");
                 T("              type=\"number\"");
                 T($"              aria-label=\"{LabelOf(c)}\"");
+                if (Project.NumberBoxCharacters(c) is { } boxWidth) T($"              style={{{{ width: '{boxWidth}ch' }}}}");
                 if (step is not null) T($"              step=\"{step}\"");
                 // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
                 if (Project.RangeFor(c) is { } range)
@@ -885,6 +927,25 @@
             T();
             T("            <fieldset>");
             T($"              <legend>{child.Title}</legend>");
+            if (EditableChild.UsesCards(link))
+            {
+                // too many columns for one table: each row is a block of labelled fields that wrap, so no box is squeezed
+                T($"              {{{child.Var}Rows.map((row, index) => (");
+                T("                <div key={index} style={{ border: '1px solid #8886', borderRadius: 6, padding: '4px 12px 12px', marginBottom: 12 }}>");
+                T("                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>");
+                T($"                    <strong>{Words(BaseName(child.Table))} {{index + 1}}</strong>");
+                T($"                    <button type=\"button\" onClick={{() => remove{child.MethodName}(row)}}>Remove</button>");
+                T("                  </div>");
+                T("                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(11rem, 1fr))', gap: '0 12px' }}>");
+                foreach (var c in editColumns)
+                    T($"                    <label style={{{{ display: 'flex', flexDirection: 'column'{(IsMultiline(c) ? ", gridColumn: '1 / -1'" : "")} }}}}><span>{GridCaption.For(c, LabelOf(c))}</span>{ChildInput(link, child.Var, child.MethodName, c)}</label>");
+                T("                  </div>");
+                T("                </div>");
+                T("              ))}");
+                T($"              <button type=\"button\" onClick={{add{child.MethodName}}}>Add {Words(BaseName(child.Table))}</button>");
+                T("            </fieldset>");
+                continue;
+            }
             T("              <table>");
             T("                <thead>");
             T("                  <tr>" + string.Concat(editColumns.Select(c => $"<th>{GridCaption.For(c, LabelOf(c))}</th>")) + "<th></th></tr>");

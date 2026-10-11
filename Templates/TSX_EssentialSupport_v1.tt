@@ -4,8 +4,8 @@
 <#
     // ==========================================================================================
     // TSX_EssentialSupport_v1.tt
-    // Generates: src/api/client.ts, src/components/PaginationBar.tsx and src/setupTests.ts   (no table, no database: an essentials group)
-    // The three small files the generated React pages and api modules import: the fetch helper with ApiError, the Previous / Next bar under every grid, and the test setup that adds the
+    // Generates: src/api/client.ts, src/components/PaginationBar.tsx, src/components/CurrencyInput.tsx and src/setupTests.ts   (no table, no database: an essentials group)
+    // The small files the generated React pages and api modules import: the fetch helper with ApiError, the Previous / Next bar under every grid, the money box of a form (CurrencyInput), and the test setup that adds the
     // jest-dom matchers. The folders come from the project's ApiFolder and ComponentsFolder settings.
     // ==========================================================================================
     string apiFolder = Project.ApiFolder;
@@ -54,6 +54,68 @@ export function PaginationBar({ page, totalPages, onPrevious, onNext }: {
       <span>Page {page} of {totalPages}</span>
       <button type="button" onClick={onNext} disabled={page >= totalPages}>Next</button>
     </div>
+  );
+}
+@@@FILE src/<#= componentsFolder #>/CurrencyInput.tsx@@@
+import { useEffect, useRef, useState } from 'react';
+
+// The money box of a generated form: it shows $1,234.50 while the person is not typing in it and the plain number while they are, and the browser's own required check applies.
+// A value that is not a number, or outside min and max, is refused by the form's native validation.
+export function CurrencyInput({ id, value, onChange, label, digits = 2, currency = 'USD', min, max, required, style }: {
+  id?: string;
+  value: number | null | undefined;
+  onChange: (value: number | null) => void;
+  label: string;
+  digits?: number;
+  currency?: string;
+  min?: number;
+  max?: number;
+  required?: boolean;
+  style?: React.CSSProperties;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState('');
+  const box = useRef<HTMLInputElement>(null);
+
+  const format = (amount: number | null | undefined): string =>
+    amount === null || amount === undefined
+      ? ''
+      : amount.toLocaleString(undefined, { style: 'currency', currency, minimumFractionDigits: Math.min(2, digits), maximumFractionDigits: digits });
+  // null is a blank box, undefined is text that is not a number
+  const parse = (typed: string): number | null | undefined => {
+    const plain = typed.replace(/[^0-9.\-]/g, '');
+    if (plain === '') return typed.trim() === '' ? null : undefined;
+    const amount = Number(plain);
+    return Number.isNaN(amount) ? undefined : amount;
+  };
+
+  const typed = editing ? parse(text) : value;
+  let problem = '';
+  if (typed === undefined) problem = 'Enter an amount.';
+  else if (typed !== null && min !== undefined && typed < min) problem = `The amount must be at least ${format(min)}.`;
+  else if (typed !== null && max !== undefined && typed > max) problem = `The amount must be at most ${format(max)}.`;
+  useEffect(() => {
+    box.current?.setCustomValidity(problem);
+  }, [problem]);
+
+  return (
+    <input
+      id={id}
+      ref={box}
+      type="text"
+      inputMode="decimal"
+      aria-label={label}
+      value={editing ? text : format(value)}
+      required={required}
+      style={style}
+      onFocus={() => { setText(value === null || value === undefined ? '' : String(value)); setEditing(true); }}
+      onBlur={() => setEditing(false)}
+      onChange={(event) => {
+        setText(event.target.value);
+        const amount = parse(event.target.value);
+        if (amount !== undefined) onChange(amount);
+      }}
+    />
   );
 }
 @@@FILE src/setupTests.ts@@@

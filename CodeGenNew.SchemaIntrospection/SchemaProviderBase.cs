@@ -417,7 +417,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
             Check = isNumeric || isInteger || isMoney ? RangeFromChecks(raw) : null,
             Description = raw.Description,
             NumericKind = isInteger ? NumericClassifier.Classify(name) : NumericKind.None,
-            IsCurrencyColumn = isMoney || (sqlType == SqlDbType.Decimal && NumericClassifier.IsCurrencyName(name)),
+            IsCurrencyColumn = isMoney || ((sqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real) && NumericClassifier.IsCurrencyName(name)),
             IsAuditColumn = name.IsAuditColumn(),
             IsCreateDateColumn = MatchesCategory(rules, "CreateDateColumn", name),
             DisplayRank = IsDisplayEligibleType(sqlType) ? RankInCategory(rules, "DisplayColumn", name) : null,

@@ -39,11 +39,13 @@ body { margin: 0; }
 main { padding: 16px 24px; }
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #8884; }
-th button.sort { background: none; border: 0; color: inherit; font: inherit; font-weight: 600; cursor: pointer; padding: 0; }
+th button.sort { background: none; border: 0; color: inherit; font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
 tbody tr:hover { background: #8881; }
 td button { background: #8883; border: 1px solid #8886; border-radius: 4px; font-weight: 700; cursor: pointer; }
 td button:hover { background: #8885; }
-main button { padding: 4px 12px; font: inherit; }
+/* every button's caption is bold */
+button { font-weight: 700; }
+main button { padding: 4px 12px; font: inherit; font-weight: 700; }
 .search { margin: 8px 0; }
 .search input { margin: 4px 6px 4px 0; padding: 6px 8px; font: inherit; }
 .paging { display: flex; align-items: center; gap: 12px; margin-top: 12px; }

@@ -30,7 +30,7 @@ public class CrudScreenTests
         var files = GeneratedFiles.Split((await Repo.Cache.RunAsync(Repo.Template("TS_EssentialCrud_v1.tt"),
             ProjectSettings.FromValues([new("ProjectName", "Acme"), new("ServicesFolder", "api"), new("ComponentsFolder", "screens")]))).GeneratedText!);
 
-        CollectionAssert.AreEquivalent(new[] { "src/app/api/crud.service.ts", "src/app/api/crud.service.spec.ts", "src/app/api/api-error.ts", "src/app/api/api-error.spec.ts", "src/app/api/notifier.ts", "src/app/screens/crud-screen.ts", "src/app/screens/crud-screen.spec.ts" },
+        CollectionAssert.AreEquivalent(new[] { "src/app/api/crud.service.ts", "src/app/api/crud.service.spec.ts", "src/app/api/api-error.ts", "src/app/api/api-error.spec.ts", "src/app/api/notifier.ts", "src/app/screens/crud-screen.ts", "src/app/screens/crud-screen.spec.ts", "src/app/screens/currency-input.ts" },
             files.Select(f => f.RelativePath).ToArray());
         string screen = files.Single(f => f.RelativePath.EndsWith("crud-screen.ts")).Content;
         Expect.Contains(screen, "import { CrudService } from '../api/crud.service';");

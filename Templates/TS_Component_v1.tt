@@ -153,7 +153,10 @@
         string Id(ColumnModel c) => variable + UpperFirst(Camel(c.Name));   // holidayName
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
         string LabelOf(ColumnModel c) => c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name);
+        // a money column that is not a whole number is edited in the money box (appCurrency), unless it is a foreign key, a list of choices or the typed key
+        bool IsCurrencyField(ColumnModel c) => c.IsCurrencyColumn && !c.IsIntegerColumn && IsNumber(c) && !c.IsSystemStampColumn && LookupOf(c) is null && !c.HasChoices && !(textKey && c.IsPrimaryKey);
         // multi-line text is left out of the grid to keep it readable, unless that leaves it with fewer than GridColumns.MinColumns columns
+        bool UsesCurrencyBox() => shown.Any(IsCurrencyField);
         var gridColumns = GridColumns.Choose(shown, IsMultiline);
         // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
         gridColumns = gridColumns.ForGrid();
@@ -228,7 +231,7 @@
             if (lookup is not null) cell = $"{{{{ {parentOf[lookup.ReferencedTable].NameMethod}({prop}) }}}}";
             else if (c.IsBooleanColumn) cell = $"{{{{ {prop} ? \"Yes\" : \"No\" }}}}";
             else if (IsDate(c)) cell = $"{{{{ {prop} | date:'MM/dd/yyyy' }}}}";
-            else if (c.IsCurrencyColumn && !c.IsIntegerColumn) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{d}-{d}' }}}}"; }
+            else if (c.IsCurrencyColumn && !c.IsIntegerColumn) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{Math.Min(2, d)}-{d}' }}}}"; }
             else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{{ {prop} | number:'1.2-2' }}}}";
             else cell = $"{{{{ {prop} }}}}";
             H($"                <td>{cell}</td>");
@@ -285,6 +288,16 @@
             string model = $"selectedRow.{Camel(c.Name)}";
             string req = c.IsNullable ? "" : " required";
             var lookup = LookupOf(c);
+            if (c.IsSystemStampColumn)
+            {
+                // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
+                string stampValue = c.IsDateColumn ? "{{ " + model + " | date:'medium' }}" : "{{ " + model + " }}";
+                H($"            <div class=\"form-group\" *ngIf=\"{(textKey ? "!adding" : "selectedRow." + keyProp)}\">");
+                H($"                <label for=\"{id}\">{LabelOf(c)}</label>");
+                H($"                <span id=\"{id}\">{stampValue}</span>");
+                H("            </div>");
+                continue;
+            }
             H("            <div class=\"form-group\">");
             H($"                <label for=\"{id}\">{LabelOf(c)}</label>");
             if (textKey && c.IsPrimaryKey)
@@ -325,6 +338,13 @@
                     H("                </div>");
                 }
             }
+            else if (IsCurrencyField(c))
+            {
+                // the money box shows $1,234.50 and takes the plain number; the limits are the column's CHECK constraint, or 0 for a column the project lists as never negative
+                var (moneyMin, moneyMax) = Project.MoneyLimits(Model.TableName, c);
+                string limits = (moneyMin is { } lo ? $" [min]=\"{Inv(lo)}\"" : "") + (moneyMax is { } hi ? $" [max]=\"{Inv(hi)}\"" : "");
+                H($"                <input type=\"text\" inputmode=\"decimal\" id=\"{id}\" name=\"{id}\" appCurrency currencyCode=\"{Project.CurrencyCode}\" [digits]=\"{NumericClassifier.CurrencyDigits(c)}\"{limits} [(ngModel)]=\"{model}\"{req}>");
+            }
             else if (IsNumber(c))
             {
                 string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? " step=\"" + "0." + new string('0', c.Scale!.Value - 1) + "1\""
@@ -334,7 +354,8 @@
                 string range = Project.RangeFor(c) is { } r ? $" min=\"{r.Min}\" max=\"{r.Max}\""
                     : IsPlainDecimal(c) ? $" min=\"{Inv(NumericClassifier.DecimalRange(c).Min)}\" max=\"{Inv(NumericClassifier.DecimalRange(c).Max)}\""
                     : c.IsCurrencyColumn && !c.IsIntegerColumn ? Project.MoneyLimitHtml(Model.TableName, c) : "";
-                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{step}{range} placeholder=\"{PlaceholderFor(c)}\"{req}>");
+                string width = Project.NumberBoxCharacters(c) is { } boxWidth ? $" style=\"width: {boxWidth}ch\"" : "";
+                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{step}{range}{width} placeholder=\"{PlaceholderFor(c)}\"{req}>");
             }
             else if (IsMultiline(c))
             {
@@ -456,6 +477,7 @@
         }
         T("import { CommonModule } from '@angular/common';");
         T("import { FormsModule } from '@angular/forms';");
+        if (UsesCurrencyBox()) T("import { CurrencyInputDirective } from '../currency-input';");
         if (!nameActive) T("import { MatPaginatorModule } from '@angular/material/paginator';");
         T($"import {{ {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")} }} from '../crud-screen';");
         T();
@@ -463,7 +485,7 @@
         T($"  selector: 'app-{stem}',");
         if (Project.AngularStandaloneFlag) T("  standalone: true,");
         T($"  changeDetection: ChangeDetectionStrategy.{Project.AngularEagerStrategy}, // plain properties change inside subscribe callbacks: keep eager checking when OnPush is the default (Angular 22)");
-        T(nameActive ? "  imports: [ CommonModule, FormsModule ]," : "  imports: [ CommonModule, FormsModule, MatPaginatorModule ],");
+        T("  imports: [ CommonModule, FormsModule" + (UsesCurrencyBox() ? ", CurrencyInputDirective" : "") + (nameActive ? "" : ", MatPaginatorModule") + " ],");
         T($"  templateUrl: './{stem}.component.html',");
         T($"  styleUrl: './{stem}.component.css'");
         T("})");
@@ -525,7 +547,7 @@
         T($"  protected newRow(): {baseName} {{");
         T(adds.Count == 0 ? "    return { };" : $"    return {{ {string.Join(", ", adds)} }};");
         T("  }");
-        var dateColumns = shown.Where(IsDate).ToList();
+        var dateColumns = shown.Where(c => IsDate(c) && !c.IsSystemStampColumn).ToList();   // a stamp keeps the timestamp the API sent
         if (dateColumns.Count > 0)
         {
             T();

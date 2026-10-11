@@ -111,3 +111,7 @@ A text column named like a credential (`ColumnModel.IsCredentialColumn`: a name 
 ## The Search list protocol
 
 With `ListProtocol=Search` the search bar is one box (`filters.search`, placeholder `Search`) instead of one box per searchable column; the API decides which columns it matches (`SearchColumns`, `SearchBox`). Paging, the Clear button and the sort are as before.
+
+## Stamps, money, short boxes, bold buttons
+
+A column the system writes (`ColumnModel.IsSystemStampColumn`: CreateDate, CreateUser, ModifiedDate, ModifiedBy, LastDateChanged) is a label with the value once the row exists, never a box, and its timestamp is not cut to a date when the row is opened. A money column (a money type, or a decimal, float or real whose name has a Fee, Balance, Amount, Surcharge, Upcharge, Discount, Price, Total, Average, Tax, Cost or Rate word and no percent, quantity, hours or ratio word) is edited in a money box showing $1,234.50 (React `CurrencyInput`, Angular `appCurrency`; WinUI3 already had a currency NumberBox) and the grid shows at least two decimals. A whole number with short values (a month, a year, a tinyint) gets a short box (`ProjectSettings.NumberBoxCharacters`). Every button's caption is bold (the Styles / Layout / App essentials: refresh them with `--replace`). An editable child with more than six columns is one block of labelled fields per row (`EditableChild.UsesCards`).

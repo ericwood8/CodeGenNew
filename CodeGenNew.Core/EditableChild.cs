@@ -40,6 +40,11 @@ public static class EditableChild
     /// <summary> The property of the request body that holds the child rows: the child's name in the plural, camel cased (<c>departmentTeams</c>). </summary>
     public static string JsonName(ChildForeignKeyModel fk) => JsonNames.Camel(fk.ReferencingTable.Pluralize());
 
+    /// <summary> The most columns an editable child shows as one table of inputs: with more, a table is too narrow for its boxes, so each row is a block of labelled fields that wrap. </summary>
+    public const int MaxTableColumns = 6;
+
+    public static bool UsesCards(ChildForeignKeyModel fk) => Columns(fk).Count > MaxTableColumns;
+
     /// <summary> The columns of the child the editable grid shows, in the table's order: not its key, not the link to the parent, nothing computed, identity or an audit column. </summary>
     public static List<ColumnModel> Columns(ChildForeignKeyModel fk) => fk.ReferencingTableColumns
         .Where(c => !c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && !c.IsAuditColumn && !c.Name.EqualsIgnoreCase(fk.ReferencingColumns[0])

@@ -39,19 +39,19 @@ public static class NumericClassifier
         return NumericKind.None;
     }
 
-    private static readonly string[] CurrencyNameParts = ["Amount", "Amt", "Price", "Cost", "Fee", "Charge", "Salary", "Wage", "Payment", "Balance", "MSRP"];
-    private static readonly string[] NotMoneyAfterTotal = ["Qty", "Quantity", "Hours", "Count", "Units", "Weight", "Days", "Pages"];
+    private static readonly string[] CurrencyWords = ["amount", "amt", "fee", "charge", "surcharge", "upcharge", "discount", "price", "total", "average", "avg", "tax", "cost", "rate",
+        "balance", "salary", "wage", "payment", "msrp"];
+    // a name that also says what the number counts or measures is not money (TotalHours, DiscountPercent, QuantityUmRatio)
+    private static readonly string[] NotMoneyWords = ["percent", "percentage", "pct", "qty", "quantity", "hours", "hrs", "count", "units", "weight", "days", "pages", "ratio", "um"];
 
-    /// <summary> Whether a decimal column's NAME says it holds money (an Amount, a Price, a Cost, a Total ...). A column of the
-    /// money / smallmoney SQL types is currency regardless of its name. A Quantity is deliberately not money, nor is a
-    /// TotalHours or TotalQty: the Total prefix counts only when nothing after it names another unit. </summary>
+    /// <summary> Whether a decimal or floating-point column's NAME says it holds money: one of its words is a Fee, Balance, Amount, Surcharge, Upcharge, Discount, Price, Total, Average, Tax, Cost or Rate
+    /// (or a Charge, Salary, Wage, Payment, MSRP), in the singular or plural, and no word says it is a percentage, a quantity, an hour count, a ratio or a unit. A column of the money / smallmoney SQL
+    /// types is currency regardless of its name. </summary>
     public static bool IsCurrencyName(string columnName)
     {
-        string name = columnName.Replace("_", "");
-        if (CurrencyNameParts.Any(p => name.ContainsIgnoreCase(p)))
-            return true;
-        return name.StartsWithIgnoreCase("Total")
-            && !NotMoneyAfterTotal.Any(p => name.ContainsIgnoreCase(p));
+        var words = ScreenNames.Words(columnName).Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w.ToLowerInvariant()).ToList();
+        bool Is(string word, string[] list) => list.Contains(word) || (word.EndsWith("es") && list.Contains(word[..^2])) || (word.EndsWith('s') && list.Contains(word[..^1]));
+        return words.Any(w => Is(w, CurrencyWords)) && !words.Any(w => Is(w, NotMoneyWords));
     }
 
     /// <summary> How many decimal places a currency column is shown with: the column's own scale for a decimal, two for money / smallmoney

@@ -153,6 +153,8 @@
         string Id(ColumnModel c) => stem + "-" + Camel(c.Name).ToLowerInvariant();
         string PlaceholderFor(ColumnModel c) => "Enter " + Label(c.Name).ToLowerInvariant();
         string LabelOf(ColumnModel c) => c.IsBooleanColumn ? Label(c.Name) + "?" : Label(c.Name);
+        // a money column that is not a whole number is edited in the money box (CurrencyInput), unless it is a foreign key, a list of choices or the typed key
+        bool IsCurrencyField(ColumnModel c) => c.IsCurrencyColumn && !c.IsIntegerColumn && IsNumber(c) && !c.IsSystemStampColumn && LookupOf(c) is null && !c.HasChoices && !(textKey && c.IsPrimaryKey);
         var gridColumns = GridColumns.Choose(shown, IsMultiline);
         // The grid shows at most 20 columns and never a long text column (a Notes column, ...): see GridColumns.
         gridColumns = gridColumns.ForGrid();
@@ -175,6 +177,8 @@
         T($"import {{ {variable}Api }} from '../{apiFolder}/{stem}Api';");
         T($"import {{ ApiError }} from '../{apiFolder}/client';");
         T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
+        if (shown.Any(IsCurrencyField))
+            T($"import {{ CurrencyInput }} from '../{componentsFolder}/CurrencyInput';");
         T($"import {{ GridMenu, SortHeader, loadSort, nextSort, saveSort }} from '../{componentsFolder}/gridSort';");
         T($"import type {{ GridSort }} from '../{componentsFolder}/gridSort';");
         foreach (var p in parents.Where(p => !p.Self))
@@ -328,7 +332,7 @@
         if (tabbed) T("    setTab(0);");
         if (textKey) T("    setAdding(false);");
         T($"    const row = {{ ...{variable} }};");
-        var dateColumns = shown.Where(IsDate).ToList();
+        var dateColumns = shown.Where(c => IsDate(c) && !c.IsSystemStampColumn).ToList();   // a stamp keeps the timestamp the API sent
         if (dateColumns.Count > 0)
         {
             T("    // the date box wants yyyy-MM-dd; the API sends a full timestamp");
@@ -446,7 +450,7 @@
             if (lookup is not null) cell = $"{{{parentOf[lookup.ReferencedTable].NameMethod}({prop})}}";
             else if (c.IsBooleanColumn) cell = $"{{{prop} ? 'Yes' : 'No'}}";
             else if (IsDate(c)) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 10)}}";
-            else if (c.IsCurrencyColumn && !c.IsIntegerColumn) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {d}, maximumFractionDigits: {d} }})}}"; }
+            else if (c.IsCurrencyColumn && !c.IsIntegerColumn) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
             else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toFixed(2)}}";
             else cell = $"{{{prop}}}";
             T($"              <td>{cell}</td>");
@@ -501,6 +505,18 @@
             string id = Id(c);
             string prop = Camel(c.Name);
             var lookup = LookupOf(c);
+            if (c.IsSystemStampColumn)
+            {
+                // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
+                string stampValue = c.IsDateColumn ? $"{{selectedRow.{prop} ? new Date(selectedRow.{prop}).toLocaleString() : ''}}" : $"{{selectedRow.{prop} ?? ''}}";
+                T($"            {{{(textKey ? "!adding" : $"selectedRow.{keyProp}")} && (");
+                T("              <>");
+                T("                <label htmlFor=\"" + id + "\">" + LabelOf(c) + "</label>");
+                T($"                <span id=\"{id}\">{stampValue}</span>");
+                T("              </>");
+                T("            )}");
+                continue;
+            }
             T("            <label htmlFor=\"" + id + "\">" + LabelOf(c) + "</label>");
             if (textKey && c.IsPrimaryKey)
             {
@@ -582,6 +598,22 @@
                     T("            </div>");
                 }
             }
+            else if (IsCurrencyField(c))
+            {
+                // the money box shows $1,234.50 and takes the plain number; the limits are the column's CHECK constraint, or 0 for a column the project lists as never negative
+                var (moneyMin, moneyMax) = Project.MoneyLimits(Model.TableName, c);
+                T($"            <CurrencyInput");
+                T($"              id=\"{id}\"");
+                T($"              label=\"{LabelOf(c)}\"");
+                T($"              value={{selectedRow.{prop}}}");
+                T($"              onChange={{(value) => setSelectedRow({{ ...selectedRow, {prop}: value ?? {(c.IsNullable ? "undefined" : "0")} }})}}");
+                T($"              digits={{{NumericClassifier.CurrencyDigits(c)}}}");
+                T($"              currency=\"{Project.CurrencyCode}\"");
+                if (moneyMin is { } lo) T($"              min={{{Inv(lo)}}}");
+                if (moneyMax is { } hi) T($"              max={{{Inv(hi)}}}");
+                if (!c.IsNullable) T("              required");
+                T("            />");
+            }
             else if (IsNumber(c))
             {
                 string step = c.SqlType is SqlDbType.Decimal && (c.Scale ?? 0) > 0 ? "0." + new string('0', c.Scale!.Value - 1) + "1"
@@ -591,6 +623,7 @@
                 T($"              id=\"{id}\"");
                 T("              type=\"number\"");
                 T($"              aria-label=\"{LabelOf(c)}\"");
+                if (Project.NumberBoxCharacters(c) is { } boxWidth) T($"              style={{{{ width: '{boxWidth}ch' }}}}");
                 if (step is not null) T($"              step=\"{step}\"");
                 // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
                 if (Project.RangeFor(c) is { } range)

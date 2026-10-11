@@ -184,6 +184,13 @@
             string required = c.IsNullable ? "" : " required";
             string input;
             var lookup = LookupOf(c);
+            if (c.IsSystemStampColumn)
+            {
+                // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
+                string stampText = IsDate(c) ? $"@{bind}{(c.IsNullable ? "?" : "")}.ToString(\"g\")" : $"@{bind}";
+                L($"            @if (!isNew) {{ <div class=\"field\"><label for=\"{id}\">{label}</label><span id=\"{id}\">{stampText}</span></div> }}");
+                continue;
+            }
             if (textKey && c.IsPrimaryKey)
             {
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
@@ -211,7 +218,10 @@
             else if (IsDate(c))
                 input = $"<InputDate id=\"{id}\" @bind-Value=\"{bind}\"{required} />";
             else if (IsNumber(c))
-                input = $"<InputNumber id=\"{id}\" @bind-Value=\"{bind}\"{required} />";
+            {
+                string width = Project.NumberBoxCharacters(c) is { } boxWidth ? $" style=\"width: {boxWidth}ch\"" : "";
+                input = $"<InputNumber id=\"{id}\" @bind-Value=\"{bind}\"{width}{required} />";
+            }
             else if (c.CSharpBase() == "string")
             {
                 string max = Chars(c) is > 0 and < 4000 ? $" maxlength=\"{Chars(c)}\"" : "";

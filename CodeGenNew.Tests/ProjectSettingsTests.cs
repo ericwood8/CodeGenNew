@@ -449,6 +449,19 @@ public class ProjectSettingsTests
     [DataRow("TotalQty", false)]
     [DataRow("Weight", false)]
     [DataRow("MSRP", true)]
+    [DataRow("LateFees", true)]
+    [DataRow("CurrentBalance", true)]
+    [DataRow("Surcharge", true)]
+    [DataRow("UpCharge", true)]
+    [DataRow("DiscountAmount", true)]
+    [DataRow("AverageTax", true)]
+    [DataRow("HourlyRate", true)]
+    [DataRow("DiscountPercent", false)]
+    [DataRow("DiscountPct", false)]
+    [DataRow("TaxPercentage", false)]
+    [DataRow("QuantityUmRatio", false)]
+    [DataRow("PriceCostUmRatio", false)]
+    [DataRow("Migrated", false)]
     public void A_decimal_columns_name_says_whether_it_holds_money(string name, bool money) =>
         Assert.AreEqual(money, NumericClassifier.IsCurrencyName(name));
 

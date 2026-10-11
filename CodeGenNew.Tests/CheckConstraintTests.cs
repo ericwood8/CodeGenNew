@@ -157,14 +157,14 @@ public class CheckConstraintTests
         Expect.Contains(xaml.Split("x:Name=\"WeightBox\"")[1].Split("/>")[0], "Minimum=\"0\"");
 
         string react = await Render("TSX_Page_v1.tt", table);
-        Expect.Contains(react, "min=\"0\"");
-        Expect.Contains(react, "max=\"5000\"");
+        Expect.Contains(react, "min={0}");   // the money box
+        Expect.Contains(react, "max={5000}");
         Expect.Contains(react, "min=\"1\"");
         Expect.Contains(react, "max=\"5\"");
 
         string angular = string.Join("\n", GeneratedFiles.Split(await Render("TS_Component_v1.tt", table)).Select(f => f.Content));
         Expect.Contains(angular, "min=\"1\" max=\"5\"");
-        Expect.Contains(angular, " min=\"0\" max=\"5000\"");
+        Expect.Contains(angular, " [min]=\"0\" [max]=\"5000\"");   // the money box
 
         string validation = await Render("CS_Validation_v1.tt", table);
         Expect.Contains(validation, "[Range(1, 5)]");

@@ -331,6 +331,7 @@ public class DashboardTests
             Expect.Contains(Read("Api/Apis/ApiRegistration.cs"), "DashboardApi.Register(app);");
             Expect.Contains(Read("Api/Apis/DashboardApi.cs"), "app.MapGet(\"/api/dashboard\", Get)");
             Expect.Contains(Read("Api/Repositories/DashboardData.cs"), "public static readonly string[] StripTables = [");
+            Expect.DoesNotContain(Read("Api/Repositories/DashboardData.cs"), "EqualsIgnoreCase");   // a helper of CodeGenNew, not of the generated project
             Expect.Contains(Read("web/src/screens.tsx"), "{ path: 'dashboard', label: 'Dashboard', element: <DashboardPage /> },");
             Expect.Contains(Read("web/src/screens.tsx"), "<DashboardStrip table=\"Invoice\" />");
             Expect.Contains(Read("ng/src/app/app.routes.ts"), "{ path: 'dashboard', label: 'Dashboard', component: DashboardComponent },");

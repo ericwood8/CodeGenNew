@@ -581,6 +581,19 @@ public class ProjectSettings
         return new NumericRange(Math.Max(min, type.Min), Math.Min(max, type.Max));
     }
 
+    /// <summary> How many characters wide a number box for a whole-number column needs when its values are short (a month, a year, a percentage, a tinyint or smallint): the digits of its longest limit and room
+    /// for the spin buttons. Null for a column whose values can be long, which keeps the form's own box width. </summary>
+    public int? NumberBoxCharacters(ColumnModel column)
+    {
+        if (RangeFor(column) is not { } range)
+            return null;
+        int digits = Math.Max(range.Min.ToString().Length, range.Max.ToString().Length);
+        return digits <= MaxShortNumberDigits ? digits + NumberBoxSpinnerCharacters : null;
+    }
+
+    private const int MaxShortNumberDigits = 6;
+    private const int NumberBoxSpinnerCharacters = 5;
+
     /// <summary> The limits a money box (a currency column that is not a whole number) puts on its value: what the column's CHECK constraint says (<c>CHECK (credit_limit &gt;= 0)</c>), and a minimum of
     /// 0 for a column the project lists in <c>NonNegativeColumns</c> (for a database whose schema does not say so). Null for no limit. </summary>
     public (double? Min, double? Max) MoneyLimits(string table, ColumnModel column)

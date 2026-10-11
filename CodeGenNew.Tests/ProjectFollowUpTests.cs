@@ -118,13 +118,13 @@ public class ProjectFollowUpTests
         Expect.Contains(xaml.Split("x:Name=\"BalanceBox\"")[1].Split("/>")[0], "Minimum=\"0\"");
 
         string tsx = await Render("TSX_Page_v1.tt", Invoice(), project);
-        Assert.AreEqual(1, tsx.Split("min=\"0\"").Length - 1);
+        Assert.AreEqual(1, tsx.Split("min={0}").Length - 1);   // the money box
 
         string angular = string.Join("\n", GeneratedFiles.Split(await Render("TS_Component_v1.tt", Invoice(), project)).Select(f => f.Content));
-        Assert.AreEqual(1, angular.Split("min=\"0\"").Length - 1);
+        Assert.AreEqual(1, angular.Split("[min]=\"0\"").Length - 1);
 
         string none = string.Join("\n", GeneratedFiles.Split(await Render("TS_Component_v1.tt", Invoice(), Project())).Select(f => f.Content));
-        Expect.DoesNotContain(none, "min=\"0\"");
+        Expect.DoesNotContain(none, "[min]=\"0\"");
     }
 
     [TestMethod]

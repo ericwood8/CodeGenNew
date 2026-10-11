@@ -145,6 +145,8 @@
     Title="{x:Bind ViewModel.DialogTitle, Mode=OneWay}"
     PrimaryButtonText="Save"
     CloseButtonText="Cancel"
+    PrimaryButtonStyle="{StaticResource BoldAccentDialogButton}"
+    CloseButtonStyle="{StaticResource BoldDialogButton}"
     DefaultButton="Primary"
     PrimaryButtonClick="OnPrimaryButtonClick">
 
@@ -154,6 +156,13 @@
     <ContentDialog.Resources>
         <x:Double x:Key="ContentDialogMinWidth">320</x:Double>
         <x:Double x:Key="ContentDialogMaxWidth">1400</x:Double>
+        <!-- every button's caption is bold -->
+        <Style x:Key="BoldDialogButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style x:Key="BoldAccentDialogButton" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
     </ContentDialog.Resources>
 
 <#
@@ -192,6 +201,17 @@
             var lookup = LookupOf(c);
             string prop = c.Name;
             string label = Label(c.Name);
+            if (c.IsSystemStampColumn)
+            {
+                // who made the row and when it changed: the system writes it, so it is text, not a box
+#>
+            <StackPanel Spacing="2">
+                <TextBlock Text="<#= label #>" FontWeight="SemiBold" />
+                <TextBlock Text="{x:Bind ViewModel.<#= prop #>, Mode=OneWay}" IsTextSelectionEnabled="True" />
+            </StackPanel>
+<#
+                continue;
+            }
             if (lookup is not null)
             {
                 var p = parentOf[lookup.ReferencedTable];
