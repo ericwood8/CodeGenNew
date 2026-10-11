@@ -243,7 +243,7 @@
                 continue;
             }
             H("            <div class=\"form-group\">");
-            H($"                <label for=\"{id}\">{Labels.Field(c)}</label>");
+            H($"                <label for=\"{id}\">{Labels.Field(c)}{RequiredMark.Html(form.IsMarked(c))}</label>");
             if (kind == FieldKind.TypedKey)
             {
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
@@ -324,7 +324,7 @@
                 H("                    </div>");
                 H("                    <div class=\"child-card-fields\">");
                 foreach (var c in editColumns)
-                    H($"                        <label class=\"child-field{(IsMultiline(c) ? " child-field-wide" : "")}\"><span>{GridCaption.For(c, Labels.Field(c))}</span>{ChildInput(child, c)}</label>");
+                    H($"                        <label class=\"child-field{(IsMultiline(c) ? " child-field-wide" : "")}\"><span>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Html(child.IsMarked(c))}</span>{ChildInput(child, c)}</label>");
                 H("                    </div>");
                 H("                </div>");
                 H($"                <button type=\"button\" class=\"btn btn-outline\" (click)=\"add{child.Name}()\">Add {Labels.Words(BaseName(child.Table))}</button>");
@@ -333,7 +333,7 @@
             }
             H("                <table>");
             H("                    <thead>");
-            H("                        <tr>" + string.Concat(editColumns.Select(c => $"<th>{GridCaption.For(c, Labels.Field(c))}</th>")) + "<th></th></tr>");
+            H("                        <tr>" + string.Concat(editColumns.Select(c => $"<th>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Html(child.IsMarked(c))}</th>")) + "<th></th></tr>");
             H("                    </thead>");
             H("                    <tbody>");
             H($"                        <tr *ngFor=\"let row of {child.Variable}Rows\">");

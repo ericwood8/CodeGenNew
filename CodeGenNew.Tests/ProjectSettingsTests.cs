@@ -491,7 +491,7 @@ public class ProjectSettingsTests
         string xaml = files["LineDetailDialog.xaml"].Content.Replace("\r\n", "\n");
         string codeBehind = files["LineDetailDialog.xaml.cs"].Content.Replace("\r\n", "\n");
         string viewModel = files["LineDetailViewModel.cs"].Content.Replace("\r\n", "\n");
-        Expect.Contains(xaml, "<NumberBox x:Name=\"ItemPriceBox\" Header=\"Item Price\" Value=\"{x:Bind ViewModel.ItemPrice, Mode=TwoWay}\"");
+        Expect.Contains(xaml, "<NumberBox x:Name=\"ItemPriceBox\" Header=\"Item Price\"" + RequiredMark.XamlAttributes(true, true) + " Value=\"{x:Bind ViewModel.ItemPrice, Mode=TwoWay}\"");
         Expect.Contains(xaml, "<NumberBox x:Name=\"QuantityBox\" Header=\"Quantity\"");   // a decimal quantity is not money: a plain number box, no currency formatter
         Expect.DoesNotContain(codeBehind, "QuantityBox.NumberFormatter = new CurrencyNumberFormatter");
         Expect.Contains(codeBehind, "ItemPriceBox.NumberFormatter = new CurrencyNumberFormatter(\"EUR\", 2);");
@@ -552,7 +552,7 @@ public class ProjectSettingsTests
         string xaml = files["SummaryDetailDialog.xaml"].Content;
         string codeBehind = files["SummaryDetailDialog.xaml.cs"].Content;
         string viewModel = files["SummaryDetailViewModel.cs"].Content;
-        Expect.Contains(xaml, "<CalendarDatePicker Header=\"Start Date\" Date=\"{x:Bind ViewModel.StartDate, Mode=TwoWay}\"");
+        Expect.Contains(xaml, "<CalendarDatePicker Header=\"Start Date\"" + RequiredMark.XamlAttributes(true, true) + " Date=\"{x:Bind ViewModel.StartDate, Mode=TwoWay}\"");
         Expect.Contains(xaml, "Click=\"OnClearClosedDateClick\"");
         Expect.DoesNotContain(xaml, "Click=\"OnClearStartDateClick\"");   // a required date has no clear button
         Expect.Contains(codeBehind, "private void OnClearClosedDateClick(object sender, RoutedEventArgs e) => ViewModel.ClosedDate = null;");

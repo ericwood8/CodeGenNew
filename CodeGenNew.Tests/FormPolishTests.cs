@@ -143,8 +143,9 @@ public class FormPolishTests
         Expect.Contains(xaml, "<TextBlock Text=\"Create Date\" FontWeight=\"SemiBold\" />");
         Expect.Contains(xaml, "<TextBlock Text=\"{x:Bind ViewModel.CreateDate, Mode=OneWay}\" IsTextSelectionEnabled=\"True\" />");
         Expect.DoesNotContain(xaml, "Header=\"Create Date\"");
-        Expect.Contains(xaml, "PrimaryButtonStyle=\"{StaticResource BoldAccentDialogButton}\"");
-        Expect.Contains(xaml, "CloseButtonStyle=\"{StaticResource BoldDialogButton}\"");
+        Expect.Contains(xaml, "<ContentDialog.PrimaryButtonStyle>\n        <StaticResource ResourceKey=\"BoldAccentDialogButton\" />");
+        Expect.Contains(xaml, "<ContentDialog.CloseButtonStyle>\n        <StaticResource ResourceKey=\"BoldDialogButton\" />");
+        Expect.DoesNotContain(xaml, "PrimaryButtonStyle=\"");
         Expect.Contains(xaml, "<Setter Property=\"FontWeight\" Value=\"Bold\" />");
         System.Xml.Linq.XDocument.Parse(xaml);
     }
@@ -173,10 +174,10 @@ public class FormPolishTests
         Expect.Contains(wide, "gridTemplateColumns: 'repeat(auto-fill, minmax(11rem, 1fr))'");
         Expect.Contains(wide, "<label style={{ display: 'flex', flexDirection: 'column', gridColumn: '1 / -1' }}><span>Line Note</span>");
         Expect.Contains(wide, "<CurrencyInput label=\"Item Price\" value={row.itemPrice}");
-        Expect.DoesNotContain(wide, "<table>\n                <thead>\n                  <tr><th>Item Price</th>");
+        Expect.DoesNotContain(wide, "<table>\n                <thead>\n                  <tr><th>Item Price");
 
         string narrow = (await Run("TSX_DetailMasterPage_v1.tt", Invoice(Lines(4)), Project(("EditableChildren", "InvoiceLine")))).Single(f => f.Key.EndsWith("DetailMasterPage.tsx")).Value;
-        Expect.Contains(narrow, "<th>Item Price</th>");
+        Expect.Contains(narrow, "<th>Item Price" + RequiredMark.Jsx(true) + "</th>");
         Expect.DoesNotContain(narrow, "gridTemplateColumns");
 
         var angular = await Run("TS_DetailMasterComponent_v1.tt", Invoice(Lines(10)), Project(("EditableChildren", "InvoiceLine"), ("AngularVersion", "22")));

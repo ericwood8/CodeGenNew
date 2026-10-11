@@ -816,7 +816,7 @@ public class KeyTypeTests
         Expect.Contains(vm, "private string? _countryCode;");
         Expect.Contains(vm, "entity.CountryCode = CountryCode;");
         Expect.DoesNotContain(vm, "CountryCode.Value");
-        Expect.Contains(files["ObservanceDetailDialog.xaml"], "<ComboBox Header=\"Country Code\" ItemsSource=\"{x:Bind ViewModel.CountryOptions}\"");
+        Expect.Contains(files["ObservanceDetailDialog.xaml"], "<ComboBox Header=\"Country Code\"" + RequiredMark.XamlAttributes(true, true) + " ItemsSource=\"{x:Bind ViewModel.CountryOptions}\"");
 
         // an int foreign key is what it was
         var number = BlazorFiles(await Render("WinUI3_DetailScreen_v1.tt", Sample.Holiday()));

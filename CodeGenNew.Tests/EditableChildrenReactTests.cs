@@ -88,7 +88,7 @@ public class EditableChildrenReactTests
         Expect.Contains(page, "    loadProjectTask(project.projectId!);");
 
         Expect.Contains(page, "<legend>Project Task</legend>");
-        Expect.Contains(page, "<tr><th>Summary</th><th>Due On</th><th>Owner</th><th>Hours</th><th>Done?</th><th></th></tr>");
+        Expect.Contains(page, "<tr><th>Summary" + RequiredMark.Jsx(true) + "</th><th>Due On" + RequiredMark.Jsx(true) + "</th><th>Owner</th><th>Hours" + RequiredMark.Jsx(true) + "</th><th>Done?</th><th></th></tr>");
         Expect.Contains(page, "{projectTaskRows.map((row, index) => (");
         Expect.Contains(page, "<input type=\"text\" aria-label=\"Summary\" value={row.summary ?? ''} onChange={(event) => changeProjectTask(row, { summary: event.target.value })} maxLength={100} required />");
         Expect.Contains(page, "<input type=\"date\" aria-label=\"Due On\" value={row.dueOn ?? ''} onChange={(event) => changeProjectTask(row, { dueOn: event.target.value || null })} required />");

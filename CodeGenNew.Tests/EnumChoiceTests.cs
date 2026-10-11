@@ -89,7 +89,7 @@ public class EnumChoiceTests
         string xaml = files.Single(f => f.RelativePath.EndsWith("DetailDialog.xaml") || f.RelativePath.EndsWith("DetailMasterDialog.xaml")).Content;
         string viewModel = files.Single(f => f.RelativePath.EndsWith("ViewModel.cs")).Content;
 
-        Expect.Contains(xaml, "<ComboBox Header=\"Status\" ItemsSource=\"{x:Bind ViewModel.StatusChoices}\"");
+        Expect.Contains(xaml, "<ComboBox Header=\"Status\"" + RequiredMark.XamlAttributes(true, true) + " ItemsSource=\"{x:Bind ViewModel.StatusChoices}\"");
         Expect.Contains(xaml, "SelectedItem=\"{x:Bind ViewModel.Status, Mode=TwoWay}\"");
         Expect.Contains(viewModel, "public string[] StatusChoices { get; } = [\"Open\", \"Won't fix\", \"A & B\"];");
     }

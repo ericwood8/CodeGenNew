@@ -254,7 +254,7 @@
             }
             else
                 input = $"<input id=\"{id}\" @bind=\"{bind}\"{required} />";
-            L($"            <div class=\"field\"><label for=\"{id}\">{label}</label>{input}</div>");
+            L($"            <div class=\"field\"><label for=\"{id}\">{label}{RequiredMark.Html(form.IsMarked(c))}</label>{input}</div>");
         }
         L("            <ValidationSummary />");
         L("            <div class=\"actions\">");

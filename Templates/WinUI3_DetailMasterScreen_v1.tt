@@ -140,8 +140,6 @@
     Title="{x:Bind ViewModel.DialogTitle, Mode=OneWay}"
     PrimaryButtonText="Save"
     CloseButtonText="Cancel"
-    PrimaryButtonStyle="{StaticResource BoldAccentDialogButton}"
-    CloseButtonStyle="{StaticResource BoldDialogButton}"
     DefaultButton="Primary"
     PrimaryButtonClick="OnPrimaryButtonClick">
 
@@ -158,7 +156,14 @@
         <Style x:Key="BoldAccentDialogButton" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
             <Setter Property="FontWeight" Value="Bold" />
         </Style>
-    </ContentDialog.Resources>
+<#= form.Columns.Any(form.IsMarked) ? RequiredMark.XamlHeaderTemplate : "" #>    </ContentDialog.Resources>
+    <!-- The two button styles are declared above and applied here: an attribute on the root element is read before the Resources element, so a StaticResource there is not found and the dialog fails to open. -->
+    <ContentDialog.PrimaryButtonStyle>
+        <StaticResource ResourceKey="BoldAccentDialogButton" />
+    </ContentDialog.PrimaryButtonStyle>
+    <ContentDialog.CloseButtonStyle>
+        <StaticResource ResourceKey="BoldDialogButton" />
+    </ContentDialog.CloseButtonStyle>
 
     <!-- The error bar sits ABOVE the scrolling area: inside it, a validation message is out of sight whenever the person has scrolled down. -->
     <StackPanel Spacing="12">
@@ -204,7 +209,7 @@
             {
                 var p = form.ParentOf(c)!;
 #>
-            <ComboBox Header="<#= label #>" ItemsSource="{x:Bind ViewModel.<#= WinUI3Names.OptionsProperty(p) #>}"
+            <ComboBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> ItemsSource="{x:Bind ViewModel.<#= WinUI3Names.OptionsProperty(p) #>}"
                       SelectedValuePath="Id" DisplayMemberPath="Text"
                       SelectedValue="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
 <#
@@ -212,14 +217,14 @@
             else if (kind == FieldKind.Choices)
             {
 #>
-            <ComboBox Header="<#= label #>" ItemsSource="{x:Bind ViewModel.<#= prop #>Choices}"
+            <ComboBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> ItemsSource="{x:Bind ViewModel.<#= prop #>Choices}"
                       SelectedItem="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
 <#
             }
             else if (kind == FieldKind.Money)
             {
 #>
-            <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+            <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
                        <#= Project.MoneyLimitAttributes(table, c) #>ValidationMode="InvalidInputOverwritten" Width="180" HorizontalAlignment="Left" />
 <#
             }
@@ -229,7 +234,7 @@
                 int decDigits = Inv(decMax).Length + (c.SqlType == SqlDbType.Decimal ? NumericClassifier.DecimalPlaces(c) : 4);
                 string decWidth = $" Width=\"{Math.Max(Math.Min(decDigits, 12) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
 #>
-            <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+            <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
                        Minimum="<#= Inv(decMin) #>" Maximum="<#= Inv(decMax) #>" SmallChange="1" LargeChange="10"
                        SpinButtonPlacementMode="Inline" ValidationMode="InvalidInputOverwritten"<#= decWidth #> />
 <#
@@ -244,7 +249,7 @@
                 int digits = Math.Max(range.Min.ToString().Length, range.Max.ToString().Length);
                 string width = $" Width=\"{Math.Max(Math.Min(digits, 9) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
 #>
-            <NumberBox Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+            <NumberBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
                        Minimum="<#= range.Min #>" Maximum="<#= range.Max #>" SmallChange="1" LargeChange="<#= range.Max - range.Min >= 100 ? 10 : 1 #>"
                        SpinButtonPlacementMode="Inline" ValidationMode="InvalidInputOverwritten"<#= width #> />
 <#
@@ -259,7 +264,7 @@
             {
 #>
             <StackPanel Orientation="Horizontal" Spacing="8">
-                <CalendarDatePicker Header="<#= label #>" Date="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+                <CalendarDatePicker Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Date="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
                                     DateFormat="{}{month.integer}/{day.integer}/{year.full}" PlaceholderText="mm/dd/yyyy" Width="180" />
 <#
                 if (c.IsNullable)
@@ -275,7 +280,7 @@
             else if (kind == FieldKind.Multiline)
             {
 #>
-            <TextBox Header="<#= label #>" Text="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+            <TextBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Text="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
                      AcceptsReturn="True" TextWrapping="Wrap" Height="80" MaxLength="<#= Chars(c) #>" />
 <#
             }
@@ -285,7 +290,7 @@
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
                 string readOnly = textKey && c.IsPrimaryKey ? " IsReadOnly=\"{x:Bind ViewModel.IsExisting}\"" : "";
 #>
-            <TextBox Header="<#= label #>" Text="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"<#= maxLen #><#= readOnly #> />
+            <TextBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Text="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"<#= maxLen #><#= readOnly #> />
 <#
             }
         }

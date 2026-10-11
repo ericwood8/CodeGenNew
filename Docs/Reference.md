@@ -158,6 +158,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `ViewModelsFolder` | blank = the template's own folder |
 | `CurrencyCode` | ISO currency code for money fields; blank = USD |
 | `Usings` | comma-separated namespaces every generated file should use |
+| `RequiredMarks` | a red `*` after the caption of every required field on the generated forms of every stack (a NOT NULL field the person fills in; not a yes/no box, not a system stamp); false: no marks; blank: true. Regenerate the screens to apply it |
 | `DetailMasterTables` | comma-separated table names whose Add/Edit dialog is a Detail-Master dialog (with child grids) |
 | `EnumTables` | comma-separated enum tables (no entity, repository or API); blank = decided from each table's shape |
 | `EnumMaxRows` | a lookup table with more rows than this is not an enum; blank = 25 |

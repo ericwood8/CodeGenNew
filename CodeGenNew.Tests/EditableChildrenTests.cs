@@ -183,7 +183,7 @@ public class EditableChildrenTests
 
         Expect.Contains(html, "<fieldset class=\"child-edit\">");
         Expect.Contains(html, "<legend>Department Team</legend>");
-        Expect.Contains(html, "<tr><th>Region</th><th>Name</th><th>Headcount</th><th>Active?</th><th></th></tr>");
+        Expect.Contains(html, "<tr><th>Region" + RequiredMark.Html(true) + "</th><th>Name" + RequiredMark.Html(true) + "</th><th>Headcount" + RequiredMark.Html(true) + "</th><th>Active?</th><th></th></tr>");
         Expect.Contains(html, "@for (row of departmentTeamRows; track $index) {");
         Expect.Contains(html, "[(ngModel)]=\"row.regionId\" required>");
         Expect.Contains(html, "@for (p of departmentTeamOptions['regionId']; track $index) {");

@@ -208,7 +208,7 @@
                 continue;
             }
             H("            <div class=\"form-group\">");
-            H($"                <label for=\"{id}\">{Labels.Field(c)}</label>");
+            H($"                <label for=\"{id}\">{Labels.Field(c)}{RequiredMark.Html(form.IsMarked(c))}</label>");
             if (kind == FieldKind.TypedKey)
             {
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)

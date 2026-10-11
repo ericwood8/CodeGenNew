@@ -616,7 +616,7 @@
                 T("            )}");
                 continue;
             }
-            T("            <label htmlFor=\"" + id + "\">" + Labels.Field(c) + "</label>");
+            T("            <label htmlFor=\"" + id + "\">" + Labels.Field(c) + RequiredMark.Jsx(form.IsMarked(c)) + "</label>");
             if (kind == FieldKind.TypedKey)
             {
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
@@ -777,7 +777,7 @@
                 T("                  </div>");
                 T("                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(11rem, 1fr))', gap: '0 12px' }}>");
                 foreach (var c in editColumns)
-                    T($"                    <label style={{{{ display: 'flex', flexDirection: 'column'{(IsMultiline(c) ? ", gridColumn: '1 / -1'" : "")} }}}}><span>{GridCaption.For(c, Labels.Field(c))}</span>{ChildInput(child, c)}</label>");
+                    T($"                    <label style={{{{ display: 'flex', flexDirection: 'column'{(IsMultiline(c) ? ", gridColumn: '1 / -1'" : "")} }}}}><span>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Jsx(child.IsMarked(c))}</span>{ChildInput(child, c)}</label>");
                 T("                  </div>");
                 T("                </div>");
                 T("              ))}");
@@ -787,7 +787,7 @@
             }
             T("              <table>");
             T("                <thead>");
-            T("                  <tr>" + string.Concat(editColumns.Select(c => $"<th>{GridCaption.For(c, Labels.Field(c))}</th>")) + "<th></th></tr>");
+            T("                  <tr>" + string.Concat(editColumns.Select(c => $"<th>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Jsx(child.IsMarked(c))}</th>")) + "<th></th></tr>");
             T("                </thead>");
             T("                <tbody>");
             T($"                  {{{child.Variable}Rows.map((row, index) => (");

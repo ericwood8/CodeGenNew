@@ -149,6 +149,9 @@ public sealed class ChildGrid
     /// <summary> The number box of one of the child's columns. </summary>
     public NumberBox NumberBoxOf(ColumnModel column) => NumberBox.For(Table, column, _project);
 
+    /// <summary> The caption of an editable child column carries the red asterisk: a NOT NULL column that is not a yes/no box (the same rule as <see cref="FormModel.IsMarked"/>). </summary>
+    public bool IsMarked(ColumnModel column) => _project.RequiredMarks && !column.IsNullable && !column.IsBooleanColumn;
+
     /// <summary> The heading of the grid: the project's <c>ChildGridTitles</c> entry, else the table's name (with the role when there are several). </summary>
     public string Title { get; }
 

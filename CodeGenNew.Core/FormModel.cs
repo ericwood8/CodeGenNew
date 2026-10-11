@@ -172,6 +172,14 @@ public sealed class FormModel
         : TemplateHelpers.IsMultiline(column) ? FieldKind.Multiline
         : FieldKind.Text;
 
+    /// <summary> The person must give this column a value: a field of the form that is NOT NULL, other than the system's own stamps and a yes/no box (which always holds a value). Every stack's
+    /// <c>required</c> check and red mark read this, so they cannot drift apart. </summary>
+    public bool IsRequired(ColumnModel column) =>
+        !column.IsNullable && KindOf(column) is not (FieldKind.SystemStamp or FieldKind.Boolean);
+
+    /// <summary> The caption of this column carries the red asterisk: <see cref="IsRequired"/>, unless the project turned <c>RequiredMarks</c> off. </summary>
+    public bool IsMarked(ColumnModel column) => _project.RequiredMarks && IsRequired(column);
+
     /// <summary> How an editor that keeps numbers as numbers and everything else as text (the WinUI3 view model) holds a column's value. The first that fits wins, so every screen of that kind reads, loads and saves a
     /// column the same way. A system stamp is held as what it is (a date stays a date); only <see cref="KindOf"/> decides that it is shown as text. </summary>
     public ValueKind ValueOf(ColumnModel column) =>
