@@ -171,13 +171,13 @@
         foreach (var c in gridColumns)
         {
             string prop = $"{variable}.{JsonNames.Camel(c.Name)}";
-            var lookup = form.LookupOf(c);
+            var cellKind = form.CellOf(c);
             string cell;
-            if (lookup is not null) cell = $"{{{{ {form.ParentOf(c)!.NameMethod}({prop}) }}}}";
-            else if (c.IsBooleanColumn) cell = $"{{{{ {prop} ? \"Yes\" : \"No\" }}}}";
-            else if (IsDate(c)) cell = $"{{{{ {prop} | date:'MM/dd/yyyy' }}}}";
-            else if (c.IsMoneyAmount) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{Math.Min(2, d)}-{d}' }}}}"; }
-            else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{{ {prop} | number:'1.2-2' }}}}";
+            if (cellKind == CellKind.Lookup) cell = $"{{{{ {form.ParentOf(c)!.NameMethod}({prop}) }}}}";
+            else if (cellKind == CellKind.Boolean) cell = $"{{{{ {prop} ? \"Yes\" : \"No\" }}}}";
+            else if (cellKind == CellKind.Date) cell = $"{{{{ {prop} | date:'MM/dd/yyyy' }}}}";
+            else if (cellKind == CellKind.Money) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{Math.Min(2, d)}-{d}' }}}}"; }
+            else if (cellKind == CellKind.Decimal) cell = $"{{{{ {prop} | number:'1.2-2' }}}}";
             else cell = $"{{{{ {prop} }}}}";
             H($"                <td>{cell}</td>");
         }
@@ -533,7 +533,7 @@
         if (canSearch) T($"  override filters = {{ {string.Join(", ", searchFields.Select(f => $"{f.ParamName}: ''"))} }};");
         if (!nameActive && pageSize != 20) T($"  override pageSize = {pageSize};");
         foreach (var p in parents)
-            T($"  {p.List}: {(p.UsesLookupEndpoint ? p.LookupType : p.BaseName)}[] = [];");
+            T($"  {p.List}: {p.ItemType}[] = [];");
         foreach (var p in parents.Where(p => !p.IsSelf))
             T($"  private readonly {AngularNames.ServiceField(p.Table)} = inject({AngularNames.ServiceClass(p.Table)});");
         if (children.Count > 0) T("  private readonly http = inject(HttpClient);");
@@ -578,7 +578,7 @@
                 T("  protected override start(): void {");
                 T("    super.start();");
                 foreach (var p in parentsToLoad)
-                    T($"    this.{(p.IsSelf ? "service" : AngularNames.ServiceField(p.Table))}.{(p.UsesLookupEndpoint ? "getLookup" : "getAll")}().subscribe((data) => {{ this.{p.List} = data; }});");
+                    T($"    this.{(p.IsSelf ? "service" : AngularNames.ServiceField(p.Table))}.{p.LoadMethod}().subscribe((data) => {{ this.{p.List} = data; }});");
                 foreach (var (child, column, lookup) in optionLoads)
                     T($"    this.http.get<any[]>('{apiPrefix}/{ScreenNames.ApiRoute(lookup.ReferencedTable)}/lookup').subscribe((items) => {{ this.{child.Variable}Options = {{ ...this.{child.Variable}Options, {JsonNames.Camel(column.Name)}: items.map((i) => ({{ id: i['id'], name: String(i['name'] ?? '') }})) }}; }});");
                 T("  }");

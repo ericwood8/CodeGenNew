@@ -33,6 +33,9 @@ public static class ReactNames
     /// <summary> The state setter of a list a page holds: <c>customers</c> is set by <c>setCustomers</c>. </summary>
     public static string SetList(string list) => "set" + TemplateHelpers.UpperFirst(list);
 
+    /// <summary> The state list that holds a parent's drop-down rows: <c>regions</c>. The page's own rows are <c>employees</c>, so a drop-down over the table itself (a manager) is <c>employeesLookup</c>. </summary>
+    public static string ParentList(FormParent parent) => parent.IsSelf ? parent.List + "Lookup" : parent.List;
+
     /// <summary> The page component of the table's screen: <c>SalesInvoicePage</c>, or <c>SalesInvoiceDetailMasterPage</c> for a table with child grids. </summary>
     public static string PageName(TableModel table, ProjectSettings project) =>
         ScreenNames.BaseName(table.TableName) + (DatabaseModel.IsDetailMaster(table, project) ? "DetailMasterPage" : "Page");

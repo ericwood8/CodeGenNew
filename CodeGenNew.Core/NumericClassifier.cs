@@ -54,6 +54,17 @@ public static class NumericClassifier
         return words.Any(w => Is(w, CurrencyWords)) && !words.Any(w => Is(w, NotMoneyWords));
     }
 
+    /// <summary> The decimal places a decimal column keeps in a number box: its scale, between 0 and 8 (2 when unknown). </summary>
+    public static int DecimalPlaces(ColumnModel column) => Math.Clamp(column.Scale ?? 2, 0, 8);
+
+    /// <summary> The C# keyword for a numeric column's value (<c>int</c>, <c>long</c>, <c>decimal</c> ...); <c>int</c> for anything else. </summary>
+    public static string NumericCSharpType(ColumnModel column) => column.SqlType switch
+    {
+        SqlDbType.Int => "int", SqlDbType.BigInt => "long", SqlDbType.SmallInt => "short", SqlDbType.TinyInt => "byte",
+        SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Decimal => "decimal",
+        SqlDbType.Float => "double", SqlDbType.Real => "float", _ => "int"
+    };
+
     /// <summary> How many decimal places a currency column is shown with: the column's own scale for a decimal, two for money / smallmoney
     /// (whose four stored places are never what people read). </summary>
     public static int CurrencyDigits(ColumnModel column) =>

@@ -59,7 +59,8 @@
                 string childType = BlazorNames.TypeName(g.Table);
                 var lookups = g.Lookups
                     .Select(l => (Column: l.ColumnName, Type: BlazorNames.TypeName(l.ParentTable), Field: BlazorNames.ChildLookupField(l.ParentTable),
-                                  IdType: l.Column!.CSharpBase(), KeyProp: l.ParentKeyName, DisplayProp: l.ParentDisplayName))
+                                  IdType: l.Column!.CSharpBase(), KeyProp: l.UsesLookupEndpoint ? "Id" : l.ParentKeyName, DisplayProp: l.UsesLookupEndpoint ? "Name" : l.ParentDisplayName,
+                                  ItemType: l.UsesLookupEndpoint ? BlazorNames.LookupType(l.ParentTable) : BlazorNames.TypeName(l.ParentTable), Load: l.UsesLookupEndpoint ? "GetLookupAsync" : "GetAllAsync"))
                     .ToList();
                 var columns = g.Link.ReferencingTableColumns
                     .Where(c => !g.HiddenColumns.Contains(c.Name, StringComparer.OrdinalIgnoreCase) && !c.IsCredentialColumn && HasInput(c))
@@ -84,11 +85,12 @@
         // A cell of a grid row: the lookup's name for a foreign key, yes / no, a date, money with its symbol, or the value.
         string Cell(ColumnModel c, string prop, string lookupCall)
         {
-            if (lookupCall is not null) return "@" + lookupCall;
-            if (c.IsBooleanColumn) return c.IsNullable ? $"@({prop} is null ? \"\" : {prop} == true ? \"Yes\" : \"No\")" : $"@({prop} ? \"Yes\" : \"No\")";
-            if (IsDate(c)) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd\")";
-            if (c.IsMoneyAmount) return $"@Money({prop}, {NumericClassifier.CurrencyDigits(c)})";
-            if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"N2\")";
+            var kind = GridCells.KindOf(c, lookupCall is not null);
+            if (kind == CellKind.Lookup) return "@" + lookupCall;
+            if (kind == CellKind.Boolean) return c.IsNullable ? $"@({prop} is null ? \"\" : {prop} == true ? \"Yes\" : \"No\")" : $"@({prop} ? \"Yes\" : \"No\")";
+            if (kind == CellKind.Date) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd\")";
+            if (kind == CellKind.Money) return $"@Money({prop}, {NumericClassifier.CurrencyDigits(c)})";
+            if (kind == CellKind.Decimal) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"N2\")";
             return $"@{prop}";
         }
 
@@ -220,7 +222,7 @@
             {
                 var p = form.ParentOf(c)!;
                 string blank = c.IsNullable ? "<option value=\"\">None</option>" : c.CSharpBase() == "string" ? "<option value=\"\">Select</option>" : $"<option value=\"@(default({c.CSharpBase()}))\">Select</option>";
-                input = $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\">{blank}@foreach (var parent in {BlazorNames.LookupField(p)}) {{ <option value=\"@parent.{p.KeyName}\">@parent.{p.DisplayName}</option> }}</InputSelect>";
+                input = $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\">{blank}@foreach (var parent in {BlazorNames.LookupField(p)}) {{ <option value=\"@parent.{BlazorNames.KeyProperty(p)}\">@parent.{BlazorNames.DisplayProperty(p)}</option> }}</InputSelect>";
             }
             else if (kind == FieldKind.Choices)
             {
@@ -313,11 +315,11 @@
         L("    private bool loaded;   // true once a page has arrived, so \"Nothing found.\" is not shown while waiting");
         L("    private List<§T> items = [];");
         foreach (var p in parents)
-            L($"    private List<{p.BaseName}> {BlazorNames.LookupField(p)} = [];");
+            L($"    private List<{BlazorNames.ItemType(p)}> {BlazorNames.LookupField(p)} = [];");
         foreach (var ch in children)
             L($"    private List<{ch.Type}> {ch.Var}Rows = [];");
         foreach (var l in childLookups)
-            L($"    private List<{l.Type}> {l.Field} = [];");
+            L($"    private List<{l.ItemType}> {l.Field} = [];");
         L("    private §T? row;");
         L("    private bool isNew;");
         L("    private string? message;");
@@ -334,9 +336,9 @@
         L("    protected override async Task OnInitializedAsync()");
         L("    {");
         foreach (var p in parents)
-            L($"        try {{ {BlazorNames.LookupField(p)} = await {BlazorNames.LookupField(p)}Client.GetAllAsync(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
+            L($"        try {{ {BlazorNames.LookupField(p)} = await {BlazorNames.LookupField(p)}Client.{BlazorNames.LoadCall(p)}(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
         foreach (var l in childLookups)
-            L($"        try {{ {l.Field} = await {l.Field}Client.GetAllAsync(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
+            L($"        try {{ {l.Field} = await {l.Field}Client.{l.Load}(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
         L("        await LoadAsync();");
         L("        if (EditId is not null)");
         L("        {");
@@ -406,7 +408,7 @@
         foreach (var p in parents)
         {
             L();
-            L($"    private string Name{p.BaseName}({p.Column.CSharpBase()}? id) => Convert.ToString({BlazorNames.LookupField(p)}.FirstOrDefault(p => Equals(p.{p.KeyName}, id))?.{p.DisplayName}) ?? \"\";");
+            L($"    private string Name{p.BaseName}({p.Column.CSharpBase()}? id) => Convert.ToString({BlazorNames.LookupField(p)}.FirstOrDefault(p => Equals(p.{BlazorNames.KeyProperty(p)}, id))?.{BlazorNames.DisplayProperty(p)}) ?? \"\";");
         }
         foreach (var l in childLookups)
         {

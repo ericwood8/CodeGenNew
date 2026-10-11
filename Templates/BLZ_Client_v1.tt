@@ -35,11 +35,16 @@
         L();
         L($"namespace {BlazorNames.Namespace(Project)}.Services;");
         L();
+        L("// One row of GET " + BlazorNames.ApiRoute(Model.TableName) + "/lookup: the key, the text a person recognises the row by and whether the row is active (absent for a table with no IsActive column).");
+        L($"public record {BlazorNames.LookupType(Model.TableName)}({keyType} Id, string Name, bool? IsActive = null);");
+        L();
         L($"public class {type}Client(HttpClient http)");
         L("{");
         L($"    private const string Url = \"{BlazorNames.ApiRoute(Model.TableName)}\";");
         L();
         L($"    public async Task<List<{type}>> GetAllAsync() => await (await http.GetAsync(Url)).ReadAsync<List<{type}>>();");
+        L();
+        L($"    public async Task<List<{BlazorNames.LookupType(Model.TableName)}>> GetLookupAsync() => await (await http.GetAsync($\"{{Url}}/lookup\")).ReadAsync<List<{BlazorNames.LookupType(Model.TableName)}>>();");
         L();
         L($"    public async Task<{type}> GetAsync({keyType} id) => await (await http.GetAsync($\"{{Url}}/{{{id}}}\")).ReadAsync<{type}>();");
         L();

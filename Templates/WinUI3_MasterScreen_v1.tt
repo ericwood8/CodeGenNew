@@ -597,10 +597,10 @@ public partial class <#= table #>ListViewModel : ObservableObject
 <#
         foreach (var c in shown)
         {
-            var lookup = form.LookupOf(c);
+            var cellKind = form.CellOf(c);
             string prop = c.Name;
             string varName = TemplateHelpers.LowerFirst(prop);
-            if (lookup is not null)
+            if (cellKind == CellKind.Lookup)
             {
                 var p = form.ParentOf(c)!;
                 if (c.IsNullable)
@@ -616,7 +616,7 @@ public partial class <#= table #>ListViewModel : ObservableObject
 <#
                 }
             }
-            else if (IsBit(c))
+            else if (cellKind == CellKind.Boolean)
             {
                 if (c.IsNullable)
                 {
@@ -631,17 +631,24 @@ public partial class <#= table #>ListViewModel : ObservableObject
 <#
                 }
             }
-            else if (IsDate(c))
+            else if (cellKind == CellKind.Date)
             {
 #>
                 e.<#= prop #><#= c.IsNullable ? "?.ToString(\"MM/dd/yyyy\") ?? \"\"" : ".ToString(\"MM/dd/yyyy\")" #>,
 <#
             }
-            else if (c.IsMoneyAmount)
+            else if (cellKind == CellKind.Money)
             {
                 // currency, in the project's CurrencyCode with the column's own number of decimals (the same as the editor)
 #>
                 <#= c.IsNullable ? $"e.{prop} is {{ }} {TemplateHelpers.LowerFirst(prop)}Money ? " : "" #>new Windows.Globalization.NumberFormatting.CurrencyFormatter("<#= Project.CurrencyCode #>") { IsGrouped = true, FractionDigits = <#= NumericClassifier.CurrencyDigits(c) #> }.FormatDouble((double)<#= c.IsNullable ? TemplateHelpers.LowerFirst(prop) + "Money" : "e." + prop #>)<#= c.IsNullable ? " : \"\"" : "" #>,
+<#
+            }
+            else if (cellKind == CellKind.Decimal)
+            {
+                // a decimal that is not money shows two decimals, as on the web
+#>
+                e.<#= prop #><#= c.IsNullable ? "?.ToString(\"N2\") ?? \"\"" : ".ToString(\"N2\")" #>,
 <#
             }
             else if (IsText(c))

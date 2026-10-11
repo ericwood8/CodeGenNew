@@ -239,6 +239,59 @@ public class FormModelTests
     }
 
     [TestMethod]
+    public void A_view_model_holds_each_column_one_way_and_a_grid_shows_it_one_way()
+    {
+        var table = Sample.Table("Job",
+        [
+            Sample.Column("JobId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Text("Title", 2),
+            Sample.Column("RegionId", SqlDbType.Int, ordinal: 3),
+            Sample.Column("IsOpen", SqlDbType.Bit, ordinal: 4),
+            Sample.Column("Due", SqlDbType.DateTime, ordinal: 5),
+            Sample.Column("Budget", SqlDbType.Decimal, precision: 18, scale: 2, currency: true, ordinal: 6),
+            Sample.Column("Weight", SqlDbType.Decimal, precision: 9, scale: 3, ordinal: 7),
+            Sample.Column("MonthNumber", SqlDbType.Int, numericKind: NumericKind.Month, ordinal: 8),
+            Sample.Column("Ref", SqlDbType.UniqueIdentifier, ordinal: 9)
+        ],
+        [Sample.ForeignKey("RegionId", "Region", "RegionId", "Name")]);
+        var form = FormModel.For(table, Project());
+        ColumnModel Col(string name) => table.Columns.First(c => c.Name == name);
+
+        Assert.AreEqual(ValueKind.Text, form.ValueOf(Col("Title")));
+        Assert.AreEqual(ValueKind.Lookup, form.ValueOf(Col("RegionId")));
+        Assert.AreEqual(ValueKind.Boolean, form.ValueOf(Col("IsOpen")));
+        Assert.AreEqual(ValueKind.Date, form.ValueOf(Col("Due")));
+        Assert.AreEqual(ValueKind.Money, form.ValueOf(Col("Budget")));
+        Assert.AreEqual(ValueKind.Decimal, form.ValueOf(Col("Weight")));
+        Assert.AreEqual(ValueKind.WholeNumber, form.ValueOf(Col("MonthNumber")));
+        Assert.AreEqual(ValueKind.Guid, form.ValueOf(Col("Ref")));
+
+        Assert.AreEqual(CellKind.Lookup, form.CellOf(Col("RegionId")));
+        Assert.AreEqual(CellKind.Boolean, form.CellOf(Col("IsOpen")));
+        Assert.AreEqual(CellKind.Date, form.CellOf(Col("Due")));
+        Assert.AreEqual(CellKind.Money, form.CellOf(Col("Budget")));
+        Assert.AreEqual(CellKind.Decimal, form.CellOf(Col("Weight")));
+        Assert.AreEqual(CellKind.Plain, form.CellOf(Col("MonthNumber")));
+        Assert.AreEqual(CellKind.Plain, form.CellOf(Col("Title")));
+        Assert.AreEqual(CellKind.Lookup, GridCells.KindOf(Col("Title"), lookedUp: true), "a child grid names a foreign key the page does not edit");
+    }
+
+    [TestMethod]
+    public async Task The_winui3_list_shows_a_decimal_that_is_not_money_with_two_decimals_like_the_web()
+    {
+        var table = Sample.Table("Job",
+        [
+            Sample.Column("JobId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Text("Title", 2),
+            Sample.Column("Weight", SqlDbType.Decimal, precision: 9, scale: 3, ordinal: 3),
+            Sample.Column("Spare", SqlDbType.Decimal, precision: 9, scale: 3, nullable: true, ordinal: 4)
+        ]);
+        string list = await Rendered("WinUI3_MasterScreen_v1.tt", table, Project());
+        StringAssert.Contains(list, "e.Weight.ToString(\"N2\"),");
+        StringAssert.Contains(list, "e.Spare?.ToString(\"N2\") ?? \"\",");
+    }
+
+    [TestMethod]
     public void A_number_box_carries_the_same_limits_on_every_web_stack()
     {
         var month = NumberBox.For("Job", Sample.Column("MonthNumber", SqlDbType.Int, numericKind: NumericKind.Month), Project());
@@ -323,6 +376,32 @@ public class FormModelTests
         Assert.AreEqual("name", item.WebDisplay);
         Assert.IsNotNull(grid.EditLookupOf(grid.Link.ReferencingTableColumns.First(c => c.Name == "ItemId")));
         Assert.IsNull(grid.EditLookupOf(grid.Link.ReferencingTableColumns.First(c => c.Name == "Memo")));
+    }
+
+    [TestMethod]
+    public async Task React_Angular_and_Blazor_fill_a_drop_down_from_the_parents_lookup_list()
+    {
+        var table = Account();
+        var project = Project(("HiddenParents", "Style"), ("AngularVersion", "22"));
+
+        string react = await Rendered("TSX_Page_v1.tt", table, project);
+        StringAssert.Contains(react, "regionApi.getLookup().then(setRegions)");
+        StringAssert.Contains(react, "useState<Lookup[]>([])");
+        StringAssert.Contains(react, "accountApi.getLookup().then(setAccountsLookup)", "a drop-down over the table itself (a manager) is its own list, not the page's rows");
+        StringAssert.Contains(react, "<option key={p.id} value={p.id}>{p.name}</option>");
+
+        StringAssert.Contains(await Rendered("TS_Component_v1.tt", table, project), "getLookup().subscribe((data) => { this.regions = data; })");
+
+        string page = await Rendered("BLZ_Page_v1.tt", table, project);
+        StringAssert.Contains(page, "private List<RegionLookup> lookupRegion = [];");
+        StringAssert.Contains(page, "await lookupRegionClient.GetLookupAsync();");
+        StringAssert.Contains(page, "<option value=\"@parent.Id\">@parent.Name</option>");
+
+        var region = Sample.Table("Region", [Sample.Column("RegionId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Text("Name", 2)]);
+        string client = await Rendered("BLZ_Client_v1.tt", region, project);
+        StringAssert.Contains(client, "public record RegionLookup(int Id, string Name, bool? IsActive = null);");
+        StringAssert.Contains(client, "public async Task<List<RegionLookup>> GetLookupAsync()");
+        StringAssert.Contains(await Rendered("TSX_Api_v1.tt", region, project), "getLookup: () => request<{ id: number; name: string; isActive?: boolean | null }[]>(`${apiUrl}/lookup`),");
     }
 
     // ------------------------------------------------------------------ the four stacks edit the same fields

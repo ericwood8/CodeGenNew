@@ -156,6 +156,9 @@ public sealed class FormModel
     /// <summary> The project leaves a foreign key to this table off the screen (<c>HiddenParents</c>: a styling id no one edits). </summary>
     public bool IsHiddenParent(string table) => _project.HiddenParents is { } hidden && hidden.Contains(table, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary> How the grid shows a column of this table (<see cref="GridCells.KindOf"/>). </summary>
+    public CellKind CellOf(ColumnModel column) => GridCells.KindOf(column, LookupOf(column) is not null);
+
     /// <summary> Which editor a column gets on the form. The order is the rule every stack follows: the first that fits wins. </summary>
     public FieldKind KindOf(ColumnModel column) =>
         column.IsSystemStampColumn ? FieldKind.SystemStamp
@@ -168,6 +171,25 @@ public sealed class FormModel
         : TemplateHelpers.IsNumber(column) ? FieldKind.Number
         : TemplateHelpers.IsMultiline(column) ? FieldKind.Multiline
         : FieldKind.Text;
+
+    /// <summary> How an editor that keeps numbers as numbers and everything else as text (the WinUI3 view model) holds a column's value. The first that fits wins, so every screen of that kind reads, loads and saves a
+    /// column the same way. A system stamp is held as what it is (a date stays a date); only <see cref="KindOf"/> decides that it is shown as text. </summary>
+    public ValueKind ValueOf(ColumnModel column) =>
+        LookupOf(column) is not null ? ValueKind.Lookup
+        : IsMoneyInput(column) ? ValueKind.Money
+        : IsDecimalBox(column) ? ValueKind.Decimal
+        : IsWholeNumberBox(column) ? ValueKind.WholeNumber
+        : column.IsBooleanColumn ? ValueKind.Boolean
+        : TemplateHelpers.IsDate(column) ? ValueKind.Date
+        : column.IsGuidColumn ? ValueKind.Guid
+        : TemplateHelpers.IsNumber(column) ? ValueKind.Number
+        : ValueKind.Text;
+
+    /// <summary> A decimal, float or real column that is not money (a percentage, a rate, a weight): edited in a number box limited to what the column can hold. </summary>
+    public static bool IsDecimalBox(ColumnModel column) => !column.IsCurrencyColumn && column.IsNumericColumn;
+
+    /// <summary> A whole-number column (not a flag): edited in a number box limited to its range. </summary>
+    public static bool IsWholeNumberBox(ColumnModel column) => column.IsIntegerColumn && !column.IsBooleanColumn;
 
     /// <summary> A money column that is edited in a money box: a foreign key, a list of choices, a stamp and the typed key are not. </summary>
     public bool IsMoneyInput(ColumnModel column) =>
@@ -200,5 +222,25 @@ public enum FieldKind
     Number,
     /// <summary> Text that needs several lines. </summary>
     Multiline,
+    Text
+}
+
+/// <summary> How a view model holds a column's value (see <see cref="FormModel.ValueOf"/>). </summary>
+public enum ValueKind
+{
+    /// <summary> A foreign key to a parent that is looked up: the parent's key, or null for none. </summary>
+    Lookup,
+    /// <summary> An amount of money, held as a double (NaN is blank) and saved as a rounded decimal. </summary>
+    Money,
+    /// <summary> A decimal, float or real that is not money, held as a double (NaN is blank). </summary>
+    Decimal,
+    /// <summary> A whole number, held as a double (NaN is blank) and saved after checking it is whole and in range. </summary>
+    WholeNumber,
+    Boolean,
+    Date,
+    /// <summary> A uniqueidentifier typed as text. </summary>
+    Guid,
+    /// <summary> Any other number, typed as text. </summary>
+    Number,
     Text
 }

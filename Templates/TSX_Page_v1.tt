@@ -97,10 +97,16 @@
         T($"import type {{ GridSort }} from '../{componentsFolder}/gridSort';");
         foreach (var p in parents.Where(p => !p.IsSelf))
         {
-            T($"import type {{ {p.BaseName} }} from '../{modelsFolder}/{p.ModelFile}';");
+            if (!p.UsesLookupEndpoint) T($"import type {{ {p.BaseName} }} from '../{modelsFolder}/{p.ModelFile}';");
             T($"import {{ {ReactNames.ApiVar(p.Table)} }} from '../{apiFolder}/{ReactNames.ApiFile(p.Table)}';");
         }
         T();
+        if (parents.Any(p => p.UsesLookupEndpoint))
+        {
+            T("// one row of GET <route>/lookup: the key, the text to show and whether the row is active");
+            T("type Lookup<K extends number | string = number> = { id: K; name: string; isActive?: boolean | null };");
+            T();
+        }
         T($"const initialPageSize = {pageSize};");
         T("const pageSizeChoices = [10, 20, 50, 100]; // the page sizes the person can pick under the grid");
         T($"const gridKey = '{stem}'; // the grid's saved sort is kept in the browser under this key (see components/gridSort.tsx)");
@@ -108,8 +114,8 @@
         T();
         T($"export function {baseName}Page() {{");
         T($"  const [{listName}, {setList}] = useState<{baseName}[]>([]);");
-        foreach (var p in parents.Where(p => !p.IsSelf))
-            T($"  const [{p.List}, {ReactNames.SetList(p.List)}] = useState<{p.BaseName}[]>([]);");
+        foreach (var p in parents)
+            T($"  const [{ReactNames.ParentList(p)}, {ReactNames.SetList(ReactNames.ParentList(p))}] = useState<{p.ItemType}[]>([]);");
         T($"  const [selectedRow, setSelectedRow] = useState<{baseName} | null>(null);");
         // a typed key is set on a new row too, so the key can no longer say whether the row is new: `adding` does
         if (textKey) T("  const [adding, setAdding] = useState(false); // true while the form holds a new row, whose key the person types");
@@ -149,8 +155,8 @@
         T();
         T("  useEffect(() => {");
         T("    load();");
-        foreach (var p in parents.Where(p => !p.IsSelf))
-            T($"    {ReactNames.ApiVar(p.Table)}.getAll().then({ReactNames.SetList(p.List)}).catch(() => {{}});");
+        foreach (var p in parents)
+            T($"    {ReactNames.ApiVar(p.Table)}.{p.LoadMethod}().then({ReactNames.SetList(ReactNames.ParentList(p))}).catch(() => {{}});");
         T("    const openId = searchParams.get('edit');");
         T($"    if (openId) {ReactNames.ApiVar(Model.TableName)}.getById({(keyType.Kind == KeyKind.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'));");
         T("  }, []);");
@@ -288,7 +294,7 @@
             T();
             T($"  // the name to show in place of a {p.BaseName} id");
             T($"  const {p.NameMethod} = (id?: {p.KeyTs}): string => {{");
-            T($"    return {p.List}.find((p) => p.{JsonNames.Camel(p.KeyName)} === id)?.{JsonNames.Camel(p.DisplayName)} ?? '';");
+            T($"    return {ReactNames.ParentList(p)}.find((p) => p.{p.KeyJson} === id)?.{p.DisplayJson} ?? '';");
             T("  };");
         }
         T();
@@ -348,14 +354,14 @@
         foreach (var c in gridColumns)
         {
             string prop = $"{variable}.{JsonNames.Camel(c.Name)}";
-            var lookup = form.LookupOf(c);
+            var cellKind = form.CellOf(c);
             string cell;
             // A nullable column's value may be undefined: optional chaining keeps a strict (noUncheckedIndexedAccess/strictNullChecks) build compiling.
-            if (lookup is not null) cell = $"{{{form.ParentOf(c)!.NameMethod}({prop})}}";
-            else if (c.IsBooleanColumn) cell = $"{{{prop} ? 'Yes' : 'No'}}";
-            else if (IsDate(c)) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 10)}}";
-            else if (c.IsMoneyAmount) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
-            else if (c.SqlType is SqlDbType.Decimal or SqlDbType.Money or SqlDbType.SmallMoney) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toFixed(2)}}";
+            if (cellKind == CellKind.Lookup) cell = $"{{{form.ParentOf(c)!.NameMethod}({prop})}}";
+            else if (cellKind == CellKind.Boolean) cell = $"{{{prop} ? 'Yes' : 'No'}}";
+            else if (cellKind == CellKind.Date) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 10)}}";
+            else if (cellKind == CellKind.Money) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
+            else if (cellKind == CellKind.Decimal) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toFixed(2)}}";
             else cell = $"{{{prop}}}";
             T($"              <td>{cell}</td>");
         }
@@ -454,8 +460,8 @@
                 if (!c.IsNullable) T("              required");
                 T("            >");
                 T("              <option value=\"\"></option>");
-                T($"              {{{p.List}.map((p) => (");
-                T($"                <option key={{p.{JsonNames.Camel(p.KeyName)}}} value={{p.{JsonNames.Camel(p.KeyName)}}}>{{p.{JsonNames.Camel(p.DisplayName)}}}</option>");
+                T($"              {{{ReactNames.ParentList(p)}.map((p) => (");
+                T($"                <option key={{p.{p.KeyJson}}} value={{p.{p.KeyJson}}}>{{p.{p.DisplayJson}}}</option>");
                 T("              ))}");
                 T("            </select>");
             }
@@ -590,8 +596,8 @@
         S($"describe('{baseName}Page', () => {{");
         S("  beforeEach(() => {");
         S($"    vi.spyOn({ReactNames.ApiVar(Model.TableName)}, 'getPage').mockResolvedValue({{ items: [], page: 1, pageSize: {pageSize}, totalCount: 0, totalPages: 0 }});");
-        foreach (var p in parents.Where(p => !p.IsSelf))
-            S($"    vi.spyOn({ReactNames.ApiVar(p.Table)}, 'getAll').mockResolvedValue([]);");
+        foreach (var p in parents)
+            S($"    vi.spyOn({ReactNames.ApiVar(p.Table)}, '{p.LoadMethod}').mockResolvedValue([]);");
         S("  });");
         S();
         S("  afterEach(() => {");

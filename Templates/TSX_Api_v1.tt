@@ -79,6 +79,9 @@
         L($"export const {variable}Api = {{");
         L($"  getAll: () => request<{baseName}[]>(apiUrl),");
         L();
+        // the drop-downs of the screens that look this table up read just the key, the text to show and the active flag
+        L($"  getLookup: () => request<{{ id: {keyTs}; name: string; isActive?: boolean | null }}[]>(`${{apiUrl}}/lookup`),");
+        L();
         L($"  getById: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/{keyPath}`),");
         L();
         L($"  create: ({variable}: {baseName}) => request<{baseName}>(apiUrl, {{ method: 'POST', body: JSON.stringify({variable}) }}),");

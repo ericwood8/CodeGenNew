@@ -42,21 +42,10 @@
 
     // Every whole-number column (a foreign key to a lookup is handled before this) is edited in a number box, whose value is a double:
     // the ViewModel holds it as a double (NaN = blank) and the save converts it back, after checking it is whole and in range.
-    bool UsesNumberBox(ColumnModel c) => c.IsIntegerColumn && !IsBit(c);
     // A currency column (money, or a decimal whose name says money) is also edited in a number box, formatted as currency in code-behind
     // (a NumberFormatter cannot be declared in XAML; CurrencyNumberFormatter.cs, written alongside, formats as currency and also reads a plain number), and converted back to a decimal rounded to the column's scale on save.
-    int CurrencyDigits(ColumnModel c) => NumericClassifier.CurrencyDigits(c);
     // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is edited in a number box too: its value is a double
     // (NaN = blank), limited to what the column can hold (NumericClassifier.DecimalRange), and converted back on save.
-    bool UsesDecimalBox(ColumnModel c) => !c.IsCurrencyColumn && c.IsNumericColumn;
-    int DecimalPlaces(ColumnModel c) => Math.Clamp(c.Scale ?? 2, 0, 8);
-
-    string CSharpNumericType(ColumnModel c) => c.SqlType switch
-    {
-        SqlDbType.Int => "int", SqlDbType.BigInt => "long", SqlDbType.SmallInt => "short", SqlDbType.TinyInt => "byte",
-        SqlDbType.Money or SqlDbType.SmallMoney or SqlDbType.Decimal => "decimal",
-        SqlDbType.Float => "double", SqlDbType.Real => "float", _ => "int"
-    };
 
     var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
     var keyColumn = form.KeyColumn;
@@ -152,6 +141,7 @@
         foreach (var c in page.Columns)
         {
             var kind = form.KindOf(c);
+            var value = form.ValueOf(c);
             string prop = c.Name;
             string label = Labels.Column(c.Name);
             if (kind == FieldKind.SystemStamp)
@@ -188,10 +178,10 @@
                        <#= Project.MoneyLimitAttributes(table, c) #>ValidationMode="InvalidInputOverwritten" Width="180" HorizontalAlignment="Left" />
 <#
             }
-            else if (kind == FieldKind.Number && UsesDecimalBox(c))
+            else if (value == ValueKind.Decimal)
             {
                 var (decMin, decMax) = NumericClassifier.DecimalRange(c);
-                int decDigits = Inv(decMax).Length + (c.SqlType == SqlDbType.Decimal ? DecimalPlaces(c) : 4);
+                int decDigits = Inv(decMax).Length + (c.SqlType == SqlDbType.Decimal ? NumericClassifier.DecimalPlaces(c) : 4);
                 string decWidth = $" Width=\"{Math.Max(Math.Min(decDigits, 12) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
 #>
             <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>" Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
@@ -199,7 +189,7 @@
                        SpinButtonPlacementMode="Inline" ValidationMode="InvalidInputOverwritten"<#= decWidth #> />
 <#
             }
-            else if (kind == FieldKind.Number && UsesNumberBox(c))
+            else if (value == ValueKind.WholeNumber)
             {
                 var range = Project.RangeFor(c)!.Value;
                 // Narrow to the widest number the range allows (a month is two digits, a year four) plus what the box itself needs
@@ -284,7 +274,7 @@
 using <#= viewModelNamespace #>;
 using Microsoft.UI.Xaml.Controls;
 <#
-        var currencyColumns = shown.Where(form.IsMoneyInput).ToList();
+        var currencyColumns = shown.Where(c => form.ValueOf(c) == ValueKind.Money).ToList();
         foreach (string u in usings)
         {
 #>
@@ -312,18 +302,18 @@ public sealed partial class <#= table #>DetailDialog : ContentDialog
         foreach (var c in currencyColumns)
         {
 #>
-        <#= c.Name #>Box.NumberFormatter = new CurrencyNumberFormatter("<#= Project.CurrencyCode #>", <#= CurrencyDigits(c) #>);
+        <#= c.Name #>Box.NumberFormatter = new CurrencyNumberFormatter("<#= Project.CurrencyCode #>", <#= NumericClassifier.CurrencyDigits(c) #>);
 <#
         }
 #>
 <#
-        foreach (var c in shown.Where(c => UsesDecimalBox(c) && c.SqlType == SqlDbType.Decimal))
+        foreach (var c in shown.Where(c => form.ValueOf(c) == ValueKind.Decimal && c.SqlType == SqlDbType.Decimal))
         {
 #>
         <#= c.Name #>Box.NumberFormatter = new Windows.Globalization.NumberFormatting.DecimalFormatter
         {
-            IntegerDigits = 1, FractionDigits = <#= DecimalPlaces(c) #>, IsGrouped = false,
-            NumberRounder = new Windows.Globalization.NumberFormatting.IncrementNumberRounder { Increment = <#= Inv(Math.Pow(10, -DecimalPlaces(c))) #>, RoundingAlgorithm = Windows.Globalization.NumberFormatting.RoundingAlgorithm.RoundHalfUp }
+            IntegerDigits = 1, FractionDigits = <#= NumericClassifier.DecimalPlaces(c) #>, IsGrouped = false,
+            NumberRounder = new Windows.Globalization.NumberFormatting.IncrementNumberRounder { Increment = <#= Inv(Math.Pow(10, -NumericClassifier.DecimalPlaces(c))) #>, RoundingAlgorithm = Windows.Globalization.NumberFormatting.RoundingAlgorithm.RoundHalfUp }
         };
 <#
         }
@@ -355,7 +345,7 @@ public sealed partial class <#= table #>DetailDialog : ContentDialog
         }
     }
 <#
-        foreach (var c in shown.Where(c => IsDate(c) && c.IsNullable))
+        foreach (var c in shown.Where(c => form.ValueOf(c) == ValueKind.Date && c.IsNullable))
         {
 #>
 
@@ -460,14 +450,14 @@ public partial class <#= table #>DetailViewModel : ObservableObject
 <#
         foreach (var c in shown)
         {
-            var lookup = form.LookupOf(c);
+            var value = form.ValueOf(c);
             string prop = c.Name;
-            string fieldType = lookup is not null ? form.ParentOf(c)!.KeyCs + "?" : IsBit(c) ? "bool?" : (UsesNumberBox(c) || form.IsMoneyInput(c) || UsesDecimalBox(c)) ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
+            string fieldType = value == ValueKind.Lookup ? form.ParentOf(c)!.KeyCs + "?" : value == ValueKind.Boolean ? "bool?" : value is ValueKind.Money or ValueKind.Decimal or ValueKind.WholeNumber ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
 #>
     [ObservableProperty]
     private <#= fieldType #> _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #><#= fieldType == "double" ? " = double.NaN" : "" #>;
 <#
-            if (IsDate(c))
+            if (value == ValueKind.Date)
             {
 #>
     private TimeSpan _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #>Time; // the time of day a stored date-and-time had: the calendar edits only the date
@@ -487,9 +477,9 @@ public partial class <#= table #>DetailViewModel : ObservableObject
 <#
         foreach (var c in shown)
         {
-            var lookup = form.LookupOf(c);
+            var value = form.ValueOf(c);
             string prop = c.Name;
-            if (lookup is not null)
+            if (value == ValueKind.Lookup)
             {
                 // Deliberately NOT set here - see LoadLookupsAsync below. A ComboBox's SelectedValue binding
                 // does not retroactively select an item once its ItemsSource is populated AFTER SelectedValue
@@ -497,31 +487,31 @@ public partial class <#= table #>DetailViewModel : ObservableObject
                 // just a timing quirk): the box renders as if empty even though editing.{prop} is correct,
                 // until the person types in it (found live clicking through a real running app, 2026-09-28).
             }
-            else if (form.IsMoneyInput(c))
+            else if (value == ValueKind.Money)
             {
 #>
             <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? (double)editing.{prop}.Value : double.NaN" : $"(double)editing.{prop}" #>;
 <#
             }
-            else if (UsesDecimalBox(c))
+            else if (value == ValueKind.Decimal)
             {
 #>
             <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? (double)editing.{prop}.Value : double.NaN" : $"(double)editing.{prop}" #>;
 <#
             }
-            else if (UsesNumberBox(c))
+            else if (value == ValueKind.WholeNumber)
             {
 #>
             <#= prop #> = editing.<#= prop #><#= c.IsNullable ? " ?? double.NaN" : "" #>;
 <#
             }
-            else if (IsBit(c))
+            else if (value == ValueKind.Boolean)
             {
 #>
             <#= prop #> = editing.<#= prop #>;
 <#
             }
-            else if (IsDate(c))
+            else if (value == ValueKind.Date)
             {
 #>
             <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? new DateTimeOffset(editing.{prop}.Value) : null" : $"new DateTimeOffset(editing.{prop})" #>;
@@ -596,10 +586,10 @@ public partial class <#= table #>DetailViewModel : ObservableObject
 <#
         foreach (var c in shown)
         {
-            var lookup = form.LookupOf(c);
+            var value = form.ValueOf(c);
             string prop = c.Name;
             string label = Labels.Column(c.Name);
-            if (lookup is not null)
+            if (value == ValueKind.Lookup)
             {
                 if (!c.IsNullable)
                 {
@@ -615,7 +605,7 @@ public partial class <#= table #>DetailViewModel : ObservableObject
 <#
                 }
             }
-            else if (form.IsMoneyInput(c))
+            else if (value == ValueKind.Money)
             {
 #>
         if (double.IsNaN(<#= prop #>))
@@ -635,13 +625,13 @@ public partial class <#= table #>DetailViewModel : ObservableObject
                 }
 #>
         }
-        else { entity.<#= prop #> = Math.Round((decimal)<#= prop #>, <#= CurrencyDigits(c) #>); }
+        else { entity.<#= prop #> = Math.Round((decimal)<#= prop #>, <#= NumericClassifier.CurrencyDigits(c) #>); }
 <#
             }
-            else if (UsesDecimalBox(c))
+            else if (value == ValueKind.Decimal)
             {
                 var (decMin, decMax) = NumericClassifier.DecimalRange(c);
-                string decValue = c.SqlType == SqlDbType.Decimal ? $"Math.Round((decimal){prop}, {DecimalPlaces(c)})" : c.SqlType == SqlDbType.Real ? $"(float){prop}" : prop;
+                string decValue = c.SqlType == SqlDbType.Decimal ? $"Math.Round((decimal){prop}, {NumericClassifier.DecimalPlaces(c)})" : c.SqlType == SqlDbType.Real ? $"(float){prop}" : prop;
 #>
         if (double.IsNaN(<#= prop #>))
         {
@@ -664,10 +654,10 @@ public partial class <#= table #>DetailViewModel : ObservableObject
         else { entity.<#= prop #> = <#= decValue #>; }
 <#
             }
-            else if (UsesNumberBox(c))
+            else if (value == ValueKind.WholeNumber)
             {
                 var range = Project.RangeFor(c)!.Value;
-                string intType = CSharpNumericType(c);
+                string intType = NumericClassifier.NumericCSharpType(c);
 #>
         if (double.IsNaN(<#= prop #>))
         {
@@ -691,13 +681,13 @@ public partial class <#= table #>DetailViewModel : ObservableObject
         else { entity.<#= prop #> = (<#= intType #>)<#= prop #>; }
 <#
             }
-            else if (IsBit(c))
+            else if (value == ValueKind.Boolean)
             {
 #>
         entity.<#= prop #> = <#= prop #><#= c.IsNullable ? "" : " ?? false" #>;
 <#
             }
-            else if (IsDate(c))
+            else if (value == ValueKind.Date)
             {
 #>
         if (<#= prop #> is null)
@@ -720,7 +710,7 @@ public partial class <#= table #>DetailViewModel : ObservableObject
         else { entity.<#= prop #> = <#= prop #>.Value.Date + _<#= char.ToLowerInvariant(prop[0]) + prop[1..] #>Time; }
 <#
             }
-            else if (IsGuid(c))
+            else if (value == ValueKind.Guid)
             {
 #>
         if (string.IsNullOrWhiteSpace(<#= prop #>))
@@ -744,9 +734,9 @@ public partial class <#= table #>DetailViewModel : ObservableObject
         else { entity.<#= prop #> = <#= prop #>Value; }
 <#
             }
-            else if (IsNumber(c))
+            else if (value == ValueKind.Number)
             {
-                string numType = CSharpNumericType(c);
+                string numType = NumericClassifier.NumericCSharpType(c);
 #>
         if (string.IsNullOrWhiteSpace(<#= prop #>))
         {

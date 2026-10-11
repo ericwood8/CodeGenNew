@@ -1822,8 +1822,9 @@ public class TemplateRenderingTests
             .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
 
         StringAssert.Contains(parentApiTs, "export const employeeApi = {");
+        StringAssert.Contains(parentApiTs, "getLookup: () => request<");
         Expect.Contains(pageTs, "import { employeeApi } from '../api/employeeApi';");
-        Expect.Contains(pageTs, "employeeApi.getAll().then(setEmployees).catch(() => {});");
+        Expect.Contains(pageTs, "employeeApi.getLookup().then(setEmployees).catch(() => {});");
     }
 
     [TestMethod]
@@ -1976,8 +1977,9 @@ public class TemplateRenderingTests
             .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
 
         StringAssert.Contains(parentApiTs, "export const employeeApi = {");
+        StringAssert.Contains(parentApiTs, "getLookup: () => request<");
         Expect.Contains(pageTs, "import { employeeApi } from '../api/employeeApi';");
-        Expect.Contains(pageTs, "employeeApi.getAll().then(setEmployees).catch(() => {});");
+        Expect.Contains(pageTs, "employeeApi.getLookup().then(setEmployees).catch(() => {});");
     }
 
     [TestMethod]

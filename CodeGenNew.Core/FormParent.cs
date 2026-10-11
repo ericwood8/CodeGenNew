@@ -53,6 +53,12 @@ public sealed class FormParent
     /// <summary> The type of an item of the lookup list the web client reads: <c>Lookup</c>, or <c>Lookup&lt;string&gt;</c> for another key type. </summary>
     public string LookupType => KeyTs == "number" ? "Lookup" : $"Lookup<{KeyTs}>";
 
+    /// <summary> The client call that fills the drop-down: <c>getLookup</c> (id and name) or <c>getAll</c> (every column of every row). </summary>
+    public string LoadMethod => UsesLookupEndpoint ? "getLookup" : "getAll";
+
+    /// <summary> The TypeScript type of an item the drop-down holds: <see cref="LookupType"/> or the parent's model. </summary>
+    public string ItemType => UsesLookupEndpoint ? LookupType : BaseName;
+
     /// <summary> The parent's key column. </summary>
     public string KeyName => ForeignKey.ReferencedColumns[0];
 

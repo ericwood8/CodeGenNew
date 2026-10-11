@@ -12,6 +12,21 @@ public static class BlazorNames
     /// <summary> The model class and the client's stem: "SalesInvoice", "E_Customer" -> "Customer". </summary>
     public static string TypeName(string table) => ScreenNames.BaseName(table);
 
+    /// <summary> The row of a table's lookup list (<c>GET /api/regions/lookup</c>) that the client class declares: <c>RegionLookup</c>. </summary>
+    public static string LookupType(string table) => TypeName(table) + "Lookup";
+
+    /// <summary> The type of a row of a parent's drop-down: the lookup row, or the model when the drop-down reads every row. </summary>
+    public static string ItemType(FormParent parent) => parent.UsesLookupEndpoint ? LookupType(parent.Table) : TypeName(parent.Table);
+
+    /// <summary> The property of a drop-down row that holds the parent's key. </summary>
+    public static string KeyProperty(FormParent parent) => parent.UsesLookupEndpoint ? "Id" : parent.KeyName;
+
+    /// <summary> The property of a drop-down row that holds the text to show. </summary>
+    public static string DisplayProperty(FormParent parent) => parent.UsesLookupEndpoint ? "Name" : parent.DisplayName;
+
+    /// <summary> The client call that fills a drop-down. </summary>
+    public static string LoadCall(FormParent parent) => parent.UsesLookupEndpoint ? "GetLookupAsync" : "GetAllAsync";
+
     /// <summary> A name with everything that is not a letter or digit taken out, so it is a C# identifier part. </summary>
     public static string Identifier(string name) => System.Text.RegularExpressions.Regex.Replace(name, "[^A-Za-z0-9]", "");
 
