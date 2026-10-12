@@ -1,0 +1,5 @@
+@host = http://localhost:5080
+
+### The first screen's rows (page 1)
+GET {{host}}/api/<table>s/search?pageNumber=1&pageSize=20
+Accept: application/json

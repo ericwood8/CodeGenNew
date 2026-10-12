@@ -1,0 +1,19 @@
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{json,xml,xaml,csproj,props,targets}]
+indent_size = 2
+
+[*.cs]
+# the generated code uses collection expressions, target-typed new and file-scoped namespaces: the IDE keeps hand-written code to the same style
+dotnet_style_prefer_collection_expression = true:warning
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_implicit_object_creation_when_type_is_apparent = true:suggestion
+dotnet_diagnostic.IDE0028.severity = warning
+dotnet_diagnostic.IDE0090.severity = suggestion

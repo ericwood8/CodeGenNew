@@ -111,7 +111,7 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 
 ## 8. Tests and verification
 
-`CodeGenNew.Tests` (MSTest, about 820 tests, about a minute without a database):
+`CodeGenNew.Tests` (MSTest, about 1,450 tests, about half a minute without a database):
 
 | Kind | Examples | Needs a database |
 |---|---|---|
@@ -120,13 +120,13 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 | Engine and plan | `TemplateEngineTests` (seeder, versions, group counts), `GenerateAllTests`, `GeneratedFilesTests` | no |
 | Generated documents checked by real parsers | `ApiExtrasTemplateTests` (the OpenAPI document, with Microsoft.OpenApi), `DirectoryListingTests` (XAML as XML); the Mermaid diagram is checked only as text | no |
 | Live schema and routine tests | `SchemaDescriptionTests`, `PostgresIntegrationTests`, `MySqlTests`, SQL Server metadata tests | yes: set the `CODEGENNEW_*` variables, otherwise inconclusive |
-| Hygiene | `LeftoverNamesTests` (no private names), a test that forbids double hyphens in templates | no |
+| Hygiene | `LeftoverNamesTests` (no private names), `SqlSecurityTests` (escaped search text, no statement built from text), a test that forbids double hyphens in templates | no |
 
 Two checks are not unit tests and are the ones to trust most:
 - **Samples unchanged.** Seven sample applications (SQL Server with WinUI 3, Angular and React; PostgreSQL with an API and WinUI 3; MySQL with an API and WinUI 3) are regenerated with `codegen generate --dry-run`; a refactor is correct only if every one reports 0 created and 0 updated. The samples live outside this repository.
 - **Run it.** [Verification](Verification) has scripts that build a generated project, start it against a scratch copy of the database and use it: an API create/read/update/delete walk, an OpenAPI route check, a UI Automation click-through of the desktop app, and recipes for the Angular and React pages. A build cannot see a blank drop-down or a dialog that never closes.
 
-CI (`.github/workflows`) builds and tests on Windows, packs the tool, and builds the desktop app.
+CI (`.github/workflows`) builds and tests on Windows, packs the tool, and builds the desktop app. [Examples/GettingStarted/Generated](../Examples/GettingStarted/Generated) holds the generated API of the getting-started shop, so the output can be read without running anything.
 
 ## 9. Deliberately hand-written
 
@@ -136,7 +136,7 @@ A generated project still needs a person for: collection navigation properties a
 
 These are the owner's open questions; the list is a draft to be edited by the owner before the review starts.
 
-1. **Generated SQL and user text.** Search boxes, sort columns and paging reach generated routines. Values are bound parameters and a sort column is picked from a fixed list inside the routine, but `LIKE` wildcards in a value are not escaped, and no written threat model or hostile-input test exists yet. Look at `SP_Search_v1.tt` and the PostgreSQL and MySQL variants.
+1. **Generated SQL and user text.** [Security.md](Security.md) says where a value is a parameter and where a name is text in a statement. Values are bound parameters, `LIKE` wildcards are escaped inside the routines, and a sort column is picked from a fixed list. Is the written answer complete? Look at `SP_Search_v1.tt` and its PostgreSQL and MySQL variants, `SqlSecurityTests` and `Docs/Verification/Test-SearchHostileText.py`.
 2. **The template contract.** Is `Model` / `Database` / `Project` plus a `.tt.config` the right surface? Are the config keys the right size, or has restriction logic (`RequiredPrimaryKeyShape`, `RequiresNotNameActiveTable`) outgrown a flat file?
 3. **Regeneration safety.** Whole-project runs overwrite edited generated files; the manifest could prevent that. Is refuse-and-report the right default, or a side file?
 4. **Four screen families from one model.** WinUI 3, Angular and React are written in parallel and must behave the same. Is there a better seam than copying behaviour into each template, such as a neutral screen description rendered three ways?

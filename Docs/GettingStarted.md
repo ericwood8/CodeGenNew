@@ -20,7 +20,7 @@ An installed tool keeps its templates, project files and output in `%APPDATA%\Co
 
 ## 2. Make a database to read
 
-[Examples/GettingStarted](../Examples/GettingStarted) holds a small shop (customers, products, orders) for SQL Server and PostgreSQL, with a few `CHECK` constraints: the generator turns those into limits on the forms.
+[Examples/GettingStarted](../Examples/GettingStarted) holds a small shop (customers, products, orders) for SQL Server and PostgreSQL, with a few `CHECK` constraints: the generator turns those into limits on the forms. [Examples/GettingStarted/Generated](../Examples/GettingStarted/Generated) holds what step 5 writes for the SQLite version, to read before running anything.
 
 ```
 psql -U <login> -d postgres -c "CREATE DATABASE shop"

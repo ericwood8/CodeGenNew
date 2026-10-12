@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.rsuser
+publish/
+*.log
+.vscode/*
+!.vscode/extensions.json

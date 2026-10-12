@@ -1,0 +1,52 @@
+namespace Shop.Api.Apis;
+
+/// <summary> Base of the generated per-table API classes (API_Crud, API_Search). It works out the route names from the entity's class name, the way the generated classes and the web
+/// clients' api modules both expect: <c>SalesInvoice</c> is served at <c>/api/salesinvoices</c>. </summary>
+public abstract class BaseApi<T> where T : class
+{
+    /// <summary> The route below "/api" ("/salesinvoices"), for the Location header of a created row. Set by
+    /// <see cref="BreakIntoStrings"/> when the class registers its routes at start-up. </summary>
+    protected static string _apiSubDir = "";
+
+    public abstract void Register(WebApplication app);
+
+    /// <param name="singular"> "SalesInvoice" </param>
+    /// <param name="plural"> "SalesInvoices" </param>
+    /// <param name="apiSubDir"> The full route to map: "/api/salesinvoices". </param>
+    protected static void BreakIntoStrings(out string singular, out string plural, out string apiSubDir)
+    {
+        singular = typeof(T).Name;
+        plural = Pluralize(WithoutPrefix(singular));
+        _apiSubDir = "/" + plural.ToLowerInvariant();
+        apiSubDir = "/api" + _apiSubDir;
+    }
+
+    /// <summary> The class name without the E_ or SY_ prefix some databases put on a table: the TypeScript templates leave it off the route too, so E_TimeSheet is
+    /// /api/timesheets there and here. </summary>
+    private static string WithoutPrefix(string name)
+    {
+        if (name.StartsWith("E_", StringComparison.Ordinal)) name = name[2..];
+        if (name.StartsWith("SY_", StringComparison.Ordinal)) name = name[3..];
+        return name;
+    }
+
+    /// <summary> The same plural the TypeScript templates use (CodeGenNew's Pluralizer): Summary -> Summaries, Item -> Items, and a word that
+    /// already ends in a bare "s" (ItemStatus) is left as it is. </summary>
+    private static string Pluralize(string word) => word switch
+    {
+        _ when word.EndsWith("y", StringComparison.OrdinalIgnoreCase) && word.Length > 1 && !"aeiou".Contains(char.ToLowerInvariant(word[^2]))
+            => word[..^1] + "ies",
+        _ when word.EndsWith("ss", StringComparison.OrdinalIgnoreCase) || word.EndsWith("x", StringComparison.OrdinalIgnoreCase)
+            || word.EndsWith("z", StringComparison.OrdinalIgnoreCase) || word.EndsWith("ch", StringComparison.OrdinalIgnoreCase)
+            || word.EndsWith("sh", StringComparison.OrdinalIgnoreCase)
+            => word + "es",
+        _ when word.EndsWith("s", StringComparison.OrdinalIgnoreCase) => word,
+        _ => word + "s"
+    };
+}
+
+/// <summary> The generated classes end every route with .WithOpenApi(); this project does not reference the OpenAPI package, so it is a no-op. </summary>
+public static class RouteHandlerBuilderExtensions
+{
+    public static RouteHandlerBuilder WithOpenApi(this RouteHandlerBuilder builder) => builder;
+}
