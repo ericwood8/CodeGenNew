@@ -82,6 +82,18 @@ public class PythonTests
         CollectionAssert.Contains(Project(("ApiValidation", "true")).ImpliedPlanTemplates.ToArray(), "PY_Validate");
     }
 
+    [TestMethod]
+    public async Task The_project_files_are_written_for_sql_server_with_windows_authentication_and_no_user_or_server_setting()
+    {
+        var result = await Repo.Cache.RunAsync(Repo.Template("PY_EssentialProject_v1.tt"), Project(("DatabaseProvider", "SqlServer"), ("DatabaseName", "Shop")));
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        var files = GeneratedFiles.Split(result.GeneratedText!).ToDictionary(f => f.RelativePath, f => f.Content.ReplaceLineEndings("\n"));
+        Expect.Contains(files[".env.example"], "DB_USER=\n");
+        Expect.Contains(files[".env.example"], "DB_SERVER=localhost\n");
+        Expect.Contains(files[".env.example"], "DB_NAME=Shop\n");
+        Expect.Contains(files["requirements.txt"], "pyodbc");
+    }
+
     // ------------------------------------------------------------------ a generated project
 
     private static string CreateDatabase()
@@ -182,6 +194,10 @@ public class PythonTests
             Expect.Contains(routes, "Query(None, alias=\"accountNumber\")");
             Expect.Contains(routes, "\"accountnumber\": Customer.account_number,");
             Expect.DoesNotContain(routes, "validate(body)");
+            Expect.Contains(routes, "@router.get(\"/api/customers/lookup\")");
+            Expect.Contains(routes, "statement = select(Customer.customer_id, Customer.account_number).order_by(Customer.account_number)");
+            Expect.Contains(routes, "return [{\"id\": row_id, \"name\": name or \"\", \"isActive\": None} for row_id, name in rows]");
+            Assert.IsLessThan(routes.IndexOf("@router.get(\"/api/customers/{id}\"", StringComparison.Ordinal), routes.IndexOf("/api/customers/lookup", StringComparison.Ordinal), "a literal route comes before the one with the key");
             Expect.Contains(files["Shop.Python/app/routes/__init__.py"], "routers = [");
             Expect.Contains(files["Shop.Python/app/routes/__init__.py"], "    customer.router,");
 

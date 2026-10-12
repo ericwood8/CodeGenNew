@@ -72,6 +72,9 @@ public sealed class PythonTable
         if (DefaultOrder.Count == 0)
             DefaultOrder = [Key];
 
+        LookupName = model.DisplayColumns.Where(fieldOf.ContainsKey).Select(c => fieldOf[c]).FirstOrDefault();
+        LookupActive = LookupName is null ? null : SchemaFields.FirstOrDefault(f => f.Column.IsBooleanColumn && !f.Column.IsNullable && f.Column.Name == "IsActive");
+
         if (CloneShape.CanClone(model, project))
             BuildClone();
     }
@@ -117,6 +120,13 @@ public sealed class PythonTable
 
     /// <summary> Null when the table gets no Clone button (<see cref="CloneShape.CanClone"/>); otherwise the value each copied attribute of the new row gets, as Python text, in column order. </summary>
     public IReadOnlyList<(PythonField Field, string Value)>? Clone { get; private set; }
+
+    /// <summary> The field <c>GET &lt;route&gt;/lookup</c> answers as <c>name</c> (the first display column, read as text and blank when null): the list the drop-downs and the "name of" columns of other screens read.
+    /// Null when the table has no display column, and then it has no lookup. </summary>
+    public PythonField? LookupName { get; }
+
+    /// <summary> The NOT NULL <c>IsActive</c> flag a lookup answers as <c>isActive</c>, or null (the lookup answers null). </summary>
+    public PythonField? LookupActive { get; }
 
     /// <summary> The fields of a clone that need a free unique value (<c>suggest_free</c>). </summary>
     public IReadOnlyList<PythonField> CloneOverrides { get; private set; } = [];

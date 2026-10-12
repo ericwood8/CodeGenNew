@@ -11,7 +11,7 @@
     // Generates: app/routes/<table>.py   (the template writes its own path with an @@@FILE marker; the output folder is the Python API's folder)
     // The FastAPI router of a table with the contract every stack of the project keeps (so the React, Angular, Blazor and desktop front ends need no change): GET /api/<plural> (all rows), GET /{id},
     // POST (201 with a Location header and the new row), PUT /{id} (400 when the id in the body differs, 404 for no such row), DELETE /{id} (200, 404, or 400 when the row is in use),
-    // POST /{id}/clone (201 and the copy, a cloneable table) and GET /search with the filters, pageNumber, pageSize, sortBy and sortDir (a table with a search endpoint).
+    // POST /{id}/clone (201 and the copy, a cloneable table), GET /lookup ({ id, name, isActive } of every row, a table with a display column) and GET /search with the filters, pageNumber, pageSize, sortBy and sortDir (a table with a search endpoint).
     // With ApiValidation=true the create and update routes run the table's validate (PY_Validate) and answer 400 with the problems.
     // With ApiAuth=true (the Jwt group's app/auth.py) a table listed in OwnedTables shows and changes only the rows of the owners the caller may act for (403 for another owner's row, the same
     // rule as the ASP.NET API), a table that hangs off an owned table is scoped through its parent, and the user table (UserTable) never shows or takes its password hash (PythonTable leaves it out of
@@ -192,6 +192,23 @@
     else
         Line($"    return session.scalars(select({t.Class}).order_by({t.Class}.{key})).all()");
     Line();
+
+    if (t.LookupName is { } lookupName)
+    {
+        // before the route with the key in its path, which would read "lookup" as a key
+        string activeColumn = t.LookupActive is { } lookupActive ? $"{t.Class}.{lookupActive.Name}" : "None";
+        string nameText = lookupName.Annotation == "str" ? "name or \"\"" : "\"\" if name is None else str(name)";
+        Line();
+        Line($"@router.get(\"{t.Route}/lookup\")");
+        Line($"def lookup(session: Session = Depends(get_session){userParameter}):");
+        Line("    \"\"\"Every row as { id, name, isActive }, ordered by name: what the drop-downs and the name columns of other screens read.\"\"\"");
+        Line($"    statement = select({t.Class}.{key}, {t.Class}.{lookupName.Name}" + (t.LookupActive is null ? "" : $", {activeColumn}") + $").order_by({t.Class}.{lookupName.Name})");
+        if (scoped)
+            Line("    statement = only_owned(statement, user)");
+        Line("    rows = session.execute(statement).all()");
+        Line($"    return [{{\"id\": row_id, \"name\": {nameText}, \"isActive\": {(t.LookupActive is null ? "None" : "active")}}} for row_id, name{(t.LookupActive is null ? "" : ", active")} in rows]");
+        Line();
+    }
 
     if (search)
     {

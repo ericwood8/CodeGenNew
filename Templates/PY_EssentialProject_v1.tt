@@ -9,6 +9,8 @@
     // Python project keeps out of version control, and the commands to install and run it. Settings: DatabaseProvider, ApiPort.
     // ==========================================================================================
     var dialect = Project.DatabaseDialect;
+    string user = Project.DatabaseUser ?? "";
+    string server = Project.DatabaseServer ?? "localhost";
     string portFlag = new string((char)45, 2) + "port";   // a template line may not hold two hyphens in a row (see TemplateDashTests)
     string driver = dialect switch
     {
@@ -39,18 +41,18 @@ pydantic>=2.8,<3
     if (dialect == SqlDialect.PostgreSql)
     {
 #>
-PGHOST=<#= Project.DatabaseServer #>
+PGHOST=<#= server #>
 PGDATABASE=<#= Project.DatabaseName #>
-PGUSER=<#= Project.DatabaseUser #>
+PGUSER=<#= user #>
 # the password: set PGPASSWORD in the environment, never in a file
 <#
     }
     else if (dialect == SqlDialect.MySql)
     {
 #>
-MYSQL_HOST=<#= Project.DatabaseServer #>
+MYSQL_HOST=<#= server #>
 MYSQL_DATABASE=<#= Project.DatabaseName #>
-MYSQL_USER=<#= Project.DatabaseUser #>
+MYSQL_USER=<#= user #>
 # the password: set MYSQL_PWD in the environment, never in a file
 <#
     }
@@ -63,10 +65,10 @@ DATABASE_FILE=<#= Project.DatabaseName #>
     else
     {
 #>
-DB_SERVER=<#= Project.DatabaseServer #>
+DB_SERVER=<#= server #>
 DB_NAME=<#= Project.DatabaseName #>
 # empty DB_USER: Windows authentication; otherwise set DB_PASSWORD in the environment, never in a file
-DB_USER=<#= Project.DatabaseUser #>
+DB_USER=<#= user #>
 <#
     }
 #>
