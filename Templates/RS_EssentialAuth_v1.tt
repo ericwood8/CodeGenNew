@@ -1,0 +1,330 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_EssentialAuth_v1.tt
+    // Generates: src/auth.rs   (no table, no database: an essentials group, not ticked by default; ApiAuth=true in the project turns it on)
+    // The Rust half of the sign-in the other stacks have: POST /api/auth/login answers { token, expiresUtc, user: { name, role, ownerId } } (400 for a blank body, 401 for a wrong password,
+    // 429 after five wrong tries in a minute from one address), a middleware (require_user) that lib.rs puts on every router but the sign-in, the owner scope of the tables in OwnedTables
+    // (CurrentUser::scope: the administrator role sees every owner, anyone else only the owner id in the token) and the same password hash the ASP.NET API writes (pbkdf2-sha256, 600000 rounds),
+    // so one user table serves both. The token is a plain HS256 JWT made with hmac and sha2. The people who sign in are the one bootstrap administrator (Bootstrap__AdminUserName and
+    // Bootstrap__AdminPassword in the environment) or, with UserTable, the rows of that table (src/users.rs, RS_UserDirectory). The signing key is Jwt__Key (at least 32 characters, never a file).
+    // Settings: ApiAuth, AuthRoleClaim, AuthOwnerClaim, AuthAdminRole, UserTable, ProjectName.
+    // ==========================================================================================
+    string projectName = Project.ProjectName ?? "MyApp";
+    bool table = Project.UserTable is not null;
+#>
+@@@FILE src/auth.rs@@@
+// Sign-in: POST /api/auth/login, the bearer check every other route needs, password hashing and the owner scope. Written by RS_EssentialAuth; yours to change.
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
+
+use axum::{
+    Json, Router,
+    extract::{ConnectInfo, Request, State},
+    http::header,
+    middleware::Next,
+    response::Response,
+    routing::post,
+};
+use base64::{Engine, engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD}};
+use hmac::{Hmac, Mac};
+use serde::Deserialize;
+use sha2::Sha256;
+
+use crate::support::{ApiError, ApiJson, ApiResult, Pool};
+
+pub const ROLE_CLAIM: &str = "<#= Project.AuthRoleClaim #>";
+pub const OWNER_CLAIM: &str = "<#= Project.AuthOwnerClaim #>";
+pub const NAME_CLAIM: &str = "name";
+pub const ADMIN_ROLE: &str = "<#= Project.AuthAdminRole #>";
+const ISSUER: &str = "<#= projectName #>.Api";
+const AUDIENCE: &str = "<#= projectName #>";
+
+const MINIMUM_KEY_LENGTH: usize = 32;
+const EXPIRES_MINUTES: i64 = 480;
+const CLOCK_SKEW_SECONDS: i64 = 60;
+const MAX_FAILURES: u32 = 5;
+const FAILURE_WINDOW: Duration = Duration::from_secs(60);
+
+const SCHEME: &str = "pbkdf2-sha256";
+const ITERATIONS: u32 = 600_000;
+const HASH_BYTES: usize = 32;
+
+pub const PROBLEM_NOT_YOURS: &str = "/problems/not-your-row";
+pub const PROBLEM_COLUMN_NOT_YOURS: &str = "<#= ProblemTypes.ColumnNotYours #>";
+pub const PROBLEM_DUPLICATE_VALUE: &str = "<#= ProblemTypes.DuplicateValue #>";
+pub const PROBLEM_LAST_ADMINISTRATOR: &str = "<#= ProblemTypes.LastAdministrator #>";
+const PROBLEM_SIGN_IN_INCOMPLETE: &str = "<#= ProblemTypes.SignInIncomplete #>";
+const PROBLEM_TOO_MANY_ATTEMPTS: &str = "<#= ProblemTypes.TooManyAttempts #>";
+const PROBLEM_WRONG_CREDENTIALS: &str = "<#= ProblemTypes.WrongCredentials #>";
+
+/// A person who can sign in. password_hash is what hash_password made; role and owner_id go into the token.
+#[derive(Debug, Clone)]
+pub struct DirectoryUser {
+    pub user_name: String,
+    pub password_hash: String,
+    pub role: Option<String>,
+    pub owner_id: Option<i64>,
+}
+
+/// The signed-in caller, as the token says. The middleware puts it in the request, a handler takes it as Extension&lt;CurrentUser&gt;.
+#[derive(Debug, Clone)]
+pub struct CurrentUser {
+    #[allow(dead_code)] // for a handler that records who did it
+    pub name: String,
+    pub role: Option<String>,
+    pub owner_id: Option<i64>,
+}
+
+/// Which owners' rows a caller may read and change in an owned table.
+pub enum Scope {
+    /// Every owner (the administrator).
+    All,
+    /// Only the rows of this owner.
+    Owner(i64),
+    /// A caller with no owner id: no row.
+    Nobody,
+}
+
+impl CurrentUser {
+    pub fn is_admin(&self) -> bool {
+        self.role.as_deref() == Some(ADMIN_ROLE)
+    }
+
+    pub fn scope(&self) -> Scope {
+        if self.is_admin() {
+            Scope::All
+        } else {
+            self.owner_id.map_or(Scope::Nobody, Scope::Owner)
+        }
+    }
+}
+
+pub fn not_yours() -> ApiError {
+    ApiError::Problem(<#= HttpStatus.Forbidden #>, PROBLEM_NOT_YOURS, "Not your row", Some("That row belongs to someone you may not act for."))
+}
+
+/// A password hash: pbkdf2-sha256$iterations$salt$hash, the last two in base64 (the text the ASP.NET API writes too).
+pub fn hash_password(password: &str) -> String {
+    let salt = uuid::Uuid::new_v4().into_bytes();
+    let mut hash = [0u8; HASH_BYTES];
+    pbkdf2::pbkdf2_hmac::<Sha256>(password.as_bytes(), &salt, ITERATIONS, &mut hash);
+    format!("{SCHEME}${ITERATIONS}${}${}", STANDARD.encode(salt), STANDARD.encode(hash))
+}
+
+pub fn verify_password(password: &str, stored: &str) -> bool {
+    let parts: Vec<&str> = stored.split('$').collect();
+    if parts.len() != 4 || parts[0] != SCHEME {
+        return false;
+    }
+    let Ok(iterations) = parts[1].parse::<u32>() else { return false };
+    let (Ok(salt), Ok(expected)) = (STANDARD.decode(parts[2]), STANDARD.decode(parts[3])) else { return false };
+    if iterations < 1 || expected.is_empty() {
+        return false;
+    }
+    let mut actual = vec![0u8; expected.len()];
+    pbkdf2::pbkdf2_hmac::<Sha256>(password.as_bytes(), &salt, iterations, &mut actual);
+    actual.iter().zip(&expected).fold(0u8, |difference, (a, b)| difference | (a ^ b)) == 0
+}
+
+static SIGNING_KEY: OnceLock<Result<Vec<u8>, String>> = OnceLock::new();
+
+fn signing_key() -> Result<&'static [u8], String> {
+    SIGNING_KEY
+        .get_or_init(|| {
+            let key = std::env::var("Jwt__Key").or_else(|_| std::env::var("JWT_KEY")).unwrap_or_default();
+            if key.len() < MINIMUM_KEY_LENGTH {
+                Err(format!("Jwt__Key must be at least {MINIMUM_KEY_LENGTH} characters. Set the environment variable Jwt__Key; do not write the key into a file."))
+            } else {
+                Ok(key.into_bytes())
+            }
+        })
+        .as_ref()
+        .map(Vec::as_slice)
+        .map_err(Clone::clone)
+}
+
+/// Stops the start-up when Jwt__Key is missing or short.
+pub fn check_configuration() -> Result<(), String> {
+    signing_key().map(|_| ())
+}
+
+fn mac(input: &str) -> Result<Hmac<Sha256>, String> {
+    let mut mac = Hmac::<Sha256>::new_from_slice(signing_key()?).map_err(|e| e.to_string())?;
+    mac.update(input.as_bytes());
+    Ok(mac)
+}
+
+fn now_seconds() -> i64 {
+    chrono::Utc::now().timestamp()
+}
+
+fn create_token(user: &DirectoryUser, expires: i64) -> Result<String, String> {
+    let now = now_seconds();
+    let mut claims = serde_json::json!({ "sub": user.user_name, NAME_CLAIM: user.user_name, "iss": ISSUER, "aud": AUDIENCE, "iat": now, "nbf": now, "exp": expires });
+    if let Some(role) = user.role.as_deref().filter(|r| !r.is_empty()) {
+        claims[ROLE_CLAIM] = serde_json::json!(role);
+    }
+    if let Some(owner) = user.owner_id {
+        claims[OWNER_CLAIM] = serde_json::json!(owner.to_string());
+    }
+    let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"HS256","typ":"JWT"}"#);
+    let payload = URL_SAFE_NO_PAD.encode(claims.to_string());
+    let signing_input = format!("{header}.{payload}");
+    let signature = URL_SAFE_NO_PAD.encode(mac(&signing_input)?.finalize().into_bytes());
+    Ok(format!("{signing_input}.{signature}"))
+}
+
+/// The claims of a token that is signed with the key, made for this API and not expired; None for anything else.
+fn read_token(token: &str) -> Option<serde_json::Value> {
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let signature = URL_SAFE_NO_PAD.decode(parts[2]).ok()?;
+    mac(&format!("{}.{}", parts[0], parts[1])).ok()?.verify_slice(&signature).ok()?;
+    let header: serde_json::Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[0]).ok()?).ok()?;
+    if header["alg"] != "HS256" {
+        return None;
+    }
+    let claims: serde_json::Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[1]).ok()?).ok()?;
+    let now = now_seconds();
+    if claims["iss"] != ISSUER || claims["aud"] != AUDIENCE || claims["exp"].as_i64()? + CLOCK_SKEW_SECONDS < now {
+        return None;
+    }
+    if claims["nbf"].as_i64().is_some_and(|nbf| nbf - CLOCK_SKEW_SECONDS > now) {
+        return None;
+    }
+    Some(claims)
+}
+
+/// The signed-in caller; a missing, bad or expired token is a 401. lib.rs puts this on every router but the sign-in.
+pub async fn require_user(mut request: Request, next: Next) -> Result<Response, ApiError> {
+    let token = request
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split_once(' '))
+        .filter(|(scheme, _)| scheme.eq_ignore_ascii_case("bearer"))
+        .map(|(_, token)| token.trim());
+    let claims = token.and_then(read_token).ok_or(ApiError::Unauthorized)?;
+    let user = CurrentUser {
+        name: claims[NAME_CLAIM].as_str().or_else(|| claims["sub"].as_str()).unwrap_or_default().to_string(),
+        role: claims[ROLE_CLAIM].as_str().map(str::to_string),
+        owner_id: claims[OWNER_CLAIM].as_str().and_then(|owner| owner.parse().ok()),
+    };
+    request.extensions_mut().insert(user);
+    Ok(next.run(request).await)
+}
+
+#[derive(Deserialize)]
+struct LoginRequest {
+    #[serde(rename = "userName", default)]
+    user_name: Option<String>,
+    #[serde(default)]
+    password: Option<String>,
+}
+
+/// Counts wrong passwords per user name and address: after MAX_FAILURES in a minute the sign-in answers 429 until the minute is over.
+fn throttle() -> &'static Mutex<HashMap<String, (u32, Instant)>> {
+    static THROTTLE: OnceLock<Mutex<HashMap<String, (u32, Instant)>>> = OnceLock::new();
+    THROTTLE.get_or_init(Default::default)
+}
+
+fn is_blocked(key: &str) -> bool {
+    throttle().lock().is_ok_and(|map| map.get(key).is_some_and(|(count, since)| *count >= MAX_FAILURES && since.elapsed() < FAILURE_WINDOW))
+}
+
+fn failed(key: &str) {
+    if let Ok(mut map) = throttle().lock() {
+        let entry = map.entry(key.to_string()).or_insert((0, Instant::now()));
+        if entry.1.elapsed() >= FAILURE_WINDOW {
+            *entry = (1, Instant::now());
+        } else {
+            entry.0 += 1;
+        }
+    }
+}
+
+fn succeeded(key: &str) {
+    if let Ok(mut map) = throttle().lock() {
+        map.remove(key);
+    }
+}
+
+// checked when the user is unknown, so a wrong user name takes as long to answer as a wrong password
+fn unknown_user_hash() -> String {
+    static HASH: OnceLock<String> = OnceLock::new();
+    HASH.get_or_init(|| hash_password(&uuid::Uuid::new_v4().to_string())).clone()
+}
+<#
+    if (table)
+    {
+#>
+
+async fn find_user(pool: &Pool, name: &str) -> Result<Option<DirectoryUser>, sqlx::Error> {
+    crate::users::find_user(pool, name).await
+}
+<#
+    }
+    else
+    {
+#>
+
+/// The one user this API knows without a user table: Bootstrap__AdminUserName with Bootstrap__AdminPassword, in the administrator role. With neither set nobody can sign in.
+async fn find_user(_pool: &Pool, name: &str) -> Result<Option<DirectoryUser>, sqlx::Error> {
+    static ADMIN: OnceLock<Option<DirectoryUser>> = OnceLock::new();
+    let admin = ADMIN.get_or_init(|| {
+        let user = std::env::var("Bootstrap__AdminUserName").unwrap_or_default();
+        let password = std::env::var("Bootstrap__AdminPassword").unwrap_or_default();
+        (!user.trim().is_empty() && !password.is_empty()).then(|| DirectoryUser {
+            user_name: user.trim().to_string(),
+            password_hash: hash_password(&password),
+            role: Some(ADMIN_ROLE.to_string()),
+            owner_id: None,
+        })
+    });
+    Ok(admin.clone().filter(|admin| admin.user_name.eq_ignore_ascii_case(name.trim())))
+}
+<#
+    }
+#>
+
+pub fn router() -> Router<Pool> {
+    Router::new().route("/api/auth/login", post(login))
+}
+
+async fn login(State(pool): State<Pool>, ConnectInfo(address): ConnectInfo<SocketAddr>, ApiJson(body): ApiJson<LoginRequest>) -> ApiResult<Json<serde_json::Value>> {
+    let name = body.user_name.as_deref().map(str::trim).unwrap_or_default().to_string();
+    let password = body.password.unwrap_or_default();
+    if name.is_empty() || password.is_empty() {
+        return Err(ApiError::Problem(<#= HttpStatus.BadRequest #>, PROBLEM_SIGN_IN_INCOMPLETE, "Sign-in needs a user name and a password", None));
+    }
+
+    let key = format!("{}|{}", name.to_lowercase(), address.ip());
+    if is_blocked(&key) {
+        return Err(ApiError::Problem(<#= HttpStatus.TooManyRequests #>, PROBLEM_TOO_MANY_ATTEMPTS, "Too many attempts", Some("Wait a minute and try again.")));
+    }
+
+    let user = find_user(&pool, &name).await?;
+    let stored = user.as_ref().map_or_else(unknown_user_hash, |user| user.password_hash.clone());
+    // the hash takes about a tenth of a second of the processor: it does not run on the thread that serves other requests
+    let matches = tokio::task::spawn_blocking(move || verify_password(&password, &stored)).await.unwrap_or(false);
+    let Some(user) = user.filter(|_| matches) else {
+        failed(&key);
+        return Err(ApiError::Problem(<#= HttpStatus.Unauthorized #>, PROBLEM_WRONG_CREDENTIALS, "Wrong user name or password", None));
+    };
+
+    succeeded(&key);
+    let expires = chrono::Utc::now() + chrono::Duration::minutes(EXPIRES_MINUTES);
+    let token = create_token(&user, expires.timestamp()).map_err(|message| ApiError::BadRequest(message))?;
+    Ok(Json(serde_json::json!({
+        "token": token,
+        "expiresUtc": expires.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
+        "user": { "name": user.user_name, "role": user.role, "ownerId": user.owner_id },
+    })))
+}

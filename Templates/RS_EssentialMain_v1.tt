@@ -20,14 +20,30 @@
     string origins = string.Join(", ", stacks.Select(s => $"HeaderValue::from_static(\"http://localhost:{Project.DevPort(s)}\")"));
     string poolType = dialect switch { SqlDialect.PostgreSql => "PgPool", SqlDialect.MySql => "MySqlPool", _ => "SqlitePool" };
     string dbType = dialect switch { SqlDialect.PostgreSql => "Postgres", SqlDialect.MySql => "MySql", _ => "Sqlite" };
+    bool auth = Project.ApiAuth;
+    bool userTable = auth && Project.UserTable is not null;
 #>
 @@@FILE src/lib.rs@@@
 // The API as a library, so the same router runs from main.rs and, embedded, from a desktop shell.
+<#
+    if (auth)
+    {
+#>
+mod auth;
+<#
+    }
+#>
 mod models;
 mod repos;
 mod routes;
 mod support;
 <#
+    if (userTable)
+    {
+#>
+mod users;
+<#
+    }
     if (Project.ApiValidation)
     {
 #>
@@ -49,7 +65,21 @@ pub use support::Pool;
 /// The whole application over a connected pool: the generated API, openapi.yaml when the project says ApiDocs=true and, when a folder is given, the built front end
 /// (index.html for every other path, so a route of the front end can be opened directly).
 pub fn app(pool: Pool, frontend: Option<PathBuf>) -> Router {
+<#
+    if (auth)
+    {
+#>
+    // The sign-in is open; every other route needs a bearer token.
+    let router = routes::router().route_layer(axum::middleware::from_fn(auth::require_user)).merge(auth::router());
+<#
+    }
+    else
+    {
+#>
     let router = routes::router();
+<#
+    }
+#>
 <#
     if (Project.ApiDocs)
     {
@@ -77,8 +107,30 @@ pub fn app(pool: Pool, frontend: Option<PathBuf>) -> Router {
 
 /// Connects to the database (from the environment, see support.rs) and serves on the listener until the process ends.
 pub async fn serve(listener: tokio::net::TcpListener, frontend: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+<#
+    if (auth)
+    {
+#>
+    auth::check_configuration()?;
+<#
+    }
+#>
     let pool = support::connect().await?;
+<#
+    if (auth)
+    {
+#>
+    // the sign-in counts wrong passwords per address
+    axum::serve(listener, app(pool, frontend).into_make_service_with_connect_info::<std::net::SocketAddr>()).await?;
+<#
+    }
+    else
+    {
+#>
     axum::serve(listener, app(pool, frontend)).await?;
+<#
+    }
+#>
     Ok(())
 }
 
@@ -86,6 +138,18 @@ pub async fn serve(listener: tokio::net::TcpListener, frontend: Option<PathBuf>)
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // A .env file next to Cargo.toml is optional; the process environment wins over it.
     dotenvy::dotenv().ok();
+<#
+    if (userTable)
+    {
+#>
+    // a command given as arguments (set-password <name>) runs once and the program ends
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(code) = users::command(&args).await {
+        std::process::exit(code);
+    }
+<#
+    }
+#>
     let port = std::env::var("PORT").unwrap_or_else(|_| "<#= Project.RustPort #>".into());
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
     println!("listening on http://127.0.0.1:{port}");
@@ -195,6 +259,17 @@ pub enum ApiError {
     Conflict(String),
     /// Problems by property name: answered in the form ASP.NET's validation problem has.
     Validation(Vec<(&'static str, &'static str)>),
+<#
+    if (auth)
+    {
+#>
+    /// No token, or a bad one: 401.
+    Unauthorized,
+    /// A refusal with a status, a problem type, a title and perhaps a detail (not your row, wrong password): the problem-details form.
+    Problem(u16, &'static str, &'static str, Option<&'static str>),
+<#
+    }
+#>
     Database(sqlx::Error),
 }
 
@@ -234,6 +309,27 @@ impl IntoResponse for ApiError {
                 response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("application/problem+json"));
                 response
             }
+<#
+    if (auth)
+    {
+#>
+            ApiError::Unauthorized => {
+                let mut response = StatusCode::UNAUTHORIZED.into_response();
+                response.headers_mut().insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
+                response
+            }
+            ApiError::Problem(status, kind, title, detail) => {
+                let mut body = serde_json::json!({ "type": kind, "title": title, "status": status });
+                if let Some(detail) = detail {
+                    body["detail"] = serde_json::json!(detail);
+                }
+                let mut response = (StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_REQUEST), Json(body)).into_response();
+                response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("application/problem+json"));
+                response
+            }
+<#
+    }
+#>
             ApiError::Database(error) => {
                 eprintln!("database error: {error}");
                 StatusCode::INTERNAL_SERVER_ERROR.into_response()

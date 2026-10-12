@@ -260,7 +260,7 @@ public class ProjectSettings
         get
         {
             if (ApiDocs) yield return "API_OpenApi";
-            if (ApiAuth && UserTable is not null) yield return "API_UserDirectory";
+            if (ApiAuth && UserTable is not null) { yield return "API_UserDirectory"; yield return "PY_UserDirectory"; yield return "RS_UserDirectory"; }
             if (ApiHttp) yield return "API_Http";
             if (ApiFakers) yield return "CS_Faker";
             if (TemporalTables.Length > 0) yield return "SP_TemporalTable";

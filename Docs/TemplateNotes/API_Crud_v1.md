@@ -82,3 +82,7 @@ With `Dtos=true` a table that has a plain CRUD API (not a name and active table)
 ## The Search list protocol
 
 With `ListProtocol=Search` the class overrides `SearchRows` and `SortRows` (CrudApi calls them). `SearchRows` keeps a row when the lower-cased text is contained in any column of `SearchBox`: the table's searchable text columns (`TableModel.SearchableColumns`) and the display column of each parent the entity can reach (at most `SearchBox.MaxParents`), or the columns the project lists in `SearchColumns` (`Customer=Name,Customer=Status.Description`: a column of the table, or a navigation name and a column of its parent; an entry that is not there is skipped). `SortRows` has one case per sortable column (`SearchPlan`, the names the Columns protocol sorts by); a foreign key sorts by its parent's display column. A table with no text column and no parent gets no `SearchRows`, so its search box matches nothing. A Name and IsActive table has no paged list and gets neither.
+
+## The user table
+
+With `ApiAuth` and `UserTable` naming this table, the class also overrides `BeforeSaveAsync` and, when the table has an administrator flag, `BeforeDeleteAsync` (see `API_UserDirectory_v1.md`): the stored password hash is put back, an administrator or role column changes only for an administrator, a sign-in name is unique and the last administrator stays. `CS_Entity` and `CS_Dto` mark the hash `[JsonIgnore]` and `DtoShape.InputColumns(table, project)` leaves it out of the input.

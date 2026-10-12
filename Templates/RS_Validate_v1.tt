@@ -29,7 +29,7 @@
 
     bool anyRange = false;
     var checks = new List<string[]>();
-    foreach (var f in t.Fields)
+    foreach (var f in t.Fields.Where(f => f != t.HashField))
     {
         var rule = f.Column.RuleOf(Project);
         if (rule is null)

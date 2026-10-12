@@ -13,6 +13,9 @@
     // POST (201 with a Location header and the new row), PUT /{id} (400 when the id in the body differs, 404 for no such row), DELETE /{id} (200, 404, or 400 when the row is in use),
     // POST /{id}/clone (201 and the copy, a cloneable table) and GET /search with the filters, pageNumber, pageSize, sortBy and sortDir (a table with a search endpoint).
     // With ApiValidation=true the create and update routes run the table's validate (PY_Validate) and answer 400 with the problems.
+    // With ApiAuth=true (the Jwt group's app/auth.py) a table listed in OwnedTables shows and changes only the rows of the owners the caller may act for (403 for another owner's row, the same
+    // rule as the ASP.NET API), a table that hangs off an owned table is scoped through its parent, and the user table (UserTable) never shows or takes its password hash (PythonTable leaves it out of
+    // the schema), lets only an administrator change the administrator and role columns (403), keeps a sign-in name unique (409) and keeps the last administrator (422).
     // Full notes: Docs/TemplateNotes/PY_Routes_v1.md
     // ==========================================================================================
 
@@ -28,6 +31,25 @@
     void Line(string text = "") => sb.Append(text).Append('\n');
     string Str(string text) => PythonNames.Str(text);
 
+    // ApiAuth: who owns a row, and what the user table guards
+    bool auth = Project.ApiAuth;
+    var ownerColumn = auth ? OwnedTable.OwnerColumn(Model, Project) : null;
+    var ownerLink = auth ? OwnedTable.Through(Model, Project) : null;
+    var userPlan = auth ? UserTable.PlanOf(Model, Project) : null;
+    PythonField? FieldOf(ColumnModel? column) => column is null ? null : t.SchemaFields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(column.Name));
+    var ownerField = FieldOf(ownerColumn);
+    string ParentName(string name) => PythonNames.Ident(PythonNames.Snake(name));
+    string parentClass = ownerLink is null ? "" : PythonNames.Pascal(ScreenNames.BaseName(ownerLink.ParentTable));
+    string parentModule = ownerLink is null ? "" : PythonNames.Snake(ownerLink.ParentTable);
+    var linkField = ownerLink is null ? null : t.SchemaFields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(ownerLink.ForeignKey));
+    bool scoped = ownerField is not null || (ownerColumn is null && linkField is not null);
+    var nameField = FieldOf(userPlan?.UserName);
+    var adminField = FieldOf(userPlan?.Admin);
+    var guarded = new[] { FieldOf(userPlan?.Admin), FieldOf(userPlan?.Role) }.Where(f => f is not null).Select(f => f!).ToList();
+    var activeField = t.SchemaFields.FirstOrDefault(f => f.Column.IsBooleanColumn && !f.Column.IsNullable && f.Column.Name == "IsActive");
+    string AdminTest(string row) => adminField is null ? "False" : $"bool({row}.{adminField.Name})" + (activeField is null ? "" : $" and bool({row}.{activeField.Name})");
+    string DefaultOf(PythonField f) => f.Annotation == "bool" ? "False" : f.IsNullable ? "None" : "\"\"";
+
     Line($"@@@FILE app/routes/{t.Module}.py@@@");
     var clonedDates = new[] { "datetime", "date" }.Where(w => t.Clone?.Any(c => c.Value.StartsWith(w + ".")) == true).ToList();
     if (clonedDates.Count > 0)
@@ -40,7 +62,7 @@
         Line();
     bool castsEnum = search && t.Filters.Any(f => f.Field.Column.DbEnumType is not null);
     var sqlalchemy = new List<string> { "select" };
-    if (search)
+    if (search || userPlan is not null)
         sqlalchemy.Add("func");
     if (castsEnum)
     {
@@ -52,8 +74,12 @@
     Line("from sqlalchemy.exc import IntegrityError");
     Line("from sqlalchemy.orm import Session");
     Line();
+    if (auth && (scoped || userPlan is not null))
+        Line("from app.auth import " + string.Join(", ", new[] { "CurrentUser", "require_user" }.Concat(scoped ? new[] { "not_yours", "visible_owners" } : Array.Empty<string>()).OrderBy(n => n, StringComparer.Ordinal)));
     Line("from app.db import get_session");
     Line($"from app.models.{t.Module} import {t.Class}");
+    if (ownerLink is not null)
+        Line($"from app.models.{parentModule} import {parentClass}");
     Line($"from app.schemas.{t.Module} import {t.Schema}");
     var support = new List<string> { "ApiError" };
     if (search)
@@ -71,6 +97,79 @@
     Line($"IN_USE = \"The database refused the row (a missing parent row, or a value that must be unique).\"");
     Line();
 
+    string userParameter = scoped || userPlan is not null ? ", user: CurrentUser = Depends(require_user)" : "";
+    if (scoped)
+    {
+        // who owns a row: its own owner column, or the owner of the parent row it belongs to (a schema object has the same attribute names as the row)
+        Line();
+        Line($"def owner_of(session: Session, row) -> int | None:");
+        if (ownerField is not null)
+            Line($"    return row.{ownerField.Name}");
+        else
+            Line($"    return session.scalar(select({parentClass}.{ParentName(ownerLink!.ParentOwner)}).where({parentClass}.{ParentName(ownerLink.ParentKey)} == row.{linkField!.Name}))");
+        Line();
+        Line();
+        Line($"def refuse_other_owners(session: Session, user: CurrentUser, row) -> None:");
+        Line("    owners = visible_owners(user)");
+        Line("    if owners is not None and owner_of(session, row) not in owners:");
+        Line("        raise not_yours()");
+        Line();
+        Line();
+        Line("def only_owned(statement, user: CurrentUser):");
+        Line("    owners = visible_owners(user)");
+        if (ownerField is not null)
+            Line($"    return statement if owners is None else statement.where({t.Class}.{ownerField.Name}.in_(owners))");
+        else
+            Line($"    return statement if owners is None else statement.where({t.Class}.{linkField!.Name}.in_(select({parentClass}.{ParentName(ownerLink!.ParentKey)}).where({parentClass}.{ParentName(ownerLink.ParentOwner)}.in_(owners))))");
+        Line();
+    }
+    if (userPlan is not null)
+    {
+        Line();
+        if (adminField is not null)
+        {
+            Line($"def is_administrator(row) -> bool:");
+            Line($"    return {AdminTest("row")}");
+            Line();
+            Line();
+            Line($"def other_administrators(session: Session, key) -> bool:");
+            Line($"    others = select(func.count()).select_from({t.Class}).where({t.Class}.{t.Key.Name} != key, {t.Class}.{adminField.Name}.is_(True)" + (activeField is null ? "" : $", {t.Class}.{activeField.Name}.is_(True)") + ")");
+            Line("    return (session.scalar(others) or 0) > 0");
+            Line();
+            Line();
+            Line("def last_administrator() -> ApiError:");
+            Line($"    return ApiError({HttpStatus.UnprocessableEntity}, \"Last administrator\", problem_type=\"{ProblemTypes.LastAdministrator}\", detail=\"There must be at least one active administrator.\")");
+            Line();
+            Line();
+        }
+        Line($"def guard_user_row(session: Session, user: CurrentUser, body: {t.Schema}, current: {t.Class} | None) -> None:");
+        Line("    \"\"\"What the user table allows: only an administrator changes the administrator and role columns, a sign-in name is used by one person and the last administrator stays.\"\"\"");
+        if (guarded.Count > 0)
+        {
+            Line("    if not user.is_admin:");
+            foreach (var g in guarded)
+            {
+                string same = g.Annotation == "bool" ? $"bool(body.{g.Name}) != bool(current.{g.Name})" : $"(body.{g.Name} or \"\") != (current.{g.Name} or \"\")";
+                Line("        if current is None:");
+                Line($"            body.{g.Name} = {DefaultOf(g)}");
+                Line($"        elif {same}:");
+                Line($"            raise ApiError({HttpStatus.Forbidden}, \"Not allowed\", problem_type=\"{ProblemTypes.ColumnNotYours}\", detail=\"Only an administrator may change {g.Column.Name}.\")");
+            }
+        }
+        if (nameField is not null)
+        {
+            Line($"    login = body.{nameField.Name}");
+            Line("    if login is not None:");
+            Line($"        body.{nameField.Name} = login = login.strip()");
+            Line($"        if login and (session.scalar(select(func.count()).select_from({t.Class}).where({t.Class}.{nameField.Name} == login, {t.Class}.{t.Key.Name} != body.{t.Key.Name})) or 0) > 0:");
+            Line($"            raise ApiError({HttpStatus.Conflict}, \"Duplicate value\", problem_type=\"{ProblemTypes.DuplicateValue}\", detail=\"Another person already signs in with that name.\")");
+        }
+        if (adminField is not null)
+            Line($"    if current is not None and is_administrator(current) and not is_administrator(body) and not other_administrators(session, body.{t.Key.Name}):\n        raise last_administrator()");
+        Line();
+        Line();
+    }
+
     if (search)
     {
         Line("# The columns a grid may sort by, by the lower-case name it sends.");
@@ -84,8 +183,14 @@
 
     Line();
     Line($"@router.get(\"{t.Route}\", response_model=list[{t.Schema}])");
-    Line("def get_all(session: Session = Depends(get_session)):");
-    Line($"    return session.scalars(select({t.Class}).order_by({t.Class}.{key})).all()");
+    Line($"def get_all(session: Session = Depends(get_session){userParameter}):");
+    if (scoped)
+    {
+        Line($"    statement = only_owned(select({t.Class}), user)");
+        Line($"    return session.scalars(statement.order_by({t.Class}.{key})).all()");
+    }
+    else
+        Line($"    return session.scalars(select({t.Class}).order_by({t.Class}.{key})).all()");
     Line();
 
     if (search)
@@ -94,6 +199,8 @@
         Line($"@router.get(\"{t.Route}/search\", response_model=Page[{t.Schema}])");
         Line("def search(");
         Line("    session: Session = Depends(get_session),");
+        if (userParameter.Length > 0)
+            Line("    user: CurrentUser = Depends(require_user),");
         Line("    page_number: int = Query(1, alias=\"pageNumber\"),");
         Line("    page_size: int = Query(100, alias=\"pageSize\"),");
         Line("    sort_by: str | None = Query(None, alias=\"sortBy\"),");
@@ -104,7 +211,7 @@
         Line("    if page_number < 1:");
         Line($"        raise ApiError({HttpStatus.BadRequest}, \"pageNumber must be 1 or greater.\")");
         Line("    page_size = max(1, min(page_size, MAX_PAGE_SIZE))");
-        Line($"    statement = select({t.Class})");
+        Line(scoped ? $"    statement = only_owned(select({t.Class}), user)" : $"    statement = select({t.Class})");
         foreach (var f in t.Filters)
         {
             string column = f.Field.Column.DbEnumType is not null ? $"cast({t.Class}.{f.Field.Name}, String)" : $"{t.Class}.{f.Field.Name}";
@@ -126,17 +233,34 @@
 
     Line();
     Line($"@router.get(\"{t.Route}/{{id}}\", response_model={t.Schema})");
-    Line($"def get_by_id(id: {keyType}, session: Session = Depends(get_session)):");
+    Line($"def get_by_id(id: {keyType}, session: Session = Depends(get_session){userParameter}):");
     Line($"    row = session.get({t.Class}, id)");
     Line("    if row is None:");
     Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
+    if (scoped)
+        Line("    refuse_other_owners(session, user, row)");
     Line("    return row");
     Line();
     Line();
     Line($"@router.post(\"{t.Route}\", response_model={t.Schema}, status_code={HttpStatus.Created})");
-    Line($"def create(body: {t.Schema}, response: Response, session: Session = Depends(get_session)):");
+    Line($"def create(body: {t.Schema}, response: Response, session: Session = Depends(get_session){userParameter}):");
     if (validate)
         Line("    validate(body)");
+    if (scoped)
+    {
+        Line("    owners = visible_owners(user)");
+        Line("    if owners is not None:");
+        if (ownerField is not null)
+        {
+            Line("        # a caller who may act for one owner and left the owner blank creates the row for that owner");
+            Line($"        if body.{ownerField.Name} == 0 and len(owners) == 1:");
+            Line($"            body.{ownerField.Name} = owners[0]");
+        }
+        Line("        if owner_of(session, body) not in owners:");
+        Line("            raise not_yours()");
+    }
+    if (userPlan is not null)
+        Line("    guard_user_row(session, user, body, None)");
     if (textKey)
     {
         // a text key is chosen by the person: a blank one is refused and one that exists is a conflict (the answers the ASP.NET API gives)
@@ -166,7 +290,7 @@
     Line();
     Line();
     Line($"@router.put(\"{t.Route}/{{id}}\", response_model={t.Schema})");
-    Line($"def update(id: {keyType}, body: {t.Schema}, session: Session = Depends(get_session)):");
+    Line($"def update(id: {keyType}, body: {t.Schema}, session: Session = Depends(get_session){userParameter}):");
     Line($"    if body.{key} != id:");
     Line($"        raise ApiError({HttpStatus.BadRequest}, \"The id in the URL and the id in the body differ.\")");
     if (validate)
@@ -174,6 +298,16 @@
     Line($"    row = session.get({t.Class}, id)");
     Line("    if row is None:");
     Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
+    if (scoped)
+    {
+        Line("    refuse_other_owners(session, user, row)");
+        Line("    # the row stays with an owner the caller may act for: it cannot be handed to anyone else");
+        Line("    owners = visible_owners(user)");
+        Line("    if owners is not None and owner_of(session, body) not in owners:");
+        Line("        raise not_yours()");
+    }
+    if (userPlan is not null)
+        Line("    guard_user_row(session, user, body, row)");
     Line("    for name, value in body.changes().items():");
     Line("        setattr(row, name, value)");
     Line("    try:");
@@ -186,10 +320,14 @@
     Line();
     Line();
     Line($"@router.delete(\"{t.Route}/{{id}}\")");
-    Line($"def delete(id: {keyType}, session: Session = Depends(get_session)):");
+    Line($"def delete(id: {keyType}, session: Session = Depends(get_session){userParameter}):");
     Line($"    row = session.get({t.Class}, id)");
     Line("    if row is None:");
     Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
+    if (scoped)
+        Line("    refuse_other_owners(session, user, row)");
+    if (adminField is not null)
+        Line($"    if is_administrator(row) and not other_administrators(session, row.{t.Key.Name}):\n        raise last_administrator()");
     Line("    session.delete(row)");
     Line("    try:");
     Line("        session.commit()");
@@ -203,15 +341,23 @@
         Line();
         Line();
         Line($"@router.post(\"{t.Route}/{{id}}/clone\", response_model={t.Schema}, status_code={HttpStatus.Created})");
-        Line($"def clone_row(id: {keyType}, response: Response, session: Session = Depends(get_session)):");
+        Line($"def clone_row(id: {keyType}, response: Response, session: Session = Depends(get_session){userParameter}):");
         Line("    \"\"\"Copies a row into a new one and returns it. A unique text column gets a free value so the copy can be saved.\"\"\"");
         Line($"    source = session.get({t.Class}, id)");
         Line("    if source is None:");
         Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
+        if (scoped)
+            Line("    refuse_other_owners(session, user, source)");
         Line($"    row = {t.Class}(");
         foreach (var (field, value) in cloned)
             Line($"        {field.Name}={value},");
         Line("    )");
+        if (userPlan is not null && guarded.Count > 0)
+        {
+            Line("    if not user.is_admin:");
+            foreach (var g in guarded)
+                Line($"        row.{g.Name} = {DefaultOf(g)}");
+        }
         Line("    session.add(row)");
         Line("    session.commit()");
         Line("    session.refresh(row)");

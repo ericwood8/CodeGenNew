@@ -50,6 +50,11 @@ public static class TemplateRunner
         var session = generator.GetOrCreateSession();
         if (parameterName is not null)
             session[parameterName] = model;
+        // the project decides which column is the user table's password hash; every template then sees it as a credential
+        if (model is TableModel markTable)
+            UserTable.MarkCredentials(markTable, project ?? ProjectSettings.None);
+        else if (model is DatabaseModel markDatabase)
+            UserTable.MarkCredentials(markDatabase, project ?? ProjectSettings.None);
         session["Project"] = project ?? ProjectSettings.None;
 
         string tempOutputFile = Path.GetTempFileName();

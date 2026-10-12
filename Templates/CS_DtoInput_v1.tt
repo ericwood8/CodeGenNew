@@ -28,7 +28,7 @@
     }
     else
     {
-        var columns = DtoShape.InputColumns(Model);
+        var columns = DtoShape.InputColumns(Model, Project);
         var settable = columns.Where(c => !c.IsPrimaryKey).ToList();
         string entity = Model.TableName;
         string className = Model.TableName + "Input";

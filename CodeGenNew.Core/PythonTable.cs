@@ -51,11 +51,15 @@ public sealed class PythonTable
         Fields = fields;
         Skipped = skipped;
         Key = fields.First(f => f.Column.IsPrimaryKey);
-        Written = fields.Where(f => !f.Column.IsIdentity && !f.Column.IsComputed).ToList();
+        // the user table's password hash is in the model (the sign-in reads it) and in no schema: no answer shows it and no body sets it
+        string? hashName = UserTable.PlanOf(model, project)?.PasswordHash.Name;
+        HashField = hashName is null ? null : fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(hashName));
+        SchemaFields = fields.Where(f => f != HashField).ToList();
+        Written = SchemaFields.Where(f => !f.Column.IsIdentity && !f.Column.IsComputed).ToList();
         Updated = Written.Where(f => !f.Column.IsPrimaryKey).ToList();
 
         var fieldOf = new Dictionary<ColumnModel, PythonField>();
-        foreach (var field in fields)
+        foreach (var field in SchemaFields)
             fieldOf.TryAdd(field.Column, field);
 
         var plan = SearchPlan.For(model, []);
@@ -88,7 +92,14 @@ public sealed class PythonTable
     /// <summary> The route every stack uses for the table: <c>/api/customers</c>. </summary>
     public string Route { get; }
 
+    /// <summary> Every mapped column: what the SQLAlchemy model holds. </summary>
     public IReadOnlyList<PythonField> Fields { get; }
+
+    /// <summary> The fields of the request and response schema: <see cref="Fields"/> without the user table's password hash. </summary>
+    public IReadOnlyList<PythonField> SchemaFields { get; }
+
+    /// <summary> The password hash field of the user table (<c>UserTable</c> with <c>ApiAuth</c>); null for any other table. </summary>
+    public PythonField? HashField { get; }
     public IReadOnlyList<ColumnModel> Skipped { get; }
     public PythonField Key { get; }
 
@@ -175,7 +186,7 @@ public sealed class PythonTable
 
         foreach (var column in CloneShape.Copyable(m))
         {
-            var field = Fields.FirstOrDefault(f => f.Column == column);
+            var field = SchemaFields.FirstOrDefault(f => f.Column == column);
             if (field is null || column.IsPrimaryKey)
                 continue;
 

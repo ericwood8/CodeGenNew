@@ -39,6 +39,15 @@
     Line($"pub struct {table.Struct} {{");
     foreach (var f in table.Fields)
     {
+        if (f == table.HashField)
+        {
+            // the sign-in reads the password hash, but it is in no answer and no body: only set-password writes it
+            Line("    #[serde(skip)]");
+            Line("    #[allow(dead_code)] // only the sign-in reads it, through its own statement");
+            Line($"    #[sqlx(rename = \"{f.Column.DbName}\")]");
+            Line($"    pub {f.Name}: {f.Type},");
+            continue;
+        }
         Line($"    #[serde(rename = \"{f.Json}\")]");
         if (f.IsOption || f.Column.IsIdentity)
             Line("    #[serde(default)]");

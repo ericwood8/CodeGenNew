@@ -13,6 +13,8 @@
     // There is no routine in the database: every statement is fixed text written here for the database that was read (the quotes, the placeholders, the casts PostgreSQL needs for money and
     // enums, RETURNING where the database has it and a second read where it has not, MySQL), and the search builds its WHERE from the filters the caller gave, binding every value.
     // A sort name is looked up in a fixed list and never reaches the SQL; a filter value is escaped so % and _ are ordinary characters.
+    // With ApiAuth=true a table in OwnedTables (or hanging off one) also gets Scoped, the rows a caller may see, applied to get_all_scoped and to the search; the user table (UserTable) gets login_taken and
+    // other_administrators for the checks of its routes, and its password hash is never written by insert or update (RustTable leaves it out of both).
     // Full notes: Docs/TemplateNotes/RS_Repo_v1.md
     // ==========================================================================================
 
@@ -27,16 +29,31 @@
     void Line(string text = "") => sb.Append(text).Append('\n');
     string Binds(IEnumerable<RustField> fields) => string.Concat(fields.Select(f => $".bind(&row.{f.Name})"));
 
+    bool auth = Project.ApiAuth;
+    var ownerColumn = auth ? OwnedTable.OwnerColumn(Model, Project) : null;
+    var ownerLink = auth ? OwnedTable.Through(Model, Project) : null;
+    var userPlan = auth ? UserTable.PlanOf(Model, Project) : null;
+    var qd = DialectInfo.For(Model.Dialect);
+    RustField? FieldOf(ColumnModel? column) => column is null ? null : t.Fields.FirstOrDefault(f => f != t.HashField && f.Column.Name.EqualsIgnoreCase(column.Name));
+    var ownerField = FieldOf(ownerColumn);
+    var linkField = ownerLink is null ? null : t.Fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(ownerLink.ForeignKey));
+    bool scoped = ownerField is not null || (ownerColumn is null && linkField is not null);
+    var scopeField = ownerField ?? linkField;
+    var adminColumn = FieldOf(userPlan?.Admin);
+    var activeColumn = t.Fields.FirstOrDefault(f => f.Column.IsBooleanColumn && !f.Column.IsNullable && f.Column.Name == "IsActive");
+
     Line($"@@@FILE src/repos/{t.Module}.rs@@@");
     Line($"use crate::models::{t.Module}::{t.Struct};");
-    Line(search ? "use crate::support::{Db, Pool};" : "use crate::support::Pool;");
+    Line(search || scoped ? "use crate::support::{Db, Pool};" : "use crate::support::Pool;");
     if (search && t.Filters.Count > 0)
         Line("use crate::support::{escape_like, non_blank};");
     if (search)
         Line("use serde::Deserialize;");
-    if (search)
+    if (search || scoped)
         Line("use sqlx::QueryBuilder;");
     Line();
+    if (scoped)
+        Line("#[allow(dead_code)] // a caller sees the rows of its owners only: get_all_scoped");
     Line($"const SELECT_ALL: &str = {RustTable.Raw(t.SelectAll)};");
     Line($"const SELECT_ONE: &str = {RustTable.Raw(t.SelectOne)};");
     Line($"const INSERT: &str = {RustTable.Raw(t.Insert)};");
@@ -51,6 +68,15 @@
     }
     if (t.LookupSql is not null)
         Line($"const LOOKUP: &str = {RustTable.Raw(t.LookupSql)};");
+    if (scoped)
+        Line($"const SCOPED_BASE: &str = {RustTable.Raw($"SELECT {t.SelectList} FROM {t.Table} AS t WHERE 1 = 1")};");
+    if (userPlan is not null)
+    {
+        string loginColumn = qd.Quote(userPlan.UserName.DbName);
+        Line($"const LOGIN_TAKEN: &str = {RustTable.Raw($"SELECT COUNT(*) FROM {t.Table} WHERE {loginColumn} = {qd.Placeholder(1)} AND {qd.Quote(t.Key.Column.DbName)} <> {qd.Placeholder(2)}")};");
+        if (adminColumn is not null)
+            Line($"const OTHER_ADMINISTRATORS: &str = {RustTable.Raw($"SELECT COUNT(*) FROM {t.Table} WHERE {qd.Quote(adminColumn.Column.DbName)} = {qd.BooleanLiteral(true)}" + (activeColumn is null ? "" : $" AND {qd.Quote(activeColumn.Column.DbName)} = {qd.BooleanLiteral(true)}") + $" AND {qd.Quote(t.Key.Column.DbName)} <> {qd.Placeholder(1)}")};");
+    }
     if (search)
     {
         Line($"const SEARCH_ITEMS: &str = {RustTable.Raw(t.SearchItems)};");
@@ -59,6 +85,8 @@
     }
     Line();
 
+    if (scoped)
+        Line("#[allow(dead_code)]");
     Line($"pub async fn get_all(pool: &Pool) -> Result<Vec<{t.Struct}>, sqlx::Error> {{");
     Line($"    sqlx::query_as::<_, {t.Struct}>(SELECT_ALL).fetch_all(pool).await");
     Line("}");
@@ -95,6 +123,72 @@
     Line($"pub async fn delete(pool: &Pool, id: {keyArg}) -> Result<u64, sqlx::Error> {{");
     Line("    Ok(sqlx::query(DELETE).bind(id).execute(pool).await?.rows_affected())");
     Line("}");
+    if (scoped)
+    {
+        Line();
+        Line("/// The rows a caller may see: every row, none, the rows of one owner or, for a table that belongs to the owner of its parent row, the rows under the parents of that owner.");
+        Line("pub enum Scoped {");
+        Line("    All,");
+        Line("    Nothing,");
+        if (ownerField is not null)
+            Line($"    Own({ownerField.Type}),");
+        else
+            Line($"    Keys(Vec<{linkField!.Type}>),");
+        Line("}");
+        Line();
+        Line("fn apply_scope(builder: &mut QueryBuilder<Db>, scope: &Scoped) {");
+        Line("    match scope {");
+        Line("        Scoped::All => {}");
+        Line("        Scoped::Nothing => {");
+        Line("            builder.push(\" AND 1 = 0\");");
+        Line("        }");
+        string scopeColumn = qd.Quote(scopeField!.Column.DbName);
+        if (ownerField is not null)
+        {
+            Line("        Scoped::Own(owner) => {");
+            Line($"            builder.push({RustTable.Raw($" AND t.{scopeColumn} = ")}).push_bind(*owner);");
+            Line("        }");
+        }
+        else
+        {
+            Line("        Scoped::Keys(keys) if keys.is_empty() => {");
+            Line("            builder.push(\" AND 1 = 0\");");
+            Line("        }");
+            Line("        Scoped::Keys(keys) => {");
+            Line($"            builder.push({RustTable.Raw($" AND t.{scopeColumn} IN (")});");
+            Line("            let mut separated = builder.separated(\", \");");
+            Line("            for key in keys {");
+            Line("                separated.push_bind(*key);");
+            Line("            }");
+            Line("            separated.push_unseparated(\")\");");
+            Line("        }");
+        }
+        Line("    }");
+        Line("}");
+        Line();
+        Line($"pub async fn get_all_scoped(pool: &Pool, scope: &Scoped) -> Result<Vec<{t.Struct}>, sqlx::Error> {{");
+        Line("    let mut builder = QueryBuilder::<Db>::new(SCOPED_BASE);");
+        Line("    apply_scope(&mut builder, scope);");
+        Line($"    builder.push({RustTable.Raw($" ORDER BY t.{qd.Quote(t.Key.Column.DbName)}")});");
+        Line($"    builder.build_query_as::<{t.Struct}>().fetch_all(pool).await");
+        Line("}");
+    }
+    if (userPlan is not null)
+    {
+        Line();
+        Line("/// True when another row already has that sign-in name.");
+        Line($"pub async fn login_taken(pool: &Pool, login: &str, key: {keyArg}) -> Result<bool, sqlx::Error> {{");
+        Line("    Ok(sqlx::query_scalar::<_, i64>(LOGIN_TAKEN).bind(login).bind(key).fetch_one(pool).await? > 0)");
+        Line("}");
+        if (adminColumn is not null)
+        {
+            Line();
+            Line("/// True when an administrator other than this row is left (an active one, when the table has an IsActive column).");
+            Line($"pub async fn other_administrators(pool: &Pool, key: {keyArg}) -> Result<bool, sqlx::Error> {{");
+            Line("    Ok(sqlx::query_scalar::<_, i64>(OTHER_ADMINISTRATORS).bind(key).fetch_one(pool).await? > 0)");
+            Line("}");
+        }
+    }
     if (t.LookupSql is not null)
     {
         Line();
@@ -212,13 +306,17 @@
         Line("}");
         Line();
         Line($"/// One page of rows and the total number of rows that match the filters.");
-        Line($"pub async fn search(pool: &Pool, query: &SearchQuery, page: i64, page_size: i64) -> Result<(Vec<{t.Struct}>, i64), sqlx::Error> {{");
+        Line($"pub async fn search(pool: &Pool, query: &SearchQuery, page: i64, page_size: i64{(scoped ? ", scope: &Scoped" : "")}) -> Result<(Vec<{t.Struct}>, i64), sqlx::Error> {{");
         Line("    let mut count = QueryBuilder::<Db>::new(SEARCH_COUNT);");
         Line("    apply_filters(&mut count, query);");
+        if (scoped)
+            Line("    apply_scope(&mut count, scope);");
         Line("    let total: i64 = count.build_query_scalar().fetch_one(pool).await?;");
         Line();
         Line("    let mut items = QueryBuilder::<Db>::new(SEARCH_ITEMS);");
         Line("    apply_filters(&mut items, query);");
+        if (scoped)
+            Line("    apply_scope(&mut items, scope);");
         Line("    let descending = query.sort_dir.as_deref().is_some_and(|d| d.eq_ignore_ascii_case(\"desc\"));");
         Line("    match query.sort_by.as_deref().map(str::trim).filter(|n| n.len() <= 128).and_then(sort_expression) {");
         Line("        Some(expression) => items.push(format!(\" ORDER BY {expression}{}, {DEFAULT_ORDER}\", if descending { \" DESC\" } else { \"\" })),");

@@ -78,7 +78,7 @@ public class PythonTests
         Assert.AreEqual("Acme.Python", Project().OutputFolderOf("Python"));
         Assert.AreEqual("api", Project(("OutputPython", "api")).OutputFolderOf("Python"));
         Assert.AreEqual("Python", EssentialsCatalog.FindStack("python"));
-        CollectionAssert.AreEquivalent(new[] { "App", "Project" }, EssentialsCatalog.Groups(Repo.TemplatesDirectory, "Python").Select(g => g.Name).ToList());
+        CollectionAssert.AreEquivalent(new[] { "App", "Jwt", "Project" }, EssentialsCatalog.Groups(Repo.TemplatesDirectory, "Python").Select(g => g.Name).ToList());
         CollectionAssert.Contains(Project(("ApiValidation", "true")).ImpliedPlanTemplates.ToArray(), "PY_Validate");
     }
 

@@ -1,0 +1,96 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_UserDirectory_v1.tt
+    // Generates: app/users.py   (the template writes its own path with an @@@FILE marker; the output folder is the Python API's folder)
+    // The people who sign in, kept in one of the project's own tables (UserTable=Employee, UserNameColumn, PasswordHashColumn, UserOwnerColumn, UserRoleColumn, UserAdminColumn), for the Python
+    // API's sign-in (app/auth.py, the Jwt group): find_user looks a sign-in name up, set_password writes a hash (the same pbkdf2-sha256 text the ASP.NET API writes), and the command
+    // python -m app.users set-password <name> reads the new password from the environment variable NEW_PASSWORD (at least 8 characters, never on the command line) and exits 0 (done),
+    // 1 (no such user) or 2 (usage). A row with no hash cannot sign in. A yes/no UserRoleColumn gives two roles (UserRoleWhenTrue, UserRoleWhenFalse); a text one is the role itself; a true
+    // UserAdminColumn makes the person the AuthAdminRole. The table is described here with SQLAlchemy's lightweight table(), so it does not matter whether a model of it was generated.
+    // Needs ApiAuth=true and UserTable. Which names and columns are acceptable is decided by UserTable.Resolve.
+    // ==========================================================================================
+    var (plan, problem) = UserTable.Resolve(Database, Project);
+    if (problem != null)
+        Error(problem);
+    if (plan == null)
+        return GenerationEnvironment.ToString();
+
+    string Str(string text) => PythonNames.Str(text);
+    var t = plan.Table;
+    var named = new List<(string Key, ColumnModel Column)> { ("name", plan.UserName), ("hash", plan.PasswordHash), ("key", t.PrimaryKeyColumns.First()) };
+    if (plan.Owner != null) named.Add(("owner", plan.Owner));
+    if (plan.Role != null) named.Add(("role", plan.Role));
+    if (plan.Admin != null) named.Add(("admin", plan.Admin));
+    var columnList = named.Select(n => n.Column).Distinct().ToList();
+    string C(string key) => $"users.c[{Str(named.First(n => n.Key == key).Column.DbName)}]";
+    bool schemaNamed = t.Dialect is SqlDialect.SqlServer or SqlDialect.PostgreSql && !t.SchemaName.EqualsIgnoreCase(t.Dialect == SqlDialect.SqlServer ? "dbo" : "public");
+
+    string roleExpression = plan.Role == null ? "None"
+        : plan.RoleIsFlag ? $"{Str(plan.RoleWhenTrue)} if row._mapping[{Str(plan.Role.DbName)}] else {Str(plan.RoleWhenFalse)}"
+        : $"row._mapping[{Str(plan.Role.DbName)}] or None";
+    if (plan.Admin != null)
+        roleExpression = $"ADMIN_ROLE if row._mapping[{Str(plan.Admin.DbName)}] else ({roleExpression})";
+
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+
+    Line("@@@FILE app/users.py@@@");
+    Line($"\"\"\"The people who sign in: the rows of {t.TableName} ({plan.UserName.Name}, {plan.PasswordHash.Name}). A row whose {plan.UserName.Name} or {plan.PasswordHash.Name} is empty cannot sign in.\"\"\"");
+    Line("import os");
+    Line("import sys");
+    Line();
+    Line("from sqlalchemy import column, select, table, update");
+    Line("from sqlalchemy.orm import Session");
+    Line();
+    Line("from app.auth import ADMIN_ROLE, DirectoryUser, hash_password");
+    Line("from app.db import SessionLocal");
+    Line();
+    Line("PASSWORD_VARIABLE = \"NEW_PASSWORD\"");
+    Line("MINIMUM_PASSWORD_LENGTH = 8");
+    Line();
+    Line($"users = table({Str(t.DbTableName)}, {string.Join(", ", columnList.Select(c => $"column({Str(c.DbName)})"))}" + (schemaNamed ? $", schema={Str(t.SchemaName)}" : "") + ")");
+    Line();
+    Line();
+    Line("def find_user(session: Session, user_name: str) -> DirectoryUser | None:");
+    Line($"    row = session.execute(select(users).where({C("name")} == user_name, {C("hash")}.is_not(None), {C("hash")} != \"\")).first()");
+    Line("    if row is None:");
+    Line("        return None");
+    if (plan.Owner != null)
+        Line($"    owner = row._mapping[{Str(plan.Owner.DbName)}]");
+    string ownerValue = plan.Owner == null ? "None" : "None if owner is None else int(owner)";
+    Line($"    return DirectoryUser(row._mapping[{Str(plan.UserName.DbName)}], row._mapping[{Str(plan.PasswordHash.DbName)}], {roleExpression}, {ownerValue})");
+    Line();
+    Line();
+    Line("def set_password(session: Session, user_name: str, password: str) -> bool:");
+    Line("    \"\"\"Writes the hash of the password for the person; False when there is no such person.\"\"\"");
+    Line($"    result = session.execute(update(users).where({C("name")} == user_name).values({{{Str(plan.PasswordHash.DbName)}: hash_password(password)}}))");
+    Line("    session.commit()");
+    Line("    return result.rowcount > 0");
+    Line();
+    Line();
+    Line("def main(args: list[str]) -> int:");
+    Line("    password = os.environ.get(PASSWORD_VARIABLE)");
+    Line("    if len(args) != 2 or args[0].lower() != \"set-password\" or not password:");
+    Line("        print(f\"Usage: python -m app.users set-password <user name>   (the new password in the environment variable {PASSWORD_VARIABLE}, never on the command line)\", file=sys.stderr)");
+    Line("        return 2");
+    Line("    if len(password) < MINIMUM_PASSWORD_LENGTH:");
+    Line("        print(f\"The password must have at least {MINIMUM_PASSWORD_LENGTH} characters.\", file=sys.stderr)");
+    Line("        return 2");
+    Line("    name = args[1].strip()");
+    Line("    with SessionLocal() as session:");
+    Line("        found = set_password(session, name, password)");
+    Line("    print(f\"Password set for {name}.\" if found else f\"There is no user named {name}.\")");
+    Line("    return 0 if found else 1");
+    Line();
+    Line();
+    Line("if __name__ == \"__main__\":");
+    Line("    sys.exit(main(sys.argv[1:]))");
+    Write(sb.ToString());
+#>

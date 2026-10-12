@@ -26,6 +26,8 @@ public static class ProblemTypes
     public const string NameRequired = Prefix + "name-required";
     public const string DuplicateName = Prefix + "duplicate-name";
     public const string NotYours = Prefix + "not-your-row";
+    public const string ColumnNotYours = Prefix + "column-not-yours";
+    public const string LastAdministrator = Prefix + "last-administrator";
     public const string SearchNotScoped = Prefix + "search-not-scoped";
 
     // signing in

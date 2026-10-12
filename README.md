@@ -128,10 +128,12 @@ Ninety-two templates ship in `Templates\` (the no-database essentials groups des
 | `RS` | `RS_Validate` | `src/validation/table.rs` - `validate`, the schema's rules for a row (`ApiValidation=true`); the answer is the ASP.NET validation problem. |
 | `RS` | `RS_Dashboard` | `src/routes/dashboard.rs` - `GET /api/dashboard` for the Rust stack: the widgets and statements of `DashboardPlan`, kept for a minute (`Dashboard=true`). |
 | `RS` | `RS_Mod` | the module lists and the router that merges every table's routes. |
+| `RS` | `RS_UserDirectory` | `src/users.rs` - the people who sign in, read from the `UserTable` of the project, and the `set-password` command (`ApiAuth=true` with `UserTable`). |
 | `PY` | `PY_Model`, `PY_Schema` | `app/models/table.py` and `app/schemas/table.py` - the SQLAlchemy 2.0 class and the Pydantic 2 schema of a table, for the Python stack (all four databases). |
 | `PY` | `PY_Routes` | `app/routes/table.py` - the FastAPI router with the contract of the other stacks (201 and `Location`, 400, 404, clone, search with paging and sort). |
 | `PY` | `PY_Validate` | `app/validation/table.py` - `validate`, the schema's rules for a row (`ApiValidation=true`). |
 | `PY` | `PY_Mod` | the package lists and the list of routers that `main.py` includes. |
+| `PY` | `PY_UserDirectory` | `app/users.py` - the people who sign in, read from the `UserTable` of the project, and `python -m app.users set-password` (`ApiAuth=true` with `UserTable`). |
 | `BLZ` | `BLZ_Model`, `BLZ_Client` | `Models/Table.cs` and `Services/TableClient.cs` - the class a table's JSON becomes in the Blazor app and its `HttpClient` calls (get, search with paging and sort, create, update, delete, clone). |
 | `BLZ` | `BLZ_Page` | `Pages/TablePage.razor` - the Blazor screen: grid, search, sortable headers, paging, add / edit panel with drop-downs for foreign keys. |
 | `BLZ` | `BLZ_Dashboard` | the dashboard page for Blazor (`Services/DashboardClient.cs`, `Components/DashboardWidgetView.razor`, `Pages/Dashboard.razor`; money shown as currency; no strip above each grid). |

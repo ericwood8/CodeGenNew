@@ -28,9 +28,26 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+<#
+    if (Project.ApiAuth)
+    {
+#>
+base64 = "0.22"
+<#
+    }
+#>
 axum = { version = "0.8.9", features = ["macros"] }
 chrono = { version = "0.4.45", features = ["serde"] }
 dotenvy = "0.15.7"
+<#
+    if (Project.ApiAuth)
+    {
+#>
+hmac = "0.12"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+<#
+    }
+#>
 <#
     if (dialect != SqlDialect.Sqlite)
     {
@@ -41,15 +58,51 @@ rust_decimal = { version = "1.43.0", features = ["serde-with-float"] }
 #>
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+<#
+    if (Project.ApiAuth)
+    {
+#>
+sha2 = "0.10"
+<#
+    }
+#>
 sqlx = { version = "0.9.0", default-features = false, features = [<#= sqlxFeatures #>] }
 tokio = { version = "1.53.2", features = ["macros", "net", "rt-multi-thread"] }
 tower-http = { version = "0.7.1", features = ["cors", "fs"] }
 uuid = { version = "1", features = ["serde", "v4"] }
+<#
+    if (Project.ApiAuth)
+    {
+#>
+
+# the password hash runs 600000 rounds: the packages are built with optimisation even in a debug build, or one sign-in takes seconds
+[profile.dev.package."*"]
+opt-level = 3
+<#
+    }
+#>
 @@@FILE .env.example@@@
 # Copy to .env (git ignores it) to run the API with these values; the process environment wins over this file.
 <#= connection #>
 PORT=<#= Project.RustPort #>
 # DATABASE_URL, when set, replaces the variables above (it must not hold a password for PostgreSQL or MySQL).
+<#
+    if (Project.ApiAuth)
+    {
+#>
+# sign-in (ApiAuth): the signing key, at least 32 characters; set it in the environment, never in a file
+# Jwt__Key=
+<#
+        if (Project.UserTable is null)
+        {
+#>
+# the one user who can sign in without a user table
+# Bootstrap__AdminUserName=
+# Bootstrap__AdminPassword=
+<#
+        }
+    }
+#>
 @@@FILE .gitignore@@@
 /target
 /desktop/target

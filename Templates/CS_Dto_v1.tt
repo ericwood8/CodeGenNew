@@ -56,6 +56,7 @@
         meaningful = Model.PrimaryKeyColumns.ToList();
     var display = columns.Where(c => c.IsDisplayColumn).OrderBy(c => c.DisplayRank).FirstOrDefault() ?? columns.FirstOrDefault(c => BaseType(c) == "string") ?? Model.PrimaryKeyColumns.FirstOrDefault() ?? columns[0];
     string className = Model.TableName + "Dto";
+    string? hashColumn = UserTable.PlanOf(Model, Project)?.PasswordHash.Name;
 
     var o = new StringBuilder();
     void L(string s = "") => o.Append(s).Append('\n');
@@ -69,7 +70,12 @@
     L("public class " + className);
     L("{");
     foreach (var c in columns)
+    {
+        // the user table's password hash is never written to an answer
+        if (hashColumn is not null && c.Name.EqualsIgnoreCase(hashColumn))
+            L("    [System.Text.Json.Serialization.JsonIgnore]");
         L("    public " + ClrType(c) + " " + Id(c) + " { get; set; }" + CSharpText.NotNullInitializer(c));
+    }
     L();
     L("    public " + className + "() { }");
     L();

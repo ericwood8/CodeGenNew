@@ -110,6 +110,22 @@
         : displayColumn.IsNullable ? $"c.{displayColumn.Name} == null ? \"\" : c.{displayColumn.Name}.ToString()!"
         : $"c.{displayColumn.Name}.ToString()";
 
+    // The user table (UserTable with ApiAuth): its API never sends or takes the password hash, lets only an administrator change the administrator and role columns, keeps a sign-in name unique
+    // and keeps the last administrator (UserTable, API_UserDirectory).
+    var userPlan = supported ? UserTable.PlanOf(Model, Project) : null;
+    var userAdmin = userPlan?.Admin;
+    var userRole = userPlan?.Role;
+    var userGuarded = new[] { userAdmin, userRole }.Where(c => c is not null).Select(c => c!).ToList();
+    string userKey = keyProperty;
+    string userName = userPlan?.UserName.CSharpName() ?? "";
+    string userHash = userPlan?.PasswordHash.CSharpName() ?? "";
+    string userActive = activeColumn?.CSharpName() ?? "";
+    string UserDefault(ColumnModel c) => c.IsBooleanColumn ? "false" : c.IsNullable ? "null" : "\"\"";
+    string UserIsAdmin(string row, string? active = null) => userAdmin is null ? "false" : $"{row}.{userAdmin.CSharpName()} == true" + (activeColumn is null ? "" : $" && {row}.{active ?? userActive}");
+    string userStoredMembers = string.Join(", ", new[] { $"Hash = u.{userHash}" }
+        .Concat(userGuarded.Select(c => $"{c.CSharpName()} = u.{c.CSharpName()}"))
+        .Concat(userAdmin is not null && activeColumn is not null ? new[] { $"Active = u.{userActive}" } : Array.Empty<string>()));
+
     if (supported)
     {
 #>
@@ -248,6 +264,78 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
 
     protected override Task<int> CloneAsync(<#= entity #>Repo repo, int id) => repo.CloneAsync(id);
 <#
+        }
+        if (userPlan is not null)
+        {
+#>
+
+    // The user table: the password hash is in no answer or body (the entity ignores it; set-password changes it)<#= userGuarded.Count == 0 ? "" : ", only an administrator changes " + string.Join(" or ", userGuarded.Select(c => c.CSharpName())) #>,
+    // a sign-in name is used by one person<#= userAdmin is null ? "" : " and the last administrator stays" #>.
+    protected override async Task<IResult?> BeforeSaveAsync(<#= contextType #> context, <#= entity #> row, bool isNew)
+    {
+        var stored = isNew ? null : await context.Set<<#= entity #>>().AsNoTracking().Where(u => u.<#= userKey #> == row.<#= userKey #>)
+            .Select(u => new { <#= userStoredMembers #> }).FirstOrDefaultAsync();
+        if (!isNew && stored is null)
+            return Results.NotFound();
+
+        row.<#= userHash #> = stored?.Hash<#= userPlan.PasswordHash.IsNullable ? "" : " ?? \"\"" #>;
+<#
+            if (userGuarded.Count > 0)
+            {
+#>
+        if (!Caller.IsInRole(AuthNames.AdminRole))
+        {
+<#
+                foreach (var g in userGuarded)
+                {
+#>
+            if (isNew)
+                row.<#= g.CSharpName() #> = <#= UserDefault(g) #>;
+            else if (!Equals(row.<#= g.CSharpName() #>, stored!.<#= g.CSharpName() #>))
+                return Results.Problem(statusCode: <#= HttpStatus.Forbidden #>, type: "<#= ProblemTypes.ColumnNotYours #>", title: "Not allowed", detail: "Only an administrator may change <#= g.CSharpName() #>.");
+<#
+                }
+#>
+        }
+
+<#
+            }
+#>
+        if (row.<#= userName #> is { } login)
+        {
+            row.<#= userName #> = login = login.Trim();
+            if (login.Length > 0 && await context.Set<<#= entity #>>().AsNoTracking().AnyAsync(u => u.<#= userName #> == login && u.<#= userKey #> != row.<#= userKey #>))
+                return Results.Problem(statusCode: <#= HttpStatus.Conflict #>, type: "<#= ProblemTypes.DuplicateValue #>", title: "Duplicate value", detail: "Another person already signs in with that name.");
+        }
+<#
+            if (userAdmin is not null)
+            {
+#>
+
+        if (stored is not null && <#= UserIsAdmin("stored", "Active") #> && !(<#= UserIsAdmin("row") #>)
+            && !await context.Set<<#= entity #>>().AsNoTracking().AnyAsync(u => u.<#= userKey #> != row.<#= userKey #> && <#= UserIsAdmin("u") #>))
+            return LastAdministrator();
+<#
+            }
+#>
+        return null;
+    }
+<#
+            if (userAdmin is not null)
+            {
+#>
+
+    protected override async Task<IResult?> BeforeDeleteAsync(<#= contextType #> context, <#= keyCSharp #> id)
+    {
+        var users = context.Set<<#= entity #>>().AsNoTracking();
+        if (await users.AnyAsync(u => u.<#= userKey #> == id && <#= UserIsAdmin("u") #>) && !await users.AnyAsync(u => u.<#= userKey #> != id && <#= UserIsAdmin("u") #>))
+            return LastAdministrator();
+        return null;
+    }
+
+    private static IResult LastAdministrator() => Results.Problem(statusCode: <#= HttpStatus.UnprocessableEntity #>, type: "<#= ProblemTypes.LastAdministrator #>", title: "Last administrator", detail: "There must be at least one active administrator.");
+<#
+            }
         }
 #>
 }

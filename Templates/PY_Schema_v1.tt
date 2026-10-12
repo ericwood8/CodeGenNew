@@ -30,7 +30,7 @@
         return "";
     }
 
-    var annotations = t.Fields.Select(f => f.Annotation).Distinct().ToList();
+    var annotations = t.SchemaFields.Select(f => f.Annotation).Distinct().ToList();
 
     Line($"@@@FILE app/schemas/{t.Module}.py@@@");
     var datetimes = new[] { "date", "datetime", "time" }.Where(annotations.Contains).ToList();
@@ -49,7 +49,7 @@
     Line($"class {t.Schema}(BaseModel):");
     Line("    model_config = ConfigDict(populate_by_name=True, from_attributes=True, extra=\"ignore\")");
     Line();
-    foreach (var f in t.Fields)
+    foreach (var f in t.SchemaFields)
     {
         string d = Default(f);
         string alias = $"alias=\"{f.Json}\"";

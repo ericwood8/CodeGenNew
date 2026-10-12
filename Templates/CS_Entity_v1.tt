@@ -60,6 +60,9 @@
             .Select(n => (Column: n.Column, Role: n.Role, Type: n.Type)).ToList();
         var navByColumn = navigations.ToDictionary(n => n.Column.Name, n => n, StringComparer.OrdinalIgnoreCase);
 
+        // the user table's password hash is never written to an answer or read from a request body
+        string? hashColumn = UserTable.PlanOf(Model, Project)?.PasswordHash.Name;
+
         // ==== C# type of a column
         string ClrType(ColumnModel c) => c.CSharp();
 
@@ -172,6 +175,7 @@
                 if (d == "1" || d.EqualsIgnoreCase("true")) initializer = " = true;";
                 else if (d == "0" || d.EqualsIgnoreCase("false")) initializer = " = false;";
             }
+            if (hashColumn is not null && c.Name.EqualsIgnoreCase(hashColumn)) B("    [System.Text.Json.Serialization.JsonIgnore]");
             if (ColumnAttribute(c, columnType) is { } columnAttribute) B(columnAttribute);
             bool needsRequired = !c.IsNullable && !c.IsComputed && !c.IsIdentity && c.SqlType != SqlDbType.Timestamp;
             // the constructor below says the required members are set, which the nullable analysis does not believe for a string or a byte array

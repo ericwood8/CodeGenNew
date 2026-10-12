@@ -113,7 +113,10 @@ public class ColumnModel
     /// <summary> A text column that holds a credential, judged by its name (a name with Password in it, or one that ends in Salt, Secret, ApiKey or Token): the generated screens show it neither in the grid nor in the form,
     /// and a row that is edited keeps the value it was read with. Keep such a table out of the API with <c>NoApiTables</c> when its rows must not be read at all. </summary>
     public bool IsCredentialColumn =>
-        IsStringColumn && (Name.ContainsIgnoreCase("Password") || Array.Exists(CredentialNameEndings, s => Name.EndsWithIgnoreCase(s)));
+        IsUserCredential || IsStringColumn && (Name.ContainsIgnoreCase("Password") || Array.Exists(CredentialNameEndings, s => Name.EndsWithIgnoreCase(s)));
+
+    /// <summary> The project says this is a credential whatever it is called: the password hash column of the user table (<see cref="UserTable.MarkCredentials(TableModel, ProjectSettings)"/>, set before each template runs). </summary>
+    public bool IsUserCredential { get; set; }
 
     private static readonly string[] CredentialNameEndings = ["Salt", "Secret", "ApiKey", "Token"];
 

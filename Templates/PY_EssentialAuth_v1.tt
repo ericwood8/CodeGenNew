@@ -1,0 +1,280 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_EssentialAuth_v1.tt
+    // Generates: app/auth.py   (no table, no database: an essentials group, not ticked by default; ApiAuth=true in the project turns it on)
+    // The Python half of the sign-in the other stacks have: POST /api/auth/login answers { token, expiresUtc, user: { name, role, ownerId } } (400 for a blank body, 401 for a wrong password,
+    // 429 after five wrong tries in a minute), a bearer check (require_user) that main.py puts on every other router, the owner scope of the tables in OwnedTables (visible_owners: the administrator
+    // role sees every owner, anyone else only the owner id in the token) and the same password hash the ASP.NET API writes (pbkdf2-sha256, 600000 rounds), so one user table serves both.
+    // The token is a plain HS256 JWT made with the standard library: no package is added. The people who sign in are the one bootstrap administrator (Bootstrap__AdminUserName and
+    // Bootstrap__AdminPassword in the environment) or, with UserTable, the rows of that table (app/users.py, PY_UserDirectory). The signing key is Jwt__Key (at least 32 characters, never a file).
+    // Settings: ApiAuth, AuthRoleClaim, AuthOwnerClaim, AuthAdminRole, UserTable, ProjectName.
+    // ==========================================================================================
+    string projectName = Project.ProjectName ?? "MyApp";
+    string Str(string text) => PythonNames.Str(text);
+    bool table = Project.UserTable is not null;
+#>
+@@@FILE app/auth.py@@@
+"""Sign-in: POST /api/auth/login, the bearer check every other route needs, password hashing and the owner scope."""
+import base64
+import hashlib
+import hmac
+import json
+import os
+import secrets
+import threading
+import time
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from functools import cache
+
+from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
+
+from app.db import get_session
+from app.support import ApiError
+
+ROLE_CLAIM = <#= Str(Project.AuthRoleClaim) #>
+OWNER_CLAIM = <#= Str(Project.AuthOwnerClaim) #>
+NAME_CLAIM = "name"
+ADMIN_ROLE = <#= Str(Project.AuthAdminRole) #>
+ISSUER = <#= Str(projectName + ".Api") #>
+AUDIENCE = <#= Str(projectName) #>
+
+MINIMUM_KEY_LENGTH = 32
+EXPIRES_MINUTES = 480
+CLOCK_SKEW_SECONDS = 60
+MAX_FAILURES = 5
+FAILURE_WINDOW_SECONDS = 60
+
+SCHEME = "pbkdf2-sha256"
+ITERATIONS = 600_000
+SALT_BYTES = 16
+HASH_BYTES = 32
+
+PROBLEM_NOT_YOURS = "/problems/not-your-row"
+
+
+@dataclass(frozen=True)
+class DirectoryUser:
+    """A person who can sign in. password_hash is what hash_password made; role and owner_id go into the token."""
+
+    user_name: str
+    password_hash: str
+    role: str | None
+    owner_id: int | None
+
+
+@dataclass(frozen=True)
+class CurrentUser:
+    """The signed-in caller, as the token says."""
+
+    name: str
+    role: str | None
+    owner_id: int | None
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == ADMIN_ROLE
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(SALT_BYTES)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, ITERATIONS, HASH_BYTES)
+    return f"{SCHEME}${ITERATIONS}${base64.b64encode(salt).decode()}${base64.b64encode(digest).decode()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    parts = stored.split("$")
+    if len(parts) != 4 or parts[0] != SCHEME:
+        return False
+    try:
+        iterations = int(parts[1])
+        salt = base64.b64decode(parts[2], validate=True)
+        expected = base64.b64decode(parts[3], validate=True)
+    except ValueError:
+        return False
+    if iterations < 1 or not expected:
+        return False
+    actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations, len(expected))
+    return hmac.compare_digest(actual, expected)
+
+
+@cache
+def _unknown_user_hash() -> str:
+    # checked when the user is unknown, so a wrong user name takes as long to answer as a wrong password
+    return hash_password(secrets.token_hex(16))
+
+
+def signing_key() -> bytes:
+    key = os.environ.get("Jwt__Key") or os.environ.get("JWT_KEY") or ""
+    if len(key) < MINIMUM_KEY_LENGTH:
+        raise RuntimeError(f"Jwt__Key must be at least {MINIMUM_KEY_LENGTH} characters. Set the environment variable Jwt__Key; do not write the key into a file.")
+    return key.encode("utf-8")
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _b64url_decode(text: str) -> bytes:
+    return base64.urlsafe_b64decode(text + "=" * (-len(text) % 4))
+
+
+def _sign(signing_input: str) -> str:
+    return _b64url(hmac.new(signing_key(), signing_input.encode(), hashlib.sha256).digest())
+
+
+def create_token(user: DirectoryUser, expires: datetime) -> str:
+    now = int(time.time())
+    claims: dict = {"sub": user.user_name, NAME_CLAIM: user.user_name, "iss": ISSUER, "aud": AUDIENCE, "iat": now, "nbf": now, "exp": int(expires.timestamp())}
+    if user.role:
+        claims[ROLE_CLAIM] = user.role
+    if user.owner_id is not None:
+        claims[OWNER_CLAIM] = str(user.owner_id)
+    header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
+    payload = _b64url(json.dumps(claims, separators=(",", ":")).encode())
+    return f"{header}.{payload}.{_sign(header + '.' + payload)}"
+
+
+def read_token(token: str) -> dict | None:
+    """The claims of a token that is signed with the key, made for this API and not expired; None for anything else."""
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        if not hmac.compare_digest(_sign(parts[0] + "." + parts[1]), parts[2]):
+            return None
+        if json.loads(_b64url_decode(parts[0])).get("alg") != "HS256":
+            return None
+        claims = json.loads(_b64url_decode(parts[1]))
+    except (ValueError, UnicodeDecodeError):
+        return None
+    now = time.time()
+    if not isinstance(claims, dict) or claims.get("iss") != ISSUER or claims.get("aud") != AUDIENCE:
+        return None
+    if not isinstance(claims.get("exp"), (int, float)) or claims["exp"] + CLOCK_SKEW_SECONDS < now:
+        return None
+    if isinstance(claims.get("nbf"), (int, float)) and claims["nbf"] - CLOCK_SKEW_SECONDS > now:
+        return None
+    return claims
+
+
+def require_user(request: Request) -> CurrentUser:
+    """The signed-in caller; a missing, bad or expired token is a 401. main.py puts this on every router but the sign-in."""
+    scheme, _, token = request.headers.get("authorization", "").partition(" ")
+    claims = read_token(token.strip()) if scheme.lower() == "bearer" and token.strip() else None
+    if claims is None:
+        raise ApiError(<#= HttpStatus.Unauthorized #>, "Sign in first.", headers={"WWW-Authenticate": "Bearer"})
+    try:
+        owner = int(claims[OWNER_CLAIM]) if OWNER_CLAIM in claims else None
+    except (TypeError, ValueError):
+        owner = None
+    role = claims.get(ROLE_CLAIM)
+    return CurrentUser(str(claims.get(NAME_CLAIM) or claims.get("sub") or ""), role if isinstance(role, str) else None, owner)
+
+
+def visible_owners(user: CurrentUser) -> list[int] | None:
+    """The owner ids whose rows the caller may read and change in an owned table; None means every owner (the administrator). A caller with no owner id sees nothing."""
+    if user.is_admin:
+        return None
+    return [] if user.owner_id is None else [user.owner_id]
+
+
+def not_yours() -> ApiError:
+    return ApiError(<#= HttpStatus.Forbidden #>, "Not your row", problem_type=PROBLEM_NOT_YOURS, detail="That row belongs to someone you may not act for.")
+
+
+class LoginRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    user_name: str | None = Field(None, alias="userName")
+    password: str | None = None
+
+
+class _Throttle:
+    """Counts wrong passwords per user name and address: after MAX_FAILURES in a minute the sign-in answers 429 until the minute is over."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._failures: dict[str, tuple[int, float]] = {}
+
+    def is_blocked(self, key: str) -> bool:
+        with self._lock:
+            count, since = self._failures.get(key, (0, 0.0))
+            return count >= MAX_FAILURES and time.time() - since < FAILURE_WINDOW_SECONDS
+
+    def failed(self, key: str) -> None:
+        with self._lock:
+            count, since = self._failures.get(key, (0, 0.0))
+            now = time.time()
+            self._failures[key] = (1, now) if now - since >= FAILURE_WINDOW_SECONDS else (count + 1, since)
+
+    def succeeded(self, key: str) -> None:
+        with self._lock:
+            self._failures.pop(key, None)
+
+
+_throttle = _Throttle()
+<#
+    if (table)
+    {
+#>
+
+
+def find_user(session: Session, user_name: str) -> DirectoryUser | None:
+    """The person with that sign-in name, from the user table (app/users.py)."""
+    from app.users import find_user as find_in_table
+
+    return find_in_table(session, user_name.strip())
+<#
+    }
+    else
+    {
+#>
+
+
+@cache
+def _bootstrap_admin() -> DirectoryUser | None:
+    name = (os.environ.get("Bootstrap__AdminUserName") or "").strip()
+    password = os.environ.get("Bootstrap__AdminPassword") or ""
+    return DirectoryUser(name, hash_password(password), ADMIN_ROLE, None) if name and password else None
+
+
+def find_user(session: Session, user_name: str) -> DirectoryUser | None:
+    """The one user this API knows without a user table: Bootstrap__AdminUserName with Bootstrap__AdminPassword, in the administrator role. With neither set nobody can sign in."""
+    admin = _bootstrap_admin()
+    return admin if admin is not None and admin.user_name.lower() == user_name.strip().lower() else None
+<#
+    }
+#>
+
+
+auth_router = APIRouter()
+
+
+@auth_router.post("/api/auth/login")
+def login(body: LoginRequest, request: Request, session: Session = Depends(get_session)):
+    if not (body.user_name or "").strip() or not body.password:
+        raise ApiError(<#= HttpStatus.BadRequest #>, "Sign-in needs a user name and a password", problem_type="<#= ProblemTypes.SignInIncomplete #>")
+
+    key = body.user_name.strip().lower() + "|" + (request.client.host if request.client else "")
+    if _throttle.is_blocked(key):
+        raise ApiError(<#= HttpStatus.TooManyRequests #>, "Too many attempts", problem_type="<#= ProblemTypes.TooManyAttempts #>", detail="Wait a minute and try again.")
+
+    user = find_user(session, body.user_name)
+    matches = verify_password(body.password, user.password_hash if user else _unknown_user_hash())
+    if user is None or not matches:
+        _throttle.failed(key)
+        raise ApiError(<#= HttpStatus.Unauthorized #>, "Wrong user name or password", problem_type="<#= ProblemTypes.WrongCredentials #>")
+
+    _throttle.succeeded(key)
+    expires = datetime.now(timezone.utc) + timedelta(minutes=EXPIRES_MINUTES)
+    return {
+        "token": create_token(user, expires),
+        "expiresUtc": expires.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+        "user": {"name": user.user_name, "role": user.role, "ownerId": user.owner_id},
+    }

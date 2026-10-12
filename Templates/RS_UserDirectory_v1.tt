@@ -1,0 +1,119 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_UserDirectory_v1.tt
+    // Generates: src/users.rs   (the template writes its own path with an @@@FILE marker; the output folder is the Rust crate's folder)
+    // The people who sign in, kept in one of the project's own tables (UserTable=Employee, UserNameColumn, PasswordHashColumn, UserOwnerColumn, UserRoleColumn, UserAdminColumn), for the Rust
+    // API's sign-in (src/auth.rs, the Jwt group): find_user looks a sign-in name up, and command writes a hash (the same pbkdf2-sha256 text the ASP.NET API writes) for
+    // set-password <name> (cargo run with the arguments after a double hyphen; the new password in the environment variable NEW_PASSWORD, at least 8 characters, never on the command line):
+    // exit 0 done, 1 no such user, 2 usage. A row with no hash cannot sign in. A yes/no UserRoleColumn gives two roles (UserRoleWhenTrue, UserRoleWhenFalse); a text one is the role itself;
+    // a true UserAdminColumn makes the person the AuthAdminRole. Every statement is fixed text for the database that was read.
+    // Needs ApiAuth=true and UserTable. Which names and columns are acceptable is decided by UserTable.Resolve.
+    // ==========================================================================================
+    var (plan, problem) = UserTable.Resolve(Database, Project);
+    if (problem != null)
+        Error(problem);
+    if (plan == null)
+        return GenerationEnvironment.ToString();
+
+    var di = DialectInfo.For(plan.Table.Dialect);
+    string table = di.QuoteTable(plan.Table.SchemaName, plan.Table.DbTableName);
+    string Q(ColumnModel c) => di.Quote(c.DbName);
+    string Type(ColumnModel c) => RustTable.RustType(c, plan.Table.Dialect) ?? "String";
+    string RawSql(string sql) => RustTable.Raw(sql);
+
+    // the columns the sign-in reads, under fixed aliases
+    var select = new List<string> { $"{Q(plan.UserName)} AS name", $"{Q(plan.PasswordHash)} AS hash" };
+    if (plan.Owner != null) select.Add($"{Q(plan.Owner)} AS owner");
+    if (plan.Role != null) select.Add($"{Q(plan.Role)} AS role");
+    if (plan.Admin != null) select.Add($"{Q(plan.Admin)} AS admin");
+    string find = $"SELECT {string.Join(", ", select)} FROM {table} WHERE {Q(plan.UserName)} = {di.Placeholder(1)} AND {Q(plan.PasswordHash)} IS NOT NULL AND {Q(plan.PasswordHash)} <> ''";
+    string setPassword = $"UPDATE {table} SET {Q(plan.PasswordHash)} = {di.Placeholder(1)} WHERE {Q(plan.UserName)} = {di.Placeholder(2)}";
+
+    string roleExpression = plan.Role == null ? "None"
+        : plan.RoleIsFlag ? $"Some(if row.try_get::<Option<bool>, _>(\"role\")?.unwrap_or(false) {{ \"{plan.RoleWhenTrue}\" }} else {{ \"{plan.RoleWhenFalse}\" }}.to_string())"
+        : $"row.try_get::<Option<{Type(plan.Role)}>, _>(\"role\")?";
+    if (plan.Admin != null)
+        roleExpression = $"if row.try_get::<Option<bool>, _>(\"admin\")?.unwrap_or(false) {{ Some(ADMIN_ROLE.to_string()) }} else {{ {roleExpression} }}";
+    string ownerExpression = plan.Owner == null ? "None" : $"row.try_get::<Option<{Type(plan.Owner)}>, _>(\"owner\")?.map(i64::from)";
+
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+
+    Line("@@@FILE src/users.rs@@@");
+    Line($"// The people who sign in: the rows of {plan.Table.TableName} ({plan.UserName.Name}, {plan.PasswordHash.Name}). A row whose {plan.UserName.Name} or {plan.PasswordHash.Name} is empty cannot sign in.");
+    Line("// Written by RS_UserDirectory from the UserTable settings; regenerate it instead of editing it.");
+    Line("use sqlx::Row;");
+    Line();
+    Line("use crate::auth::{ADMIN_ROLE, DirectoryUser, hash_password};");
+    Line("use crate::support::Pool;");
+    Line();
+    Line($"const FIND: &str = {RawSql(find)};");
+    Line($"const SET_PASSWORD: &str = {RawSql(setPassword)};");
+    Line("const PASSWORD_VARIABLE: &str = \"NEW_PASSWORD\";");
+    Line("const MINIMUM_PASSWORD_LENGTH: usize = 8;");
+    Line();
+    Line("pub async fn find_user(pool: &Pool, user_name: &str) -> Result<Option<DirectoryUser>, sqlx::Error> {");
+    Line("    let Some(row) = sqlx::query(FIND).bind(user_name.trim()).fetch_optional(pool).await? else {");
+    Line("        return Ok(None);");
+    Line("    };");
+    Line("    Ok(Some(DirectoryUser {");
+    Line("        user_name: row.try_get(\"name\")?,");
+    Line("        password_hash: row.try_get(\"hash\")?,");
+    Line($"        role: {roleExpression},");
+    Line($"        owner_id: {ownerExpression},");
+    Line("    }))");
+    Line("}");
+    Line();
+    Line("/// Runs a command given as the arguments of the program (cargo run with the arguments after a double hyphen): Some(exit code) when the arguments named one, None to start the server.");
+    Line("pub async fn command(args: &[String]) -> Option<i32> {");
+    Line("    if args.first().is_none_or(|name| !name.eq_ignore_ascii_case(\"set-password\")) {");
+    Line("        return None;");
+    Line("    }");
+    Line("    let password = std::env::var(PASSWORD_VARIABLE).unwrap_or_default();");
+    Line("    if args.len() != 2 || password.is_empty() {");
+    Line("        eprintln!(\"Usage: set-password <user name>   (the new password in the environment variable {PASSWORD_VARIABLE}, never on the command line)\");");
+    Line("        return Some(2);");
+    Line("    }");
+    Line("    if password.chars().count() < MINIMUM_PASSWORD_LENGTH {");
+    Line("        eprintln!(\"The password must have at least {MINIMUM_PASSWORD_LENGTH} characters.\");");
+    Line("        return Some(2);");
+    Line("    }");
+    Line("    let pool = match crate::support::connect().await {");
+    Line("        Ok(pool) => pool,");
+    Line("        Err(error) => {");
+    Line("            eprintln!(\"Cannot connect to the database: {error}\");");
+    Line("            return Some(2);");
+    Line("        }");
+    Line("    };");
+    Line("    let name = args[1].trim();");
+    Line("    // hashing takes about a tenth of a second of the processor: it does not run on a thread that serves requests");
+    Line("    let target = name.to_string();");
+    Line("    let written = tokio::task::spawn_blocking(move || hash_password(&password)).await;");
+    Line("    let Ok(hash) = written else {");
+    Line("        return Some(2);");
+    Line("    };");
+    Line("    let result = sqlx::query(SET_PASSWORD).bind(hash).bind(target).execute(&pool).await;");
+    Line("    match result {");
+    Line("        Ok(done) if done.rows_affected() > 0 => {");
+    Line("            println!(\"Password set for {name}.\");");
+    Line("            Some(0)");
+    Line("        }");
+    Line("        Ok(_) => {");
+    Line("            println!(\"There is no user named {name}.\");");
+    Line("            Some(1)");
+    Line("        }");
+    Line("        Err(error) => {");
+    Line("            eprintln!(\"The password was not set: {error}\");");
+    Line("            Some(2)");
+    Line("        }");
+    Line("    }");
+    Line("}");
+    Write(sb.ToString());
+#>

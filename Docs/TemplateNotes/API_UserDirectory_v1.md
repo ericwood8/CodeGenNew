@@ -26,4 +26,15 @@ NEW_PASSWORD='a long throwaway' dotnet run --project InvoiceSystem.Api -- set-pa
 - **Administrator:** `UserAdminColumn` (a yes/no column such as `IsAdministrator`) makes a person the `AuthAdminRole`, the role that sees every owner in `OwnedTables`, whatever `UserRoleColumn` says. Without it, a text `UserRoleColumn` can hold that role; with only a yes/no `UserRoleColumn` nobody is an administrator.
 - **The bootstrap administrator stops working** once `UserTable` is set (checked: its sign-in answers 401), because the table is the only directory.
 - **Not done:** a person cannot change their own password through the API; lock-out after failures is the Jwt group's throttle, not a column.
-- **Other stacks:** the Python and Rust APIs do not have a sign-in yet.
+- **Other stacks:** the Python and Rust APIs have the same sign-in (`POST /api/auth/login`, the same token and password hash, `set-password`, the same guards on the user table, the owner scope): see `PY_UserDirectory_v1.md` and `RS_UserDirectory_v1.md`. One user table serves all three.
+
+## What the user table's own API does
+
+The generated CRUD API of the user table (`API_Crud`, the table named in `UserTable`) is guarded, so a signed-in caller cannot read or take credentials through it:
+
+- **The password hash** is never in an answer or a request body: the entity (and the transfer class) carries `[JsonIgnore]` on it, the input type leaves it out, and an update puts the stored hash back before it saves. A create starts with no hash; `set-password` is the one way to set it.
+- **The administrator and role columns** (`UserAdminColumn`, `UserRoleColumn`) can be changed only by an administrator. An update by anyone else that changes one is a 403 problem (`/problems/column-not-yours`), the same value is accepted, and a create by anyone else starts them at false (or empty).
+- **The sign-in name** is trimmed and must be unique: a second person with it is a 409 problem (`/problems/duplicate-value`), the answer the unique index would give.
+- **The last administrator** cannot lose the flag, be deactivated (an `IsActive` column) or be deleted: 422 (`/problems/last-administrator`). An administrator counts when the flag is true and, if the table has `IsActive`, the row is active.
+
+The checks are overrides of two hooks in the `CrudApi` and `NameActiveCrudApi` bases, `BeforeSaveAsync(context, row, isNew)` and `BeforeDeleteAsync(context, id)`, which any table's API can override to refuse a write; both exist only with `ApiAuth`, as does `Caller` (the signed-in user). Regenerate the bases with `essentials --replace` (the `crudapi` group) to get them.

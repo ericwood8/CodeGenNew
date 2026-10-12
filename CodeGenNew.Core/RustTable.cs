@@ -59,8 +59,11 @@ public sealed class RustTable
         Fields = fields;
         Skipped = skipped;
         Key = fields.First(f => f.Column.IsPrimaryKey);
+        // the user table's password hash is read into the struct (the sign-in needs it) but is in no JSON, no INSERT, no UPDATE, no filter, no sort and no clone: only set-password writes it
+        string? hashName = UserTable.PlanOf(model, project)?.PasswordHash.Name;
+        HashField = hashName is null ? null : fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(hashName));
         var fieldOf = new Dictionary<ColumnModel, RustField>();
-        foreach (var field in fields)
+        foreach (var field in fields.Where(f => f != HashField))
             fieldOf.TryAdd(field.Column, field);
         _fieldOf = fieldOf;
         Navigations = EntityNavigations.Of(model, fk => project.NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape) ?? false)
@@ -71,7 +74,7 @@ public sealed class RustTable
         SelectList = string.Join(", ", fields.Select(f => f.Select));
 
         // what an INSERT writes: everything the database does not assign (an identity or computed column is left out)
-        Written = fields.Where(f => !f.Column.IsIdentity && !f.Column.IsComputed).ToList();
+        Written = fields.Where(f => f != HashField && !f.Column.IsIdentity && !f.Column.IsComputed).ToList();
         string columns = string.Join(", ", Written.Select(f => _di.Quote(f.Column.DbName)));
         string values = string.Join(", ", Written.Select((f, i) => Parameter(f, i + 1)));
         string returning = Returning ? $" RETURNING {SelectList}" : "";
@@ -111,6 +114,9 @@ public sealed class RustTable
     public IReadOnlyList<RustField> Fields { get; }
     public IReadOnlyList<ColumnModel> Skipped { get; }
     public RustField Key { get; }
+
+    /// <summary> The password hash field of the user table (<c>UserTable</c> with <c>ApiAuth</c>); null for any other table. </summary>
+    public RustField? HashField { get; }
 
     /// <summary> The navigation properties of the entity, which a Rust row carries only as null. </summary>
     public IReadOnlyList<RustNavigation> Navigations { get; }
@@ -247,7 +253,7 @@ public sealed class RustTable
 
         string TextOf(ColumnModel c) => "t." + _di.Quote(c.DbName) + (_di.Dialect == SqlDialect.PostgreSql && c.DbEnumType is not null ? "::text" : "");
 
-        Filters = plan.Filters.Select(f =>
+        Filters = plan.Filters.Where(f => _fieldOf.ContainsKey(f.Column)).Select(f =>
         {
             var (before, after) = _di.ContainsParts(TextOf(f.Column));
             string field = _fieldOf[f.Column].Name;
@@ -297,8 +303,7 @@ public sealed class RustTable
 
         foreach (var column in CloneShape.Copyable(m))
         {
-            var field = Fields.FirstOrDefault(f => f.Column == column);
-            if (field is null || column.IsPrimaryKey)
+            if (!_fieldOf.TryGetValue(column, out var field) || column.IsPrimaryKey)
                 continue;
 
             string? value;

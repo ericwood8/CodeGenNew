@@ -24,7 +24,7 @@
 
     var checks = new List<string>();
     var shapes = new HashSet<string>();
-    foreach (var f in t.Fields)
+    foreach (var f in t.SchemaFields)
     {
         var rule = f.Column.RuleOf(Project);
         if (rule is null || f.ReadOnly)

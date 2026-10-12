@@ -72,6 +72,23 @@ DB_USER=<#= Project.DatabaseUser #>
 #>
 # the origins that may call the API from a browser (comma separated); blank: the front ends' dev servers
 # CORS_ORIGINS=
+<#
+    if (Project.ApiAuth)
+    {
+#>
+# sign-in (ApiAuth): the signing key, at least 32 characters; set it in the environment, never in a file
+# Jwt__Key=
+<#
+        if (Project.UserTable is null)
+        {
+#>
+# the one user who can sign in without a user table
+# Bootstrap__AdminUserName=
+# Bootstrap__AdminPassword=
+<#
+        }
+    }
+#>
 @@@FILE .gitignore@@@
 __pycache__/
 *.pyc
@@ -95,3 +112,26 @@ uvicorn app.main:app <#= portFlag #> <#= Project.ApiPort #>
 ```
 
 The interactive documentation is at `/docs`. The routes are the ones the other stacks of the project serve (`/api/<table>s`, `/search`, `/{id}`, `/{id}/clone`), so the React, Angular and Blazor front ends call it unchanged.
+<#
+    if (Project.ApiAuth)
+    {
+#>
+
+## Sign-in
+
+`POST /api/auth/login` takes `{ "userName", "password" }` and answers a bearer token; every other route needs `Authorization: Bearer <token>`. Set the signing key in the environment before you start (`Jwt__Key`, at least 32 characters; never in a file).
+<#
+        if (Project.UserTable is { } userTable)
+        {
+#>
+The people who sign in are the rows of `<#= userTable #>`. Set a password with `NEW_PASSWORD='a long throwaway' python -m app.users set-password <name>`.
+<#
+        }
+        else
+        {
+#>
+The one user is `Bootstrap__AdminUserName` with `Bootstrap__AdminPassword` (environment variables).
+<#
+        }
+    }
+#>

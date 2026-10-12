@@ -13,6 +13,9 @@
     // POST (201 with a Location header and the new row), PUT /{id} (400 when the id in the body differs, 404 for no such row), DELETE /{id} (200, 404, or 400 when the row is in use),
     // POST /{id}/clone (201 and the copy, a cloneable table), GET /lookup ({ id, name, isActive } of every row, a table with a display column) and GET /search with the filters, pageNumber, pageSize, sortBy and sortDir (a table with a search endpoint).
     // With ApiValidation=true the create and update handlers run the table's validate (RS_Validate) and answer 400 with the problems.
+    // With ApiAuth=true (the Jwt group's src/auth.rs) a table listed in OwnedTables shows and changes only the rows of the owner the caller may act for (403 for another owner's row, the same rule as
+    // the ASP.NET API), a table that hangs off an owned table is scoped through its parent, and the user table (UserTable) never shows or takes its password hash (the struct skips it in JSON, the
+    // repository never writes it), lets only an administrator change the administrator and role columns (403), keeps a sign-in name unique (409) and keeps the last administrator (422).
     // Full notes: Docs/TemplateNotes/RS_Routes_v1.md
     // ==========================================================================================
 
@@ -27,14 +30,40 @@
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
 
+    // ApiAuth: who owns a row, and what the user table guards
+    bool auth = Project.ApiAuth;
+    var ownerColumn = auth ? OwnedTable.OwnerColumn(Model, Project) : null;
+    var ownerLink = auth ? OwnedTable.Through(Model, Project) : null;
+    var userPlan = auth ? UserTable.PlanOf(Model, Project) : null;
+    RustField? FieldOf(ColumnModel? column) => column is null ? null : t.Fields.FirstOrDefault(f => f != t.HashField && f.Column.Name.EqualsIgnoreCase(column.Name));
+    var ownerField = FieldOf(ownerColumn);
+    var linkField = ownerLink is null ? null : t.Fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(ownerLink.ForeignKey));
+    bool scoped = ownerField is not null || (ownerColumn is null && linkField is not null);
+    string parentModule = ownerLink is null ? "" : RustNames.Snake(ownerLink.ParentTable);
+    string parentOwner = ownerLink is null ? "" : RustNames.Ident(RustNames.Snake(ownerLink.ParentOwner));
+    string parentKey = ownerLink is null ? "" : RustNames.Ident(RustNames.Snake(ownerLink.ParentKey));
+    var nameField = FieldOf(userPlan?.UserName);
+    var adminField = FieldOf(userPlan?.Admin);
+    var guarded = new[] { FieldOf(userPlan?.Admin), FieldOf(userPlan?.Role) }.Where(f => f is not null).Select(f => f!).ToList();
+    var activeField = t.Fields.FirstOrDefault(f => f.Column.IsBooleanColumn && !f.Column.IsNullable && f.Column.Name == "IsActive");
+    string AdminTest(string row) => adminField is null ? "false" : (adminField.IsOption ? $"{row}.{adminField.Name} == Some(true)" : $"{row}.{adminField.Name}") + (activeField is null ? "" : $" && {row}.{activeField.Name}");
+    string DefaultOf(RustField f) => f.BaseType == "bool" ? (f.IsOption ? "Some(false)" : "false") : f.IsOption ? "None" : "String::new()";
+    string keyRef = textKey ? "&" : "";
+    string userArgument = auth && (scoped || userPlan is not null) ? ", Extension(user): Extension<CurrentUser>" : "";
+    string userRead = scoped ? userArgument : "";   // the reading handlers need the caller only to scope the rows
+
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
     Line("use axum::{");
-    Line("    Json, Router,");
+    Line(userArgument.Length > 0 ? "    Extension, Json, Router," : "    Json, Router,");
     Line(search ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
     Line("    http::StatusCode,");
     Line("    response::Response,");
     Line("    routing::{get, post},");
     Line("};");
+    if (userArgument.Length > 0)
+        Line("use crate::auth::" + (scoped ? "{CurrentUser, Scope, not_yours};" : t.Clone is not null && userPlan is not null ? "{CurrentUser, not_yours};" : "CurrentUser;"));
+    if (userPlan is not null)
+        Line("use crate::auth::{PROBLEM_COLUMN_NOT_YOURS, PROBLEM_DUPLICATE_VALUE, PROBLEM_LAST_ADMINISTRATOR};");
     Line($"use crate::models::{t.Module}::{t.Struct};");
     Line($"use crate::repos::{t.Module} as repo;");
     Line(textKey ? "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created, path_segment};" : "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
@@ -55,8 +84,115 @@
         Line($"        .route(\"{t.Route}/{{id}}/clone\", post(clone_row))");
     Line("}");
     Line();
-    Line($"async fn get_all(State(pool): State<Pool>) -> ApiResult<Json<Vec<{t.Struct}>>> {{");
-    Line("    Ok(Json(repo::get_all(&pool).await?))");
+    if (scoped)
+    {
+        // who owns a row: its own owner column, or the owner of the parent row it belongs to
+        Line($"/// The owner of a row: {(ownerField is not null ? "its own owner column" : "the owner of the parent row it belongs to")}.");
+        Line($"async fn owner_of(pool: &Pool, row: &{t.Struct}) -> ApiResult<Option<i64>> {{");
+        if (ownerField is not null)
+        {
+            Line("    let _ = pool;");
+            Line($"    Ok(Some(i64::from(row.{ownerField.Name})))");
+        }
+        else
+            Line($"    Ok(crate::repos::{parentModule}::get_by_id(pool, row.{linkField!.Name}).await?.map(|parent| i64::from(parent.{parentOwner})))");
+        Line("}");
+        Line();
+        Line("/// Null when the caller may act for the owner of the row; otherwise the refusal (403).");
+        Line($"async fn allowed(pool: &Pool, user: &CurrentUser, row: &{t.Struct}) -> ApiResult<()> {{");
+        Line("    match user.scope() {");
+        Line("        Scope::All => Ok(()),");
+        Line("        Scope::Nobody => Err(not_yours()),");
+        Line("        Scope::Owner(owner) => if owner_of(pool, row).await? == Some(owner) { Ok(()) } else { Err(not_yours()) },");
+        Line("    }");
+        Line("}");
+        Line();
+        Line("/// The rows the caller may see, as the repository filters them.");
+        Line($"async fn scope_of({(ownerField is not null ? "_pool" : "pool")}: &Pool, user: &CurrentUser) -> ApiResult<repo::Scoped> {{");
+        Line("    Ok(match user.scope() {");
+        Line("        Scope::All => repo::Scoped::All,");
+        Line("        Scope::Nobody => repo::Scoped::Nothing,");
+        if (ownerField is not null)
+            Line($"        Scope::Owner(owner) => repo::Scoped::Own(owner as {ownerField.Type}),");
+        else
+        {
+            Line($"        Scope::Owner(owner) => repo::Scoped::Keys(");
+            Line($"            crate::repos::{parentModule}::get_all_scoped(pool, &crate::repos::{parentModule}::Scoped::Own(owner as _)).await?.into_iter().map(|parent| parent.{parentKey}).collect(),");
+            Line("        ),");
+        }
+        Line("    })");
+        Line("}");
+        Line();
+        if (ownerField is null)
+        {
+            // the child list is the parent's keys: a parent that is itself scoped through its own parent has no Own variant, which the generated parent repository tells at compile time
+        }
+    }
+    if (userPlan is not null)
+    {
+        if (adminField is not null)
+        {
+            Line($"fn is_administrator(row: &{t.Struct}) -> bool {{");
+            Line($"    {AdminTest("row")}");
+            Line("}");
+            Line();
+            Line("fn last_administrator() -> ApiError {");
+            Line($"    ApiError::Problem({HttpStatus.UnprocessableEntity}, PROBLEM_LAST_ADMINISTRATOR, \"Last administrator\", Some(\"There must be at least one active administrator.\"))");
+            Line("}");
+            Line();
+        }
+        Line("/// What the user table allows: only an administrator changes the administrator and role columns, a sign-in name is used by one person and the last administrator stays.");
+        Line($"async fn guard_user_row(pool: &Pool, user: &CurrentUser, row: &mut {t.Struct}, current: Option<&{t.Struct}>) -> ApiResult<()> {{");
+        if (guarded.Count > 0)
+        {
+            Line("    if !user.is_admin() {");
+            foreach (var g in guarded)
+            {
+                Line("        match current {");
+                Line($"            None => row.{g.Name} = {DefaultOf(g)},");
+                Line($"            Some(current) if row.{g.Name} != current.{g.Name} => {{");
+                Line($"                return Err(ApiError::Problem({HttpStatus.Forbidden}, PROBLEM_COLUMN_NOT_YOURS, \"Not allowed\", Some(\"Only an administrator may change {g.Column.Name}.\")));");
+                Line("            }");
+                Line("            Some(_) => {}");
+                Line("        }");
+            }
+            Line("    }");
+        }
+        if (nameField is not null)
+        {
+            if (nameField.IsOption)
+            {
+                Line($"    if let Some(login) = row.{nameField.Name}.as_deref().map(str::trim).map(str::to_string) {{");
+                Line($"        row.{nameField.Name} = Some(login.clone());");
+            }
+            else
+            {
+                Line($"    let login = row.{nameField.Name}.trim().to_string();");
+                Line($"    row.{nameField.Name} = login.clone();");
+                Line("    {");
+            }
+            Line($"        if !login.is_empty() && repo::login_taken(pool, &login, {keyRef}row.{t.Key.Name}{(textKey ? "" : "")}).await? {{");
+            Line($"            return Err(ApiError::Problem({HttpStatus.Conflict}, PROBLEM_DUPLICATE_VALUE, \"Duplicate value\", Some(\"Another person already signs in with that name.\")));");
+            Line("        }");
+            Line("    }");
+        }
+        if (adminField is not null)
+        {
+            Line("    if let Some(current) = current {");
+            Line($"        if is_administrator(current) && !is_administrator(row) && !repo::other_administrators(pool, {keyRef}row.{t.Key.Name}).await? {{");
+            Line("            return Err(last_administrator());");
+            Line("        }");
+            Line("    }");
+        }
+        Line("    Ok(())");
+        Line("}");
+        Line();
+    }
+    Line($"async fn get_all(State(pool): State<Pool>{userRead}) -> ApiResult<Json<Vec<{t.Struct}>>> {{");
+    if (scoped)
+        Line("    Ok(Json(repo::get_all_scoped(&pool, &scope_of(&pool, &user).await?).await?))");
+    else
+        Line("    Ok(Json(repo::get_all(&pool).await?))");
     Line("}");
     Line();
     if (t.LookupSql is not null)
@@ -66,15 +202,43 @@
         Line("}");
         Line();
     }
-    Line($"async fn get_by_id(State(pool): State<Pool>, Path(id): Path<{keyType}>) -> ApiResult<Json<{t.Struct}>> {{");
-    Line($"    repo::get_by_id(&pool, {idArg}).await?.map(Json).ok_or(ApiError::NotFound)");
+    Line($"async fn get_by_id(State(pool): State<Pool>, Path(id): Path<{keyType}>{userRead}) -> ApiResult<Json<{t.Struct}>> {{");
+    if (scoped)
+    {
+        Line($"    let row = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
+        Line("    allowed(&pool, &user, &row).await?;");
+        Line("    Ok(Json(row))");
+    }
+    else
+        Line($"    repo::get_by_id(&pool, {idArg}).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");
     Line();
-    Line($"async fn create(State(pool): State<Pool>, ApiJson({(guidKey ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
     if (validate)
     {
         Line("    validate(&row)?;");
     }
+    if (scoped)
+    {
+        Line("    match user.scope() {");
+        Line("        Scope::All => {}");
+        Line("        Scope::Nobody => return Err(not_yours()),");
+        Line("        Scope::Owner(owner) => {");
+        if (ownerField is not null)
+        {
+            Line("            // a caller who may act for one owner and left the owner blank creates the row for that owner");
+            Line($"            if row.{ownerField.Name} == 0 {{");
+            Line($"                row.{ownerField.Name} = owner as {ownerField.Type};");
+            Line("            }");
+        }
+        Line("            if owner_of(&pool, &row).await? != Some(owner) {");
+        Line("                return Err(not_yours());");
+        Line("            }");
+        Line("        }");
+        Line("    }");
+    }
+    if (userPlan is not null)
+        Line("    guard_user_row(&pool, &user, &mut row, None).await?;");
     if (textKey)
     {
         // a text key is chosen by the person: a blank one is refused and one that exists is a conflict (the answers the ASP.NET API gives)
@@ -98,16 +262,40 @@
         : $"    Ok(created(format!(\"{t.Route}/{{}}\", row.{t.Key.Name}), row))");
     Line("}");
     Line();
-    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>, ApiJson(row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
+    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
     Line($"    if row.{t.Key.Name} != id {{");
     Line("        return Err(ApiError::BadRequest(\"The id in the URL and the id in the body differ.\".into()));");
     Line("    }");
     if (validate)
         Line("    validate(&row)?;");
+    if (scoped || userPlan is not null)
+    {
+        Line($"    let current = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
+        if (scoped)
+        {
+            Line("    allowed(&pool, &user, &current).await?;");
+            Line("    // the row stays with an owner the caller may act for: it cannot be handed to anyone else");
+            Line("    allowed(&pool, &user, &row).await?;");
+        }
+        if (userPlan is not null)
+            Line("    guard_user_row(&pool, &user, &mut row, Some(&current)).await?;");
+    }
     Line($"    repo::update(&pool, {idArg}, &row).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");
     Line();
-    Line($"async fn delete(State(pool): State<Pool>, Path(id): Path<{keyType}>) -> ApiResult<StatusCode> {{");
+    Line($"async fn delete(State(pool): State<Pool>, Path(id): Path<{keyType}>{userRead}) -> ApiResult<StatusCode> {{");
+    if (scoped || adminField is not null)
+    {
+        Line($"    let current = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
+        if (scoped)
+            Line("    allowed(&pool, &user, &current).await?;");
+        if (adminField is not null)
+        {
+            Line($"    if is_administrator(&current) && !repo::other_administrators(&pool, {keyRef}current.{t.Key.Name}).await? {{");
+            Line("        return Err(last_administrator());");
+            Line("    }");
+        }
+    }
     Line($"    match repo::delete(&pool, {idArg}).await? {{");
     Line("        0 => Err(ApiError::NotFound),");
     Line("        _ => Ok(StatusCode::OK),");
@@ -116,7 +304,19 @@
     if (t.Clone is not null)
     {
         Line();
-        Line($"async fn clone_row(State(pool): State<Pool>, Path(id): Path<{keyType}>) -> ApiResult<Response> {{");
+        Line($"async fn clone_row(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}) -> ApiResult<Response> {{");
+        if (scoped)
+        {
+            Line($"    let source = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
+            Line("    allowed(&pool, &user, &source).await?;");
+        }
+        if (userPlan is not null)
+        {
+            Line("    // a copy of a person is made by an administrator");
+            Line("    if !user.is_admin() {");
+            Line("        return Err(not_yours());");
+            Line("    }");
+        }
         Line("    let copy = repo::clone_row(&pool, id).await?.ok_or(ApiError::NotFound)?;");
         Line($"    Ok(created(format!(\"{t.Route}/{{}}\", copy.{t.Key.Name}), copy))");
         Line("}");
@@ -139,13 +339,13 @@
         Line("// The most rows one request may ask for, so a page size from outside cannot make the database return the whole table at once.");
         Line("const MAX_PAGE_SIZE: i64 = 1000;");
         Line();
-        Line("async fn search(State(pool): State<Pool>, Query(query): Query<repo::SearchQuery>) -> ApiResult<Json<SearchResult>> {");
+        Line($"async fn search(State(pool): State<Pool>{userRead}, Query(query): Query<repo::SearchQuery>) -> ApiResult<Json<SearchResult>> {{");
         Line("    let page = query.page_number.unwrap_or(1);");
         Line("    if page < 1 {");
         Line("        return Err(ApiError::BadRequest(\"pageNumber must be 1 or greater.\".into()));");
         Line("    }");
         Line("    let page_size = query.page_size.unwrap_or(100).clamp(1, MAX_PAGE_SIZE);");
-        Line("    let (items, total_count) = repo::search(&pool, &query, page, page_size).await?;");
+        Line(scoped ? "    let (items, total_count) = repo::search(&pool, &query, page, page_size, &scope_of(&pool, &user).await?).await?;" : "    let (items, total_count) = repo::search(&pool, &query, page, page_size).await?;");
         Line("    let total_pages = if total_count == 0 { 0 } else { (total_count + page_size - 1) / page_size };");
         Line("    Ok(Json(SearchResult { items, page, page_size, total_count, total_pages }))");
         Line("}");

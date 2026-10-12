@@ -13,10 +13,15 @@ public static class DtoShape
 
     /// <summary> The columns a caller may set: not computed, not a version stamp, not audit / create / modify, and not an identity key. A key the person chooses (text, Guid) stays, and so does the owner column
     /// of an owned table: the API checks it against the owners the caller may act for (403 for anyone else's), which is what lets the administrator create a row for a person. </summary>
-    public static List<ColumnModel> InputColumns(TableModel table) =>
-        table.Columns.OrderBy(c => c.OrdinalPosition)
+    public static List<ColumnModel> InputColumns(TableModel table, ProjectSettings? project = null)
+    {
+        // the user table's password hash is set by the set-password command only
+        string? hash = project is null ? null : UserTable.PlanOf(table, project)?.PasswordHash.Name;
+        return table.Columns.OrderBy(c => c.OrdinalPosition)
+            .Where(c => hash is null || !c.Name.EqualsIgnoreCase(hash))
             .Where(c => !c.IsComputed && c.SqlType != SqlDbType.Timestamp
                         && !c.IsAuditColumn && !c.IsCreateDateColumn && !c.IsCreateUserColumn && !c.IsModifiedDateColumn && !c.IsModifiedUserColumn && !c.IsLastChangedDateColumn
                         && !(c.IsPrimaryKey && c.IsIdentity))
             .ToList();
+    }
 }

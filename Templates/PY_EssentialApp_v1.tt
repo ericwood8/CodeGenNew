@@ -20,6 +20,7 @@
     var stacks = Project.Stacks.Where(s => s.EqualsIgnoreCase("React") || s.EqualsIgnoreCase("Angular") || s.EqualsIgnoreCase("Blazor")).ToList();
     if (stacks.Count == 0) stacks = ["React"];
     string origins = string.Join(", ", stacks.Select(s => Str($"http://localhost:{Project.DevPort(s)}")));
+    bool auth = Project.ApiAuth;
 #>
 @@@FILE app/__init__.py@@@
 # The generated API: app.main is the FastAPI application (uvicorn app.main:app).
@@ -129,12 +130,16 @@ PROBLEM_TYPE = "https://tools.ietf.org/html/rfc9110#section-15.5.1"
 
 
 class ApiError(Exception):
-    """An answer with a status and a message: 400, 404 ..."""
+    """An answer with a status and a message: 400, 404 ... A problem_type says which failure it is (the other stacks write /problems/not-your-row and the like), a detail explains it
+    and headers are added to the answer (WWW-Authenticate for a 401)."""
 
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, problem_type: str | None = None, detail: str | None = None, headers: dict[str, str] | None = None):
         super().__init__(message)
         self.status = status
         self.message = message
+        self.problem_type = problem_type
+        self.detail = detail
+        self.headers = headers
 
 
 class ApiValidationError(Exception):
@@ -157,17 +162,19 @@ class Page(BaseModel, Generic[T]):
     total_pages: int = Field(alias="totalPages")
 
 
-def _problem(status: int, title: str, errors: dict[str, list[str]] | None = None) -> JSONResponse:
-    body: dict = {"type": PROBLEM_TYPE, "title": title, "status": status}
+def _problem(status: int, title: str, errors: dict[str, list[str]] | None = None, problem_type: str | None = None, detail: str | None = None, headers: dict[str, str] | None = None) -> JSONResponse:
+    body: dict = {"type": problem_type or PROBLEM_TYPE, "title": title, "status": status}
+    if detail:
+        body["detail"] = detail
     if errors:
         body["errors"] = errors
-    return JSONResponse(body, status_code=status, media_type="application/problem+json")
+    return JSONResponse(body, status_code=status, media_type="application/problem+json", headers=headers)
 
 
 def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def api_error(request: Request, error: ApiError) -> JSONResponse:
-        return _problem(error.status, error.message)
+        return _problem(error.status, error.message, None, error.problem_type, error.detail, error.headers)
 
     @app.exception_handler(ApiValidationError)
     async def validation_error(request: Request, error: ApiValidationError) -> JSONResponse:
@@ -226,12 +233,29 @@ def looks_like_url(value: str) -> bool:
 """The API: every table's router, the error forms and CORS for the front ends' dev servers. Run it with: uvicorn app.main:app <#= portFlag #> <#= Project.ApiPort #>"""
 import os
 
-from fastapi import FastAPI
+from fastapi import <#= auth ? "Depends, " : "" #>FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import routes
+<#
+    if (auth)
+    {
+#>
+from app.auth import auth_router, require_user, signing_key
+<#
+    }
+#>
 from app.support import register_error_handlers
 
+<#
+    if (auth)
+    {
+#>
+signing_key()   # stops the start-up when Jwt__Key is missing or shorter than 32 characters
+
+<#
+    }
+#>
 app = FastAPI(title=<#= Str(Project.ProjectTitle + " API") #>)
 register_error_handlers(app)
 
@@ -239,5 +263,21 @@ register_error_handlers(app)
 origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()] or [<#= origins #>]
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"], expose_headers=["Location"])
 
+<#
+    if (auth)
+    {
+#>
+# The sign-in is open; every other route needs a bearer token.
+app.include_router(auth_router)
+for router in routes.routers:
+    app.include_router(router, dependencies=[Depends(require_user)])
+<#
+    }
+    else
+    {
+#>
 for router in routes.routers:
     app.include_router(router)
+<#
+    }
+#>

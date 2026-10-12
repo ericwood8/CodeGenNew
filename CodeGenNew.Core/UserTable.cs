@@ -40,6 +40,36 @@ public static class UserTable
         if (table is null)
             return (null, $"UserTable names {tableName}, which is not a table of the database.");
 
+        return ResolveTable(table, project);
+    }
+
+    /// <summary> True when <paramref name="table"/> is the project's user table (with ApiAuth): its API must not hand out or take credentials. </summary>
+    public static bool IsUserTable(TableModel table, ProjectSettings project) =>
+        project.ApiAuth && project.UserTable is { } name && name.EqualsIgnoreCase(table.TableName);
+
+    /// <summary> Tells each column of <paramref name="table"/> whether the project makes it a credential (the user table's password hash, found by its setting or its usual name), so every template that
+    /// asks <see cref="ColumnModel.IsCredentialColumn"/> hides it from forms, grids and searches in every stack. Run before each template, so a second project in the same process starts clean. </summary>
+    public static void MarkCredentials(TableModel table, ProjectSettings project)
+    {
+        string? hash = PlanOf(table, project)?.PasswordHash.Name;
+        foreach (var column in table.Columns)
+            column.IsUserCredential = hash is not null && column.Name.EqualsIgnoreCase(hash);
+    }
+
+    /// <summary> <see cref="MarkCredentials(TableModel, ProjectSettings)"/> for every table. </summary>
+    public static void MarkCredentials(DatabaseModel database, ProjectSettings project)
+    {
+        foreach (var table in database.Tables)
+            MarkCredentials(table, project);
+    }
+
+    /// <summary> The plan when <paramref name="table"/> is the user table and the settings fit it; null otherwise (API_UserDirectory is the template that reports the problem). </summary>
+    public static UserTablePlan? PlanOf(TableModel table, ProjectSettings project) =>
+        IsUserTable(table, project) ? ResolveTable(table, project).Plan : null;
+
+    /// <summary> The plan for the user table itself, without the rest of the database. </summary>
+    public static (UserTablePlan? Plan, string? Problem) ResolveTable(TableModel table, ProjectSettings project)
+    {
         if (FindOrInfer(table, "UserNameColumn", project.UserNameColumn, UserNameNames, out var name) is { } nameProblem)
             return (null, nameProblem);
         if (!name!.IsStringColumn)
