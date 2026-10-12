@@ -51,6 +51,31 @@ public class ApiTestsTemplateTests
     }
 
     [TestMethod]
+    public async Task The_clone_sort_and_unique_value_checks_are_written_for_the_tables_that_have_them()
+    {
+        var unique = Sample.Table("Customer",
+        [
+            Sample.Column("CustomerId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("AccountNumber", SqlDbType.VarChar, characters: 20, ordinal: 2, inUniqueIndex: true),
+            Sample.Column("Name", SqlDbType.NVarChar, characters: 50, ordinal: 3),
+        ], indexes: [new IndexModel("UX_Customer_AccountNumber", true, ["AccountNumber"])]);
+        string tests = await Render(unique, Project());
+
+        Expect.Contains(tests, "public async Task A_row_can_be_cloned()");
+        Expect.Contains(tests, "client.PostAsync($\"{Route}/{id}/clone\", null)");
+        Expect.Contains(tests, "[DataRow(\"accountnumber\")]");
+        Expect.Contains(tests, "[DataRow(\"name\")]");
+        Expect.Contains(tests, "The_search_sorts_by_each_column_it_offers(string column)");
+        Expect.Contains(tests, "A_sort_column_the_search_does_not_offer_is_ignored");
+        Expect.Contains(tests, "A_second_row_with_a_value_that_must_be_unique_is_refused");
+        Expect.Contains(tests, "again[\"accountNumber\"] = body[\"accountNumber\"]!.GetValue<string>();");
+
+        string plain = await Render(Customer(), Project(("NoCloneTables", "Customer")));
+        Expect.DoesNotContain(plain, "A_row_can_be_cloned");
+        Expect.DoesNotContain(plain, "must_be_unique");
+    }
+
+    [TestMethod]
     public async Task The_limit_tests_are_written_only_with_ApiValidation()
     {
         string tests = await Render(Customer(), Project(("ApiValidation", "true")));

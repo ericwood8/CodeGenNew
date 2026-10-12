@@ -1,6 +1,7 @@
 <#@ template language="C#" #>
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
 <#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Data" #>
 <#@ import namespace="System.Globalization" #>
@@ -85,6 +86,13 @@
             ?? bodyColumns.FirstOrDefault(HasRoomToGrow);
         string changedJson = changed is null ? "" : JsonNames.Camel(changed.Name);
         string changedType = changed is null ? "" : changed.IsStringColumn ? "string" : changed.IsBooleanColumn ? "bool" : "long";
+
+        // the same names the search sorts by (SearchPlan), a clone the API offers (CloneShape: an int key the database numbers), and a unique index on one free text column
+        var sortNames = Model.HasSearchApi(Project) ? SearchPlan.For(Model, []).Sorts.Select(s => s.Name.ToLowerInvariant()).Distinct().ToList() : new List<string>();
+        bool canClone = intKey && CloneShape.CanClone(Model, Project);
+        var uniqueText = Model.Indexes.Where(i => i.IsUnique && i.Columns.Count == 1)
+            .Select(i => bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0 && (c.Name == i.Columns[0] || c.DbName == i.Columns[0])))
+            .FirstOrDefault(c => c is not null);
 
         // limits the validators enforce, for the 400 tests
         var longText = Project.ApiValidation ? bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0) : null;
@@ -207,6 +215,100 @@ public class <#= singular #>ApiTests
         using var response = await ApiFixture.Client.GetAsync($"{Route}/search?pageNumber=1&pageSize=5");
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
         Assert.IsFalse(string.IsNullOrWhiteSpace(await response.Content.ReadAsStringAsync()));
+    }
+<#
+        }
+        if (sortNames.Count > 0)
+        {
+#>
+
+    [TestMethod]
+<#
+            foreach (string sortName in sortNames)
+            {
+#>
+    [DataRow(<#= ApiSampleValues.Json(sortName) #>)]
+<#
+            }
+#>
+    public async Task The_search_sorts_by_each_column_it_offers(string column)
+    {
+        ApiFixture.RequireDatabase();
+        foreach (string direction in new[] { "asc", "desc" })
+        {
+            using var response = await ApiFixture.Client.GetAsync($"{Route}/search?pageNumber=1&pageSize=5&sortBy={Uri.EscapeDataString(column)}&sortDir={direction}");
+            Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, column + " " + direction + ": " + await response.Content.ReadAsStringAsync());
+        }
+    }
+
+    [TestMethod]
+    public async Task A_sort_column_the_search_does_not_offer_is_ignored()
+    {
+        ApiFixture.RequireDatabase();
+        using var response = await ApiFixture.Client.GetAsync($"{Route}/search?pageNumber=1&pageSize=5&sortBy={Uri.EscapeDataString("x' OR 1=1 " + new string('-', 2))}");
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+    }
+<#
+        }
+        if (canClone)
+        {
+#>
+
+    [TestMethod]
+    public async Task A_row_can_be_cloned()
+    {
+        ApiFixture.RequireDatabase();
+        var client = ApiFixture.Client;
+
+        using var created = await client.PostAsJsonAsync(Route, await NewBodyAsync());
+        Assert.AreEqual(HttpStatusCode.Created, created.StatusCode, await created.Content.ReadAsStringAsync());
+        long id = (await created.Content.ReadFromJsonAsync<JsonObject>())![<#= ApiSampleValues.Json(keyJson) #>]!.GetValue<long>();
+        long? copyId = null;
+        try
+        {
+            using var cloned = await client.PostAsync($"{Route}/{id}/clone", null);
+            Assert.AreEqual(HttpStatusCode.Created, cloned.StatusCode, await cloned.Content.ReadAsStringAsync());
+            copyId = (await cloned.Content.ReadFromJsonAsync<JsonObject>())![<#= ApiSampleValues.Json(keyJson) #>]!.GetValue<long>();
+            Assert.AreNotEqual(id, copyId, "the copy is a new row");
+        }
+        finally
+        {
+            using var removedCopy = copyId is null ? null : await client.DeleteAsync($"{Route}/{copyId}");
+            using var removed = await client.DeleteAsync($"{Route}/{id}");
+        }
+    }
+<#
+        }
+        if (uniqueText is not null)
+        {
+#>
+
+    [TestMethod]
+    public async Task A_second_row_with_a_value_that_must_be_unique_is_refused()
+    {
+        ApiFixture.RequireDatabase();
+        var client = ApiFixture.Client;
+
+        var body = await NewBodyAsync();
+        using var created = await client.PostAsJsonAsync(Route, body);
+        Assert.AreEqual(HttpStatusCode.Created, created.StatusCode, await created.Content.ReadAsStringAsync());
+        <#= keyCs #> id = (await created.Content.ReadFromJsonAsync<JsonObject>())![<#= ApiSampleValues.Json(keyJson) #>]!.GetValue<<#= keyCs #>>();
+        try
+        {
+            var again = await NewBodyAsync();
+            again[<#= ApiSampleValues.Json(JsonNames.Camel(uniqueText.Name)) #>] = body[<#= ApiSampleValues.Json(JsonNames.Camel(uniqueText.Name)) #>]!.GetValue<string>();
+            using var duplicate = await client.PostAsJsonAsync(Route, again);
+            if (duplicate.IsSuccessStatusCode)
+            {
+                <#= keyCs #> extra = (await duplicate.Content.ReadFromJsonAsync<JsonObject>())![<#= ApiSampleValues.Json(keyJson) #>]!.GetValue<<#= keyCs #>>();
+                using var removedExtra = await client.DeleteAsync($"{Route}/{extra}");
+            }
+            Assert.IsTrue((int)duplicate.StatusCode is >= 400 and < 500, "the duplicate is refused with a client error, not saved and not a 500: " + (int)duplicate.StatusCode);
+        }
+        finally
+        {
+            using var removed = await client.DeleteAsync($"{Route}/{<#= idRef #>}");
+        }
     }
 <#
         }
