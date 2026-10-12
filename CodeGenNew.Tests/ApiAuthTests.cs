@@ -391,11 +391,11 @@ public class ApiAuthTests
         var files = await Generate("API_Csv", ("ApiCsv", "true"));
         string csv = Pick(files, "Csv.cs");
         Expect.Contains(csv, "MapTable<TimeSheet, ShopContext>(app, ");
-        Expect.Contains(csv, ", true);");
-        Expect.Contains(csv, ", false);");
-        Expect.Contains(csv, "string file, CsvColumn[] columns, bool adminOnly)");
+        Expect.Contains(csv, ", true, false);");
+        Expect.Contains(csv, ", false, false);");
+        Expect.Contains(csv, "string file, CsvColumn[] columns, bool adminOnly, bool gated)");
         Expect.Contains(csv, ".WithName(\"Export\" + file + \"Csv\").AdminOnly(adminOnly);");
-        Expect.Contains(csv, ".WithName(\"Import\" + file + \"Csv\").AdminOnly(adminOnly);");
+        Expect.Contains(csv, ".WithName(\"Import\" + file + \"Csv\").AdminOnly(adminOnly || gated);");
         Expect.Contains(csv, "builder.RequireAuthorization(AuthNames.AdministratorPolicy)");
 
         var plain = await Generate("API_Csv", ("ApiCsv", "true"), ("ApiAuth", "false"));

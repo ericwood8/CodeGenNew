@@ -40,7 +40,7 @@ public sealed class FormModel
         GridColumns = Core.GridColumns.For(Columns);
         SortableColumns = GridColumns.Where(SearchSort.IsSortable).ToList();
         SearchFields = table.SearchableColumns.Select(c => new SearchField(c, c.Name, TemplateHelpers.LowerFirst(c.Name), Labels.Column(c.Name))).ToList();
-        DateColumns = Columns.Where(c => TemplateHelpers.IsDate(c) && !c.IsSystemStampColumn).ToList();
+        DateColumns = Columns.Where(c => TemplateHelpers.IsDate(c) && !c.IsSystemStampColumn && !IsGuardStamp(c)).ToList();
         NewRowTypeScript = NewRowMembers(table, TextKey, KeyColumn, KeyType);
     }
 
@@ -161,7 +161,7 @@ public sealed class FormModel
 
     /// <summary> Which editor a column gets on the form. The order is the rule every stack follows: the first that fits wins. </summary>
     public FieldKind KindOf(ColumnModel column) =>
-        column.IsSystemStampColumn ? FieldKind.SystemStamp
+        column.IsSystemStampColumn || IsGuardStamp(column) ? FieldKind.SystemStamp
         : TextKey && column.IsPrimaryKey ? FieldKind.TypedKey
         : LookupOf(column) is not null ? FieldKind.Lookup
         : column.HasChoices ? FieldKind.Choices
@@ -171,6 +171,16 @@ public sealed class FormModel
         : TemplateHelpers.IsNumber(column) ? FieldKind.Number
         : TemplateHelpers.IsMultiline(column) ? FieldKind.Multiline
         : FieldKind.Text;
+
+    /// <summary> The project's guarded columns of this table (GuardedColumns): the screen asks the API which of them the caller may change and shows the others as text with the sentence. </summary>
+    public IReadOnlyList<GuardHint> Guards => _guards ??= GatePlan.GuardsOf(_project, Table);
+    private IReadOnlyList<GuardHint>? _guards;
+
+    /// <summary> The guard of this column, or null when it is not guarded. </summary>
+    public GuardHint? GuardOf(ColumnModel column) => Guards.FirstOrDefault(g => g.Column.EqualsIgnoreCase(column.Name));
+
+    /// <summary> A column the server stamps for a guard (who changed the guarded column, and when): shown as text, never edited. </summary>
+    public bool IsGuardStamp(ColumnModel column) => Guards.Any(g => g.Stamps.Any(s => s.EqualsIgnoreCase(column.Name)));
 
     /// <summary> The person must give this column a value: a field of the form that is NOT NULL, other than the system's own stamps and a yes/no box (which always holds a value). Every stack's
     /// <c>required</c> check and red mark read this, so they cannot drift apart. </summary>

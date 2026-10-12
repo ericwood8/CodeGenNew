@@ -25,7 +25,7 @@ public static class ProjectSettingGroups
         new("API", "This tab has docs, HTTP, fakers, validation, CSV, EF configurations, production profile, telemetry, API tests, project docs, folder, port, and DTOs.",
             ["ApiDocs", "ApiHttp", "ApiFakers", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ProjectDocs", "ApiFolder", "ApiPort", "Dtos"]),
         new("Sign-in", "This tab has the API sign-in, the owned tables and claim names, and the user table the people sign in against.",
-            ["ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse"]),
+            ["ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns"]),
         new("Dashboard", "This tab has Dashboard, Dashboard Strip, Dashboard Measures and No Dashboard Tables.",
             ["Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables"]),
         new("WinUI3", "This tab has the view and view-model namespaces and folders, detail-master tables and the directory listing.",

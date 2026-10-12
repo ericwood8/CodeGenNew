@@ -201,6 +201,9 @@
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
                 string stampValue = c.IsDateColumn ? "{{ " + model + " | date:'medium' }}" : "{{ " + model + " }}";
+                // who set a guarded column and when: a row from before the stamp existed says so instead of showing nothing
+                if (form.IsGuardStamp(c))
+                    stampValue = c.IsDateColumn ? "{{ " + model + " ? (" + model + " | date:'medium') : '" + GuardStamp.NotRecorded + "' }}" : "{{ " + model + " || '" + GuardStamp.NotRecorded + "' }}";
                 H($"            <div class=\"form-group\" *ngIf=\"{(textKey ? "!adding" : "selectedRow." + keyProp)}\">");
                 H($"                <label for=\"{id}\">{Labels.Field(c)}</label>");
                 H($"                <span id=\"{id}\">{stampValue}</span>");
@@ -209,6 +212,10 @@
             }
             H("            <div class=\"form-group\">");
             H($"                <label for=\"{id}\">{Labels.Field(c)}{RequiredMark.Html(form.IsMarked(c))}</label>");
+            // a guarded column is a control only for a person who may change it (the guards answer); everyone else sees its value as text and why
+            var guard = form.GuardOf(c);
+            if (guard is not null)
+                H($"                <ng-container *ngIf=\"guards['{guard.Json}']; else guarded{c.Name}\">");
             if (kind == FieldKind.TypedKey)
             {
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
@@ -267,6 +274,13 @@
             {
                 string max = IsText(c) && Chars(c) > 0 ? $" maxlength=\"{Chars(c)}\"" : "";
                 H($"                <input type=\"text\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{max} placeholder=\"{Labels.Placeholder(c)}\"{req}>");
+            }
+            if (guard is not null)
+            {
+                H("                </ng-container>");
+                H($"                <ng-template #guarded{c.Name}>");
+                H($"                    <span id=\"{id}\">{{{{ {model}{(c.IsBooleanColumn ? " ? 'Yes' : 'No'" : "")} }}}}</span> <small class=\"guard-note\">{guard.Note}</small>");
+                H("                </ng-template>");
             }
             H("            </div>");
         }
@@ -409,6 +423,8 @@
         if (!nameActive && pageSize != 20) T($"  override pageSize = {pageSize};");
         foreach (var p in parents)
             T($"  {p.List}: {p.ItemType}[] = [];");
+        if (form.Guards.Count > 0)
+            T("  guards: Record<string, boolean> = {}; // which guarded columns the signed-in person may change (GET guards)");
         foreach (var p in parents.Where(p => !p.IsSelf))
             T($"  private readonly {AngularNames.ServiceField(p.Table)} = inject({AngularNames.ServiceClass(p.Table)});");
         if (tabbed)
@@ -424,10 +440,12 @@
         T();
         {
             var parentsToLoad = parents.ToList();   // a drop-down over this table itself (a manager) is read through the screen's own service
-            if (parentsToLoad.Count > 0)
+            if (parentsToLoad.Count > 0 || form.Guards.Count > 0)
             {
                 T("  protected override start(): void {");
                 T("    super.start();");
+                if (form.Guards.Count > 0)
+                    T("    this.service.getGuards().subscribe((data) => { this.guards = data; });");
                 foreach (var p in parentsToLoad)
                     T($"    this.{(p.IsSelf ? "service" : AngularNames.ServiceField(p.Table))}.{p.LoadMethod}().subscribe((data) => {{ this.{p.List} = data; }});");
                 T("  }");

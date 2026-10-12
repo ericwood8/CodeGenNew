@@ -51,6 +51,27 @@ public class FormPolishTests
         return text.Contains("@@@FILE") ? GeneratedFiles.Split(text).ToDictionary(f => Path.GetFileName(f.RelativePath), f => f.Content.ReplaceLineEndings("\n")) : new() { ["page"] = text };
     }
 
+    private static TableModel WideWithParent(int parentOrdinal) => Sample.Table("Wide",
+    [
+        Sample.Column("WideId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        .. Enumerable.Range(2, 22).Select(i => i == parentOrdinal
+            ? Sample.Column("KindId", SqlDbType.Int, ordinal: i)
+            : Sample.Column("Field" + i, SqlDbType.NVarChar, characters: 20, ordinal: i))
+    ], [Sample.ForeignKey("KindId", "Kind", "KindId", "Name")]);
+
+    [TestMethod]
+    [DataRow("TSX_Page_v1.tt")]
+    public async Task A_parent_name_helper_is_written_only_when_the_grid_shows_that_parent(string template)
+    {
+        string shown = (await Run(template, WideWithParent(2), Project())).Single(f => f.Key.EndsWith("Page.tsx")).Value;
+        Expect.Contains(shown, "const kindName = (id?: number): string");
+        Expect.Contains(shown, "{kindName(");
+
+        string hidden = (await Run(template, WideWithParent(23), Project())).Single(f => f.Key.EndsWith("Page.tsx")).Value;
+        Expect.DoesNotContain(hidden, "const kindName");
+        Expect.DoesNotContain(hidden, "{kindName(");
+    }
+
     [TestMethod]
     public async Task The_react_form_shows_the_stamp_as_text_the_money_in_a_money_box_and_a_month_in_a_short_box()
     {

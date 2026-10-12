@@ -112,6 +112,8 @@
 
     // The user table (UserTable with ApiAuth): its API never sends or takes the password hash, lets only an administrator change the administrator and role columns, keeps a sign-in name unique
     // and keeps the last administrator (UserTable, API_UserDirectory).
+    // ChangeGates and GuardedColumns (API_Gates): the table's checks run before a row is saved.
+    bool hasGates = supported && GatePlan.HasRules(Project, Model);
     var userPlan = supported ? UserTable.PlanOf(Model, Project) : null;
     var userAdmin = userPlan?.Admin;
     var userRole = userPlan?.Role;
@@ -334,6 +336,22 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
     }
 
     private static IResult LastAdministrator() => Results.Problem(statusCode: <#= HttpStatus.UnprocessableEntity #>, type: "<#= ProblemTypes.LastAdministrator #>", title: "Last administrator", detail: "There must be at least one active administrator.");
+<#
+            }
+        }
+        if (hasGates)
+        {
+#>
+
+    // The project's ChangeGates and GuardedColumns for this table (API_Gates writes <#= entity #>Gates).
+    protected override Task<IResult?> BeforeSaveAsync(<#= contextType #> context, <#= entity #> row, bool isNew) => <#= entity #>Gates.CheckAsync(context, Caller, row, isNew);
+<#
+            if (canClone)
+            {
+#>
+
+    // A copy starts the way a new row does: the gated columns at their start, a guarded column reset unless the caller may change it.
+    protected override Task<IResult?> AfterCloneAsync(<#= contextType #> context, <#= keyCSharp #> newId) => <#= entity #>Gates.AfterCloneAsync(context, Caller, newId);
 <#
             }
         }

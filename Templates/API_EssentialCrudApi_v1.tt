@@ -373,6 +373,9 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 
     /// <summary> Runs before a row is deleted; a result refuses the delete. The default accepts. </summary>
     protected virtual Task<IResult?> BeforeDeleteAsync(<#= contextType #> context, TKey id) => Task.FromResult<IResult?>(null);
+
+    /// <summary> Runs after a row was cloned and before the copy is answered: the copy may be corrected here (a column no caller may set goes back to its start) or removed with a result that refuses it. The default accepts. </summary>
+    protected virtual Task<IResult?> AfterCloneAsync(<#= contextType #> context, TKey newId) => Task.FromResult<IResult?>(null);
 <#
     }
 #>
@@ -851,7 +854,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
         if (!await repo.ExistsAsync(id))
             return Results.NotFound(); // 404 error if there is no row to copy
         var newId = await CloneAsync(repo, id);
-        var copy = await repo.GetByIdAsync(newId);
+<#= auth("        if (await AfterCloneAsync(context, newId) is { } refusedClone)\n            return refusedClone;\n") #>        var copy = await repo.GetByIdAsync(newId);
         return Results.Created($"/api{_route}/{newId}", <#= dtos ? "copy is null ? null : ToOutput(copy)" : "copy" #>);
     }
 }

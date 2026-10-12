@@ -28,6 +28,7 @@ public static class ProblemTypes
     public const string NotYours = Prefix + "not-your-row";
     public const string ColumnNotYours = Prefix + "column-not-yours";
     public const string LastAdministrator = Prefix + "last-administrator";
+    public const string ChangeNotAllowed = Prefix + "change-not-allowed";
     public const string SearchNotScoped = Prefix + "search-not-scoped";
 
     // signing in

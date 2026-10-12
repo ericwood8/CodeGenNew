@@ -64,7 +64,8 @@
         L($"@@@FILE {servicesFolder}/{stem}.service.ts@@@");
         L("import { Injectable } from '@angular/core';");
         L("import { HttpClient } from '@angular/common/http';");
-        if (!Model.IsNameActiveTable) L("import { Observable } from 'rxjs';");
+        bool guarded = GatePlan.GuardsOf(Project, Model).Count > 0;
+        if (!Model.IsNameActiveTable || guarded) L("import { Observable } from 'rxjs';");
         L($"import {{ {baseName} }} from '../{modelsFolder}/{stem}';");
         L(nameActive ? $"import {{ {serviceBase} }} from './crud.service';" : $"import {{ {serviceBase}, PagedResult }} from './crud.service';");
         L();
@@ -88,6 +89,14 @@
             // sortBy / sortDescending: the grid's chosen sort (a column name, "asc" or "desc"); left out of the request when there is none (the default order).
             L($"    getPage(pageNumber: number, pageSize: number{filterParams}, sortBy?: string, sortDescending?: boolean): Observable<{baseName}PagedResult> {{");
             L($"        return this.searchPage({{ pageNumber, pageSize, filters: {{ {string.Join(", ", filters.Select(f => f.ParamName))} }}, sortBy, sortDescending }});".Replace("{  }", "{}"));
+            L("    }");
+        }
+        if (guarded)
+        {
+            L();
+            L("    // Which guarded columns the signed-in person may change (the screen shows the others as text), by the column's JSON name");
+            L("    getGuards(): Observable<Record<string, boolean>> {");
+            L("        return this.http.get<Record<string, boolean>>(`${this.apiUrl}/guards`);");
             L("    }");
         }
         L("}");

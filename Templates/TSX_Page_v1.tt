@@ -289,7 +289,8 @@
         T("    saveSort(gridKey, null);");
         T($"    load(1{(canSearch ? ", filters" : "")}, null);");
         T("  };");
-        foreach (var p in parents)
+        var parentsShownInGrid = gridColumns.Where(c => form.CellOf(c) == CellKind.Lookup).Select(c => form.ParentOf(c)!.NameMethod).ToHashSet();
+        foreach (var p in parents.Where(p => parentsShownInGrid.Contains(p.NameMethod)))
         {
             T();
             T($"  // the name to show in place of a {p.BaseName} id");

@@ -86,3 +86,7 @@ With `ListProtocol=Search` the class overrides `SearchRows` and `SortRows` (Crud
 ## The user table
 
 With `ApiAuth` and `UserTable` naming this table, the class also overrides `BeforeSaveAsync` and, when the table has an administrator flag, `BeforeDeleteAsync` (see `API_UserDirectory_v1.md`): the stored password hash is put back, an administrator or role column changes only for an administrator, a sign-in name is unique and the last administrator stays. `CS_Entity` and `CS_Dto` mark the hash `[JsonIgnore]` and `DtoShape.InputColumns(table, project)` leaves it out of the input.
+
+## A gated or guarded table
+
+With `ApiAuth` and a `ChangeGates` or `GuardedColumns` rule that names this table, the class overrides `BeforeSaveAsync` to call `<Table>Gates.CheckAsync` (and, for a table that clones, `AfterCloneAsync` to call `<Table>Gates.AfterCloneAsync`); `API_Gates` writes those classes. See `API_Gates_v1.md`. A table cannot be both the user table and a gated one.

@@ -152,6 +152,7 @@ public static class DefaultAssetSeeder
         "TS_EssentialGit_v1.tt", "TS_EssentialGit_v1.tt.config",
         "API_Registration_v1.tt", "API_Registration_v1.tt.config",
         "API_Dashboard_v1.tt", "API_Dashboard_v1.tt.config",
+        "API_Gates_v1.tt", "API_Gates_v1.tt.config",
         "TSX_Screens_v1.tt", "TSX_Screens_v1.tt.config",
         "TSX_GridSort_v1.tt", "TSX_GridSort_v1.tt.config",
         "TS_GridSort_v1.tt", "TS_GridSort_v1.tt.config",

@@ -55,6 +55,11 @@
         Line();
     foreach (var t in junctions)
         Line($"        new {t.TableName}JunctionApi<{t.TableName}>().Register(app);");
+    if (GatePlan.Resolve(Database, Project).Guards.Count > 0)
+    {
+        Line();
+        Line("        GatesApi.Register(app);");
+    }
     if (Project.Dashboard)
     {
         Line();

@@ -63,6 +63,8 @@ public static class ProjectSettingsHints
         ["UserAdminColumn"] = "With UserTable: a yes/no column (IsAdministrator); true makes the person an administrator (the AuthAdminRole, which sees every owner's rows), whatever UserRoleColumn says; blank = the one yes/no column called IsAdministrator, IsAdmin or the like, and nobody is an administrator when there is none",
         ["UserRoleWhenTrue"] = "With a yes/no UserRoleColumn: the role of a row where it is true; blank = Manager",
         ["UserRoleWhenFalse"] = "With a yes/no UserRoleColumn: the role of a row where it is false; blank = Employee",
+        ["ChangeGates"] = "With ApiAuth: rules that hold a change, one per table column, separated by |: Table.Column; to 2,3 (or to > 1); when Parent.Column=2 (and / or allowed); unless Parent.Column=1; start 1 (a new row always starts as this); message \"words\". The API answers 409 change-not-allowed. Blank = none. Regenerate the API; the screens show the server's words",
+        ["GuardedColumns"] = "With ApiAuth and UserTable: columns only some people may change, separated by |: Table.Column; by Employee.IsManager (a yes/no column of the user table; administrators may too); stampBy Column; stampOn Column (set to the person and the time). Anyone else may save the row if the value is unchanged. Blank = none. Regenerate the API and the screens",
         ["OutputApiTests"] ="folder of the API test project under the output folder; blank = <ProjectName>.Api.Tests",
         ["ApiHttp"] = "The plan also writes a .http request file per table (API_Http).",
         ["ProjectDocs"] = "The plan also writes a data dictionary page per table and the ER diagram (MD_DataDictionary, MD_Erd).",
