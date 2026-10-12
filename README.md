@@ -79,6 +79,8 @@ Stored procedures and scripts, plus the documents that describe the schema.
 
 | Group | Template | Writes |
 |---|---|---|
+| `MD` | `MD_DataDictionary` | `Table.md` - one Markdown page per table: every column with type, null, default, key role, limits and notes, the foreign keys out and the tables that refer to it. |
+| `MD` | `MD_Erd` | `ErDiagram.md` - whole-database: a Mermaid entity-relationship diagram (GitHub and VS Code draw it); `ErdTables` picks the tables. |
 | `SP` | `SP_Insert`, `SP_Update`, `SP_Delete`, `SP_Save` | `Table_Insert.sql` … — the classic CRUD stored procedures; `Save` is insert-or-update in one. Audit, active/inactive, soft-delete and date-range columns are handled by rule. |
 | `SP` | `SP_Lookup` | ID + display columns of a row and of every table it points to, so a drop-down needs no joins. |
 | `SP` | `SP_EnumCasts` | `EnumCasts.sql` - whole-database, PostgreSQL only: one guarded `CREATE CAST (text AS <enum>) ... AS ASSIGNMENT` per enum type a column uses, so EF Core can store the drop-down's value. |
@@ -93,8 +95,6 @@ Stored procedures and scripts, plus the documents that describe the schema.
 | `SP` | `SP_BulkUpdate` | `BulkUpdate.sql` - whole-database, SQL Server only: a procedure that rewrites the columns named in `BulkUpdateColumns` (for example `UPPER({column})`) in every table that has them, as plain `UPDATE` statements in one transaction. |
 | `SP` | `SP_Dashboard` | `DashboardQueries.sql` - whole-database, only with `Dashboard=true`: the dashboard's statements for the database that was read, each under a comment saying why the widget exists; run it by hand to check a widget. |
 | `SP` | `SP_ForeignKeyIndexes` | `ForeignKeyIndexes.sql` - whole-database, all three databases: a `CREATE INDEX` for every foreign key that no index starts with, in the database's own syntax (an advisory script: it is never applied). |
-| `MD` | `MD_DataDictionary` | `Table.md` - one Markdown page per table: every column with type, null, default, key role, limits and notes, the foreign keys out and the tables that refer to it. |
-| `MD` | `MD_Erd` | `ErDiagram.md` - whole-database: a Mermaid entity-relationship diagram (GitHub and VS Code draw it); `ErdTables` picks the tables. |
 
 ### Back-end layer
 
@@ -105,17 +105,20 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `API` | `API_Crud` | `TableApi.cs` — a minimal-API class: get all, get by id, create, update, delete, each over the table's repository. |
 | `API` | `API_Junction` | `TableJunctionApi.cs` — HTTP endpoints over `SP_Junction`'s three procedures, called straight through the `DbContext` (no repository) — the HTTP companion `TS_JunctionComponent` needs (also junction-only). |
 | `API` | `API_Search` | `TableSearchApi.cs` — a `/search?...&pageNumber=&pageSize=` endpoint over `SP_Search`/`SP_SearchCount`, called straight through the `DbContext` (no repository), returning `TableSearchResult` (`Items`/`Page`/`PageSize`/`TotalCount`/`TotalPages`) — the HTTP companion the Angular/React pagination wiring needs (only offered for a table with at least one searchable column). |
-| `CS` | `CS_Entity` | `Table.cs` — an EF Core entity: key, foreign keys, navigation properties, attributes. |
-| `CS` | `CS_DbContext` | `<Context>.cs` — **one file for the whole database** (the CLI needs no `-t`; the app has a toolbar button, Alt+D): the EF Core context as a `partial` class with a `DbSet` per table, both constructors, `OnConfiguring` and the one place the provider is chosen (`UseSqlServer`, `UseNpgsql` or `UseMySQL`; PostgreSQL's `timestamp` convention; the MySQL password from `MYSQL_PWD`). |
 | `API` | `API_Registration` | `ApiRegistration.cs` — also whole-database: `AddGeneratedDbContext(configuration)` and `RegisterGeneratedApis()`, so a sample's `Program.cs` lists no table. |
 | `API` | `API_OpenApi` | `openapi.yaml` - whole-database: an OpenAPI 3.0 document of the API the other `API` templates write (paths, search parameters, schemas with types, lengths, CHECK limits, enum lists, required and nullable), for Kiota, NSwag, openapi-generator or a Swagger UI. |
 | `API` | `API_Http` | `Table.http` - a request file per table (all, one, search, create, update, delete, clone) with example bodies shaped by the columns, for Visual Studio, VS Code and Rider. |
 | `API` | `API_Test` | `TableApiTests.cs` - an MSTest integration test class per table in its own test project (`ApiTests=true`): add, read, change and remove a row, a 404, the search page, and with `ApiValidation` the limits. Runs the API in process over a scratch database (SQLite: a copy of the file; others: `<PROJECT>_TEST_CONNECTION`). |
+| `API` | `API_Dashboard` | `DashboardApi.cs` - `GET /api/dashboard` (every widget) and `?table=Customer` (that table's cards), cached for a minute. |
+| `API` | `API_Csv` | `Apis/Csv.cs` - whole-database, `ApiCsv=true`: `GET /api/table/export.csv` and an all-or-nothing `POST /api/table/import` for every table, no package. |
+| `API` | `API_UserDirectory` | `Apis/TableUserDirectory.cs` - whole-database, `ApiAuth=true` with `UserTable=Employee`: the sign-in looks people up in your own table (`UserNameColumn`, `PasswordHashColumn`, `UserOwnerColumn`, `UserRoleColumn`), and `dotnet run -- set-password <name>` writes a password hash from the environment variable `NEW_PASSWORD`. |
+| `API` | `API_Gates` | `Apis/Gates.cs` - whole-database, only with `ChangeGates` or `GuardedColumns` (and `ApiAuth=true`): a change a rule may refuse (a status that may not move while the customer is in bad standing unless the customer is exempt: 409 `change-not-allowed`) and a column only some people may change (`column-not-yours`, stamped with who and when), checked in the table's API before a save, in a clone and, for the import, by an administrator-only route; `GET <route>/guards` tells the Angular screen which fields to show as text. See `Docs/TemplateNotes/API_Gates_v1.md`. |
+| `CS` | `CS_Entity` | `Table.cs` — an EF Core entity: key, foreign keys, navigation properties, attributes. |
+| `CS` | `CS_DbContext` | `<Context>.cs` — **one file for the whole database** (the CLI needs no `-t`; the app has a toolbar button, Alt+D): the EF Core context as a `partial` class with a `DbSet` per table, both constructors, `OnConfiguring` and the one place the provider is chosen (`UseSqlServer`, `UseNpgsql` or `UseMySQL`; PostgreSQL's `timestamp` convention; the MySQL password from `MYSQL_PWD`). |
 | `CS` | `CS_Validation` | `TableValidation.cs` — a `[MetadataType]` buddy class adding `[Required]`/`[StringLength]`/`[DataType]`/`[Display]` to the entity (works for a hand-maintained entity too; the entity class must be `partial`). |
 | `CS` | `CS_Enum` | `Table.cs` — a C# enum whose members are the **rows** of a small lookup table. |
 | `CS` | `CS_Repo` | `TableRepo.cs` — the thin repository class over your shared generic repository, plus a `HasDuplicate<Column>` check and (for a string column) a `SuggestUnique<Column>` name generator for every column in a unique index other than the primary key. |
 | `CS` | `CS_Dashboard` | `DashboardData.cs` - whole-database, only with `Dashboard=true`: the chosen widgets with their fixed SQL and `LoadAsync`, which runs them through the context; the web API and the desktop page both call it. |
-| `API` | `API_Dashboard` | `DashboardApi.cs` - `GET /api/dashboard` (every widget) and `?table=Customer` (that table's cards), cached for a minute. |
 | `CS` | `CS_SearchQuery` | `TableSearchQuery.cs` - the search as LINQ (filter by contains, sort from a fixed list, default order), written when the project uses `AccessMode=Ef` (always for SQLite); `CS_Repo` and `API_Search` call it instead of the routines. |
 | `CS` | `CS_Validator` | `TableValidator.cs` - a FluentValidation `AbstractValidator<Entity>`: required, length, ranges from the name rules and CHECK constraints, CHECK lists, email / phone / URL / latitude / longitude by column name. |
 | `CS` | `CS_Faker` | `TableFaker.cs` - a Bogus fake-data generator per table: text of the right kind and length, numbers inside their CHECK ranges, choices from CHECK lists, nullable columns sometimes NULL, a seed for repeatable rows. |
@@ -128,8 +131,18 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `CS` | `CS_DataContractDto` | `TableContract.cs` - a `[DataContract]` class with four constructors (empty, from a `DataRow`, from a reader row, copy), for a WCF-style service. |
 | `CS` | `CS_TypedDataRow` | `TableDataTable.cs` - the typed-DataSet shape of a table: a `DataTable` with its columns and a `DataRow` with one typed property per column and `IsXNull` / `SetXNull` pairs. |
 | `CS` | `CS_SerializationDtos` | `TableSerializationDtos.cs` - the same data class in three contracts side by side: plain `[Serializable]`, custom `ISerializable`, and `XmlSerializer` attributes. |
+| `CS` | `CS_EfConfiguration` | `Data/Configurations/TableConfiguration.cs` - an `IEntityTypeConfiguration` per table (table, key, column details, indexes); with `EfConfigurations=true` the context applies them with `ApplyConfigurationsFromAssembly`. |
+| `CS` | `CS_CqrsHandlers` | `Application/` - whole-database, only with `PlanAlso`: commands, queries and handlers per table (create, update, delete, get by id, paged list) behind two small interfaces, and `AddApplicationHandlers()`. No package. |
 | `FS` | `FS_Entity` | `Table.fs` - an immutable F# record (a nullable column is an `option`) and a module with `validate` and `ofStrings`, both returning a `Result` that lists every problem; the limits include the database's CHECK ranges. |
 | `FS` | `FS_Rop` | `Rop.fs` - no table, no database: the shared `Result` helpers, the error-collecting `<*>` operator and the text parsers the records use. |
+| `MD` | `MD_Postman`, `MD_Bruno` | `collections/<Project>.postman_collection.json` and `collections/bruno/` - whole-database, only with `PlanAlso`: a Postman and a Bruno collection of the API requests (a folder per table: all, one, search, add, change, remove, copy) with sample bodies and a `baseUrl` variable. |
+| `MD` | `MD_Dashboard` | `Dashboard.md` - whole-database, only with `Dashboard=true`: the widgets the dashboard shows, each with the schema fact that chose it and the statement that fills it, then what the caps left out. |
+| `PROTO` | `PROTO_Message` | `Table.proto` - a proto3 message per table, its key message, list messages and a CRUD service (a decimal is a string, a date a Timestamp, a nullable column optional). |
+| `PY` | `PY_Model`, `PY_Schema` | `app/models/table.py` and `app/schemas/table.py` - the SQLAlchemy 2.0 class and the Pydantic 2 schema of a table, for the Python stack (all four databases). |
+| `PY` | `PY_Routes` | `app/routes/table.py` - the FastAPI router with the contract of the other stacks (201 and `Location`, 400, 404, clone, search with paging and sort). |
+| `PY` | `PY_Validate` | `app/validation/table.py` - `validate`, the schema's rules for a row (`ApiValidation=true`). |
+| `PY` | `PY_Mod` | the package lists and the list of routers that `main.py` includes. |
+| `PY` | `PY_UserDirectory` | `app/users.py` - the people who sign in, read from the `UserTable` of the project, and `python -m app.users set-password` (`ApiAuth=true` with `UserTable`). |
 | `RS` | `RS_Struct` | `src/models/table.rs` - the Rust struct of a table (serde and sqlx), with the JSON names the other stacks send; for the Rust stack (PostgreSQL, MySQL, SQLite). |
 | `RS` | `RS_Repo` | `src/repos/table.rs` - the table's fixed SQL for the database that was read and the sqlx functions that run it: get, insert, update, delete, clone, and a search with filters, a fixed sort list and paging. |
 | `RS` | `RS_Routes` | `src/routes/table.rs` - the Axum handlers with the contract of the other stacks (201 and `Location`, 400, 404, `/search`, `/clone`). |
@@ -137,19 +150,6 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `RS` | `RS_Dashboard` | `src/routes/dashboard.rs` - `GET /api/dashboard` for the Rust stack: the widgets and statements of `DashboardPlan`, kept for a minute (`Dashboard=true`). |
 | `RS` | `RS_Mod` | the module lists and the router that merges every table's routes. |
 | `RS` | `RS_UserDirectory` | `src/users.rs` - the people who sign in, read from the `UserTable` of the project, and the `set-password` command (`ApiAuth=true` with `UserTable`). |
-| `PY` | `PY_Model`, `PY_Schema` | `app/models/table.py` and `app/schemas/table.py` - the SQLAlchemy 2.0 class and the Pydantic 2 schema of a table, for the Python stack (all four databases). |
-| `PY` | `PY_Routes` | `app/routes/table.py` - the FastAPI router with the contract of the other stacks (201 and `Location`, 400, 404, clone, search with paging and sort). |
-| `PY` | `PY_Validate` | `app/validation/table.py` - `validate`, the schema's rules for a row (`ApiValidation=true`). |
-| `PY` | `PY_Mod` | the package lists and the list of routers that `main.py` includes. |
-| `PY` | `PY_UserDirectory` | `app/users.py` - the people who sign in, read from the `UserTable` of the project, and `python -m app.users set-password` (`ApiAuth=true` with `UserTable`). |
-| `CS` | `CS_EfConfiguration` | `Data/Configurations/TableConfiguration.cs` - an `IEntityTypeConfiguration` per table (table, key, column details, indexes); with `EfConfigurations=true` the context applies them with `ApplyConfigurationsFromAssembly`. |
-| `API` | `API_Csv` | `Apis/Csv.cs` - whole-database, `ApiCsv=true`: `GET /api/table/export.csv` and an all-or-nothing `POST /api/table/import` for every table, no package. |
-| `API` | `API_UserDirectory` | `Apis/TableUserDirectory.cs` - whole-database, `ApiAuth=true` with `UserTable=Employee`: the sign-in looks people up in your own table (`UserNameColumn`, `PasswordHashColumn`, `UserOwnerColumn`, `UserRoleColumn`), and `dotnet run -- set-password <name>` writes a password hash from the environment variable `NEW_PASSWORD`. |
-| `API` | `API_Gates` | `Apis/Gates.cs` - whole-database, only with `ChangeGates` or `GuardedColumns` (and `ApiAuth=true`): a change a rule may refuse (a status that may not move while the customer is in bad standing unless the customer is exempt: 409 `change-not-allowed`) and a column only some people may change (`column-not-yours`, stamped with who and when), checked in the table's API before a save, in a clone and, for the import, by an administrator-only route; `GET <route>/guards` tells the Angular screen which fields to show as text. See `Docs/TemplateNotes/API_Gates_v1.md`. |
-| `MD` | `MD_Postman`, `MD_Bruno` | `collections/<Project>.postman_collection.json` and `collections/bruno/` - whole-database, only with `PlanAlso`: a Postman and a Bruno collection of the API requests (a folder per table: all, one, search, add, change, remove, copy) with sample bodies and a `baseUrl` variable. |
-| `CS` | `CS_CqrsHandlers` | `Application/` - whole-database, only with `PlanAlso`: commands, queries and handlers per table (create, update, delete, get by id, paged list) behind two small interfaces, and `AddApplicationHandlers()`. No package. |
-| `MD` | `MD_Dashboard` | `Dashboard.md` - whole-database, only with `Dashboard=true`: the widgets the dashboard shows, each with the schema fact that chose it and the statement that fills it, then what the caps left out. |
-| `PROTO` | `PROTO_Message` | `Table.proto` - a proto3 message per table, its key message, list messages and a CRUD service (a decimal is a string, a date a Timestamp, a nullable column optional). |
 
 ### UI layer
 
@@ -157,29 +157,29 @@ Angular, React, Blazor and WinUI3 code: models, services, screens and dashboards
 
 | Group | Template | Writes |
 |---|---|---|
-| `TSX` | `TSX_Screens` | `screens.tsx` - also whole-database: the React app's screen list (route, menu text, page) in menu order; `App.tsx` imports it, so a new table is a regenerate, not an edit of the shell. |
-| `TSX` | `TSX_GridSort` | `components/gridSort.tsx` - whole-database support code every React grid imports: the sortable header, the right-click **Clear sort** menu and the saved sort. |
-| `TS` | `TS_GridSort` | `grid-sort.ts` - the Angular counterpart: how the sort is saved, loaded and flipped. |
-| `TS` | `TS_Screens` | `app.routes.ts` - whole-database: the Angular app's `screens` and `routes`, from the same list. |
-| `WinUI3` | `WinUI3_Screens` | `MainWindow.Screens.cs` - whole-database: the other half of `partial class MainWindow` (`AddScreens()` adds the menu entries, `ShowPage(tag)` shows the page). |
-| `TSX` | `TSX_Dashboard` | the dashboard page for React (cards, bar lists, a sparkline, recent rows; no chart package) and, with `DashboardStrip=true`, the strip above each table's grid. |
-| `TS` | `TS_Dashboard` | the same for Angular: a service, the page, a widget component, the strip and the host that puts it above a screen. |
-| `WinUI3` | `WinUI3_DashboardPage` | the same for the desktop app, built in code, with the strip above each list page. |
 | `BLZ` | `BLZ_Model`, `BLZ_Client` | `Models/Table.cs` and `Services/TableClient.cs` - the class a table's JSON becomes in the Blazor app and its `HttpClient` calls (get, search with paging and sort, create, update, delete, clone). |
 | `BLZ` | `BLZ_Page` | `Pages/TablePage.razor` - the Blazor screen: grid, search, sortable headers, paging, add / edit panel with drop-downs for foreign keys. |
 | `BLZ` | `BLZ_Dashboard` | the dashboard page for Blazor (`Services/DashboardClient.cs`, `Components/DashboardWidgetView.razor`, `Pages/Dashboard.razor`; money shown as currency; no strip above each grid). |
 | `BLZ` | `BLZ_Screens` | `Layout/NavMenu.razor`, `Pages/Home.razor` and `Services/ApiClients.cs` - whole-database: the menu in `Screens` order and the registration of every client. |
+| `TS` | `TS_GridSort` | `grid-sort.ts` - the Angular counterpart: how the sort is saved, loaded and flipped. |
+| `TS` | `TS_Screens` | `app.routes.ts` - whole-database: the Angular app's `screens` and `routes`, from the same list. |
+| `TS` | `TS_Dashboard` | the same for Angular: a service, the page, a widget component, the strip and the host that puts it above a screen. |
 | `TS` | `TS_Model` | `models/table.ts` — an Angular interface matching the JSON the API really sends. |
 | `TS` | `TS_Validators` | `validators/table.validators.ts` - the Angular `Validators` the schema states for each field (required, length, allowed values, ranges, email, phone, URL), keyed by property name. |
 | `TS` | `TS_Service` | `services/table.service.ts` — the `HttpClient` wrapper with the same method names on every table. |
 | `TS` | `TS_Component` | Four files in `components/table/` — CSS, HTML, spec and TypeScript for a grid + add/edit form screen. |
 | `TS` | `TS_JunctionComponent` | Four files in `components/table-junction/` — a two-`<select multiple>` shuttle-control screen calling `API_Junction` (also junction-only). |
 | `TS` | `TS_DetailMasterComponent` | Four files in `components/table-detail-master/` — `TS_Component`'s own grid + form plus one read-only grid per child table (only offered when there's at least one). |
+| `TSX` | `TSX_Screens` | `screens.tsx` - also whole-database: the React app's screen list (route, menu text, page) in menu order; `App.tsx` imports it, so a new table is a regenerate, not an edit of the shell. |
+| `TSX` | `TSX_GridSort` | `components/gridSort.tsx` - whole-database support code every React grid imports: the sortable header, the right-click **Clear sort** menu and the saved sort. |
+| `TSX` | `TSX_Dashboard` | the dashboard page for React (cards, bar lists, a sparkline, recent rows; no chart package) and, with `DashboardStrip=true`, the strip above each table's grid. |
 | `TSX` | `TSX_Api` | `api/tableApi.ts` — the React counterpart of `TS_Service`: a plain object of `fetch`-based functions instead of an `HttpClient` class (reuses `TS_Model`'s own output for the row type — no separate React model template exists). |
 | `TSX` | `TSX_Schema` | `schemas/table.ts` - a zod schema of the editable fields with the same limits, and the form type inferred from it. |
 | `TSX` | `TSX_Page` | `pages/TablePage.tsx` plus a colocated `pages/__tests__/TablePage.test.tsx` — the React counterpart of `TS_Component`: one function component (grid + add/edit form) using `useState`/`useEffect` instead of a class. |
 | `TSX` | `TSX_DetailMasterPage` | `pages/TableDetailMasterPage.tsx` plus its test — `TSX_Page`'s own grid + form plus one read-only grid per child table (only offered when there's at least one). |
 | `TSX` | `TSX_JunctionPage` | `components/TableJunction.tsx` plus its test — a two-`<select multiple>` shuttle-control component (an `anchorId` prop, not routed on its own) calling `API_Junction` (also junction-only). |
+| `WinUI3` | `WinUI3_Screens` | `MainWindow.Screens.cs` - whole-database: the other half of `partial class MainWindow` (`AddScreens()` adds the menu entries, `ShowPage(tag)` shows the page). |
+| `WinUI3` | `WinUI3_DashboardPage` | the same for the desktop app, built in code, with the strip above each list page. |
 | `WinUI3` | `WinUI3_JunctionEditor` | Three files (View, code-behind, ViewModel) — the same shuttle-control idea as a desktop `ContentDialog`, calling `SP_Junction` directly through EF Core (also junction-only). |
 | `WinUI3` | `WinUI3_DirectoryListing` | Four files — **no table and no database**: a `Page` listing the files of a folder (sortable Name / Size / Modified, a filter box, Add File..., Open, Rename, Delete, Open Folder). The project settings `ListingName`, `ListingFolder` and `ListingPattern` name it; run it with the CLI without `-S`, `-d` or `-t`. |
 | `WinUI3` | `WinUI3_MasterScreen` | Three files — a `Page` listing every row (grid + Add/Edit/Delete), calling `TableRepo` (`CS_Repo`) directly. |
