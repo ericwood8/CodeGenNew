@@ -57,6 +57,8 @@ Everything else (entities, repositories, API, Angular, React, Blazor, WinUI3) is
 
 **Junction tables and DbSet names.** A table with a composite primary key (a junction table) gets an entity (`CS_Entity` writes its key columns without `[Key]`), a `DbSet`, and `HasKey` in the generated `OnModelCreating`, which calls a partial `OnModelCreatingPartial` that a hand-written part of the context can implement. The `DbSet` properties are named like their tables; `DbSetNames=Plural` in the project file names them in the plural (`Customers`).
 
+**Security.** What the generated SQL does with text from a person (parameters, escaped search patterns, the fixed sort list) and how it is checked: [Docs/Security.md](Docs/Security.md).
+
 **Template notes.** Each template starts with a short summary (what it generates, its restrictions, what it needs); the long design notes for each one are in [Docs/TemplateNotes](Docs/TemplateNotes).
 
 **Types with no mapping.** A column of a type CodeGenNew has no mapping for (a PostgreSQL array, `geometry`, a range, `inet`) cannot be used by an EF Core context, so the CLI warns about it (`Warning: column t.c has the type ..., which CodeGenNew does not map`) and the project setting `IgnoredColumns=Tags,Place.Location` (a column name for every table, or `Table.Column`; the database name or the generated one; a primary key is never left out) leaves it out so the rest of the table generates. A PostgreSQL `numeric` without a precision reads as 38 digits with 4 places (the SQL keeps `numeric` and the entity writes no `[Precision]`), and a money-named one is shown with 2.

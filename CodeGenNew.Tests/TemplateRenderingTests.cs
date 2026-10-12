@@ -112,7 +112,7 @@ public class TemplateRenderingTests
     {
         string sql = await Render("SP_Search_v1.tt", Sample.Holiday());
 
-        Expect.Contains(sql, "(@pName IS NULL OR [Name] LIKE '%' + LTRIM(RTRIM(@pName)) + '%')");
+        Expect.Contains(sql, "(@pName IS NULL OR [Name] LIKE '%' + REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(@pName)), '\\', '\\\\'), '%', '\\%'), '_', '\\_'), '[', '\\[') + '%' ESCAPE '\\')");
         Expect.Contains(sql, "AND (@pName IS NULL OR");
     }
 
@@ -132,7 +132,7 @@ public class TemplateRenderingTests
 
         Expect.Contains(sql, "CREATE OR REPLACE FUNCTION \"public\".\"Holiday_Search\"(");
         Expect.Contains(sql, "RETURNS SETOF \"public\".\"Holiday\"");
-        Expect.Contains(sql, "(\"pName\" IS NULL OR \"Name\" ILIKE '%' || btrim(\"pName\") || '%')");
+        Expect.Contains(sql, "(\"pName\" IS NULL OR \"Name\" ILIKE '%' || REPLACE(REPLACE(REPLACE(btrim(\"pName\"), '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%' ESCAPE '\\')");
         Expect.Contains(sql, "OFFSET (\"PageNumber\" - 1) * \"PageSize\" LIMIT \"PageSize\"");
         Expect.Contains(sql, "CREATE OR REPLACE FUNCTION \"public\".\"Holiday_SearchCount\"(");
         Expect.Contains(sql, "RETURNS integer");

@@ -57,8 +57,9 @@ public static class MySqlProcedures
     public static string Search(TableModel m)
     {
         var searchable = m.SearchableColumns;
+        var mySql = DialectInfo.For(SqlDialect.MySql);
         string where = searchable.Count == 0 ? "" : "\tWHERE " + string.Join("\n\t  AND ", searchable
-            .Select(c => $"({P(c)} IS NULL OR {Col(c)} LIKE CONCAT('%', TRIM({P(c)}), '%'))")) + "\n";
+            .Select(c => $"({P(c)} IS NULL OR {mySql.ContainsCondition(Col(c), mySql.EscapeLikeSql($"TRIM({P(c)})"))})")) + "\n";
 
         var sortColumn = m.DisplayColumns.OrderBy(c => c.DisplayRank ?? int.MaxValue).ThenBy(c => c.OrdinalPosition).FirstOrDefault();
         var orderBy = new List<string>();

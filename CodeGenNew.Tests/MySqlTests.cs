@@ -202,7 +202,7 @@ public class MySqlProcedureTests
         StringAssert.Contains(sql, "CREATE PROCEDURE `CustomerItem_Search`(");
         StringAssert.Contains(sql, "IN `pstrTitle` varchar(50)");
         StringAssert.Contains(sql, "FROM `customer_item`");
-        StringAssert.Contains(sql, "`title` LIKE CONCAT('%', TRIM(`pstrTitle`), '%')");
+        StringAssert.Contains(sql, "`title` LIKE CONCAT('%', REPLACE(REPLACE(REPLACE(TRIM(`pstrTitle`), '\\\\', '\\\\\\\\'), '%', '\\\\%'), '_', '\\\\_'), '%') ESCAPE '\\\\'");
         StringAssert.Contains(sql, "LIMIT `PageSize` OFFSET v_offset;");
         StringAssert.Contains(sql, "CREATE PROCEDURE `CustomerItem_SearchCount`(");
         StringAssert.Contains(sql, "SELECT COUNT(*) AS `Value`");

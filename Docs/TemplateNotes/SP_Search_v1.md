@@ -30,6 +30,9 @@ no filter parameters and no WHERE clause at all - pagination and searchability a
 found live needing pagination on exactly such a table (2026-09-28): a table only grows over time, with
 or without anything to type into a search box.
 
+The wildcard characters of a value (% and _, and [ on SQL Server) are escaped inside the routine (DialectInfo.EscapeLikeSql) and the LIKE says ESCAPE, so a search for 50% finds those
+three characters; Docs/Security.md says why and Docs/Verification/Test-SearchHostileText.py runs it.
+
 Parameters are LTRIM/RTRIM'd before the LIKE, matching SP_Insert.tt's "trim strings" rule - a caller
 who fat-fingers a leading/trailing space still gets the match they meant.
 

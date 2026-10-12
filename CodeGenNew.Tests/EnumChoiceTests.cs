@@ -155,7 +155,7 @@ public class EnumChoiceTests
 
         string sql = await Render("SP_Search_v1.tt", pg);
 
-        Expect.Contains(sql, "\"Status\"::text ILIKE '%' || btrim(");   // an enum has no ILIKE of its own
+        Expect.Contains(sql, "\"Status\"::text ILIKE '%' || REPLACE(REPLACE(REPLACE(btrim(");   // an enum has no ILIKE of its own
         Expect.Contains(sql, "THEN t.\"Status\"::text END ASC");          // and sorts by its text
         Expect.DoesNotContain(sql, "\"Title\"::text");
     }

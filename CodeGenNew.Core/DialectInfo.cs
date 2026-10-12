@@ -84,6 +84,15 @@ public sealed class DialectInfo
     public static string EscapeLike(string value) => value
         .Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_").Replace("[", "\\[");
 
+    /// <summary> The SQL that does <see cref="EscapeLike"/> inside a routine, for a value the routine received as a parameter: wrap it in the result before <see cref="ContainsCondition"/>
+    /// so a search for <c>50%</c> matches those three characters. SQL Server also escapes <c>[</c>. MySQL reads a backslash in a string literal as an escape, so each one is written twice. </summary>
+    public string EscapeLikeSql(string valueExpression) => Dialect switch
+    {
+        SqlDialect.SqlServer => $"REPLACE(REPLACE(REPLACE(REPLACE({valueExpression}, '\\', '\\\\'), '%', '\\%'), '_', '\\_'), '[', '\\[')",
+        SqlDialect.MySql => $"REPLACE(REPLACE(REPLACE({valueExpression}, '\\\\', '\\\\\\\\'), '%', '\\\\%'), '_', '\\\\_')",
+        _ => $"REPLACE(REPLACE(REPLACE({valueExpression}, '\\', '\\\\'), '%', '\\%'), '_', '\\_')"
+    };
+
     /// <summary> An expression for the start of the day, month or year the date expression falls in, as a date (a text in ISO form for SQLite and MySQL, which group by it). </summary>
     public string DateBucketExpression(string dateExpression, DateBucket bucket) => Dialect switch
     {

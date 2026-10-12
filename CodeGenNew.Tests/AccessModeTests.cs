@@ -81,6 +81,9 @@ public class AccessModeTests
         Assert.IsTrue(sqlServer.SupportsRoutines);
         Assert.AreEqual("c ILIKE '%' || @p || '%' ESCAPE '\\'", postgres.ContainsCondition("c", "@p"));
         Assert.AreEqual("50\\% \\_off \\[x] a\\\\b", DialectInfo.EscapeLike("50% _off [x] a\\b"));
+        Assert.AreEqual("REPLACE(REPLACE(REPLACE(REPLACE(v, '\\', '\\\\'), '%', '\\%'), '_', '\\_'), '[', '\\[')", sqlServer.EscapeLikeSql("v"));
+        Assert.AreEqual("REPLACE(REPLACE(REPLACE(v, '\\', '\\\\'), '%', '\\%'), '_', '\\_')", postgres.EscapeLikeSql("v"));
+        Assert.AreEqual("REPLACE(REPLACE(REPLACE(v, '\\\\', '\\\\\\\\'), '%', '\\\\%'), '_', '\\\\_')", mySql.EscapeLikeSql("v"));
     }
 
     // ------------------------------------------------------------------ what a search does
