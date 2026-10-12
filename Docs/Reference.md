@@ -197,6 +197,14 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `AuthRoleClaim` | with `ApiAuth`: the token claim that carries the person's role; blank: role |
 | `AuthOwnerClaim` | with `ApiAuth`: the token claim that carries the owner id; blank: employeeId |
 | `AuthAdminRole` | with `ApiAuth`: the role that sees and changes every row of an owned table; blank: Administrator |
+| `UserTable` | with `ApiAuth`: the table whose rows are the people who sign in (`Employee`). `API_UserDirectory` writes `Apis/TableUserDirectory.cs`, the sign-in's `IUserDirectory` for it, and the `set-password` command; blank: only the bootstrap administrator |
+| `UserNameColumn` | with `UserTable`: the text column that holds the sign-in name (`Login`); rows where it is empty cannot sign in; blank: the one column called `Login`, `LoginName`, `UserName`, `User_Name`, `UserLogin`, `Logon` or `LogonName` |
+| `PasswordHashColumn` | with `UserTable`: the text column that holds the password hash, at least 90 characters wide (blank: the one column called `PasswordHash`, `Password_Hash`, `PwdHash` or `Pword`); a password is never stored, set one with `dotnet run -- set-password <name>` and the environment variable `NEW_PASSWORD` |
+| `UserOwnerColumn` | with `UserTable`: the int column that goes into the token as the owner id (`EmployeeId`); blank: no owner id |
+| `UserRoleColumn` | with `UserTable`: a yes/no column (`IsManager`) whose two values give the two roles below, or a text column that holds the role; blank: no role |
+| `UserAdminColumn` | with `UserTable`: a yes/no column (`IsAdministrator`); true makes the person an administrator (the `AuthAdminRole`) whatever `UserRoleColumn` says; blank: the one yes/no column called `IsAdministrator`, `IsAdmin`, `Administrator` or `Admin`, and nobody is an administrator when there is none |
+| `UserRoleWhenTrue` | with a yes/no `UserRoleColumn`: the role when it is true; blank: Manager |
+| `UserRoleWhenFalse` | with a yes/no `UserRoleColumn`: the role when it is false; blank: Employee |
 | `ApiValidation` | true: the plan also writes a FluentValidation validator per table (CS_Validator) and the create and update endpoints run them (400 with the messages) |
 | `ApiCsv` | true: the plan also writes CSV export and import endpoints for every table (API_Csv) and Program.cs maps them: GET /api/&lt;table&gt;/export.csv and POST /api/&lt;table&gt;/import. Regenerate after ticking |
 | `Dtos` | true: a table's CRUD API takes an input type (`<Table>Input`: only the columns a caller may set, not the identity key, computed or audit columns) and answers a transfer class (`<Table>Dto`: every column, no navigation). The plan also writes CS_Dto, CS_DtoInput and CS_Mapper; needs the Api stack. Regenerate after ticking |

@@ -197,6 +197,14 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 #>
 // Sign-in (Auth.cs, the Jwt group): the bearer token check and a policy that makes every endpoint but POST /api/auth/login need a token. Jwt:Key comes from the environment variable Jwt__Key.
 // A project with its own user table registers its IUserDirectory before this line.
+<#
+        if (Project.UserTable is not null)
+        {
+#>
+builder.Services.AddTableUserDirectory();   // TableUserDirectory.cs (API_UserDirectory): the people who sign in are the rows of <#= Project.UserTable #>
+<#
+        }
+#>
 builder.AddGeneratedAuth();
 
 <#
@@ -241,6 +249,18 @@ builder.AddTelemetry();
     }
 #>
 var app = builder.Build();
+<#
+    if (Project.ApiAuth && Project.UserTable is not null)
+    {
+#>
+
+// The command set-password <user name> (run with dotnet run and the arguments after a double hyphen; the new password in the environment variable NEW_PASSWORD) writes a password hash and ends; any other start goes on to the server.
+if (await UserCommands.TryRunAsync(args, app.Services))
+    return;
+
+<#
+    }
+#>
 app.UseApiProblems();
 <#
     if (Project.ApiProduction)

@@ -85,6 +85,7 @@ public static class DefaultAssetSeeder
         "CS_CqrsHandlers_v1.tt", "CS_CqrsHandlers_v1.tt.config",
         "CS_EfConfiguration_v1.tt", "CS_EfConfiguration_v1.tt.config",
         "API_Csv_v1.tt", "API_Csv_v1.tt.config",
+        "API_UserDirectory_v1.tt", "API_UserDirectory_v1.tt.config",
         "MD_Postman_v1.tt", "MD_Postman_v1.tt.config",
         "MD_Bruno_v1.tt", "MD_Bruno_v1.tt.config",
         "PY_Model_v1.tt", "PY_Model_v1.tt.config",

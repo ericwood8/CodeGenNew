@@ -419,9 +419,9 @@ public class ApiAuthTests
     }
 
     [TestMethod]
-    public void A_setting_that_belongs_to_the_sign_in_is_on_the_API_tab()
+    public void A_setting_that_belongs_to_the_sign_in_is_on_the_Sign_in_tab()
     {
         foreach (string key in new[] { "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole" })
-            Assert.AreEqual("API", ProjectSettingGroups.TabOf(key), key);
+            Assert.AreEqual("Sign-in", ProjectSettingGroups.TabOf(key), key);
     }
 }

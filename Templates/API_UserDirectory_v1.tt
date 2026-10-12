@@ -1,0 +1,127 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // API_UserDirectory_v1.tt
+    // Generates: Apis/TableUserDirectory.cs   (see OutputName in API_UserDirectory_v1.tt.config)
+    // The people who sign in, kept in one of the project's own tables (UserTable=Employee, UserNameColumn, PasswordHashColumn, UserOwnerColumn, UserRoleColumn): TableUserDirectory is the
+    // IUserDirectory of the Jwt group's sign-in, AddTableUserDirectory() registers it (Program.cs calls it before AddGeneratedAuth), and UserCommands.TryRunAsync runs
+    // the command set-password <name> (dotnet run with the arguments after a double hyphen; the new password in the environment variable NEW_PASSWORD), the one way a password hash is written. A row with no hash cannot sign in.
+    // A yes/no UserRoleColumn gives two roles (UserRoleWhenTrue, UserRoleWhenFalse); a text one is the role itself; a true UserAdminColumn makes the person the AuthAdminRole. Which names and columns are acceptable is decided by UserTable.Resolve.
+    // Needs ApiAuth=true (the Jwt group). Full notes: Docs/TemplateNotes/API_UserDirectory_v1.md
+    // ==========================================================================================
+    var (plan, problem) = UserTable.Resolve(Database, Project);
+    if (problem != null)
+        Error(problem);
+    if (plan == null)
+        return GenerationEnvironment.ToString();
+
+    string apiNamespace = Project.ApiNamespace ?? (Project.ProjectName ?? "MyApp") + ".Api.Apis";
+    string contextType = Project.ContextName ?? "AppContext";
+    string entity = plan.Table.TableName;
+
+    string P(ColumnModel c) => c.Name;
+    string roleExpression = plan.Role == null ? "null"
+        : plan.RoleIsFlag ? $"row.Role == true ? \"{plan.RoleWhenTrue}\" : \"{plan.RoleWhenFalse}\""
+        : "row.Role";
+    string ownerExpression = plan.Owner == null ? "null" : plan.Owner.IsNullable ? "row.Owner" : "(int?)row.Owner";
+    // an administrator is the AuthAdminRole whatever the role column says
+    if (plan.Admin != null)
+        roleExpression = "row.Admin == true ? AuthNames.AdminRole : (" + roleExpression + ")";
+
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+
+    Line($"namespace {apiNamespace};");
+    Line();
+    Line("using Microsoft.EntityFrameworkCore;");
+    Line();
+    Line($"/// <summary> The <see cref=\"IUserDirectory\"/> of the sign-in: the people are the rows of {entity} ({P(plan.UserName)}, {P(plan.PasswordHash)}).");
+    Line($"/// A row whose {P(plan.UserName)} or {P(plan.PasswordHash)} is empty cannot sign in. </summary>");
+    Line("public class TableUserDirectory : IUserDirectory");
+    Line("{");
+    Line($"    private readonly {contextType} _context;");
+    Line();
+    Line($"    public TableUserDirectory({contextType} context) => _context = context;");
+    Line();
+    Line("    public async Task<DirectoryUser?> FindAsync(string userName, CancellationToken cancellationToken = default)");
+    Line("    {");
+    Line("        string name = userName.Trim();");
+    Line($"        var row = await _context.Set<{entity}>().AsNoTracking()");
+    Line($"            .Where(u => u.{P(plan.UserName)} == name && u.{P(plan.PasswordHash)} != null && u.{P(plan.PasswordHash)} != \"\")");
+    Line("            .Select(u => new");
+    Line("            {");
+    Line($"                Name = u.{P(plan.UserName)},");
+    Line($"                Hash = u.{P(plan.PasswordHash)},");
+    Line($"                Role = {(plan.Role == null ? "(string?)null" : "u." + P(plan.Role))},");
+    if (plan.Admin != null)
+        Line($"                Admin = u.{P(plan.Admin)},");
+    Line($"                Owner = {(plan.Owner == null ? "(int?)null" : "u." + P(plan.Owner))}");
+    Line("            })");
+    Line("            .FirstOrDefaultAsync(cancellationToken);");
+    Line("        return row is null ? null : new DirectoryUser(row.Name!, row.Hash!, " + roleExpression + ", " + ownerExpression + ");");
+    Line("    }");
+    Line();
+    Line("    /// <summary> Writes the hash of <paramref name=\"password\"/> for the person; false when there is no such person. </summary>");
+    Line("    public async Task<bool> SetPasswordAsync(string userName, string password, CancellationToken cancellationToken = default)");
+    Line("    {");
+    Line("        string name = userName.Trim();");
+    Line($"        var row = await _context.Set<{entity}>().FirstOrDefaultAsync(u => u.{P(plan.UserName)} == name, cancellationToken);");
+    Line("        if (row is null)");
+    Line("            return false;");
+    Line($"        row.{P(plan.PasswordHash)} = PasswordService.Hash(password);");
+    Line("        await _context.SaveChangesAsync(cancellationToken);");
+    Line("        return true;");
+    Line("    }");
+    Line("}");
+    Line();
+    Line("/// <summary> The registration Program.cs calls before AddGeneratedAuth, so the sign-in finds the table and not the single bootstrap administrator. </summary>");
+    Line("public static class TableUserDirectoryRegistration");
+    Line("{");
+    Line("    public static IServiceCollection AddTableUserDirectory(this IServiceCollection services)");
+    Line("    {");
+    Line("        services.AddScoped<TableUserDirectory>();");
+    Line("        services.AddScoped<IUserDirectory>(provider => provider.GetRequiredService<TableUserDirectory>());");
+    Line("        return services;");
+    Line("    }");
+    Line("}");
+    Line();
+    Line("/// <summary> The commands given as arguments to dotnet run (after the double hyphen), run once; the program then ends instead of starting the web server. </summary>");
+    Line("public static class UserCommands");
+    Line("{");
+    Line("    public const string PasswordVariable = \"NEW_PASSWORD\";");
+    Line("    public const int MinimumPasswordLength = 8;");
+    Line();
+    Line("    /// <summary> True when <paramref name=\"args\"/> named a command (it has run, and Environment.ExitCode says how it went); false to go on and start the server. </summary>");
+    Line("    public static async Task<bool> TryRunAsync(string[] args, IServiceProvider services)");
+    Line("    {");
+    Line("        if (args.Length == 0 || !string.Equals(args[0], \"set-password\", StringComparison.OrdinalIgnoreCase))");
+    Line("            return false;");
+    Line();
+    Line("        string? password = Environment.GetEnvironmentVariable(PasswordVariable);");
+    Line("        if (args.Length != 2 || string.IsNullOrEmpty(password))");
+    Line("        {");
+    Line("            Console.Error.WriteLine($\"Usage: set-password <user name>   (the new password in the environment variable {PasswordVariable}, never on the command line)\");");
+    Line("            Environment.ExitCode = 2;");
+    Line("            return true;");
+    Line("        }");
+    Line("        if (password.Length < MinimumPasswordLength)");
+    Line("        {");
+    Line("            Console.Error.WriteLine($\"The password must have at least {MinimumPasswordLength} characters.\");");
+    Line("            Environment.ExitCode = 2;");
+    Line("            return true;");
+    Line("        }");
+    Line();
+    Line("        using var scope = services.CreateScope();");
+    Line("        bool found = await scope.ServiceProvider.GetRequiredService<TableUserDirectory>().SetPasswordAsync(args[1], password);");
+    Line("        Console.WriteLine(found ? $\"Password set for {args[1].Trim()}.\" : $\"There is no user named {args[1].Trim()}.\");");
+    Line("        Environment.ExitCode = found ? 0 : 1;");
+    Line("        return true;");
+    Line("    }");
+    Line("}");
+    Write(sb.ToString());
+#>

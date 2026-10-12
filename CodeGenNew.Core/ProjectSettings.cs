@@ -27,7 +27,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
         "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputRust", "OutputPython", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildPython", "BuildRust", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestPython", "TestRust"
     ];
@@ -260,6 +260,7 @@ public class ProjectSettings
         get
         {
             if (ApiDocs) yield return "API_OpenApi";
+            if (ApiAuth && UserTable is not null) yield return "API_UserDirectory";
             if (ApiHttp) yield return "API_Http";
             if (ApiFakers) yield return "CS_Faker";
             if (TemporalTables.Length > 0) yield return "SP_TemporalTable";
@@ -348,6 +349,28 @@ public class ProjectSettings
     public string AuthRoleClaim => Explicit("AuthRoleClaim") ?? DefaultRoleClaim;
     public string AuthOwnerClaim => Explicit("AuthOwnerClaim") ?? DefaultOwnerClaim;
     public string AuthAdminRole => Explicit("AuthAdminRole") ?? DefaultAdminRole;
+
+    /// <summary> <c>UserTable=Employee</c> (with <c>ApiAuth</c>): the people who sign in are rows of this table, found by <see cref="UserNameColumn"/> and checked against <see cref="PasswordHashColumn"/>;
+    /// API_UserDirectory writes the <c>IUserDirectory</c> for it and the <c>set-password</c> command. Null: the single bootstrap administrator. See <see cref="UserTable"/>. </summary>
+    public string? UserTable => Explicit("UserTable");
+
+    /// <summary> The text column of the user table that holds the sign-in name (<c>UserNameColumn=Login</c>). </summary>
+    public string? UserNameColumn => Explicit("UserNameColumn");
+
+    /// <summary> The text column that holds the password hash (<c>PasswordHashColumn=PasswordHash</c>, at least 90 characters wide). </summary>
+    public string? PasswordHashColumn => Explicit("PasswordHashColumn");
+
+    /// <summary> The int column whose value goes into the token as the owner id (<c>UserOwnerColumn=EmployeeId</c>); blank: no owner id. </summary>
+    public string? UserOwnerColumn => Explicit("UserOwnerColumn");
+
+    /// <summary> The column that decides the role: a yes/no column (<c>UserRoleColumn=IsManager</c>, the role is <see cref="UserRoleWhenTrue"/> or <see cref="UserRoleWhenFalse"/>) or a text column that holds the role; blank: no role. </summary>
+    public string? UserRoleColumn => Explicit("UserRoleColumn");
+
+    /// <summary> A yes/no column of the user table (<c>UserAdminColumn=IsAdministrator</c>): true makes the person an administrator, the <see cref="AuthAdminRole"/>, whatever <see cref="UserRoleColumn"/> says. </summary>
+    public string? UserAdminColumn => Explicit("UserAdminColumn");
+
+    public string UserRoleWhenTrue => Explicit("UserRoleWhenTrue") ?? CodeGenNew.Core.UserTable.DefaultRoleWhenTrue;
+    public string UserRoleWhenFalse => Explicit("UserRoleWhenFalse") ?? CodeGenNew.Core.UserTable.DefaultRoleWhenFalse;
 
     public bool ToastrToasts => string.Equals(Explicit("Toasts"), "ngx-toastr", StringComparison.OrdinalIgnoreCase);
 

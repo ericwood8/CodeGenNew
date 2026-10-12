@@ -44,6 +44,21 @@ public class SpecialLogicColumnsConfigTests
     }
 
     [TestMethod]
+    [DataRow("IsAdmin")]
+    [DataRow("IsAdministrator")]
+    [DataRow("ISADMINISTRATOR")]
+    [DataRow("Administrator")]
+    public void AdminFlagColumn_knows_the_usual_names_of_an_administrator_flag(string columnName) =>
+        Assert.IsTrue(MatchesColumn("AdminFlagColumn", columnName));
+
+    [TestMethod]
+    [DataRow("IsAdminLevel")]
+    [DataRow("AdministratorId")]
+    [DataRow("IsManager")]
+    public void AdminFlagColumn_does_not_take_a_column_that_only_starts_with_the_word(string columnName) =>
+        Assert.IsFalse(MatchesColumn("AdminFlagColumn", columnName));
+
+    [TestMethod]
     [DataRow("is_active")]
     [DataRow("IsInActive")] // mixed/odd casing seen in the wild
     public void IsActiveFlag_matches_regardless_of_case_or_underscore(string columnName) =>
