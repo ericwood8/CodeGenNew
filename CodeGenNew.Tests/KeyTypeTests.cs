@@ -458,6 +458,8 @@ public class KeyTypeTests
         Expect.Contains(repo, "pub async fn delete(pool: &Pool, id: &str)");
 
         var routes = BlazorFiles(await Render("RS_Routes_v1.tt", CountryWithName()))["country.rs"];
+        Expect.Contains(routes, "    routing::get,\n");   // no clone route, so no unused `post` import
+        Expect.DoesNotContain(routes, "post}");
         Expect.Contains(routes, "Path(id): Path<String>");
         Expect.Contains(routes, "repo::get_by_id(&pool, &id)");
         Expect.Contains(routes, "repo::update(&pool, &id, &row)");

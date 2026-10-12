@@ -58,7 +58,7 @@
     Line(search ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
     Line("    http::StatusCode,");
     Line("    response::Response,");
-    Line("    routing::{get, post},");
+    Line(t.Clone is not null ? "    routing::{get, post}," : "    routing::get,");
     Line("};");
     if (userArgument.Length > 0)
         Line("use crate::auth::" + (scoped ? "{CurrentUser, Scope, not_yours};" : t.Clone is not null && userPlan is not null ? "{CurrentUser, not_yours};" : "CurrentUser;"));
