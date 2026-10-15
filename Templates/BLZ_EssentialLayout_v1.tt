@@ -7,9 +7,52 @@
     // Generates: Layout/MainLayout.razor and wwwroot/css/app.css   (no table, no database: an essentials group; the output folder is the Blazor app's own folder)
     // The page frame: the menu (Layout/NavMenu.razor, which BLZ_Screens writes from the Screens setting) beside the page, a hamburger button that opens and closes the menu, and the stylesheet
     // the generated pages assume (grid, search bar, paging, the edit form as a panel over the page). The pages use plain elements and these few class names.
+    // With Auth=true the layout shows the menu and the hamburger only to a signed-in person, with the user name and Sign out on a top bar, and the style sheet has the sign-in page.
     // ==========================================================================================
 #>
 @@@FILE Layout/MainLayout.razor@@@
+<# if (Project.Auth) { #>
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject AuthSession Session
+@inject NavigationManager Navigation
+
+<div class="@(MenuShown ? "app" : "app menu-closed")">
+    @if (MenuShown)
+    {
+        <NavMenu />
+    }
+    <main>
+        <div class="topbar">
+            @if (Session.IsSignedIn)
+            {
+                <button type="button" class="hamburger" aria-label="Toggle the menu" aria-expanded="@menuOpen" @onclick="() => menuOpen = !menuOpen">&#9776;</button>
+                <span class="who">@Session.User!.Name</span>
+                <button type="button" @onclick="SignOutAsync">Sign out</button>
+            }
+        </div>
+        @Body
+    </main>
+</div>
+
+@code {
+    private bool menuOpen = true;
+
+    private bool MenuShown => menuOpen && Session.IsSignedIn;
+
+    protected override void OnInitialized() => Session.Changed += Refresh;
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private async Task SignOutAsync()
+    {
+        await Session.LogoutAsync();
+        Navigation.NavigateTo("login");
+    }
+
+    public void Dispose() => Session.Changed -= Refresh;
+}
+<# } else { #>
 @inherits LayoutComponentBase
 
 <div class="@(menuOpen ? "app" : "app menu-closed")">
@@ -26,6 +69,7 @@
 @code {
     private bool menuOpen = true;
 }
+<# } #>
 @@@FILE wwwroot/css/app.css@@@
 :root { font-family: system-ui, sans-serif; color-scheme: light dark; }
 body { margin: 0; }
@@ -61,5 +105,15 @@ main button { padding: 4px 12px; font: inherit; font-weight: 700; }
 .editor input[type='checkbox'] { align-self: flex-start; width: 18px; height: 18px; }
 .editor .actions { display: flex; gap: 8px; margin-top: 16px; }
 .validation-message { color: #c62828; }
+<# if (Project.Auth) { #>
+
+/* The top bar of a signed-in person (the user name and Sign out) and the sign-in page. */
+.topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.topbar .who { font-weight: 600; }
+.login { max-width: 360px; }
+.login .field { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+.login input { padding: 6px 8px; font: inherit; }
+.login .actions { margin-top: 16px; }
+<# } #>
 
 #blazor-error-ui { display: none; position: fixed; bottom: 0; left: 0; right: 0; padding: 8px 16px; background: #ffe9a8; color: #000; }

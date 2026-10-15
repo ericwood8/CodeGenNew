@@ -15,6 +15,7 @@ public sealed class TemplateCache : IDisposable
         public required TemplateGenerator Generator { get; init; }
         public CompiledTemplate? Compiled { get; init; }
         public IReadOnlyList<string> CompileErrors { get; init; } = [];
+        public string? Variant { get; init; }
     }
 
     private readonly ConcurrentDictionary<string, Lazy<Task<Entry>>> _entries = new(StringComparer.OrdinalIgnoreCase);
@@ -72,19 +73,20 @@ public sealed class TemplateCache : IDisposable
     {
         var generator = new TemplateGenerator();
         generator.Refs.Add(typeof(TableModel).Assembly.Location);
-        string text = await File.ReadAllTextAsync(path);
+        var (textPath, variant) = TemplateAlias.Resolve(path);
+        string text = await File.ReadAllTextAsync(textPath);
         string? key = _store is null ? null : CompiledTemplateStore.KeyOf(text);
         if (key is not null && _store!.TryLoad(generator, key) is { } stored)
-            return new Entry { Generator = generator, Compiled = stored };
+            return new Entry { Generator = generator, Compiled = stored, Variant = variant };
 
         Interlocked.Increment(ref _compilerRuns);
         var compiled = await generator.CompileTemplateAsync(text);
         var errors = generator.Errors.Cast<System.CodeDom.Compiler.CompilerError>().Select(e => e.ToString()).ToList();
         if (generator.Errors.HasErrors)
-            return new Entry { Generator = generator, CompileErrors = errors };
+            return new Entry { Generator = generator, CompileErrors = errors, Variant = variant };
         if (key is not null)
             _store!.Save(compiled, key);
-        return new Entry { Generator = generator, Compiled = compiled, CompileErrors = errors };
+        return new Entry { Generator = generator, Compiled = compiled, CompileErrors = errors, Variant = variant };
     }
 
     private async Task<TemplateResult> RunCoreAsync(string path, string? parameterName, object? model, ProjectSettings? project, CancellationToken cancellationToken)
@@ -103,6 +105,8 @@ public sealed class TemplateCache : IDisposable
         else if (model is DatabaseModel markDatabase)
             UserTable.MarkCredentials(markDatabase, project ?? ProjectSettings.None);
         session["Project"] = project ?? ProjectSettings.None;
+        if (entry.Variant is not null)
+            session["Variant"] = entry.Variant;
 
         entry.Generator.Errors.Clear();
         string text;

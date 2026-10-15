@@ -39,7 +39,7 @@ CLI argument parsing is hand-rolled rather than pulling in a library, given the 
 
 ## What it generates
 
-Ninety-two templates ship in `Templates\` (the no-database essentials groups described below come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
+One hundred and six templates ship in `Templates\` (the no-database essentials groups described below come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
 
 The templates are shown in three grids, one for each layer of an application.
 
@@ -81,6 +81,7 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `API` | `API_Test` | `TableApiTests.cs` - an MSTest integration test class per table in its own test project (`ApiTests=true`): add, read, change and remove a row, a 404, the search page, and with `ApiValidation` the limits. Runs the API in process over a scratch database (SQLite: a copy of the file; others: `<PROJECT>_TEST_CONNECTION`). |
 | `API` | `API_Dashboard` | `DashboardApi.cs` - `GET /api/dashboard` (every widget) and `?table=Customer` (that table's cards), cached for a minute. |
 | `API` | `API_Csv` | `Apis/Csv.cs` - whole-database, `ApiCsv=true`: `GET /api/table/export.csv` and an all-or-nothing `POST /api/table/import` for every table, no package. |
+| `API` | `API_OData` | `Apis/OData.cs` - whole-database, `OData=true`: the tables `ODataPlan` selects served as OData v4 under `/odata` (`$filter`, `$orderby`, `$top`, `$skip`, `$count`, `$select`, `$expand`, and writes), next to the REST routes; needs the `Microsoft.AspNetCore.OData` package. |
 | `API` | `API_UserDirectory` | `Apis/TableUserDirectory.cs` - whole-database, `ApiAuth=true` with `UserTable=Employee`: the sign-in looks people up in your own table (`UserNameColumn`, `PasswordHashColumn`, `UserOwnerColumn`, `UserRoleColumn`), and `dotnet run -- set-password <name>` writes a password hash from the environment variable `NEW_PASSWORD`. |
 | `API` | `API_Gates` | `Apis/Gates.cs` - whole-database, only with `ChangeGates` or `GuardedColumns` (and `ApiAuth=true`): a change a rule may refuse (a status that may not move while the customer is in bad standing unless the customer is exempt: 409 `change-not-allowed`) and a column only some people may change (`column-not-yours`, stamped with who and when), checked in the table's API before a save, in a clone and, for the import, by an administrator-only route; `GET <route>/guards` tells the Angular screen which fields to show as text. See `Docs/TemplateNotes/API_Gates_v1.md`. |
 | `CS` | `CS_Entity` | `Table.cs` — an EF Core entity: key, foreign keys, navigation properties, attributes. |
@@ -130,6 +131,8 @@ Angular, React, Blazor and WinUI3 code: models, services, screens and dashboards
 | `BLZ` | `BLZ_Model`, `BLZ_Client` | `Models/Table.cs` and `Services/TableClient.cs` - the class a table's JSON becomes in the Blazor app and its `HttpClient` calls (get, search with paging and sort, create, update, delete, clone). |
 | `BLZ` | `BLZ_Page` | `Pages/TablePage.razor` - the Blazor screen: grid, search, sortable headers, paging, add / edit panel with drop-downs for foreign keys. |
 | `BLZ` | `BLZ_Dashboard` | the dashboard page for Blazor (`Services/DashboardClient.cs`, `Components/DashboardWidgetView.razor`, `Pages/Dashboard.razor`; money shown as currency; no strip above each grid). |
+| `BLZ` | `BLZ_ODataClient` | `Services/TableODataClient.cs` for each table the project serves as OData: a short class on `ODataClient` (`BLZ_EssentialOData`) with the entity set, the key, the search boxes, the header sorts and the REST route a clone goes through (opt in with `OData=true`). |
+| `BLZ` | `BLZ_ODataPage` | `BLZ_Page` run as its OData form (`Base`/`Variant` in its config): `Pages/TableODataPage.razor`, the same page over the table's OData client with the several-column sort (Shift-click) and the filter row; `ODataScreens=Replace` gives it the REST page's route. |
 | `BLZ` | `BLZ_Screens` | `Layout/NavMenu.razor`, `Pages/Home.razor` and `Services/ApiClients.cs` - whole-database: the menu in `Screens` order and the registration of every client. |
 | `TS` | `TS_GridSort` | `grid-sort.ts` - the Angular counterpart: how the sort is saved, loaded and flipped. |
 | `TS` | `TS_Screens` | `app.routes.ts` - whole-database: the Angular app's `screens` and `routes`, from the same list. |
@@ -138,9 +141,15 @@ Angular, React, Blazor and WinUI3 code: models, services, screens and dashboards
 | `TS` | `TS_Validators` | `validators/table.validators.ts` - the Angular `Validators` the schema states for each field (required, length, allowed values, ranges, email, phone, URL), keyed by property name. |
 | `TS` | `TS_Service` | `services/table.service.ts` — the `HttpClient` wrapper with the same method names on every table. |
 | `TS` | `TS_Component` | Four files in `components/table/` — CSS, HTML, spec and TypeScript for a grid + add/edit form screen. |
+| `TS` | `TS_ODataComponent` | `TS_Component` run as its OData form (`Base`/`Variant` in its config): four files in `components/table-odata/`, the same screen over the table's OData service, with its own route and menu entry; `OData=true`, tables served as OData. |
+| `TS` | `TS_ODataDetailMasterComponent` | `TS_DetailMasterComponent` run as its OData form (`Base`/`Variant` in its config): the master-detail screen over the table's OData service in `components/table-odata/`, with the filter row, the several-column sort and the slim grid; the child grids read the child's entity set filtered by the parent's key when it is served too. `OData=true`. |
+| `TS` | `TS_ODataService` | `services/table-odata.service.ts` for each table served as OData - whole-database: a short class on `ODataCrudService` (`odata/<set>`), `OData=true`. |
 | `TS` | `TS_JunctionComponent` | Four files in `components/table-junction/` — a two-`<select multiple>` shuttle-control screen calling `API_Junction` (also junction-only). |
 | `TS` | `TS_DetailMasterComponent` | Four files in `components/table-detail-master/` — `TS_Component`'s own grid + form plus one read-only grid per child table (only offered when there's at least one). |
 | `TSX` | `TSX_Screens` | `screens.tsx` - also whole-database: the React app's screen list (route, menu text, page) in menu order; `App.tsx` imports it, so a new table is a regenerate, not an edit of the shell. |
+| `TSX` | `TSX_ODataApi` | `api/tableODataApi.ts` for each table served as OData - whole-database: a short module on `createODataApi` (`/odata/<set>`) with the same method names as `TSX_Api`; `OData=true`. |
+| `TSX` | `TSX_ODataPage` | `TSX_Page` run as its OData form (`Base`/`Variant` in its config): `pages/TableODataPage.tsx` and its test, the same page over the table's OData api module with the several-column sort (Shift-click), the filter row and the slim grid; `OData=true`. |
+| `TSX` | `TSX_ODataDetailMasterPage` | `TSX_DetailMasterPage` run as its OData form: the master-detail page over the table's OData api module; a child grid whose table is served too reads the child's entity set filtered by the parent's key. `OData=true`. |
 | `TSX` | `TSX_GridSort` | `components/gridSort.tsx` - whole-database support code every React grid imports: the sortable header, the right-click **Clear sort** menu and the saved sort. |
 | `TSX` | `TSX_Dashboard` | the dashboard page for React (cards, bar lists, a sparkline, recent rows; no chart package) and, with `DashboardStrip=true`, the strip above each table's grid. |
 | `TSX` | `TSX_Api` | `api/tableApi.ts` — the React counterpart of `TS_Service`: a plain object of `fetch`-based functions instead of an `HttpClient` class (reuses `TS_Model`'s own output for the row type — no separate React model template exists). |
@@ -291,7 +300,7 @@ SQL Server, PostgreSQL and MySQL are supported, in the command-line tool and in 
 
 ## Details
 
-**Blazor.** `Stacks=Blazor` writes a standalone Blazor WebAssembly app (.NET 10) that calls the generated API: a model and an `HttpClient` client per table, a page with grid, search, sort, paging and an add / edit panel (foreign keys as drop-downs), the menu, and the essentials (project file, layout, styles, `.gitignore`). The API allows the app's origin (`DevPort`, default 5190). No tabs or editable child rows yet (a master shows its child tables as read-only grids); the dashboard comes with `Dashboard=true`; see `Docs/TemplateNotes/BLZ_Screens_v1.md`.
+**Blazor.** `Stacks=Blazor` writes a standalone Blazor WebAssembly app (.NET 10) that calls the generated API: a model and an `HttpClient` client per table, a page with grid, search, sort, paging and an add / edit panel (foreign keys as drop-downs), the menu, and the essentials (project file, layout, styles, `.gitignore`). The API allows the app's origin (`DevPort`, default 5190). No tabs or editable child rows yet (a master shows its child tables as read-only grids); the dashboard comes with `Dashboard=true`; `Auth=true` adds the sign-in with the role rules (`WriteRoles`, `ReadRoles`) and `OData=true` the OData clients and pages; see `Docs/TemplateNotes/BLZ_Screens_v1.md`.
 
 **Python.** `Stacks=Python` writes a FastAPI API over SQLAlchemy 2.0 models and Pydantic 2 schemas for SQL Server, PostgreSQL, MySQL or SQLite: the same routes and JSON as the other stacks (so the React, Angular and Blazor apps call it unchanged), validation in the ASP.NET problem form, `requirements.txt` and the essentials (engine, error forms, CORS). The password comes from the environment, never a file. See `Docs/TemplateNotes/PY_Routes_v1.md`.
 

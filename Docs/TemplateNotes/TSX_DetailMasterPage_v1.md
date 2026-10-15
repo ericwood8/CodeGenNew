@@ -55,3 +55,9 @@ A column the system writes (`ColumnModel.IsSystemStampColumn`: CreateDate, Creat
 A required field (NOT NULL, other than a yes/no box and the stamps the system writes; `FormModel.IsRequired`) gets the native `required` attribute and, unless `RequiredMarks=false`, a red `*` written after its caption: `<span aria-hidden="true" style=...>*</span>`. Screen readers skip the mark because the field itself says it is required. There is no legend line. Save is not disabled; the browser refuses an incomplete submit as before.
 
 The caption of an editable child column carries the same mark (in the column header of a table, over the field of a block).
+
+A name/active master (a Name and an IsActive column that also has child tables) has the form of its own kind: the whole list narrowed by a name box and an Active only check box, no paging or sort; its child grids are as before. With `Auth=true` and write roles the buttons are hidden like the plain page's. See `TSX_Page_v1.md`.
+
+## Guarded columns
+
+With `ApiAuth=true` and `GuardedColumns` naming a column of this table, the page asks `getGuards()` once when it opens (`GET <route>/guards`, `{ "ignoreBadStatus": true }`) and shows that column as its control only for a person who may change it; everyone else sees the value as text (Yes / No for a flag) with the reason ("Only a manager can change this."). The stamp columns (`stampBy`, `stampOn`) are text, never inputs, and say "not recorded" on a row from before they existed. A table without a guard gets none of this code. Written the same way by `TSX_Page` and, as the OData form, by `TSX_ODataDetailMasterPage` (the guards come through the OData api module, which asks the table's REST route).

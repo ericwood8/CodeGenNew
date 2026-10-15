@@ -1,0 +1,224 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_EssentialAuth_v1.tt
+    // Generates: Services/AuthSession.cs, Pages/Login.razor and Components/RedirectToStart.razor   (written once and kept; a replacing run refreshes them; Auth=true ticks the group)
+    // The sign-in of the Blazor app. The API half is ApiAuth=true (the Jwt group): POST /api/auth/login answers { token, expiresUtc, user: { name, role, ownerId } } from the ASP.NET, Python and Rust APIs.
+    //   Services/AuthSession.cs    AuthSession (the token and user, kept in sessionStorage so the sign-in ends with the tab; a session past expiresUtc is dropped on the next visit; Login, Logout, HasRole),
+    //                              SessionAuthenticationStateProvider (what [Authorize] and AuthorizeView read; the role is the role claim, so [Authorize(Roles = "...")] works) and AuthHandler
+    //                              (sends Authorization: Bearer <token> with every call and signs the person out when the API answers 401);
+    //   Pages/Login.razor          the sign-in page (/login) with the messages "The user name or password is not right.", "Too many tries. Wait a minute and try again." and "Could not sign in right now.";
+    //   Components/RedirectToStart sends a person who is not signed in to /login and one whose role may not open the page to the start page (App.razor shows it as NotAuthorized).
+    // Program.cs, App.razor, the menu and the layout are written for Auth=true by their own groups (Project, Layout and BLZ_Screens). Full notes: Docs/TemplateNotes/BLZ_EssentialAuth_v1.md
+    // ==========================================================================================
+    string ns = BlazorNames.Namespace(Project);
+    string storageKey = BlazorNames.SessionKey(Project);
+#>
+@@@FILE Services/AuthSession.cs@@@
+using System.Net;
+using System.Net.Http.Json;
+using System.Security.Claims;
+using System.Text.Json;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.JSInterop;
+
+namespace <#= ns #>.Services;
+
+/// <summary> Who is signed in: the name, the role and the owner id the API sent. </summary>
+public record SessionUser(string Name, string? Role, int? OwnerId);
+
+/// <summary> What POST api/auth/login answers; also what is kept in sessionStorage. </summary>
+public record SessionData(string Token, DateTime? ExpiresUtc, SessionUser User);
+
+/// <summary> A sign-in the API refused: the status says why (<#= HttpStatus.Unauthorized #> a wrong name or password, <#= HttpStatus.TooManyRequests #> too many tries). </summary>
+public class LoginException(int status) : Exception($"The sign-in answered {status}.")
+{
+    public int Status => status;
+}
+
+public class AuthSession(IJSRuntime js)
+{
+    private const string StorageKey = "<#= storageKey #>";
+    private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
+    private Task? starting;
+
+    public SessionData? Data { get; private set; }
+    public string? Token => Data?.Token;
+    public SessionUser? User => Data?.User;
+    public bool IsSignedIn => Data is not null;
+
+    /// <summary> Raised when someone signs in or out, so the menu and the layout draw again. </summary>
+    public event Action? Changed;
+
+    /// <summary> Reads the session an earlier visit of this tab left in sessionStorage (once), unless it has expired or cannot be read. </summary>
+    public Task InitializeAsync() => starting ??= RestoreAsync();
+
+    private async Task RestoreAsync()
+    {
+        try
+        {
+            string? saved = await js.InvokeAsync<string?>("sessionStorage.getItem", StorageKey);
+            if (saved is null) return;
+            var data = JsonSerializer.Deserialize<SessionData>(saved, Web);
+            if (data is null || string.IsNullOrEmpty(data.Token) || data.ExpiresUtc is { } expires && expires.ToUniversalTime() <= DateTime.UtcNow)
+            {
+                await js.InvokeVoidAsync("sessionStorage.removeItem", StorageKey);
+                return;
+            }
+            Data = data;
+            Changed?.Invoke();
+        }
+        catch (Exception ex) when (ex is JSException or JsonException or InvalidOperationException)
+        {
+            // storage cannot be read: the person signs in again
+        }
+    }
+
+    /// <summary> Signs in; a refused sign-in throws <see cref="LoginException"/>. </summary>
+    public async Task LoginAsync(HttpClient http, string userName, string password)
+    {
+        await InitializeAsync();
+        var response = await http.PostAsJsonAsync("/api/auth/login", new { userName, password });
+        if (!response.IsSuccessStatusCode)
+            throw new LoginException((int)response.StatusCode);
+        var data = await response.Content.ReadFromJsonAsync<SessionData>(Web) ?? throw new LoginException((int)HttpStatusCode.InternalServerError);
+        Data = data;
+        try { await js.InvokeVoidAsync("sessionStorage.setItem", StorageKey, JsonSerializer.Serialize(data, Web)); }
+        catch (JSException) { }
+        Changed?.Invoke();
+    }
+
+    public async Task LogoutAsync()
+    {
+        Data = null;
+        try { await js.InvokeVoidAsync("sessionStorage.removeItem", StorageKey); }
+        catch (JSException) { }
+        Changed?.Invoke();
+    }
+
+    /// <summary> Whether the signed-in person's role is one of <paramref name="roles"/>. </summary>
+    public bool HasRole(IEnumerable<string> roles) => User?.Role is { } role && roles.Contains(role);
+}
+
+/// <summary> The authentication state that <c>[Authorize]</c> and <c>AuthorizeView</c> read, made from the session. </summary>
+public class SessionAuthenticationStateProvider : AuthenticationStateProvider, IDisposable
+{
+    private readonly AuthSession session;
+
+    public SessionAuthenticationStateProvider(AuthSession session)
+    {
+        this.session = session;
+        session.Changed += Refresh;
+    }
+
+    private void Refresh() => NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
+
+    public override async Task<AuthenticationState> GetAuthenticationStateAsync()
+    {
+        await session.InitializeAsync();
+        if (session.User is not { } user)
+            return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity()));
+        var claims = new List<Claim> { new(ClaimTypes.Name, user.Name) };
+        if (user.Role is { Length: > 0 } role)
+            claims.Add(new Claim(ClaimTypes.Role, role));
+        return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity(claims, "jwt")));
+    }
+
+    public void Dispose() => session.Changed -= Refresh;
+}
+
+/// <summary> Sends the token with every call to the API and signs the person out when the API answers <#= HttpStatus.Unauthorized #> to a call that carried one. </summary>
+public class AuthHandler : DelegatingHandler
+{
+    private readonly AuthSession session;
+
+    public AuthHandler(AuthSession session)
+    {
+        this.session = session;
+        InnerHandler = new HttpClientHandler();
+    }
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        string? token = session.Token;
+        if (token is not null)
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        var response = await base.SendAsync(request, cancellationToken);
+        if (response.StatusCode == HttpStatusCode.Unauthorized && token is not null)
+            await session.LogoutAsync();
+        return response;
+    }
+}
+@@@FILE Pages/Login.razor@@@
+@page "/login"
+@inject AuthSession Session
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<PageTitle>Sign in</PageTitle>
+
+<h1>Sign in</h1>
+<form class="login" @onsubmit="SignInAsync">
+    @if (message is not null)
+    {
+        <p class="error" role="alert">@message</p>
+    }
+    <div class="field">
+        <label for="userName">User name</label>
+        <input id="userName" type="text" autocomplete="username" required @bind="userName" @bind:event="oninput" />
+    </div>
+    <div class="field">
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" required @bind="password" @bind:event="oninput" />
+    </div>
+    <div class="actions">
+        <button type="submit" disabled="@busy">Sign in</button>
+    </div>
+</form>
+
+@code {
+    private string userName = "";
+    private string password = "";
+    private string? message;
+    private bool busy;
+
+    private async Task SignInAsync()
+    {
+        busy = true;
+        message = null;
+        try
+        {
+            await Session.LoginAsync(Http, userName.Trim(), password);
+            Navigation.NavigateTo("/", replace: true);
+        }
+        catch (LoginException ex)
+        {
+            message = ex.Status switch
+            {
+                <#= HttpStatus.Unauthorized #> => "The user name or password is not right.",
+                <#= HttpStatus.TooManyRequests #> => "Too many tries. Wait a minute and try again.",
+                _ => "Could not sign in right now."
+            };
+            password = "";
+        }
+        catch (HttpRequestException)
+        {
+            message = "Could not sign in right now.";
+            password = "";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}
+@@@FILE Components/RedirectToStart.razor@@@
+@inject AuthSession Session
+@inject NavigationManager Navigation
+
+@code {
+    // A person who is not signed in goes to the sign-in page; one who is signed in but may not read this page goes to the start page, which opens the first screen the role may read.
+    protected override void OnInitialized() => Navigation.NavigateTo(Session.IsSignedIn ? "/" : "login", replace: true);
+}

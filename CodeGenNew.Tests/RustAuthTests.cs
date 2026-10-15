@@ -181,4 +181,24 @@ public class RustAuthTests
         Expect.Contains(child, "repo::Scoped::Keys(");
         Expect.Contains(files[Prefix + "src/repos/time_sheet_line.rs"], "    Keys(Vec<i32>),");
     }
+
+    [TestMethod]
+    public async Task The_read_and_write_roles_are_layers_on_separate_routes_of_a_path()
+    {
+        var files = await Generate(("ReadRoles", "Hr"), ("TableWriteRoles", "TimeSheet:Manager"));
+
+        string sheet = files[Prefix + "src/routes/time_sheet.rs"];
+        Expect.Contains(sheet, "use crate::auth::check_roles;");
+        Expect.Contains(sheet, "const READ_ROLES: &[&str] = &[\"Administrator\", \"Hr\"];");
+        Expect.Contains(sheet, "const WRITE_ROLES: &[&str] = &[\"Administrator\", \"Manager\"];");
+        Expect.Contains(sheet, ".route(\"/api/timesheets\", get(get_all).route_layer(middleware::from_fn(|request, next| check_roles(READ_ROLES, false, request, next))))");
+        Expect.Contains(sheet, ".route(\"/api/timesheets\", MethodRouter::new().post(create).route_layer(middleware::from_fn(|request, next| check_roles(WRITE_ROLES, true, request, next))))");
+        Expect.Contains(sheet, "MethodRouter::new().put(update).delete(delete).route_layer(");
+        Expect.Contains(files[Prefix + "src/auth.rs"], "pub async fn check_roles(roles: &'static [&'static str], write: bool, request: Request, next: Next)");
+        Expect.Contains(files[Prefix + "src/auth.rs"], "\"/problems/role-not-allowed\"");
+
+        string plain = (await Generate())[Prefix + "src/routes/time_sheet.rs"];
+        Expect.DoesNotContain(plain, "check_roles");
+        Expect.Contains(plain, ".route(\"/api/timesheets\", get(get_all).post(create))");
+    }
 }

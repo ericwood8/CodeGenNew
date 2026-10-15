@@ -1,0 +1,5 @@
+<#@ template language="C#" #>
+<#
+    // TSX_ODataDetailMasterPage_v1.tt is TSX_DetailMasterPage_v1.tt run with Variant=OData (the Base and Variant keys of its config): the same master-detail page over the table's OData api module.
+    // This file is only a stub for the template catalog; the text of the template is TSX_DetailMasterPage_v1.tt. Full notes: Docs/TemplateNotes/TSX_ODataDetailMasterPage_v1.md
+#>

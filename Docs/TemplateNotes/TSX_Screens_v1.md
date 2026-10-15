@@ -16,3 +16,7 @@ button, the layout and the rest of App.tsx stay hand-written.
 The tables are Database.ScreenTables(Project, "React"): a table with a uniqueidentifier or text key is listed because React reads KeyType (KeyType.StackHandlesEveryKey).
 A master-detail screen whose child table has no screen is named in a comment at the top of the file: its child-row link would open nothing.
 ```
+
+**OData** (`OData=true`): each table served as OData also gets the entry of its OData page (`TSX_ODataPage`, `TSX_ODataDetailMasterPage`) after the REST ones, with the route `<table>-odata` and the label "<Table> (OData)", loaded with `React.lazy` inside a `Suspense` (a separate chunk each, so they add nothing to the first download). `ODataScreens=Replace` puts the OData page in the REST page's place (same route, label and menu place) and leaves the REST page out of the file; a table hosted with dashboard cards keeps its REST page. Without OData pages the file is unchanged.
+
+**Sign-in** (`Auth=true`): with `ReadRoles` or `TableReadRoles` the entries of the tables whose reads are limited carry `roles: ['Administrator', 'Hr']`; the Shell hides them from the menu and `RequireAuth` sends another role to the start page. See `TSX_EssentialAuth_v1.md`.

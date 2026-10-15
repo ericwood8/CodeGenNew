@@ -27,7 +27,7 @@ public class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "NonNegativeColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "WriteRoles", "TableWriteRoles", "ReadRoles", "TableReadRoles", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
         "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputRust", "OutputPython", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildPython", "BuildRust", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestPython", "TestRust"
     ];
@@ -225,6 +225,30 @@ public class ProjectSettings
     /// <summary> <c>ApiCsv=true</c>: the plan also writes CSV export and import endpoints (API_Csv), and Program.cs maps them. </summary>
     public bool ApiCsv => Flag("ApiCsv");
 
+    public const int DefaultODataMaxTop = 100;
+    public const int DefaultODataPageSize = 25;
+    public const int DefaultODataExpandDepth = 2;
+
+    /// <summary> <c>OData=true</c>: the API also serves the tables <see cref="ODataPlan"/> selects as OData v4 (<c>/odata/&lt;set&gt;</c>, Microsoft.AspNetCore.OData), next to the REST routes, which stay. </summary>
+    public bool OData => Flag("OData");
+
+    /// <summary> <c>ODataTables=Customer,Product</c>: the tables served as OData; blank or <c>*</c>: every table that has a CRUD API and passes the refusals of <see cref="ODataPlan"/>. </summary>
+    public string[] ODataTables => Items("ODataTables");
+
+    /// <summary> The most rows one OData request may ask for with <c>$top</c> (<c>ODataMaxTop</c>, default 100). </summary>
+    public int ODataMaxTop => PositiveInt("ODataMaxTop", DefaultODataMaxTop);
+
+    /// <summary> The rows of one OData page; a longer answer carries <c>@odata.nextLink</c> (<c>ODataPageSize</c>, default 25, never above <see cref="ODataMaxTop"/>). </summary>
+    public int ODataPageSize => Math.Min(PositiveInt("ODataPageSize", DefaultODataPageSize), ODataMaxTop);
+
+    /// <summary> How many levels deep <c>$expand</c> may go (<c>ODataExpandDepth</c>, default 2). </summary>
+    public int ODataExpandDepth => PositiveInt("ODataExpandDepth", DefaultODataExpandDepth);
+
+    /// <summary> <c>ODataScreens=Replace</c>: the OData screen of a served table takes the place of its REST screen (same route, menu text and place) instead of being a second entry after the REST ones (<c>Add</c>, the default). </summary>
+    public bool ODataReplacesScreens => string.Equals(Explicit("ODataScreens"), "Replace", StringComparison.OrdinalIgnoreCase);
+
+    private int PositiveInt(string key, int fallback) => int.TryParse(Explicit(key), out int value) && value > 0 ? value : fallback;
+
     /// <summary> <c>Dtos=true</c>: a table's CRUD API takes an input type (only the columns a caller may set) and answers an output type (the transfer class, no navigation); see <see cref="DtoShape"/>. </summary>
     public bool Dtos => Flag("Dtos");
 
@@ -260,6 +284,7 @@ public class ProjectSettings
         get
         {
             if (ApiDocs) yield return "API_OpenApi";
+            if (OData) { yield return "API_OData"; yield return "TS_ODataService"; yield return "TS_ODataComponent"; yield return "TS_ODataDetailMasterComponent"; yield return "TSX_ODataApi"; yield return "TSX_ODataPage"; yield return "TSX_ODataDetailMasterPage"; yield return "BLZ_ODataClient"; yield return "BLZ_ODataPage"; }
             if (ApiAuth && (ChangeGates is not null || GuardedColumns is not null)) yield return "API_Gates";
             if (ApiAuth && UserTable is not null) { yield return "API_UserDirectory"; yield return "PY_UserDirectory"; yield return "RS_UserDirectory"; }
             if (ApiHttp) yield return "API_Http";
@@ -322,6 +347,7 @@ public class ProjectSettings
         {
             if (Auth) yield return "Auth";
             if (ApiAuth) yield return "Jwt";
+            if (OData) yield return "OData";
         }
     }
 
@@ -373,6 +399,18 @@ public class ProjectSettings
 
     /// <summary> Columns only some people may change: <c>Customer.IgnoreBadStatus; by Employee.IsManager; stampBy IgnoreBadStatusBy; stampOn IgnoreBadStatusOn</c>, several separated by <c>|</c>. Needs <c>ApiAuth</c> and <c>UserTable</c>. </summary>
     public string? GuardedColumns => Explicit("GuardedColumns");
+
+    /// <summary> The roles that may create, change and delete rows of every table (<c>WriteRoles=Administrator,Manager</c>); blank: any signed-in person. Needs <c>ApiAuth</c>; see <see cref="WriteRolePlan"/>. </summary>
+    public string[] WriteRoles => Items("WriteRoles");
+
+    /// <summary> The write roles of single tables (<c>TableWriteRoles=Holiday:Administrator;LeaveType:Administrator,Manager</c>), separated by <c>;</c>; a table with an entry uses it instead of <see cref="WriteRoles"/>, and <c>Table:</c> alone lets any signed-in person write it. </summary>
+    public string? TableWriteRoles => Explicit("TableWriteRoles");
+
+    /// <summary> The roles that may read the rows of every table (<c>ReadRoles=Administrator,Manager</c>); blank: any signed-in person. Needs <c>ApiAuth</c>; see <see cref="WriteRolePlan"/>. </summary>
+    public string[] ReadRoles => Items("ReadRoles");
+
+    /// <summary> The read roles of single tables (<c>TableReadRoles=Salary:Administrator,Hr</c>), separated by <c>;</c>, like <see cref="TableWriteRoles"/>. </summary>
+    public string? TableReadRoles => Explicit("TableReadRoles");
 
     /// <summary> A yes/no column of the user table (<c>UserAdminColumn=IsAdministrator</c>): true makes the person an administrator, the <see cref="AuthAdminRole"/>, whatever <see cref="UserRoleColumn"/> says. </summary>
     public string? UserAdminColumn => Explicit("UserAdminColumn");

@@ -94,6 +94,11 @@
             .Select(i => bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0 && (c.Name == i.Columns[0] || c.DbName == i.Columns[0])))
             .FirstOrDefault(c => c is not null);
 
+        // ReadRoles and WriteRoles: the roles a rule lists (the administrator role first); a table scoped to a person is not written by a role with no owner
+        var writeRoles = WriteRolePlan.For(Project, Model);
+        var readRoles = WriteRolePlan.ReadFor(Project, Model);
+        bool scopedToPerson = OwnedTable.IsScoped(Model, Project);
+
         // limits the validators enforce, for the 400 tests
         var longText = Project.ApiValidation ? bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0) : null;
         ColumnModel? ranged = null;
@@ -203,6 +208,75 @@ public class <#= singular #>ApiTests
         Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 <#
+            if (writeRoles.Count > 0)
+            {
+#>
+
+    [TestMethod]
+    public async Task A_role_the_write_rule_does_not_list_cannot_change_rows()
+    {
+        ApiFixture.RequireDatabase();
+        using var client = ApiFixture.ClientInRole("NoSuchRole");
+
+        using var create = await client.PostAsJsonAsync(Route, await NewBodyAsync());
+        Assert.AreEqual(HttpStatusCode.Forbidden, create.StatusCode);
+        Assert.AreEqual("<#= ProblemTypes.RoleNotAllowed #>", (await create.Content.ReadFromJsonAsync<JsonObject>())!["type"]!.GetValue<string>());
+
+        using var delete = await client.DeleteAsync($"{Route}/{<#= absentKey #>}");
+        Assert.AreEqual(HttpStatusCode.Forbidden, delete.StatusCode, "the role is refused before the row is looked for");
+    }
+<#
+                if (writeRoles.Count > 1 && !scopedToPerson)
+                {
+#>
+
+    [TestMethod]
+    public async Task A_role_the_write_rule_lists_can_add_a_row()
+    {
+        ApiFixture.RequireDatabase();
+        using var client = ApiFixture.ClientInRole("<#= writeRoles[1] #>");
+        using var created = await client.PostAsJsonAsync(Route, await NewBodyAsync());
+        Assert.AreEqual(HttpStatusCode.Created, created.StatusCode, await created.Content.ReadAsStringAsync());
+        var row = (await created.Content.ReadFromJsonAsync<JsonObject>())!;
+        <#= keyCs #> id = row[<#= ApiSampleValues.Json(keyJson) #>]!.GetValue<<#= keyCs #>>();
+        using var removed = await ApiFixture.Client.DeleteAsync($"{Route}/{<#= idRef #>}");
+    }
+<#
+                }
+            }
+            if (readRoles.Count > 0)
+            {
+#>
+
+    [TestMethod]
+    public async Task A_role_the_read_rule_does_not_list_cannot_read_rows()
+    {
+        ApiFixture.RequireDatabase();
+        using var client = ApiFixture.ClientInRole("NoSuchRole");
+
+        using var list = await client.GetAsync(Route);
+        Assert.AreEqual(HttpStatusCode.Forbidden, list.StatusCode);
+        Assert.AreEqual("<#= ProblemTypes.RoleNotAllowed #>", (await list.Content.ReadFromJsonAsync<JsonObject>())!["type"]!.GetValue<string>());
+
+        using var one = await client.GetAsync($"{Route}/{<#= absentKey #>}");
+        Assert.AreEqual(HttpStatusCode.Forbidden, one.StatusCode, "the role is refused before the row is looked for");
+    }
+<#
+                if (readRoles.Count > 1 && !scopedToPerson)
+                {
+#>
+
+    [TestMethod]
+    public async Task A_role_the_read_rule_lists_can_read_the_list()
+    {
+        ApiFixture.RequireDatabase();
+        using var client = ApiFixture.ClientInRole("<#= readRoles[1] #>");
+        using var list = await client.GetAsync(Route);
+        Assert.AreEqual(HttpStatusCode.OK, list.StatusCode, await list.Content.ReadAsStringAsync());
+    }
+<#
+                }
+            }
         }
         if (Model.HasSearchApi(Project))
         {

@@ -6,7 +6,7 @@
     // TS_EssentialAuth_v1.tt
     // Generates: the sign-in of an Angular app   (no table, no database: an essentials group, not ticked by default; Auth=true in the project turns it on)
     //   <ServicesFolder>/auth.service.ts      the session (token and user in sessionStorage, so the sign-in ends with the tab), login(), logout(), user, isLoggedIn;
-    //   <ServicesFolder>/auth.interceptor.ts  adds Authorization: Bearer to every call to api/ and signs the person out when the API answers 401;
+    //   <ServicesFolder>/auth.interceptor.ts  adds Authorization: Bearer to every call to api/ and odata/ and signs the person out when the API answers 401;
     //   <ServicesFolder>/auth.guard.ts        sends a person who is not signed in to /login;
     //   <ModelsFolder>/auth.ts                AuthUser and LoginResponse;
     //   <ComponentsFolder>/login/             the sign-in page.
@@ -89,6 +89,12 @@ export class AuthService {
     return this.session()?.token ?? null;
   }
 
+  /** True when the signed-in person has one of these roles (the API compares the role exactly, so does this). */
+  hasRole(roles: readonly string[]): boolean {
+    const role = this.user()?.role;
+    return !!role && roles.includes(role);
+  }
+
   login(userName: string, password: string): Observable<LoginResponse> {
     return this.http.post<LoginResponse>('api/auth/login', { userName, password }).pipe(
       tap((response) => {
@@ -114,7 +120,7 @@ import { AuthService } from './auth.service';
 /** Sends the token with every call to the API, and signs the person out when the API says it is no longer good. */
 export const authInterceptor: HttpInterceptorFn = (request, next) => {
   const auth = inject(AuthService);
-  const isApiCall = request.url.startsWith('api/');
+  const isApiCall = request.url.startsWith('api/') || request.url.startsWith('odata/');
   const token = auth.token;
 
   if (isApiCall && token) {
@@ -258,6 +264,17 @@ describe('AuthService', () => {
     expect(navigated).toEqual([['/login']]);
   });
 
+  it('says whether the signed-in person has one of the roles', () => {
+    const auth = TestBed.inject(AuthService);
+    expect(auth.hasRole(['Manager'])).toBe(false);
+    auth.login('pat', 'secret').subscribe();
+    http.expectOne('api/auth/login').flush({ ...response, user: { name: 'Pat', role: 'Manager' } });
+
+    expect(auth.hasRole(['Administrator', 'Manager'])).toBe(true);
+    expect(auth.hasRole(['Administrator'])).toBe(false);
+    expect(auth.hasRole([])).toBe(false);
+  });
+
   it('picks up a session saved by an earlier visit of the tab', () => {
     sessionStorage.setItem(storageKey, JSON.stringify(response));
     const auth = TestBed.inject(AuthService);
@@ -311,6 +328,11 @@ describe('authInterceptor', () => {
   it('sends the token with a call to the API', () => {
     client.get('api/things').subscribe();
     expect(http.expectOne('api/things').request.headers.get('Authorization')).toBe('Bearer abc');
+  });
+
+  it('sends the token with a call to the OData routes too', () => {
+    client.get('odata/things?$top=1').subscribe();
+    expect(http.expectOne('odata/things?$top=1').request.headers.get('Authorization')).toBe('Bearer abc');
   });
 
   it('does not send the token anywhere else', () => {

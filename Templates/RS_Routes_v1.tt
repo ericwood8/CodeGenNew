@@ -35,6 +35,12 @@
     var ownerColumn = auth ? OwnedTable.OwnerColumn(Model, Project) : null;
     var ownerLink = auth ? OwnedTable.Through(Model, Project) : null;
     var userPlan = auth ? UserTable.PlanOf(Model, Project) : null;
+    // ReadRoles and WriteRoles: the routes refuse a role the table's rules do not list (the administrator role is always listed); the lookup stays open
+    var readRoles = WriteRolePlan.ReadFor(Project, Model);
+    var writeRoles = WriteRolePlan.For(Project, Model);
+    bool roles = readRoles.Count > 0 || writeRoles.Count > 0;
+    string readLayer = readRoles.Count > 0 ? ".route_layer(middleware::from_fn(|request, next| check_roles(READ_ROLES, false, request, next)))" : "";
+    string writeLayer = writeRoles.Count > 0 ? ".route_layer(middleware::from_fn(|request, next| check_roles(WRITE_ROLES, true, request, next)))" : "";
     RustField? FieldOf(ColumnModel? column) => column is null ? null : t.Fields.FirstOrDefault(f => f != t.HashField && f.Column.Name.EqualsIgnoreCase(column.Name));
     var ownerField = FieldOf(ownerColumn);
     var linkField = ownerLink is null ? null : t.Fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(ownerLink.ForeignKey));
@@ -58,8 +64,12 @@
     Line(search ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
     Line("    http::StatusCode,");
     Line("    response::Response,");
-    Line(t.Clone is not null ? "    routing::{get, post}," : "    routing::get,");
+    Line(roles ? (t.Clone is not null ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (t.Clone is not null ? "    routing::{get, post}," : "    routing::get,"));
+    if (roles)
+        Line("    middleware,");
     Line("};");
+    if (roles)
+        Line("use crate::auth::check_roles;");
     if (userArgument.Length > 0)
         Line("use crate::auth::" + (scoped ? "{CurrentUser, Scope, not_yours};" : t.Clone is not null && userPlan is not null ? "{CurrentUser, not_yours};" : "CurrentUser;"));
     if (userPlan is not null)
@@ -72,16 +82,39 @@
     if (search)
         Line("use serde::Serialize;");
     Line();
+    if (readRoles.Count > 0)
+        Line($"const READ_ROLES: &[&str] = &[{WriteRolePlan.Literal(readRoles)}];");
+    if (writeRoles.Count > 0)
+        Line($"const WRITE_ROLES: &[&str] = &[{WriteRolePlan.Literal(writeRoles)}];");
+    if (roles)
+        Line();
     Line("pub fn router() -> Router<Pool> {");
     Line("    Router::new()");
-    Line($"        .route(\"{t.Route}\", get(get_all).post(create))");
-    if (search)
-        Line($"        .route(\"{t.Route}/search\", get(search))");
-    if (t.LookupSql is not null)
-        Line($"        .route(\"{t.Route}/lookup\", get(lookup))");
-    Line($"        .route(\"{t.Route}/{{id}}\", get(get_by_id).put(update).delete(delete))");
-    if (t.Clone is not null)
-        Line($"        .route(\"{t.Route}/{{id}}/clone\", post(clone_row))");
+    if (roles)
+    {
+        // a layer applies to every method of the route it is put on, so the reading and the writing methods are separate routes of the same path
+        Line($"        .route(\"{t.Route}\", get(get_all){readLayer})");
+        Line($"        .route(\"{t.Route}\", MethodRouter::new().post(create){writeLayer})");
+        if (search)
+            Line($"        .route(\"{t.Route}/search\", get(search){readLayer})");
+        if (t.LookupSql is not null)
+            Line($"        .route(\"{t.Route}/lookup\", get(lookup))");
+        Line($"        .route(\"{t.Route}/{{id}}\", get(get_by_id){readLayer})");
+        Line($"        .route(\"{t.Route}/{{id}}\", MethodRouter::new().put(update).delete(delete){writeLayer})");
+        if (t.Clone is not null)
+            Line($"        .route(\"{t.Route}/{{id}}/clone\", post(clone_row){writeLayer})");
+    }
+    else
+    {
+        Line($"        .route(\"{t.Route}\", get(get_all).post(create))");
+        if (search)
+            Line($"        .route(\"{t.Route}/search\", get(search))");
+        if (t.LookupSql is not null)
+            Line($"        .route(\"{t.Route}/lookup\", get(lookup))");
+        Line($"        .route(\"{t.Route}/{{id}}\", get(get_by_id).put(update).delete(delete))");
+        if (t.Clone is not null)
+            Line($"        .route(\"{t.Route}/{{id}}/clone\", post(clone_row))");
+    }
     Line("}");
     Line();
     if (scoped)

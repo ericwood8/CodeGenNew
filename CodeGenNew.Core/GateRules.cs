@@ -63,8 +63,11 @@ public sealed record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnlyList<Col
     }
 
     /// <summary> True when the project names a gate or a guard for <paramref name="table"/>. Answered from the settings alone, so a per-table template can ask it. </summary>
-    public static bool HasRules(ProjectSettings project, TableModel table) =>
-        project.ApiAuth && RulesOf(project.ChangeGates).Concat(RulesOf(project.GuardedColumns)).Any(rule => TableOf(rule) is { } name && name.EqualsIgnoreCase(table.TableName));
+    public static bool HasRules(ProjectSettings project, TableModel table) => HasRules(project, table.TableName);
+
+    /// <summary> The same, for a table known only by name. </summary>
+    public static bool HasRules(ProjectSettings project, string table) =>
+        project.ApiAuth && RulesOf(project.ChangeGates).Concat(RulesOf(project.GuardedColumns)).Any(rule => TableOf(rule) is { } name && name.EqualsIgnoreCase(table));
 
     /// <summary> The guarded columns of <paramref name="table"/> as a screen needs them, read from the settings alone: the column, the sentence shown in place of the control, and the columns the server stamps.
     /// A rule that does not name a column of the table is left out (API_Gates reports it). </summary>

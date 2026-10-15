@@ -127,6 +127,13 @@ public class TemplateConfig
     /// {Table} is replaced by the table name (e.g. "{Table}Api.cs" gives E_DonateLeaveApi.cs). </summary>
     public string? OutputName { get; init; }
 
+    /// <summary> Optional. A template whose file is only a stub and whose config says <c>Base=TS_Component_v1.tt</c> runs that template's text (a file in the same folder) instead of its own, with the template parameter
+    /// <c>Variant</c> set to <see cref="Variant"/>; the base template writes its second form (another name, another service) when it sees a variant. The stub's own config says where the output goes. </summary>
+    public string? Base { get; init; }
+
+    /// <summary> Optional, with <see cref="Base"/>: the value of the base template's <c>Variant</c> parameter (for example <c>OData</c>). Null for an ordinary template. </summary>
+    public string? Variant { get; init; }
+
     /// <summary> True when the given shape satisfies this config's RequiredPrimaryKeyShape (always true when
     /// RequiredPrimaryKeyShape is unset). </summary>
     public bool PrimaryKeyShapeSatisfies(PrimaryKeyShape shape) => RequiredPrimaryKeyShape switch
@@ -196,6 +203,7 @@ public class TemplateConfig
         bool essentialsDefault = true;
         var needs = new List<string>();
         string? outputName = null;
+        string? baseTemplate = null, variant = null;
 
         foreach (string rawLine in File.ReadAllLines(ttConfigPath))
         {
@@ -261,6 +269,10 @@ public class TemplateConfig
                 needsReferencedDisplayColumns = boolValue;
             else if (key.EqualsIgnoreCase("OutputName"))
                 outputName = value.Length > 0 ? value : null;
+            else if (key.EqualsIgnoreCase("Base"))
+                baseTemplate = value.Length > 0 ? value : null;
+            else if (key.EqualsIgnoreCase("Variant"))
+                variant = value.Length > 0 ? value : null;
         }
 
         return new TemplateConfig
@@ -288,7 +300,9 @@ public class TemplateConfig
             Description = description,
             EssentialsDefault = essentialsDefault,
             Needs = needs,
-            OutputName = outputName
+            OutputName = outputName,
+            Base = baseTemplate,
+            Variant = variant
         };
     }
 }

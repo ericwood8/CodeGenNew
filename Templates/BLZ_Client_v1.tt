@@ -59,6 +59,12 @@
             L("    // A copy of the row, made by the API; the copy comes back.");
             L($"    public async Task<{type}> CloneAsync({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{{id}}}/clone\", null)).ReadAsync<{type}>();");
         }
+        if (GatePlan.GuardsOf(Project, Model).Count > 0)
+        {
+            L();
+            L("    // Which guarded columns the signed-in person may change (the form shows the others as text), by the column's JSON name.");
+            L("    public async Task<Dictionary<string, bool>> GetGuardsAsync() => await (await http.GetAsync($\"{Url}/guards\")).ReadAsync<Dictionary<string, bool>>();");
+        }
         L();
         L("    // The filters are the search boxes of the screen, by the names the API's search endpoint reads; a blank filter is left out. sortBy is a column name.");
         L($"    public async Task<PagedResult<{type}>> GetPageAsync(int page, int pageSize, IReadOnlyDictionary<string, string?>? filters = null, string? sortBy = null, bool descending = false)");

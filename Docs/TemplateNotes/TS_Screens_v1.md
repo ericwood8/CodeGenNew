@@ -13,3 +13,5 @@ app.html (the hamburger button, the menu) read `screens` from here and stay hand
     the names TS_DetailMasterComponent / TS_Component write.
 A master-detail screen whose child table has no screen is named in a comment at the top of the file: its child-row link would open nothing.
 ```
+
+**Roles** (`Auth=true`, `ApiAuth=true`): a screen of a table with `ReadRoles` carries `roles`; `app.routes.ts` then gets a `canRead` guard that sends a person whose role may not read it to the first screen they may (and the shell menu, from the Shell essentials group, lists only those). The Add New, Edit, Clone and Delete buttons of a table with `WriteRoles` are hidden by `canWrite`, and the generated spec checks Add New for a listed role and an unlisted one. A project made before needs `--replace` of the Auth and Shell essentials.

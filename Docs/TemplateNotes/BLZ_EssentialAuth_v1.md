@@ -1,0 +1,20 @@
+# BLZ_EssentialAuth_v1
+
+The `Auth` essentials group of the Blazor stack (written once and kept; `--replace` refreshes it). `Auth=true` in the project ticks it, as it does for Angular and React. It is the sign-in of the app; the API half is `ApiAuth=true` (the `Jwt` group), and the same `POST /api/auth/login` answers `{ token, expiresUtc, user: { name, role, ownerId } }` from the ASP.NET, Python and Rust APIs.
+
+- `Services/AuthSession.cs`:
+  - `AuthSession`: the token and the user, kept in `sessionStorage` under `<projectname>.auth` so the sign-in ends with the tab (a session past `expiresUtc` is dropped on the next visit); `InitializeAsync`, `LoginAsync`, `LogoutAsync`, `HasRole(roles)` and a `Changed` event that the menu and the layout listen to. A refused sign-in is a `LoginException` with the status (401 a wrong name or password, 429 too many tries).
+  - `SessionAuthenticationStateProvider`: what `[Authorize]`, `AuthorizeView` and `AuthorizeRouteView` read. The role is the role claim, so `[Authorize(Roles = "Administrator,Hr")]` works.
+  - `AuthHandler`: sends `Authorization: Bearer <token>` with every call and signs the person out when the API answers 401 to a call that carried a token.
+- `Pages/Login.razor`: the sign-in page (`/login`) with the messages "The user name or password is not right.", "Too many tries. Wait a minute and try again." and "Could not sign in right now."; the password is cleared after a failure; a sign-in goes to `/`, which opens the first screen the role may read.
+- `Components/RedirectToStart.razor`: shown by `App.razor` as `NotAuthorized`: a person who is not signed in goes to `/login`, one whose role may not read the page goes to `/`.
+
+With `Auth=true` the other Blazor files change too (refresh them with `--replace`):
+- **Project group**: the project file references `Microsoft.AspNetCore.Components.Authorization`; `Program.cs` registers the session, the state provider and the handler (the one `HttpClient` goes through it, so every client sends the token); `App.razor` routes through `AuthorizeRouteView` (`Authorizing` shows "Loading..."); `_Imports.razor` adds the Authorization, Components and Services namespaces.
+- **Layout group**: `MainLayout.razor` shows the menu and the hamburger only to a signed-in person, with the user name and Sign out on the top bar; `app.css` has the sign-in styles.
+- **`BLZ_Screens`**: the menu shows only to a signed-in person and leaves out the screens `ReadRoles` or `TableReadRoles` limit to other roles; `Home` opens the first screen the role may read (and the sign-in page for a person who is not signed in).
+- **`BLZ_Page`**: every page carries `@attribute [Authorize]` (with `Roles` for a table with read roles); with `WriteRoles` or `TableWriteRoles` for the table, Add New, Edit, Clone and Delete show only to the roles that may write, and a child grid's Delete follows the child table's write roles. `BLZ_Dashboard` asks for a signed-in person; the API leaves out the widgets of tables the role may not read.
+
+Blazor generates no tests, so there is no spec for the hidden buttons. Existing projects need `essentials --stack blazor --replace` of the Project and Layout groups.
+
+**Checked:** generated for a scratch copy of the SQL Server InvoiceSystem (`ApiAuth`, the user table, `WriteRoles=Manager`, `TableWriteRoles=Item:Administrator`, `TableReadRoles=Item:Administrator`) and run against the real API with three real sign-ins in the browser: an address that needs a sign-in goes to `/login`, a wrong password says so and clears the box, the administrator has every screen, the employee has no write buttons and no Item screen (an address typed for it goes to the start page), the manager can change customers and still has no Item screen, Sign out clears the session and the menu, a token with a broken signature signs the person out on the next call, and the dashboard of the employee holds no Item widget.

@@ -37,7 +37,7 @@ public class BlazorTests
     {
         Assert.AreEqual("Blazor", EssentialsCatalog.FindStack("blazor"));
         var names = EssentialsCatalog.Groups(Repo.TemplatesDirectory, "Blazor").Select(g => g.Name).ToList();
-        CollectionAssert.AreEquivalent(new[] { "Git", "Layout", "Project", "Support" }, names);
+        CollectionAssert.AreEquivalent(new[] { "Auth", "Git", "Layout", "OData", "Project", "Support" }, names);
     }
 
     [TestMethod]

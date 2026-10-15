@@ -8,6 +8,8 @@
     // (no table, no database: an essentials group; the output folder is the Blazor app's own folder)
     // A standalone Blazor WebAssembly app that calls the generated API with an HttpClient. The API's address is ApiBaseUrl in wwwroot/appsettings.json (settings ApiPort, default 5080); the dev server's
     // port is DevPort (default 5190), and API_EssentialProgram allows that origin. Program.cs registers the clients that BLZ_Screens lists. Settings: ProjectName, ProjectTitle, ApiPort, DevPort.
+    // With Auth=true Program.cs also registers the sign-in (BLZ_EssentialAuth), the project references Microsoft.AspNetCore.Components.Authorization and App.razor routes through AuthorizeRouteView, which sends a
+    // person who is not signed in to the sign-in page and one whose role may not read a page to the start page. With OData=true index.html links css/odata.css (BLZ_EssentialOData).
     // ==========================================================================================
     string ns = BlazorNames.Namespace(Project);
     string projectName = Project.ProjectName ?? "MyApp";
@@ -25,10 +27,16 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.*" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.*" PrivateAssets="all" />
+<# if (Project.Auth) { #>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="10.0.*" />
+<# } #>
   </ItemGroup>
 
 </Project>
 @@@FILE Program.cs@@@
+<# if (Project.Auth) { #>
+using Microsoft.AspNetCore.Components.Authorization;
+<# } #>
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using <#= ns #>;
@@ -40,14 +48,36 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 // The generated API; the address is in wwwroot/appsettings.json.
 string apiBase = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:<#= Project.ApiPort #>";
+<# if (Project.Auth) { #>
+// The sign-in: the session (the token in sessionStorage), the authentication state that [Authorize] and AuthorizeView read, and a handler that sends the token with every call
+// and signs the person out when the API answers 401.
+builder.Services.AddAuthorizationCore();
+builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddScoped<AuthSession>();
+builder.Services.AddScoped<AuthenticationStateProvider, SessionAuthenticationStateProvider>();
+builder.Services.AddScoped<AuthHandler>();
+builder.Services.AddScoped(sp => new HttpClient(sp.GetRequiredService<AuthHandler>()) { BaseAddress = new Uri(apiBase) });
+<# } else { #>
 builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(apiBase) });
+<# } #>
 builder.Services.AddApiClients();
 
 await builder.Build().RunAsync();
 @@@FILE App.razor@@@
 <Router AppAssembly="typeof(Program).Assembly">
     <Found Context="routeData">
+<# if (Project.Auth) { #>
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <Authorizing>
+                <p>Loading...</p>
+            </Authorizing>
+            <NotAuthorized>
+                <RedirectToStart />
+            </NotAuthorized>
+        </AuthorizeRouteView>
+<# } else { #>
         <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+<# } #>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
     <NotFound>
@@ -60,12 +90,20 @@ await builder.Build().RunAsync();
 @@@FILE _Imports.razor@@@
 @using System.Net.Http
 @using System.Net.Http.Json
+<# if (Project.Auth) { #>
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+<# } #>
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.JSInterop
 @using <#= ns #>
 @using <#= ns #>.Layout
+<# if (Project.Auth) { #>
+@using <#= ns #>.Components
+@using <#= ns #>.Services
+<# } #>
 @@@FILE wwwroot/index.html@@@
 <!DOCTYPE html>
 <html lang="en">
@@ -75,6 +113,9 @@ await builder.Build().RunAsync();
     <title><#= Project.ProjectTitle #></title>
     <base href="/" />
     <link rel="stylesheet" href="css/app.css" />
+<# if (Project.OData) { #>
+    <link rel="stylesheet" href="css/odata.css" />
+<# } #>
     <link rel="icon" href="data:," />
 </head>
 <body>

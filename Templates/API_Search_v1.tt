@@ -46,6 +46,9 @@
     bool ef = Project.AccessModeFor(Model.Dialect) == AccessMode.Ef;
     var efFilters = string.Concat(filters.Select(f => ", " + f.ParamName));
     // ApiAuth with OwnedTables: only the rows of the owners the caller may act for. The routines cannot take an owner, so the routine form answers 403 to a caller who is limited to some owners.
+    // ReadRoles: the search refuses a role the table's ReadRoles does not list
+    var readRoles = WriteRolePlan.ReadFor(Project, Model);
+    string readGate = readRoles.Count > 0 ? "        .RequireReadRoles([" + WriteRolePlan.Literal(readRoles) + "])" + ((char)10) : "";
     var ownerColumn = OwnedTable.OwnerColumn(Model, Project);
     var ownerLink = OwnedTable.Through(Model, Project);
     bool scoped = ownerColumn is not null || ownerLink is not null;
@@ -70,7 +73,7 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
         app.MapGet(_apiSubDir + "/search", Search)
         .WithName($"Search{plural}")
         .WithOpenApi()
-        .Produces<<#= entity #>SearchResult>()
+<#= readGate #>        .Produces<<#= entity #>SearchResult>()
         .ProducesProblem(<#= HttpStatus.BadRequest #>)
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
     }

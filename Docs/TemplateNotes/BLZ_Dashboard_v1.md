@@ -7,4 +7,5 @@ The Blazor dashboard, written only for a project with `Dashboard=true`: `Service
 - No strip above each grid: `DashboardStrip` does not apply to Blazor.
 - The API must allow the app's origin (`DevPort`, default 5190).
 - **Checked:** generated for the SQL Server sample, built, and viewed in the browser against the running API: the cards, bars, sparkline and Latest list showed the same numbers as the React page.
+- With `Auth=true` the page asks for a signed-in person (`@attribute [Authorize]`); the API leaves out the widgets of tables the role may not read (`ReadRoles`, `TableReadRoles`), so the page draws only what comes back.
 - **Not done:** no test project for the page.

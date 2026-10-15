@@ -23,17 +23,22 @@
     var widgets = plan.Widgets.Concat(plan.Candidates.Where(w => strip.Contains(w.Id) && !onDashboard.Contains(w.Id))).ToList();
     var screenTables = Database.ScreenTables(Project).Select(t => t.TableName).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+    // ReadRoles with ApiAuth: the widgets of a table whose reads are limited go only to those roles
+    var limited = Database.Tables.Select(t => (t.TableName, Roles: WriteRolePlan.ReadFor(Project, t))).Where(t => t.Roles.Count > 0).ToList();
+
     string Bool(bool value) => value ? "true" : "false";
 
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
 
     Line("@@@FILE src/routes/dashboard.rs@@@");
-    Line("use axum::{Json, Router, extract::{Query, State}, routing::get};");
+    Line(limited.Count > 0 ? "use axum::{Extension, Json, Router, extract::{Query, State}, routing::get};" : "use axum::{Json, Router, extract::{Query, State}, routing::get};");
     Line("use serde::{Deserialize, Serialize};");
     Line("use std::collections::HashMap;");
     Line("use std::sync::{LazyLock, Mutex};");
     Line("use std::time::{Duration, Instant};");
+    if (limited.Count > 0)
+        Line("use crate::auth::CurrentUser;");
     Line("use crate::support::{ApiResult, Pool};");
     Line();
     Line("/// One value of a widget: a label and a number (a count, a sum, one month of a trend).");
@@ -108,9 +113,34 @@
     Line("    table: Option<String>,");
     Line("}");
     Line();
-    Line("async fn dashboard(State(pool): State<Pool>, Query(query): Query<DashboardQuery>) -> ApiResult<Json<DashboardResult>> {");
-    Line("    Ok(Json(load(&pool, query.table.as_deref()).await?))");
-    Line("}");
+    if (limited.Count > 0)
+    {
+        Line("/// The roles that may read a table's rows (ReadRoles, TableReadRoles); a table not listed is open to every signed-in person.");
+        Line("const READ_RULES: &[(&str, &[&str])] = &[");
+        foreach (var rule in limited)
+            Line($"    (\"{rule.TableName}\", &[{WriteRolePlan.Literal(rule.Roles)}]),");
+        Line("];");
+        Line();
+        Line("fn may_read(user: &CurrentUser, table: &str) -> bool {");
+        Line("    READ_RULES");
+        Line("        .iter()");
+        Line("        .find(|(name, _)| name.eq_ignore_ascii_case(table))");
+        Line("        .is_none_or(|(_, roles)| user.role.as_deref().is_some_and(|role| roles.contains(&role)))");
+        Line("}");
+        Line();
+        Line("async fn dashboard(State(pool): State<Pool>, Extension(user): Extension<CurrentUser>, Query(query): Query<DashboardQuery>) -> ApiResult<Json<DashboardResult>> {");
+        Line("    // the answer is cached for every caller, so the copy sent loses the widgets this caller may not read");
+        Line("    let mut result = load(&pool, query.table.as_deref()).await?;");
+        Line("    result.widgets.retain(|w| may_read(&user, &w.table));");
+        Line("    Ok(Json(result))");
+        Line("}");
+    }
+    else
+    {
+        Line("async fn dashboard(State(pool): State<Pool>, Query(query): Query<DashboardQuery>) -> ApiResult<Json<DashboardResult>> {");
+        Line("    Ok(Json(load(&pool, query.table.as_deref()).await?))");
+        Line("}");
+    }
     Line();
     Line("/// The dashboard page's widgets, or with a table the cards of that table's strip (empty for a table that has none). The answer is kept for a minute per table.");
     Line("async fn load(pool: &Pool, table: Option<&str>) -> Result<DashboardResult, sqlx::Error> {");

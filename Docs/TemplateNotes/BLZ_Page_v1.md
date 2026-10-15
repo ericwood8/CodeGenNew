@@ -24,3 +24,13 @@ A column the system writes (`ColumnModel.IsSystemStampColumn`: CreateDate, Creat
 ## Required fields
 
 A required field (NOT NULL, other than a yes/no box and the stamps the system writes; `FormModel.IsRequired`) gets the native `required` attribute and, unless `RequiredMarks=false`, a red `*` written after its caption: `<span aria-hidden="true" style=...>*</span>`. Screen readers skip the mark because the field itself says it is required. There is no legend line. Save is not disabled; the browser refuses an incomplete submit as before.
+
+## Sign-in, role rules and OData
+
+- **`Auth=true`:** every page carries `@attribute [Authorize]`, with `Roles = "Administrator,Hr"` for a table with `ReadRoles` or `TableReadRoles` (an address typed for a page the role may not read goes to the start page). With `WriteRoles` or `TableWriteRoles` for the table, Add New, Edit, Clone and Delete show only to the roles that may write (`CanWrite`, from `AuthSession.HasRole`), a `?edit=` address opens no form for another role, and a child grid's Delete follows the child table's write roles. See `BLZ_EssentialAuth_v1.md`.
+- **`BLZ_ODataPage`** is this template run with `Variant=OData` (its config says `Base=BLZ_Page_v1.tt`): the same page over the table's OData client, with several sorts and a filter row; see `BLZ_ODataPage_v1.md`. With `ODataScreens=Replace` this REST page keeps its code but not its `@page` line, because the OData page has its route.
+- The REST output is byte for byte what it was when `Auth` and `OData` are off.
+
+## Guarded columns
+
+With `ApiAuth=true` and `GuardedColumns` naming a column of this table, `OnInitializedAsync` calls `Client.GetGuardsAsync()` (`GET <route>/guards`) and the form shows that column as its input only for a person who may change it; everyone else sees the value as text (Yes / No for a flag) with the reason ("Only a manager can change this."). The stamp columns are text and say "not recorded" on a row from before they existed. The OData page asks through `<Table>ODataClient`, which reads the table's REST route. Without a guard the page has none of this code.

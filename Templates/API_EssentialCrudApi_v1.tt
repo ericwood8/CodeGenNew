@@ -23,6 +23,10 @@
     string baseNameActiveEntity = Project.BaseNameActiveEntity ?? "BaseNameActiveEntity";
     string validation(string when) => Project.ApiValidation ? when : "";
     string auth(string when) => Project.ApiAuth ? when : "";
+    // WriteRoles: the write routes refuse a role the table's WriteRoles does not list (RoleGate, written by the Jwt group)
+    string roles(string indent) => Project.ApiAuth ? indent + ".RequireWriteRoles(WriteRoles)\n" : "";
+    // ReadRoles: the list, one row, find by name and the active list refuse a role the table's ReadRoles does not list (the lookup stays open for the drop-downs of other screens)
+    string reads(string indent) => Project.ApiAuth ? indent + ".RequireReadRoles(ReadRoles)\n" : "";
     // EditableChildren: a form saves the rows of some child tables together with the parent (ChildRows); written only when the project lists a child
     bool children = Project.EditableChildren.Length > 0;
     // Dtos: a table's API can take an input type and answer an output type (CS_DtoInput, CS_Dto) instead of its entity; the entity-typed classes below stay for a table that does not
@@ -368,6 +372,12 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     /// <summary> The signed-in caller. </summary>
     protected System.Security.Claims.ClaimsPrincipal Caller => Http.User;
 
+    /// <summary> The roles that may create, change, delete and clone rows (the project's WriteRoles and TableWriteRoles, the administrator role among them); empty: any signed-in person. Reading is open to every signed-in person. </summary>
+    protected virtual IReadOnlyList<string> WriteRoles => [];
+
+    /// <summary> The roles that may read rows (the project's ReadRoles and TableReadRoles, the administrator role among them); empty: any signed-in person. The lookup is not covered: drop-downs of other screens read it. </summary>
+    protected virtual IReadOnlyList<string> ReadRoles => [];
+
     /// <summary> Runs after a create's or update's body is a row and before it is saved: <paramref name="row"/> may be corrected here (a column no caller may set takes its stored value) and a result refuses the write. <paramref name="isNew"/> is true for a create; for an update the row's key is the one in the route. The default accepts. </summary>
     protected virtual Task<IResult?> BeforeSaveAsync(<#= contextType #> context, TEntity row, bool isNew) => Task.FromResult<IResult?>(null);
 
@@ -403,7 +413,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 #>
         .WithName($"Get{plural}")
         .WithOpenApi()
-        .Produces<IEnumerable<<#= output #>>>()
+<#= reads("        ") #>        .Produces<IEnumerable<<#= output #>>>()
 <#= listSearch ? "        .Produces<Dictionary<string, object?>>()\n" : "        .Produces<CrudPage<" + output + ">>()\n" #>        .ProducesProblem(<#= HttpStatus.BadRequest #>)
         .ProducesProblem(<#= HttpStatus.NotFound #>)
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
@@ -412,7 +422,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
         app.MapGet(apiSubDir + IdSegment, ([FromServices] <#= contextType #> context, TKey id) => GetByIdAsync(context, id))
         .WithName($"Get{singular}ById")
         .WithOpenApi()
-        .Produces<<#= output #>>()
+<#= reads("        ") #>        .Produces<<#= output #>>()
         .ProducesProblem(<#= HttpStatus.NotFound #>)
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
 
@@ -436,7 +446,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 #>
         .WithName($"Create{singular}")
         .WithOpenApi()
-<#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(<#= HttpStatus.InternalServerError #>);
+<#= roles("        ") #><#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(<#= HttpStatus.InternalServerError #>);
 
         // Update existing
 <#
@@ -457,7 +467,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 #>
         .WithName($"Update{singular}")
         .WithOpenApi()
-<#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(<#= HttpStatus.BadRequest #>)
+<#= roles("        ") #><#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(<#= HttpStatus.BadRequest #>)
         .ProducesProblem(<#= HttpStatus.NotFound #>)
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
 
@@ -465,7 +475,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
         app.MapDelete(apiSubDir + IdSegment, ([FromServices] <#= contextType #> context, TKey id) => DeleteAsync(context, id))
         .WithName($"Delete{singular}")
         .WithOpenApi()
-        .ProducesProblem(<#= HttpStatus.NotFound #>)
+<#= roles("        ") #>        .ProducesProblem(<#= HttpStatus.NotFound #>)
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
 
         if (CanLookup)
@@ -484,7 +494,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
             app.MapGet(apiSubDir + "/{name}", ([FromServices] <#= contextType #> context, string name) => FindByNameRowsAsync(context, name))
             .WithName($"Get{plural}ByName")
             .WithOpenApi()
-            .Produces<IEnumerable<<#= output #>>>()
+<#= reads("            ") #>            .Produces<IEnumerable<<#= output #>>>()
             .ProducesProblem(<#= HttpStatus.InternalServerError #>);
         }
 
@@ -494,7 +504,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
             app.MapPost(apiSubDir + IdSegment + "/clone", ([FromServices] <#= contextType #> context, TKey id) => CloneRowAsync(context, id))
             .WithName($"Clone{singular}")
             .WithOpenApi()
-            .ProducesProblem(<#= HttpStatus.NotFound #>)
+<#= roles("            ") #>            .ProducesProblem(<#= HttpStatus.NotFound #>)
             .ProducesProblem(<#= HttpStatus.InternalServerError #>);
         }
     }
@@ -924,6 +934,12 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
     /// <summary> The signed-in caller. </summary>
     protected System.Security.Claims.ClaimsPrincipal Caller => _http!.HttpContext!.User;
 
+    /// <summary> The roles that may create, change and delete rows (the project's WriteRoles and TableWriteRoles, the administrator role among them); empty: any signed-in person. </summary>
+    protected virtual IReadOnlyList<string> WriteRoles => [];
+
+    /// <summary> The roles that may read rows (the project's ReadRoles and TableReadRoles, the administrator role among them); empty: any signed-in person. The lookup is not covered: drop-downs of other screens read it. </summary>
+    protected virtual IReadOnlyList<string> ReadRoles => [];
+
     /// <summary> Runs after a create's or update's body is a row and before it is saved: <paramref name="row"/> may be corrected here (a column no caller may set takes its stored value) and a result refuses the write. <paramref name="isNew"/> is true for a create. The default accepts. </summary>
     protected virtual Task<IResult?> BeforeSaveAsync(<#= contextType #> context, TEntity row, bool isNew) => Task.FromResult<IResult?>(null);
 
@@ -942,13 +958,13 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
         app.MapGet(apiSubDir, ([FromServices] <#= contextType #> context) => GetAllAsync(context))
         .WithName($"Get{plural}")
         .WithOpenApi()
-        .Produces<IEnumerable<TEntity>>()
+<#= reads("        ") #>        .Produces<IEnumerable<TEntity>>()
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
 
         app.MapGet(apiSubDir + "/active", ([FromServices] <#= contextType #> context) => GetAllActiveAsync(context))
         .WithName($"GetActive{plural}")
         .WithOpenApi()
-        .Produces<IEnumerable<TEntity>>()
+<#= reads("        ") #>        .Produces<IEnumerable<TEntity>>()
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
 
         app.MapGet(apiSubDir + "/lookup", ([FromServices] <#= contextType #> context) => LookupAsync(context))
@@ -960,7 +976,7 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
         app.MapGet(apiSubDir + "/{id:int}", ([FromServices] <#= contextType #> context, int id) => GetByIdAsync(context, id))
         .WithName($"Get{singular}ById")
         .WithOpenApi()
-        .Produces<TEntity>()
+<#= reads("        ") #>        .Produces<TEntity>()
         .ProducesProblem(<#= HttpStatus.NotFound #>)
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
 
@@ -982,7 +998,7 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
 #>
         .WithName($"Create{singular}")
         .WithOpenApi()
-<#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(<#= HttpStatus.BadRequest #>)
+<#= roles("        ") #><#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(<#= HttpStatus.BadRequest #>)
         .ProducesProblem(<#= HttpStatus.Conflict #>)
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
 
@@ -1004,7 +1020,7 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
 #>
         .WithName($"Update{singular}")
         .WithOpenApi()
-<#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(<#= HttpStatus.BadRequest #>)
+<#= roles("        ") #><#= validation("        .AddEndpointFilter<ValidationFilter<TEntity>>()\n") #>        .ProducesProblem(<#= HttpStatus.BadRequest #>)
         .ProducesProblem(<#= HttpStatus.NotFound #>)
         .ProducesProblem(<#= HttpStatus.Conflict #>)
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
@@ -1012,7 +1028,7 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
         app.MapDelete(apiSubDir + "/{id:int}", ([FromServices] <#= contextType #> context, int id) => DeleteAsync(context, id))
         .WithName($"Delete{singular}")
         .WithOpenApi()
-        .ProducesProblem(<#= HttpStatus.BadRequest #>)
+<#= roles("        ") #>        .ProducesProblem(<#= HttpStatus.BadRequest #>)
         .ProducesProblem(<#= HttpStatus.NotFound #>)
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
 
@@ -1020,7 +1036,7 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
         app.MapGet(apiSubDir + "/{name}", ([FromServices] <#= contextType #> context, string name) => FindByNameAsync(context, name))
         .WithName($"Get{plural}ByName")
         .WithOpenApi()
-        .Produces<IEnumerable<TEntity>>()
+<#= reads("        ") #>        .Produces<IEnumerable<TEntity>>()
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
     }
 

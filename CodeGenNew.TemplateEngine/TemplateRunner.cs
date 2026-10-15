@@ -56,11 +56,14 @@ public static class TemplateRunner
         else if (model is DatabaseModel markDatabase)
             UserTable.MarkCredentials(markDatabase, project ?? ProjectSettings.None);
         session["Project"] = project ?? ProjectSettings.None;
+        var (textPath, variant) = TemplateAlias.Resolve(templateFilePath);
+        if (variant is not null)
+            session["Variant"] = variant;
 
         string tempOutputFile = Path.GetTempFileName();
         try
         {
-            bool success = await generator.ProcessTemplateAsync(templateFilePath, tempOutputFile, cancellationToken);
+            bool success = await generator.ProcessTemplateAsync(textPath, tempOutputFile, cancellationToken);
 
             var errors = generator.Errors.Cast<System.CodeDom.Compiler.CompilerError>()
                 .Select(e => e.ToString())

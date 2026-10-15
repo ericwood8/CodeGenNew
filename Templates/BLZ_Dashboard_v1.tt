@@ -9,7 +9,7 @@
     // Generates: Services/DashboardClient.cs, Components/DashboardWidgetView.razor and Pages/Dashboard.razor   (the paths are written by the template; point the output folder at the Blazor app's folder)
     // The dashboard page of a Blazor app, drawn from what GET /api/dashboard returns (API_Dashboard): cards, bar lists, a sparkline and a list of recent rows, all written by the template, so no chart
     // package is added. Every chart has the same numbers beside it as text. Money widgets (isMoney) show the project's currency. BLZ_Screens adds the menu entry, registers DashboardClient and makes
-    // the dashboard the first screen. There is no strip above each grid on Blazor.
+    // the dashboard the first screen. There is no strip above each grid on Blazor. With Auth=true the page asks for a signed-in person; the API leaves out the widgets of tables the role may not read.
     // Full notes: Docs/TemplateNotes/BLZ_Dashboard_v1.md
     // ==========================================================================================
 
@@ -169,6 +169,14 @@ public class DashboardClient(HttpClient http)
 @page "/dashboard"
 @using <#= ns #>.Components
 @using <#= ns #>.Services
+<#
+    if (Project.Auth)
+    {
+#>
+@attribute [Authorize]
+<#
+    }
+#>
 @inject DashboardClient Client
 
 <PageTitle>Dashboard</PageTitle>

@@ -1,0 +1,5 @@
+<#@ template language="C#" #>
+<#
+    // BLZ_ODataPage_v1.tt is BLZ_Page_v1.tt run with Variant=OData (the Base and Variant keys of its config): the same page over the table's OData client, with names of its own.
+    // This file is only a stub for the template catalog; the text of the template is BLZ_Page_v1.tt. Full notes: Docs/TemplateNotes/BLZ_ODataPage_v1.md
+#>

@@ -1,0 +1,17 @@
+# TSX_ODataPage_v1
+
+The OData form of the React page: `pages/<Table>ODataPage.tsx` and `pages/__tests__/<Table>ODataPage.test.tsx` over the table's `<table>ODataApi`, with its own route (`<table>-odata`), saved-sort key and menu entry (`<Table> (OData)`, after the REST ones in `screens.tsx`, loaded with `React.lazy`). The REST page is not touched.
+
+`TSX_ODataPage_v1.tt` is a stub. Its config says `Base=TSX_Page_v1.tt` and `Variant=OData`: the engine runs the text of `TSX_Page_v1.tt` with the template parameter `Variant` set to `OData`; with no variant the output is byte for byte what it was. The fields, form pages, grid columns, captions, drop-downs (read from the parents' REST lookup routes) and validation are the REST page's.
+
+What differs, and what the page has that the REST page does not:
+- the list is `GET /odata/<set>?$count=true&$top=&$skip=&$filter=&$orderby=&$select=`;
+- **several-column sort**: a click sorts by the column (again: flips it), a Shift-click adds it as the next sort (again: flips it, once more: takes it out); a column in a several-column sort shows its place in a badge; the sorts are kept in the browser;
+- **filter row** under the headers, a control per column by its kind (`ODataFilterFields` in Core, one rule for every stack): text, number and date ranges, yes/no, a drop-down of the parent's rows, a drop-down of the values the database lists, and an "empty" check box for a column that can be empty. Enter in a box searches; Search and Clear are the last cell. The one search box of `ListProtocol=Search` stays above the grid;
+- **slim grid**: the page reads the columns it shows and the key; Edit reads the row whole before the form opens;
+- a delete of a row in use answers 409 on the OData route (the page shows the same message as for the REST 400); other 409 answers show the API's own words;
+- Clone goes through the REST route.
+
+A name/active table (a Name and an IsActive column) gets the form of its own kind over the OData api module, as the REST page does (see `TSX_Page_v1.md`): the whole list, a name box and an Active only check box, no paging or sort, no filter row; a duplicate name shows the API's own words (`problemText`). Written only for the tables the project serves as OData and that have a plain page: a master-detail table has `TSX_ODataDetailMasterPage`. Needs the `OData` essentials group and `TSX_ODataApi`. `ODataScreens=Replace` puts the page in the REST page's place. A table with `EditableChildren` is not served (the OData routes do not save the lists).
+
+**Checked:** generated for a scratch copy of the SQL Server InvoiceSystem into a copy of the React sample, `tsc -b` and `vite build` pass (each OData page is its own chunk of 7 to 31 kB), its 55 tests pass, and the pages were clicked in the browser against a generated API: the first page, a click sort and a Shift-click second sort (`$orderby=customer/accountNumber,item/itemNumber,customerItemId`, badges 1 and 2, the list kept), the filter row (a parent drop-down and a date range as `customerId eq 1 and purchasedDate ge 2026-01-01 and purchasedDate lt 2027-01-01`), Clear, Edit (the row read whole, the date filled), a changed date saved by PUT and read back from the database, Add, Clone (the REST route) and Delete (read back), a typed `x' or 1 eq 1` stays one literal, and on the master-detail page the child grids were read by the parent's key and a delete in use showed the message.

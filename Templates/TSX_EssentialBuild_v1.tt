@@ -44,7 +44,7 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
-// The API listens on http://localhost:<#= Project.ApiPort #>; the generated api modules call relative /api/... paths,
+// The API listens on http://localhost:<#= Project.ApiPort #>; the generated api modules call relative /api/... paths (and /odata/... with OData=true),
 // so the dev server forwards them and the browser never makes a cross-origin request.
 export default defineConfig({
   plugins: [react()],
@@ -52,6 +52,9 @@ export default defineConfig({
     port: <#= Project.DevPort("React") #>,
     proxy: {
       '/api': 'http://localhost:<#= Project.ApiPort #>',
+<# if (Project.OData) { #>
+      '/odata': 'http://localhost:<#= Project.ApiPort #>',
+<# } #>
     },
   },
   test: {

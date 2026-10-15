@@ -1,0 +1,57 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_ODataClient_v1.tt
+    // Generates: Services/<Table>ODataClient.cs for each table the project serves as OData (API_OData, ODataPlan) that has a Blazor client   (whole-database; the paths are written by the template,
+    // point the output folder at the Blazor app's folder)
+    // A short class on ODataClient<T, TKey> (Services/ODataSupport.cs, written by BLZ_EssentialOData): the entity set (/odata/<set>), the table's key, the search boxes (the table's SearchPlan filters),
+    // the header sorts (a foreign key sorts by its parent's display column when the parent is served as OData too), the order without a sort, and the REST route a clone goes through.
+    // It is the OData twin of BLZ_Client: the same model (Models/<Table>), the same row JSON, another route. BLZ_ODataPage (BLZ_Page run as its OData form) is the page over it.
+    // Full notes: Docs/TemplateNotes/BLZ_ODataClient_v1.md
+    // ==========================================================================================
+
+    var selection = ODataPlan.For(Database, Project);
+    var tables = selection.Tables.Where(t => BlazorNames.HasClient(t, Project)).ToList();
+    if (tables.Count == 0)
+        Error("BLZ_ODataClient found no table served as OData: set OData=true (and ODataTables if only some tables are served).");
+    // the tables a header may sort through (a foreign key sorts by its parent's display column): not a table whose rows belong to a person, which no navigation leads into
+    var served = selection.Tables.Where(t => !ODataPlan.IsScoped(t, Project)).ToDictionary(t => t.TableName, StringComparer.OrdinalIgnoreCase);
+
+    string Text(string s) => "\"" + s + "\"";
+
+    var o = new StringBuilder();
+    void L(string s = "") => o.Append(s).Append('\n');
+
+    foreach (var table in tables)
+    {
+        var keyType = KeyType.Of(table)!;
+        var plan = ODataScreenPlan.For(table, Project, served);
+        string type = BlazorNames.TypeName(table.TableName);
+        L($"@@@FILE Services/{BlazorNames.ODataClientName(table.TableName)}.cs@@@");
+        L($"using {BlazorNames.Namespace(Project)}.Models;");
+        L();
+        L($"namespace {BlazorNames.Namespace(Project)}.Services;");
+        L();
+        L($"public class {BlazorNames.ODataClientName(table.TableName)}(HttpClient http) : ODataClient<{type}, {keyType.CSharp}>(http, {Text(plan.Set)}, Table, {Text(BlazorNames.ApiRoute(table.TableName))})");
+        L("{");
+        L("    private static readonly ODataTable Table = new(");
+        L($"        {Text(plan.KeyProperty)},");
+        L($"        [{string.Join(", ", plan.Filters.Select(f => $"({Text(f.Key)}, {Text(f.Property)})"))}],");
+        L($"        [{string.Join(", ", plan.Sorts.Select(s => $"({Text(s.Name)}, {Text(s.Path)})"))}],");
+        L($"        [{string.Join(", ", plan.DefaultOrder.Select(Text))}]);");
+        if (GatePlan.GuardsOf(Project, table).Count > 0)
+        {
+            L();
+            L("    // Which guarded columns the signed-in person may change (the table's REST route answers it), by the column's JSON name.");
+            L($"    public async Task<Dictionary<string, bool>> GetGuardsAsync() => await (await http.GetAsync({Text(BlazorNames.ApiRoute(table.TableName) + "/guards")})).ReadAsync<Dictionary<string, bool>>();");
+        }
+        L("}");
+    }
+    Write(o.ToString());
+#>

@@ -1,0 +1,19 @@
+# TSX_EssentialAuth_v1
+
+The `Auth` essentials group of the React stack (written once and kept; `--replace` refreshes it). `Auth=true` in the project ticks it, as it does for Angular. It is the sign-in of the app; the API half is `ApiAuth=true` (the `Jwt` group), and the same `POST /api/auth/login` answers `{ token, expiresUtc, user: { name, role, ownerId } }` from the ASP.NET, Python and Rust APIs.
+
+- `src/api/auth.ts`: the session (token and user in `sessionStorage`, so the sign-in ends with the tab; a session past `expiresUtc` is dropped on the next visit), `login(userName, password)` (a refused sign-in is a `LoginError` with the status: 401 a wrong name or password, 429 too many tries), `logout()`, `hasRole(roles)`, `getToken()` and the `useAuth()` hook that components read it with (they draw again when the person signs in or out). `setSession` is what the tests use.
+- `src/pages/LoginPage.tsx`: the sign-in page (`/login`), with the messages "The user name or password is not right.", "Too many tries. Wait a minute and try again." and "Could not sign in right now."; the password is cleared after a failure; a sign-in goes to `/`, which opens the first screen the person may read.
+- `src/components/RequireAuth.tsx`: sends a person who is not signed in to `/login`; with `roles`, sends a person whose role is not one of them to `/`.
+- `src/components/auth.css`: the sign-in page and the top bar.
+- Tests: `api/__tests__/auth.test.ts` (sign in, refused sign-in, sign out, roles, a saved session and an expired one, and the shared request helper sending the token and signing out on a 401), `pages/__tests__/LoginPage.test.tsx` and `components/__tests__/RequireAuth.test.tsx`.
+
+With `Auth=true` the other React files change too (the REST and OData api modules go through `request`, so they send the token without further change):
+- **Support group** `api/client.ts`: sends `Authorization: Bearer <token>` with every call and signs the person out when the API answers 401.
+- **Shell group** `App.tsx`: the menu and the hamburger show only to a signed-in person; the top bar shows the user's name with Sign out; every route is behind `RequireAuth`; a screen the person's role may not read is not in the menu.
+- **`screens.tsx`** (`TSX_Screens`): a screen of a table with `ReadRoles` or `TableReadRoles` carries `roles: [...]`; the shell hides it and `RequireAuth` sends another role to the start page.
+- **Pages** (`TSX_Page`, `TSX_DetailMasterPage`, their OData and name/active forms): with `WriteRoles` or `TableWriteRoles` for the table, Add New, Edit, Clone and Delete show only to the roles that may write (`canWrite`); the page's test checks Add New for a listed role and an unlisted one.
+
+A project made before needs `--replace` of the Support, Shell and Auth groups. The page, the dashboard and the API modules are not otherwise aware of the sign-in; a table the API refuses to a role (403) shows the page's own error text.
+
+**Checked:** generated for a scratch copy of the SQL Server InvoiceSystem with `ApiAuth`, the user table, `WriteRoles=Manager`, `TableWriteRoles=Item:Administrator` and `TableReadRoles=Item:Administrator` into a copy of the React sample: `tsc -b`, `vite build` and 75 Vitest tests pass, and in the browser against the real API with three real sign-ins: an address that needs a sign-in goes to `/login`, a wrong password says so and clears the box, the employee sees the lists but no Add, Edit, Clone or Delete and no Item screen (an address typed for it goes back to the start page), the manager can change customers and still has no Item screen, the administrator has everything, Sign out clears the session, a change saved with the token (`PUT /api/customers/6`, 200) and a token with a broken signature signed the person out on the next call.

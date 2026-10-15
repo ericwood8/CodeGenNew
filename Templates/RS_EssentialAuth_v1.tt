@@ -56,6 +56,7 @@ const HASH_BYTES: usize = 32;
 
 pub const PROBLEM_NOT_YOURS: &str = "/problems/not-your-row";
 pub const PROBLEM_COLUMN_NOT_YOURS: &str = "<#= ProblemTypes.ColumnNotYours #>";
+pub const PROBLEM_ROLE_NOT_ALLOWED: &str = "<#= ProblemTypes.RoleNotAllowed #>";
 pub const PROBLEM_DUPLICATE_VALUE: &str = "<#= ProblemTypes.DuplicateValue #>";
 pub const PROBLEM_LAST_ADMINISTRATOR: &str = "<#= ProblemTypes.LastAdministrator #>";
 const PROBLEM_SIGN_IN_INCOMPLETE: &str = "<#= ProblemTypes.SignInIncomplete #>";
@@ -102,6 +103,16 @@ impl CurrentUser {
             self.owner_id.map_or(Scope::Nobody, Scope::Owner)
         }
     }
+}
+
+/// A route layer: only a caller whose role is in `roles` (the administrator role is among them) gets through; ReadRoles and WriteRoles of the project.
+pub async fn check_roles(roles: &'static [&'static str], write: bool, request: Request, next: Next) -> Result<Response, ApiError> {
+    let allowed = request.extensions().get::<CurrentUser>().and_then(|user| user.role.as_deref()).is_some_and(|role| roles.contains(&role));
+    if !allowed {
+        let detail = if write { "Your role may read this table but not change it." } else { "Your role may not read this table." };
+        return Err(ApiError::Problem(<#= HttpStatus.Forbidden #>, PROBLEM_ROLE_NOT_ALLOWED, "Not allowed", Some(detail)));
+    }
+    Ok(next.run(request).await)
 }
 
 pub fn not_yours() -> ApiError {

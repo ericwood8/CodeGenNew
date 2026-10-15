@@ -1,6 +1,7 @@
 <#@ template language="C#" #>
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
 <#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ parameter name="Variant" type="System.String" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Text" #>
 <#@ import namespace="System.Text.RegularExpressions" #>
@@ -26,6 +27,8 @@
     // The React counterpart of TS_Component, as one function component: a grid with Edit, Clone and Delete, Add New, a search bar with a box per
     // searchable column, paging, sortable headers, and a modal add/edit form with the same field, drop-down, date and number rules.
     // Plain semantic HTML with no invented class names; styling comes from the app's own stylesheet. Does not write a detail grid (TSX_DetailMasterPage does).
+    // TSX_ODataPage is this template run with Variant=OData (its config says Base=TSX_Page_v1.tt): the same page over the table's OData api module (TSX_ODataApi) instead of the REST one, with several sorts
+    // (Shift-click adds a column), a filter row under the headers and a grid that reads only the columns it shows; the REST page is not touched.
     // Full notes: Docs/TemplateNotes/TSX_Page_v1.md
     // ==========================================================================================
 
@@ -34,7 +37,15 @@
     var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
     var keyColumn = form.KeyColumn;
     var keyType = form.KeyType;   // how the key travels: a number, or a string for a uniqueidentifier or a text key
-    if (Project.NoApiFor(Model.TableName, Model.LookupShape))
+    if (Variant == "OData" && !ODataPlan.Serves(Model, Project))
+    {
+        // the OData page is written for the tables the project serves as OData and for no other; a plan runs this template for every table, so it says nothing for the rest
+    }
+    else if (Variant == "OData" && DatabaseModel.IsDetailMaster(Model, Project))
+    {
+        Error($"TSX_ODataPage writes no page for [{Model.SchemaName}].[{Model.TableName}]: a master-detail table has TSX_ODataDetailMasterPage.");
+    }
+    else if (Project.NoApiFor(Model.TableName, Model.LookupShape))
     {
         Error($"TSX_Page writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is an enum or excluded by the NoApiTables setting (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
     }
@@ -43,14 +54,22 @@
         Error($"TSX_Page needs a table with a single int, uniqueidentifier or text primary key (the routes take the id as {{id:int}}, {{id:guid}} or {{id}}), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
     }
-    else if (Model.IsNameActiveTable)
-    {
-        Error($"TSX_Page assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all); write this screen by hand.");
-    }
     else
     {
         string baseName = form.BaseName;
         string stem = form.Stem;
+        bool odata = Variant == "OData";
+        // WriteRoles with the sign-in: only the roles that may write see Add New, Edit, Clone and Delete (the API refuses the others with a 403 anyway)
+        IReadOnlyList<string> writeRoles = Project.Auth ? WriteRolePlan.For(Project, Model) : new List<string>();
+        bool gated = writeRoles.Count > 0;
+        string Gate(string jsx) => gated ? "{canWrite && " + jsx + "}" : jsx;
+        bool nameActive = form.IsNameActive;   // a Name and an IsActive column: the whole list is read, narrowed by a name box and an Active only check box on the page, with no paging or sort
+        string problemCall = odata ? "problemText" : "problemDetail";   // reads the API's own words from a problem answer
+        string pageName = odata ? baseName + "ODataPage" : baseName + "Page";
+        string apiVar = odata ? ReactNames.ODataApiVar(Model.TableName) : ReactNames.ApiVar(Model.TableName);
+        string apiFile = odata ? ReactNames.ODataApiFile(Model.TableName) : ReactNames.ApiFile(Model.TableName);
+        string gridId = odata ? stem + "-odata" : stem;   // the grid's saved sort is kept under this key
+        var odataFilters = odata ? ODataFilterFields.For(form) : null;   // the filter row's control of each grid column (null: none)
         string variable = form.Variable;        // holiday
         string listName = variable.Pluralize();        // holidays
         string setList = ReactNames.SetList(listName);  // setHolidays
@@ -68,14 +87,14 @@
         // The Search list protocol (ListProtocol=Search) has one search box for the whole table; the server decides which columns it matches.
         bool listSearch = Project.ListSearchProtocol;
         var searchFields = form.WebSearchFields;
-        bool canSearch = searchFields.Count > 0;
+        bool canSearch = !form.IsNameActive && searchFields.Count > 0 && (Variant != "OData" || listSearch);   // the OData page has the filter row; only the one box of the Search list protocol stays above the grid
 
         var shown = form.Columns;
 
         var parents = form.Parents;
 
         var gridColumns = form.GridColumns;
-        var sortableColumns = form.SortableColumns;
+        IReadOnlyList<ColumnModel> sortableColumns = nameActive ? [] : form.SortableColumns;
         bool canClone = form.CanClone;
         var formPages = form.Pages;
         bool tabbed = form.IsTabbed;
@@ -88,13 +107,29 @@
         T("import type { FormEvent } from 'react';");
         T("import { useNavigate, useSearchParams } from 'react-router-dom';");
         T($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
-        T($"import {{ {ReactNames.ApiVar(Model.TableName)} }} from '../{apiFolder}/{ReactNames.ApiFile(Model.TableName)}';");
+        T($"import {{ {apiVar} }} from '../{apiFolder}/{apiFile}';");
+        if (gated) T($"import {{ useAuth }} from '../{apiFolder}/auth';");
         T($"import {{ ApiError }} from '../{apiFolder}/client';");
-        T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
+        if (!nameActive) T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
         if (shown.Any(form.IsMoneyInput))
             T($"import {{ CurrencyInput }} from '../{componentsFolder}/CurrencyInput';");
-        T($"import {{ GridMenu, SortHeader, loadSort, nextSort, saveSort }} from '../{componentsFolder}/gridSort';");
-        T($"import type {{ GridSort }} from '../{componentsFolder}/gridSort';");
+        if (nameActive)
+        {
+            if (odata) T($"import {{ problemText }} from '../{apiFolder}/odataClient';");
+        }
+        else if (odata)
+        {
+            T($"import {{ GridMenu }} from '../{componentsFolder}/gridSort';");
+            T($"import type {{ GridSort }} from '../{componentsFolder}/gridSort';");
+            T($"import {{ {(odataFilters!.Any(f => f is not null) ? "FilterCell, " : "")}ODataSortHeader, conditionsOf, loadSorts, nextSorts, saveSorts }} from '../{componentsFolder}/odataScreen';");
+            T($"import type {{ ColumnFilter{(odataFilters!.Any(f => f is not null) ? ", ColumnFilterField" : "")} }} from '../{componentsFolder}/odataScreen';");
+            T($"import {{ problemText }} from '../{apiFolder}/odataClient';");
+        }
+        else
+        {
+            T($"import {{ GridMenu, SortHeader, loadSort, nextSort, saveSort }} from '../{componentsFolder}/gridSort';");
+            T($"import type {{ GridSort }} from '../{componentsFolder}/gridSort';");
+        }
         foreach (var p in parents.Where(p => !p.IsSelf))
         {
             if (!p.UsesLookupEndpoint) T($"import type {{ {p.BaseName} }} from '../{modelsFolder}/{p.ModelFile}';");
@@ -107,16 +142,53 @@
             T("type Lookup<K extends number | string = number> = { id: K; name: string; isActive?: boolean | null };");
             T();
         }
+        if (nameActive)
+        {
+            if (!odata)
+            {
+                T("// the detail of a problem-details answer (a 409 for a duplicate name says which name), or nothing when the error is not one");
+                T("const problemDetail = (error: unknown): string | undefined => {");
+                T("  if (!(error instanceof ApiError)) return undefined;");
+                T("  try {");
+                T("    const body = JSON.parse(error.message) as { detail?: unknown };");
+                T("    return typeof body.detail === 'string' ? body.detail : undefined;");
+                T("  } catch {");
+                T("    return undefined;");
+                T("  }");
+                T("};");
+            }
+        }
+        else
+        {
         T($"const initialPageSize = {pageSize};");
         T("const pageSizeChoices = [10, 20, 50, 100]; // the page sizes the person can pick under the grid");
-        T($"const gridKey = '{stem}'; // the grid's saved sort is kept in the browser under this key (see components/gridSort.tsx)");
+        T($"const gridKey = '{gridId}'; // the grid's saved sort is kept in the browser under this key (see components/gridSort.tsx)");
         T($"const sortableColumns = [{string.Join(", ", sortableColumns.Select(c => "'" + c.Name + "'"))}]; // the columns whose header sorts the grid");
+        if (odata)
+        {
+            var filterList = odataFilters!.Where(f => f is not null).Select(f => f!).ToList();
+            if (filterList.Count > 0)
+            {
+                T("const filterFields: ColumnFilterField[] = [");
+                foreach (var f in filterList)
+                {
+                    string literal = f.Literal is null ? "" : $", literal: '{f.Literal}'";
+                    T($"  {{ name: '{f.Name}', property: '{f.Property}', kind: '{f.Kind.ToString().ToLowerInvariant()}', nullable: {(f.Nullable ? "true" : "false")}{literal} }},");
+                }
+                T("];");
+            }
+            else
+                T("const filterFields: never[] = [];");
+            T($"const selectColumns = [{string.Join(", ", gridColumns.Select(c => "'" + JsonNames.Camel(c.Name) + "'"))}]; // the grid asks for these and the key; a row is read whole when it is opened");
+        }
+        }
         T();
-        T($"export function {baseName}Page() {{");
+        T($"export function {pageName}() {{");
         T($"  const [{listName}, {setList}] = useState<{baseName}[]>([]);");
         foreach (var p in parents)
             T($"  const [{ReactNames.ParentList(p)}, {ReactNames.SetList(ReactNames.ParentList(p))}] = useState<{p.ItemType}[]>([]);");
         T($"  const [selectedRow, setSelectedRow] = useState<{baseName} | null>(null);");
+        if (form.Guards.Count > 0) T("  const [guards, setGuards] = useState<Record<string, boolean>>({}); // which guarded columns the signed-in person may change (GET guards)");
         // a typed key is set on a new row too, so the key can no longer say whether the row is new: `adding` does
         if (textKey) T("  const [adding, setAdding] = useState(false); // true while the form holds a new row, whose key the person types");
         if (tabbed)
@@ -130,35 +202,89 @@
         }
         string filterInit = string.Join(", ", searchFields.Select(f => $"{f.ParamName}: ''"));
         if (canSearch) T($"  const [filters, setFilters] = useState({{ {filterInit} }});");
-        T("  const [page, setPage] = useState(1);");
-        T("  const [totalPages, setTotalPages] = useState(1);");
-        T("  const [pageSize, setPageSize] = useState(initialPageSize);");
+        if (nameActive)
+        {
+            T("  const [searchText, setSearchText] = useState('');");
+            T("  const [activeOnly, setActiveOnly] = useState(false);");
+        }
+        else
+        {
+            T("  const [page, setPage] = useState(1);");
+            T("  const [totalPages, setTotalPages] = useState(1);");
+            T("  const [pageSize, setPageSize] = useState(initialPageSize);");
+        }
         T("  const [loaded, setLoaded] = useState(false); // true once a page has arrived, so \"Nothing found.\" is not shown while waiting");
         T("  const [error, setError] = useState<string | null>(null);");
-        T("  const [sort, setSort] = useState<GridSort | null>(() => loadSort(gridKey, sortableColumns));");
+        if (nameActive)
+        {
+        }
+        else if (odata)
+        {
+            T("  const [sorts, setSorts] = useState<GridSort[]>(() => loadSorts(gridKey, sortableColumns));");
+            T("  const [columnFilters, setColumnFilters] = useState<Record<string, ColumnFilter>>({});");
+        }
+        else
+            T("  const [sort, setSort] = useState<GridSort | null>(() => loadSort(gridKey, sortableColumns));");
         T("  // Opened from another page's grid (?edit=<id>&back=<that page>): open this row, and go back to that page when the form is saved or cancelled.");
         T("  const [searchParams] = useSearchParams();");
         T("  const navigate = useNavigate();");
         T("  const backTo = searchParams.get('back');");
+        if (gated)
+        {
+            T("  const { hasRole } = useAuth();");
+            T($"  const canWrite = hasRole([{WriteRolePlan.Literal(writeRoles, (char)39)}]); // WriteRoles: the roles that may add, change and delete rows");
+        }
         T();
         // The sort (like the filters) is read from state by default; a change passes its new value explicitly because state is not updated yet.
+        if (nameActive)
+        {
+            T("  const load = () => {");
+            T($"    {apiVar}.getAll().then((result) => {{");
+        }
+        else if (odata)
+        {
+            T($"  const load = (targetPage: number = 1, over: {{ {(canSearch ? "filters?: typeof filters; " : "")}sorts?: GridSort[]; columnFilters?: Record<string, ColumnFilter>; size?: number }} = {{}}) => {{");
+            T($"    {apiVar}.queryPage({{");
+            T("      pageNumber: targetPage,");
+            T("      pageSize: over.size ?? pageSize,");
+            if (canSearch) T("      filters: over.filters ?? filters,");
+            T("      sorts: over.sorts ?? sorts,");
+            T("      conditions: conditionsOf(filterFields, over.columnFilters ?? columnFilters),");
+            T("      select: selectColumns,");
+            T("    }).then((result) => {");
+            T("      // the last row of the last page was deleted, or rows were removed elsewhere: the page asked for is past the end, so show the last page there is");
+            T("      if (result.items.length === 0 && result.totalCount > 0 && targetPage > 1) { load(result.totalPages, over); return; }");
+        }
+        else
+        {
         T($"  const load = (targetPage: number = 1{(canSearch ? ", filterValues: typeof filters = filters" : "")}, sortValue: GridSort | null = sort, sizeValue: number = pageSize) => {{");
-        T($"    {ReactNames.ApiVar(Model.TableName)}.getPage(targetPage, sizeValue, {(canSearch ? "filterValues" : "{}")}, sortValue).then((result) => {{");
+        T($"    {apiVar}.getPage(targetPage, sizeValue, {(canSearch ? "filterValues" : "{}")}, sortValue).then((result) => {{");
         T("      // the last row of the last page was deleted, or rows were removed elsewhere: the page asked for is past the end, so show the last page there is");
         T($"      if (result.items.length === 0 && result.totalCount > 0 && targetPage > 1) {{ load(result.totalPages{(canSearch ? ", filterValues" : "")}, sortValue, sizeValue); return; }}");
-        T($"      {setList}(result.items);");
-        T("      setPage(result.page);");
-        T("      setTotalPages(result.totalPages);");
+        }
+        T(nameActive ? $"      {setList}(result);" : $"      {setList}(result.items);");
+        if (!nameActive)
+        {
+            T("      setPage(result.page);");
+            T("      setTotalPages(result.totalPages);");
+        }
         T("      setLoaded(true);");
         T($"    }}).catch(() => setError('Failed to load {Labels.Words(baseName).ToLowerInvariant().Pluralize()}.'));");
         T("  };");
+        if (nameActive)
+        {
+            T();
+            T("  // The whole list is here: the name box and the Active only check box narrow it without another call.");
+            T($"  const visibleRows = {listName}.filter((row) => (!activeOnly || row.isActive) && (row.name ?? '').toLowerCase().includes(searchText.trim().toLowerCase()));");
+        }
         T();
         T("  useEffect(() => {");
         T("    load();");
         foreach (var p in parents)
             T($"    {ReactNames.ApiVar(p.Table)}.{p.LoadMethod}().then({ReactNames.SetList(ReactNames.ParentList(p))}).catch(() => {{}});");
+        if (form.Guards.Count > 0) T($"    {apiVar}.getGuards().then(setGuards).catch(() => {{}});");
         T("    const openId = searchParams.get('edit');");
-        T($"    if (openId) {ReactNames.ApiVar(Model.TableName)}.getById({(keyType.Kind == KeyKind.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'));");
+        T($"    if (openId) {apiVar}.getById({(keyType.Kind == KeyKind.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'));");
         T("  }, []);");
         T();
         T($"  const submit = async ({variable}: {baseName}): Promise<void> => {{");
@@ -167,18 +293,18 @@
         if (textKey)
         {
             T("      if (adding) {");
-            T($"        await {ReactNames.ApiVar(Model.TableName)}.create({variable});");
+            T($"        await {apiVar}.create({variable});");
             T("      } else {");
-            T($"        await {ReactNames.ApiVar(Model.TableName)}.update({variable}.{keyProp}!, {variable});");
+            T($"        await {apiVar}.update({variable}.{keyProp}!, {variable});");
             T("      }");
         }
         else
         {
             T($"      if ({variable}.{keyProp}) {{");
-            T($"        await {ReactNames.ApiVar(Model.TableName)}.update({variable}.{keyProp}, {variable});");
+            T($"        await {apiVar}.update({variable}.{keyProp}, {variable});");
             T("      } else {");
             T($"        {variable}.{keyProp} = {emptyKey};");
-            T($"        await {ReactNames.ApiVar(Model.TableName)}.create({variable});");
+            T($"        await {apiVar}.create({variable});");
             T("      }");
         }
         T("      setSelectedRow(null);");
@@ -197,10 +323,10 @@
         T($"  const remove = async (id: {keyTs}): Promise<void> => {{");
         T("    if (!confirm('Are you sure you want to delete this?')) return;");
         T("    try {");
-        T($"      await {ReactNames.ApiVar(Model.TableName)}.delete(id);");
+        T($"      await {apiVar}.delete(id);");
         T("      load(page); // read the page again: the total, the rows that move up and the last page all change");
         T("    } catch (err) {");
-        T($"      if (err instanceof ApiError && err.status === {HttpStatus.BadRequest}) {{");
+        T($"      if (err instanceof ApiError && {(odata ? $"(err.status === {HttpStatus.BadRequest} || err.status === {HttpStatus.Conflict})" : $"err.status === {HttpStatus.BadRequest}")}) {{");
         T("        setError('It cannot be deleted because it is in use!');");
         T($"      }} else if (err instanceof ApiError && err.status === {HttpStatus.NotFound}) {{");
         T("        setError('It no longer exists!');");
@@ -216,7 +342,7 @@
             T();
             T($"  const clone = async (id: {keyTs}): Promise<void> => {{");
             T("    try {");
-            T($"      const copy = await {ReactNames.ApiVar(Model.TableName)}.clone(id);");
+            T($"      const copy = await {apiVar}.clone(id);");
             T("      load(page);");
             T("      edit(copy);");
             T("    } catch (err) {");
@@ -260,6 +386,53 @@
         T("    setSelectedRow(null);");
         T("    if (backTo) navigate(backTo);");
         T("  };");
+        if (nameActive)
+        {
+            T();
+            T("  const clearSearch = () => {");
+            T("    setSearchText('');");
+            T("    setActiveOnly(false);");
+            T("  };");
+        }
+        else if (odata)
+        {
+            T();
+            T("  const search = () => {");
+            T("    setSelectedRow(null);");
+            T("    load(1);");
+            T("  };");
+            T();
+            T("  const clearSearch = () => {");
+            if (canSearch)
+            {
+                T($"    const cleared = {{ {filterInit} }};");
+                T("    setFilters(cleared);");
+            }
+            T("    setColumnFilters({});");
+            T($"    load(1, {{ {(canSearch ? "filters: cleared, " : "")}columnFilters: {{}} }});");
+            T("  };");
+            T();
+            T("  // A click on a header sorts by the column (again: flips it); a Shift-click adds the column as the next sort (again: flips it, once more: takes it out). The sorts are saved and kept when paging and filtering; a change goes back to page 1.");
+            T("  const sortBy = (column: string, shift: boolean) => {");
+            T("    const next = nextSorts(sorts, column, shift);");
+            T("    setSorts(next);");
+            T("    saveSorts(gridKey, next);");
+            T("    load(1, { sorts: next });");
+            T("  };");
+            T();
+            T("  const clearSort = () => {");
+            T("    setSorts([]);");
+            T("    saveSorts(gridKey, []);");
+            T("    load(1, { sorts: [] });");
+            T("  };");
+            T();
+            T("  // The grid read only the columns it shows: the row is read whole before the form opens it.");
+            T($"  const open = ({variable}: {baseName}) => {{");
+            T($"    {apiVar}.getById({variable}.{keyProp}!).then(edit).catch(() => setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'));");
+            T("  };");
+        }
+        else
+        {
         if (canSearch)
         {
             T();
@@ -289,6 +462,7 @@
         T("    saveSort(gridKey, null);");
         T($"    load(1{(canSearch ? ", filters" : "")}, null);");
         T("  };");
+        }
         var parentsShownInGrid = gridColumns.Where(c => form.CellOf(c) == CellKind.Lookup).Select(c => form.ParentOf(c)!.NameMethod).ToHashSet();
         foreach (var p in parents.Where(p => parentsShownInGrid.Contains(p.NameMethod)))
         {
@@ -304,6 +478,7 @@
         T($"    else if (err instanceof ApiError && err.status === {HttpStatus.NotFound}) {{ setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'); load(page); }}");
         // a typed key can already be taken: the API answers 409
         if (textKey) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.Conflict}) {{ setError('A {Labels.Words(baseName).ToLowerInvariant()} with this {Labels.Column(keyColumn.Name).ToLowerInvariant()} already exists!'); }}");
+        if ((odata || nameActive) && !textKey) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.Conflict}) {{ setError({problemCall}(err) ?? 'A row with this value already exists!'); }}");
         T("    else { setError('Problem while ' + action + '!'); }");
         T("  };");
         T();
@@ -312,7 +487,16 @@
         T("  return (");
         T("    <div className=\"rail\">");
         T($"      <h1>{title.Pluralize()}</h1>");
-        T("      <button type=\"button\" onClick={add}>Add New " + title + "</button>");
+        T("      " + Gate("<button type=\"button\" onClick={add}>Add New " + title + "</button>"));
+        if (nameActive)
+        {
+            T();
+            T("      <div>");
+            T("        <input type=\"text\" placeholder=\"Search by Name\" aria-label=\"Search by Name\" value={searchText} onChange={(event) => setSearchText(event.target.value)} />");
+            T("        <label className=\"active-only\"><input type=\"checkbox\" checked={activeOnly} onChange={(event) => setActiveOnly(event.target.checked)} /> Active only</label>");
+            T("        <button type=\"button\" onClick={clearSearch}>Clear</button>");
+            T("      </div>");
+        }
         if (canSearch)
         {
             T();
@@ -326,31 +510,63 @@
                 T($"          aria-label=\"{searchLabel}\"");
                 T($"          value={{filters.{f.ParamName}}}");
                 T($"          onChange={{(event) => setFilters({{ ...filters, {f.ParamName}: event.target.value }})}}");
+                if (odata) T("          onKeyUp={(event) => { if (event.key === 'Enter') search(); }}");
                 T("        />");
             }
-            T("        <button type=\"button\" onClick={search}>Search</button>");
-            T("        <button type=\"button\" onClick={clearSearch}>Clear</button>");
+            if (!odata)
+            {
+                T("        <button type=\"button\" onClick={search}>Search</button>");
+                T("        <button type=\"button\" onClick={clearSearch}>Clear</button>");
+            }
             T("      </div>");
         }
         T();
         T("      {error && !selectedRow && <p>{error}</p>}"); // while the dialog is open the error shows inside it
         T();
-        T("      <GridMenu sort={sort} onClear={clearSort}>");
+        if (!nameActive) T(odata ? "      <GridMenu sort={sorts[0] ?? null} onClear={clearSort}>" : "      <GridMenu sort={sort} onClear={clearSort}>");
         T("      <table>");
         T("        <thead>");
         T("          <tr>");
         foreach (var c in gridColumns)
         {
-            if (sortableColumns.Contains(c))
+            if (sortableColumns.Contains(c) && odata)
+                T($"            <ODataSortHeader label=\"{GridCaption.For(c, Labels.Field(c))}\" column=\"{c.Name}\" sorts={{sorts}} onSort={{sortBy}} />");
+            else if (sortableColumns.Contains(c))
                 T($"            <SortHeader label=\"{GridCaption.For(c, Labels.Field(c))}\" column=\"{c.Name}\" sort={{sort}} onSort={{sortBy}} />");
             else
                 T($"            <th>{GridCaption.For(c, Labels.Field(c))}</th>");
         }
         T("            <th>Actions</th>");
         T("          </tr>");
+        if (odata && !nameActive)
+        {
+            // the filter row: one control per column by its kind, an "empty" check box for a column that can be empty, Search and Clear at the end
+            T("          <tr className=\"filter-row\">");
+            int fieldIndex = 0;
+            for (int i = 0; i < gridColumns.Count; i++)
+            {
+                var gc = gridColumns[i];
+                var f = odataFilters![i];
+                if (f is null) { T("            <td />"); continue; }
+                string label = Labels.Field(gc).Replace("\"", "&quot;");
+                string options = f.Kind switch
+                {
+                    ODataFilterKind.Parent => $" options={{{ReactNames.ParentList(f.Parent!)}.map((p) => ({{ value: p.{f.Parent!.KeyJson}!, label: String(p.{f.Parent!.DisplayJson} ?? '') }}))}}",
+                    ODataFilterKind.Choice => " options={[" + string.Join(", ", f.Choices.Select(choice => { string js = choice.Replace("\\", "\\\\").Replace("'", "\\'"); return $"{{ value: '{js}', label: '{js}' }}"; })) + "]}",
+                    _ => ""
+                };
+                T($"            <FilterCell field={{filterFields[{fieldIndex}]}} label=\"{label}\" value={{columnFilters['{f.Name}'] ?? {{}}}} onChange={{(value) => setColumnFilters({{ ...columnFilters, '{f.Name}': value }})}} onSearch={{search}}{options} />");
+                fieldIndex++;
+            }
+            T("            <td>");
+            T("              <button type=\"button\" title=\"Show the rows that match the filters\" onClick={search}>Search</button>");
+            T("              <button type=\"button\" title=\"Remove every filter\" onClick={clearSearch}>Clear</button>");
+            T("            </td>");
+            T("          </tr>");
+        }
         T("        </thead>");
         T("        <tbody>");
-        T($"          {{{listName}.map(({variable}) => (");
+        T($"          {{{(nameActive ? "visibleRows" : listName)}.map(({variable}) => (");
         T($"            <tr key={{{variable}.{keyProp}}}>");
         foreach (var c in gridColumns)
         {
@@ -367,17 +583,19 @@
             T($"              <td>{cell}</td>");
         }
         T("              <td>");
-        T($"                <button type=\"button\" onClick={{() => edit({variable})}}>Edit</button>");
+        T("                " + Gate($"<button type=\"button\" onClick={{() => {(odata && !nameActive ? "open" : "edit")}({variable})}}>Edit</button>"));
         if (canClone)
-            T($"                <button type=\"button\" onClick={{() => void clone({variable}.{keyProp}!)}}>Clone</button>");
-        T($"                <button type=\"button\" onClick={{() => void remove({variable}.{keyProp}!)}}>Delete</button>");
+            T("                " + Gate($"<button type=\"button\" onClick={{() => void clone({variable}.{keyProp}!)}}>Clone</button>"));
+        T("                " + Gate($"<button type=\"button\" onClick={{() => void remove({variable}.{keyProp}!)}}>Delete</button>"));
         T("              </td>");
         T("            </tr>");
         T("          ))}");
         T("        </tbody>");
         T("      </table>");
-        T("      </GridMenu>");
+        if (!nameActive) T("      </GridMenu>");
         T();
+        if (!nameActive)
+        {
         T("      <PaginationBar");
         T("        page={page}");
         T("        totalPages={totalPages}");
@@ -386,11 +604,12 @@
         T("      />");
         T("      <label className=\"page-size\">");
         T("        Rows per page");
-        T($"        <select value={{pageSize}} onChange={{(event) => {{ const size = Number(event.target.value); setPageSize(size); load(1{(canSearch ? ", filters" : "")}, sort, size); }}}}>");
+        T($"        <select value={{pageSize}} onChange={{(event) => {{ const size = Number(event.target.value); setPageSize(size); {(odata ? "load(1, { size })" : $"load(1{(canSearch ? ", filters" : "")}, sort, size)")}; }}}}>");
         T("          {pageSizeChoices.map((size) => <option key={size} value={size}>{size}</option>)}");
         T("        </select>");
         T("      </label>");
-        T($"      {{loaded && {listName}.length === 0 && <p className=\"no-rows\">Nothing found.</p>}}");
+        }
+        T($"      {{loaded && {(nameActive ? "visibleRows" : listName)}.length === 0 && <p className=\"no-rows\">Nothing found.</p>}}");
         T();
         // The add/edit form is a modal <dialog> (native, no library): it opens over the page, wherever the grid is scrolled to, and Escape cancels it.
         T("      {selectedRow && (");
@@ -420,6 +639,9 @@
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
                 string stampValue = c.IsDateColumn ? $"{{selectedRow.{prop} ? new Date(selectedRow.{prop}).toLocaleString() : ''}}" : $"{{selectedRow.{prop} ?? ''}}";
+                // a row from before the stamp existed says so instead of showing nothing
+                if (form.IsGuardStamp(c))
+                    stampValue = c.IsDateColumn ? $"{{selectedRow.{prop} ? new Date(selectedRow.{prop}).toLocaleString() : '{GuardStamp.NotRecorded}'}}" : $"{{selectedRow.{prop} || '{GuardStamp.NotRecorded}'}}";
                 T($"            {{{(textKey ? "!adding" : $"selectedRow.{keyProp}")} && (");
                 T("              <>");
                 T("                <label htmlFor=\"" + id + "\">" + Labels.Field(c) + "</label>");
@@ -429,6 +651,13 @@
                 continue;
             }
             T("            <label htmlFor=\"" + id + "\">" + Labels.Field(c) + RequiredMark.Jsx(form.IsMarked(c)) + "</label>");
+            // a guarded column is a control only for a person who may change it (the guards answer); everyone else sees its value as text and why
+            var guard = form.GuardOf(c);
+            if (guard is not null)
+            {
+                T($"            {{guards['{guard.Json}'] ? (");
+                T("              <>");
+            }
             if (kind == FieldKind.TypedKey)
             {
                 // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
@@ -568,6 +797,15 @@
                 if (!c.IsNullable) T("              required");
                 T("            />");
             }
+            if (guard is not null)
+            {
+                T("              </>");
+                T("            ) : (");
+                T("              <>");
+                T($"                <span id=\"{id}\">{{selectedRow.{prop}{(c.IsBooleanColumn ? " ? 'Yes' : 'No'" : "")}}}</span> <small style={{{{ marginLeft: 8 }}}}>{ChoiceFormat.Html(guard.Note)}</small>");
+                T("              </>");
+                T("            )}");
+            }
         }
         if (tabbed) T("            </div>");
         }
@@ -586,29 +824,76 @@
         // ================= test
         var test = new StringBuilder();
         void S(string s = "") => test.Append(s).Append('\n');
-        S(textKey ? "import { fireEvent, render, screen } from '@testing-library/react';" : "import { render, screen } from '@testing-library/react';");
+        S(textKey || odata || nameActive || form.Guards.Count > 0 ? "import { fireEvent, render, screen } from '@testing-library/react';" : "import { render, screen } from '@testing-library/react';");
         S("import { MemoryRouter } from 'react-router-dom';");
         S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
-        S($"import {{ {baseName}Page }} from '../{baseName}Page';");
-        S($"import {{ {ReactNames.ApiVar(Model.TableName)} }} from '../../{apiFolder}/{ReactNames.ApiFile(Model.TableName)}';");
+        S($"import {{ {pageName} }} from '../{pageName}';");
+        S($"import {{ {apiVar} }} from '../../{apiFolder}/{apiFile}';");
+        if (gated) S($"import {{ setSession }} from '../../{apiFolder}/auth';");
         foreach (var p in parents.Where(p => !p.IsSelf))
             S($"import {{ {ReactNames.ApiVar(p.Table)} }} from '../../{apiFolder}/{ReactNames.ApiFile(p.Table)}';");
         S();
-        S($"describe('{baseName}Page', () => {{");
+        S($"describe('{pageName}', () => {{");
         S("  beforeEach(() => {");
-        S($"    vi.spyOn({ReactNames.ApiVar(Model.TableName)}, 'getPage').mockResolvedValue({{ items: [], page: 1, pageSize: {pageSize}, totalCount: 0, totalPages: 0 }});");
+        S(nameActive ? $"    vi.spyOn({apiVar}, 'getAll').mockResolvedValue([]);" : $"    vi.spyOn({apiVar}, '{(odata ? "queryPage" : "getPage")}').mockResolvedValue({{ items: [], page: 1, pageSize: {pageSize}, totalCount: 0, totalPages: 0 }});");
         foreach (var p in parents)
             S($"    vi.spyOn({ReactNames.ApiVar(p.Table)}, '{p.LoadMethod}').mockResolvedValue([]);");
         S("  });");
         S();
         S("  afterEach(() => {");
         S("    vi.restoreAllMocks();");
+        if (gated) S("    setSession(null);");
         S("  });");
         S();
         S($"  it('renders the {title} heading', async () => {{");
-        S($"    render(<MemoryRouter><{baseName}Page /></MemoryRouter>);");
+        S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
         S($"    expect(await screen.findByText('{title.Pluralize()}')).toBeInTheDocument();");
         S("  });");
+        if (gated)
+        {
+            string allowed = writeRoles.Count > 1 ? writeRoles[1] : writeRoles[0];
+            S();
+            S("  it('shows Add New to a role that may write', async () => {");
+            S($"    setSession({{ token: 'abc', user: {{ name: 'Pat', role: '{allowed}' }} }});");
+            S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
+            S($"    expect(await screen.findByText('Add New {title}')).toBeInTheDocument();");
+            S("  });");
+            S();
+            S("  it('hides Add New from a role that may not write', async () => {");
+            S("    setSession({ token: 'abc', user: { name: 'Pat', role: 'NoSuchRole' } });");
+            S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
+            S($"    await screen.findByText('{title.Pluralize()}');");
+            S($"    expect(screen.queryByText('Add New {title}')).toBeNull();");
+            S("  });");
+        }
+        if (form.Guards.Count > 0 && !nameActive)
+        {
+            // a guarded column is a control for a person the guards answer yes for, and text with the reason for everyone else
+            var guard0 = form.Guards[0];
+            string note = guard0.Note.Replace("\\", "\\\\").Replace("'", "\\'");
+            string guardKey = textKey ? $"{keyProp}: '{ApiSampleValues.KeyText(keyColumn)}'" : $"{keyProp}: 1";
+            string guardRow = "{ " + string.Join(", ", new[] { guardKey }.Concat(adds.Where(a => !a.StartsWith(keyProp + ":")))) + " }";
+            string listCall = odata ? "queryPage" : "getPage";
+            string guardLabel = Labels.Field(Model.Columns.First(c => c.Name.EqualsIgnoreCase(guard0.Column)));
+            foreach (bool mayChange in new[] { false, true })
+            {
+                S();
+                S(mayChange
+                    ? $"  it('shows the guarded {guard0.Json} column as a control to a person who may change it', async () => {{"
+                    : $"  it('shows the guarded {guard0.Json} column as text with the reason to a person who may not change it', async () => {{");
+                S("    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };");
+                if (gated) S($"    setSession({{ token: 'abc', user: {{ name: 'Pat', role: '{(writeRoles.Count > 1 ? writeRoles[1] : writeRoles[0])}' }} }});");
+                S($"    vi.spyOn({apiVar}, '{listCall}').mockResolvedValue({{ items: [{guardRow}], page: 1, pageSize: {pageSize}, totalCount: 1, totalPages: 1 }});");
+                S($"    vi.spyOn({apiVar}, 'getGuards').mockResolvedValue({{ {guard0.Json}: {(mayChange ? "true" : "false")} }});");
+                S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
+                S("    fireEvent.click(await screen.findByText('Edit'));");
+                S($"    expect(await screen.findByText('Edit {title}')).toBeInTheDocument();");
+                S(mayChange
+                    ? $"    expect(await screen.findByLabelText('{guardLabel}')).toBeInTheDocument();"
+                    : $"    expect(await screen.findByText('{note}')).toBeInTheDocument();");
+                S("  });");
+            }
+        }
         if (textKey)
         {
             // the key is typed on a new row and read-only on an existing one; jsdom has no showModal, so the test gives the dialog one that just opens it
@@ -617,8 +902,8 @@
             S();
             S($"  it('lets the person type the key of a new {Labels.Words(baseName).ToLowerInvariant()} and does not let them change it afterwards', async () => {{");
             S("    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };");
-            S($"    vi.spyOn({ReactNames.ApiVar(Model.TableName)}, 'getPage').mockResolvedValue({{ items: [{sampleRow}], page: 1, pageSize: {pageSize}, totalCount: 1, totalPages: 1 }});");
-            S($"    render(<MemoryRouter><{baseName}Page /></MemoryRouter>);");
+            S($"    vi.spyOn({apiVar}, '{(odata ? "queryPage" : "getPage")}').mockResolvedValue({{ items: [{sampleRow}], page: 1, pageSize: {pageSize}, totalCount: 1, totalPages: 1 }});");
+            S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
             S($"    fireEvent.click(await screen.findByText('Add New {title}'));");
             S($"    expect(await screen.findByText('Add {title}')).toBeInTheDocument();");
             S($"    expect(screen.getByLabelText('{Labels.Field(keyColumn)}')).not.toHaveAttribute('readonly');");
@@ -628,11 +913,63 @@
             S($"    expect(screen.getByLabelText('{Labels.Field(keyColumn)}')).toHaveAttribute('readonly');");
             S("  });");
         }
+        if (nameActive)
+        {
+            S();
+            S("  it('narrows the list by name and by active', async () => {");
+            S($"    vi.spyOn({apiVar}, 'getAll').mockResolvedValue([{{ {keyProp}: 1, name: 'Alpha', isActive: true }}, {{ {keyProp}: 2, name: 'Alphabet', isActive: false }}, {{ {keyProp}: 3, name: 'Beta', isActive: true }}] as never);");
+            S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
+            S("    expect(await screen.findByText('Beta')).toBeInTheDocument();");
+            S("    fireEvent.change(screen.getByLabelText('Search by Name'), { target: { value: 'alpha' } });");
+            S("    expect(screen.queryByText('Beta')).toBeNull();");
+            S("    expect(screen.getByText('Alphabet')).toBeInTheDocument();");
+            S("    fireEvent.click(screen.getByLabelText(/Active only/));");
+            S("    expect(screen.queryByText('Alphabet')).toBeNull();");
+            S("    expect(screen.getByText('Alpha')).toBeInTheDocument();");
+            S("    fireEvent.click(screen.getByText('Clear'));");
+            S("    expect(screen.getByText('Beta')).toBeInTheDocument();");
+            S("  });");
+        }
+        else if (odata)
+        {
+            var sortable = gridColumns.FirstOrDefault(c => sortableColumns.Contains(c));
+            S();
+            S("  it('asks the server for the first page with the columns the grid shows', async () => {");
+            S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
+            S($"    await screen.findByText('{title.Pluralize()}');");
+            S($"    expect({apiVar}.queryPage).toHaveBeenCalledWith(expect.objectContaining({{ pageNumber: 1, pageSize: {pageSize}, select: expect.arrayContaining(['{JsonNames.Camel(gridColumns[0].Name)}']) }}));");
+            S("  });");
+            if (sortable is not null)
+            {
+                string sortLabel = GridCaption.For(sortable, Labels.Field(sortable));
+                S();
+                S("  it('sorts by a header on a click and adds a second column on a Shift-click', async () => {");
+                S("    localStorage.clear();");
+                S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
+                S($"    fireEvent.click(await screen.findByRole('button', {{ name: '{sortLabel}' }}));");
+                S($"    expect({apiVar}.queryPage).toHaveBeenLastCalledWith(expect.objectContaining({{ pageNumber: 1, sorts: [{{ column: '{sortable.Name}', descending: false }}] }}));");
+                S($"    fireEvent.click(await screen.findByRole('button', {{ name: /^{System.Text.RegularExpressions.Regex.Escape(sortLabel)}/ }}), {{ shiftKey: true }});");
+                S($"    expect({apiVar}.queryPage).toHaveBeenLastCalledWith(expect.objectContaining({{ sorts: [{{ column: '{sortable.Name}', descending: true }}] }}));");
+                S("    localStorage.clear();");
+                S("  });");
+            }
+            if (odataFilters!.FirstOrDefault(f => f is { Kind: ODataFilterKind.Text }) is { } textFilter)
+            {
+                string filterLabel = Labels.Field(gridColumns.First(c => c.Name == textFilter.Name));
+                S();
+                S("  it('sends what was typed in the filter row when Search is pressed', async () => {");
+                S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
+                S($"    fireEvent.change(await screen.findByLabelText('Filter by {filterLabel}'), {{ target: {{ value: 'ab' }} }});");
+                S("    fireEvent.click(screen.getByText('Search'));");
+                S($"    expect({apiVar}.queryPage).toHaveBeenLastCalledWith(expect.objectContaining({{ pageNumber: 1, conditions: [{{ kind: 'contains', property: '{textFilter.Property}', text: 'ab' }}] }}));");
+                S("  });");
+            }
+        }
         S("});");
 
         var o = new StringBuilder();
-        o.Append($"@@@FILE {pagesFolder}/{baseName}Page.tsx@@@\n").Append(ts);
-        o.Append($"@@@FILE {pagesFolder}/__tests__/{baseName}Page.test.tsx@@@\n").Append(test);
+        o.Append($"@@@FILE {pagesFolder}/{pageName}.tsx@@@\n").Append(nameActive ? ts.ToString().Replace("load(page)", "load()") : ts.ToString());
+        o.Append($"@@@FILE {pagesFolder}/__tests__/{pageName}.test.tsx@@@\n").Append(test);
         Write(o.ToString());
     }
 #>

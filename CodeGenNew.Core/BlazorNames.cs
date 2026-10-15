@@ -42,6 +42,15 @@ public static class BlazorNames
     /// <summary> The API route of a table, as the generated API serves it: <c>/api/customers</c>. </summary>
     public static string ApiRoute(string table) => "/api/" + ScreenNames.ApiRoute(table);
 
+    /// <summary> The client over the table's OData entity set (the OData twin of the REST client): <c>CustomerODataClient</c>. </summary>
+    public static string ODataClientName(string table) => TypeName(table) + "ODataClient";
+
+    /// <summary> The OData page's class, and the stem of its file: <c>CustomerODataPage</c>. </summary>
+    public static string ODataPageName(string table) => TypeName(table) + "ODataPage";
+
+    /// <summary> The key the browser keeps the signed-in session under: <c>acme.auth</c>, the same name the React app uses. </summary>
+    public static string SessionKey(ProjectSettings project) => (project.ProjectName ?? "MyApp").ToLowerInvariant() + ".auth";
+
     /// <summary> Whether the table gets a model and a client: the API has CRUD for it, its single key is an int, a guid or text (the routes take <c>{id:int}</c>, <c>{id:guid}</c> or <c>{id}</c>) and it is not a name / active table. </summary>
     public static bool HasClient(TableModel table, ProjectSettings project) => Refusal(table, project) is null;
 

@@ -1,0 +1,67 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (folders).
+    // ==========================================================================================
+    string servicesFolder = Project.ServicesFolder;
+    string modelsFolder = Project.ModelsFolder;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // TS_ODataService_v1.tt
+    // Generates: services/<table>-odata.service.ts for each table the project serves as OData (API_OData, ODataPlan)   (whole-database; the paths are written by the template, point the output folder at src/app)
+    // A short class on ODataCrudService (services/odata-crud.service.ts, written by TS_EssentialOData): the entity set (odata/<set>), the table's key, the search boxes (the table's SearchPlan filters), the
+    // header sorts (a foreign key sorts by its parent's display column when the parent is served as OData too), the order without a sort and the display column of a drop-down, and the REST route a clone goes through.
+    // It is the OData twin of TS_Service: the same model (models/<table>), the same row JSON, another route. TS_ODataComponent (TS_Component run as its OData form) is the screen over it.
+    // Full notes: Docs/TemplateNotes/TS_ODataService_v1.md
+    // ==========================================================================================
+
+    var selection = ODataPlan.For(Database, Project);
+    if (selection.Tables.Count == 0)
+        Error("TS_ODataService found no table served as OData: set OData=true (and ODataTables if only some tables are served).");
+    // the tables a header may sort through (a foreign key sorts by its parent's display column): not a table whose rows belong to a person, which no navigation leads into
+    var served = selection.Tables.Where(t => !ODataPlan.IsScoped(t, Project)).ToDictionary(t => t.TableName, StringComparer.OrdinalIgnoreCase);
+
+    string Items(IEnumerable<string> items) => string.Join(", ", items.Select(i => "'" + i + "'"));
+
+    var o = new StringBuilder();
+    void L(string s = "") => o.Append(s).Append('\n');
+
+    foreach (var table in selection.Tables)
+    {
+        var keyType = KeyType.Of(table)!;
+        var plan = ODataScreenPlan.For(table, Project, served);
+        string baseName = BaseName(table.TableName);
+        string stem = baseName.ToLowerInvariant();
+        string keyGeneric = keyType.Kind == KeyKind.Int ? "" : ", " + keyType.TypeScript;
+        L($"@@@FILE {servicesFolder}/{AngularNames.ODataServiceFile(table.TableName)}.ts@@@");
+        L("import { Injectable } from '@angular/core';");
+        L("import { HttpClient } from '@angular/common/http';");
+        L($"import {{ {baseName} }} from '../{modelsFolder}/{stem}';");
+        L("import { ODataCrudService } from './odata-crud.service';");
+        L();
+        L("@Injectable({");
+        L("    providedIn: 'root',");
+        L("})");
+        L($"export class {AngularNames.ODataServiceClass(table.TableName)} extends ODataCrudService<{baseName}{keyGeneric}> {{");
+        L("    constructor(http: HttpClient) {");
+        L($"        super(http, 'odata/{plan.Set}', {{");
+        L($"            key: '{plan.KeyProperty}',");
+        L($"            filters: [{string.Join(", ", plan.Filters.Select(f => $"{{ key: '{f.Key}', property: '{f.Property}' }}"))}],");
+        L($"            sorts: [{string.Join(", ", plan.Sorts.Select(s => $"{{ name: '{s.Name}', path: '{s.Path}' }}"))}],");
+        L($"            defaultOrder: [{Items(plan.DefaultOrder)}]" + (plan.LookupName is null ? "" : ","));
+        if (plan.LookupName is not null)
+            L($"            lookup: {{ name: '{plan.LookupName}'" + (plan.LookupActive is null ? "" : $", active: '{plan.LookupActive}'") + " }");
+        L($"        }}, 'api/{plan.Set}');");
+        L("    }");
+        L("}");
+    }
+    Write(o.ToString());
+#>

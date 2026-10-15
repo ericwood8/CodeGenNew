@@ -77,6 +77,10 @@
     string dtoArguments = dtos ? $", {Model.TableName}Input, {Model.TableName}Dto" : "";
     string lookupItem = keyCSharp == "int" ? "LookupItem" : "LookupItem<" + keyCSharp + ">";
 
+    // ApiAuth with WriteRoles or TableWriteRoles: the roles that may write this table (empty: any signed-in person)
+    IReadOnlyList<string> writeRoles = supported ? WriteRolePlan.For(Project, Model) : new List<string>();
+    IReadOnlyList<string> readRoles = supported ? WriteRolePlan.ReadFor(Project, Model) : new List<string>();
+
     // ApiAuth with OwnedTables: a caller reaches only the rows of the owners the IOwnerScope allows (the owner column; a Name and IsActive table is never scoped)
     var ownerColumn = supported && !nameActive ? OwnedTable.OwnerColumn(Model, Project) : null;
     bool ownerUnusable = supported && !nameActive && OwnedTable.IsListedButUnusable(Model, Project);
@@ -155,6 +159,22 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
 
     protected override Expression<Func<<#= entity #>, <#= keyCSharp #>>> Key => c => c.<#= keyProperty #>;
 <#
+        if (writeRoles.Count > 0)
+        {
+#>
+
+    // WriteRoles: only these roles (and the administrator) create, change, delete and clone rows; any signed-in person reads.
+    protected override IReadOnlyList<string> WriteRoles => [<#= WriteRolePlan.Literal(writeRoles) #>];
+<#
+        }
+        if (readRoles.Count > 0)
+        {
+#>
+
+    // ReadRoles: only these roles (and the administrator) read rows; the lookup stays open for the drop-downs of other screens.
+    protected override IReadOnlyList<string> ReadRoles => [<#= WriteRolePlan.Literal(readRoles) #>];
+<#
+        }
         if (ownerColumn is not null)
         {
 #>

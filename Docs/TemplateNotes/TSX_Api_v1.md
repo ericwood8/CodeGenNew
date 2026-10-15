@@ -55,3 +55,9 @@ an api module that needs those stays hand-maintained.
 ## The Search list protocol
 
 With `ListProtocol=Search`, `getPage(pageNumber, pageSize, { search }, sort)` asks `GET <route>` with the project's parameter names (`PageParameter` counted from `PageBase`, `PageSizeParameter`, `SearchParameter`, `SortParameter` as `column:asc` or `column:desc`) and reads the rows and the total from `ItemsMember` and `TotalMember`. The answer is turned into the same `{ items, page, pageSize, totalCount, totalPages }` the pages already read, so a page does not know the protocol. `getAll` is the plain list route and is unchanged.
+
+## A name/active table
+
+A table with a NOT NULL `Name` and `IsActive` gets a module too: `getAll`, `getActive` (`GET <route>/active`), `getLookup`, `getById`, `create`, `update`, `delete` and `findByName`; no `getPage` or `PagedResult` (its API answers the whole list) and no `clone`. A table called `Request` takes its row parameter as `row`, so it cannot hide the `request()` helper.
+
+With `ApiAuth=true` and a `GuardedColumns` rule that names this table the module also has `getGuards()` (`GET <route>/guards`: which guarded columns the signed-in person may change); the page reads it (see `TSX_Page_v1.md`).

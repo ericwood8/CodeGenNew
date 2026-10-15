@@ -93,9 +93,15 @@ function readMenuOpen(): boolean {
   styleUrl: './app.css',
 })
 export class App {
-  protected readonly screens = screens;
 <# if (auth) { #>
   protected readonly auth = inject(AuthService);
+
+  // a screen the person's role may not read (the roles a screen carries come from ReadRoles) is not in the menu
+  protected get screens() {
+    return screens.filter((s) => { const roles = (s as { roles?: readonly string[] }).roles; return !roles || this.auth.hasRole(roles); });
+  }
+<# } else { #>
+  protected readonly screens = screens;
 <# } #>
   protected menuOpen = readMenuOpen();
 

@@ -52,5 +52,9 @@ export const appConfig: ApplicationConfig = {
   "/api": {
     "target": "http://localhost:<#= Project.ApiPort #>",
     "secure": false
-  }
+  }<# if (Project.OData) { #>,
+  "/odata": {
+    "target": "http://localhost:<#= Project.ApiPort #>",
+    "secure": false
+  }<# } #>
 }

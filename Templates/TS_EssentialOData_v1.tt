@@ -1,0 +1,764 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TS_EssentialOData_v1.tt
+    // Generates: src/app/services/odata-query.ts, odata-query.spec.ts, odata-crud.service.ts, odata-crud.service.spec.ts   (written once and kept; a replacing run refreshes them)
+    // The base of the OData services (TS_ODataService) and the helper that writes an OData query:
+    //   odata-query.ts           odataString / odataLiteral (a text becomes one quoted literal, a quote doubled, so it can never end the literal), containsText / containsAny, and, orderBy, queryString
+    //                            (every value URL-encoded by encodeURIComponent, so a plus sign or an ampersand cannot change the query), ODataPage and relativeLink (the server's next link, made relative to the app);
+    //   ODataCrudService<T, K>   a CrudService over GET /odata/<set>: getAll (follows the next links), getLookup ($select of the key, the display column and the active flag), searchPage ($count, $top, $skip,
+    //                            $filter, $orderby from the page, the search boxes and the sort) and clone (the table's REST route). The five other calls are the base's: the entity set takes the same key route and JSON.
+    // Needs services/crud.service.ts (TS_EssentialCrud). Full notes: Docs/TemplateNotes/TS_EssentialOData_v1.md
+    // ==========================================================================================
+    string servicesFolder = Project.ServicesFolder;
+    string componentsFolder = Project.ComponentsFolder;
+#>
+@@@FILE src/app/<#= servicesFolder #>/odata-query.ts@@@
+/** One page of an OData answer: the rows, the total when $count=true was asked, and the link to the next page when the server cut the list. */
+export interface ODataPage<T> {
+    value: T[];
+    '@odata.count'?: number;
+    '@odata.nextLink'?: string;
+}
+
+export type ODataKind = 'string' | 'number' | 'boolean' | 'date' | 'guid';
+
+/** A text as an OData string literal: wrapped in single quotes with every single quote doubled, so whatever a person types stays one value. */
+export function odataString(value: string): string {
+    return `'${value.replace(/'/g, "''")}'`;
+}
+
+/** A value as the literal its kind needs in $filter. A number that is not finite, a date that is not yyyy-MM-dd and a guid that is not a guid are refused, never sent. */
+export function odataLiteral(value: string | number | boolean | null | undefined, kind: ODataKind): string {
+    if (value === null || value === undefined) { return 'null'; }
+    switch (kind) {
+        case 'string':
+            return odataString(String(value));
+        case 'number':
+            if (typeof value !== 'number' || !Number.isFinite(value)) { throw new Error(`'${String(value)}' is not a number.`); }
+            return String(value);
+        case 'boolean':
+            return value === true || value === 'true' ? 'true' : 'false';
+        case 'date': {
+            const day = String(value).substring(0, 10);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) { throw new Error(`'${String(value)}' is not a date.`); }
+            return day;
+        }
+        case 'guid':
+            if (!/^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$/.test(String(value))) { throw new Error(`'${String(value)}' is not a guid.`); }
+            return String(value);
+    }
+}
+
+/** The rows whose property contains the text, ignoring case: contains(tolower(name),'text'). */
+export function containsText(property: string, text: string): string {
+    return `contains(tolower(${property}),${odataString(text.toLowerCase())})`;
+}
+
+/** The rows where any of the properties contains the text. */
+export function containsAny(properties: readonly string[], text: string): string {
+    const parts = properties.map((property) => containsText(property, text));
+    return parts.length === 1 ? parts[0] : `(${parts.join(' or ')})`;
+}
+
+/** The conditions that are there, joined with and; undefined when none is. */
+export function and(...parts: (string | null | undefined)[]): string | undefined {
+    const there = parts.filter((part): part is string => !!part);
+    return there.length === 0 ? undefined : there.join(' and ');
+}
+
+/** The $orderby value: paths, each descending when asked (customerStatus/description, name desc). A path named twice counts once. */
+export function orderBy(items: readonly { path: string; descending?: boolean }[]): string | undefined {
+    const seen = new Set<string>();
+    const parts: string[] = [];
+    for (const item of items) {
+        if (seen.has(item.path)) { continue; }
+        seen.add(item.path);
+        parts.push(item.descending ? `${item.path} desc` : item.path);
+    }
+    return parts.length === 0 ? undefined : parts.join(',');
+}
+
+/** The query string of the options that have a value, every value URL-encoded (the keys are $top, $filter and so on). */
+export function queryString(options: Record<string, string | number | boolean | null | undefined>): string {
+    const pairs = Object.entries(options)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')
+        .map(([name, value]) => `${name}=${encodeURIComponent(String(value))}`);
+    return pairs.length === 0 ? '' : `?${pairs.join('&')}`;
+}
+
+/** The server's next link without its host, so the call goes through the same origin and proxy as the first one. */
+export function relativeLink(link: string): string {
+    const url = new URL(link, 'http://localhost');
+    return url.pathname.replace(/^\//, '') + url.search;
+}
+/** One condition of a filter row, written as a piece of $filter by conditionFilter: a text the property contains, a range, or an exact value (null: the property is empty). */
+export type ODataCondition =
+    | { kind: 'contains'; property: string; text: string }
+    | { kind: 'range'; property: string; type: 'number' | 'date'; from?: string | number | null; to?: string | number | null }
+    | { kind: 'equals'; property: string; type: ODataKind; value: string | number | boolean | null };
+
+const isGiven = (value: string | number | null | undefined): value is string | number => value !== undefined && value !== null && value !== '';
+
+/** The day after yyyy-MM-dd: a range on a date ends before it, so the whole last day is in (a date and time on that day too). */
+function nextDay(day: string): string {
+    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day).substring(0, 10));
+    if (!parts) { throw new Error(`'${day}' is not a date.`); }
+    const next = new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]) + 1));
+    return next.toISOString().substring(0, 10);
+}
+
+/** A condition as a piece of $filter, or undefined when it holds nothing to filter by (an empty text, a range with neither end). */
+export function conditionFilter(condition: ODataCondition): string | undefined {
+    switch (condition.kind) {
+        case 'contains': {
+            const text = condition.text.trim();
+            return text ? containsText(condition.property, text) : undefined;
+        }
+        case 'range': {
+            const parts: string[] = [];
+            if (isGiven(condition.from)) {
+                parts.push(`${condition.property} ge ${odataLiteral(condition.type === 'number' ? Number(condition.from) : String(condition.from), condition.type)}`);
+            }
+            if (isGiven(condition.to)) {
+                parts.push(condition.type === 'date'
+                    ? `${condition.property} lt ${nextDay(String(condition.to))}`
+                    : `${condition.property} le ${odataLiteral(Number(condition.to), 'number')}`);
+            }
+            return and(...parts);
+        }
+        case 'equals':
+            return `${condition.property} eq ${odataLiteral(condition.value, condition.type)}`;
+    }
+}
+@@@FILE src/app/<#= servicesFolder #>/odata-query.spec.ts@@@
+import { and, conditionFilter, containsAny, containsText, odataLiteral, odataString, orderBy, queryString, relativeLink } from './odata-query';
+
+describe('odata-query', () => {
+  it('writes a text as one literal, whatever it holds', () => {
+    expect(odataString("O'Brien")).toBe("'O''Brien'");
+    expect(odataString("x' or 1 eq 1")).toBe("'x'' or 1 eq 1'");
+  });
+
+  it('writes each kind of value as its literal and refuses a bad one', () => {
+    expect(odataLiteral(5, 'number')).toBe('5');
+    expect(odataLiteral(true, 'boolean')).toBe('true');
+    expect(odataLiteral('2026-03-01T00:00:00Z', 'date')).toBe('2026-03-01');
+    expect(odataLiteral(null, 'string')).toBe('null');
+    expect(odataLiteral('0f8fad5b-d9cb-469f-a165-70867728950e', 'guid')).toBe('0f8fad5b-d9cb-469f-a165-70867728950e');
+    expect(() => odataLiteral(Number.NaN, 'number')).toThrow();
+    expect(() => odataLiteral('tomorrow', 'date')).toThrow();
+    expect(() => odataLiteral("1 or 1 eq 1", 'guid')).toThrow();
+  });
+
+  it('matches a text ignoring case in one property or in any of several', () => {
+    expect(containsText('name', 'Ab')).toBe("contains(tolower(name),'ab')");
+    expect(containsAny(['name'], 'Ab')).toBe("contains(tolower(name),'ab')");
+    expect(containsAny(['name', 'city'], 'Ab')).toBe("(contains(tolower(name),'ab') or contains(tolower(city),'ab'))");
+  });
+
+  it('joins the conditions that are there', () => {
+    expect(and('a eq 1', undefined, '', 'b eq 2')).toBe('a eq 1 and b eq 2');
+    expect(and(undefined, '')).toBeUndefined();
+  });
+
+  it('orders by several paths, each way, and counts a path once', () => {
+    expect(orderBy([{ path: 'region' }, { path: 'total', descending: true }, { path: 'region' }])).toBe('region,total desc');
+    expect(orderBy([])).toBeUndefined();
+  });
+
+  it('encodes every value of the query string', () => {
+    expect(queryString({ $top: 10, $filter: "name eq 'a+b&c'", $orderby: undefined, $count: true })).toBe("?$top=10&$filter=name%20eq%20'a%2Bb%26c'&$count=true");
+    expect(queryString({})).toBe('');
+  });
+
+  it('writes each kind of filter row condition and nothing for an empty one', () => {
+    expect(conditionFilter({ kind: 'contains', property: 'name', text: '  Ab ' })).toBe("contains(tolower(name),'ab')");
+    expect(conditionFilter({ kind: 'contains', property: 'name', text: '   ' })).toBeUndefined();
+    expect(conditionFilter({ kind: 'range', property: 'total', type: 'number', from: 100, to: '500' })).toBe('total ge 100 and total le 500');
+    expect(conditionFilter({ kind: 'range', property: 'total', type: 'number', from: '', to: null })).toBeUndefined();
+    expect(conditionFilter({ kind: 'range', property: 'day', type: 'date', from: '2026-03-01', to: '2026-03-31' })).toBe('day ge 2026-03-01 and day lt 2026-04-01');
+    expect(conditionFilter({ kind: 'range', property: 'day', type: 'date', to: '2026-12-31' })).toBe('day lt 2027-01-01');
+    expect(conditionFilter({ kind: 'equals', property: 'isActive', type: 'boolean', value: false })).toBe('isActive eq false');
+    expect(conditionFilter({ kind: 'equals', property: 'city', type: 'string', value: null })).toBe('city eq null');
+    expect(conditionFilter({ kind: 'equals', property: 'code', type: 'string', value: "x' or 1 eq 1" })).toBe("code eq 'x'' or 1 eq 1'");
+  });
+
+  it('makes the next link relative to the app', () => {
+    expect(relativeLink('http://localhost:5201/odata/customers?$select=customerId&$skip=25')).toBe('odata/customers?$select=customerId&$skip=25');
+  });
+});
+@@@FILE src/app/<#= servicesFolder #>/odata-crud.service.ts@@@
+import { HttpClient } from '@angular/common/http';
+import { EMPTY, Observable, expand, map, reduce } from 'rxjs';
+import { CrudService, Lookup, PageQuery, PagedResult } from './crud.service';
+import { ODataCondition, ODataPage, and, conditionFilter, containsAny, orderBy, queryString, relativeLink } from './odata-query';
+
+/** What an OData page asks for beyond the REST page: several sorts, the conditions of the filter row, and the properties the grid shows (the key is always read). */
+export interface ODataPageQuery extends PageQuery {
+    sorts?: readonly { column: string; descending: boolean }[];
+    conditions?: readonly ODataCondition[];
+    select?: readonly string[];
+}
+
+/** What an OData service knows about its table that the entity set does not say (TS_ODataService writes it): the key, the search boxes, the sortable headers and the order without a sort. All names are the JSON names. */
+export interface ODataTable {
+    key: string;
+    filters: readonly { key: string; property: string }[];
+    sorts: readonly { name: string; path: string }[];
+    defaultOrder: readonly string[];
+    lookup?: { name: string; active?: string };
+}
+
+/**
+ * The calls every table's service answers, over the table's entity set (GET /odata/<set>) instead of its REST route: the list, the drop-down list and the page are written as OData queries. The
+ * key route and the JSON of one row are the same on both routes, so getById, create, update and delete are the base's. A clone is the table's REST route (there is no OData verb for it).
+ */
+export abstract class ODataCrudService<T, K extends number | string = number> extends CrudService<T, K> {
+    protected constructor(http: HttpClient, apiUrl: string, protected readonly table: ODataTable, protected readonly restUrl?: string) {
+        super(http, apiUrl);
+    }
+
+    // Every row, in the table's default order; the server's pages are followed to the end
+    override getAll(): Observable<T[]> {
+        return this.readAll<T>(this.apiUrl + queryString({ $orderby: orderBy(this.table.defaultOrder.map((path) => ({ path }))) }));
+    }
+
+    // The key and the display column of every row (and the active flag when the table has one), for a drop-down
+    override getLookup(): Observable<Lookup<K>[]> {
+        const lookup = this.table.lookup;
+        if (!lookup) { throw new Error(`The ${this.apiUrl} entity set has no display column to look up.`); }
+        const select = [this.table.key, lookup.name, lookup.active].filter((name): name is string => !!name).join(',');
+        return this.readAll<Record<string, unknown>>(this.apiUrl + queryString({ $select: select, $orderby: lookup.name })).pipe(
+            map((rows) => rows.map((row) => ({ id: row[this.table.key] as K, name: String(row[lookup.name] ?? ''), isActive: lookup.active ? (row[lookup.active] as boolean) : undefined })))
+        );
+    }
+
+    // One page: $count, $top and $skip for the page, $filter for the boxes (contains, ignoring case; the one 'search' box matches every searchable property) and $orderby for the sort
+    override searchPage(query: PageQuery): Observable<PagedResult<T>> {
+        return this.queryPage(query);
+    }
+
+    // The same page with several sorts, the filter row's conditions and a $select of the columns the grid shows
+    queryPage(query: ODataPageQuery): Observable<PagedResult<T>> {
+        const conditions: (string | undefined)[] = [];
+        for (const [key, value] of Object.entries(query.filters ?? {})) {
+            const text = (value ?? '').trim();
+            if (!text) { continue; }
+            const properties = key === 'search' ? this.table.filters.map((f) => f.property) : this.table.filters.filter((f) => f.key === key).map((f) => f.property);
+            if (properties.length > 0) { conditions.push(containsAny(properties, text)); }
+        }
+        for (const condition of query.conditions ?? []) { conditions.push(conditionFilter(condition)); }
+        const sorts = query.sorts ?? (query.sortBy ? [{ column: query.sortBy, descending: !!query.sortDescending }] : []);
+        const chosen = sorts.flatMap((sort) => {
+            const found = this.table.sorts.find((s) => s.name.toLowerCase() === sort.column.toLowerCase());
+            return found ? [{ path: found.path, descending: sort.descending }] : [];
+        });
+        const order = [...chosen, ...this.table.defaultOrder.map((path) => ({ path }))];
+        const url = this.apiUrl + queryString({
+            $count: true,
+            $top: query.pageSize,
+            $skip: (query.pageNumber - 1) * query.pageSize,
+            $filter: and(...conditions),
+            $orderby: orderBy(order),
+            $select: query.select && query.select.length > 0 ? [...new Set([this.table.key, ...query.select])].join(',') : undefined
+        });
+        return this.http.get<ODataPage<T>>(url).pipe(
+            map((page) => {
+                const totalCount = page['@odata.count'] ?? page.value.length;
+                return { items: page.value, page: query.pageNumber, pageSize: query.pageSize, totalCount, totalPages: Math.ceil(totalCount / query.pageSize) };
+            })
+        );
+    }
+
+    // Which guarded columns the signed-in person may change (the table's REST route answers it; a table with GuardedColumns has the call, the form reads it)
+    getGuards(): Observable<Record<string, boolean>> {
+        if (!this.restUrl) { throw new Error(`The ${this.apiUrl} entity set has no REST route to read the guards from.`); }
+        return this.http.get<Record<string, boolean>>(`${this.restUrl}/guards`);
+    }
+
+    // Copy a row into a new one (the table's REST route; the OData routes have no clone)
+    override clone(id: K): Observable<T> {
+        if (!this.restUrl) { throw new Error(`The ${this.apiUrl} entity set has no REST route to clone through.`); }
+        return this.http.post<T>(`${this.restUrl}/${encodeURIComponent(id)}/clone`, null);
+    }
+
+    // The rows of a query, following @odata.nextLink until the server has no more
+    protected readAll<R>(url: string): Observable<R[]> {
+        return readOData<R>(this.http, url);
+    }
+}
+
+/** The rows of an OData query (a url with its query string), following @odata.nextLink until the server has no more: a screen reads a child's rows with it. */
+export function readOData<R>(http: HttpClient, url: string): Observable<R[]> {
+    return http.get<ODataPage<R>>(url).pipe(
+        expand((page) => page['@odata.nextLink'] ? http.get<ODataPage<R>>(relativeLink(page['@odata.nextLink'])) : EMPTY),
+        reduce((rows, page) => rows.concat(page.value), [] as R[])
+    );
+}
+@@@FILE src/app/<#= servicesFolder #>/odata-crud.service.spec.ts@@@
+import { Injectable } from '@angular/core';
+import { HttpClient, provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+import { ODataCrudService } from './odata-crud.service';
+
+interface Row { id: number; name: string; isActive: boolean }
+
+@Injectable({ providedIn: 'root' })
+class RowService extends ODataCrudService<Row> {
+  constructor(http: HttpClient) {
+    super(http, 'odata/rows', {
+      key: 'id',
+      filters: [{ key: 'name', property: 'name' }, { key: 'city', property: 'city' }],
+      sorts: [{ name: 'StatusId', path: 'status/description' }, { name: 'Name', path: 'name' }],
+      defaultOrder: ['name', 'id'],
+      lookup: { name: 'name', active: 'isActive' }
+    }, 'api/rows');
+  }
+}
+
+describe('ODataCrudService', () => {
+  let service: RowService;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting()] });
+    service = TestBed.inject(RowService);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  it('asks for a page with the count, the top, the skip and the default order', () => {
+    let page = { totalCount: -1 };
+    service.searchPage({ pageNumber: 3, pageSize: 10 }).subscribe((p) => { page = p; });
+    const request = http.expectOne((r) => r.urlWithParams.startsWith('odata/rows?'));
+    expect(request.request.urlWithParams).toBe('odata/rows?$count=true&$top=10&$skip=20&$orderby=name%2Cid');
+    request.flush({ value: [], '@odata.count': 42 });
+    expect(page.totalCount).toBe(42);
+  });
+
+  it('filters each box on its own property and the one search box on all of them, as one literal', () => {
+    service.searchPage({ pageNumber: 1, pageSize: 5, filters: { name: "O'Brien", city: '', other: 'x' } }).subscribe();
+    const own = http.expectOne((r) => r.urlWithParams.startsWith('odata/rows?'));
+    expect(decodeURIComponent(own.request.urlWithParams)).toContain("$filter=contains(tolower(name),'o''brien')");
+    expect(own.request.urlWithParams).not.toContain('city');
+    own.flush({ value: [] });
+
+    service.searchPage({ pageNumber: 1, pageSize: 5, filters: { search: "x' or 1 eq 1" } }).subscribe();
+    const all = http.expectOne((r) => r.urlWithParams.startsWith('odata/rows?'));
+    expect(decodeURIComponent(all.request.urlWithParams)).toContain("$filter=(contains(tolower(name),'x'' or 1 eq 1') or contains(tolower(city),'x'' or 1 eq 1'))");
+    all.flush({ value: [] });
+  });
+
+  it('sorts by the path of the header, then by the default order', () => {
+    service.searchPage({ pageNumber: 1, pageSize: 5, sortBy: 'statusid', sortDescending: true }).subscribe();
+    const request = http.expectOne((r) => r.urlWithParams.startsWith('odata/rows?'));
+    expect(decodeURIComponent(request.request.urlWithParams)).toContain('$orderby=status/description desc,name,id');
+    request.flush({ value: [] });
+  });
+
+  it('sorts by several columns in the order given, then by the default order', () => {
+    service.queryPage({ pageNumber: 1, pageSize: 5, sorts: [{ column: 'name', descending: false }, { column: 'statusid', descending: true }] }).subscribe();
+    const request = http.expectOne((r) => r.urlWithParams.startsWith('odata/rows?'));
+    expect(decodeURIComponent(request.request.urlWithParams)).toContain('$orderby=name,status/description desc,id');
+    request.flush({ value: [] });
+  });
+
+  it('adds the conditions of the filter row to the filter and reads only the columns the grid shows, and the key', () => {
+    service.queryPage({
+      pageNumber: 1, pageSize: 5, filters: { name: 'ab' },
+      conditions: [{ kind: 'range', property: 'total', type: 'number', from: 10 }, { kind: 'equals', property: 'isActive', type: 'boolean', value: true }],
+      select: ['name', 'total']
+    }).subscribe();
+    const request = http.expectOne((r) => r.urlWithParams.startsWith('odata/rows?'));
+    const url = decodeURIComponent(request.request.urlWithParams);
+    expect(url).toContain("$filter=contains(tolower(name),'ab') and total ge 10 and isActive eq true");
+    expect(url).toContain('$select=id,name,total');
+    request.flush({ value: [] });
+  });
+
+  it('follows the next links with the same origin and reads every row', () => {
+    let rows: Row[] = [];
+    service.getAll().subscribe((r) => { rows = r; });
+    http.expectOne('odata/rows?$orderby=name%2Cid').flush({ value: [{ id: 1, name: 'a', isActive: true }], '@odata.nextLink': 'http://localhost:5201/odata/rows?$orderby=name%2Cid&$skip=1' });
+    http.expectOne('odata/rows?$orderby=name%2Cid&$skip=1').flush({ value: [{ id: 2, name: 'b', isActive: false }] });
+    expect(rows.map((r) => r.id)).toEqual([1, 2]);
+  });
+
+  it('reads the key, the display column and the active flag for a drop-down', () => {
+    let items: { id: number; name: string; isActive?: boolean | null }[] = [];
+    service.getLookup().subscribe((l) => { items = l; });
+    http.expectOne('odata/rows?$select=id%2Cname%2CisActive&$orderby=name').flush({ value: [{ id: 7, name: 'Seven', isActive: false }] });
+    expect(items).toEqual([{ id: 7, name: 'Seven', isActive: false }]);
+  });
+
+  it('reads the guards from the REST route', () => {
+    let guards: Record<string, boolean> = {};
+    service.getGuards().subscribe((g) => { guards = g; });
+    http.expectOne('api/rows/guards').flush({ city: true });
+    expect(guards).toEqual({ city: true });
+  });
+
+  it('clones through the REST route', () => {
+    service.clone(4).subscribe();
+    const request = http.expectOne('api/rows/4/clone');
+    expect(request.request.method).toBe('POST');
+    request.flush({ id: 5, name: 'copy', isActive: true });
+  });
+});
+@@@FILE src/app/<#= componentsFolder #>/odata-screen.ts@@@
+import { Directive } from '@angular/core';
+import { ODataCrudService } from '../<#= servicesFolder #>/odata-crud.service';
+import { ODataCondition } from '../<#= servicesFolder #>/odata-query';
+import { PagedCrudScreen } from './crud-screen';
+import { GridSort } from '../grid-sort';
+
+/** What a filter row control filters by: text (contains), number or date (a range), boolean (yes or no), parent or choice (one value). */
+export type ColumnFilterKind = 'text' | 'number' | 'date' | 'boolean' | 'parent' | 'choice';
+
+/** One column of the filter row: the header name it is sorted by, its property in the OData answer, the kind of control, whether the column can be empty, and how a chosen value is written in $filter. */
+export interface ColumnFilterField {
+  name: string;
+  property: string;
+  kind: ColumnFilterKind;
+  nullable: boolean;
+  literal?: 'number' | 'string' | 'guid';
+}
+
+/** What the person typed into the controls of one column. */
+export interface ColumnFilter {
+  text?: string;
+  from?: string | number | null;
+  to?: string | number | null;
+  flag?: string;
+  value?: string | number | null;
+  empty?: boolean;
+}
+
+const sortsKey = (gridKey: string) => `gridSort:${gridKey}`;   // the key and the format of grid-sort.ts, which keeps the sort as a list
+
+/** The saved sorts of a grid, those whose column the grid can sort by; none when there is nothing saved or it cannot be read. */
+export function loadSorts(gridKey: string, sortableColumns: string[]): GridSort[] {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(sortsKey(gridKey)) ?? 'null');
+    if (!Array.isArray(saved)) return [];
+    return saved
+      .filter((item) => item && typeof item.column === 'string' && sortableColumns.includes(item.column))
+      .map((item) => ({ column: item.column as string, descending: item.descending === true }));
+  } catch {
+    return [];
+  }
+}
+
+/** Remember the sorts of a grid, or forget them (an empty list). */
+export function saveSorts(gridKey: string, sorts: GridSort[]): void {
+  try {
+    if (sorts.length > 0) localStorage.setItem(sortsKey(gridKey), JSON.stringify(sorts));
+    else localStorage.removeItem(sortsKey(gridKey));
+  } catch {
+  }
+}
+
+/**
+ * A paged screen over an OData service (ODataCrudService): what PagedCrudScreen has, and
+ *   several sorts   a click on a header sorts by it (again: flips it), Shift-click adds the column as the next sort (again: flips it, once more: takes it out); the list is kept between visits;
+ *   a filter row    `filterFields` says the control of each column and `columnFilters` holds what was typed; the conditions are read by the server with the page ($filter);
+ *   a slim grid     `selectColumns`, when it names the columns the grid shows, makes the page ask for those and the key only, and a row is read whole when it is opened (open).
+ * A screen names its `filterFields` and `selectColumns` and keeps the Edit button on `open(row)`.
+ */
+@Directive()
+export abstract class ODataPagedScreen<T, K extends number | string = number> extends PagedCrudScreen<T, K> {
+  protected abstract override readonly service: ODataCrudService<T, K>;
+  abstract readonly filterFields: readonly ColumnFilterField[];
+  /** The properties the grid shows; empty: the page reads every property. */
+  protected readonly selectColumns: readonly string[] = [];
+
+  sorts: GridSort[] = [];
+  columnFilters: Record<string, ColumnFilter> = {};
+
+  protected override start(): void {
+    for (const field of this.filterFields) this.columnFilters[field.name] ??= {};
+    this.sorts = loadSorts(this.gridKey, this.sortableColumns);
+    if (this.sorts.length === 0 && this.defaultSort) this.sorts = [this.defaultSort];
+    this.sort = this.sorts[0] ?? null;
+    super.start();
+  }
+
+  protected override load(): void {
+    this.service.queryPage({
+      pageNumber: this.pageIndex + 1, pageSize: this.pageSize, filters: this.filters, sorts: this.sorts, conditions: this.conditions(),
+      select: this.selectColumns.length > 0 ? this.selectColumns : undefined
+    }).subscribe((result) => {
+      // the last row of the last page was deleted: the page asked for is past the end, so show the last page there is
+      if (result.items.length === 0 && result.totalCount > 0 && this.pageIndex > 0) {
+        this.pageIndex = Math.ceil(result.totalCount / this.pageSize) - 1;
+        this.load();
+        return;
+      }
+      this.rows = result.items;
+      this.totalCount = result.totalCount;
+      this.loaded = true;
+      this.pageLoaded();
+    });
+  }
+
+  /** What the filter row asks for, as conditions: a column left alone adds none; "empty" wins over the other controls of its column. */
+  conditions(): ODataCondition[] {
+    const conditions: ODataCondition[] = [];
+    for (const field of this.filterFields) {
+      const typed = this.columnFilters[field.name];
+      if (!typed) continue;
+      if (typed.empty) { conditions.push({ kind: 'equals', property: field.property, type: 'string', value: null }); continue; }
+      switch (field.kind) {
+        case 'text':
+          if ((typed.text ?? '').trim()) conditions.push({ kind: 'contains', property: field.property, text: typed.text! });
+          break;
+        case 'number':
+        case 'date':
+          if (typed.from || typed.to) conditions.push({ kind: 'range', property: field.property, type: field.kind, from: typed.from, to: typed.to });
+          break;
+        case 'boolean':
+          if (typed.flag === 'true' || typed.flag === 'false') conditions.push({ kind: 'equals', property: field.property, type: 'boolean', value: typed.flag === 'true' });
+          break;
+        case 'parent':
+        case 'choice':
+          if (typed.value !== undefined && typed.value !== null && typed.value !== '') conditions.push({ kind: 'equals', property: field.property, type: field.literal ?? 'string', value: typed.value });
+          break;
+      }
+    }
+    return conditions;
+  }
+
+  override clearSearch(): void {
+    for (const name of Object.keys(this.filters)) this.filters[name] = '';
+    for (const name of Object.keys(this.columnFilters)) this.columnFilters[name] = {};
+    this.pageIndex = 0;
+    this.load();
+  }
+
+  // A click sorts by the column (again: flips it); a Shift-click adds the column as the next sort (again: flips it, once more: takes it out). A change goes back to page 1.
+  override sortBy(column: string, event?: { shiftKey?: boolean }): void {
+    const at = this.sorts.findIndex((s) => s.column === column);
+    if (event?.shiftKey) {
+      if (at < 0) this.sorts = [...this.sorts, { column, descending: false }];
+      else if (!this.sorts[at].descending) this.sorts = this.sorts.map((s, i) => (i === at ? { ...s, descending: true } : s));
+      else this.sorts = this.sorts.filter((_, i) => i !== at);
+    } else {
+      this.sorts = this.sorts.length === 1 && at === 0 ? [{ column, descending: !this.sorts[0].descending }] : [{ column, descending: false }];
+    }
+    this.sort = this.sorts[0] ?? null;
+    saveSorts(this.gridKey, this.sorts);
+    this.pageIndex = 0;
+    this.load();
+  }
+
+  override clearSort(): void {
+    this.sorts = [];
+    this.sort = null;
+    saveSorts(this.gridKey, this.sorts);
+    this.sortMenu = null;
+    this.pageIndex = 0;
+    this.load();
+  }
+
+  override sortMark(column: string): string {
+    const sorted = this.sorts.find((s) => s.column === column);
+    return sorted ? (sorted.descending ? ' ▼' : ' ▲') : '';
+  }
+
+  override ariaSort(column: string): 'ascending' | 'descending' | null {
+    const sorted = this.sorts.find((s) => s.column === column);
+    return sorted ? (sorted.descending ? 'descending' : 'ascending') : null;
+  }
+
+  /** The place of the column in the sort (1, 2, ...) when the grid is sorted by more than one; null otherwise. */
+  sortOrder(column: string): number | null {
+    const at = this.sorts.findIndex((s) => s.column === column);
+    return this.sorts.length > 1 && at >= 0 ? at + 1 : null;
+  }
+
+  /** Opens a row of the grid in the form. A slim grid has not read every property, so the row is read whole first. */
+  open(row: T): void {
+    const id = this.idOf(row);
+    if (this.selectColumns.length === 0 || id === undefined) { this.edit(row); return; }
+    this.service.getById(id).subscribe((whole) => this.edit(whole));
+  }
+}
+@@@FILE src/app/<#= componentsFolder #>/odata-screen.spec.ts@@@
+import { TestBed } from '@angular/core/testing';
+import { HttpClient, provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { inject } from '@angular/core';
+import { provideRouter } from '@angular/router';
+import { ODataCrudService } from '../<#= servicesFolder #>/odata-crud.service';
+import { Notifier } from '../<#= servicesFolder #>/notifier';
+import { ColumnFilterField, ODataPagedScreen, loadSorts, saveSorts } from './odata-screen';
+
+interface Row { rowId?: number; name: string; city: string; total: number; day: string; isActive: boolean; groupId: number | null }
+
+class RowService extends ODataCrudService<Row> {
+  constructor(http: HttpClient) {
+    super(http, 'odata/rows', {
+      key: 'rowId',
+      filters: [{ key: 'name', property: 'name' }],
+      sorts: [{ name: 'Name', path: 'name' }, { name: 'City', path: 'city' }, { name: 'Total', path: 'total' }],
+      defaultOrder: ['name', 'rowId']
+    });
+  }
+}
+
+class RowScreen extends ODataPagedScreen<Row> {
+  protected readonly service = new RowService(inject(HttpClient));
+  protected readonly noun = 'row';
+  protected readonly idKey = 'rowId';
+  protected readonly gridKey = 'spec-odata-rows';
+  readonly sortableColumns = ['Name', 'City', 'Total'];
+  readonly filterFields: readonly ColumnFilterField[] = [
+    { name: 'Name', property: 'name', kind: 'text', nullable: false },
+    { name: 'City', property: 'city', kind: 'text', nullable: true },
+    { name: 'Total', property: 'total', kind: 'number', nullable: false },
+    { name: 'Day', property: 'day', kind: 'date', nullable: false },
+    { name: 'IsActive', property: 'isActive', kind: 'boolean', nullable: false },
+    { name: 'GroupId', property: 'groupId', kind: 'parent', nullable: true, literal: 'number' }
+  ];
+  protected newRow(): Row { return { name: '', city: '', total: 0, day: '', isActive: true, groupId: null }; }
+}
+
+class SlimRowScreen extends RowScreen {
+  protected override readonly selectColumns = ['name', 'total'];
+}
+
+describe('ODataPagedScreen', () => {
+  let http: HttpTestingController;
+  const create = <S>(screen: new () => S): S => TestBed.runInInjectionContext(() => new screen());
+  const asked = (): string => decodeURIComponent(http.expectOne((r) => r.urlWithParams.startsWith('odata/rows?')).request.urlWithParams);
+  const answer = (value: Row[] = [], count = value.length) => http.match((r) => r.urlWithParams.startsWith('odata/rows?')).forEach((r) => r.flush({ value, '@odata.count': count }));
+
+  beforeEach(() => {
+    localStorage.clear();
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([]), { provide: Notifier, useValue: { error: () => {}, info: () => {}, confirm: () => true } }]
+    });
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => http.verify());
+
+  it('sorts by one column on a click and flips it on the next', () => {
+    const screen = create(RowScreen);
+    screen.sortBy('City');
+    expect(asked()).toContain('$orderby=city,name,rowId');
+    answer();
+    screen.sortBy('City');
+    expect(asked()).toContain('$orderby=city desc,name,rowId');
+    answer();
+    expect(screen.sorts).toEqual([{ column: 'City', descending: true }]);
+  });
+
+  it('adds a column to the sort on a Shift-click, flips it, then takes it out', () => {
+    const screen = create(RowScreen);
+    screen.sortBy('Name');
+    answer();
+    screen.sortBy('Total', { shiftKey: true });
+    expect(asked()).toContain('$orderby=name,total,rowId');
+    answer();
+    expect(screen.sortOrder('Name')).toBe(1);
+    expect(screen.sortOrder('Total')).toBe(2);
+    expect(screen.sortOrder('City')).toBeNull();
+
+    screen.sortBy('Total', { shiftKey: true });
+    expect(asked()).toContain('$orderby=name,total desc,rowId');
+    answer();
+    expect(screen.ariaSort('Total')).toBe('descending');
+    expect(screen.sortMark('Total')).toBe(' ▼');
+
+    screen.sortBy('Total', { shiftKey: true });
+    expect(asked()).toContain('$orderby=name,rowId');
+    answer();
+    expect(screen.sorts).toEqual([{ column: 'Name', descending: false }]);
+    expect(screen.sortOrder('Name')).toBeNull();   // one sort has no order to show
+  });
+
+  it('starts over with a plain click, keeps the sorts between visits and ignores a column that cannot be sorted', () => {
+    const screen = create(RowScreen);
+    screen.sortBy('Name');
+    answer();
+    screen.sortBy('City', { shiftKey: true });
+    answer();
+    expect(loadSorts('spec-odata-rows', ['Name', 'City'])).toEqual([{ column: 'Name', descending: false }, { column: 'City', descending: false }]);
+    expect(loadSorts('spec-odata-rows', ['Name'])).toEqual([{ column: 'Name', descending: false }]);
+    screen.sortBy('Total');
+    answer();
+    expect(screen.sorts).toEqual([{ column: 'Total', descending: false }]);
+
+    saveSorts('spec-odata-rows', [{ column: 'City', descending: true }, { column: 'Name', descending: false }]);
+    const again = create(RowScreen);
+    again.ngOnInit();
+    expect(asked()).toContain('$orderby=city desc,name,rowId');
+    answer();
+    again.clearSort();
+    expect(asked()).not.toContain('city');
+    answer();
+    expect(loadSorts('spec-odata-rows', ['Name', 'City'])).toEqual([]);
+  });
+
+  it('turns what was typed in the filter row into conditions and nothing for a column left alone', () => {
+    const screen = create(RowScreen);
+    screen.ngOnInit();
+    answer();
+    expect(screen.conditions()).toEqual([]);
+
+    Object.assign(screen.columnFilters['Name'], { text: ' Ab ' });
+    Object.assign(screen.columnFilters['Total'], { from: 10, to: 20 });
+    Object.assign(screen.columnFilters['Day'], { from: '2026-03-01' });
+    Object.assign(screen.columnFilters['IsActive'], { flag: 'false' });
+    Object.assign(screen.columnFilters['GroupId'], { value: 7 });
+    screen.search();
+    const url = asked();
+    expect(url).toContain("$filter=contains(tolower(name),'ab') and total ge 10 and total le 20 and day ge 2026-03-01 and isActive eq false and groupId eq 7");
+    expect(url).toContain('$skip=0');
+    answer();
+  });
+
+  it('asks for the rows with an empty value when "empty" is ticked, whatever else the column holds', () => {
+    const screen = create(RowScreen);
+    screen.ngOnInit();
+    answer();
+    Object.assign(screen.columnFilters['City'], { text: 'x', empty: true });
+    screen.search();
+    expect(asked()).toContain('$filter=city eq null');
+    answer();
+  });
+
+  it('clears the filter row and the boxes and reads the first page again', () => {
+    const screen = create(RowScreen);
+    screen.ngOnInit();
+    answer();
+    Object.assign(screen.columnFilters['Name'], { text: 'ab', empty: false });
+    screen.pageIndex = 2;
+    screen.clearSearch();
+    expect(asked()).not.toContain('$filter');
+    answer();
+    expect(screen.columnFilters['Name']).toEqual({});
+    expect(screen.pageIndex).toBe(0);
+  });
+
+  it('reads only the columns the grid shows and reads a row whole when it is opened', () => {
+    const screen = create(SlimRowScreen);
+    screen.ngOnInit();
+    const page = http.expectOne((r) => r.urlWithParams.startsWith('odata/rows?'));
+    expect(decodeURIComponent(page.request.urlWithParams)).toContain('$select=rowId,name,total');
+    page.flush({ value: [{ rowId: 4, name: 'a', total: 1 }], '@odata.count': 1 });
+
+    screen.open(screen.rows[0]);
+    const whole = http.expectOne('odata/rows/4');
+    whole.flush({ rowId: 4, name: 'a', city: 'c', total: 1, day: '2026-03-01', isActive: true, groupId: null });
+    expect(screen.selectedRow?.city).toBe('c');
+
+    const plain = create(RowScreen);
+    plain.open({ rowId: 5, name: 'b', city: 'd', total: 2, day: '', isActive: true, groupId: null });
+    expect(plain.selectedRow?.city).toBe('d');   // a full grid opens the row it has
+  });
+});

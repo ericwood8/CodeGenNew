@@ -332,6 +332,82 @@ public class GatedChangesTests
         Expect.Contains(plain["html"], "[(ngModel)]=\"selectedRow.ignoreBadStatusBy\"");   // without the guard the stamp column is an ordinary field
     }
 
+    private static async Task<Dictionary<string, string>> Written(string template, TableModel table, ProjectSettings project)
+    {
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), table, project);
+        Assert.IsTrue(result.Success, $"{template}: {string.Join(" | ", result.Errors)}");
+        return GeneratedFiles.Split(result.GeneratedText!).ToDictionary(f => f.RelativePath.Replace('\\', '/'), f => f.Content.Replace("\r\n", "\n"));
+    }
+
+    private static string Of(Dictionary<string, string> files, string endsWith) => files.Single(f => f.Key.EndsWith(endsWith)).Value;
+
+    [TestMethod]
+    [DataRow("TSX_Page_v1.tt", false)]
+    [DataRow("TSX_DetailMasterPage_v1.tt", true)]
+    public async Task A_React_form_shows_a_guarded_field_as_a_control_only_to_a_person_who_may_change_it(string template, bool withChildren)
+    {
+        var table = withChildren ? CustomerWithChildren() : Customer();
+        var files = await Written(template, table, Project());
+        string page = Of(files, "Page.tsx");
+
+        Expect.Contains(page, "const [guards, setGuards] = useState<Record<string, boolean>>({});");
+        Expect.Contains(page, "customerApi.getGuards().then(setGuards).catch(() => {});");
+        Expect.Contains(page, "{guards['ignoreBadStatus'] ? (");
+        Expect.Contains(page, "selectedRow.ignoreBadStatus ? 'Yes' : 'No'");
+        Expect.Contains(page, "Only a manager can change this.");
+        Expect.Contains(page, "checked={!!selectedRow.ignoreBadStatus}");
+        Expect.Contains(page, "selectedRow.ignoreBadStatusBy || 'not recorded'");
+        Expect.Contains(page, "new Date(selectedRow.ignoreBadStatusOn).toLocaleString() : 'not recorded'");
+        Expect.DoesNotContain(page, "selectedRow.ignoreBadStatusBy}");   // the stamp is never an input
+
+        var plain = Of(await Written(template, table, Project(("GuardedColumns", ""))), "Page.tsx");
+        Expect.DoesNotContain(plain, "guards");
+        Expect.DoesNotContain(plain, "getGuards");
+    }
+
+    [TestMethod]
+    public async Task The_React_page_spec_checks_both_forms_of_a_guarded_field()
+    {
+        var spec = Of(await Written("TSX_Page_v1.tt", Customer(), Project()), ".test.tsx");
+        Expect.Contains(spec, "getGuards').mockResolvedValue({ ignoreBadStatus: false })");
+        Expect.Contains(spec, "getGuards').mockResolvedValue({ ignoreBadStatus: true })");
+        Expect.Contains(spec, "findByText('Only a manager can change this.')");
+        Expect.Contains(spec, "import { fireEvent, render, screen }");
+    }
+
+    [TestMethod]
+    public async Task The_React_api_module_asks_for_the_guards_only_for_a_table_that_has_one()
+    {
+        Expect.Contains(Of(await Written("TSX_Api_v1.tt", Customer(), Project()), "customerApi.ts"), "getGuards: () => request<Record<string, boolean>>(`${apiUrl}/guards`),");
+        Expect.DoesNotContain(Of(await Written("TSX_Api_v1.tt", SalesInvoice(), Project()), "salesinvoiceApi.ts"), "getGuards");
+    }
+
+    [TestMethod]
+    public async Task A_Blazor_form_shows_a_guarded_field_as_a_control_only_to_a_person_who_may_change_it()
+    {
+        var files = await Written("BLZ_Page_v1.tt", Customer(), Project(("Auth", "true")));
+        string page = Of(files, "CustomerPage.razor");
+
+        Expect.Contains(page, "private Dictionary<string, bool> guards = new();");
+        Expect.Contains(page, "guards = await Client.GetGuardsAsync();");
+        Expect.Contains(page, "@if (guards.GetValueOrDefault(\"ignoreBadStatus\"))");
+        Expect.Contains(page, "@(row.IgnoreBadStatus == true ? \"Yes\" : \"No\")");
+        Expect.Contains(page, "Only a manager can change this.");
+        Expect.Contains(page, "@(row.IgnoreBadStatusBy ?? \"not recorded\")");
+        Expect.Contains(page, "@(row.IgnoreBadStatusOn?.ToString(\"g\") ?? \"not recorded\")");
+        Expect.DoesNotContain(page, "@bind-Value=\"row.IgnoreBadStatusBy\"");
+
+        var plain = Of(await Written("BLZ_Page_v1.tt", Customer(), Project(("Auth", "true"), ("GuardedColumns", ""))), "CustomerPage.razor");
+        Expect.DoesNotContain(plain, "guards");
+    }
+
+    [TestMethod]
+    public async Task The_Blazor_clients_ask_for_the_guards_only_for_a_table_that_has_one()
+    {
+        Expect.Contains(Of(await Written("BLZ_Client_v1.tt", Customer(), Project()), "CustomerClient.cs"), "GetGuardsAsync()");
+        Expect.DoesNotContain(Of(await Written("BLZ_Client_v1.tt", SalesInvoice(), Project()), "SalesInvoiceClient.cs"), "GetGuardsAsync");
+    }
+
     [TestMethod]
     public async Task The_service_asks_for_the_guards_only_for_a_table_that_has_one()
     {

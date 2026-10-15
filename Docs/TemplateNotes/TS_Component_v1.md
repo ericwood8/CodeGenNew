@@ -97,3 +97,5 @@ A column the system writes (`ColumnModel.IsSystemStampColumn`: CreateDate, Creat
 ## Required fields
 
 A required field (NOT NULL, other than a yes/no box and the stamps the system writes; `FormModel.IsRequired`) gets the native `required` attribute and, unless `RequiredMarks=false`, a red `*` written after its caption: `<span aria-hidden="true" style=...>*</span>`. Screen readers skip the mark because the field itself says it is required. There is no legend line. Save is not disabled; the browser refuses an incomplete submit as before.
+
+**Roles** (`Auth=true`, `ApiAuth=true`): a screen of a table with `ReadRoles` carries `roles`; `app.routes.ts` then gets a `canRead` guard that sends a person whose role may not read it to the first screen they may (and the shell menu, from the Shell essentials group, lists only those). The Add New, Edit, Clone and Delete buttons of a table with `WriteRoles` are hidden by `canWrite`, and the generated spec checks Add New for a listed role and an unlisted one. A project made before needs `--replace` of the Auth and Shell essentials.

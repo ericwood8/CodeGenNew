@@ -90,3 +90,5 @@ With `ApiAuth` and `UserTable` naming this table, the class also overrides `Befo
 ## A gated or guarded table
 
 With `ApiAuth` and a `ChangeGates` or `GuardedColumns` rule that names this table, the class overrides `BeforeSaveAsync` to call `<Table>Gates.CheckAsync` (and, for a table that clones, `AfterCloneAsync` to call `<Table>Gates.AfterCloneAsync`); `API_Gates` writes those classes. See `API_Gates_v1.md`. A table cannot be both the user table and a gated one.
+
+**Write roles:** with `ApiAuth` and a `WriteRoles` or `TableWriteRoles` rule for the table, the class overrides `WriteRoles`.

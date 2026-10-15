@@ -44,3 +44,9 @@ dotnet run --project <ProjectName>.Blazor
 The app is at `http://localhost:5190`.
 
 **Checked:** generated for the PostgreSQL InvoiceSystem sample (six screens), built with 0 warnings and 0 errors, run against the generated API: the grid, search, sort, the foreign key drop-down of an invoice, and add, edit, clone and delete of a customer through the form.
+
+## Sign-in, role rules and OData
+
+- **`OData=true`:** each table served as OData also gets a menu entry for its OData page after the REST ones (`<table>-odata`, "<Table> (OData)"), and `AddApiClients()` registers its `<Table>ODataClient`. `ODataScreens=Replace` leaves the menu as it is (the OData page has the REST page's route).
+- **`Auth=true`:** `NavMenu` shows only to a signed-in person and leaves out the screens `ReadRoles` or `TableReadRoles` limit to other roles (it draws again when someone signs in or out); `Home` opens the first screen the role may read, the sign-in page for a person who is not signed in, and says "There is no screen your role may read." when there is none. See `BLZ_EssentialAuth_v1.md`.
+- The Blazor stack now has two more essentials groups: `Auth` (`Auth=true`) and `OData` (`OData=true`).

@@ -28,6 +28,12 @@ public static class EditableChild
         return key is { IsInt32Column: true, IsIdentity: true } && link is { IsNullable: false } && KeyType.Of(link)?.CSharp == parentKey.CSharp;
     }
 
+    /// <summary> The project lists a child table of <paramref name="parent"/> in <c>EditableChildren</c>, whether or not the child's columns are known. A database-level template sees tables without their children's columns, so a rule
+    /// that has to give the same answer there and in a per-table template (which tables the OData routes serve) asks this, not <see cref="IsEditable"/>. </summary>
+    public static bool Lists(TableModel parent, ProjectSettings project) =>
+        project.EditableChildren.Length > 0
+        && parent.ChildForeignKeys.Any(fk => project.EditableChildren.Any(entry => entry.Contains('.') ? Names(entry, parent, fk) : entry.EqualsIgnoreCase(fk.ReferencingTable)));
+
     private static bool Names(string entry, TableModel parent, ChildForeignKeyModel fk)
     {
         int dot = entry.IndexOf('.');

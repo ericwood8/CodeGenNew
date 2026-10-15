@@ -39,13 +39,10 @@
         Error($"TSX_Api needs a table with a single int, uniqueidentifier or text primary key (the routes take the id as {{id:int}}, {{id:guid}} or {{id}}), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
     }
-    else if (Model.IsNameActiveTable)
-    {
-        Error($"TSX_Api assumes a plain getAll()-style API. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo and its real API is always hand-maintained (and commonly has no plain getAll() at all); write this api module by hand.");
-    }
     else
     {
         string baseName = BaseName(Model.TableName);
+        bool nameActive = Model.IsNameActiveTable;   // its API (NameActiveCrudApi) answers the whole list, the active rows, a lookup and find by name; no paging, no search, no clone
         string keyTs = keyType.TypeScript;   // a uniqueidentifier or text key travels as a string
         // A text key can hold characters a route treats as its own (a space, a slash, a question mark): it is encoded into the path.
         string keyPath = keyType.Kind == KeyKind.Text ? "${encodeURIComponent(id)}" : "${id}";
@@ -68,25 +65,34 @@
         L();
         L($"const apiUrl = '{apiPrefix}/{stem.Pluralize()}';");
         L();
-        L($"export interface {baseName}PagedResult {{");
-        L($"  items: {baseName}[];");
-        L("  page: number;");
-        L("  pageSize: number;");
-        L("  totalCount: number;");
-        L("  totalPages: number;");
-        L("}");
-        L();
+        if (!nameActive)
+        {
+            L($"export interface {baseName}PagedResult {{");
+            L($"  items: {baseName}[];");
+            L("  page: number;");
+            L("  pageSize: number;");
+            L("  totalCount: number;");
+            L("  totalPages: number;");
+            L("}");
+            L();
+        }
         L($"export const {variable}Api = {{");
         L($"  getAll: () => request<{baseName}[]>(apiUrl),");
         L();
+        if (nameActive)
+        {
+            L($"  getActive: () => request<{baseName}[]>(`${{apiUrl}}/active`),");
+            L();
+        }
         // the drop-downs of the screens that look this table up read just the key, the text to show and the active flag
         L($"  getLookup: () => request<{{ id: {keyTs}; name: string; isActive?: boolean | null }}[]>(`${{apiUrl}}/lookup`),");
         L();
         L($"  getById: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/{keyPath}`),");
         L();
-        L($"  create: ({variable}: {baseName}) => request<{baseName}>(apiUrl, {{ method: 'POST', body: JSON.stringify({variable}) }}),");
+        string row = variable == "request" ? "row" : variable;   // a table called Request must not hide the request() helper behind its own parameter
+        L($"  create: ({row}: {baseName}) => request<{baseName}>(apiUrl, {{ method: 'POST', body: JSON.stringify({row}) }}),");
         L();
-        L($"  update: (id: {keyTs}, {variable}: {baseName}) => request<{baseName}>(`${{apiUrl}}/{keyPath}`, {{ method: 'PUT', body: JSON.stringify({variable}) }}),");
+        L($"  update: (id: {keyTs}, {row}: {baseName}) => request<{baseName}>(`${{apiUrl}}/{keyPath}`, {{ method: 'PUT', body: JSON.stringify({row}) }}),");
         L();
         L($"  delete: (id: {keyTs}) => request<void>(`${{apiUrl}}/{keyPath}`, {{ method: 'DELETE' }}),");
         // clone(id): copy a row into a new one and get the copy back (POST <route>/{id}/clone, API_Crud); only for the tables CloneShape says can be cloned.
@@ -95,11 +101,18 @@
             L();
             L($"  clone: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/{keyPath}/clone`, {{ method: 'POST' }}),");
         }
+        if (GatePlan.GuardsOf(Project, Model).Count > 0)
+        {
+            L();
+            L("  // Which guarded columns the signed-in person may change (the screen shows the others as text), by the column's JSON name");
+            L("  getGuards: () => request<Record<string, boolean>>(`${apiUrl}/guards`),");
+        }
         if (Model.CanFindByName)
         {
             L();
             L($"  findByName: (name: string) => request<{baseName}[]>(`${{apiUrl}}/${{name}}`),");
         }
+        if (!nameActive)
         {
             string filterType = filters.Count > 0 ? string.Join("; ", filters.Select(f => $"{f.ParamName}?: string")) : "";
             L();

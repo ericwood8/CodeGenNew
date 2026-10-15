@@ -12,6 +12,23 @@ public static class AngularNames
     /// <summary> The service as a field of a component: <c>salesInvoiceService</c>. </summary>
     public static string ServiceField(string table) => TemplateHelpers.LowerFirst(ScreenNames.BaseName(table)) + "Service";
 
+    /// <summary> The OData service class (ODataCrudService over <c>/odata/&lt;set&gt;</c>): <c>SalesInvoiceODataService</c>. </summary>
+    public static string ODataServiceClass(string table) => ScreenNames.BaseName(table) + "ODataService";
+
+    /// <summary> The OData service's file without the extension: <c>salesinvoice-odata.service</c>. </summary>
+    public static string ODataServiceFile(string table) => ScreenNames.Stem(table) + "-odata.service";
+
+    /// <summary> The OData screen's component class: <c>SalesInvoiceODataComponent</c>. </summary>
+    public static string ODataComponentClass(string table) => ScreenNames.BaseName(table) + "ODataComponent";
+
+    /// <summary> The folder and file stem of the OData screen: <c>salesinvoice-odata</c>. </summary>
+    public static string ODataComponentStem(string table) => ScreenNames.Stem(table) + "-odata";
+
+    /// <summary> The OData screen's route and its menu text. </summary>
+    public static string ODataRoute(string table) => ScreenNames.Route(table) + "-odata";
+
+    public static string ODataLabel(string table) => ScreenNames.Label(table) + " (OData)";
+
     /// <summary> The component class of the table's screen: <c>SalesInvoiceComponent</c>, or <c>SalesInvoiceDetailMasterComponent</c> for a table with child grids. </summary>
     public static string ComponentClass(TableModel table, ProjectSettings project) =>
         ScreenNames.BaseName(table.TableName) + (DatabaseModel.IsDetailMaster(table, project) ? "DetailMasterComponent" : "Component");
@@ -29,6 +46,16 @@ public static class ReactNames
 
     /// <summary> The api module's file without the extension: <c>salesinvoiceApi</c>. </summary>
     public static string ApiFile(string table) => ScreenNames.Stem(table) + "Api";
+
+    /// <summary> The OData api module's object (the OData twin of <see cref="ApiVar"/>): <c>salesInvoiceODataApi</c>. </summary>
+    public static string ODataApiVar(string table) => TemplateHelpers.LowerFirst(ScreenNames.BaseName(table)) + "ODataApi";
+
+    /// <summary> The OData api module's file without the extension: <c>salesinvoiceODataApi</c>. </summary>
+    public static string ODataApiFile(string table) => ScreenNames.Stem(table) + "ODataApi";
+
+    /// <summary> The OData page component: <c>SalesInvoiceODataPage</c>, or <c>SalesInvoiceODataDetailMasterPage</c> for a table with child grids. </summary>
+    public static string ODataPageName(TableModel table, ProjectSettings project) =>
+        ScreenNames.BaseName(table.TableName) + (DatabaseModel.IsDetailMaster(table, project) ? "ODataDetailMasterPage" : "ODataPage");
 
     /// <summary> The state setter of a list a page holds: <c>customers</c> is set by <c>setCustomers</c>. </summary>
     public static string SetList(string list) => "set" + TemplateHelpers.UpperFirst(list);

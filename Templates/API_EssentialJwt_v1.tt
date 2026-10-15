@@ -79,6 +79,24 @@ public static class AuthNames
     public const string AdministratorPolicy = "Administrator";
 }
 
+/// <summary> The role rules of a table (the project's ReadRoles, TableReadRoles, WriteRoles and TableWriteRoles): only the roles a rule names, and the administrator role, may read or create, change and delete rows. </summary>
+public static class RoleGate
+{
+    public static bool Allows(ClaimsPrincipal caller, IReadOnlyList<string> roles) => roles.Count == 0 || roles.Any(caller.IsInRole);
+
+    public static IResult Refusal() => Results.Problem(statusCode: <#= HttpStatus.Forbidden #>, type: "<#= ProblemTypes.RoleNotAllowed #>", title: "Not allowed", detail: "Your role may read this table but not change it.");
+
+    public static IResult ReadRefusal() => Results.Problem(statusCode: <#= HttpStatus.Forbidden #>, type: "<#= ProblemTypes.RoleNotAllowed #>", title: "Not allowed", detail: "Your role may not read this table.");
+
+    /// <summary> Refuses a read from a role that is not in <paramref name="roles"/> (403 role-not-allowed); an empty list lets every signed-in person read. </summary>
+    public static TBuilder RequireReadRoles<TBuilder>(this TBuilder builder, IReadOnlyList<string> roles) where TBuilder : IEndpointConventionBuilder =>
+        roles.Count == 0 ? builder : builder.AddEndpointFilter(async (context, next) => Allows(context.HttpContext.User, roles) ? await next(context) : ReadRefusal());
+
+    /// <summary> Refuses a write from a role that is not in <paramref name="roles"/> (403 role-not-allowed); an empty list lets every signed-in person write. </summary>
+    public static TBuilder RequireWriteRoles<TBuilder>(this TBuilder builder, IReadOnlyList<string> roles) where TBuilder : IEndpointConventionBuilder =>
+        roles.Count == 0 ? builder : builder.AddEndpointFilter(async (context, next) => Allows(context.HttpContext.User, roles) ? await next(context) : Refusal());
+}
+
 /// <summary> Hashes and checks passwords with PBKDF2 and SHA-256 (<c>pbkdf2-sha256$iterations$salt$hash</c>, the last two in base64). </summary>
 public static class PasswordService
 {

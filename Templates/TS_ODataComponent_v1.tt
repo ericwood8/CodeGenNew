@@ -1,0 +1,5 @@
+<#@ template language="C#" #>
+<#
+    // TS_ODataComponent_v1.tt is TS_Component_v1.tt run with Variant=OData (the Base and Variant keys of its config): the same screen over the table's OData service, with names of its own.
+    // This file is only a stub for the template catalog; the text of the template is TS_Component_v1.tt. Full notes: Docs/TemplateNotes/TS_ODataComponent_v1.md
+#>

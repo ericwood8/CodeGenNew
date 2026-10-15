@@ -1,0 +1,357 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TSX_EssentialAuth_v1.tt
+    // Generates: src/api/auth.ts, src/pages/LoginPage.tsx, src/components/RequireAuth.tsx, src/components/auth.css and their tests   (no table, no database: an essentials group, not ticked by default; Auth=true in the project turns it on)
+    //   api/auth.ts              the session (token and user in sessionStorage, so the sign-in ends with the tab), login(), logout(), hasRole() and the useAuth() hook the components read it with;
+    //   pages/LoginPage.tsx      the sign-in page;
+    //   components/RequireAuth   sends a person who is not signed in to /login, and one whose role may not open the screen to the first screen they may open.
+    // The API answers POST api/auth/login with { token, expiresUtc, user: { name, role, ... } } (a 401 for a wrong password, a 429 for too many tries). The user table, password hashing and the first administrator
+    // stay in the API. With Auth=true the Support group's client.ts sends the token with every call and signs the person out on a 401, the Shell shows the user with Sign out and a screen carries the roles
+    // ReadRoles allows, and a page hides Add, Edit, Clone and Delete from a role WriteRoles does not list.
+    // Needs nothing but React and react-router-dom. Full notes: Docs/TemplateNotes/TSX_EssentialAuth_v1.md
+    // ==========================================================================================
+    string apiFolder = Project.ApiFolder;
+    string pagesFolder = Project.PagesFolder;
+    string componentsFolder = Project.ComponentsFolder;
+    string storageKey = (Project.ProjectName ?? "app").ToLowerInvariant() + ".auth";
+#>
+@@@FILE src/<#= apiFolder #>/auth.ts@@@
+import { useSyncExternalStore } from 'react';
+
+// Paths are relative ("/api/auth/login"); VITE_API_BASE_URL points a built copy at an API on another origin (see client.ts).
+const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? '';
+const storageKey = '<#= storageKey #>';
+
+/** Who is signed in. The API sends at least the name; anything else it sends (a role, an owner id) is kept and can be read as `user['role']`. */
+export interface AuthUser {
+  name: string;
+  role?: string;
+  [key: string]: unknown;
+}
+
+/** What POST api/auth/login answers. */
+export interface LoginResponse {
+  token: string;
+  /** When the token stops being good (UTC, ISO 8601); a session that is past it is dropped on the next visit. */
+  expiresUtc?: string;
+  user: AuthUser;
+}
+
+/** A sign-in the API refused: the status says why (<#= HttpStatus.Unauthorized #> a wrong name or password, <#= HttpStatus.TooManyRequests #> too many tries). */
+export class LoginError extends Error {
+  constructor(public status: number) {
+    super(`The sign-in answered ${status}.`);
+  }
+}
+
+/** The session saved by an earlier visit of this tab, unless it has expired or cannot be read. */
+function restore(): LoginResponse | null {
+  try {
+    const saved = sessionStorage.getItem(storageKey);
+    if (!saved) return null;
+    const response = JSON.parse(saved) as LoginResponse;
+    if (response.expiresUtc && new Date(response.expiresUtc).getTime() <= Date.now()) {
+      sessionStorage.removeItem(storageKey);
+      return null;
+    }
+    return response.token ? response : null;
+  } catch {
+    return null;
+  }
+}
+
+let session: LoginResponse | null = restore();
+const listeners = new Set<() => void>();
+
+/** Keeps the session (null signs out) in memory and in sessionStorage, and tells the components that show it. */
+export function setSession(next: LoginResponse | null): void {
+  session = next;
+  try {
+    if (next) sessionStorage.setItem(storageKey, JSON.stringify(next));
+    else sessionStorage.removeItem(storageKey);
+  } catch {
+    // storage unavailable: the sign-in lasts until the page is reloaded
+  }
+  listeners.forEach((listener) => listener());
+}
+
+export const getToken = (): string | null => session?.token ?? null;
+
+/** True when the signed-in person has one of these roles (the API compares the role exactly, so does this). */
+export const hasRole = (roles: readonly string[]): boolean => {
+  const role = session?.user.role;
+  return !!role && roles.includes(role);
+};
+
+export async function login(userName: string, password: string): Promise<LoginResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userName, password }),
+  });
+  if (!response.ok) throw new LoginError(response.status);
+  const body = (await response.json()) as LoginResponse;
+  setSession(body);
+  return body;
+}
+
+export const logout = (): void => setSession(null);
+
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+};
+
+/** The session as a hook: the components that call it draw again when the person signs in or out. */
+export function useAuth() {
+  const current = useSyncExternalStore(subscribe, () => session);
+  return { user: current?.user ?? null, isLoggedIn: current !== null, hasRole, login, logout };
+}
+@@@FILE src/<#= apiFolder #>/__tests__/auth.test.ts@@@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LoginError, getToken, hasRole, login, logout, setSession } from '../auth';
+import { request } from '../client';
+
+const storageKey = '<#= storageKey #>';
+const answer = { token: 'abc', expiresUtc: '2999-01-01T00:00:00Z', user: { name: 'Pat', role: 'Manager' } };
+
+beforeEach(() => {
+  sessionStorage.clear();
+  setSession(null);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('auth', () => {
+  it('starts signed out', () => {
+    expect(getToken()).toBeNull();
+    expect(hasRole(['Manager'])).toBe(false);
+  });
+
+  it('signs in: posts the name and password, keeps the token and the user, and remembers them for the tab', async () => {
+    const fetched = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(answer), { status: <#= HttpStatus.Ok #> }));
+    await login('pat', 'secret');
+
+    expect(fetched).toHaveBeenCalledWith('/api/auth/login', expect.objectContaining({ method: 'POST', body: JSON.stringify({ userName: 'pat', password: 'secret' }) }));
+    expect(getToken()).toBe('abc');
+    expect(JSON.parse(sessionStorage.getItem(storageKey) ?? 'null').token).toBe('abc');
+  });
+
+  it('stays signed out when the API refuses the sign-in', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: <#= HttpStatus.Unauthorized #> }));
+    await expect(login('pat', 'wrong')).rejects.toEqual(expect.objectContaining({ status: <#= HttpStatus.Unauthorized #> }));
+    await expect(login('pat', 'wrong')).rejects.toBeInstanceOf(LoginError);
+    expect(getToken()).toBeNull();
+    expect(sessionStorage.getItem(storageKey)).toBeNull();
+  });
+
+  it('signs out: forgets the session', () => {
+    setSession(answer);
+    logout();
+    expect(getToken()).toBeNull();
+    expect(sessionStorage.getItem(storageKey)).toBeNull();
+  });
+
+  it('says whether the signed-in person has one of the roles', () => {
+    setSession(answer);
+    expect(hasRole(['Administrator', 'Manager'])).toBe(true);
+    expect(hasRole(['Administrator'])).toBe(false);
+    expect(hasRole([])).toBe(false);
+  });
+
+  it('picks up a session saved by an earlier visit of the tab and drops one that has expired', async () => {
+    sessionStorage.setItem(storageKey, JSON.stringify(answer));
+    vi.resetModules();
+    expect((await import('../auth')).getToken()).toBe('abc');
+
+    sessionStorage.setItem(storageKey, JSON.stringify({ ...answer, expiresUtc: '2000-01-01T00:00:00Z' }));
+    vi.resetModules();
+    expect((await import('../auth')).getToken()).toBeNull();
+    expect(sessionStorage.getItem(storageKey)).toBeNull();
+  });
+
+  it('sends the token with every call of the shared request helper and signs out when the API says it is no longer good', async () => {
+    setSession(answer);
+    const fetched = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('[]', { status: <#= HttpStatus.Ok #> }));
+    await request('/api/things');
+    expect((fetched.mock.calls[0][1]?.headers as Record<string, string>).Authorization).toBe('Bearer abc');
+
+    fetched.mockResolvedValueOnce(new Response('', { status: <#= HttpStatus.Unauthorized #> }));
+    await expect(request('/api/things')).rejects.toBeTruthy();
+    expect(getToken()).toBeNull();
+  });
+});
+@@@FILE src/<#= pagesFolder #>/LoginPage.tsx@@@
+import { useState } from 'react';
+import type { FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { LoginError, useAuth } from '../<#= apiFolder #>/auth';
+import '../<#= componentsFolder #>/auth.css';
+
+export function LoginPage() {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+  const [userName, setUserName] = useState('');
+  const [password, setPassword] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const signIn = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setMessage('');
+    setBusy(true);
+    try {
+      await login(userName, password);
+      navigate('/', { replace: true });
+    } catch (error) {
+      setPassword('');
+      if (error instanceof LoginError && error.status === <#= HttpStatus.TooManyRequests #>) setMessage('Too many tries. Wait a minute and try again.');
+      else if (error instanceof LoginError && error.status === <#= HttpStatus.Unauthorized #>) setMessage('The user name or password is not right.');
+      else setMessage('Could not sign in right now.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="login-container">
+      <h1>Sign in</h1>
+      <form onSubmit={signIn}>
+        <div className="form-group">
+          <label htmlFor="userName">User name</label>
+          <input id="userName" name="userName" type="text" value={userName} onChange={(event) => setUserName(event.target.value)} autoComplete="username" required autoFocus />
+        </div>
+        <div className="form-group">
+          <label htmlFor="password">Password</label>
+          <input id="password" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
+        </div>
+        {message && <p className="error" role="alert">{message}</p>}
+        <button type="submit" disabled={busy || !userName || !password}>Sign in</button>
+      </form>
+    </div>
+  );
+}
+@@@FILE src/<#= pagesFolder #>/__tests__/LoginPage.test.tsx@@@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LoginPage } from '../LoginPage';
+import { setSession } from '../../<#= apiFolder #>/auth';
+
+const submit = async (status: number) => {
+  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(status === <#= HttpStatus.Ok #> ? JSON.stringify({ token: 'abc', user: { name: 'Pat' } }) : '', { status }));
+  render(
+    <MemoryRouter initialEntries={['/login']}>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/" element={<p>home</p>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+  fireEvent.change(screen.getByLabelText('User name'), { target: { value: 'pat' } });
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+};
+
+describe('LoginPage', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setSession(null);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setSession(null);
+  });
+
+  it('goes to the first screen after a sign-in', async () => {
+    await submit(<#= HttpStatus.Ok #>);
+    expect(await screen.findByText('home')).toBeInTheDocument();
+  });
+
+  it('says the name or password is wrong on a <#= HttpStatus.Unauthorized #> and clears the password', async () => {
+    await submit(<#= HttpStatus.Unauthorized #>);
+    expect(await screen.findByText('The user name or password is not right.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Password')).toHaveValue('');
+  });
+
+  it('says to wait on a <#= HttpStatus.TooManyRequests #>', async () => {
+    await submit(<#= HttpStatus.TooManyRequests #>);
+    expect(await screen.findByText('Too many tries. Wait a minute and try again.')).toBeInTheDocument();
+  });
+
+  it('has a general message for anything else', async () => {
+    await submit(<#= HttpStatus.InternalServerError #>);
+    expect(await screen.findByText('Could not sign in right now.')).toBeInTheDocument();
+  });
+});
+@@@FILE src/<#= componentsFolder #>/RequireAuth.tsx@@@
+import type { ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
+import { useAuth } from '../<#= apiFolder #>/auth';
+
+/** Lets a signed-in person through; anyone else goes to the sign-in page. With roles, a person whose role is not one of them goes to the start page, which opens the first screen they may open. */
+export function RequireAuth({ roles, children }: { roles?: readonly string[]; children: ReactNode }) {
+  const { isLoggedIn, hasRole } = useAuth();
+  if (!isLoggedIn) return <Navigate to="/login" replace />;
+  if (roles && !hasRole(roles)) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+@@@FILE src/<#= componentsFolder #>/__tests__/RequireAuth.test.tsx@@@
+import { render, screen } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { afterEach, describe, expect, it } from 'vitest';
+import { RequireAuth } from '../RequireAuth';
+import { setSession } from '../../<#= apiFolder #>/auth';
+
+const open = (roles?: string[]) =>
+  render(
+    <MemoryRouter initialEntries={['/secret']}>
+      <Routes>
+        <Route path="/login" element={<p>sign in</p>} />
+        <Route path="/" element={<p>start</p>} />
+        <Route path="/secret" element={<RequireAuth roles={roles}><p>secret</p></RequireAuth>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+
+describe('RequireAuth', () => {
+  afterEach(() => setSession(null));
+
+  it('sends a person who is not signed in to the sign-in page', () => {
+    setSession(null);
+    open();
+    expect(screen.getByText('sign in')).toBeInTheDocument();
+  });
+
+  it('lets a signed-in person through', () => {
+    setSession({ token: 'abc', user: { name: 'Pat' } });
+    open();
+    expect(screen.getByText('secret')).toBeInTheDocument();
+  });
+
+  it('lets a role in, and sends another role to the start page', () => {
+    setSession({ token: 'abc', user: { name: 'Pat', role: 'Manager' } });
+    open(['Manager']);
+    expect(screen.getByText('secret')).toBeInTheDocument();
+  });
+
+  it('sends a role that is not listed to the start page', () => {
+    setSession({ token: 'abc', user: { name: 'Pat', role: 'Employee' } });
+    open(['Manager']);
+    expect(screen.getByText('start')).toBeInTheDocument();
+  });
+});
+@@@FILE src/<#= componentsFolder #>/auth.css@@@
+.login-container { max-width: 360px; margin: 64px auto; padding: 0 16px; }
+.login-container .form-group { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.login-container .error { color: #b00020; margin: 0 0 12px; }
+.topbar { display: flex; align-items: center; gap: 12px; }
+.topbar .spacer { flex: 1; }
+.topbar .signout { padding: 4px 10px; background: none; border: 1px solid #8886; border-radius: 4px; color: inherit; cursor: pointer; }
+.topbar .signout:hover { background: #8883; }

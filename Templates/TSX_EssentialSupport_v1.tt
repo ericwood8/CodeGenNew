@@ -5,7 +5,7 @@
     // ==========================================================================================
     // TSX_EssentialSupport_v1.tt
     // Generates: src/api/client.ts, src/components/PaginationBar.tsx, src/components/CurrencyInput.tsx and src/setupTests.ts   (no table, no database: an essentials group)
-    // The small files the generated React pages and api modules import: the fetch helper with ApiError, the Previous / Next bar under every grid, the money box of a form (CurrencyInput), and the test setup that adds the
+    // The small files the generated React pages and api modules import: the fetch helper with ApiError (with Auth=true it sends the token of the Auth group and signs the person out on a 401), the Previous / Next bar under every grid, the money box of a form (CurrencyInput), and the test setup that adds the
     // jest-dom matchers. The folders come from the project's ApiFolder and ComponentsFolder settings.
     // ==========================================================================================
     string apiFolder = Project.ApiFolder;
@@ -14,6 +14,10 @@
 @@@FILE src/<#= apiFolder #>/client.ts@@@
 // The shared fetch helper the generated api modules (TSX_Api) and pages import. Paths are relative ("/api/customers"): in development the Vite dev server proxies /api to the API
 // (vite.config.ts), and VITE_API_BASE_URL can point a built copy at an API on another origin.
+<# if (Project.Auth) { #>
+import { getToken, logout } from './auth';
+
+<# } #>
 const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? '';
 
 export class ApiError extends Error {
@@ -23,14 +27,24 @@ export class ApiError extends Error {
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+<# if (Project.Auth) { #>
+  const token = getToken();
+<# } #>
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+<# if (Project.Auth) { #>
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+<# } #>
       ...init?.headers,
     },
   });
 
+<# if (Project.Auth) { #>
+  // the token is no longer good: the person is signed out, and the shell shows the sign-in page
+  if (response.status === <#= HttpStatus.Unauthorized #> && token) logout();
+<# } #>
   if (!response.ok) {
     const body = await response.text();
     throw new ApiError(response.status, body || response.statusText);

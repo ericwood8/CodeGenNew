@@ -1,6 +1,7 @@
 <#@ template language="C#" #>
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
 <#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ parameter name="Variant" type="System.String" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Text" #>
 <#@ import namespace="System.Text.RegularExpressions" #>
@@ -28,6 +29,8 @@
     // A short class on PagedCrudScreen (components/crud-screen.ts, TS_EssentialCrud); imports the model and service (TS_Model, TS_Service). Does not write a detail grid (TS_DetailMasterComponent does).
     // A table with a Name and an IsActive column has no search endpoint (its API, NameActiveCrudApi, answers the whole list): its screen is a short class on NameActiveCrudScreen with a name box and an
     // "active only" check box that narrow the list on the page, and no paging or sorting.
+    // TS_ODataComponent is this template run with Variant=OData (its config says Base=TS_Component_v1.tt): the same screen with its own names (OData suffix, its own folder, selector and grid key)
+    // over the table's OData service (TS_ODataService) instead of the REST one; the REST screen is not touched.
     // Full notes: Docs/TemplateNotes/TS_Component_v1.md
     // ==========================================================================================
 
@@ -36,7 +39,11 @@
     var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
     var keyColumn = form.KeyColumn;
     var keyType = form.KeyType;   // how the key travels: a number, or a string for a uniqueidentifier or a text key
-    if (Project.NoApiFor(Model.TableName, Model.LookupShape))
+    if (Variant == "OData" && !ODataPlan.Serves(Model, Project))
+    {
+        // the OData screen is written for the tables the project serves as OData (OData=true, ODataTables) and for no other; a plan runs this template for every table, so it says nothing for the rest
+    }
+    else if (Project.NoApiFor(Model.TableName, Model.LookupShape))
     {
         Error($"TS_Component writes no screen for [{Model.SchemaName}].[{Model.TableName}]: it is an enum or excluded by the NoApiTables setting (an enum, a *Type lookup table, or a table with no entity class), so there is no API for it to show.");
     }
@@ -45,11 +52,22 @@
         Error($"TS_Component needs a table with a single int, uniqueidentifier or text primary key (the routes take the id as {{id:int}}, {{id:guid}} or {{id}}), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
     }
+    else if (Variant == "OData" && DatabaseModel.IsDetailMaster(Model, Project))
+    {
+        Error($"TS_ODataComponent writes no screen for [{Model.SchemaName}].[{Model.TableName}]: a master-detail table has TS_ODataDetailMasterComponent.");
+    }
     else
     {
+        bool odata = Variant == "OData";
         bool nameActive = form.IsNameActive;
         string baseName = form.BaseName;
         string stem = form.Stem;
+        string screenStem = odata ? AngularNames.ODataComponentStem(Model.TableName) : stem;   // the screen's folder, files, selector and saved-sort key
+        string serviceClass = odata ? AngularNames.ODataServiceClass(Model.TableName) : AngularNames.ServiceClass(Model.TableName);
+        string serviceFile = odata ? AngularNames.ODataServiceFile(Model.TableName) : AngularNames.ServiceFile(Model.TableName);
+        // OData writes a date and time with a Z (the column has no zone: its wall-clock value is taken as UTC); the date pipe then shows it in UTC, so the day a column holds is the day the grid shows
+        string dateZone = odata ? ":'UTC'" : "";
+        var odataFilters = odata && !form.IsNameActive ? ODataFilterFields.For(form) : null;   // the filter row's control of each grid column (null: none)
         string variable = form.Variable;        // holiday
         string keyProp = JsonNames.Camel(keyColumn.Name);        // holidayId
         string emptyKey = keyType.TypeScriptEmpty;     // "no key yet": the API assigns the real one (a text key is typed by the person, so a new row starts with '')
@@ -77,6 +95,9 @@
         string rowsExpression = nameActive ? "visibleRows" : "rows";
         var formPages = form.Pages;
         bool tabbed = form.IsTabbed;
+        // WriteRoles with the Angular sign-in: only the roles that may write see Add, Edit, Clone and Delete (the API refuses the others with a 403 anyway)
+        IReadOnlyList<string> writeRoles = Project.Auth ? WriteRolePlan.For(Project, Model) : new List<string>();
+        string writeOnly = writeRoles.Count > 0 ? " *ngIf=\"canWrite\"" : "";
 
         var css = new StringBuilder(); // stays empty
         var html = new StringBuilder();
@@ -92,16 +113,20 @@
         H("<div>");
         H("    <!-- Heading -->");
         H($"    <h1>{title.Pluralize()}</h1>");
-        H($"    <button (click)=\"add()\" class=\"btn\">Add New {title}</button>");
-        if (canSearch)
+        H($"    <button{writeOnly} (click)=\"add()\" class=\"btn\">Add New {title}</button>");
+        // The OData screen has the filter row under the headers (a control per column, Search and Clear in its last cell); only the one box of the Search list protocol stays above the grid.
+        if (canSearch && (!odata || Project.ListSearchProtocol))
         {
             H();
             H("    <!-- Search -->");
             H("    <div class=\"form-group form-group-search dept\">");
             foreach (var f in searchFields)
-                H($"        <input type=\"text\" class=\"form-control\" placeholder=\"Search{(f.Label == "" ? "" : " by " + f.Label)}\" [(ngModel)]=\"filters.{f.ParamName}\" />");
-            H("        <button class=\"btn btn-outline-secondary\" type=\"button\" (click)=\"search()\"> Search </button>");
-            H("        <button class=\"btn btn-outline-secondary\" type=\"button\" (click)=\"clearSearch()\"> Clear </button>");
+                H($"        <input type=\"text\" class=\"form-control\" placeholder=\"Search{(f.Label == "" ? "" : " by " + f.Label)}\" [(ngModel)]=\"filters.{f.ParamName}\"{(odata ? " (keyup.enter)=\"search()\"" : "")} />");
+            if (!odata)
+            {
+                H("        <button class=\"btn btn-outline-secondary\" type=\"button\" (click)=\"search()\"> Search </button>");
+                H("        <button class=\"btn btn-outline-secondary\" type=\"button\" (click)=\"clearSearch()\"> Clear </button>");
+            }
             H("    </div>");
         }
         if (nameActive)
@@ -122,13 +147,53 @@
         H("            <tr>");
         foreach (var c in gridColumns)
         {
-            if (sortableColumns.Contains(c))
+            if (sortableColumns.Contains(c) && odata)
+                // Shift-click adds the column to the sort; the number says its place when there is more than one
+                H($"                <th [attr.aria-sort]=\"ariaSort('{c.Name}')\"><button type=\"button\" class=\"sort-header\" title=\"Click to sort by {Labels.Field(c)}. Shift-click to add it to the sort.\" (click)=\"sortBy('{c.Name}', $event)\">{GridCaption.For(c, Labels.Field(c))}{{{{ sortMark('{c.Name}') }}}}<span class=\"sort-order\" *ngIf=\"sortOrder('{c.Name}')\">{{{{ sortOrder('{c.Name}') }}}}</span></button></th>");
+            else if (sortableColumns.Contains(c))
                 H($"                <th [attr.aria-sort]=\"ariaSort('{c.Name}')\"><button type=\"button\" class=\"sort-header\" (click)=\"sortBy('{c.Name}')\">{GridCaption.For(c, Labels.Field(c))}{{{{ sortMark('{c.Name}') }}}}</button></th>");
             else
                 H($"                <th>{GridCaption.For(c, Labels.Field(c))}</th>");
         }
         H("                <th>Actions</th>");
         H("            </tr>");
+        string ChoiceOptions(IReadOnlyList<string> choices)
+        {
+            var options = new StringBuilder();
+            foreach (string choice in choices)
+                options.Append("<option value=\"").Append(ChoiceFormat.Html(choice)).Append("\">").Append(ChoiceFormat.Html(choice)).Append("</option>");
+            return options.ToString();
+        }
+        if (odata && !nameActive)
+        {
+            // the filter row: one control per column by its kind, an "empty" check box for a column that can be empty, Search and Clear at the end
+            H("            <tr class=\"filter-row\">");
+            for (int i = 0; i < gridColumns.Count; i++)
+            {
+                var c = gridColumns[i];
+                var f = odataFilters![i];
+                if (f is null) { H("                <td></td>"); continue; }
+                string typed = $"columnFilters['{f.Name}']";
+                string label = Labels.Field(c).Replace("\"", "&quot;");
+                string control = f.Kind switch
+                {
+                    ODataFilterKind.Text => $"<input type=\"text\" class=\"form-control\" placeholder=\"contains\" aria-label=\"Filter by {label}\" [(ngModel)]=\"{typed}.text\" (keyup.enter)=\"search()\" />",
+                    ODataFilterKind.Number => $"<div class=\"range\"><input type=\"number\" placeholder=\"from\" aria-label=\"{label} from\" [(ngModel)]=\"{typed}.from\" (keyup.enter)=\"search()\" /><input type=\"number\" placeholder=\"to\" aria-label=\"{label} to\" [(ngModel)]=\"{typed}.to\" (keyup.enter)=\"search()\" /></div>",
+                    ODataFilterKind.Date => $"<div class=\"range\"><input type=\"date\" title=\"{label} from\" aria-label=\"{label} from\" [(ngModel)]=\"{typed}.from\" (keyup.enter)=\"search()\" /><input type=\"date\" title=\"{label} to\" aria-label=\"{label} to\" [(ngModel)]=\"{typed}.to\" (keyup.enter)=\"search()\" /></div>",
+                    ODataFilterKind.Boolean => $"<select aria-label=\"Filter by {label}\" [(ngModel)]=\"{typed}.flag\"><option [ngValue]=\"undefined\">Any</option><option value=\"true\">Yes</option><option value=\"false\">No</option></select>",
+                    ODataFilterKind.Parent => $"<select aria-label=\"Filter by {label}\" [(ngModel)]=\"{typed}.value\"><option [ngValue]=\"undefined\">Any</option><option *ngFor=\"let p of {f.Parent!.List}\" [ngValue]=\"p.{f.Parent!.KeyJson}\">{{{{p.{f.Parent!.DisplayJson}}}}}</option></select>",
+                    _ => $"<select aria-label=\"Filter by {label}\" [(ngModel)]=\"{typed}.value\"><option [ngValue]=\"undefined\">Any</option>{ChoiceOptions(f.Choices)}</select>"
+                };
+                string empty = f.Nullable && f.Kind != ODataFilterKind.Boolean
+                    ? $"<label class=\"empty-toggle\" title=\"Only the rows where {label} is empty\"><input type=\"checkbox\" [(ngModel)]=\"{typed}.empty\" /> empty</label>" : "";
+                H($"                <td>{control}{empty}</td>");
+            }
+            H("                <td class=\"filter-actions\">");
+            H("                    <button class=\"btn btn-outline-secondary\" type=\"button\" title=\"Show the rows that match the filters\" (click)=\"search()\">Search</button>");
+            H("                    <button class=\"btn btn-outline-secondary\" type=\"button\" title=\"Remove every filter\" (click)=\"clearSearch()\">Clear</button>");
+            H("                </td>");
+            H("            </tr>");
+        }
         H("        </thead>");
         H("        <tbody>");
         H($"            <tr *ngFor=\"let {variable} of {rowsExpression}\">");
@@ -139,17 +204,17 @@
             string cell;
             if (cellKind == CellKind.Lookup) cell = $"{{{{ {form.ParentOf(c)!.NameMethod}({prop}) }}}}";
             else if (cellKind == CellKind.Boolean) cell = $"{{{{ {prop} ? \"Yes\" : \"No\" }}}}";
-            else if (cellKind == CellKind.Date) cell = $"{{{{ {prop} | date:'MM/dd/yyyy' }}}}";
+            else if (cellKind == CellKind.Date) cell = $"{{{{ {prop} | date:'MM/dd/yyyy'{dateZone} }}}}";
             else if (cellKind == CellKind.Money) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{Math.Min(2, d)}-{d}' }}}}"; }
             else if (cellKind == CellKind.Decimal) cell = $"{{{{ {prop} | number:'1.2-2' }}}}";
             else cell = $"{{{{ {prop} }}}}";
             H($"                <td>{cell}</td>");
         }
         H("                <td>");
-        H($"                    <button (click)=\"edit({variable})\" class=\"btn-action\">Edit</button>");
+        H($"                    <button{writeOnly} (click)=\"{(odata && !nameActive ? "open" : "edit")}({variable})\" class=\"btn-action\">Edit</button>");
         if (canClone)
-            H($"                    <button (click)=\"clone({variable}.{keyProp}!)\" class=\"btn-action\">Clone</button>");
-        H($"                    <button (click)=\"delete({variable}.{keyProp}!)\" class=\"btn-action delete\">Delete</button>");
+            H($"                    <button{writeOnly} (click)=\"clone({variable}.{keyProp}!)\" class=\"btn-action\">Clone</button>");
+        H($"                    <button{writeOnly} (click)=\"delete({variable}.{keyProp}!)\" class=\"btn-action delete\">Delete</button>");
         H("                </td>");
         H("            </tr>");
         H("        </tbody>");
@@ -200,10 +265,10 @@
             if (kind == FieldKind.SystemStamp)
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
-                string stampValue = c.IsDateColumn ? "{{ " + model + " | date:'medium' }}" : "{{ " + model + " }}";
+                string stampValue = c.IsDateColumn ? "{{ " + model + " | date:'medium'" + dateZone + " }}" : "{{ " + model + " }}";
                 // who set a guarded column and when: a row from before the stamp existed says so instead of showing nothing
                 if (form.IsGuardStamp(c))
-                    stampValue = c.IsDateColumn ? "{{ " + model + " ? (" + model + " | date:'medium') : '" + GuardStamp.NotRecorded + "' }}" : "{{ " + model + " || '" + GuardStamp.NotRecorded + "' }}";
+                    stampValue = c.IsDateColumn ? "{{ " + model + " ? (" + model + " | date:'medium'" + dateZone + ") : '" + GuardStamp.NotRecorded + "' }}" : "{{ " + model + " || '" + GuardStamp.NotRecorded + "' }}";
                 H($"            <div class=\"form-group\" *ngIf=\"{(textKey ? "!adding" : "selectedRow." + keyProp)}\">");
                 H($"                <label for=\"{id}\">{Labels.Field(c)}</label>");
                 H($"                <span id=\"{id}\">{stampValue}</span>");
@@ -297,10 +362,10 @@
         H("</main>");
 
         // ================= spec
-        string cls = baseName + "Component";
+        string cls = odata ? AngularNames.ODataComponentClass(Model.TableName) : baseName + "Component";
         spec.Append("import { ComponentFixture, TestBed } from '@angular/core/testing';\nimport { provideHttpClient } from '@angular/common/http';\nimport { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';\nimport { provideRouter } from '@angular/router';\nimport { provideNoopAnimations } from '@angular/platform-browser/animations';\n");
         spec.Append("\n");
-        spec.Append($"import {{ {cls} }} from './{stem}.component';\n\n");
+        spec.Append($"import {{ {cls} }} from './{screenStem}.component';\n\n");
         spec.Append($"describe('{cls}', () => {{\n  let component: {cls};\n  let fixture: ComponentFixture<{cls}>;\n\n");
         // the screen's service needs an HttpClient; the testing one never touches the network. mat-paginator
         // needs animations provided (even as the no-op stub) or TestBed throws.
@@ -314,7 +379,30 @@
         string specSizeParam = Project.PageSizeParameter;
         string Asked(int page, string? size = null) => $"(r) => r.url === 'api/{stem.Pluralize()}' && r.params.get('{specPageParam}') === '{page - 1 + specPageBase}'" + (size is null ? "" : $" && r.params.get('{specSizeParam}') === '{size}'");
         string Reply(int page, string size, int total, int pages) => $"{{ '{Project.ItemsMember}': [], '{Project.TotalMember}': {total} }}";
-        var pagingSpecs = searchProtocol ? new[]
+        // The OData screen asks GET odata/<set>?$top=&$skip=&$count=true and reads { value, '@odata.count' }.
+        string ODataAsked(string skip, string? top = null) => $"(r) => r.urlWithParams.startsWith('odata/{stem.Pluralize()}?') && r.urlWithParams.includes('$skip={skip}')" + (top is null ? "" : $" && r.urlWithParams.includes('$top={top}')");
+        var odataSpecs = new[]
+        {
+            "  it('asks the server for the first page', () => {",
+            "    const http = TestBed.inject(HttpTestingController);",
+            $"    const request = http.expectOne({ODataAsked("0")});",
+            "    expect(request.request.urlWithParams).toContain('$top=' + component.pageSize);",
+            "    request.flush({ value: [], '@odata.count': 0 });",
+            "    expect(component.totalCount).toBe(0);",
+            "  });",
+            "",
+            "  it('goes back to the last page there is when the page it asked for is past the end', () => {",
+            "    const http = TestBed.inject(HttpTestingController);",
+            $"    http.expectOne({ODataAsked("0")}).flush({{ value: [], '@odata.count': 0 }});",
+            "    component.onPageChange({ pageIndex: 3, pageSize: 10, length: 25 });",
+            $"    http.expectOne({ODataAsked("30", "10")})",
+            "      .flush({ value: [], '@odata.count': 25 });",
+            $"    const lastPage = http.expectOne({ODataAsked("20", "10")});",
+            "    expect(component.pageIndex).toBe(2);",
+            "    lastPage.flush({ value: [], '@odata.count': 25 });",
+            "  });",
+        };
+        var pagingSpecs = odata ? odataSpecs : searchProtocol ? new[]
         {
             "  it('asks the server for the first page', () => {",
             "    const http = TestBed.inject(HttpTestingController);",
@@ -376,7 +464,28 @@
             "    expect(component.visibleRows.length).toBe(3);",
             "  });",
         };
-        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? listSpecs : pagingSpecs) + "\n});\n");
+        // the OData name/active screen reads the table's entity set (every row, its pages followed) and narrows it on the page like the REST one
+        var odataListSpecs = new[]
+        {
+            "  it('reads the whole list and narrows it by name and by active', () => {",
+            "    const http = TestBed.inject(HttpTestingController);",
+            "    // a drop-down over this table itself (a manager) reads the list as well, so every request for it is answered",
+            $"    http.match((r) => r.method === 'GET' && r.urlWithParams.startsWith('odata/{stem.Pluralize()}')).forEach((request) => request.flush({{ value: [",
+            "      { name: 'Alpha', isActive: true },",
+            "      { name: 'Alphabet', isActive: false },",
+            "      { name: 'Beta', isActive: true }",
+            "    ] }));",
+            "    expect(component.visibleRows.length).toBe(3);",
+            "    component.searchText = 'alpha';",
+            "    expect(component.visibleRows.length).toBe(2);",
+            "    component.activeOnly = true;",
+            "    expect(component.visibleRows.length).toBe(1);",
+            "    component.clearSearch();",
+            "    expect(component.visibleRows.length).toBe(3);",
+            "  });",
+        };
+        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + "\n});\n");
+        if (writeRoles.Count > 0) spec.Append(WriteRoleSpec.For(Project, cls, writeRoles));
 
         // ================= ts
         // The screen is a short class on PagedCrudScreen (components/crud-screen.ts, written by TS_EssentialCrud): the rows, the open row, add / edit / submit / delete / clone / cancel, the way back to
@@ -384,7 +493,8 @@
         string keyGeneric = keyType.Kind == KeyKind.Int ? "" : ", " + keyType.TypeScript;
         T("import { ChangeDetectionStrategy, Component, inject } from '@angular/core';");
         T($"import {{ {baseName} }} from '../../{modelsFolder}/{stem}';");
-        T($"import {{ {AngularNames.ServiceClass(Model.TableName)} }} from '../../{servicesFolder}/{AngularNames.ServiceFile(Model.TableName)}';");
+        T($"import {{ {serviceClass} }} from '../../{servicesFolder}/{serviceFile}';");
+        if (writeRoles.Count > 0) T($"import {{ AuthService }} from '../../{servicesFolder}/auth.service';");
         if (parents.Any(p => p.UsesLookupEndpoint)) T($"import {{ Lookup }} from '../../{servicesFolder}/crud.service';");
         foreach (var p in parents.Where(p => !p.IsSelf))
         {
@@ -395,31 +505,50 @@
         T("import { FormsModule } from '@angular/forms';");
         if (UsesCurrencyBox()) T("import { CurrencyInputDirective } from '../currency-input';");
         if (!nameActive) T("import { MatPaginatorModule } from '@angular/material/paginator';");
-        T($"import {{ {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")} }} from '../crud-screen';");
+        T(odata && !nameActive ? "import { ColumnFilterField, ODataPagedScreen } from '../odata-screen';" : $"import {{ {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")} }} from '../crud-screen';");
         T();
         T("@Component({");
-        T($"  selector: 'app-{stem}',");
+        T($"  selector: 'app-{screenStem}',");
         if (Project.AngularStandaloneFlag) T("  standalone: true,");
         T($"  changeDetection: ChangeDetectionStrategy.{Project.AngularEagerStrategy}, // plain properties change inside subscribe callbacks: keep eager checking when OnPush is the default (Angular 22)");
         T("  imports: [ CommonModule, FormsModule" + (UsesCurrencyBox() ? ", CurrencyInputDirective" : "") + (nameActive ? "" : ", MatPaginatorModule") + " ],");
-        T($"  templateUrl: './{stem}.component.html',");
-        T($"  styleUrl: './{stem}.component.css'");
+        T($"  templateUrl: './{screenStem}.component.html',");
+        T($"  styleUrl: './{screenStem}.component.css'");
         T("})");
-        T($"export class {cls} extends {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")}<{baseName}{keyGeneric}> {{");
-        T($"  protected readonly service = inject({AngularNames.ServiceClass(Model.TableName)});");
+        T($"export class {cls} extends {(nameActive ? "NameActiveCrudScreen" : odata ? "ODataPagedScreen" : "PagedCrudScreen")}<{baseName}{keyGeneric}> {{");
+        T($"  protected readonly service = inject({serviceClass});");
+        if (writeRoles.Count > 0)
+        {
+            T("  private readonly auth = inject(AuthService);");
+            T($"  get canWrite(): boolean {{ return this.auth.hasRole([{WriteRolePlan.Literal(writeRoles, (char)39)}]); }} // WriteRoles: the roles that may add, change and delete rows");
+        }
         T($"  protected readonly noun = '{Labels.Words(baseName).ToLowerInvariant()}';");
         T($"  protected readonly idKey = '{keyProp}';");
         if (keyType.Kind != KeyKind.Int) T($"  protected override readonly emptyKey: {keyType.TypeScript} = {emptyKey};");
         if (textKey) T("  protected override readonly keyChosen = true; // the person types the key of a new row: it is sent as typed");
         if (!nameActive)
         {
-            T($"  protected readonly gridKey = '{stem}'; // the grid's saved sort is kept in the browser under this key (see grid-sort.ts)");
+            T($"  protected readonly gridKey = '{screenStem}'; // the grid's saved sort is kept in the browser under this key (see grid-sort.ts)");
             T($"  readonly sortableColumns = [{string.Join(", ", sortableColumns.Select(c => "'" + c.Name + "'"))}]; // the columns whose header sorts the grid");
             if (Project.DefaultSort(Model.TableName) is { } defaultSort)
                 T($"  protected override readonly defaultSort = {{ column: '{defaultSort.Column}', descending: {(defaultSort.Descending ? "true" : "false")} }}; // the project's DefaultSorts: the sort until the person sorts");
         }
         T($"  protected override readonly badInputMessage = '{(hasName ? "Name is bad or has special characters!" : "Some of the values are not acceptable!")}';");
-        if (canSearch) T($"  override filters = {{ {string.Join(", ", searchFields.Select(f => $"{f.ParamName}: ''"))} }};");
+        if (canSearch && (!odata || Project.ListSearchProtocol)) T($"  override filters = {{ {string.Join(", ", searchFields.Select(f => $"{f.ParamName}: ''"))} }};");
+        if (odataFilters is not null)
+        {
+            // the filter row: the control of each grid column (the screen's columnFilters hold what was typed), and the properties the grid reads (the key is always read)
+            T("  readonly filterFields: readonly ColumnFilterField[] = [");
+            var fields = odataFilters.Where(f => f is not null).Select(f => f!).ToList();
+            for (int i = 0; i < fields.Count; i++)
+            {
+                var f = fields[i];
+                string literal = f.Literal is null ? "" : $", literal: '{f.Literal}'";
+                T($"    {{ name: '{f.Name}', property: '{f.Property}', kind: '{f.Kind.ToString().ToLowerInvariant()}', nullable: {(f.Nullable ? "true" : "false")}{literal} }}{(i < fields.Count - 1 ? "," : "")}");
+            }
+            T("  ];");
+            T($"  protected override readonly selectColumns = [{string.Join(", ", gridColumns.Select(c => "'" + JsonNames.Camel(c.Name) + "'"))}]; // the grid asks for these and the key; a row is read whole when it is opened");
+        }
         if (!nameActive && pageSize != 20) T($"  override pageSize = {pageSize};");
         foreach (var p in parents)
             T($"  {p.List}: {p.ItemType}[] = [];");
@@ -490,10 +619,10 @@
         T("}");
 
         var o = new StringBuilder();
-        o.Append($"@@@FILE {componentsFolder}/{stem}/{stem}.component.css@@@\n").Append(GridSortStyles.Css);
-        o.Append($"@@@FILE {componentsFolder}/{stem}/{stem}.component.html@@@\n").Append(Project.AdaptAngularHtml(html.ToString()));
-        o.Append($"@@@FILE {componentsFolder}/{stem}/{stem}.component.spec.ts@@@\n").Append(Project.AdaptAngularSpec(spec.ToString()));
-        o.Append($"@@@FILE {componentsFolder}/{stem}/{stem}.component.ts@@@\n").Append(ts);
+        o.Append($"@@@FILE {componentsFolder}/{screenStem}/{screenStem}.component.css@@@\n").Append(GridSortStyles.Css).Append(odata && !nameActive ? ODataGridStyles.Css : "");
+        o.Append($"@@@FILE {componentsFolder}/{screenStem}/{screenStem}.component.html@@@\n").Append(Project.AdaptAngularHtml(html.ToString()));
+        o.Append($"@@@FILE {componentsFolder}/{screenStem}/{screenStem}.component.spec.ts@@@\n").Append(Project.AdaptAngularSpec(spec.ToString()));
+        o.Append($"@@@FILE {componentsFolder}/{screenStem}/{screenStem}.component.ts@@@\n").Append(ts);
         Write(o.ToString());
     }
 #>

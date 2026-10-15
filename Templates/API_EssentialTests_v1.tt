@@ -94,6 +94,7 @@ public static class ApiFixture
         {
 #>
     private const string AdminUserName = "test-admin";
+    private static string _jwtKey = "";
 <#
         }
 #>
@@ -148,7 +149,8 @@ public static class ApiFixture
 #>
         // ApiAuth: a key and an administrator made for this run only, then a real sign-in; every test's client carries the token
         string password = Guid.NewGuid().ToString("N");
-        Environment.SetEnvironmentVariable("Jwt__Key", Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N"));
+        _jwtKey = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        Environment.SetEnvironmentVariable("Jwt__Key", _jwtKey);
         Environment.SetEnvironmentVariable("Bootstrap__AdminUserName", AdminUserName);
         Environment.SetEnvironmentVariable("Bootstrap__AdminPassword", password);
         _factory = new WebApplicationFactory<Program>();
@@ -199,6 +201,23 @@ public static class ApiFixture
 #>
     /// <summary> A client with no token, for the tests that show a call is refused without one. </summary>
     public static HttpClient Anonymous() => _factory!.CreateClient();
+
+    /// <summary> A client whose token carries this role, made with the signing key of the run (no user needs to exist): for the tests of ReadRoles and WriteRoles. </summary>
+    public static HttpClient ClientInRole(string role)
+    {
+        string token = new Microsoft.IdentityModel.JsonWebTokens.JsonWebTokenHandler().CreateToken(new Microsoft.IdentityModel.Tokens.SecurityTokenDescriptor
+        {
+            Issuer = "<#= projectName #>.Api",
+            Audience = "<#= projectName #>",
+            Subject = new System.Security.Claims.ClaimsIdentity([new("sub", "role-test"), new("name", "role-test"), new("<#= Project.AuthRoleClaim #>", role)]),
+            Expires = DateTime.UtcNow.AddMinutes(30),
+            SigningCredentials = new Microsoft.IdentityModel.Tokens.SigningCredentials(
+                new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(_jwtKey)), Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256)
+        });
+        var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new("Bearer", token);
+        return client;
+    }
 
 <#
         }

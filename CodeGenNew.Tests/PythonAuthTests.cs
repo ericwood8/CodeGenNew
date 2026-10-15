@@ -225,4 +225,40 @@ public class PythonAuthTests
             Clean(output);
         }
     }
+
+    [TestMethod]
+    public async Task The_read_and_write_roles_are_route_dependencies_and_the_lookup_stays_open()
+    {
+        var (files, output) = await Generate(("ReadRoles", "Hr"), ("TableWriteRoles", "TimeSheet:Manager"));
+        try
+        {
+            string sheet = files[Prefix + "app/routes/time_sheet.py"];
+            Expect.Contains(sheet, "from app.auth import require_roles");
+            Expect.Contains(sheet, "READ_ROLES = (\"Administrator\", \"Hr\")");
+            Expect.Contains(sheet, "WRITE_ROLES = (\"Administrator\", \"Manager\")");
+            Expect.Contains(sheet, "dependencies=[Depends(require_roles(READ_ROLES, False))])");
+            Expect.Contains(sheet, "dependencies=[Depends(require_roles(WRITE_ROLES, True))])");
+            Expect.Contains(sheet, "@router.delete(\"/api/timesheets/{id}\", dependencies=[Depends(require_roles(WRITE_ROLES, True))])");
+            string employee = files[Prefix + "app/routes/employee.py"];
+            Expect.Contains(employee, "@router.get(\"/api/employees/lookup\")");
+            string auth = files[Prefix + "app/auth.py"];
+            Expect.Contains(auth, "def require_roles(roles: tuple[str, ...], write: bool):");
+            Expect.Contains(auth, "PROBLEM_ROLE_NOT_ALLOWED = \"/problems/role-not-allowed\"");
+            await CompileAsync(output);
+        }
+        finally
+        {
+            Clean(output);
+        }
+
+        var (plain, plainOutput) = await Generate();
+        try
+        {
+            Expect.DoesNotContain(plain[Prefix + "app/routes/time_sheet.py"], "require_roles");
+        }
+        finally
+        {
+            Clean(plainOutput);
+        }
+    }
 }

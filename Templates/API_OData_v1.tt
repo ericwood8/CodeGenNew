@@ -1,0 +1,526 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project. A project settings file (ApiNamespace, ContextName, or ProjectName) overrides them
+    // ==========================================================================================
+    string apiNamespace = Project.ApiNamespace ?? "MyApp.ApiService.Apis";
+    string contextType = Project.ContextName ?? "MyAppContext";
+
+    // ==========================================================================================
+    // API_OData_v1.tt
+    // Generates: OData.cs   (whole-database; the path is written by the template)
+    // The tables ODataPlan selects (OData=true, ODataTables) served as OData v4 under /odata, next to the REST routes, which stay: GET /odata/<set> takes $filter, $orderby, $top, $skip,
+    // $count, $select and $expand straight from the URL and reads the context, not the repositories; GET /odata/<set>/{key} (and /odata/<set>(key)), POST, PUT, PATCH and DELETE
+    // write. The limits are ODataMaxTop, ODataPageSize and ODataExpandDepth; a bad query answers 400 problem details. A table whose REST routes enforce a rule these routes do not
+    // yet apply (owner scope, change gates, guarded columns, the user table, DTOs) is left out and named in a comment below. The generated API project needs the Microsoft.AspNetCore.OData
+    // package (the Program essentials write the reference when OData=true). Program.cs calls AddGeneratedOData() and app.MapODataEndpoints(). Full notes: Docs/TemplateNotes/API_OData_v1.md
+    // ==========================================================================================
+
+    var selection = ODataPlan.For(Database, Project);
+    var tables = selection.Tables;
+    if (tables.Count == 0)
+        Error("API_OData found no table to serve: " + (selection.Refusals.Count == 0
+            ? "none has an API of its own (a single int, uniqueidentifier or text key, not an enum or a name/active table)."
+            : string.Join("; ", selection.Refusals.Select(r => r.Table + " " + r.Reason)) + "."));
+    bool validate = Project.ApiValidation;
+    // with ApiAuth a table whose rows belong to a person is scoped (OwnedTable: its own owner column, or through its parent) and a table with change gates or guarded columns runs them before a row is saved
+    bool auth = Project.ApiAuth;
+    // WriteRoles: the write routes of a table refuse a role its rules do not list (RoleGate, written by the Jwt group)
+    string roleGate = auth ? ".RequireWriteRoles(rules.WriteRoles)" : "";
+    // ReadRoles: the list and the read by key refuse a role the table's rules do not list
+    string readGate = auth ? ".RequireReadRoles(rules.ReadRoles)" : "";
+    // the list route is wrapped by the group's query filter, which cannot pass a problem result on: its handler refuses with an exception the OData middleware answers
+    string listGate = auth ? "            if (!RoleGate.Allows(http.User, rules.ReadRoles))" + ((char)10) + "                throw new ODataRoleRefusedException();" + ((char)10) : "";
+    var scopedTables = auth ? tables.Where(t => ODataPlan.IsScoped(t, Project)).ToList() : [];
+    // a name/active table (a Name and an IsActive column) keeps the REST routes' rules: the name is required and trimmed and no two active rows share it
+    var ruleTables = tables.Where(t => t.IsNameActiveTable || (auth && (ODataPlan.IsScoped(t, Project) || GatePlan.HasRules(Project, t) || WriteRolePlan.For(Project, t).Count > 0 || WriteRolePlan.ReadFor(Project, t).Count > 0))).ToList();
+
+    string Names(IEnumerable<string> items) => string.Join(", ", items.Select(i => "\"" + i + "\""));
+
+    // properties a PATCH may not change: the key, identity, computed and version columns
+    IEnumerable<string> ReadOnlyProperties(TableModel table) =>
+        table.Columns.Where(c => c.IsPrimaryKey || c.IsIdentity || c.IsComputed || c.SqlType == SqlDbType.Timestamp).Select(c => c.CSharpName());
+#>
+<#
+    if (validate)
+    {
+#>
+using FluentValidation;
+<#
+    }
+#>
+using System.Globalization;
+using System.Security.Claims;
+using System.Text.Json;
+using Microsoft.AspNetCore.OData;
+using Microsoft.AspNetCore.OData.Deltas;
+using Microsoft.AspNetCore.OData.Query;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.OData;
+using Microsoft.OData.Edm;
+using Microsoft.OData.ModelBuilder;
+using Microsoft.OData.UriParser;
+
+namespace <#= apiNamespace #>;
+
+<#
+    foreach (var refusal in selection.Refusals)
+    {
+#>
+// OData: <#= refusal.Table #> is not served; it <#= refusal.Reason #>.
+<#
+    }
+#>
+/// <summary> What a table's OData routes add to the plain read and write: the owner scope (a table whose rows belong to a person) and the checks run before a row is saved (change gates and guarded columns). A class per
+/// table that needs either is generated below; every other table uses this one, which scopes and checks nothing. </summary>
+public class ODataRules<T, TContext> where T : class where TContext : DbContext
+{
+    /// <summary> True when the rows belong to a person: the routes then list, read and write only the rows of the owners the caller may act for. </summary>
+    public virtual bool Owned => false;
+
+    /// <summary> The roles that may create, change and delete rows (the project's WriteRoles and TableWriteRoles, the administrator role among them); empty: any signed-in person. </summary>
+    public virtual IReadOnlyList<string> WriteRoles => [];
+
+    /// <summary> The roles that may read rows (the project's ReadRoles and TableReadRoles, the administrator role among them); empty: any signed-in person. </summary>
+    public virtual IReadOnlyList<string> ReadRoles => [];
+
+    /// <summary> True when the owner is the owner of a parent row (the table has no owner column of its own). </summary>
+    public virtual bool OwnerThroughParent => false;
+
+    public virtual IQueryable<T> Scope(TContext context, IQueryable<T> rows, int[] owners) => rows;
+
+    /// <summary> The owner a row names in its own owner column. </summary>
+    public virtual int? OwnerOf(T row) => null;
+
+    public virtual void SetOwner(T row, int owner) { }
+
+    /// <summary> The owner of the parent row this row names; null when there is no such parent. </summary>
+    public virtual Task<int?> ParentOwnerAsync(TContext context, T row) => Task.FromResult<int?>(null);
+
+    /// <summary> Runs before a row is saved: <paramref name="row"/> may be corrected (a column the caller may not change takes its stored value) and a result refuses the write. </summary>
+    public virtual Task<IResult?> BeforeSaveAsync(TContext context, ClaimsPrincipal caller, T row, bool isNew) => Task.FromResult<IResult?>(null);
+}
+
+<#
+    foreach (var t in ruleTables)
+    {
+        string entity = t.TableName;
+        var ownerColumn = ODataPlan.IsScoped(t, Project) ? OwnedTable.OwnerColumn(t, Project) : null;
+        var ownerLink = ODataPlan.IsScoped(t, Project) ? OwnedTable.Through(t, Project) : null;
+#>
+public sealed class <#= entity #>ODataRules : ODataRules<<#= entity #>, <#= contextType #>>
+{
+<#
+        IReadOnlyList<string> writeRoles = auth ? WriteRolePlan.For(Project, t) : new List<string>();
+        if (writeRoles.Count > 0)
+        {
+#>
+    public override IReadOnlyList<string> WriteRoles => [<#= WriteRolePlan.Literal(writeRoles) #>];
+
+<#
+        }
+        IReadOnlyList<string> readRoles = auth ? WriteRolePlan.ReadFor(Project, t) : new List<string>();
+        if (readRoles.Count > 0)
+        {
+#>
+    public override IReadOnlyList<string> ReadRoles => [<#= WriteRolePlan.Literal(readRoles) #>];
+
+<#
+        }
+        if (ownerColumn is not null)
+        {
+#>
+    public override bool Owned => true;
+
+    public override int? OwnerOf(<#= entity #> row) => row.<#= ownerColumn.Name #>;
+
+    public override void SetOwner(<#= entity #> row, int owner) => row.<#= ownerColumn.Name #> = owner;
+
+    public override IQueryable<<#= entity #>> Scope(<#= contextType #> context, IQueryable<<#= entity #>> rows, int[] owners) => rows.Where(c => owners.Contains(c.<#= ownerColumn.Name #>));
+<#
+        }
+        else if (ownerLink is not null)
+        {
+#>
+    public override bool Owned => true;
+
+    public override bool OwnerThroughParent => true;
+
+    public override IQueryable<<#= entity #>> Scope(<#= contextType #> context, IQueryable<<#= entity #>> rows, int[] owners) =>
+        rows.Where(c => context.Set<<#= ownerLink.ParentTable #>>().Any(p => p.<#= ownerLink.ParentKey #> == c.<#= ownerLink.ForeignKey #> && owners.Contains(p.<#= ownerLink.ParentOwner #>)));
+
+    public override async Task<int?> ParentOwnerAsync(<#= contextType #> context, <#= entity #> row) =>
+        await context.Set<<#= ownerLink.ParentTable #>>().Where(p => p.<#= ownerLink.ParentKey #> == row.<#= ownerLink.ForeignKey #>).Select(p => (int?)p.<#= ownerLink.ParentOwner #>).FirstOrDefaultAsync();
+<#
+        }
+        if (t.IsNameActiveTable)
+        {
+            string keyProp = t.PrimaryKeyColumns[0].CSharpName();
+#>
+    public override async Task<IResult?> BeforeSaveAsync(<#= contextType #> context, ClaimsPrincipal caller, <#= entity #> row, bool isNew)
+    {
+        if (string.IsNullOrWhiteSpace(row.Name))
+            return Results.Problem(statusCode: <#= HttpStatus.BadRequest #>, type: "<#= ProblemTypes.NameRequired #>", title: "Name is required", detail: "The name cannot be empty.");
+        row.Name = row.Name.Trim();
+        if (row.IsActive && await context.Set<<#= entity #>>().AsNoTracking().AnyAsync(d => d.Name == row.Name && d.IsActive && d.<#= keyProp #> != row.<#= keyProp #>))
+            return Results.Problem(statusCode: <#= HttpStatus.Conflict #>, type: "<#= ProblemTypes.DuplicateName #>", title: "Duplicate name", detail: $"An active row named '{row.Name}' already exists.");
+<#
+            if (auth && GatePlan.HasRules(Project, t))
+            {
+#>
+        return await <#= entity #>Gates.CheckAsync(context, caller, row, isNew);
+<#
+            }
+            else
+            {
+#>
+        return null;
+<#
+            }
+#>
+    }
+<#
+        }
+        else if (GatePlan.HasRules(Project, t))
+        {
+#>
+
+    public override Task<IResult?> BeforeSaveAsync(<#= contextType #> context, ClaimsPrincipal caller, <#= entity #> row, bool isNew) => <#= entity #>Gates.CheckAsync(context, caller, row, isNew);
+<#
+        }
+#>
+}
+
+<#
+    }
+#>
+<#
+    if (auth)
+    {
+#>
+/// <summary> Thrown by a list route whose table's ReadRoles do not list the caller; the OData middleware answers it with a 403 problem. </summary>
+internal sealed class ODataRoleRefusedException : Exception;
+
+<#
+    }
+#>
+/// <summary> Generated by API_OData: the tables served as OData v4 under /odata (the REST routes under /api stay). </summary>
+public static partial class ODataEndpoints
+{
+    /// <summary> Sets the columns no caller may set (who and when created or changed) on a row before it is saved; the generated code sets none. Implement it in another part of this class (a partial method with a body in your own file). </summary>
+    static partial void Stamp<T>(DbContext context, T row, bool isNew) where T : class;
+
+    private const int MaxTop = <#= Project.ODataMaxTop #>;
+    private const int PageSize = <#= Project.ODataPageSize #>;
+    private const int ExpandDepth = <#= Project.ODataExpandDepth #>;
+
+    public static IServiceCollection AddGeneratedOData(this IServiceCollection services) =>
+        services.AddOData(options => options.Select().Filter().OrderBy().Count().Expand().SetMaxTop(MaxTop).SetTimeZoneInfo(TimeZoneInfo.Utc));
+
+    /// <summary> The model: one entity set per served table, named like its REST route, with the property names the JSON of the REST routes uses. A navigation to a table that is not served is left out. </summary>
+    public static IEdmModel Model { get; } = BuildModel();
+
+    private static IEdmModel BuildModel()
+    {
+        var builder = new ODataConventionModelBuilder();
+<#
+    foreach (var t in tables)
+    {
+        string entity = t.TableName;
+        string key = t.PrimaryKeyColumns[0].CSharpName();
+#>
+        builder.EntityType<<#= entity #>>().HasKey(e => e.<#= key #>);
+<#
+        foreach (var c in t.Columns.Where(c => c.CSharpBase() == "object"))
+        {
+#>
+        builder.EntityType<<#= entity #>>().Ignore(e => e.<#= c.CSharpName() #>);
+<#
+        }
+        foreach (var c in t.Columns.Where(c => c.SqlType == SqlDbType.Date))
+        {
+#>
+        builder.EntityType<<#= entity #>>().Property(e => e.<#= c.CSharpName() #>).AsDate();
+<#
+        }
+#>
+        builder.EntitySet<<#= entity #>>("<#= ODataNames.SetName(t.TableName) #>");
+<#
+    }
+#>
+
+        var served = new HashSet<Type> { <#= string.Join(", ", tables.Select(t => "typeof(" + t.TableName + ")")) #> };
+        // no navigation leads into a table whose rows belong to a person: an $expand or a $filter through it would read the rows of every owner
+        var scoped = new HashSet<Type> { <#= string.Join(", ", scopedTables.Select(t => "typeof(" + t.TableName + ")")) #> };
+        builder.OnModelCreating = b =>
+        {
+            foreach (var type in b.StructuralTypes.ToList())
+                foreach (var navigation in type.Properties.OfType<NavigationPropertyConfiguration>().ToList())
+                    if (!served.Contains(navigation.RelatedClrType) || scoped.Contains(navigation.RelatedClrType))
+                    {
+                        // an entity set may already be bound through the navigation: take the binding away with it
+                        foreach (var source in b.NavigationSources.ToList())
+                            source.RemoveBinding(navigation);
+                        type.RemoveProperty(navigation.PropertyInfo);
+                    }
+            foreach (var type in b.StructuralTypes.ToList())
+                if (!served.Contains(type.ClrType))
+                    b.RemoveStructuralType(type.ClrType);
+            foreach (var type in b.StructuralTypes)
+                foreach (var property in type.Properties)
+                    property.Name = JsonNamingPolicy.CamelCase.ConvertName(property.PropertyInfo.Name);
+        };
+        return builder.GetEdmModel();
+    }
+
+    public static void MapODataEndpoints(this WebApplication app)
+    {
+        // a query the package refuses (an unknown property, $top over the limit, $expand too deep) is the caller's mistake, not a server failure
+        app.Use(async (context, next) =>
+        {
+            try
+            {
+                await next();
+            }
+<#
+    if (auth)
+    {
+#>
+            catch (ODataRoleRefusedException) when (!context.Response.HasStarted)
+            {
+                await RoleGate.ReadRefusal().ExecuteAsync(context);
+            }
+<#
+    }
+#>
+            catch (ODataException error) when (!context.Response.HasStarted && context.Request.Path.StartsWithSegments("<#= ODataNames.Prefix #>"))
+            {
+                await Results.Problem(statusCode: <#= HttpStatus.BadRequest #>, type: "<#= ProblemTypes.InvalidRequest #>", title: "Invalid OData request", detail: error.Message).ExecuteAsync(context);
+            }
+        });
+
+        var odata = app.MapGroup("<#= ODataNames.Prefix #>")
+            .WithODataResult()
+            .WithODataModel(Model)
+            .WithODataBaseAddressFactory(context => new Uri($"{context.Request.Scheme}://{context.Request.Host}<#= ODataNames.Prefix #>/"));
+        var lists = odata.MapGroup("").AddODataQueryEndpointFilter(
+            validation => { validation.MaxTop = MaxTop; validation.MaxExpansionDepth = ExpandDepth; validation.MaxNodeCount = 100; validation.AllowedQueryOptions = AllowedQueryOptions.Supported & ~AllowedQueryOptions.Apply; },
+            query => { query.PageSize = PageSize; });
+
+<#
+    foreach (var t in tables)
+    {
+        var keyType = KeyType.Of(t)!;
+        string set = ODataNames.SetName(t.TableName);
+        string key = t.PrimaryKeyColumns[0].CSharpName();
+#>
+        MapSet<<#= t.TableName #>, <#= keyType.CSharp #>, <#= contextType #>>(odata, lists, "<#= set #>", "<#= key #>", "<#= keyType.RouteConstraint #>", <#= keyType.Kind == KeyKind.Text ? "true" : "false" #>, [<#= Names(ReadOnlyProperties(t)) #>], <#= ruleTables.Contains(t) ? "new " + t.TableName + "ODataRules()" : "new ODataRules<" + t.TableName + ", " + contextType + ">()" #>);
+<#
+    }
+#>
+
+        app.MapODataServiceDocument("<#= ODataNames.Prefix #>/$document", Model);
+        app.MapODataMetadata("<#= ODataNames.Prefix #>/$metadata", Model);
+    }
+
+    private static void MapSet<T, TKey, TContext>(RouteGroupBuilder odata, RouteGroupBuilder lists, string set, string keyProperty, string constraint, bool quoted, string[] readOnly, ODataRules<T, TContext> rules)
+        where T : class where TKey : notnull where TContext : DbContext
+    {
+        string keyName = JsonNamingPolicy.CamelCase.ConvertName(keyProperty);
+        string slash = "/" + set + "/{id" + constraint + "}";
+        string parens = "/" + set + (quoted ? "('{id}')" : "({id" + constraint + "})");
+        var property = typeof(T).GetProperty(keyProperty)!;
+
+        Func<HttpContext, Type, Microsoft.OData.UriParser.ODataPath> pathOf = (context, type) =>
+        {
+            var entitySet = Model.EntityContainer.FindEntitySet(set)!;
+            object id = Convert.ChangeType(context.GetRouteValue("id")!, typeof(TKey) == typeof(Guid) ? typeof(string) : typeof(TKey), CultureInfo.InvariantCulture);
+            if (typeof(TKey) == typeof(Guid))
+                id = Guid.Parse((string)id);
+            return new Microsoft.OData.UriParser.ODataPath(new EntitySetSegment(entitySet),
+                new KeySegment([new KeyValuePair<string, object>(keyName, id)], entitySet.EntityType, entitySet));
+        };
+
+        // a table whose rows belong to a person lists only the rows of the owners the caller may act for
+        lists.MapGet("/" + set, async (TContext context, HttpContext http) =>
+        {
+<#= listGate #>            var rows = context.Set<T>().AsNoTracking();
+            return await OwnersAsync(http, rules) is { } owners ? rules.Scope(context, rows, owners) : rows;
+        });
+
+        foreach (string route in new[] { slash, parens })
+        {
+            odata.MapGet(route, async (TContext context, HttpContext http, TKey id) =>
+            {
+                if (await context.Set<T>().FindAsync(id) is not { } row)
+                    return Results.NotFound();
+                if (await RefuseOtherOwnersAsync(context, http, rules, row) is { } refused)
+                    return refused;
+                context.Entry(row).State = EntityState.Detached;
+                return Results.Ok(row);
+            })<#= readGate #>;
+
+            odata.MapPut(route, async (TContext context, HttpContext http, TKey id, T body) =>
+            {
+                if (await context.Set<T>().FindAsync(id) is not { } row)
+                    return Results.NotFound();
+                if (await RefuseOtherOwnersAsync(context, http, rules, row) is { } refused)
+                    return refused;
+                if (property.GetValue(body) is { } sent && !sent.Equals(id) && !sent.Equals(property.PropertyType.IsValueType ? Activator.CreateInstance(property.PropertyType) : null))
+                    return Results.Problem(statusCode: <#= HttpStatus.BadRequest #>, type: "<#= ProblemTypes.InvalidId #>", title: "Key mismatch", detail: "The key in the body is not the key in the address.");
+                property.SetValue(body, id);
+                // the row stays with an owner the caller may act for: it cannot be handed to anyone else
+                if (await RefuseOtherOwnersAsync(context, http, rules, body) is { } refusedOwner)
+                    return refusedOwner;
+                if (await rules.BeforeSaveAsync(context, http.User, body, false) is { } refusedSave)
+                    return refusedSave;
+                context.Entry(row).CurrentValues.SetValues(body);
+                Stamp(context, row, false);
+                return await SaveAsync(context, () => Results.NoContent());
+            })<#= roleGate #><#= validate ? ".AddEndpointFilter<ValidationFilter<T>>()" : "" #>;
+
+            odata.MapPatch(route, async (TContext context, TKey id, Delta<T> delta, HttpContext http) =>
+            {
+                if (await context.Set<T>().FindAsync(id) is not { } row)
+                    return Results.NotFound();
+                if (await RefuseOtherOwnersAsync(context, http, rules, row) is { } refused)
+                    return refused;
+                var refusedNames = delta.GetChangedPropertyNames().Where(name => readOnly.Contains(name)).ToList();
+                if (refusedNames.Count > 0)
+                    return Results.Problem(statusCode: <#= HttpStatus.BadRequest #>, type: "<#= ProblemTypes.ChangeNotAllowed #>", title: "Change not allowed", detail: "These cannot be changed: " + string.Join(", ", refusedNames) + ".");
+                delta.Patch(row);
+                if (await RefuseOtherOwnersAsync(context, http, rules, row) is { } refusedOwner)
+                {
+                    context.ChangeTracker.Clear();
+                    return refusedOwner;
+                }
+                if (await rules.BeforeSaveAsync(context, http.User, row, false) is { } refusedSave)
+                {
+                    context.ChangeTracker.Clear();
+                    return refusedSave;
+                }
+                Stamp(context, row, false);
+<#
+    if (validate)
+    {
+#>
+                if (http.RequestServices.GetService<IValidator<T>>() is { } validator)
+                {
+                    var result = await validator.ValidateAsync(row, http.RequestAborted);
+                    if (!result.IsValid)
+                    {
+                        context.ChangeTracker.Clear();
+                        return Results.ValidationProblem(result.ToDictionary());
+                    }
+                }
+<#
+    }
+#>
+                return await SaveAsync(context, () => Results.Ok(row));
+            }).WithODataPathFactory(pathOf)<#= roleGate #>;
+
+            odata.MapDelete(route, async (TContext context, HttpContext http, TKey id) =>
+            {
+                if (await context.Set<T>().FindAsync(id) is not { } row)
+                    return Results.NotFound();
+                if (await RefuseOtherOwnersAsync(context, http, rules, row) is { } refused)
+                    return refused;
+                context.Set<T>().Remove(row);
+                return await SaveAsync(context, () => Results.NoContent());
+            })<#= roleGate #>;
+        }
+
+        odata.MapPost("/" + set, async (TContext context, HttpContext http, T row) =>
+        {
+            var entry = context.Entry(row);
+            if (entry.Property(keyProperty).Metadata.ValueGenerated == ValueGenerated.OnAdd)
+                property.SetValue(row, property.PropertyType.IsValueType ? Activator.CreateInstance(property.PropertyType) : null);
+            if (property.GetValue(row) is string chosen)
+            {
+                if (string.IsNullOrWhiteSpace(chosen))
+                    return Results.Problem(statusCode: <#= HttpStatus.BadRequest #>, type: "<#= ProblemTypes.KeyRequired #>", title: "Key is required", detail: "The key cannot be empty.");
+                if (await context.Set<T>().FindAsync(chosen) is not null)
+                    return Results.Problem(statusCode: <#= HttpStatus.Conflict #>, type: "<#= ProblemTypes.DuplicateKey #>", title: "Duplicate key", detail: $"A row with the key '{chosen}' already exists.");
+            }
+            if (await ClaimOwnerAsync(context, http, rules, row) is { } refused)
+                return refused;
+            if (await rules.BeforeSaveAsync(context, http.User, row, true) is { } refusedSave)
+                return refusedSave;
+            Stamp(context, row, true);
+            context.Set<T>().Add(row);
+            return await SaveAsync(context, () => Results.Created($"<#= ODataNames.Prefix #>/{set}/{property.GetValue(row)}", row));
+        })<#= roleGate #><#= validate ? ".AddEndpointFilter<ValidationFilter<T>>()" : "" #>;
+    }
+
+    /// <summary> The owner ids the caller may reach in a table whose rows belong to a person; null when there is no restriction (the table has no owner, or the caller sees every owner). </summary>
+    private static async Task<int[]?> OwnersAsync<T, TContext>(HttpContext http, ODataRules<T, TContext> rules) where T : class where TContext : DbContext
+    {
+<#
+    if (auth)
+    {
+#>
+        if (!rules.Owned)
+            return null;
+        var owners = await http.RequestServices.GetRequiredService<IOwnerScope>().VisibleOwnersAsync(http.User, http.RequestAborted);
+        return owners?.ToArray();
+<#
+    }
+    else
+    {
+#>
+        await Task.CompletedTask;
+        return null;
+<#
+    }
+#>
+    }
+
+    private static async Task<int?> OwnerOfAsync<T, TContext>(TContext context, ODataRules<T, TContext> rules, T row) where T : class where TContext : DbContext =>
+        rules.OwnerThroughParent ? await rules.ParentOwnerAsync(context, row) : rules.OwnerOf(row);
+
+    /// <summary> Null when the caller may touch this row: 403 when it is another owner's. </summary>
+    private static async Task<IResult?> RefuseOtherOwnersAsync<T, TContext>(TContext context, HttpContext http, ODataRules<T, TContext> rules, T row) where T : class where TContext : DbContext
+    {
+        if (await OwnersAsync(http, rules) is not { } owners)
+            return null;
+        return await OwnerOfAsync(context, rules, row) is { } owner && owners.Contains(owner) ? null : NotYours();
+    }
+
+    /// <summary> A new row goes under an owner the caller may act for: a caller who may act for one owner and left the owner blank creates it for that owner. </summary>
+    private static async Task<IResult?> ClaimOwnerAsync<T, TContext>(TContext context, HttpContext http, ODataRules<T, TContext> rules, T row) where T : class where TContext : DbContext
+    {
+        if (await OwnersAsync(http, rules) is not { } owners)
+            return null;
+        if (!rules.OwnerThroughParent && rules.OwnerOf(row) == 0 && owners.Length == 1)
+        {
+            rules.SetOwner(row, owners[0]);
+            return null;
+        }
+        return await OwnerOfAsync(context, rules, row) is { } owner && owners.Contains(owner) ? null : NotYours();
+    }
+
+    private static IResult NotYours() => Results.Problem(statusCode: <#= HttpStatus.Forbidden #>, type: "<#= ProblemTypes.NotYours #>", title: "Not your row", detail: "That row belongs to someone you may not act for.");
+
+    private static async Task<IResult> SaveAsync(DbContext context, Func<IResult> done)
+    {
+        try
+        {
+            await context.SaveChangesAsync();
+            return done();
+        }
+        catch (DbUpdateException error)
+        {
+            context.ChangeTracker.Clear();
+            return ApiProblems.ToResult(error);
+        }
+    }
+}

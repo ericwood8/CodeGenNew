@@ -56,6 +56,7 @@ SALT_BYTES = 16
 HASH_BYTES = 32
 
 PROBLEM_NOT_YOURS = "/problems/not-your-row"
+PROBLEM_ROLE_NOT_ALLOWED = "<#= ProblemTypes.RoleNotAllowed #>"
 
 
 @dataclass(frozen=True)
@@ -182,6 +183,15 @@ def visible_owners(user: CurrentUser) -> list[int] | None:
     if user.is_admin:
         return None
     return [] if user.owner_id is None else [user.owner_id]
+
+
+def require_roles(roles: tuple[str, ...], write: bool):
+    """A route dependency: only these roles (the administrator role is among them) may call the route; ReadRoles and WriteRoles of the project."""
+    def check(user: CurrentUser = Depends(require_user)) -> None:
+        if user.role not in roles:
+            detail = "Your role may read this table but not change it." if write else "Your role may not read this table."
+            raise ApiError(<#= HttpStatus.Forbidden #>, "Not allowed", problem_type=PROBLEM_ROLE_NOT_ALLOWED, detail=detail)
+    return check
 
 
 def not_yours() -> ApiError:

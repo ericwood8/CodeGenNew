@@ -1740,11 +1740,10 @@ public class TemplateRenderingTests
     }
 
     [TestMethod]
-    public async Task TSX_Api_refuses_the_same_tables_TS_Service_refuses()
+    public async Task TSX_Api_refuses_the_same_tables_TS_Service_refuses_but_writes_a_module_for_a_name_active_table()
     {
         StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.CompositeKey()), "single int, uniqueidentifier or text primary key");
         StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.CompositeKey()), "composite primary key");
-        StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.DepartmentTeam()), "NameActiveRepo");
         StringAssert.Contains(await Refusal("TSX_Api_v1.tt", Sample.Roles(), ProjectSettings.FromValues([new("ProjectName", "Acme"), new("NoApiTables", "SY_Role")])), "NoApiTables");
     }
 
@@ -1863,11 +1862,10 @@ public class TemplateRenderingTests
     }
 
     [TestMethod]
-    public async Task TSX_Page_refuses_the_same_tables_TS_Component_refuses()
+    public async Task TSX_Page_refuses_the_same_tables_TS_Component_refuses_but_writes_a_page_for_a_name_active_table()
     {
         StringAssert.Contains(await Refusal("TSX_Page_v1.tt", Sample.CompositeKey()), "single int, uniqueidentifier or text primary key");
         StringAssert.Contains(await Refusal("TSX_Page_v1.tt", Sample.CompositeKey()), "composite primary key");
-        StringAssert.Contains(await Refusal("TSX_Page_v1.tt", Sample.DepartmentTeam()), "NameActiveRepo");
     }
 
     [TestMethod]
@@ -2025,16 +2023,46 @@ public class TemplateRenderingTests
     }
 
     [TestMethod]
-    public async Task TSX_DetailMasterPage_refuses_a_name_active_table_even_though_it_has_child_tables()
+    public async Task A_name_active_table_has_a_React_api_module_a_page_and_a_master_detail_page_of_its_own_kind()
     {
+        string api = await Render("TSX_Api_v1.tt", Sample.DepartmentTeam());
+        Expect.Contains(api, "export const departmentTeamApi = {");
+        Expect.Contains(api, "getAll: () => request<DepartmentTeam[]>(apiUrl),");
+        Expect.Contains(api, "getActive: () => request<DepartmentTeam[]>(`${apiUrl}/active`),");
+        Expect.Contains(api, "getLookup:");
+        Expect.DoesNotContain(api, "getPage");
+        Expect.DoesNotContain(api, "PagedResult");
+        Expect.DoesNotContain(api, "clone");
+
+        string page = await Render("TSX_Page_v1.tt", Sample.DepartmentTeam());
+        Expect.Contains(page, "departmentTeamApi.getAll().then((result) => {");
+        Expect.Contains(page, "setDepartmentTeams(result);");
+        Expect.Contains(page, "const visibleRows = departmentTeams.filter((row) => (!activeOnly || row.isActive) && (row.name ?? '').toLowerCase().includes(searchText.trim().toLowerCase()));");
+        Expect.Contains(page, "aria-label=\"Search by Name\"");
+        Expect.Contains(page, "Active only</label>");
+        Expect.Contains(page, "{visibleRows.map((departmentTeam) => (");
+        Expect.Contains(page, "const problemDetail = (error: unknown): string | undefined => {");
+        Expect.Contains(page, "setError(problemDetail(err) ?? 'A row with this value already exists!');");
+        Expect.Contains(page, "load(); // read the page again");
+        Expect.DoesNotContain(page, "load(page)");
+        Expect.DoesNotContain(page, "PaginationBar");
+        Expect.DoesNotContain(page, "GridMenu");
+        Expect.DoesNotContain(page, "getPage");
+        Expect.DoesNotContain(page, "Rows per page");
+        Expect.Contains(page, "it('narrows the list by name and by active'");
+
         var table = Sample.Table("Department",
         [
             Sample.Column("DepartmentId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
             Sample.Column("Name", SqlDbType.NVarChar, characters: 100, ordinal: 2),
             Sample.Column("IsActive", SqlDbType.Bit, defaultSql: "((1))", ordinal: 3)
         ], childForeignKeys: [Sample.ChildForeignKey("DepartmentTeam", "DepartmentId", "DepartmentId")]);
-
-        StringAssert.Contains(await Refusal("TSX_DetailMasterPage_v1.tt", table), "NameActiveRepo");
+        string detail = await Render("TSX_DetailMasterPage_v1.tt", table);
+        Expect.Contains(detail, "departmentApi.getAll().then((result) => {");
+        Expect.Contains(detail, "const visibleRows = departments.filter(");
+        Expect.DoesNotContain(detail, "PaginationBar");
+        Expect.DoesNotContain(detail, "load(page)");
+        Expect.Contains(detail, "const [departmentTeamRows, setDepartmentTeamRows] = useState<any[]>([]);");   // the child grids stay
     }
 
     // ------------------------------------------------------------------ TSX_JunctionPage

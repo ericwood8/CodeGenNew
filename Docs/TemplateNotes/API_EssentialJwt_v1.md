@@ -41,3 +41,7 @@ The search endpoint (`API_Search`) filters on the owners when `AccessMode=Ef`. T
 - Python and Rust APIs do not sign people in.
 - The Postman and Bruno collections have no login request.
 - The roles the project's own tables name (a manager table, an HR role) are the project's `IOwnerScope`.
+
+**Write roles:** `RoleGate` (`Allows`, `Refusal`, `RequireWriteRoles`) is written here for the REST and OData write routes (`WriteRoles`, `TableWriteRoles`).
+
+**Read roles:** `RequireReadRoles` is written here beside `RequireWriteRoles`.

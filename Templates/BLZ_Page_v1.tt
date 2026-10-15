@@ -1,6 +1,7 @@
 <#@ template language="C#" #>
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
 <#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ parameter name="Variant" type="System.String" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Text" #>
 <#@ import namespace="System.Text.RegularExpressions" #>
@@ -15,6 +16,9 @@
     // The Blazor counterpart of TSX_Page: a grid with Edit, Clone and Delete, Add New, a search bar with a box per searchable column, paging, sortable headers, and an add / edit form
     // (EditForm with the Input components) with a drop-down for each foreign key that has a lookup. Calls the table's BLZ_Client. A foreign key to the table itself stays a plain box and a column
     // with no input (binary) is left off the form; the form is one panel, not tabs.
+    // BLZ_ODataPage is this template run with Variant=OData (its config says Base=BLZ_Page_v1.tt): the same page over the table's OData client (BLZ_ODataClient) instead of the REST one, with several sorts
+    // (Shift-click adds a column) and a filter row under the headers; the REST page is not touched, unless ODataScreens=Replace gives its route to the OData page.
+    // With Auth=true every page asks for a signed-in person (and, for a table with ReadRoles, one of its roles); with WriteRoles the buttons that change rows show only to the roles that may.
     // Full notes: Docs/TemplateNotes/BLZ_Page_v1.md
     // ==========================================================================================
 
@@ -22,8 +26,13 @@
     string Symbol() => Project.CurrencySymbol;
     bool HasInput(ColumnModel c) => c.CSharpBase() is not ("byte[]" or "object");
     string Ident(string name) => BlazorNames.Identifier(name);
+    bool odata = Variant == "OData";
 
-    if (BlazorNames.Refusal(Model, Project) is { } reason)
+    if (odata && !ODataPlan.Serves(Model, Project))
+    {
+        // the OData page is written for the tables the project serves as OData and for no other; a plan runs this template for every table, so it says nothing for the rest
+    }
+    else if (BlazorNames.Refusal(Model, Project) is { } reason)
     {
         Error($"BLZ_Page writes no screen for [{Model.SchemaName}].[{Model.TableName}]: {reason}");
     }
@@ -50,6 +59,22 @@
 
         bool usesMoneyBox = shown.Any(form.IsMoneyInput);
 
+        string pageClass = odata ? BlazorNames.ODataPageName(Model.TableName) : type + "Page";
+        string route = odata && !Project.ODataReplacesScreens ? AngularNames.ODataRoute(Model.TableName) : ScreenNames.Route(Model.TableName);
+        // ODataScreens=Replace: the OData page has this REST page's route, so this one is not routable (two pages at one address would be ambiguous)
+        bool replaced = !odata && Project.ODataReplacesScreens && ODataPlan.Serves(Model, Project);
+        string clientType = odata ? BlazorNames.ODataClientName(Model.TableName) : type + "Client";
+        string ExplainCall = odata ? "ExplainOData" : "Explain";   // the OData calls also carry the API's own words for a conflict
+        var filterFields = odata ? ODataFilterFields.For(form) : null;   // the filter row's control of each grid column (null: none)
+
+        // Auth=true: the page asks for a signed-in person (and, with ReadRoles, one of the roles); with WriteRoles only the roles that may write see Add New, Edit, Clone and Delete
+        IReadOnlyList<string> readRoles = Project.Auth ? WriteRolePlan.ReadFor(Project, Model) : new List<string>();
+        IReadOnlyList<string> writeRoles = Project.Auth ? WriteRolePlan.For(Project, Model) : new List<string>();
+        bool gated = writeRoles.Count > 0;
+        string RolesExpression(IReadOnlyList<string> roles) => "[" + WriteRolePlan.Literal(roles) + "]";
+        // a button that changes rows: wrapped so that only a role that may write sees it
+        string Gate(string indent, string markup) => gated ? $"{indent}@if (CanWrite)\n{indent}{{\n{indent}    {markup.Trim()}\n{indent}}}" : indent + markup.Trim();
+
         // The child tables: each is a read-only grid under the form while a row is edited (as the React page does). The whole child table is read and filtered here by this row's key.
         // The child must have a client of its own: a plain table with a usable key, not a name / active table (whose API has no plain list).
         var children = ChildGrid.For(Model, Project)
@@ -65,10 +90,16 @@
                 var columns = g.Link.ReferencingTableColumns
                     .Where(c => !g.HiddenColumns.Contains(c.Name, StringComparer.OrdinalIgnoreCase) && !c.IsCredentialColumn && HasInput(c))
                     .ToList();
+                var childWriteRoles = Project.Auth ? WriteRolePlan.For(Project, g.Table) : new List<string>();
+                bool servedChild = odata && ODataPlan.ServesByName(g.Table, Project);   // the OData page reads a served child's rows with a filter on the parent's key
                 return new
                 {
                     Link = g.Link,
                     Type = childType,
+                    ClientType = servedChild ? BlazorNames.ODataClientName(g.Table) : childType + "Client",
+                    Served = servedChild,
+                    FkJson = JsonNames.Camel(g.ForeignKeyColumn!.Name),
+                    WriteGate = childWriteRoles.Count > 0 ? "Session.HasRole(" + RolesExpression(childWriteRoles) + ")" : null,
                     Var = BlazorNames.ChildVariable(g),
                     Title = g.Title,
                     FkProp = g.ForeignKeyColumn!.CSharpName(),
@@ -97,17 +128,22 @@
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s.Replace("§T", type).Replace("§K", key).Replace("§N", title)).Append('\n');
 
-        L($"@@@FILE Pages/{type}Page.razor@@@");
-        L($"@page \"/{ScreenNames.Route(Model.TableName)}\"");
+        L($"@@@FILE Pages/{pageClass}.razor@@@");
+        if (!replaced)
+            L($"@page \"/{route}\"");
         L($"@using {ns}.Models");
         L($"@using {ns}.Services");
         if (usesMoneyBox)
             L($"@using {ns}.Components");
-        L("@inject §TClient Client");
+        if (Project.Auth)
+            L(readRoles.Count > 0 ? $"@attribute [Authorize(Roles = \"{string.Join(",", readRoles)}\")]" : "@attribute [Authorize]");
+        L($"@inject {clientType} Client");
+        if (gated || children.Any(ch => ch.WriteGate is not null))
+            L("@inject AuthSession Session");
         foreach (var p in parents)
             L($"@inject {p.BaseName}Client {BlazorNames.LookupField(p)}Client");
         foreach (var ch in children)
-            L($"@inject {ch.Type}Client {ch.Var}Client");
+            L($"@inject {ch.ClientType} {ch.Var}Client");
         foreach (var l in childLookups)
             L($"@inject {l.Type}Client {l.Field}Client");
         L("@inject IJSRuntime Js");
@@ -116,8 +152,9 @@
         L($"<PageTitle>{title.Pluralize()}</PageTitle>");
         L();
         L($"<h1>{title.Pluralize()}</h1>");
-        L("<button type=\"button\" @onclick=\"Add\">Add New §N</button>");
-        if (searchFields.Count > 0)
+        L(Gate("", "<button type=\"button\" @onclick=\"Add\">Add New §N</button>"));
+        // the OData page has the filter row under the headers in place of the search boxes
+        if (searchFields.Count > 0 && !odata)
         {
             L();
             L("<div class=\"search\">");
@@ -139,13 +176,60 @@
         foreach (var c in gridColumns)
         {
             string caption = GridCaption.For(c, Labels.Field(c));
-            if (sortable.Contains(c))
+            if (sortable.Contains(c) && odata)
+                L($"            <th aria-sort=\"@AriaSort(\"{c.Name}\")\"><button type=\"button\" class=\"sort\" title=\"Click to sort by {caption}. Shift-click to add it to the sort.\" @onclick='(e) => SortAsync(\"{c.Name}\", e.ShiftKey)'>{caption} @Arrow(\"{c.Name}\")<span class=\"sort-order\" hidden=\"@(Place(\"{c.Name}\") is null)\">@Place(\"{c.Name}\")</span></button></th>");
+            else if (sortable.Contains(c))
                 L($"            <th><button type=\"button\" class=\"sort\" @onclick='() => SortAsync(\"{c.Name}\")'>{caption} @Arrow(\"{c.Name}\")</button></th>");
             else
                 L($"            <th>{caption}</th>");
         }
         L("            <th>Actions</th>");
         L("        </tr>");
+        if (odata && filterFields!.Any(f => f is not null))
+        {
+            // the filter row: a control per column by its kind (ODataFilterFields in Core, one rule for every stack); Enter in a box searches
+            L("        <tr class=\"filter-row\">");
+            for (int i = 0; i < gridColumns.Count; i++)
+            {
+                var f = filterFields![i];
+                if (f is null) { L("            <td></td>"); continue; }
+                string name = f.Name;
+                string label = GridCaption.For(gridColumns[i], Labels.Field(gridColumns[i]));
+                string typed = $"Typed(\"{name}\")";
+                string control;
+                switch (f.Kind)
+                {
+                    case ODataFilterKind.Text:
+                        control = $"<input type=\"text\" placeholder=\"contains\" aria-label=\"Filter by {label}\" @bind='{typed}.Text' @bind:event=\"oninput\" @onkeyup=\"FilterKeyAsync\" />";
+                        break;
+                    case ODataFilterKind.Number:
+                        control = $"<div class=\"range\"><input type=\"number\" step=\"any\" placeholder=\"from\" aria-label=\"{label} from\" @bind='{typed}.From' @bind:event=\"oninput\" @onkeyup=\"FilterKeyAsync\" /><input type=\"number\" step=\"any\" placeholder=\"to\" aria-label=\"{label} to\" @bind='{typed}.To' @bind:event=\"oninput\" @onkeyup=\"FilterKeyAsync\" /></div>";
+                        break;
+                    case ODataFilterKind.Date:
+                        // the boxes hold the day as text (yyyy-MM-dd), so they are not bound as dates
+                        control = $"<div class=\"range\"><input type=\"date\" title=\"{label} from\" aria-label=\"{label} from\" value=\"@{typed}.From\" @onchange='e => {typed}.From = e.Value?.ToString()' @onkeyup=\"FilterKeyAsync\" /><input type=\"date\" title=\"{label} to\" aria-label=\"{label} to\" value=\"@{typed}.To\" @onchange='e => {typed}.To = e.Value?.ToString()' @onkeyup=\"FilterKeyAsync\" /></div>";
+                        break;
+                    case ODataFilterKind.Boolean:
+                        control = $"<select aria-label=\"Filter by {label}\" @bind='{typed}.Flag'><option value=\"\">Any</option><option value=\"true\">Yes</option><option value=\"false\">No</option></select>";
+                        break;
+                    case ODataFilterKind.Parent:
+                        control = $"<select aria-label=\"Filter by {label}\" @bind='{typed}.Value'><option value=\"\">Any</option>@foreach (var parent in {BlazorNames.LookupField(f.Parent!)}) {{ <option value=\"@parent.{BlazorNames.KeyProperty(f.Parent!)}\">@parent.{BlazorNames.DisplayProperty(f.Parent!)}</option> }}</select>";
+                        break;
+                    default:
+                        control = $"<select aria-label=\"Filter by {label}\" @bind='{typed}.Value'><option value=\"\">Any</option>" + string.Concat(f.Choices.Select(choice => $"<option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>")) + "</select>";
+                        break;
+                }
+                string empty = f.Nullable && f.Kind != ODataFilterKind.Boolean
+                    ? $"<label class=\"empty-toggle\" title=\"Only the rows where {label} is empty\"><input type=\"checkbox\" @bind='{typed}.Empty' /> empty</label>"
+                    : "";
+                L($"            <td>{control}{empty}</td>");
+            }
+            L("            <td class=\"filter-actions\">");
+            L("                <button type=\"button\" @onclick=\"SearchAsync\">Search</button>");
+            L("                <button type=\"button\" @onclick=\"ClearSearchAsync\">Clear</button>");
+            L("            </td>");
+            L("        </tr>");
+        }
         L("    </thead>");
         L("    <tbody>");
         L("        @foreach (var item in items)");
@@ -159,10 +243,10 @@
             L($"                <td>{cell}</td>");
         }
         L("                <td>");
-        L("                    <button type=\"button\" @onclick=\"() => Edit(item)\">Edit</button>");
+        L(Gate("                    ", odata ? "<button type=\"button\" @onclick=\"() => OpenAsync(item)\">Edit</button>" : "<button type=\"button\" @onclick=\"() => Edit(item)\">Edit</button>"));
         if (canClone)
-            L("                    <button type=\"button\" @onclick=\"() => CloneAsync(item)\">Clone</button>");
-        L("                    <button type=\"button\" @onclick=\"() => DeleteAsync(item)\">Delete</button>");
+            L(Gate("                    ", "<button type=\"button\" @onclick=\"() => CloneAsync(item)\">Clone</button>"));
+        L(Gate("                    ", "<button type=\"button\" @onclick=\"() => DeleteAsync(item)\">Delete</button>"));
         L("                </td>");
         L("            </tr>");
         L("        }");
@@ -209,6 +293,9 @@
             {
                 // who made the row and when it changed: the system writes it, so it is text, shown once the row exists
                 string stampText = IsDate(c) ? $"@{bind}{(c.IsNullable ? "?" : "")}.ToString(\"g\")" : $"@{bind}";
+                // a row from before the stamp existed says so instead of showing nothing
+                if (form.IsGuardStamp(c))
+                    stampText = IsDate(c) ? $"@({bind}{(c.IsNullable ? "?" : "")}.ToString(\"g\") ?? \"{GuardStamp.NotRecorded}\")" : $"@({bind} ?? \"{GuardStamp.NotRecorded}\")";
                 L($"            @if (!isNew) {{ <div class=\"field\"><label for=\"{id}\">{label}</label><span id=\"{id}\">{stampText}</span></div> }}");
                 continue;
             }
@@ -254,6 +341,13 @@
             }
             else
                 input = $"<input id=\"{id}\" @bind=\"{bind}\"{required} />";
+            if (form.GuardOf(c) is { } guard)
+            {
+                // a guarded column is a control only for a person who may change it (the guards answer); everyone else sees its value as text and why
+                string shown2 = c.IsBooleanColumn ? $"@({bind} == true ? \"Yes\" : \"No\")" : $"@{bind}";
+                string note = ChoiceFormat.Html(guard.Note).Replace("@", "@@");
+                input = $"@if (guards.GetValueOrDefault(\"{guard.Json}\")) {{ {input} }} else {{ <span id=\"{id}\">{shown2}</span> <small class=\"guard-note\">{note}</small> }}";
+            }
             L($"            <div class=\"field\"><label for=\"{id}\">{label}{RequiredMark.Html(form.IsMarked(c))}</label>{input}</div>");
         }
         L("            <ValidationSummary />");
@@ -296,7 +390,10 @@
                 L("                                <td>");
                 if (ch.HasPage)
                     L($"                                    <button type=\"button\" @onclick=\"() => Edit{ch.Var}(line)\">Edit</button>");
-                L($"                                    <button type=\"button\" @onclick=\"() => Delete{ch.Var}(line)\">Delete</button>");
+                if (ch.WriteGate is not null)
+                    L($"                                    @if ({ch.WriteGate}) {{ <button type=\"button\" @onclick=\"() => Delete{ch.Var}(line)\">Delete</button> }}");
+                else
+                    L($"                                    <button type=\"button\" @onclick=\"() => Delete{ch.Var}(line)\">Delete</button>");
                 L("                                </td>");
                 L("                            </tr>");
                 L("                        }");
@@ -323,15 +420,41 @@
         L("    private §T? row;");
         L("    private bool isNew;");
         L("    private string? message;");
+        if (form.Guards.Count > 0)
+            L("    private Dictionary<string, bool> guards = new();   // which guarded columns the signed-in person may change (GET guards)");
         L("    private int pageNumber = 1;");
         L("    private int totalPages = 1;");
-        L("    private string? sortBy;");
-        L("    private bool descending;");
+        if (odata)
+        {
+            L("    private List<(string Column, bool Descending)> sorts = [];   // a click sorts by the column, a Shift-click adds it as the next sort; kept in the browser under SortsKey");
+            L($"    private const string SortsKey = \"{(Project.ProjectName ?? "MyApp").ToLowerInvariant()}.sorts.{pageClass.ToLowerInvariant()}\";");
+            L($"    private static readonly string[] SortableColumns = [{string.Join(", ", gridColumns.Where(c => sortable.Contains(c)).Select(c => "\"" + c.Name + "\""))}];");
+            L($"    private static readonly string[] SelectColumns = [{string.Join(", ", gridColumns.Select(c => "\"" + JsonNames.Camel(c.Name) + "\""))}];   // the grid asks for these and the key; a row is read whole when it is opened");
+            L("    private readonly Dictionary<string, ColumnFilter> typed = new();   // what is in the controls of the filter row");
+            L("    private List<string> applied = [];   // the conditions the last Search asked for, kept while paging");
+            L("    private ColumnFilter Typed(string name) => typed.TryGetValue(name, out var filter) ? filter : typed[name] = new ColumnFilter();");
+        }
+        else
+        {
+            L("    private string? sortBy;");
+            L("    private bool descending;");
+        }
+        if (gated)
+            L($"    private bool CanWrite => Session.HasRole({RolesExpression(writeRoles)});   // WriteRoles: the roles that may add, change and delete rows");
+        if (odata && filterFields!.Any(f => f is not null))
+        {
+            L("    private static readonly ODataFilterField[] FilterFields =");
+            L("    [");
+            foreach (var f in filterFields!.Where(f => f is not null))
+                L($"        new(\"{f!.Name}\", \"{f.Property}\", ODataFilterKind.{f.Kind}, {(f.Nullable ? "true" : "false")}{(f.Literal is null ? "" : $", \"{f.Literal}\"")}),");
+            L("    ];");
+        }
         L("    // Opened from another page's grid (?edit=<id>&back=<that page>): open this row, and go back to that page when the form is saved or cancelled.");
         L("    [Parameter, SupplyParameterFromQuery(Name = \"edit\")] public string? EditId { get; set; }");
         L("    [Parameter, SupplyParameterFromQuery(Name = \"back\")] public string? Back { get; set; }");
-        foreach (var f in searchFields)
-            L($"    private string? {f.Field};");
+        if (!odata)
+            foreach (var f in searchFields)
+                L($"    private string? {f.Field};");
         L();
         L("    protected override async Task OnInitializedAsync()");
         L("    {");
@@ -339,32 +462,40 @@
             L($"        try {{ {BlazorNames.LookupField(p)} = await {BlazorNames.LookupField(p)}Client.{BlazorNames.LoadCall(p)}(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
         foreach (var l in childLookups)
             L($"        try {{ {l.Field} = await {l.Field}Client.{l.Load}(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
+        if (form.Guards.Count > 0)
+            L("        try { guards = await Client.GetGuardsAsync(); } catch (Exception ex) when (ex is ApiException or HttpRequestException) { }");
+        if (odata)
+            L("        sorts = await SavedSorts.LoadAsync(Js, SortsKey, SortableColumns);");
         L("        await LoadAsync();");
-        L("        if (EditId is not null)");
+        L(gated ? "        if (EditId is not null && CanWrite)" : "        if (EditId is not null)");
         L("        {");
         L("            try { " + (children.Count > 0 ? "await " : "") + "Edit(await Client.GetAsync(" + (keyColumn.CSharpBase() == "string" ? "EditId" : keyColumn.CSharpBase() + ".Parse(EditId)") + ")); }");
         L($"            catch (Exception ex) when (ex is ApiException or HttpRequestException or FormatException) {{ message = \"This {title.ToLowerInvariant()} no longer exists!\"; }}");
         L("        }");
         L("    }");
-        L();
-        if (searchFields.Count > 0)
+        if (!odata)
         {
-            L("    private IReadOnlyDictionary<string, string?> Filters() => new Dictionary<string, string?>");
-            L("    {");
-            foreach (var f in searchFields)
-                L($"        [\"{f.ParamName}\"] = {f.Field},");
-            L("    };");
-        }
-        else
-        {
-            L("    private IReadOnlyDictionary<string, string?> Filters() => new Dictionary<string, string?>();");
+            L();
+            if (searchFields.Count > 0)
+            {
+                L("    private IReadOnlyDictionary<string, string?> Filters() => new Dictionary<string, string?>");
+                L("    {");
+                foreach (var f in searchFields)
+                    L($"        [\"{f.ParamName}\"] = {f.Field},");
+                L("    };");
+            }
+            else
+            {
+                L("    private IReadOnlyDictionary<string, string?> Filters() => new Dictionary<string, string?>();");
+            }
         }
         L();
         L("    private async Task LoadAsync(int target = 1)");
         L("    {");
         L("        try");
         L("        {");
-        L("            var result = await Client.GetPageAsync(target, PageSize, Filters(), sortBy, descending);");
+        L(odata ? "            var result = await Client.QueryPageAsync(new ODataPageQuery(target, PageSize, null, sorts, applied, SelectColumns));"
+                : "            var result = await Client.GetPageAsync(target, PageSize, Filters(), sortBy, descending);");
         L("            // the last row of the last page was deleted, or rows were removed elsewhere: the page asked for is past the end, so show the last page there is");
         L("            if (result.Items.Count == 0 && result.TotalCount > 0 && target > 1)");
         L("            {");
@@ -377,34 +508,91 @@
         L("            loaded = true;");
         L("            message = null;");
         L("        }");
+        if (odata)
+            L("        catch (FormatException ex) { message = ex.Message; }   // a number, date or guid in the filter row that is not one is never sent");
         L($"        catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ message = \"Failed to load {title.ToLowerInvariant().Pluralize()}.\"; }}");
         L("    }");
-        if (searchFields.Count > 0)
+        if (odata)
         {
+            if (filterFields!.Any(f => f is not null))
+            {
+                L();
+                L("    private async Task SearchAsync()");
+                L("    {");
+                L("        row = null;");
+                L("        try { applied = ODataFilters.ConditionsOf(FilterFields, typed); }");
+                L("        catch (FormatException ex) { message = ex.Message; return; }");
+                L("        await LoadAsync();");
+                L("    }");
+                L();
+                L("    private async Task ClearSearchAsync()");
+                L("    {");
+                L("        typed.Clear();");
+                L("        applied = [];");
+                L("        await LoadAsync();");
+                L("    }");
+                L();
+                L("    // Enter in a box of the filter row searches.");
+                L("    private async Task FilterKeyAsync(KeyboardEventArgs args)");
+                L("    {");
+                L("        if (args.Key == \"Enter\") await SearchAsync();");
+                L("    }");
+            }
             L();
-            L("    private async Task SearchAsync()");
+            L("    // A click sorts by the column (again: flips it); a Shift-click adds the column as the next sort (again: flips it, once more: takes it out).");
+            L("    private async Task SortAsync(string column, bool shift)");
             L("    {");
-            L("        row = null;");
+            L("        int at = sorts.FindIndex(s => s.Column == column);");
+            L("        if (shift)");
+            L("        {");
+            L("            if (at < 0) sorts.Add((column, false));");
+            L("            else if (!sorts[at].Descending) sorts[at] = (column, true);");
+            L("            else sorts.RemoveAt(at);");
+            L("        }");
+            L("        else");
+            L("        {");
+            L("            sorts = sorts.Count == 1 && at == 0 ? [(column, !sorts[0].Descending)] : [(column, false)];");
+            L("        }");
+            L("        await SavedSorts.SaveAsync(Js, SortsKey, sorts);");
             L("        await LoadAsync();");
             L("    }");
             L();
-            L("    private async Task ClearSearchAsync()");
-            L("    {");
-            foreach (var f in searchFields)
-                L($"        {f.Field} = null;");
-            L("        await LoadAsync();");
-            L("    }");
+            L("    private string Arrow(string column) => sorts.FirstOrDefault(s => s.Column == column) is { Column: not null } sort ? (sort.Descending ? \"\\u25BC\" : \"\\u25B2\") : \"\";");
+            L();
+            L("    private string? AriaSort(string column) => sorts.FirstOrDefault(s => s.Column == column) is { Column: not null } sort ? (sort.Descending ? \"descending\" : \"ascending\") : null;");
+            L();
+            L("    // The place of the column in the sort (1, 2, ...) when the grid is sorted by more than one.");
+            L("    private int? Place(string column) { int at = sorts.FindIndex(s => s.Column == column); return sorts.Count > 1 && at >= 0 ? at + 1 : null; }");
         }
-        L();
-        L("    // Click a header to sort by it, click it again to flip the direction; the sort is kept while paging and searching.");
-        L("    private async Task SortAsync(string column)");
-        L("    {");
-        L("        descending = sortBy == column && !descending;");
-        L("        sortBy = column;");
-        L("        await LoadAsync();");
-        L("    }");
-        L();
-        L("    private string Arrow(string column) => sortBy != column ? \"\" : descending ? \"\\u25BC\" : \"\\u25B2\";");
+        else
+        {
+            if (searchFields.Count > 0)
+            {
+                L();
+                L("    private async Task SearchAsync()");
+                L("    {");
+                L("        row = null;");
+                L("        await LoadAsync();");
+                L("    }");
+                L();
+                L("    private async Task ClearSearchAsync()");
+                L("    {");
+                foreach (var f in searchFields)
+                    L($"        {f.Field} = null;");
+                L("        await LoadAsync();");
+                L("    }");
+            }
+            L();
+            L("    // Click a header to sort by it, click it again to flip the direction; the sort is kept while paging and searching.");
+            L("    private async Task SortAsync(string column)");
+            L("    {");
+            L("        descending = sortBy == column && !descending;");
+            L("        sortBy = column;");
+            L("        await LoadAsync();");
+            L("    }");
+            L();
+            L("    private string Arrow(string column) => sortBy != column ? \"\" : descending ? \"\\u25BC\" : \"\\u25B2\";");
+        }
         foreach (var p in parents)
         {
             L();
@@ -428,6 +616,20 @@
                 : IsDate(c) ? $"{c.CSharpName()} = DateTime.Today" : null)
             .Where(s => s is not null).ToList();
         string addNew = adds.Count == 0 ? "new §T()" : $"new §T {{ {string.Join(", ", adds)} }}";
+        if (odata)
+        {
+            L("    // The grid read only the columns it shows: the row is read whole before the form opens it.");
+            L("    private async Task OpenAsync(§T item)");
+            L("    {");
+            L("        try { " + (children.Count > 0 ? "await " : "") + "Edit(await Client.GetAsync(item.§K)); }");
+            L("        catch (Exception ex) when (ex is ApiException or HttpRequestException)");
+            L("        {");
+            L("            await LoadAsync(pageNumber);");
+            L($"            message = \"This {title.ToLowerInvariant()} no longer exists!\";");
+            L("        }");
+            L("    }");
+            L();
+        }
         if (children.Count == 0)
         {
             L($"    private void Add() => Edit({addNew}, true);");
@@ -459,7 +661,9 @@
             L("        if (row is null) return;");
             L("        var rowKey = row.§K;");
             foreach (var ch in children)
-                L($"        try {{ {ch.Var}Rows = (await {ch.Var}Client.GetAllAsync()).Where(line => line.{ch.FkProp} == rowKey).ToList(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ {ch.Var}Rows = []; }}");
+                L(ch.Served
+                    ? $"        try {{ {ch.Var}Rows = await {ch.Var}Client.GetWhereAsync(\"{ch.FkJson}\", rowKey); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ {ch.Var}Rows = []; }}"
+                    : $"        try {{ {ch.Var}Rows = (await {ch.Var}Client.GetAllAsync()).Where(line => line.{ch.FkProp} == rowKey).ToList(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ {ch.Var}Rows = []; }}");
             L("    }");
             foreach (var ch in children)
             {
@@ -483,7 +687,7 @@
                 L($"            await {ch.Var}Client.DeleteAsync(line.{ch.KeyProp});");
                 L("            await LoadChildrenAsync();");
                 L("        }");
-                L("        catch (ApiException ex) { message = ex.Explain(\"deleting\"); }");
+                L("        catch (ApiException ex) { message = ex." + ExplainCall + "(\"deleting\"); }");
                 L("        catch (HttpRequestException) { message = \"Problem while deleting!\"; }");
                 L("    }");
             }
@@ -510,7 +714,7 @@
         // a typed key can already be taken: the API answers 409
         if (textKey)
             L($"        catch (ApiException ex) when (ex.Status == {HttpStatus.Conflict}) {{ message = \"A {title.ToLowerInvariant()} with this {Labels.Column(keyColumn.Name).ToLowerInvariant()} already exists!\"; }}");
-        L("        catch (ApiException ex) { message = ex.Explain(\"saving\"); }");
+        L("        catch (ApiException ex) { message = ex." + ExplainCall + "(\"saving\"); }");
         L("        catch (HttpRequestException) { message = \"Problem while saving!\"; }");
         L("    }");
         L();
@@ -533,7 +737,7 @@
         L("        }");
         L("        catch (ApiException ex)");
         L("        {");
-        L("            message = ex.Explain(\"deleting\");");
+        L("            message = ex." + ExplainCall + "(\"deleting\");");
         L($"            if (ex.Status == {HttpStatus.NotFound}) await LoadAsync(pageNumber);");
         L("        }");
         L("        catch (HttpRequestException) { message = \"Problem while deleting!\"; }");
@@ -552,7 +756,7 @@
             L("        }");
             L("        catch (ApiException ex)");
             L("        {");
-            L("            message = ex.Explain(\"cloning\");");
+            L("            message = ex." + ExplainCall + "(\"cloning\");");
             L($"            if (ex.Status == {HttpStatus.NotFound}) await LoadAsync(pageNumber);");
             L("        }");
             L("        catch (HttpRequestException) { message = \"Problem while cloning!\"; }");

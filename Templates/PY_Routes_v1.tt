@@ -36,6 +36,12 @@
     var ownerColumn = auth ? OwnedTable.OwnerColumn(Model, Project) : null;
     var ownerLink = auth ? OwnedTable.Through(Model, Project) : null;
     var userPlan = auth ? UserTable.PlanOf(Model, Project) : null;
+    // ReadRoles and WriteRoles: the routes refuse a role the table's rules do not list (the administrator role is always listed); the lookup stays open
+    var readRoles = WriteRolePlan.ReadFor(Project, Model);
+    var writeRoles = WriteRolePlan.For(Project, Model);
+    string RoleTuple(IReadOnlyList<string> roles) => "(" + string.Join(", ", roles.Select(Str)) + (roles.Count == 1 ? "," : "") + ")";
+    string readDepends = readRoles.Count > 0 ? ", dependencies=[Depends(require_roles(READ_ROLES, False))]" : "";
+    string writeDepends = writeRoles.Count > 0 ? ", dependencies=[Depends(require_roles(WRITE_ROLES, True))]" : "";
     PythonField? FieldOf(ColumnModel? column) => column is null ? null : t.SchemaFields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(column.Name));
     var ownerField = FieldOf(ownerColumn);
     string ParentName(string name) => PythonNames.Ident(PythonNames.Snake(name));
@@ -74,8 +80,15 @@
     Line("from sqlalchemy.exc import IntegrityError");
     Line("from sqlalchemy.orm import Session");
     Line();
-    if (auth && (scoped || userPlan is not null))
-        Line("from app.auth import " + string.Join(", ", new[] { "CurrentUser", "require_user" }.Concat(scoped ? new[] { "not_yours", "visible_owners" } : Array.Empty<string>()).OrderBy(n => n, StringComparer.Ordinal)));
+    var authNames = new List<string>();
+    if (scoped || userPlan is not null)
+        authNames.AddRange(new[] { "CurrentUser", "require_user" });
+    if (scoped)
+        authNames.AddRange(new[] { "not_yours", "visible_owners" });
+    if (readRoles.Count > 0 || writeRoles.Count > 0)
+        authNames.Add("require_roles");
+    if (auth && authNames.Count > 0)
+        Line("from app.auth import " + string.Join(", ", authNames.OrderBy(n => n, StringComparer.Ordinal)));
     Line("from app.db import get_session");
     Line($"from app.models.{t.Module} import {t.Class}");
     if (ownerLink is not null)
@@ -94,6 +107,10 @@
         Line($"from app.validation.{t.Module} import validate");
     Line();
     Line("router = APIRouter()");
+    if (readRoles.Count > 0)
+        Line($"READ_ROLES = {RoleTuple(readRoles)}");
+    if (writeRoles.Count > 0)
+        Line($"WRITE_ROLES = {RoleTuple(writeRoles)}");
     Line($"IN_USE = \"The database refused the row (a missing parent row, or a value that must be unique).\"");
     Line();
 
@@ -182,7 +199,7 @@
     }
 
     Line();
-    Line($"@router.get(\"{t.Route}\", response_model=list[{t.Schema}])");
+    Line($"@router.get(\"{t.Route}\", response_model=list[{t.Schema}]{readDepends})");
     Line($"def get_all(session: Session = Depends(get_session){userParameter}):");
     if (scoped)
     {
@@ -213,7 +230,7 @@
     if (search)
     {
         Line();
-        Line($"@router.get(\"{t.Route}/search\", response_model=Page[{t.Schema}])");
+        Line($"@router.get(\"{t.Route}/search\", response_model=Page[{t.Schema}]{readDepends})");
         Line("def search(");
         Line("    session: Session = Depends(get_session),");
         if (userParameter.Length > 0)
@@ -249,7 +266,7 @@
     }
 
     Line();
-    Line($"@router.get(\"{t.Route}/{{id}}\", response_model={t.Schema})");
+    Line($"@router.get(\"{t.Route}/{{id}}\", response_model={t.Schema}{readDepends})");
     Line($"def get_by_id(id: {keyType}, session: Session = Depends(get_session){userParameter}):");
     Line($"    row = session.get({t.Class}, id)");
     Line("    if row is None:");
@@ -259,7 +276,7 @@
     Line("    return row");
     Line();
     Line();
-    Line($"@router.post(\"{t.Route}\", response_model={t.Schema}, status_code={HttpStatus.Created})");
+    Line($"@router.post(\"{t.Route}\", response_model={t.Schema}, status_code={HttpStatus.Created}{writeDepends})");
     Line($"def create(body: {t.Schema}, response: Response, session: Session = Depends(get_session){userParameter}):");
     if (validate)
         Line("    validate(body)");
@@ -306,7 +323,7 @@
     Line("    return row");
     Line();
     Line();
-    Line($"@router.put(\"{t.Route}/{{id}}\", response_model={t.Schema})");
+    Line($"@router.put(\"{t.Route}/{{id}}\", response_model={t.Schema}{writeDepends})");
     Line($"def update(id: {keyType}, body: {t.Schema}, session: Session = Depends(get_session){userParameter}):");
     Line($"    if body.{key} != id:");
     Line($"        raise ApiError({HttpStatus.BadRequest}, \"The id in the URL and the id in the body differ.\")");
@@ -336,7 +353,7 @@
     Line("    return row");
     Line();
     Line();
-    Line($"@router.delete(\"{t.Route}/{{id}}\")");
+    Line($"@router.delete(\"{t.Route}/{{id}}\"{writeDepends})");
     Line($"def delete(id: {keyType}, session: Session = Depends(get_session){userParameter}):");
     Line($"    row = session.get({t.Class}, id)");
     Line("    if row is None:");
@@ -357,7 +374,7 @@
     {
         Line();
         Line();
-        Line($"@router.post(\"{t.Route}/{{id}}/clone\", response_model={t.Schema}, status_code={HttpStatus.Created})");
+        Line($"@router.post(\"{t.Route}/{{id}}/clone\", response_model={t.Schema}, status_code={HttpStatus.Created}{writeDepends})");
         Line($"def clone_row(id: {keyType}, response: Response, session: Session = Depends(get_session){userParameter}):");
         Line("    \"\"\"Copies a row into a new one and returns it. A unique text column gets a free value so the copy can be saved.\"\"\"");
         Line($"    source = session.get({t.Class}, id)");
