@@ -8,7 +8,7 @@ The Python stack: a **FastAPI** API over the database, with **SQLAlchemy 2.0** m
 | `PY_Schema` | `app/schemas/<table>.py`: the Pydantic class a body and a response are: camelCase JSON names, a decimal as a JSON number, defaults for nullable and database-written columns, `columns()` (what an insert writes) and `changes()` (what an update sets) |
 | `PY_Routes` | `app/routes/<table>.py`: the FastAPI router |
 | `PY_Validate` | `app/validation/<table>.py`: the schema's rules (`ApiValidation=true`; also `PlanAlso`) |
-| `PY_Mod` | `app/models/__init__.py`, `app/schemas/__init__.py`, `app/routes/__init__.py` (`routers`) and, with validation, `app/validation/__init__.py` |
+| `PY_Mod` | `app/models/__init__.py`, `app/schemas/__init__.py`, `app/routes/__init__.py` (`routers`, with the dashboard's router when `Dashboard=true`) and, with validation, `app/validation/__init__.py` |
 
 **Routes (per table, as the other stacks):** `GET /api/<plural>` (all rows, by key), `GET /{id}`, `POST` (201, a `Location` header and the row), `PUT /{id}` (400 when the id in the body differs, 404 for no such row), `DELETE /{id}` (200, 404, or 400 when the row is in use), `POST /{id}/clone` (a cloneable table: dates reset, audit and soft-delete columns cleared, a unique text value made free by `suggest_free`), `GET /lookup` (`[{ id, name, isActive }]` of every row ordered by name, for the drop-downs and the "name of" columns of other screens; a table with a display column) and `GET /search` (a table with a search endpoint: a "contains" filter per searchable text column, `pageNumber`, `pageSize` up to 1000, `sortBy` over the sortable columns and `sortDir`, the best display column and then the key as the default order). The answer of a search is `{ items, page, pageSize, totalCount, totalPages }`.
 
@@ -23,7 +23,7 @@ Run it: `pip install -r requirements.txt`, then `uvicorn app.main:app --port <Ap
 - Tables with an API of their own and a single int, uniqueidentifier or text key (the tables the other stacks serve; the key is `int`, `UUID` or `str` by Core's `KeyType`); a name/active table, a composite key and an enum table get nothing. A text key is chosen by the person: a create with a blank key is 400 ("Key is required") and with one that exists is 409 ("Duplicate key"), and the Location header encodes it; a GUID posted as the empty GUID is given a new one.
 - A binary column, a PostgreSQL `money` column and a type CodeGenNew cannot map are left out of the model and the schema (a comment in the model lists them).
 - Sorting by a foreign key sorts by the key, not by the name the grid shows.
-- Not generated: tests, migrations (Alembic), authentication, a mirror of `ApiDocs`'s `openapi.yaml` (FastAPI serves its own at `/openapi.json`), navigation properties (relationships) and the dashboard, CSV and CQRS pieces of the .NET API.
+- Not generated: tests, migrations (Alembic), authentication, a mirror of `ApiDocs`'s `openapi.yaml` (FastAPI serves its own at `/openapi.json`), navigation properties (relationships) and the CSV and CQRS pieces of the .NET API. The dashboard is `PY_Dashboard`.
 - SQLite stores a decimal as a float, so SQLAlchemy warns about a `Numeric` column there.
 
 ## Checked

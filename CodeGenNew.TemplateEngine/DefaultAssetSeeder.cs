@@ -98,6 +98,7 @@ public static class DefaultAssetSeeder
         "API_UserDirectory_v1.tt", "API_UserDirectory_v1.tt.config",
         "MD_Postman_v1.tt", "MD_Postman_v1.tt.config",
         "MD_Bruno_v1.tt", "MD_Bruno_v1.tt.config",
+        "PY_Dashboard_v1.tt", "PY_Dashboard_v1.tt.config",
         "PY_Model_v1.tt", "PY_Model_v1.tt.config",
         "PY_Schema_v1.tt", "PY_Schema_v1.tt.config",
         "PY_Routes_v1.tt", "PY_Routes_v1.tt.config",
