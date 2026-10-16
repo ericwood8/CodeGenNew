@@ -39,7 +39,7 @@ public sealed class FormModel
         Pages = FormPages.For(Columns);
         GridColumns = Core.GridColumns.For(Columns);
         SortableColumns = GridColumns.Where(SearchSort.IsSortable).ToList();
-        SearchFields = table.SearchableColumns.Select(c => new SearchField(c, c.Name, TemplateHelpers.LowerFirst(c.Name), Labels.Column(c.Name))).ToList();
+        SearchFields = table.SearchableColumns.Select(c => new SearchField(c, c.Name, TemplateHelpers.LowerFirst(c.Name), GridCaption.For(c, Labels.Field(c)))).ToList();
         DateColumns = Columns.Where(c => TemplateHelpers.IsDate(c) && !c.IsSystemStampColumn && !IsGuardStamp(c)).ToList();
         NewRowTypeScript = NewRowMembers(table, TextKey, KeyColumn, KeyType);
     }

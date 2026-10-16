@@ -152,7 +152,7 @@
         H("<div>");
         H("    <!-- Heading -->");
         H($"    <h1>{title.Pluralize()}</h1>");
-        H($"    <button{writeOnly} (click)=\"add()\" class=\"btn\">Add New {title}</button>");
+        H($"    <button{writeOnly} (click)=\"add()\" class=\"btn\">Add New</button>");
         // The OData screen has the filter row under the headers (a control per column, Search and Clear in its last cell); only the one box of the Search list protocol stays above the grid.
         if (canSearch && (!odata || Project.ListSearchProtocol))
         {

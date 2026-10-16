@@ -156,7 +156,7 @@
         L($"<PageTitle>{title.Pluralize()}</PageTitle>");
         L();
         L($"<h1>{title.Pluralize()}</h1>");
-        L(Gate("", "<button type=\"button\" @onclick=\"Add\">Add New §N</button>"));
+        L(Gate("", "<button type=\"button\" @onclick=\"Add\">Add New</button>"));
         // the OData page has the filter row under the headers in place of the search boxes
         if (searchFields.Count > 0 && !odata)
         {

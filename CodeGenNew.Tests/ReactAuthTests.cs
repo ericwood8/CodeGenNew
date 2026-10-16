@@ -99,7 +99,7 @@ public class ReactAuthTests
         Expect.Contains(page, "import { useAuth } from '../api/auth';");
         Expect.Contains(page, "const { hasRole } = useAuth();");
         Expect.Contains(page, "const canWrite = hasRole(['Administrator', 'Manager']);");
-        Expect.Contains(page, "{canWrite && <button type=\"button\" onClick={add}>Add New Holiday</button>}");
+        Expect.Contains(page, "{canWrite && <button type=\"button\" onClick={add}>Add New</button>}");
         Expect.Contains(page, "{canWrite && <button type=\"button\" onClick={() => edit(holiday)}>Edit</button>}");
         Expect.Contains(page, "{canWrite && <button type=\"button\" onClick={() => void clone(holiday.holidayId!)}>Clone</button>}");
         Expect.Contains(page, "{canWrite && <button type=\"button\" onClick={() => void remove(holiday.holidayId!)}>Delete</button>}");
@@ -118,7 +118,7 @@ public class ReactAuthTests
 
         string detail = await Run("TSX_DetailMasterPage_v1.tt", Sample.TimeSheetWithEmployeeAndDetail(), Auth, Api, ("WriteRoles", "Manager"));
         Expect.Contains(detail, "const canWrite = hasRole(['Administrator', 'Manager']);");
-        Expect.Contains(detail, "{canWrite && <button type=\"button\" onClick={add}>Add New Time Sheet</button>}");
+        Expect.Contains(detail, "{canWrite && <button type=\"button\" onClick={add}>Add New</button>}");
     }
 
     [TestMethod]

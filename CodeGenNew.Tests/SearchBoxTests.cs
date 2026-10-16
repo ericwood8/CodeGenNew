@@ -154,4 +154,27 @@ public class SearchBoxTests
         string byColumn = await Render("TSX_Page_v1.tt", table, Project(), "HolidayPage.tsx");
         Expect.Contains(byColumn, "placeholder=\"Search by Name\"");
     }
+
+    [TestMethod]
+    public async Task A_search_hint_reads_like_the_grid_heading_and_the_add_button_has_no_table_name()
+    {
+        var table = Sample.Table("Customer",
+        [
+            Sample.Column("CustomerId", System.Data.SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("AccountNumber", System.Data.SqlDbType.NVarChar, characters: 20, ordinal: 2),
+            Sample.Column("CustomerName", System.Data.SqlDbType.NVarChar, characters: 50, ordinal: 3)
+        ]);
+
+        string react = await Render("TSX_Page_v1.tt", table, Project(), "CustomerPage.tsx");
+        string angular = await Render("TS_Component_v1.tt", table, Project(), "customer.component.html");
+
+        foreach (string page in new[] { react, angular })
+        {
+            Expect.Contains(page, "placeholder=\"Search by Account #\"");
+            Expect.Contains(page, "placeholder=\"Search by Customer\"");
+            Expect.DoesNotContain(page, "Search by Account Number");
+            Expect.Contains(page, ">Add New</button>");
+            Expect.DoesNotContain(page, "Add New Customer");
+        }
+    }
 }

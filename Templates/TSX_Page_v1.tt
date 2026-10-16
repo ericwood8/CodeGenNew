@@ -531,7 +531,7 @@
         T("  return (");
         T("    <div className=\"rail\">");
         T($"      <h1>{title.Pluralize()}</h1>");
-        T("      " + Gate("<button type=\"button\" onClick={add}>Add New " + title + "</button>"));
+        T("      " + Gate("<button type=\"button\" onClick={add}>Add New</button>"));
         if (nameActive)
         {
             T();
@@ -917,14 +917,14 @@
             S("  it('shows Add New to a role that may write', async () => {");
             S($"    setSession({{ token: 'abc', user: {{ name: 'Pat', role: '{allowed}' }} }});");
             S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
-            S($"    expect(await screen.findByText('Add New {title}')).toBeInTheDocument();");
+            S($"    expect(await screen.findByText('Add New')).toBeInTheDocument();");
             S("  });");
             S();
             S("  it('hides Add New from a role that may not write', async () => {");
             S("    setSession({ token: 'abc', user: { name: 'Pat', role: 'NoSuchRole' } });");
             S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
             S($"    await screen.findByText('{title.Pluralize()}');");
-            S($"    expect(screen.queryByText('Add New {title}')).toBeNull();");
+            S($"    expect(screen.queryByText('Add New')).toBeNull();");
             S("  });");
         }
         if (form.Guards.Count > 0 && !nameActive)
@@ -965,7 +965,7 @@
             S("    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };");
             S($"    vi.spyOn({apiVar}, '{(odata ? "queryPage" : "getPage")}').mockResolvedValue({{ items: [{sampleRow}], page: 1, pageSize: {pageSize}, totalCount: 1, totalPages: 1 }});");
             S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
-            S($"    fireEvent.click(await screen.findByText('Add New {title}'));");
+            S($"    fireEvent.click(await screen.findByText('Add New'));");
             S($"    expect(await screen.findByText('Add {title}')).toBeInTheDocument();");
             S($"    expect(screen.getByLabelText('{Labels.Field(keyColumn)}')).not.toHaveAttribute('readonly');");
             S("    fireEvent.click(screen.getByText('Cancel'));");

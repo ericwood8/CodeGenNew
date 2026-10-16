@@ -1790,7 +1790,7 @@ public class TemplateRenderingTests
         Expect.Contains(tsx, "const [holidays, setHolidays] = useState<Holiday[]>([]);");
         Expect.Contains(tsx, "useEffect(() => {");
         Expect.Contains(tsx, "<h1>Holidays</h1>");
-        Expect.Contains(tsx, "<button type=\"button\" onClick={add}>Add New Holiday</button>");
+        Expect.Contains(tsx, "<button type=\"button\" onClick={add}>Add New</button>");
         Expect.Contains(tsx, "placeholder=\"Search by Name\""); // Holiday has a text Name column
         Expect.Contains(tsx, "{error && !selectedRow && <p>{error}</p>}");   // the dialog shows the error itself while it is open
         Expect.Contains(tsx, "{error && <p role=\"alert\">{error}</p>}");

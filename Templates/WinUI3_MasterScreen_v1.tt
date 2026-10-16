@@ -73,7 +73,7 @@
         // table with no searchable column - canSearch below gates the search bar UI specifically;
         // pagination itself is unconditional (see the header comment's 2026-09-28 update).
         var searchFields = Model.SearchableColumns
-            .Select(c => new { Field = TemplateHelpers.LowerFirst(c.Name) + "Filter", Prop = c.Name + "Filter", ParamName = TemplateHelpers.LowerFirst(c.Name), Label = Labels.Column(c.Name) })
+            .Select(c => new { Field = TemplateHelpers.LowerFirst(c.Name) + "Filter", Prop = c.Name + "Filter", ParamName = TemplateHelpers.LowerFirst(c.Name), Label = GridCaption.For(c, Labels.Column(c.Name)) })
             .ToList();
         bool canSearch = searchFields.Count > 0;
         int errorRow = canSearch ? 3 : 2;

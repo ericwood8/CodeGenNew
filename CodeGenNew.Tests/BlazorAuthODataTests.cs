@@ -121,7 +121,7 @@ public class BlazorAuthODataTests
         Expect.Contains(page, "@attribute [Authorize(Roles = \"Administrator,Hr\")]");
         Expect.Contains(page, "@inject AuthSession Session");
         Expect.Contains(page, "private bool CanWrite => Session.HasRole([\"Administrator\", \"Manager\"]);");
-        Expect.Contains(page, "@if (CanWrite)\n{\n    <button type=\"button\" @onclick=\"Add\">Add New Holiday</button>\n}");
+        Expect.Contains(page, "@if (CanWrite)\n{\n    <button type=\"button\" @onclick=\"Add\">Add New</button>\n}");
         Expect.Contains(page, "<button type=\"button\" @onclick=\"() => Edit(item)\">Edit</button>");
         Expect.Contains(page, "<button type=\"button\" @onclick=\"() => DeleteAsync(item)\">Delete</button>");
         Expect.Contains(page, "if (EditId is not null && CanWrite)");
