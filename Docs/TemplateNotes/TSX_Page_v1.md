@@ -131,3 +131,13 @@ With `Auth=true` and `WriteRoles` or `TableWriteRoles` for the table, Add New, E
 ## Guarded columns
 
 With `ApiAuth=true` and `GuardedColumns` naming a column of this table, the page asks `getGuards()` once when it opens (`GET <route>/guards`, `{ "ignoreBadStatus": true }`) and shows that column as its control only for a person who may change it; everyone else sees the value as text (Yes / No for a flag) with the reason ("Only a manager can change this."). The stamp columns (`stampBy`, `stampOn`) are text, never inputs, and say "not recorded" on a row from before they existed. The generated spec checks both forms. A table without a guard gets none of this code. Written the same way by `TSX_DetailMasterPage` and, as the OData form, by `TSX_ODataPage` (the guards come through the OData api module, which asks the table's REST route).
+
+## The Columns list
+
+The grid starts with the columns `GridColumns` picks and offers every column of the form in a **Columns** button above it (`ColumnPicker` in `components/gridColumns.tsx`, `TSX_GridColumns`): the key and a credential are never offered, a long-text column is offered but not shown at first, and the last shown column cannot be cleared. **Reset** puts the starting columns back. Which columns are offered and shown first is `ChosenGridColumns` in Core, the one rule the Angular and Blazor grids also read. A name / active list has no such button.
+
+- The choice is kept in the browser (`gridColumns:<grid>` in local storage, a list of column names) and read back by `loadColumns`: a name the table no longer has is dropped, the table's order wins, and a value that is not a list of names (or holds no column of the table) is ignored.
+- Every header, filter cell and cell is written as `{show('Name') && ...}`, so a hidden column draws nothing. A long or multi-line text cell shows its first 60 characters (`shortText`).
+- A sort on a column that is then hidden is dropped (`clearSort()` on a REST page, `keptSorts` on an OData page), and so is a filter typed for it (`onlyShown`).
+- **OData:** the page asks (`$select`) for the shown columns and the key, built from the choice at every read (`columnProperty`), and reads again when the choice changes. **REST:** rows are whole, so a column that is shown costs no call; the server sorts by every column that is not long text or binary (`SearchSort`), so a column the grid did not start with can sort too.
+- The parent lists of the form are read when the page opens, so a foreign key shown late needs no extra call (its name helper is written for every offered foreign key).

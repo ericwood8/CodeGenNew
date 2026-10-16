@@ -8,6 +8,12 @@ public static class GridSortStyles
         ".sort-menu {\n  position: fixed;\n  z-index: 10;\n  margin: 0;\n  padding: 4px;\n  list-style: none;\n  background: Canvas;\n  color: CanvasText;\n  border: 1px solid GrayText;\n  border-radius: 4px;\n}\n";
 }
 
+/// <summary> The style rule of the Columns list of an Angular grid (the check boxes in a wrapping row). The React and Blazor pages style the same element inline. </summary>
+public static class ColumnPickerStyles
+{
+    public const string Css = "\n.column-picker .column-list {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 4px 16px;\n  padding: 4px 0;\n}\n";
+}
+
 /// <summary> The styles only the OData screen needs: the number that says the place of a column in a several-column sort, and the filter row under the headers. </summary>
 public static class ODataGridStyles
 {

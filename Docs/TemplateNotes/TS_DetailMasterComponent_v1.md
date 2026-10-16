@@ -71,3 +71,13 @@ A column the system writes (`ColumnModel.IsSystemStampColumn`: CreateDate, Creat
 A required field (NOT NULL, other than a yes/no box and the stamps the system writes; `FormModel.IsRequired`) gets the native `required` attribute and, unless `RequiredMarks=false`, a red `*` written after its caption: `<span aria-hidden="true" style=...>*</span>`. Screen readers skip the mark because the field itself says it is required. There is no legend line. Save is not disabled; the browser refuses an incomplete submit as before.
 
 The caption of an editable child column carries the same mark (in the column header of a table, over the field of a block).
+
+## The Columns list
+
+The grid starts with the columns `GridColumns` picks and offers every column of the form in a **Columns** button above it (a native `<details>` of check boxes and a **Reset**): the key and a credential are never offered, a long-text column is offered but not shown at first, and the last shown column cannot be cleared. Which columns are offered and shown first is `ChosenGridColumns` in Core, the one rule the React and Blazor grids also read. A name / active list has no such button.
+
+- The screen holds a `GridColumns` (`grid-columns.ts`, `TS_GridColumns`): the columns the table offers, then the ones the grid starts with, and the person's choice kept in the browser (`gridColumns:<grid>` in local storage). Its `sortable` and `properties` arrays change in place, so the screen's `sortableColumns` and (OData) `selectColumns` are those arrays and the base classes need no change.
+- Every header, filter cell and cell carries `*ngIf="columns.has('Name')"`, so a hidden column draws nothing. A long or multi-line text cell shows its first 60 characters (`cut`).
+- A sort on a column that is then hidden is dropped (`clearSort()` on a REST screen; the saved sorts on an OData screen), and so is a filter typed for it.
+- **OData:** the page asks (`$select`) for the shown columns and the key and reads again when the choice changes. **REST:** rows are whole, so a column that is shown costs no call; the server sorts by every column that is not long text or binary (`SearchSort`), so a column the grid did not start with can sort too.
+- The parent lists of the form are read when the screen opens, so a foreign key shown late needs no extra call.

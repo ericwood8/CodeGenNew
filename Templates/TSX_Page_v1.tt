@@ -29,6 +29,7 @@
     // Plain semantic HTML with no invented class names; styling comes from the app's own stylesheet. Does not write a detail grid (TSX_DetailMasterPage does).
     // TSX_ODataPage is this template run with Variant=OData (its config says Base=TSX_Page_v1.tt): the same page over the table's OData api module (TSX_ODataApi) instead of the REST one, with several sorts
     // (Shift-click adds a column), a filter row under the headers and a grid that reads only the columns it shows; the REST page is not touched.
+    // A Columns button above the grid shows or hides each column of the table (ChosenGridColumns in Core; the helpers are components/gridColumns.tsx, TSX_GridColumns): the choice is kept in the browser, and an OData page asks only for the shown columns.
     // Full notes: Docs/TemplateNotes/TSX_Page_v1.md
     // ==========================================================================================
 
@@ -69,7 +70,12 @@
         string apiVar = odata ? ReactNames.ODataApiVar(Model.TableName) : ReactNames.ApiVar(Model.TableName);
         string apiFile = odata ? ReactNames.ODataApiFile(Model.TableName) : ReactNames.ApiFile(Model.TableName);
         string gridId = odata ? stem + "-odata" : stem;   // the grid's saved sort is kept under this key
-        var odataFilters = odata ? ODataFilterFields.For(form) : null;   // the filter row's control of each grid column (null: none)
+        // The Columns list: the grid starts with the columns GridColumns picks and offers every column of the form; a name / active list is short and has no such list.
+        var chosen = ChosenGridColumns.For(form);
+        bool chooseColumns = !nameActive;
+        var columnList = chooseColumns ? chosen.Offered : chosen.Initial;   // the columns the grid has a header and a cell for, in order; a hidden one is not drawn
+        var odataFilters = odata ? columnList.Select(c => c.Filter).ToList() : null;   // the filter row's control of each of those columns (null: none)
+        string Shown(ColumnModel c, string jsx) => chooseColumns ? "{show('" + c.Name + "') && " + jsx + "}" : jsx;   // JSX that is drawn only while its column is chosen
         string variable = form.Variable;        // holiday
         string listName = variable.Pluralize();        // holidays
         string setList = ReactNames.SetList(listName);  // setHolidays
@@ -94,7 +100,7 @@
         var parents = form.Parents;
 
         var gridColumns = form.GridColumns;
-        IReadOnlyList<ColumnModel> sortableColumns = nameActive ? [] : form.SortableColumns;
+        IReadOnlyList<ColumnModel> sortableColumns = nameActive ? [] : columnList.Where(c => c.Sortable).Select(c => c.Column).ToList();
         bool canClone = form.CanClone;
         var formPages = form.Pages;
         bool tabbed = form.IsTabbed;
@@ -129,6 +135,11 @@
         {
             T($"import {{ GridMenu, SortHeader, loadSort, nextSort, saveSort }} from '../{componentsFolder}/gridSort';");
             T($"import type {{ GridSort }} from '../{componentsFolder}/gridSort';");
+        }
+        if (chooseColumns)
+        {
+            T($"import {{ ColumnPicker, loadColumns, {(odata ? "onlyShown, " : "")}saveColumns{(columnList.Any(c => c.Cut) ? ", shortText" : "")} }} from '../{componentsFolder}/gridColumns';");
+            T($"import type {{ GridColumn }} from '../{componentsFolder}/gridColumns';");
         }
         foreach (var p in parents.Where(p => !p.IsSelf))
         {
@@ -179,8 +190,11 @@
             }
             else
                 T("const filterFields: never[] = [];");
-            T($"const selectColumns = [{string.Join(", ", gridColumns.Select(c => "'" + JsonNames.Camel(c.Name) + "'"))}]; // the grid asks for these and the key; a row is read whole when it is opened");
+            T($"const columnProperty: Record<string, string> = {{ {string.Join(", ", columnList.Select(c => $"'{c.Name}': '{c.Property}'"))} }}; // the property of each column; the grid asks for the chosen ones and the key, and a row is read whole when it is opened");
         }
+        T($"const columnList: GridColumn[] = [{string.Join(", ", columnList.Select(c => $"{{ name: '{c.Name}', label: '{c.Label.Replace("\\", "\\\\").Replace("'", "\\'")}' }}"))}]; // the columns the Columns list offers");
+        T($"const initialColumns = [{string.Join(", ", columnList.Where(c => c.Initial).Select(c => "'" + c.Name + "'"))}]; // the columns the grid starts with");
+        T("const columnNames = columnList.map((column) => column.name);");
         }
         T();
         T($"export function {pageName}() {{");
@@ -220,11 +234,17 @@
         }
         else if (odata)
         {
-            T("  const [sorts, setSorts] = useState<GridSort[]>(() => loadSorts(gridKey, sortableColumns));");
+            T("  const [chosen, setChosen] = useState<string[]>(() => loadColumns(gridKey, columnNames, initialColumns)); // the columns shown; kept in the browser");
+            T("  const show = (name: string) => chosen.includes(name);");
+            T("  const [sorts, setSorts] = useState<GridSort[]>(() => loadSorts(gridKey, sortableColumns.filter((name) => chosen.includes(name))));");
             T("  const [columnFilters, setColumnFilters] = useState<Record<string, ColumnFilter>>({});");
         }
         else
-            T("  const [sort, setSort] = useState<GridSort | null>(() => loadSort(gridKey, sortableColumns));");
+        {
+            T("  const [chosen, setChosen] = useState<string[]>(() => loadColumns(gridKey, columnNames, initialColumns)); // the columns shown; kept in the browser");
+            T("  const show = (name: string) => chosen.includes(name);");
+            T("  const [sort, setSort] = useState<GridSort | null>(() => loadSort(gridKey, sortableColumns.filter((name) => chosen.includes(name))));");
+        }
         T("  // Opened from another page's grid (?edit=<id>&back=<that page>): open this row, and go back to that page when the form is saved or cancelled.");
         T("  const [searchParams] = useSearchParams();");
         T("  const navigate = useNavigate();");
@@ -243,14 +263,14 @@
         }
         else if (odata)
         {
-            T($"  const load = (targetPage: number = 1, over: {{ {(canSearch ? "filters?: typeof filters; " : "")}sorts?: GridSort[]; columnFilters?: Record<string, ColumnFilter>; size?: number }} = {{}}) => {{");
+            T($"  const load = (targetPage: number = 1, over: {{ {(canSearch ? "filters?: typeof filters; " : "")}sorts?: GridSort[]; columnFilters?: Record<string, ColumnFilter>; columns?: string[]; size?: number }} = {{}}) => {{");
             T($"    {apiVar}.queryPage({{");
             T("      pageNumber: targetPage,");
             T("      pageSize: over.size ?? pageSize,");
             if (canSearch) T("      filters: over.filters ?? filters,");
             T("      sorts: over.sorts ?? sorts,");
             T("      conditions: conditionsOf(filterFields, over.columnFilters ?? columnFilters),");
-            T("      select: selectColumns,");
+            T("      select: (over.columns ?? chosen).map((name) => columnProperty[name]),");
             T("    }).then((result) => {");
             T("      // the last row of the last page was deleted, or rows were removed elsewhere: the page asked for is past the end, so show the last page there is");
             T("      if (result.items.length === 0 && result.totalCount > 0 && targetPage > 1) { load(result.totalPages, over); return; }");
@@ -430,6 +450,20 @@
             T($"  const open = ({variable}: {baseName}) => {{");
             T($"    {apiVar}.getById({variable}.{keyProp}!).then(edit).catch(() => setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'));");
             T("  };");
+            T();
+            T("  // Showing or hiding a column: the choice is kept, a sort or a filter on a column that is no longer shown is dropped, and the page is read again with the columns that are shown.");
+            T("  const chooseColumns = (next: string[]) => {");
+            T("    setChosen(next);");
+            T("    saveColumns(gridKey, next, initialColumns);");
+            T("    const keptSorts = sorts.filter((s) => next.includes(s.column));");
+            T("    if (keptSorts.length !== sorts.length) {");
+            T("      setSorts(keptSorts);");
+            T("      saveSorts(gridKey, keptSorts);");
+            T("    }");
+            T("    const keptFilters = onlyShown(columnFilters, next);");
+            T("    setColumnFilters(keptFilters);");
+            T("    load(page, { sorts: keptSorts, columnFilters: keptFilters, columns: next });");
+            T("  };");
         }
         else
         {
@@ -462,8 +496,18 @@
         T("    saveSort(gridKey, null);");
         T($"    load(1{(canSearch ? ", filters" : "")}, null);");
         T("  };");
+        if (chooseColumns)
+        {
+            T();
+            T("  // Showing or hiding a column: the choice is kept, and a sort on a column that is no longer shown is dropped. The rows are whole, so nothing else is read again.");
+            T("  const chooseColumns = (next: string[]) => {");
+            T("    setChosen(next);");
+            T("    saveColumns(gridKey, next, initialColumns);");
+            T("    if (sort && !next.includes(sort.column)) clearSort();");
+            T("  };");
         }
-        var parentsShownInGrid = gridColumns.Where(c => form.CellOf(c) == CellKind.Lookup).Select(c => form.ParentOf(c)!.NameMethod).ToHashSet();
+        }
+        var parentsShownInGrid = columnList.Select(c => c.Column).Where(c => form.CellOf(c) == CellKind.Lookup).Select(c => form.ParentOf(c)!.NameMethod).ToHashSet();
         foreach (var p in parents.Where(p => parentsShownInGrid.Contains(p.NameMethod)))
         {
             T();
@@ -520,6 +564,11 @@
             }
             T("      </div>");
         }
+        if (chooseColumns)
+        {
+            T();
+            T("      <ColumnPicker columns={columnList} chosen={chosen} initial={initialColumns} onChange={chooseColumns} />");
+        }
         T();
         T("      {error && !selectedRow && <p>{error}</p>}"); // while the dialog is open the error shows inside it
         T();
@@ -527,14 +576,17 @@
         T("      <table>");
         T("        <thead>");
         T("          <tr>");
-        foreach (var c in gridColumns)
+        foreach (var column in columnList)
         {
+            var c = column.Column;
+            string header;
             if (sortableColumns.Contains(c) && odata)
-                T($"            <ODataSortHeader label=\"{GridCaption.For(c, Labels.Field(c))}\" column=\"{c.Name}\" sorts={{sorts}} onSort={{sortBy}} />");
+                header = $"<ODataSortHeader label=\"{column.Caption}\" column=\"{c.Name}\" sorts={{sorts}} onSort={{sortBy}} />";
             else if (sortableColumns.Contains(c))
-                T($"            <SortHeader label=\"{GridCaption.For(c, Labels.Field(c))}\" column=\"{c.Name}\" sort={{sort}} onSort={{sortBy}} />");
+                header = $"<SortHeader label=\"{column.Caption}\" column=\"{c.Name}\" sort={{sort}} onSort={{sortBy}} />";
             else
-                T($"            <th>{GridCaption.For(c, Labels.Field(c))}</th>");
+                header = $"<th>{column.Caption}</th>";
+            T("            " + Shown(c, header));
         }
         T("            <th>Actions</th>");
         T("          </tr>");
@@ -543,19 +595,19 @@
             // the filter row: one control per column by its kind, an "empty" check box for a column that can be empty, Search and Clear at the end
             T("          <tr className=\"filter-row\">");
             int fieldIndex = 0;
-            for (int i = 0; i < gridColumns.Count; i++)
+            for (int i = 0; i < columnList.Count; i++)
             {
-                var gc = gridColumns[i];
+                var gc = columnList[i].Column;
                 var f = odataFilters![i];
-                if (f is null) { T("            <td />"); continue; }
-                string label = Labels.Field(gc).Replace("\"", "&quot;");
+                if (f is null) { T("            " + Shown(gc, "<td />")); continue; }
+                string label = columnList[i].Label.Replace("\"", "&quot;");
                 string options = f.Kind switch
                 {
                     ODataFilterKind.Parent => $" options={{{ReactNames.ParentList(f.Parent!)}.map((p) => ({{ value: p.{f.Parent!.KeyJson}!, label: String(p.{f.Parent!.DisplayJson} ?? '') }}))}}",
                     ODataFilterKind.Choice => " options={[" + string.Join(", ", f.Choices.Select(choice => { string js = choice.Replace("\\", "\\\\").Replace("'", "\\'"); return $"{{ value: '{js}', label: '{js}' }}"; })) + "]}",
                     _ => ""
                 };
-                T($"            <FilterCell field={{filterFields[{fieldIndex}]}} label=\"{label}\" value={{columnFilters['{f.Name}'] ?? {{}}}} onChange={{(value) => setColumnFilters({{ ...columnFilters, '{f.Name}': value }})}} onSearch={{search}}{options} />");
+                T("            " + Shown(gc, $"<FilterCell field={{filterFields[{fieldIndex}]}} label=\"{label}\" value={{columnFilters['{f.Name}'] ?? {{}}}} onChange={{(value) => setColumnFilters({{ ...columnFilters, '{f.Name}': value }})}} onSearch={{search}}{options} />"));
                 fieldIndex++;
             }
             T("            <td>");
@@ -568,8 +620,9 @@
         T("        <tbody>");
         T($"          {{{(nameActive ? "visibleRows" : listName)}.map(({variable}) => (");
         T($"            <tr key={{{variable}.{keyProp}}}>");
-        foreach (var c in gridColumns)
+        foreach (var column in columnList)
         {
+            var c = column.Column;
             string prop = $"{variable}.{JsonNames.Camel(c.Name)}";
             var cellKind = form.CellOf(c);
             string cell;
@@ -579,8 +632,8 @@
             else if (cellKind == CellKind.Date) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 10)}}";
             else if (cellKind == CellKind.Money) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
             else if (cellKind == CellKind.Decimal) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toFixed(2)}}";
-            else cell = $"{{{prop}}}";
-            T($"              <td>{cell}</td>");
+            else cell = column.Cut ? $"{{shortText({prop})}}" : $"{{{prop}}}";
+            T("              " + Shown(c, $"<td>{cell}</td>"));
         }
         T("              <td>");
         T("                " + Gate($"<button type=\"button\" onClick={{() => {(odata && !nameActive ? "open" : "edit")}({variable})}}>Edit</button>"));
@@ -824,7 +877,15 @@
         // ================= test
         var test = new StringBuilder();
         void S(string s = "") => test.Append(s).Append('\n');
-        S(textKey || odata || nameActive || form.Guards.Count > 0 ? "import { fireEvent, render, screen } from '@testing-library/react';" : "import { render, screen } from '@testing-library/react';");
+        // the Columns list tests (further down) need a column whose caption and words are its own, so a test can tell its header and its check box from the others
+        bool Own(ChosenColumn c) => columnList.Count(other => other.Caption == c.Caption) == 1 && columnList.Count(other => other.Label == c.Label) == 1;
+        string Js(string text) => text.Replace("\\", "\\\\").Replace("'", "\\'");
+        bool initialCountOk = columnList.Count(c => c.Initial) >= 2;   // the last shown column cannot be cleared
+        var cleared = chooseColumns && initialCountOk ? columnList.FirstOrDefault(c => c.Initial && Own(c)) : null;
+        var ticked = chooseColumns ? columnList.FirstOrDefault(c => !c.Initial && Own(c)) : null;
+        var sortedColumn = chooseColumns && initialCountOk ? columnList.FirstOrDefault(c => c.Initial && c.Sortable && Own(c)) : null;
+        bool columnTests = cleared is not null || ticked is not null || sortedColumn is not null;
+        S(textKey || odata || nameActive || form.Guards.Count > 0 || columnTests ? "import { fireEvent, render, screen } from '@testing-library/react';" : "import { render, screen } from '@testing-library/react';");
         S("import { MemoryRouter } from 'react-router-dom';");
         S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
         S($"import {{ {pageName} }} from '../{pageName}';");
@@ -953,7 +1014,7 @@
                 S("    localStorage.clear();");
                 S("  });");
             }
-            if (odataFilters!.FirstOrDefault(f => f is { Kind: ODataFilterKind.Text }) is { } textFilter)
+            if (columnList.Where(c => c.Initial).Select(c => c.Filter).FirstOrDefault(f => f is { Kind: ODataFilterKind.Text }) is { } textFilter)
             {
                 string filterLabel = Labels.Field(gridColumns.First(c => c.Name == textFilter.Name));
                 S();
@@ -962,6 +1023,67 @@
                 S($"    fireEvent.change(await screen.findByLabelText('Filter by {filterLabel}'), {{ target: {{ value: 'ab' }} }});");
                 S("    fireEvent.click(screen.getByText('Search'));");
                 S($"    expect({apiVar}.queryPage).toHaveBeenLastCalledWith(expect.objectContaining({{ pageNumber: 1, conditions: [{{ kind: 'contains', property: '{textFilter.Property}', text: 'ab' }}] }}));");
+                S("  });");
+            }
+        }
+        if (chooseColumns)
+        {
+            // the Columns list: a column cleared leaves the grid (and the $select of an OData page), a column ticked joins it, a sort on a hidden column is dropped, Reset puts the starting columns back
+            string storageKey = "gridColumns:" + gridId;
+            string select(ChosenColumn c, bool has) => odata ? $"    expect({apiVar}.queryPage).toHaveBeenLastCalledWith(expect.objectContaining({{ select: expect.{(has ? "arrayContaining" : "not.arrayContaining")}(['{c.Property}']) }}));" : "";
+            void Headers()
+            {
+                S("    const headers = () => screen.getAllByRole('columnheader').map((header) => header.textContent ?? '');");
+            }
+            if (cleared is not null)
+            {
+                S();
+                S("  it('hides a column the person clears, keeps the choice and brings it back on Reset', async () => {");
+                S("    localStorage.clear();");
+                S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
+                S($"    await screen.findByText('{title.Pluralize()}');");
+                Headers();
+                S($"    expect(headers()).toContain('{Js(cleared.Caption)}');");
+                S($"    fireEvent.click(screen.getByLabelText('{Js(cleared.Label)}'));");
+                S($"    expect(headers()).not.toContain('{Js(cleared.Caption)}');");
+                S($"    expect(JSON.parse(localStorage.getItem('{storageKey}') ?? 'null')).not.toContain('{Js(cleared.Name)}');");
+                if (odata) S(select(cleared, false));
+                S("    fireEvent.click(screen.getByText('Reset'));");
+                S($"    expect(headers()).toContain('{Js(cleared.Caption)}');");
+                S($"    expect(localStorage.getItem('{storageKey}')).toBeNull();");
+                S("    localStorage.clear();");
+                S("  });");
+            }
+            if (ticked is not null)
+            {
+                S();
+                S("  it('shows a column the grid does not start with when the person ticks it', async () => {");
+                S("    localStorage.clear();");
+                S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
+                S($"    await screen.findByText('{title.Pluralize()}');");
+                Headers();
+                S($"    expect(headers()).not.toContain('{Js(ticked.Caption)}');");
+                S($"    fireEvent.click(screen.getByLabelText('{Js(ticked.Label)}'));");
+                S($"    expect(headers()).toContain('{Js(ticked.Caption)}');");
+                if (odata) S(select(ticked, true));
+                S("    localStorage.clear();");
+                S("  });");
+            }
+            if (sortedColumn is not null)
+            {
+                S();
+                S("  it('drops the sort of a column that is then hidden', async () => {");
+                S("    localStorage.clear();");
+                S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
+                S($"    fireEvent.click(await screen.findByRole('button', {{ name: '{Js(sortedColumn.Caption)}' }}));");
+                S(odata
+                    ? $"    expect({apiVar}.queryPage).toHaveBeenLastCalledWith(expect.objectContaining({{ sorts: [{{ column: '{sortedColumn.Name}', descending: false }}] }}));"
+                    : $"    expect({apiVar}.getPage).toHaveBeenLastCalledWith(1, {pageSize}, expect.anything(), {{ column: '{sortedColumn.Name}', descending: false }});");
+                S($"    fireEvent.click(screen.getByLabelText('{Js(sortedColumn.Label)}'));");
+                S(odata
+                    ? $"    expect({apiVar}.queryPage).toHaveBeenLastCalledWith(expect.objectContaining({{ sorts: [] }}));"
+                    : $"    expect({apiVar}.getPage).toHaveBeenLastCalledWith(1, {pageSize}, expect.anything(), null);");
+                S("    localStorage.clear();");
                 S("  });");
             }
         }

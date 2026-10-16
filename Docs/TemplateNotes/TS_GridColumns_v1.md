@@ -1,0 +1,8 @@
+# TS_GridColumns_v1
+
+`grid-columns.ts` and `grid-columns.spec.ts` (in `src/app`; the components import it as `'../../grid-columns'`): whole-database support code for the **Columns** list every Angular grid (REST and OData) has. One file for the whole project, written again on every run (a plain template of the Angular plan, like `TS_GridSort`).
+
+- `loadColumns`, `saveColumns`, `toggleColumn`, `cutText`: the same rules as `TSX_GridColumns` (`ChosenGridColumns` in Core): the saved choice under `gridColumns:<grid>` read back in the table's order with unknown names dropped and the starting columns for anything that is not a usable list; the choice forgotten when it is the starting columns again; the last shown column cannot be cleared; a long or multi-line text cut to 60 characters and three dots.
+- `GridColumns`: what a screen holds. It is made with the grid's key, the columns the table offers (`GridColumn`: name, words, property, whether the server sorts by it) and the starting columns. `chosen` is what is shown; `has(name)`, `isLast(name)`, `toggle(name)` and `reset()` change it and save it. `sortable` (the shown columns that sort the grid) and `properties` (the properties an OData page asks for with `$select`) are **single arrays that change in place**, so a screen hands them to its base class once (`readonly sortableColumns = this.columns.sortable`, `selectColumns = this.columns.properties`) and still sees the person's choice. That is why the screen's classes in `crud-screen.ts` and `odata-screen.ts` need no change: an older essentials file works with the new screens.
+
+Used by `TS_Component`, `TS_DetailMasterComponent` and their OData forms (`TS_ODataComponent`, `TS_ODataDetailMasterComponent`).

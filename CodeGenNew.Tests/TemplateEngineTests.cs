@@ -369,14 +369,14 @@ public class TemplateCatalogTests
         Assert.AreEqual(17, groups["SP"]);
         Assert.AreEqual(18, groups["API"]);
         Assert.AreEqual(23, groups["CS"]);
-        Assert.AreEqual(21, groups["TS"]);
+        Assert.AreEqual(22, groups["TS"]);
         Assert.AreEqual(10, groups["WinUI3"]);
         Assert.AreEqual(2, groups["FS"]);
         Assert.AreEqual(5, groups["MD"]);
-        Assert.AreEqual(19, groups["TSX"]);
+        Assert.AreEqual(20, groups["TSX"]);
         Assert.AreEqual(1, groups["PROTO"]);
         Assert.AreEqual(11, groups["RS"]);
-        Assert.AreEqual(13, groups["BLZ"]);
+        Assert.AreEqual(14, groups["BLZ"]);
         Assert.AreEqual(10, groups["PY"]);
         Assert.IsTrue(offered.All(t => !t.IsSuperseded));
     }

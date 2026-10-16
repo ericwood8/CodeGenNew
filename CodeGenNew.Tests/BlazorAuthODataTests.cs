@@ -198,7 +198,7 @@ public class BlazorAuthODataTests
         Expect.Contains(page, "@@@FILE Pages/HolidayODataPage.razor@@@");
         Expect.Contains(page, "@page \"/holiday-odata\"");
         Expect.Contains(page, "@inject HolidayODataClient Client");
-        Expect.Contains(page, "var result = await Client.QueryPageAsync(new ODataPageQuery(target, PageSize, null, sorts, applied, SelectColumns));");
+        Expect.Contains(page, "var result = await Client.QueryPageAsync(new ODataPageQuery(target, PageSize, null, sorts, applied, AllColumns.Where(c => Shown(c.Name)).Select(c => c.Property).ToList()));");
         Expect.Contains(page, "<tr class=\"filter-row\">");
         Expect.Contains(page, "private static readonly ODataFilterField[] FilterFields =");
         Expect.Contains(page, "@onclick='(e) => SortAsync(");
@@ -217,15 +217,16 @@ public class BlazorAuthODataTests
 
         Expect.Contains(page, ".sorts.holidayodatapage\";");
         Expect.Contains(page, "private static readonly string[] SortableColumns = [");
-        Expect.Contains(page, "private static readonly string[] SelectColumns = [");
-        Expect.Contains(page, "sorts = await SavedSorts.LoadAsync(Js, SortsKey, SortableColumns);");
+        Expect.Contains(page, "private static readonly GridColumn[] AllColumns =");
+        Expect.Contains(page, "chosen = await GridColumns.LoadAsync(Js, ColumnsKey, AllColumns.Select(c => c.Name).ToList(), InitialColumns);");
+        Expect.Contains(page, "sorts = await SavedSorts.LoadAsync(Js, SortsKey, SortableColumns.Where(Shown).ToList());");
         Expect.Contains(page, "await SavedSorts.SaveAsync(Js, SortsKey, sorts);");
         Expect.Contains(page, "@onclick=\"() => OpenAsync(item)\"");
         Expect.Contains(page, "Edit(await Client.GetAsync(item.");   // the slim row is read whole before the form opens it
 
         string rest = await Run("BLZ_Page_v1.tt", Sample.Holiday(), OData);
         Expect.DoesNotContain(rest, "SavedSorts");
-        Expect.DoesNotContain(rest, "SelectColumns");
+        Expect.DoesNotContain(rest, "ODataPageQuery");
         Expect.DoesNotContain(rest, "OpenAsync");
 
         string support = await Run("BLZ_EssentialOData_v1.tt", new object(), OData);

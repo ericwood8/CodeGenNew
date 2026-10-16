@@ -1,0 +1,93 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_GridColumns_v1.tt
+    // Generates: Services/GridColumns.cs   (point the output folder at the Blazor app's folder)
+    // The shared helpers of the Columns list every Blazor grid (REST and OData) has: GridColumn (a column the list offers), the saved choice of columns (browser local storage, one list of names per grid),
+    // the rule that reads it back (ChosenGridColumns.Resolve in Core), the tick-or-clear rule and the cut of a long text cell. One file for the whole project; every run writes it again.
+    // Full notes: Docs/TemplateNotes/BLZ_GridColumns_v1.md
+    string ns = BlazorNames.Namespace(Project);
+
+    Write("@@@FILE Services/GridColumns.cs@@@\n");
+#>
+using System.Text.Json;
+using Microsoft.JSInterop;
+
+namespace <#= ns #>.Services;
+
+/// <summary> A column the Columns list offers: its name (what the grid sorts by and the saved choice holds), the words the list shows, its property in the JSON and whether the server sorts by it. </summary>
+public sealed record GridColumn(string Name, string Label, string Property, bool Sortable);
+
+/// <summary> The columns of a grid that a person can show or hide, kept in the browser (localStorage) under a key of the grid. Storage that is blocked or holds something else is the same as nothing saved. </summary>
+public static class GridColumns
+{
+    /// <summary> A long or multi-line text shows this many characters in a grid cell (the rest is cut and ends in three dots). </summary>
+    public const int CutLength = <#= ChosenGridColumns.CutLength #>;
+
+    /// <summary> The columns a grid shows: the saved ones the table still offers (in the table's order), or the starting columns when nothing valid was saved. </summary>
+    public static async Task<List<string>> LoadAsync(IJSRuntime js, string key, IReadOnlyList<string> offered, IReadOnlyList<string> initial)
+    {
+        try
+        {
+            string? text = await js.InvokeAsync<string?>("localStorage.getItem", key);
+            return Parse(text, offered, initial);
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException)
+        {
+            return [.. initial];
+        }
+    }
+
+    /// <summary> The saved text as columns: those the table still offers, in the table's order; the starting columns for no text, a text that is not a list of names, or names none of which is a column any more. </summary>
+    public static List<string> Parse(string? text, IReadOnlyList<string> offered, IReadOnlyList<string> initial)
+    {
+        try
+        {
+            var saved = string.IsNullOrWhiteSpace(text) ? null : JsonSerializer.Deserialize<List<string>>(text);
+            if (saved is null)
+                return [.. initial];
+            var kept = offered.Where(name => saved.Contains(name)).ToList();
+            return kept.Count > 0 ? kept : [.. initial];
+        }
+        catch (JsonException)
+        {
+            return [.. initial];
+        }
+    }
+
+    /// <summary> Keeps the choice under the key, or forgets it when it is the starting columns again. </summary>
+    public static async Task SaveAsync(IJSRuntime js, string key, IReadOnlyList<string> chosen, IReadOnlyList<string> initial)
+    {
+        try
+        {
+            if (chosen.SequenceEqual(initial))
+                await js.InvokeVoidAsync("localStorage.removeItem", key);
+            else
+                await js.InvokeVoidAsync("localStorage.setItem", key, JsonSerializer.Serialize(chosen));
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException)
+        {
+            // storage unavailable: the choice just is not remembered
+        }
+    }
+
+    /// <summary> The choice after one column is ticked or cleared: the table's order is kept, and the last shown column cannot be cleared. </summary>
+    public static List<string> Toggle(IReadOnlyList<string> chosen, IReadOnlyList<string> offered, string name)
+    {
+        if (!offered.Contains(name))
+            return [.. chosen];
+        if (chosen.Contains(name))
+            return chosen.Count == 1 ? [.. chosen] : chosen.Where(n => n != name).ToList();
+        return offered.Where(n => n == name || chosen.Contains(n)).ToList();
+    }
+
+    /// <summary> A long or multi-line text as a grid cell shows it: the first characters, then three dots. </summary>
+    public static string Cut(string? text)
+    {
+        text ??= "";
+        return text.Length > CutLength ? text[..(CutLength - 3)] + "..." : text;
+    }
+}

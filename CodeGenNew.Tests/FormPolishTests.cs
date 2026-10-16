@@ -61,13 +61,19 @@ public class FormPolishTests
 
     [TestMethod]
     [DataRow("TSX_Page_v1.tt")]
-    public async Task A_parent_name_helper_is_written_only_when_the_grid_shows_that_parent(string template)
+    public async Task A_parent_name_helper_is_written_for_every_parent_the_grid_can_show(string template)
     {
         string shown = (await Run(template, WideWithParent(2), Project())).Single(f => f.Key.EndsWith("Page.tsx")).Value;
         Expect.Contains(shown, "const kindName = (id?: number): string");
         Expect.Contains(shown, "{kindName(");
 
-        string hidden = (await Run(template, WideWithParent(23), Project())).Single(f => f.Key.EndsWith("Page.tsx")).Value;
+        // the 23rd column is past the 18 the grid starts with, but the Columns list can show it, so its name helper is there
+        string late = (await Run(template, WideWithParent(23), Project())).Single(f => f.Key.EndsWith("Page.tsx")).Value;
+        Expect.Contains(late, "const kindName = (id?: number): string");
+        Expect.DoesNotContain(late.Split('\n').Single(line => line.StartsWith("const initialColumns = [")), "'KindId'");
+
+        // a parent the project hides is not a column of the screen at all
+        string hidden = (await Run(template, WideWithParent(23), Project(("HiddenParents", "Kind")))).Single(f => f.Key.EndsWith("Page.tsx")).Value;
         Expect.DoesNotContain(hidden, "const kindName");
         Expect.DoesNotContain(hidden, "{kindName(");
     }

@@ -243,7 +243,10 @@ public class CrudScreenTests
         // everything the base does is not repeated in the class
         foreach (string repeated in new[] { "submit(", "delete(", "cancel(", "onPageChange(", "sortBy(", "load()", "goBack", "@HostListener", "@ViewChild", "private showError" })
             Expect.DoesNotContain(ts, repeated);
-        Assert.IsLessThan(45, ts.Split('\n').Length, "a short class");
+        Expect.Contains(ts, "import { GridColumns } from '../../grid-columns';");
+        Expect.Contains(ts, "readonly columns = new GridColumns(this.gridKey, [");
+        Expect.Contains(ts, "readonly sortableColumns = this.columns.sortable;");
+        Assert.IsLessThan(65, ts.Split('\n').Length, "a short class: the list of columns the Columns button offers and its three small methods are the table's own");
     }
 
     [TestMethod]

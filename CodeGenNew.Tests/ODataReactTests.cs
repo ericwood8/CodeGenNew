@@ -94,9 +94,9 @@ public class ODataReactTests
         Expect.Contains(page, "const gridKey = 'holiday-odata';");
         Expect.Contains(page, "const filterFields: ColumnFilterField[] = [");
         Expect.Contains(page, "{ name: 'Date', property: 'date', kind: 'date', nullable: false },");
-        Expect.Contains(page, "const selectColumns = ['name', 'sY_IsoCountry_Alpha3Code', 'date', 'sY_DisplayId'];");
+        Expect.Contains(page, "const columnProperty: Record<string, string> = { 'Name': 'name', 'SY_IsoCountry_Alpha3Code': 'sY_IsoCountry_Alpha3Code', 'Date': 'date', 'SY_DisplayId': 'sY_DisplayId' };");
         Expect.Contains(page, "holidayODataApi.queryPage({");
-        Expect.Contains(page, "select: selectColumns,");
+        Expect.Contains(page, "select: (over.columns ?? chosen).map((name) => columnProperty[name]),");
         Expect.Contains(page, "const sortBy = (column: string, shift: boolean) => {");
         Expect.Contains(page, "<ODataSortHeader label=\"Name\" column=\"Name\" sorts={sorts} onSort={sortBy} />");
         Expect.Contains(page, "<tr className=\"filter-row\">");

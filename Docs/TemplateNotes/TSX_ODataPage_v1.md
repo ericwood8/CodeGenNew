@@ -8,7 +8,7 @@ What differs, and what the page has that the REST page does not:
 - the list is `GET /odata/<set>?$count=true&$top=&$skip=&$filter=&$orderby=&$select=`;
 - **several-column sort**: a click sorts by the column (again: flips it), a Shift-click adds it as the next sort (again: flips it, once more: takes it out); a column in a several-column sort shows its place in a badge; the sorts are kept in the browser;
 - **filter row** under the headers, a control per column by its kind (`ODataFilterFields` in Core, one rule for every stack): text, number and date ranges, yes/no, a drop-down of the parent's rows, a drop-down of the values the database lists, and an "empty" check box for a column that can be empty. Enter in a box searches; Search and Clear are the last cell. The one search box of `ListProtocol=Search` stays above the grid;
-- **slim grid**: the page reads the columns it shows and the key; Edit reads the row whole before the form opens;
+- **slim grid**: the page reads the columns it shows and the key (the person's choice in the Columns list, see `TSX_Page_v1.md`); Edit reads the row whole before the form opens;
 - a delete of a row in use answers 409 on the OData route (the page shows the same message as for the REST 400); other 409 answers show the API's own words;
 - Clone goes through the REST route.
 

@@ -2,7 +2,7 @@
 
 `Pages/<Table>Page.razor`: the Blazor counterpart of `TSX_Page`. The route is the screen's route (`ScreenNames.Route`), the same one `BLZ_Screens` puts in the menu.
 
-- **Grid:** the columns `ForGrid` picks (never a long text column), a header button that sorts for each sortable column (an arrow shows the direction), 20 rows a page with Previous / Next and a "Rows per page" box (10, 20, 50, 100), "Nothing found." when a loaded page has no rows, a page past the end (the last row of the last page was deleted) that falls back to the last page there is, Edit, Clone and Delete buttons per row.
+- **Grid:** the columns `ForGrid` picks (never a long text column at first; the Columns list can show one, cut short), a header button that sorts for each sortable column (an arrow shows the direction), 20 rows a page with Previous / Next and a "Rows per page" box (10, 20, 50, 100), "Nothing found." when a loaded page has no rows, a page past the end (the last row of the last page was deleted) that falls back to the last page there is, Edit, Clone and Delete buttons per row.
 - **Search:** a box per searchable column, Search and Clear; the sort is kept while paging and searching.
 - **Form:** a panel over the page with an `EditForm`. `InputText` (`InputTextArea` for a column of 100 characters or more), `InputNumber`, `InputDate`, `InputCheckbox`, an `InputSelect` of the parent's display column for a foreign key, and of the listed values for a column that has choices. A required column carries `required`. Add New starts date columns at today and yes / no columns at their default.
 - **Errors:** a failed load, save, delete or clone shows a sentence (`ApiException.Explain`); deleting a row that is in use says so.
@@ -34,3 +34,12 @@ A required field (NOT NULL, other than a yes/no box and the stamps the system wr
 ## Guarded columns
 
 With `ApiAuth=true` and `GuardedColumns` naming a column of this table, `OnInitializedAsync` calls `Client.GetGuardsAsync()` (`GET <route>/guards`) and the form shows that column as its input only for a person who may change it; everyone else sees the value as text (Yes / No for a flag) with the reason ("Only a manager can change this."). The stamp columns are text and say "not recorded" on a row from before they existed. The OData page asks through `<Table>ODataClient`, which reads the table's REST route. Without a guard the page has none of this code.
+
+## The Columns list
+
+The grid starts with the columns `GridColumns` picks and offers every column of the form in a **Columns** button above it (a native `<details>` of check boxes and a **Reset**): the key and a credential are never offered, a long-text column is offered but not shown at first, and the last shown column cannot be cleared. Which columns are offered and shown first is `ChosenGridColumns` in Core, the one rule the React and Angular grids also read.
+
+- The choice is kept in the browser (localStorage, `<project>.columns.<page>`, a JSON list of names) by `GridColumns` (`Services/GridColumns.cs`, `BLZ_GridColumns`): a name the table no longer has is dropped, the table's order wins, and a value that is not a list of names is ignored.
+- Every header, filter cell and cell is written as `@if (Shown("Name")) { ... }`, so a hidden column draws nothing. A long or multi-line text cell shows its first 60 characters (`GridColumns.Cut`).
+- A sort on a column that is then hidden is dropped, and so is a filter typed for it (the OData page reads again with what is left).
+- **OData:** the page asks (`$select`) for the shown columns and the key and reads again when the choice changes. **REST:** rows are whole, so a column that is shown costs no call; the server sorts by every column that is not long text or binary (`SearchSort`), so a column the grid did not start with can sort too.

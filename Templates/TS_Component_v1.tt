@@ -31,6 +31,7 @@
     // "active only" check box that narrow the list on the page, and no paging or sorting.
     // TS_ODataComponent is this template run with Variant=OData (its config says Base=TS_Component_v1.tt): the same screen with its own names (OData suffix, its own folder, selector and grid key)
     // over the table's OData service (TS_ODataService) instead of the REST one; the REST screen is not touched.
+    // A Columns button above the grid shows or hides each column of the table (ChosenGridColumns in Core; the helpers are grid-columns.ts, TS_GridColumns): the choice is kept in the browser, and an OData screen asks only for the shown columns.
     // Full notes: Docs/TemplateNotes/TS_Component_v1.md
     // ==========================================================================================
 
@@ -67,7 +68,12 @@
         string serviceFile = odata ? AngularNames.ODataServiceFile(Model.TableName) : AngularNames.ServiceFile(Model.TableName);
         // OData writes a date and time with a Z (the column has no zone: its wall-clock value is taken as UTC); the date pipe then shows it in UTC, so the day a column holds is the day the grid shows
         string dateZone = odata ? ":'UTC'" : "";
-        var odataFilters = odata && !form.IsNameActive ? ODataFilterFields.For(form) : null;   // the filter row's control of each grid column (null: none)
+        // The Columns list: the grid starts with the columns GridColumns picks and offers every column of the form; a name / active list is short and has no such list.
+        var chosen = ChosenGridColumns.For(form);
+        bool chooseColumns = !form.IsNameActive;
+        var columnList = chooseColumns ? chosen.Offered : chosen.Initial;   // the columns the grid has a header and a cell for, in order; a hidden one is not drawn
+        var odataFilters = odata && !form.IsNameActive ? columnList.Select(c => c.Filter).ToList() : null;   // the filter row's control of each of those columns (null: none)
+        string If(ColumnModel c) => chooseColumns ? $" *ngIf=\"columns.has('{c.Name}')\"" : "";   // the attribute that draws a cell only while its column is chosen
         string variable = form.Variable;        // holiday
         string keyProp = JsonNames.Camel(keyColumn.Name);        // holidayId
         string emptyKey = keyType.TypeScriptEmpty;     // "no key yet": the API assigns the real one (a text key is typed by the person, so a new row starts with '')
@@ -89,8 +95,7 @@
         var parents = form.Parents;
 
         bool UsesCurrencyBox() => shown.Any(form.IsMoneyInput);
-        var gridColumns = form.GridColumns;
-        IReadOnlyList<ColumnModel> sortableColumns = nameActive ? [] : form.SortableColumns;
+        IReadOnlyList<ColumnModel> sortableColumns = nameActive ? [] : columnList.Where(c => c.Sortable).Select(c => c.Column).ToList();
         bool canClone = form.CanClone;
         string rowsExpression = nameActive ? "visibleRows" : "rows";
         var formPages = form.Pages;
@@ -139,21 +144,34 @@
             H("        <button class=\"btn btn-outline-secondary\" type=\"button\" (click)=\"clearSearch()\"> Clear </button>");
             H("    </div>");
         }
+        if (chooseColumns)
+        {
+            H();
+            H("    <!-- Columns -->");
+            H("    <details class=\"column-picker\">");
+            H("        <summary>Columns</summary>");
+            H("        <div class=\"column-list\">");
+            H("            <label *ngFor=\"let column of columns.offered\"><input type=\"checkbox\" [checked]=\"columns.has(column.name)\" [disabled]=\"columns.isLast(column.name)\" (change)=\"toggleColumn(column.name)\" /> {{ column.label }}</label>");
+            H("            <button type=\"button\" class=\"btn btn-outline-secondary\" (click)=\"resetColumns()\">Reset</button>");
+            H("        </div>");
+            H("    </details>");
+        }
         H();
         H("    <!-- Grid -->");
         // A right-click on the grid opens a small menu with Clear sort; a click on a sortable header sorts by it (again: flips the direction).
         H(nameActive ? "    <table>" : "    <table (contextmenu)=\"openSortMenu($event)\">");
         H("        <thead>");
         H("            <tr>");
-        foreach (var c in gridColumns)
+        foreach (var column in columnList)
         {
+            var c = column.Column;
             if (sortableColumns.Contains(c) && odata)
                 // Shift-click adds the column to the sort; the number says its place when there is more than one
-                H($"                <th [attr.aria-sort]=\"ariaSort('{c.Name}')\"><button type=\"button\" class=\"sort-header\" title=\"Click to sort by {Labels.Field(c)}. Shift-click to add it to the sort.\" (click)=\"sortBy('{c.Name}', $event)\">{GridCaption.For(c, Labels.Field(c))}{{{{ sortMark('{c.Name}') }}}}<span class=\"sort-order\" *ngIf=\"sortOrder('{c.Name}')\">{{{{ sortOrder('{c.Name}') }}}}</span></button></th>");
+                H($"                <th{If(c)} [attr.aria-sort]=\"ariaSort('{c.Name}')\"><button type=\"button\" class=\"sort-header\" title=\"Click to sort by {Labels.Field(c)}. Shift-click to add it to the sort.\" (click)=\"sortBy('{c.Name}', $event)\">{GridCaption.For(c, Labels.Field(c))}{{{{ sortMark('{c.Name}') }}}}<span class=\"sort-order\" *ngIf=\"sortOrder('{c.Name}')\">{{{{ sortOrder('{c.Name}') }}}}</span></button></th>");
             else if (sortableColumns.Contains(c))
-                H($"                <th [attr.aria-sort]=\"ariaSort('{c.Name}')\"><button type=\"button\" class=\"sort-header\" (click)=\"sortBy('{c.Name}')\">{GridCaption.For(c, Labels.Field(c))}{{{{ sortMark('{c.Name}') }}}}</button></th>");
+                H($"                <th{If(c)} [attr.aria-sort]=\"ariaSort('{c.Name}')\"><button type=\"button\" class=\"sort-header\" (click)=\"sortBy('{c.Name}')\">{GridCaption.For(c, Labels.Field(c))}{{{{ sortMark('{c.Name}') }}}}</button></th>");
             else
-                H($"                <th>{GridCaption.For(c, Labels.Field(c))}</th>");
+                H($"                <th{If(c)}>{column.Caption}</th>");
         }
         H("                <th>Actions</th>");
         H("            </tr>");
@@ -168,11 +186,11 @@
         {
             // the filter row: one control per column by its kind, an "empty" check box for a column that can be empty, Search and Clear at the end
             H("            <tr class=\"filter-row\">");
-            for (int i = 0; i < gridColumns.Count; i++)
+            for (int i = 0; i < columnList.Count; i++)
             {
-                var c = gridColumns[i];
+                var c = columnList[i].Column;
                 var f = odataFilters![i];
-                if (f is null) { H("                <td></td>"); continue; }
+                if (f is null) { H($"                <td{If(c)}></td>"); continue; }
                 string typed = $"columnFilters['{f.Name}']";
                 string label = Labels.Field(c).Replace("\"", "&quot;");
                 string control = f.Kind switch
@@ -186,7 +204,7 @@
                 };
                 string empty = f.Nullable && f.Kind != ODataFilterKind.Boolean
                     ? $"<label class=\"empty-toggle\" title=\"Only the rows where {label} is empty\"><input type=\"checkbox\" [(ngModel)]=\"{typed}.empty\" /> empty</label>" : "";
-                H($"                <td>{control}{empty}</td>");
+                H($"                <td{If(c)}>{control}{empty}</td>");
             }
             H("                <td class=\"filter-actions\">");
             H("                    <button class=\"btn btn-outline-secondary\" type=\"button\" title=\"Show the rows that match the filters\" (click)=\"search()\">Search</button>");
@@ -197,8 +215,9 @@
         H("        </thead>");
         H("        <tbody>");
         H($"            <tr *ngFor=\"let {variable} of {rowsExpression}\">");
-        foreach (var c in gridColumns)
+        foreach (var column in columnList)
         {
+            var c = column.Column;
             string prop = $"{variable}.{JsonNames.Camel(c.Name)}";
             var cellKind = form.CellOf(c);
             string cell;
@@ -207,8 +226,8 @@
             else if (cellKind == CellKind.Date) cell = $"{{{{ {prop} | date:'MM/dd/yyyy'{dateZone} }}}}";
             else if (cellKind == CellKind.Money) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{Math.Min(2, d)}-{d}' }}}}"; }
             else if (cellKind == CellKind.Decimal) cell = $"{{{{ {prop} | number:'1.2-2' }}}}";
-            else cell = $"{{{{ {prop} }}}}";
-            H($"                <td>{cell}</td>");
+            else cell = column.Cut ? $"{{{{ cut({prop}) }}}}" : $"{{{{ {prop} }}}}";
+            H($"                <td{If(c)}>{cell}</td>");
         }
         H("                <td>");
         H($"                    <button{writeOnly} (click)=\"{(odata && !nameActive ? "open" : "edit")}({variable})\" class=\"btn-action\">Edit</button>");
@@ -484,7 +503,53 @@
             "    expect(component.visibleRows.length).toBe(3);",
             "  });",
         };
-        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + "\n});\n");
+        // the Columns list: a column cleared leaves the grid (and the properties an OData page asks for), a column ticked joins it, a sort on a hidden column is dropped, Reset puts the starting columns back
+        var columnSpecs = new List<string>();
+        if (chooseColumns)
+        {
+            string storageKey = "gridColumns:" + screenStem;
+            var clearedColumn = columnList.Count(c => c.Initial) >= 2 ? columnList.FirstOrDefault(c => c.Initial) : null;   // the last shown column cannot be cleared
+            var tickedColumn = columnList.FirstOrDefault(c => !c.Initial);
+            var sortedColumn = columnList.Count(c => c.Initial) >= 2 ? columnList.FirstOrDefault(c => c.Initial && c.Sortable) : null;
+            if (clearedColumn is not null)
+            {
+                columnSpecs.Add("");
+                columnSpecs.Add("  it('hides a column the person clears, keeps the choice and brings it back on Reset', () => {");
+                columnSpecs.Add($"    expect(component.columns.has('{clearedColumn.Name}')).toBe(true);");
+                columnSpecs.Add($"    component.toggleColumn('{clearedColumn.Name}');");
+                columnSpecs.Add($"    expect(component.columns.has('{clearedColumn.Name}')).toBe(false);");
+                if (clearedColumn.Sortable) columnSpecs.Add($"    expect(component.sortableColumns).not.toContain('{clearedColumn.Name}');");
+                if (odata) columnSpecs.Add($"    expect(component.columns.properties).not.toContain('{clearedColumn.Property}');");
+                columnSpecs.Add($"    expect(JSON.parse(localStorage.getItem('{storageKey}') ?? 'null')).not.toContain('{clearedColumn.Name}');");
+                columnSpecs.Add("    component.resetColumns();");
+                columnSpecs.Add($"    expect(component.columns.has('{clearedColumn.Name}')).toBe(true);");
+                columnSpecs.Add($"    expect(localStorage.getItem('{storageKey}')).toBeNull();");
+                columnSpecs.Add("  });");
+            }
+            if (tickedColumn is not null)
+            {
+                columnSpecs.Add("");
+                columnSpecs.Add("  it('shows a column the grid does not start with when the person ticks it', () => {");
+                columnSpecs.Add($"    expect(component.columns.has('{tickedColumn.Name}')).toBe(false);");
+                columnSpecs.Add($"    component.toggleColumn('{tickedColumn.Name}');");
+                columnSpecs.Add($"    expect(component.columns.has('{tickedColumn.Name}')).toBe(true);");
+                if (odata) columnSpecs.Add($"    expect(component.columns.properties).toContain('{tickedColumn.Property}');");
+                columnSpecs.Add("    component.resetColumns();");
+                columnSpecs.Add("  });");
+            }
+            if (sortedColumn is not null)
+            {
+                columnSpecs.Add("");
+                columnSpecs.Add("  it('drops the sort of a column that is then hidden', () => {");
+                columnSpecs.Add($"    component.sortBy('{sortedColumn.Name}');");
+                columnSpecs.Add($"    expect(component.sort).toEqual({{ column: '{sortedColumn.Name}', descending: false }});");
+                columnSpecs.Add($"    component.toggleColumn('{sortedColumn.Name}');");
+                columnSpecs.Add("    expect(component.sort).toBeNull();");
+                columnSpecs.Add("    component.resetColumns();");
+                columnSpecs.Add("  });");
+            }
+        }
+        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + (columnSpecs.Count > 0 ? "\n" + string.Join("\n", columnSpecs) : "") + "\n});\n");
         if (writeRoles.Count > 0) spec.Append(WriteRoleSpec.For(Project, cls, writeRoles));
 
         // ================= ts
@@ -505,7 +570,8 @@
         T("import { FormsModule } from '@angular/forms';");
         if (UsesCurrencyBox()) T("import { CurrencyInputDirective } from '../currency-input';");
         if (!nameActive) T("import { MatPaginatorModule } from '@angular/material/paginator';");
-        T(odata && !nameActive ? "import { ColumnFilterField, ODataPagedScreen } from '../odata-screen';" : $"import {{ {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")} }} from '../crud-screen';");
+        if (chooseColumns) T($"import {{ GridColumns{(columnList.Any(c => c.Cut) ? ", cutText" : "")} }} from '../../grid-columns';");
+        T(odata && !nameActive ? "import { ColumnFilterField, ODataPagedScreen, saveSorts } from '../odata-screen';" : $"import {{ {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")} }} from '../crud-screen';");
         T();
         T("@Component({");
         T($"  selector: 'app-{screenStem}',");
@@ -529,7 +595,17 @@
         if (!nameActive)
         {
             T($"  protected readonly gridKey = '{screenStem}'; // the grid's saved sort is kept in the browser under this key (see grid-sort.ts)");
-            T($"  readonly sortableColumns = [{string.Join(", ", sortableColumns.Select(c => "'" + c.Name + "'"))}]; // the columns whose header sorts the grid");
+            T("  // the columns the Columns list offers, then the ones the grid starts with; the person's choice is kept in the browser under the grid's key");
+            T("  readonly columns = new GridColumns(this.gridKey, [");
+            for (int i = 0; i < columnList.Count; i++)
+            {
+                var column = columnList[i];
+                T($"    {{ name: '{column.Name}', label: '{column.Label.Replace("\\", "\\\\").Replace("'", "\\'")}', property: '{column.Property}', sortable: {(column.Sortable ? "true" : "false")} }}{(i < columnList.Count - 1 ? "," : "")}");
+            }
+            T($"  ], [{string.Join(", ", columnList.Where(c => c.Initial).Select(c => "'" + c.Name + "'"))}]);");
+            T("  readonly sortableColumns = this.columns.sortable; // the shown columns whose header sorts the grid (one array, kept up to date)");
+            if (columnList.Any(c => c.Cut))
+                T("  readonly cut = cutText; // a long or multi-line text shows its first characters in the grid");
             if (Project.DefaultSort(Model.TableName) is { } defaultSort)
                 T($"  protected override readonly defaultSort = {{ column: '{defaultSort.Column}', descending: {(defaultSort.Descending ? "true" : "false")} }}; // the project's DefaultSorts: the sort until the person sorts");
         }
@@ -547,7 +623,7 @@
                 T($"    {{ name: '{f.Name}', property: '{f.Property}', kind: '{f.Kind.ToString().ToLowerInvariant()}', nullable: {(f.Nullable ? "true" : "false")}{literal} }}{(i < fields.Count - 1 ? "," : "")}");
             }
             T("  ];");
-            T($"  protected override readonly selectColumns = [{string.Join(", ", gridColumns.Select(c => "'" + JsonNames.Camel(c.Name) + "'"))}]; // the grid asks for these and the key; a row is read whole when it is opened");
+            T("  protected override readonly selectColumns = this.columns.properties; // the grid asks for the shown columns and the key (one array, kept up to date); a row is read whole when it is opened");
         }
         if (!nameActive && pageSize != 20) T($"  override pageSize = {pageSize};");
         foreach (var p in parents)
@@ -580,6 +656,40 @@
                 T("  }");
                 T();
             }
+        }
+        if (chooseColumns)
+        {
+            T("  // Showing or hiding a column: the choice is kept, and a sort" + (odata ? " or a filter" : "") + " on a column that is no longer shown is dropped.");
+            T("  toggleColumn(name: string): void {");
+            T("    this.columns.toggle(name);");
+            T("    this.columnsChanged();");
+            T("  }");
+            T();
+            T("  resetColumns(): void {");
+            T("    this.columns.reset();");
+            T("    this.columnsChanged();");
+            T("  }");
+            T();
+            T("  private columnsChanged(): void {");
+            if (odata)
+            {
+                T("    const kept = this.sorts.filter((s) => this.columns.has(s.column));");
+                T("    if (kept.length !== this.sorts.length) {");
+                T("      this.sorts = kept;");
+                T("      this.sort = kept[0] ?? null;");
+                T("      saveSorts(this.gridKey, kept);");
+                T("    }");
+                T("    for (const field of this.filterFields) {");
+                T("      if (!this.columns.has(field.name)) this.columnFilters[field.name] = {};");
+                T("    }");
+                T("    this.load(); // the page is read again with the columns that are shown");
+            }
+            else
+            {
+                T("    if (this.sort && !this.columns.has(this.sort.column)) this.clearSort();");
+            }
+            T("  }");
+            T();
         }
         // newRow(): every required property gets a starting value
         var adds = form.NewRowTypeScript;
@@ -619,7 +729,7 @@
         T("}");
 
         var o = new StringBuilder();
-        o.Append($"@@@FILE {componentsFolder}/{screenStem}/{screenStem}.component.css@@@\n").Append(GridSortStyles.Css).Append(odata && !nameActive ? ODataGridStyles.Css : "");
+        o.Append($"@@@FILE {componentsFolder}/{screenStem}/{screenStem}.component.css@@@\n").Append(GridSortStyles.Css).Append(chooseColumns ? ColumnPickerStyles.Css : "").Append(odata && !nameActive ? ODataGridStyles.Css : "");
         o.Append($"@@@FILE {componentsFolder}/{screenStem}/{screenStem}.component.html@@@\n").Append(Project.AdaptAngularHtml(html.ToString()));
         o.Append($"@@@FILE {componentsFolder}/{screenStem}/{screenStem}.component.spec.ts@@@\n").Append(Project.AdaptAngularSpec(spec.ToString()));
         o.Append($"@@@FILE {componentsFolder}/{screenStem}/{screenStem}.component.ts@@@\n").Append(ts);

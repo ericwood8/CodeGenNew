@@ -93,13 +93,16 @@ public class ODataAngularTests
         Expect.Contains(odata, "protected readonly service = inject(HolidayODataService);");
         Expect.Contains(odata, "selector: 'app-holiday-odata',");
         Expect.Contains(odata, "export class HolidayODataComponent extends ODataPagedScreen<Holiday>");
-        Expect.Contains(odata, "import { ColumnFilterField, ODataPagedScreen } from '../odata-screen';");
+        Expect.Contains(odata, "import { ColumnFilterField, ODataPagedScreen, saveSorts } from '../odata-screen';");
         Expect.Contains(odata, "(click)=\"sortBy('Name', $event)\"");
         Expect.Contains(odata, "<tr class=\"filter-row\">");
         Expect.Contains(odata, "[(ngModel)]=\"columnFilters['Name'].text\"");
         Expect.Contains(odata, "(click)=\"open(holiday)\"");
         Expect.Contains(odata, "{ name: 'Date', property: 'date', kind: 'date', nullable: false }");
-        Expect.Contains(odata, "protected override readonly selectColumns = ['");
+        Expect.Contains(odata, "protected override readonly selectColumns = this.columns.properties;");
+        Expect.Contains(odata, "readonly columns = new GridColumns(this.gridKey, [");
+        Expect.Contains(odata, "{ name: 'Name', label: 'Name', property: 'name', sortable: true },");
+        Expect.Contains(odata, "this.load(); // the page is read again with the columns that are shown");
         Expect.Contains(odata, ".sort-order {");
         Expect.Contains(odata, "protected readonly gridKey = 'holiday-odata';");
         Expect.Contains(odata, "r.urlWithParams.startsWith('odata/holidays?')");
@@ -244,7 +247,7 @@ public class ODataAngularTests
         Expect.Contains(screen, "<button class=\"btn btn-outline-secondary\" type=\"button\" title=\"Remove every filter\" (click)=\"clearSearch()\">Clear</button>");
         Expect.Contains(screen, "{ name: 'Posted', property: 'posted', kind: 'date', nullable: true }");
         Expect.Contains(screen, "{ name: 'Kind', property: 'kind', kind: 'choice', nullable: false, literal: 'string' }");
-        Expect.DoesNotContain(screen, "name: 'Notes'");
+        Expect.DoesNotContain(screen, "{ name: 'Notes', property: 'notes', kind:");   // long text has no filter control (the Columns list still offers the column)
 
         string rest = await Run("TS_Component_v1.tt", Ledger(), On);
         Expect.DoesNotContain(rest, "filter-row");

@@ -1,0 +1,176 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (folders).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string componentsFolder = Project.ComponentsFolder;   // where the pages import their helpers from, relative to the folder the pages are in
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // TSX_GridColumns_v1.tt
+    // Generates: components/gridColumns.tsx and its test   (point the output folder at the React app's src folder)
+    // The shared helpers of the Columns list every React grid (REST and OData) has: the saved choice of columns (browser local storage, one list of names per grid), the rule that reads it back
+    // (ChosenGridColumns.Resolve in Core), the tick-or-clear rule, the cut of a long text cell and the Columns button itself (a native details element, so it needs no library).
+    // One file for the whole project; the folder comes from the project's ComponentsFolder.
+    // Full notes: Docs/TemplateNotes/TSX_GridColumns_v1.md
+
+    Write("@@@FILE " + componentsFolder + "/gridColumns.tsx@@@\n");
+#>
+import type { ReactNode } from 'react';
+
+/** A column the Columns list offers: its name (what the grid sorts by and the saved choice holds) and the words the list shows. */
+export interface GridColumn {
+  name: string;
+  label: string;
+}
+
+const columnsKey = (gridKey: string) => `gridColumns:${gridKey}`;
+
+/**
+ * The columns a grid shows: the saved ones the table still offers (in the table's order), or the starting columns when nothing valid was saved
+ * (no list, something that is not a list of names, or names that are no column any more).
+ */
+export function loadColumns(gridKey: string, offered: readonly string[], initial: readonly string[]): string[] {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(columnsKey(gridKey)) ?? 'null');
+    if (!Array.isArray(saved)) return [...initial];
+    const kept = offered.filter((name) => saved.includes(name));
+    return kept.length > 0 ? kept : [...initial];
+  } catch {
+    return [...initial];
+  }
+}
+
+/** Remember the choice of a grid, or forget it when it is the starting columns again. */
+export function saveColumns(gridKey: string, chosen: readonly string[], initial: readonly string[]): void {
+  try {
+    const same = chosen.length === initial.length && chosen.every((name, i) => name === initial[i]);
+    if (same) localStorage.removeItem(columnsKey(gridKey));
+    else localStorage.setItem(columnsKey(gridKey), JSON.stringify(chosen));
+  } catch {
+    // storage unavailable: the choice just is not remembered
+  }
+}
+
+/** The choice after one column is ticked or cleared: the table's order is kept, and the last shown column cannot be cleared. */
+export function toggleColumn(chosen: readonly string[], offered: readonly string[], name: string): string[] {
+  if (!offered.includes(name)) return [...chosen];
+  if (chosen.includes(name)) return chosen.length === 1 ? [...chosen] : chosen.filter((n) => n !== name);
+  return offered.filter((n) => n === name || chosen.includes(n));
+}
+
+/** What the person typed for each column, without the columns that are no longer shown (a filter on a hidden column must not stay active where it cannot be seen). */
+export function onlyShown<V>(typed: Record<string, V>, chosen: readonly string[]): Record<string, V> {
+  return Object.fromEntries(Object.entries(typed).filter(([name]) => chosen.includes(name)));
+}
+
+/** A long or multi-line text as a grid cell shows it: the first <#= ChosenGridColumns.CutLength #> characters, then three dots. */
+export function shortText(value: string | null | undefined): string {
+  const text = value ?? '';
+  return text.length > <#= ChosenGridColumns.CutLength #> ? text.substring(0, <#= ChosenGridColumns.CutLength - 3 #>) + '...' : text;
+}
+
+/** The Columns button of a grid: a list of check boxes, one per column the table offers, and a Reset that puts the starting columns back. */
+export function ColumnPicker({ columns, chosen, initial, onChange }: {
+  columns: readonly GridColumn[];
+  chosen: readonly string[];
+  initial: readonly string[];
+  onChange: (chosen: string[]) => void;
+}): ReactNode {
+  const offered = columns.map((column) => column.name);
+  return (
+    <details className="column-picker">
+      <summary>Columns</summary>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px', padding: '4px 0' }}>
+        {columns.map((column) => (
+          <label key={column.name}>
+            <input
+              type="checkbox"
+              checked={chosen.includes(column.name)}
+              disabled={chosen.length === 1 && chosen.includes(column.name)}
+              onChange={() => onChange(toggleColumn(chosen, offered, column.name))}
+            />{' '}
+            {column.label}
+          </label>
+        ))}
+        <button type="button" onClick={() => onChange([...initial])}>Reset</button>
+      </div>
+    </details>
+  );
+}
+<# Write("@@@FILE " + componentsFolder + "/__tests__/gridColumns.test.tsx@@@\n"); #>
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ColumnPicker, loadColumns, onlyShown, saveColumns, shortText, toggleColumn } from '../gridColumns';
+
+const offered = ['Name', 'City', 'Total', 'Notes'];
+const initial = ['Name', 'City'];
+
+describe('gridColumns', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('starts with the starting columns and keeps a choice between visits', () => {
+    expect(loadColumns('rows', offered, initial)).toEqual(initial);
+    saveColumns('rows', ['Name', 'Total'], initial);
+    expect(loadColumns('rows', offered, initial)).toEqual(['Name', 'Total']);
+    expect(loadColumns('other', offered, initial)).toEqual(initial);
+  });
+
+  it('forgets the choice when it is the starting columns again', () => {
+    saveColumns('rows', ['Name', 'Total'], initial);
+    saveColumns('rows', initial, initial);
+    expect(localStorage.getItem('gridColumns:rows')).toBeNull();
+  });
+
+  it('drops a saved column the table no longer has, and keeps the table order', () => {
+    localStorage.setItem('gridColumns:rows', JSON.stringify(['Total', 'Gone', 'Name']));
+    expect(loadColumns('rows', offered, initial)).toEqual(['Name', 'Total']);
+  });
+
+  it('ignores a saved value that is not a list of columns', () => {
+    for (const bad of ['{not json', '5', '{"Name":true}', '[]', '["Gone"]', '[7]']) {
+      localStorage.setItem('gridColumns:rows', bad);
+      expect(loadColumns('rows', offered, initial)).toEqual(initial);
+    }
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('no storage'); });
+    expect(loadColumns('rows', offered, initial)).toEqual(initial);
+    vi.restoreAllMocks();
+  });
+
+  it('ticks a column in the table order and clears one, but never the last', () => {
+    expect(toggleColumn(['Name', 'City'], offered, 'Total')).toEqual(['Name', 'City', 'Total']);
+    expect(toggleColumn(['City'], offered, 'Name')).toEqual(['Name', 'City']);
+    expect(toggleColumn(['Name', 'City'], offered, 'City')).toEqual(['Name']);
+    expect(toggleColumn(['Name'], offered, 'Name')).toEqual(['Name']);
+    expect(toggleColumn(['Name'], offered, 'Gone')).toEqual(['Name']);
+  });
+
+  it('keeps what was typed only for the columns that are shown', () => {
+    expect(onlyShown({ Name: { text: 'a' }, City: { text: 'b' } }, ['Name'])).toEqual({ Name: { text: 'a' } });
+  });
+
+  it('cuts a long text and leaves a short one', () => {
+    expect(shortText(null)).toBe('');
+    expect(shortText('short')).toBe('short');
+    expect(shortText('x'.repeat(<#= ChosenGridColumns.CutLength #>))).toBe('x'.repeat(<#= ChosenGridColumns.CutLength #>));
+    expect(shortText('x'.repeat(<#= ChosenGridColumns.CutLength + 1 #>))).toBe('x'.repeat(<#= ChosenGridColumns.CutLength - 3 #>) + '...');
+  });
+
+  it('lists every column, reports a tick and a Reset, and will not clear the last column', () => {
+    const onChange = vi.fn();
+    const columns = offered.map((name) => ({ name, label: name }));
+    const { rerender } = render(<ColumnPicker columns={columns} chosen={initial} initial={initial} onChange={onChange} />);
+    expect(screen.getAllByRole('checkbox')).toHaveLength(4);
+    fireEvent.click(screen.getByLabelText('Total'));
+    expect(onChange).toHaveBeenLastCalledWith(['Name', 'City', 'Total']);
+    fireEvent.click(screen.getByText('Reset'));
+    expect(onChange).toHaveBeenLastCalledWith(initial);
+    rerender(<ColumnPicker columns={columns} chosen={['Name']} initial={initial} onChange={onChange} />);
+    expect(screen.getByLabelText('Name')).toBeDisabled();
+  });
+});

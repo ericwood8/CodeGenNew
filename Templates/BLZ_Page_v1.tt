@@ -19,6 +19,7 @@
     // BLZ_ODataPage is this template run with Variant=OData (its config says Base=BLZ_Page_v1.tt): the same page over the table's OData client (BLZ_ODataClient) instead of the REST one, with several sorts
     // (Shift-click adds a column) and a filter row under the headers; the REST page is not touched, unless ODataScreens=Replace gives its route to the OData page.
     // With Auth=true every page asks for a signed-in person (and, for a table with ReadRoles, one of its roles); with WriteRoles the buttons that change rows show only to the roles that may.
+    // A Columns button above the grid shows or hides each column of the table (ChosenGridColumns in Core; the helpers are Services/GridColumns.cs, BLZ_GridColumns): the choice is kept in the browser, and an OData page asks only for the shown columns.
     // Full notes: Docs/TemplateNotes/BLZ_Page_v1.md
     // ==========================================================================================
 
@@ -53,8 +54,6 @@
 
         var parents = form.Parents;
 
-        var gridColumns = form.GridColumns;
-        var sortable = form.SortableColumns;
         bool canClone = form.CanClone;
 
         bool usesMoneyBox = shown.Any(form.IsMoneyInput);
@@ -65,7 +64,12 @@
         bool replaced = !odata && Project.ODataReplacesScreens && ODataPlan.Serves(Model, Project);
         string clientType = odata ? BlazorNames.ODataClientName(Model.TableName) : type + "Client";
         string ExplainCall = odata ? "ExplainOData" : "Explain";   // the OData calls also carry the API's own words for a conflict
-        var filterFields = odata ? ODataFilterFields.For(form) : null;   // the filter row's control of each grid column (null: none)
+        // The Columns list: the grid starts with the columns GridColumns picks and offers every column of the form
+        var chosen = ChosenGridColumns.For(form);
+        var columnList = chosen.Offered;
+        var filterFields = odata ? columnList.Select(c => c.Filter).ToList() : null;   // the filter row's control of each of those columns (null: none)
+        var sortable = columnList.Where(c => c.Sortable).Select(c => c.Column).ToList();
+        string Shown(ColumnModel c, string markup) => $"@if (Shown(\"{c.Name}\")) {{ {markup} }}";   // markup that is drawn only while its column is chosen
 
         // Auth=true: the page asks for a signed-in person (and, with ReadRoles, one of the roles); with WriteRoles only the roles that may write see Add New, Edit, Clone and Delete
         IReadOnlyList<string> readRoles = Project.Auth ? WriteRolePlan.ReadFor(Project, Model) : new List<string>();
@@ -165,6 +169,17 @@
             L("</div>");
         }
         L();
+        L("<details class=\"column-picker\">");
+        L("    <summary>Columns</summary>");
+        L("    <div class=\"column-list\" style=\"display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 4px 0\">");
+        L("        @foreach (var column in AllColumns)");
+        L("        {");
+        L("            <label><input type=\"checkbox\" checked=\"@Shown(column.Name)\" disabled=\"@IsLastColumn(column.Name)\" @onchange=\"() => ToggleColumnAsync(column.Name)\" /> @column.Label</label>");
+        L("        }");
+        L("        <button type=\"button\" @onclick=\"ResetColumnsAsync\">Reset</button>");
+        L("    </div>");
+        L("</details>");
+        L();
         L("@if (message is not null && row is null)");
         L("{");
         L("    <p class=\"error\">@message</p>");
@@ -173,15 +188,16 @@
         L("<table>");
         L("    <thead>");
         L("        <tr>");
-        foreach (var c in gridColumns)
+        foreach (var column in columnList)
         {
-            string caption = GridCaption.For(c, Labels.Field(c));
+            var c = column.Column;
+            string caption = column.Caption;
             if (sortable.Contains(c) && odata)
-                L($"            <th aria-sort=\"@AriaSort(\"{c.Name}\")\"><button type=\"button\" class=\"sort\" title=\"Click to sort by {caption}. Shift-click to add it to the sort.\" @onclick='(e) => SortAsync(\"{c.Name}\", e.ShiftKey)'>{caption} @Arrow(\"{c.Name}\")<span class=\"sort-order\" hidden=\"@(Place(\"{c.Name}\") is null)\">@Place(\"{c.Name}\")</span></button></th>");
+                L("            " + Shown(c, $"<th aria-sort=\"@AriaSort(\"{c.Name}\")\"><button type=\"button\" class=\"sort\" title=\"Click to sort by {caption}. Shift-click to add it to the sort.\" @onclick='(e) => SortAsync(\"{c.Name}\", e.ShiftKey)'>{caption} @Arrow(\"{c.Name}\")<span class=\"sort-order\" hidden=\"@(Place(\"{c.Name}\") is null)\">@Place(\"{c.Name}\")</span></button></th>"));
             else if (sortable.Contains(c))
-                L($"            <th><button type=\"button\" class=\"sort\" @onclick='() => SortAsync(\"{c.Name}\")'>{caption} @Arrow(\"{c.Name}\")</button></th>");
+                L("            " + Shown(c, $"<th><button type=\"button\" class=\"sort\" @onclick='() => SortAsync(\"{c.Name}\")'>{caption} @Arrow(\"{c.Name}\")</button></th>"));
             else
-                L($"            <th>{caption}</th>");
+                L("            " + Shown(c, $"<th>{caption}</th>"));
         }
         L("            <th>Actions</th>");
         L("        </tr>");
@@ -189,12 +205,12 @@
         {
             // the filter row: a control per column by its kind (ODataFilterFields in Core, one rule for every stack); Enter in a box searches
             L("        <tr class=\"filter-row\">");
-            for (int i = 0; i < gridColumns.Count; i++)
+            for (int i = 0; i < columnList.Count; i++)
             {
                 var f = filterFields![i];
-                if (f is null) { L("            <td></td>"); continue; }
+                if (f is null) { L("            " + Shown(columnList[i].Column, "<td></td>")); continue; }
                 string name = f.Name;
-                string label = GridCaption.For(gridColumns[i], Labels.Field(gridColumns[i]));
+                string label = columnList[i].Caption;
                 string typed = $"Typed(\"{name}\")";
                 string control;
                 switch (f.Kind)
@@ -222,7 +238,7 @@
                 string empty = f.Nullable && f.Kind != ODataFilterKind.Boolean
                     ? $"<label class=\"empty-toggle\" title=\"Only the rows where {label} is empty\"><input type=\"checkbox\" @bind='{typed}.Empty' /> empty</label>"
                     : "";
-                L($"            <td>{control}{empty}</td>");
+                L("            " + Shown(columnList[i].Column, $"<td>{control}{empty}</td>"));
             }
             L("            <td class=\"filter-actions\">");
             L("                <button type=\"button\" @onclick=\"SearchAsync\">Search</button>");
@@ -235,12 +251,13 @@
         L("        @foreach (var item in items)");
         L("        {");
         L("            <tr>");
-        foreach (var c in gridColumns)
+        foreach (var column in columnList)
         {
+            var c = column.Column;
             string prop = $"item.{c.CSharpName()}";
             var lookup = form.LookupOf(c);
-            string cell = Cell(c, prop, lookup is not null ? $"Name{form.ParentOf(c)!.BaseName}({prop})" : null);
-            L($"                <td>{cell}</td>");
+            string cell = column.Cut ? $"@GridColumns.Cut({prop})" : Cell(c, prop, lookup is not null ? $"Name{form.ParentOf(c)!.BaseName}({prop})" : null);
+            L("                " + Shown(c, $"<td>{cell}</td>"));
         }
         L("                <td>");
         L(Gate("                    ", odata ? "<button type=\"button\" @onclick=\"() => OpenAsync(item)\">Edit</button>" : "<button type=\"button\" @onclick=\"() => Edit(item)\">Edit</button>"));
@@ -428,8 +445,7 @@
         {
             L("    private List<(string Column, bool Descending)> sorts = [];   // a click sorts by the column, a Shift-click adds it as the next sort; kept in the browser under SortsKey");
             L($"    private const string SortsKey = \"{(Project.ProjectName ?? "MyApp").ToLowerInvariant()}.sorts.{pageClass.ToLowerInvariant()}\";");
-            L($"    private static readonly string[] SortableColumns = [{string.Join(", ", gridColumns.Where(c => sortable.Contains(c)).Select(c => "\"" + c.Name + "\""))}];");
-            L($"    private static readonly string[] SelectColumns = [{string.Join(", ", gridColumns.Select(c => "\"" + JsonNames.Camel(c.Name) + "\""))}];   // the grid asks for these and the key; a row is read whole when it is opened");
+            L($"    private static readonly string[] SortableColumns = [{string.Join(", ", columnList.Where(c => sortable.Contains(c.Column)).Select(c => "\"" + c.Name + "\""))}];");
             L("    private readonly Dictionary<string, ColumnFilter> typed = new();   // what is in the controls of the filter row");
             L("    private List<string> applied = [];   // the conditions the last Search asked for, kept while paging");
             L("    private ColumnFilter Typed(string name) => typed.TryGetValue(name, out var filter) ? filter : typed[name] = new ColumnFilter();");
@@ -439,6 +455,17 @@
             L("    private string? sortBy;");
             L("    private bool descending;");
         }
+        L("    // the columns the Columns list offers (the grid asks for the shown ones and the key; a row is read whole when it is opened) and the ones the grid starts with");
+        L("    private static readonly GridColumn[] AllColumns =");
+        L("    [");
+        foreach (var column in columnList)
+            L($"        new(\"{column.Name}\", \"{column.Label.Replace("\\", "\\\\").Replace("\"", "\\\"")}\", \"{column.Property}\", {(column.Sortable ? "true" : "false")}),");
+        L("    ];");
+        L($"    private static readonly string[] InitialColumns = [{string.Join(", ", columnList.Where(c => c.Initial).Select(c => "\"" + c.Name + "\""))}];");
+        L($"    private const string ColumnsKey = \"{(Project.ProjectName ?? "MyApp").ToLowerInvariant()}.columns.{pageClass.ToLowerInvariant()}\";");
+        L("    private List<string> chosen = [];   // the columns shown; kept in the browser under ColumnsKey");
+        L("    private bool Shown(string name) => chosen.Contains(name);");
+        L("    private bool IsLastColumn(string name) => chosen.Count == 1 && chosen[0] == name;");
         if (gated)
             L($"    private bool CanWrite => Session.HasRole({RolesExpression(writeRoles)});   // WriteRoles: the roles that may add, change and delete rows");
         if (odata && filterFields!.Any(f => f is not null))
@@ -464,8 +491,9 @@
             L($"        try {{ {l.Field} = await {l.Field}Client.{l.Load}(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
         if (form.Guards.Count > 0)
             L("        try { guards = await Client.GetGuardsAsync(); } catch (Exception ex) when (ex is ApiException or HttpRequestException) { }");
+        L("        chosen = await GridColumns.LoadAsync(Js, ColumnsKey, AllColumns.Select(c => c.Name).ToList(), InitialColumns);");
         if (odata)
-            L("        sorts = await SavedSorts.LoadAsync(Js, SortsKey, SortableColumns);");
+            L("        sorts = await SavedSorts.LoadAsync(Js, SortsKey, SortableColumns.Where(Shown).ToList());");
         L("        await LoadAsync();");
         L(gated ? "        if (EditId is not null && CanWrite)" : "        if (EditId is not null)");
         L("        {");
@@ -494,7 +522,7 @@
         L("    {");
         L("        try");
         L("        {");
-        L(odata ? "            var result = await Client.QueryPageAsync(new ODataPageQuery(target, PageSize, null, sorts, applied, SelectColumns));"
+        L(odata ? "            var result = await Client.QueryPageAsync(new ODataPageQuery(target, PageSize, null, sorts, applied, AllColumns.Where(c => Shown(c.Name)).Select(c => c.Property).ToList()));"
                 : "            var result = await Client.GetPageAsync(target, PageSize, Filters(), sortBy, descending);");
         L("            // the last row of the last page was deleted, or rows were removed elsewhere: the page asked for is past the end, so show the last page there is");
         L("            if (result.Items.Count == 0 && result.TotalCount > 0 && target > 1)");
@@ -593,6 +621,39 @@
             L();
             L("    private string Arrow(string column) => sortBy != column ? \"\" : descending ? \"\\u25BC\" : \"\\u25B2\";");
         }
+        L();
+        L("    // Showing or hiding a column: the choice is kept, and a sort" + (odata ? " or a filter" : "") + " on a column that is no longer shown is dropped.");
+        L("    private async Task ToggleColumnAsync(string name) => await ChooseColumnsAsync(GridColumns.Toggle(chosen, AllColumns.Select(c => c.Name).ToList(), name));");
+        L();
+        L("    private async Task ResetColumnsAsync() => await ChooseColumnsAsync([.. InitialColumns]);");
+        L();
+        L("    private async Task ChooseColumnsAsync(List<string> next)");
+        L("    {");
+        L("        chosen = next;");
+        L("        await GridColumns.SaveAsync(Js, ColumnsKey, chosen, InitialColumns);");
+        if (odata)
+        {
+            L("        if (sorts.RemoveAll(s => !Shown(s.Column)) > 0)");
+            L("            await SavedSorts.SaveAsync(Js, SortsKey, sorts);");
+            if (filterFields!.Any(f => f is not null))
+            {
+                L("        foreach (string name in typed.Keys.Where(n => !Shown(n)).ToList())");
+                L("            typed.Remove(name);");
+                L("        try { applied = ODataFilters.ConditionsOf(FilterFields.Where(f => Shown(f.Name)), typed); }");
+                L("        catch (FormatException ex) { message = ex.Message; return; }");
+            }
+            L("        await LoadAsync(pageNumber);   // the page is read again with the columns that are shown");
+        }
+        else
+        {
+            L("        if (sortBy is not null && !Shown(sortBy))");
+            L("        {");
+            L("            sortBy = null;");
+            L("            descending = false;");
+            L("            await LoadAsync();");
+            L("        }");
+        }
+        L("    }");
         foreach (var p in parents)
         {
             L();
@@ -603,7 +664,7 @@
             L();
             L($"    private string Name{l.Field}({l.IdType}? id) => Convert.ToString({l.Field}.FirstOrDefault(p => Equals(p.{l.KeyProp}, id))?.{l.DisplayProp}) ?? \"\";");
         }
-        if (gridColumns.Any(c => c.IsMoneyAmount) || children.Any(ch => ch.Columns.Any(c => c.IsMoneyAmount)))
+        if (columnList.Any(c => c.Column.IsMoneyAmount) || children.Any(ch => ch.Columns.Any(c => c.IsMoneyAmount)))
         {
             L();
             L("    // Money in the grid: the currency symbol, thousands separators and the column's decimals.");

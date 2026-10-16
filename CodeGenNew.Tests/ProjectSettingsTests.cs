@@ -946,6 +946,10 @@ public class ProjectSettingsTests
         Sample.Column("ItemNumber", System.Data.SqlDbType.VarChar, characters: 30, ordinal: 3),
         Sample.Column("DiscountPercentage", System.Data.SqlDbType.Int, ordinal: 4)]);
 
+    // The columns a web grid starts with (the Columns list offers every column of the form): Angular writes them as the second list of its GridColumns, React as initialColumns.
+    private static string StartingColumns(string template, string text) =>
+        text.Split('\n').Single(line => template.StartsWith("TSX") ? line.StartsWith("const initialColumns = [") : line.StartsWith("  ], ['"));
+
     [TestMethod]
     [DataRow("WinUI3_MasterScreen_v1.tt")]
     [DataRow("TS_Component_v1.tt")]
@@ -958,9 +962,17 @@ public class ProjectSettingsTests
         string text = result.GeneratedText!;
         Assert.IsTrue(HasHeader(text, "Item #"), "the Item Number column is captioned Item #");
         Expect.Contains(text, "Discount %");
-        // Notes is a long text column: it never appears in a grid
-        Expect.DoesNotContain(text, "<th>Notes</th>");
-        Expect.DoesNotContain(text, "Text=\"Notes\" FontWeight=");
+        // Notes is a long text column: a grid does not start with it (a web grid offers it in the Columns list, a WinUI3 grid never shows it)
+        if (template.StartsWith("WinUI3"))
+        {
+            Expect.DoesNotContain(text, "<th>Notes</th>");
+            Expect.DoesNotContain(text, "Text=\"Notes\" FontWeight=");
+        }
+        else
+        {
+            Expect.DoesNotContain(StartingColumns(template, text), "'Notes'");
+            Expect.Contains(text, "{ name: 'Notes', label: 'Notes'");
+        }
     }
 
     [TestMethod]
@@ -976,8 +988,14 @@ public class ProjectSettingsTests
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!;
         Assert.IsTrue(HasHeader(text, "Quantity R"), "the 18th column is in the grid");
-        Expect.DoesNotContain(text, "<th>Quantity S</th>");
-        Expect.DoesNotContain(text, "Text=\"Quantity S\" FontWeight=");
+        if (template.StartsWith("WinUI3"))
+            Expect.DoesNotContain(text, "Text=\"Quantity S\" FontWeight=");
+        else
+        {
+            Expect.Contains(StartingColumns(template, text), "'QuantityR'");
+            Expect.DoesNotContain(StartingColumns(template, text), "'QuantityS'");   // the 19th column is offered in the Columns list, but the grid does not start with it
+            Expect.Contains(text, "{ name: 'QuantityS', label: 'Quantity S'");
+        }
     }
 
     [TestMethod]

@@ -46,7 +46,7 @@ CLI argument parsing is hand-rolled rather than pulling in a library, given the 
 
 ## What it generates
 
-One hundred and seven templates ship in `Templates\` (the no-database essentials groups described below come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
+One hundred and ten templates ship in `Templates\` (the no-database essentials groups described below come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
 
 The templates are shown in three grids, one for each layer of an application.
 
@@ -137,11 +137,13 @@ Angular, React, Blazor and WinUI3 code: models, services, screens and dashboards
 | Group | Template | Writes |
 |---|---|---|
 | `BLZ` | `BLZ_Model`, `BLZ_Client` | `Models/Table.cs` and `Services/TableClient.cs` - the class a table's JSON becomes in the Blazor app and its `HttpClient` calls (get, search with paging and sort, create, update, delete, clone). |
+| `BLZ` | `BLZ_GridColumns` | `Services/GridColumns.cs` - whole-database support code for the Columns list every Blazor grid has: the saved choice of columns and the cut of a long text. |
 | `BLZ` | `BLZ_Page` | `Pages/TablePage.razor` - the Blazor screen: grid, search, sortable headers, paging, add / edit panel with drop-downs for foreign keys. |
 | `BLZ` | `BLZ_Dashboard` | the dashboard page for Blazor (`Services/DashboardClient.cs`, `Components/DashboardWidgetView.razor`, `Pages/Dashboard.razor`; money shown as currency; no strip above each grid). |
 | `BLZ` | `BLZ_ODataClient` | `Services/TableODataClient.cs` for each table the project serves as OData: a short class on `ODataClient` (`BLZ_EssentialOData`) with the entity set, the key, the search boxes, the header sorts and the REST route a clone goes through (opt in with `OData=true`). |
 | `BLZ` | `BLZ_ODataPage` | `BLZ_Page` run as its OData form (`Base`/`Variant` in its config): `Pages/TableODataPage.razor`, the same page over the table's OData client with the several-column sort (Shift-click) and the filter row; `ODataScreens=Replace` gives it the REST page's route. |
 | `BLZ` | `BLZ_Screens` | `Layout/NavMenu.razor`, `Pages/Home.razor` and `Services/ApiClients.cs` - whole-database: the menu in `Screens` order and the registration of every client. |
+| `TS` | `TS_GridColumns` | `grid-columns.ts` - whole-database support code for the Columns list every Angular grid has: the saved choice of columns, the rule that reads it back, the cut of a long text and the `GridColumns` object a screen holds. |
 | `TS` | `TS_GridSort` | `grid-sort.ts` - the Angular counterpart: how the sort is saved, loaded and flipped. |
 | `TS` | `TS_Screens` | `app.routes.ts` - whole-database: the Angular app's `screens` and `routes`, from the same list. |
 | `TS` | `TS_Dashboard` | the same for Angular: a service, the page, a widget component, the strip and the host that puts it above a screen. |
@@ -158,6 +160,7 @@ Angular, React, Blazor and WinUI3 code: models, services, screens and dashboards
 | `TSX` | `TSX_ODataApi` | `api/tableODataApi.ts` for each table served as OData - whole-database: a short module on `createODataApi` (`/odata/<set>`) with the same method names as `TSX_Api`; `OData=true`. |
 | `TSX` | `TSX_ODataPage` | `TSX_Page` run as its OData form (`Base`/`Variant` in its config): `pages/TableODataPage.tsx` and its test, the same page over the table's OData api module with the several-column sort (Shift-click), the filter row and the slim grid; `OData=true`. |
 | `TSX` | `TSX_ODataDetailMasterPage` | `TSX_DetailMasterPage` run as its OData form: the master-detail page over the table's OData api module; a child grid whose table is served too reads the child's entity set filtered by the parent's key. `OData=true`. |
+| `TSX` | `TSX_GridColumns` | `components/gridColumns.tsx` - whole-database support code for the Columns list every React grid has: the Columns button, the saved choice of columns, the cut of a long text. |
 | `TSX` | `TSX_GridSort` | `components/gridSort.tsx` - whole-database support code every React grid imports: the sortable header, the right-click **Clear sort** menu and the saved sort. |
 | `TSX` | `TSX_Dashboard` | the dashboard page for React (cards, bar lists, a sparkline, recent rows; no chart package) and, with `DashboardStrip=true`, the strip above each table's grid. |
 | `TSX` | `TSX_Api` | `api/tableApi.ts` — the React counterpart of `TS_Service`: a plain object of `fetch`-based functions instead of an `HttpClient` class (reuses `TS_Model`'s own output for the row type — no separate React model template exists). |
@@ -231,6 +234,8 @@ codegen -S MYSERVER -d MyDatabase -s dbo -t Holiday -T API_Crud.tt -E -o C:\Work
 **Cloning a row.** A grid row has a **Clone** button (between Edit and Delete) for every table whose key the database assigns (an identity int) and whose unique columns are text: the repository's `CloneAsync` calls the table's `<Table>_Clone` routine (`SP_Clone`: audit columns, the active flag and the key are handled by rule), a unique text value such as an account number gets a free one (`A100` becomes `A1002`), the copy comes back through `POST /<route>/{id}/clone` and opens in the edit form at once so the person changes what differs. The copy is a shallow one (the row, not its child rows). The project setting `NoCloneTables=Customer,SalesInvoice` takes tables out.
 
 **Sorting a grid.** Click a column header to sort by it, click it again to flip the direction, right-click the grid for **Clear sort**. The sort is applied by the database together with any search filters (the search routine takes `SortColumn` / `SortDescending`; the column name is compared with a fixed list of the table's own columns, never pasted into SQL; a foreign key column sorts by the parent's name), is kept when paging, and is remembered: React and Angular keep it in the browser's local storage, the WinUI3 app in `GridSorts.json` in its local application data folder. Long text columns are never sorted. The read-only child grids inside a master dialog sort the same way, but in the browser or the app (they already hold every row), comparing real values (numbers as numbers, dates as dates) and the names a column shows in place of an id; each child grid remembers its own sort.
+
+**Choosing the columns of a grid.** Every Angular, React and Blazor grid, REST and OData, has a **Columns** button above it: a check box for each column of the table (the grid starts with the generated ones; a long text can be shown, cut to 60 characters) and a **Reset**. The choice is kept in the browser, a sort or a filter on a column that is hidden is dropped, and an OData grid asks the server (`$select`) for the shown columns only. `ChosenGridColumns` in Core is the one rule the three stacks share. No setting is needed; a credential column is never offered.
 
 **Whole-number inputs.** Every whole-number column that is not a foreign key is edited in a number box (WinUI3 `NumberBox`) or a number input with `min`/`max` (Angular, React), limited to the range its name and SQL type imply: `Year`/`FiscalYear` and similar run from `MinYear` to `MaxYear` (default 2000-2100), `Month`/`Mth` 1-12, `Day` 1-31, `Quarter` 1-4, `Week` 1-53, `*Percent`/`*Pct` 0-100, `*Qty`/`*Count` and `SortOrder` from 0, and any other integer the limits of its SQL type. The name list is deliberately narrow (a `BirthYear` is not limited to the year range). `CS_Validation` writes the same limits as `[Range]` for the named kinds. In the WinUI3 ViewModels such a field is a `double` (`NaN` = blank) that is checked for being whole and in range before it is converted back.
 

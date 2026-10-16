@@ -5,7 +5,7 @@
 //   2. generate the API from a project with: OData=true, ApiAuth=true, UserTable=Employee, UserNameColumn=Login, PasswordHashColumn=PasswordHash, UserOwnerColumn=EmployeeId, UserRoleColumn=IsManager,
 //      UserAdminColumn=IsAdministrator, OwnedTables=SalesInvoice:CustomerId, the ChangeGates and GuardedColumns of Docs/TemplateNotes/API_Gates_v1.md; start it with Jwt__Key set (PORT, default 5202)
 //   3. TEST_SEED=<the same> PORT=5202 node Test-ODataScoping.js
-// akim (customer 5, not a manager), jsmith (customer 7, a manager) and jdoe (an administrator) are the three people. Generated without OwnedTables and the two rules the same checks fail (21 of 35), which shows they can.
+// akim (customer 5, not a manager), jsmith (customer 7, a manager) and jdoe (an administrator) are the three people. Generated without OwnedTables and the two rules the same checks fail (21 of the first 35 checks), which shows they can.
 // Passwords are only ever derived from the environment; nothing is written to a file.
 const crypto = require('crypto');
 const { execFileSync } = require('child_process');
@@ -46,11 +46,20 @@ const type = (r) => r.json && r.json.type;
   const big = await ids(akim, '/odata/salesinvoices?$top=100&$orderby=customerId desc&$select=salesInvoiceId,customerId');
   check('a larger page and another order do not widen the scope', big.rows.length === 2 && big.rows.every((x) => x.customerId === 5));
 
+  // the Columns list of a grid (item 118): a person can show a column the grid does not start with, which is a bigger $select on the OData screen and whole rows on the REST one; the scope is the server's
+  const wider = await ids(akim, '/odata/salesinvoices?$select=salesInvoiceId,customerId,notes,orderedBy,createUser,modifiedBy&$count=true&$top=100');
+  check('a $select of columns the grid does not start with still lists only the caller\'s rows', wider.r.status === 200 && wider.count === 2 && wider.rows.every((x) => x.customerId === 5 && 'notes' in x && 'orderedBy' in x), JSON.stringify(wider.r.json).slice(0, 200));
+  const rest = await call(akim, 'GET', '/api/salesinvoices/search?pageNumber=1&pageSize=100&sortBy=Notes&sortDir=asc');
+  check('the REST search of an owned table is refused whatever the sort (it cannot be scoped), so a REST grid cannot list another person\'s rows', rest.status === 403 && type(rest) === '/problems/search-not-scoped', rest.status + ' ' + rest.text.slice(0, 120));
+
   const mine = a.rows[0].salesInvoiceId, theirs = j.rows[0].salesInvoiceId;
   check('akim reads their own invoice', (await call(akim, 'GET', `/odata/salesinvoices/${mine}`)).status === 200);
   const other = await call(akim, 'GET', `/odata/salesinvoices/${theirs}`);
   check('akim is refused another customer\'s invoice by key (403 not-your-row)', other.status === 403 && type(other) === '/problems/not-your-row', other.status + ' ' + other.text.slice(0, 120));
   check('the same by the parenthesis form', (await call(akim, 'GET', `/odata/salesinvoices(${theirs})`)).status === 403);
+  const restMine = await call(akim, 'GET', `/api/salesinvoices/${mine}`);
+  check('a REST read of one\'s own invoice answers the whole row (every column a grid can show)', restMine.status === 200 && 'notes' in restMine.json && 'orderedBy' in restMine.json);
+  check('a REST read of another customer\'s invoice is refused', (await call(akim, 'GET', `/api/salesinvoices/${theirs}`)).status === 403);
   check('a key that does not exist is 404', (await call(akim, 'GET', '/odata/salesinvoices/99999999')).status === 404);
 
   // the child table is scoped through its parent
