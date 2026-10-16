@@ -98,7 +98,7 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 3. Each step runs through one `TemplateCache`; a template that refuses a table is reported, not failed.
 4. `OutputWriter` writes a file only when its text differs (line endings ignored), or reports what would change (`--dry-run`, `--diff`).
 5. The essentials groups of the stacks are written, by default only the files that do not exist yet.
-6. `GenerationManifest` (`.codegen-manifest.json` in the output folder) lists each file with the hash of the generated text. The next run reports files it no longer produces (stale); `--delete-stale` removes only those whose hash still matches, so an edited file is never deleted.
+6. `GenerationManifest` (`.codegen-manifest.json` in the output folder) lists each file with the hash of the generated text. The next run reports files it no longer produces (stale); `--delete-stale` removes only those whose hash still matches, so an edited file is never deleted. The same hash protects hand edits when a file is written: a file whose text no longer matches the recorded hash (`Edited`), or one no earlier run recorded and that differs from the new text (`Unknown`), is kept and reported. `--force` overwrites such files; `--write-beside` keeps them and writes the new text next to each as `<file>.generated`. Essentials keep their own rule (missing files only, `--replace` to overwrite).
 7. `ProjectBuilder` optionally builds and tests each stack (`dotnet build`, `npm run build`, ...), with per-project command overrides.
 
 **Known gap:** a normal run overwrites a generated file the user edited. The manifest already holds what is needed to refuse that; it is not wired in yet.

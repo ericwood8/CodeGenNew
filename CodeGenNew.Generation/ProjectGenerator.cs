@@ -28,6 +28,10 @@ public sealed class GenerateOptions
     public IReadOnlyList<string>? Tables { get; init; }
     /// <summary> Delete the stale files (files an earlier run wrote that the plan no longer produces) that nobody has edited since. Edited ones are only reported. </summary>
     public bool DeleteStale { get; init; }
+    /// <summary> Overwrite a file even when it differs from what the last run wrote (a hand edit) or no earlier run recorded it. Off: such a file is kept and reported. </summary>
+    public bool Force { get; init; }
+    /// <summary> Write the new text of a kept file beside it as <c>.generated</c>. Ignored with <see cref="Force"/>. </summary>
+    public bool WriteBeside { get; init; }
 }
 
 /// <summary> One run of one template over one table (or the whole database): its files and how each went. </summary>
@@ -120,6 +124,10 @@ public static class ProjectGenerator
             return models[key] = model;
         }
 
+        var recorded = GenerationManifest.Load(options.OutputDirectory).Entries
+            .GroupBy(e => e.Path, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Last().Sha256, StringComparer.OrdinalIgnoreCase);
+        string? RecordedHash(string fullPath) => recorded.GetValueOrDefault(GenerationManifest.Relative(options.OutputDirectory, fullPath));
+
         foreach (var step in steps)
         {
             var template = step.Template;
@@ -130,7 +138,7 @@ public static class ProjectGenerator
                 var result = await cache.RunAsync(template.FilePath, database, project, cancellationToken);
                 if (!result.Success) { report.Errors.Add($"{template.Name}: {string.Join(" | ", result.Errors)}"); continue; }
                 var files = OutputWriter.FilesOf(template, project.ContextName ?? database.DatabaseName + "Context", result.GeneratedText!);
-                report.Steps.Add(new StepOutcome(template.Name, null, await WriteForStacksAsync(options, step, files, cancellationToken)));
+                report.Steps.Add(new StepOutcome(template.Name, null, await WriteForStacksAsync(options, step, files, RecordedHash, cancellationToken)));
                 continue;
             }
 
@@ -146,7 +154,7 @@ public static class ProjectGenerator
                 var result = await cache.RunAsync(template.FilePath, model, project, cancellationToken);
                 if (!result.Success) { report.Errors.Add($"{template.Name} for {tableName}: {string.Join(" | ", result.Errors)}"); continue; }
                 var files = OutputWriter.FilesOf(template, tableName, result.GeneratedText!);
-                report.Steps.Add(new StepOutcome(template.Name, tableName, await WriteForStacksAsync(options, step, files, cancellationToken)));
+                report.Steps.Add(new StepOutcome(template.Name, tableName, await WriteForStacksAsync(options, step, files, RecordedHash, cancellationToken)));
             }
         }
 
@@ -170,9 +178,15 @@ public static class ProjectGenerator
     {
         string output = options.OutputDirectory;
         var produced = new Dictionary<string, ManifestEntry>(StringComparer.OrdinalIgnoreCase);
+        var keptPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in report.Steps.SelectMany(s => s.Files).Where(f => f.Kind != FileOutcomeKind.Skipped && f.Content is not null))
         {
             string relative = GenerationManifest.Relative(output, file.FullPath);
+            if (file.Kind is FileOutcomeKind.Edited or FileOutcomeKind.Unknown)
+            {
+                keptPaths.Add(relative);   // the file on disk is not what was generated: its old entry (if any) stays, so it keeps being reported
+                continue;
+            }
             produced[relative] = new ManifestEntry(relative, file.Stack ?? "", GenerationManifest.Hash(file.Content!));
         }
 
@@ -188,6 +202,11 @@ public static class ProjectGenerator
         {
             if (produced.ContainsKey(old.Path))
                 continue;
+            if (keptPaths.Contains(old.Path))
+            {
+                kept.Add(old);
+                continue;
+            }
             if (partial || !scope.Contains(old.Stack))
             {
                 kept.Add(old);
@@ -219,8 +238,10 @@ public static class ProjectGenerator
     }
 
     /// <summary> Writes one template's files into the folder of each stack it belongs to (the SQL root once, however many stacks share it). </summary>
-    private static async Task<IReadOnlyList<FileOutcome>> WriteForStacksAsync(GenerateOptions options, PlanStep step, List<(string RelativePath, string Content)> files, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<FileOutcome>> WriteForStacksAsync(GenerateOptions options, PlanStep step, List<(string RelativePath, string Content)> files, Func<string, string?> recordedHash,
+        CancellationToken cancellationToken)
     {
+        var policy = options.Force ? OverwritePolicy.Overwrite : options.WriteBeside ? OverwritePolicy.KeepEditedWriteBeside : OverwritePolicy.KeepEdited;
         var config = step.Template.Config;
         var outcomes = new List<FileOutcome>();
         var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -230,7 +251,8 @@ public static class ProjectGenerator
             string folder = Path.Combine(options.OutputDirectory, options.Project.OutputFolderOf(root), config.OutputFolderFor(stack));
             if (!written.Add(Path.GetFullPath(folder)))
                 continue;
-            outcomes.AddRange(await OutputWriter.WriteAsync(folder, files, dryRun: options.DryRun, withDiff: options.WithDiff, stack: root, cancellationToken: cancellationToken));
+            outcomes.AddRange(await OutputWriter.WriteAsync(folder, files, dryRun: options.DryRun, withDiff: options.WithDiff, stack: root, cancellationToken: cancellationToken,
+                policy: policy, recordedHash: recordedHash));
         }
         return outcomes;
     }

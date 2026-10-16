@@ -71,6 +71,9 @@ public partial class GenerateAllDialogViewModel : StatusMessageViewModel
     private bool _deleteStale;
 
     [ObservableProperty]
+    private bool _overwriteEdited;
+
+    [ObservableProperty]
     private bool _build;
 
     [ObservableProperty]
@@ -151,14 +154,19 @@ public partial class GenerateAllDialogViewModel : StatusMessageViewModel
             var options = new GenerateOptions
             {
                 Project = project, Stacks = stacks, OutputDirectory = OutputDirectory, DatabaseName = _databaseName, Schema = _schema,
-                DryRun = DryRun, Essentials = Essentials, DeleteStale = DeleteStale, WithDiff = true
+                DryRun = DryRun, Essentials = Essentials, DeleteStale = DeleteStale, WithDiff = true, Force = OverwriteEdited
             };
             var report = await Task.Run(() => ProjectGenerator.RunAsync(provider, _templatesDirectory, options, message => _dispatcher.TryEnqueue(() => Progress = message)));
 
             string root = Path.GetFullPath(OutputDirectory);
             string Shown(string full) => full.StartsWithIgnoreCase(root) ? full[root.Length..].TrimStart('\\', '/') : full;
             foreach (var file in report.AllFiles.Where(f => f.Kind != FileOutcomeKind.Unchanged))
-                Results.Add(new ResultRow($"{file.Kind}: {Shown(file.FullPath)}", file.Diff));
+                Results.Add(new ResultRow(file.Kind switch
+                {
+                    FileOutcomeKind.Edited => $"Edited, not overwritten: {Shown(file.FullPath)}",
+                    FileOutcomeKind.Unknown => $"Not recorded by an earlier run, not overwritten: {Shown(file.FullPath)}",
+                    _ => $"{file.Kind}: {Shown(file.FullPath)}"
+                }, file.Diff));
             foreach (var stale in report.Stale)
                 Results.Add(new ResultRow(stale.Deleted ? $"Deleted (stale): {stale.Path}" : $"Stale: {stale.Path}" + (stale.Edited ? " (edited, left alone)" : "")));
             foreach (string refusal in report.Refusals)
@@ -178,8 +186,11 @@ public partial class GenerateAllDialogViewModel : StatusMessageViewModel
                 built = steps.All(s => s.Success);
             }
 
+            int keptFiles = report.Count(FileOutcomeKind.Edited) + report.Count(FileOutcomeKind.Unknown);
             Summary = $"{report.Count(FileOutcomeKind.Created)} created, {report.Count(FileOutcomeKind.Updated)} updated, {report.Count(FileOutcomeKind.WouldWrite)} would be written, " +
-                      $"{report.Count(FileOutcomeKind.Unchanged)} unchanged, {report.Refusals.Count} declined" + (report.Stale.Count > 0 ? $", {report.Stale.Count} stale" : "") +
+                      $"{report.Count(FileOutcomeKind.Unchanged)} unchanged, " +
+                      (keptFiles > 0 ? $"{keptFiles} kept (tick Overwrite my edits to replace them), " : "") +
+                      $"{report.Refusals.Count} declined" + (report.Stale.Count > 0 ? $", {report.Stale.Count} stale" : "") +
                       (DryRun ? " (dry run: nothing was written)" : "") + ".";
             if (!report.Success || !built)
                 StatusMessage = "Something failed; see the list.";

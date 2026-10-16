@@ -19,7 +19,7 @@ public static class ArgumentParser
         var stacks = new List<string>();
         var groups = new List<string>();
         var only = new List<string>();
-        bool essentials = false, replace = false, dryRun = false, list = false, deleteStale = false, build = false, test = false, diff = false;
+        bool essentials = false, replace = false, dryRun = false, list = false, deleteStale = false, build = false, test = false, diff = false, force = false, writeBeside = false;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -60,6 +60,8 @@ public static class ArgumentParser
                 case "--build": build = true; break;
                 case "--test": test = true; break;
                 case "--diff": diff = true; break;
+                case "--force": force = true; break;
+                case "--write-beside": writeBeside = true; break;
                 case "--projects-dir": projectsDirectory = Value(); break;
                 case "--set":
                     string setting = Value();
@@ -118,6 +120,8 @@ public static class ArgumentParser
             Build = build,
             Test = test,
             Diff = diff,
+            Force = force,
+            WriteBeside = writeBeside,
             OutputDirectory = outputDirectory,
             Trusted = trusted,
             UserName = userName,
@@ -155,7 +159,9 @@ public static class ArgumentParser
             Whole project (every file of the chosen stacks in one run; see Docs/ARCHITECTURE.md section 6):
               codegen generate -S <server> -d <database> (-E | -U <user> [-P <password>]) --project <name> -o <dir>
                        [--stack api,winui3,react,angular] [--essentials [--groups a,b] [--replace]] [--only SP_Search,CS_Entity] [--table Customer,Item]
-                       [--dry-run] [--diff] [--delete-stale] [--build] [--test]
+                       [--dry-run] [--diff] [--delete-stale] [--force | --write-beside] [--build] [--test]
+              A file you edited since the last run, or one no earlier run recorded, is kept and reported (Edited / Unknown).
+              --force overwrites it; --write-beside keeps it and writes the new text next to it as <file>.generated.
             The files no table drives (App, MainWindow, styles, Program.cs ...), without a database:
               codegen essentials --stack winui3|react|angular|api [--groups app,mainwindow] --project <name> -o <dir> [--replace] [--dry-run]
               codegen essentials --list

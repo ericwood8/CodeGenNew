@@ -53,6 +53,7 @@
             <CheckBox Content="Dry run (write nothing)" IsChecked="{x:Bind ViewModel.DryRun, Mode=TwoWay}" />
             <CheckBox Content="Also the essentials (missing files only)" IsChecked="{x:Bind ViewModel.Essentials, Mode=TwoWay}" />
             <CheckBox Content="Delete stale files" IsChecked="{x:Bind ViewModel.DeleteStale, Mode=TwoWay}" />
+            <CheckBox Content="Overwrite my edits" IsChecked="{x:Bind ViewModel.OverwriteEdited, Mode=TwoWay}" />
         </StackPanel>
         <StackPanel Orientation="Horizontal" Spacing="16">
             <CheckBox Content="Build afterwards" IsChecked="{x:Bind ViewModel.Build, Mode=TwoWay}" />

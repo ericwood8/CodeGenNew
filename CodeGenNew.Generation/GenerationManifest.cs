@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 
 namespace CodeGenNew.Generation;
@@ -36,8 +34,7 @@ public sealed class GenerationManifest
     }
 
     /// <summary> The hash of a file's text with the line endings normalised, so a CRLF checkout of an unedited file hashes like the generated text. </summary>
-    public static string Hash(string text) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.Replace("\r\n", "\n")))).ToLowerInvariant();
+    public static string Hash(string text) => TemplateEngine.OutputWriter.Hash(text);
 
     public static string Relative(string outputDirectory, string fullPath) =>
         System.IO.Path.GetRelativePath(outputDirectory, fullPath).Replace('\\', '/');

@@ -135,7 +135,7 @@ public static class GenerateCommand
             DryRun = options.DryRun, Essentials = options.Essentials, EssentialsGroups = options.Groups.Count > 0 ? options.Groups : null, ReplaceEssentials = options.Replace,
             OnlyTemplates = options.Only.Count > 0 ? options.Only : null,
             Tables = string.IsNullOrWhiteSpace(options.Table) ? null : options.Table.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
-            DeleteStale = options.DeleteStale, WithDiff = options.Diff
+            DeleteStale = options.DeleteStale, WithDiff = options.Diff, Force = options.Force, WriteBeside = options.WriteBeside
         }, progress: null);
 
         foreach (string warning in report.Warnings)
@@ -158,6 +158,10 @@ public static class GenerateCommand
 
         Console.WriteLine($"Done: {report.Steps.Count} template runs, {report.Count(FileOutcomeKind.Created)} files created, {report.Count(FileOutcomeKind.Updated)} updated, " +
                           $"{report.Count(FileOutcomeKind.WouldWrite)} would be written, {report.Count(FileOutcomeKind.Unchanged)} unchanged, {report.Count(FileOutcomeKind.Skipped)} skipped, {report.Refusals.Count} refused.");
+        int editedKept = report.Count(FileOutcomeKind.Edited), unknownKept = report.Count(FileOutcomeKind.Unknown);
+        if (editedKept + unknownKept > 0)
+            Console.WriteLine($"Kept {editedKept} edited and {unknownKept} unrecorded file(s) that differ from the new text; they were not overwritten. " +
+                              (options.WriteBeside ? "The new text is beside each as .generated. " : "") + "Pass --force to overwrite them" + (options.WriteBeside ? "." : ", or --write-beside to keep them and write the new text next to them."));
         if (!report.ManifestWritten && !options.DryRun)
             Console.WriteLine("Note: the manifest was not written.");
 

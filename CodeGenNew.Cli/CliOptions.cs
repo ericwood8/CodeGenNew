@@ -41,6 +41,10 @@ public class CliOptions
     public bool Test { get; set; }
     /// <summary> --diff: print what differs in every file that exists with other content. </summary>
     public bool Diff { get; set; }
+    /// <summary> --force: overwrite a file even when it was edited since the last run or no run recorded it. </summary>
+    public bool Force { get; set; }
+    /// <summary> --write-beside: keep such a file and write the new text next to it as .generated. </summary>
+    public bool WriteBeside { get; set; }
     /// <summary> --projects-dir: the folder of project files; null uses Settings.json's ProjectsDirectory next to the exe. </summary>
     public string? ProjectsDirectory { get; set; }
     /// <summary> Individual project-setting flags (--view-ns and so on), keyed by ProjectSettings key; they win over the project file. </summary>
