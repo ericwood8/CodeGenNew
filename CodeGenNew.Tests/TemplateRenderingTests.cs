@@ -113,7 +113,7 @@ public class TemplateRenderingTests
         string sql = await Render("SP_Search_v1.tt", Sample.Holiday());
 
         Expect.Contains(sql, "(@pName IS NULL OR [Name] LIKE '%' + REPLACE(REPLACE(REPLACE(REPLACE(LTRIM(RTRIM(@pName)), '\\', '\\\\'), '%', '\\%'), '_', '\\_'), '[', '\\[') + '%' ESCAPE '\\')");
-        Expect.Contains(sql, "AND (@pName IS NULL OR");
+        Expect.Contains(sql, "AND (@pSY_IsoCountry_Alpha3Code IS NULL OR [SY_IsoCountry_Alpha3Code] = @pSY_IsoCountry_Alpha3Code)");
     }
 
     // ------------------------------------------------------------------ PostgreSQL
@@ -173,8 +173,8 @@ public class TemplateRenderingTests
 
         foreach (string code in new[] { repo, api })
         {
-            Expect.Contains(code, "SELECT * FROM \\\"public\\\".\\\"Holiday_Search\\\"(@pSY_IsoCountry_Alpha3Code, @pName, @PageNumber, @PageSize, @SortColumn, @SortDescending)");
-            Expect.Contains(code, "SELECT \\\"public\\\".\\\"Holiday_SearchCount\\\"(@pSY_IsoCountry_Alpha3Code, @pName) AS \\\"Value\\\"");
+            Expect.Contains(code, "SELECT * FROM \\\"public\\\".\\\"Holiday_Search\\\"(@pName, @PageNumber, @PageSize, @SortColumn, @SortDescending, @pSY_IsoCountry_Alpha3Code, @pSY_DisplayId)");
+            Expect.Contains(code, "SELECT \\\"public\\\".\\\"Holiday_SearchCount\\\"(@pName, @pSY_IsoCountry_Alpha3Code, @pSY_DisplayId) AS \\\"Value\\\"");
             Expect.Contains(code, "NpgsqlParameter(\"@pName\", NpgsqlTypes.NpgsqlDbType.Text)");
             Expect.DoesNotContain(code, "SqlParameter(");
             Expect.DoesNotContain(code, "EXEC [");
@@ -713,7 +713,7 @@ public class TemplateRenderingTests
         Expect.Contains(parentServiceTs, "extends NamedCrudService<Employee>");
         // a parent with a whole-number key is read through its lookup list: id and name only
         Assert.AreEqual("getLookup", calledMethod);
-        Expect.Contains(baseTs, "getLookup(): Observable<Lookup<K>[]>");
+        Expect.Contains(baseTs, "getLookup(query?: LookupQuery<K>): Observable<Lookup<K>[]>");
     }
 
     [TestMethod]
@@ -729,7 +729,7 @@ public class TemplateRenderingTests
         Expect.Contains(parentServiceTs, "extends NamedCrudService<Employee>");
         // a parent with a whole-number key is read through its lookup list: id and name only
         Assert.AreEqual("getLookup", calledMethod);
-        Expect.Contains(baseTs, "getLookup(): Observable<Lookup<K>[]>");
+        Expect.Contains(baseTs, "getLookup(query?: LookupQuery<K>): Observable<Lookup<K>[]>");
     }
 
     // ------------------------------------------------------------------ API_Junction
@@ -805,9 +805,9 @@ public class TemplateRenderingTests
         // key; found live running this exact generated code against a table with a parent lookup (2026-09-28).
         Expect.Contains(cs, "context.Set<Holiday>()");
         Expect.Contains(cs, ".FromSqlRaw(");
-        Expect.Contains(cs, "EXEC [dbo].[Holiday_Search] @pSY_IsoCountry_Alpha3Code, @pName, @PageNumber, @PageSize");
+        Expect.Contains(cs, "EXEC [dbo].[Holiday_Search] @pName, @PageNumber, @PageSize");
         Expect.Contains(cs, "SqlQueryRaw<int>(");
-        Expect.Contains(cs, "EXEC [dbo].[Holiday_SearchCount] @pSY_IsoCountry_Alpha3Code, @pName");
+        Expect.Contains(cs, "EXEC [dbo].[Holiday_SearchCount] @pName, @pSY_IsoCountry_Alpha3Code");
         // No repo: same "call the DbContext directly" convention API_Junction.tt already established.
         Expect.DoesNotContain(cs, "Repo repo");
         // An EXEC call is non-composable SQL -- .SingleAsync() (which needs to compose it) throws
@@ -1338,13 +1338,13 @@ public class TemplateRenderingTests
     {
         string cs = await Render("CS_Repo_v1.tt", Sample.Holiday());
 
-        Expect.Contains(cs, "public async Task<(List<Holiday> Items, int TotalCount)> SearchAsync(string? sY_IsoCountry_Alpha3Code = null, string? name = null, int pageNumber = 1, int pageSize = 100, string? sortColumn = null, bool sortDescending = false)");
+        Expect.Contains(cs, "public async Task<(List<Holiday> Items, int TotalCount)> SearchAsync(string? name = null, int pageNumber = 1, int pageSize = 100, string? sortColumn = null, bool sortDescending = false, string? sY_IsoCountry_Alpha3Code = null, int? sY_DisplayId = null)");
         // Set<Holiday>().FromSqlRaw(...), not Database.SqlQueryRaw<Holiday>(...) -- SqlQueryRaw<T> builds an
         // ad hoc EF model that rejects any navigation property T has, throwing for any table with a foreign
         // key; found live running this exact generated code against a table with a parent lookup (2026-09-28).
         Expect.Contains(cs, "await _context.Set<Holiday>()");
-        Expect.Contains(cs, ".FromSqlRaw(\"EXEC [dbo].[Holiday_Search] @pSY_IsoCountry_Alpha3Code, @pName, @PageNumber, @PageSize, @SortColumn, @SortDescending\", parameters)");
-        Expect.Contains(cs, ".SqlQueryRaw<int>(\"EXEC [dbo].[Holiday_SearchCount] @pSY_IsoCountry_Alpha3Code, @pName\", countParameters)");
+        Expect.Contains(cs, ".FromSqlRaw(\"EXEC [dbo].[Holiday_Search] @pName, @PageNumber, @PageSize, @SortColumn, @SortDescending, @pSY_IsoCountry_Alpha3Code, @pSY_DisplayId\", parameters)");
+        Expect.Contains(cs, ".SqlQueryRaw<int>(\"EXEC [dbo].[Holiday_SearchCount] @pName, @pSY_IsoCountry_Alpha3Code, @pSY_DisplayId\", countParameters)");
         Expect.Contains(cs, "return (items, totalCount);");
         // An EXEC call is non-composable SQL -- .SingleAsync() (which needs to compose it) throws
         // InvalidOperationException, found live running the generated code for real (2026-09-27).
@@ -1703,7 +1703,7 @@ public class TemplateRenderingTests
         var donate = GeneratedFiles.Split(await Render("TSX_Api_v1.tt", Sample.DonateLeave())).Single();
 
         Assert.AreEqual("api/holidayApi.ts", holiday.RelativePath);
-        Expect.Contains(holiday.Content, "import { request } from './client';");
+        Expect.Contains(holiday.Content, "import { lookupQuery, request } from './client';");
         Expect.Contains(holiday.Content, "import type { Holiday } from '../models/holiday';");
         Expect.Contains(holiday.Content, "export const holidayApi = {");
         Expect.Contains(holiday.Content, "getAll: () => request<Holiday[]>(apiUrl),");
@@ -1753,9 +1753,10 @@ public class TemplateRenderingTests
         string withSearch = await Render("TSX_Api_v1.tt", Sample.Holiday());
         Expect.Contains(withSearch, "export interface HolidayPagedResult {");
         Expect.Contains(withSearch, "items: Holiday[];");
-        Expect.Contains(withSearch, "getPage: (pageNumber: number, pageSize: number, filters: { sY_IsoCountry_Alpha3Code?: string; name?: string } = {}, sort: { column: string; descending: boolean } | null = null) => {");
+        Expect.Contains(withSearch, "getPage: (pageNumber: number, pageSize: number, filters: { name?: string; sY_IsoCountry_Alpha3Code?: string; sY_DisplayId?: string } = {}, sort: { column: string; descending: boolean } | null = null) => {");
         Expect.Contains(withSearch, "if (filters.sY_IsoCountry_Alpha3Code) params.set('sY_IsoCountry_Alpha3Code', filters.sY_IsoCountry_Alpha3Code);");
         Expect.Contains(withSearch, "if (filters.name) params.set('name', filters.name);");
+        Expect.Contains(withSearch, "if (filters.sY_DisplayId) params.set('sY_DisplayId', filters.sY_DisplayId);");
         Expect.Contains(withSearch, "return request<HolidayPagedResult>(`${apiUrl}/search?${params.toString()}`);");
 
         // Pagination and searchability are separate concerns (found live needing pagination alone on such a
@@ -1829,7 +1830,7 @@ public class TemplateRenderingTests
             .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
 
         StringAssert.Contains(parentApiTs, "export const employeeApi = {");
-        StringAssert.Contains(parentApiTs, "getLookup: () => request<");
+        StringAssert.Contains(parentApiTs, "getLookup: (query: { search?: string; ids?: number[]; take?: number } = {}) => request<");
         Expect.Contains(pageTs, "import { employeeApi } from '../api/employeeApi';");
         Expect.Contains(pageTs, "employeeApi.getLookup().then(setEmployees).catch(() => {});");
     }
@@ -1983,7 +1984,7 @@ public class TemplateRenderingTests
             .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
 
         StringAssert.Contains(parentApiTs, "export const employeeApi = {");
-        StringAssert.Contains(parentApiTs, "getLookup: () => request<");
+        StringAssert.Contains(parentApiTs, "getLookup: (query: { search?: string; ids?: number[]; take?: number } = {}) => request<");
         Expect.Contains(pageTs, "import { employeeApi } from '../api/employeeApi';");
         Expect.Contains(pageTs, "employeeApi.getLookup().then(setEmployees).catch(() => {});");
     }

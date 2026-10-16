@@ -74,7 +74,7 @@
     {
         string e = ScreenNames.BaseName(t.TableName);
         string key = t.PrimaryKeyColumns[0].CSharpName();
-        var filters = t.SearchableColumns.Where(c => c.CSharpBase() == "string").ToList();
+        var filters = t.SearchableColumns.Concat(t.SearchKeyColumns).Where(c => c.CSharpBase() == "string").OrderBy(c => c.OrdinalPosition).ToList();
         var sorts = t.Columns.Where(SearchSort.IsSortable).Where(c => c.CSharpBase() != "object").ToList();
         bool validate = Project.ApiValidation;
 

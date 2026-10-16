@@ -35,6 +35,7 @@ public static class ProjectSettingChoices
             ["MinYear"] = (1, 9999),
             ["MaxYear"] = (1, 9999),
             ["EnumMaxRows"] = (1, 100000),
+            ["TypeAheadRows"] = (1, 10000000),
             ["ODataMaxTop"] = (1, 10000),
             ["ODataPageSize"] = (1, 10000),
             ["ODataExpandDepth"] = (1, 5),

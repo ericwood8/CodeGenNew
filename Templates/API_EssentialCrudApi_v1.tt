@@ -81,6 +81,39 @@ public record LookupItem<TKey>(TKey Id, string Name, bool? IsActive = null);
 
 /// <summary> <see cref="LookupItem{TKey}"/> for a table with an int key, the common case. </summary>
 public record LookupItem(int Id, string Name, bool? IsActive = null) : LookupItem<int>(Id, Name, IsActive);
+
+/// <summary> What a type-ahead asks the lookup list for: <c>?ids=1,2</c> keeps the rows with those keys (the names of the keys a screen shows), <c>?search=text</c> keeps at most <c>take</c> (25 by default)
+/// rows whose text contains the text, in the list's order. Without either the list is whole. </summary>
+public static class LookupFilter
+{
+    private const int DefaultTake = 25;
+    private const int MaxTake = 100;
+    private const int MaxIds = 200;
+
+    /// <summary> How many matches to list: <paramref name="take"/>, between 1 and the most a type-ahead may ask for. </summary>
+    public static int Take(int? take) => Math.Clamp(take ?? DefaultTake, 1, MaxTake);
+
+    /// <summary> The text to look for: trimmed and lower case. </summary>
+    public static string Text(string search) => search.Trim().ToLower();
+
+    /// <summary> The keys of a comma-separated list, the first <c>MaxIds</c> of them; a part that is not a key of the table's type is left out. </summary>
+    public static List<TKey> ParseKeys<TKey>(string ids)
+    {
+        var keys = new List<TKey>();
+        foreach (string part in ids.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(MaxIds))
+        {
+            if (typeof(TKey) == typeof(string))
+                keys.Add((TKey)(object)part);
+            else if (typeof(TKey) == typeof(int) && int.TryParse(part, out int i))
+                keys.Add((TKey)(object)i);
+            else if (typeof(TKey) == typeof(long) && long.TryParse(part, out long l))
+                keys.Add((TKey)(object)l);
+            else if (typeof(TKey) == typeof(Guid) && Guid.TryParse(part, out var g))
+                keys.Add((TKey)(object)g);
+        }
+        return keys;
+    }
+}
 <#
     if (children)
     {
@@ -245,6 +278,9 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 
     /// <summary> The rows as lookup items, in the order a drop-down lists them (<c>rows.OrderBy(c =&gt; c.Name).Select(c =&gt; new LookupItem(c.CustomerId, c.Name))</c>); only called when <see cref="CanLookup"/> is true. </summary>
     protected virtual IQueryable<LookupItem<TKey>> LookupQuery(IQueryable<TEntity> rows) => throw new NotSupportedException();
+
+    /// <summary> The text a row's lookup name is made of (<c>c =&gt; c.Name</c>), which <c>GET &lt;route&gt;/lookup?search=text</c> looks in; null: the table cannot be searched, and a search is a 400. </summary>
+    protected virtual Expression<Func<TEntity, string>>? LookupText => null;
 <#
     if (listSearch)
     {
@@ -480,8 +516,8 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 
         if (CanLookup)
         {
-            // Lookup: the key and the display column of every row; "lookup" is not a name, so it is never the find-by-name route's
-            app.MapGet(apiSubDir + "/lookup", ([FromServices] <#= contextType #> context) => LookupAsync(context))
+            // Lookup: the key and the display column of every row, or only the rows whose text contains search (at most take, 25 by default) or whose key is in ids; "lookup" is not a name, so it is never the find-by-name route's
+            app.MapGet(apiSubDir + "/lookup", ([FromServices] <#= contextType #> context, [FromQuery] string? search, [FromQuery] string? ids, [FromQuery] int? take) => LookupAsync(context, search, ids, take))
             .WithName($"Get{plural}Lookup")
             .WithOpenApi()
             .Produces<IEnumerable<LookupItem<TKey>>>()
@@ -830,8 +866,8 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     if (Project.ApiAuth)
     {
 #>
-    private async Task<IResult> LookupAsync(<#= contextType #> context) =>
-        Results.Ok(await LookupQuery(Scope(context, context.Set<TEntity>().AsNoTracking(), await VisibleOwnersAsync())).ToListAsync());
+    private async Task<IResult> LookupAsync(<#= contextType #> context, string? search, string? ids, int? take) =>
+        await NarrowedLookupAsync(Scope(context, context.Set<TEntity>().AsNoTracking(), await VisibleOwnersAsync()), search, ids, take);
 
     private async Task<IResult> FindByNameRowsAsync(<#= contextType #> context, string name)
     {
@@ -851,12 +887,41 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     else
     {
 #>
-    private async Task<IResult> LookupAsync(<#= contextType #> context) => Results.Ok(await LookupQuery(context.Set<TEntity>().AsNoTracking()).ToListAsync());
+    private async Task<IResult> LookupAsync(<#= contextType #> context, string? search, string? ids, int? take) =>
+        await NarrowedLookupAsync(context.Set<TEntity>().AsNoTracking(), search, ids, take);
 
     private async Task<IResult> FindByNameRowsAsync(<#= contextType #> context, string name) => Results.Ok(<#= dtos ? "(" : "" #>await FindByNameAsync(NewRepo(context), name)<#= dtos ? ").Select(ToOutput).ToList()" : "" #>);
 <#
     }
 #>
+
+    /// <summary> The lookup list of the rows: all of them, or with <paramref name="ids"/> the rows with those keys, or with <paramref name="search"/> (or <paramref name="take"/>) the first few whose text contains the search. </summary>
+    private async Task<IResult> NarrowedLookupAsync(IQueryable<TEntity> rows, string? search, string? ids, int? take)
+    {
+        bool byIds = !string.IsNullOrWhiteSpace(ids);
+        bool bySearch = !byIds && !string.IsNullOrWhiteSpace(search);
+        if (bySearch && LookupText is null)
+            return Results.Problem(statusCode: <#= HttpStatus.BadRequest #>, type: "<#= ProblemTypes.InvalidBody #>", title: "Cannot search", detail: "This lookup list cannot be searched.");
+
+        if (byIds)
+        {
+            var key = Key;
+            var inList = Expression.Call(typeof(Enumerable), nameof(Enumerable.Contains), [typeof(TKey)], Expression.Constant(LookupFilter.ParseKeys<TKey>(ids!)), key.Body);
+            rows = rows.Where(Expression.Lambda<Func<TEntity, bool>>(inList, key.Parameters));
+        }
+        else if (bySearch)
+        {
+            var text = LookupText!;
+            var lower = Expression.Call(text.Body, typeof(string).GetMethod(nameof(string.ToLower), Type.EmptyTypes)!);
+            var contains = Expression.Call(lower, typeof(string).GetMethod(nameof(string.Contains), [typeof(string)])!, Expression.Constant(LookupFilter.Text(search!)));
+            rows = rows.Where(Expression.Lambda<Func<TEntity, bool>>(contains, text.Parameters));
+        }
+
+        var items = LookupQuery(rows);
+        if (!byIds && (bySearch || take is not null))
+            items = items.Take(LookupFilter.Take(take));
+        return Results.Ok(await items.ToListAsync());
+    }
 
     private async Task<IResult> CloneRowAsync(<#= contextType #> context, TKey id)
     {
@@ -967,7 +1032,7 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
 <#= reads("        ") #>        .Produces<IEnumerable<TEntity>>()
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
 
-        app.MapGet(apiSubDir + "/lookup", ([FromServices] <#= contextType #> context) => LookupAsync(context))
+        app.MapGet(apiSubDir + "/lookup", ([FromServices] <#= contextType #> context, [FromQuery] string? search, [FromQuery] string? ids, [FromQuery] int? take) => LookupAsync(context, search, ids, take))
         .WithName($"Get{plural}Lookup")
         .WithOpenApi()
         .Produces<IEnumerable<LookupItem>>()
@@ -1044,13 +1109,26 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
 
     private async Task<IResult> GetAllActiveAsync(<#= contextType #> context) => Results.Ok(await NewRepo(context).GetAllActive());
 
-    /// <summary> Every row by name as { id, name, isActive }: only the key, the name and the flag are read. </summary>
-    private async Task<IResult> LookupAsync(<#= contextType #> context)
+    /// <summary> Every row by name as { id, name, isActive }: only the key, the name and the flag are read; <see cref="LookupFilter"/> narrows it for a type-ahead. </summary>
+    private async Task<IResult> LookupAsync(<#= contextType #> context, string? search, string? ids, int? take)
     {
         string keyName = context.Model.FindEntityType(typeof(TEntity))!.FindPrimaryKey()!.Properties[0].Name;
-        var rows = await context.Set<TEntity>().AsNoTracking().OrderBy(c => c.Name)
-            .Select(c => new LookupItem(EF.Property<int>(c, keyName), c.Name, c.IsActive)).ToListAsync();
-        return Results.Ok(rows);
+        IQueryable<TEntity> rows = context.Set<TEntity>().AsNoTracking();
+        bool byIds = !string.IsNullOrWhiteSpace(ids);
+        bool bySearch = !byIds && !string.IsNullOrWhiteSpace(search);
+        if (byIds)
+        {
+            var keys = LookupFilter.ParseKeys<int>(ids!);
+            rows = rows.Where(c => keys.Contains(EF.Property<int>(c, keyName)));
+        }
+        else if (bySearch)
+        {
+            string text = LookupFilter.Text(search!);
+            rows = rows.Where(c => c.Name.ToLower().Contains(text));
+        }
+
+        var items = rows.OrderBy(c => c.Name).Select(c => new LookupItem(EF.Property<int>(c, keyName), c.Name, c.IsActive));
+        return Results.Ok(await (!byIds && (bySearch || take is not null) ? items.Take(LookupFilter.Take(take)) : items).ToListAsync());
     }
 
     private async Task<IResult> GetByIdAsync(<#= contextType #> context, int id)

@@ -30,6 +30,8 @@
     // Full notes: Docs/TemplateNotes/API_Search_v1.md
 
     var searchableColumns = Model.SearchableColumns;
+    // whole-number foreign keys: an exact match on the key, one optional query parameter each (null means no filter)
+    var searchKeys = Model.SearchKeyColumns;
 
 
     string entity = Model.TableName;
@@ -44,7 +46,7 @@
     var call = new SearchCall(Model, entity, filters.Select(f => f.Name));
     // With AccessMode=Ef the search is LINQ over the context (the CS_SearchQuery class of this table), not a call to the routines SP_Search writes.
     bool ef = Project.AccessModeFor(Model.Dialect) == AccessMode.Ef;
-    var efFilters = string.Concat(filters.Select(f => ", " + f.ParamName));
+    var efFilters = string.Concat(filters.Select(f => ", " + f.ParamName).Concat(searchKeys.Select(k => ", " + LowerFirst(k.Name))));
     // ApiAuth with OwnedTables: only the rows of the owners the caller may act for. The routines cannot take an owner, so the routine form answers 403 to a caller who is limited to some owners.
     // ReadRoles: the search refuses a role the table's ReadRoles does not list
     var readRoles = WriteRolePlan.ReadFor(Project, Model);
@@ -91,6 +93,12 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
     {
 #>
         [FromQuery] string? <#= f.ParamName #>,
+<#
+    }
+    foreach (var k in searchKeys)
+    {
+#>
+        [FromQuery] <#= k.CSharpBase() #>? <#= LowerFirst(k.Name) #>,
 <#
     }
 #>
@@ -175,7 +183,15 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
             <#= call.IntParameter("PageNumber", "pageNumber") #>,
             <#= call.IntParameter("PageSize", "pageSize") #>,
             <#= call.SortColumnParameter("sortColumn") #>,
-            <#= call.SortDescendingParameter("sortDescending") #>
+            <#= call.SortDescendingParameter("sortDescending") #><#= searchKeys.Count > 0 ? "," : "" #>
+<#
+    for (int i = 0; i < searchKeys.Count; i++)
+    {
+#>
+            <#= call.KeyParameter(searchKeys[i], LowerFirst(searchKeys[i].Name)) #><#= i < searchKeys.Count - 1 ? "," : "" #>
+<#
+    }
+#>
         };
 
         // Set<T>().FromSqlRaw(...), NOT Database.SqlQueryRaw<T>(...): SqlQueryRaw<T> builds an ad hoc EF
@@ -201,6 +217,12 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
     {
 #>
             <#= call.TextParameter(f.Name, f.ParamName) #>,
+<#
+    }
+    foreach (var k in searchKeys)
+    {
+#>
+            <#= call.KeyParameter(k, LowerFirst(k.Name)) #>,
 <#
     }
 #>

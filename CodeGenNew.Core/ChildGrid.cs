@@ -11,6 +11,9 @@ public sealed record ChildLookup(ForeignKeyModel ForeignKey, ColumnModel? Column
     public string ParentKeyName => ForeignKey.ReferencedColumns[0];
     public string ParentDisplayName => ForeignKey.ReferencedDisplayColumns[0];
 
+    /// <summary> The caption of the child column as the grid's header shows it (<c>Item</c>), which also names the filter: "Filter by Item". </summary>
+    public string Label => Column is null ? Labels.Words(TemplateHelpers.BaseName(ParentTable)) : GridCaption.For(Column, Labels.Column(ColumnName));
+
     /// <summary> A whole-number key is named by the parent's <c>GET &lt;route&gt;/lookup</c> (id and name only); any other key reads the parent's rows. </summary>
     public bool UsesLookupEndpoint => ColumnKeyType?.Kind == KeyKind.Int;
 
@@ -171,6 +174,13 @@ public sealed class ChildGrid
 
     /// <summary> The other foreign keys that are resolved to the parent's name. </summary>
     public IReadOnlyList<ChildLookup> Lookups { get; }
+
+    /// <summary> The names a person can filter the grid by: a drop-down for each foreign key shown as a name (at most <see cref="MaxFilters"/>), listing the names found in the rows of the grid.
+    /// The grid already holds every row of the child for this parent, so the filter is applied to those rows and asks the server for nothing. </summary>
+    public IReadOnlyList<ChildLookup> Filters => Lookups.Take(MaxFilters).ToList();
+
+    /// <summary> The most filter drop-downs a child grid gets. </summary>
+    public const int MaxFilters = 3;
 
     /// <summary> The child's column names the grid leaves out. </summary>
     public IReadOnlyList<string> HiddenColumns { get; }

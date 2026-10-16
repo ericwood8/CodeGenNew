@@ -21,6 +21,8 @@
     // Full notes: Docs/TemplateNotes/SP_Search_v1.md
 
     var searchableColumns = Model.SearchableColumns;
+    // whole-number foreign keys: an exact match, NULL meaning no filter (the parameters follow the paging and sort parameters so an older call still lines up)
+    var searchKeys = Model.SearchKeyColumns;
 
     string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
 
@@ -28,6 +30,7 @@
     var postgres = DialectInfo.For(SqlDialect.PostgreSql);
     var whereClauses = searchableColumns
         .Select(c => $"({c.ParameterName} IS NULL OR {sqlServer.ContainsCondition(Q(c.Name), sqlServer.EscapeLikeSql($"LTRIM(RTRIM({c.ParameterName}))"))})")
+        .Concat(searchKeys.Select(c => $"({c.ParameterName} IS NULL OR {Q(c.Name)} = {c.ParameterName})"))
         .ToList();
     // Empty when there's nothing to filter on - both procedures below then read/count every row
     // unconditionally, instead of a "WHERE" with nothing after it.
@@ -51,8 +54,10 @@
         string PQ(string identifier) => "\"" + identifier.Replace("\"", "\"\"") + "\"";
         string PParam(ColumnModel c) => PQ(c.ParameterName.TrimStart('@'));
         string pgTable = PQ(Model.SchemaName) + "." + PQ(Model.DbTableName);
-        string pgWhere = searchableColumns.Count == 0 ? "" : "\tWHERE " + string.Join("\n\t  AND ", searchableColumns
-            .Select(c => $"({PParam(c)} IS NULL OR {postgres.ContainsCondition(PQ(c.DbName) + (c.DbEnumType is null ? "" : "::text"), postgres.EscapeLikeSql($"btrim({PParam(c)})"))})")) + "\n";   // an enum column has no ILIKE: compare its text
+        var pgConditions = searchableColumns
+            .Select(c => $"({PParam(c)} IS NULL OR {postgres.ContainsCondition(PQ(c.DbName) + (c.DbEnumType is null ? "" : "::text"), postgres.EscapeLikeSql($"btrim({PParam(c)})"))})")   // an enum column has no ILIKE: compare its text
+            .Concat(searchKeys.Select(c => $"({PParam(c)} IS NULL OR {PQ(c.DbName)} = {PParam(c)})")).ToList();
+        string pgWhere = pgConditions.Count == 0 ? "" : "\tWHERE " + string.Join("\n\t  AND ", pgConditions) + "\n";
         // The default order (best display column, then the key) follows the chosen sort as the tie-breaker.
         var pgDefaultOrder = new List<string>();
         if (sortColumn is not null)
@@ -61,21 +66,30 @@
             pgDefaultOrder.Add(PQ(pk.DbName) + " ASC");
         string pgOrderBy = string.Join(", ", pgDefaultOrder);
         var searchParams = searchableColumns.Select(c => $"{PParam(c)} {c.SqlTypeDeclaration} DEFAULT NULL").ToList();
+        var keyParams = searchKeys.Select(c => $"{PParam(c)} {c.SqlTypeDeclaration} DEFAULT NULL").ToList();
 
         var pg = new System.Text.StringBuilder();
         // A function with a different parameter list is a second function with the same name, not a replacement, and a call that leaves defaults out is then
         // ambiguous: drop the earlier signature (the same list without SortColumn / SortDescending) if it exists.
         pg.Append("DROP FUNCTION IF EXISTS " + PQ(Model.SchemaName) + "." + PQ(Model.TableName + "_Search") + "("
             + string.Join(", ", searchableColumns.Select(c => c.SqlTypeDeclaration).Append("integer").Append("integer")) + ");\n\n");
+        if (searchKeys.Count > 0)
+        {
+            // the signatures from before the key filters existed: the search with the sort parameters, and the count with the text filters only
+            pg.Append("DROP FUNCTION IF EXISTS " + PQ(Model.SchemaName) + "." + PQ(Model.TableName + "_Search") + "("
+                + string.Join(", ", searchableColumns.Select(c => c.SqlTypeDeclaration).Append("integer").Append("integer").Append("text").Append("boolean")) + ");\n\n");
+            pg.Append("DROP FUNCTION IF EXISTS " + PQ(Model.SchemaName) + "." + PQ(Model.TableName + "_SearchCount") + "(" + string.Join(", ", searchableColumns.Select(c => c.SqlTypeDeclaration)) + ");\n\n");
+        }
         pg.Append("CREATE OR REPLACE FUNCTION " + PQ(Model.SchemaName) + "." + PQ(Model.TableName + "_Search") + "(\n");
         // SortColumn / SortDescending: the grid's chosen sort (SearchSort); both default to "the default order".
         pg.Append(string.Join(",\n", searchParams.Append("\"PageNumber\" integer DEFAULT 1").Append("\"PageSize\" integer DEFAULT 100")
-            .Append("\"SortColumn\" text DEFAULT NULL").Append("\"SortDescending\" boolean DEFAULT false")) + "\n)\n");
+            .Append("\"SortColumn\" text DEFAULT NULL").Append("\"SortDescending\" boolean DEFAULT false").Concat(keyParams)) + "\n)\n");
         pg.Append("RETURNS SETOF " + pgTable + "\nLANGUAGE sql STABLE\nAS $$\n");
         pg.Append("\tSELECT t.* FROM " + pgTable + " AS t\n" + pgWhere);
         pg.Append("\tORDER BY\n" + SearchSort.Postgres(Model) + "\t\t" + pgOrderBy + "\n\tOFFSET (\"PageNumber\" - 1) * \"PageSize\" LIMIT \"PageSize\";\n$$;\n\n");
         pg.Append("CREATE OR REPLACE FUNCTION " + PQ(Model.SchemaName) + "." + PQ(Model.TableName + "_SearchCount") + "(");
-        pg.Append(searchParams.Count > 0 ? "\n" + string.Join(",\n", searchParams) + "\n" : "");
+        var countParams = searchParams.Concat(keyParams).ToList();
+        pg.Append(countParams.Count > 0 ? "\n" + string.Join(",\n", countParams) + "\n" : "");
         pg.Append(")\nRETURNS integer\nLANGUAGE sql STABLE\nAS $$\n");
         pg.Append("\tSELECT count(*)::integer FROM " + pgTable + (pgWhere.Length > 0 ? "\n" + pgWhere.TrimEnd('\n') : "") + ";\n$$;\n");
         Write(pg.ToString());
@@ -96,7 +110,7 @@ CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Sear
 @PageNumber INT = 1,
 @PageSize INT = 100,
 @SortColumn NVARCHAR(128) = NULL,
-@SortDescending BIT = 0
+@SortDescending BIT = 0<#= string.Concat(searchKeys.Select(c => ",\r\n" + c.ParameterName + " " + c.SqlTypeDeclaration + " = NULL")) #>
 )
 AS
 BEGIN
@@ -122,15 +136,16 @@ CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Sear
 <#
     // Empty "( )" is invalid T-SQL (CREATE PROCEDURE with no parameters omits the parens entirely) -
     // found live (2026-09-28) generating this for a table with no searchable columns.
-    if (searchableColumns.Count > 0)
+    var countColumns = searchableColumns.Concat(searchKeys).ToList();
+    if (countColumns.Count > 0)
     {
 #>
 (
 <#
-        for (int i = 0; i < searchableColumns.Count; i++)
+        for (int i = 0; i < countColumns.Count; i++)
         {
-            var c = searchableColumns[i];
-            string comma = (i < searchableColumns.Count - 1) ? "," : "";
+            var c = countColumns[i];
+            string comma = (i < countColumns.Count - 1) ? "," : "";
 #>
 <#= c.ParameterName #> <#= c.SqlTypeDeclaration #> = NULL<#= comma #>
 <#

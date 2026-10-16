@@ -43,3 +43,9 @@ The grid starts with the columns `GridColumns` picks and offers every column of 
 - Every header, filter cell and cell is written as `@if (Shown("Name")) { ... }`, so a hidden column draws nothing. A long or multi-line text cell shows its first 60 characters (`GridColumns.Cut`).
 - A sort on a column that is then hidden is dropped, and so is a filter typed for it (the OData page reads again with what is left).
 - **OData:** the page asks (`$select`) for the shown columns and the key and reads again when the choice changes. **REST:** rows are whole, so a column that is shown costs no call; the server sorts by every column that is not long text or binary (`SearchSort`), so a column the grid did not start with can sort too.
+
+
+## Type-ahead for a big parent
+
+A parent with more rows than `TypeAheadRows` (default 1000, read from the database when the schema is read) or listed in `TypeAheadParents` is not read whole. The form field and the search-key filter are `<TypeAhead>` (`Components/TypeAhead.razor`), which asks `<Parent>Client.GetLookupAsync(search:)` after a pause and lists the matches. The parent's lookup list then holds only the rows the page has seen: the names of the rows of the page (`GetLookupAsync(ids:)` after each load) and the rows a person picked. The OData page keeps its drop-down.
+The rule is `FormParent.TypeAhead` in Core, the same for every stack; `TypeAheadRows=0` turns the automatic choice off. The API answers `GET <route>/lookup?search=text&take=10` (the first rows whose lookup text contains it) and `GET <route>/lookup?ids=1,2` (the names of those keys): see API_EssentialCrudApi.

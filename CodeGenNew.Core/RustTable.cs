@@ -15,6 +15,12 @@ public sealed record RustNavigation(string Name, string Json);
 /// <summary> A filter of the search: the Rust field of the request, the query-string name, and the SQL text before and after the bound value. </summary>
 public sealed record RustFilter(string Field, string Query, string Before, string After);
 
+/// <summary> One whole-number foreign key the search can filter by: an exact match, the quoted column as the SQL names it. </summary>
+public sealed record RustKeyFilter(string Field, string Query, string Column, string Type)
+{
+    public bool IsText => Type == "String";
+}
+
 /// <summary> A sort the grid may ask for: the name in lower case and the SQL expression to order by. </summary>
 public sealed record RustSort(string Name, string Expression);
 
@@ -143,6 +149,12 @@ public sealed class RustTable
     public string SearchItems { get; private set; } = "";
     public string SearchCount { get; private set; } = "";
     public IReadOnlyList<RustFilter> Filters { get; private set; } = [];
+
+    /// <summary> The key filters (<see cref="SearchPlan.KeyFilters"/>): an optional integer query parameter each, compared with the column as written. </summary>
+    public IReadOnlyList<RustKeyFilter> KeyFilters { get; private set; } = [];
+
+    // the field's type without the Option a nullable column adds
+    private static string BareType(RustField field) => field.IsOption && field.Type.StartsWith("Option<") ? field.Type["Option<".Length..^1] : field.Type;
     public IReadOnlyList<RustSort> Sorts { get; private set; } = [];
 
     /// <summary> The order that applies without a sort and follows a chosen one: the best display column, then the key. </summary>
@@ -259,6 +271,9 @@ public sealed class RustTable
             string field = _fieldOf[f.Column].Name;
             return new RustFilter(field, f.ParameterName, before, after);
         }).ToList();
+
+        KeyFilters = plan.KeyFilters.Where(k => _fieldOf.ContainsKey(k.Column))
+            .Select(k => new RustKeyFilter(_fieldOf[k.Column].Name, k.ParameterName, "t." + _di.Quote(k.Column.DbName), k.Column.IsIntegerColumn ? "i64" : BareType(_fieldOf[k.Column]))).ToList();
 
         Sorts = SearchSort.Entries(Model)
             .Where(e => _fieldOf.ContainsKey(e.Column))

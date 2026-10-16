@@ -12,6 +12,7 @@ public sealed class SearchCall
     private readonly string _schema;
     private readonly string _entity;
     private readonly List<string> _filterArguments;
+    private readonly List<string> _keyArguments;
 
     /// <param name="qualifyTypes"> Write the parameter class with its namespace (a repository file has no using for it). </param>
     public SearchCall(TableModel model, string entity, IEnumerable<string> filterNames, bool qualifyTypes = false)
@@ -22,6 +23,7 @@ public sealed class SearchCall
         _schema = model.SchemaName;
         _entity = entity;
         _filterArguments = filterNames.Select(n => "@p" + n).ToList();
+        _keyArguments = model.SearchKeyColumns.Select(c => "@p" + c.Name).ToList();
     }
 
     /// <summary> The parameter class's namespace, for a using line (Microsoft.Data.SqlClient or Npgsql). </summary>
@@ -33,7 +35,7 @@ public sealed class SearchCall
     {
         get
         {
-            string args = string.Join(", ", _filterArguments.Append("@PageNumber").Append("@PageSize").Append("@SortColumn").Append("@SortDescending"));
+            string args = string.Join(", ", _filterArguments.Append("@PageNumber").Append("@PageSize").Append("@SortColumn").Append("@SortDescending").Concat(_keyArguments));
             return _postgres ? $"SELECT * FROM \\\"{_schema}\\\".\\\"{_entity}_Search\\\"({args})"
                 : _mysql ? $"CALL `{_entity}_Search`({args})"
                 : $"EXEC [{_schema}].[{_entity}_Search] {args}";
@@ -45,7 +47,7 @@ public sealed class SearchCall
     {
         get
         {
-            string args = string.Join(", ", _filterArguments);
+            string args = string.Join(", ", _filterArguments.Concat(_keyArguments));
             return _postgres
                 ? $"SELECT \\\"{_schema}\\\".\\\"{_entity}_SearchCount\\\"({args}) AS \\\"Value\\\""
                 : _mysql ? $"CALL `{_entity}_SearchCount`({args})"
@@ -58,6 +60,22 @@ public sealed class SearchCall
         ? $"new {_prefix}NpgsqlParameter(\"@p{name}\", NpgsqlTypes.NpgsqlDbType.Text) {{ Value = (object?){valueExpression} ?? DBNull.Value }}"
         : _mysql ? $"new {_prefix}MySqlParameter(\"@p{name}\", (object?){valueExpression} ?? DBNull.Value)"
         : $"new {_prefix}SqlParameter(\"@p{name}\", (object?){valueExpression} ?? DBNull.Value)";
+
+    /// <summary> A C# expression creating a key filter parameter for <paramref name="column"/> (a foreign key); <paramref name="valueExpression"/> is a nullable number or Guid, or text, and is sent as DBNull
+    /// when null (or, for text, blank). </summary>
+    public string KeyParameter(ColumnModel column, string valueExpression)
+    {
+        string name = "@p" + column.Name;
+        if (column.CSharpBase() == "string")
+            valueExpression = $"(string.IsNullOrEmpty({valueExpression}) ? null : {valueExpression})";
+        if (_postgres)
+        {
+            string type = column.CSharpBase() switch { "long" => "Bigint", "int" => "Integer", "string" => "Text", "Guid" => "Uuid", _ => "Smallint" };
+            return $"new {_prefix}NpgsqlParameter(\"{name}\", NpgsqlTypes.NpgsqlDbType.{type}) {{ Value = (object?){valueExpression} ?? DBNull.Value }}";
+        }
+        return _mysql ? $"new {_prefix}MySqlParameter(\"{name}\", (object?){valueExpression} ?? DBNull.Value)"
+            : $"new {_prefix}SqlParameter(\"{name}\", (object?){valueExpression} ?? DBNull.Value)";
+    }
 
     /// <summary> The grid's chosen sort column (a column name, or null for the default order); the routine compares it with its own list of columns (SearchSort). </summary>
     public string SortColumnParameter(string valueExpression) => _postgres

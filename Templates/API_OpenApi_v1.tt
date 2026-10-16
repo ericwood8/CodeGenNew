@@ -248,6 +248,16 @@
                     parameters.Add("          schema:");
                     parameters.Add("            type: string");
                 }
+                foreach (var c in table.SearchKeyColumns)
+                {
+                    parameters.Add("        - name: " + char.ToLowerInvariant(c.Name[0]) + c.Name[1..]);
+                    parameters.Add("          in: query");
+                    parameters.Add("          description: " + CSharpText.Quote("Rows whose " + c.Name + " is exactly this key."));
+                    parameters.Add("          schema:");
+                    parameters.Add(c.IsGuidColumn || c.IsStringColumn ? "            type: string" : "            type: integer");
+                    if (c.IsGuidColumn)
+                        parameters.Add("            format: uuid");
+                }
                 parameters.AddRange(
                 [
                     "        - name: pageNumber", "          in: query", "          schema:", "            type: integer", "            minimum: 1", "            default: 1",

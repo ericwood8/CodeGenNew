@@ -90,3 +90,9 @@ for PaginationBar fails to compile (WMC0001: Unknown type 'PaginationBar' in XML
 
 The row id (the ListRow's Id and the Edit / Clone / Delete buttons' Tag) has the key's C# type (int, long, Guid or string, Core's KeyType). A text key is also the first column
 of the grid: the person typed it and it means something.
+
+
+## Type-ahead for a big parent
+
+A parent with more rows than `TypeAheadRows` (default 1000, read from the database when the schema is read) or listed in `TypeAheadParents` is not read whole. The search-key filter is an `AutoSuggestBox` that asks the context for the first ten rows whose text contains what was typed (`Suggest<Column>FilterAsync`); typing takes the filter off, picking a row filters the grid to it. The grid reads only the names of the rows of the page. A `SemaphoreSlim` makes a load and the suggestions take turns on the one DbContext.
+The rule is `FormParent.TypeAhead` in Core, the same for every stack; `TypeAheadRows=0` turns the automatic choice off. The API answers `GET <route>/lookup?search=text&take=10` (the first rows whose lookup text contains it) and `GET <route>/lookup?ids=1,2` (the names of those keys): see API_EssentialCrudApi.

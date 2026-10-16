@@ -59,7 +59,7 @@ public class ODataAngularTests
     {
         var holiday = Sample.Holiday();
         var plan = ODataScreenPlan.For(holiday, Project(On), new Dictionary<string, TableModel> { ["Holiday"] = holiday });
-        CollectionAssert.AreEqual(new[] { "sY_IsoCountry_Alpha3Code", "name" }, plan.Filters.Select(f => f.Key).ToArray(), "the keys are the filter names the REST screen uses");
+        CollectionAssert.AreEqual(new[] { "name" }, plan.Filters.Select(f => f.Key).ToArray(), "the keys are the filter names the REST screen uses");
         Assert.AreEqual("name", plan.Filters.Single(f => f.Key == "name").Property);
         Assert.AreEqual("name", plan.LookupName);
         Assert.IsNull(plan.LookupActive);

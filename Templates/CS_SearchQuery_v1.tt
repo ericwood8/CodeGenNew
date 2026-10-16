@@ -36,8 +36,10 @@
         L($"public static class {Model.TableName}SearchQuery");
         L("{");
 
-        string filterParameters = string.Join(", ", plan.Filters.Select(f => $"string? {f.ParameterName} = null"));
-        L($"    public static IQueryable<{entity}> Filter(IQueryable<{entity}> query{(plan.Filters.Count > 0 ? ", " + filterParameters : "")})");
+        // the text filters first, then one optional exact match per whole-number foreign key
+        var filterParameterList = plan.Filters.Select(f => $"string? {f.ParameterName} = null")
+            .Concat(plan.KeyFilters.Select(k => $"{k.Column.CSharpBase()}? {k.ParameterName} = null")).ToList();
+        L($"    public static IQueryable<{entity}> Filter(IQueryable<{entity}> query{(filterParameterList.Count > 0 ? ", " + string.Join(", ", filterParameterList) : "")})");
         L("    {");
         foreach (var filter in plan.Filters)
         {
@@ -54,6 +56,18 @@
             string notNull = filter.Column.IsNullable ? $"t.{property} != null && " : "";
             L($"            query = query.Where(t => {notNull}t.{property}.ToLower().Contains({name}Term));");
             L("        }");
+        }
+        foreach (var key in plan.KeyFilters)
+        {
+            string name = key.ParameterName;
+            if (key.Column.CSharpBase() == "string")
+            {
+                L($"        if (!string.IsNullOrEmpty({name}))");
+                L($"            query = query.Where(t => t.{key.Column.CSharpName()} == {name});");
+                continue;
+            }
+            L($"        if ({name} is {{ }} {name}Value)");
+            L($"            query = query.Where(t => t.{key.Column.CSharpName()} == {name}Value);");
         }
         L("        return query;");
         L("    }");

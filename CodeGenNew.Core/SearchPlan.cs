@@ -3,6 +3,9 @@ namespace CodeGenNew.Core;
 /// <summary> One text column a grid can filter by: a contains match; the parameter name is what the caller sends. </summary>
 public sealed record SearchFilter(ColumnModel Column, string ParameterName);
 
+/// <summary> One whole-number foreign key a grid can be filtered by: an exact match on the key; the parameter name is what the caller sends (<c>customerId</c>). </summary>
+public sealed record SearchKeyFilter(ColumnModel Column, string ParameterName);
+
 /// <summary> One column a grid can be sorted by. <see cref="ParentPath"/> is the C# path to the parent's display property (<c>Customer.Name</c>) when the foreign key sorts by what the grid
 /// shows, null when it sorts by the column itself. </summary>
 public sealed record SearchSortOption(string Name, ColumnModel Column, string? ParentPath);
@@ -11,15 +14,19 @@ public sealed record SearchSortOption(string Name, ColumnModel Column, string? P
 /// (SP_Search) and the LINQ query (CS_SearchQuery) follow it today; a Rust repository or a dashboard query reads the same plan. </summary>
 public sealed class SearchPlan
 {
-    private SearchPlan(IReadOnlyList<SearchFilter> filters, IReadOnlyList<SearchSortOption> sorts, IReadOnlyList<ColumnModel> defaultOrder)
+    private SearchPlan(IReadOnlyList<SearchFilter> filters, IReadOnlyList<SearchKeyFilter> keyFilters, IReadOnlyList<SearchSortOption> sorts, IReadOnlyList<ColumnModel> defaultOrder)
     {
         Filters = filters;
+        KeyFilters = keyFilters;
         Sorts = sorts;
         DefaultOrder = defaultOrder;
     }
 
     /// <summary> A text filter per searchable column: NULL or blank means no filter, anything else must be contained in the column, ignoring case. </summary>
     public IReadOnlyList<SearchFilter> Filters { get; }
+
+    /// <summary> An exact-match filter per whole-number foreign key (<see cref="TableModel.SearchKeyColumns"/>): NULL means no filter. </summary>
+    public IReadOnlyList<SearchKeyFilter> KeyFilters { get; }
 
     /// <summary> The names a caller may sort by; any other name gives the default order. </summary>
     public IReadOnlyList<SearchSortOption> Sorts { get; }
@@ -36,6 +43,7 @@ public sealed class SearchPlan
     {
         string LowerFirst(string name) => name.Length == 0 ? name : char.ToLowerInvariant(name[0]) + name[1..];
         var filters = model.SearchableColumns.Select(c => new SearchFilter(c, LowerFirst(c.Name))).ToList();
+        var keyFilters = model.SearchKeyColumns.Select(c => new SearchKeyFilter(c, LowerFirst(c.Name))).ToList();
 
         var sorts = SearchSort.Entries(model).Select(entry =>
         {
@@ -51,6 +59,6 @@ public sealed class SearchPlan
         if (best is not null)
             order.Add(best);
         order.AddRange(model.PrimaryKeyColumns.Where(pk => pk != best));
-        return new SearchPlan(filters, sorts, order);
+        return new SearchPlan(filters, keyFilters, sorts, order);
     }
 }

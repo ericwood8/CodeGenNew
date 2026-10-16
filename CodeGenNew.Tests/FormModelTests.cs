@@ -400,8 +400,8 @@ public class FormModelTests
         var region = Sample.Table("Region", [Sample.Column("RegionId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Text("Name", 2)]);
         string client = await Rendered("BLZ_Client_v1.tt", region, project);
         StringAssert.Contains(client, "public record RegionLookup(int Id, string Name, bool? IsActive = null);");
-        StringAssert.Contains(client, "public async Task<List<RegionLookup>> GetLookupAsync()");
-        StringAssert.Contains(await Rendered("TSX_Api_v1.tt", region, project), "getLookup: () => request<{ id: number; name: string; isActive?: boolean | null }[]>(`${apiUrl}/lookup`),");
+        StringAssert.Contains(client, "public async Task<List<RegionLookup>> GetLookupAsync(string? search = null, IEnumerable<int>? ids = null, int? take = null)");
+        StringAssert.Contains(await Rendered("TSX_Api_v1.tt", region, project), "getLookup: (query: { search?: string; ids?: number[]; take?: number } = {}) => request<{ id: number; name: string; isActive?: boolean | null }[]>(`${apiUrl}/lookup${lookupQuery(query)}`),");
     }
 
     // ------------------------------------------------------------------ the four stacks edit the same fields

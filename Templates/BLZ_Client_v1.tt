@@ -44,7 +44,15 @@
         L();
         L($"    public async Task<List<{type}>> GetAllAsync() => await (await http.GetAsync(Url)).ReadAsync<List<{type}>>();");
         L();
-        L($"    public async Task<List<{BlazorNames.LookupType(Model.TableName)}>> GetLookupAsync() => await (await http.GetAsync($\"{{Url}}/lookup\")).ReadAsync<List<{BlazorNames.LookupType(Model.TableName)}>>();");
+        L("    // With a search only the first few rows whose text contains it, with ids only the rows with those keys (a type-ahead for a parent with too many rows for a drop-down).");
+        L($"    public async Task<List<{BlazorNames.LookupType(Model.TableName)}>> GetLookupAsync(string? search = null, IEnumerable<{keyType}>? ids = null, int? take = null)");
+        L("    {");
+        L("        var query = new List<string>();");
+        L("        if (!string.IsNullOrWhiteSpace(search)) query.Add($\"search={Uri.EscapeDataString(search)}\");");
+        L("        if (ids is not null) query.Add($\"ids={Uri.EscapeDataString(string.Join(\",\", ids))}\");");
+        L("        if (take is not null) query.Add($\"take={take}\");");
+        L($"        return await (await http.GetAsync($\"{{Url}}/lookup{{(query.Count == 0 ? \"\" : \"?\" + string.Join(\"&\", query))}}\")).ReadAsync<List<{BlazorNames.LookupType(Model.TableName)}>>();");
+        L("    }");
         L();
         L($"    public async Task<{type}> GetAsync({keyType} id) => await (await http.GetAsync($\"{{Url}}/{{{id}}}\")).ReadAsync<{type}>();");
         L();

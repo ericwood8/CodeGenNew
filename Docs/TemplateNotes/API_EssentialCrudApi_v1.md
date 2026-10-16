@@ -72,3 +72,11 @@ With `ListProtocol=Search` the list route (`GET <route>`) takes the project's pa
 **Write roles** (`WriteRoles`, `TableWriteRoles`, with `ApiAuth`): a table with a rule has `WriteRoles` in its API class; the base refuses create, update, delete and clone from another role (403 `role-not-allowed`, `RoleGate` in the Jwt group). Reading is open. The administrator role is always allowed. Angular screens hide Add, Edit, Clone and Delete when the signed-in role is not listed. Python and Rust routes do not have it yet.
 
 **Read roles** (`ReadRoles`, `TableReadRoles`, with `ApiAuth`): the class also overrides `ReadRoles`; the base refuses the list, one row, the active list and find by name from another role (403 `role-not-allowed`). The `lookup` route stays open because the drop-downs of other screens read it. A project made before needs `--replace` of the CrudApi and Jwt essentials.
+
+## The lookup list for a type-ahead
+
+`GET <route>/lookup` answers the key, the display text and the active flag of every row. For a parent too big for a drop-down (`TypeAheadRows`, `TypeAheadParents`) the screens ask for less:
+
+- `?search=text` keeps the first `take` rows (10 by default from the screens, 25 when `take` is left out, at most 100) whose lookup text contains the text, ignoring case. The filter is applied to the entity rows before the projection, because EF Core cannot filter the projected record: a generated API class names the text with `LookupText` (`c => c.CustomerName`; API_Crud writes it with `LookupQuery`). A hand-written API without `LookupText` answers a search with a 400.
+- `?ids=1,2,3` keeps the rows with those keys (at most 200), which is how a screen reads the names of the rows it shows.
+- A call with neither is unchanged.

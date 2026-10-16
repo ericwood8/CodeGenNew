@@ -58,8 +58,11 @@ public static class MySqlProcedures
     {
         var searchable = m.SearchableColumns;
         var mySql = DialectInfo.For(SqlDialect.MySql);
-        string where = searchable.Count == 0 ? "" : "\tWHERE " + string.Join("\n\t  AND ", searchable
-            .Select(c => $"({P(c)} IS NULL OR {mySql.ContainsCondition(Col(c), mySql.EscapeLikeSql($"TRIM({P(c)})"))})")) + "\n";
+        var keys = m.SearchKeyColumns;
+        var conditions = searchable
+            .Select(c => $"({P(c)} IS NULL OR {mySql.ContainsCondition(Col(c), mySql.EscapeLikeSql($"TRIM({P(c)})"))})")
+            .Concat(keys.Select(c => $"({P(c)} IS NULL OR {Col(c)} = {P(c)})")).ToList();
+        string where = conditions.Count == 0 ? "" : "\tWHERE " + string.Join("\n\t  AND ", conditions) + "\n";
 
         var sortColumn = m.DisplayColumns.OrderBy(c => c.DisplayRank ?? int.MaxValue).ThenBy(c => c.OrdinalPosition).FirstOrDefault();
         var orderBy = new List<string>();
@@ -68,13 +71,13 @@ public static class MySqlProcedures
 
         // SortColumn / SortDescending: the grid's chosen sort (SearchSort); a MySQL procedure has no default parameter, so a caller passes NULL / 0 for "the default order".
         var parameters = searchable.Select(In).Append((Q("PageNumber"), "int", "IN")).Append((Q("PageSize"), "int", "IN"))
-            .Append((Q("SortColumn"), $"varchar({SearchSort.MaxNameLength})", "IN")).Append((Q("SortDescending"), "tinyint(1)", "IN")).ToList();
+            .Append((Q("SortColumn"), $"varchar({SearchSort.MaxNameLength})", "IN")).Append((Q("SortDescending"), "tinyint(1)", "IN")).Concat(keys.Select(In)).ToList();
         string body = "BEGIN\n\tDECLARE v_offset int;\n\tSET v_offset = (" + Q("PageNumber") + " - 1) * " + Q("PageSize") + ";\n\n" +
                       $"\tSELECT {string.Join(", ", m.Columns.Select(Col))}\n\tFROM {Table(m)} AS t\n{where}" +
                       $"\tORDER BY\n{SearchSort.MySql(m)}\t\t{string.Join(", ", orderBy)}\n\tLIMIT {Q("PageSize")} OFFSET v_offset;\nEND\n";
         string search = Create(m, "Search", parameters, body);
 
-        var countParameters = searchable.Select(In);
+        var countParameters = searchable.Concat(keys).Select(In);
         string count = Create(m, "SearchCount", countParameters,
             $"BEGIN\n\tSELECT COUNT(*) AS `Value`\n\tFROM {Table(m)}{(where.Length > 0 ? "\n" + where.TrimEnd('\n') : "")};\nEND\n");
         return search + "\n" + count;

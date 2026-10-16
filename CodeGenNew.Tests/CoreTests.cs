@@ -417,7 +417,9 @@ public class TableModelSearchableColumnsTests
     {
         var holiday = Sample.Holiday();
 
-        CollectionAssert.AreEqual(new[] { "SY_IsoCountry_Alpha3Code", "Name" }, holiday.SearchableColumns.Select(c => c.Name).ToList());
+        // the country code is a foreign key: a key filter (a drop-down of countries), not a text box
+        CollectionAssert.AreEqual(new[] { "Name" }, holiday.SearchableColumns.Select(c => c.Name).ToList());
+        CollectionAssert.AreEqual(new[] { "SY_IsoCountry_Alpha3Code", "SY_DisplayId" }, holiday.SearchKeyColumns.Select(c => c.Name).ToList());
     }
 
     [TestMethod]

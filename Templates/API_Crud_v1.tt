@@ -267,6 +267,8 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
 
     protected override IQueryable<<#= lookupItem #>> LookupQuery(IQueryable<<#= entity #>> rows) =>
         rows.OrderBy(c => <#= lookupName #>).Select(c => new <#= lookupItem #>(c.<#= keyProperty #>, <#= lookupName #>, <#= activeColumn is null ? "null" : "c." + activeColumn.Name #>));
+
+    protected override Expression<Func<<#= entity #>, string>>? LookupText => c => <#= lookupName #>;
 <#
         }
         if (canFindByName)

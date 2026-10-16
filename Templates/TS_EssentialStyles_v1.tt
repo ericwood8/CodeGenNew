@@ -46,8 +46,15 @@ button { font-weight: 700; }
 
 /* The search bar is a .form-group too (one box per searchable column plus Search and Clear): lay it out in a row, after the .form-group rules above. */
 .form-group.form-group-search { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; }
-.form-group.form-group-search input[type='text'] { width: 220px; flex: 0 1 220px; }
+.form-group.form-group-search input[type='text'], .form-group.form-group-search select { width: 220px; flex: 0 1 220px; }
 .form-control { padding: 6px 8px; font: inherit; }
+
+/* The type-ahead of a parent with too many rows for a drop-down: a box with the matches listed under it. */
+.type-ahead { position: relative; display: inline-block; }
+.type-ahead input { width: 100%; box-sizing: border-box; }
+.type-ahead-list { position: absolute; z-index: 10; left: 0; right: 0; margin: 2px 0 0; padding: 0; list-style: none; max-height: 240px; overflow-y: auto; background: Canvas; color: CanvasText; border: 1px solid #8886; box-shadow: 0 4px 12px #0003; }
+.type-ahead-list li { padding: 6px 8px; cursor: pointer; }
+.type-ahead-list li:hover { background: #8883; }
 
 [role='tablist'] { display: flex; gap: 4px; margin-bottom: 4px; border-bottom: 1px solid #8884; }
 [role='tab'] { padding: 6px 14px; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; cursor: pointer; border-bottom: 2px solid transparent; }

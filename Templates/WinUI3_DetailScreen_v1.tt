@@ -75,6 +75,9 @@
         bool tabbed = pages.Count > 1;
 
         var parents = form.Parents;
+        // a parent with too many rows for a drop-down is found by typing: an AutoSuggestBox that asks the context for the rows whose text contains what was typed
+        var aheadParents = parents.Where(p => p.TypeAhead).ToList();
+        var aheadColumns = shown.Where(c => form.KindOf(c) == FieldKind.Lookup && form.ParentOf(c) is { TypeAhead: true }).ToList();
 
         if (!Model.HasReferencedDisplayColumns && parents.Count > 0)
             Error("WinUI3_DetailScreen needs the foreign-keyed tables' display columns for its drop-downs; its .tt.config must say NeedsReferencedDisplayColumns=true.");
@@ -163,11 +166,33 @@
             if (kind == FieldKind.Lookup)
             {
                 var p = form.ParentOf(c)!;
+                if (p.TypeAhead)
+                {
+#>
+            <AutoSuggestBox<#= form.IsMarked(c) ? "" : " Header=\"" + label + "\"" #><#= RequiredMark.XamlAttributes(form.IsRequired(c), false) #> AutomationProperties.Name="<#= label #>" PlaceholderText="Type to find" DisplayMemberPath="Text" TextMemberPath="Text"
+                            Text="{x:Bind ViewModel.<#= prop #>Text, Mode=TwoWay}" TextChanged="On<#= prop #>TextChanged" SuggestionChosen="On<#= prop #>Chosen">
+<#
+                    if (form.IsMarked(c))
+                    {
+                        // an AutoSuggestBox has no header template: the caption and its red asterisk are the header itself
+#>
+                <AutoSuggestBox.Header>
+                    <TextBlock><Run Text="<#= label #>" /><Run Text=" <#= RequiredMark.Glyph #>" Foreground="Red" /></TextBlock>
+                </AutoSuggestBox.Header>
+<#
+                    }
+#>
+            </AutoSuggestBox>
+<#
+                }
+                else
+                {
 #>
             <ComboBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> ItemsSource="{x:Bind ViewModel.<#= WinUI3Names.OptionsProperty(p) #>}"
                       SelectedValuePath="Id" DisplayMemberPath="Text"
                       SelectedValue="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
 <#
+                }
             }
             else if (kind == FieldKind.Choices)
             {
@@ -335,6 +360,26 @@ public sealed partial class <#= table #>DetailDialog : ContentDialog
         return result;
     }
 
+<#
+        foreach (var c in aheadColumns)
+        {
+            var p = form.ParentOf(c)!;
+#>
+    // Typing in the <#= Labels.Column(c.Name) #> box takes the chosen row off and lists the rows whose text contains what was typed; picking one chooses it.
+    private async void On<#= c.Name #>TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
+            return;
+        ViewModel.<#= c.Name #> = null;
+        sender.ItemsSource = string.IsNullOrWhiteSpace(sender.Text) ? null : await ViewModel.Suggest<#= p.BaseName #>Async(sender.Text);
+    }
+
+    private void On<#= c.Name #>Chosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args) =>
+        ViewModel.<#= c.Name #> = ((<#= WinUI3Names.LookupOptionClass(table, "Detail", p.KeyCs) #>)args.SelectedItem).Id;
+
+<#
+        }
+#>
     // Validation failure keeps the dialog open instead of closing it - see ViewModel.SaveAsync.
     private async void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
@@ -429,10 +474,48 @@ public partial class <#= table #>DetailViewModel : ObservableObject
 #>
 
 <#
-        foreach (var p in parents)
+        foreach (var p in parents.Where(p => !p.TypeAhead))
         {
 #>
     public ObservableCollection<<#= WinUI3Names.LookupOptionClass(table, "Detail", p.KeyCs) #>> <#= WinUI3Names.OptionsProperty(p) #> { get; } = [];
+<#
+        }
+        if (aheadParents.Count > 0)
+        {
+#>
+    // A DbContext is not thread-safe: loading the dialog and the suggestions of a type-ahead take turns.
+    private readonly System.Threading.SemaphoreSlim _gate = new(1, 1);
+
+<#
+        }
+        foreach (var c in aheadColumns)
+        {
+#>
+    /// <summary> What the <#= Labels.Column(c.Name) #> box shows: what was typed, or the name of the row that was picked. </summary>
+    [ObservableProperty]
+    private string _<#= char.ToLowerInvariant(c.Name[0]) #><#= c.Name[1..] #>Text = "";
+
+<#
+        }
+        foreach (var p in aheadParents)
+        {
+#>
+    /// <summary> The first few <#= p.Table #> rows whose text contains what was typed. </summary>
+    public async Task<IReadOnlyList<<#= WinUI3Names.LookupOptionClass(table, "Detail", p.KeyCs) #>>> Suggest<#= p.BaseName #>Async(string text)
+    {
+        string wanted = text.Trim().ToLower();
+        await _gate.WaitAsync();
+        try
+        {
+            var found = await _context.Set<<#= p.Table #>>().AsNoTracking()
+                .Where(r => r.<#= p.DisplayName #>.ToString()!.ToLower().Contains(wanted))
+                .OrderBy(r => r.<#= p.DisplayName #>).Take(10)
+                .Select(r => new { Id = r.<#= p.KeyName #>, Text = r.<#= p.DisplayName #> }).ToListAsync();
+            return found.Select(r => new <#= WinUI3Names.LookupOptionClass(table, "Detail", p.KeyCs) #> { Id = r.Id, Text = r.Text?.ToString() ?? "" }).ToList();
+        }
+        finally { _gate.Release(); }
+    }
+
 <#
         }
 #>
@@ -547,12 +630,42 @@ public partial class <#= table #>DetailViewModel : ObservableObject
         else
         {
 #>
+<#
+        if (aheadParents.Count > 0)
+        {
+#>
     public async Task LoadLookupsAsync()
+    {
+        await _gate.WaitAsync();
+        try { await LoadLookupsCoreAsync(); }
+        finally { _gate.Release(); }
+    }
+
+<#
+        }
+#>
+    public async Task <#= aheadParents.Count > 0 ? "LoadLookupsCoreAsync" : "LoadLookupsAsync" #>()
     {
 <#
         foreach (var p in parents)
         {
             var lookupColumnsForThisParent = shown.Where(c => form.LookupOf(c) is ForeignKeyModel fk && fk.ReferencedTable.EqualsIgnoreCase(p.Table)).ToList();
+            if (p.TypeAhead)
+            {
+                // too many rows to read: only the row being edited is read, for the name the box shows
+                foreach (var c in lookupColumnsForThisParent)
+                {
+#>
+        if (_editing is not null)
+        {
+            <#= c.Name #> = _editing.<#= c.Name #>;
+            if (_editing.<#= c.Name #> is <#= p.KeyCs #> <#= TemplateHelpers.LowerFirst(c.Name) #>Key)
+                <#= c.Name #>Text = await _context.Set<<#= p.Table #>>().AsNoTracking().Where(r => r.<#= p.KeyName #> == <#= TemplateHelpers.LowerFirst(c.Name) #>Key).Select(r => r.<#= p.DisplayName #>.ToString()).FirstOrDefaultAsync() ?? "";
+        }
+<#
+                }
+                continue;
+            }
 #>
         <#= WinUI3Names.OptionsProperty(p) #>.Clear();
         foreach (var row in await _context.Set<<#= p.Table #>>().OrderBy(r => r.<#= p.DisplayName #>).ToListAsync())

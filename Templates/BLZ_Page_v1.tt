@@ -49,10 +49,19 @@
         const int pageSize = 20;
 
         var searchFields = form.SearchFields.Select(f => (Column: f.Column!, f.ParamName, Field: "filter" + Ident(f.Name), f.Label)).ToList();
+        // a drop-down of the parent's rows per whole-number foreign key: an exact match on the key (the OData page has its own filter row)
+        var searchKeys = (odata ? [] : form.SearchKeys).Select(k => (k.Parent, k.ParamName, Field: "filter" + Ident(k.Column.Name), k.Label)).ToList();
 
         var shown = form.Columns;
 
         var parents = form.Parents;
+        // a parent with too many rows for a drop-down is found by typing (Components/TypeAhead.razor); its list then holds only the rows the page has seen
+        bool Ahead(FormParent p) => p.TypeAhead && !odata;
+        var aheadParents = parents.Where(Ahead).ToList();
+        string Cs(FormParent p) => p.Column.CSharpBase();   // the C# type of the key: int, long or string
+        string Prop(ColumnModel c) => c.CSharpName();
+        // every column of this table that points at a type-ahead parent, and the form fields among them
+        var aheadColumns = form.Columns.Where(c => form.ParentOf(c) is { } p && Ahead(p)).ToList();
 
         bool canClone = form.CanClone;
 
@@ -87,7 +96,7 @@
             {
                 string childType = BlazorNames.TypeName(g.Table);
                 var lookups = g.Lookups
-                    .Select(l => (Column: l.ColumnName, Type: BlazorNames.TypeName(l.ParentTable), Field: BlazorNames.ChildLookupField(l.ParentTable),
+                    .Select(l => (Column: l.ColumnName, Prop: l.Column!.CSharpName(), Label: l.Label, Type: BlazorNames.TypeName(l.ParentTable), Field: BlazorNames.ChildLookupField(l.ParentTable),
                                   IdType: l.Column!.CSharpBase(), KeyProp: l.UsesLookupEndpoint ? "Id" : l.ParentKeyName, DisplayProp: l.UsesLookupEndpoint ? "Name" : l.ParentDisplayName,
                                   ItemType: l.UsesLookupEndpoint ? BlazorNames.LookupType(l.ParentTable) : BlazorNames.TypeName(l.ParentTable), Load: l.UsesLookupEndpoint ? "GetLookupAsync" : "GetAllAsync"))
                     .ToList();
@@ -112,6 +121,7 @@
                     // Edit opens the child's own page, which exists unless the project's Screens setting leaves it out
                     HasPage = Project.Screens.Length == 0 || Project.Screens.Contains(g.Table, StringComparer.OrdinalIgnoreCase),
                     Lookups = lookups,
+                    Filters = lookups.Take(ChildGrid.MaxFilters).ToList(),   // a drop-down of the names the rows have, per foreign key shown as a name
                     Columns = GridColumns.For(columns)
                 };
             }).ToList();
@@ -137,7 +147,7 @@
             L($"@page \"/{route}\"");
         L($"@using {ns}.Models");
         L($"@using {ns}.Services");
-        if (usesMoneyBox)
+        if (usesMoneyBox || aheadParents.Count > 0)
             L($"@using {ns}.Components");
         if (Project.Auth)
             L(readRoles.Count > 0 ? $"@attribute [Authorize(Roles = \"{string.Join(",", readRoles)}\")]" : "@attribute [Authorize]");
@@ -158,12 +168,16 @@
         L($"<h1>{title.Pluralize()}</h1>");
         L(Gate("", "<button type=\"button\" @onclick=\"Add\">Add New</button>"));
         // the OData page has the filter row under the headers in place of the search boxes
-        if (searchFields.Count > 0 && !odata)
+        if ((searchFields.Count > 0 || searchKeys.Count > 0) && !odata)
         {
             L();
             L("<div class=\"search\">");
             foreach (var f in searchFields)
                 L($"    <input type=\"text\" placeholder=\"Search by {f.Label}\" aria-label=\"Search by {f.Label}\" @bind=\"{f.Field}\" @bind:event=\"oninput\" />");
+            foreach (var k in searchKeys.Where(k => Ahead(k.Parent)))
+                L($"    <TypeAhead TValue=\"{Cs(k.Parent)}\" Label=\"Filter by {k.Label}\" Placeholder=\"All {k.Label.Pluralize()}\" Name=\"@Name{k.Parent.BaseName}({k.Field}Key)\" Find=\"@Find{k.Parent.BaseName}\" OnPick=\"@Pick{k.Field}\" />");
+            foreach (var k in searchKeys.Where(k => !Ahead(k.Parent)))
+                L($"    <select aria-label=\"Filter by {k.Label}\" @bind=\"{k.Field}\" @bind:after=\"SearchAsync\"><option value=\"\">All {k.Label.Pluralize()}</option>@foreach (var parent in {BlazorNames.LookupField(k.Parent)}) {{ <option value=\"@parent.{BlazorNames.KeyProperty(k.Parent)}\">@parent.{BlazorNames.DisplayProperty(k.Parent)}</option> }}</select>");
             L("    <button type=\"button\" @onclick=\"SearchAsync\">Search</button>");
             L("    <button type=\"button\" @onclick=\"ClearSearchAsync\">Clear</button>");
             L("</div>");
@@ -326,7 +340,9 @@
             {
                 var p = form.ParentOf(c)!;
                 string blank = c.IsNullable ? "<option value=\"\">None</option>" : c.CSharpBase() == "string" ? "<option value=\"\">Select</option>" : $"<option value=\"@(default({c.CSharpBase()}))\">Select</option>";
-                input = $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\">{blank}@foreach (var parent in {BlazorNames.LookupField(p)}) {{ <option value=\"@parent.{BlazorNames.KeyProperty(p)}\">@parent.{BlazorNames.DisplayProperty(p)}</option> }}</InputSelect>";
+                input = Ahead(p)
+                    ? $"<TypeAhead TValue=\"{Cs(p)}\" Id=\"{id}\" Label=\"{label}\" Required=\"{(c.IsNullable ? "false" : "true")}\" Name=\"@Name{p.BaseName}({bind})\" Find=\"@Find{p.BaseName}\" OnPick=\"@Pick{Prop(c)}\" />"
+                    : $"<InputSelect id=\"{id}\" @bind-Value=\"{bind}\">{blank}@foreach (var parent in {BlazorNames.LookupField(p)}) {{ <option value=\"@parent.{BlazorNames.KeyProperty(p)}\">@parent.{BlazorNames.DisplayProperty(p)}</option> }}</InputSelect>";
             }
             else if (kind == FieldKind.Choices)
             {
@@ -380,6 +396,16 @@
             foreach (var ch in children)
             {
                 L($"            <h3>{ch.Title}</h3>");
+                foreach (var f in ch.Filters)
+                {
+                    L($"            <select aria-label=\"Filter {ch.Title} by {f.Label}\" @bind=\"{ch.Var}Filter{f.Prop}\">");
+                    L($"                <option value=\"\">All {f.Label.Pluralize()}</option>");
+                    L($"                @foreach (var choice in {ch.Var}Rows.Select(line => ({f.IdType}?)line.{f.Prop}).Where(id => id != null).Distinct().OrderBy(id => Name{f.Field}(id), StringComparer.CurrentCultureIgnoreCase))");
+                    L("                {");
+                    L($"                    <option value=\"@choice\">@Name{f.Field}(choice)</option>");
+                    L("                }");
+                    L("            </select>");
+                }
                 L($"            @if ({ch.Var}Rows.Count == 0)");
                 L("            {");
                 L("                <p class=\"no-rows\">Nothing found.</p>");
@@ -395,7 +421,9 @@
                 L("                        </tr>");
                 L("                    </thead>");
                 L("                    <tbody>");
-                L($"                        @foreach (var line in {ch.Var}Rows)");
+                string childRows = ch.Filters.Count == 0 ? $"{ch.Var}Rows"
+                    : $"{ch.Var}Rows.Where(line => " + string.Join(" && ", ch.Filters.Select(f => $"(string.IsNullOrEmpty({ch.Var}Filter{f.Prop}) || Convert.ToString(line.{f.Prop}) == {ch.Var}Filter{f.Prop})")) + ")";
+                L($"                        @foreach (var line in {childRows})");
                 L("                        {");
                 L("                            <tr>");
                 foreach (var c in ch.Columns)
@@ -431,7 +459,11 @@
         foreach (var p in parents)
             L($"    private List<{BlazorNames.ItemType(p)}> {BlazorNames.LookupField(p)} = [];");
         foreach (var ch in children)
+        {
             L($"    private List<{ch.Type}> {ch.Var}Rows = [];");
+            foreach (var f in ch.Filters)
+                L($"    private string? {ch.Var}Filter{f.Prop};   // the name picked in the {ch.Title} grid's {f.Label} drop-down (a key, as text)");
+        }
         foreach (var l in childLookups)
             L($"    private List<{l.ItemType}> {l.Field} = [];");
         L("    private §T? row;");
@@ -480,12 +512,16 @@
         L("    [Parameter, SupplyParameterFromQuery(Name = \"edit\")] public string? EditId { get; set; }");
         L("    [Parameter, SupplyParameterFromQuery(Name = \"back\")] public string? Back { get; set; }");
         if (!odata)
+        {
             foreach (var f in searchFields)
                 L($"    private string? {f.Field};");
+            foreach (var k in searchKeys)
+                L($"    private string? {k.Field};");
+        }
         L();
         L("    protected override async Task OnInitializedAsync()");
         L("    {");
-        foreach (var p in parents)
+        foreach (var p in parents.Where(p => !Ahead(p)))
             L($"        try {{ {BlazorNames.LookupField(p)} = await {BlazorNames.LookupField(p)}Client.{BlazorNames.LoadCall(p)}(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
         foreach (var l in childLookups)
             L($"        try {{ {l.Field} = await {l.Field}Client.{l.Load}(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
@@ -497,19 +533,25 @@
         L("        await LoadAsync();");
         L(gated ? "        if (EditId is not null && CanWrite)" : "        if (EditId is not null)");
         L("        {");
-        L("            try { " + (children.Count > 0 ? "await " : "") + "Edit(await Client.GetAsync(" + (keyColumn.CSharpBase() == "string" ? "EditId" : keyColumn.CSharpBase() + ".Parse(EditId)") + ")); }");
+        string openedRow = "Client.GetAsync(" + (keyColumn.CSharpBase() == "string" ? "EditId" : keyColumn.CSharpBase() + ".Parse(EditId)") + ")";
+        if (aheadParents.Count > 0)
+            L("            try { var opened = await " + openedRow + "; await KnowNamesAsync([opened]); " + (children.Count > 0 ? "await " : "") + "Edit(opened); }");
+        else
+            L("            try { " + (children.Count > 0 ? "await " : "") + "Edit(await " + openedRow + "); }");
         L($"            catch (Exception ex) when (ex is ApiException or HttpRequestException or FormatException) {{ message = \"This {title.ToLowerInvariant()} no longer exists!\"; }}");
         L("        }");
         L("    }");
         if (!odata)
         {
             L();
-            if (searchFields.Count > 0)
+            if (searchFields.Count > 0 || searchKeys.Count > 0)
             {
                 L("    private IReadOnlyDictionary<string, string?> Filters() => new Dictionary<string, string?>");
                 L("    {");
                 foreach (var f in searchFields)
                     L($"        [\"{f.ParamName}\"] = {f.Field},");
+                foreach (var k in searchKeys)
+                    L($"        [\"{k.ParamName}\"] = {k.Field},");
                 L("    };");
             }
             else
@@ -531,6 +573,8 @@
         L("                return;");
         L("            }");
         L("            items = result.Items;");
+        if (aheadParents.Count > 0)
+            L("            await KnowNamesAsync(items);");
         L("            pageNumber = result.Page;");
         L("            totalPages = Math.Max(result.TotalPages, 1);");
         L("            loaded = true;");
@@ -594,7 +638,7 @@
         }
         else
         {
-            if (searchFields.Count > 0)
+            if (searchFields.Count > 0 || searchKeys.Count > 0)
             {
                 L();
                 L("    private async Task SearchAsync()");
@@ -607,6 +651,8 @@
                 L("    {");
                 foreach (var f in searchFields)
                     L($"        {f.Field} = null;");
+                foreach (var k in searchKeys)
+                    L($"        {k.Field} = null;");
                 L("        await LoadAsync();");
                 L("    }");
             }
@@ -658,6 +704,69 @@
         {
             L();
             L($"    private string Name{p.BaseName}({p.Column.CSharpBase()}? id) => Convert.ToString({BlazorNames.LookupField(p)}.FirstOrDefault(p => Equals(p.{BlazorNames.KeyProperty(p)}, id))?.{BlazorNames.DisplayProperty(p)}) ?? \"\";");
+        }
+        if (aheadParents.Count > 0)
+        {
+            L();
+            L("    // The parents below have too many rows for a drop-down: their lists hold only the rows this page has seen (the names of the rows it shows and the rows a person picked).");
+            L("    private async Task KnowNamesAsync(IEnumerable<§T> rows)");
+            L("    {");
+            foreach (var p in aheadParents)
+            {
+                var own = aheadColumns.Where(c => form.ParentOf(c) == p).ToList();
+                if (own.Count > 0)
+                    L($"        await Know{p.BaseName}Async({own.Select(c => $"rows.Select(r => r.{Prop(c)}).OfType<{Cs(p)}>()").Aggregate((a, b) => $"{a}.Concat({b})")});");
+            }
+            L("    }");
+        }
+        foreach (var p in aheadParents)
+        {
+            string field = BlazorNames.LookupField(p);
+            L();
+            L($"    private async Task Know{p.BaseName}Async(IEnumerable<{Cs(p)}> ids)");
+            L("    {");
+            L($"        var missing = ids.Distinct().Where(id => !{field}.Any(p => Equals(p.{BlazorNames.KeyProperty(p)}, id))).ToList();");
+            L("        if (missing.Count == 0)");
+            L("            return;");
+            L($"        try {{ {field}.AddRange(await {field}Client.GetLookupAsync(ids: missing)); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
+            L("    }");
+            L();
+            L($"    private async Task<IReadOnlyList<TypeAheadOption<{Cs(p)}>>> Find{p.BaseName}(string text) =>");
+            L($"        (await {field}Client.GetLookupAsync(search: text, take: 10)).Select(r => new TypeAheadOption<{Cs(p)}>(r.{BlazorNames.KeyProperty(p)}, r.{BlazorNames.DisplayProperty(p)})).ToList();");
+            L();
+            L($"    private void Remember{p.BaseName}(TypeAheadOption<{Cs(p)}>? option)");
+            L("    {");
+            L($"        if (option is not null && !{field}.Any(p => Equals(p.{BlazorNames.KeyProperty(p)}, option.Id)))");
+            L($"            {field}.Add(new {BlazorNames.LookupType(p.Table)}(option.Id, option.Name));");
+            L("    }");
+        }
+        foreach (var c in shown.Where(c => form.KindOf(c) == FieldKind.Lookup && form.ParentOf(c) is { } p && Ahead(p)))
+        {
+            var p = form.ParentOf(c)!;
+            L();
+            L($"    private void Pick{Prop(c)}(TypeAheadOption<{Cs(p)}>? option)");
+            L("    {");
+            L($"        Remember{p.BaseName}(option);");
+            L("        if (row is not null)");
+            L($"            row.{Prop(c)} = option is null ? {(c.IsNullable ? "null" : "default")} : option.Id;");
+            L("    }");
+        }
+        foreach (var k in searchKeys.Where(k => Ahead(k.Parent)))
+        {
+            L();
+            L(Cs(k.Parent) == "string"
+                ? $"    private string? {k.Field}Key => {k.Field};"
+                : $"    private {Cs(k.Parent)}? {k.Field}Key => {Cs(k.Parent)}.TryParse({k.Field}, out var key) ? key : null;");
+            L();
+            L($"    private async Task Pick{k.Field}(TypeAheadOption<{Cs(k.Parent)}>? option)");
+            L("    {");
+            L($"        Remember{k.Parent.BaseName}(option);");
+            L("        string? next = option is null ? null : Convert.ToString(option.Id);");
+            L($"        if (next == {k.Field})");
+            L("            return;");
+            L($"        {k.Field} = next;");
+            L("        await SearchAsync();");
+            L("    }");
         }
         foreach (var l in childLookups)
         {
@@ -712,7 +821,11 @@
             L("        isNew = add;");
             L("        message = null;");
             foreach (var ch in children)
+            {
                 L($"        {ch.Var}Rows = [];");
+                foreach (var f in ch.Filters)
+                    L($"        {ch.Var}Filter{f.Prop} = null;");
+            }
             L("        if (!add) await LoadChildrenAsync();");
             L("    }");
             L();

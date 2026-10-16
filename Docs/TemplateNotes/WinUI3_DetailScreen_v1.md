@@ -48,3 +48,9 @@ A column the system writes (`ColumnModel.IsSystemStampColumn`: CreateDate, Creat
 ## Required fields
 
 A required field (`FormModel.IsRequired`: NOT NULL, not a yes/no box) is flagged for UI Automation with `AutomationProperties.IsRequiredForForm="True"`. Unless `RequiredMarks=false`, its header is drawn by the dialog's `RequiredHeader` template (`HeaderTemplate`), which prints the caption and a red `*`. The template is declared once in the dialog's resources, and only when a field is marked. Save is not disabled; `SaveAsync` still refuses an empty required value with its message.
+
+
+## Type-ahead for a big parent
+
+A parent with more rows than `TypeAheadRows` (default 1000, read from the database when the schema is read) or listed in `TypeAheadParents` is not read whole. The form field is an `AutoSuggestBox` that asks the context for the first ten rows whose text contains what was typed (`Suggest<Parent>Async`); typing takes the chosen key off (the save then says the field is required), picking a row chooses it. Only the row being edited is read, for the name the box starts with.
+The rule is `FormParent.TypeAhead` in Core, the same for every stack; `TypeAheadRows=0` turns the automatic choice off. The API answers `GET <route>/lookup?search=text&take=10` (the first rows whose lookup text contains it) and `GET <route>/lookup?ids=1,2` (the names of those keys): see API_EssentialCrudApi.

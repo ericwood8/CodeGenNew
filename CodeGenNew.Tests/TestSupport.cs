@@ -140,6 +140,18 @@ internal static class Sample
         };
     }
 
+    /// <summary> A foreign key whose parent holds <paramref name="parentRows"/> rows (what the schema reader reads into the parent's lookup shape). </summary>
+    public static ForeignKeyModel ForeignKeyToParentOf(long parentRows, string column, string parentTable, string parentKey, params string[] parentDisplayColumns) => new()
+    {
+        ConstraintName = $"FK_{column}_{parentTable}",
+        ReferencingColumns = [column],
+        ReferencedSchema = "dbo",
+        ReferencedTable = parentTable,
+        ReferencedColumns = [parentKey],
+        ReferencedDisplayColumns = [.. parentDisplayColumns],
+        ReferencedLookupShape = new LookupShape(false, parentRows)
+    };
+
     public static ForeignKeyModel ForeignKey(string column, string parentTable, string parentKey, params string[] parentDisplayColumns) => new()
     {
         ConstraintName = $"FK_{column}_{parentTable}",

@@ -91,7 +91,13 @@ td button:hover { background: #8885; }
 button { font-weight: 700; }
 main button { padding: 4px 12px; font: inherit; font-weight: 700; }
 .search { margin: 8px 0; }
-.search input { margin: 4px 6px 4px 0; padding: 6px 8px; font: inherit; }
+.search input, .search select { margin: 4px 6px 4px 0; padding: 6px 8px; font: inherit; }
+/* The type-ahead of a parent with too many rows for a drop-down: a box with the matches listed under it. */
+.type-ahead { position: relative; display: inline-block; }
+.editor .type-ahead { display: block; }
+.type-ahead-list { position: absolute; z-index: 10; left: 0; right: 0; margin: 2px 0 0; padding: 0; list-style: none; max-height: 240px; overflow-y: auto; background: Canvas; color: CanvasText; border: 1px solid #8886; box-shadow: 0 4px 12px #0003; }
+.type-ahead-list li { padding: 6px 8px; cursor: pointer; }
+.type-ahead-list li:hover { background: #8883; }
 .paging { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
 .error { color: #c62828; font-weight: 600; }
 

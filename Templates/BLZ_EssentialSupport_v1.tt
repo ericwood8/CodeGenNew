@@ -54,6 +54,95 @@ public static class ApiSupport
     // A copy of a row, so the form edits the copy and the grid keeps showing the saved row.
     public static T Copy<T>(this T row) => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(row))!;
 }
+@@@FILE Components/TypeAheadOption.cs@@@
+namespace <#= ns #>.Components;
+
+/// <summary> One match of a type-ahead: the key of the row and the text to show for it. </summary>
+public record TypeAheadOption<TValue>(TValue Id, string Name);
+@@@FILE Components/TypeAhead.razor@@@
+@typeparam TValue
+@using <#= ns #>.Services
+
+@* A box that finds the row of a parent with too many rows for a drop-down by what is typed in it: after a short pause it asks Find for the rows whose text contains it and lists them; picking one calls
+   OnPick with it. Typing calls OnPick with null (nothing is chosen any more), and leaving the box without a pick empties it. Name is the text of the chosen key. *@
+<div class="type-ahead">
+    <input id="@Id" type="text" role="combobox" aria-autocomplete="list" aria-expanded="@(open ? "true" : "false")" aria-label="@Label" placeholder="@Placeholder" autocomplete="off"
+           required="@Required" value="@(typed ?? Name)" @oninput="TypeAsync" @onblur="Leave" />
+    @if (open)
+    {
+        <ul class="type-ahead-list" role="listbox">
+            @foreach (var option in options)
+            {
+                <li role="option" @onmousedown="() => PickAsync(option)">@option.Name</li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public string Name { get; set; } = "";
+    [Parameter, EditorRequired] public Func<string, Task<IReadOnlyList<TypeAheadOption<TValue>>>> Find { get; set; } = default!;
+    [Parameter] public EventCallback<TypeAheadOption<TValue>?> OnPick { get; set; }
+
+    private string? typed;
+    private IReadOnlyList<TypeAheadOption<TValue>> options = [];
+    private bool open;
+    private CancellationTokenSource? pause;
+
+    private async Task TypeAsync(ChangeEventArgs args)
+    {
+        typed = args.Value?.ToString() ?? "";
+        await OnPick.InvokeAsync(null);
+        pause?.Cancel();
+        pause = new CancellationTokenSource();
+        var token = pause.Token;
+        string wanted = typed.Trim();
+        if (wanted.Length == 0)
+        {
+            options = [];
+            open = false;
+            return;
+        }
+
+        try
+        {
+            await Task.Delay(250, token);
+            var found = await Find(wanted);
+            if (token.IsCancellationRequested)
+                return;   // a later keystroke asked again: this answer is old
+            options = found;
+            open = true;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            options = [];
+            open = false;
+        }
+    }
+
+    private async Task PickAsync(TypeAheadOption<TValue> option)
+    {
+        pause?.Cancel();
+        typed = null;
+        options = [];
+        open = false;
+        await OnPick.InvokeAsync(option);
+    }
+
+    private void Leave()
+    {
+        pause?.Cancel();
+        typed = null;
+        open = false;
+    }
+}
 @@@FILE Components/CurrencyInput.razor@@@
 @typeparam TValue
 @inherits InputBase<TValue>

@@ -194,8 +194,26 @@ public class TableModel
     /// pulled up from three copies, so the three templates -- and every frontend search bar built from this
     /// same list -- can't drift apart on what's searchable. Empty when the table has nothing to filter on
     /// (all-numeric/date/bit columns); SP_Search.tt/API_Search.tt both refuse to generate in that case. </summary>
-    public List<ColumnModel> SearchableColumns =>
-        Columns.Where(c => c.IsStringColumn && !c.IsAuditColumn && !c.IsLongTextColumn && !c.IsCredentialColumn).Take(MaxSearchFields).ToList();
+    public List<ColumnModel> SearchableColumns
+    {
+        get
+        {
+            var keys = SearchKeyColumns;
+            return Columns.Where(c => c.IsStringColumn && !c.IsAuditColumn && !c.IsLongTextColumn && !c.IsCredentialColumn && !keys.Contains(c)).Take(MaxSearchFields).ToList();
+        }
+    }
+
+    /// <summary> The foreign key columns the search can filter by, an exact match on the key (<c>CustomerId = @pCustomerId</c>; NULL or blank means no filter): the routines, the LINQ query and the
+    /// API take one optional parameter each, and a screen offers a drop-down of the parent's rows for the ones whose parent it reads. A whole-number, uniqueidentifier or short text key; not the primary
+    /// key, an audit or system column, or a flag. A text key is no search box: the drop-down replaces it, so the column is not in <see cref="SearchableColumns"/>. At most <see cref="MaxSearchKeys"/>, in
+    /// table order. It needs only the foreign keys, which every model carries, so every template that lists the parameters gets the same list. </summary>
+    public List<ColumnModel> SearchKeyColumns =>
+        Columns.Where(c => (c.IsIntegerColumn && !c.IsBooleanColumn || c.IsGuidColumn || c.IsStringColumn && !c.IsLongTextColumn && !c.IsCredentialColumn && c.DbEnumType is null)
+                           && !c.IsPrimaryKey && !c.IsAuditColumn && !c.IsSystemStampColumn && ForeignKeyByColumn.ContainsKey(c.Name))
+            .Take(MaxSearchKeys).ToList();
+
+    /// <summary> The most key filters a search has, next to the <see cref="MaxSearchFields"/> text boxes. </summary>
+    public const int MaxSearchKeys = 4;
 
     /// <summary> The most search boxes a search bar gets: a table with 30 text columns would otherwise get an unusable bar and a procedure with 30 filters.
     /// The first eight searchable text columns, in table order, are used. </summary>

@@ -27,7 +27,7 @@ public class LookupTests
         Expect.Contains(cs, "protected virtual IQueryable<LookupItem<TKey>> LookupQuery(IQueryable<TEntity> rows) => throw new NotSupportedException();");
         Expect.Contains(cs, "app.MapGet(apiSubDir + \"/lookup\",");
         Expect.Contains(cs, "if (CanLookup)");
-        Expect.Contains(cs, "LookupQuery(context.Set<TEntity>().AsNoTracking()).ToListAsync()");
+        Expect.Contains(cs, "NarrowedLookupAsync(context.Set<TEntity>().AsNoTracking(), search, ids, take)");
         // a name and active table always has one, read with only the key, the name and the flag
         Expect.Contains(cs, ".Select(c => new LookupItem(EF.Property<int>(c, keyName), c.Name, c.IsActive))");
     }
@@ -65,7 +65,7 @@ public class LookupTests
         string service = (await CrudScreenTests.Essential())["crud.service.ts"];
 
         Expect.Contains(service, "export interface Lookup<K extends number | string = number> {");
-        Expect.Contains(service, "getLookup(): Observable<Lookup<K>[]> {");
+        Expect.Contains(service, "getLookup(query?: LookupQuery<K>): Observable<Lookup<K>[]> {");
         Expect.Contains(service, "`${this.apiUrl}/lookup`");
     }
 

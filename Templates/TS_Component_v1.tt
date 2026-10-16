@@ -87,12 +87,21 @@
         // pagination itself is unconditional (see the header comment's 2026-09-28 update).
         // The Search list protocol (ListProtocol=Search) has one search box for the whole table; the server decides which columns it matches.
         var searchFields = form.WebSearchFields;
-        bool canSearch = !nameActive && searchFields.Count > 0;
+        // a drop-down of the parent's rows per whole-number foreign key: an exact match on the key (the OData screen has its own filter row)
+        IReadOnlyList<SearchKeyField> searchKeys = odata ? [] : form.SearchKeys;
+        bool canSearch = !nameActive && (searchFields.Count > 0 || searchKeys.Count > 0);
 
         // ==== the columns on the screen: Name first, then table order
         var shown = form.Columns;
 
         var parents = form.Parents;
+        // a parent with too many rows for a drop-down is found by typing (type-ahead.ts); the OData screen keeps its drop-down
+        bool Ahead(FormParent p) => p.TypeAhead && !odata;
+        string FormAhead(ColumnModel c) => JsonNames.Camel(c.Name) + "Ahead";
+        string FilterAhead(SearchKeyField k) => k.ParamName + "FilterAhead";
+        string NamesOf(FormParent p) => p.Variable + "NameCache";
+        var formAheads = shown.Where(c => form.KindOf(c) == FieldKind.Lookup && Ahead(form.ParentOf(c)!)).ToList();   // the form fields that are type-aheads
+        var filterAheads = searchKeys.Where(k => Ahead(k.Parent)).ToList();                // the search keys that are type-aheads
 
         bool UsesCurrencyBox() => shown.Any(form.IsMoneyInput);
         IReadOnlyList<ColumnModel> sortableColumns = nameActive ? [] : columnList.Where(c => c.Sortable).Select(c => c.Column).ToList();
@@ -127,6 +136,24 @@
             H("    <div class=\"form-group form-group-search dept\">");
             foreach (var f in searchFields)
                 H($"        <input type=\"text\" class=\"form-control\" placeholder=\"Search{(f.Label == "" ? "" : " by " + f.Label)}\" [(ngModel)]=\"filters.{f.ParamName}\"{(odata ? " (keyup.enter)=\"search()\"" : "")} />");
+            foreach (var k in searchKeys)
+            {
+                if (Ahead(k.Parent))
+                {
+                    string ahead = FilterAhead(k);
+                    H("        <div class=\"type-ahead\">");
+                    H($"            <input type=\"text\" class=\"form-control\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" [attr.aria-expanded]=\"{ahead}.open\" aria-label=\"Filter by {k.Label}\" placeholder=\"All {k.Label.Pluralize()}\" [ngModel]=\"{ahead}.shown(filters.{k.ParamName})\" (ngModelChange)=\"{ahead}.type($event)\" (blur)=\"{ahead}.leave()\" />");
+                    H($"            <ul class=\"type-ahead-list\" role=\"listbox\" *ngIf=\"{ahead}.open\">");
+                    H($"                <li role=\"option\" *ngFor=\"let o of {ahead}.options\" (mousedown)=\"{ahead}.pick(o)\">{{{{o.name}}}}</li>");
+                    H("            </ul>");
+                    H("        </div>");
+                    continue;
+                }
+                H($"        <select class=\"form-control\" aria-label=\"Filter by {k.Label}\" [(ngModel)]=\"filters.{k.ParamName}\" (ngModelChange)=\"search()\">");
+                H($"            <option value=\"\">All {k.Label.Pluralize()}</option>");
+                H($"            <option *ngFor=\"let p of {k.Parent.List}\" [value]=\"p.{k.Parent.KeyJson}\">{{{{p.{k.Parent.DisplayJson}}}}}</option>");
+                H("        </select>");
+            }
             if (!odata)
             {
                 H("        <button class=\"btn btn-outline-secondary\" type=\"button\" (click)=\"search()\"> Search </button>");
@@ -309,10 +336,23 @@
             else if (kind == FieldKind.Lookup)
             {
                 var p = form.ParentOf(c)!;
-                H($"                <select id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
-                if (c.IsNullable) H("                    <option [ngValue]=\"null\"></option>");
-                H($"                    <option *ngFor=\"let p of {p.List}\" [ngValue]=\"p.{p.KeyJson}\">{{{{p.{p.DisplayJson}}}}}</option>");
-                H("                </select>");
+                if (Ahead(p))
+                {
+                    string ahead = FormAhead(c);
+                    H("                <div class=\"type-ahead\">");
+                    H($"                    <input type=\"text\" id=\"{id}\" name=\"{id}\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" [attr.aria-expanded]=\"{ahead}.open\" [ngModel]=\"{ahead}.shown({model})\" (ngModelChange)=\"{ahead}.type($event)\" (blur)=\"{ahead}.leave()\"{req}>");
+                    H($"                    <ul class=\"type-ahead-list\" role=\"listbox\" *ngIf=\"{ahead}.open\">");
+                    H($"                        <li role=\"option\" *ngFor=\"let o of {ahead}.options\" (mousedown)=\"{ahead}.pick(o)\">{{{{o.name}}}}</li>");
+                    H("                    </ul>");
+                    H("                </div>");
+                }
+                else
+                {
+                    H($"                <select id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
+                    if (c.IsNullable) H("                    <option [ngValue]=\"null\"></option>");
+                    H($"                    <option *ngFor=\"let p of {p.List}\" [ngValue]=\"p.{p.KeyJson}\">{{{{p.{p.DisplayJson}}}}}</option>");
+                    H("                </select>");
+                }
             }
             else if (kind == FieldKind.Choices)
             {
@@ -560,7 +600,8 @@
         T($"import {{ {baseName} }} from '../../{modelsFolder}/{stem}';");
         T($"import {{ {serviceClass} }} from '../../{servicesFolder}/{serviceFile}';");
         if (writeRoles.Count > 0) T($"import {{ AuthService }} from '../../{servicesFolder}/auth.service';");
-        if (parents.Any(p => p.UsesLookupEndpoint)) T($"import {{ Lookup }} from '../../{servicesFolder}/crud.service';");
+        if (parents.Any(p => p.UsesLookupEndpoint && !Ahead(p))) T($"import {{ Lookup }} from '../../{servicesFolder}/crud.service';");
+        if (parents.Any(Ahead)) T($"import {{ LookupNames{(formAheads.Count + filterAheads.Count > 0 ? ", TypeAhead" : "")} }} from '../../{servicesFolder}/type-ahead';");
         foreach (var p in parents.Where(p => !p.IsSelf))
         {
             if (!p.UsesLookupEndpoint) T($"import {{ {p.BaseName} }} from '../../{modelsFolder}/{p.ModelFile}';");
@@ -610,7 +651,7 @@
                 T($"  protected override readonly defaultSort = {{ column: '{defaultSort.Column}', descending: {(defaultSort.Descending ? "true" : "false")} }}; // the project's DefaultSorts: the sort until the person sorts");
         }
         T($"  protected override readonly badInputMessage = '{(hasName ? "Name is bad or has special characters!" : "Some of the values are not acceptable!")}';");
-        if (canSearch && (!odata || Project.ListSearchProtocol)) T($"  override filters = {{ {string.Join(", ", searchFields.Select(f => $"{f.ParamName}: ''"))} }};");
+        if (canSearch && (!odata || Project.ListSearchProtocol)) T($"  override filters = {{ {string.Join(", ", searchFields.Select(f => f.ParamName).Concat(searchKeys.Select(k => k.ParamName)).Select(n => $"{n}: ''"))} }};");
         if (odataFilters is not null)
         {
             // the filter row: the control of each grid column (the screen's columnFilters hold what was typed), and the properties the grid reads (the key is always read)
@@ -626,12 +667,22 @@
             T("  protected override readonly selectColumns = this.columns.properties; // the grid asks for the shown columns and the key (one array, kept up to date); a row is read whole when it is opened");
         }
         if (!nameActive && pageSize != 20) T($"  override pageSize = {pageSize};");
-        foreach (var p in parents)
+        foreach (var p in parents.Where(p => !Ahead(p)))
             T($"  {p.List}: {p.ItemType}[] = [];");
         if (form.Guards.Count > 0)
             T("  guards: Record<string, boolean> = {}; // which guarded columns the signed-in person may change (GET guards)");
         foreach (var p in parents.Where(p => !p.IsSelf))
             T($"  private readonly {AngularNames.ServiceField(p.Table)} = inject({AngularNames.ServiceClass(p.Table)});");
+        string ParentService(FormParent p) => p.IsSelf ? "service" : AngularNames.ServiceField(p.Table);
+        foreach (var p in parents.Where(Ahead))
+            T($"  private readonly {NamesOf(p)} = new LookupNames<{p.KeyTs}>((query) => this.{ParentService(p)}.getLookup(query)); // the names of {p.BaseName} rows, asked for as the screen shows them (too many rows for a drop-down)");
+        foreach (var c in formAheads)
+        {
+            var p = form.ParentOf(c)!;
+            T($"  readonly {FormAhead(c)} = new TypeAhead<{p.KeyTs}>((query) => this.{ParentService(p)}.getLookup(query), this.{NamesOf(p)}, (id) => {{ if (this.selectedRow) {{ (this.selectedRow as unknown as Record<string, unknown>)['{JsonNames.Camel(c.Name)}'] = id; }} }});");
+        }
+        foreach (var k in filterAheads)
+            T($"  readonly {FilterAhead(k)} = new TypeAhead<{k.Parent.KeyTs}>((query) => this.{ParentService(k.Parent)}.getLookup(query), this.{NamesOf(k.Parent)}, (id) => {{ const text = id === null ? '' : String(id); if (this.filters['{k.ParamName}'] !== text) {{ this.filters['{k.ParamName}'] = text; this.search(); }} }});");
         if (tabbed)
         {
             T("  activeTab = 0; // the form tab showing");
@@ -644,7 +695,7 @@
         }
         T();
         {
-            var parentsToLoad = parents.ToList();   // a drop-down over this table itself (a manager) is read through the screen's own service
+            var parentsToLoad = parents.Where(p => !Ahead(p)).ToList();   // a drop-down over this table itself (a manager) is read through the screen's own service; a type-ahead reads nothing until it is used
             if (parentsToLoad.Count > 0 || form.Guards.Count > 0)
             {
                 T("  protected override start(): void {");
@@ -711,11 +762,22 @@
             T("    return copy;");
             T("  }");
         }
-        if (tabbed)
+        if (tabbed || formAheads.Count > 0)
         {
             T();
             T("  protected override opened(): void {");
-            T("    this.activeTab = 0;");
+            if (tabbed) T("    this.activeTab = 0;");
+            foreach (var c in formAheads)
+                T($"    this.{FormAhead(c)}.reset(); // show the name of the key the row has, not what was typed last");
+            T("  }");
+        }
+        if (filterAheads.Count > 0)
+        {
+            T();
+            T("  override clearSearch(): void {");
+            T("    super.clearSearch();");
+            foreach (var k in filterAheads)
+                T($"    this.{FilterAhead(k)}.reset();");
             T("  }");
         }
         foreach (var p in parents)
@@ -723,7 +785,7 @@
             T();
             T($"  // the name to show in place of a {p.BaseName} id");
             T($"  {p.NameMethod}(id?: {p.KeyTs}): string {{");
-            T($"    return this.{p.List}.find((p) => p.{p.KeyJson} === id)?.{p.DisplayJson} ?? '';");
+            T(Ahead(p) ? $"    return this.{NamesOf(p)}.name(id);" : $"    return this.{p.List}.find((p) => p.{p.KeyJson} === id)?.{p.DisplayJson} ?? '';");
             T("  }");
         }
         T("}");

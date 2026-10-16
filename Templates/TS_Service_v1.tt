@@ -52,7 +52,7 @@
         // The Search list protocol (ListProtocol=Search) has one search box for the whole table; the server decides which columns it matches.
         var filters = Project.ListSearchProtocol
             ? new[] { new { ParamName = "search", Name = "search" } }.ToList()
-            : Model.SearchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
+            : Model.SearchableColumns.Concat(Model.SearchKeyColumns.Where(c => c.IsStringColumn)).OrderBy(c => c.OrdinalPosition).Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');

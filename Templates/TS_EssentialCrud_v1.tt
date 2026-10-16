@@ -54,6 +54,13 @@ export interface Lookup<K extends number | string = number> {
     isActive?: boolean | null;
 }
 
+/** What a type-ahead asks the lookup list for: the rows whose text contains `search` (at most `take`), or the rows with these keys (the names of the keys a grid shows). */
+export interface LookupQuery<K extends number | string = number> {
+    search?: string;
+    ids?: K[];
+    take?: number;
+}
+
 <# if (search) { #>
 /** What the list takes: the page (1-based, as the screens count; it is written the way the API counts), the text typed in the search box (`filters['search']`) and the sort. */
 <# } else { #>
@@ -79,9 +86,14 @@ export abstract class CrudService<T, K extends number | string = number> {
         return this.http.get<T[]>(this.apiUrl);
     }
 
-    // Get the key and the display column of every row, for a drop-down or a "name of" column (a table with a display column answers it; the key is of type K)
-    getLookup(): Observable<Lookup<K>[]> {
-        return this.http.get<Lookup<K>[]>(`${this.apiUrl}/lookup`);
+    // Get the key and the display column of every row, for a drop-down or a "name of" column (a table with a display column answers it; the key is of type K).
+    // With a query only the rows that match: the text a person typed in a type-ahead, or the keys whose names a grid shows.
+    getLookup(query?: LookupQuery<K>): Observable<Lookup<K>[]> {
+        let params = new HttpParams();
+        if (query?.search) { params = params.set('search', query.search); }
+        if (query?.ids?.length) { params = params.set('ids', query.ids.join(',')); }
+        if (query?.take) { params = params.set('take', query.take); }
+        return this.http.get<Lookup<K>[]>(`${this.apiUrl}/lookup`, { params });
     }
 
     // Get a row by ID
@@ -194,6 +206,207 @@ describe('apiMessage', () => {
     expect(apiMessage({ error: { detail: '  ', errors: {} } }, 'fallback')).toBe('fallback');
     expect(apiMessage(undefined, 'fallback')).toBe('fallback');
   });
+});
+@@@FILE src/app/<#= servicesFolder #>/type-ahead.ts@@@
+import { Observable } from 'rxjs';
+import { Lookup, LookupQuery } from './crud.service';
+
+type Finder<K extends number | string> = (query: LookupQuery<K>) => Observable<Lookup<K>[]>;
+
+/**
+ * The names of the rows of a parent that is too big for a drop-down. A screen asks for the name of a key as it draws it (`name`); the keys it has not seen yet are asked for together,
+ * once, from the parent's lookup list (`?ids=`), and the name shows when it arrives. A row a person picked is remembered without asking.
+ */
+export class LookupNames<K extends number | string = number> {
+    private readonly names = new Map<string, string>();
+    private readonly asked = new Set<string>();
+    private queue: K[] = [];
+    private timer: ReturnType<typeof setTimeout> | undefined;
+
+    constructor(private readonly find: Finder<K>) { }
+
+    /** The name of a key, empty until it arrives; a missing, empty or zero key has none. */
+    name(id: K | string | null | undefined): string {
+        if (!id) { return ''; }
+        const key = String(id);
+        const known = this.names.get(key);
+        if (known !== undefined) { return known; }
+        if (!this.asked.has(key)) {
+            this.asked.add(key);
+            this.queue.push(id as K);
+            this.timer ??= setTimeout(() => this.flush());
+        }
+        return '';
+    }
+
+    remember(row: Lookup<K>): void {
+        this.names.set(String(row.id), row.name);
+        this.asked.add(String(row.id));
+    }
+
+    private flush(): void {
+        const ids = this.queue;
+        this.queue = [];
+        this.timer = undefined;
+        this.find({ ids }).subscribe((rows) => { rows.forEach((row) => this.remember(row)); });
+    }
+}
+
+/**
+ * A box that finds the row of a big parent by what is typed in it: after a short pause it asks the parent's lookup list for the rows whose text contains it (`?search=`) and lists a few; picking
+ * one sets the key. Typing clears the key, so text that was not picked leaves nothing chosen, and leaving the box without a pick empties it.
+ */
+export class TypeAhead<K extends number | string = number> {
+    options: Lookup<K>[] = [];
+    open = false;
+    private typed: string | undefined;
+    private turn = 0;
+    private timer: ReturnType<typeof setTimeout> | undefined;
+
+    constructor(private readonly find: Finder<K>, private readonly names: LookupNames<K>, private readonly setKey: (id: K | null) => void) { }
+
+    /** What the box shows: what is being typed, else the name of the chosen key. */
+    shown(id: K | string | null | undefined): string {
+        return this.typed ?? this.names.name(id);
+    }
+
+    type(text: string): void {
+        this.typed = text;
+        this.setKey(null);
+        clearTimeout(this.timer);
+        const wanted = text.trim();
+        if (!wanted) {
+            this.options = [];
+            this.open = false;
+            return;
+        }
+        this.timer = setTimeout(() => {
+            const turn = ++this.turn;
+            this.find({ search: wanted, take: 10 }).subscribe((rows) => {
+                if (turn !== this.turn) { return; }   // a later keystroke asked again: this answer is old
+                this.options = rows;
+                this.open = true;
+            });
+        }, 250);
+    }
+
+    pick(row: Lookup<K>): void {
+        this.names.remember(row);
+        this.reset();
+        this.setKey(row.id);
+    }
+
+    /** The box lost the focus: what was typed and not picked is dropped. */
+    leave(): void {
+        this.typed = undefined;
+        this.close();
+    }
+
+    close(): void {
+        this.turn++;
+        this.open = false;
+    }
+
+    /** Back to showing the chosen key's name (the form opened on another row, or the search was cleared). */
+    reset(): void {
+        clearTimeout(this.timer);
+        this.typed = undefined;
+        this.options = [];
+        this.close();
+    }
+}
+@@@FILE src/app/<#= servicesFolder #>/type-ahead.spec.ts@@@
+import { of } from 'rxjs';
+import { Lookup, LookupQuery } from './crud.service';
+import { LookupNames, TypeAhead } from './type-ahead';
+
+describe('LookupNames', () => {
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('asks once for the keys it has not seen, together, and shows the names when they arrive', () => {
+        vi.useFakeTimers();
+        const asked: LookupQuery[] = [];
+        const names = new LookupNames((query) => { asked.push(query); return of([{ id: 1, name: 'One' }, { id: 2, name: 'Two' }]); });
+
+        expect(names.name(1)).toBe('');
+        expect(names.name(2)).toBe('');
+        expect(names.name(1)).toBe('');
+        vi.runAllTimers();
+
+        expect(asked).toEqual([{ ids: [1, 2] }]);
+        expect(names.name(1)).toBe('One');
+        expect(names.name(2)).toBe('Two');
+        expect(asked.length).toBe(1);
+    });
+
+    it('has no name for a missing, empty or zero key and asks nothing for it', () => {
+        vi.useFakeTimers();
+        const find = vi.fn(() => of([] as Lookup[]));
+        const names = new LookupNames(find);
+
+        expect([names.name(undefined), names.name(null), names.name(0), names.name('')]).toEqual(['', '', '', '']);
+        vi.runAllTimers();
+        expect(find).not.toHaveBeenCalled();
+    });
+});
+
+describe('TypeAhead', () => {
+    afterEach(() => { vi.useRealTimers(); });
+
+    function make(rows: Lookup[]) {
+        const asked: LookupQuery[] = [];
+        const keys: (number | null)[] = [];
+        const names = new LookupNames<number>(() => of([]));
+        const box = new TypeAhead<number>((query) => { asked.push(query); return of(rows); }, names, (id) => keys.push(id));
+        return { box, asked, keys, names };
+    }
+
+    it('asks the lookup list for what was typed after a pause, and lists the matches', () => {
+        vi.useFakeTimers();
+        const { box, asked } = make([{ id: 7, name: 'Acme' }]);
+
+        box.type('  ac ');
+        expect(asked).toEqual([]);
+        vi.advanceTimersByTime(250);
+
+        expect(asked).toEqual([{ search: 'ac', take: 10 }]);
+        expect(box.options).toEqual([{ id: 7, name: 'Acme' }]);
+        expect(box.open).toBe(true);
+        expect(box.shown(null)).toBe('  ac ');
+    });
+
+    it('clears the key when typing starts and sets it when a row is picked', () => {
+        vi.useFakeTimers();
+        const { box, keys } = make([{ id: 7, name: 'Acme' }]);
+
+        box.type('a');
+        box.pick({ id: 7, name: 'Acme' });
+
+        expect(keys).toEqual([null, 7]);
+        expect(box.shown(7)).toBe('Acme');
+        expect(box.open).toBe(false);
+    });
+
+    it('empties the box when it is left without a pick', () => {
+        vi.useFakeTimers();
+        const { box } = make([]);
+
+        box.type('zz');
+        box.leave();
+
+        expect(box.shown(null)).toBe('');
+    });
+
+    it('asks nothing for blank text', () => {
+        vi.useFakeTimers();
+        const { box, asked } = make([]);
+
+        box.type('   ');
+        vi.runAllTimers();
+
+        expect(asked).toEqual([]);
+        expect(box.open).toBe(false);
+    });
 });
 @@@FILE src/app/<#= servicesFolder #>/notifier.ts@@@
 <# if (toasts) { #>

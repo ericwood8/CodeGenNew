@@ -13,8 +13,8 @@ public static class ProjectSettingGroups
 
     public static readonly IReadOnlyList<ProjectSettingGroup> All =
     [
-        new(General, "This tab has the context name, currency, years, naming style, acronyms, title, app namespace, usings and the red * on required fields.",
-            ["ContextName", "CurrencyCode", "MinYear", "MaxYear", "NamingStyle", "Acronyms", "ProjectTitle", "AppNamespace", "Usings", "RequiredMarks"]),
+        new(General, "This tab has the context name, currency, years, naming style, acronyms, title, app namespace, usings, the red * on required fields and when a parent is found by typing.",
+            ["ContextName", "CurrencyCode", "MinYear", "MaxYear", "NamingStyle", "Acronyms", "ProjectTitle", "AppNamespace", "Usings", "RequiredMarks", "TypeAheadRows", "TypeAheadParents"]),
         new("Namespaces", "This tab has the context, API, enum, repo, entity, validator, application, faker, DTO and F# namespaces.",
             ["ContextNamespace", "ApiNamespace", "EnumNamespace", "RepoNamespace", "EntityNamespace", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "DtoNamespace", "FSharpNamespace"]),
         new("Tables", "This tab has screens, enum rules, the \"No...\" lists, base entity, DbSet names, ignored columns, editable child tables, seed tables and ERD tables.",

@@ -24,7 +24,7 @@ public static class SearchBox
 
     private static List<SearchBoxTerm> Default(TableModel model, IReadOnlyList<EntityNavigation> navigations)
     {
-        var terms = model.SearchableColumns.Where(c => c.DbEnumType is null).Select(Own).ToList();
+        var terms = model.SearchableColumns.Concat(model.SearchKeyColumns.Where(c => c.IsStringColumn)).OrderBy(c => c.OrdinalPosition).Where(c => c.DbEnumType is null).Select(Own).ToList();
         foreach (var navigation in navigations.Where(n => n.ForeignKey.ReferencedDisplayColumns.Count > 0).Take(MaxParents))
             terms.Add(Parent(navigation, navigation.ForeignKey.ReferencedDisplayColumns[0], false));
         return terms;

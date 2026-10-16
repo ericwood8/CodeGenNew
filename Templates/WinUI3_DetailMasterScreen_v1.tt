@@ -76,6 +76,9 @@
         bool tabbed = pages.Count > 1;
 
         var parents = form.Parents;
+        // a parent with too many rows for a drop-down is found by typing: an AutoSuggestBox that asks the context for the rows whose text contains what was typed
+        var aheadParents = parents.Where(p => p.TypeAhead).ToList();
+        var aheadColumns = shown.Where(c => form.KindOf(c) == FieldKind.Lookup && form.ParentOf(c) is { TypeAhead: true }).ToList();
 
         if (!Model.HasReferencedDisplayColumns && parents.Count > 0)
             Error("WinUI3_DetailMasterScreen needs the foreign-keyed tables' display columns for its drop-downs; its .tt.config must say NeedsReferencedDisplayColumns=true.");
@@ -110,6 +113,9 @@
                     // "CustomerId" -> "Customer": a resolved column's name is known at generation time, so it gets a nicer header than the raw property name
                     Label = GridCaption.From(Labels.Column(l.ColumnName))
                 }).ToList();
+                // a drop-down per foreign key shown as a name: the names the rows have, picked from here; the grid holds every row of the child, so it filters them itself
+                var filters = resolvable.Take(ChildGrid.MaxFilters)
+                    .Select(r => new { r.Column, r.Label, All = "All " + r.Label.Pluralize(), Choices = gridVar + r.Column + "Choices", Prop = TemplateHelpers.UpperFirst(gridVar) + r.Column + "Filter" }).ToList();
 
                 return new
                 {
@@ -123,6 +129,7 @@
                     // in a fixed order (this row's key, the child's own key, then the ids that are not named), so regenerating the same table twice gives identical output
                     HideColumns = g.HiddenColumns.ToList(),
                     Resolvable = resolvable,
+                    Filters = filters,
                     // What the schema says about the child's columns: money shows as currency, long text goes last.
                     Currency = fk.ReferencingTableColumns.Where(c => c.IsMoneyAmount)
                         .Select(c => (Name: c.Name, Digits: NumericClassifier.CurrencyDigits(c))).ToList(),
@@ -208,11 +215,33 @@
             if (kind == FieldKind.Lookup)
             {
                 var p = form.ParentOf(c)!;
+                if (p.TypeAhead)
+                {
+#>
+            <AutoSuggestBox<#= form.IsMarked(c) ? "" : " Header=\"" + label + "\"" #><#= RequiredMark.XamlAttributes(form.IsRequired(c), false) #> AutomationProperties.Name="<#= label #>" PlaceholderText="Type to find" DisplayMemberPath="Text" TextMemberPath="Text"
+                            Text="{x:Bind ViewModel.<#= prop #>Text, Mode=TwoWay}" TextChanged="On<#= prop #>TextChanged" SuggestionChosen="On<#= prop #>Chosen">
+<#
+                    if (form.IsMarked(c))
+                    {
+                        // an AutoSuggestBox has no header template: the caption and its red asterisk are the header itself
+#>
+                <AutoSuggestBox.Header>
+                    <TextBlock><Run Text="<#= label #>" /><Run Text=" <#= RequiredMark.Glyph #>" Foreground="Red" /></TextBlock>
+                </AutoSuggestBox.Header>
+<#
+                    }
+#>
+            </AutoSuggestBox>
+<#
+                }
+                else
+                {
 #>
             <ComboBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> ItemsSource="{x:Bind ViewModel.<#= WinUI3Names.OptionsProperty(p) #>}"
                       SelectedValuePath="Id" DisplayMemberPath="Text"
                       SelectedValue="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
 <#
+                }
             }
             else if (kind == FieldKind.Choices)
             {
@@ -318,6 +347,24 @@
 #>
 
             <TextBlock Text="<#= child.Title #>" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+<#
+            if (child.Filters.Count > 0)
+            {
+#>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+<#
+                foreach (var f in child.Filters)
+                {
+#>
+                <ComboBox AutomationProperties.Name="Filter <#= child.Title #> by <#= f.Label #>" MinWidth="180" ItemsSource="{x:Bind ViewModel.<#= TemplateHelpers.UpperFirst(f.Choices) #>}"
+                          SelectedItem="{x:Bind ViewModel.<#= f.Prop #>, Mode=TwoWay}" />
+<#
+                }
+#>
+            </StackPanel>
+<#
+            }
+#>
             <!-- Boxed the same way as WinUI3_MasterScreen.tt's own grid: a line around the whole grid, a line
                  under the header, and a line under every row — see that template's 2026-09-27 styling note.
                  Clicking a row opens that child row's own dialog (see On<#= child.Table #>ItemClick in the code-behind).
@@ -458,6 +505,26 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
         return result;
     }
 
+<#
+        foreach (var c in aheadColumns)
+        {
+            var p = form.ParentOf(c)!;
+#>
+    // Typing in the <#= Labels.Column(c.Name) #> box takes the chosen row off and lists the rows whose text contains what was typed; picking one chooses it.
+    private async void On<#= c.Name #>TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
+            return;
+        ViewModel.<#= c.Name #> = null;
+        sender.ItemsSource = string.IsNullOrWhiteSpace(sender.Text) ? null : await ViewModel.Suggest<#= p.BaseName #>Async(sender.Text);
+    }
+
+    private void On<#= c.Name #>Chosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args) =>
+        ViewModel.<#= c.Name #> = ((<#= WinUI3Names.LookupOptionClass(table, "DetailMaster", p.KeyCs) #>)args.SelectedItem).Id;
+
+<#
+        }
+#>
     // Validation failure keeps the dialog open instead of closing it - see ViewModel.SaveAsync.
     private async void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
@@ -643,10 +710,48 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
     public Visibility IsAddModeVisibility => _editing is null ? Visibility.Visible : Visibility.Collapsed;
 
 <#
-        foreach (var p in parents)
+        foreach (var p in parents.Where(p => !p.TypeAhead))
         {
 #>
     public ObservableCollection<<#= WinUI3Names.LookupOptionClass(table, "DetailMaster", p.KeyCs) #>> <#= WinUI3Names.OptionsProperty(p) #> { get; } = [];
+<#
+        }
+        if (aheadParents.Count > 0)
+        {
+#>
+    // A DbContext is not thread-safe: loading the dialog and the suggestions of a type-ahead take turns.
+    private readonly System.Threading.SemaphoreSlim _gate = new(1, 1);
+
+<#
+        }
+        foreach (var c in aheadColumns)
+        {
+#>
+    /// <summary> What the <#= Labels.Column(c.Name) #> box shows: what was typed, or the name of the row that was picked. </summary>
+    [ObservableProperty]
+    private string _<#= char.ToLowerInvariant(c.Name[0]) #><#= c.Name[1..] #>Text = "";
+
+<#
+        }
+        foreach (var p in aheadParents)
+        {
+#>
+    /// <summary> The first few <#= p.Table #> rows whose text contains what was typed. </summary>
+    public async Task<IReadOnlyList<<#= WinUI3Names.LookupOptionClass(table, "DetailMaster", p.KeyCs) #>>> Suggest<#= p.BaseName #>Async(string text)
+    {
+        string wanted = text.Trim().ToLower();
+        await _gate.WaitAsync();
+        try
+        {
+            var found = await _context.Set<<#= p.Table #>>().AsNoTracking()
+                .Where(r => r.<#= p.DisplayName #>.ToString()!.ToLower().Contains(wanted))
+                .OrderBy(r => r.<#= p.DisplayName #>).Take(10)
+                .Select(r => new { Id = r.<#= p.KeyName #>, Text = r.<#= p.DisplayName #> }).ToListAsync();
+            return found.Select(r => new <#= WinUI3Names.LookupOptionClass(table, "DetailMaster", p.KeyCs) #> { Id = r.Id, Text = r.Text?.ToString() ?? "" }).ToList();
+        }
+        finally { _gate.Release(); }
+    }
+
 <#
         }
         foreach (var child in children)
@@ -663,6 +768,27 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
     private bool _<#= child.Var #>SortDescending;
 
     public bool Has<#= child.Table #>Sort => _<#= child.Var #>SortColumn is not null;
+<#
+        foreach (var f in child.Filters)
+        {
+#>
+
+    // The <#= child.Title #> grid's <#= f.Label #> drop-down: "<#= f.All #>" first, then the names its rows have. Picking one shows only those rows.
+    public ObservableCollection<string> <#= TemplateHelpers.UpperFirst(f.Choices) #> { get; } = [];
+    private string? _<#= TemplateHelpers.LowerFirst(f.Prop) #>;
+
+    public string? <#= f.Prop #>
+    {
+        get => _<#= TemplateHelpers.LowerFirst(f.Prop) #>;
+        set
+        {
+            if (SetProperty(ref _<#= TemplateHelpers.LowerFirst(f.Prop) #>, value))
+                Show<#= child.Table #>Sorted();
+        }
+    }
+<#
+        }
+#>
 
     /// <summary> A click on a column header: another column sorts ascending, the sorted column flips its direction. </summary>
     public void Sort<#= child.Table #>By(string column)
@@ -692,6 +818,16 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         <#= child.Var #>Rows.Clear();
         int sortIndex = _<#= child.Var #>SortColumn is null ? -1 : _<#= child.Var #>Columns.IndexOf(_<#= child.Var #>SortColumn);
         IEnumerable<<#= table #>ChildGridRow> ordered = _<#= child.Var #>Loaded;
+<#
+        foreach (var f in child.Filters)
+        {
+#>
+        int <#= f.Choices #>Index = _<#= child.Var #>Columns.IndexOf("<#= f.Column #>");
+        if (<#= f.Choices #>Index >= 0 && <#= f.Prop #> is { Length: > 0 } picked<#= f.Column #> && picked<#= f.Column #> != "<#= f.All #>")
+            ordered = ordered.Where(r => r.Cells[<#= f.Choices #>Index] == picked<#= f.Column #>);
+<#
+        }
+#>
         if (sortIndex >= 0)
             ordered = _<#= child.Var #>SortDescending
                 ? ordered.OrderByDescending(r => r.Values[sortIndex], SortValueComparer.Instance)
@@ -836,12 +972,42 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 
     /// <summary> Loads the drop-downs (always) and the child grids (only when editing an existing row -
     /// a brand-new row has no child rows yet). </summary>
+<#
+        if (aheadParents.Count > 0)
+        {
+#>
     public async Task LoadAsync()
+    {
+        await _gate.WaitAsync();
+        try { await LoadCoreAsync(); }
+        finally { _gate.Release(); }
+    }
+
+<#
+        }
+#>
+    public async Task <#= aheadParents.Count > 0 ? "LoadCoreAsync" : "LoadAsync" #>()
     {
 <#
         foreach (var p in parents)
         {
             var lookupColumnsForThisParent = shown.Where(c => form.LookupOf(c) is ForeignKeyModel fk && fk.ReferencedTable.EqualsIgnoreCase(p.Table)).ToList();
+            if (p.TypeAhead)
+            {
+                // too many rows to read: only the row being edited is read, for the name the box shows
+                foreach (var c in lookupColumnsForThisParent)
+                {
+#>
+        if (_editing is not null)
+        {
+            <#= c.Name #> = _editing.<#= c.Name #>;
+            if (_editing.<#= c.Name #> is <#= p.KeyCs #> <#= TemplateHelpers.LowerFirst(c.Name) #>Key)
+                <#= c.Name #>Text = await _context.Set<<#= p.Table #>>().AsNoTracking().Where(r => r.<#= p.KeyName #> == <#= TemplateHelpers.LowerFirst(c.Name) #>Key).Select(r => r.<#= p.DisplayName #>.ToString()).FirstOrDefaultAsync() ?? "";
+        }
+<#
+                }
+                continue;
+            }
 #>
         <#= WinUI3Names.OptionsProperty(p) #>.Clear();
         foreach (var row in await _context.Set<<#= p.Table #>>().OrderBy(r => r.<#= p.DisplayName #>).ToListAsync())
@@ -946,6 +1112,22 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
             }).ToList();
             _<#= child.Var #>Loaded.Add(new <#= table #>ChildGridRow { Cells = cells, Values = values, Entity = row });
         }
+<#
+        foreach (var f in child.Filters)
+        {
+#>
+        <#= TemplateHelpers.UpperFirst(f.Choices) #>.Clear();
+        int <#= f.Choices #>At = propertyNames.IndexOf("<#= f.Column #>");
+        if (<#= f.Choices #>At >= 0)
+        {
+            <#= TemplateHelpers.UpperFirst(f.Choices) #>.Add("<#= f.All #>");
+            foreach (string choiceName in _<#= child.Var #>Loaded.Select(r => r.Cells[<#= f.Choices #>At]).Where(n => n.Length > 0).Distinct().OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase))
+                <#= TemplateHelpers.UpperFirst(f.Choices) #>.Add(choiceName);
+        }
+        <#= f.Prop #> = <#= f.Choices #>At >= 0 ? "<#= f.All #>" : null;
+<#
+        }
+#>
         Show<#= child.Table #>Sorted();
     }
 

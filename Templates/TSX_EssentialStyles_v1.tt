@@ -45,6 +45,13 @@ button, [role='tab'] { font-weight: 700; }
 main button { padding: 4px 12px; font: inherit; font-weight: 700; }
 main > div > div > input { margin: 4px 6px 4px 0; padding: 6px 8px; font: inherit; }
 tbody tr:hover { background: #8881; }
+/* The type-ahead of a parent with too many rows for a drop-down: a box with the matches listed under it. */
+.type-ahead { position: relative; display: inline-block; }
+form .type-ahead { display: block; max-width: 640px; }
+.type-ahead input { margin: 4px 6px 4px 0; padding: 6px 8px; font: inherit; box-sizing: border-box; }
+.type-ahead-list { position: absolute; z-index: 10; left: 0; right: 0; margin: 2px 0 0; padding: 0; list-style: none; max-height: 240px; overflow-y: auto; background: Canvas; color: CanvasText; border: 1px solid #8886; box-shadow: 0 4px 12px #0003; }
+.type-ahead-list li { padding: 6px 8px; cursor: pointer; }
+.type-ahead-list li:hover { background: #8883; }
 /* The Edit / Clone / Delete buttons on a grid row: shaded and bold. */
 td button { background: #8883; border: 1px solid #8886; border-radius: 4px; font-weight: 700; cursor: pointer; }
 td button:hover { background: #8885; }

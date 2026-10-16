@@ -54,6 +54,16 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const text = await response.text();
   return (text ? JSON.parse(text) : undefined) as T;
 }
+
+// The query string of a lookup call (GET <route>/lookup): the text a type-ahead sends, the keys whose names a page shows, and how many matches to list.
+export function lookupQuery(query: { search?: string; ids?: (number | string)[]; take?: number }): string {
+  const params = new URLSearchParams();
+  if (query.search) params.set('search', query.search);
+  if (query.ids?.length) params.set('ids', query.ids.join(','));
+  if (query.take) params.set('take', String(query.take));
+  const text = params.toString();
+  return text ? `?${text}` : '';
+}
 @@@FILE src/<#= componentsFolder #>/PaginationBar.tsx@@@
 // The Previous / Next bar every generated list page puts under its grid.
 export function PaginationBar({ page, totalPages, onPrevious, onNext }: {
@@ -132,5 +142,200 @@ export function CurrencyInput({ id, value, onChange, label, digits = 2, currency
     />
   );
 }
+@@@FILE src/<#= componentsFolder #>/TypeAhead.tsx@@@
+import { useRef, useState } from 'react';
+
+export type LookupRow<K extends number | string = number> = { id: K; name: string; isActive?: boolean | null };
+
+/** The lookup call of a parent table: all its rows, or with a query only the rows whose text contains `search` (at most `take`) or whose key is in `ids`. */
+export type LookupFinder<K extends number | string = number> = (query: { search?: string; ids?: K[]; take?: number }) => Promise<LookupRow<K>[]>;
+
+export type LookupNames<K extends number | string = number> = {
+  /** The name of a key, empty until it arrives; a missing, empty or zero key has none. */
+  name: (id: K | string | null | undefined) => string;
+  /** A row a person picked is known without asking. */
+  remember: (rows: LookupRow<K>[]) => void;
+};
+
+/**
+ * The names of the rows of a parent that is too big for a drop-down. A page asks for the name of a key as it draws it; the keys it has not seen yet are asked for together, once, from the
+ * parent's lookup list (`ids`), and the name shows when it arrives.
+ */
+export function useLookupNames<K extends number | string = number>(find: LookupFinder<K>): LookupNames<K> {
+  const [names, setNames] = useState<Record<string, string>>({});
+  const asked = useRef(new Set<string>());
+  const queue = useRef<K[]>([]);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const remember = (rows: LookupRow<K>[]) => {
+    for (const row of rows) asked.current.add(String(row.id));
+    setNames((current) => ({ ...current, ...Object.fromEntries(rows.map((row) => [String(row.id), row.name])) }));
+  };
+
+  const flush = () => {
+    const ids = queue.current.splice(0);
+    timer.current = undefined;
+    find({ ids }).then(remember).catch(() => {});
+  };
+
+  const name = (id: K | string | null | undefined): string => {
+    if (!id) return '';
+    const key = String(id);
+    if (key in names) return names[key];
+    if (!asked.current.has(key)) {
+      asked.current.add(key);
+      queue.current.push(id as K);
+      timer.current ??= setTimeout(flush, 0);
+    }
+    return '';
+  };
+
+  return { name, remember };
+}
+
+/**
+ * A box that finds the row of a big parent by what is typed in it: after a short pause it asks the parent's lookup list for the rows whose text contains it and lists a few; picking one sets the key.
+ * Typing clears the key, so text that was not picked leaves nothing chosen, and leaving the box without a pick empties it.
+ */
+export function TypeAheadBox<K extends number | string = number>({ id, label, placeholder, value, names, find, onChange, required }: {
+  id?: string;
+  label: string;
+  placeholder?: string;
+  value: K | string | null | undefined;
+  names: LookupNames<K>;
+  find: LookupFinder<K>;
+  onChange: (id: K | null) => void;
+  required?: boolean;
+}) {
+  const [typed, setTyped] = useState<string | null>(null);
+  const [options, setOptions] = useState<LookupRow<K>[]>([]);
+  const [open, setOpen] = useState(false);
+  const turn = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const type = (text: string) => {
+    setTyped(text);
+    onChange(null);
+    clearTimeout(timer.current);
+    const wanted = text.trim();
+    if (!wanted) {
+      setOptions([]);
+      setOpen(false);
+      return;
+    }
+    timer.current = setTimeout(() => {
+      const mine = ++turn.current;
+      find({ search: wanted, take: 10 }).then((rows) => {
+        if (mine !== turn.current) return; // a later keystroke asked again: this answer is old
+        setOptions(rows);
+        setOpen(true);
+      }).catch(() => {});
+    }, 250);
+  };
+
+  const pick = (row: LookupRow<K>) => {
+    names.remember([row]);
+    clearTimeout(timer.current);
+    turn.current++;
+    setTyped(null);
+    setOptions([]);
+    setOpen(false);
+    onChange(row.id);
+  };
+
+  const leave = () => {
+    clearTimeout(timer.current);
+    turn.current++;
+    setTyped(null);
+    setOpen(false);
+  };
+
+  return (
+    <div className="type-ahead">
+      <input
+        type="text"
+        id={id}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={open}
+        aria-label={label}
+        autoComplete="off"
+        placeholder={placeholder}
+        required={required}
+        value={typed ?? names.name(value)}
+        onChange={(event) => type(event.target.value)}
+        onBlur={leave}
+      />
+      {open && (
+        <ul className="type-ahead-list" role="listbox">
+          {options.map((option) => (
+            <li key={String(option.id)} role="option" aria-selected={false} onMouseDown={() => pick(option)}>{option.name}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+@@@FILE src/<#= componentsFolder #>/__tests__/TypeAhead.test.tsx@@@
+import { useState } from 'react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TypeAheadBox, useLookupNames } from '../TypeAhead';
+import type { LookupFinder } from '../TypeAhead';
+
+const rows = [{ id: 7, name: 'Acme' }, { id: 9, name: 'Acorn' }];
+
+function Harness({ find }: { find: LookupFinder }) {
+  const names = useLookupNames(find);
+  const [key, setKey] = useState<number | null>(null);
+  return (
+    <>
+      <TypeAheadBox label="Customer" value={key} names={names} find={find} onChange={setKey} />
+      <output data-testid="key">{String(key)}</output>
+    </>
+  );
+}
+
+describe('TypeAheadBox', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('asks the lookup list for what was typed after a pause and picks a row by its key', async () => {
+    const find = vi.fn<LookupFinder>().mockResolvedValue(rows);
+    render(<Harness find={find} />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Customer' }), { target: { value: ' ac ' } });
+    expect(find).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+
+    expect(find).toHaveBeenCalledWith({ search: 'ac', take: 10 });
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'Acorn' }));
+
+    expect(screen.getByTestId('key').textContent).toBe('9');
+    expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('Acorn');
+  });
+
+  it('clears the key while typing and empties the box when it is left without a pick', async () => {
+    const find = vi.fn<LookupFinder>().mockResolvedValue(rows);
+    render(<Harness find={find} />);
+    const box = screen.getByRole('combobox') as HTMLInputElement;
+
+    fireEvent.change(box, { target: { value: 'zz' } });
+    expect(screen.getByTestId('key').textContent).toBe('null');
+    fireEvent.blur(box);
+
+    expect(box.value).toBe('');
+  });
+
+  it('asks nothing for blank text', async () => {
+    const find = vi.fn<LookupFinder>().mockResolvedValue(rows);
+    render(<Harness find={find} />);
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '   ' } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+
+    expect(find).not.toHaveBeenCalled();
+  });
+});
 @@@FILE src/setupTests.ts@@@
 import '@testing-library/jest-dom';

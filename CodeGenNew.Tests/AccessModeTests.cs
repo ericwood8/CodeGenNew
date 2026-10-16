@@ -132,7 +132,7 @@ public class AccessModeTests
         string cs = await Render("CS_SearchQuery_v1.tt", Customer());
 
         Expect.Contains(cs, "public static class CustomerSearchQuery");
-        Expect.Contains(cs, "public static IQueryable<Customer> Filter(IQueryable<Customer> query, string? accountNumber = null, string? name = null, string? email = null)");
+        Expect.Contains(cs, "public static IQueryable<Customer> Filter(IQueryable<Customer> query, string? accountNumber = null, string? name = null, string? email = null, int? statusId = null)");
         Expect.Contains(cs, "string nameTerm = name.Trim().ToLower();\n            query = query.Where(t => t.Name.ToLower().Contains(nameTerm));");
         Expect.Contains(cs, "query = query.Where(t => t.Email != null && t.Email.ToLower().Contains(emailTerm));");
         Expect.Contains(cs, "switch (sortColumn is { Length: <= 128 } ? sortColumn.Trim().ToLowerInvariant() : null)");
@@ -162,7 +162,7 @@ public class AccessModeTests
     public async Task The_repository_searches_and_clones_through_ef_in_ef_mode_and_through_routines_otherwise()
     {
         string ef = await Render("CS_Repo_v1.tt", Customer());
-        Expect.Contains(ef, "var query = CustomerSearchQuery.Filter(_dbSet, accountNumber, name, email);");
+        Expect.Contains(ef, "var query = CustomerSearchQuery.Filter(_dbSet, accountNumber, name, email, statusId);");
         Expect.Contains(ef, "int totalCount = await query.CountAsync();");
         Expect.Contains(ef, "int size = Math.Clamp(pageSize, 1, 1000);");
         Expect.Contains(ef, ".Skip((Math.Clamp(pageNumber, 1, int.MaxValue / size) - 1) * size).Take(size).ToListAsync();");
@@ -186,7 +186,7 @@ public class AccessModeTests
 
         Expect.Contains(ef, "using Acme.App.Repositories;");
         Expect.DoesNotContain(ef, "using Microsoft.Data.SqlClient;");
-        Expect.Contains(ef, "var query = CustomerSearchQuery.Filter(context.Set<Customer>().AsNoTracking(), accountNumber, name, email);");
+        Expect.Contains(ef, "var query = CustomerSearchQuery.Filter(context.Set<Customer>().AsNoTracking(), accountNumber, name, email, statusId);");
         Expect.Contains(ef, "var items = await CustomerSearchQuery.Sort(query, sortColumn, sortDescending)");
         Expect.DoesNotContain(ef, "SqlQueryRaw");
         Expect.Contains(ef, "context.Set<Customer>().AsNoTracking()");

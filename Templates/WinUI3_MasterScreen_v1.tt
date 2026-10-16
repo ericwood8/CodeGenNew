@@ -72,10 +72,12 @@
         // this list's order only affects the TextBoxes' left-to-right layout, not correctness. Empty for a
         // table with no searchable column - canSearch below gates the search bar UI specifically;
         // pagination itself is unconditional (see the header comment's 2026-09-28 update).
-        var searchFields = Model.SearchableColumns
+        var searchFields = Model.SearchableColumns.Concat(form.TextKeyBoxes).OrderBy(c => c.OrdinalPosition)
             .Select(c => new { Field = TemplateHelpers.LowerFirst(c.Name) + "Filter", Prop = c.Name + "Filter", ParamName = TemplateHelpers.LowerFirst(c.Name), Label = GridCaption.For(c, Labels.Column(c.Name)) })
             .ToList();
-        bool canSearch = searchFields.Count > 0;
+        // a drop-down of the parent's rows per whole-number foreign key: an exact match on the key (the first entry, "All", is no filter)
+        var searchKeys = form.SearchKeys.Select(k => (k.Parent, k.Label, Type: k.Column.CSharpBase(), Convert: k.Column.CSharpBase() switch { "int" => "ToInt32", "long" => "ToInt64", "short" => "ToInt16", "byte" => "ToByte", _ => (string?)null }, Field: TemplateHelpers.LowerFirst(k.Column.Name) + "Filter", Prop: k.Column.Name + "Filter", Choices: k.Column.Name + "Choices", k.ParamName)).ToList();
+        bool canSearch = searchFields.Count > 0 || searchKeys.Count > 0;
         int errorRow = canSearch ? 3 : 2;
         int gridRow = canSearch ? 4 : 3;
 
@@ -83,6 +85,11 @@
         var shown = form.GridColumns;
 
         var parents = shown.Select(form.ParentOf).OfType<FormParent>().DistinctBy(p => p.Table, StringComparer.OrdinalIgnoreCase).ToList();
+        // a parent with too many rows for a drop-down is found by typing: the filter is an AutoSuggestBox that asks the context for the rows whose text contains what was typed, and the grid reads
+        // only the names of the rows it shows
+        var aheadParents = parents.Where(p => p.TypeAhead).ToList();
+        var aheadKeys = searchKeys.Where(k => k.Parent.TypeAhead).ToList();
+        bool anyAhead = aheadParents.Count > 0 || aheadKeys.Count > 0;
 
         if (!Model.HasReferencedDisplayColumns && parents.Count > 0)
             Error("WinUI3_MasterScreen needs the foreign-keyed tables' display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
@@ -149,6 +156,23 @@
 #>
                 <TextBox Width="160" PlaceholderText="<#= f.Label #>" Text="{x:Bind ViewModel.<#= f.Prop #>, Mode=TwoWay}" />
 <#
+            }
+            foreach (var k in searchKeys)
+            {
+                if (k.Parent.TypeAhead)
+                {
+#>
+                <AutoSuggestBox Width="160" AutomationProperties.Name="Filter by <#= k.Label #>" PlaceholderText="All <#= k.Label.Pluralize() #>" DisplayMemberPath="Name" TextMemberPath="Name"
+                                Text="{x:Bind ViewModel.<#= k.Prop #>Text, Mode=TwoWay}" TextChanged="On<#= k.Prop #>TextChanged" SuggestionChosen="On<#= k.Prop #>Chosen" />
+<#
+                }
+                else
+                {
+#>
+                <ComboBox Width="160" AutomationProperties.Name="Filter by <#= k.Label #>" ItemsSource="{x:Bind ViewModel.<#= k.Choices #>}" DisplayMemberPath="Name"
+                          SelectedItem="{x:Bind ViewModel.<#= k.Prop #>, Mode=TwoWay}" SelectionChanged="OnKeyFilterChanged" />
+<#
+                }
             }
 #>
                 <Button Content="Search" Click="OnSearchClick" />
@@ -430,6 +454,48 @@ public sealed partial class <#= table #>ListPage : Page
         await ViewModel.LoadAsync();
     }
 <#
+        if (searchKeys.Count > 0)
+        {
+#>
+
+    // Picking a parent searches at once; the first selection, made while the page is loading for the first time, is not a search.
+    private async void OnKeyFilterChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ViewModel.HasLoaded)
+            return;
+        ViewModel.PageNumber = 1;
+        await ViewModel.LoadAsync();
+    }
+<#
+        foreach (var k in aheadKeys)
+        {
+#>
+
+    // Typing in the <#= k.Label #> box takes the filter off (the grid shows every row again) and lists the rows whose text contains what was typed; picking one filters the grid to it.
+    private async void On<#= k.Prop #>TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
+            return;
+        sender.ItemsSource = string.IsNullOrWhiteSpace(sender.Text) ? null : await ViewModel.Suggest<#= k.Prop #>Async(sender.Text);
+        if (ViewModel.<#= k.Prop #> is not null)
+        {
+            ViewModel.<#= k.Prop #> = null;
+            ViewModel.PageNumber = 1;
+            await ViewModel.LoadAsync();
+        }
+    }
+
+    private async void On<#= k.Prop #>Chosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
+    {
+        ViewModel.<#= k.Prop #> = (<#= table #>KeyChoice)args.SelectedItem;
+        ViewModel.PageNumber = 1;
+        await ViewModel.LoadAsync();
+    }
+<#
+        }
+        }
+#>
+<#
         }
 #>
 }
@@ -440,7 +506,7 @@ using System.Threading.Tasks;
 using <#= contextNamespace #>;
 using CommunityToolkit.Mvvm.ComponentModel;
 <#
-        if (parents.Count > 0)
+        if (parents.Count > 0 || searchKeys.Count > 0)
         {
 #>
 using Microsoft.EntityFrameworkCore;
@@ -464,6 +530,16 @@ public class <#= table #>ListRow
     public List<string> Cells { get; init; } = [];
 }
 
+<#
+        if (searchKeys.Count > 0)
+        {
+#>
+/// <summary> One entry of a parent drop-down in the search bar: the parent's key, or none for "All". </summary>
+public sealed record <#= table #>KeyChoice(object? Id, string Name);
+
+<#
+        }
+#>
 public partial class <#= table #>ListViewModel : ObservableObject
 {
     private readonly <#= contextType #> _context;
@@ -515,6 +591,47 @@ public partial class <#= table #>ListViewModel : ObservableObject
     private string _<#= f.Field #> = "";
 <#
         }
+        foreach (var k in searchKeys)
+        {
+            if (k.Parent.TypeAhead)
+            {
+#>
+
+    [ObservableProperty]
+    private <#= table #>KeyChoice? _<#= k.Field #>;
+
+    /// <summary> What the <#= k.Label #> box shows: what was typed, or the name of the row that was picked. </summary>
+    [ObservableProperty]
+    private string _<#= k.Field #>Text = "";
+
+    /// <summary> The first few <#= k.Parent.Table #> rows whose text contains what was typed in the <#= k.Label #> box. </summary>
+    public async Task<IReadOnlyList<<#= table #>KeyChoice>> Suggest<#= k.Prop #>Async(string text)
+    {
+        string wanted = text.Trim().ToLower();
+        await _gate.WaitAsync();
+        try
+        {
+            var found = await _context.Set<<#= k.Parent.Table #>>().AsNoTracking()
+                .Where(r => r.<#= k.Parent.DisplayName #>.ToString()!.ToLower().Contains(wanted))
+                .OrderBy(r => r.<#= k.Parent.DisplayName #>).Take(10)
+                .Select(r => new { Id = r.<#= k.Parent.KeyName #>, Text = r.<#= k.Parent.DisplayName #> }).ToListAsync();
+            return found.Select(r => new <#= table #>KeyChoice(r.Id, r.Text?.ToString() ?? "")).ToList();
+        }
+        finally { _gate.Release(); }
+    }
+<#
+            }
+            else
+            {
+#>
+
+    public ObservableCollection<<#= table #>KeyChoice> <#= k.Choices #> { get; } = [];
+
+    [ObservableProperty]
+    private <#= table #>KeyChoice? _<#= k.Field #>;
+<#
+            }
+        }
 #>
 
     // The grid's sort: a column name (null = the default order) and the direction. It is remembered between runs (GridSortStore) until Clear sort.
@@ -562,7 +679,24 @@ public partial class <#= table #>ListViewModel : ObservableObject
     /// <summary> The arrow shown after the caption of the sorted column's header. </summary>
     public string SortMark(string column) => _sortColumn == column ? (_sortDescending ? " ▼" : " ▲") : "";
 
+<#
+        if (anyAhead)
+        {
+#>
+    // A DbContext is not thread-safe: a load and the suggestions of a type-ahead take turns.
+    private readonly System.Threading.SemaphoreSlim _gate = new(1, 1);
+
     public async Task LoadAsync()
+    {
+        await _gate.WaitAsync();
+        try { await LoadCoreAsync(); }
+        finally { _gate.Release(); }
+    }
+
+<#
+        }
+#>
+    public async Task <#= anyAhead ? "LoadCoreAsync" : "LoadAsync" #>()
     {
         ErrorMessage = null;
         Rows.Clear();
@@ -570,14 +704,40 @@ public partial class <#= table #>ListViewModel : ObservableObject
 <#
         foreach (var p in parents)
         {
+            if (p.TypeAhead)
+            {
+#>
+        Dictionary<<#= p.KeyCs #>, string> <#= WinUI3Names.NamesDictionary(p) #> = [];   // too many rows to read: filled below with the names of the rows this page shows
+<#
+            }
+            else
+            {
 #>
         var <#= WinUI3Names.NamesDictionary(p) #> = await _context.Set<<#= p.Table #>>().ToDictionaryAsync(r => r.<#= p.KeyName #>, r => r.<#= p.DisplayName #>?.ToString() ?? "");
 <#
+            }
         }
 #>
 
 <#
-        string filterArgs = string.Concat(searchFields.Select(f => $"{f.ParamName}: string.IsNullOrWhiteSpace({f.Prop}) ? null : {f.Prop}, "));
+        string filterArgs = string.Concat(searchFields.Select(f => $"{f.ParamName}: string.IsNullOrWhiteSpace({f.Prop}) ? null : {f.Prop}, "))
+            + string.Concat(searchKeys.Select(k => k.Convert is null
+                ? $"{k.ParamName}: ({k.Type}?){k.Prop}?.Id, "
+                : $"{k.ParamName}: {k.Prop}?.Id is null ? null : Convert.{k.Convert}({k.Prop}.Id), "));   // a whole-number key is boxed as the parent's own type: convert it to this column's
+        foreach (var k in searchKeys.Where(k => !k.Parent.TypeAhead))
+        {
+#>
+        if (<#= k.Choices #>.Count == 0)
+        {
+            // the parent's rows by name, after "All": picking one filters the grid to the rows that point at it
+            var <#= k.Choices #>Names = await _context.Set<<#= k.Parent.Table #>>().ToDictionaryAsync(r => r.<#= k.Parent.KeyName #>, r => r.<#= k.Parent.DisplayName #>?.ToString() ?? "");
+            <#= k.Choices #>.Add(new <#= table #>KeyChoice(null, "All <#= k.Label.Pluralize() #>"));
+            foreach (var choice in <#= k.Choices #>Names.OrderBy(n => n.Value, StringComparer.CurrentCultureIgnoreCase))
+                <#= k.Choices #>.Add(new <#= table #>KeyChoice(choice.Key, choice.Value));
+            <#= k.Prop #> ??= <#= k.Choices #>[0];
+        }
+<#
+        }
 #>
         var (rows, totalCount) = await _repo.SearchAsync(<#= filterArgs #>pageNumber: PageNumber, pageSize: PageSize, sortColumn: _sortColumn, sortDescending: _sortDescending);
         TotalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)PageSize);
@@ -589,6 +749,20 @@ public partial class <#= table #>ListViewModel : ObservableObject
         }
         TotalRows = totalCount;
         HasLoaded = true;
+<#
+        foreach (var p in aheadParents)
+        {
+            var own = shown.Where(c => form.ParentOf(c) == p).ToList();
+            string ids = own.Select(c => $"rows.Select(r => r.{c.Name}).OfType<{p.KeyCs}>()").Aggregate((a, b) => $"{a}.Concat({b})");
+#>
+        {
+            var ids = <#= ids #>.Distinct().ToList();
+            <#= WinUI3Names.NamesDictionary(p) #> = (await _context.Set<<#= p.Table #>>().AsNoTracking().Where(r => ids.Contains(r.<#= p.KeyName #>))
+                .Select(r => new { Id = r.<#= p.KeyName #>, Text = r.<#= p.DisplayName #> }).ToListAsync()).ToDictionary(r => r.Id, r => r.Text?.ToString() ?? "");
+        }
+<#
+        }
+#>
 
         foreach (var e in rows)
         {

@@ -49,6 +49,7 @@
         var nameColumn = Model.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
         var activeColumn = Model.Columns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
         var searchableColumns = Model.SearchableColumns;
+        var searchKeys = Model.SearchKeyColumns;
         // With AccessMode=Ef the search, the sort and the clone are LINQ over the context (CS_SearchQuery writes the query), not calls to the routines SP_Search and SP_Clone write.
         bool ef = Project.AccessModeFor(Model.Dialect) == AccessMode.Ef;
         bool nameActive = nameColumn is not null && activeColumn is not null;
@@ -152,10 +153,12 @@
             var signatureParams = filters.Select(f => $"string? {f.ParamName} = null")
                 .Append("int pageNumber = 1").Append("int pageSize = 100")
                 // The grid's chosen sort: a column name (null = the default order) and the direction. The procedure compares the name with its own list of columns (SearchSort).
-                .Append("string? sortColumn = null").Append("bool sortDescending = false").ToList();
+                .Append("string? sortColumn = null").Append("bool sortDescending = false")
+                // one optional exact match per whole-number foreign key, after the older parameters so an existing call still lines up
+                .Concat(searchKeys.Select(k => $"{k.CSharpBase()}? {LowerFirst(k.Name)} = null")).ToList();
             if (ef)
             {
-                string filterArguments = string.Concat(filters.Select(f => ", " + f.ParamName));
+                string filterArguments = string.Concat(filters.Select(f => ", " + f.ParamName).Concat(searchKeys.Select(k => ", " + LowerFirst(k.Name))));
                 string queryClass = Model.TableName + "SearchQuery";
                 methods.Add(new[]
                 {
@@ -191,7 +194,9 @@
             body.Add("            " + call.IntParameter("PageNumber", "pageNumber") + ",");
             body.Add("            " + call.IntParameter("PageSize", "pageSize") + ",");
             body.Add("            " + call.SortColumnParameter("sortColumn") + ",");
-            body.Add("            " + call.SortDescendingParameter("sortDescending"));
+            body.Add("            " + call.SortDescendingParameter("sortDescending") + (searchKeys.Count > 0 ? "," : ""));
+            for (int i = 0; i < searchKeys.Count; i++)
+                body.Add("            " + call.KeyParameter(searchKeys[i], LowerFirst(searchKeys[i].Name)) + (i < searchKeys.Count - 1 ? "," : ""));
             body.Add("        };");
             body.Add("");
             // Set<T>().FromSqlRaw(...), NOT Database.SqlQueryRaw<T>(...): SqlQueryRaw<T> builds an ad hoc
@@ -210,12 +215,10 @@
             // possibly empty.
             body.Add($"        var countParameters = new {call.ParameterNamespace}.{call.ParameterType}[]");
             body.Add("        {");
-            for (int i = 0; i < filters.Count; i++)
-            {
-                var f = filters[i];
-                string comma = i < filters.Count - 1 ? "," : "";
-                body.Add("            " + call.TextParameter(f.Name, f.ParamName) + comma);
-            }
+            var countArguments = filters.Select(f => call.TextParameter(f.Name, f.ParamName))
+                .Concat(searchKeys.Select(k => call.KeyParameter(k, LowerFirst(k.Name)))).ToList();
+            for (int i = 0; i < countArguments.Count; i++)
+                body.Add("            " + countArguments[i] + (i < countArguments.Count - 1 ? "," : ""));
             body.Add("        };");
             body.Add("");
             // .SingleAsync() (or any operator EF must COMPOSE the SQL for) throws InvalidOperationException

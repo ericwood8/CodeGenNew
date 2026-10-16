@@ -275,6 +275,7 @@ Open the `.tt` file (or the app's *Templates* button → Edit), change those lin
 | `apiNamespace`, `entityNamespace`, `enumNamespace`, `repositoryNamespace` | `API_Crud`, `API_Search`, `CS_Entity`, `CS_Validation`, `CS_Enum`, `CS_Repo` | the `namespace` the generated file declares |
 | `usings` | `API_Crud`, `API_Search`, `CS_Entity`, `CS_Validation`, `CS_Repo` | extra `using` lines to write (leave empty if your project uses global usings) |
 | `contextType` | `API_Crud`, `API_Search`, `CS_Repo` | your `DbContext` class |
+| `TypeAheadRows`, `TypeAheadParents` | `TS_*`, `TSX_*`, `BLZ_*`, `WinUI3_*` | a parent with more rows than `TypeAheadRows` (default 1000) or listed in `TypeAheadParents` is found by typing instead of from a drop-down of every row; the API's `lookup` route takes `search` and `ids` |
 | `baseEntity`, `baseNameActiveEntity` | `CS_Entity` | the base classes your entities derive from |
 | `modelsFolder`, `servicesFolder`, `componentsFolder`, `apiPrefix` | `TS_*` | where the Angular files go and the API URL prefix |
 | `pagesFolder`, `apiFolder`, `componentsFolder`, `apiPrefix` | `TSX_*` | where the React files go and the API URL prefix |

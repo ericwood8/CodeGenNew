@@ -87,13 +87,22 @@
         // The same paging and search bar as TS_Component: one text box per searchable column (Model.SearchableColumns), paged by the API's /search endpoint.
         // The Search list protocol (ListProtocol=Search) has one search box for the whole table; the server decides which columns it matches.
         var searchFields = form.WebSearchFields;
-        bool canSearch = !nameActive && searchFields.Count > 0;
+        // a drop-down of the parent's rows per whole-number foreign key: an exact match on the key (the OData screen has its own filter row)
+        IReadOnlyList<SearchKeyField> searchKeys = odata ? [] : form.SearchKeys;
+        bool canSearch = !nameActive && (searchFields.Count > 0 || searchKeys.Count > 0);
         // The route of a table's own page ("SalesInvoice" -> "sales-invoice"): the project's routing has one route per generated page, named this way.
         string selfRoute = ScreenNames.Route(Model.TableName);
 
         var shown = form.Columns;
 
         var parents = form.Parents;
+        // a parent with too many rows for a drop-down is found by typing (type-ahead.ts); the OData screen keeps its drop-down
+        bool Ahead(FormParent p) => p.TypeAhead && !odata;
+        string FormAhead(ColumnModel c) => JsonNames.Camel(c.Name) + "Ahead";
+        string FilterAhead(SearchKeyField k) => k.ParamName + "FilterAhead";
+        string NamesOf(FormParent p) => p.Variable + "NameCache";
+        var formAheads = shown.Where(c => form.KindOf(c) == FieldKind.Lookup && Ahead(form.ParentOf(c)!)).ToList();   // the form fields that are type-aheads
+        var filterAheads = searchKeys.Where(k => Ahead(k.Parent)).ToList();                                          // the search keys that are type-aheads
 
         // The child tables, decided in Core for every stack (ChildGrid): which ones get a grid, its heading and role, its key, and the foreign keys shown as names.
         var children = ChildGrid.For(Model, Project);
@@ -161,6 +170,24 @@
             H("    <div class=\"form-group form-group-search dept\">");
             foreach (var f in searchFields)
                 H($"        <input type=\"text\" class=\"form-control\" placeholder=\"Search{(f.Label == "" ? "" : " by " + f.Label)}\" [(ngModel)]=\"filters.{f.ParamName}\"{(odata ? " (keyup.enter)=\"search()\"" : "")} />");
+            foreach (var k in searchKeys)
+            {
+                if (Ahead(k.Parent))
+                {
+                    string ahead = FilterAhead(k);
+                    H("        <div class=\"type-ahead\">");
+                    H($"            <input type=\"text\" class=\"form-control\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" [attr.aria-expanded]=\"{ahead}.open\" aria-label=\"Filter by {k.Label}\" placeholder=\"All {k.Label.Pluralize()}\" [ngModel]=\"{ahead}.shown(filters.{k.ParamName})\" (ngModelChange)=\"{ahead}.type($event)\" (blur)=\"{ahead}.leave()\" />");
+                    H($"            <ul class=\"type-ahead-list\" role=\"listbox\" *ngIf=\"{ahead}.open\">");
+                    H($"                <li role=\"option\" *ngFor=\"let o of {ahead}.options\" (mousedown)=\"{ahead}.pick(o)\">{{{{o.name}}}}</li>");
+                    H("            </ul>");
+                    H("        </div>");
+                    continue;
+                }
+                H($"        <select class=\"form-control\" aria-label=\"Filter by {k.Label}\" [(ngModel)]=\"filters.{k.ParamName}\" (ngModelChange)=\"search()\">");
+                H($"            <option value=\"\">All {k.Label.Pluralize()}</option>");
+                H($"            <option *ngFor=\"let p of {k.Parent.List}\" [value]=\"p.{k.Parent.KeyJson}\">{{{{p.{k.Parent.DisplayJson}}}}}</option>");
+                H("        </select>");
+            }
             if (!odata)
             {
                 H("        <button class=\"btn btn-outline-secondary\" type=\"button\" (click)=\"search()\"> Search </button>");
@@ -342,10 +369,23 @@
             else if (kind == FieldKind.Lookup)
             {
                 var p = form.ParentOf(c)!;
-                H($"                <select id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
-                if (c.IsNullable) H("                    <option [ngValue]=\"null\"></option>");
-                H($"                    <option *ngFor=\"let p of {p.List}\" [ngValue]=\"p.{p.KeyJson}\">{{{{p.{p.DisplayJson}}}}}</option>");
-                H("                </select>");
+                if (Ahead(p))
+                {
+                    string ahead = FormAhead(c);
+                    H("                <div class=\"type-ahead\">");
+                    H($"                    <input type=\"text\" id=\"{id}\" name=\"{id}\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" [attr.aria-expanded]=\"{ahead}.open\" [ngModel]=\"{ahead}.shown({model})\" (ngModelChange)=\"{ahead}.type($event)\" (blur)=\"{ahead}.leave()\"{req}>");
+                    H($"                    <ul class=\"type-ahead-list\" role=\"listbox\" *ngIf=\"{ahead}.open\">");
+                    H($"                        <li role=\"option\" *ngFor=\"let o of {ahead}.options\" (mousedown)=\"{ahead}.pick(o)\">{{{{o.name}}}}</li>");
+                    H("                    </ul>");
+                    H("                </div>");
+                }
+                else
+                {
+                    H($"                <select id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
+                    if (c.IsNullable) H("                    <option [ngValue]=\"null\"></option>");
+                    H($"                    <option *ngFor=\"let p of {p.List}\" [ngValue]=\"p.{p.KeyJson}\">{{{{p.{p.DisplayJson}}}}}</option>");
+                    H("                </select>");
+                }
             }
             else if (kind == FieldKind.Choices)
             {
@@ -453,6 +493,13 @@
         {
             H($"        <div class=\"child-grid\" *ngIf=\"{savedTest}; else save{child.Name}First\">");
             H($"            <h3>{child.Title}</h3>");
+            foreach (var filter in child.Filters)
+            {
+                H($"            <select class=\"form-control\" aria-label=\"Filter {child.Title} by {filter.Label}\" [(ngModel)]=\"childFilters['{child.Variable}']['{filter.ColumnJson}']\">");
+                H($"                <option value=\"\">All {filter.Label.Pluralize()}</option>");
+                H($"                <option *ngFor=\"let choice of childChoices({child.Variable}Rows, '{filter.ColumnJson}', {child.Variable}Names['{filter.ColumnJson}'])\" [value]=\"choice.value\">{{{{choice.name}}}}</option>");
+                H("            </select>");
+            }
             // The grid holds all its rows, so a header click sorts them in the browser; a right-click opens the Clear sort menu.
             H($"            <table (contextmenu)=\"openChildSortMenu($event, '{child.Variable}')\">");
             H("                <thead>");
@@ -684,7 +731,8 @@
         T($"import {{ {baseName} }} from '../../{modelsFolder}/{stem}';");
         T($"import {{ {serviceClass} }} from '../../{servicesFolder}/{serviceFile}';");
         if (writeRoles.Count > 0) T($"import {{ AuthService }} from '../../{servicesFolder}/auth.service';");
-        if (parents.Any(p => p.UsesLookupEndpoint)) T($"import {{ Lookup }} from '../../{servicesFolder}/crud.service';");
+        if (parents.Any(p => p.UsesLookupEndpoint && !Ahead(p))) T($"import {{ Lookup }} from '../../{servicesFolder}/crud.service';");
+        if (parents.Any(Ahead)) T($"import {{ LookupNames{(formAheads.Count + filterAheads.Count > 0 ? ", TypeAhead" : "")} }} from '../../{servicesFolder}/type-ahead';");
         foreach (var p in parents.Where(p => !p.IsSelf))
         {
             if (!p.UsesLookupEndpoint) T($"import {{ {p.BaseName} }} from '../../{modelsFolder}/{p.ModelFile}';");
@@ -741,7 +789,7 @@
         if (!nameActive && Project.DefaultSort(Model.TableName) is { } defaultSort)
             T($"  protected override readonly defaultSort = {{ column: '{defaultSort.Column}', descending: {(defaultSort.Descending ? "true" : "false")} }}; // the project's DefaultSorts: the sort until the person sorts");
         T($"  protected override readonly badInputMessage = '{(hasName ? "Name is bad or has special characters!" : "Some of the values are not acceptable!")}';");
-        if (canSearch && (!odata || Project.ListSearchProtocol)) T($"  override filters = {{ {string.Join(", ", searchFields.Select(f => $"{f.ParamName}: ''"))} }};");
+        if (canSearch && (!odata || Project.ListSearchProtocol)) T($"  override filters = {{ {string.Join(", ", searchFields.Select(f => f.ParamName).Concat(searchKeys.Select(k => k.ParamName)).Select(n => $"{n}: ''"))} }};");
         if (odataFilters is not null)
         {
             // the filter row: the control of each grid column (the screen's columnFilters hold what was typed), and the properties the grid reads (the key is always read)
@@ -757,12 +805,22 @@
             T("  protected override readonly selectColumns = this.columns.properties; // the grid asks for the shown columns and the key (one array, kept up to date); a row is read whole when it is opened");
         }
         if (!nameActive && pageSize != 20) T($"  override pageSize = {pageSize};");
-        foreach (var p in parents)
+        foreach (var p in parents.Where(p => !Ahead(p)))
             T($"  {p.List}: {p.ItemType}[] = [];");
         if (form.Guards.Count > 0)
             T("  guards: Record<string, boolean> = {}; // which guarded columns the signed-in person may change (GET guards)");
         foreach (var p in parents.Where(p => !p.IsSelf))
             T($"  private readonly {AngularNames.ServiceField(p.Table)} = inject({AngularNames.ServiceClass(p.Table)});");
+        string ParentService(FormParent p) => p.IsSelf ? "service" : AngularNames.ServiceField(p.Table);
+        foreach (var p in parents.Where(Ahead))
+            T($"  private readonly {NamesOf(p)} = new LookupNames<{p.KeyTs}>((query) => this.{ParentService(p)}.getLookup(query)); // the names of {p.BaseName} rows, asked for as the screen shows them (too many rows for a drop-down)");
+        foreach (var c in formAheads)
+        {
+            var p = form.ParentOf(c)!;
+            T($"  readonly {FormAhead(c)} = new TypeAhead<{p.KeyTs}>((query) => this.{ParentService(p)}.getLookup(query), this.{NamesOf(p)}, (id) => {{ if (this.selectedRow) {{ (this.selectedRow as unknown as Record<string, unknown>)['{JsonNames.Camel(c.Name)}'] = id; }} }});");
+        }
+        foreach (var k in filterAheads)
+            T($"  readonly {FilterAhead(k)} = new TypeAhead<{k.Parent.KeyTs}>((query) => this.{ParentService(k.Parent)}.getLookup(query), this.{NamesOf(k.Parent)}, (id) => {{ const text = id === null ? '' : String(id); if (this.filters['{k.ParamName}'] !== text) {{ this.filters['{k.ParamName}'] = text; this.search(); }} }});");
         if (children.Count > 0) T("  private readonly http = inject(HttpClient);");
         if (tabbed)
         {
@@ -779,6 +837,8 @@
             T("  // The child grids hold all their rows, so each sorts them in the browser; its sort is saved under the grid's key plus the child's name.");
             T("  childSorts: Record<string, GridSort | null> = { " + string.Join(", ", gridChildren.Select(ch => $"{ch.Variable}: loadSort(this.gridKey + '.{ch.Variable}')")) + " };");
             T("  childSortMenu: { child: string; x: number; y: number } | null = null; // the child grid's right-click menu, where it is open");
+            if (gridChildren.Any(ch => ch.Filters.Count > 0))
+                T("  childFilters: Record<string, Record<string, string>> = { " + string.Join(", ", gridChildren.Where(ch => ch.Filters.Count > 0).Select(ch => $"{ch.Variable}: {{ {string.Join(", ", ch.Filters.Select(f => f.ColumnJson + ": ''"))} }}")) + " }; // the name picked in each child grid's filter drop-downs, by column");
         }
         foreach (var child in gridChildren)
         {
@@ -797,7 +857,7 @@
         }
         T();
         {
-            var parentsToLoad = parents.ToList();   // a drop-down over this table itself (a manager) is read through the screen's own service
+            var parentsToLoad = parents.Where(p => !Ahead(p)).ToList();   // a drop-down over this table itself (a manager) is read through the screen's own service; a type-ahead reads nothing until it is used
             var optionLoads = editableChildren.SelectMany(child => child.EditColumns
                 .Select(c => (Child: child, Column: c, Lookup: child.EditLookupOf(c))).Where(x => x.Lookup is not null)).ToList();
             if (parentsToLoad.Count > 0 || optionLoads.Count > 0 || form.Guards.Count > 0)
@@ -867,11 +927,22 @@
             T("    return copy;");
             T("  }");
         }
-        if (tabbed)
+        if (tabbed || formAheads.Count > 0)
         {
             T();
             T("  protected override opened(): void {");
-            T("    this.activeTab = 0;");
+            if (tabbed) T("    this.activeTab = 0;");
+            foreach (var c in formAheads)
+                T($"    this.{FormAhead(c)}.reset(); // show the name of the key the row has, not what was typed last");
+            T("  }");
+        }
+        if (filterAheads.Count > 0)
+        {
+            T();
+            T("  override clearSearch(): void {");
+            T("    super.clearSearch();");
+            foreach (var k in filterAheads)
+                T($"    this.{FilterAhead(k)}.reset();");
             T("  }");
         }
         if (children.Count > 0)
@@ -898,7 +969,7 @@
             T();
             T($"  // the name to show in place of a {p.BaseName} id");
             T($"  {p.NameMethod}(id?: {p.KeyTs}): string {{");
-            T($"    return this.{p.List}.find((p) => p.{p.KeyJson} === id)?.{p.DisplayJson} ?? '';");
+            T(Ahead(p) ? $"    return this.{NamesOf(p)}.name(id);" : $"    return this.{p.List}.find((p) => p.{p.KeyJson} === id)?.{p.DisplayJson} ?? '';");
             T("  }");
         }
         foreach (var child in editableChildren)
@@ -951,6 +1022,8 @@
             T("  // filtered client-side (same no-paging simplification TS_Component.tt's own grid makes), and the columns");
             T("  // shown are whatever keys the first row actually has, since this template never sees the child's own schema.");
             T($"  private load{child.Name}(parentId: {keyTs}): void {{");
+            if (child.Filters.Count > 0)
+                T($"    this.childFilters['{child.Variable}'] = {{ {string.Join(", ", child.Filters.Select(f => f.ColumnJson + ": ''"))} }};");
             if (odata && child.KeyJson is not null && ODataPlan.ServesByName(child.Table, Project))
             {
                 // the child is served as OData too: the server finds the rows that point at this one, instead of the whole table being read and filtered here
@@ -1029,10 +1102,36 @@
             T("    return sort?.column === column ? (sort.descending ? 'descending' : 'ascending') : null;");
             T("  }");
             T();
+            bool childFilterBoxes = gridChildren.Any(ch => ch.Filters.Count > 0);
+            if (childFilterBoxes)
+            {
+                T("  // A child grid holds every row of the child for this row, so its filters work on those rows: the names to pick from are the ones the rows have.");
+                T("  // The same list is returned until the rows or the names change, so the options are not rebuilt on every change detection.");
+                T("  private readonly childChoiceCache = new WeakMap<any[], Map<string, { names?: Record<string, string>; choices: { value: string; name: string }[] }>>();");
+                T();
+                T("  childChoices(rows: any[], column: string, names?: Record<string, string>): { value: string; name: string }[] {");
+                T("    const perRows = this.childChoiceCache.get(rows) ?? new Map<string, { names?: Record<string, string>; choices: { value: string; name: string }[] }>();");
+                T("    this.childChoiceCache.set(rows, perRows);");
+                T("    const cached = perRows.get(column);");
+                T("    if (cached && cached.names === names) return cached.choices;");
+                T("    const values = Array.from(new Set(rows.map((r) => r[column]).filter((v) => v !== null && v !== undefined && v !== '').map(String)));");
+                T("    const choices = values.map((value) => ({ value, name: names?.[value] ?? value })).sort((a, b) => a.name.localeCompare(b.name));");
+                T("    perRows.set(column, { names, choices });");
+                T("    return choices;");
+                T("  }");
+                T();
+            }
             T("  // The rows in the child grid's sort order; a column that shows a name instead of an id sorts by the name.");
             T("  sortedChildRows(child: string, rows: any[], names?: Record<string, Record<string, string>>): any[] {");
             T("    const sort = this.childSorts[child] ?? null;");
-            T("    return sortRows(rows, sort, sort ? names?.[sort.column] : undefined);");
+            if (childFilterBoxes)
+            {
+                T("    const filter = Object.entries(this.childFilters[child] ?? {});");
+                T("    const shown = rows.filter((r) => filter.every(([column, value]) => !value || String(r[column] ?? '') === value));");
+                T("    return sortRows(shown, sort, sort ? names?.[sort.column] : undefined);");
+            }
+            else
+                T("    return sortRows(rows, sort, sort ? names?.[sort.column] : undefined);");
             T("  }");
             T();
             T("  // Child grids show whatever keys the API returns; these members caption them, leave out long text, limit them to 20 and format money and dates.");

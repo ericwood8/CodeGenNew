@@ -66,6 +66,8 @@ public sealed class PythonTable
         Filters = plan.Filters
             .Where(f => f.Column.CSharpBase() == "string" && fieldOf.ContainsKey(f.Column))
             .Select(f => new PythonFilter(fieldOf[f.Column], f.ParameterName)).ToList();
+        KeyFilters = plan.KeyFilters.Where(k => fieldOf.ContainsKey(k.Column))
+            .Select(k => new PythonFilter(fieldOf[k.Column], k.ParameterName)).ToList();
         Sorts = plan.Sorts.Where(s => fieldOf.ContainsKey(s.Column))
             .Select(s => new PythonSort(s.Name.ToLowerInvariant(), fieldOf[s.Column])).ToList();
         DefaultOrder = plan.DefaultOrder.Where(fieldOf.ContainsKey).Select(c => fieldOf[c]).ToList();
@@ -113,6 +115,9 @@ public sealed class PythonTable
     public IReadOnlyList<PythonField> Updated { get; }
 
     public IReadOnlyList<PythonFilter> Filters { get; }
+
+    /// <summary> The whole-number foreign keys the search can filter by (<see cref="SearchPlan.KeyFilters"/>): an exact match on the key, one optional integer query parameter each. </summary>
+    public IReadOnlyList<PythonFilter> KeyFilters { get; }
     public IReadOnlyList<PythonSort> Sorts { get; }
 
     /// <summary> The order that applies without a sort and follows a chosen one: the best display column, then the key. </summary>

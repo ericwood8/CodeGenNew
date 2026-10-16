@@ -39,7 +39,15 @@ public sealed class FormModel
         Pages = FormPages.For(Columns);
         GridColumns = Core.GridColumns.For(Columns);
         SortableColumns = GridColumns.Where(SearchSort.IsSortable).ToList();
-        SearchFields = table.SearchableColumns.Select(c => new SearchField(c, c.Name, TemplateHelpers.LowerFirst(c.Name), GridCaption.For(c, Labels.Field(c)))).ToList();
+        SearchKeys = _project.ListSearchProtocol ? [] : table.SearchKeyColumns
+            .Select(c => (Column: c, Parent: ParentOf(c)))
+            .Where(k => k.Parent is not null)
+            .Select(k => new SearchKeyField(k.Column, k.Parent!, TemplateHelpers.LowerFirst(k.Column.Name), GridCaption.For(k.Column, Labels.Field(k.Column))))
+            .ToList();
+        // a text key the screen has no drop-down for is a search box again: it sends the key's own parameter, which matches exactly
+        TextKeyBoxes = table.SearchKeyColumns.Where(c => c.IsStringColumn && SearchKeys.All(k => k.Column != c)).ToList();
+        SearchFields = table.SearchableColumns.Concat(TextKeyBoxes).OrderBy(c => c.OrdinalPosition)
+            .Select(c => new SearchField(c, c.Name, TemplateHelpers.LowerFirst(c.Name), GridCaption.For(c, Labels.Field(c)))).ToList();
         DateColumns = Columns.Where(c => TemplateHelpers.IsDate(c) && !c.IsSystemStampColumn && !IsGuardStamp(c)).ToList();
         NewRowTypeScript = NewRowMembers(table, TextKey, KeyColumn, KeyType);
     }
@@ -121,11 +129,18 @@ public sealed class FormModel
     /// <summary> The grid columns whose header sorts the grid. </summary>
     public IReadOnlyList<ColumnModel> SortableColumns { get; }
 
-    /// <summary> One search box per searchable column, in the order of <see cref="TableModel.SearchableColumns"/>. </summary>
+    /// <summary> One search box per searchable column, in table order, and one for each text key without a drop-down (<see cref="TextKeyBoxes"/>). </summary>
     public IReadOnlyList<SearchField> SearchFields { get; }
+
+    /// <summary> The text foreign keys (<see cref="TableModel.SearchKeyColumns"/>) the screen has no drop-down for, because the parent is not read or the Search list protocol has one box. </summary>
+    public IReadOnlyList<ColumnModel> TextKeyBoxes { get; }
 
     /// <summary> The search boxes of a web screen: one per searchable column, or the one box of the Search list protocol (<c>ListProtocol=Search</c>), where the server decides which columns it matches. </summary>
     public IReadOnlyList<SearchField> WebSearchFields => _project.ListSearchProtocol ? [new SearchField(null, "search", "search", "")] : SearchFields;
+
+    /// <summary> One drop-down per whole-number foreign key the search can filter by (<see cref="TableModel.SearchKeyColumns"/>) whose parent the screen already reads for its form: picking a parent's row
+    /// sends its key, an exact match. Empty with the Search list protocol (the one box is the whole search). </summary>
+    public IReadOnlyList<SearchKeyField> SearchKeys { get; }
 
     /// <summary> The date columns a person edits; a stamp the system writes keeps the timestamp the API sent. </summary>
     public IReadOnlyList<ColumnModel> DateColumns { get; }
@@ -220,6 +235,10 @@ public sealed class FormModel
 /// <param name="ParamName"> The query parameter and filter field: the column name with a lower-case first letter. </param>
 /// <param name="Label"> The caption of the box. </param>
 public sealed record SearchField(ColumnModel? Column, string Name, string ParamName, string Label);
+
+/// <summary> One key filter: the foreign key column, the parent whose rows the drop-down lists, the query parameter and filter field (the column name with a lower-case first letter) and the caption,
+/// the same words as the column's grid heading. </summary>
+public sealed record SearchKeyField(ColumnModel Column, FormParent Parent, string ParamName, string Label);
 
 /// <summary> The editor a form gives a column (see <see cref="FormModel.KindOf"/>). </summary>
 public enum FieldKind

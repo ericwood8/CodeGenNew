@@ -288,7 +288,7 @@ export function createODataApi<T, K extends number | string = number>(set: strin
     getAll: () => readOData<T>(apiUrl + queryString({ $orderby: orderBy(table.defaultOrder.map((path) => ({ path }))) })),
 
     // The key and the display column of every row (and the active flag when the table has one), for a drop-down
-    getLookup: async (): Promise<{ id: K; name: string; isActive?: boolean | null }[]> => {
+    getLookup: async (_query?: { search?: string; ids?: K[]; take?: number }): Promise<{ id: K; name: string; isActive?: boolean | null }[]> => {
       const lookup = table.lookup;
       if (!lookup) throw new Error(`The ${apiUrl} entity set has no display column to look up.`);
       const select = [table.key, lookup.name, lookup.active].filter((name): name is string => !!name).join(',');

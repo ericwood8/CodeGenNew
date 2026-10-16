@@ -193,7 +193,7 @@ describe('odata-query', () => {
 @@@FILE src/app/<#= servicesFolder #>/odata-crud.service.ts@@@
 import { HttpClient } from '@angular/common/http';
 import { EMPTY, Observable, expand, map, reduce } from 'rxjs';
-import { CrudService, Lookup, PageQuery, PagedResult } from './crud.service';
+import { CrudService, Lookup, LookupQuery, PageQuery, PagedResult } from './crud.service';
 import { ODataCondition, ODataPage, and, conditionFilter, containsAny, orderBy, queryString, relativeLink } from './odata-query';
 
 /** What an OData page asks for beyond the REST page: several sorts, the conditions of the filter row, and the properties the grid shows (the key is always read). */
@@ -227,7 +227,7 @@ export abstract class ODataCrudService<T, K extends number | string = number> ex
     }
 
     // The key and the display column of every row (and the active flag when the table has one), for a drop-down
-    override getLookup(): Observable<Lookup<K>[]> {
+    override getLookup(_query?: LookupQuery<K>): Observable<Lookup<K>[]> {
         const lookup = this.table.lookup;
         if (!lookup) { throw new Error(`The ${this.apiUrl} entity set has no display column to look up.`); }
         const select = [this.table.key, lookup.name, lookup.active].filter((name): name is string => !!name).join(',');

@@ -71,3 +71,9 @@ The grid starts with the columns `GridColumns` picks and offers every column of 
 - A sort on a column that is then hidden is dropped (`clearSort()` on a REST page, `keptSorts` on an OData page), and so is a filter typed for it (`onlyShown`).
 - **OData:** the page asks (`$select`) for the shown columns and the key, built from the choice at every read (`columnProperty`), and reads again when the choice changes. **REST:** rows are whole, so a column that is shown costs no call; the server sorts by every column that is not long text or binary (`SearchSort`), so a column the grid did not start with can sort too.
 - The parent lists of the form are read when the page opens, so a foreign key shown late needs no extra call (its name helper is written for every offered foreign key).
+
+
+## Type-ahead for a big parent
+
+A parent with more rows than `TypeAheadRows` (default 1000, read from the database when the schema is read) or listed in `TypeAheadParents` is not read whole. The form field and the search-key filter are `TypeAheadBox` (`components/TypeAhead.tsx`), which asks `<parent>Api.getLookup({ search })` after a pause and lists the matches; the grid and the form read the name of a key through `useLookupNames`, which asks for the keys it has not seen together, once. The child grids' drop-downs still read the whole parent.
+The rule is `FormParent.TypeAhead` in Core, the same for every stack; `TypeAheadRows=0` turns the automatic choice off. The API answers `GET <route>/lookup?search=text&take=10` (the first rows whose lookup text contains it) and `GET <route>/lookup?ids=1,2` (the names of those keys): see API_EssentialCrudApi.

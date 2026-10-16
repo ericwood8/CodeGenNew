@@ -93,11 +93,17 @@
         // The Search list protocol (ListProtocol=Search) has one search box for the whole table; the server decides which columns it matches.
         bool listSearch = Project.ListSearchProtocol;
         var searchFields = form.WebSearchFields;
-        bool canSearch = !form.IsNameActive && searchFields.Count > 0 && (Variant != "OData" || listSearch);   // the OData page has the filter row; only the one box of the Search list protocol stays above the grid
+        // a drop-down of the parent's rows per whole-number foreign key: an exact match on the key (the OData page has its own filter row)
+        IReadOnlyList<SearchKeyField> searchKeys = Variant == "OData" ? [] : form.SearchKeys;
+        bool canSearch = !form.IsNameActive && (searchFields.Count > 0 || searchKeys.Count > 0) && (Variant != "OData" || listSearch);   // the OData page has the filter row; only the one box of the Search list protocol stays above the grid
 
         var shown = form.Columns;
 
         var parents = form.Parents;
+        // a parent with too many rows for a drop-down is found by typing (components/TypeAhead.tsx); the OData page keeps its drop-down
+        bool Ahead(FormParent p) => p.TypeAhead && !odata;
+        string NamesOf(FormParent p) => p.Variable + "NameCache";
+        bool anyBox = shown.Any(c => form.KindOf(c) == FieldKind.Lookup && Ahead(form.ParentOf(c)!)) || searchKeys.Any(k => Ahead(k.Parent));
 
         var gridColumns = form.GridColumns;
         IReadOnlyList<ColumnModel> sortableColumns = nameActive ? [] : columnList.Where(c => c.Sortable).Select(c => c.Column).ToList();
@@ -141,13 +147,14 @@
             T($"import {{ ColumnPicker, loadColumns, {(odata ? "onlyShown, " : "")}saveColumns{(columnList.Any(c => c.Cut) ? ", shortText" : "")} }} from '../{componentsFolder}/gridColumns';");
             T($"import type {{ GridColumn }} from '../{componentsFolder}/gridColumns';");
         }
+        if (parents.Any(Ahead)) T($"import {{ {(anyBox ? "TypeAheadBox, " : "")}useLookupNames }} from '../{componentsFolder}/TypeAhead';");
         foreach (var p in parents.Where(p => !p.IsSelf))
         {
             if (!p.UsesLookupEndpoint) T($"import type {{ {p.BaseName} }} from '../{modelsFolder}/{p.ModelFile}';");
             T($"import {{ {ReactNames.ApiVar(p.Table)} }} from '../{apiFolder}/{ReactNames.ApiFile(p.Table)}';");
         }
         T();
-        if (parents.Any(p => p.UsesLookupEndpoint))
+        if (parents.Any(p => p.UsesLookupEndpoint && !Ahead(p)))
         {
             T("// one row of GET <route>/lookup: the key, the text to show and whether the row is active");
             T("type Lookup<K extends number | string = number> = { id: K; name: string; isActive?: boolean | null };");
@@ -200,7 +207,12 @@
         T($"export function {pageName}() {{");
         T($"  const [{listName}, {setList}] = useState<{baseName}[]>([]);");
         foreach (var p in parents)
-            T($"  const [{ReactNames.ParentList(p)}, {ReactNames.SetList(ReactNames.ParentList(p))}] = useState<{p.ItemType}[]>([]);");
+        {
+            if (Ahead(p))
+                T($"  const {NamesOf(p)} = useLookupNames<{p.KeyTs}>((query) => {ReactNames.ApiVar(p.Table)}.getLookup(query)); // the names of {p.BaseName} rows, asked for as the page shows them (too many rows for a drop-down)");
+            else
+                T($"  const [{ReactNames.ParentList(p)}, {ReactNames.SetList(ReactNames.ParentList(p))}] = useState<{p.ItemType}[]>([]);");
+        }
         T($"  const [selectedRow, setSelectedRow] = useState<{baseName} | null>(null);");
         if (form.Guards.Count > 0) T("  const [guards, setGuards] = useState<Record<string, boolean>>({}); // which guarded columns the signed-in person may change (GET guards)");
         // a typed key is set on a new row too, so the key can no longer say whether the row is new: `adding` does
@@ -214,7 +226,7 @@
             T("    if (panel) setTab(Number(panel.getAttribute('data-tab')));");
             T("  };");
         }
-        string filterInit = string.Join(", ", searchFields.Select(f => $"{f.ParamName}: ''"));
+        string filterInit = string.Join(", ", searchFields.Select(f => f.ParamName).Concat(searchKeys.Select(k => k.ParamName)).Select(n => $"{n}: ''"));
         if (canSearch) T($"  const [filters, setFilters] = useState({{ {filterInit} }});");
         if (nameActive)
         {
@@ -300,7 +312,7 @@
         T();
         T("  useEffect(() => {");
         T("    load();");
-        foreach (var p in parents)
+        foreach (var p in parents.Where(p => !Ahead(p)))
             T($"    {ReactNames.ApiVar(p.Table)}.{p.LoadMethod}().then({ReactNames.SetList(ReactNames.ParentList(p))}).catch(() => {{}});");
         if (form.Guards.Count > 0) T($"    {apiVar}.getGuards().then(setGuards).catch(() => {{}});");
         T("    const openId = searchParams.get('edit');");
@@ -513,7 +525,7 @@
             T();
             T($"  // the name to show in place of a {p.BaseName} id");
             T($"  const {p.NameMethod} = (id?: {p.KeyTs}): string => {{");
-            T($"    return {ReactNames.ParentList(p)}.find((p) => p.{p.KeyJson} === id)?.{p.DisplayJson} ?? '';");
+            T(Ahead(p) ? $"    return {NamesOf(p)}.name(id);" : $"    return {ReactNames.ParentList(p)}.find((p) => p.{p.KeyJson} === id)?.{p.DisplayJson} ?? '';");
             T("  };");
         }
         T();
@@ -556,6 +568,25 @@
                 T($"          onChange={{(event) => setFilters({{ ...filters, {f.ParamName}: event.target.value }})}}");
                 if (odata) T("          onKeyUp={(event) => { if (event.key === 'Enter') search(); }}");
                 T("        />");
+            }
+            foreach (var k in searchKeys)
+            {
+                if (Ahead(k.Parent))
+                {
+                    T($"        <TypeAheadBox<{k.Parent.KeyTs}>");
+                    T($"          label=\"Filter by {k.Label}\"");
+                    T($"          placeholder=\"All {k.Label.Pluralize()}\"");
+                    T($"          value={{filters.{k.ParamName}}}");
+                    T($"          names={{{NamesOf(k.Parent)}}}");
+                    T($"          find={{(query) => {ReactNames.ApiVar(k.Parent.Table)}.getLookup(query)}}");
+                    T($"          onChange={{(id) => {{ const next = {{ ...filters, {k.ParamName}: id === null ? '' : String(id) }}; if (next.{k.ParamName} !== filters.{k.ParamName}) {{ setFilters(next); load(1, next); }} }}}}");
+                    T("        />");
+                    continue;
+                }
+                T($"        <select aria-label=\"Filter by {k.Label}\" value={{filters.{k.ParamName}}} onChange={{(event) => {{ const next = {{ ...filters, {k.ParamName}: event.target.value }}; setFilters(next); load(1, next); }}}}>");
+                T($"          <option value=\"\">All {k.Label.Pluralize()}</option>");
+                T($"          {{{ReactNames.ParentList(k.Parent)}.map((p) => <option key={{p.{k.Parent.KeyJson}}} value={{p.{k.Parent.KeyJson}}}>{{p.{k.Parent.DisplayJson}}}</option>)}}");
+                T("        </select>");
             }
             if (!odata)
             {
@@ -729,6 +760,20 @@
             else if (kind == FieldKind.Lookup)
             {
                 var p = form.ParentOf(c)!;
+                if (Ahead(p))
+                {
+                    T($"            <TypeAheadBox<{p.KeyTs}>");
+                    T($"              id=\"{id}\"");
+                    T($"              label=\"{Labels.Field(c)}\"");
+                    T($"              value={{selectedRow.{prop}}}");
+                    T($"              names={{{NamesOf(p)}}}");
+                    T($"              find={{(query) => {ReactNames.ApiVar(p.Table)}.getLookup(query)}}");
+                    T($"              onChange={{(key) => setSelectedRow({{ ...selectedRow, {prop}: {(c.IsNullable ? "key ?? undefined" : (p.KeyTs == "number" ? "key ?? 0" : "key ?? ''"))} }})}}");
+                    if (!c.IsNullable) T("              required");
+                    T("            />");
+                }
+                else
+                {
                 // A blank choice means "none": undefined for a nullable column (0 would be a key that does not exist); a required column starts blank too (0 shows as blank, and
                 // the browser's required check then refuses it) instead of looking like the first parent is chosen while the row still holds 0.
                 string numeric = p.KeyTs == "number"
@@ -747,6 +792,7 @@
                 T($"                <option key={{p.{p.KeyJson}}} value={{p.{p.KeyJson}}}>{{p.{p.DisplayJson}}}</option>");
                 T("              ))}");
                 T("            </select>");
+                }
             }
             else if (kind == FieldKind.Choices)
             {

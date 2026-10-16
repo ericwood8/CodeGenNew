@@ -172,6 +172,8 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `ChildGridTitles` | Parent.Child=Title pairs, comma-separated, for a child grid whose table name does not say what the rows mean (Customer.CustomerItem=Item Purchase History) |
 | `BaseEntity` | base class of generated entities; blank = BaseEntity |
 | `BaseNameActiveEntity` | base class for Name + IsActive tables; blank = BaseNameActiveEntity |
+| `TypeAheadRows` | a parent with more rows than this is picked by typing (a type-ahead that asks the API for matches) instead of a drop-down of every row; 0 = never; blank = 1000 |
+| `TypeAheadParents` | tables that are always picked by typing, whatever their row count |
 | `NoLookupParents` | overrides EnumTables for this one question: tables whose foreign key is a number box, not a drop-down |
 | `NoRepositoryTables` | overrides EnumTables for this one question: tables that get no repository |
 | `NoApiTables` | overrides EnumTables for this one question: tables that get no API or TypeScript model/screen |

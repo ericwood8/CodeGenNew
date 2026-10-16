@@ -93,8 +93,8 @@ public class GridSortTests
 
     [TestMethod]
     [DataRow(SqlDialect.SqlServer, "EXEC [dbo].[InvoiceLine_Search] @pDescription, @PageNumber, @PageSize, @SortColumn, @SortDescending")]
-    [DataRow(SqlDialect.PostgreSql, "SELECT * FROM \\\"public\\\".\\\"InvoiceLine_Search\\\"(@pDescription, @PageNumber, @PageSize, @SortColumn, @SortDescending)")]
-    [DataRow(SqlDialect.MySql, "CALL `InvoiceLine_Search`(@pDescription, @PageNumber, @PageSize, @SortColumn, @SortDescending)")]
+    [DataRow(SqlDialect.PostgreSql, "SELECT * FROM \\\"public\\\".\\\"InvoiceLine_Search\\\"(@pDescription, @PageNumber, @PageSize, @SortColumn, @SortDescending, @pProductId)")]
+    [DataRow(SqlDialect.MySql, "CALL `InvoiceLine_Search`(@pDescription, @PageNumber, @PageSize, @SortColumn, @SortDescending, @pProductId)")]
     public async Task The_repository_and_the_api_pass_the_sort(SqlDialect dialect, string call)
     {
         string repo = await Render("CS_Repo_v1.tt", Line(dialect));
