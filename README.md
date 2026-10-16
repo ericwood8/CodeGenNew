@@ -40,8 +40,9 @@ CLI argument parsing is hand-rolled rather than pulling in a library, given the 
 
 | Protocol | Served by | What a client gets | Used by the generated screens | Switch |
 |---|---|---|---|---|
-| REST | the ASP.NET, Rust and Python APIs | one route per table (`/api/customers`) with list, paging, search, read, create, update, delete and clone; JSON in camelCase, the same on every stack | Angular, React and Blazor REST screens (WinUI3 reads the database directly and uses neither protocol) | always on |
+| REST | the ASP.NET, Rust and Python APIs | one route per table (`/api/customers`) with list, paging, search, read, create, update, delete and clone; JSON in camelCase, the same on every stack | Angular, React and Blazor REST screens | always on |
 | OData v4 | the ASP.NET API, next to the REST routes | one entity set per table under `/odata` with `$filter`, `$orderby`, `$top`, `$skip`, `$count`, `$select`, `$expand` and writes, so Excel, Power BI and other OData tools can read the data; sign-in, read roles and owner scoping apply as on the REST routes | Angular, React and Blazor OData screens: the several-column sort (Shift-click), the filter row and a slim `$select` grid | `OData=true` |
+| None | no API | nothing: the app talks to the database itself | the WinUI3 app: it reads the database directly, so it uses neither REST nor OData | the WinUI3 stack without an API |
 
 ## What it generates
 
