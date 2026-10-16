@@ -29,17 +29,23 @@ CLI argument parsing is hand-rolled rather than pulling in a library, given the 
 
 ## Databases
 
-| | SQL Server | PostgreSQL | MySQL | SQLite |
+| Database | Connect from | Schema read from | `SP_*` templates write | Search call in generated C# | `API_Junction`, `WinUI3_JunctionEditor` |
+|---|---|---|---|---|---|
+| SQL Server | app and CLI | `sys.*` | stored procedures | `EXEC` | yes |
+| PostgreSQL | app and CLI | `information_schema` + `pg_catalog` | functions (`RETURNS SETOF`, `plpgsql`) | `SELECT * FROM "f"(...)` | yes (call the functions) |
+| MySQL | app and CLI | `information_schema` | stored procedures (`DELIMITER $$`) | `CALL p(...)` | yes (call the procedures) |
+| SQLite | app and CLI (the database is a file, opened read-only) | `sqlite_master`, the `pragma_*` functions and the `CREATE TABLE` text (for CHECK constraints) | nothing: SQLite has no routines (see `AccessMode`) | LINQ over the context (`CS_SearchQuery`) | yes (LINQ over the context) |
+
+## API protocols
+
+| Protocol | Served by | What a client gets | Used by the generated screens | Switch |
 |---|---|---|---|---|
-| Connect from | app and CLI | app and CLI | app and CLI | app and CLI (the database is a file, opened read-only) |
-| Schema read from | `sys.*` | `information_schema` + `pg_catalog` | `information_schema` | `sqlite_master`, the `pragma_*` functions and the `CREATE TABLE` text (for CHECK constraints) |
-| `SP_*` templates write | stored procedures | functions (`RETURNS SETOF`, `plpgsql`) | stored procedures (`DELIMITER $$`) | nothing: SQLite has no routines (see `AccessMode`) |
-| Search call in generated C# | `EXEC` | `SELECT * FROM "f"(...)` | `CALL p(...)` | LINQ over the context (`CS_SearchQuery`) |
-| `API_Junction`, `WinUI3_JunctionEditor` | yes | yes (call the functions) | yes (call the procedures) | yes (LINQ over the context) |
+| REST | the ASP.NET, Rust and Python APIs | one route per table (`/api/customers`) with list, paging, search, read, create, update, delete and clone; JSON in camelCase, the same on every stack | Angular, React and Blazor REST screens (WinUI3 reads the database directly and uses neither protocol) | always on |
+| OData v4 | the ASP.NET API, next to the REST routes | one entity set per table under `/odata` with `$filter`, `$orderby`, `$top`, `$skip`, `$count`, `$select`, `$expand` and writes, so Excel, Power BI and other OData tools can read the data; sign-in, read roles and owner scoping apply as on the REST routes | Angular, React and Blazor OData screens: the several-column sort (Shift-click), the filter row and a slim `$select` grid | `OData=true` |
 
 ## What it generates
 
-One hundred and six templates ship in `Templates\` (the no-database essentials groups described below come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
+One hundred and seven templates ship in `Templates\` (the no-database essentials groups described below come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
 
 The templates are shown in three grids, one for each layer of an application.
 
@@ -112,6 +118,7 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `PY` | `PY_Model`, `PY_Schema` | `app/models/table.py` and `app/schemas/table.py` - the SQLAlchemy 2.0 class and the Pydantic 2 schema of a table, for the Python stack (all four databases). |
 | `PY` | `PY_Routes` | `app/routes/table.py` - the FastAPI router with the contract of the other stacks (201 and `Location`, 400, 404, clone, search with paging and sort). |
 | `PY` | `PY_Validate` | `app/validation/table.py` - `validate`, the schema's rules for a row (`ApiValidation=true`). |
+| `PY` | `PY_Dashboard` | `app/routes/dashboard.py` - `GET /api/dashboard` for the Python stack: the widgets and statements of `DashboardPlan`, kept for a minute, without the widgets of tables the caller's role may not read (`Dashboard=true`). |
 | `PY` | `PY_Mod` | the package lists and the list of routers that `main.py` includes. |
 | `PY` | `PY_UserDirectory` | `app/users.py` - the people who sign in, read from the `UserTable` of the project, and `python -m app.users set-password` (`ApiAuth=true` with `UserTable`). |
 | `RS` | `RS_Struct` | `src/models/table.rs` - the Rust struct of a table (serde and sqlx), with the JSON names the other stacks send; for the Rust stack (PostgreSQL, MySQL, SQLite). |
