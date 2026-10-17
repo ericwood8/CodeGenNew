@@ -346,7 +346,7 @@ public class KeyTypeTests
     public async Task An_API_test_points_a_text_foreign_key_at_the_first_row_of_its_text_key_parent()
     {
         string text = await Render("API_Test_v1.tt", Observance());
-        Expect.Contains(text, "[\"countryCode\"] = await ApiFixture.ExistingCodeAsync(\"/api/countries\", \"alpha3Code\", \"Sam\"),");
+        Expect.Contains(text, "[\"countryCode\"] = await ApiFixture.ExistingCodeAsync(\"/api/countries\", \"alpha3Code\", \"Sam\", \"Country\"),");
         Expect.DoesNotContain(text, "ApiFixture.Unique(\"Sample country code\"");
     }
 
@@ -357,7 +357,7 @@ public class KeyTypeTests
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
         string text = result.GeneratedText!.ReplaceLineEndings("\n");
         Expect.Contains(text, "public static string NewCode(int length)");
-        Expect.Contains(text, "public static async Task<string> ExistingCodeAsync(string route, string keyProperty, string fallback)");
+        Expect.Contains(text, "public static async Task<string> ExistingCodeAsync(string route, string keyProperty, string fallback, string? parentTests = null)");
     }
 
     [TestMethod]

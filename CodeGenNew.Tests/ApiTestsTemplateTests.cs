@@ -38,7 +38,7 @@ public class ApiTestsTemplateTests
         Expect.Contains(tests, "namespace Acme.Api.Tests;\n\n[TestClass]\npublic class CustomerApiTests");
         Expect.Contains(tests, "private const string Route = \"/api/customers\";");
         Expect.Contains(tests, "[\"customerId\"] = 0,");
-        Expect.Contains(tests, "[\"customerStatusId\"] = await ApiFixture.ExistingKeyAsync(\"/api/customerstatus\", \"customerStatusId\", 1),");
+        Expect.Contains(tests, "[\"customerStatusId\"] = await ApiFixture.ExistingKeyAsync(\"/api/customerstatus\", \"customerStatusId\", 1, \"CustomerStatus\"),");
         Expect.Contains(tests, "[\"name\"] = ApiFixture.Unique(\"Sample name\", 50),");
         Expect.Contains(tests, "[\"billingEmail\"] = \"someone@example.com\",");
         Expect.Contains(tests, "[\"rating\"] = 1,");
@@ -134,6 +134,32 @@ public class ApiTestsTemplateTests
         Expect.Contains(lite, "File.Copy(source, _scratchFile);");
         Expect.Contains(lite, "Path.Combine(ApiFolder(), \"shop.db\")");
         Expect.DoesNotContain(other, "File.Copy");
+        foreach (string text in new[] { lite, other })
+        {
+            // a parent with no rows gets one from its own tests' body, and it is removed again when the run ends
+            Expect.Contains(text, "private static async Task<JsonNode> SeedAsync(string route, string keyProperty, string? parentTests)");
+            Expect.Contains(text, "Type.GetType(typeof(ApiFixture).Namespace + \".\" + parentTests + \"ApiTests\")");
+            Expect.Contains(text, "using var created = await Client.PostAsJsonAsync(route, row);");
+            Expect.Contains(text, "Seeded.Add((route, key!.ToString()));");
+            Expect.Contains(text, "RemoveSeeded();\n        Client?.Dispose();");
+            Expect.Contains(text, "and the parent has no tests to take a row from.");
+        }
+    }
+
+    [TestMethod]
+    public async Task A_guid_foreign_key_takes_a_parent_row_like_a_text_one_and_the_body_can_be_built_by_the_child_tests()
+    {
+        var item = Sample.Table("ItemInventory",
+        [
+            Sample.Column("Id", SqlDbType.UniqueIdentifier, primaryKey: true, ordinal: 1),
+            Sample.Column("ProductId", SqlDbType.UniqueIdentifier, ordinal: 2),
+            Sample.Column("Cube", SqlDbType.VarChar, characters: 50, ordinal: 3)
+        ],
+        [Sample.ForeignKey("ProductId", "Product", "ProductId", "Name")]);
+        string tests = await Render(item, Project());
+
+        Expect.Contains(tests, "[\"productId\"] = await ApiFixture.ExistingCodeAsync(\"/api/products\", \"productId\", \"00000000-0000-0000-0000-000000000001\", \"Product\"),");
+        Expect.Contains(tests, "internal static async Task<JsonObject> NewBodyAsync() => new()");
     }
 
     [TestMethod]

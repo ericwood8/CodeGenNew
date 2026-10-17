@@ -176,6 +176,7 @@ public static class ApiFixture
     [AssemblyCleanup]
     public static void Stop()
     {
+        RemoveSeeded();
         Client?.Dispose();
         _factory?.Dispose();
 <#
@@ -250,34 +251,75 @@ public static class ApiFixture
         return string.Create(Math.Clamp(length, 1, 12), alphabet, (span, letters) => { for (int i = 0; i < span.Length; i++) span[i] = letters[Random.Shared.Next(letters.Length)]; });
     }
 
-    /// <summary> The key of the first row the parent's API lists, for a foreign key to point at. When the parent has no list route the fallback is used; when it has no rows the test is inconclusive. </summary>
-    public static async Task<long> ExistingKeyAsync(string route, string keyProperty, long fallback)
+    // the parent rows the tests added because a parent had none, newest last: removed again when the run ends
+    private static readonly List<(string Route, string Key)> Seeded = [];
+    private static int _seeding;
+
+    /// <summary> The key of the first row the parent's API lists, for a foreign key to point at. When the parent has no list route the fallback is used; when it has no rows one is added with the body the parent's own tests use (<c>parentTests</c> names that class without "ApiTests"), and the test is inconclusive only when that cannot be done. </summary>
+    public static async Task<long> ExistingKeyAsync(string route, string keyProperty, long fallback, string? parentTests = null)
     {
-        using var response = await Client.GetAsync(route);
-        if (!response.IsSuccessStatusCode)
-            return fallback;
-        var rows = await response.Content.ReadFromJsonAsync<JsonArray>();
-        if (rows is not { Count: > 0 })
-        {
-            Assert.Inconclusive("There is no row in " + route + " for a foreign key to point at.");
-            return fallback;
-        }
-        return rows[0]![keyProperty]!.GetValue<long>();
+        var key = await ExistingAsync(route, keyProperty, parentTests);
+        return key is null ? fallback : key.GetValue<long>();
     }
 
-    /// <summary> The same for a foreign key to a table whose key is text. </summary>
-    public static async Task<string> ExistingCodeAsync(string route, string keyProperty, string fallback)
+    /// <summary> The same for a foreign key to a table whose key is text or a guid. </summary>
+    public static async Task<string> ExistingCodeAsync(string route, string keyProperty, string fallback, string? parentTests = null)
+    {
+        var key = await ExistingAsync(route, keyProperty, parentTests);
+        return key is null ? fallback : key.GetValue<string>();
+    }
+
+    private static async Task<JsonNode?> ExistingAsync(string route, string keyProperty, string? parentTests)
     {
         using var response = await Client.GetAsync(route);
         if (!response.IsSuccessStatusCode)
-            return fallback;
+            return null;
         var rows = await response.Content.ReadFromJsonAsync<JsonArray>();
-        if (rows is not { Count: > 0 })
+        return rows is { Count: > 0 } ? rows[0]![keyProperty] : await SeedAsync(route, keyProperty, parentTests);
+    }
+
+    /// <summary> Adds a row to a parent that has none, with the body its own tests send (its foreign keys are seeded the same way, so a parent chain fills itself in order), and remembers it for the end of the run. </summary>
+    private static async Task<JsonNode> SeedAsync(string route, string keyProperty, string? parentTests)
+    {
+        var body = parentTests is null ? null : Type.GetType(typeof(ApiFixture).Namespace + "." + parentTests + "ApiTests")
+            ?.GetMethod("NewBodyAsync", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+        if (body is null || _seeding >= 8)
+            Assert.Inconclusive("There is no row in " + route + " for a foreign key to point at, and the parent has no tests to take a row from.");
+        _seeding++;
+        try
         {
-            Assert.Inconclusive("There is no row in " + route + " for a foreign key to point at.");
-            return fallback;
+            var row = await (Task<JsonObject>)body!.Invoke(null, null)!;
+            using var created = await Client.PostAsJsonAsync(route, row);
+            if (!created.IsSuccessStatusCode)
+                Assert.Inconclusive("There is no row in " + route + " for a foreign key to point at, and adding one answered " + (int)created.StatusCode + ".");
+            var key = (await created.Content.ReadFromJsonAsync<JsonObject>())?[keyProperty];
+            if (key is null)
+                Assert.Inconclusive("The row added to " + route + " did not answer its key (" + keyProperty + ").");
+            Seeded.Add((route, key!.ToString()));
+            return key;
         }
-        return rows[0]![keyProperty]!.GetValue<string>();
+        finally
+        {
+            _seeding -= 1;
+        }
+    }
+
+    // the rows the run added to empty parents, newest first (a child before its parent); a row something still points at stays
+    private static void RemoveSeeded()
+    {
+        if (Client is null)
+            return;
+        for (int i = Seeded.Count - 1; i >= 0; i -= 1)
+        {
+            try
+            {
+                Client.DeleteAsync(Seeded[i].Route + "/" + Uri.EscapeDataString(Seeded[i].Key)).GetAwaiter().GetResult().Dispose();
+            }
+            catch (HttpRequestException)
+            {
+            }
+        }
+        Seeded.Clear();
     }
 <#
         if (sqlite)

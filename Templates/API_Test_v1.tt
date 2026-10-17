@@ -49,11 +49,14 @@
         {
             parentKey = "";
             var fk = Model.ForeignKeys.FirstOrDefault(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name && f.ReferencedColumns.Count == 1);
-            if (fk is null || fk.ReferencedTable == Model.TableName || !(c.IsIntegerColumn || c.IsStringColumn) || Project.NoRepository(fk.ReferencedTable, fk.ReferencedLookupShape) == true)
+            if (fk is null || fk.ReferencedTable == Model.TableName || !(c.IsIntegerColumn || c.IsStringColumn || c.IsGuidColumn) || Project.NoRepository(fk.ReferencedTable, fk.ReferencedLookupShape) == true)
                 return "";
             parentKey = JsonNames.Camel(fk.ReferencedColumns[0]);
             return "/api/" + fk.ReferencedTable.Pluralize().ToLowerInvariant();
         }
+
+        // the table a foreign key column points at: its ApiTests class is where a row for an empty parent comes from
+        string ParentTable(ColumnModel c) => Model.ForeignKeys.First(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name).ReferencedTable;
 
         string Expression(ColumnModel c)
         {
@@ -74,7 +77,7 @@
                 return $"ApiFixture.Unique({ApiSampleValues.Json(ApiSampleValues.Text(c))}, {c.CharacterLength})";
             string parentRoute = ForeignKeyParentRoute(c, out string parentKey);
             if (parentRoute.Length > 0)
-                return $"await ApiFixture.{(c.IsStringColumn ? "ExistingCodeAsync" : "ExistingKeyAsync")}({ApiSampleValues.Json(parentRoute)}, {ApiSampleValues.Json(parentKey)}, {sample})";
+                return $"await ApiFixture.{(c.IsStringColumn || c.IsGuidColumn ? "ExistingCodeAsync" : "ExistingKeyAsync")}({ApiSampleValues.Json(parentRoute)}, {ApiSampleValues.Json(parentKey)}, {sample}, {ApiSampleValues.Json(ParentTable(c))})";
             return sample;
         }
 
@@ -123,7 +126,7 @@ public class <#= singular #>ApiTests
 {
     private const string Route = "<#= route #>";
 
-    private static async Task<JsonObject> NewBodyAsync() => new()
+    internal static async Task<JsonObject> NewBodyAsync() => new()
     {
 <#
         foreach (var c in bodyColumns)
