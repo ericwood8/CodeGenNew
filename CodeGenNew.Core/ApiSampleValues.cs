@@ -45,7 +45,7 @@ public static class ApiSampleValues
                 if (check.Max is { } max && value > max)
                     value = max;
             }
-            return value.ToString("R", CultureInfo.InvariantCulture);
+            return TemplateHelpers.Num(value);
         }
         if (c.IsBooleanColumn)
             return "false";

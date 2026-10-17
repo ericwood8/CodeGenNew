@@ -36,8 +36,8 @@
     bool Replaced(TableModel t) => replaced.Any(r => r.TableName.EqualsIgnoreCase(t.TableName));
     string ODataLoad(TableModel t) => $"load: () => import('./{componentsFolder}/{AngularNames.ODataComponentStem(t.TableName)}/{AngularNames.ODataComponentStem(t.TableName)}.component').then((m) => m.{AngularNames.ODataComponentClass(t.TableName)})";
 
-    string ClassName(TableModel t) => ScreenNames.BaseName(t.TableName) + (DatabaseModel.IsDetailMaster(t, Project) ? "DetailMasterComponent" : "Component");
-    string FileStem(TableModel t) => ScreenNames.Stem(t.TableName) + (DatabaseModel.IsDetailMaster(t, Project) ? "-detail-master" : "");
+    string ClassName(TableModel t) => AngularNames.ComponentClass(t, Project);
+    string FileStem(TableModel t) => AngularNames.ComponentStem(t, Project);
 
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');

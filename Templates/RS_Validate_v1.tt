@@ -75,9 +75,9 @@
             var body = new List<string>();
             string numeric = $"let n = {Number(f, f.IsOption ? "value" : "number")};";
             if (rule.Min is { } min)
-                body.Add($"if {(rule.MinStrict ? "n <= " : "n < ")}{min.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}_f64 {{ problems.push(({Str(property)}, {Str(label + " must be " + (rule.MinStrict ? "greater than " : "at least ") + min.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ".")})); }}");
+                body.Add($"if {(rule.MinStrict ? "n <= " : "n < ")}{TemplateHelpers.Num(min)}_f64 {{ problems.push(({Str(property)}, {Str(label + " must be " + (rule.MinStrict ? "greater than " : "at least ") + min.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ".")})); }}");
             if (rule.Max is { } max)
-                body.Add($"if {(rule.MaxStrict ? "n >= " : "n > ")}{max.ToString("R", System.Globalization.CultureInfo.InvariantCulture)}_f64 {{ problems.push(({Str(property)}, {Str(label + " must be " + (rule.MaxStrict ? "less than " : "at most ") + max.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ".")})); }}");
+                body.Add($"if {(rule.MaxStrict ? "n >= " : "n > ")}{TemplateHelpers.Num(max)}_f64 {{ problems.push(({Str(property)}, {Str(label + " must be " + (rule.MaxStrict ? "less than " : "at most ") + max.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ".")})); }}");
             if (f.IsOption)
             {
                 lines.Add($"    if let Some(value) = &row.{f.Name} {{");

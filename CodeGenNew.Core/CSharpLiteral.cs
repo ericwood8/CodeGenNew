@@ -49,8 +49,8 @@ public static class CSharpLiteral
         long number => number.ToString(CultureInfo.InvariantCulture) + "L",
         ulong number => number.ToString(CultureInfo.InvariantCulture) + "UL",
         decimal number => number.ToString(CultureInfo.InvariantCulture) + "m",
-        double number => double.IsFinite(number) ? number.ToString("R", CultureInfo.InvariantCulture) + "d" : null,
-        float number => float.IsFinite(number) ? number.ToString("R", CultureInfo.InvariantCulture) + "f" : null,
+        double number => double.IsFinite(number) ? TemplateHelpers.Num(number) + "d" : null,
+        float number => float.IsFinite(number) ? TemplateHelpers.Num(number) + "f" : null,
         DateTime moment => Moment(moment),
         Guid id => $"Guid.Parse(\"{id:D}\")",
         _ => null

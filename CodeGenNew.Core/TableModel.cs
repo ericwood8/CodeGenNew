@@ -152,9 +152,6 @@ public class TableModel
     public bool IsSelfReferencing(ForeignKeyModel fk) =>
         fk.ReferencedTable.EqualsIgnoreCase(TableName);
 
-    public bool IsForeignKeyMulti(ForeignKeyModel fk) =>
-        ForeignKeys.Count(f => f.ReferencedTable.EqualsIgnoreCase(fk.ReferencedTable)) > 1;
-
     /// <summary> The table's candidate "association" columns for junction-table purposes: every column
     /// except computed columns, audit-classified columns (IsAuditColumn -- Create*/Modif*/Change*/Delete*/
     /// Update*/Activ*/Inactiv*, per AuditColumnClassifier), and a surrogate identity primary key column.

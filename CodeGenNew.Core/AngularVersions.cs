@@ -44,7 +44,7 @@ public static class AngularVersions
 
     public static AngularPackages For(int version) => version switch
     {
-        <= 18 => new(18, "~0.14.10", "~5.5.4", AngularTestRunner.Karma, true, false, "@angular-devkit/build-angular"),
+        <= Oldest => new(Oldest, "~0.14.10", "~5.5.4", AngularTestRunner.Karma, true, false, "@angular-devkit/build-angular"),
         19 => new(19, "~0.15.0", "~5.6.3", AngularTestRunner.Karma, true, false, "@angular-devkit/build-angular"),
         20 => new(20, "~0.15.1", "~5.8.2", AngularTestRunner.Karma, true, true, "@angular/build"),
         21 => new(21, "~0.16.0", "~5.9.2", AngularTestRunner.Vitest, true, true, "@angular/build"),

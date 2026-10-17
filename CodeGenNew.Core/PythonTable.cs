@@ -7,9 +7,6 @@ namespace CodeGenNew.Core;
 public sealed record PythonField(ColumnModel Column, string Name, string Json, string Annotation, string SqlAlchemyType, bool ReadOnly)
 {
     public bool IsNullable => Column.IsNullable;
-
-    /// <summary> The annotation with <c>| None</c> when the column can be NULL (or the database writes it). </summary>
-    public string OptionalAnnotation => IsNullable || ReadOnly ? Annotation + " | None" : Annotation;
 }
 
 /// <summary> A filter of the search: the attribute to match, the query-string name. </summary>

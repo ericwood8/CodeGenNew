@@ -36,6 +36,9 @@ public static class TemplateHelpers
     /// <summary> A number in the shortest text that reads back to the same value ("R"), in the invariant culture. </summary>
     public static string Num(double value) => value.ToString("R", CultureInfo.InvariantCulture);
 
+    /// <summary> The same for a single-precision value, which must not be widened to a double first (0.1f would read 0.10000000149011612). </summary>
+    public static string Num(float value) => value.ToString("R", CultureInfo.InvariantCulture);
+
     /// <summary> A number with up to eight decimals and no exponent, in the invariant culture. </summary>
     public static string Inv(double value) => value.ToString("0.########", CultureInfo.InvariantCulture);
 }

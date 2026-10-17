@@ -69,12 +69,6 @@ public sealed class FormModel
     /// <summary> The columns of the form, in the order they appear. </summary>
     public IReadOnlyList<ColumnModel> Columns { get; }
 
-    /// <summary> The foreign key a column carries (a single-column key), whether or not it is a drop-down. </summary>
-    public ForeignKeyModel? ForeignKeyOf(ColumnModel column) => _foreignKeyByColumn.GetValueOrDefault(column.Name);
-
-    /// <summary> Every single-column foreign key of the table, by the name of its column. </summary>
-    public IReadOnlyDictionary<string, ForeignKeyModel> ForeignKeysByColumn => _foreignKeyByColumn;
-
     /// <summary> The parent a column's drop-down reads, or null when the column is a plain box (see <see cref="LookupOf"/>). </summary>
     public FormParent? ParentOf(ColumnModel column) =>
         LookupOf(column) is { } foreignKey ? Parents.FirstOrDefault(p => p.Table.Equals(foreignKey.ReferencedTable, StringComparison.OrdinalIgnoreCase)) : null;

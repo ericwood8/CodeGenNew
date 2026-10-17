@@ -23,9 +23,9 @@ public static class SqlLiteral
             case decimal d:
                 return d.ToString(CultureInfo.InvariantCulture);
             case double dbl:
-                return dbl.ToString("R", CultureInfo.InvariantCulture);
+                return TemplateHelpers.Num(dbl);
             case float f:
-                return f.ToString("R", CultureInfo.InvariantCulture);
+                return TemplateHelpers.Num(f);
             case DateTime dt:
                 return "'" + dt.ToString(DateFormatFor(column.SqlType), CultureInfo.InvariantCulture) + "'";
             case DateTimeOffset dto:

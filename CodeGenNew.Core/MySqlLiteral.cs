@@ -21,9 +21,9 @@ public static class MySqlLiteral
             case decimal d:
                 return d.ToString(CultureInfo.InvariantCulture);
             case double dbl:
-                return dbl.ToString("R", CultureInfo.InvariantCulture);
+                return TemplateHelpers.Num(dbl);
             case float f:
-                return f.ToString("R", CultureInfo.InvariantCulture);
+                return TemplateHelpers.Num(f);
             case DateTime dt:
                 return "'" + dt.ToString(column.SqlType == System.Data.SqlDbType.Date ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss.ffffff", CultureInfo.InvariantCulture) + "'";
             case DateOnly date:
