@@ -109,6 +109,7 @@
                     KeyProp = l.ParentKeyName,
                     DisplayProp = l.ParentDisplayName,
                     KeyCs = l.ColumnKeyType?.CSharp ?? "int",   // the type of the id the child row holds
+                    l.TypeAhead,   // a parent with too many rows to read whole: only the names of the keys the rows show are read (after the rows)
                     LookupVar = gridVar + l.ParentTable + "Names",
                     // "CustomerId" -> "Customer": a resolved column's name is known at generation time, so it gets a nicer header than the raw property name
                     Label = GridCaption.From(Labels.Column(l.ColumnName))
@@ -1055,7 +1056,20 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         foreach (var r in child.Resolvable)
         {
 #>
+<#
+            if (r.TypeAhead)
+            {
+#>
+        var <#= r.LookupVar #> = new Dictionary<<#= r.KeyCs #>, string>();
+<#
+            }
+            else
+            {
+#>
         var <#= r.LookupVar #> = await _context.Set<<#= r.ReferencedTable #>>().ToDictionaryAsync(r => r.<#= r.KeyProp #>, r => r.<#= r.DisplayProp #>?.ToString() ?? "");
+<#
+            }
+#>
 <#
         }
 #>
@@ -1077,6 +1091,16 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         var rows = await _context.Set<<#= child.Table #>>().AsNoTracking()
             .Where(c => EF.Property<<#= child.ParentKeyCs #>>(c, "<#= child.FkColumn #>") == _editing!.<#= child.ParentKeyColumn #>)
             .ToListAsync();
+<#
+        foreach (var r in child.Resolvable.Where(r => r.TypeAhead))
+        {
+#>
+        var wanted<#= r.Column #> = rows.Select(row => typeof(<#= child.Table #>).GetProperty("<#= r.Column #>")!.GetValue(row)).OfType<<#= r.KeyCs #>>().Distinct().ToList();
+        if (wanted<#= r.Column #>.Count > 0)
+            <#= r.LookupVar #> = await _context.Set<<#= r.ReferencedTable #>>().Where(p => wanted<#= r.Column #>.Contains(p.<#= r.KeyProp #>)).ToDictionaryAsync(p => p.<#= r.KeyProp #>, p => p.<#= r.DisplayProp #>?.ToString() ?? "");
+<#
+        }
+#>
         foreach (var row in rows)
         {
             // What each cell sorts by: its value, or the name a column shows in place of an id.

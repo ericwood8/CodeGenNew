@@ -208,10 +208,29 @@ describe('apiMessage', () => {
   });
 });
 @@@FILE src/app/<#= servicesFolder #>/type-ahead.ts@@@
-import { Observable } from 'rxjs';
+import { HttpClient, HttpParams } from '@angular/common/http';
+import { Observable, forkJoin, map, of } from 'rxjs';
 import { Lookup, LookupQuery } from './crud.service';
 
-type Finder<K extends number | string> = (query: LookupQuery<K>) => Observable<Lookup<K>[]>;
+export type Finder<K extends number | string> = (query: LookupQuery<K>) => Observable<Lookup<K>[]>;
+
+/** The lookup list of a table by its route (`api/customers`), for a grid that has no service of that table (the grids and rows of a child table). */
+export function lookupCall<K extends number | string = number>(http: HttpClient, route: string, query: LookupQuery<K>): Observable<Lookup<K>[]> {
+    let params = new HttpParams();
+    if (query.search) { params = params.set('search', query.search); }
+    if (query.ids?.length) { params = params.set('ids', query.ids.join(',')); }
+    if (query.take) { params = params.set('take', query.take); }
+    return http.get<Lookup<K>[]>(`${route}/lookup`, { params });
+}
+
+/** The names of the keys a grid shows, asked together from the lookup list (100 keys a call), as `{ key: name }`. A grid with no key asks nothing. */
+export function namesOf<K extends number | string = number>(find: Finder<K>, keys: (K | null | undefined)[]): Observable<Record<string, string>> {
+    const ids = [...new Set(keys.filter((key): key is K => !!key))];
+    if (ids.length === 0) { return of({}); }
+    const calls: Observable<Lookup<K>[]>[] = [];
+    for (let at = 0; at < ids.length; at += 100) { calls.push(find({ ids: ids.slice(at, at + 100) })); }
+    return forkJoin(calls).pipe(map((parts) => Object.fromEntries(parts.flat().map((row) => [String(row.id), row.name]))));
+}
 
 /**
  * The names of the rows of a parent that is too big for a drop-down. A screen asks for the name of a key as it draws it (`name`); the keys it has not seen yet are asked for together,
@@ -262,6 +281,7 @@ export class TypeAhead<K extends number | string = number> {
     private typed: string | undefined;
     private turn = 0;
     private timer: ReturnType<typeof setTimeout> | undefined;
+    private box: HTMLInputElement | undefined;
 
     constructor(private readonly find: Finder<K>, private readonly names: LookupNames<K>, private readonly setKey: (id: K | null) => void) { }
 
@@ -270,11 +290,14 @@ export class TypeAhead<K extends number | string = number> {
         return this.typed ?? this.names.name(id);
     }
 
-    type(text: string): void {
+    /** Typing: `box` is the input of a required field, which then fails the browser's own check until a row is picked (text alone would pass `required`). */
+    type(text: string, box?: HTMLInputElement): void {
         this.typed = text;
         this.setKey(null);
         clearTimeout(this.timer);
         const wanted = text.trim();
+        this.box = box;
+        box?.setCustomValidity(wanted ? 'Pick one of the matches.' : '');
         if (!wanted) {
             this.options = [];
             this.open = false;
@@ -299,6 +322,7 @@ export class TypeAhead<K extends number | string = number> {
     /** The box lost the focus: what was typed and not picked is dropped. */
     leave(): void {
         this.typed = undefined;
+        this.box?.setCustomValidity('');
         this.close();
     }
 
@@ -311,14 +335,31 @@ export class TypeAhead<K extends number | string = number> {
     reset(): void {
         clearTimeout(this.timer);
         this.typed = undefined;
+        this.box?.setCustomValidity('');
         this.options = [];
         this.close();
+    }
+}
+
+/** One type-ahead for each row of an editable child grid, for one column: `of(row)` is the box of that row, made when the row is first drawn and setting the column of that row when a person picks. */
+export class RowAheads<K extends number | string = number> {
+    private readonly boxes = new WeakMap<object, TypeAhead<K>>();
+
+    constructor(private readonly column: string, private readonly find: Finder<K>, readonly names: LookupNames<K>) { }
+
+    of(row: object): TypeAhead<K> {
+        let box = this.boxes.get(row);
+        if (!box) {
+            box = new TypeAhead<K>(this.find, this.names, (id) => { (row as Record<string, unknown>)[this.column] = id; });
+            this.boxes.set(row, box);
+        }
+        return box;
     }
 }
 @@@FILE src/app/<#= servicesFolder #>/type-ahead.spec.ts@@@
 import { of } from 'rxjs';
 import { Lookup, LookupQuery } from './crud.service';
-import { LookupNames, TypeAhead } from './type-ahead';
+import { LookupNames, RowAheads, TypeAhead, namesOf } from './type-ahead';
 
 describe('LookupNames', () => {
     afterEach(() => { vi.useRealTimers(); });
@@ -347,6 +388,31 @@ describe('LookupNames', () => {
         expect([names.name(undefined), names.name(null), names.name(0), names.name('')]).toEqual(['', '', '', '']);
         vi.runAllTimers();
         expect(find).not.toHaveBeenCalled();
+    });
+});
+
+describe('namesOf', () => {
+    it('asks once for the distinct keys, in calls of 100, and answers the names by key', () => {
+        const asked: LookupQuery[] = [];
+        const find = (query: LookupQuery) => { asked.push(query); return of((query.ids ?? []).map((id) => ({ id, name: 'N' + id }))); };
+        const keys = Array.from({ length: 150 }, (_, i) => i + 1);
+        let names: Record<string, string> = {};
+
+        namesOf(find, [...keys, 1, 2, null, undefined, 0]).subscribe((found) => { names = found; });
+
+        expect(asked.map((query) => query.ids?.length)).toEqual([100, 50]);
+        expect(names['1']).toBe('N1');
+        expect(names['150']).toBe('N150');
+    });
+
+    it('asks nothing when the grid shows no key', () => {
+        const find = vi.fn(() => of([] as Lookup[]));
+        let names: Record<string, string> | undefined;
+
+        namesOf(find, [null, 0]).subscribe((found) => { names = found; });
+
+        expect(find).not.toHaveBeenCalled();
+        expect(names).toEqual({});
     });
 });
 
@@ -395,6 +461,37 @@ describe('TypeAhead', () => {
         box.leave();
 
         expect(box.shown(null)).toBe('');
+    });
+
+    it('has a box of its own for each row of a child grid, setting that row\'s column', () => {
+        vi.useFakeTimers();
+        const names = new LookupNames<number>(() => of([]));
+        const aheads = new RowAheads<number>('itemId', () => of([]), names);
+        const first: Record<string, unknown> = { itemId: null };
+        const second: Record<string, unknown> = { itemId: null };
+
+        expect(aheads.of(first)).toBe(aheads.of(first));
+        expect(aheads.of(first)).not.toBe(aheads.of(second));
+        aheads.of(second).pick({ id: 7, name: 'Acme' });
+
+        expect(second['itemId']).toBe(7);
+        expect(first['itemId']).toBeNull();
+        expect(aheads.of(second).shown(7)).toBe('Acme');
+    });
+
+    it('fails the box it is given until a row is picked', () => {
+        vi.useFakeTimers();
+        const { box } = make([{ id: 7, name: 'Acme' }]);
+        const input = document.createElement('input');
+
+        box.type('ac', input);
+        expect(input.validationMessage).toBe('Pick one of the matches.');
+        box.pick({ id: 7, name: 'Acme' });
+        expect(input.validity.customError).toBe(false);
+
+        box.type('zz', input);
+        box.leave();
+        expect(input.validity.customError).toBe(false);
     });
 
     it('asks nothing for blank text', () => {

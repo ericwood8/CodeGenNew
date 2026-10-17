@@ -4,7 +4,8 @@ namespace CodeGenNew.Core;
 /// <param name="ForeignKey"> The child table's foreign key. </param>
 /// <param name="Column"> The child column that holds the parent's key. </param>
 /// <param name="ColumnKeyType"> How that key travels (a number, a uniqueidentifier or text). </param>
-public sealed record ChildLookup(ForeignKeyModel ForeignKey, ColumnModel? Column, KeyType? ColumnKeyType)
+/// <param name="TypeAhead"> The parent has too many rows to list whole (<see cref="ProjectSettings.TypeAheadFor"/>): the grid asks the lookup list for the names of the keys it shows (<c>lookup?ids=</c>). </param>
+public sealed record ChildLookup(ForeignKeyModel ForeignKey, ColumnModel? Column, KeyType? ColumnKeyType, bool TypeAhead = false)
 {
     public string ColumnName => ForeignKey.ReferencingColumns[0];
     public string ParentTable => ForeignKey.ReferencedTable;
@@ -56,7 +57,12 @@ public sealed class ChildGrid
                         && !o.ReferencedTable.Equals(link.ReferencingTable, StringComparison.OrdinalIgnoreCase)
                         && o.ReferencedDisplayColumns.Count > 0 && !project.NoApiFor(o.ReferencedTable, default) && !project.NoLookupFor(o.ReferencedTable, o.ReferencedLookupShape))
             .GroupBy(o => o.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase).Select(g => g.First())
-            .Select(o => new ChildLookup(o, link.ReferencingTableColumns.FirstOrDefault(c => c.Name.Equals(o.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)), KeyType.OfForeignKey(link.ReferencingTableColumns, o)))
+            .Select(o =>
+            {
+                var keyType = KeyType.OfForeignKey(link.ReferencingTableColumns, o);
+                return new ChildLookup(o, link.ReferencingTableColumns.FirstOrDefault(c => c.Name.Equals(o.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)), keyType,
+                    keyType?.Kind == KeyKind.Int && project.TypeAheadFor(o.ReferencedTable, o.ReferencedLookupShape));
+            })
             .ToList();
 
         // The grid's own foreign key (always this row), the child's own key and every other id column that is not resolved to a name are left out.
@@ -139,6 +145,9 @@ public sealed class ChildGrid
     public ForeignKeyModel? EditLookupOf(ColumnModel column) => column.IsGuidColumn ? null
         : Link.ReferencingTableForeignKeys.FirstOrDefault(o => o.ReferencingColumns.Count == 1 && o.ReferencingColumns[0].Equals(column.Name, StringComparison.OrdinalIgnoreCase)
             && o.ReferencedDisplayColumns.Count > 0 && !_project.NoApiFor(o.ReferencedTable, o.ReferencedLookupShape) && !_project.NoLookupFor(o.ReferencedTable, o.ReferencedLookupShape));
+
+    /// <summary> The drop-down of <see cref="EditLookupOf"/> would list a parent with too many rows (<see cref="ProjectSettings.TypeAheadFor"/>): the cell is a box that finds the row by what is typed in it. </summary>
+    public bool EditTypeAhead(ColumnModel column) => EditLookupOf(column) is { } fk && _project.TypeAheadFor(fk.ReferencedTable, fk.ReferencedLookupShape);
 
     /// <summary> A money column of the child that is edited in a money box: not a foreign key drop-down or a list of choices. </summary>
     public bool IsMoneyInput(ColumnModel column) => column.IsMoneyAmount && TemplateHelpers.IsNumber(column) && EditLookupOf(column) is null && !column.HasChoices;

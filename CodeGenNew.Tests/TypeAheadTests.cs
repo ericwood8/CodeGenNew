@@ -23,6 +23,38 @@ public class TypeAheadTests
         Sample.ForeignKeyToParentOf(40, "InvoiceStatusId", "InvoiceStatus", "InvoiceStatusId", "Description")
     ], childForeignKeys: [Sample.ChildForeignKey("SalesInvoiceLine", "SalesInvoiceId", "SalesInvoiceId")]);
 
+    // An invoice whose line table points at an Item table of itemRows rows; the line also has a Quantity and a Unit (to a small table), so the lines are a grid of boxes and drop-downs.
+    private static TableModel InvoiceWithLines(long itemRows) => Sample.Table("SalesInvoice",
+    [
+        Sample.Column("SalesInvoiceId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Sample.Column("CustomerPO", SqlDbType.NVarChar, characters: 30, ordinal: 2)
+    ],
+    childForeignKeys:
+    [
+        new ChildForeignKeyModel
+        {
+            ConstraintName = "FK_SalesInvoiceId_SalesInvoiceLine",
+            ReferencingSchema = "dbo",
+            ReferencingTable = "SalesInvoiceLine",
+            ReferencingColumns = ["SalesInvoiceId"],
+            ReferencedColumns = ["SalesInvoiceId"],
+            ReferencingPrimaryKeyColumns = ["SalesInvoiceLineId"],
+            ReferencingTableColumns =
+            [
+                Sample.Column("SalesInvoiceLineId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+                Sample.Column("SalesInvoiceId", SqlDbType.Int, ordinal: 2),
+                Sample.Column("ItemId", SqlDbType.Int, ordinal: 3),
+                Sample.Column("UnitId", SqlDbType.Int, nullable: true, ordinal: 4),
+                Sample.Column("Quantity", SqlDbType.Int, ordinal: 5)
+            ],
+            ReferencingTableForeignKeys =
+            [
+                Sample.ForeignKeyToParentOf(itemRows, "ItemId", "Item", "ItemId", "ItemNumber"),
+                Sample.ForeignKeyToParentOf(12, "UnitId", "Unit", "UnitId", "UnitName")
+            ]
+        }
+    ]);
+
     private static async Task<Dictionary<string, string>> Run(string template, TableModel table, ProjectSettings project)
     {
         var result = await Repo.Cache.RunAsync(Repo.Template(template), table, project);
@@ -97,6 +129,8 @@ public class TypeAheadTests
         Expect.Contains(files["type-ahead.ts"], "export class LookupNames<K extends number | string = number>");
         Expect.Contains(files["type-ahead.ts"], "export class TypeAhead<K extends number | string = number>");
         Expect.Contains(files["type-ahead.spec.ts"], "describe('TypeAhead'");
+        Expect.Contains(files["type-ahead.ts"], "type(text: string, box?: HTMLInputElement): void");
+        Expect.Contains(files["type-ahead.ts"], "box?.setCustomValidity(wanted ? 'Pick one of the matches.' : '');");
     }
 
     [TestMethod]
@@ -108,7 +142,9 @@ public class TypeAheadTests
             string html = files.Single(f => f.Key.EndsWith(".component.html")).Value;
             string ts = files.Single(f => f.Key.EndsWith(".component.ts")).Value;
 
-            Expect.Contains(html, "[ngModel]=\"customerIdAhead.shown(selectedRow.customerId)\" (ngModelChange)=\"customerIdAhead.type($event)\" (blur)=\"customerIdAhead.leave()\" required>");
+            Expect.Contains(html, "#customerIdBox autocomplete=\"off\"");
+            Expect.Contains(html, "[ngModel]=\"customerIdAhead.shown(selectedRow.customerId)\" (ngModelChange)=\"customerIdAhead.type($event, customerIdBox)\" (blur)=\"customerIdAhead.leave()\" required>");
+            Expect.Contains(html, "(ngModelChange)=\"customerIdFilterAhead.type($event)\"");
             Expect.Contains(html, "(mousedown)=\"customerIdAhead.pick(o)\"");
             Expect.Contains(html, "[ngModel]=\"customerIdFilterAhead.shown(filters.customerId)\"");
             Expect.Contains(html, "aria-label=\"Filter by Customer\" placeholder=\"All Customers\"");
@@ -125,6 +161,81 @@ public class TypeAheadTests
             Expect.Contains(ts, "this.customerIdAhead.reset();");
             Expect.Contains(ts, "override clearSearch(): void {\n    super.clearSearch();\n    this.customerIdFilterAhead.reset();");
         }
+    }
+
+    [TestMethod]
+    public void A_child_row_and_a_child_grid_know_which_of_their_parents_are_too_big()
+    {
+        var listed = ChildGrid.For(InvoiceWithLines(5000), Project(("EditableChildren", "SalesInvoice.SalesInvoiceLine"))).Single();
+
+        Assert.IsTrue(listed.IsEditable);
+        Assert.IsTrue(listed.EditTypeAhead(listed.EditColumns.Single(c => c.Name == "ItemId")));
+        Assert.IsFalse(listed.EditTypeAhead(listed.EditColumns.Single(c => c.Name == "UnitId")));
+        Assert.IsFalse(listed.EditTypeAhead(listed.EditColumns.Single(c => c.Name == "Quantity")));
+
+        var grid = ChildGrid.For(InvoiceWithLines(5000), Project()).Single();
+        Assert.IsTrue(grid.Lookups.Single(l => l.ColumnName == "ItemId").TypeAhead);
+        Assert.IsFalse(grid.Lookups.Single(l => l.ColumnName == "UnitId").TypeAhead);
+        Assert.IsFalse(ChildGrid.For(InvoiceWithLines(50), Project()).Single().Lookups.Any(l => l.TypeAhead));
+    }
+
+    [TestMethod]
+    public async Task The_angular_child_grid_asks_for_the_names_it_shows_and_the_child_rows_type_ahead()
+    {
+        var plain = await Run("TS_DetailMasterComponent_v1.tt", InvoiceWithLines(5000), Project());
+        string grid = plain.Single(f => f.Key.EndsWith(".component.ts")).Value;
+        Expect.Contains(grid, "import { lookupCall, namesOf } from '../../services/type-ahead';");
+        Expect.Contains(grid, "namesOf((query) => lookupCall(this.http, 'api/items', query), this.salesInvoiceLineRows.map((r) => r['itemId'])).subscribe((names) => { this.salesInvoiceLineNames = { ...this.salesInvoiceLineNames, itemId: names }; });");
+        Expect.Contains(grid, "this.http.get<any[]>('api/units/lookup')");
+        Expect.DoesNotContain(grid, "api/items/lookup");
+
+        var editable = await Run("TS_DetailMasterComponent_v1.tt", InvoiceWithLines(5000), Project(("EditableChildren", "SalesInvoice.SalesInvoiceLine")));
+        string ts = editable.Single(f => f.Key.EndsWith(".component.ts")).Value;
+        string html = editable.Single(f => f.Key.EndsWith(".component.html")).Value;
+        Expect.Contains(ts, "import { LookupNames, RowAheads, lookupCall } from '../../services/type-ahead';");
+        Expect.Contains(ts, "readonly salesInvoiceLineItemIdAheads = new RowAheads<number>('itemId', (query) => lookupCall<number>(this.http, 'api/items', query), new LookupNames<number>((query) => lookupCall<number>(this.http, 'api/items', query)));");
+        Expect.DoesNotContain(ts, "api/items/lookup");
+        Expect.Contains(ts, "this.http.get<any[]>('api/units/lookup')");
+        Expect.Contains(html, "[ngModel]=\"salesInvoiceLineItemIdAheads.of(row).shown(row.itemId)\" (ngModelChange)=\"salesInvoiceLineItemIdAheads.of(row).type($event, salesInvoiceLineItemIdBox)\"");
+        Expect.Contains(html, "(mousedown)=\"salesInvoiceLineItemIdAheads.of(row).pick(o)\"");
+        Expect.Contains(html, "let p of salesInvoiceLineOptions['unitId']");
+        Expect.DoesNotContain(html, "salesInvoiceLineOptions['itemId']");
+    }
+
+    [TestMethod]
+    public async Task The_react_child_grid_asks_for_the_names_it_shows_and_the_child_rows_type_ahead()
+    {
+        var plain = await Run("TSX_DetailMasterPage_v1.tt", InvoiceWithLines(5000), Project());
+        string grid = plain.Single(f => f.Key.EndsWith(".tsx") && !f.Key.EndsWith("test.tsx")).Value;
+        Expect.Contains(grid, "import { ApiError, lookupQuery, request } from '../api/client';");
+        Expect.Contains(grid, "import { namesOf } from '../components/TypeAhead';");
+        Expect.Contains(grid, "namesOf((query) => request<LookupRow[]>('/api/items/lookup' + lookupQuery(query)), filtered.map((r) => r['itemId'])).then((found) => setSalesInvoiceLineNames((names) => ({ ...names, itemId: found }))).catch(() => {});");
+        Expect.Contains(grid, "request<any[]>('/api/units/lookup')");
+
+        var editable = await Run("TSX_DetailMasterPage_v1.tt", InvoiceWithLines(5000), Project(("EditableChildren", "SalesInvoice.SalesInvoiceLine")));
+        string page = editable.Single(f => f.Key.EndsWith(".tsx") && !f.Key.EndsWith("test.tsx")).Value;
+        Expect.Contains(page, "import { TypeAheadBox, useLookupNames } from '../components/TypeAhead';");
+        Expect.Contains(page, "import type { LookupFinder, LookupRow } from '../components/TypeAhead';");
+        Expect.Contains(page, "const findSalesInvoiceLineItemId: LookupFinder<number> = (query) => request<LookupRow<number>[]>('/api/items/lookup' + lookupQuery(query));");
+        Expect.Contains(page, "const salesInvoiceLineItemIdNames = useLookupNames<number>(findSalesInvoiceLineItemId);");
+        Expect.Contains(page, "<TypeAheadBox<number> label=\"Item\" value={row.itemId} names={salesInvoiceLineItemIdNames} find={findSalesInvoiceLineItemId} onChange={(id) => changeSalesInvoiceLine(row, { itemId: id })} required />");
+        Expect.DoesNotContain(page, "salesInvoiceLineOptions['itemId']");
+        Expect.Contains(page, "salesInvoiceLineOptions['unitId']");
+        Expect.DoesNotContain(page, "/api/items/lookup').then");
+    }
+
+    [TestMethod]
+    public async Task The_blazor_child_grid_asks_for_the_names_of_the_rows_it_shows()
+    {
+        var files = await Run("BLZ_Page_v1.tt", InvoiceWithLines(5000), Project());
+        string page = files.Single(f => f.Key.EndsWith(".razor")).Value;
+
+        Expect.Contains(page, "private async Task KnowchildLookupItemAsync(IEnumerable<int> ids)");
+        Expect.Contains(page, "childSalesInvoiceLineRows.Select(r => r.ItemId).OfType<int>());");
+        Expect.Contains(page, "await KnowchildLookupItemAsync(");
+        Expect.Contains(page, "childLookupItem.AddRange(await childLookupItemClient.GetLookupAsync(ids: missing))");
+        Expect.DoesNotContain(page, "childLookupItem = await childLookupItemClient");
+        Expect.Contains(page, "childLookupUnit = await childLookupUnitClient.GetLookupAsync()");
     }
 
     [TestMethod]
@@ -158,6 +269,7 @@ public class TypeAheadTests
         Expect.Contains(support["TypeAhead.tsx"], "export function TypeAheadBox<K extends number | string = number>");
         Expect.Contains(support["TypeAhead.tsx"], "export function useLookupNames<K extends number | string = number>");
         Expect.Contains(support["TypeAhead.test.tsx"], "describe('TypeAheadBox'");
+        Expect.Contains(support["TypeAhead.tsx"], "box.current?.setCustomValidity(required && typed !== null && typed.trim() !== '' && !value ? 'Pick one of the matches.' : '');");
     }
 
     [TestMethod]
@@ -185,6 +297,8 @@ public class TypeAheadTests
         var support = await RunEssentials("BLZ_EssentialSupport_v1.tt");
         Expect.Contains(support["TypeAhead.razor"], "@typeparam TValue");
         Expect.Contains(support["TypeAhead.razor"], "await OnPick.InvokeAsync(null);");
+        Expect.Contains(support["TypeAhead.razor"], "pattern=\"@Unpicked\"");
+        Expect.Contains(support["TypeAhead.razor"], "private string? Unpicked => Required && !string.IsNullOrWhiteSpace(typed) ? \"^$\" : null;");
         Expect.Contains(support["TypeAheadOption.cs"], "public record TypeAheadOption<TValue>(TValue Id, string Name);");
     }
 
@@ -209,6 +323,18 @@ public class TypeAheadTests
         Expect.Contains(vm, "public async Task LoadAsync()\n    {\n        await _gate.WaitAsync();\n        try { await LoadCoreAsync(); }");
         Expect.DoesNotContain(vm, "CustomerIdChoices");
         Expect.Contains(vm, "InvoiceStatusIdChoices");
+    }
+
+    [TestMethod]
+    public async Task The_winui3_child_grid_reads_only_the_names_of_the_rows_it_shows()
+    {
+        var files = await Run("WinUI3_DetailMasterScreen_v1.tt", InvoiceWithLines(5000), Project());
+        string vm = files.Single(f => f.Key == "SalesInvoiceDetailMasterViewModel.cs").Value;
+
+        Expect.Contains(vm, "var salesInvoiceLineItemNames = new Dictionary<int, string>();");
+        Expect.Contains(vm, "var wantedItemId = rows.Select(row => typeof(SalesInvoiceLine).GetProperty(\"ItemId\")!.GetValue(row)).OfType<int>().Distinct().ToList();");
+        Expect.Contains(vm, "salesInvoiceLineItemNames = await _context.Set<Item>().Where(p => wantedItemId.Contains(p.ItemId))");
+        Expect.Contains(vm, "var salesInvoiceLineUnitNames = await _context.Set<Unit>().ToDictionaryAsync(");
     }
 
     [TestMethod]

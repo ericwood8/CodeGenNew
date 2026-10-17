@@ -44,12 +44,13 @@
 
     Line($"@@@FILE src/repos/{t.Module}.rs@@@");
     Line($"use crate::models::{t.Module}::{t.Struct};");
-    Line(search || scoped ? "use crate::support::{Db, Pool};" : "use crate::support::Pool;");
-    if (search && t.Filters.Count > 0)
+    bool lookup = t.LookupSql is not null;
+    Line(search || scoped || lookup ? "use crate::support::{Db, Pool};" : "use crate::support::Pool;");
+    if ((search && t.Filters.Count > 0) || lookup)
         Line("use crate::support::{escape_like, non_blank};");
-    if (search)
+    if (search || lookup)
         Line("use serde::Deserialize;");
-    if (search || scoped)
+    if (search || scoped || lookup)
         Line("use sqlx::QueryBuilder;");
     Line();
     if (scoped)
@@ -66,8 +67,8 @@
         foreach (var f in clone.Overrides)
             Line($"const EXISTS_{f.Name.ToUpperInvariant().Replace("R#", "")}: &str = {RustTable.Raw($"SELECT COUNT(*) FROM {t.Table} WHERE {di.Quote(f.Column.DbName)} = {di.Placeholder(1)}")};");
     }
-    if (t.LookupSql is not null)
-        Line($"const LOOKUP: &str = {RustTable.Raw(t.LookupSql)};");
+    if (lookup)
+        Line($"const LOOKUP_BASE: &str = {RustTable.Raw(t.LookupBase)};");
     if (scoped)
         Line($"const SCOPED_BASE: &str = {RustTable.Raw($"SELECT {t.SelectList} FROM {t.Table} AS t WHERE 1 = 1")};");
     if (userPlan is not null)
@@ -201,8 +202,40 @@
         Line("    pub is_active: Option<bool>,");
         Line("}");
         Line();
-        Line("pub async fn lookup(pool: &Pool) -> Result<Vec<LookupItem>, sqlx::Error> {");
-        Line("    sqlx::query_as::<_, LookupItem>(LOOKUP).fetch_all(pool).await");
+        Line("/// The query string of the lookup: ids keeps the rows with those keys, search (or take) keeps the first few rows whose name contains the text; with none of them the list is whole.");
+        Line("#[derive(Debug, Default, Deserialize)]");
+        Line("#[serde(default)]");
+        Line("pub struct LookupQuery {");
+        Line("    pub search: Option<String>,");
+        Line("    pub ids: Option<String>,");
+        Line("    pub take: Option<i64>,");
+        Line("}");
+        Line();
+        string lookupKey = keyType == "Uuid" ? "uuid::Uuid" : keyType;
+        Line("pub async fn lookup(pool: &Pool, query: &LookupQuery) -> Result<Vec<LookupItem>, sqlx::Error> {");
+        Line("    let mut builder = QueryBuilder::<Db>::new(LOOKUP_BASE);");
+        Line("    let by_ids = non_blank(&query.ids).is_some();");
+        Line("    let by_search = !by_ids && non_blank(&query.search).is_some();");
+        Line("    if let Some(list) = non_blank(&query.ids) {");
+        Line($"        let keys: Vec<{lookupKey}> = list.split(',').filter_map(|part| part.trim().parse().ok()).take(200).collect();");
+        Line("        if keys.is_empty() {");
+        Line("            builder.push(\" AND 1 = 0\");");
+        Line("        } else {");
+        Line($"            builder.push({RustTable.Raw(" AND " + t.LookupKey + " IN (")});");
+        Line("            let mut separated = builder.separated(\", \");");
+        Line("            for key in keys {");
+        Line("                separated.push_bind(key);");
+        Line("            }");
+        Line("            separated.push_unseparated(\")\");");
+        Line("        }");
+        Line("    } else if let Some(text) = non_blank(&query.search) {");
+        Line($"        builder.push({RustTable.Raw(" AND " + t.LookupBefore)}).push_bind(escape_like(text)).push({RustTable.Raw(t.LookupAfter)});");
+        Line("    }");
+        Line($"    builder.push({RustTable.Raw(" ORDER BY " + t.LookupOrder)});");
+        Line("    if !by_ids && (by_search || query.take.is_some()) {");
+        Line("        builder.push(\" LIMIT \").push_bind(query.take.unwrap_or(25).clamp(1, 100));");
+        Line("    }");
+        Line("    builder.build_query_as::<LookupItem>().fetch_all(pool).await");
         Line("}");
     }
 

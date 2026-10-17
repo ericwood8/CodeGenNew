@@ -118,6 +118,13 @@
             string model = $"row.{JsonNames.Camel(c.Name)}";
             string name = $"[name]=\"'{childVar}{UpperFirst(JsonNames.Camel(c.Name))}' + {childVar}Rows.indexOf(row)\"";
             string req = c.IsNullable ? "" : " required";
+            if (child.EditTypeAhead(c))
+            {
+                string rowAhead = $"{childVar}{UpperFirst(JsonNames.Camel(c.Name))}Aheads.of(row)";
+                string cellBox = $"{childVar}{UpperFirst(JsonNames.Camel(c.Name))}Box";   // a required cell hands its input to the box, which fails the browser's check while text is typed and not picked
+                return $"<div class=\"type-ahead\"><input type=\"text\" {name}{(req.Length > 0 ? $" #{cellBox}" : "")} autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" [attr.aria-expanded]=\"{rowAhead}.open\" [ngModel]=\"{rowAhead}.shown({model})\" (ngModelChange)=\"{rowAhead}.type($event{(req.Length > 0 ? ", " + cellBox : "")})\" (blur)=\"{rowAhead}.leave()\"{req}>"
+                       + $"<ul class=\"type-ahead-list\" role=\"listbox\" *ngIf=\"{rowAhead}.open\"><li role=\"option\" *ngFor=\"let o of {rowAhead}.options\" (mousedown)=\"{rowAhead}.pick(o)\">{{{{o.name}}}}</li></ul></div>";
+            }
             if (child.EditLookupOf(c) is not null)
                 return $"<select {name} [(ngModel)]=\"{model}\"{req}>{(c.IsNullable ? "<option [ngValue]=\"null\"></option>" : "")}<option *ngFor=\"let p of {childVar}Options['{JsonNames.Camel(c.Name)}']\" [ngValue]=\"p.id\">{{{{p.name}}}}</option></select>";
             if (c.HasChoices)
@@ -373,7 +380,10 @@
                 {
                     string ahead = FormAhead(c);
                     H("                <div class=\"type-ahead\">");
-                    H($"                    <input type=\"text\" id=\"{id}\" name=\"{id}\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" [attr.aria-expanded]=\"{ahead}.open\" [ngModel]=\"{ahead}.shown({model})\" (ngModelChange)=\"{ahead}.type($event)\" (blur)=\"{ahead}.leave()\"{req}>");
+                    // a required field hands its input to the box, which fails the browser's check while text is typed and not picked
+                    string boxRef = req.Length > 0 ? " #" + JsonNames.Camel(c.Name) + "Box" : "";
+                    string boxArg = req.Length > 0 ? ", " + JsonNames.Camel(c.Name) + "Box" : "";
+                    H($"                    <input type=\"text\" id=\"{id}\" name=\"{id}\"{boxRef} autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" [attr.aria-expanded]=\"{ahead}.open\" [ngModel]=\"{ahead}.shown({model})\" (ngModelChange)=\"{ahead}.type($event{boxArg})\" (blur)=\"{ahead}.leave()\"{req}>");
                     H($"                    <ul class=\"type-ahead-list\" role=\"listbox\" *ngIf=\"{ahead}.open\">");
                     H($"                        <li role=\"option\" *ngFor=\"let o of {ahead}.options\" (mousedown)=\"{ahead}.pick(o)\">{{{{o.name}}}}</li>");
                     H("                    </ul>");
@@ -732,7 +742,24 @@
         T($"import {{ {serviceClass} }} from '../../{servicesFolder}/{serviceFile}';");
         if (writeRoles.Count > 0) T($"import {{ AuthService }} from '../../{servicesFolder}/auth.service';");
         if (parents.Any(p => p.UsesLookupEndpoint && !Ahead(p))) T($"import {{ Lookup }} from '../../{servicesFolder}/crud.service';");
-        if (parents.Any(Ahead)) T($"import {{ LookupNames{(formAheads.Count + filterAheads.Count > 0 ? ", TypeAhead" : "")} }} from '../../{servicesFolder}/type-ahead';");
+        {
+            // the helpers of type-ahead.ts this screen uses: the parents' name caches and boxes, the boxes of editable child rows and the names a child grid asks for by key
+            var aheadNames = new SortedSet<string>(StringComparer.Ordinal);
+            if (parents.Any(Ahead)) aheadNames.Add("LookupNames");
+            if (formAheads.Count + filterAheads.Count > 0) aheadNames.Add("TypeAhead");
+            if (editableChildren.Any(ch => ch.EditColumns.Any(ch.EditTypeAhead)))
+            {
+                aheadNames.Add("LookupNames");
+                aheadNames.Add("RowAheads");
+                aheadNames.Add("lookupCall");
+            }
+            if (gridChildren.Any(ch => ch.Lookups.Any(l => l.TypeAhead)))
+            {
+                aheadNames.Add("lookupCall");
+                aheadNames.Add("namesOf");
+            }
+            if (aheadNames.Count > 0) T($"import {{ {string.Join(", ", aheadNames)} }} from '../../{servicesFolder}/type-ahead';");
+        }
         foreach (var p in parents.Where(p => !p.IsSelf))
         {
             if (!p.UsesLookupEndpoint) T($"import {{ {p.BaseName} }} from '../../{modelsFolder}/{p.ModelFile}';");
@@ -852,14 +879,21 @@
         {
             // the rows of the form's own child list: plain objects the inputs edit, sent with the row (prepare below)
             T($"  {child.Variable}Rows: any[] = [];");
-            if (child.EditColumns.Any(c => child.EditLookupOf(c) is not null))
+            if (child.EditColumns.Any(c => child.EditLookupOf(c) is not null && !child.EditTypeAhead(c)))
                 T($"  {child.Variable}Options: Record<string, {{ id: any; name: string }}[]> = {{}};");
+            foreach (var c in child.EditColumns.Where(child.EditTypeAhead))
+            {
+                // a parent with too many rows for a drop-down: each row's cell is a box that finds the parent by what is typed in it
+                string cellTs = IsNumber(c) ? "number" : "string";
+                string route = $"{apiPrefix}/{ScreenNames.ApiRoute(child.EditLookupOf(c)!.ReferencedTable)}";
+                T($"  readonly {child.Variable}{UpperFirst(JsonNames.Camel(c.Name))}Aheads = new RowAheads<{cellTs}>('{JsonNames.Camel(c.Name)}', (query) => lookupCall<{cellTs}>(this.http, '{route}', query), new LookupNames<{cellTs}>((query) => lookupCall<{cellTs}>(this.http, '{route}', query)));");
+            }
         }
         T();
         {
             var parentsToLoad = parents.Where(p => !Ahead(p)).ToList();   // a drop-down over this table itself (a manager) is read through the screen's own service; a type-ahead reads nothing until it is used
             var optionLoads = editableChildren.SelectMany(child => child.EditColumns
-                .Select(c => (Child: child, Column: c, Lookup: child.EditLookupOf(c))).Where(x => x.Lookup is not null)).ToList();
+                .Select(c => (Child: child, Column: c, Lookup: child.EditLookupOf(c))).Where(x => x.Lookup is not null && !child.EditTypeAhead(x.Column))).ToList();
             if (parentsToLoad.Count > 0 || optionLoads.Count > 0 || form.Guards.Count > 0)
             {
                 T("  protected override start(): void {");
@@ -1039,7 +1073,9 @@
                 T($"        this.{child.Variable}Rows = rows.filter((r: any) => r['{child.ForeignKeyJson}'] === parentId);");
             }
             T($"        this.{child.Variable}Columns = this.{child.Variable}Rows.length > 0 ? this.orderColumns(Object.keys(this.{child.Variable}Rows[0]), this.{child.Variable}Hidden) : [];");
-            foreach (var lookup in child.Lookups)
+            foreach (var lookup in child.Lookups.Where(l => l.TypeAhead))
+                T($"        namesOf((query) => lookupCall(this.http, '{apiPrefix}/{ScreenNames.ApiRoute(lookup.ParentTable)}', query), this.{child.Variable}Rows.map((r) => r['{lookup.ColumnJson}'])).subscribe((names) => {{ this.{child.Variable}Names = {{ ...this.{child.Variable}Names, {lookup.ColumnJson}: names }}; }});");
+            foreach (var lookup in child.Lookups.Where(l => !l.TypeAhead))
                 T($"        this.http.get<any[]>('{apiPrefix}/{lookup.WebRoute}').subscribe((items) => {{ this.{child.Variable}Names = {{ ...this.{child.Variable}Names, {lookup.ColumnJson}: Object.fromEntries(items.map((i) => [String(i['{lookup.WebKey}']), String(i['{lookup.WebDisplay}'] ?? '')])) }}; }});");
             T("      },");
             T("      error: (e) => console.error(e)");

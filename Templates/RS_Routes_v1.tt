@@ -11,7 +11,7 @@
     // Generates: src/routes/<table>.rs   (the template writes its own path with an @@@FILE marker; the output folder is the Rust crate's folder)
     // The Axum handlers of a table with the contract every stack of the project keeps (so the React, Angular and desktop front ends need no change): GET /api/<plural> (all rows), GET /{id},
     // POST (201 with a Location header and the new row), PUT /{id} (400 when the id in the body differs, 404 for no such row), DELETE /{id} (200, 404, or 400 when the row is in use),
-    // POST /{id}/clone (201 and the copy, a cloneable table), GET /lookup ({ id, name, isActive } of every row, a table with a display column) and GET /search with the filters, pageNumber, pageSize, sortBy and sortDir (a table with a search endpoint).
+    // POST /{id}/clone (201 and the copy, a cloneable table), GET /lookup ({ id, name, isActive } of every row, or with ids, search and take the rows a type-ahead asks for; a table with a display column) and GET /search with the filters, pageNumber, pageSize, sortBy and sortDir (a table with a search endpoint).
     // With ApiValidation=true the create and update handlers run the table's validate (RS_Validate) and answer 400 with the problems.
     // With ApiAuth=true (the Jwt group's src/auth.rs) a table listed in OwnedTables shows and changes only the rows of the owner the caller may act for (403 for another owner's row, the same rule as
     // the ASP.NET API), a table that hangs off an owned table is scoped through its parent, and the user table (UserTable) never shows or takes its password hash (the struct skips it in JSON, the
@@ -61,7 +61,7 @@
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
     Line("use axum::{");
     Line(userArgument.Length > 0 ? "    Extension, Json, Router," : "    Json, Router,");
-    Line(search ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
+    Line(search || t.LookupSql is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
     Line("    http::StatusCode,");
     Line("    response::Response,");
     Line(roles ? (t.Clone is not null ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (t.Clone is not null ? "    routing::{get, post}," : "    routing::get,"));
@@ -230,8 +230,8 @@
     Line();
     if (t.LookupSql is not null)
     {
-        Line("async fn lookup(State(pool): State<Pool>) -> ApiResult<Json<Vec<repo::LookupItem>>> {");
-        Line("    Ok(Json(repo::lookup(&pool).await?))");
+        Line("async fn lookup(State(pool): State<Pool>, Query(query): Query<repo::LookupQuery>) -> ApiResult<Json<Vec<repo::LookupItem>>> {");
+        Line("    Ok(Json(repo::lookup(&pool, &query).await?))");
         Line("}");
         Line();
     }

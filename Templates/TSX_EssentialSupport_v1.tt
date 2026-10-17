@@ -143,7 +143,7 @@ export function CurrencyInput({ id, value, onChange, label, digits = 2, currency
   );
 }
 @@@FILE src/<#= componentsFolder #>/TypeAhead.tsx@@@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export type LookupRow<K extends number | string = number> = { id: K; name: string; isActive?: boolean | null };
 
@@ -193,6 +193,15 @@ export function useLookupNames<K extends number | string = number>(find: LookupF
   return { name, remember };
 }
 
+/** The names of the keys a grid shows, asked together from a lookup call (100 keys a call), as `{ key: name }`. A grid with no key asks nothing. */
+export async function namesOf<K extends number | string = number>(find: LookupFinder<K>, keys: (K | null | undefined)[]): Promise<Record<string, string>> {
+  const ids = [...new Set(keys.filter((key): key is K => !!key))];
+  const calls: Promise<LookupRow<K>[]>[] = [];
+  for (let at = 0; at < ids.length; at += 100) calls.push(find({ ids: ids.slice(at, at + 100) }));
+  const parts = await Promise.all(calls);
+  return Object.fromEntries(parts.flat().map((row) => [String(row.id), row.name]));
+}
+
 /**
  * A box that finds the row of a big parent by what is typed in it: after a short pause it asks the parent's lookup list for the rows whose text contains it and lists a few; picking one sets the key.
  * Typing clears the key, so text that was not picked leaves nothing chosen, and leaving the box without a pick empties it.
@@ -212,6 +221,12 @@ export function TypeAheadBox<K extends number | string = number>({ id, label, pl
   const [open, setOpen] = useState(false);
   const turn = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const box = useRef<HTMLInputElement>(null);
+
+  // text that was typed and not picked is not an answer: the browser's own required check sees a filled box
+  useEffect(() => {
+    box.current?.setCustomValidity(required && typed !== null && typed.trim() !== '' && !value ? 'Pick one of the matches.' : '');
+  });
 
   const type = (text: string) => {
     setTyped(text);
@@ -253,6 +268,7 @@ export function TypeAheadBox<K extends number | string = number>({ id, label, pl
   return (
     <div className="type-ahead">
       <input
+        ref={box}
         type="text"
         id={id}
         role="combobox"
@@ -280,21 +296,41 @@ export function TypeAheadBox<K extends number | string = number>({ id, label, pl
 import { useState } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TypeAheadBox, useLookupNames } from '../TypeAhead';
+import { TypeAheadBox, namesOf, useLookupNames } from '../TypeAhead';
 import type { LookupFinder } from '../TypeAhead';
 
 const rows = [{ id: 7, name: 'Acme' }, { id: 9, name: 'Acorn' }];
 
-function Harness({ find }: { find: LookupFinder }) {
+function Harness({ find, required }: { find: LookupFinder; required?: boolean }) {
   const names = useLookupNames(find);
   const [key, setKey] = useState<number | null>(null);
   return (
     <>
-      <TypeAheadBox label="Customer" value={key} names={names} find={find} onChange={setKey} />
+      <TypeAheadBox label="Customer" value={key} names={names} find={find} onChange={setKey} required={required} />
       <output data-testid="key">{String(key)}</output>
     </>
   );
 }
+
+describe('namesOf', () => {
+  it('asks once for the distinct keys, in calls of 100, and answers the names by key', async () => {
+    const find = vi.fn<LookupFinder>(async (query) => (query.ids ?? []).map((id) => ({ id, name: `N${id}` })));
+    const keys = Array.from({ length: 150 }, (_, i) => i + 1);
+
+    const names = await namesOf(find, [...keys, 1, 2, null, undefined, 0]);
+
+    expect(find.mock.calls.map(([query]) => query.ids?.length)).toEqual([100, 50]);
+    expect(names['1']).toBe('N1');
+    expect(names['150']).toBe('N150');
+  });
+
+  it('asks nothing when the grid shows no key', async () => {
+    const find = vi.fn<LookupFinder>().mockResolvedValue([]);
+
+    expect(await namesOf(find, [null, 0])).toEqual({});
+    expect(find).not.toHaveBeenCalled();
+  });
+});
 
 describe('TypeAheadBox', () => {
   beforeEach(() => vi.useFakeTimers());
@@ -325,6 +361,21 @@ describe('TypeAheadBox', () => {
     fireEvent.blur(box);
 
     expect(box.value).toBe('');
+  });
+
+  it('is invalid while required text was typed and not picked, and valid once a row is picked', async () => {
+    const find = vi.fn<LookupFinder>().mockResolvedValue(rows);
+    render(<Harness find={find} required />);
+    const box = screen.getByRole('combobox') as HTMLInputElement;
+
+    fireEvent.change(box, { target: { value: 'ac' } });
+    expect(box.validity.customError).toBe(true);
+    expect(box.validationMessage).toBe('Pick one of the matches.');
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'Acme' }));
+
+    expect(box.validity.customError).toBe(false);
   });
 
   it('asks nothing for blank text', async () => {

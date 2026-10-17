@@ -340,7 +340,10 @@
                 {
                     string ahead = FormAhead(c);
                     H("                <div class=\"type-ahead\">");
-                    H($"                    <input type=\"text\" id=\"{id}\" name=\"{id}\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" [attr.aria-expanded]=\"{ahead}.open\" [ngModel]=\"{ahead}.shown({model})\" (ngModelChange)=\"{ahead}.type($event)\" (blur)=\"{ahead}.leave()\"{req}>");
+                    // a required field hands its input to the box, which fails the browser's check while text is typed and not picked
+                    string boxRef = req.Length > 0 ? " #" + JsonNames.Camel(c.Name) + "Box" : "";
+                    string boxArg = req.Length > 0 ? ", " + JsonNames.Camel(c.Name) + "Box" : "";
+                    H($"                    <input type=\"text\" id=\"{id}\" name=\"{id}\"{boxRef} autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" [attr.aria-expanded]=\"{ahead}.open\" [ngModel]=\"{ahead}.shown({model})\" (ngModelChange)=\"{ahead}.type($event{boxArg})\" (blur)=\"{ahead}.leave()\"{req}>");
                     H($"                    <ul class=\"type-ahead-list\" role=\"listbox\" *ngIf=\"{ahead}.open\">");
                     H($"                        <li role=\"option\" *ngFor=\"let o of {ahead}.options\" (mousedown)=\"{ahead}.pick(o)\">{{{{o.name}}}}</li>");
                     H("                    </ul>");

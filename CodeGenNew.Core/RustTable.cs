@@ -164,6 +164,14 @@ public sealed class RustTable
     /// and <c>is_active</c> (the IsActive flag, null when the table has none) of every row, ordered by name. Null when the table has no display column. </summary>
     public string? LookupSql { get; private set; }
 
+    /// <summary> The pieces a lookup that is narrowed is built from: the statement up to <c>WHERE 1 = 1</c>, the name expression the list is ordered by, the quoted key column, and the text before and
+    /// after the bound pattern of a "name contains" test. </summary>
+    public string LookupBase { get; private set; } = "";
+    public string LookupOrder { get; private set; } = "";
+    public string LookupKey { get; private set; } = "";
+    public string LookupBefore { get; private set; } = "";
+    public string LookupAfter { get; private set; } = "";
+
     /// <summary> Null when the table gets no Clone button (<see cref="CloneShape.CanClone"/>). </summary>
     public RustClone? Clone { get; }
 
@@ -302,7 +310,12 @@ public sealed class RustTable
             name = $"COALESCE({name}, '')";
         var active = Model.Columns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive" && _fieldOf.ContainsKey(c));
         string flag = active is null ? "NULL" : _di.Quote(active.DbName);
-        LookupSql = $"SELECT {_di.Quote(Key.Column.DbName)} AS id, {name} AS name, {flag} AS is_active FROM {Table} ORDER BY {name}";
+        string select = $"SELECT {_di.Quote(Key.Column.DbName)} AS id, {name} AS name, {flag} AS is_active FROM {Table}";
+        LookupSql = $"{select} ORDER BY {name}";
+        LookupBase = $"{select} WHERE 1 = 1";
+        LookupOrder = name;
+        LookupKey = _di.Quote(Key.Column.DbName);
+        (LookupBefore, LookupAfter) = _di.ContainsParts(name);
     }
 
     private RustClone BuildClone()

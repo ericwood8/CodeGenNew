@@ -30,3 +30,7 @@ With `ApiAuth=true` the Rust API signs people in like the ASP.NET one (`RS_Essen
 - **Checked:** generated from a SQLite file, built with cargo and driven over HTTP with real sign-ins: 55 checks (the sign-in, the 401s, the hash, the guards, the owner scope, a child through its parent, the throttle).
 
 **Roles** (`ReadRoles`, `TableReadRoles`, `WriteRoles`, `TableWriteRoles`, with `ApiAuth`): a table with a rule gets `READ_ROLES` and `WRITE_ROLES` and its reading and writing methods become separate routes of the same path, each with `route_layer(middleware::from_fn(... check_roles ...))` (`check_roles` is in `src/auth.rs`); the lookup stays open. Another role gets 403 `role-not-allowed`; the administrator role is always listed. A project made before needs `--replace` of the Auth essentials.
+
+## The lookup for a type-ahead
+
+`lookup` takes the query string (`Query<repo::LookupQuery>`: `search`, `ids`, `take`) and passes it to `repo::lookup`; see RS_Repo for what each does. Without any of them the list is whole, as before.

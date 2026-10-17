@@ -11,7 +11,7 @@
     // Generates: app/routes/<table>.py   (the template writes its own path with an @@@FILE marker; the output folder is the Python API's folder)
     // The FastAPI router of a table with the contract every stack of the project keeps (so the React, Angular, Blazor and desktop front ends need no change): GET /api/<plural> (all rows), GET /{id},
     // POST (201 with a Location header and the new row), PUT /{id} (400 when the id in the body differs, 404 for no such row), DELETE /{id} (200, 404, or 400 when the row is in use),
-    // POST /{id}/clone (201 and the copy, a cloneable table), GET /lookup ({ id, name, isActive } of every row, a table with a display column) and GET /search with the filters, pageNumber, pageSize, sortBy and sortDir (a table with a search endpoint).
+    // POST /{id}/clone (201 and the copy, a cloneable table), GET /lookup ({ id, name, isActive } of every row, or with ids, search and take the rows a type-ahead asks for; a table with a display column) and GET /search with the filters, pageNumber, pageSize, sortBy and sortDir (a table with a search endpoint).
     // With ApiValidation=true the create and update routes run the table's validate (PY_Validate) and answer 400 with the problems.
     // With ApiAuth=true (the Jwt group's app/auth.py) a table listed in OwnedTables shows and changes only the rows of the owners the caller may act for (403 for another owner's row, the same
     // rule as the ASP.NET API), a table that hangs off an owned table is scoped through its parent, and the user table (UserTable) never shows or takes its password hash (PythonTable leaves it out of
@@ -73,7 +73,8 @@
     var sqlalchemy = new List<string> { "select" };
     if (search || userPlan is not null)
         sqlalchemy.Add("func");
-    if (castsEnum)
+    bool castsLookup = t.LookupName is { } castName && castName.Annotation != "str";
+    if (castsEnum || castsLookup)
     {
         sqlalchemy.Add("cast");
         sqlalchemy.Add("String");
@@ -99,9 +100,13 @@
     Line($"from app.schemas.{t.Module} import {t.Schema}");
     var support = new List<string> { "ApiError" };
     if (search)
-    {
         support.Add("Page");
+    if (search || t.LookupName is not null)
         support.Add("contains");
+    if (t.LookupName is not null)
+    {
+        support.Add("lookup_take");
+        support.Add("parse_keys");
     }
     if (t.CloneOverrides.Count > 0)
         support.Add("suggest_free");
@@ -220,11 +225,22 @@
         string nameText = lookupName.Annotation == "str" ? "name or \"\"" : "\"\" if name is None else str(name)";
         Line();
         Line($"@router.get(\"{t.Route}/lookup\")");
-        Line($"def lookup(session: Session = Depends(get_session){userParameter}):");
-        Line("    \"\"\"Every row as { id, name, isActive }, ordered by name: what the drop-downs and the name columns of other screens read.\"\"\"");
+        string keyConvert = guidKey ? "UUID" : textKey ? "str" : "int";
+        string nameColumn = lookupName.Annotation == "str" ? $"{t.Class}.{lookupName.Name}" : $"cast({t.Class}.{lookupName.Name}, String)";
+        Line($"def lookup(search: str | None = None, ids: str | None = None, take: int | None = None, session: Session = Depends(get_session){userParameter}):");
+        Line("    \"\"\"Every row as { id, name, isActive }, ordered by name: what the drop-downs and the name columns of other screens read.");
+        Line("    With ids, only the rows with those keys; with search (or take), the first few rows whose name contains the text.\"\"\"");
         Line($"    statement = select({t.Class}.{key}, {t.Class}.{lookupName.Name}" + (t.LookupActive is null ? "" : $", {activeColumn}") + $").order_by({t.Class}.{lookupName.Name})");
+        Line("    by_ids = ids is not None and ids.strip() != \"\"");
+        Line("    by_search = not by_ids and search is not None and search.strip() != \"\"");
+        Line("    if by_ids:");
+        Line($"        statement = statement.where({t.Class}.{key}.in_(parse_keys(ids, {keyConvert})))");
+        Line("    elif by_search:");
+        Line($"        statement = statement.where(contains({nameColumn}, search.strip()))");
         if (scoped)
             Line("    statement = only_owned(statement, user)");
+        Line("    if not by_ids and (by_search or take is not None):");
+        Line("        statement = statement.limit(lookup_take(take))");
         Line("    rows = session.execute(statement).all()");
         Line($"    return [{{\"id\": row_id, \"name\": {nameText}, \"isActive\": {(t.LookupActive is null ? "None" : "active")}}} for row_id, name{(t.LookupActive is null ? "" : ", active")} in rows]");
         Line();

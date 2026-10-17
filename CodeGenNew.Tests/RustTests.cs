@@ -350,7 +350,15 @@ public class RustTests
             string routes = Read("Shop.Rust/src/routes/customer.rs");
             Expect.Contains(routes, ".route(\"/api/customers/search\", get(search))");
             Expect.Contains(routes, ".route(\"/api/customers/lookup\", get(lookup))");
-            Expect.Contains(repo, "pub async fn lookup(pool: &Pool) -> Result<Vec<LookupItem>, sqlx::Error>");
+            Expect.Contains(repo, "pub async fn lookup(pool: &Pool, query: &LookupQuery) -> Result<Vec<LookupItem>, sqlx::Error>");
+            Expect.Contains(routes, "Query(query): Query<repo::LookupQuery>");
+            Expect.Contains(repo, "pub struct LookupQuery {");
+            Expect.Contains(repo, "const LOOKUP_BASE: &str = r#\"SELECT \"CustomerId\" AS id,");
+            Expect.Contains(repo, "WHERE 1 = 1\"#;");
+            Expect.Contains(repo, "builder.push(r#\" AND \"CustomerId\" IN (\"#);");
+            Expect.Contains(repo, "builder.push(\" AND 1 = 0\");");
+            Expect.Contains(repo, "query.take.unwrap_or(25).clamp(1, 100)");
+            Expect.Contains(repo, ".push_bind(escape_like(text))");
             Expect.Contains(repo, "#[serde(rename = \"isActive\")]");
             Expect.Contains(routes, "validate(&row)?;");
             Expect.Contains(Read("Shop.Rust/src/routes/mod.rs"), ".merge(customer::router())");

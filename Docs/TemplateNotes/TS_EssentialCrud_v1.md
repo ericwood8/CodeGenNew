@@ -46,3 +46,5 @@ Written once and kept, like the bases: a project that edits a base edits its spe
 ## type-ahead.ts
 
 `LookupNames<K>` holds the names of a big parent's rows: `name(id)` returns the name or an empty text and asks for the keys it has not seen (`getLookup({ ids })`, together, once). `TypeAhead<K>` is the box: `type(text)` clears the key and, after 250 ms, asks `getLookup({ search, take: 10 })` (an answer to an older keystroke is dropped); `pick(row)` sets the key, `leave()` empties a box that was left without a pick. `getLookup(query?)` of CrudService sends `search`, `ids` and `take`.
+
+`type(text, box?)` also takes the input of a required field and fails the browser's own check ("Pick one of the matches.") while text is typed and not picked, because text alone would satisfy `required`; a pick, `leave()` and `reset()` clear it. React's `TypeAheadBox` does the same from an effect, and Blazor's `TypeAhead` renders `pattern="^$"` while required text is typed and not picked.

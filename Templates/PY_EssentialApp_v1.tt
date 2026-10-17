@@ -8,7 +8,7 @@
     // Generates: app/__init__.py, app/db.py, app/support.py and app/main.py   (no table, no database: an essentials group; the output folder is the Python API's own folder)
     // The files every generated Python API needs, written once and kept (they are edited by hand afterwards). db.py: the declarative Base, the engine and the session, built from the project's
     // DatabaseProvider, DatabaseServer, DatabaseName and DatabaseUser, or from DATABASE_URL; the password is never written: it is read from PGPASSWORD (PostgreSQL), MYSQL_PWD (MySQL) or
-    // DB_PASSWORD (SQL Server). support.py: ApiError, the validation problems in the ASP.NET problem form, Page (the search answer), the JSON form of a decimal, the LIKE escape, suggest_free
+    // DB_PASSWORD (SQL Server). support.py: ApiError, the validation problems in the ASP.NET problem form, Page (the search answer), the JSON form of a decimal, the LIKE escape, the lookup's key list and take, suggest_free
     // (a free unique value for a clone) and the shape checks of the validators. main.py: the FastAPI app with every router (routes.routers), the error handlers and CORS for the front ends' dev servers.
     // Settings: DatabaseProvider, DatabaseServer, DatabaseName, DatabaseUser, ProjectTitle, Stacks.
     // ==========================================================================================
@@ -199,6 +199,25 @@ def escape_like(text: str) -> str:
 def contains(column, text: str):
     """A case-insensitive 'contains' test; the % and _ in the text mean themselves."""
     return column.ilike("%" + escape_like(text) + "%", escape="\\")
+
+
+def parse_keys(text: str, convert) -> list:
+    """The keys of a comma-separated list, the first 200 of them; a part that is not a key of the table's type is left out."""
+    keys = []
+    for part in text.split(",")[:200]:
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            keys.append(convert(part))
+        except ValueError:
+            pass
+    return keys
+
+
+def lookup_take(take: int | None) -> int:
+    """How many matches a lookup search lists: take (25 when left out), between 1 and 100."""
+    return max(1, min(25 if take is None else take, 100))
 
 
 def suggest_free(session, column, desired: str, max_length: int = 0) -> str:

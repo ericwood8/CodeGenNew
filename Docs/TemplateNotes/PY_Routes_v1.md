@@ -41,3 +41,7 @@ With `ApiAuth=true` the Python API signs people in like the ASP.NET one (`PY_Ess
 - **Checked:** generated from a SQLite file, run with uvicorn and driven over HTTP with real sign-ins (`Docs/Verification/Test-ApiSignIn.py`): 55 checks, the same as the Rust stack.
 
 **Roles** (`ReadRoles`, `TableReadRoles`, `WriteRoles`, `TableWriteRoles`, with `ApiAuth`): a table with a rule gets `READ_ROLES` and `WRITE_ROLES` tuples and its routes take `dependencies=[Depends(require_roles(...))]` (the Jwt group's `app/auth.py`): the list, one row and search read, create, update, delete and clone write; the lookup stays open. Another role gets 403 `role-not-allowed`; the administrator role is always listed. A project made before needs `--replace` of the Jwt essentials.
+
+## The lookup for a type-ahead
+
+`GET <route>/lookup` answers every row, or what a type-ahead asks for, as the ASP.NET API does: `?ids=1,2` keeps the rows with those keys (a part that is not a key of the table's type is left out, at most 200), `?search=text` keeps the first `take` rows (25 when left out, between 1 and 100) whose display column contains the text, ignoring case and with `%` and `_` meaning themselves (`contains` in support.py), and `?take=` alone limits the whole list. `ids` wins over `search`. A display column that is not text is cast to a string for the search. `parse_keys` and `lookup_take` are in support.py.

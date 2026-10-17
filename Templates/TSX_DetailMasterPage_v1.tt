@@ -122,6 +122,11 @@
             string req = c.IsNullable ? "" : " required";
             string change(string value) => $"change{method}(row, {{ {prop}: {value} }})";
             string number = "event.target.value === '' ? null : Number(event.target.value)";
+            if (child.EditTypeAhead(c))
+            {
+                string cellTs = IsNumber(c) ? "number" : "string";
+                return $"<TypeAheadBox<{cellTs}> label=\"{GridCaption.For(c, Labels.Field(c))}\" value={{row.{prop}}} names={{{childVar}{UpperFirst(prop)}Names}} find={{find{method}{UpperFirst(prop)}}} onChange={{(id) => {change("id")}}}{req} />";
+            }
             if (child.EditLookupOf(c) is not null)
                 return $"<select {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change(IsNumber(c) ? number : "event.target.value || null")}}}{req}><option value=\"\"></option>{{({childVar}Options['{prop}'] ?? []).map((p) => <option key={{p.id}} value={{p.id}}>{{p.name}}</option>)}}</select>";
             if (c.HasChoices)
@@ -160,7 +165,8 @@
         bool servedChild(ChildGrid ch) => odata && ch.KeyJson is not null && ODataPlan.ServesByName(ch.Table, Project);
         bool usesRequest = !odata || editableChildren.Count > 0 || gridChildren.Any(ch => ch.KeyJson is not null || ch.Lookups.Count > 0 || !servedChild(ch));
         if (gated) T($"import {{ useAuth }} from '../{apiFolder}/auth';");
-        T($"import {{ ApiError{(usesRequest ? ", request" : "")} }} from '../{apiFolder}/client';");
+        bool childAheads = editableChildren.Any(ch => ch.EditColumns.Any(ch.EditTypeAhead)) || gridChildren.Any(ch => ch.Lookups.Any(l => l.TypeAhead));   // an editable child's cell or a child grid's names asked of a parent with too many rows
+        T($"import {{ ApiError{(childAheads ? ", lookupQuery" : "")}{(usesRequest ? ", request" : "")} }} from '../{apiFolder}/client';");
         if (!nameActive) T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
         if (shown.Any(form.IsMoneyInput) || editableChildren.Any(ch => ch.EditColumns.Any(c => ch.IsMoneyInput(c))))
             T($"import {{ CurrencyInput }} from '../{componentsFolder}/CurrencyInput';");
@@ -197,7 +203,16 @@
             T($"import {{ ColumnPicker, loadColumns, {(odata ? "onlyShown, " : "")}saveColumns{(columnList.Any(c => c.Cut) ? ", shortText" : "")} }} from '../{componentsFolder}/gridColumns';");
             T($"import type {{ GridColumn }} from '../{componentsFolder}/gridColumns';");
         }
-        if (parents.Any(Ahead)) T($"import {{ {(anyBox ? "TypeAheadBox, " : "")}useLookupNames }} from '../{componentsFolder}/TypeAhead';");
+        {
+            bool editAheads = editableChildren.Any(ch => ch.EditColumns.Any(ch.EditTypeAhead));
+            bool gridAheads = gridChildren.Any(ch => ch.Lookups.Any(l => l.TypeAhead));
+            var aheadNames = new List<string>();
+            if (anyBox || editAheads) aheadNames.Add("TypeAheadBox");
+            if (gridAheads) aheadNames.Add("namesOf");
+            if (parents.Any(Ahead) || editAheads) aheadNames.Add("useLookupNames");
+            if (aheadNames.Count > 0) T($"import {{ {string.Join(", ", aheadNames)} }} from '../{componentsFolder}/TypeAhead';");
+            if (editAheads || gridAheads) T($"import type {{ {(editAheads ? "LookupFinder, " : "")}LookupRow }} from '../{componentsFolder}/TypeAhead';");
+        }
         foreach (var p in parents.Where(p => !p.IsSelf))
         {
             if (!p.UsesLookupEndpoint) T($"import type {{ {p.BaseName} }} from '../{modelsFolder}/{p.ModelFile}';");
@@ -387,8 +402,16 @@
         {
             // the rows of the form's own child list: plain objects the inputs edit, sent with the row (withChildren below)
             T($"  const [{child.Variable}Rows, set{child.Name}Rows] = useState<any[]>([]);");
-            if (child.EditColumns.Any(c => child.EditLookupOf(c) is not null))
+            if (child.EditColumns.Any(c => child.EditLookupOf(c) is not null && !child.EditTypeAhead(c)))
                 T($"  const [{child.Variable}Options, set{child.Name}Options] = useState<Record<string, {{ id: any; name: string }}[]>>({{}});");
+            foreach (var c in child.EditColumns.Where(child.EditTypeAhead))
+            {
+                // a parent with too many rows for a drop-down: each row's cell is a box that finds the parent by what is typed in it
+                string cellTs = IsNumber(c) ? "number" : "string";
+                string cellName = child.Name + UpperFirst(JsonNames.Camel(c.Name));
+                T($"  const find{cellName}: LookupFinder<{cellTs}> = (query) => request<LookupRow<{cellTs}>[]>('{apiPrefix}/{ScreenNames.ApiRoute(child.EditLookupOf(c)!.ReferencedTable)}/lookup' + lookupQuery(query));");
+                T($"  const {child.Variable}{UpperFirst(JsonNames.Camel(c.Name))}Names = useLookupNames<{cellTs}>(find{cellName});");
+            }
         }
         T();
         // The sort (like the filters) is read from state by default; a change passes its new value explicitly because state is not updated yet.
@@ -440,7 +463,7 @@
             T($"    {ReactNames.ApiVar(p.Table)}.{p.LoadMethod}().then({ReactNames.SetList(ReactNames.ParentList(p))}).catch(() => {{}});");
         foreach (var child in editableChildren)
             foreach (var c in child.EditColumns)
-                if (child.EditLookupOf(c) is { } lookup)
+                if (child.EditLookupOf(c) is { } lookup && !child.EditTypeAhead(c))
                     T($"    request<any[]>('{apiPrefix}/{ScreenNames.ApiRoute(lookup.ReferencedTable)}/lookup').then((items) => set{child.Name}Options((options) => ({{ ...options, {JsonNames.Camel(c.Name)}: items.map((i) => ({{ id: i['id'], name: String(i['name'] ?? '') }})) }}))).catch(() => {{}});");
         if (form.Guards.Count > 0) T($"    {apiVar}.getGuards().then(setGuards).catch(() => {{}});");
         T("    const openId = searchParams.get('edit');");
@@ -719,7 +742,9 @@
             }
             T($"      set{child.Name}Rows(filtered);");
             T($"      set{child.Name}Columns(filtered.length > 0 ? orderColumns(Object.keys(filtered[0]), {child.Variable}Hidden) : []);");
-            foreach (var lookup in child.Lookups)
+            foreach (var lookup in child.Lookups.Where(l => l.TypeAhead))
+                T($"      namesOf((query) => request<LookupRow[]>('{apiPrefix}/{ScreenNames.ApiRoute(lookup.ParentTable)}/lookup' + lookupQuery(query)), filtered.map((r) => r['{lookup.ColumnJson}'])).then((found) => set{child.Name}Names((names) => ({{ ...names, {lookup.ColumnJson}: found }}))).catch(() => {{}});");
+            foreach (var lookup in child.Lookups.Where(l => !l.TypeAhead))
                 T($"      request<any[]>('{apiPrefix}/{lookup.WebRoute}').then((items) => set{child.Name}Names((names) => ({{ ...names, {lookup.ColumnJson}: Object.fromEntries(items.map((i) => [String(i['{lookup.WebKey}']), String(i['{lookup.WebDisplay}'] ?? '')])) }}))).catch(() => {{}});");
             T("    }).catch(() => {});");
             T("  };");

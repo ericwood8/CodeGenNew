@@ -9,3 +9,7 @@
 - All the SQL comes from `RustTable` in Core, which reads `SearchPlan`, `SearchSort`, `CloneShape` and `DialectInfo`, so a Rust dashboard or a Rust UI would read the same plan.
 - **Checked** on all three databases with `Test-ApiCrud.ps1` (create, read, update, list, delete), `Test-OpenApiRoutes.ps1` (every path of the OpenAPI document answers and every schema property is in the JSON), and by hand: clone, search with `%` in the value, a sort by a foreign key, a delete of a row in use (400), an enum and a money column round trip.
 - **Not done:** junction (many-to-many) endpoints, a Rust `AccessMode` setting (a Rust API never uses routines), and caching.
+
+## The lookup for a type-ahead
+
+`lookup(pool, &LookupQuery)` builds the statement from `LOOKUP_BASE` (the select up to `WHERE 1 = 1`) with a `QueryBuilder`: `ids` adds `AND <key> IN (...)` with each key bound (a part that is not a key of the table's type is left out, at most 200; no usable key adds `AND 1 = 0`), `search` adds the dialect's case-insensitive "contains" test on the name expression with the text bound through `escape_like`, and the list is ordered by the name expression. `take` (25 when left out, between 1 and 100) limits a search or a call that names it; `ids` is never limited and wins over `search`. `RustTable.LookupBase`, `LookupOrder`, `LookupKey`, `LookupBefore` and `LookupAfter` hold the pieces; `LookupSql` is still the whole-list statement.

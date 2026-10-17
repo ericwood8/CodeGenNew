@@ -197,6 +197,12 @@ public class PythonTests
             Expect.Contains(routes, "@router.get(\"/api/customers/lookup\")");
             Expect.Contains(routes, "statement = select(Customer.customer_id, Customer.account_number).order_by(Customer.account_number)");
             Expect.Contains(routes, "return [{\"id\": row_id, \"name\": name or \"\", \"isActive\": None} for row_id, name in rows]");
+            Expect.Contains(routes, "def lookup(search: str | None = None, ids: str | None = None, take: int | None = None, session: Session = Depends(get_session)):");
+            Expect.Contains(routes, "statement = statement.where(Customer.customer_id.in_(parse_keys(ids, int)))");
+            Expect.Contains(routes, "statement = statement.where(contains(Customer.account_number, search.strip()))");
+            Expect.Contains(routes, "statement = statement.limit(lookup_take(take))");
+            Expect.Contains(routes, "from app.support import ApiError, Page, contains, lookup_take, parse_keys, suggest_free");
+            Expect.Contains(files["Shop.Python/app/support.py"], "def parse_keys(text: str, convert) -> list:");
             Assert.IsLessThan(routes.IndexOf("@router.get(\"/api/customers/{id}\"", StringComparison.Ordinal), routes.IndexOf("/api/customers/lookup", StringComparison.Ordinal), "a literal route comes before the one with the key");
             Expect.Contains(files["Shop.Python/app/routes/__init__.py"], "routers = [");
             Expect.Contains(files["Shop.Python/app/routes/__init__.py"], "    customer.router,");

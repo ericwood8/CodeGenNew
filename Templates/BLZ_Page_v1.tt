@@ -98,7 +98,7 @@
                 var lookups = g.Lookups
                     .Select(l => (Column: l.ColumnName, Prop: l.Column!.CSharpName(), Label: l.Label, Type: BlazorNames.TypeName(l.ParentTable), Field: BlazorNames.ChildLookupField(l.ParentTable),
                                   IdType: l.Column!.CSharpBase(), KeyProp: l.UsesLookupEndpoint ? "Id" : l.ParentKeyName, DisplayProp: l.UsesLookupEndpoint ? "Name" : l.ParentDisplayName,
-                                  ItemType: l.UsesLookupEndpoint ? BlazorNames.LookupType(l.ParentTable) : BlazorNames.TypeName(l.ParentTable), Load: l.UsesLookupEndpoint ? "GetLookupAsync" : "GetAllAsync"))
+                                  ItemType: l.UsesLookupEndpoint ? BlazorNames.LookupType(l.ParentTable) : BlazorNames.TypeName(l.ParentTable), Load: l.UsesLookupEndpoint ? "GetLookupAsync" : "GetAllAsync", TypeAhead: l.TypeAhead))
                     .ToList();
                 var columns = g.Link.ReferencingTableColumns
                     .Where(c => !g.HiddenColumns.Contains(c.Name, StringComparer.OrdinalIgnoreCase) && !c.IsCredentialColumn && HasInput(c))
@@ -523,7 +523,7 @@
         L("    {");
         foreach (var p in parents.Where(p => !Ahead(p)))
             L($"        try {{ {BlazorNames.LookupField(p)} = await {BlazorNames.LookupField(p)}Client.{BlazorNames.LoadCall(p)}(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
-        foreach (var l in childLookups)
+        foreach (var l in childLookups.Where(l => !l.TypeAhead))   // a parent with too many rows is asked for the names of the keys the child rows show (Know...Async)
             L($"        try {{ {l.Field} = await {l.Field}Client.{l.Load}(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
         if (form.Guards.Count > 0)
             L("        try { guards = await Client.GetGuardsAsync(); } catch (Exception ex) when (ex is ApiException or HttpRequestException) { }");
@@ -768,6 +768,17 @@
             L("        await SearchAsync();");
             L("    }");
         }
+        foreach (var l in childLookups.Where(l => l.TypeAhead))
+        {
+            L();
+            L($"    private async Task Know{l.Field}Async(IEnumerable<{l.IdType}> ids)");
+            L("    {");
+            L($"        var missing = ids.Distinct().Where(id => !{l.Field}.Any(p => Equals(p.{l.KeyProp}, id))).ToList();");
+            L("        if (missing.Count == 0)");
+            L("            return;");
+            L($"        try {{ {l.Field}.AddRange(await {l.Field}Client.GetLookupAsync(ids: missing)); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
+            L("    }");
+        }
         foreach (var l in childLookups)
         {
             L();
@@ -835,9 +846,13 @@
             L("        if (row is null) return;");
             L("        var rowKey = row.§K;");
             foreach (var ch in children)
+            {
                 L(ch.Served
                     ? $"        try {{ {ch.Var}Rows = await {ch.Var}Client.GetWhereAsync(\"{ch.FkJson}\", rowKey); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ {ch.Var}Rows = []; }}"
                     : $"        try {{ {ch.Var}Rows = (await {ch.Var}Client.GetAllAsync()).Where(line => line.{ch.FkProp} == rowKey).ToList(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ {ch.Var}Rows = []; }}");
+                foreach (var l in ch.Lookups.Where(l => l.TypeAhead))
+                    L($"        await Know{l.Field}Async({ch.Var}Rows.Select(r => r.{l.Prop}).OfType<{l.IdType}>());");
+            }
             L("    }");
             foreach (var ch in children)
             {

@@ -67,7 +67,7 @@ public record TypeAheadOption<TValue>(TValue Id, string Name);
    OnPick with it. Typing calls OnPick with null (nothing is chosen any more), and leaving the box without a pick empties it. Name is the text of the chosen key. *@
 <div class="type-ahead">
     <input id="@Id" type="text" role="combobox" aria-autocomplete="list" aria-expanded="@(open ? "true" : "false")" aria-label="@Label" placeholder="@Placeholder" autocomplete="off"
-           required="@Required" value="@(typed ?? Name)" @oninput="TypeAsync" @onblur="Leave" />
+           required="@Required" pattern="@Unpicked" title="@(Unpicked is null ? null : "Pick one of the matches.")" value="@(typed ?? Name)" @oninput="TypeAsync" @onblur="Leave" />
     @if (open)
     {
         <ul class="type-ahead-list" role="listbox">
@@ -92,6 +92,9 @@ public record TypeAheadOption<TValue>(TValue Id, string Name);
     private IReadOnlyList<TypeAheadOption<TValue>> options = [];
     private bool open;
     private CancellationTokenSource? pause;
+
+    // Text typed and not picked is not an answer, and the browser's required check sees a filled box: a pattern only an empty box matches fails it until a row is picked.
+    private string? Unpicked => Required && !string.IsNullOrWhiteSpace(typed) ? "^$" : null;
 
     private async Task TypeAsync(ChangeEventArgs args)
     {
