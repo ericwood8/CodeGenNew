@@ -159,7 +159,7 @@
                 if (multiline) B("    [DataType(DataType.MultilineText)]");
                 else if (c.Name.ContainsIgnoreCase("Phone")) B("    [DataType(DataType.PhoneNumber)]");
             }
-            else if (c.SqlType == SqlDbType.Timestamp)
+            else if (c.IsRowVersionColumn)
             {
                 B("    [Timestamp]");
             }
@@ -177,7 +177,7 @@
             }
             if (hashColumn is not null && c.Name.EqualsIgnoreCase(hashColumn)) B("    [System.Text.Json.Serialization.JsonIgnore]");
             if (ColumnAttribute(c, columnType) is { } columnAttribute) B(columnAttribute);
-            bool needsRequired = !c.IsNullable && !c.IsComputed && !c.IsIdentity && c.SqlType != SqlDbType.Timestamp;
+            bool needsRequired = !c.IsNullable && !c.IsComputed && !c.IsIdentity && !c.IsRowVersionColumn;
             // the constructor below says the required members are set, which the nullable analysis does not believe for a string or a byte array
             if (initializer.Length == 0) initializer = CSharpText.NotNullInitializer(c);
             B($"    public {(needsRequired ? "required " : "")}{ClrType(c)} {Id(c)} {{ get; set; }}{initializer}");

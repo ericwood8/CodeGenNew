@@ -54,7 +54,7 @@ public static class CloneEf
         string? Value(ColumnModel c)
         {
             if (c.IsPrimaryKey) return null;   // the database assigns it
-            if (c.IsCreateDateColumn || c.IsLastChangedDateColumn)
+            if (c.IsInsertStampColumn)
                 return c.CSharpBase() switch { "DateTime" => "DateTime.Now", "DateTimeOffset" => "DateTimeOffset.Now", _ => null };
             if (c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsInactiveReasonColumn || c == inactiveDate || (m.HasSoftDelete && c == m.DeletedDateColumn))
                 return null;   // a new row has nothing to put here

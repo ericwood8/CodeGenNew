@@ -19,8 +19,8 @@ public static class DtoShape
         string? hash = project is null ? null : UserTable.PlanOf(table, project)?.PasswordHash.Name;
         return table.Columns.OrderBy(c => c.OrdinalPosition)
             .Where(c => hash is null || !c.Name.EqualsIgnoreCase(hash))
-            .Where(c => !c.IsComputed && c.SqlType != SqlDbType.Timestamp
-                        && !c.IsAuditColumn && !c.IsCreateDateColumn && !c.IsCreateUserColumn && !c.IsModifiedDateColumn && !c.IsModifiedUserColumn && !c.IsLastChangedDateColumn
+            .Where(c => !c.IsComputed && !c.IsRowVersionColumn
+                        && !c.IsAuditColumn && !c.IsStampColumn
                         && !(c.IsPrimaryKey && c.IsIdentity))
             .ToList();
     }

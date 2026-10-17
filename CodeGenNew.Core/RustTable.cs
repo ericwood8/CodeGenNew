@@ -335,7 +335,7 @@ public sealed class RustTable
                 continue;
 
             string? value;
-            if (column.IsCreateDateColumn || column.IsLastChangedDateColumn)
+            if (column.IsInsertStampColumn)
                 value = column.IsDateColumn ? _di.CurrentTimestamp : null;
             else if (column.IsModifiedDateColumn || column.IsModifiedUserColumn || column.IsInactiveReasonColumn || column == inactiveDate || (m.HasSoftDelete && column == m.DeletedDateColumn))
                 value = "NULL";

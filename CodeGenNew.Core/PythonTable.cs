@@ -203,7 +203,7 @@ public sealed class PythonTable
                 continue;
 
             string? value;
-            if (column.IsCreateDateColumn || column.IsLastChangedDateColumn)
+            if (column.IsInsertStampColumn)
                 value = column.IsDateColumn ? (column.SqlType == SqlDbType.Date ? "date.today()" : "datetime.now()") : null;
             else if (column.IsModifiedDateColumn || column.IsModifiedUserColumn || column.IsInactiveReasonColumn || column == inactiveDate || (m.HasSoftDelete && column == m.DeletedDateColumn))
                 value = "None";

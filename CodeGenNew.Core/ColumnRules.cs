@@ -26,8 +26,7 @@ public sealed record ColumnRule
 public static class ColumnRules
 {
     /// <summary> Columns the database or the repository fills in, so a person is never asked for them. </summary>
-    public static bool IsSystemFilled(this ColumnModel column) => column.IsIdentity || column.IsComputed || column.IsAuditColumn || column.IsCreateDateColumn
-        || column.IsCreateUserColumn || column.IsModifiedDateColumn || column.IsModifiedUserColumn || column.IsLastChangedDateColumn;
+    public static bool IsSystemFilled(this ColumnModel column) => column.IsIdentity || column.IsComputed || column.IsAuditColumn || column.IsStampColumn;
 
     /// <summary> The rule for a column, or null when the schema says nothing about it or the system fills it in. A decimal or float keeps to its CHECK range, and failing that a latitude or
     /// longitude by name keeps to its degrees; a whole number keeps to the range its name or CHECK suggests. A text column the project lists in <c>PlainTextColumns</c> gets no format

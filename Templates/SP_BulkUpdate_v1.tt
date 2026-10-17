@@ -33,7 +33,7 @@
         string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
         string L(string text) => "'" + text.Replace("'", "''") + "'";
         bool Rewritable(ColumnModel c) => !c.IsComputed && !c.IsIdentity && !c.IsPrimaryKey
-            && !c.SqlTypeDeclaration.EqualsIgnoreCase("rowversion") && c.SqlType != SqlDbType.Timestamp;
+            && !c.IsRowVersionColumn;
 
         var targets = new List<(TableModel Table, ColumnModel Column)>();
         foreach (var table in Database.Tables.OrderBy(t => t.SchemaName, StringComparer.OrdinalIgnoreCase).ThenBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))

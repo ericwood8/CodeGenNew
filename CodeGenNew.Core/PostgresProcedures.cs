@@ -73,8 +73,8 @@ public static class PostgresProcedures
             .Where(c => c != m.InactiveDateColumn).ToList();
         bool singleIdentityKey = m.PrimaryKeyColumns.Count == 1 && m.PrimaryKeyColumns[0].IsIdentity;
         var identity = singleIdentityKey ? m.PrimaryKeyColumns[0] : null;
-        var parameterColumns = insertable.Where(c => c != identity && !c.IsCreateDateColumn && !c.IsLastChangedDateColumn && c != m.ActiveColumn).ToList();
-        var autoTouched = m.Columns.Where(c => c.IsCreateDateColumn || c.IsLastChangedDateColumn).ToList();
+        var parameterColumns = insertable.Where(c => c != identity && !c.IsInsertStampColumn && c != m.ActiveColumn).ToList();
+        var autoTouched = m.Columns.Where(c => c.IsInsertStampColumn).ToList();
 
         var pairs = parameterColumns.Select(c => (Name: c.DbName, Value: Trimmed(c, P(c))))
             .Concat(autoTouched.Select(c => (Name: c.DbName, Value: "now()"))).ToList();
@@ -111,7 +111,7 @@ public static class PostgresProcedures
     public static string Update(TableModel m, ProjectSettings? project = null)
     {
         var updatable = m.Columns
-            .Where(c => !c.IsComputed && !c.IsCreateDateColumn && !c.IsCreateUserColumn && !c.IsModifiedDateColumn && !c.IsLastChangedDateColumn).ToList();
+            .Where(c => !c.IsComputed && !c.IsLeftOutOfUpdate).ToList();
         var setColumns = updatable.Where(c => !c.IsPrimaryKey && c != m.ActiveColumn).ToList();
         var autoTouched = m.Columns.Where(c => c.IsModifiedDateColumn || c.IsLastChangedDateColumn).ToList();
 
@@ -155,7 +155,7 @@ public static class PostgresProcedures
     {
         var identityKey = m.PrimaryKeyColumns.FirstOrDefault(c => c.IsIdentity);
         var parameterColumns = m.Columns
-            .Where(c => !c.IsComputed && !c.IsCreateDateColumn && !c.IsModifiedDateColumn && !c.IsLastChangedDateColumn && (!c.IsIdentity || c.IsPrimaryKey)).ToList();
+            .Where(c => !c.IsComputed && !c.IsAuditDateColumn && (!c.IsIdentity || c.IsPrimaryKey)).ToList();
         var pk = m.PrimaryKeyColumns;
         bool hasActive = m.HasActiveInactivePair && m.ActiveColumn is not null;
         var active = hasActive ? m.ActiveColumn : null;
@@ -179,7 +179,7 @@ public static class PostgresProcedures
         var insertPairs = parameterColumns
             .Where(c => c != identityKey && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn && !c.IsModifiedUserColumn && c != m.InactiveDateColumn && c != active)
             .Select(c => (Name: c.DbName, Value: P(c))).ToList();
-        foreach (var c in m.Columns.Where(c => !c.IsComputed && (c.IsCreateDateColumn || c.IsLastChangedDateColumn)))
+        foreach (var c in m.Columns.Where(c => !c.IsComputed && c.IsInsertStampColumn))
             insertPairs.Add((c.DbName, "now()"));
         if (active is not null)
             insertPairs.Add((active.DbName, Flag(active, !negative)));
@@ -251,10 +251,7 @@ public static class PostgresProcedures
         var active = hasActive ? m.ActiveColumn : null;
         var inactiveDate = hasActive ? m.InactiveDateColumn : null;
         bool negative = active is not null && active.IsInactive;
-        bool IsRule(ColumnModel c) =>
-            c.IsCreateDateColumn || c.IsLastChangedDateColumn || c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsCreateUserColumn
-            || c.IsInactiveReasonColumn || c.IsAdminFlagColumn || c == active || c == inactiveDate
-            || (m.HasSoftDelete && (c == m.IsDeletedColumn || c == m.DeletedDateColumn));
+        bool IsRule(ColumnModel c) => CloneShape.IsRuleColumn(m, c);
 
         var copyable = m.Columns.Where(c => !c.IsComputed && !c.IsIdentity).ToList();
         var createUsers = copyable.Where(c => c.IsCreateUserColumn).ToList();
@@ -266,7 +263,7 @@ public static class PostgresProcedures
             string source = $"{Q("src")}.{Q(c.DbName)}";
             if (c.IsPrimaryKey)
                 pairs.Add((c.DbName, IsGenerated(c) ? "v_new_key" : Trimmed(c, NewKey(c))));
-            else if (c.IsCreateDateColumn || c.IsLastChangedDateColumn)
+            else if (c.IsInsertStampColumn)
                 pairs.Add((c.DbName, "now()"));
             else if (c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsInactiveReasonColumn || c == inactiveDate || (m.HasSoftDelete && c == m.DeletedDateColumn))
                 continue; // a new row has nothing to put here: left at the column's default (normally NULL)
@@ -330,7 +327,7 @@ public static class PostgresProcedures
         var identity = loadColumns.FirstOrDefault(c => c.IsIdentity);
         string table = Table(m);
         int Index(ColumnModel c) => m.Columns.IndexOf(c);
-        string Value(object?[] row, ColumnModel c) => c.IsCreateDateColumn || c.IsLastChangedDateColumn ? "now()" : PostgresLiteral.Format(c, row[Index(c)]);
+        string Value(object?[] row, ColumnModel c) => c.IsInsertStampColumn ? "now()" : PostgresLiteral.Format(c, row[Index(c)]);
         string columnList = string.Join(", ", loadColumns.Select(c => Q(c.DbName)));
         string conflict = m.PrimaryKeyColumns.Count > 0 ? $" ON CONFLICT ({string.Join(", ", m.PrimaryKeyColumns.Select(k => Q(k.DbName)))}) DO NOTHING" : "";
 

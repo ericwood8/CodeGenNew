@@ -35,6 +35,7 @@ public static class SqlTypeClassifier
         "varbinary" => SqlDbType.VarBinary,
         "image" => SqlDbType.Image,
         "uniqueidentifier" => SqlDbType.UniqueIdentifier,
+        "timestamp" or "rowversion" => SqlDbType.Timestamp,
         "xml" => SqlDbType.Xml,
         "sql_variant" => SqlDbType.Variant,
         _ => SqlDbType.Variant

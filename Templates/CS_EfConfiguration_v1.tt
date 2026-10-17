@@ -81,7 +81,7 @@
             }
             if (columnType is not null)
                 chain.Insert(c.DatabaseName is not null ? 1 : 0, $".HasColumnType({CSharpText.Quote(columnType)})");
-            if (c.SqlType == SqlDbType.Timestamp)
+            if (c.IsRowVersionColumn)
                 chain.Add(".IsRowVersion()");
             else if (c.IsComputed)
                 chain.Add(".ValueGeneratedOnAddOrUpdate()");

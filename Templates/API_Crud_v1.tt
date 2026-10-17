@@ -102,7 +102,7 @@
         c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
     var sortColumn = nameActive ? null : Model.Columns
         .Where(c => IsSortableDate(c) && !c.IsNullable && !c.IsComputed && !c.IsAuditColumn
-                    && !c.IsCreateDateColumn && !c.IsModifiedDateColumn && !c.IsLastChangedDateColumn)
+                    && !c.IsAuditDateColumn)
         .OrderBy(c => c.OrdinalPosition)
         .FirstOrDefault();
 

@@ -28,8 +28,7 @@
     var auditNames = new[] { "AuditId", "AuditAction", "AuditDate", "AuditUser" };
 
     bool Unreadable(ColumnModel c) => c.IsComputed
-        || (dialect == SqlDialect.SqlServer && (c.SqlType is SqlDbType.Text or SqlDbType.NText or SqlDbType.Image or SqlDbType.Timestamp
-            || c.SqlTypeDeclaration.EqualsIgnoreCase("rowversion")));
+        || (dialect == SqlDialect.SqlServer && (c.SqlType is SqlDbType.Text or SqlDbType.NText or SqlDbType.Image || c.IsRowVersionColumn));
     var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).Where(c => !Unreadable(c)).ToList();
 
     if (!Model.IsAuditTable)

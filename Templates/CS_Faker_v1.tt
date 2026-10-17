@@ -34,8 +34,7 @@
     else
     {
         string Id(ColumnModel c) => c.CSharpName();
-        bool Skipped(ColumnModel c) => (c.IsIdentity && c.IsPrimaryKey) || c.IsComputed || c.IsAuditColumn || c.IsCreateDateColumn || c.IsCreateUserColumn
-            || c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsLastChangedDateColumn;
+        bool Skipped(ColumnModel c) => (c.IsIdentity && c.IsPrimaryKey) || c.IsComputed || c.IsAuditColumn || c.IsStampColumn;
         var foreignKeyColumns = Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1).Select(f => f.ReferencingColumns[0]).ToHashSet(StringComparer.OrdinalIgnoreCase);
         string tableWords = Model.TableName.ToLowerInvariant();
 

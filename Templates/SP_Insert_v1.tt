@@ -31,7 +31,7 @@
     // Full notes: Docs/TemplateNotes/SP_Insert_v1.md
 
     var insertableColumns = Model.Columns
-        .Where(c => !c.IsComputed && !c.IsModifiedDateColumn && !c.IsModifiedUserColumn && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn)
+        .Where(c => !c.IsComputed && !c.IsRowVersionColumn && !c.IsModifiedDateColumn && !c.IsModifiedUserColumn && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn)
         .Where(c => c != Model.InactiveDateColumn)
         .ToList();
 
@@ -50,10 +50,10 @@
     }
 
     var parameterColumns = insertableColumns
-        .Where(c => c != identityColumn && c != sequenceKey && !c.IsCreateDateColumn && !c.IsLastChangedDateColumn && c != Model.ActiveColumn)
+        .Where(c => c != identityColumn && c != sequenceKey && !c.IsInsertStampColumn && c != Model.ActiveColumn)
         .ToList();
 
-    var autoTouchedOnInsertColumns = Model.Columns.Where(c => c.IsCreateDateColumn || c.IsLastChangedDateColumn).ToList();
+    var autoTouchedOnInsertColumns = Model.Columns.Where(c => c.IsInsertStampColumn).ToList();
 
     string ValueExpression(ColumnModel c) =>
         c.IsStringColumn ? $"LTRIM(RTRIM({c.ParameterName}))" : c.ParameterName;

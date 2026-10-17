@@ -30,16 +30,13 @@
     // SQL Server procedure, PostgreSQL function or MySQL procedure, by the source database.
     // Full notes: Docs/TemplateNotes/SP_Save_v1.md
 
-    bool IsRowVersion(ColumnModel c) =>
-        c.SqlTypeDeclaration.EqualsIgnoreCase("timestamp") ||
-        c.SqlTypeDeclaration.EqualsIgnoreCase("rowversion");
 
     // A single identity key (or an identity column inside a composite key) is the OUTPUT parameter.
     var identityKey = Model.PrimaryKeyColumns.FirstOrDefault(c => c.IsIdentity);
 
     var parameterColumns = Model.Columns
-        .Where(c => !c.IsComputed && !IsRowVersion(c)
-                    && !c.IsCreateDateColumn && !c.IsModifiedDateColumn && !c.IsLastChangedDateColumn
+        .Where(c => !c.IsComputed && !c.IsRowVersionColumn
+                    && !c.IsAuditDateColumn
                     && (!c.IsIdentity || c.IsPrimaryKey))
         .ToList();
 
@@ -88,7 +85,7 @@
                     && c != Model.InactiveDateColumn && c != activeCol)
         .Select(c => (Name: c.Name, Value: c.ParameterName))
         .ToList();
-    foreach (var c in Model.Columns.Where(c => !c.IsComputed && (c.IsCreateDateColumn || c.IsLastChangedDateColumn)))
+    foreach (var c in Model.Columns.Where(c => !c.IsComputed && c.IsInsertStampColumn))
         insertPairs.Add((c.Name, "GETDATE()"));
     if (activeCol is not null)
         insertPairs.Add((activeCol.Name, activeLiteral));

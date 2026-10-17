@@ -7,23 +7,18 @@ namespace CodeGenNew.Core;
 public static class CloneShape
 {
 
-    // SQL Server's timestamp is a row version the database sets; in PostgreSQL, MySQL and SQLite a timestamp is an ordinary date and time
-    private static bool IsRowVersion(TableModel m, ColumnModel c) =>
-        m.Dialect == SqlDialect.SqlServer
-        && (c.SqlTypeDeclaration.EqualsIgnoreCase("timestamp") || c.SqlTypeDeclaration.EqualsIgnoreCase("rowversion"));
-
     // A column the clone sets by rule (a create date, the active flag, the deleted flag ...), not by copying or overriding the source's value.
-    private static bool IsRuleColumn(TableModel m, ColumnModel c)
+    public static bool IsRuleColumn(TableModel m, ColumnModel c)
     {
         var active = m.HasActiveInactivePair ? m.ActiveColumn : null;
         var inactiveDate = m.HasActiveInactivePair ? m.InactiveDateColumn : null;
-        return c.IsCreateDateColumn || c.IsLastChangedDateColumn || c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsCreateUserColumn
+        return c.IsStampColumn
             || c.IsInactiveReasonColumn || c.IsAdminFlagColumn || c == active || c == inactiveDate
             || (m.HasSoftDelete && (c == m.IsDeletedColumn || c == m.DeletedDateColumn));
     }
 
     /// <summary> The columns a clone writes: everything except computed, row version and identity columns. </summary>
-    public static IEnumerable<ColumnModel> Copyable(TableModel m) => m.Columns.Where(c => !c.IsComputed && !IsRowVersion(m, c) && !c.IsIdentity);
+    public static IEnumerable<ColumnModel> Copyable(TableModel m) => m.Columns.Where(c => !c.IsComputed && !c.IsRowVersionColumn && !c.IsIdentity);
 
     /// <summary> The columns that record who created the row: a parameter of the clone routine (who is cloning it). </summary>
     public static List<ColumnModel> CreateUserColumns(TableModel m) => Copyable(m).Where(c => c.IsCreateUserColumn).ToList();

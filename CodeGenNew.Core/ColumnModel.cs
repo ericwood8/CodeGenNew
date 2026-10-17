@@ -156,10 +156,27 @@ public class ColumnModel
     /// unconditionally, same as IsModifiedDateColumn. </summary>
     public bool IsLastChangedDateColumn { get; init; }
 
+    /// <summary> SQL Server's timestamp (rowversion): a value the database sets on every write, never copied or supplied. In PostgreSQL, MySQL and SQLite a timestamp is an ordinary date and time, which
+    /// their schema readers map to a date type, so this is false for it. </summary>
+    public bool IsRowVersionColumn => SqlType == System.Data.SqlDbType.Timestamp;
+
+    /// <summary> A column of one of the five stamp categories of SpecialLogicColumns.config (CreateDate, CreateUser, ModifiedDate, ModifiedUser, LastChangedDate): who made the row and when it
+    /// changed. This is the one list of them; code asks here instead of repeating the five flags. </summary>
+    public bool IsStampColumn => IsCreateDateColumn || IsCreateUserColumn || IsModifiedDateColumn || IsModifiedUserColumn || IsLastChangedDateColumn;
+
+    /// <summary> A date the routines write themselves on an insert (CreateDate, LastChangedDate): never a parameter, set to the current time. </summary>
+    public bool IsInsertStampColumn => IsCreateDateColumn || IsLastChangedDateColumn;
+
+    /// <summary> A date column of the audit trail (CreateDate, ModifiedDate, LastChangedDate): the routines set it, a caller never supplies it. </summary>
+    public bool IsAuditDateColumn => IsCreateDateColumn || IsModifiedDateColumn || IsLastChangedDateColumn;
+
+    /// <summary> A stamp column an update never takes from the caller: the creation date and user are kept, the modified and last-changed dates are set by the routine. (The modified-by user is the caller's.) </summary>
+    public bool IsLeftOutOfUpdate => IsStampColumn && !IsModifiedUserColumn;
+
     /// <summary> Who made the row and when it last changed (CreateDate, CreateUser, ModifiedDate, ModifiedBy, LastDateChanged ...): the system writes them, so a form shows them as text
     /// (a label with the value) and never as a box a person can change. </summary>
     public bool IsSystemStampColumn =>
-        IsCreateDateColumn || IsCreateUserColumn || IsModifiedDateColumn || IsModifiedUserColumn || IsLastChangedDateColumn
+        IsStampColumn
         || (IsAuditColumn && Array.Exists(StampNameStarts, s => Name.StartsWithIgnoreCase(s)));
 
     private static readonly string[] StampNameStarts = ["Create", "Modif", "Updated", "LastChang", "LastUpdat"];

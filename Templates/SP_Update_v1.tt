@@ -30,7 +30,7 @@
     // Full notes: Docs/TemplateNotes/SP_Update_v1.md
 
     var updatableColumns = Model.Columns
-        .Where(c => !c.IsComputed && !c.IsCreateDateColumn && !c.IsCreateUserColumn && !c.IsModifiedDateColumn && !c.IsLastChangedDateColumn)
+        .Where(c => !c.IsComputed && !c.IsRowVersionColumn && !c.IsLeftOutOfUpdate)
         .ToList();
     // The active-flag column stays a parameter (so a caller can still reactivate a record) but is
     // excluded from the automatic per-column SET loop below - it's handled by a single IF/ELSE IF

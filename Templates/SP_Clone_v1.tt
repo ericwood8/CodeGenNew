@@ -30,9 +30,6 @@
     // function or MySQL procedure, by the source database.
     // Full notes: Docs/TemplateNotes/SP_Clone_v1.md
 
-    bool IsRowVersion(ColumnModel c) =>
-        c.SqlTypeDeclaration.EqualsIgnoreCase("timestamp") ||
-        c.SqlTypeDeclaration.EqualsIgnoreCase("rowversion");
     string Q(string identifier) => "[" + identifier.Replace("]", "]]") + "]";
 
     string table = $"{Q(Model.SchemaName)}.{Q(Model.TableName)}";
@@ -52,12 +49,9 @@
     string Literal(ColumnModel c, string value) => c.IsStringColumn ? $"'{value}'" : value;
 
     // Columns a clone handles by rule rather than by copying (or overriding) the source's value.
-    bool IsRuleColumn(ColumnModel c) =>
-        c.IsCreateDateColumn || c.IsLastChangedDateColumn || c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsCreateUserColumn
-        || c.IsInactiveReasonColumn || c.IsAdminFlagColumn || c == activeColumn || c == inactiveDateColumn
-        || (Model.HasSoftDelete && (c == Model.IsDeletedColumn || c == Model.DeletedDateColumn));
+    bool IsRuleColumn(ColumnModel c) => CloneShape.IsRuleColumn(Model, c);
 
-    var copyable = Model.Columns.Where(c => !c.IsComputed && !IsRowVersion(c) && !c.IsIdentity).ToList();
+    var copyable = Model.Columns.Where(c => !c.IsComputed && !c.IsRowVersionColumn && !c.IsIdentity).ToList();
     var createUserColumns = copyable.Where(c => c.IsCreateUserColumn).ToList();
     var overrideColumns = copyable
         .Where(c => c.IsInUniqueIndex && !c.IsPrimaryKey && !IsRuleColumn(c) && !c.IsLargeTextColumn)
@@ -73,7 +67,7 @@
         string source = $"[src].{Q(c.Name)}";
         if (c.IsPrimaryKey)
             pairs.Add((c.Name, Trimmed(c, NewKeyParameter(c))));
-        else if (c.IsCreateDateColumn || c.IsLastChangedDateColumn)
+        else if (c.IsInsertStampColumn)
             pairs.Add((c.Name, "GETDATE()"));
         else if (c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsInactiveReasonColumn || c == inactiveDateColumn
                  || (Model.HasSoftDelete && c == Model.DeletedDateColumn))

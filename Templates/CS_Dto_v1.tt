@@ -50,8 +50,7 @@
     var required = columns.Where(c => !c.IsNullable).ToList();
     var optional = columns.Where(c => c.IsNullable).ToList();
     // the columns whose change makes a copy "effectively modified": not the key, an identity, a computed column or an audit / create / modify column
-    var meaningful = columns.Where(c => !c.IsPrimaryKey && !c.IsIdentity && !c.IsComputed && !c.IsAuditColumn && !c.IsCreateDateColumn && !c.IsCreateUserColumn
-        && !c.IsModifiedDateColumn && !c.IsModifiedUserColumn && !c.IsLastChangedDateColumn).ToList();
+    var meaningful = columns.Where(c => !c.IsPrimaryKey && !c.IsIdentity && !c.IsComputed && !c.IsAuditColumn && !c.IsStampColumn).ToList();
     if (meaningful.Count == 0)
         meaningful = Model.PrimaryKeyColumns.ToList();
     var display = columns.Where(c => c.IsDisplayColumn).OrderBy(c => c.DisplayRank).FirstOrDefault() ?? columns.FirstOrDefault(c => BaseType(c) == "string") ?? Model.PrimaryKeyColumns.FirstOrDefault() ?? columns[0];

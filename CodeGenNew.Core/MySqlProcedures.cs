@@ -97,8 +97,8 @@ public static class MySqlProcedures
             .Where(c => c != m.InactiveDateColumn).ToList();
         bool singleIdentityKey = m.PrimaryKeyColumns.Count == 1 && m.PrimaryKeyColumns[0].IsIdentity;
         var identity = singleIdentityKey ? m.PrimaryKeyColumns[0] : null;
-        var parameterColumns = insertable.Where(c => c != identity && !c.IsCreateDateColumn && !c.IsLastChangedDateColumn && c != m.ActiveColumn).ToList();
-        var autoTouched = m.Columns.Where(c => c.IsCreateDateColumn || c.IsLastChangedDateColumn).ToList();
+        var parameterColumns = insertable.Where(c => c != identity && !c.IsInsertStampColumn && c != m.ActiveColumn).ToList();
+        var autoTouched = m.Columns.Where(c => c.IsInsertStampColumn).ToList();
 
         var pairs = parameterColumns.Select(c => (Name: c.DbName, Value: Trimmed(c, P(c))))
             .Concat(autoTouched.Select(c => (Name: c.DbName, Value: "NOW()"))).ToList();
@@ -126,7 +126,7 @@ public static class MySqlProcedures
     public static string Update(TableModel m, ProjectSettings? project = null)
     {
         var updatable = m.Columns
-            .Where(c => !c.IsComputed && !c.IsCreateDateColumn && !c.IsCreateUserColumn && !c.IsModifiedDateColumn && !c.IsLastChangedDateColumn).ToList();
+            .Where(c => !c.IsComputed && !c.IsLeftOutOfUpdate).ToList();
         var setColumns = updatable.Where(c => !c.IsPrimaryKey && c != m.ActiveColumn).ToList();
         var autoTouched = m.Columns.Where(c => c.IsModifiedDateColumn || c.IsLastChangedDateColumn).ToList();
         var triggers = new List<ColumnModel>();
@@ -170,7 +170,7 @@ public static class MySqlProcedures
     {
         var identityKey = m.PrimaryKeyColumns.FirstOrDefault(c => c.IsIdentity);
         var parameterColumns = m.Columns
-            .Where(c => !c.IsComputed && !c.IsCreateDateColumn && !c.IsModifiedDateColumn && !c.IsLastChangedDateColumn && (!c.IsIdentity || c.IsPrimaryKey)).ToList();
+            .Where(c => !c.IsComputed && !c.IsAuditDateColumn && (!c.IsIdentity || c.IsPrimaryKey)).ToList();
         var pk = m.PrimaryKeyColumns;
         bool hasActive = m.HasActiveInactivePair && m.ActiveColumn is not null;
         var active = hasActive ? m.ActiveColumn : null;
@@ -194,7 +194,7 @@ public static class MySqlProcedures
         var insertPairs = parameterColumns
             .Where(c => c != identityKey && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn && !c.IsModifiedUserColumn && c != m.InactiveDateColumn && c != active)
             .Select(c => (Name: c.DbName, Value: P(c))).ToList();
-        foreach (var c in m.Columns.Where(c => !c.IsComputed && (c.IsCreateDateColumn || c.IsLastChangedDateColumn)))
+        foreach (var c in m.Columns.Where(c => !c.IsComputed && c.IsInsertStampColumn))
             insertPairs.Add((c.DbName, "NOW()"));
         if (active is not null) insertPairs.Add((active.DbName, Flag(active, !negative)));
         foreach (var c in m.Columns.Where(c => c.IsAdminFlagColumn && !c.IsComputed))
@@ -258,10 +258,7 @@ public static class MySqlProcedures
         var active = hasActive ? m.ActiveColumn : null;
         var inactiveDate = hasActive ? m.InactiveDateColumn : null;
         bool negative = active is not null && active.IsInactive;
-        bool IsRule(ColumnModel c) =>
-            c.IsCreateDateColumn || c.IsLastChangedDateColumn || c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsCreateUserColumn
-            || c.IsInactiveReasonColumn || c.IsAdminFlagColumn || c == active || c == inactiveDate
-            || (m.HasSoftDelete && (c == m.IsDeletedColumn || c == m.DeletedDateColumn));
+        bool IsRule(ColumnModel c) => CloneShape.IsRuleColumn(m, c);
 
         var copyable = m.Columns.Where(c => !c.IsComputed && !c.IsIdentity).ToList();
         var createUsers = copyable.Where(c => c.IsCreateUserColumn).ToList();
@@ -273,7 +270,7 @@ public static class MySqlProcedures
             string source = $"{Q("src")}.{Col(c)}";
             if (c.IsPrimaryKey)
                 pairs.Add((c.DbName, IsGenerated(c) ? "v_new_key" : Trimmed(c, NewKey(c))));
-            else if (c.IsCreateDateColumn || c.IsLastChangedDateColumn)
+            else if (c.IsInsertStampColumn)
                 pairs.Add((c.DbName, "NOW()"));
             else if (c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsInactiveReasonColumn || c == inactiveDate || (m.HasSoftDelete && c == m.DeletedDateColumn))
                 continue;
@@ -336,7 +333,7 @@ public static class MySqlProcedures
 
         var loadColumns = m.Columns.Where(c => !c.IsComputed && !c.IsModifiedDateColumn && !c.IsModifiedUserColumn).ToList();
         int Index(ColumnModel c) => m.Columns.IndexOf(c);
-        string Value(object?[] row, ColumnModel c) => c.IsCreateDateColumn || c.IsLastChangedDateColumn ? "NOW()" : MySqlLiteral.Format(c, row[Index(c)]);
+        string Value(object?[] row, ColumnModel c) => c.IsInsertStampColumn ? "NOW()" : MySqlLiteral.Format(c, row[Index(c)]);
         string columnList = string.Join(", ", loadColumns.Select(Col));
         // "already there" is decided by the primary key: ON DUPLICATE KEY UPDATE with the key set to itself changes nothing, and unlike INSERT IGNORE it does not hide other errors.
         string duplicate = m.PrimaryKeyColumns.Count > 0 ? $"\n\t  ON DUPLICATE KEY UPDATE {Col(m.PrimaryKeyColumns[0])} = {Col(m.PrimaryKeyColumns[0])}" : "";

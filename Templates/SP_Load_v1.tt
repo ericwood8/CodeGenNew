@@ -30,12 +30,9 @@
     if (!Model.HasRowData)
         throw new System.InvalidOperationException("SP_Load.tt needs the table's rows; its .tt.config must say NeedsRowData=true.");
 
-    bool IsRowVersion(ColumnModel c) =>
-        c.SqlTypeDeclaration.EqualsIgnoreCase("timestamp") ||
-        c.SqlTypeDeclaration.EqualsIgnoreCase("rowversion");
 
     // Loaded columns: everything assignable, minus an unwanted modified-date/modified-user column.
-    var loadColumns = Model.Columns.Where(c => !c.IsComputed && !IsRowVersion(c) && !c.IsModifiedDateColumn && !c.IsModifiedUserColumn).ToList();
+    var loadColumns = Model.Columns.Where(c => !c.IsComputed && !c.IsRowVersionColumn && !c.IsModifiedDateColumn && !c.IsModifiedUserColumn).ToList();
     var identityColumn = loadColumns.FirstOrDefault(c => c.IsIdentity);
 
     string columnList = string.Join(", ", loadColumns.Select(c => $"[{c.Name}]"));
@@ -43,7 +40,7 @@
     int RowIndex(ColumnModel c) => Model.Columns.IndexOf(c);
 
     string ValueFor(object?[] row, ColumnModel c) =>
-        (c.IsCreateDateColumn || c.IsLastChangedDateColumn) ? "GETDATE()" : SqlLiteral.Format(c, row[RowIndex(c)]);
+        c.IsInsertStampColumn ? "GETDATE()" : SqlLiteral.Format(c, row[RowIndex(c)]);
 #>
 CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Load]
 -- Loads the <#= Model.Rows.Count #> row(s) of <#= table #> that existed when this was generated. Safe to run repeatedly: a row

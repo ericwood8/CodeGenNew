@@ -46,7 +46,7 @@
 
     // properties a PATCH may not change: the key, identity, computed and version columns
     IEnumerable<string> ReadOnlyProperties(TableModel table) =>
-        table.Columns.Where(c => c.IsPrimaryKey || c.IsIdentity || c.IsComputed || c.SqlType == SqlDbType.Timestamp).Select(c => c.CSharpName());
+        table.Columns.Where(c => c.IsPrimaryKey || c.IsIdentity || c.IsComputed || c.IsRowVersionColumn).Select(c => c.CSharpName());
 #>
 <#
     if (validate)
