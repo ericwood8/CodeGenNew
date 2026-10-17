@@ -280,6 +280,65 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
     protected override Task<List<<#= entity #>>> FindByNameAsync(<#= entity #>Repo repo, string name) => repo.GetByName(name);
 <#
         }
+        // the audit dates no caller sets: a create date the database does not default and the last-changed date on a new row, the modified and last-changed dates on a changed one
+        var stampOnNew = Model.Columns.Where(c => !c.IsComputed && c.IsDateColumn && (c.IsLastChangedDateColumn || (c.IsCreateDateColumn && c.DatabaseDefaultSql is null))).ToList();
+        var stampOnChange = Model.Columns.Where(c => !c.IsComputed && c.IsDateColumn && (c.IsModifiedDateColumn || c.IsLastChangedDateColumn)).ToList();
+        string Now(ColumnModel c) => c.CSharpBase() == "DateTimeOffset" ? "DateTimeOffset.Now" : "LocalNow";
+        if (!nameActive && (stampOnNew.Count > 0 || stampOnChange.Count > 0))
+        {
+#>
+
+    protected override void Stamp(<#= entity #> row, bool isNew)
+    {
+<#
+            if (stampOnNew.Count > 0 && stampOnChange.Count > 0)
+            {
+#>
+        if (isNew)
+        {
+<#
+                foreach (var c in stampOnNew)
+                {
+#>
+            row.<#= c.CSharpName() #> = <#= Now(c) #>;
+<#
+                }
+#>
+        }
+        else
+        {
+<#
+                foreach (var c in stampOnChange)
+                {
+#>
+            row.<#= c.CSharpName() #> = <#= Now(c) #>;
+<#
+                }
+#>
+        }
+<#
+            }
+            else
+            {
+                var only = stampOnNew.Count > 0 ? stampOnNew : stampOnChange;
+#>
+        if (<#= stampOnNew.Count > 0 ? "isNew" : "!isNew" #>)
+        {
+<#
+                foreach (var c in only)
+                {
+#>
+            row.<#= c.CSharpName() #> = <#= Now(c) #>;
+<#
+                }
+#>
+        }
+<#
+            }
+#>
+    }
+<#
+        }
         if (canClone)
         {
 #>

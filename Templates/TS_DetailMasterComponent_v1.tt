@@ -295,6 +295,7 @@
             if (cellKind == CellKind.Lookup) cell = $"{{{{ {form.ParentOf(c)!.NameMethod}({prop}) }}}}";
             else if (cellKind == CellKind.Boolean) cell = $"{{{{ {prop} ? \"Yes\" : \"No\" }}}}";
             else if (cellKind == CellKind.Date) cell = $"{{{{ {prop} | date:'MM/dd/yyyy'{dateZone} }}}}";
+            else if (cellKind == CellKind.DateTime) cell = $"{{{{ {prop} | date:'MM/dd/yyyy HH:mm'{dateZone} }}}}";
             else if (cellKind == CellKind.Money) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{{ {prop} | currency:'{Project.CurrencyCode}':'symbol':'1.{Math.Min(2, d)}-{d}' }}}}"; }
             else if (cellKind == CellKind.Decimal) cell = $"{{{{ {prop} | number:'1.2-2' }}}}";
             else cell = column.Cut ? $"{{{{ cut({prop}) }}}}" : $"{{{{ {prop} }}}}";

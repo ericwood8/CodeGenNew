@@ -53,7 +53,10 @@ public sealed class PythonTable
         HashField = hashName is null ? null : fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(hashName));
         SchemaFields = fields.Where(f => f != HashField).ToList();
         Written = SchemaFields.Where(f => !f.Column.IsIdentity && !f.Column.IsComputed).ToList();
-        Updated = Written.Where(f => !f.Column.IsPrimaryKey).ToList();
+        // the audit dates the server sets: a create date and the last-changed date on a new row, the modified and last-changed dates on a changed one (a create date is kept as stored)
+        StampedOnNew = Written.Where(f => f.Column.IsDateColumn && f.Column.IsInsertStampColumn).ToList();
+        StampedOnChange = Written.Where(f => f.Column.IsDateColumn && (f.Column.IsModifiedDateColumn || f.Column.IsLastChangedDateColumn)).ToList();
+        Updated = Written.Where(f => !f.Column.IsPrimaryKey && !StampedOnNew.Contains(f) && !StampedOnChange.Contains(f)).ToList();
 
         var fieldOf = new Dictionary<ColumnModel, PythonField>();
         foreach (var field in SchemaFields)
@@ -108,8 +111,20 @@ public sealed class PythonTable
     /// <summary> The fields an INSERT writes: everything the database does not assign. </summary>
     public IReadOnlyList<PythonField> Written { get; }
 
-    /// <summary> The fields an UPDATE sets: the written ones except the key. </summary>
+    /// <summary> The fields an UPDATE sets: the written ones except the key and the audit dates the server stamps. </summary>
     public IReadOnlyList<PythonField> Updated { get; }
+
+    /// <summary> The create and last-changed dates the server sets on a new row: a body need not carry them. </summary>
+    public IReadOnlyList<PythonField> StampedOnNew { get; }
+
+    /// <summary> The modified and last-changed dates the server sets on a changed row. </summary>
+    public IReadOnlyList<PythonField> StampedOnChange { get; }
+
+    /// <summary> A field the server stamps, so the request schema makes it optional. </summary>
+    public bool IsStamped(PythonField field) => StampedOnNew.Contains(field) || StampedOnChange.Contains(field);
+
+    /// <summary> The Python expression for "now" in a date field's type. </summary>
+    public static string Now(PythonField field) => field.Column.SqlType == SqlDbType.Date ? "date.today()" : "datetime.now()";
 
     public IReadOnlyList<PythonFilter> Filters { get; }
 

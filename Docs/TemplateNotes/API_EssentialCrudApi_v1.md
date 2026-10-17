@@ -61,6 +61,7 @@ Every refusal is a problem-details answer (RFC 9457), so the client shows the `d
 
 - **Update:** the row is loaded, `Apply` copies the input onto it, `Stamp(row, false)` runs, and the usual checks (owner, 404, validator) and the save follow. The columns the input leaves out keep their values.
 - **Create:** `ToEntity`, `Stamp(row, true)`, the owner check, the validator, then the save.
+- **Entity body:** a table that takes its entity is stamped too (`Stamp(row, true)` on create, `Stamp(row, false)` on update). `API_Crud` overrides `Stamp` for a table with audit dates: a create date the database does not default and the last-changed date on a new row, the modified and last-changed dates on a changed one (`DateTime.Now`). The repository's update leaves a column the database fills in on insert (a create date with a default) as stored and answers with the stored row.
 - **Validation:** the endpoint filter only sees a body of the entity type, so with an input type the entity's validator is a service of the handler (`IValidator<TEntity>? validator`).
 - **Editable children:** the body is read into the input type.
 - Without `Dtos` the file is what it was.
@@ -80,3 +81,5 @@ With `ListProtocol=Search` the list route (`GET <route>`) takes the project's pa
 - `?search=text` keeps the first `take` rows (10 by default from the screens, 25 when `take` is left out, at most 100) whose lookup text contains the text, ignoring case. The filter is applied to the entity rows before the projection, because EF Core cannot filter the projected record: a generated API class names the text with `LookupText` (`c => c.CustomerName`; API_Crud writes it with `LookupQuery`). A hand-written API without `LookupText` answers a search with a 400.
 - `?ids=1,2,3` keeps the rows with those keys (at most 200), which is how a screen reads the names of the rows it shows.
 - A call with neither is unchanged.
+
+- **`LocalNow`:** the stamps use the current local time with no kind (`DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Unspecified)`), so the answer to the call that stamps a row carries no UTC offset, as a later read does not.

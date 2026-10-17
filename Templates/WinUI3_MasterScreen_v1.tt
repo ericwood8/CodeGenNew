@@ -811,6 +811,12 @@ public partial class <#= table #>ListViewModel : ObservableObject
                 e.<#= prop #><#= c.IsNullable ? "?.ToString(\"MM/dd/yyyy\") ?? \"\"" : ".ToString(\"MM/dd/yyyy\")" #>,
 <#
             }
+            else if (cellKind == CellKind.DateTime)
+            {
+#>
+                e.<#= prop #><#= c.IsNullable ? "?.ToString(\"MM/dd/yyyy HH:mm\") ?? \"\"" : ".ToString(\"MM/dd/yyyy HH:mm\")" #>,
+<#
+            }
             else if (cellKind == CellKind.Money)
             {
                 // currency, in the project's CurrencyCode with the column's own number of decimals (the same as the editor)

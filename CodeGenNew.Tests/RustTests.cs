@@ -130,8 +130,8 @@ public class RustTests
         Assert.IsTrue(t.Returning);
         Expect.Contains(t.SelectList, "\"Balance\"::numeric AS \"Balance\"");
         Expect.Contains(t.SelectList, "\"Terms\"::text AS \"Terms\"");
-        Expect.Contains(t.Insert, "INSERT INTO \"public\".\"Account\" (\"Code\", \"Name\", \"StatusId\", \"Balance\", \"Terms\", \"CreatedOn\") VALUES ($1, $2, $3, $4::numeric::money, CAST($5::text AS \"public\".\"PaymentTerms\"), $6) RETURNING");
-        Expect.Contains(t.Update, "SET \"Code\" = $1, \"Name\" = $2, \"StatusId\" = $3, \"Balance\" = $4::numeric::money, \"Terms\" = CAST($5::text AS \"public\".\"PaymentTerms\"), \"CreatedOn\" = $6 WHERE \"AccountId\" = $7 RETURNING");
+        Expect.Contains(t.Insert, "INSERT INTO \"public\".\"Account\" (\"Code\", \"Name\", \"StatusId\", \"Balance\", \"Terms\", \"CreatedOn\") VALUES ($1, $2, $3, $4::numeric::money, CAST($5::text AS \"public\".\"PaymentTerms\"), now()) RETURNING");
+        Expect.Contains(t.Update, "SET \"Code\" = $1, \"Name\" = $2, \"StatusId\" = $3, \"Balance\" = $4::numeric::money, \"Terms\" = CAST($5::text AS \"public\".\"PaymentTerms\") WHERE \"AccountId\" = $6 RETURNING");
         Assert.AreEqual("DELETE FROM \"public\".\"Account\" WHERE \"AccountId\" = $1", t.Delete);
         Assert.AreEqual("Decimal", t.Fields.Single(f => f.Name == "balance").BaseType);
         Assert.IsTrue(t.Fields.Single(f => f.Name == "balance").IsOption);
@@ -143,7 +143,7 @@ public class RustTests
         var t = RustTable.Of(Account(SqlDialect.MySql), Project());
 
         Assert.IsFalse(t.Returning);
-        Expect.Contains(t.Insert, "INSERT INTO `Account` (`Code`, `Name`, `StatusId`, `Balance`, `Terms`, `CreatedOn`) VALUES (?, ?, ?, ?, ?, ?)");
+        Expect.Contains(t.Insert, "INSERT INTO `Account` (`Code`, `Name`, `StatusId`, `Balance`, `Terms`, `CreatedOn`) VALUES (?, ?, ?, ?, ?, NOW())");
         Expect.DoesNotContain(t.Insert, "RETURNING");
         Expect.Contains(t.Update, "WHERE `AccountId` = ?");
         Expect.DoesNotContain(t.SelectList, "::");

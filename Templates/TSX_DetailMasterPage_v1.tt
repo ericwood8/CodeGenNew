@@ -277,6 +277,7 @@
             var allCurrency = gridChildren.SelectMany(ch => ch.MoneyColumns).GroupBy(m => m.Name).Select(g => g.First()).ToList();
             var allLongText = gridChildren.SelectMany(ch => ch.LongTextJson).Distinct().ToList();
             T("// Child grids show whatever keys the API returns; these helpers caption them, leave out long text, limit them to 20 and format money and dates.");
+            T("const childDateTimes: string[] = [" + string.Join(", ", gridChildren.SelectMany(ch => ch.DateTimeJson).Distinct().Select(k => "'" + k + "'")) + "]; // the stamped dates, shown with the time of day");
             T("const childCurrencyDigits: Record<string, number> = { " + string.Join(", ", allCurrency.Select(m => m.Name + ": " + m.Digits)) + " };");
             var allCaptions = gridChildren.SelectMany(ch => ch.Captions).GroupBy(m => m.Name).Select(g => g.First()).ToList();
             T("const childCaptions: Record<string, string> = { " + string.Join(", ", allCaptions.Select(m => m.Name + ": '" + m.Caption.Replace("'", "\'") + "'")) + " };");
@@ -309,6 +310,7 @@
             T("    const d = childCurrencyDigits[key];");
             T("    return value.toLocaleString(undefined, { style: 'currency', currency: '" + Project.CurrencyCode + "', minimumFractionDigits: d, maximumFractionDigits: d });");
             T("  }");
+            T("  if (typeof value === 'string' && childDateTimes.includes(key)) return value.substring(0, 16).replace('T', ' ');");
             T("  // A date-and-time string from the API (2026-09-27T00:00:00) shows as its date only.");
             T("  return typeof value === 'string' ? value.replace(/^(\\d{4}-\\d{2}-\\d{2})T.*$/, '$1') : String(value);");
             T("}");
@@ -918,6 +920,7 @@
             if (cellKind == CellKind.Lookup) cell = $"{{{form.ParentOf(c)!.NameMethod}({prop})}}";
             else if (cellKind == CellKind.Boolean) cell = $"{{{prop} ? 'Yes' : 'No'}}";
             else if (cellKind == CellKind.Date) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 10)}}";
+            else if (cellKind == CellKind.DateTime) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 16).replace('T', ' ')}}";
             else if (cellKind == CellKind.Money) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
             else if (cellKind == CellKind.Decimal) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toFixed(2)}}";
             else cell = column.Cut ? $"{{shortText({prop})}}" : $"{{{prop}}}";

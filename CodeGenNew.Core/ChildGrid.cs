@@ -65,10 +65,11 @@ public sealed class ChildGrid
             })
             .ToList();
 
-        // The grid's own foreign key (always this row), the child's own key and every other id column that is not resolved to a name are left out.
+        // The grid's own foreign key (always this row), the child's own key, every other id column that is not resolved to a name and a row version are left out.
         var resolved = Lookups.Select(l => l.ColumnName).ToList();
         HiddenColumns = link.ReferencingColumns.Concat(link.ReferencingPrimaryKeyColumns)
             .Concat(link.ReferencingTableForeignKeys.SelectMany(o => o.ReferencingColumns).Except(resolved, StringComparer.OrdinalIgnoreCase))
+            .Concat(link.ReferencingTableColumns.Where(c => c.IsRowVersionColumn).Select(c => c.Name))   // a row version is a number for the database, nothing a person reads
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
         IsEditable = EditableChild.IsEditable(parent, link, project);
@@ -135,6 +136,9 @@ public sealed class ChildGrid
     public IReadOnlyList<(string Name, int Digits)> MoneyColumns => Link.ReferencingTableColumns.Where(c => c.IsMoneyAmount).Select(c => (JsonNames.Camel(c.Name), NumericClassifier.CurrencyDigits(c))).ToList();
 
     /// <summary> The child's long text columns by their JSON names: the grid puts them last. </summary>
+    /// <summary> The JSON names of the child's stamped dates and times (created, modified): shown with the time of day. </summary>
+    public IReadOnlyList<string> DateTimeJson => Link.ReferencingTableColumns.Where(c => GridCells.KindOf(c, false) == CellKind.DateTime).Select(c => JsonNames.Camel(c.Name)).ToList();
+
     public IReadOnlyList<string> LongTextJson => Link.ReferencingTableColumns.Where(c => c.IsLongTextColumn).Select(c => JsonNames.Camel(c.Name)).ToList();
 
     /// <summary> The caption each child column gets in the grid (JSON name and caption: date columns lose "Date", yes/no columns end in "?", Number becomes #, Percent becomes %). </summary>

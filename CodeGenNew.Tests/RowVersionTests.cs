@@ -35,4 +35,23 @@ public class RowVersionTests
             Expect.DoesNotContain(result.GeneratedText!, "RowVer");
         }
     }
+
+    [TestMethod]
+    public async Task No_screen_lists_or_edits_a_row_version()
+    {
+        var table = Sample.Table("Widget",
+        [
+            Sample.Column("WidgetId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("WidgetName", SqlDbType.VarChar, characters: 40, ordinal: 2),
+            Sample.Column("RowVer", SqlDbType.Timestamp, ordinal: 3)
+        ]);
+        var project = ProjectSettings.FromValues([new("ProjectName", "Acme")]);
+        foreach (string template in new[] { "TSX_Page_v1.tt", "TS_Component_v1.tt", "BLZ_Page_v1.tt" })
+        {
+            var result = await Repo.Cache.RunAsync(Repo.Template(template), table, project);
+            Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+            string text = result.GeneratedText!;
+            Expect.DoesNotContain(text, "RowVer");
+        }
+    }
 }

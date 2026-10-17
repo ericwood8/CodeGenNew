@@ -68,7 +68,7 @@
         if (c.IsPrimaryKey)
             pairs.Add((c.Name, Trimmed(c, NewKeyParameter(c))));
         else if (c.IsInsertStampColumn)
-            pairs.Add((c.Name, "GETDATE()"));
+            pairs.Add((c.Name, c.SqlServerNow));
         else if (c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsInactiveReasonColumn || c == inactiveDateColumn
                  || (Model.HasSoftDelete && c == Model.DeletedDateColumn))
             continue; // a new row has nothing to put here: left at the column's default (normally NULL)

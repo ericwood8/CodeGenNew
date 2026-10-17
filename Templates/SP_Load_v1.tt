@@ -40,7 +40,7 @@
     int RowIndex(ColumnModel c) => Model.Columns.IndexOf(c);
 
     string ValueFor(object?[] row, ColumnModel c) =>
-        c.IsInsertStampColumn ? "GETDATE()" : SqlLiteral.Format(c, row[RowIndex(c)]);
+        c.IsInsertStampColumn ? c.SqlServerNow : SqlLiteral.Format(c, row[RowIndex(c)]);
 #>
 CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Load]
 -- Loads the <#= Model.Rows.Count #> row(s) of <#= table #> that existed when this was generated. Safe to run repeatedly: a row

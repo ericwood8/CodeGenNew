@@ -45,3 +45,5 @@ With `ApiAuth=true` the Python API signs people in like the ASP.NET one (`PY_Ess
 ## The lookup for a type-ahead
 
 `GET <route>/lookup` answers every row, or what a type-ahead asks for, as the ASP.NET API does: `?ids=1,2` keeps the rows with those keys (a part that is not a key of the table's type is left out, at most 200), `?search=text` keeps the first `take` rows (25 when left out, between 1 and 100) whose display column contains the text, ignoring case and with `%` and `_` meaning themselves (`contains` in support.py), and `?take=` alone limits the whole list. `ids` wins over `search`. A display column that is not text is cast to a string for the search. `parse_keys` and `lookup_take` are in support.py.
+
+- **Audit dates:** the server sets a create date and the last-changed date on a new row (`datetime.now()`, `date.today()` for a date column) and the modified and last-changed dates on a changed one; the schema makes them optional and `changes()` leaves them out, so a body cannot overwrite a stored created date.

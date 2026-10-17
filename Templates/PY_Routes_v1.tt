@@ -57,7 +57,8 @@
     string DefaultOf(PythonField f) => f.Annotation == "bool" ? "False" : f.IsNullable ? "None" : "\"\"";
 
     Line($"@@@FILE app/routes/{t.Module}.py@@@");
-    var clonedDates = new[] { "datetime", "date" }.Where(w => t.Clone?.Any(c => c.Value.StartsWith(w + ".")) == true).ToList();
+    var clonedDates = new[] { "datetime", "date" }.Where(w => t.Clone?.Any(c => c.Value.StartsWith(w + ".")) == true
+        || t.StampedOnNew.Concat(t.StampedOnChange).Any(f => PythonTable.Now(f).StartsWith(w + "."))).ToList();
     if (clonedDates.Count > 0)
         Line($"from datetime import {string.Join(", ", clonedDates)}");
     if (textKey)
@@ -330,6 +331,8 @@
         Line($"        raise ApiError({HttpStatus.Conflict}, \"Duplicate key\")");
     }
     Line($"    row = {t.Class}(**body.columns())");
+    foreach (var f in t.StampedOnNew)
+        Line($"    row.{f.Name} = {PythonTable.Now(f)}");
     if (guidKey)
     {
         // a new row is posted with the empty GUID: the API assigns the real one
@@ -370,6 +373,8 @@
         Line("    guard_user_row(session, user, body, row)");
     Line("    for name, value in body.changes().items():");
     Line("        setattr(row, name, value)");
+    foreach (var f in t.StampedOnChange)
+        Line($"    row.{f.Name} = {PythonTable.Now(f)}");
     Line("    try:");
     Line("        session.commit()");
     Line("    except IntegrityError:");

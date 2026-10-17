@@ -666,6 +666,7 @@
             if (cellKind == CellKind.Lookup) cell = $"{{{form.ParentOf(c)!.NameMethod}({prop})}}";
             else if (cellKind == CellKind.Boolean) cell = $"{{{prop} ? 'Yes' : 'No'}}";
             else if (cellKind == CellKind.Date) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 10)}}";
+            else if (cellKind == CellKind.DateTime) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.substring(0, 16).replace('T', ' ')}}";
             else if (cellKind == CellKind.Money) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
             else if (cellKind == CellKind.Decimal) cell = $"{{{prop}{(c.IsNullable ? "?" : "")}.toFixed(2)}}";
             else cell = column.Cut ? $"{{shortText({prop})}}" : $"{{{prop}}}";

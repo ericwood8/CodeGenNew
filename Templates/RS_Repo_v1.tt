@@ -103,14 +103,14 @@
     Line($"pub async fn insert(pool: &Pool, row: &{t.Struct}) -> Result<{t.Struct}, sqlx::Error> {{");
     if (mysql)
     {
-        Line($"    let result = sqlx::query(INSERT){Binds(t.Written)}.execute(pool).await?;");
+        Line($"    let result = sqlx::query(INSERT){Binds(t.InsertBound)}.execute(pool).await?;");
         // a text or Guid key is in the row, so the row is read by the key it was written with; a whole-number one is generated and comes from the connection
         Line(KeyType.Of(Model)!.Kind == KeyKind.Int
             ? $"    get_by_id(pool, result.last_insert_id() as {keyType}).await?.ok_or(sqlx::Error::RowNotFound)"
             : $"    let _ = result;\n    get_by_id(pool, {(textKey ? "&" : "")}row.{key}).await?.ok_or(sqlx::Error::RowNotFound)");
     }
     else
-        Line($"    sqlx::query_as::<_, {t.Struct}>(INSERT){Binds(t.Written)}.fetch_one(pool).await");
+        Line($"    sqlx::query_as::<_, {t.Struct}>(INSERT){Binds(t.InsertBound)}.fetch_one(pool).await");
     Line("}");
     Line();
     Line($"pub async fn update(pool: &Pool, id: {keyArg}, row: &{t.Struct}) -> Result<Option<{t.Struct}>, sqlx::Error> {{");

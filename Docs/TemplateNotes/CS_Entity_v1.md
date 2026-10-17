@@ -46,3 +46,6 @@ What it does NOT do, so an entity that needs any of these stays hand-maintained:
     other columns, or a column the class deliberately makes optional although the table says NOT NULL.
   Nor does it write the entity's DbSet in the context or the Enums.
 ```
+
+- **Create date with a database default:** a NOT NULL create-date column that has a DEFAULT (for example `DEFAULT sysdatetime()`) is marked `[DatabaseGenerated(DatabaseGeneratedOption.Identity)]`, so EF Core leaves it out of the insert while it is still the type's default and the database fills it in. Without it the entity inserted 0001-01-01.
+- **Row version:** a `timestamp` / `rowversion` column is a `byte[]` with `[Timestamp]` (a concurrency token: an update with a stale value is a 409).

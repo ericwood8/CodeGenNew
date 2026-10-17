@@ -45,7 +45,7 @@ public static class ODataFilterFields
         return cell switch
         {
             CellKind.Boolean => Field(ODataFilterKind.Boolean),
-            CellKind.Date => Field(ODataFilterKind.Date),
+            CellKind.Date or CellKind.DateTime => Field(ODataFilterKind.Date),
             CellKind.Money or CellKind.Decimal => Field(ODataFilterKind.Number),
             _ when column.IsIntegerColumn => Field(ODataFilterKind.Number),
             _ when column.IsStringColumn && !column.IsLongTextColumn => Field(ODataFilterKind.Text),

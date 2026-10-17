@@ -38,3 +38,5 @@ Design notes (differences from the original hand-written seed-data load procedur
 
 Requires a primary key (that is how "already there" is decided) and a table, not a view.
 ```
+
+Now: a stamp column of type datetime2 is set with SYSDATETIME() and a datetimeoffset with SYSDATETIMEOFFSET() (ColumnModel.SqlServerNow), so it keeps its own precision; any other date uses GETDATE().

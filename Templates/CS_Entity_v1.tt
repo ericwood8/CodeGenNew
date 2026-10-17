@@ -166,6 +166,8 @@
 
             if (c.IsComputed) { B("    [DatabaseGenerated(DatabaseGeneratedOption.Computed)]"); usesSchema = true; }
             else if (c.IsIdentity) { B("    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]"); usesSchema = true; }
+            // a create date the database fills in (DEFAULT sysdatetime()): EF Core leaves it out of the insert while it is still the type's default, so the column default applies
+            else if (c.IsCreateDateColumn && !c.IsNullable && c.IsDateColumn && c.DatabaseDefaultSql is not null) { B("    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]"); usesSchema = true; }
 
             string initializer = "";
             if (isBit && c.DatabaseDefaultSql is not null)

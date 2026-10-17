@@ -77,7 +77,7 @@
         }
     }
     foreach (var c in Model.Columns.Where(c => !c.IsComputed && (c.IsModifiedDateColumn || c.IsLastChangedDateColumn)))
-        updatePairs.Add((c.Name, "GETDATE()"));
+        updatePairs.Add((c.Name, c.SqlServerNow));
 
     // ==== INSERT: (column, value) pairs, mirroring SP_Insert.tt.
     var insertPairs = parameterColumns
@@ -86,7 +86,7 @@
         .Select(c => (Name: c.Name, Value: c.ParameterName))
         .ToList();
     foreach (var c in Model.Columns.Where(c => !c.IsComputed && c.IsInsertStampColumn))
-        insertPairs.Add((c.Name, "GETDATE()"));
+        insertPairs.Add((c.Name, c.SqlServerNow));
     if (activeCol is not null)
         insertPairs.Add((activeCol.Name, activeLiteral));
     foreach (var c in Model.Columns.Where(c => c.IsAdminFlagColumn && !c.IsComputed))

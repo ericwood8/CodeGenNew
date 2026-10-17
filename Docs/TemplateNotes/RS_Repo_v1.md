@@ -13,3 +13,5 @@
 ## The lookup for a type-ahead
 
 `lookup(pool, &LookupQuery)` builds the statement from `LOOKUP_BASE` (the select up to `WHERE 1 = 1`) with a `QueryBuilder`: `ids` adds `AND <key> IN (...)` with each key bound (a part that is not a key of the table's type is left out, at most 200; no usable key adds `AND 1 = 0`), `search` adds the dialect's case-insensitive "contains" test on the name expression with the text bound through `escape_like`, and the list is ordered by the name expression. `take` (25 when left out, between 1 and 100) limits a search or a call that names it; `ids` is never limited and wins over `search`. `RustTable.LookupBase`, `LookupOrder`, `LookupKey`, `LookupBefore` and `LookupAfter` hold the pieces; `LookupSql` is still the whole-list statement.
+
+- **Audit dates:** the INSERT sets a create date and the last-changed date itself (`now()` / `NOW()`), the UPDATE sets the modified and last-changed dates and leaves the create date out; none is bound, and the struct marks them `#[serde(default)]` so a body may omit them.

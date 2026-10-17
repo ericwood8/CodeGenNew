@@ -8,6 +8,8 @@ public enum CellKind
     /// <summary> Yes or No. </summary>
     Boolean,
     Date,
+    /// <summary> A date and time the system stamps (created, modified, last changed): the day and the time of day. </summary>
+    DateTime,
     /// <summary> An amount of money, with the currency. </summary>
     Money,
     /// <summary> A decimal that is not money, shown with two decimals. </summary>
@@ -23,7 +25,7 @@ public static class GridCells
     public static CellKind KindOf(ColumnModel column, bool lookedUp) =>
         lookedUp ? CellKind.Lookup
         : column.IsBooleanColumn ? CellKind.Boolean
-        : TemplateHelpers.IsDate(column) ? CellKind.Date
+        : TemplateHelpers.IsDate(column) ? (column.IsStampColumn && column.SqlType != System.Data.SqlDbType.Date ? CellKind.DateTime : CellKind.Date)
         : column.IsMoneyAmount ? CellKind.Money
         : column.SqlType is System.Data.SqlDbType.Decimal or System.Data.SqlDbType.Money or System.Data.SqlDbType.SmallMoney ? CellKind.Decimal
         : CellKind.Plain;

@@ -63,7 +63,7 @@
     // ==== Link: the association columns, plus any audit columns this table happens to have.
     var linkColumns = new List<(string Name, string Value)> { (anchorColumn.Name, anchorParam), (targetColumn.Name, targetParam) };
     if (createDateColumn is not null)
-        linkColumns.Add((createDateColumn.Name, "GETDATE()"));
+        linkColumns.Add((createDateColumn.Name, createDateColumn.SqlServerNow));
     if (createUserColumn is not null)
         linkColumns.Add((createUserColumn.Name, "@CreateUser"));
 #>

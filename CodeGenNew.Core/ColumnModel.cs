@@ -164,6 +164,15 @@ public class ColumnModel
     /// changed. This is the one list of them; code asks here instead of repeating the five flags. </summary>
     public bool IsStampColumn => IsCreateDateColumn || IsCreateUserColumn || IsModifiedDateColumn || IsModifiedUserColumn || IsLastChangedDateColumn;
 
+    /// <summary> The T-SQL expression for "now" in this date column's own precision: SYSDATETIME() for a datetime2 (GETDATE() would keep three milliseconds), SYSDATETIMEOFFSET() for a datetimeoffset,
+    /// GETDATE() for anything else. </summary>
+    public string SqlServerNow => SqlType switch
+    {
+        System.Data.SqlDbType.DateTime2 => "SYSDATETIME()",
+        System.Data.SqlDbType.DateTimeOffset => "SYSDATETIMEOFFSET()",
+        _ => "GETDATE()"
+    };
+
     /// <summary> A date the routines write themselves on an insert (CreateDate, LastChangedDate): never a parameter, set to the current time. </summary>
     public bool IsInsertStampColumn => IsCreateDateColumn || IsLastChangedDateColumn;
 

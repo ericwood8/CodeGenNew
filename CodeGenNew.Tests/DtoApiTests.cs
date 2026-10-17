@@ -150,7 +150,9 @@ public class DtoApiTests
         Expect.Contains(without, "public abstract class CrudApi<TEntity, TRepo, TKey> : BaseApi<TEntity>");
         Expect.DoesNotContain(without, "TInput");
         Expect.DoesNotContain(without, "TOutput");
-        Expect.DoesNotContain(without, "Stamp(");
+        Expect.Contains(without, "protected virtual void Stamp(TEntity row, bool isNew)");
+        Expect.Contains(without, "Stamp(newRow, true);");
+        Expect.Contains(without, "Stamp(updatedRow, false);");
     }
 
     [TestMethod]

@@ -304,6 +304,14 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     private TKey KeyOf(TEntity row) => (_keyOf ??= Key.Compile())(row);
 
     private static bool SameKey(TKey a, TKey b) => EqualityComparer<TKey>.Default.Equals(a, b);
+
+    /// <summary> Sets the audit columns no caller sets (when a row was created or changed) before it is validated and saved, on a body of the entity as on one built from an input. A table's API overrides it for its create, modified and last-changed dates (API_Crud); a column the database fills in (a default) is left to the database. </summary>
+    protected virtual void Stamp(TEntity row, bool isNew)
+    {
+    }
+
+    /// <summary> The current local time with no kind, the way a date column stores and answers it (a <c>DateTime.Now</c> would be answered with its UTC offset by the call that stamps it). </summary>
+    protected static DateTime LocalNow => DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Unspecified);
 <#
     if (dtos)
     {
@@ -320,11 +328,6 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 
     /// <summary> Copies an update's body onto the row that is there (<c>input.ApplyTo(row)</c>); a column the input leaves out keeps its value. </summary>
     protected abstract void Apply(TInput input, TEntity row);
-
-    /// <summary> Sets the columns no caller may set (who and when created or changed) on a row built from an input, before it is validated and saved; the generated code sets none, so a NOT NULL audit column needs this override, a trigger or a column default EF Core knows about. </summary>
-    protected virtual void Stamp(TEntity row, bool isNew)
-    {
-    }
 <#
     }
     if (Project.ApiAuth)
@@ -695,8 +698,13 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     {
 #>
         var newRow = ToEntity(newInput);
-        if (!InputIsEntity)
-            Stamp(newRow, true);
+        Stamp(newRow, true);
+<#
+    }
+    else
+    {
+#>
+        Stamp(newRow, true);
 <#
     }
     if (Project.ApiAuth)
@@ -812,6 +820,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 <#
     }
 #>
+        Stamp(updatedRow, false);
         var repo = NewRepo(context);
         if (!await repo.ExistsAsync(id))
             return Results.NotFound(); // 404 error if there is no row with that id

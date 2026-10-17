@@ -25,6 +25,10 @@ public static class MySqlProcedures
     private static string Flag(ColumnModel c, bool value) =>
         c.IsStringColumn ? (c.Name.ContainsIgnoreCase("Admin") ? (value ? "'True'" : "'False'") : (value ? "'1'" : "'0'")) : (value ? "1" : "0");
 
+    /// <summary> MySQL's NOW() keeps whole seconds; a datetime(6) or timestamp(3) column is stamped with NOW(6) / NOW(3) so it keeps the digits it holds. </summary>
+    private static string Now(ColumnModel c) =>
+        System.Text.RegularExpressions.Regex.Match(c.SqlTypeDeclaration, @"\((\d)\)") is { Success: true } digits && digits.Groups[1].Value != "0" ? $"NOW({digits.Groups[1].Value})" : "NOW()";
+
     private static string Trimmed(ColumnModel c, string expression) => c.IsStringColumn ? $"TRIM({expression})" : expression;
 
     private static string Create(TableModel m, string suffix, IEnumerable<(string Name, string Type, string Mode)> parameters, string body)
@@ -101,7 +105,7 @@ public static class MySqlProcedures
         var autoTouched = m.Columns.Where(c => c.IsInsertStampColumn).ToList();
 
         var pairs = parameterColumns.Select(c => (Name: c.DbName, Value: Trimmed(c, P(c))))
-            .Concat(autoTouched.Select(c => (Name: c.DbName, Value: "NOW()"))).ToList();
+            .Concat(autoTouched.Select(c => (Name: c.DbName, Value: Now(c)))).ToList();
         if (m.HasActiveInactivePair && m.ActiveColumn is { } active)
             pairs.Add((active.DbName, Flag(active, !active.IsInactive)));
         foreach (var admin in m.Columns.Where(c => c.IsAdminFlagColumn))
@@ -135,7 +139,7 @@ public static class MySqlProcedures
 
         // NULL means "do not change this column" (as in SP_Update): SET col = COALESCE(param, col).
         var sets = new List<string>();
-        foreach (var c in autoTouched) sets.Add($"{Col(c)} = NOW()");
+        foreach (var c in autoTouched) sets.Add($"{Col(c)} = {Now(c)}");
         foreach (var c in setColumns) sets.Add($"{Col(c)} = COALESCE({Trimmed(c, P(c))}, {Col(c)})");
         if (m.HasActiveInactivePair && m.ActiveColumn is { } active)
         {
@@ -189,13 +193,13 @@ public static class MySqlProcedures
                 : P(c)));
         }
         foreach (var c in m.Columns.Where(c => !c.IsComputed && (c.IsModifiedDateColumn || c.IsLastChangedDateColumn)))
-            updatePairs.Add((c.DbName, "NOW()"));
+            updatePairs.Add((c.DbName, Now(c)));
 
         var insertPairs = parameterColumns
             .Where(c => c != identityKey && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn && !c.IsModifiedUserColumn && c != m.InactiveDateColumn && c != active)
             .Select(c => (Name: c.DbName, Value: P(c))).ToList();
         foreach (var c in m.Columns.Where(c => !c.IsComputed && c.IsInsertStampColumn))
-            insertPairs.Add((c.DbName, "NOW()"));
+            insertPairs.Add((c.DbName, Now(c)));
         if (active is not null) insertPairs.Add((active.DbName, Flag(active, !negative)));
         foreach (var c in m.Columns.Where(c => c.IsAdminFlagColumn && !c.IsComputed))
             insertPairs.Add((c.DbName, Flag(c, false)));
@@ -271,7 +275,7 @@ public static class MySqlProcedures
             if (c.IsPrimaryKey)
                 pairs.Add((c.DbName, IsGenerated(c) ? "v_new_key" : Trimmed(c, NewKey(c))));
             else if (c.IsInsertStampColumn)
-                pairs.Add((c.DbName, "NOW()"));
+                pairs.Add((c.DbName, Now(c)));
             else if (c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsInactiveReasonColumn || c == inactiveDate || (m.HasSoftDelete && c == m.DeletedDateColumn))
                 continue;
             else if (c == active)
@@ -333,7 +337,7 @@ public static class MySqlProcedures
 
         var loadColumns = m.Columns.Where(c => !c.IsComputed && !c.IsModifiedDateColumn && !c.IsModifiedUserColumn).ToList();
         int Index(ColumnModel c) => m.Columns.IndexOf(c);
-        string Value(object?[] row, ColumnModel c) => c.IsInsertStampColumn ? "NOW()" : MySqlLiteral.Format(c, row[Index(c)]);
+        string Value(object?[] row, ColumnModel c) => c.IsInsertStampColumn ? Now(c) : MySqlLiteral.Format(c, row[Index(c)]);
         string columnList = string.Join(", ", loadColumns.Select(Col));
         // "already there" is decided by the primary key: ON DUPLICATE KEY UPDATE with the key set to itself changes nothing, and unlike INSERT IGNORE it does not hide other errors.
         string duplicate = m.PrimaryKeyColumns.Count > 0 ? $"\n\t  ON DUPLICATE KEY UPDATE {Col(m.PrimaryKeyColumns[0])} = {Col(m.PrimaryKeyColumns[0])}" : "";
@@ -486,7 +490,7 @@ public static class MySqlProcedures
             $"BEGIN\n\tSELECT\n\t\t{string.Join(",\n\t\t", items)}\n\tFROM {targetTable} AS {Q("t")}\n\tORDER BY {Q("t")}.{orderBy};\nEND\n");
 
         var linkColumns = new List<(string Name, string Value)> { (anchor.DbName, anchorParam), (target.DbName, targetParam) };
-        if (createDate is not null) linkColumns.Add((createDate.DbName, "NOW()"));
+        if (createDate is not null) linkColumns.Add((createDate.DbName, Now(createDate)));
         if (createUser is not null) linkColumns.Add((createUser.DbName, Q("CreateUser")));
         var linkParameters = new List<(string, string, string)> { (anchorParam, anchor.SqlTypeDeclaration, "IN"), (targetParam, target.SqlTypeDeclaration, "IN") };
         if (createUser is not null) linkParameters.Add((Q("CreateUser"), createUser.SqlTypeDeclaration, "IN"));

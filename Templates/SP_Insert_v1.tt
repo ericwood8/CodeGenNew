@@ -73,7 +73,7 @@
     // VALUES list, so the two can never drift out of sync and comma placement only has to be computed once.
     var insertPairs = (sequenceKey is null ? new List<(string Name, string Value)>() : [(sequenceKey.Name, "@NewKey")])
         .Concat(parameterColumns.Select(c => (Name: c.Name, Value: ValueExpression(c))))
-        .Concat(autoTouchedOnInsertColumns.Select(c => (Name: c.Name, Value: "GETDATE()")))
+        .Concat(autoTouchedOnInsertColumns.Select(c => (Name: c.Name, Value: c.SqlServerNow)))
         .Concat(hardcodedInsertColumns)
         .ToList();
 #>

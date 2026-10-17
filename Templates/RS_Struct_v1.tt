@@ -49,7 +49,7 @@
             continue;
         }
         Line($"    #[serde(rename = \"{f.Json}\")]");
-        if (f.IsOption || f.Column.IsIdentity)
+        if (f.IsOption || f.Column.IsIdentity || table.IsStamped(f))
             Line("    #[serde(default)]");
         if (f.SerdeWith is not null)
             Line($"    #[serde(with = \"{f.SerdeWith}\")]");

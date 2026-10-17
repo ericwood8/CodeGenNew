@@ -57,7 +57,9 @@
             return "38";
         if (c.IsBooleanColumn)
             return "1";
-        return "20"; // int / guid / fallback
+        if (c.IsGuidColumn)
+            return "36";
+        return "20"; // int / fallback
     }
 #>
 CREATE OR ALTER PROCEDURE [<#= Model.SchemaName #>].[<#= Model.TableName #>_Update]
@@ -83,7 +85,7 @@ AS
     foreach (var adc in autoTouchedOnUpdateColumns)
     {
 #>
-	SET @strSetStatement = @strSetStatement + ' [<#= adc.Name #>] = GETDATE(),';
+	SET @strSetStatement = @strSetStatement + ' [<#= adc.Name #>] = <#= adc.SqlServerNow #>,';
 <#
     }
 #>

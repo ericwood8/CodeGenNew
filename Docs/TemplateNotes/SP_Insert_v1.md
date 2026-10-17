@@ -47,3 +47,7 @@ a table can be inserted into without one - but only applies to tables, not views
 ```
 
 Guard clauses (project lists): a column in `NonNegativeColumns` or `NotFutureDateColumns` that the database states no rule for (a column whose CHECK already has a minimum needs none) gets an `IF` before the write that raises `[Column] must not be negative.` or `[Column] must not be later than today.` (`RAISERROR` and `RETURN` on SQL Server; `RAISE EXCEPTION` on PostgreSQL; `SIGNAL SQLSTATE '45000'` on MySQL). The tests are inline, not shared procedures, so a database needs no extra script. A NULL parameter never trips one.
+
+Now: a stamp column of type datetime2 is set with SYSDATETIME() and a datetimeoffset with SYSDATETIMEOFFSET() (ColumnModel.SqlServerNow), so it keeps its own precision; any other date uses GETDATE().
+
+MySQL: a `datetime(n)` / `timestamp(n)` stamp column is set with `NOW(n)`, so it keeps its fraction (a plain `datetime` uses `NOW()`).

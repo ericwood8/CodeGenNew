@@ -81,8 +81,12 @@ public sealed class RustTable
 
         // what an INSERT writes: everything the database does not assign (an identity or computed column is left out)
         Written = fields.Where(f => f != HashField && !f.Column.IsIdentity && !f.Column.IsComputed).ToList();
+        // the audit dates the server sets in the statement itself: a create date and the last-changed date on a new row, the modified and last-changed dates on a changed one; a body need not carry them
+        StampedOnNew = Written.Where(f => f.Column.IsDateColumn && f.Column.IsInsertStampColumn).ToList();
+        StampedOnChange = Written.Where(f => f.Column.IsDateColumn && (f.Column.IsModifiedDateColumn || f.Column.IsLastChangedDateColumn)).ToList();
+        InsertBound = Written.Where(f => !StampedOnNew.Contains(f)).ToList();
         string columns = string.Join(", ", Written.Select(f => _di.Quote(f.Column.DbName)));
-        string values = string.Join(", ", Written.Select((f, i) => Parameter(f, i + 1)));
+        string values = string.Join(", ", Written.Select(f => StampedOnNew.Contains(f) ? _di.CurrentTimestamp : Parameter(f, InsertBound.ToList().IndexOf(f) + 1)));
         string returning = Returning ? $" RETURNING {SelectList}" : "";
         string key = _di.Quote(Key.Column.DbName);
 
@@ -91,8 +95,9 @@ public sealed class RustTable
         Insert = $"INSERT INTO {Table} ({columns}) VALUES ({values}){returning}";
 
         // an UPDATE sets every written column except the key, then finds the row by the key (last, so the positional placeholders of MySQL and SQLite follow the bind order)
-        Updated = Written.Where(f => !f.Column.IsPrimaryKey).ToList();
-        string sets = string.Join(", ", Updated.Select((f, i) => $"{_di.Quote(f.Column.DbName)} = {Parameter(f, i + 1)}"));
+        Updated = Written.Where(f => !f.Column.IsPrimaryKey && !StampedOnNew.Contains(f) && !StampedOnChange.Contains(f)).ToList();
+        string sets = string.Join(", ", Updated.Select((f, i) => $"{_di.Quote(f.Column.DbName)} = {Parameter(f, i + 1)}")
+            .Concat(StampedOnChange.Select(f => $"{_di.Quote(f.Column.DbName)} = {_di.CurrentTimestamp}")));
         Update = $"UPDATE {Table} SET {sets} WHERE {key} = {_di.Placeholder(Updated.Count + 1)}{returning}";
         Delete = $"DELETE FROM {Table} WHERE {key} = {_di.Placeholder(1)}";
 
@@ -133,11 +138,23 @@ public sealed class RustTable
     public string Table { get; }
     public string SelectList { get; }
 
-    /// <summary> The fields an INSERT binds, in order. </summary>
+    /// <summary> The fields an INSERT writes, in order (the ones it binds are <see cref="InsertBound"/>). </summary>
     public IReadOnlyList<RustField> Written { get; }
 
     /// <summary> The fields an UPDATE binds, in order, before the key. </summary>
     public IReadOnlyList<RustField> Updated { get; }
+
+    /// <summary> The create and last-changed dates the INSERT sets itself. </summary>
+    public IReadOnlyList<RustField> StampedOnNew { get; }
+
+    /// <summary> The modified and last-changed dates the UPDATE sets itself. </summary>
+    public IReadOnlyList<RustField> StampedOnChange { get; }
+
+    /// <summary> The fields an INSERT binds a value for: <see cref="Written"/> without the dates it sets itself. </summary>
+    public IReadOnlyList<RustField> InsertBound { get; }
+
+    /// <summary> A field the server stamps, so a body may leave it out. </summary>
+    public bool IsStamped(RustField field) => StampedOnNew.Contains(field) || StampedOnChange.Contains(field);
 
     public string SelectAll { get; private set; } = "";
     public string SelectOne { get; private set; } = "";

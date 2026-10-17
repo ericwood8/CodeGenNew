@@ -49,3 +49,5 @@ Requires a primary key (that is how the source row is named); tables only.
 - **Access mode (EF Core instead of routines):** with `AccessMode=Ef` (always for SQLite) this template writes LINQ over the context instead of the routine; the plan leaves it out. See CS_SearchQuery_v1.md and Docs/Reference.md.
 
 **Applying to SQL Server:** use `sqlcmd -I` (quoted identifiers on). Without it the procedure is stored with `QUOTED_IDENTIFIER OFF`, and any write to a table that has a filtered index or an indexed computed column then fails with error 1934.
+
+Now: a stamp column of type datetime2 is set with SYSDATETIME() and a datetimeoffset with SYSDATETIMEOFFSET() (ColumnModel.SqlServerNow), so it keeps its own precision; any other date uses GETDATE().

@@ -141,6 +141,7 @@
             if (kind == CellKind.Lookup) return "@" + lookupCall;
             if (kind == CellKind.Boolean) return c.IsNullable ? $"@({prop} is null ? \"\" : {prop} == true ? \"Yes\" : \"No\")" : $"@({prop} ? \"Yes\" : \"No\")";
             if (kind == CellKind.Date) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd\")";
+            if (kind == CellKind.DateTime) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd HH:mm\")";
             if (kind == CellKind.Money) return $"@Money({prop}, {NumericClassifier.CurrencyDigits(c)})";
             if (kind == CellKind.Decimal) return $"@{prop}{(c.IsNullable ? "?" : "")}.ToString(\"N2\")";
             return $"@{prop}";
