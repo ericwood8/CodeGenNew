@@ -30,16 +30,20 @@ whether the key is a parameter.
     limits the generated number boxes use (see NumericClassifier and ProjectSettings.RangeFor).
   - IsStringColumn with a known length -> [StringLength(n)] (same byte/character halving CS_Entity.tt
     uses for nchar/nvarchar).
-  - Column name matching a semantic pattern -> [DataType(DataType.X)]: *Email* -> EmailAddress,
-    *Password* -> Password, *Phone* -> PhoneNumber (CS_Entity.tt already has Phone; Email/Password are
-    new here), else MultilineText from 100 characters up (same threshold CS_Entity.tt uses) - checked
-    in that order, since a semantically-named column should win over a generic length guess.
+  - A text column named like an email address, a phone number or a URL -> [EmailAddress], [Phone] or
+    [Url] (they check the value and carry the DataType themselves). The classification is the one the
+    validators of every language read (ColumnRules.RuleOf), so the project's PlainTextColumns list
+    (EmailTemplate, or Site.PhoneNotes for one table) switches it off here too. A decimal column named
+    Latitude or Longitude gets [Range(-90, 90)] / [Range(-180, 180)] unless a CHECK constraint says otherwise.
+  - *Password* -> [DataType(DataType.Password)], else MultilineText from 100 characters up (same
+    threshold CS_Entity.tt uses) - checked in that order, since a semantically-named column should win
+    over a generic length guess.
   - [Display(Name/Description)] from the column name split into words (CS_Entity.tt's own helper).
 
 Deliberately does NOT write EF-mapping attributes ([Column], [ForeignKey], [Precision],
 [DatabaseGenerated], [Timestamp]) or display-formatting ones ([DisplayFormat]) - those belong to the
 entity's own mapping (CS_Entity.tt already writes them) and would be redundant or conflicting coming
-from a second class. Does not write [Range]/[RegularExpression] (needs judgment CodeGenNew cannot
+from a second class. Does not write [RegularExpression] (needs judgment CodeGenNew cannot
 supply) or a custom foreign-key-exists validator attribute (the research example's
 [RequiredIntForeignKeyValidator] assumes a hand-written attribute class no target project can be
 assumed to have) - a NOT NULL foreign-key column still gets a plain [Required].

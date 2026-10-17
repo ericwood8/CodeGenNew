@@ -43,7 +43,7 @@ public static class PostgresProcedures
         $"CREATE OR REPLACE FUNCTION {Fn(m, suffix)}({(parameters.Length > 0 ? "\n" + parameters + "\n" : "")})\n" +
         $"RETURNS {returns}\nLANGUAGE plpgsql\nAS $$\n{body}$$;\n";
 
-    private static void Validations(StringBuilder o, TableModel m, Func<ColumnModel, bool> isParameter)
+    private static void Validations(StringBuilder o, TableModel m, Func<ColumnModel, bool> isParameter, ProjectSettings? project)
     {
         if (m.HasStartEndDatePair && m.StartDateColumn is { } s && m.EndDateColumn is { } e && isParameter(s) && isParameter(e))
         {
@@ -57,11 +57,16 @@ public static class PostgresProcedures
             o.Append($"\t    AND ({P(id)} > {P(od)} OR ({P(id)} = {P(od)} AND {P(it)} > {P(ot)}))) THEN\n");
             o.Append($"\t\tRAISE EXCEPTION '{Message($"{Q(id.DbName)}/{Q(it.DbName)} must not be later than {Q(od.DbName)}/{Q(ot.DbName)}.")}';\n\tEND IF;\n\n");
         }
+        foreach (var guard in ValueGuards.Of(m, project).Where(g => isParameter(g.Column)))
+        {
+            o.Append($"\tIF ({guard.Condition(P(guard.Column), SqlDialect.PostgreSql)}) THEN\n");
+            o.Append($"\t\tRAISE EXCEPTION '{Message(guard.Message(Q))}';\n\tEND IF;\n\n");
+        }
     }
 
     // =============== Insert ===============
 
-    public static string Insert(TableModel m)
+    public static string Insert(TableModel m, ProjectSettings? project = null)
     {
         var insertable = m.Columns
             .Where(c => !c.IsComputed && !c.IsModifiedDateColumn && !c.IsModifiedUserColumn && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn)
@@ -83,7 +88,7 @@ public static class PostgresProcedures
             c.IsPrimaryKey ? null : c.IsStringColumn ? "''" : c.IsMoneyColumn ? "0" : "NULL"));
 
         var o = new StringBuilder("BEGIN\n");
-        Validations(o, m, parameterColumns.Contains);
+        Validations(o, m, parameterColumns.Contains, project);
         o.Append($"\tINSERT INTO {Table(m)}");
         if (pairs.Count == 0)
             o.Append(" DEFAULT VALUES");
@@ -103,7 +108,7 @@ public static class PostgresProcedures
 
     // =============== Update ===============
 
-    public static string Update(TableModel m)
+    public static string Update(TableModel m, ProjectSettings? project = null)
     {
         var updatable = m.Columns
             .Where(c => !c.IsComputed && !c.IsCreateDateColumn && !c.IsCreateUserColumn && !c.IsModifiedDateColumn && !c.IsLastChangedDateColumn).ToList();
@@ -129,7 +134,7 @@ public static class PostgresProcedures
 
         var parameters = updatable.Select(c => (P(c), c.SqlTypeDeclaration, c.IsPrimaryKey ? null : "NULL"));
         var o = new StringBuilder("BEGIN\n");
-        Validations(o, m, updatable.Contains);
+        Validations(o, m, updatable.Contains, project);
         o.Append($"\tIF {P(m.PrimaryKeyColumns[0])} IS NULL THEN\n\t\tRETURN 0;\n\tEND IF;\n\n");
         if (sets.Count == 0)
         {
@@ -146,7 +151,7 @@ public static class PostgresProcedures
 
     // =============== Save =============== 
 
-    public static string Save(TableModel m)
+    public static string Save(TableModel m, ProjectSettings? project = null)
     {
         var identityKey = m.PrimaryKeyColumns.FirstOrDefault(c => c.IsIdentity);
         var parameterColumns = m.Columns
@@ -188,7 +193,7 @@ public static class PostgresProcedures
         foreach (var c in parameterColumns.Where(c => c.IsStringColumn))
             o.Append($"\t{P(c)} := {(c.IsNullable ? $"btrim({P(c)})" : $"COALESCE(btrim({P(c)}), '')")};\n");
         if (parameterColumns.Any(c => c.IsStringColumn)) o.Append('\n');
-        Validations(o, m, parameterColumns.Contains);
+        Validations(o, m, parameterColumns.Contains, project);
 
         string returnValue = identityKey is not null ? $"RETURN {P(identityKey)};" : "RETURN;";
         string whereClause = Eq(pk, k => P(k));

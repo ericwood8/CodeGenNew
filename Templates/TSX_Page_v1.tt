@@ -892,7 +892,8 @@
             {
                 T($"            <input");
                 T($"              id=\"{id}\"");
-                T("              type=\"text\"");
+                T($"              type=\"{c.InputType(Project, Model.TableName)}\"");
+                if (c.InputPattern(Project, Model.TableName) is { Length: > 0 } pattern) T("              " + pattern);
                 T($"              aria-label=\"{Labels.Field(c)}\"");
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");

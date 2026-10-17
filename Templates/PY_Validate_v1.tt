@@ -26,7 +26,7 @@
     var shapes = new HashSet<string>();
     foreach (var f in t.SchemaFields)
     {
-        var rule = f.Column.RuleOf(Project);
+        var rule = f.Column.RuleOf(Project, Model.TableName);
         if (rule is null || f.ReadOnly)
             continue;
         string label = Labels.Words(f.Column.Name);

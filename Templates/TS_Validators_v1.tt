@@ -13,7 +13,7 @@
     // JSON property name so the record can feed FormBuilder or a FormControl. A limit the Angular Validators cannot state (a strict bound) gets a small validator function in the same file.
 
     var fields = Model.Columns.Where(c => !c.IsSystemFilled()).OrderBy(c => c.OrdinalPosition)
-        .Select(c => (Column: c, Rule: c.RuleOf(Project))).Where(f => f.Rule is not null).ToList();
+        .Select(c => (Column: c, Rule: c.RuleOf(Project, Model.TableName))).Where(f => f.Rule is not null).ToList();
     {
         string baseName = ScreenNames.BaseName(Model.TableName);
         string variable = char.ToLowerInvariant(baseName[0]) + baseName[1..] + "Validators";

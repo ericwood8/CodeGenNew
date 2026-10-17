@@ -1208,7 +1208,7 @@ public class TemplateRenderingTests
 
         string cs = await Render("CS_Validation_v1.tt", table);
 
-        Expect.Contains(cs, "[DataType(DataType.EmailAddress)]");
+        Expect.Contains(cs, "[EmailAddress]");
         Expect.Contains(cs, "[DataType(DataType.Password)]");
     }
 

@@ -1,5 +1,6 @@
 <#@ template language="C#" #>
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
@@ -7,7 +8,7 @@
     // MySQL has real stored procedures with its own syntax: CodeGenNew.Core's MySqlProcedures writes this one for a table read from MySQL.
     if (Model.Dialect == SqlDialect.MySql)
     {
-        Write(MySqlProcedures.Update(Model));
+        Write(MySqlProcedures.Update(Model, Project));
         return GenerationEnvironment.ToString();
     }
 #>
@@ -15,7 +16,7 @@
     // PostgreSQL has functions rather than stored procedures: CodeGenNew.Core's PostgresProcedures writes this one for a table read from PostgreSQL.
     if (Model.Dialect == SqlDialect.PostgreSql)
     {
-        Write(PostgresProcedures.Update(Model));
+        Write(PostgresProcedures.Update(Model, Project));
         return GenerationEnvironment.ToString();
     }
 #>
@@ -114,6 +115,17 @@ AS
 	             AND CAST(<#= inTime.ParameterName #> AS TIME) > CAST(<#= outTime.ParameterName #> AS TIME))))
 	BEGIN
 		RAISERROR('[<#= inDate.Name #>]/[<#= inTime.Name #>] must not be later than [<#= outDate.Name #>]/[<#= outTime.Name #>].', <#= SqlErrorCodes.RuleSeverity #>, <#= SqlErrorCodes.RuleState #>);
+		RETURN 0;
+	END
+<#
+    }
+    // A value the project says the table must never hold (NonNegativeColumns, NotFutureDateColumns) and the database does not state; every parameter here is text.
+    foreach (var guard in ValueGuards.Of(Model, Project).Where(g => updatableColumns.Contains(g.Column)))
+    {
+#>
+	IF (<#= guard.Condition(guard.Column.ParameterName, SqlDialect.SqlServer, textParameter: true) #>)
+	BEGIN
+		RAISERROR('<#= guard.Message(name => "[" + name + "]").Replace("'", "''") #>', <#= SqlErrorCodes.RuleSeverity #>, <#= SqlErrorCodes.RuleState #>);
 		RETURN 0;
 	END
 <#

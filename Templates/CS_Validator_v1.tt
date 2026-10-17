@@ -20,7 +20,7 @@
     // Generates: <TableName>Validator.cs   (see OutputName in CS_Validator_v1.tt.config)
     // A FluentValidation validator for the table's entity: AbstractValidator<Entity> with a rule per column that the schema says something about. Text that cannot be NULL must not be empty; text has
     // its maximum length; a whole number keeps to the range its name suggests or its CHECK constraint states; a decimal keeps to its CHECK range (a strict bound stays strict); a column with a CHECK
-    // list allows only those values; a text column named like an email address, a phone number or a URL is checked for that shape, and a latitude or longitude for its degrees. Identity, computed,
+    // list allows only those values; a text column named like an email address, a phone number or a URL is checked for that shape (unless the project lists it in PlainTextColumns), a latitude or longitude for its degrees, a column in NonNegativeColumns for 0 or more and a date in NotFutureDateColumns for not later than today. Identity, computed,
     // audit and modified columns get no rule (the database or the repository sets them).
     // The consumer is yours: register the validators (services.AddValidatorsFromAssemblyContaining<...>()) and call them from an endpoint filter, the repository or a form; unlike the
     // [Required] / [StringLength] attributes of CS_Validation, nothing runs them for you. Needs the FluentValidation package, and the entity class (CS_Entity), so a primary key.
@@ -50,10 +50,15 @@
         var rules = new List<string>();
         var values = new List<string>();   // the allowed-value arrays, written above the constructor
 
+        // a date the project says is never in the future (NotFutureDateColumns) has no schema rule of its own, so it is added here
+        var notFuture = ValueGuards.Of(Model, Project).Where(g => g.Kind == ValueGuardKind.NotFuture).Select(g => g.Column).ToHashSet();
+
         foreach (var c in Model.Columns.OrderBy(c => c.OrdinalPosition))
         {
-            if (c.RuleOf(Project) is not { } rule)
+            var rule = c.RuleOf(Project, Model.TableName);
+            if (rule is null && !notFuture.Contains(c))
                 continue;
+            rule ??= new ColumnRule();
 
             var parts = new List<string>();
             string label = Words(c.Name);
@@ -81,7 +86,7 @@
             }
 
             // a whole number or a latitude / longitude has both limits at once; a decimal's CHECK may state either, strictly or not
-            bool bothLimits = c.IsIntegerColumn || c.Check is null;
+            bool bothLimits = rule.Min is not null && rule.Max is not null && (c.IsIntegerColumn || c.Check is null);
             if (rule.HasRange && bothLimits)
             {
                 parts.Add($".InclusiveBetween({Literal(c, rule.Min!.Value)}, {Literal(c, rule.Max!.Value)})");
@@ -93,6 +98,9 @@
                 if (rule.Max is { } max)
                     parts.Add($".{(rule.MaxStrict ? "LessThan" : "LessThanOrEqualTo")}({Literal(c, max)})");
             }
+
+            if (notFuture.Contains(c))
+                parts.Add($".Must(value => {(c.IsNullable ? "value is null || value.Value.Date" : "value.Date")} <= DateTime.Today).WithMessage({CSharpText.Quote(label + " must not be later than today.")})");
 
             rules.Add($"        RuleFor(x => x.{Id(c)}){string.Concat(parts)};");
         }

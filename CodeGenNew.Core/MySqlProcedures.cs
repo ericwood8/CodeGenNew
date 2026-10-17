@@ -35,7 +35,7 @@ public static class MySqlProcedures
 
     private static (string, string, string) In(ColumnModel c) => (P(c), c.SqlTypeDeclaration, "IN");
 
-    private static void Validations(StringBuilder o, TableModel m, Func<ColumnModel, bool> isParameter)
+    private static void Validations(StringBuilder o, TableModel m, Func<ColumnModel, bool> isParameter, ProjectSettings? project)
     {
         static string Raise(string text) => $"\t\tSIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '{Message(text)}';\n\tEND IF;\n\n";
         if (m.HasStartEndDatePair && m.StartDateColumn is { } s && m.EndDateColumn is { } e && isParameter(s) && isParameter(e))
@@ -49,6 +49,11 @@ public static class MySqlProcedures
             o.Append($"\tIF ({P(id)} IS NOT NULL AND {P(it)} IS NOT NULL AND {P(od)} IS NOT NULL AND {P(ot)} IS NOT NULL\n");
             o.Append($"\t    AND ({P(id)} > {P(od)} OR ({P(id)} = {P(od)} AND {P(it)} > {P(ot)}))) THEN\n");
             o.Append(Raise($"{Q(id.DbName)}/{Q(it.DbName)} must not be later than {Q(od.DbName)}/{Q(ot.DbName)}."));
+        }
+        foreach (var guard in ValueGuards.Of(m, project).Where(g => isParameter(g.Column)))
+        {
+            o.Append($"\tIF ({guard.Condition(P(guard.Column), SqlDialect.MySql)}) THEN\n");
+            o.Append(Raise(guard.Message(Q)));
         }
     }
 
@@ -85,7 +90,7 @@ public static class MySqlProcedures
 
     // ============================================== Insert ==============================================
 
-    public static string Insert(TableModel m)
+    public static string Insert(TableModel m, ProjectSettings? project = null)
     {
         var insertable = m.Columns
             .Where(c => !c.IsComputed && !c.IsModifiedDateColumn && !c.IsModifiedUserColumn && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn)
@@ -103,7 +108,7 @@ public static class MySqlProcedures
             pairs.Add((admin.DbName, Flag(admin, false)));
 
         var o = new StringBuilder("BEGIN\n");
-        Validations(o, m, parameterColumns.Contains);
+        Validations(o, m, parameterColumns.Contains, project);
         o.Append($"\tINSERT INTO {Table(m)}");
         if (pairs.Count == 0)
             o.Append("\n\tVALUES ()");
@@ -118,7 +123,7 @@ public static class MySqlProcedures
 
     // ============================================== Update ==============================================
 
-    public static string Update(TableModel m)
+    public static string Update(TableModel m, ProjectSettings? project = null)
     {
         var updatable = m.Columns
             .Where(c => !c.IsComputed && !c.IsCreateDateColumn && !c.IsCreateUserColumn && !c.IsModifiedDateColumn && !c.IsLastChangedDateColumn).ToList();
@@ -143,7 +148,7 @@ public static class MySqlProcedures
 
         var pk = m.PrimaryKeyColumns;
         var o = new StringBuilder("BEGIN\n");
-        Validations(o, m, updatable.Contains);
+        Validations(o, m, updatable.Contains, project);
         if (sets.Count == 0)
         {
             o.Append("\tSELECT 0 AS `Result`; -- nothing to change\n");
@@ -161,7 +166,7 @@ public static class MySqlProcedures
 
     // ============================================== Save ==============================================
 
-    public static string Save(TableModel m)
+    public static string Save(TableModel m, ProjectSettings? project = null)
     {
         var identityKey = m.PrimaryKeyColumns.FirstOrDefault(c => c.IsIdentity);
         var parameterColumns = m.Columns
@@ -199,7 +204,7 @@ public static class MySqlProcedures
         foreach (var c in parameterColumns.Where(c => c.IsStringColumn))
             o.Append($"\tSET {P(c)} = {(c.IsNullable ? $"TRIM({P(c)})" : $"COALESCE(TRIM({P(c)}), '')")};\n");
         if (parameterColumns.Any(c => c.IsStringColumn)) o.Append('\n');
-        Validations(o, m, parameterColumns.Contains);
+        Validations(o, m, parameterColumns.Contains, project);
 
         string selectKey = identityKey is not null ? $"SELECT {P(identityKey)} AS {Q(identityKey.DbName)};" : "SELECT 0 AS `Result`;";
         string whereClause = Eq(pk, P);

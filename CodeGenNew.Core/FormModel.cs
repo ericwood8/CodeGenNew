@@ -174,6 +174,9 @@ public sealed class FormModel
     /// <summary> How the grid shows a column of this table (<see cref="GridCells.KindOf"/>). </summary>
     public CellKind CellOf(ColumnModel column) => GridCells.KindOf(column, LookupOf(column) is not null);
 
+    /// <summary> Long text is a multi-line box, except an email address, a phone number or a URL: those are one line, whatever their column length, so the browser can check them. </summary>
+    public bool IsMultilineBox(ColumnModel column) => TemplateHelpers.IsMultiline(column) && column.InputType(_project, Table.TableName) == "text";
+
     /// <summary> Which editor a column gets on the form. The order is the rule every stack follows: the first that fits wins. </summary>
     public FieldKind KindOf(ColumnModel column) =>
         column.IsSystemStampColumn || IsGuardStamp(column) ? FieldKind.SystemStamp
@@ -184,7 +187,7 @@ public sealed class FormModel
         : TemplateHelpers.IsDate(column) ? FieldKind.Date
         : IsMoneyInput(column) ? FieldKind.Money
         : TemplateHelpers.IsNumber(column) ? FieldKind.Number
-        : TemplateHelpers.IsMultiline(column) ? FieldKind.Multiline
+        : IsMultilineBox(column) ? FieldKind.Multiline
         : FieldKind.Text;
 
     /// <summary> The project's guarded columns of this table (GuardedColumns): the screen asks the API which of them the caller may change and shows the others as text with the sentence. </summary>

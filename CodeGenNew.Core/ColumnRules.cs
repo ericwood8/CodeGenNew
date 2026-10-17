@@ -30,8 +30,9 @@ public static class ColumnRules
         || column.IsCreateUserColumn || column.IsModifiedDateColumn || column.IsModifiedUserColumn || column.IsLastChangedDateColumn;
 
     /// <summary> The rule for a column, or null when the schema says nothing about it or the system fills it in. A decimal or float keeps to its CHECK range, and failing that a latitude or
-    /// longitude by name keeps to its degrees; a whole number keeps to the range its name or CHECK suggests. </summary>
-    public static ColumnRule? RuleOf(this ColumnModel column, ProjectSettings project)
+    /// longitude by name keeps to its degrees; a whole number keeps to the range its name or CHECK suggests. A text column the project lists in <c>PlainTextColumns</c> gets no format
+    /// check; <paramref name="table"/> lets that list name one table's column. </summary>
+    public static ColumnRule? RuleOf(this ColumnModel column, ProjectSettings project, string? table = null)
     {
         if (column.IsSystemFilled())
             return null;
@@ -40,7 +41,7 @@ public static class ColumnRules
         if (column.IsStringColumn)
         {
             var shape = TextShape.None;
-            if (!column.HasChoices)
+            if (!column.HasChoices && !project.IsPlainText(table ?? "", column.Name))
             {
                 if (Names(column, "Email"))
                     shape = TextShape.Email;
@@ -72,9 +73,30 @@ public static class ColumnRules
                 rule = new ColumnRule { Min = -180, Max = 180 };
         }
 
+        // A column the project says is never negative keeps to 0 or more, whatever the schema says about its upper limit.
+        if ((column.IsIntegerColumn || column.IsNumericColumn || column.IsMoneyColumn) && project.IsNonNegative(table ?? "", column.Name) && !(rule?.Min >= 0))
+            rule = (rule ?? new ColumnRule()) with { Min = 0, MinStrict = false };
+
         bool says = rule is not null && (rule.Required || rule.MaxLength > 0 || rule.Choices is not null || rule.Shape != TextShape.None || rule.HasRange);
         return says ? rule : null;
     }
+
+    /// <summary> The type of the text box a web form gives a text column: <c>email</c>, <c>tel</c> or <c>url</c> when the column's name says so (the browser then refuses a value of another shape when
+    /// the form is submitted), otherwise <c>text</c>. </summary>
+    public static string InputType(this ColumnModel column, ProjectSettings project, string table) => column.RuleOf(project, table)?.Shape switch
+    {
+        TextShape.Email => "email",
+        TextShape.Phone => "tel",
+        TextShape.Url => "url",
+        _ => "text"
+    };
+
+    /// <summary> The phone number text, as an HTML <c>pattern</c> (also valid with the unicode-sets flag browsers use) and the <c>title</c> shown with it; the validators of every language use the same characters. </summary>
+    public const string PhonePattern = @"[0-9+\(\)\-.\s]{3,25}";
+
+    /// <summary> The HTML attributes a phone number box adds to its type (<c>pattern="..." title="..."</c>, without a leading space), or empty for any other column. </summary>
+    public static string InputPattern(this ColumnModel column, ProjectSettings project, string table) =>
+        column.RuleOf(project, table)?.Shape == TextShape.Phone ? $"pattern=\"{PhonePattern}\" title=\"A phone number: digits, spaces and + ( ) - .\"" : "";
 
     private static bool Names(ColumnModel column, params string[] words) => words.Any(word => column.Name.ContainsIgnoreCase(word));
 }

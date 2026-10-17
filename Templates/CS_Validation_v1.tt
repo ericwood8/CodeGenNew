@@ -24,9 +24,9 @@
     // ==========================================================================================
     // CS_Validation_v1.tt
     // Generates: <TableName>Validation.cs   (see OutputName in CS_Validation_v1.tt.config)
-    // A validation "buddy" class: [Required], [StringLength], [DataType], [Display] and [Range] on a separate <Table>Metadata class attached to the
+    // A validation "buddy" class: [Required], [StringLength], [DataType], [EmailAddress], [Phone], [Url], [Display] and [Range] on a separate <Table>Metadata class attached to the
     // entity with [MetadataType], so it works for a generated or a hand-maintained entity without editing either. [Required] is the runtime check
-    // the entity's C# required modifier is not. The ranges come from the column's name and type (a year, a month, a percentage).
+    // the entity's C# required modifier is not. The ranges come from the column's name and type (a year, a month, a percentage, a latitude, a longitude).
     // Full notes: Docs/TemplateNotes/CS_Validation_v1.md
 
     var validatedColumns = Model.Columns
@@ -43,13 +43,21 @@
 
     string ClrType(ColumnModel c) => c.CSharp();
 
+    // An email address, a phone number and a URL get the attribute that checks them (the same classification as the validators of every language, so PlainTextColumns
+    // switches it off here too); the attribute carries the DataType itself.
     string? SemanticDataType(ColumnModel c, bool multiline)
     {
-        if (c.Name.ContainsIgnoreCase("Email")) return "DataType.EmailAddress";
         if (c.Name.ContainsIgnoreCase("Password")) return "DataType.Password";
-        if (c.Name.ContainsIgnoreCase("Phone")) return "DataType.PhoneNumber";
         return multiline ? "DataType.MultilineText" : null;
     }
+
+    string? ShapeAttribute(ColumnRule? rule) => rule?.Shape switch
+    {
+        TextShape.Email => "[EmailAddress]",
+        TextShape.Phone => "[Phone]",
+        TextShape.Url => "[Url]",
+        _ => null
+    };
 
     var o = new StringBuilder();
     void L(string s = "") => o.Append(s).Append('\n');
@@ -73,10 +81,14 @@
         B($"    [Display(Name = \"{words}\", Description = \"{words}\")]");
         if (isText && chars > 0) B($"    [StringLength({chars})]");
         if (dataType is not null) B($"    [DataType({dataType})]");
+        var rule = c.RuleOf(Project, Model.TableName);
+        if (ShapeAttribute(rule) is { } shapeAttribute) B($"    {shapeAttribute}");
         // A whole-number column whose name says what it holds (a year, a month, a percentage, ...) gets that range; every other
         // integer keeps the plain limits of its SQL type, which a [Range] would only repeat.
         // (a CHECK constraint of the database says the same for any numeric column; a decimal gets it as double bounds)
         if ((c.NumericKind != NumericKind.None || c.Check is not null) && Project.RangeFor(c) is { } range) B($"    [Range({range.Min}, {range.Max})]");
+        else if (c.Check is null && rule is { HasRange: true } && (c.IsNumericColumn || c.IsMoneyColumn))
+            B($"    [Range({rule.Min!.Value.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture)}, {rule.Max!.Value.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture)})]");
         else if (c.Check is { } check && (c.IsNumericColumn || c.IsMoneyColumn))
             B($"    [Range({(check.Min is { } lo ? lo.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture) : "double.MinValue")}, {(check.Max is { } hi ? hi.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture) : "double.MaxValue")})]");
         B($"    public {ClrType(c)} {Id(c)} {{ get; set; }}");

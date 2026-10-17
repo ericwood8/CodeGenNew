@@ -31,7 +31,7 @@
     var checks = new List<string[]>();
     foreach (var f in t.Fields.Where(f => f != t.HashField))
     {
-        var rule = f.Column.RuleOf(Project);
+        var rule = f.Column.RuleOf(Project, Model.TableName);
         if (rule is null)
             continue;
         string label = Labels.Words(f.Column.Name);
@@ -99,7 +99,7 @@
     Line($"@@@FILE src/validation/{t.Module}.rs@@@");
     Line($"use crate::models::{t.Module}::{t.Struct};");
     Line("use crate::support::ApiError;");
-    if (anyRange && t.Fields.Any(f => f.BaseType == "Decimal" && f.Column.RuleOf(Project)?.HasRange == true))
+    if (anyRange && t.Fields.Any(f => f.BaseType == "Decimal" && f.Column.RuleOf(Project, Model.TableName)?.HasRange == true))
         Line("use rust_decimal::prelude::ToPrimitive;");
     Line();
     Line("/// Checks the row against what the schema says: required, length, allowed values, shape and range. An error carries every problem, by property name.");

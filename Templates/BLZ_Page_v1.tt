@@ -27,6 +27,10 @@
     string Symbol() => Project.CurrencySymbol;
     bool HasInput(ColumnModel c) => c.CSharpBase() is not ("byte[]" or "object");
     string Ident(string name) => BlazorNames.Identifier(name);
+    // type="email" / "tel" / "url" (and a phone pattern) for a text column named like one; the browser checks it when the form is submitted
+    string ShapeAttributes(ColumnModel c) => c.InputType(Project, Model.TableName) is var shape && shape != "text"
+        ? $" type=\"{shape}\"" + (c.InputPattern(Project, Model.TableName) is { Length: > 0 } pattern ? " " + pattern : "")
+        : "";
     bool odata = Variant == "OData";
 
     if (odata && !ODataPlan.Serves(Model, Project))
@@ -374,9 +378,9 @@
             else if (c.CSharpBase() == "string")
             {
                 string max = Chars(c) is > 0 and < 4000 ? $" maxlength=\"{Chars(c)}\"" : "";
-                input = IsMultiline(c)
+                input = form.IsMultilineBox(c)
                     ? $"<InputTextArea id=\"{id}\" @bind-Value=\"{bind}\"{max}{required} />"
-                    : $"<InputText id=\"{id}\" @bind-Value=\"{bind}\"{max}{required} />";
+                    : $"<InputText id=\"{id}\" @bind-Value=\"{bind}\"{ShapeAttributes(c)}{max}{required} />";
             }
             else
                 input = $"<input id=\"{id}\" @bind=\"{bind}\"{required} />";

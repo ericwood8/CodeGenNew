@@ -443,7 +443,8 @@
             else
             {
                 string max = IsText(c) && Chars(c) > 0 ? $" maxlength=\"{Chars(c)}\"" : "";
-                H($"                <input type=\"text\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{max} placeholder=\"{Labels.Placeholder(c)}\"{req}>");
+                string pattern = c.InputPattern(Project, Model.TableName) is { Length: > 0 } p ? " " + p : "";
+                H($"                <input type=\"{c.InputType(Project, Model.TableName)}\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{max}{pattern} placeholder=\"{Labels.Placeholder(c)}\"{req}>");
             }
             if (guard is not null)
             {

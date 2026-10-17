@@ -182,7 +182,9 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `Acronyms` | comma-separated words the Pascal style keeps upper-case whole (PO,UPC,MSRP) |
 | `Screens` | comma-separated tables that get a screen, in menu order; blank = every table that has an API and a search, alphabetically |
 | `NoCloneTables` | comma-separated tables that get no Clone button although they could (Customer,SalesInvoice) |
-| `NonNegativeColumns` | comma-separated money columns that can never be negative (CreditLimit, or Item.Cost for one table): their number box gets a minimum of 0 (a CHECK range in the database does this without the list) |
+| `NonNegativeColumns` | comma-separated money columns that can never be negative (CreditLimit, or Item.Cost for one table): their number box gets a minimum of 0, the validators refuse a negative value and the insert, update and save routines raise an error for one (a CHECK range in the database does the first two without the list, and then needs no guard in the routines) |
+| `NotFutureDateColumns` | comma-separated date columns that can never be later than today (BirthDate, or Employee.HireDate for one table): the insert, update and save routines raise an error for a later date, and so does the FluentValidation validator |
+| `PlainTextColumns` | comma-separated text columns whose name says email, phone or URL but that hold something else (EmailTemplate, or Site.PhoneNotes for one table): they get no `[EmailAddress]` / `[Phone]` / `[Url]`, no validator rule and an ordinary text box |
 | `ValidatorNamespace` | the namespace of the FluentValidation validators CS_Validator writes (default &lt;ProjectName&gt;.App.Validators) |
 | `ApplicationNamespace` | the namespace of the commands, queries and handlers CS_CqrsHandlers writes (default &lt;ProjectName&gt;.App.Application) |
 | `FakerNamespace` | the namespace of the Bogus fakers CS_Faker writes (default &lt;ProjectName&gt;.App.Fakers) |

@@ -23,7 +23,7 @@
         string Field(ColumnModel c)
         {
             string label = Labels.Words(c.Name);
-            var rule = c.RuleOf(Project);
+            var rule = c.RuleOf(Project, Model.TableName);
             var o = new StringBuilder();
             if (rule?.Choices is { Count: > 0 } choices)
             {

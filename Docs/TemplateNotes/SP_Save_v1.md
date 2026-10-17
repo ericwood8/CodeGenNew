@@ -62,3 +62,5 @@ Design notes:
 
 Requires a primary key (SP_Save.tt.config: RequiresPrimaryKey=true); tables only (TableOnly=true).
 ```
+
+Guard clauses (project lists): a column in `NonNegativeColumns` or `NotFutureDateColumns` that the database states no rule for (a column whose CHECK already has a minimum needs none) gets an `IF` before the write that raises `[Column] must not be negative.` or `[Column] must not be later than today.` (`RAISERROR` and `RETURN` on SQL Server; `RAISE EXCEPTION` on PostgreSQL; `SIGNAL SQLSTATE '45000'` on MySQL). The tests are inline, not shared procedures, so a database needs no extra script. A NULL parameter never trips one and the Save procedure `THROW`s the rule violation instead of `RAISERROR`ing.
