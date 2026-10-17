@@ -81,6 +81,8 @@
         Line($"use crate::validation::{t.Module}::validate;");
     if (search)
         Line("use serde::Serialize;");
+    if (guidKey)
+        Line("use uuid::Uuid;");
     Line();
     if (readRoles.Count > 0)
         Line($"const READ_ROLES: &[&str] = &[{WriteRolePlan.Literal(readRoles)}];");

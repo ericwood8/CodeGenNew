@@ -11,6 +11,15 @@ public class TypeAheadTests
     private static ProjectSettings Project(params (string Key, string Value)[] values) =>
         ProjectSettings.FromValues(values.Select(v => new KeyValuePair<string, string>(v.Key, v.Value)).Append(new("ProjectName", "Acme")));
 
+    // The same invoice with no child table, so it is an ordinary list screen (a master-detail table has its own OData templates).
+    private static TableModel InvoiceList(long customerRows) => Sample.Table("SalesInvoice",
+    [
+        Sample.Column("SalesInvoiceId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Sample.Column("CustomerId", SqlDbType.Int, ordinal: 2),
+        Sample.Column("CustomerPO", SqlDbType.NVarChar, characters: 30, ordinal: 3)
+    ],
+    [Sample.ForeignKeyToParentOf(customerRows, "CustomerId", "Customer", "CustomerId", "CustomerName")]);
+
     private static TableModel Invoice(long customerRows) => Sample.Table("SalesInvoice",
     [
         Sample.Column("SalesInvoiceId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
@@ -24,7 +33,7 @@ public class TypeAheadTests
     ], childForeignKeys: [Sample.ChildForeignKey("SalesInvoiceLine", "SalesInvoiceId", "SalesInvoiceId")]);
 
     // An invoice whose line table points at an Item table of itemRows rows; the line also has a Quantity and a Unit (to a small table), so the lines are a grid of boxes and drop-downs.
-    private static TableModel InvoiceWithLines(long itemRows) => Sample.Table("SalesInvoice",
+    private static TableModel InvoiceWithLines(long itemRows, SqlDbType itemKey = SqlDbType.Int) => Sample.Table("SalesInvoice",
     [
         Sample.Column("SalesInvoiceId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
         Sample.Column("CustomerPO", SqlDbType.NVarChar, characters: 30, ordinal: 2)
@@ -43,7 +52,7 @@ public class TypeAheadTests
             [
                 Sample.Column("SalesInvoiceLineId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
                 Sample.Column("SalesInvoiceId", SqlDbType.Int, ordinal: 2),
-                Sample.Column("ItemId", SqlDbType.Int, ordinal: 3),
+                Sample.Column("ItemId", itemKey, ordinal: 3),
                 Sample.Column("UnitId", SqlDbType.Int, nullable: true, ordinal: 4),
                 Sample.Column("Quantity", SqlDbType.Int, ordinal: 5)
             ],
@@ -177,6 +186,67 @@ public class TypeAheadTests
         Assert.IsTrue(grid.Lookups.Single(l => l.ColumnName == "ItemId").TypeAhead);
         Assert.IsFalse(grid.Lookups.Single(l => l.ColumnName == "UnitId").TypeAhead);
         Assert.IsFalse(ChildGrid.For(InvoiceWithLines(50), Project()).Single().Lookups.Any(l => l.TypeAhead));
+    }
+
+    [TestMethod]
+    public async Task The_odata_screens_type_ahead_a_big_parent_like_the_rest_screens_and_keep_the_drop_down_for_a_small_one()
+    {
+        var odata = ("OData", "true");
+        var angular = await Run("TS_ODataComponent_v1.tt", InvoiceList(5000), Project(odata));
+        string ts = angular.Single(f => f.Key.EndsWith(".component.ts")).Value;
+        Expect.Contains(ts, "readonly customerIdAhead = new TypeAhead<number>((query) => this.customerService.getLookup(query)");
+        Expect.DoesNotContain(ts, "customers: Lookup[]");
+        Expect.Contains(angular.Single(f => f.Key.EndsWith(".component.html")).Value, "customerIdAhead.type(");
+        Expect.Contains(angular.Single(f => f.Key.EndsWith(".component.html")).Value, "customerIdColumnAhead.type($event)");
+        Expect.DoesNotContain(angular.Single(f => f.Key.EndsWith(".component.html")).Value, "of customers");
+
+        string react = (await Run("TSX_ODataPage_v1.tt", InvoiceList(5000), Project(odata))).Single(f => f.Key.EndsWith(".tsx") && !f.Key.EndsWith("test.tsx")).Value;
+        Expect.Contains(react, "TypeAheadBox<number>");
+        Expect.Contains(react, "customerApi.getLookup(query)");
+        Expect.Contains(react, "pick={<TypeAheadBox<number> label=\"Filter by Customer\"");
+
+        string razor = (await Run("BLZ_ODataPage_v1.tt", InvoiceList(5000), Project(odata))).Single(f => f.Key.EndsWith(".razor")).Value;
+        Expect.Contains(razor, "<TypeAhead");
+        Expect.Contains(razor, "Name=\"@NameCustomer(FilterCustomerIdKey)\"");
+        Expect.DoesNotContain(razor, "customers = await");
+
+        string small = (await Run("TS_ODataComponent_v1.tt", InvoiceList(50), Project(odata))).Single(f => f.Key.EndsWith(".component.ts")).Value;
+        Expect.DoesNotContain(small, "TypeAhead<number>");
+        Expect.Contains(small, "customerService.getLookup()");
+    }
+
+    [TestMethod]
+    public async Task A_parent_with_a_guid_key_is_asked_for_names_and_matches_like_one_with_a_number()
+    {
+        var editable = Project(("EditableChildren", "SalesInvoice.SalesInvoiceLine"));
+        var table = InvoiceWithLines(5000, SqlDbType.UniqueIdentifier);
+
+        var grid = ChildGrid.For(table, editable).Single();
+        var item = grid.Lookups.Single(l => l.ColumnName == "ItemId");
+        Assert.IsTrue(item.UsesLookupEndpoint);
+        Assert.IsTrue(item.TypeAhead);
+        Assert.IsTrue(grid.EditTypeAhead(grid.EditColumns.Single(c => c.Name == "ItemId")));
+        Assert.IsFalse(ChildGrid.For(InvoiceWithLines(50, SqlDbType.UniqueIdentifier), Project()).Single().Lookups.Any(l => l.TypeAhead));
+
+        var angular = await Run("TS_DetailMasterComponent_v1.tt", table, editable);
+        string ts = angular.Single(f => f.Key.EndsWith(".component.ts")).Value;
+        Expect.Contains(ts, "readonly salesInvoiceLineItemIdAheads = new RowAheads<string>('itemId', (query) => lookupCall<string>(this.http, 'api/items', query), new LookupNames<string>((query) => lookupCall<string>(this.http, 'api/items', query)));");
+        Expect.Contains((await Run("TS_DetailMasterComponent_v1.tt", table, Project())).Single(f => f.Key.EndsWith(".component.ts")).Value,
+            "namesOf((query) => lookupCall(this.http, 'api/items', query), this.salesInvoiceLineRows.map((r) => r['itemId']))");
+
+        var react = await Run("TSX_DetailMasterPage_v1.tt", table, editable);
+        string page = react.Single(f => f.Key.EndsWith(".tsx") && !f.Key.EndsWith("test.tsx")).Value;
+        Expect.Contains(page, "const findSalesInvoiceLineItemId: LookupFinder<string> = (query) => request<LookupRow<string>[]>('/api/items/lookup' + lookupQuery(query));");
+        Expect.Contains(page, "<TypeAheadBox<string> label=\"Item\" value={row.itemId} names={salesInvoiceLineItemIdNames}");
+
+        string razor = (await Run("BLZ_Page_v1.tt", table, Project())).Single(f => f.Key.EndsWith(".razor")).Value;
+        Expect.Contains(razor, "private async Task KnowchildLookupItemAsync(IEnumerable<Guid> ids)");
+        Expect.Contains(razor, "childSalesInvoiceLineRows.Select(r => r.ItemId).OfType<Guid>());");
+        Expect.DoesNotContain(razor, "childLookupItemClient.GetAllAsync");
+
+        string vm = (await Run("WinUI3_DetailMasterScreen_v1.tt", table, Project())).Single(f => f.Key.EndsWith("ViewModel.cs")).Value;
+        Expect.Contains(vm, "var salesInvoiceLineItemNames = new Dictionary<Guid, string>();");
+        Expect.Contains(vm, "wantedItemId.Contains(p.ItemId)");
     }
 
     [TestMethod]

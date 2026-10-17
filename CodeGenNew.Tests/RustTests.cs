@@ -208,6 +208,23 @@ public class RustTests
     }
 
     [TestMethod]
+    public async Task A_table_with_a_guid_key_imports_uuid_where_its_repository_and_routes_name_the_key()
+    {
+        var table = Sample.Table("Product",
+        [
+            Sample.Column("ProductId", SqlDbType.UniqueIdentifier, primaryKey: true, ordinal: 1),
+            Sample.Column("Name", SqlDbType.NVarChar, characters: 40, ordinal: 2)
+        ], dialect: SqlDialect.Sqlite);
+        table.DisplayColumns.Add(table.Columns[1]);
+        foreach (string template in new[] { "RS_Repo_v1.tt", "RS_Routes_v1.tt" })
+        {
+            var result = await Repo.Cache.RunAsync(Repo.Template(template), table, Project(("DatabaseProvider", "Sqlite")));
+            Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+            Expect.Contains(result.GeneratedText!.ReplaceLineEndings("\n"), "use uuid::Uuid;\n");
+        }
+    }
+
+    [TestMethod]
     public void A_clone_copies_the_row_gives_the_unique_text_a_bound_value_and_sets_the_create_date()
     {
         var t = RustTable.Of(Account(SqlDialect.PostgreSql), Project());

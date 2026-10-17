@@ -15,13 +15,13 @@ public sealed record ChildLookup(ForeignKeyModel ForeignKey, ColumnModel? Column
     /// <summary> The caption of the child column as the grid's header shows it (<c>Item</c>), which also names the filter: "Filter by Item". </summary>
     public string Label => Column is null ? Labels.Words(TemplateHelpers.BaseName(ParentTable)) : GridCaption.For(Column, Labels.Column(ColumnName));
 
-    /// <summary> A whole-number key is named by the parent's <c>GET &lt;route&gt;/lookup</c> (id and name only); any other key reads the parent's rows. </summary>
-    public bool UsesLookupEndpoint => ColumnKeyType?.Kind == KeyKind.Int;
+    /// <summary> A key (a number, a uniqueidentifier or text) is named by the parent's <c>GET &lt;route&gt;/lookup</c> (id and name only); a column that cannot be a key reads the parent's rows. </summary>
+    public bool UsesLookupEndpoint => ColumnKeyType is not null;
 
     /// <summary> The JSON name of the child column that holds the key. </summary>
     public string ColumnJson => JsonNames.Camel(ColumnName);
 
-    /// <summary> The api route a web client reads the parent's names from: the lookup list for a whole-number key, else the parent's rows (<c>customers/lookup</c>, <c>customers</c>). </summary>
+    /// <summary> The api route a web client reads the parent's names from: the lookup list for a key, else the parent's rows (<c>customers/lookup</c>, <c>customers</c>). </summary>
     public string WebRoute => ScreenNames.ApiRoute(ParentTable) + (UsesLookupEndpoint ? "/lookup" : "");
 
     /// <summary> The JSON name of the parent's key in what <see cref="WebRoute"/> answers. </summary>
@@ -61,7 +61,7 @@ public sealed class ChildGrid
             {
                 var keyType = KeyType.OfForeignKey(link.ReferencingTableColumns, o);
                 return new ChildLookup(o, link.ReferencingTableColumns.FirstOrDefault(c => c.Name.Equals(o.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)), keyType,
-                    keyType?.Kind == KeyKind.Int && project.TypeAheadFor(o.ReferencedTable, o.ReferencedLookupShape));
+                    keyType is not null && project.TypeAheadFor(o.ReferencedTable, o.ReferencedLookupShape));
             })
             .ToList();
 
@@ -140,9 +140,9 @@ public sealed class ChildGrid
     /// <summary> The caption each child column gets in the grid (JSON name and caption: date columns lose "Date", yes/no columns end in "?", Number becomes #, Percent becomes %). </summary>
     public IReadOnlyList<(string Name, string Caption)> Captions => Link.ReferencingTableColumns.Select(c => (JsonNames.Camel(c.Name), GridCaption.For(c, Labels.Column(c.Name)))).ToList();
 
-    /// <summary> The foreign key behind a drop-down for one of the child's columns when its rows are edited inside the form: a column that is not a uniqueidentifier, points at a parent with a display
+    /// <summary> The foreign key behind a drop-down for one of the child's columns when its rows are edited inside the form: a column that can be a key, points at a parent with a display
     /// column and an API, and that the project does not leave unlooked-up. Null for a plain box. </summary>
-    public ForeignKeyModel? EditLookupOf(ColumnModel column) => column.IsGuidColumn ? null
+    public ForeignKeyModel? EditLookupOf(ColumnModel column) => KeyType.Of(column) is null ? null
         : Link.ReferencingTableForeignKeys.FirstOrDefault(o => o.ReferencingColumns.Count == 1 && o.ReferencingColumns[0].Equals(column.Name, StringComparison.OrdinalIgnoreCase)
             && o.ReferencedDisplayColumns.Count > 0 && !_project.NoApiFor(o.ReferencedTable, o.ReferencedLookupShape) && !_project.NoLookupFor(o.ReferencedTable, o.ReferencedLookupShape));
 

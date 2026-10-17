@@ -96,13 +96,15 @@
         var shown = form.Columns;
 
         var parents = form.Parents;
-        // a parent with too many rows for a drop-down is found by typing (type-ahead.ts); the OData screen keeps its drop-down
-        bool Ahead(FormParent p) => p.TypeAhead && !odata;
+        // a parent with too many rows for a drop-down is found by typing (type-ahead.ts), in the form and in the OData filter row
+        bool Ahead(FormParent p) => p.TypeAhead;
+        string ColumnAhead(ODataFilterField f) => f.Property + "ColumnAhead";
         string FormAhead(ColumnModel c) => JsonNames.Camel(c.Name) + "Ahead";
         string FilterAhead(SearchKeyField k) => k.ParamName + "FilterAhead";
         string NamesOf(FormParent p) => p.Variable + "NameCache";
         var formAheads = shown.Where(c => form.KindOf(c) == FieldKind.Lookup && Ahead(form.ParentOf(c)!)).ToList();   // the form fields that are type-aheads
         var filterAheads = searchKeys.Where(k => Ahead(k.Parent)).ToList();                                          // the search keys that are type-aheads
+        var columnAheads = (odataFilters ?? []).OfType<ODataFilterField>().Where(f => f.Kind == ODataFilterKind.Parent && Ahead(f.Parent!)).ToList();   // the filter-row parents that are type-aheads
 
         // The child tables, decided in Core for every stack (ChildGrid): which ones get a grid, its heading and role, its key, and the foreign keys shown as names.
         var children = ChildGrid.For(Model, Project);
@@ -267,6 +269,7 @@
                     ODataFilterKind.Number => $"<div class=\"range\"><input type=\"number\" placeholder=\"from\" aria-label=\"{label} from\" [(ngModel)]=\"{typed}.from\" (keyup.enter)=\"search()\" /><input type=\"number\" placeholder=\"to\" aria-label=\"{label} to\" [(ngModel)]=\"{typed}.to\" (keyup.enter)=\"search()\" /></div>",
                     ODataFilterKind.Date => $"<div class=\"range\"><input type=\"date\" title=\"{label} from\" aria-label=\"{label} from\" [(ngModel)]=\"{typed}.from\" (keyup.enter)=\"search()\" /><input type=\"date\" title=\"{label} to\" aria-label=\"{label} to\" [(ngModel)]=\"{typed}.to\" (keyup.enter)=\"search()\" /></div>",
                     ODataFilterKind.Boolean => $"<select aria-label=\"Filter by {label}\" [(ngModel)]=\"{typed}.flag\"><option [ngValue]=\"undefined\">Any</option><option value=\"true\">Yes</option><option value=\"false\">No</option></select>",
+                    ODataFilterKind.Parent when Ahead(f.Parent!) => $"<div class=\"type-ahead\"><input type=\"text\" autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" [attr.aria-expanded]=\"{ColumnAhead(f)}.open\" aria-label=\"Filter by {label}\" placeholder=\"Any\" [ngModel]=\"{ColumnAhead(f)}.shown({typed}.value)\" (ngModelChange)=\"{ColumnAhead(f)}.type($event)\" (blur)=\"{ColumnAhead(f)}.leave()\" /><ul class=\"type-ahead-list\" role=\"listbox\" *ngIf=\"{ColumnAhead(f)}.open\"><li role=\"option\" *ngFor=\"let o of {ColumnAhead(f)}.options\" (mousedown)=\"{ColumnAhead(f)}.pick(o)\">{{{{o.name}}}}</li></ul></div>",
                     ODataFilterKind.Parent => $"<select aria-label=\"Filter by {label}\" [(ngModel)]=\"{typed}.value\"><option [ngValue]=\"undefined\">Any</option><option *ngFor=\"let p of {f.Parent!.List}\" [ngValue]=\"p.{f.Parent!.KeyJson}\">{{{{p.{f.Parent!.DisplayJson}}}}}</option></select>",
                     _ => $"<select aria-label=\"Filter by {label}\" [(ngModel)]=\"{typed}.value\"><option [ngValue]=\"undefined\">Any</option>{ChoiceOptions(f.Choices)}</select>"
                 };
@@ -848,6 +851,8 @@
         }
         foreach (var k in filterAheads)
             T($"  readonly {FilterAhead(k)} = new TypeAhead<{k.Parent.KeyTs}>((query) => this.{ParentService(k.Parent)}.getLookup(query), this.{NamesOf(k.Parent)}, (id) => {{ const text = id === null ? '' : String(id); if (this.filters['{k.ParamName}'] !== text) {{ this.filters['{k.ParamName}'] = text; this.search(); }} }});");
+        foreach (var f in columnAheads)
+            T($"  readonly {ColumnAhead(f)} = new TypeAhead<{f.Parent!.KeyTs}>((query) => this.{ParentService(f.Parent!)}.getLookup(query), this.{NamesOf(f.Parent!)}, (id) => {{ this.columnFilters['{f.Name}'].value = id ?? undefined; }});");
         if (children.Count > 0) T("  private readonly http = inject(HttpClient);");
         if (tabbed)
         {
@@ -970,13 +975,15 @@
                 T($"    this.{FormAhead(c)}.reset(); // show the name of the key the row has, not what was typed last");
             T("  }");
         }
-        if (filterAheads.Count > 0)
+        if (filterAheads.Count + columnAheads.Count > 0)
         {
             T();
             T("  override clearSearch(): void {");
             T("    super.clearSearch();");
             foreach (var k in filterAheads)
                 T($"    this.{FilterAhead(k)}.reset();");
+            foreach (var f in columnAheads)
+                T($"    this.{ColumnAhead(f)}.reset();");
             T("  }");
         }
         if (children.Count > 0)

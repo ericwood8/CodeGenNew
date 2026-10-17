@@ -245,7 +245,7 @@ export class LookupNames<K extends number | string = number> {
     constructor(private readonly find: Finder<K>) { }
 
     /** The name of a key, empty until it arrives; a missing, empty or zero key has none. */
-    name(id: K | string | null | undefined): string {
+    name(id: K | string | number | null | undefined): string {
         if (!id) { return ''; }
         const key = String(id);
         const known = this.names.get(key);
@@ -286,7 +286,7 @@ export class TypeAhead<K extends number | string = number> {
     constructor(private readonly find: Finder<K>, private readonly names: LookupNames<K>, private readonly setKey: (id: K | null) => void) { }
 
     /** What the box shows: what is being typed, else the name of the chosen key. */
-    shown(id: K | string | null | undefined): string {
+    shown(id: K | string | number | null | undefined): string {
         return this.typed ?? this.names.name(id);
     }
 

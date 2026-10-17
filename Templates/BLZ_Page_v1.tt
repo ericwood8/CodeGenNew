@@ -56,7 +56,7 @@
 
         var parents = form.Parents;
         // a parent with too many rows for a drop-down is found by typing (Components/TypeAhead.razor); its list then holds only the rows the page has seen
-        bool Ahead(FormParent p) => p.TypeAhead && !odata;
+        bool Ahead(FormParent p) => p.TypeAhead;
         var aheadParents = parents.Where(Ahead).ToList();
         string Cs(FormParent p) => p.Column.CSharpBase();   // the C# type of the key: int, long or string
         string Prop(ColumnModel c) => c.CSharpName();
@@ -77,6 +77,9 @@
         var chosen = ChosenGridColumns.For(form);
         var columnList = chosen.Offered;
         var filterFields = odata ? columnList.Select(c => c.Filter).ToList() : null;   // the filter row's control of each of those columns (null: none)
+        // the parent columns of the OData filter row that are type-aheads: the key is held as text in the column's ColumnFilter.Value
+        var filterAheads = (filterFields ?? []).OfType<ODataFilterField>().Where(f => f.Kind == ODataFilterKind.Parent && Ahead(f.Parent!)).ToList();
+        string FilterKey(ODataFilterField f) => "Filter" + Ident(f.Name) + "Key";
         var sortable = columnList.Where(c => c.Sortable).Select(c => c.Column).ToList();
         string Shown(ColumnModel c, string markup) => $"@if (Shown(\"{c.Name}\")) {{ {markup} }}";   // markup that is drawn only while its column is chosen
 
@@ -241,6 +244,9 @@
                         break;
                     case ODataFilterKind.Boolean:
                         control = $"<select aria-label=\"Filter by {label}\" @bind='{typed}.Flag'><option value=\"\">Any</option><option value=\"true\">Yes</option><option value=\"false\">No</option></select>";
+                        break;
+                    case ODataFilterKind.Parent when Ahead(f.Parent!):
+                        control = $"<TypeAhead TValue=\"{Cs(f.Parent!)}\" Label=\"Filter by {label}\" Placeholder=\"Any\" Name=\"@Name{f.Parent!.BaseName}({FilterKey(f)})\" Find=\"@Find{f.Parent!.BaseName}\" OnPick=\"@Pick{FilterKey(f)}\" />";
                         break;
                     case ODataFilterKind.Parent:
                         control = $"<select aria-label=\"Filter by {label}\" @bind='{typed}.Value'><option value=\"\">Any</option>@foreach (var parent in {BlazorNames.LookupField(f.Parent!)}) {{ <option value=\"@parent.{BlazorNames.KeyProperty(f.Parent!)}\">@parent.{BlazorNames.DisplayProperty(f.Parent!)}</option> }}</select>";
@@ -749,6 +755,20 @@
             L($"        Remember{p.BaseName}(option);");
             L("        if (row is not null)");
             L($"            row.{Prop(c)} = option is null ? {(c.IsNullable ? "null" : "default")} : option.Id;");
+            L("    }");
+        }
+        foreach (var f in filterAheads)
+        {
+            var p = f.Parent!;
+            L();
+            L(Cs(p) == "string"
+                ? $"    private string? {FilterKey(f)} => Typed(\"{f.Name}\").Value;"
+                : $"    private {Cs(p)}? {FilterKey(f)} => {Cs(p)}.TryParse(Typed(\"{f.Name}\").Value, out var key) ? key : null;");
+            L();
+            L($"    private void Pick{FilterKey(f)}(TypeAheadOption<{Cs(p)}>? option)");
+            L("    {");
+            L($"        Remember{p.BaseName}(option);");
+            L($"        Typed(\"{f.Name}\").Value = option is null ? null : Convert.ToString(option.Id);");
             L("    }");
         }
         foreach (var k in searchKeys.Where(k => Ahead(k.Parent)))

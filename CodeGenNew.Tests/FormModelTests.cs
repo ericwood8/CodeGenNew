@@ -171,7 +171,7 @@ public class FormModelTests
     }
 
     [TestMethod]
-    public void A_parent_with_a_guid_key_reads_its_rows_not_the_lookup_list()
+    public void A_parent_with_a_guid_key_reads_the_lookup_list_with_a_guid_id()
     {
         var table = Sample.Table("Pet",
         [
@@ -181,8 +181,10 @@ public class FormModelTests
         ],
         [Sample.ForeignKey("OwnerId", "Owner", "OwnerId", "Name")]);
         var owner = FormModel.For(table, Project()).Parents.Single();
-        Assert.IsFalse(owner.UsesLookupEndpoint);
-        Assert.AreEqual("ownerId", owner.KeyJson);
+        Assert.IsTrue(owner.UsesLookupEndpoint);
+        Assert.AreEqual("string", owner.KeyTs);
+        Assert.AreEqual("Lookup<string>", owner.LookupType);
+        Assert.AreEqual("id", owner.KeyJson);
         Assert.AreEqual("name", owner.DisplayJson);
     }
 

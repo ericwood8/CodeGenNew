@@ -152,7 +152,7 @@ export type LookupFinder<K extends number | string = number> = (query: { search?
 
 export type LookupNames<K extends number | string = number> = {
   /** The name of a key, empty until it arrives; a missing, empty or zero key has none. */
-  name: (id: K | string | null | undefined) => string;
+  name: (id: K | string | number | null | undefined) => string;
   /** A row a person picked is known without asking. */
   remember: (rows: LookupRow<K>[]) => void;
 };
@@ -178,7 +178,7 @@ export function useLookupNames<K extends number | string = number>(find: LookupF
     find({ ids }).then(remember).catch(() => {});
   };
 
-  const name = (id: K | string | null | undefined): string => {
+  const name = (id: K | string | number | null | undefined): string => {
     if (!id) return '';
     const key = String(id);
     if (key in names) return names[key];
@@ -210,7 +210,7 @@ export function TypeAheadBox<K extends number | string = number>({ id, label, pl
   id?: string;
   label: string;
   placeholder?: string;
-  value: K | string | null | undefined;
+  value: K | string | number | null | undefined;
   names: LookupNames<K>;
   find: LookupFinder<K>;
   onChange: (id: K | null) => void;

@@ -10,7 +10,7 @@ public sealed class FormParent
         IsSelf = form.IsSelfReference(foreignKey);
         Column = form.Table.Columns.First(c => c.Name.Equals(foreignKey.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase));
         KeyType = form.Table.ForeignKeyType(foreignKey);
-        UsesLookupEndpoint = !Column.IsGuidColumn && foreignKey.ReferencedColumns.Count == 1 && !project.NoApiFor(foreignKey.ReferencedTable, foreignKey.ReferencedLookupShape);
+        UsesLookupEndpoint = foreignKey.ReferencedColumns.Count == 1 && !project.NoApiFor(foreignKey.ReferencedTable, foreignKey.ReferencedLookupShape);
         TypeAhead = UsesLookupEndpoint && project.TypeAheadFor(foreignKey.ReferencedTable, foreignKey.ReferencedLookupShape);
         BaseName = ScreenNames.BaseName(foreignKey.ReferencedTable);
         ModelFile = project.ModelFileOf(foreignKey.ReferencedTable, Stem);
@@ -66,8 +66,8 @@ public sealed class FormParent
     /// <summary> The parent's column the drop-down shows. </summary>
     public string DisplayName => ForeignKey.ReferencedDisplayColumns[0];
 
-    /// <summary> The drop-down reads the parent's lookup list (<c>GET &lt;route&gt;/lookup</c>: id, name and active flag) instead of every column of every row: a parent with a single-column key that is not a
-    /// uniqueidentifier and has an API. </summary>
+    /// <summary> The drop-down reads the parent's lookup list (<c>GET &lt;route&gt;/lookup</c>: id, name and active flag) instead of every column of every row: a parent with a single-column key (a number, a
+    /// uniqueidentifier or text) and an API. </summary>
     public bool UsesLookupEndpoint { get; }
 
     /// <summary> The parent has too many rows for a drop-down of all of them (<see cref="ProjectSettings.TypeAheadFor"/>): the screen asks the lookup endpoint for the rows that match what a person types

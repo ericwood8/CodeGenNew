@@ -50,6 +50,8 @@
         Line("use crate::support::{escape_like, non_blank};");
     if (search || lookup)
         Line("use serde::Deserialize;");
+    if (keyType == "Uuid" || t.KeyFilters.Any(k => k.Type == "Uuid"))
+        Line("use uuid::Uuid;");
     if (search || scoped || lookup)
         Line("use sqlx::QueryBuilder;");
     Line();

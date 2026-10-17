@@ -195,7 +195,7 @@ describe('odataQuery', () => {
 });
 @@@FILE src/<#= apiFolder #>/odataClient.ts@@@
 import { ApiError, request } from './client';
-import { and, conditionFilter, containsAny, orderBy, queryString, relativeLink } from './odataQuery';
+import { and, conditionFilter, containsAny, containsText, odataLiteral, orderBy, queryString, relativeLink } from './odataQuery';
 import type { ODataCondition, ODataPage } from './odataQuery';
 
 /** One page of rows and the counts around it (the shape the REST api modules answer a page with). */
@@ -287,12 +287,23 @@ export function createODataApi<T, K extends number | string = number>(set: strin
     // Every row, in the table's default order; the server's pages are followed to the end
     getAll: () => readOData<T>(apiUrl + queryString({ $orderby: orderBy(table.defaultOrder.map((path) => ({ path }))) })),
 
-    // The key and the display column of every row (and the active flag when the table has one), for a drop-down
-    getLookup: async (_query?: { search?: string; ids?: K[]; take?: number }): Promise<{ id: K; name: string; isActive?: boolean | null }[]> => {
+    // The key and the display column of every row (and the active flag when the table has one), for a drop-down. A type-ahead narrows it as the REST lookup does: ids (at most 200, and they win
+    // over search) keep the rows with those keys, search (or take) keeps the first take rows, 25 by default and 1 to 100, whose display column contains the text, ignoring case.
+    getLookup: async (query?: { search?: string; ids?: K[]; take?: number }): Promise<{ id: K; name: string; isActive?: boolean | null }[]> => {
       const lookup = table.lookup;
       if (!lookup) throw new Error(`The ${apiUrl} entity set has no display column to look up.`);
       const select = [table.key, lookup.name, lookup.active].filter((name): name is string => !!name).join(',');
-      const rows = await readOData<Record<string, unknown>>(apiUrl + queryString({ $select: select, $orderby: lookup.name }));
+      const ids = query?.ids?.slice(0, 200);
+      if (ids !== undefined && ids.length === 0) return [];
+      const keyFilter = ids?.map((id) => `${table.key} eq ${typeof id === 'number' ? odataLiteral(id, 'number') : /^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$/.test(id) ? odataLiteral(id, 'guid') : odataLiteral(id, 'string')}`).join(' or ');
+      const text = query?.search?.trim();
+      const narrowed = ids === undefined && (!!text || query?.take !== undefined);
+      const rows = await readOData<Record<string, unknown>>(apiUrl + queryString({
+        $select: select,
+        $filter: keyFilter ?? (text ? containsText(lookup.name, text) : undefined),
+        $orderby: lookup.name,
+        $top: narrowed ? Math.min(Math.max(query?.take ?? 25, 1), 100) : undefined
+      }));
       return rows.map((row) => ({ id: row[table.key] as K, name: String(row[lookup.name] ?? ''), isActive: lookup.active ? (row[lookup.active] as boolean) : undefined }));
     },
 
@@ -406,6 +417,23 @@ describe('createODataApi', () => {
     answers.push({ value: [{ id: 7, name: 'Seven', isActive: false }] });
     expect(await api.getLookup()).toEqual([{ id: 7, name: 'Seven', isActive: false }]);
     expect(fetched[0].url).toBe('/odata/rows?$select=id%2Cname%2CisActive&$orderby=name');
+  });
+
+  it('narrows the drop-down list as a type-ahead asks: ids win, a search takes at most 25, 100 at most', async () => {
+    answers.push({ value: [{ id: 7, name: 'Seven' }] });
+    expect((await api.getLookup({ ids: [7, 9], search: 'x' })).map((i) => i.id)).toEqual([7]);
+    expect(fetched[0].url).toBe('/odata/rows?$select=id%2Cname%2CisActive&$filter=id%20eq%207%20or%20id%20eq%209&$orderby=name');
+
+    answers.push({ value: [] });
+    await api.getLookup({ search: ' Sev ' });
+    expect(fetched[1].url).toBe("/odata/rows?$select=id%2Cname%2CisActive&$filter=contains(tolower(name)%2C'sev')&$orderby=name&$top=25");
+
+    answers.push({ value: [] });
+    await api.getLookup({ take: 500 });
+    expect(fetched[2].url).toBe('/odata/rows?$select=id%2Cname%2CisActive&$orderby=name&$top=100');
+
+    expect(await api.getLookup({ ids: [] })).toEqual([]);
+    expect(fetched.length).toBe(3);
   });
 
   it('writes through the key route and clones and reads the guards through the REST route', async () => {
@@ -559,14 +587,15 @@ export function ODataSortHeader({ label, column, sorts, onSort }: {
   );
 }
 
-/** One cell of the filter row: the control of the column by its kind, and an "empty" check box for a column that can be empty. A parent or choice column passes the options of its drop-down. */
-export function FilterCell({ field, label, value, onChange, onSearch, options }: {
+/** One cell of the filter row: the control of the column by its kind, and an "empty" check box for a column that can be empty. A parent or choice column passes the options of its drop-down; a parent with too many rows passes its own box as `pick`. */
+export function FilterCell({ field, label, value, onChange, onSearch, options, pick }: {
   field: ColumnFilterField;
   label: string;
   value: ColumnFilter;
   onChange: (value: ColumnFilter) => void;
   onSearch: () => void;
   options?: { value: string | number; label: string }[];
+  pick?: ReactNode;
 }) {
   const enter = (event: { key: string }) => { if (event.key === 'Enter') onSearch(); };
   let control: ReactNode;
@@ -600,7 +629,7 @@ export function FilterCell({ field, label, value, onChange, onSearch, options }:
       );
       break;
     default:
-      control = (
+      control = pick ?? (
         <select aria-label={`Filter by ${label}`} value={value.value ?? ''} onChange={(e) => onChange({ ...value, value: field.literal === 'number' && e.target.value !== '' ? Number(e.target.value) : e.target.value })}>
           <option value="">Any</option>
           {(options ?? []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -718,6 +747,13 @@ describe('FilterCell', () => {
     render(<table><tbody><tr><FilterCell field={field} label={field.name} value={value} onChange={onChange} onSearch={onSearch} options={options} /></tr></tbody></table>);
     return { onChange, onSearch };
   };
+
+  it('shows the box a big parent passes instead of its drop-down, and keeps the empty check box', () => {
+    render(<table><tbody><tr><FilterCell field={fields[5]} label="Group" value={{}} onChange={vi.fn()} onSearch={vi.fn()} pick={<input aria-label="Pick a group" />} /></tr></tbody></table>);
+    expect(screen.getByLabelText('Pick a group')).toBeTruthy();
+    expect(screen.queryByLabelText('Filter by Group')).toBeNull();
+    expect(screen.getByLabelText('empty')).toBeTruthy();
+  });
 
   it('has a text box that searches on Enter, and an empty check box for a column that can be empty', () => {
     const { onChange, onSearch } = cell(fields[1]);

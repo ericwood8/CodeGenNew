@@ -101,10 +101,11 @@
         var shown = form.Columns;
 
         var parents = form.Parents;
-        // a parent with too many rows for a drop-down is found by typing (components/TypeAhead.tsx); the OData page keeps its drop-down
-        bool Ahead(FormParent p) => p.TypeAhead && !odata;
+        // a parent with too many rows for a drop-down is found by typing (components/TypeAhead.tsx), in the form and in the OData filter row
+        bool Ahead(FormParent p) => p.TypeAhead;
+        bool FilterAhead(ODataFilterField? f) => f is { Kind: ODataFilterKind.Parent } && Ahead(f.Parent!);
         string NamesOf(FormParent p) => p.Variable + "NameCache";
-        bool anyBox = shown.Any(c => form.KindOf(c) == FieldKind.Lookup && Ahead(form.ParentOf(c)!)) || searchKeys.Any(k => Ahead(k.Parent));
+        bool anyBox = shown.Any(c => form.KindOf(c) == FieldKind.Lookup && Ahead(form.ParentOf(c)!)) || searchKeys.Any(k => Ahead(k.Parent)) || (odataFilters?.Any(FilterAhead) ?? false);
 
         // The child tables, decided in Core for every stack (ChildGrid): which ones get a grid, its heading and role, its key, and the foreign keys shown as names.
         var children = ChildGrid.For(Model, Project);
@@ -884,13 +885,17 @@
                 var f = odataFilters![i];
                 if (f is null) { T("            " + Shown(gc, "<td />")); continue; }
                 string label = columnList[i].Label.Replace("\"", "&quot;");
+                string pick = FilterAhead(f)
+                    ? $" pick={{<TypeAheadBox<{f.Parent!.KeyTs}> label=\"Filter by {label}\" placeholder=\"Any\" value={{columnFilters['{f.Name}']?.value}} names={{{NamesOf(f.Parent!)}}} find={{(query) => {ReactNames.ApiVar(f.Parent!.Table)}.getLookup(query)}} onChange={{(id) => setColumnFilters({{ ...columnFilters, '{f.Name}': {{ ...columnFilters['{f.Name}'], value: id ?? undefined }} }})}} />}}"
+                    : "";
                 string options = f.Kind switch
                 {
+                    ODataFilterKind.Parent when FilterAhead(f) => "",
                     ODataFilterKind.Parent => $" options={{{ReactNames.ParentList(f.Parent!)}.map((p) => ({{ value: p.{f.Parent!.KeyJson}!, label: String(p.{f.Parent!.DisplayJson} ?? '') }}))}}",
                     ODataFilterKind.Choice => " options={[" + string.Join(", ", f.Choices.Select(choice => { string js = choice.Replace("\\", "\\\\").Replace("'", "\\'"); return $"{{ value: '{js}', label: '{js}' }}"; })) + "]}",
                     _ => ""
                 };
-                T("            " + Shown(gc, $"<FilterCell field={{filterFields[{fieldIndex}]}} label=\"{label}\" value={{columnFilters['{f.Name}'] ?? {{}}}} onChange={{(value) => setColumnFilters({{ ...columnFilters, '{f.Name}': value }})}} onSearch={{search}}{options} />"));
+                T("            " + Shown(gc, $"<FilterCell field={{filterFields[{fieldIndex}]}} label=\"{label}\" value={{columnFilters['{f.Name}'] ?? {{}}}} onChange={{(value) => setColumnFilters({{ ...columnFilters, '{f.Name}': value }})}} onSearch={{search}}{options}{pick} />"));
                 fieldIndex++;
             }
             T("            <td>");

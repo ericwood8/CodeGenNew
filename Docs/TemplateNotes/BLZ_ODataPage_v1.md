@@ -7,7 +7,7 @@ The OData form of the Blazor page: `Pages/<Table>ODataPage.razor` over the table
 What differs:
 - the list is `GET /odata/<set>?$count=true&$top=&$skip=&$filter=&$orderby=`;
 - **several-column sort**: a click sorts by the column (again: flips it), a Shift-click adds it as the next sort (again: flips it, once more: takes it out); a column in a several-column sort shows its place in a badge and `aria-sort`;
-- **filter row** under the headers, a control per column by its kind (`ODataFilterFields` in Core): text, number and date ranges, yes/no, a drop-down of the parent's rows, a drop-down of the values the database lists and an "empty" check box for a column that can be empty. Enter in a box searches; Search and Clear are the last cell. The search boxes of the REST page are not there;
+- **filter row** under the headers, a control per column by its kind (`ODataFilterFields` in Core): text, number and date ranges, yes/no, a drop-down of the parent's rows (a parent with too many rows is a box that finds the row by typing, as in the form; the key picked is sent as an `eq` condition), a drop-down of the values the database lists and an "empty" check box for a column that can be empty. Enter in a box searches; Search and Clear are the last cell. The search boxes of the REST page are not there;
 - a master's child grids read the child's rows with a filter on the parent's key when the child is served as OData too (`ODataPlan.ServesByName`), else through the child's REST client;
 - a 409 shows the API's own words (a duplicate), a delete of a row in use says it is in use; Clone goes through the REST route.
 

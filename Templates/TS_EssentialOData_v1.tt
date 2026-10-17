@@ -192,9 +192,9 @@ describe('odata-query', () => {
 });
 @@@FILE src/app/<#= servicesFolder #>/odata-crud.service.ts@@@
 import { HttpClient } from '@angular/common/http';
-import { EMPTY, Observable, expand, map, reduce } from 'rxjs';
+import { EMPTY, Observable, expand, map, of, reduce } from 'rxjs';
 import { CrudService, Lookup, LookupQuery, PageQuery, PagedResult } from './crud.service';
-import { ODataCondition, ODataPage, and, conditionFilter, containsAny, orderBy, queryString, relativeLink } from './odata-query';
+import { ODataCondition, ODataPage, and, conditionFilter, containsAny, containsText, odataLiteral, orderBy, queryString, relativeLink } from './odata-query';
 
 /** What an OData page asks for beyond the REST page: several sorts, the conditions of the filter row, and the properties the grid shows (the key is always read). */
 export interface ODataPageQuery extends PageQuery {
@@ -226,12 +226,23 @@ export abstract class ODataCrudService<T, K extends number | string = number> ex
         return this.readAll<T>(this.apiUrl + queryString({ $orderby: orderBy(this.table.defaultOrder.map((path) => ({ path }))) }));
     }
 
-    // The key and the display column of every row (and the active flag when the table has one), for a drop-down
-    override getLookup(_query?: LookupQuery<K>): Observable<Lookup<K>[]> {
+    // The key and the display column of every row (and the active flag when the table has one), for a drop-down. A type-ahead narrows it as the REST lookup does: ids (at most 200, and they win over
+    // search) keep the rows with those keys, search (or take) keeps the first take rows, 25 by default and 1 to 100, whose display column contains the text, ignoring case.
+    override getLookup(query?: LookupQuery<K>): Observable<Lookup<K>[]> {
         const lookup = this.table.lookup;
         if (!lookup) { throw new Error(`The ${this.apiUrl} entity set has no display column to look up.`); }
         const select = [this.table.key, lookup.name, lookup.active].filter((name): name is string => !!name).join(',');
-        return this.readAll<Record<string, unknown>>(this.apiUrl + queryString({ $select: select, $orderby: lookup.name })).pipe(
+        const ids = query?.ids?.slice(0, 200);
+        if (ids !== undefined && ids.length === 0) { return of([]); }
+        const keyFilter = ids?.map((id) => `${this.table.key} eq ${typeof id === 'number' ? odataLiteral(id, 'number') : /^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$/.test(id) ? odataLiteral(id, 'guid') : odataLiteral(id, 'string')}`).join(' or ');
+        const text = query?.search?.trim();
+        const narrowed = ids === undefined && (!!text || query?.take !== undefined);
+        return this.readAll<Record<string, unknown>>(this.apiUrl + queryString({
+            $select: select,
+            $filter: keyFilter ?? (text ? containsText(lookup.name, text) : undefined),
+            $orderby: lookup.name,
+            $top: narrowed ? Math.min(Math.max(query?.take ?? 25, 1), 100) : undefined
+        })).pipe(
             map((rows) => rows.map((row) => ({ id: row[this.table.key] as K, name: String(row[lookup.name] ?? ''), isActive: lookup.active ? (row[lookup.active] as boolean) : undefined })))
         );
     }
@@ -392,6 +403,24 @@ describe('ODataCrudService', () => {
     service.getLookup().subscribe((l) => { items = l; });
     http.expectOne('odata/rows?$select=id%2Cname%2CisActive&$orderby=name').flush({ value: [{ id: 7, name: 'Seven', isActive: false }] });
     expect(items).toEqual([{ id: 7, name: 'Seven', isActive: false }]);
+  });
+
+  it('narrows the drop-down list as a type-ahead asks: ids win, a search takes at most 25, 100 at most', () => {
+    let items: { id: number; name: string }[] = [];
+    service.getLookup({ ids: [7, 9], search: 'x' }).subscribe((l) => { items = l; });
+    http.expectOne('odata/rows?$select=id%2Cname%2CisActive&$filter=id%20eq%207%20or%20id%20eq%209&$orderby=name').flush({ value: [{ id: 7, name: 'Seven' }] });
+    expect(items.map((i) => i.id)).toEqual([7]);
+
+    service.getLookup({ search: ' Sev ' }).subscribe((l) => { items = l; });
+    http.expectOne("odata/rows?$select=id%2Cname%2CisActive&$filter=contains(tolower(name)%2C'sev')&$orderby=name&$top=25").flush({ value: [] });
+
+    service.getLookup({ take: 500 }).subscribe((l) => { items = l; });
+    http.expectOne('odata/rows?$select=id%2Cname%2CisActive&$orderby=name&$top=100').flush({ value: [] });
+
+    let asked = false;
+    service.getLookup({ ids: [] }).subscribe((l) => { asked = true; items = l; });
+    expect(asked).toBe(true);
+    expect(items).toEqual([]);
   });
 
   it('reads the guards from the REST route', () => {
