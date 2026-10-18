@@ -15,7 +15,11 @@ Project is actively being worked on. Issues and Pull Requests are welcomed.  We 
 
 ## Supported operating systems
 
-Windows, Linux and macOS. The generator and the `codegen` command-line tool run on all three (CI builds and tests on each); the desktop app (`CodeGenNew.App`, WinUI 3) is Windows only.
+| Operating system | Generator and `codegen` command-line tool | Desktop app (`CodeGenNew.App`, WinUI 3) |
+|---|---|---|
+| Windows | Supported (built and tested in CI) | Supported |
+| Linux | Supported (built and tested in CI) | Not available |
+| macOS | Supported (built and tested in CI) | Not available |
 
 ## Known dependencies
 
