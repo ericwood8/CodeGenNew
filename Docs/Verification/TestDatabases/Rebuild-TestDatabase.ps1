@@ -9,22 +9,25 @@
      <Project>.config and applies them with CREATE OR ALTER;
   4. runs the seed file: rows that already break a rule, rows to create, edit and delete, a parent that is "in use", a last page of one row.
   Windows authentication; the connected Windows user needs the right to restore (dbcreator or sysadmin) and to create the routines.
+  -ConfigFile and -SeedFile default to <Project>.config and <Project>.seed.sql next to this script; give other paths for a database whose files are kept elsewhere.
   -SeedOnly runs only step 4 again, on the database as it is now.
 .EXAMPLE
   .\Rebuild-TestDatabase.ps1 -Source InvoiceSystem -Project InvoiceSystemTest
-  .\Rebuild-TestDatabase.ps1 -Source TimeEntry -Project TimeEntryTest -SeedOnly
+  .\Rebuild-TestDatabase.ps1 -Source MyDatabase -Project MyDatabaseTest -ConfigFile D:\MyTests\MyDatabaseTest.config -SeedFile D:\MyTests\MyDatabaseTest.seed.sql
 #>
 param(
     [Parameter(Mandatory)][string]$Source,
     [Parameter(Mandatory)][string]$Project,
     [string]$Server = 'localhost',
     [string]$SeedFile,
+    [string]$ConfigFile,
     [string]$Cli = (Join-Path $PSScriptRoot '..\..\..\CodeGenNew.Cli\bin\Debug\net10.0'),
     [switch]$SeedOnly
 )
 $ErrorActionPreference = 'Stop'
 $test = "${Source}_test"
 if (-not $SeedFile) { $SeedFile = Join-Path $PSScriptRoot "$Project.seed.sql" }
+if (-not $ConfigFile) { $ConfigFile = Join-Path $PSScriptRoot "$Project.config" }
 
 function Invoke-Sql([string]$Database, [string]$Query) {
     $out = sqlcmd -S $Server -E -d $Database -b -h -1 -W -Q "SET NOCOUNT ON; $Query"
@@ -92,8 +95,8 @@ CLOSE users; DEALLOCATE users;
     # the CLI seeds its Templates folder once; remove it so the current templates are used
     Remove-Item (Join-Path $Cli 'Templates') -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force (Join-Path $Cli 'Projects') | Out-Null
-    Copy-Item (Join-Path $PSScriptRoot "$Project.config") (Join-Path $Cli 'Projects') -Force
-    $config = Get-Content (Join-Path $PSScriptRoot "$Project.config") | Where-Object { $_ -match '^PlanAlso=' }
+    Copy-Item $ConfigFile (Join-Path $Cli 'Projects' "$Project.config") -Force
+    $config = Get-Content $ConfigFile | Where-Object { $_ -match '^PlanAlso=' }
     $only = ($config -replace '^PlanAlso=', '')
     $work = Join-Path ([IO.Path]::GetTempPath()) "$test-routines"
     Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue

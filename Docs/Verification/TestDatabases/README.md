@@ -1,13 +1,13 @@
 # Standing test databases (SQL Server)
 
-`InvoiceSystem_test` and `TimeEntry_test` are copies of the real databases that a test may write to, so a click-through does not need a `_scratch` copy each time. The real databases are only read.
+`InvoiceSystem_test` is a copy of the real InvoiceSystem database that a test may write to, so a click-through does not need a `_scratch` copy each time. The real databases are only read.
 
 | File | What it is |
 |---|---|
-| `Regenerate-InvoiceSystemTest.ps1`, `Regenerate-TimeEntryTest.ps1` | Rebuild one test database from its source. `-Server` is the instance (default `localhost`, Windows authentication); `-SeedOnly` runs just the fixture rows again. |
-| `Rebuild-TestDatabase.ps1` | What both call: backup and restore over `<Source>_test` (schema and every row), the users made limited, the routines that write generated and applied, the seed run. |
-| `InvoiceSystemTest.config`, `TimeEntryTest.config` | Project settings for the write routines (`SP_Insert`, `SP_Update`, `SP_Save`, `SP_Delete`, `SP_Lookup`, and `SP_BulkUpdate` for InvoiceSystem) with the value rules on (`NonNegativeColumns`, `NotFutureDateColumns`). |
-| `InvoiceSystemTest.seed.sql`, `TimeEntryTest.seed.sql` | The fixture rows. Every one is tagged `ZZ` and the seed removes the earlier ones first, so running it again is safe. It refuses to run in a database whose name does not end in `_test`. |
+| `Regenerate-InvoiceSystemTest.ps1` | Rebuilds the test database from its source. `-Server` is the instance (default `localhost`, Windows authentication); `-SeedOnly` runs just the fixture rows again. |
+| `Rebuild-TestDatabase.ps1` | What the regenerate script calls, for any SQL Server database (`-Source`, `-Project`, and `-ConfigFile` and `-SeedFile` when those files live elsewhere): backup and restore over `<Source>_test` (schema and every row), the users made limited, the routines that write generated and applied, the seed run. |
+| `InvoiceSystemTest.config` | Project settings for the write routines (`SP_Insert`, `SP_Update`, `SP_Save`, `SP_Delete`, `SP_Lookup`, and `SP_BulkUpdate` for InvoiceSystem) with the value rules on (`NonNegativeColumns`, `NotFutureDateColumns`). |
+| `InvoiceSystemTest.seed.sql` | The fixture rows. Every one is tagged `ZZ` and the seed removes the earlier ones first, so running it again is safe. It refuses to run in a database whose name does not end in `_test`. |
 
 Rebuild a database after a change to a template that writes routines, to put it back to a known state after a test that wrote rows, or after the real database changed. The script replaces everything in `<Source>_test`.
 
@@ -26,14 +26,3 @@ After the restore every user of the database is a member of `db_datareader` and 
 | `ZZ-INUSE`, `ZZ-ITEM-INUSE` | delete is refused: an invoice with two lines, a monthly summary and a purchase (the child-row editor) |
 | `ZZ-HOSTILE` | quotes, `%`, `_`, brackets, a backslash, markup and accents in a name |
 | `ZZ-FILL*`, `ZZ-ITEM-FILL*` | fillers that make the Customer and Item counts end in 1: the last page of a 10-row grid holds one row |
-
-## TimeEntry_test fixtures
-
-| Rows | For |
-|---|---|
-| `Holiday` named `ZZ ...` (three free, one with a hostile name, fillers) | create, edit, clone, delete; a last page of one row |
-| `Project` `ZZ Project free`, `ZZ Project in use` (two `ZZ Task` rows) | delete refused for the one in use; fillers for the last page |
-| `RestrictLeave` `ZZ reversed period (stored)` and `ZZ good period` | a stored period whose end is before its start; an edit of the reason must save |
-| `E_DonateLeave` `ZZ donation 1`, `2` | edit and delete; a negative number of hours is refused |
-
-The `Employee` sign-ins of the sources are copied as they are (the password hashes too); the seeds add no sign-in.
