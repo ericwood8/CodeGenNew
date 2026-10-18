@@ -27,10 +27,24 @@
     string Symbol() => Project.CurrencySymbol;
     bool HasInput(ColumnModel c) => c.CSharpBase() is not ("byte[]" or "object");
     string Ident(string name) => BlazorNames.Identifier(name);
-    // type="email" / "tel" / "url" (and a phone pattern) for a text column named like one; the browser checks it when the form is submitted
-    string ShapeAttributes(ColumnModel c) =>
-        (c.InputType(Project, Model.TableName) is var shape && shape != "text" ? $" type=\"{shape}\"" : "")
-        + (c.InputPattern(Project, Model.TableName) is { Length: > 0 } pattern ? " " + pattern : "");
+    // type="email" / "tel" / "url" (and a phone pattern) for a text column named like one; the browser checks it when the form is submitted.
+    // Without ApiAnnotations the browser is the only check, so it applies only to a box that no longer holds the stored value (an old bad email does not stop an edit of another field).
+    bool shapedForm = false;
+    string ShapeAttributes(ColumnModel c, string bind)
+    {
+        string shape = c.InputType(Project, Model.TableName);
+        string pattern = c.InputPattern(Project, Model.TableName);
+        if (shape == "text" && pattern.Length == 0)
+            return "";
+        if (Project.ApiAnnotations)
+            return (shape != "text" ? $" type=\"{shape}\"" : "") + (pattern.Length > 0 ? " " + pattern : "");
+        shapedForm = true;
+        string changed = $"stored is null || {bind} != stored.{bind[4..]}";
+        string attributes = shape != "text" ? $" type=\"@({changed} ? \"{shape}\" : \"text\")\"" : "";
+        if (System.Text.RegularExpressions.Regex.Match(pattern, "^pattern=\"(.*)\" title=\"(.*)\"$") is { Success: true } parts)
+            attributes += $" pattern=\"@({changed} ? \"{parts.Groups[1].Value.Replace("\\", "\\\\")}\" : null)\" title=\"{parts.Groups[2].Value}\"";
+        return attributes;
+    }
     bool odata = Variant == "OData";
 
     if (odata && !ODataPlan.Serves(Model, Project))
@@ -155,7 +169,7 @@
             L($"@page \"/{route}\"");
         L($"@using {ns}.Models");
         L($"@using {ns}.Services");
-        if (usesMoneyBox || aheadParents.Count > 0)
+        if (usesMoneyBox || aheadParents.Count > 0 || Project.ApiAnnotations)
             L($"@using {ns}.Components");
         if (Project.Auth)
             L(readRoles.Count > 0 ? $"@attribute [Authorize(Roles = \"{string.Join(",", readRoles)}\")]" : "@attribute [Authorize]");
@@ -322,9 +336,10 @@
         L("        {");
         L("            <p class=\"error\" role=\"alert\">@message</p>");
         L("        }");
-        L("        <EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\">");
+        // With the attributes in the model the form is checked here, field by field and only where the value changed (the browser's own check would stop a stored value that breaks a rule)
+        L(Project.ApiAnnotations ? "        <EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\" novalidate>" : "        <EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\">");
         if (Project.ApiAnnotations)
-            L("            <DataAnnotationsValidator />");
+            L("            <StoredValueValidator Original=\"stored\" />");
         foreach (var c in shown)
         {
             string id = form.FieldId(c);
@@ -383,7 +398,7 @@
                 string max = Chars(c) is > 0 and < 4000 ? $" maxlength=\"{Chars(c)}\"" : "";
                 input = form.IsMultilineBox(c)
                     ? $"<InputTextArea id=\"{id}\" @bind-Value=\"{bind}\"{max}{required} />"
-                    : $"<InputText id=\"{id}\" @bind-Value=\"{bind}\"{ShapeAttributes(c)}{max}{required} />";
+                    : $"<InputText id=\"{id}\" @bind-Value=\"{bind}\"{ShapeAttributes(c, bind)}{max}{required} />";
             }
             else
                 input = $"<input id=\"{id}\" @bind=\"{bind}\"{required} />";
@@ -480,6 +495,8 @@
         foreach (var l in childLookups)
             L($"    private List<{l.ItemType}> {l.Field} = [];");
         L("    private §T? row;");
+        if (Project.ApiAnnotations || shapedForm)
+            L("    private §T? stored;   // the row as it was when it opened; a field is checked only when it differs from it");
         L("    private bool isNew;");
         L("    private string? message;");
         if (form.Guards.Count > 0)
@@ -845,6 +862,8 @@
             L("    private void Edit(§T item, bool add = false)");
             L("    {");
             L("        row = add ? item : item.Copy();");
+            if (Project.ApiAnnotations || shapedForm)
+                L("        stored = add ? null : item.Copy();");
             L("        isNew = add;");
             L("        message = null;");
             L("    }");
@@ -856,6 +875,8 @@
             L("    private async Task Edit(§T item, bool add = false)");
             L("    {");
             L("        row = add ? item : item.Copy();");
+            if (Project.ApiAnnotations || shapedForm)
+                L("        stored = add ? null : item.Copy();");
             L("        isNew = add;");
             L("        message = null;");
             foreach (var ch in children)

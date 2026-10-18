@@ -77,12 +77,14 @@
                 return null;
             string test = ColumnRules.CSharpTest(rule.Shape, prop);
             string refuse = "{ ErrorMessage = \"" + label + " is not " + ColumnRules.NounOf(rule.Shape) + ".\"; return false; }";
-            return optional ? "if (!string.IsNullOrWhiteSpace(" + prop + ") && !(" + test + ")) " + refuse : "if (!(" + test + ")) " + refuse;
+            // a value still equal to the stored one (the entity holds it until the assignment below) is not held against the person: an old value that breaks the rule does not stop an edit of another field
+            string changed = "!string.Equals(entity." + prop + ", " + prop + ")";
+            return optional ? "if (!string.IsNullOrWhiteSpace(" + prop + ") && " + changed + " && !(" + test + ")) " + refuse : "if (" + changed + " && !(" + test + ")) " + refuse;
         }
 
         string? FutureCheck(ColumnModel c, string prop, string label) =>
             c.RuleOf(Project, Model.TableName) is { NotFuture: true }
-                ? "else if (" + prop + ".Value.Date > DateTime.Today) { ErrorMessage = \"" + label + " must not be later than today.\"; return false; }"
+                ? "else if (" + prop + ".Value.Date > DateTime.Today && ((DateTime?)entity." + prop + ")?.Date != " + prop + ".Value.Date) { ErrorMessage = \"" + label + " must not be later than today.\"; return false; }"
                 : null;
 
         var shown = form.Columns;

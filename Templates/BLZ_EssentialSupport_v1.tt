@@ -54,6 +54,65 @@ public static class ApiSupport
     // A copy of a row, so the form edits the copy and the grid keeps showing the saved row.
     public static T Copy<T>(this T row) => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(row))!;
 }
+@@@FILE Components/StoredValueValidator.cs@@@
+using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
+
+namespace <#= ns #>.Components;
+
+/// <summary> The DataAnnotations check of a form (what <c>DataAnnotationsValidator</c> does), except that a property still holding the value the row came with is not held against the person: an old
+/// value that breaks an attribute (an email without an @) does not stop an edit of another field. <c>Original</c> is a copy of the stored row; without one (a new row) every property counts. </summary>
+public class StoredValueValidator : ComponentBase, IDisposable
+{
+    private ValidationMessageStore? _messages;
+
+    [CascadingParameter] private EditContext? Context { get; set; }
+
+    [Parameter] public object? Original { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Context is null)
+            throw new InvalidOperationException($"{nameof(StoredValueValidator)} must be inside an EditForm.");
+        _messages = new ValidationMessageStore(Context);
+        Context.OnValidationRequested += Validate;
+        Context.OnFieldChanged += Validate;
+    }
+
+    private void Validate(object? sender, EventArgs e)
+    {
+        var model = Context!.Model;
+        _messages!.Clear();
+        var results = new List<ValidationResult>();
+        Validator.TryValidateObject(model, new ValidationContext(model), results, validateAllProperties: true);
+        foreach (var result in results)
+        {
+            var members = result.MemberNames.ToList();
+            if (members.Count == 0)
+                _messages.Add(new FieldIdentifier(model, string.Empty), result.ErrorMessage ?? "The value is not valid.");
+            foreach (string member in members.Where(member => Changed(model, member)))
+                _messages.Add(new FieldIdentifier(model, member), result.ErrorMessage ?? "The value is not valid.");
+        }
+        Context.NotifyValidationStateChanged();
+    }
+
+    private bool Changed(object model, string member)
+    {
+        var property = Original is null ? null : model.GetType().GetProperty(member);
+        return property is null || !Equals(property.GetValue(model), property.GetValue(Original));
+    }
+
+    public void Dispose()
+    {
+        if (Context is not null)
+        {
+            Context.OnValidationRequested -= Validate;
+            Context.OnFieldChanged -= Validate;
+        }
+        _messages?.Clear();
+    }
+}
 @@@FILE Components/TypeAheadOption.cs@@@
 namespace <#= ns #>.Components;
 

@@ -101,6 +101,29 @@ public class GuardsAndAttributesEverywhereTests
         Expect.Contains(crud, "private async Task<TEntity?> StoredAsync(");
     }
 
+    [TestMethod]
+    public async Task The_web_forms_check_only_the_fields_the_person_changed()
+    {
+        async Task<string> Essentials(string template)
+        {
+            var result = await Repo.Cache.RunAsync(Repo.Template(template), Project(Rules.Append(("ApiAnnotations", "true")).ToArray()));
+            Assert.IsTrue(result.Success, $"{template}: {string.Join(" | ", result.Errors)}");
+            return result.GeneratedText!.ReplaceLineEndings("\n");
+        }
+
+        string react = await Essentials("TSX_EssentialSupport_v1.tt");
+        Expect.Contains(react, "export function firstBroken(form: HTMLFormElement, stored: StoredValues | null): Field | null {");
+        Expect.Contains(react, "if (stored && element.id in stored && stored[element.id] === valueOf(element)) continue;");
+
+        string angular = await Essentials("TS_EssentialCrud_v1.tt");
+        Expect.Contains(angular, "submitForm(event: Event, row: T): void {");
+        Expect.Contains(angular, "if (stored && element.id in stored && stored[element.id] === fieldValue(element)) continue;");
+
+        string blazor = await Essentials("BLZ_EssentialSupport_v1.tt");
+        Expect.Contains(blazor, "public class StoredValueValidator : ComponentBase, IDisposable");
+        Expect.Contains(blazor, "return property is null || !Equals(property.GetValue(model), property.GetValue(Original));");
+    }
+
     // ------------------------------------------------------------------ bulk update
 
     [TestMethod]
@@ -111,8 +134,9 @@ public class GuardsAndAttributesEverywhereTests
 
         string sql = await Rendered("SP_BulkUpdate_v1.tt", database, project);
 
-        Expect.Contains(sql, "UPDATE [dbo].[Stock] SET [Quantity] = [Quantity] - 100 WHERE [Quantity] IS NOT NULL;");
-        Expect.Contains(sql, "IF EXISTS (SELECT 1 FROM [dbo].[Stock] WHERE [Quantity] IS NOT NULL AND [Quantity] < 0)");
+        Expect.Contains(sql, "DECLARE @Changes1 TABLE ([Before] int NULL, [After] int NULL);");
+        Expect.Contains(sql, "UPDATE [dbo].[Stock] SET [Quantity] = [Quantity] - 100 OUTPUT deleted.[Quantity], inserted.[Quantity] INTO @Changes1 WHERE [Quantity] IS NOT NULL;");
+        Expect.Contains(sql, "IF EXISTS (SELECT 1 FROM @Changes1 WHERE [After] IS NOT NULL AND [After] < 0 AND ([Before] IS NULL OR [Before] <> [After]))");
         Expect.Contains(sql, "THROW 50000, 'Stock: [Quantity] must not be negative. (after the rewrite)', 1;");
         Assert.IsLessThan(sql.IndexOf("COMMIT TRANSACTION", StringComparison.Ordinal), sql.IndexOf("(after the rewrite)", StringComparison.Ordinal), "the check comes before the commit");
         Expect.DoesNotContain(await Rendered("SP_BulkUpdate_v1.tt", database, Project(("BulkUpdateColumns", "Quantity"), ("BulkUpdateExpression", "{column} - 100"))), "after the rewrite");
@@ -155,9 +179,9 @@ public class GuardsAndAttributesEverywhereTests
         Expect.DoesNotContain(model, "[Display(Name = \"Stock Id\"");
 
         string page = await Rendered("BLZ_Page_v1.tt", Stock(), project);
-        Expect.Contains(page, "<EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\">\n            <DataAnnotationsValidator />");
+        Expect.Contains(page, "<EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\" novalidate>\n            <StoredValueValidator Original=\"stored\" />");
 
         Expect.DoesNotContain(await Rendered("BLZ_Model_v1.tt", Stock(), Project(Rules)), "[Required]");
-        Expect.DoesNotContain(await Rendered("BLZ_Page_v1.tt", Stock(), Project(Rules)), "DataAnnotationsValidator");
+        Expect.DoesNotContain(await Rendered("BLZ_Page_v1.tt", Stock(), Project(Rules)), "StoredValueValidator");
     }
 }

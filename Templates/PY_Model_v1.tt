@@ -56,9 +56,10 @@
         var c = f.Column;
         var options = new List<string>();
         if (c.IsPrimaryKey)
+        {
             options.Add("primary_key=True");
-        if (c.IsPrimaryKey)
             options.Add(c.IsIdentity ? "autoincrement=True" : "autoincrement=False");
+        }
         else
             options.Add(c.IsNullable ? "nullable=True" : "nullable=False");
         if (f.ReadOnly)

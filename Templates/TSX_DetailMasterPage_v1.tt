@@ -157,8 +157,9 @@
         void T(string s = "") => ts.Append(s).Append('\n');
 
         // ================= imports
-        T("import { useEffect, useState } from 'react';");
+        T("import { useEffect, useRef, useState } from 'react';");
         T("import type { FormEvent } from 'react';");
+        T($"import {{ firstBroken, snapshotOf, type StoredValues }} from '../{componentsFolder}/storedValues';");
         T("import { useNavigate, useSearchParams } from 'react-router-dom';");
         T($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
         T($"import {{ {apiVar} }} from '../{apiFolder}/{apiFile}';");
@@ -339,17 +340,13 @@
                 T($"  const [{ReactNames.ParentList(p)}, {ReactNames.SetList(ReactNames.ParentList(p))}] = useState<{p.ItemType}[]>([]);");
         }
         T($"  const [selectedRow, setSelectedRow] = useState<{baseName} | null>(null);");
+        T("  const storedValues = useRef<StoredValues | null>(null); // what the form showed when the row opened: a field still showing that is not checked again; {} on a new row, where every field is");
         if (form.Guards.Count > 0) T("  const [guards, setGuards] = useState<Record<string, boolean>>({}); // which guarded columns the signed-in person may change (GET guards)");
         // a typed key is set on a new row too, so the key can no longer say whether the row is new: `adding` does
         if (textKey) T("  const [adding, setAdding] = useState(false); // true while the form holds a new row, whose key the person types");
         if (tabbed)
         {
             T("  const [tab, setTab] = useState(0); // the form tab showing");
-            T("  // A required field on a tab that is not showing blocks the submit without a visible message: show the tab that holds the first invalid field.");
-            T("  const revealInvalidTab = (event: { currentTarget: HTMLButtonElement }) => {");
-            T("    const panel = event.currentTarget.form?.querySelector(':invalid')?.closest('[role=\"tabpanel\"]');");
-            T("    if (panel) setTab(Number(panel.getAttribute('data-tab')));");
-            T("  };");
         }
         string filterInit = string.Join(", ", searchFields.Select(f => f.ParamName).Concat(searchKeys.Select(k => k.ParamName)).Select(n => $"{n}: ''"));
         if (canSearch) T($"  const [filters, setFilters] = useState({{ {filterInit} }});");
@@ -510,6 +507,19 @@
         T();
         T("  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {");
         T("    event.preventDefault();");
+        T("    // the browser's own check is off (noValidate): it would refuse a field that still holds a stored value breaking a rule, so the form asks for the first field that changed and is invalid");
+        T("    const broken = firstBroken(event.currentTarget, storedValues.current);");
+        T("    if (broken) {");
+        if (tabbed)
+        {
+            T("      // a field on a tab that is not showing: show the tab first");
+            T("      const panel = broken.closest('[role=\"tabpanel\"]');");
+            T("      if (panel) setTab(Number(panel.getAttribute('data-tab')));");
+            T("      requestAnimationFrame(() => broken.reportValidity());");
+        }
+        else T("      broken.reportValidity();");
+        T("      return;");
+        T("    }");
         T("    if (selectedRow) void submit(selectedRow);");
         T("  };");
         T();
@@ -553,6 +563,7 @@
         T("  const add = () => {");
         if (tabbed) T("    setTab(0);");
         if (textKey) T("    setAdding(true);");
+        T("    storedValues.current = {};");
         T(adds.Count == 0 ? "    setSelectedRow({});" : $"    setSelectedRow({{ {string.Join(", ", adds)} }});");
         foreach (var child in children)
         {
@@ -576,6 +587,7 @@
                 else T($"    {prop} = {prop}.substring(0, 10);");
             }
         }
+        T("    storedValues.current = null;");
         T("    setSelectedRow(row);");
         foreach (var child in children)
             T($"    load{child.Name}({variable}.{keyProp}!);");
@@ -963,7 +975,7 @@
         T("        >");
         T("          {error && <p role=\"alert\">{error}</p>}");
         T($"          <h2>{{{(textKey ? "adding ? 'Add' : 'Edit'" : $"selectedRow.{keyProp} ? 'Edit' : 'Add'")}}} {title}</h2>");
-        T("          <form onSubmit={handleSubmit}>");
+        T("          <form noValidate ref={(form) => { if (form && storedValues.current === null) storedValues.current = snapshotOf(form); }} onSubmit={handleSubmit}>");
         if (tabbed)
         {
             T("            <div role=\"tablist\">");
@@ -1214,7 +1226,7 @@
         }
         T();
         T("            <div className=\"form-buttons\">");
-        T(tabbed ? "              <button type=\"submit\" onClick={revealInvalidTab}>Submit</button>" : "              <button type=\"submit\">Submit</button>");
+        T("              <button type=\"submit\">Submit</button>");
         T("              <button type=\"button\" onClick={cancel}>Cancel</button>");
         T("            </div>");
         T("          </form>");

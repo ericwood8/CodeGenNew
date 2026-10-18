@@ -1786,7 +1786,7 @@ public class TemplateRenderingTests
         string tsx = GeneratedFiles.Split(await Render("TSX_Page_v1.tt", Sample.Holiday()))
             .Single(f => f.RelativePath.EndsWith("Page.tsx")).Content;
 
-        Expect.Contains(tsx, "import { useEffect, useState } from 'react';");
+        Expect.Contains(tsx, "import { useEffect, useRef, useState } from 'react';");
         Expect.Contains(tsx, "export function HolidayPage() {");
         Expect.Contains(tsx, "const [holidays, setHolidays] = useState<Holiday[]>([]);");
         Expect.Contains(tsx, "useEffect(() => {");

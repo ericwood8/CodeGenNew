@@ -113,9 +113,12 @@ public class EnforcedValidationTests
         Expect.Contains(angular, "<textarea id=\"contactEmailTemplate\"");
 
         string blazor = await Rendered("BLZ_Page_v1.tt", table, project);
-        Expect.Contains(blazor, "<InputText id=\"contactEmail\" @bind-Value=\"row.Email\" type=\"email\"");
-        Expect.Contains(blazor, " type=\"tel\" pattern=\"" + ColumnRules.PhonePattern + "\"");
-        Expect.Contains(blazor, " type=\"url\"");
+        // without ApiAnnotations the browser is the only check, so a box gets its type only once it differs from the stored row
+        Expect.Contains(blazor, "<InputText id=\"contactEmail\" @bind-Value=\"row.Email\" type=\"@(stored is null || row.Email != stored.Email ? \"email\" : \"text\")\"");
+        Expect.Contains(blazor, " type=\"@(stored is null || row.Phone != stored.Phone ? \"tel\" : \"text\")\" pattern=\"@(stored is null || row.Phone != stored.Phone ? \"" + ColumnRules.PhonePattern.Replace("\\", "\\\\") + "\" : null)\"");
+        Expect.Contains(blazor, "? \"url\" : \"text\")\"");
+        Expect.Contains(blazor, "private Contact? stored;");
+        Expect.Contains(blazor, "stored = add ? null : item.Copy();");
         Expect.DoesNotContain(blazor, "id=\"emailTemplate\" @bind-Value=\"row.EmailTemplate\" type=");
     }
 

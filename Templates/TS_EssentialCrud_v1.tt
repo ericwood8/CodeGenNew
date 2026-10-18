@@ -572,6 +572,30 @@ import { Notifier } from '../<#= servicesFolder #>/notifier';
  *
  * A refusal is shown in the API's own words (its problem details: a duplicate name, a validation message, a business rule); the fixed words are only for an answer with none.
  */
+type FormField = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+
+const isFormField = (element: Element): element is FormField =>
+  element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement;
+
+const fieldValue = (field: FormField): string => (field instanceof HTMLInputElement && field.type === 'checkbox' ? String(field.checked) : field.value);
+
+/** What the fields of a form show, by id: taken when a row opens, so a field still showing it is not held against the person. */
+function snapshotOf(form: HTMLFormElement): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const element of Array.from(form.elements)) if (isFormField(element) && element.id) values[element.id] = fieldValue(element);
+  return values;
+}
+
+/** The first field the browser calls invalid that no longer shows the value the row came with; null when there is none. */
+function firstBroken(form: HTMLFormElement, stored: Record<string, string> | null): FormField | null {
+  for (const element of Array.from(form.elements)) {
+    if (!isFormField(element) || !element.willValidate || element.validity.valid) continue;
+    if (stored && element.id in stored && stored[element.id] === fieldValue(element)) continue;
+    return element;
+  }
+  return null;
+}
+
 @Directive()
 export abstract class CrudScreen<T, K extends number | string = number> implements OnInit {
   rows: T[] = [];
@@ -587,6 +611,8 @@ export abstract class CrudScreen<T, K extends number | string = number> implemen
   protected readonly emptyKey: K = 0 as K;
   /** True when the person types the key of a new row (a text key); the key is then sent as typed instead of being replaced by `emptyKey`. */
   protected readonly keyChosen: boolean = false;
+  /** What the form showed when the row opened (`{}` on a new row, where every field counts): a field still showing that value is not checked again, so a stored value that breaks a rule does not stop an edit of another field. */
+  protected storedValues: Record<string, string> | null = null;
   /** True while the form holds a new row (opened by `add`), false while it holds an existing one: a typed key must not turn a new row into an update. */
   adding = false;
   /** What the message says when the API refuses the values (400). */
@@ -599,7 +625,12 @@ export abstract class CrudScreen<T, K extends number | string = number> implemen
 
   // The edit form is a modal <dialog> that is only in the page while a row is being edited: open it as soon as it is rendered.
   @ViewChild('editDialog') set editDialog(element: ElementRef<HTMLDialogElement> | undefined) {
-    if (element && !element.nativeElement.open) element.nativeElement.showModal();
+    if (element && !element.nativeElement.open) {
+      element.nativeElement.showModal();
+      // the fields take their values a moment after the dialog is in the page
+      const form = element.nativeElement.querySelector('form');
+      if (form && !this.adding && this.storedValues === null) setTimeout(() => { if (this.storedValues === null) this.storedValues = snapshotOf(form); });
+    }
   }
 
   protected abstract newRow(): T;
@@ -631,6 +662,7 @@ export abstract class CrudScreen<T, K extends number | string = number> implemen
 
   add(): void {
     this.adding = true;
+    this.storedValues = {};
     this.selectedRow = this.newRow();
     this.opened();
   }
@@ -638,6 +670,7 @@ export abstract class CrudScreen<T, K extends number | string = number> implemen
   edit(row: T): void {
     // edit a COPY: changing the row itself would change what the grid shows
     this.adding = false;
+    this.storedValues = null;
     this.selectedRow = this.prepareEdit({ ...row });
     this.opened();
   }
@@ -645,6 +678,21 @@ export abstract class CrudScreen<T, K extends number | string = number> implemen
   cancel(): void {
     this.selectedRow = null;
     this.goBack();
+  }
+
+  /** The form's submit. The browser's own check is off (an old value in a field would stop it): the first field that changed and is invalid is shown and nothing is sent. */
+  submitForm(event: Event, row: T): void {
+    const broken = firstBroken(event.target as HTMLFormElement, this.storedValues);
+    if (broken) {
+      this.showBroken(broken);
+      return;
+    }
+    this.submit(row);
+  }
+
+  /** Brings the field into view with the browser's message; a screen with tabs shows the tab that holds it first. */
+  protected showBroken(field: HTMLElement & { reportValidity(): boolean }): void {
+    field.reportValidity();
   }
 
   submit(row: T): void {

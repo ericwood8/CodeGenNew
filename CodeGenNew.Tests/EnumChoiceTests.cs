@@ -161,6 +161,31 @@ public class EnumChoiceTests
     }
 
     [TestMethod]
+    public void The_postgres_insert_update_and_save_cast_the_text_to_the_enum_type()
+    {
+        var ticket = Sample.Table("Ticket",
+        [
+            Sample.Column("TicketId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("Title", SqlDbType.NVarChar, characters: 50, ordinal: 2),
+            Sample.Column("Status", SqlDbType.NVarChar, characters: 11, nullable: true, ordinal: 3, choices: ["Open", "Closed"], enumType: "public.ticket_status")
+        ]);
+        var pg = new TableModel
+        {
+            SchemaName = "public", TableName = ticket.TableName, QuotedName = ticket.QuotedName, Dialect = SqlDialect.PostgreSql,
+            Columns = ticket.Columns, PrimaryKeyColumns = ticket.PrimaryKeyColumns, ForeignKeys = ticket.ForeignKeys, ChildForeignKeys = ticket.ChildForeignKeys,
+            DisplayColumns = ticket.DisplayColumns, LookupShape = ticket.LookupShape
+        };
+
+        string update = PostgresProcedures.Update(pg), insert = PostgresProcedures.Insert(pg), save = PostgresProcedures.Save(pg);
+
+        Expect.Contains(update, "\"Status\" = COALESCE(btrim(\"pStatus\")::\"public\".\"ticket_status\", \"Status\")");
+        Expect.Contains(insert, "btrim(\"pStatus\")::\"public\".\"ticket_status\"");
+        Expect.Contains(insert, "\"pStatus\" nvarchar(11) DEFAULT NULL");   // '' is no label of an enum
+        Expect.Contains(save, "\"Status\" = \"pStatus\"::\"public\".\"ticket_status\"");
+        Expect.DoesNotContain(update, "btrim(\"pTitle\")::");
+    }
+
+    [TestMethod]
     public void A_unique_enum_column_has_no_suggested_value_so_the_table_gets_no_clone_button()
     {
         var table = Sample.Table("Ticket",

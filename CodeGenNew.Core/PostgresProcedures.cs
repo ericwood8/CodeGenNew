@@ -30,7 +30,16 @@ public static class PostgresProcedures
         : c.IsBooleanColumn ? (value ? "true" : "false")
         : (value ? "1" : "0");
 
-    private static string Trimmed(ColumnModel c, string expression) => c.IsStringColumn ? $"btrim({expression})" : expression;
+    private static string Trimmed(ColumnModel c, string expression) => c.IsStringColumn ? EnumTyped(c, $"btrim({expression})") : expression;
+
+    /// <summary> The text of a parameter (declared varchar) as the column's native enum type; PostgreSQL gives text no implicit way into an enum column, in COALESCE or in SET. </summary>
+    private static string EnumTyped(ColumnModel c, string expression)
+    {
+        if (c.DbEnumType is not { } type)
+            return expression;
+        int dot = type.IndexOf('.');
+        return $"{expression}::{Q(type[..dot])}.{Q(type[(dot + 1)..])}";
+    }
 
     /// <summary> Parameters as "name type [DEFAULT x]" lines, those without a default first (PostgreSQL requires it). </summary>
     private static string ParameterList(IEnumerable<(string Name, string Type, string? Default)> parameters)
@@ -86,7 +95,7 @@ public static class PostgresProcedures
 
         // Non-key string columns default to '' and money to 0 (as in SP_Insert), everything else to NULL.
         var parameters = parameterColumns.Select(c => (P(c), c.SqlTypeDeclaration,
-            c.IsPrimaryKey ? null : c.IsStringColumn ? "''" : c.IsMoneyColumn ? "0" : "NULL"));
+            c.IsPrimaryKey ? null : c.IsStringColumn && c.DbEnumType is null ? "''" : c.IsMoneyColumn ? "0" : "NULL"));   // '' is no label of an enum
 
         var o = new StringBuilder("BEGIN\n");
         Validations(o, m, parameterColumns.Contains, project);
@@ -172,14 +181,14 @@ public static class PostgresProcedures
         {
             updatePairs.Add((c.DbName, c == active && triggers.Count > 0
                 ? $"CASE WHEN {string.Join(" OR ", triggers.Select(Supplied))} THEN {Flag(c, negative)} ELSE {P(c)} END"
-                : P(c)));
+                : EnumTyped(c, P(c))));
         }
         foreach (var c in m.Columns.Where(c => !c.IsComputed && (c.IsModifiedDateColumn || c.IsLastChangedDateColumn)))
             updatePairs.Add((c.DbName, "now()"));
 
         var insertPairs = parameterColumns
             .Where(c => c != identityKey && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn && !c.IsModifiedUserColumn && c != m.InactiveDateColumn && c != active)
-            .Select(c => (Name: c.DbName, Value: P(c))).ToList();
+            .Select(c => (Name: c.DbName, Value: EnumTyped(c, P(c)))).ToList();
         foreach (var c in m.Columns.Where(c => !c.IsComputed && c.IsInsertStampColumn))
             insertPairs.Add((c.DbName, "now()"));
         if (active is not null)

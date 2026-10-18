@@ -296,7 +296,7 @@
         // a typed key is set on a new row too, so the screen's `adding` (not the key) says which heading
         string headingTest = textKey ? "adding ? 'Add' : 'Edit'" : "selectedRow." + keyProp + " ? 'Edit' : 'Add'";
         H($"        <h2>{{{{{headingTest}}}}} {title}</h2>");
-        H($"        <form id=\"{variable}Form\" ngNativeValidate (ngSubmit)=\"submit(selectedRow)\">");
+        H($"        <form id=\"{variable}Form\" (ngSubmit)=\"submitForm($event, selectedRow)\">");
         if (tabbed)
         {
             H("            <div role=\"tablist\" class=\"form-tabs\">");
@@ -420,7 +420,7 @@
         if (tabbed) H("            </div>");
         }
         H();
-        H("            <button type=\"submit\" class=\"btn\"" + (tabbed ? " (click)=\"revealInvalidTab($event)\"" : "") + ">Submit</button>");
+        H("            <button type=\"submit\" class=\"btn\">Submit</button>");
         H("            <button type=\"button\" (click)=\"cancel()\" class=\"btn btn-outline\">Cancel</button>");
         H("        </form>");
         H("    </dialog>");
@@ -698,10 +698,11 @@
         {
             T("  activeTab = 0; // the form tab showing");
             T();
-            T("  // A required field on a tab that is not showing blocks the submit without a visible message: show the tab that holds the first invalid field.");
-            T("  revealInvalidTab(event: Event): void {");
-            T("    const panel = (event.currentTarget as HTMLButtonElement).form?.querySelector(':invalid')?.closest('[role=\"tabpanel\"]');");
+            T("  // A field on a tab that is not showing cannot show its message: show the tab that holds it first.");
+            T("  protected override showBroken(field: HTMLElement & { reportValidity(): boolean }): void {");
+            T("    const panel = field.closest('[role=\"tabpanel\"]');");
             T("    if (panel) { this.activeTab = Number(panel.getAttribute('data-tab')); }");
+            T("    setTimeout(() => field.reportValidity());");
             T("  }");
         }
         T();

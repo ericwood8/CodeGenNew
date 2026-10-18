@@ -56,7 +56,7 @@ Same change as TS_Component: the class extends `PagedCrudScreen<T>`; it adds `ad
 
 ## Required fields and the form
 
-The form carries `ngNativeValidate`, which gives back the browser's own check that Angular's `novalidate` switches off: a blank required field (a drop-down whose foreign key starts unset, an empty name) stops the submit with the browser's message instead of being posted and refused by the API. In a tabbed form the Submit button first opens the tab of the first invalid field (`revealInvalidTab`, from the `data-tab` of each panel), because a field on a hidden tab would otherwise block the submit silently. Nothing in the essentials changed.
+The form is checked by `CrudScreen.submitForm` (`crud-screen.ts`, written by TS_EssentialCrud), not by `ngNativeValidate`: Angular's `novalidate` switches the browser's own check off, and the base class asks the form for the first field that is invalid AND no longer shows the value the row opened with, then shows it with the browser's message (`reportValidity`). A blank required field still stops the submit; an old stored value that breaks a rule (an email without an @) in a field the person left alone does not. In a tabbed form `showBroken` first opens the tab of that field (`data-tab` of each panel). A new row checks every field.
 
 ## Credentials and long text
 

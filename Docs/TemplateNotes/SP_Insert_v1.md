@@ -51,3 +51,5 @@ Guard clauses (project lists): a column in `NonNegativeColumns` or `NotFutureDat
 Now: a stamp column of type datetime2 is set with SYSDATETIME() and a datetimeoffset with SYSDATETIMEOFFSET() (ColumnModel.SqlServerNow), so it keeps its own precision; any other date uses GETDATE().
 
 MySQL: a `datetime(n)` / `timestamp(n)` stamp column is set with `NOW(n)`, so it keeps its fraction (a plain `datetime` uses `NOW()`).
+
+PostgreSQL enum columns: the text parameter (varchar) is cast to the column's enum type where it is written (`COALESCE(btrim(param)::"schema"."type", col)` in the update, the same cast in the insert and in the save's SET and VALUES), because PostgreSQL gives text no implicit way into an enum column there; a label the enum lacks is refused by the database. An omitted enum parameter defaults to NULL in the insert (an empty string is no label).

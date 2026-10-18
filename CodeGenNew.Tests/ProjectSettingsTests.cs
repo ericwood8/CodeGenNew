@@ -729,7 +729,10 @@ public class ProjectSettingsTests
         Assert.IsTrue(text.Contains("min=\"0\"") && text.Contains("max=\"100\""), "a percentage is limited to 0-100");
         Assert.IsTrue(text.Contains("activeTab = 0") || text.Contains("setTab(0)"), "a new form opens on the Main tab");
         if (template.StartsWith("TSX"))
-            Expect.Contains(text, "onClick={revealInvalidTab}");
+        {
+            Expect.Contains(text, "const broken = firstBroken(event.currentTarget, storedValues.current);");
+            Expect.Contains(text, "const panel = broken.closest('[role=\"tabpanel\"]');");
+        }
     }
 
     [TestMethod]

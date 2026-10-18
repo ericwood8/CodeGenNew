@@ -80,6 +80,32 @@ export function PaginationBar({ page, totalPages, onPrevious, onNext }: {
     </div>
   );
 }
+@@@FILE src/<#= componentsFolder #>/storedValues.ts@@@
+// A form checks what the person changes: a field still showing the value the row came with is not held against them, so a stored value that breaks a rule (an old email without an @) does not
+// stop an edit of another field. The page takes a snapshot of the form when a row opens and asks for the first field that is invalid and no longer shows its snapshot value.
+export type StoredValues = Record<string, string>;
+
+type Field = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+
+const isField = (element: Element): element is Field =>
+  element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement;
+
+const valueOf = (field: Field): string => (field instanceof HTMLInputElement && field.type === 'checkbox' ? String(field.checked) : field.value);
+
+export function snapshotOf(form: HTMLFormElement): StoredValues {
+  const values: StoredValues = {};
+  for (const element of Array.from(form.elements)) if (isField(element) && element.id) values[element.id] = valueOf(element);
+  return values;
+}
+
+export function firstBroken(form: HTMLFormElement, stored: StoredValues | null): Field | null {
+  for (const element of Array.from(form.elements)) {
+    if (!isField(element) || !element.willValidate || element.validity.valid) continue;
+    if (stored && element.id in stored && stored[element.id] === valueOf(element)) continue;
+    return element;
+  }
+  return null;
+}
 @@@FILE src/<#= componentsFolder #>/CurrencyInput.tsx@@@
 import { useEffect, useRef, useState } from 'react';
 

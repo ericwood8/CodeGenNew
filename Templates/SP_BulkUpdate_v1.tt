@@ -59,12 +59,17 @@
             string target = Q(table.SchemaName) + "." + Q(table.TableName);
             string set = Project.BulkUpdateExpression.Replace("{column}", Q(column.Name));
             Line();
-            Line("    UPDATE " + target + " SET " + Q(column.Name) + " = " + set + " WHERE " + Q(column.Name) + " IS NOT NULL;");
+            // The rewrite must leave the column inside the project's rules (NonNegativeColumns, NotFutureDateColumns), judged on the values it changed: a stored value that already broke the rule and
+            // came out the same is not its doing. The old and new value of each row are caught with OUTPUT; the error undoes the whole run (XACT_ABORT).
+            var guards = ValueGuards.Of(table, Project).Where(g => g.Column == column).ToList();
+            string changes = "@Changes" + (targets.FindIndex(x => x.Table == table && x.Column == column) + 1);
+            if (guards.Count > 0)
+                Line("    DECLARE " + changes + " TABLE ([Before] " + column.SqlTypeDeclaration + " NULL, [After] " + column.SqlTypeDeclaration + " NULL);");
+            Line("    UPDATE " + target + " SET " + Q(column.Name) + " = " + set + (guards.Count > 0 ? " OUTPUT deleted." + Q(column.Name) + ", inserted." + Q(column.Name) + " INTO " + changes : "") + " WHERE " + Q(column.Name) + " IS NOT NULL;");
             Line("    SELECT " + L(table.TableName + "." + column.Name) + " AS [Column], @@ROWCOUNT AS [RowsUpdated];");
-            // the rewrite must leave the column inside the project's rules (NonNegativeColumns, NotFutureDateColumns); the error undoes the whole run (XACT_ABORT)
-            foreach (var guard in ValueGuards.Of(table, Project).Where(g => g.Column == column))
+            foreach (var guard in guards)
             {
-                Line("    IF EXISTS (SELECT 1 FROM " + target + " WHERE " + guard.Condition(Q(column.Name), SqlDialect.SqlServer) + ")");
+                Line("    IF EXISTS (SELECT 1 FROM " + changes + " WHERE " + guard.Condition("[After]", SqlDialect.SqlServer) + " AND ([Before] IS NULL OR [Before] <> [After]))");
                 Line("        THROW " + SqlErrorCodes.RuleViolation + ", " + L(table.TableName + ": " + guard.Message(name => Q(name)) + " (after the rewrite)") + ", 1;");
             }
         }

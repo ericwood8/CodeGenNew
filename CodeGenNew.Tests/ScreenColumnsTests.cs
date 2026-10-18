@@ -101,15 +101,15 @@ public class ScreenColumnsTests
         var tabbed = await Render("TS_Component_v1.tt", Ticket());
         string html = tabbed["ticket.component.html"];
         string ts = tabbed["ticket.component.ts"];
-        Expect.Contains(html, "<form id=\"ticketForm\" ngNativeValidate (ngSubmit)=\"submit(selectedRow)\">");
+        Expect.Contains(html, "<form id=\"ticketForm\" (ngSubmit)=\"submitForm($event, selectedRow)\">");
         Expect.Contains(html, "<div role=\"tabpanel\" data-tab=\"1\" [hidden]=\"activeTab !== 1\">");
-        Expect.Contains(html, "<button type=\"submit\" class=\"btn\" (click)=\"revealInvalidTab($event)\">Submit</button>");
-        Expect.Contains(ts, "revealInvalidTab(event: Event): void {");
-        Expect.Contains(ts, "querySelector(':invalid')?.closest('[role=\"tabpanel\"]')");
+        Expect.Contains(html, "<button type=\"submit\" class=\"btn\">Submit</button>");
+        Expect.Contains(ts, "protected override showBroken(field: HTMLElement & { reportValidity(): boolean }): void {");
+        Expect.Contains(ts, "field.closest('[role=\"tabpanel\"]')");
 
         var plain = await Render("TS_Component_v1.tt", AppUser());
-        Expect.Contains(plain["appuser.component.html"], "ngNativeValidate");
-        Expect.DoesNotContain(plain["appuser.component.html"], "revealInvalidTab");
-        Expect.DoesNotContain(plain["appuser.component.ts"], "revealInvalidTab");
+        Expect.Contains(plain["appuser.component.html"], "(ngSubmit)=\"submitForm($event, selectedRow)\"");
+        Expect.DoesNotContain(plain["appuser.component.html"], "ngNativeValidate");
+        Expect.DoesNotContain(plain["appuser.component.ts"], "showBroken");
     }
 }

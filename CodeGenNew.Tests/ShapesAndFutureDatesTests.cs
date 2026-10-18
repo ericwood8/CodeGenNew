@@ -129,8 +129,8 @@ public class ShapesAndFutureDatesTests
         Expect.Contains(react, "type=\"url\"");
 
         string blazor = await Rendered("BLZ_Page_v1.tt", Person(), Project());
-        Expect.Contains(blazor, "pattern=\"" + ColumnRules.PostalPattern + "\"");
-        Expect.Contains(blazor, "pattern=\"" + ColumnRules.SsnPattern + "\"");
+        Expect.Contains(blazor, "\"" + ColumnRules.PostalPattern.Replace("\\", "\\\\") + "\" : null)\"");
+        Expect.Contains(blazor, "\"" + ColumnRules.SsnPattern.Replace("\\", "\\\\") + "\" : null)\"");
     }
 
     // ------------------------------------------------------------------ the attributes run in the API, the WinUI3 forms check, and stored values can be checked
@@ -165,10 +165,10 @@ public class ShapesAndFutureDatesTests
     public async Task The_winui3_forms_refuse_a_wrong_shape_and_a_future_date_before_they_save()
     {
         string detail = await Rendered("WinUI3_DetailScreen_v1.tt", Person(), Project(Future));
-        Expect.Contains(detail, "if (!string.IsNullOrWhiteSpace(BillingZip) && !(System.Text.RegularExpressions.Regex.IsMatch(BillingZip, @\"^(?:" + ColumnRules.PostalPattern + ")$\"))) { ErrorMessage = \"Billing Zip is not a postal code.\"; return false; }");
+        Expect.Contains(detail, "if (!string.IsNullOrWhiteSpace(BillingZip) && !string.Equals(entity.BillingZip, BillingZip) && !(System.Text.RegularExpressions.Regex.IsMatch(BillingZip, @\"^(?:" + ColumnRules.PostalPattern + ")$\"))) { ErrorMessage = \"Billing Zip is not a postal code.\"; return false; }");
         Expect.Contains(detail, "{ ErrorMessage = \"Social Security Number is not a social security number.\"; return false; }");
         Expect.Contains(detail, "Uri.TryCreate(SiteLink, UriKind.Absolute, out var SiteLinkUri)");
-        Expect.Contains(detail, "else if (BornOn.Value.Date > DateTime.Today) { ErrorMessage = \"Born On must not be later than today.\"; return false; }");
+        Expect.Contains(detail, "else if (BornOn.Value.Date > DateTime.Today && ((DateTime?)entity.BornOn)?.Date != BornOn.Value.Date) { ErrorMessage = \"Born On must not be later than today.\"; return false; }");
         Expect.DoesNotContain(await Rendered("WinUI3_DetailScreen_v1.tt", Person(), Project(("PlainTextColumns", "BillingZip"))), "is not a postal code");
     }
 
