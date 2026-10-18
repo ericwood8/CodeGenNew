@@ -37,12 +37,10 @@
     // Full notes: Docs/TemplateNotes/WinUI3_DetailMasterScreen_v1.md
     // ==========================================================================================
 
-    // Every whole-number column (a foreign key to a lookup is handled before this) is edited in a number box, whose value is a double:
-    // the ViewModel holds it as a double (NaN = blank) and the save converts it back, after checking it is whole and in range.
-    // A currency column (money, or a decimal whose name says money) is also edited in a number box, formatted as currency in code-behind
-    // (a NumberFormatter cannot be declared in XAML; CurrencyNumberFormatter.cs, written alongside, formats as currency and also reads a plain number), and converted back to a decimal rounded to the column's scale on save.
-    // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is edited in a number box too: its value is a double
-    // (NaN = blank), limited to what the column can hold (NumericClassifier.DecimalRange), and converted back on save.
+    // Number columns are edited in a number box whose value is a double (NaN = blank), converted back on save:
+    // a whole number is checked to be whole and in range; a currency column (money, or a decimal whose name says money) is formatted as currency in
+    // code-behind (CurrencyNumberFormatter.cs, written alongside, since XAML cannot declare a NumberFormatter) and rounded to the column's scale;
+    // any other decimal, float or real is limited to NumericClassifier.DecimalRange.
 
     var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
     var keyColumn = form.KeyColumn;
@@ -69,15 +67,15 @@
         string keyProp = keyColumn.Name;
         bool textKey = form.TextKey;
 
-        // The checks the project's validation rules ask of a field (the same classification as the validators of every language): the shape of an email address, phone number, URL, postal code or
-        // social security number in a text box, and a date that is never later than today. Null when the column has no such rule.
+        // The checks the project's validation rules ask of a field: the shape of an email address, phone number, URL, postal code or social security number,
+        // and a date never later than today. Null when the column has no such rule.
         string? ShapeCheck(ColumnModel c, string prop, string label, bool optional)
         {
             if (c.RuleOf(Project, Model.TableName) is not { Shape: not TextShape.None } rule)
                 return null;
             string test = ColumnRules.CSharpTest(rule.Shape, prop);
             string refuse = "{ ErrorMessage = \"" + label + " is not " + ColumnRules.NounOf(rule.Shape) + ".\"; return false; }";
-            // a value still equal to the stored one (the entity holds it until the assignment below) is not held against the person: an old value that breaks the rule does not stop an edit of another field
+            // a value equal to the stored one is not checked, so an old value that breaks the rule does not stop an edit of another field
             string changed = "!string.Equals(entity." + prop + ", " + prop + ")";
             return optional ? "if (!string.IsNullOrWhiteSpace(" + prop + ") && " + changed + " && !(" + test + ")) " + refuse : "if (" + changed + " && !(" + test + ")) " + refuse;
         }
@@ -89,7 +87,7 @@
 
         var shown = form.Columns;
 
-        // A form with more than one kind of field is tabbed (Main / Billing & Shipping / Notes): see FormPages. A narrow table keeps its single column.
+        // A form with more than one kind of field is tabbed (see FormPages); a narrow table stays one column.
         var pages = form.Pages.Select(p => (Header: p.Header.Replace("&", "&amp;"), Columns: p.Columns)).ToList();
         bool tabbed = pages.Count > 1;
 
@@ -101,18 +99,8 @@
         if (!Model.HasReferencedDisplayColumns && parents.Count > 0)
             Error("WinUI3_DetailMasterScreen needs the foreign-keyed tables' display columns for its drop-downs; its .tt.config must say NeedsReferencedDisplayColumns=true.");
 
-        // Skipped, not just the composite-key case: a child whose foreign key points at one of OUR columns
-        // that isn't a plain int (almost always our own int primary key, but a child can reference any
-        // unique column) - the grid's filter below is EF.Property<int>, matching the int-only assumption
-        // this whole template family makes about keys.
-        // A raw internal id (the child's own primary key, or another foreign key on the child with no
-        // resolvable display name) has no business meaning to a user looking at the grid - hidden entirely.
-        // A foreign key on the child that DOES have a resolvable display name (e.g. a SalesInvoice child row's
-        // own CustomerId) is resolved to that name instead of shown as a raw number, the same way this
-        // template's own parent drop-downs resolve a display name for THIS table's foreign keys. Found live:
-        // a real user looking at the generated grid saw SalesInvoiceId/CustomerId/CustomerMonthlySummaryId next
-        // to InvoiceDate and asked for exactly this (2026-09-29).
         // The child tables, decided in Core for every stack (ChildGrid): which ones get a grid, its heading and role, its key, and the foreign keys shown as names.
+        // A raw id with no display name (the child's own key, or a foreign key to a table without one) is hidden; a foreign key with one shows that name.
         var children = ChildGrid.For(Model, Project)
             // the grid's filter compares the parent's key, so that column must be a usable key
             .Where(g => Model.Columns.Any(c => c.Name.EqualsIgnoreCase(g.Link.ReferencedColumns[0]) && KeyType.Of(c) is not null))
@@ -145,15 +133,12 @@
                     FkColumn = fk.ReferencingColumns[0],
                     ParentKeyColumn = fk.ReferencedColumns[0],
                     ParentKeyCs = Model.Columns.First(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[0])).CSharpBase(),   // int, Guid or string: the type the grid's filter compares
-                    // in a fixed order (this row's key, the child's own key, then the ids that are not named), so regenerating the same table twice gives identical output
                     HideColumns = g.HiddenColumns.ToList(),
                     Resolvable = resolvable,
                     Filters = filters,
-                    // What the schema says about the child's columns: money shows as currency, long text goes last.
                     Currency = fk.ReferencingTableColumns.Where(c => c.IsMoneyAmount)
                         .Select(c => (Name: c.Name, Digits: NumericClassifier.CurrencyDigits(c))).ToList(),
                     LongText = fk.ReferencingTableColumns.Where(c => c.IsLongTextColumn).Select(c => c.Name).ToList(),
-                    // The caption each child column gets (date columns lose "Date", yes/no columns end in "?", Number -> #, Percent -> %).
                     Captions = fk.ReferencingTableColumns.Select(c => (Name: c.Name, Caption: GridCaption.For(c, Labels.Column(c.Name)))).ToList()
                 };
             }).ToList();
@@ -169,9 +154,8 @@
     DefaultButton="Primary"
     PrimaryButtonClick="OnPrimaryButtonClick">
 
-    <!-- A ContentDialog's width is capped by these two theme resources (about 320-548 by default), NOT by its own
-         MinWidth/MaxWidth or by anything inside it, which is why setting those has no effect. Raising the cap
-         lets the ScrollViewer's own MinWidth below (and the content) decide the width, up to the window. -->
+    <!-- A ContentDialog's width is capped by these two theme resources, not by its own MinWidth/MaxWidth. Raising the cap
+         lets the ScrollViewer's MinWidth below decide the width, up to the window. -->
     <ContentDialog.Resources>
         <x:Double x:Key="ContentDialogMinWidth">320</x:Double>
         <x:Double x:Key="ContentDialogMaxWidth">1400</x:Double>
@@ -183,7 +167,7 @@
             <Setter Property="FontWeight" Value="Bold" />
         </Style>
 <#= form.Columns.Any(form.IsMarked) ? RequiredMark.XamlHeaderTemplate : "" #>    </ContentDialog.Resources>
-    <!-- The two button styles are declared above and applied here: an attribute on the root element is read before the Resources element, so a StaticResource there is not found and the dialog fails to open. -->
+    <!-- Applied here, not as attributes on the root: those are read before the Resources element, so the StaticResource is not found and the dialog fails to open. -->
     <ContentDialog.PrimaryButtonStyle>
         <StaticResource ResourceKey="BoldAccentDialogButton" />
     </ContentDialog.PrimaryButtonStyle>
@@ -191,12 +175,12 @@
         <StaticResource ResourceKey="BoldDialogButton" />
     </ContentDialog.CloseButtonStyle>
 
-    <!-- The error bar sits ABOVE the scrolling area: inside it, a validation message is out of sight whenever the person has scrolled down. -->
+    <!-- The error bar is above the scrolling area so a validation message is never scrolled out of sight. -->
     <StackPanel Spacing="12">
         <InfoBar Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
                  Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" />
     <ScrollViewer MinWidth="560" MaxHeight="620" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Auto">
-        <!-- The bottom padding keeps the last row of a child grid from sitting on the very edge of the scrolling area, where it was cut off even when scrolled to the end. -->
+        <!-- The bottom padding stops the last child-grid row being cut off at the end of the scroll. -->
         <StackPanel Spacing="12" Padding="0,0,0,24">
 <#
         if (tabbed)
@@ -290,10 +274,8 @@
             else if (value == ValueKind.WholeNumber)
             {
                 var range = Project.RangeFor(c)!.Value;
-                // Narrow to the widest number the range allows (a month is two digits, a year four) plus what the box itself needs
-                // around the text - two inline spin buttons, the clear ("x") button and padding, about 150 pixels; any less leaves
-                // no visible room to type - and never narrower than the header text. The digits count at most nine, so a number box over a
-                // whole int (a foreign key shown as a plain number) is not stretched across the dialog.
+                // As wide as the range's widest number (at most nine digits) plus about 150 pixels for the spin buttons, clear button and padding,
+                // and never narrower than the header text.
                 int digits = Math.Max(range.Min.ToString().Length, range.Max.ToString().Length);
                 string width = $" Width=\"{Math.Max(Math.Min(digits, 9) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
 #>
@@ -384,10 +366,8 @@
 <#
             }
 #>
-            <!-- Boxed the same way as WinUI3_MasterScreen.tt's own grid: a line around the whole grid, a line
-                 under the header, and a line under every row — see that template's 2026-09-27 styling note.
-                 Clicking a row opens that child row's own dialog (see On<#= child.Table #>ItemClick in the code-behind).
-                 A click on a column header sorts the rows by it (again: flips the direction); a right-click on the grid offers Clear sort. -->
+            <!-- Boxed like the master screen's grid. A click on a row opens its own dialog (On<#= child.Table #>ItemClick); a click on a header sorts
+                 (again: flips the direction); a right-click on the grid offers Clear sort. -->
             <Border BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4"
                     Background="Transparent" RightTapped="On<#= child.Table #>GridRightTapped">
                 <Grid>
@@ -416,8 +396,7 @@
                     </Border>
                     <ListView Grid.Row="1" ItemsSource="{x:Bind ViewModel.<#= child.Var #>Rows}"
                               IsItemClickEnabled="True" ItemClick="On<#= child.Table #>ItemClick" MaxHeight="200" Padding="0">
-                        <!-- A ListView sizes itself from the rows' content, but every row container has a 40 pixel minimum height; with shorter rows the grid came out
-                             a fraction of a row too short and its last row was cut off. No minimum makes the rows and the grid agree. -->
+                        <!-- Row containers have a 40 pixel minimum height, so shorter rows made the grid too short and cut off its last row. -->
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
                                 <Setter Property="MinHeight" Value="0" />
@@ -434,14 +413,13 @@
                                             </ItemsPanelTemplate>
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
-                                            <!-- x:Bind to the string, not {Binding}: a classic Binding to an EMPTY string falls back to the row object
-                                                 as its DataContext and prints that object's type name ("InvoiceSystem.App.") in the cell. -->
+                                            <!-- x:Bind, not {Binding}: a Binding to an empty string falls back to the row object and prints its type name. -->
                                             <DataTemplate x:DataType="x:String">
                                                 <TextBlock Text="{x:Bind}" Width="120" />
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                    <!-- Row-level Edit and Delete, like the master screens' grids. Delete asks to be clicked twice (a second ContentDialog cannot open over this one). -->
+                                    <!-- Delete asks to be clicked twice: a second ContentDialog cannot open over this one. -->
                                     <StackPanel Orientation="Horizontal" Spacing="4" Width="120">
                                         <Button Content="Edit" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Padding="8,2" Click="On<#= child.Table #>EditClick" />
                                         <Button Content="Delete" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Padding="8,2" Click="On<#= child.Table #>DeleteClick" LostFocus="On<#= child.Table #>DeleteLostFocus" />
@@ -475,7 +453,6 @@ using <#= u #>;
 
 namespace <#= viewNamespace #>;
 
-// Assumes nothing from CodeGenNew.App itself - a plain ContentDialog, no shared house-style helper.
 public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
 {
     private readonly <#= contextType #> _context; // for the child dialogs a clicked row opens
@@ -512,9 +489,8 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
         Loaded += (_, _) => _loading = ViewModel.LoadAsync();
     }
 
-    // ShowAsync() returns the moment the dialog closes (or hides itself to open a child row's dialog), which can be before the dialog's own LoadAsync() has
-    // finished or while a child dialog is still showing and loading. A DbContext is not thread-safe, so a caller that is about to use the same context (reload the
-    // list, open another dialog) calls this instead: it also waits for that load and for any child dialog opened from here.
+    // ShowAsync() returns when the dialog closes or hides to open a child's dialog, possibly before LoadAsync() finishes or while the child is still showing.
+    // A DbContext is not thread-safe, so a caller about to reuse it calls this instead: it also waits for that load and for any child dialog opened from here.
     public async System.Threading.Tasks.Task<ContentDialogResult> ShowAndWaitAsync()
     {
         var result = await ShowAsync();
@@ -529,7 +505,7 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
         {
             var p = form.ParentOf(c)!;
 #>
-    // Typing in the <#= Labels.Column(c.Name) #> box takes the chosen row off and lists the rows whose text contains what was typed; picking one chooses it.
+    // Typing in the <#= Labels.Column(c.Name) #> box clears the choice and lists the rows containing the text; picking one chooses it.
     private async void On<#= c.Name #>TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
         if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
@@ -544,7 +520,7 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
 <#
         }
 #>
-    // Validation failure keeps the dialog open instead of closing it - see ViewModel.SaveAsync.
+    // A failed validation (ViewModel.SaveAsync) keeps the dialog open.
     private async void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
         var deferral = args.GetDeferral();
@@ -574,10 +550,9 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
             string childDialog = child.Table + (DatabaseModel.IsDetailMaster(child.Table, child.HasChildren, Project) ? "DetailMasterDialog" : "DetailDialog");
 #>
 
-    // Opens the clicked <#= child.Table #> row's own dialog. Only one ContentDialog can be open at a time in WinUI3, so this
-    // one hides itself first, and deliberately does NOT reopen itself afterwards: Hide() resolves this dialog's own
-    // ShowAsync() immediately, which also unblocks any ANCESTOR dialog awaiting it - three or more drill-down levels
-    // deep that lets two ContentDialogs call ShowAsync() at once and crashes the process natively.
+    // Opens the clicked <#= child.Table #> row's own dialog. WinUI3 allows one ContentDialog at a time, so this one hides first and does not reopen:
+    // Hide() resolves its ShowAsync(), which also releases any ancestor dialog awaiting it, and three or more levels deep that
+    // lets two dialogs call ShowAsync() at once and crashes the process.
     private async void On<#= child.Table #>ItemClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is <#= table #>ChildGridRow { Entity: <#= child.Table #> entity })
@@ -691,9 +666,7 @@ public class <#= WinUI3Names.LookupOptionClass(table, "DetailMaster", optionKey)
         }
 #>
 
-/// <summary> One row of a child grid: a display string per scalar EF property of the child entity (see this
-/// template's header comment for why the columns are discovered at run time, via EF's own metadata, instead
-/// of being known when the file was generated). </summary>
+/// <summary> One row of a child grid: a display string per scalar EF property of the child entity (the columns are read from EF's metadata at run time). </summary>
 public class <#= table #>ChildGridRow
 {
     public List<string> Cells { get; init; } = [];
@@ -877,9 +850,8 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         }
     }
 
-    // A child grid's columns come from EF Core's property names at run time; this spaces them the way the list screens' captions are
-    // ("CustomerPO" -> "Customer PO", "InvoicedOnDate" -> "Invoiced On Date", no trailing "Id" or leading "SY_").
-    // "Number" is written # and "Percent"/"Percentage" %, as in the list screens' captions ("Item Number" -> "Item #").
+    // Spaces an EF property name like the list screens' captions: "CustomerPO" -> "Customer PO", no trailing "Id" or leading "SY_",
+    // "Number" written # and "Percent" %.
     private static string SpacedHeader(string name)
     {
         string spaced = Regex.Replace(Regex.Replace(Regex.Replace(name, "^SY_", ""), "Id$", "").Replace('_', ' '),
@@ -931,7 +903,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         _context = context;
         _repo = new <#= table #>Repo(context);
         _editing = editing;
-        // Add leaves every field at its default (null/blank); Edit fills them in from the row being edited.
+        // Add leaves every field at its default; Edit fills them from the row.
         if (editing is not null)
         {
 <#
@@ -941,11 +913,8 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
             string prop = c.Name;
             if (value == ValueKind.Lookup)
             {
-                // Deliberately NOT set here - see LoadAsync below. A ComboBox's SelectedValue binding does
-                // not retroactively select an item once its ItemsSource is populated AFTER SelectedValue was
-                // already assigned to a value with no match yet (a real, known WinUI3/UWP limitation, not
-                // just a timing quirk): the box renders as if empty even though editing.{prop} is correct,
-                // until the person types in it (found live clicking through a real running app, 2026-09-28).
+                // Set in LoadAsync, after the items exist: a ComboBox's SelectedValue assigned before its ItemsSource is filled
+                // is not selected afterwards, and the box shows empty.
             }
             else if (value == ValueKind.Money)
             {
@@ -989,8 +958,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         }
     }
 
-    /// <summary> Loads the drop-downs (always) and the child grids (only when editing an existing row -
-    /// a brand-new row has no child rows yet). </summary>
+    /// <summary> Loads the drop-downs, and the child grids when editing an existing row. </summary>
 <#
         if (aheadParents.Count > 0)
         {
@@ -1091,8 +1059,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 <#
         }
 #>
-        // <#= child.FkColumn #> (this grid's own filter column, always the same value here) and any internal id
-        // column with no resolvable display name are left out entirely - see the "children" comment above.
+        // <#= child.FkColumn #> (the filter column, one value here) and ids with no display name are left out.
         var entityType = _context.Model.FindEntityType(typeof(<#= child.Table #>))!;
         var propertyNames = entityType.GetProperties().Select(p => p.Name)
             .Where(name => !HideFrom<#= child.Table #>Grid.Contains(name, StringComparer.OrdinalIgnoreCase))
@@ -1100,12 +1067,12 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
             .Take(<#= GridColumns.MaxColumns #>).ToList();
         _<#= child.Var #>Columns = propertyNames;
         _<#= child.Var #>Captions = propertyNames.Select(name => HeaderLabelFor<#= child.Table #>Grid.TryGetValue(name, out string? label) ? label : SpacedHeader(name)).ToList();
-        // The sort saved by an earlier run (or earlier in this one), if its column is still in the grid.
+        // The saved sort, if its column is still in the grid.
         var savedSort = GridSortStore.Load(GridKeyFor("<#= child.Var #>"), propertyNames);
         _<#= child.Var #>SortColumn = savedSort?.Column;
         _<#= child.Var #>SortDescending = savedSort?.Descending ?? false;
 
-        // Not tracked: the grid only reads these rows, and a tracked child would be deleted along with its parent (EF cascades a required foreign key to the rows it tracks) when the list page deletes the parent.
+        // Not tracked: EF would cascade-delete a tracked child when the list page deletes the parent.
         var rows = await _context.Set<<#= child.Table #>>().AsNoTracking()
             .Where(c => EF.Property<<#= child.ParentKeyCs #>>(c, "<#= child.FkColumn #>") == _editing!.<#= child.ParentKeyColumn #>)
             .ToListAsync();
@@ -1145,9 +1112,9 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
             }).ToList();
             var cells = values.Select((value, i) =>
             {
-                // Money shows in the project's currency (CurrencyCode) with the column's own number of decimals, like the list screens and the editors.
+                // Money shows in the project's CurrencyCode with the column's own decimals, as on the list screens.
                 if (value is decimal moneyValue && CurrencyDigitsFor<#= child.Table #>Grid.TryGetValue(propertyNames[i], out int moneyDigits)) return new Windows.Globalization.NumberFormatting.CurrencyFormatter("<#= Project.CurrencyCode #>") { IsGrouped = true, FractionDigits = moneyDigits }.FormatDouble((double)moneyValue);
-                // A date-and-time value shows as its date only (the time is never what a child grid is for, and 12:00:00 AM clips).
+                // A date-and-time shows as its date only.
                 if (value is DateTime dateValue) return dateValue.ToString("MM/dd/yyyy");
                 if (value is DateTimeOffset dateOffsetValue) return dateOffsetValue.ToString("MM/dd/yyyy");
                 return value?.ToString() ?? "";
@@ -1186,8 +1153,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         }
 #>
     };
-    // A resolved column's header (e.g. "Customer" instead of "CustomerId") - known at generation time, unlike
-    // this grid's other column headers, which come from EF reflection at run time and stay as raw property names.
+    // The headers known at generation time (a resolved column reads "Customer", not "CustomerId"); any other column is spaced by SpacedHeader.
     private static readonly Dictionary<string, string> HeaderLabelFor<#= child.Table #>Grid = new(StringComparer.OrdinalIgnoreCase)
     {
 <#
@@ -1209,8 +1175,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 <#
         }
 #>
-    /// <summary> Parses every text-backed field into the entity's real column type, sets ErrorMessage and
-    /// returns false on the first bad or missing value, otherwise saves through <#= table #>Repo and returns true. </summary>
+    /// <summary> Converts every field to its column type and saves through <#= table #>Repo; sets ErrorMessage and returns false on the first bad or missing value. </summary>
     public async Task<bool> SaveAsync()
     {
         ErrorMessage = null;
@@ -1525,9 +1490,8 @@ using Windows.Globalization.NumberFormatting;
 
 namespace <#= viewNamespace #>;
 
-// Shows a number as currency, but reads it with OR without the currency symbol. A plain CurrencyFormatter only parses text that
-// includes the symbol, so typing 7777.77 into a currency NumberBox was silently thrown away. NumberBox needs one object that both
-// formats (INumberFormatter2) and parses (INumberParser).
+// Shows a number as currency and reads it with or without the symbol: a plain CurrencyFormatter only parses text that includes it, so
+// typing 7777.77 into a currency NumberBox was thrown away. NumberBox needs one object that formats (INumberFormatter2) and parses (INumberParser).
 public sealed partial class CurrencyNumberFormatter : INumberFormatter2, INumberParser
 {
     private readonly CurrencyFormatter _currency;
