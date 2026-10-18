@@ -213,7 +213,7 @@
                         </StackPanel>
                     </Border>
                     <ListView Grid.Row="1" ItemsSource="{x:Bind ViewModel.<#= child.Var #>Rows}"
-                              IsItemClickEnabled="True" ItemClick="On<#= child.Table #>ItemClick" MaxHeight="200" Padding="0">
+                              <#= child.HasDialog ? "IsItemClickEnabled=\"True\" ItemClick=\"On" + child.Table + "ItemClick\" " : "" #>MaxHeight="200" Padding="0">
                         <!-- Row containers have a 40 pixel minimum height, so shorter rows made the grid too short and cut off its last row. -->
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
@@ -239,7 +239,14 @@
                                     </ItemsControl>
                                     <!-- Delete asks to be clicked twice: a second ContentDialog cannot open over this one. -->
                                     <StackPanel Orientation="Horizontal" Spacing="4" Width="120">
+<#
+            if (child.HasDialog)
+            {
+#>
                                         <Button Content="Edit" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Padding="8,2" Click="On<#= child.Table #>EditClick" />
+<#
+            }
+#>
                                         <Button Content="Delete" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Padding="8,2" Click="On<#= child.Table #>DeleteClick" LostFocus="On<#= child.Table #>DeleteLostFocus" />
                                     </StackPanel>
                                   </StackPanel>
@@ -368,6 +375,10 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
             string childDialog = child.Table + (DatabaseModel.IsDetailMaster(child.Table, child.HasChildren, Project) ? "DetailMasterDialog" : "DetailDialog");
 #>
 
+<#
+            if (child.HasDialog)
+            {
+#>
     // Opens the clicked <#= child.Table #> row's own dialog. WinUI3 allows one ContentDialog at a time, so this one hides first and does not reopen:
     // Hide() resolves its ShowAsync(), which also releases any ancestor dialog awaiting it, and three or more levels deep that
     // lets two dialogs call ShowAsync() at once and crashes the process.
@@ -382,6 +393,9 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
         if (((FrameworkElement)sender).DataContext is <#= table #>ChildGridRow { Entity: <#= child.Table #> entity })
             await Open<#= child.Table #>Async(entity);
     }
+<#
+            }
+#>
 
     // The first click on Delete only asks ("Confirm?"); the second deletes the row and reloads the grid. Losing focus puts the label back.
     private async void On<#= child.Table #>DeleteClick(object sender, RoutedEventArgs e)
@@ -424,6 +438,10 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
         e.Handled = true;
     }
 
+<#
+            if (child.HasDialog)
+            {
+#>
     private async System.Threading.Tasks.Task Open<#= child.Table #>Async(<#= child.Table #> entity)
     {
         _drillDown = new System.Threading.Tasks.TaskCompletionSource();
@@ -438,6 +456,9 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
             _drillDown.SetResult();
         }
     }
+<#
+            }
+#>
 <#
         }
 #>

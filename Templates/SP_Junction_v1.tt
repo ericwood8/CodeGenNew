@@ -85,10 +85,10 @@ BEGIN
 <#
     }
 #>
-		, CASE WHEN EXISTS (
+		, CAST(CASE WHEN EXISTS (
 			SELECT 1 FROM <#= junctionTable #> AS [x]
 			WHERE [x].<#= Q(anchorColumn.Name) #> = <#= anchorParam #> AND [x].<#= Q(targetColumn.Name) #> = [t].<#= Q(targetKeyColumn) #>
-		) THEN 1 ELSE 0 END AS IsSelected
+		) THEN 1 ELSE 0 END AS bit) AS IsSelected
 	FROM <#= targetTable #> AS [t]
 	ORDER BY [t].<#= orderBy #>;
 END

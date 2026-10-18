@@ -9,12 +9,19 @@ public sealed record DesktopChildLookup(string Column, string ReferencedTable, s
 public sealed record DesktopChildFilter(string Column, string Label, string All, string Choices, string Prop);
 
 /// <summary> One child grid of a desktop master-detail dialog (WinUI3 and Uno): the child table and its model class, the grid's variable, the link back to the row, what the child's columns show and how, and the
-/// names it resolves. </summary>
+/// names it resolves. <see cref="HasDialog"/> is false for a child that has no screen (a many-to-many junction table has a composite key, so the plan writes no dialog for it): its rows are listed and can be deleted,
+/// but there is no Edit button, and a click on a row opens nothing. </summary>
 public sealed record DesktopChild(
-    string Table, string Type, string? KeyProp, bool HasChildren, string Title, string Var, string FkColumn, string ParentKeyColumn, string ParentKeyCs,
+    string Table, string Type, string? KeyProp, bool HasChildren, bool HasDialog, string Title, string Var, string FkColumn, string ParentKeyColumn, string ParentKeyCs,
     IReadOnlyList<string> HideColumns, IReadOnlyList<DesktopChildLookup> Resolvable, IReadOnlyList<DesktopChildFilter> Filters,
     IReadOnlyList<(string Name, int Digits)> Currency, IReadOnlyList<string> LongText, IReadOnlyList<(string Name, string Caption)> Captions)
 {
+    // the child's own dialog exists when the table is a screen: listed in the project's Screens, or (with none listed) a plain table with a single-column key
+    private static bool HasScreen(ChildGrid grid, ProjectSettings project) =>
+        project.Screens.Length > 0
+            ? project.Screens.Contains(grid.Table, StringComparer.OrdinalIgnoreCase)
+            : grid.KeyName is not null && !grid.IsNameActive;
+
     /// <summary> The child grids of a master-detail dialog of <paramref name="table"/>: the <see cref="ChildGrid"/>s whose link column is a usable key (the grid's filter compares the parent's key).
     /// <paramref name="needsOwnKey"/>: also only children with a single-column key that are not name / active tables (a front end that reads and deletes the rows through the API needs them). </summary>
     public static List<DesktopChild> For(TableModel table, ProjectSettings project, bool needsOwnKey)
@@ -35,7 +42,8 @@ public sealed record DesktopChild(
                     .Select(r => new DesktopChildFilter(r.Column, r.Label, "All " + r.Label.Pluralize(), gridVar + r.Column + "Choices", TemplateHelpers.UpperFirst(gridVar) + r.Column + "Filter")).ToList();
 
                 return new DesktopChild(
-                    fk.ReferencingTable, BlazorNames.TypeName(fk.ReferencingTable), g.KeyName, fk.ReferencingTableHasChildren, g.Title, gridVar,
+                    fk.ReferencingTable, BlazorNames.TypeName(fk.ReferencingTable), g.KeyName, fk.ReferencingTableHasChildren,
+                    HasScreen(g, project), g.Title, gridVar,
                     fk.ReferencingColumns[0], fk.ReferencedColumns[0],
                     table.Columns.First(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[0])).CSharpBase(),   // int, Guid or string: the type the grid's filter compares
                     g.HiddenColumns.ToList(), resolvable, filters,
