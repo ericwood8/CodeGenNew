@@ -59,19 +59,14 @@
     {
         string table = Model.TableName;
         string title = form.Title;
-        // The dialog Add/Edit opens: the table's Detail-Master dialog when it has one (DatabaseModel.IsDetailMaster, the rule WinUI3_DetailMasterScreen's plan uses), else its plain Detail dialog.
+        // The dialog Add and Edit open: the Detail-Master dialog when DatabaseModel.IsDetailMaster says the table has one, else the plain Detail dialog.
         string editDialog = table + (DatabaseModel.IsDetailMaster(Model, Project) ? "DetailMasterDialog" : "DetailDialog");
         string keyProp = keyColumn.Name;
         string keyCs = keyType.CSharp;
         bool textKey = form.TextKey;   // the key is a column of the grid: the person typed it and it means something
         int pageSize = 20;
-        // One TextBox + one ViewModel filter property per searchable column, in the same order as
-        // Model.SearchableColumns (matching TS_Component.tt/TSX_Page.tt). Field/Prop follow the same
-        // "_lowerFirst(Name)" -> "Name" ObservableProperty round-trip PageNumber/TotalPages already use, just
-        // with a Filter suffix. SearchAsync's own parameters (CS_Repo.tt) are passed by name, not position, so
-        // this list's order only affects the TextBoxes' left-to-right layout, not correctness. Empty for a
-        // table with no searchable column - canSearch below gates the search bar UI specifically;
-        // pagination itself is unconditional (see the header comment's 2026-09-28 update).
+        // One TextBox and one view-model filter property per searchable column (and per typed key). SearchAsync takes them by name,
+        // so the order only sets the boxes' left-to-right layout. Without any, canSearch hides the search bar; paging is always on.
         var searchFields = Model.SearchableColumns.Concat(form.TextKeyBoxes).OrderBy(c => c.OrdinalPosition)
             .Select(c => new { Field = TemplateHelpers.LowerFirst(c.Name) + "Filter", Prop = c.Name + "Filter", ParamName = TemplateHelpers.LowerFirst(c.Name), Label = GridCaption.For(c, Labels.Column(c.Name)) })
             .ToList();
@@ -81,7 +76,7 @@
         int errorRow = canSearch ? 3 : 2;
         int gridRow = canSearch ? 4 : 3;
 
-        // The grid shows at most 20 columns and never a long text column (a Notes column, varchar(max), ...), and multi-line text only when that leaves fewer than GridColumns.MinColumns: see GridColumns.
+        // At most 20 columns, no long text (see GridColumns for when multi-line text is let in).
         var shown = form.GridColumns;
 
         var parents = shown.Select(form.ParentOf).OfType<FormParent>().DistinctBy(p => p.Table, StringComparer.OrdinalIgnoreCase).ToList();
@@ -95,9 +90,9 @@
             Error("WinUI3_MasterScreen needs the foreign-keyed tables' display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
 
         int columnCount = shown.Count + 1; // +1 for the Edit/Delete actions column
-        // A grid column's header sorts the grid unless it is long text or binary (SearchSort.IsSortable; long text never is in a grid anyway).
+        // A header sorts the grid unless its column is binary or long text (SearchSort.IsSortable).
         var sortableShown = shown.Where(SearchSort.IsSortable).ToList();
-        // A Clone button between Edit and Delete for the tables CloneShape allows (CS_Repo writes CloneAsync for the same tables).
+        // A Clone button for the tables CloneShape allows (CS_Repo writes CloneAsync for the same ones).
         bool canClone = CloneShape.CanClone(Model, Project);
         string SortButtonName(ColumnModel c) => "SortHeader" + c.Name;
 #>
@@ -127,12 +122,8 @@
 
         <TextBlock Grid.Row="0" Text="<#= title.Pluralize() #>" Style="{ThemeResource TitleTextBlockStyle}" />
 
-        <!-- Add New / Refresh bar, shaded to match the search bar below (same Border style). Uses
-             SolidBackgroundFillColorSecondaryBrush/ControlStrokeColorSecondaryBrush, not the Card* brushes —
-             Card* is a near-transparent "barely there" tint meant to sit on top of another surface, and on
-             this page's own plain white/black background it rendered as no visible shading at all (confirmed
-             against the WindowsAppSDK's own generic.xaml: CardBackgroundFillColorDefault is #B3FFFFFF in the
-             Light dictionary: 70%-opacity white over an already-white page), found live (2026-09-30). -->
+        <!-- Add New / Refresh bar, shaded like the search and paging bars. The Card* brushes are a near-transparent tint
+             for sitting on another surface and show no shading on a plain page background, so these use the Solid* ones. -->
         <Border Grid.Row="1" Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
                 BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4" Padding="8">
             <StackPanel Orientation="Horizontal" Spacing="8">
@@ -145,10 +136,10 @@
         {
 #>
 
-        <!-- Search bar, shaded to match the Add New / Refresh bar above -->
+        <!-- Search bar -->
         <Border Grid.Row="2" Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
                 BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4" Padding="8">
-            <!-- Up to eight boxes (TableModel.MaxSearchFields): they wrap onto more rows when the window is narrow. -->
+            <!-- Up to eight boxes (TableModel.MaxSearchFields); they wrap in a narrow window. -->
             <VariableSizedWrapGrid Orientation="Horizontal" ItemWidth="168" ItemHeight="40">
 <#
             foreach (var f in searchFields)
@@ -185,10 +176,7 @@
         <InfoBar Grid.Row="<#= errorRow #>" Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
                  Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" />
 
-        <!-- Row 0 must stay "*" (not Auto): this Grid sits in the page's own last row, itself "*", so row 0
-             needs a real bound to hand the ListView below — Auto here made the Border/ListView size to ALL
-             of its content with nothing capping it, pushing the pagination row off the bottom of the window
-             instead of leaving it visible ("as if the grid was not capped off"), found live (2026-09-30). -->
+        <!-- Row 0 must be "*", not Auto: with Auto the ListView sizes to all its rows and pushes the paging bar out of the window. -->
         <Grid Grid.Row="<#= gridRow #>" RowSpacing="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*" />
@@ -204,8 +192,7 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <!-- Header: a click on a column header sorts by it (again: flips the direction); a right-click on the grid offers Clear sort. -->
-                    <!-- Header -->
+                    <!-- Header: a click sorts by the column (again: flips the direction); a right-click on the grid offers Clear sort. -->
                     <Border Grid.Row="0" BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="0,0,0,1" Padding="8">
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
@@ -284,7 +271,7 @@
                 </Grid>
             </Border>
 
-            <!-- Pagination, shaded to match the Add New / Refresh and search bars -->
+            <!-- Pagination -->
             <Border Grid.Row="1" Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
                     BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4" Padding="8">
                 <views:PaginationBar
@@ -314,8 +301,7 @@ using <#= u #>;
 
 namespace <#= viewNamespace #>;
 
-// Assumes nothing from CodeGenNew.App itself - a plain Page, no shared house-style helper or navigation
-// framework. Add it to your own NavigationView/Frame the way you would any other Page.
+// A plain Page: add it to your own NavigationView or Frame.
 public sealed partial class <#= table #>ListPage : Page
 {
     private readonly <#= contextType #> _context;
@@ -333,8 +319,7 @@ public sealed partial class <#= table #>ListPage : Page
         };
     }
 
-    // Click a column header to sort by it, click it again to flip the direction. The sort is applied by the database (SearchAsync) and kept when paging
-    // and when the search changes; a change goes back to page 1.
+    // The database sorts (SearchAsync); the sort is kept when paging or searching, and a change goes back to page 1.
     private async void OnSortHeaderClick(object sender, RoutedEventArgs e)
     {
         ViewModel.SortBy((string)((Button)sender).Tag);
@@ -378,9 +363,6 @@ public sealed partial class <#= table #>ListPage : Page
         await ViewModel.LoadAsync();
     }
 
-    // The XAML's own "Refresh" button (Click="OnRefreshClick") had no matching handler here at all - a real,
-    // always-present compile error for every table, found the first time this template was ever compiled
-    // against a real WinUI3 project.
     private async void OnRefreshClick(object sender, RoutedEventArgs e) => await ViewModel.LoadAsync();
 
     private async void OnEditClick(object sender, RoutedEventArgs e)
@@ -399,7 +381,7 @@ public sealed partial class <#= table #>ListPage : Page
         if (canClone)
         {
 #>
-    // Clone copies the row (CloneAsync -> <#= table #>_Clone) and opens the copy in the edit dialog at once, so the person changes what differs.
+    // Clone copies the row (CloneAsync) and opens the copy in the edit dialog, so the person changes what differs.
     private async void OnCloneClick(object sender, RoutedEventArgs e)
     {
         <#= keyCs #> id = (<#= keyCs #>)((Button)sender).Tag;
@@ -471,7 +453,7 @@ public sealed partial class <#= table #>ListPage : Page
         {
 #>
 
-    // Typing in the <#= k.Label #> box takes the filter off (the grid shows every row again) and lists the rows whose text contains what was typed; picking one filters the grid to it.
+    // Typing in the <#= k.Label #> box clears the filter and lists the rows containing the text; picking one filters the grid to it.
     private async void On<#= k.Prop #>TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
         if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
@@ -522,8 +504,7 @@ using <#= u #>;
 
 namespace <#= viewModelNamespace #>;
 
-/// <summary> One row of <#= table #>ListPage's grid: the row's id (for the Edit/Delete buttons) plus one
-/// display string per WinUI3_DetailScreen.tt field, in the same order as the page's header. </summary>
+/// <summary> One row of <#= table #>ListPage's grid: the id (for the Edit, Clone and Delete buttons) and one display string per header, in order. </summary>
 public class <#= table #>ListRow
 {
     public <#= keyCs #> Id { get; init; }<#= keyCs == "string" ? " = \"\";" : "" #>
@@ -916,9 +897,9 @@ namespace <#= viewModelNamespace #>;
 /// <summary> The sort of one grid: a column name and the direction. </summary>
 public record GridSortEntry(string Column, bool Descending);
 
-/// <summary> Remembers the sort of each grid between runs in GridSorts.json, in the user's local application data folder (one folder per app). The file maps a grid's
-/// name to its list of { Column, Descending } so that sorting by several columns can be added later without changing the format. Clearing a grid's sort removes
-/// its entry, and the file itself when no grid has one. A file that cannot be read or written just means the sort is not remembered. </summary>
+/// <summary> Remembers each grid's sort between runs in GridSorts.json in the local application data folder. The file maps a grid's name to a list of
+/// { Column, Descending } so several sort columns can be added without changing the format. Clearing a sort removes its entry, and the file when none is left.
+/// A file that cannot be read or written just means the sort is not remembered. </summary>
 public static class GridSortStore
 {
     private static readonly object Gate = new();
