@@ -204,7 +204,7 @@ public class GenerateAllFollowUpTests
         Directory.CreateDirectory(System.IO.Path.Combine(temp.Path, "Acme.Api"));
 
         var ok = await ProjectBuilder.RunAsync(Project(("BuildApi", "echo Build succeeded.")), ["Api"], temp.Path, build: true, test: false);
-        var failing = await ProjectBuilder.RunAsync(Project(("BuildApi", "echo Program.cs(3,1): error CS1002: ; expected & exit 1")), ["Api"], temp.Path, build: true, test: false);
+        var failing = await ProjectBuilder.RunAsync(Project(("BuildApi", "echo Program.cs: error CS1002: expected && exit 1")), ["Api"], temp.Path, build: true, test: false);
         var missing = await ProjectBuilder.RunAsync(Project(), ["Angular"], temp.Path, build: true, test: false);
 
         Assert.IsTrue(ok.Single().Success);

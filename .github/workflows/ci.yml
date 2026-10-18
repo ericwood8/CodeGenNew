@@ -29,6 +29,27 @@ jobs:
           name: test-results
           path: "**/tests.trx"
 
+  # The generator and the command-line tool are plain net10.0; this job shows they build and pass their tests on Linux
+  # (case-sensitive paths, / separators, LF line endings). The WinUI3 desktop app is Windows only.
+  linux-build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Test
+        run: dotnet test CodeGenNew.Tests -c Release --logger "trx;LogFileName=tests.trx"
+      - name: Run the command-line tool
+        run: dotnet run --project CodeGenNew.Cli -c Release -- --help
+      - name: Pack the command-line tool
+        run: dotnet pack CodeGenNew.Cli -c Release -o artifacts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-linux
+          path: "**/tests.trx"
+
   desktop-app:
     runs-on: windows-latest
     steps:

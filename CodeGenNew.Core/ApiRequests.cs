@@ -51,12 +51,15 @@ public static class ApiRequests
     /// <summary> Text as a JSON string, line breaks included. </summary>
     public static string JsonString(string text) => "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "").Replace("\n", "\\n") + "\"";
 
+    // The characters Windows refuses in a file name (Linux refuses fewer); a file written on either must be usable on both.
+    private const string RefusedInFileNames = "<>:\"/\\|?*";
+
     /// <summary> A file name from a request name: the characters a file system refuses become a space. </summary>
     public static string FileName(string name)
     {
         var builder = new StringBuilder();
         foreach (char c in name)
-            builder.Append(Path.GetInvalidFileNameChars().Contains(c) ? ' ' : c);
+            builder.Append(char.IsControl(c) || RefusedInFileNames.Contains(c) ? ' ' : c);
         return builder.ToString().Trim();
     }
 }
