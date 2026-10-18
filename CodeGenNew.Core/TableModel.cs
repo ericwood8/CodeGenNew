@@ -193,6 +193,10 @@ public class TableModel
             .Select(c => ForeignKeys.First(fk => fk.ReferencingColumns.Count == 1 && fk.ReferencingColumns[0].EqualsIgnoreCase(c.Name)))
             .ToList();
 
+    /// <summary> When <see cref="IsJunctionTable"/>, the anchor and target sides of the association as the junction routes and screens read them; null otherwise. </summary>
+    public JunctionShape? Junction => IsJunctionTable ? _junction ??= new JunctionShape(this) : null;
+    private JunctionShape? _junction;
+
     /// <summary> Columns SP_Search.tt, API_Search.tt and CS_Repo.tt's SearchAsync all filter on: every string
     /// column (never a long note: ColumnModel.IsLongTextColumn) that isn't audit-classified (IsAuditColumn -- Create*/Modif*/Change*/Delete*/Update*/Activ*/
     /// Inactiv*, per AuditColumnClassifier) and never a credential (ColumnModel.IsCredentialColumn) -- nobody types into a search box for "who created this row".

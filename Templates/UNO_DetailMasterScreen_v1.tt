@@ -71,24 +71,6 @@
         string keyProp = keyColumn.Name;
         bool textKey = form.TextKey;
 
-        // The checks the project's validation rules ask of a field: the shape of an email address, phone number, URL, postal code or social security number,
-        // and a date never later than today. Null when the column has no such rule.
-        string? ShapeCheck(ColumnModel c, string prop, string label, bool optional)
-        {
-            if (c.RuleOf(Project, Model.TableName) is not { Shape: not TextShape.None } rule)
-                return null;
-            string test = ColumnRules.CSharpTest(rule.Shape, prop);
-            string refuse = "{ ErrorMessage = \"" + label + " is not " + ColumnRules.NounOf(rule.Shape) + ".\"; return false; }";
-            // a value equal to the stored one is not checked, so an old value that breaks the rule does not stop an edit of another field
-            string changed = "!string.Equals(entity." + prop + ", " + prop + ")";
-            return optional ? "if (!string.IsNullOrWhiteSpace(" + prop + ") && " + changed + " && !(" + test + ")) " + refuse : "if (" + changed + " && !(" + test + ")) " + refuse;
-        }
-
-        string? FutureCheck(ColumnModel c, string prop, string label) =>
-            c.RuleOf(Project, Model.TableName) is { NotFuture: true }
-                ? "else if (" + prop + ".Value.Date > DateTime.Today && ((DateTime?)entity." + prop + ")?.Date != " + prop + ".Value.Date) { ErrorMessage = \"" + label + " must not be later than today.\"; return false; }"
-                : null;
-
         var shown = form.Columns;
 
         // A form with more than one kind of field is tabbed (see FormPages); a narrow table stays one column.
@@ -105,50 +87,7 @@
 
         // The child tables, decided in Core for every stack (ChildGrid): which ones get a grid, its heading and role, its key, and the foreign keys shown as names.
         // A raw id with no display name (the child's own key, or a foreign key to a table without one) is hidden; a foreign key with one shows that name.
-        var children = ChildGrid.For(Model, Project)
-            // the grid's filter compares the parent's key, so that column must be a usable key
-            .Where(g => g.KeyName is not null && !g.IsNameActive && Model.Columns.Any(c => c.Name.EqualsIgnoreCase(g.Link.ReferencedColumns[0]) && KeyType.Of(c) is not null))
-            .Select(g =>
-            {
-                var fk = g.Link;
-                string gridVar = TemplateHelpers.LowerFirst(g.Table + g.Role);
-                var resolvable = g.Lookups.Select(l => new
-                {
-                    Column = l.ColumnName,
-                    ReferencedTable = l.ParentTable,
-                    KeyProp = l.ParentKeyName,
-                    DisplayProp = l.ParentDisplayName,
-                    KeyCs = l.ColumnKeyType?.CSharp ?? "int",   // the type of the id the child row holds
-                    Lookup = l.UsesLookupEndpoint,   // the parent's lookup list (id and name), else every row of the parent
-                    l.TypeAhead,   // a parent with too many rows to read whole: only the names of the keys the rows show are read (after the rows)
-                    LookupVar = gridVar + l.ParentTable + "Names",
-                    // "CustomerId" -> "Customer": a resolved column's name is known at generation time, so it gets a nicer header than the raw property name
-                    Label = GridCaption.From(Labels.Column(l.ColumnName))
-                }).ToList();
-                // a drop-down per foreign key shown as a name: the names the rows have, picked from here; the grid holds every row of the child, so it filters them itself
-                var filters = resolvable.Take(ChildGrid.MaxFilters)
-                    .Select(r => new { r.Column, r.Label, All = "All " + r.Label.Pluralize(), Choices = gridVar + r.Column + "Choices", Prop = TemplateHelpers.UpperFirst(gridVar) + r.Column + "Filter" }).ToList();
-
-                return new
-                {
-                    Table = fk.ReferencingTable,
-                    Type = BlazorNames.TypeName(fk.ReferencingTable),   // the model class of the child
-                    KeyProp = g.KeyName!,   // the child's own key, for the Delete button
-                    HasChildren = fk.ReferencingTableHasChildren,
-                    Title = g.Title,
-                    Var = gridVar,
-                    FkColumn = fk.ReferencingColumns[0],
-                    ParentKeyColumn = fk.ReferencedColumns[0],
-                    ParentKeyCs = Model.Columns.First(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[0])).CSharpBase(),   // int, Guid or string: the type the grid's filter compares
-                    HideColumns = g.HiddenColumns.ToList(),
-                    Resolvable = resolvable,
-                    Filters = filters,
-                    Currency = fk.ReferencingTableColumns.Where(c => c.IsMoneyAmount)
-                        .Select(c => (Name: c.Name, Digits: NumericClassifier.CurrencyDigits(c))).ToList(),
-                    LongText = fk.ReferencingTableColumns.Where(c => c.IsLongTextColumn).Select(c => c.Name).ToList(),
-                    Captions = fk.ReferencingTableColumns.Select(c => (Name: c.Name, Caption: GridCaption.For(c, Labels.Column(c.Name)))).ToList()
-                };
-            }).ToList();
+        var children = DesktopChild.For(Model, Project, needsOwnKey: true);
 #>
 @@@FILE <#= viewsFolder #>/<#= table #>DetailMasterDialog.xaml@@@
 <ContentDialog
@@ -206,131 +145,7 @@
 <#
             }
         foreach (var c in page.Columns)
-        {
-            var kind = form.KindOf(c);
-            var value = form.ValueOf(c);
-            string prop = c.Name;
-            string label = Labels.Column(c.Name);
-            if (kind == FieldKind.SystemStamp)
-            {
-                // who made the row and when it changed: the system writes it, so it is text, not a box
-#>
-            <StackPanel Spacing="2">
-                <TextBlock Text="<#= label #>" FontWeight="SemiBold" />
-                <TextBlock Text="{x:Bind ViewModel.<#= prop #>, Mode=OneWay}" IsTextSelectionEnabled="True" />
-            </StackPanel>
-<#
-                continue;
-            }
-            if (kind == FieldKind.Lookup)
-            {
-                var p = form.ParentOf(c)!;
-                if (p.TypeAhead)
-                {
-#>
-            <AutoSuggestBox<#= form.IsMarked(c) ? "" : " Header=\"" + label + "\"" #><#= RequiredMark.XamlAttributes(form.IsRequired(c), false) #> AutomationProperties.Name="<#= label #>" PlaceholderText="Type to find" DisplayMemberPath="Text" TextMemberPath="Text"
-                            Text="{x:Bind ViewModel.<#= prop #>Text, Mode=TwoWay}" TextChanged="On<#= prop #>TextChanged" SuggestionChosen="On<#= prop #>Chosen">
-<#
-                    if (form.IsMarked(c))
-                    {
-                        // an AutoSuggestBox has no header template: the caption and its red asterisk are the header itself
-#>
-                <AutoSuggestBox.Header>
-                    <TextBlock><Run Text="<#= label #>" /><Run Text=" <#= RequiredMark.Glyph #>" Foreground="Red" /></TextBlock>
-                </AutoSuggestBox.Header>
-<#
-                    }
-#>
-            </AutoSuggestBox>
-<#
-                }
-                else
-                {
-#>
-            <ComboBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> ItemsSource="{x:Bind ViewModel.<#= WinUI3Names.OptionsProperty(p) #>}"
-                      SelectedValuePath="Id" DisplayMemberPath="Text"
-                      SelectedValue="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
-<#
-                }
-            }
-            else if (kind == FieldKind.Choices)
-            {
-#>
-            <ComboBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> ItemsSource="{x:Bind ViewModel.<#= prop #>Choices}"
-                      SelectedItem="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
-<#
-            }
-            else if (kind == FieldKind.Money)
-            {
-#>
-            <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
-                       <#= Project.MoneyLimitAttributes(table, c) #>ValidationMode="InvalidInputOverwritten" Width="180" HorizontalAlignment="Left" />
-<#
-            }
-            else if (value == ValueKind.Decimal)
-            {
-                var (decMin, decMax) = NumericClassifier.DecimalRange(c);
-                int decDigits = Inv(decMax).Length + (c.SqlType == SqlDbType.Decimal ? NumericClassifier.DecimalPlaces(c) : 4);
-                string decWidth = $" Width=\"{Math.Max(Math.Min(decDigits, 12) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
-#>
-            <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
-                       Minimum="<#= Inv(decMin) #>" Maximum="<#= Inv(decMax) #>" SmallChange="1" LargeChange="10"
-                       SpinButtonPlacementMode="Inline" ValidationMode="InvalidInputOverwritten"<#= decWidth #> />
-<#
-            }
-            else if (value == ValueKind.WholeNumber)
-            {
-                var range = Project.RangeFor(c)!.Value;
-                // As wide as the range's widest number (at most nine digits) plus about 150 pixels for the spin buttons, clear button and padding,
-                // and never narrower than the header text.
-                int digits = Math.Max(range.Min.ToString().Length, range.Max.ToString().Length);
-                string width = $" Width=\"{Math.Max(Math.Min(digits, 9) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
-#>
-            <NumberBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
-                       Minimum="<#= range.Min #>" Maximum="<#= range.Max #>" SmallChange="1" LargeChange="<#= range.Max - range.Min >= 100 ? 10 : 1 #>"
-                       SpinButtonPlacementMode="Inline" ValidationMode="InvalidInputOverwritten"<#= width #> />
-<#
-            }
-            else if (kind == FieldKind.Boolean)
-            {
-#>
-            <CheckBox Content="<#= label #>?" IsChecked="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
-<#
-            }
-            else if (kind == FieldKind.Date)
-            {
-#>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <CalendarDatePicker Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Date="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
-                                    DateFormat="{}{month.integer}/{day.integer}/{year.full}" PlaceholderText="mm/dd/yyyy" Width="180" />
-<#
-                if (c.IsNullable)
-                {
-#>
-                <Button Content="Clear" VerticalAlignment="Bottom" Click="OnClear<#= prop #>Click" />
-<#
-                }
-#>
-            </StackPanel>
-<#
-            }
-            else if (kind == FieldKind.Multiline)
-            {
-#>
-            <TextBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Text="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
-                     AcceptsReturn="True" TextWrapping="Wrap" Height="80" MaxLength="<#= Chars(c) #>" />
-<#
-            }
-            else
-            {
-                string maxLen = IsText(c) && Chars(c) > 0 ? $" MaxLength=\"{Chars(c)}\"" : "";
-                // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
-                string readOnly = textKey && c.IsPrimaryKey ? " IsReadOnly=\"{x:Bind ViewModel.IsExisting}\"" : "";
-#>
-            <TextBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Text="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"<#= maxLen #><#= readOnly #> />
-<#
-            }
-        }
+            Write(DesktopFormXaml.Field(form, Project, Model, c, textKey, withGuards: true));
             if (tabbed)
             {
 #>
@@ -885,13 +700,16 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
     [ObservableProperty]
     private string? _errorMessage;
     public bool HasError => ErrorMessage is not null;
+<#
+        Write(DesktopFormCode.GuardProperties(form));
+#>
 
 <#
         foreach (var c in shown)
         {
             var value = form.ValueOf(c);
             string prop = c.Name;
-            string fieldType = value == ValueKind.Lookup ? form.ParentOf(c)!.KeyCs + "?" : value == ValueKind.Boolean ? "bool?" : value is ValueKind.Money or ValueKind.Decimal or ValueKind.WholeNumber ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
+            string fieldType = DesktopFormCode.FieldType(form, c);
 #>
     [ObservableProperty]
     private <#= fieldType #> _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #><#= fieldType == "double" ? " = double.NaN" : "" #>;
@@ -914,52 +732,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         {
 <#
         foreach (var c in shown)
-        {
-            var value = form.ValueOf(c);
-            string prop = c.Name;
-            if (value == ValueKind.Lookup)
-            {
-                // Set in LoadAsync, after the items exist: a ComboBox's SelectedValue assigned before its ItemsSource is filled
-                // is not selected afterwards, and the box shows empty.
-            }
-            else if (value == ValueKind.Money)
-            {
-#>
-            <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? (double)editing.{prop}.Value : double.NaN" : $"(double)editing.{prop}" #>;
-<#
-            }
-            else if (value == ValueKind.Decimal)
-            {
-#>
-            <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? (double)editing.{prop}.Value : double.NaN" : $"(double)editing.{prop}" #>;
-<#
-            }
-            else if (value == ValueKind.WholeNumber)
-            {
-#>
-            <#= prop #> = editing.<#= prop #><#= c.IsNullable ? " ?? double.NaN" : "" #>;
-<#
-            }
-            else if (value == ValueKind.Boolean)
-            {
-#>
-            <#= prop #> = editing.<#= prop #>;
-<#
-            }
-            else if (value == ValueKind.Date)
-            {
-#>
-            <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? new DateTimeOffset(editing.{prop}.Value) : null" : $"new DateTimeOffset(editing.{prop})" #>;
-            _<#= char.ToLowerInvariant(prop[0]) + prop[1..] #>Time = editing.<#= prop #><#= c.IsNullable ? "?.TimeOfDay ?? TimeSpan.Zero" : ".TimeOfDay" #>;
-<#
-            }
-            else
-            {
-#>
-            <#= prop #> = editing.<#= prop #><#= c.IsNullable ? "?.ToString()" : ".ToString()" #>;
-<#
-            }
-        }
+            Write(DesktopFormCode.LoadLines(form, c));
 #>
         }
     }
@@ -1023,6 +796,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 <#
             }
         }
+        Write(DesktopFormCode.GuardLoadLines(form, UnoNames.ClientProperty(table)));
         foreach (var child in children)
         {
 #>
@@ -1188,219 +962,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 
 <#
         foreach (var c in shown)
-        {
-            var value = form.ValueOf(c);
-            string prop = c.Name;
-            string label = Labels.Column(c.Name);
-            if (value == ValueKind.Lookup)
-            {
-                if (!c.IsNullable)
-                {
-#>
-        if (<#= prop #> is null) { ErrorMessage = "<#= label #> is required."; return false; }
-        entity.<#= prop #> = <#= prop #><#= form.ParentOf(c)!.KeyCs == "string" ? "" : ".Value" #>;
-<#
-                }
-                else
-                {
-#>
-        entity.<#= prop #> = <#= prop #>;
-<#
-                }
-            }
-            else if (value == ValueKind.Money)
-            {
-#>
-        if (double.IsNaN(<#= prop #>))
-        {
-<#
-                if (!c.IsNullable)
-                {
-#>
-            ErrorMessage = "<#= label #> is required."; return false;
-<#
-                }
-                else
-                {
-#>
-            entity.<#= prop #> = null;
-<#
-                }
-#>
-        }
-        else { entity.<#= prop #> = Math.Round((decimal)<#= prop #>, <#= NumericClassifier.CurrencyDigits(c) #>); }
-<#
-            }
-            else if (value == ValueKind.Decimal)
-            {
-                var (decMin, decMax) = NumericClassifier.DecimalRange(c);
-                string decValue = c.SqlType == SqlDbType.Decimal ? $"Math.Round((decimal){prop}, {NumericClassifier.DecimalPlaces(c)})" : c.SqlType == SqlDbType.Real ? $"(float){prop}" : prop;
-#>
-        if (double.IsNaN(<#= prop #>))
-        {
-<#
-                if (!c.IsNullable)
-                {
-#>
-            ErrorMessage = "<#= label #> is required."; return false;
-<#
-                }
-                else
-                {
-#>
-            entity.<#= prop #> = null;
-<#
-                }
-#>
-        }
-        else if (<#= prop #> < <#= Inv(decMin) #> || <#= prop #> > <#= Inv(decMax) #>) { ErrorMessage = "<#= label #> must be between <#= Inv(decMin) #> and <#= Inv(decMax) #>."; return false; }
-        else { entity.<#= prop #> = <#= decValue #>; }
-<#
-            }
-            else if (value == ValueKind.WholeNumber)
-            {
-                var range = Project.RangeFor(c)!.Value;
-                string intType = NumericClassifier.NumericCSharpType(c);
-#>
-        if (double.IsNaN(<#= prop #>))
-        {
-<#
-                if (!c.IsNullable)
-                {
-#>
-            ErrorMessage = "<#= label #> is required."; return false;
-<#
-                }
-                else
-                {
-#>
-            entity.<#= prop #> = null;
-<#
-                }
-#>
-        }
-        else if (<#= prop #> != Math.Floor(<#= prop #>)) { ErrorMessage = "<#= label #> must be a whole number."; return false; }
-        else if (<#= prop #> < <#= range.Min #> || <#= prop #> > <#= range.Max #>) { ErrorMessage = "<#= label #> must be between <#= range.Min #> and <#= range.Max #>."; return false; }
-        else { entity.<#= prop #> = (<#= intType #>)<#= prop #>; }
-<#
-            }
-            else if (value == ValueKind.Boolean)
-            {
-#>
-        entity.<#= prop #> = <#= prop #><#= c.IsNullable ? "" : " ?? false" #>;
-<#
-            }
-            else if (value == ValueKind.Date)
-            {
-#>
-        if (<#= prop #> is null)
-        {
-<#
-                if (!c.IsNullable)
-                {
-#>
-            ErrorMessage = "<#= label #> is required."; return false;
-<#
-                }
-                else
-                {
-#>
-            entity.<#= prop #> = null;
-<#
-                }
-#>
-        }
-<#
-                if (FutureCheck(c, prop, label) is { } futureCheck)
-                {
-#>
-        <#= futureCheck #>
-<#
-                }
-#>
-        else { entity.<#= prop #> = <#= prop #>.Value.Date + _<#= char.ToLowerInvariant(prop[0]) + prop[1..] #>Time; }
-<#
-            }
-            else if (value == ValueKind.Guid)
-            {
-#>
-        if (string.IsNullOrWhiteSpace(<#= prop #>))
-        {
-<#
-                if (!c.IsNullable)
-                {
-#>
-            ErrorMessage = "<#= label #> is required."; return false;
-<#
-                }
-                else
-                {
-#>
-            entity.<#= prop #> = null;
-<#
-                }
-#>
-        }
-        else if (!Guid.TryParse(<#= prop #>, out var <#= prop #>Value)) { ErrorMessage = "<#= label #> is not a valid value."; return false; }
-        else { entity.<#= prop #> = <#= prop #>Value; }
-<#
-            }
-            else if (value == ValueKind.Number)
-            {
-                string numType = NumericClassifier.NumericCSharpType(c);
-#>
-        if (string.IsNullOrWhiteSpace(<#= prop #>))
-        {
-<#
-                if (!c.IsNullable)
-                {
-#>
-            ErrorMessage = "<#= label #> is required."; return false;
-<#
-                }
-                else
-                {
-#>
-            entity.<#= prop #> = null;
-<#
-                }
-#>
-        }
-        else if (!<#= numType #>.TryParse(<#= prop #>, out var <#= prop #>Value)) { ErrorMessage = "<#= label #> is not a valid number."; return false; }
-        else { entity.<#= prop #> = <#= prop #>Value; }
-<#
-            }
-            else // plain text
-            {
-                if (!c.IsNullable)
-                {
-#>
-        if (string.IsNullOrWhiteSpace(<#= prop #>)) { ErrorMessage = "<#= label #> is required."; return false; }
-<#
-                    if (ShapeCheck(c, prop, label, false) is { } requiredShape)
-                    {
-#>
-        <#= requiredShape #>
-<#
-                    }
-#>
-        entity.<#= prop #> = <#= prop #>;
-<#
-                }
-                else
-                {
-                    if (ShapeCheck(c, prop, label, true) is { } optionalShape)
-                    {
-#>
-        <#= optionalShape #>
-<#
-                    }
-#>
-        entity.<#= prop #> = string.IsNullOrWhiteSpace(<#= prop #>) ? null : <#= prop #>;
-<#
-                }
-            }
-        }
+            Write(DesktopFormCode.SaveLines(form, Project, c));
 #>
 
 <#

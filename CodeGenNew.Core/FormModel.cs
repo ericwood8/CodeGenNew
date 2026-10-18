@@ -165,6 +165,10 @@ public sealed class FormModel
     /// <summary> The project leaves a foreign key to this table off the screen (<c>HiddenParents</c>: a styling id no one edits). </summary>
     public bool IsHiddenParent(string table) => _project.HiddenParents is { } hidden && hidden.Contains(table, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary> The distinct parent tables the given columns show the names of (a grid's foreign key columns), in column order. </summary>
+    public List<FormParent> ParentsOf(IEnumerable<ColumnModel> columns) =>
+        columns.Select(ParentOf).OfType<FormParent>().DistinctBy(p => p.Table, StringComparer.OrdinalIgnoreCase).ToList();
+
     /// <summary> How the grid shows a column of this table (<see cref="GridCells.KindOf"/>). </summary>
     public CellKind CellOf(ColumnModel column) => GridCells.KindOf(column, LookupOf(column) is not null);
 

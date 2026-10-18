@@ -25,6 +25,10 @@
     var odataScreens = ODataPlan.UnoScreenTables(Database, Project);   // the tables served as OData that have an Uno screen: each also gets an OData page (UNO_ODataPage)
     var odataClients = Project.OData ? ODataPlan.For(Database, Project).Tables.Where(t => UnoNames.HasClient(t, Project)).ToList() : new List<TableModel>();
     bool dashboard = Project.Dashboard;   // the dashboard is the first screen (UNO_Dashboard writes the page and its client)
+    // the menu in order (the dashboard, the screens, the OData pages) and the tag each entry is selected by
+    var menu = ScreenMenu.For(Project, screens, odataScreens)
+        .Select(m => (Tag: m.Kind switch { ScreenMenuKind.Dashboard => "Dashboard", ScreenMenuKind.Screen => m.Table!.TableName, _ => m.Table!.TableName + "OData" }, m.Label, m.Roles))
+        .ToList();
     foreach (string table in screens.Select(t => t.TableName).Where(n => !clients.Any(c => c.TableName.EqualsIgnoreCase(n))))
         Error($"UNO_Screens lists {table}, which has no API client (see UNO_Client): a screen needs the table's own CRUD API.");
 
@@ -45,19 +49,8 @@
         // the screens and the roles that may read each (none listed: any signed-in person); the menu holds only the ones the signed-in role may read
         L("    private static readonly (string Tag, string Label, string[]? Roles)[] Screens =");
         L("    [");
-        if (dashboard)
-            L("        (\"Dashboard\", \"Dashboard\", null),");
-        foreach (var t in screens)
-        {
-            var roles = WriteRolePlan.ReadFor(Project, t);
-            L($"        (\"{t.TableName}\", \"{ScreenNames.Label(t.TableName)}\", {(roles.Count == 0 ? "null" : "[" + WriteRolePlan.Literal(roles) + "]")}),");
-        }
-        if (!Project.ODataReplacesScreens)
-            foreach (var t in odataScreens)
-            {
-                var roles = WriteRolePlan.ReadFor(Project, t);
-                L($"        (\"{t.TableName}OData\", \"{ScreenNames.Label(t.TableName)} (OData)\", {(roles.Count == 0 ? "null" : "[" + WriteRolePlan.Literal(roles) + "]")}),");
-            }
+        foreach (var e in menu)
+            L($"        (\"{e.Tag}\", \"{e.Label}\", {(e.Roles.Count == 0 ? "null" : "[" + WriteRolePlan.Literal(e.Roles) + "]")}),");
         L("    ];");
         L();
         L("    // Fills the menu with the screens the signed-in role may read and returns the first of them, or null when there is none.");
@@ -77,17 +70,12 @@
     }
     else
     {
-        L($"    private const string FirstScreen = \"{(dashboard ? "Dashboard" : screens[0].TableName)}\";");
+        L($"    private const string FirstScreen = \"{menu[0].Tag}\";");
         L();
         L("    private void AddScreens()");
         L("    {");
-        if (dashboard)
-            L("        NavView.MenuItems.Add(new NavigationViewItem { Content = \"Dashboard\", Tag = \"Dashboard\" });");
-        foreach (var t in screens)
-            L($"        NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{ScreenNames.Label(t.TableName)}\", Tag = \"{t.TableName}\" }});");
-        if (!Project.ODataReplacesScreens)
-            foreach (var t in odataScreens)
-                L($"        NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{ScreenNames.Label(t.TableName)} (OData)\", Tag = \"{t.TableName}OData\" }});");
+        foreach (var e in menu)
+            L($"        NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{e.Label}\", Tag = \"{e.Tag}\" }});");
         L("    }");
     }
     L();

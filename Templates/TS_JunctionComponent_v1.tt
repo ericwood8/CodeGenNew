@@ -29,20 +29,15 @@
     if (!Model.HasReferencedDisplayColumns)
         Error("TS_JunctionComponent needs the target table's display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
 
-    string CSharpToTs(SqlDbType type) => type == SqlDbType.UniqueIdentifier ? "string" : "number";
-
-    var anchorFk = Model.JunctionForeignKeys[0];
-    var targetFk = Model.JunctionForeignKeys[1];
-    var anchorColumn = Model.Columns.First(c => c.Name.EqualsIgnoreCase(anchorFk.ReferencingColumns[0]));
-    var targetColumn = Model.Columns.First(c => c.Name.EqualsIgnoreCase(targetFk.ReferencingColumns[0]));
-    string anchorTs = CSharpToTs(anchorColumn.SqlType);
-    string targetTs = CSharpToTs(targetColumn.SqlType);
-    string targetRole = targetFk.ReferencedTable;
+    var junction = Model.Junction!;   // the anchor and target sides, in Core
+    string anchorTs = junction.AnchorTs;
+    string targetTs = junction.TargetTs;
+    string targetRole = junction.TargetRole;
 
     string baseName = BaseName(Model.TableName);
     string stem = baseName.ToLowerInvariant();
     string cls = baseName + "JunctionComponent";
-    var displayColumns = targetFk.ReferencedDisplayColumns.Select(LowerFirst).ToList(); // camelCase, matching TS_Model's JSON-casing convention
+    var displayColumns = junction.DisplayColumns.Select(LowerFirst).ToList(); // camelCase, matching TS_Model's JSON-casing convention
 
     var css = new StringBuilder();
     var html = new StringBuilder();

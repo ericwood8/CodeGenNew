@@ -27,15 +27,9 @@
     var odataClients = Project.OData ? ODataPlan.For(Database, Project).Tables.Where(t => BlazorNames.HasClient(t, Project)).ToList() : new List<TableModel>();
 
     // the screens in menu order: the dashboard, the REST screens, then the OData ones that do not take a REST screen's place
-    var entries = new List<(string Route, string Label, IReadOnlyList<string> Roles)>();
-    IReadOnlyList<string> RolesOf(TableModel t) => Project.Auth ? WriteRolePlan.ReadFor(Project, t) : new List<string>();
-    if (Project.Dashboard)
-        entries.Add(("dashboard", "Dashboard", new List<string>()));
-    foreach (var t in screens)
-        entries.Add((ScreenNames.Route(t.TableName), ScreenNames.Label(t.TableName), RolesOf(t)));
-    if (!Project.ODataReplacesScreens)
-        foreach (var t in odataScreens)
-            entries.Add((AngularNames.ODataRoute(t.TableName), AngularNames.ODataLabel(t.TableName), RolesOf(t)));
+    var entries = ScreenMenu.For(Project, screens, odataScreens)
+        .Select(m => (Route: m.Kind switch { ScreenMenuKind.Dashboard => "dashboard", ScreenMenuKind.Screen => ScreenNames.Route(m.Table!.TableName), _ => AngularNames.ODataRoute(m.Table!.TableName) }, m.Label, m.Roles))
+        .ToList();
 
     var o = new StringBuilder();
     void L(string s = "") => o.Append(s).Append('\n');

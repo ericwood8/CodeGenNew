@@ -42,28 +42,14 @@
     if (!Model.HasReferencedDisplayColumns)
         Error("WinUI3_JunctionEditor needs the target table's display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
 
-    string CSharpType(SqlDbType type) => type switch
-    {
-        SqlDbType.Int => "int",
-        SqlDbType.BigInt => "long",
-        SqlDbType.SmallInt => "short",
-        SqlDbType.TinyInt => "byte",
-        SqlDbType.UniqueIdentifier => "Guid",
-        SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar => "string",
-        _ => "int"
-    };
-
-    var anchorFk = Model.JunctionForeignKeys[0];
-    var targetFk = Model.JunctionForeignKeys[1];
-    var anchorColumn = Model.Columns.First(c => c.Name.EqualsIgnoreCase(anchorFk.ReferencingColumns[0]));
-    var targetColumn = Model.Columns.First(c => c.Name.EqualsIgnoreCase(targetFk.ReferencingColumns[0]));
-    string anchorType = CSharpType(anchorColumn.SqlType);
-    string targetType = CSharpType(targetColumn.SqlType);
-    string anchorRole = anchorFk.ReferencedTable;
-    string targetRole = targetFk.ReferencedTable;
+    var junction = Model.Junction!;   // the anchor and target sides, in Core
+    string anchorType = junction.AnchorCs;
+    string targetType = junction.TargetCs;
+    string anchorRole = junction.AnchorRole;
+    string targetRole = junction.TargetRole;
     string stem = Model.TableName;
     // How the generated code calls the routines: EXEC of a stored procedure on SQL Server, a function call on PostgreSQL, CALL on MySQL.
-    var call = new JunctionCall(Model, stem, anchorColumn.Name);
+    var call = new JunctionCall(Model, stem, junction.AnchorColumn.Name);
     // With AccessMode=Ef there are no routines to call: the same three operations are LINQ over the context.
     bool ef = Project.AccessModeFor(Model.Dialect) == AccessMode.Ef;
     var efJunction = ef ? new JunctionEf(Model) : null;
@@ -75,7 +61,7 @@
             Write(((char)10).ToString());
         }
     }
-    var displayColumns = targetFk.ReferencedDisplayColumns;
+    var displayColumns = junction.DisplayColumns;
     string DisplayExpr(string prefix) => string.Join(" + \" \" + ", displayColumns.Select(d => $"{prefix}.{d}"));
 #>
 @@@FILE <#= viewsFolder #>/<#= stem #>JunctionEditor.xaml@@@

@@ -149,6 +149,19 @@ public class UnoFeatureTests
     }
 
     [TestMethod]
+    public async Task The_master_detail_dialog_handles_a_guarded_column_like_the_plain_one()
+    {
+        await GenerateAsync(new() { ["ApiAuth"] = "true", ["GuardedColumns"] = "Region.Name; by Employee.IsManager" }, (read, _) =>
+        {
+            Expect.Contains(read("Shop.Uno/Views/RegionDetailMasterDialog.xaml"), "<StackPanel IsEnabled=\"{x:Bind ViewModel.NameAllowed, Mode=OneWay}\">");
+            string model = read("Shop.Uno/ViewModels/RegionDetailMasterViewModel.cs");
+            Expect.Contains(model, "private bool _nameAllowed;");
+            Expect.Contains(model, "NameAllowed = guards.GetValueOrDefault(\"name\");");
+            return Task.CompletedTask;
+        });
+    }
+
+    [TestMethod]
     public async Task The_dashboard_is_the_first_screen_and_reads_the_api()
     {
         await GenerateAsync(new() { ["Dashboard"] = "true" }, (read, files) =>
