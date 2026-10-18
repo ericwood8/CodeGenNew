@@ -152,7 +152,7 @@ Angular, React, Blazor, Uno and WinUI3 code: models, services, screens and dashb
 | `UNO` | `UNO_Model`, `UNO_Client` | `Models/Table.cs` and `Services/TableClient.cs` - the class a table's JSON becomes in the Uno app and its `HttpClient` calls, the Blazor client's. |
 | `UNO` | `UNO_MasterScreen`, `UNO_DetailScreen`, `UNO_DetailMasterScreen` | the WinUI 3 list page and add / edit dialog (`Views/TableListPage.xaml`, `Views/TableDetailDialog.xaml`, and for a table with child tables `Views/TableDetailMasterDialog.xaml` with a grid per child) and their view models, reading and writing through the clients. |
 | `UNO` | `UNO_Dashboard`, `UNO_JunctionEditor` | the dashboard page over `GET /api/dashboard` (`Dashboard=true`), and the two-list editor of a many-to-many junction table over the junction routes. |
-| `UNO` | `UNO_ODataClient`, `UNO_ODataPage` | an OData client and a list page per served table (`OData=true`), with a menu entry "<Table> (OData)". |
+| `UNO` | `UNO_ODataClient`, `UNO_ODataPage` | an OData client and a list page per served table (`OData=true`), with a menu entry `Table (OData)`. |
 | `UNO` | `UNO_Screens` | `MainPage.Screens.cs` and `Services/ApiClients.cs` - the menu, the screen switch and one client per table. |
 | `BLZ` | `BLZ_ODataPage` | `BLZ_Page` run as its OData form (`Base`/`Variant` in its config): `Pages/TableODataPage.razor`, the same page over the table's OData client with the several-column sort (Shift-click) and the filter row; `ODataScreens=Replace` gives it the REST page's route. |
 | `BLZ` | `BLZ_Screens` | `Layout/NavMenu.razor`, `Pages/Home.razor` and `Services/ApiClients.cs` - whole-database: the menu in `Screens` order and the registration of every client. |
