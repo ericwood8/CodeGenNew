@@ -5,6 +5,7 @@ A build and a unit test cannot see a blank drop-down, a number box that takes a 
 | File | What it does |
 |---|---|
 | `ScratchDatabase.ps1` | Makes or drops `<name>_scratch`, a throwaway copy of a database: SQL Server by backup and restore (Windows authentication), PostgreSQL by `CREATE DATABASE ... TEMPLATE`, MySQL by copying the tables. Passwords come from the environment (`PGPASSWORD`, `MYSQL_PWD`), never a parameter. The login needs the right to create a database (MySQL: a login limited to one database cannot). |
+| `TestDatabases/` | The standing test databases `InvoiceSystem_test` and `TimeEntry_test` (SQL Server, Windows authentication): `Regenerate-InvoiceSystemTest.ps1` and `Regenerate-TimeEntryTest.ps1` restore the real database over them, apply the routines that write with the value rules on and run a seed of tagged `ZZ` fixture rows (stored values that break a rule, rows in use, rows to delete, a last page of one). See its README. |
 | `UiAutomation.psm1` | A small Windows UI Automation module for WinUI3 apps: `Start-App`, `Find-Name`, `Find-Like`, `Find-Type`, `Wait-Name`, `Invoke-El`, `Select-El`, `Set-Text`, `List-Names`, `Assert-That`, `Stop-App`. |
 | `Test-AppDialogs.ps1` | A worked click-through of the CodeGenNew app (the Project settings dialog and the Essentials dialog): PASS / FAIL lines and an exit code. |
 | `Test-ApiCrud.ps1` | Starts a generated API on a spare port against a scratch database and walks one route through POST, GET, PUT, list and DELETE. |
