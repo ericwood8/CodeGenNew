@@ -21,12 +21,13 @@
 
         bool needsGreaterThan = fields.Any(f => f.Rule!.MinStrict);
         bool needsLessThan = fields.Any(f => f.Rule!.MaxStrict);
+        bool needsNotFuture = fields.Any(f => f.Rule!.NotFuture);
 
         var sb = new StringBuilder();
         void L(string s = "") => sb.Append(s).Append('\n');
         L("@@@FILE validators/" + ScreenNames.Stem(Model.TableName) + ".validators.ts@@@");
         var imports = new List<string>();
-        if (needsGreaterThan || needsLessThan)
+        if (needsGreaterThan || needsLessThan || needsNotFuture)
             imports.AddRange(["AbstractControl", "ValidationErrors"]);
         imports.Add("ValidatorFn");
         if (fields.Count > 0)
@@ -38,6 +39,18 @@
             L("function greaterThan(min: number): ValidatorFn {");
             L("    return (control: AbstractControl): ValidationErrors | null =>");
             L("        control.value === null || control.value === \"\" || control.value > min ? null : { greaterThan: { min, actual: control.value } };");
+            L("}");
+        }
+        if (needsNotFuture)
+        {
+            L();
+            L("function notFuture(): ValidatorFn {");
+            L("    return (control: AbstractControl): ValidationErrors | null => {");
+            L("        const day = control.value ? String(control.value).substring(0, 10) : \"\";");
+            L("        const today = new Date();");
+            L("        const text = today.getFullYear() + \"-\" + String(today.getMonth() + 1).padStart(2, \"0\") + \"-\" + String(today.getDate()).padStart(2, \"0\");");
+            L("        return day === \"\" || day <= text ? null : { notFuture: { actual: control.value } };");
+            L("    };");
             L("}");
         }
         if (needsLessThan)
@@ -64,8 +77,12 @@
                 list.Add("Validators.email");
             else if (rule.Shape == TextShape.Phone)
                 list.Add("Validators.pattern(" + RegexLiteral(@"^[0-9+()\-.\s]{3,25}$") + ")");
+            else if (rule.Shape is TextShape.Postal or TextShape.Ssn)
+                list.Add("Validators.pattern(" + RegexLiteral("^(?:" + ColumnRules.PatternOf(rule.Shape) + ")$") + ")");
             else if (rule.Shape == TextShape.Url)
                 list.Add("Validators.pattern(" + RegexLiteral(@"^https?://\S+$") + "i)");
+            if (rule.NotFuture)
+                list.Add("notFuture()");
             if (rule.Min is { } min)
                 list.Add(rule.MinStrict ? "greaterThan(" + Num(min) + ")" : "Validators.min(" + Num(min) + ")");
             if (rule.Max is { } max)

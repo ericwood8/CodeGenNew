@@ -61,6 +61,12 @@
             Line();
             Line("    UPDATE " + target + " SET " + Q(column.Name) + " = " + set + " WHERE " + Q(column.Name) + " IS NOT NULL;");
             Line("    SELECT " + L(table.TableName + "." + column.Name) + " AS [Column], @@ROWCOUNT AS [RowsUpdated];");
+            // the rewrite must leave the column inside the project's rules (NonNegativeColumns, NotFutureDateColumns); the error undoes the whole run (XACT_ABORT)
+            foreach (var guard in ValueGuards.Of(table, Project).Where(g => g.Column == column))
+            {
+                Line("    IF EXISTS (SELECT 1 FROM " + target + " WHERE " + guard.Condition(Q(column.Name), SqlDialect.SqlServer) + ")");
+                Line("        THROW " + SqlErrorCodes.RuleViolation + ", " + L(table.TableName + ": " + guard.Message(name => Q(name)) + " (after the rewrite)") + ", 1;");
+            }
         }
         Line();
         Line("    COMMIT TRANSACTION;");

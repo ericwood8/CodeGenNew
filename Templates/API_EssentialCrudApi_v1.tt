@@ -304,6 +304,21 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     private TKey KeyOf(TEntity row) => (_keyOf ??= Key.Compile())(row);
 
     private static bool SameKey(TKey a, TKey b) => EqualityComparer<TKey>.Default.Equals(a, b);
+<#
+    if (Project.ApiAnnotations || (dtos && Project.ApiValidation))
+    {
+#>
+
+    /// <summary> The row as the table holds it now (not tracked), what an update is compared against (its attributes and validator judge only the values it changes); null when there is none. </summary>
+    private async Task<TEntity?> StoredAsync(<#= contextType #> context, TKey id)
+    {
+        var key = Key;
+        var sameKey = Expression.Lambda<Func<TEntity, bool>>(Expression.Equal(key.Body, Expression.Constant(id, typeof(TKey))), key.Parameters);
+        return await context.Set<TEntity>().AsNoTracking().Where(sameKey).FirstOrDefaultAsync();
+    }
+<#
+    }
+#>
 
     /// <summary> Sets the audit columns no caller sets (when a row was created or changed) before it is validated and saved, on a body of the entity as on one built from an input. A table's API overrides it for its create, modified and last-changed dates (API_Crud); a column the database fills in (a default) is left to the database. </summary>
     protected virtual void Stamp(TEntity row, bool isNew)
@@ -707,6 +722,13 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
         Stamp(newRow, true);
 <#
     }
+    if (Project.ApiAnnotations)
+    {
+#>
+        if (Annotations.Check(newRow) is { } invalidNew)
+            return invalidNew;
+<#
+    }
     if (Project.ApiAuth)
     {
 #>
@@ -821,6 +843,15 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     }
 #>
         Stamp(updatedRow, false);
+<#
+    if (Project.ApiAnnotations)
+    {
+#>
+        if (Annotations.Check(updatedRow, await StoredAsync(context, id)) is { } invalidChange)
+            return invalidChange;
+<#
+    }
+#>
         var repo = NewRepo(context);
         if (!await repo.ExistsAsync(id))
             return Results.NotFound(); // 404 error if there is no row with that id
@@ -832,8 +863,8 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
         if (!InputIsEntity && validator is not null)
         {
             var result = await validator.ValidateAsync(updatedRow);
-            if (!result.IsValid)
-                return Results.ValidationProblem(result.ToDictionary());
+            if (!result.IsValid && ValidationFilter<TEntity>.Problems(result, updatedRow, await StoredAsync(context, id)) is { } problems)
+                return Results.ValidationProblem(problems);
         }
 <#
     }

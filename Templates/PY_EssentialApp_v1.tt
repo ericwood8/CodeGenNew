@@ -246,6 +246,16 @@ def looks_like_phone(value: str) -> bool:
     return any(c in "0123456789" for c in value) and all(c in "0123456789 +-().,xX#/" for c in value)
 
 
+def looks_like_postal_code(value: str) -> bool:
+    text = value.strip()
+    return 3 <= len(text) <= 10 and text[0].isalnum() and text[-1].isalnum() and all(c.isalnum() or c in " -" for c in text) and text.isascii()
+
+
+def looks_like_ssn(value: str) -> bool:
+    digits = value.replace("-", "")
+    return value.isascii() and digits.isdigit() and len(digits) == 9 and (value == digits or (value[3] == "-" and value[6] == "-" and value.count("-") == 2))
+
+
 def looks_like_url(value: str) -> bool:
     return value.startswith(("http://", "https://")) and len(value) > 8 and " " not in value
 @@@FILE app/main.py@@@

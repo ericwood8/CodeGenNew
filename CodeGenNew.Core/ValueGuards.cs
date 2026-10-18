@@ -13,7 +13,15 @@ public sealed record ValueGuard(ColumnModel Column, ValueGuardKind Kind)
 
     /// <summary> The test, true when the value breaks the rule; a NULL parameter (nothing supplied, or "leave the column as it is") never does. <paramref name="textParameter"/> is for the SQL Server
     /// update procedure, whose parameters are all text: the value is converted first, and a value that is no number or date is left to the statement that stores it. </summary>
-    public string Condition(string parameter, SqlDialect dialect, bool textParameter = false)
+    /// <param name="storedRow">For an update: the <c>FROM table WHERE key = parameter</c> that finds the row being changed. A value equal to the one the row already holds is not judged again, so a
+    /// stored value that breaks the rule does not stop an edit that leaves it alone; only a value the caller changes is checked. Null for an insert, which has no stored row.</param>
+    public string Condition(string parameter, SqlDialect dialect, bool textParameter = false, string? storedRow = null)
+    {
+        string broken = Broken(parameter, dialect, textParameter);
+        return storedRow is null ? broken : $"{broken} AND NOT EXISTS (SELECT 1 {storedRow} AND {SameAsStored(parameter, dialect, textParameter)})";
+    }
+
+    private string Broken(string parameter, SqlDialect dialect, bool textParameter)
     {
         if (Kind == ValueGuardKind.NonNegative)
         {
@@ -28,6 +36,27 @@ public sealed record ValueGuard(ColumnModel Column, ValueGuardKind Kind)
             SqlDialect.MySql => $"{parameter} IS NOT NULL AND DATE({parameter}) > CURDATE()",
             _ when textParameter => $"{parameter} IS NOT NULL AND TRY_CAST({parameter} AS DATE) > CAST(GETDATE() AS DATE)",
             _ => $"{parameter} IS NOT NULL AND CAST({parameter} AS DATE) > CAST(GETDATE() AS DATE)"
+        };
+    }
+
+    // a date rule compares days: the same day is the same value as far as the rule goes
+    private string SameAsStored(string parameter, SqlDialect dialect, bool textParameter)
+    {
+        string column = dialect switch
+        {
+            SqlDialect.PostgreSql => "\"" + Column.DbName.Replace("\"", "\"\"") + "\"",
+            SqlDialect.MySql => "`" + Column.DbName.Replace("`", "``") + "`",
+            _ => "[" + Column.DbName.Replace("]", "]]") + "]"
+        };
+        if (Kind == ValueGuardKind.NonNegative)
+            return textParameter ? $"{column} = TRY_CAST({parameter} AS decimal(38, 10))" : $"{column} = {parameter}";
+
+        return dialect switch
+        {
+            SqlDialect.PostgreSql => $"{column}::date = {parameter}::date",
+            SqlDialect.MySql => $"DATE({column}) = DATE({parameter})",
+            _ when textParameter => $"CAST({column} AS DATE) = TRY_CAST({parameter} AS DATE)",
+            _ => $"CAST({column} AS DATE) = CAST({parameter} AS DATE)"
         };
     }
 }

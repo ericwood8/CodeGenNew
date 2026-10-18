@@ -157,11 +157,11 @@ BEGIN
 
 <#
     }
-    // A value the project says the table must never hold (NonNegativeColumns, NotFutureDateColumns) and the database does not state.
+    // A value the project says the table must never hold (NonNegativeColumns, NotFutureDateColumns) and the database does not state; a value equal to the stored one is not judged again.
     foreach (var guard in ValueGuards.Of(Model, Project).Where(g => parameterColumns.Contains(g.Column)))
     {
 #>
-	IF (<#= guard.Condition(guard.Column.ParameterName, SqlDialect.SqlServer) #>)
+	IF (<#= guard.Condition(guard.Column.ParameterName, SqlDialect.SqlServer, storedRow: $"FROM [{Model.SchemaName}].[{Model.TableName}] WHERE {whereClause}") #>)
 		THROW <#= SqlErrorCodes.RuleViolation #>, '<#= guard.Message(name => "[" + name + "]").Replace("'", "''") #>', 1;
 
 <#

@@ -6,3 +6,4 @@ The Angular twin of `TSX_Schema`: `validators/<table>.validators.ts` exports `cu
 - A strict bound (`> 0`) has no Angular validator, so the file gets a small `greaterThan` or `lessThan` function, and only when one is needed.
 - Not in a plan unless the project names it in `PlanAlso`; the files go under `src/app/validators`. A table the schema says nothing about gets an empty record.
 - **Checked** by compiling the output for the PostgreSQL sample's customer table against `@angular/forms` with `tsc --strict`.
+- **Shapes and dates:** a postal code and a social security number get `Validators.pattern(...)` with the shared patterns; a column in `NotFutureDateColumns` gets a local `notFuture()` validator (the day, compared as text with the local today).

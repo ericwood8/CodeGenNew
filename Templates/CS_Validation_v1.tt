@@ -39,25 +39,8 @@
     // ==== naming helpers (same as CS_Entity.tt, kept local rather than shared - every template here is a
     // standalone .tt file with no code shared between templates)
     string Id(ColumnModel c) => c.CSharpName();
-    string Words(string name, bool isBit) => Labels.Words(name, isBit);
 
     string ClrType(ColumnModel c) => c.CSharp();
-
-    // An email address, a phone number and a URL get the attribute that checks them (the same classification as the validators of every language, so PlainTextColumns
-    // switches it off here too); the attribute carries the DataType itself.
-    string? SemanticDataType(ColumnModel c, bool multiline)
-    {
-        if (c.Name.ContainsIgnoreCase("Password")) return "DataType.Password";
-        return multiline ? "DataType.MultilineText" : null;
-    }
-
-    string? ShapeAttribute(ColumnRule? rule) => rule?.Shape switch
-    {
-        TextShape.Email => "[EmailAddress]",
-        TextShape.Phone => "[Phone]",
-        TextShape.Url => "[Url]",
-        _ => null
-    };
 
     var o = new StringBuilder();
     void L(string s = "") => o.Append(s).Append('\n');
@@ -70,27 +53,9 @@
         if (!first) B();
         first = false;
 
-        bool isBit = c.IsBooleanColumn;
-        string words = CSharpText.Escape(Words(c.Name, isBit));
-        int chars = c.CharacterLength;
-        bool isText = c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
-        bool multiline = isText && chars >= 100;
-        string? dataType = SemanticDataType(c, multiline);
-
-        if (!c.IsNullable) B("    [Required]");
-        B($"    [Display(Name = \"{words}\", Description = \"{words}\")]");
-        if (isText && chars > 0) B($"    [StringLength({chars})]");
-        if (dataType is not null) B($"    [DataType({dataType})]");
-        var rule = c.RuleOf(Project, Model.TableName);
-        if (ShapeAttribute(rule) is { } shapeAttribute) B($"    {shapeAttribute}");
-        // A whole-number column whose name says what it holds (a year, a month, a percentage, ...) gets that range; every other
-        // integer keeps the plain limits of its SQL type, which a [Range] would only repeat.
-        // (a CHECK constraint of the database says the same for any numeric column; a decimal gets it as double bounds)
-        if ((c.NumericKind != NumericKind.None || c.Check is not null) && Project.RangeFor(c) is { } range) B($"    [Range({range.Min}, {range.Max})]");
-        else if (c.Check is null && rule is { HasRange: true } && (c.IsNumericColumn || c.IsMoneyColumn))
-            B($"    [Range({rule.Min!.Value.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture)}, {rule.Max!.Value.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture)})]");
-        else if (c.Check is { } check && (c.IsNumericColumn || c.IsMoneyColumn))
-            B($"    [Range({(check.Min is { } lo ? lo.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture) : "double.MinValue")}, {(check.Max is { } hi ? hi.ToString("0.########", System.Globalization.CultureInfo.InvariantCulture) : "double.MaxValue")})]");
+        // the attributes of a column are decided in Core (ValidationAttributes), the same for this class and for the request type of CS_DtoInput
+        foreach (string attribute in ValidationAttributes.Of(c, Project, Model.TableName))
+            B("    " + attribute);
         B($"    public {ClrType(c)} {Id(c)} {{ get; set; }}");
     }
 
@@ -101,11 +66,15 @@
     L($"namespace {entityNamespace};");
     L();
     string tableIdentifier = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
-    L($"[MetadataType(typeof({Model.TableName}Metadata))]");
-    L($"public partial class {tableIdentifier}");
-    L("{");
-    L("}");
-    L();
+    // With ApiAnnotations the API finds the metadata class itself (Annotations.cs), so the entity need not be partial; otherwise the entity is attached with [MetadataType]
+    if (!Project.ApiAnnotations)
+    {
+        L($"[MetadataType(typeof({Model.TableName}Metadata))]");
+        L($"public partial class {tableIdentifier}");
+        L("{");
+        L("}");
+        L();
+    }
     L($"public class {Model.TableName}Metadata");
     L("{");
     o.Append(body);

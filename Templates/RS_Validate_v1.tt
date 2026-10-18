@@ -50,8 +50,8 @@
                 body.Add($"if !{v}.is_empty() && ![{string.Join(", ", choices.Select(Str))}].contains(&{v}.as_str()) {{ problems.push(({Str(property)}, {Str(label + " must be one of: " + string.Join(", ", choices) + ".")})); }}");
             if (rule.Shape != TextShape.None)
             {
-                string function = rule.Shape switch { TextShape.Email => "looks_like_email", TextShape.Phone => "looks_like_phone", _ => "looks_like_url" };
-                string what = rule.Shape switch { TextShape.Email => "an email address", TextShape.Phone => "a phone number", _ => "a web address" };
+                string function = rule.Shape switch { TextShape.Email => "looks_like_email", TextShape.Phone => "looks_like_phone", TextShape.Postal => "looks_like_postal_code", TextShape.Ssn => "looks_like_ssn", _ => "looks_like_url" };
+                string what = ColumnRules.NounOf(rule.Shape);
                 body.Add($"if !{v}.is_empty() && !crate::support::{function}({v}) {{ problems.push(({Str(property)}, {Str(label + " must be " + what + ".")})); }}");
             }
             if (body.Count == 0)
@@ -66,6 +66,24 @@
             {
                 lines.Add($"    let {v} = &row.{f.Name};");
                 lines.AddRange(body.Select(b => "    " + b));
+            }
+        }
+        else if (rule.NotFuture && f.BaseType is "NaiveDate" or "NaiveDateTime" or "DateTime<Utc>")
+        {
+            // a day later than today (the server's local day) is refused; a date and time is compared by its day
+            string today = "chrono::Local::now().date_naive()";
+            string Day(string v) => f.BaseType switch { "NaiveDate" => $"*{v}", "NaiveDateTime" => $"{v}.date()", _ => $"{v}.date_naive()" };
+            string refuse = $"problems.push(({Str(property)}, {Str(label + " must not be later than today.")}));";
+            if (f.IsOption)
+            {
+                lines.Add($"    if let Some(value) = &row.{f.Name} {{");
+                lines.Add($"        if {Day("value")} > {today} {{ {refuse} }}");
+                lines.Add("    }");
+            }
+            else
+            {
+                lines.Add($"    let value = &row.{f.Name};");
+                lines.Add($"    if {Day("value")} > {today} {{ {refuse} }}");
             }
         }
         else if (rule.HasRange)
@@ -92,8 +110,9 @@
                 lines.AddRange(body.Select(b => "    " + b));
             }
         }
+        // on an update a value that has not changed from the stored row is not checked again
         if (lines.Count > 0)
-            checks.Add(lines.ToArray());
+            checks.Add(new[] { $"    if stored.is_none_or(|s| s.{f.Name} != row.{f.Name}) {{" }.Concat(lines.Select(l => "    " + l)).Append("    }").ToArray());
     }
 
     Line($"@@@FILE src/validation/{t.Module}.rs@@@");
@@ -102,16 +121,16 @@
     if (anyRange && t.Fields.Any(f => f.BaseType == "Decimal" && f.Column.RuleOf(Project, Model.TableName)?.HasRange == true))
         Line("use rust_decimal::prelude::ToPrimitive;");
     Line();
-    Line("/// Checks the row against what the schema says: required, length, allowed values, shape and range. An error carries every problem, by property name.");
+    Line("/// Checks the row against what the schema says: required, length, allowed values, shape and range. An error carries every problem, by property name. On an update `stored` is the row as it is now: a value that has not changed is not checked again.");
     if (checks.Count == 0)
     {
-        Line($"pub fn validate(_row: &{t.Struct}) -> Result<(), ApiError> {{");
+        Line($"pub fn validate(_row: &{t.Struct}, _stored: Option<&{t.Struct}>) -> Result<(), ApiError> {{");
         Line("    Ok(())");
         Line("}");
     }
     else
     {
-        Line($"pub fn validate(row: &{t.Struct}) -> Result<(), ApiError> {{");
+        Line($"pub fn validate(row: &{t.Struct}, stored: Option<&{t.Struct}>) -> Result<(), ApiError> {{");
         Line("    let mut problems: Vec<(&'static str, &'static str)> = Vec::new();");
         foreach (var c in checks)
             foreach (string line in c)

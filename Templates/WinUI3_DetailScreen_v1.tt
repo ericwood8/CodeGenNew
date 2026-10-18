@@ -68,6 +68,22 @@
         string keyProp = keyColumn.Name;
         bool textKey = form.TextKey;
 
+        // The checks the project's validation rules ask of a field (the same classification as the validators of every language): the shape of an email address, phone number, URL, postal code or
+        // social security number in a text box, and a date that is never later than today. Null when the column has no such rule.
+        string? ShapeCheck(ColumnModel c, string prop, string label, bool optional)
+        {
+            if (c.RuleOf(Project, Model.TableName) is not { Shape: not TextShape.None } rule)
+                return null;
+            string test = ColumnRules.CSharpTest(rule.Shape, prop);
+            string refuse = "{ ErrorMessage = \"" + label + " is not " + ColumnRules.NounOf(rule.Shape) + ".\"; return false; }";
+            return optional ? "if (!string.IsNullOrWhiteSpace(" + prop + ") && !(" + test + ")) " + refuse : "if (!(" + test + ")) " + refuse;
+        }
+
+        string? FutureCheck(ColumnModel c, string prop, string label) =>
+            c.RuleOf(Project, Model.TableName) is { NotFuture: true }
+                ? "else if (" + prop + ".Value.Date > DateTime.Today) { ErrorMessage = \"" + label + " must not be later than today.\"; return false; }"
+                : null;
+
         var shown = form.Columns;
 
         // A form with more than one kind of field is tabbed (Main / Billing & Shipping / Notes): see FormPages. A narrow table keeps its single column.
@@ -825,6 +841,14 @@ public partial class <#= table #>DetailViewModel : ObservableObject
                 }
 #>
         }
+<#
+                if (FutureCheck(c, prop, label) is { } futureCheck)
+                {
+#>
+        <#= futureCheck #>
+<#
+                }
+#>
         else { entity.<#= prop #> = <#= prop #>.Value.Date + _<#= char.ToLowerInvariant(prop[0]) + prop[1..] #>Time; }
 <#
             }
@@ -883,11 +907,25 @@ public partial class <#= table #>DetailViewModel : ObservableObject
                 {
 #>
         if (string.IsNullOrWhiteSpace(<#= prop #>)) { ErrorMessage = "<#= label #> is required."; return false; }
+<#
+                    if (ShapeCheck(c, prop, label, false) is { } requiredShape)
+                    {
+#>
+        <#= requiredShape #>
+<#
+                    }
+#>
         entity.<#= prop #> = <#= prop #>;
 <#
                 }
                 else
                 {
+                    if (ShapeCheck(c, prop, label, true) is { } optionalShape)
+                    {
+#>
+        <#= optionalShape #>
+<#
+                    }
 #>
         entity.<#= prop #> = string.IsNullOrWhiteSpace(<#= prop #>) ? null : <#= prop #>;
 <#

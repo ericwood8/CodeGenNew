@@ -36,6 +36,9 @@
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
 
+        // ApiAnnotations: the request type carries the same attributes as the entity's metadata class (ValidationAttributes), so a client and the API documents see the rules on what they send
+        if (Project.ApiAnnotations)
+            L("using System.ComponentModel.DataAnnotations;");
         L("using " + entityNamespace + ";");
         L();
         L("namespace " + dtoNamespace + ";");
@@ -44,7 +47,12 @@
         L("public class " + className);
         L("{");
         foreach (var c in columns)
+        {
+            if (Project.ApiAnnotations)
+                foreach (string attribute in ValidationAttributes.Of(c, Project, Model.TableName))
+                    L("    " + attribute);
             L("    public " + c.CSharp() + " " + c.CSharpName() + " { get; set; }" + CSharpText.NotNullInitializer(c));
+        }
         L();
         L("    public " + entity + " ToEntity() => new()");
         L("    {");

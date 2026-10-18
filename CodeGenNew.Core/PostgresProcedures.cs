@@ -43,8 +43,9 @@ public static class PostgresProcedures
         $"CREATE OR REPLACE FUNCTION {Fn(m, suffix)}({(parameters.Length > 0 ? "\n" + parameters + "\n" : "")})\n" +
         $"RETURNS {returns}\nLANGUAGE plpgsql\nAS $$\n{body}$$;\n";
 
-    private static void Validations(StringBuilder o, TableModel m, Func<ColumnModel, bool> isParameter, ProjectSettings? project)
+    private static void Validations(StringBuilder o, TableModel m, Func<ColumnModel, bool> isParameter, ProjectSettings? project, bool changesRow = false)
     {
+        string? storedRow = changesRow ? $"FROM {Table(m)} WHERE {Eq(m.PrimaryKeyColumns, k => P(k))}" : null;
         if (m.HasStartEndDatePair && m.StartDateColumn is { } s && m.EndDateColumn is { } e && isParameter(s) && isParameter(e))
         {
             o.Append($"\tIF ({P(s)} IS NOT NULL AND {P(e)} IS NOT NULL AND {P(s)} > {P(e)}) THEN\n");
@@ -59,7 +60,7 @@ public static class PostgresProcedures
         }
         foreach (var guard in ValueGuards.Of(m, project).Where(g => isParameter(g.Column)))
         {
-            o.Append($"\tIF ({guard.Condition(P(guard.Column), SqlDialect.PostgreSql)}) THEN\n");
+            o.Append($"\tIF ({guard.Condition(P(guard.Column), SqlDialect.PostgreSql, storedRow: storedRow)}) THEN\n");
             o.Append($"\t\tRAISE EXCEPTION '{Message(guard.Message(Q))}';\n\tEND IF;\n\n");
         }
     }
@@ -134,7 +135,7 @@ public static class PostgresProcedures
 
         var parameters = updatable.Select(c => (P(c), c.SqlTypeDeclaration, c.IsPrimaryKey ? null : "NULL"));
         var o = new StringBuilder("BEGIN\n");
-        Validations(o, m, updatable.Contains, project);
+        Validations(o, m, updatable.Contains, project, changesRow: true);
         o.Append($"\tIF {P(m.PrimaryKeyColumns[0])} IS NULL THEN\n\t\tRETURN 0;\n\tEND IF;\n\n");
         if (sets.Count == 0)
         {
@@ -193,7 +194,7 @@ public static class PostgresProcedures
         foreach (var c in parameterColumns.Where(c => c.IsStringColumn))
             o.Append($"\t{P(c)} := {(c.IsNullable ? $"btrim({P(c)})" : $"COALESCE(btrim({P(c)}), '')")};\n");
         if (parameterColumns.Any(c => c.IsStringColumn)) o.Append('\n');
-        Validations(o, m, parameterColumns.Contains, project);
+        Validations(o, m, parameterColumns.Contains, project, changesRow: true);
 
         string returnValue = identityKey is not null ? $"RETURN {P(identityKey)};" : "RETURN;";
         string whereClause = Eq(pk, k => P(k));
@@ -239,7 +240,7 @@ public static class PostgresProcedures
 
     // =============== Clone =============== 
 
-    public static string Clone(TableModel m)
+    public static string Clone(TableModel m, ProjectSettings? project = null)
     {
         var pk = m.PrimaryKeyColumns;
         bool singleGuidKey = pk.Count == 1 && pk[0].IsGuidColumn && !pk[0].IsIdentity;
@@ -296,6 +297,12 @@ public static class PostgresProcedures
             o.Append("\tv_new_key := gen_random_uuid(); -- a new key for the new row\n\n");
         o.Append($"\tIF NOT EXISTS (SELECT 1 FROM {Table(m)} AS {Q("src")} WHERE {keyMatch}) THEN\n");
         o.Append($"\t\tRAISE EXCEPTION 'No {Message(m.TableName)} found to clone (%).', {keyDescription} USING ERRCODE = '{SqlErrorCodes.NoRowToClone}';\n\tEND IF;\n\n");
+        // a column the clone copies as it is keeps the project's rules: a source row that breaks one cannot be copied
+        foreach (var guard in ValueGuards.Of(m, project).Where(g => copyable.Contains(g.Column) && !IsRule(g.Column) && !overrides.Contains(g.Column)))
+        {
+            o.Append($"\tIF EXISTS (SELECT 1 FROM {Table(m)} AS {Q("src")} WHERE {keyMatch} AND {guard.Condition(Q("src") + "." + Q(guard.Column.DbName), SqlDialect.PostgreSql)}) THEN\n");
+            o.Append($"\t\tRAISE EXCEPTION '{Message(guard.Message(Q))}';\n\tEND IF;\n\n");
+        }
         if (pairs.Count == 0)
         {
             o.Append($"\tINSERT INTO {Table(m)} DEFAULT VALUES");

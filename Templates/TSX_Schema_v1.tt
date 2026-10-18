@@ -55,6 +55,8 @@
                     o.Append(".email(" + CSharpText.Quote(label + " is not an email address.") + ")");
                 else if (rule.Shape == TextShape.Phone)
                     o.Append(@".regex(/^[0-9+()\-.\s]{3,25}$/, " + CSharpText.Quote(label + " is not a phone number.") + ")");
+                else if (rule.Shape is TextShape.Postal or TextShape.Ssn)
+                    o.Append(".regex(/^(?:" + ColumnRules.PatternOf(rule.Shape) + ")$/, " + CSharpText.Quote(label + " is not " + ColumnRules.NounOf(rule.Shape) + ".") + ")");
                 else if (rule.Shape == TextShape.Url)
                     o.Append(".url(" + CSharpText.Quote(label + " is not a URL.") + ")");
                 if (rule.Min is { } min)
@@ -62,6 +64,9 @@
                 if (rule.Max is { } max)
                     o.Append((rule.MaxStrict ? ".lt(" : ".max(") + Num(max) + ", " + CSharpText.Quote(label + (rule.MaxStrict ? " must be less than " : " must be at most ") + Num(max) + ".") + ")");
             }
+
+            if (rule is { NotFuture: true })
+                o.Append(".refine((value) => !value || value.substring(0, 10) <= new Date().toLocaleDateString(\"en-CA\"), " + CSharpText.Quote(label + " must not be later than today.") + ")");
 
             if (c.IsNullable)
                 o.Append(".nullable()");

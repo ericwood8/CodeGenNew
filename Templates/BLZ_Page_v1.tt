@@ -28,9 +28,9 @@
     bool HasInput(ColumnModel c) => c.CSharpBase() is not ("byte[]" or "object");
     string Ident(string name) => BlazorNames.Identifier(name);
     // type="email" / "tel" / "url" (and a phone pattern) for a text column named like one; the browser checks it when the form is submitted
-    string ShapeAttributes(ColumnModel c) => c.InputType(Project, Model.TableName) is var shape && shape != "text"
-        ? $" type=\"{shape}\"" + (c.InputPattern(Project, Model.TableName) is { Length: > 0 } pattern ? " " + pattern : "")
-        : "";
+    string ShapeAttributes(ColumnModel c) =>
+        (c.InputType(Project, Model.TableName) is var shape && shape != "text" ? $" type=\"{shape}\"" : "")
+        + (c.InputPattern(Project, Model.TableName) is { Length: > 0 } pattern ? " " + pattern : "");
     bool odata = Variant == "OData";
 
     if (odata && !ODataPlan.Serves(Model, Project))
@@ -323,6 +323,8 @@
         L("            <p class=\"error\" role=\"alert\">@message</p>");
         L("        }");
         L("        <EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\">");
+        if (Project.ApiAnnotations)
+            L("            <DataAnnotationsValidator />");
         foreach (var c in shown)
         {
             string id = form.FieldId(c);

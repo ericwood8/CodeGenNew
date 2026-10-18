@@ -39,8 +39,9 @@ public static class MySqlProcedures
 
     private static (string, string, string) In(ColumnModel c) => (P(c), c.SqlTypeDeclaration, "IN");
 
-    private static void Validations(StringBuilder o, TableModel m, Func<ColumnModel, bool> isParameter, ProjectSettings? project)
+    private static void Validations(StringBuilder o, TableModel m, Func<ColumnModel, bool> isParameter, ProjectSettings? project, bool changesRow = false)
     {
+        string? storedRow = changesRow ? $"FROM {Table(m)} WHERE {Eq(m.PrimaryKeyColumns, k => P(k))}" : null;
         static string Raise(string text) => $"\t\tSIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '{Message(text)}';\n\tEND IF;\n\n";
         if (m.HasStartEndDatePair && m.StartDateColumn is { } s && m.EndDateColumn is { } e && isParameter(s) && isParameter(e))
         {
@@ -56,7 +57,7 @@ public static class MySqlProcedures
         }
         foreach (var guard in ValueGuards.Of(m, project).Where(g => isParameter(g.Column)))
         {
-            o.Append($"\tIF ({guard.Condition(P(guard.Column), SqlDialect.MySql)}) THEN\n");
+            o.Append($"\tIF ({guard.Condition(P(guard.Column), SqlDialect.MySql, storedRow: storedRow)}) THEN\n");
             o.Append(Raise(guard.Message(Q)));
         }
     }
@@ -152,7 +153,7 @@ public static class MySqlProcedures
 
         var pk = m.PrimaryKeyColumns;
         var o = new StringBuilder("BEGIN\n");
-        Validations(o, m, updatable.Contains, project);
+        Validations(o, m, updatable.Contains, project, changesRow: true);
         if (sets.Count == 0)
         {
             o.Append("\tSELECT 0 AS `Result`; -- nothing to change\n");
@@ -208,7 +209,7 @@ public static class MySqlProcedures
         foreach (var c in parameterColumns.Where(c => c.IsStringColumn))
             o.Append($"\tSET {P(c)} = {(c.IsNullable ? $"TRIM({P(c)})" : $"COALESCE(TRIM({P(c)}), '')")};\n");
         if (parameterColumns.Any(c => c.IsStringColumn)) o.Append('\n');
-        Validations(o, m, parameterColumns.Contains, project);
+        Validations(o, m, parameterColumns.Contains, project, changesRow: true);
 
         string selectKey = identityKey is not null ? $"SELECT {P(identityKey)} AS {Q(identityKey.DbName)};" : "SELECT 0 AS `Result`;";
         string whereClause = Eq(pk, P);
@@ -250,7 +251,7 @@ public static class MySqlProcedures
 
     // ============================================== Clone ==============================================
 
-    public static string Clone(TableModel m)
+    public static string Clone(TableModel m, ProjectSettings? project = null)
     {
         var pk = m.PrimaryKeyColumns;
         bool singleGuidKey = pk.Count == 1 && pk[0].IsGuidColumn && !pk[0].IsIdentity;
@@ -310,6 +311,12 @@ public static class MySqlProcedures
         o.Append($"\tIF NOT EXISTS (SELECT 1 FROM {Table(m)} AS {Q("src")} WHERE {keyMatch}) THEN\n");
         o.Append($"\t\tSET v_message = CONCAT('No {Message(m.TableName)} found to clone (', {keyDescription}, ').');\n");
         o.Append($"\t\tSIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = v_message, MYSQL_ERRNO = {SqlErrorCodes.NoRowToClone};\n\tEND IF;\n\n");
+        // a column the clone copies as it is keeps the project's rules: a source row that breaks one cannot be copied
+        foreach (var guard in ValueGuards.Of(m, project).Where(g => copyable.Contains(g.Column) && !IsRule(g.Column) && !overrides.Contains(g.Column)))
+        {
+            o.Append($"\tIF EXISTS (SELECT 1 FROM {Table(m)} AS {Q("src")} WHERE {keyMatch} AND {guard.Condition(Q("src") + "." + Col(guard.Column), SqlDialect.MySql)}) THEN\n");
+            o.Append($"\t\tSIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '{Message(guard.Message(Q))}';\n\tEND IF;\n\n");
+        }
         if (pairs.Count == 0)
         {
             o.Append($"\tINSERT INTO {Table(m)} () VALUES ();\n");

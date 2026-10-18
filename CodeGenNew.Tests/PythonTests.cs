@@ -234,7 +234,7 @@ public class PythonTests
             var files = await Generate(validate: true, output);
 
             string validation = files["Shop.Python/app/validation/customer.py"];
-            Expect.Contains(validation, "def validate(row: CustomerSchema) -> None:");
+            Expect.Contains(validation, "def validate(row: CustomerSchema, stored: object | None = None) -> None:");
             Expect.Contains(validation, "if not row.account_number.strip():");
             Expect.Contains(validation, "if len(row.account_number) > 20:");
             Expect.Contains(validation, "must be one of: a, b.");
@@ -246,6 +246,7 @@ public class PythonTests
             string routes = files["Shop.Python/app/routes/customer.py"];
             Expect.Contains(routes, "from app.validation.customer import validate");
             Expect.Contains(routes, "validate(body)");
+            Expect.Contains(routes, "validate(body, row)");
 
             await CompileAsync(output);
         }

@@ -377,7 +377,8 @@ public class RustTests
             Expect.Contains(repo, "query.take.unwrap_or(25).clamp(1, 100)");
             Expect.Contains(repo, ".push_bind(escape_like(text))");
             Expect.Contains(repo, "#[serde(rename = \"isActive\")]");
-            Expect.Contains(routes, "validate(&row)?;");
+            Expect.Contains(routes, "validate(&row, None)?;");
+            Expect.Contains(routes, "validate(&row, Some(&current))?;");
             Expect.Contains(Read("Shop.Rust/src/routes/mod.rs"), ".merge(customer::router())");
             Expect.Contains(Read("Shop.Rust/src/routes/mod.rs"), ".merge(dashboard::router())");
             string dashboard = Read("Shop.Rust/src/routes/dashboard.rs");

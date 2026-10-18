@@ -1,5 +1,6 @@
 <#@ template language="C#" #>
 <#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="System.Data" #>
@@ -8,7 +9,7 @@
     // MySQL has real stored procedures with its own syntax: CodeGenNew.Core's MySqlProcedures writes this one for a table read from MySQL.
     if (Model.Dialect == SqlDialect.MySql)
     {
-        Write(MySqlProcedures.Clone(Model));
+        Write(MySqlProcedures.Clone(Model, Project));
         return GenerationEnvironment.ToString();
     }
 #>
@@ -16,7 +17,7 @@
     // PostgreSQL has functions rather than stored procedures: CodeGenNew.Core's PostgresProcedures writes this one for a table read from PostgreSQL.
     if (Model.Dialect == SqlDialect.PostgreSql)
     {
-        Write(PostgresProcedures.Clone(Model));
+        Write(PostgresProcedures.Clone(Model, Project));
         return GenerationEnvironment.ToString();
     }
 #>
@@ -141,6 +142,17 @@ BEGIN
 			THROW <#= SqlErrorCodes.NoRowToClone #>, @ErrorMessage, 1;
 		END
 
+<#
+    // a column the clone copies as it is keeps the project's rules (NonNegativeColumns, NotFutureDateColumns): a source row that breaks one cannot be copied
+    foreach (var guard in ValueGuards.Of(Model, Project).Where(g => copyable.Contains(g.Column) && !IsRuleColumn(g.Column) && !overrideColumns.Contains(g.Column)))
+    {
+#>
+		IF EXISTS (SELECT 1 FROM <#= table #> AS [src] WHERE <#= keyMatch #> AND <#= guard.Condition("[src]." + Q(guard.Column.Name), SqlDialect.SqlServer) #>)
+			THROW <#= SqlErrorCodes.RuleViolation #>, '<#= guard.Message(name => "[" + name + "]").Replace("'", "''") #>', 1;
+
+<#
+    }
+#>
 <#
     if (pairs.Count == 0)
     {

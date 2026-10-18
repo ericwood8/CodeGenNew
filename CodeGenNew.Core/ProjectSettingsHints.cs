@@ -101,6 +101,7 @@ public static class ProjectSettingsHints
         ["BulkUpdateColumns"] = "SQL Server only: columns SP_BulkUpdate rewrites in every table that has one (Fnd,Acct)",
         ["BulkUpdateExpression"] = "what those columns are set to, {column} standing for the column (default UPPER({column}))",
         ["NonNegativeColumns"] = "comma-separated money columns that can never be negative (CreditLimit, or Item.Cost for one table): their number box gets a minimum of 0, and the insert, update and save routines refuse a negative value (a CHECK range in the database does the first without the list)",
+        ["ApiAnnotations"] = "The plan also writes the DataAnnotations attributes per table (CS_Validation) and the create and update endpoints run them (400 with the messages); works with or without ApiValidation",
         ["NotFutureDateColumns"] = "comma-separated date columns that can never be later than today (BirthDate, or Employee.HireDate for one table): the insert, update and save routines refuse a later date",
         ["PlainTextColumns"] = "comma-separated text columns whose name says email, phone or URL but that hold something else (EmailTemplate, or Site.PhoneNotes for one table): they get no format check",
         ["ApiFolder"] = "React / Angular folder for the api modules, relative to the source folder; blank = api",

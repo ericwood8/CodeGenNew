@@ -147,11 +147,11 @@ public class EnforcedValidationTests
         Assert.IsLessThan(insert.IndexOf("INSERT INTO", StringComparison.Ordinal), insert.IndexOf("[Balance] must not be negative", StringComparison.Ordinal), "the guard comes before the insert");
 
         string update = await Rendered("SP_Update_v1.tt", Contact(), project);
-        Expect.Contains(update, "IF (@pBalance IS NOT NULL AND TRY_CAST(@pBalance AS decimal(38, 10)) < 0)");
-        Expect.Contains(update, "IF (@pBirthDate IS NOT NULL AND TRY_CAST(@pBirthDate AS DATE) > CAST(GETDATE() AS DATE))");
+        Expect.Contains(update, "IF (@pBalance IS NOT NULL AND TRY_CAST(@pBalance AS decimal(38, 10)) < 0 AND NOT EXISTS (");
+        Expect.Contains(update, "IF (@pBirthDate IS NOT NULL AND TRY_CAST(@pBirthDate AS DATE) > CAST(GETDATE() AS DATE) AND NOT EXISTS (");
 
         string save = await Rendered("SP_Save_v1.tt", Contact(), project);
-        Expect.Contains(save, "IF (@pQuantity IS NOT NULL AND @pQuantity < 0)");
+        Expect.Contains(save, "IF (@pQuantity IS NOT NULL AND @pQuantity < 0 AND NOT EXISTS (");
         Expect.Contains(save, "'[Quantity] must not be negative.', 1;");
 
         foreach (string template in new[] { "SP_Insert_v1.tt", "SP_Update_v1.tt", "SP_Save_v1.tt" })

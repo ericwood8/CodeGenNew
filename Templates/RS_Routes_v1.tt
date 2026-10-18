@@ -251,7 +251,7 @@
     Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
     if (validate)
     {
-        Line("    validate(&row)?;");
+        Line("    validate(&row, None)?;");
     }
     if (scoped)
     {
@@ -301,9 +301,7 @@
     Line($"    if row.{t.Key.Name} != id {{");
     Line("        return Err(ApiError::BadRequest(\"The id in the URL and the id in the body differ.\".into()));");
     Line("    }");
-    if (validate)
-        Line("    validate(&row)?;");
-    if (scoped || userPlan is not null)
+    if (scoped || userPlan is not null || validate)
     {
         Line($"    let current = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
         if (scoped)
@@ -314,6 +312,8 @@
         }
         if (userPlan is not null)
             Line("    guard_user_row(&pool, &user, &mut row, Some(&current)).await?;");
+        if (validate)
+            Line("    validate(&row, Some(&current))?; // a value the update leaves as it is stays unjudged");
     }
     Line($"    repo::update(&pool, {idArg}, &row).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");

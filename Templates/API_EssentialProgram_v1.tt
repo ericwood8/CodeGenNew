@@ -530,10 +530,12 @@ public static class OpenApiDocs
 #>
 @@@FILE ValidationFilter.cs@@@
 using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 
 namespace <#= apiNamespace #>;
 
-/// <summary> An endpoint filter that runs the FluentValidation validator of the request body (the validators CS_Validator writes) and answers 400 with the messages when it fails. A body with no validator passes. </summary>
+/// <summary> An endpoint filter that runs the FluentValidation validator of the request body (the validators CS_Validator writes) and answers 400 with the messages when it fails. A body with no validator passes.
+/// On an update a value that has not changed from the stored row is not judged again, so a stored value that breaks a rule does not stop an edit of another column. </summary>
 public class ValidationFilter<T> : IEndpointFilter where T : class
 {
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
@@ -543,8 +545,102 @@ public class ValidationFilter<T> : IEndpointFilter where T : class
             return await next(context);
 
         var result = await validator.ValidateAsync(body, context.HttpContext.RequestAborted);
-        return result.IsValid ? await next(context) : Results.ValidationProblem(result.ToDictionary());
+        if (result.IsValid)
+            return await next(context);
+
+        var stored = HttpMethods.IsPut(context.HttpContext.Request.Method) ? await StoredAsync(context.HttpContext) : null;
+        return Problems(result, body, stored) is { } problems ? Results.ValidationProblem(problems) : await next(context);
     }
+
+    /// <summary> The messages of the failures on values the update changes; null when none is left. Without a stored row (a create) every failure counts. </summary>
+    public static IDictionary<string, string[]>? Problems(FluentValidation.Results.ValidationResult result, T row, T? stored)
+    {
+        var remaining = result.Errors.Where(e => stored is null || Changed(row, stored, e.PropertyName)).ToList();
+        return remaining.Count == 0 ? null : new FluentValidation.Results.ValidationResult(remaining).ToDictionary();
+    }
+
+    // a failure with no property belongs to the row as a whole
+    private static bool Changed(T row, T stored, string member)
+    {
+        var property = string.IsNullOrEmpty(member) ? null : typeof(T).GetProperty(member);
+        return property is null || !Equals(property.GetValue(row), property.GetValue(stored));
+    }
+
+    // the row the route's id names, as the table holds it (a table with a composite key has no single id and is judged as a whole)
+    private static async Task<T?> StoredAsync(HttpContext http)
+    {
+        var db = http.RequestServices.GetRequiredService<<#= contextName #>>();
+        if (db.Model.FindEntityType(typeof(T))?.FindPrimaryKey() is not { Properties.Count: 1 } key || http.Request.RouteValues["id"]?.ToString() is not { } id)
+            return null;
+
+        var type = Nullable.GetUnderlyingType(key.Properties[0].ClrType) ?? key.Properties[0].ClrType;
+        object value;
+        try
+        {
+            value = type == typeof(Guid) ? Guid.Parse(id) : Convert.ChangeType(id, type, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch (Exception ex) when (ex is FormatException or OverflowException or InvalidCastException)
+        {
+            return null;
+        }
+
+        var stored = await db.FindAsync(typeof(T), [value], http.RequestAborted) as T;
+        if (stored is not null)
+            db.Entry(stored).State = EntityState.Detached;
+        return stored;
+    }
+}
+<#
+    }
+#>
+<#
+    if (Project.ApiAnnotations)
+    {
+#>
+@@@FILE Annotations.cs@@@
+using System.Collections.Concurrent;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+
+namespace <#= apiNamespace #>;
+
+/// <summary> Runs the DataAnnotations attributes of a row (the <c>[Required]</c>, <c>[StringLength]</c>, <c>[Range]</c>, <c>[EmailAddress]</c> ... that CS_Validation writes on a <c>&lt;Table&gt;Metadata</c> class next to the entity) and answers 400 with the messages when a value breaks one. </summary>
+public static class Annotations
+{
+    private static readonly ConcurrentDictionary<Type, bool> Attached = new();
+
+    /// <summary> Null when the row passes; otherwise the validation problem to answer with. For an update, <paramref name="stored"/> is the row as it is now: a value that has not changed is not judged
+    /// again, so a stored value that breaks a rule does not stop an edit of another column. </summary>
+    public static IResult? Check<T>(T row, T? stored = null) where T : class
+    {
+        Attach(typeof(T));
+        var results = new List<ValidationResult>();
+        if (Validator.TryValidateObject(row, new ValidationContext(row), results, validateAllProperties: true))
+            return null;
+
+        var problems = results
+            .SelectMany(r => (r.MemberNames.Any() ? r.MemberNames : [""]).Select(member => (Member: member, Message: r.ErrorMessage ?? "The value is not valid.")))
+            .Where(p => stored is null || Changed(row, stored, p.Member))
+            .GroupBy(p => p.Member)
+            .ToDictionary(g => g.Key, g => g.Select(p => p.Message).ToArray());
+        return problems.Count == 0 ? null : Results.ValidationProblem(problems);
+    }
+
+    // a problem with no member name belongs to the row as a whole
+    private static bool Changed<T>(T row, T stored, string member)
+    {
+        var property = member.Length == 0 ? null : typeof(T).GetProperty(member);
+        return property is null || !Equals(property.GetValue(row), property.GetValue(stored));
+    }
+
+    // The attributes sit on <Entity>Metadata in the entity's namespace; the type descriptor is told once so Validator reads them as if they were on the entity.
+    private static void Attach(Type entity) => Attached.GetOrAdd(entity, type =>
+    {
+        var metadata = type.Assembly.GetType(type.FullName + "Metadata");
+        if (metadata is not null)
+            TypeDescriptor.AddProvider(new AssociatedMetadataTypeTypeDescriptionProvider(type, metadata), type);
+        return true;
+    });
 }
 <#
     }

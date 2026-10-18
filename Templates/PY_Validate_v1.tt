@@ -24,6 +24,7 @@
 
     var checks = new List<string>();
     var shapes = new HashSet<string>();
+    bool anyFuture = false;
     foreach (var f in t.SchemaFields)
     {
         var rule = f.Column.RuleOf(Project, Model.TableName);
@@ -43,11 +44,17 @@
                 body.Add($"if {value} and {value} not in ({string.Join(", ", choices.Select(Str))},):\n    problems.append(({Str(property)}, {Str(label + " must be one of: " + string.Join(", ", choices) + ".")}))");
             if (rule.Shape != TextShape.None)
             {
-                string function = rule.Shape switch { TextShape.Email => "looks_like_email", TextShape.Phone => "looks_like_phone", _ => "looks_like_url" };
-                string what = rule.Shape switch { TextShape.Email => "an email address", TextShape.Phone => "a phone number", _ => "a web address" };
+                string function = rule.Shape switch { TextShape.Email => "looks_like_email", TextShape.Phone => "looks_like_phone", TextShape.Postal => "looks_like_postal_code", TextShape.Ssn => "looks_like_ssn", _ => "looks_like_url" };
+                string what = ColumnRules.NounOf(rule.Shape);
                 shapes.Add(function);
                 body.Add($"if {value} and not {function}({value}):\n    problems.append(({Str(property)}, {Str(label + " must be " + what + ".")}))");
             }
+        }
+        else if (rule.NotFuture && f.Annotation is "date" or "datetime")
+        {
+            anyFuture = true;
+            string day = f.Annotation == "datetime" ? $"{value}.date()" : value;
+            body.Add($"if {value} is not None and {day} > date.today():\n    problems.append(({Str(property)}, {Str(label + " must not be later than today.")}))");
         }
         else if (rule.HasRange && f.Annotation is "int" or "float" or "Decimal")
         {
@@ -56,20 +63,23 @@
             if (rule.Max is { } max)
                 body.Add($"if {value} is not None and float({value}) {(rule.MaxStrict ? ">=" : ">")} {Num(max)}:\n    problems.append(({Str(property)}, {Str(label + " must be " + (rule.MaxStrict ? "less than " : "at most ") + Num(max) + ".")}))");
         }
-        // a nullable text column is only checked when it has a value
-        foreach (string b in body)
-            checks.Add(f.Annotation == "str" && f.IsNullable ? $"if {value} is not None:\n" + string.Join("\n", b.Split('\n').Select(l => "    " + l)) : b);
+        // a nullable text column is only checked when it has a value, and on an update only when the value is not the stored one
+        var fieldChecks = body.Select(b => f.Annotation == "str" && f.IsNullable ? $"if {value} is not None:\n" + string.Join("\n", b.Split('\n').Select(l => "    " + l)) : b).ToList();
+        if (fieldChecks.Count > 0)
+            checks.Add($"if stored is None or {value} != stored.{f.Name}:\n" + string.Join("\n", fieldChecks.SelectMany(c => c.Split('\n')).Select(l => "    " + l)));
     }
 
     Line($"@@@FILE app/validation/{t.Module}.py@@@");
+    if (anyFuture)
+        Line("from datetime import date");
     Line($"from app.schemas.{t.Module} import {t.Schema}");
     var support = new List<string> { "ApiValidationError" };
     support.AddRange(shapes.OrderBy(s => s, StringComparer.Ordinal));
     Line($"from app.support import {string.Join(", ", support)}");
     Line();
     Line();
-    Line($"def validate(row: {t.Schema}) -> None:");
-    Line("    \"\"\"Checks the row against what the schema says: required, length, allowed values, shape and range. The error carries every problem, by property name.\"\"\"");
+    Line($"def validate(row: {t.Schema}, stored: object | None = None) -> None:");
+    Line("    \"\"\"Checks the row against what the schema says: required, length, allowed values, shape and range. The error carries every problem, by property name. On an update `stored` is the row as it is now: a value that has not changed is not checked again, so a stored value that breaks a rule does not stop an edit of another column.\"\"\"");
     if (checks.Count == 0)
     {
         Line("    return");

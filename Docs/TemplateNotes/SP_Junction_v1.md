@@ -39,3 +39,5 @@ TableModel.IsJunctionTable (RequiresJunctionTable=true), and the target table's 
 ```
 
 - **Access mode (EF Core instead of routines):** with `AccessMode=Ef` (always for SQLite) this template writes LINQ over the context instead of the routine; the plan leaves it out. See CS_SearchQuery_v1.md and Docs/Reference.md.
+
+Value rules: none apply. A junction table's Link procedure writes only the two keys and the audit stamps the routine sets itself; there is no caller-supplied number or date for `NonNegativeColumns` or `NotFutureDateColumns` to guard.

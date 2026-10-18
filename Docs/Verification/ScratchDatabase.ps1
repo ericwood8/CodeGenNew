@@ -45,7 +45,8 @@ switch ($Provider) {
     }
     'PostgreSql' {
         if (-not $env:PGPASSWORD) { throw 'Set PGPASSWORD in your shell first (it is never a parameter).' }
-        $psql = { param($db, $sql) & $PsqlPath -h $Server -U $User -d $db -v ON_ERROR_STOP=1 -q -c $sql }
+        # the statement goes in on standard input: the quotes around a mixed-case name survive there in Windows PowerShell and PowerShell 7 alike
+        $psql = { param($db, $sql) $sql | & $PsqlPath -h $Server -U $User -d $db -v ON_ERROR_STOP=1 -q -f - }
         & $psql 'postgres' "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN ('$scratch', '$Source') AND pid <> pg_backend_pid()" | Out-Null
         & $psql 'postgres' "DROP DATABASE IF EXISTS `"$scratch`""
         if (-not $Drop) { & $psql 'postgres' "CREATE DATABASE `"$scratch`" TEMPLATE `"$Source`"" }

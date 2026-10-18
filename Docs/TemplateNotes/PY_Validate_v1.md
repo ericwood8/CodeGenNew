@@ -1,3 +1,5 @@
 # PY_Validate_v1
 
 `app/validation/<table>.py`: `validate(row)`, the rules the schema states (required text, the longest length, the values a CHECK list or an enum allows, an email, phone or URL shape by the column name, the range of a number), written for `ApiValidation=true`. The rules are `ColumnRules`, the list `CS_Validator` and `RS_Validate` follow. An error carries every problem, by property name, as the ASP.NET validation-problem form. No package. See `PY_Routes_v1.md`.
+- **Shapes and dates:** `looks_like_postal_code` and `looks_like_ssn` (in `app/support.py`) join the email, phone and URL checks; a column in `NotFutureDateColumns` is refused when its day is after `date.today()`. Refresh the essentials (`--replace`) to get the new helpers.
+- **Update only judges what changed:** `validate(row, stored)` skips the checks of a field whose value equals the stored row's. The update route reads the row first (404 when there is none), then validates, so a stored value that breaks a rule does not stop an edit of another column; a changed value is checked as before and the create route passes no stored row.

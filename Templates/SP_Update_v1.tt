@@ -122,10 +122,12 @@ AS
 <#
     }
     // A value the project says the table must never hold (NonNegativeColumns, NotFutureDateColumns) and the database does not state; every parameter here is text.
+    // A value equal to the stored one is left alone, so a stored value that breaks the rule does not stop an edit that does not touch it.
+    string storedRow = $"FROM [{Model.SchemaName}].[{Model.TableName}] WHERE " + string.Join(" AND ", Model.PrimaryKeyColumns.Select(pk => $"[{pk.Name}] = {pk.ParameterName}"));
     foreach (var guard in ValueGuards.Of(Model, Project).Where(g => updatableColumns.Contains(g.Column)))
     {
 #>
-	IF (<#= guard.Condition(guard.Column.ParameterName, SqlDialect.SqlServer, textParameter: true) #>)
+	IF (<#= guard.Condition(guard.Column.ParameterName, SqlDialect.SqlServer, textParameter: true, storedRow: storedRow) #>)
 	BEGIN
 		RAISERROR('<#= guard.Message(name => "[" + name + "]").Replace("'", "''") #>', <#= SqlErrorCodes.RuleSeverity #>, <#= SqlErrorCodes.RuleState #>);
 		RETURN 0;

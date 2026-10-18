@@ -3,7 +3,7 @@ using System.Data;
 namespace CodeGenNew.Core;
 
 /// <summary> A text column whose name says what it holds, so its value can be checked for that shape. </summary>
-public enum TextShape { None, Email, Phone, Url }
+public enum TextShape { None, Email, Phone, Url, Postal, Ssn }
 
 /// <summary> What the schema says a column's value must be: the one fact list behind the validators of every language (FluentValidation, zod, Angular). </summary>
 public sealed record ColumnRule
@@ -21,6 +21,9 @@ public sealed record ColumnRule
     public bool MaxStrict { get; init; }
 
     public bool HasRange => Min is not null || Max is not null;
+
+    /// <summary> A date that can never be later than today (the project's <c>NotFutureDateColumns</c>). </summary>
+    public bool NotFuture { get; init; }
 }
 
 public static class ColumnRules
@@ -46,8 +49,12 @@ public static class ColumnRules
                     shape = TextShape.Email;
                 else if (Names(column, "Phone", "Fax"))
                     shape = TextShape.Phone;
-                else if (Names(column, "Url", "Website"))
+                else if (Names(column, "Url", "Website", "Link"))
                     shape = TextShape.Url;
+                else if (Names(column, "Zip", "PostalCode", "PostCode"))
+                    shape = TextShape.Postal;
+                else if (Names(column, "Ssn", "SocialSecurity"))
+                    shape = TextShape.Ssn;
             }
 
             rule = new ColumnRule
@@ -76,7 +83,11 @@ public static class ColumnRules
         if ((column.IsIntegerColumn || column.IsNumericColumn || column.IsMoneyColumn) && project.IsNonNegative(table ?? "", column.Name) && !(rule?.Min >= 0))
             rule = (rule ?? new ColumnRule()) with { Min = 0, MinStrict = false };
 
-        bool says = rule is not null && (rule.Required || rule.MaxLength > 0 || rule.Choices is not null || rule.Shape != TextShape.None || rule.HasRange);
+        // a date column the project says is never in the future (no schema can say so)
+        if (TemplateHelpers.IsDate(column) && project.IsNotFuture(table ?? "", column.Name))
+            rule = (rule ?? new ColumnRule()) with { NotFuture = true };
+
+        bool says = rule is not null && (rule.NotFuture || rule.Required || rule.MaxLength > 0 || rule.Choices is not null || rule.Shape != TextShape.None || rule.HasRange);
         return says ? rule : null;
     }
 
@@ -93,9 +104,44 @@ public static class ColumnRules
     /// <summary> The phone number text, as an HTML <c>pattern</c> (also valid with the unicode-sets flag browsers use) and the <c>title</c> shown with it; the validators of every language use the same characters. </summary>
     public const string PhonePattern = @"[0-9+\(\)\-.\s]{3,25}";
 
+    /// <summary> A postal code: 3 to 10 letters, digits, spaces or hyphens (a US ZIP or ZIP+4, a Canadian or British code), spaces around it ignored. </summary>
+    public const string PostalPattern = @"\s*[A-Za-z0-9][A-Za-z0-9 \-]{1,8}[A-Za-z0-9]\s*";
+
+    /// <summary> A US social security number: nine digits, or 3-2-4 with hyphens. </summary>
+    public const string SsnPattern = @"[0-9]{9}|[0-9]{3}-[0-9]{2}-[0-9]{4}";
+
+    /// <summary> The regular expression a shape is checked with (the same in every language that has regular expressions), or null for a shape that has none (email and URL use each language's own check). </summary>
+    public static string? PatternOf(TextShape shape) => shape switch
+    {
+        TextShape.Phone => PhonePattern,
+        TextShape.Postal => PostalPattern,
+        TextShape.Ssn => SsnPattern,
+        _ => null
+    };
+
+    /// <summary> A C# condition that is true when <paramref name="value"/> (a non-empty string) has the shape, for code that checks a form field itself (the WinUI3 view models). </summary>
+    public static string CSharpTest(TextShape shape, string value) => shape switch
+    {
+        TextShape.Email => $"new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid({value})",
+        TextShape.Url => $"Uri.TryCreate({value}, UriKind.Absolute, out var {value}Uri) && ({value}Uri.Scheme == Uri.UriSchemeHttp || {value}Uri.Scheme == Uri.UriSchemeHttps)",
+        _ => $"System.Text.RegularExpressions.Regex.IsMatch({value}, @\"^(?:{PatternOf(shape)})$\")"
+    };
+
+    /// <summary> What a value of the shape is called in a message: "an email address", "a postal code". </summary>
+    public static string NounOf(TextShape shape) => shape switch
+    {
+        TextShape.Email => "an email address",
+        TextShape.Phone => "a phone number",
+        TextShape.Postal => "a postal code",
+        TextShape.Ssn => "a social security number",
+        _ => "a web address"
+    };
+
     /// <summary> The HTML attributes a phone number box adds to its type (<c>pattern="..." title="..."</c>, without a leading space), or empty for any other column. </summary>
     public static string InputPattern(this ColumnModel column, ProjectSettings project, string table) =>
-        column.RuleOf(project, table)?.Shape == TextShape.Phone ? $"pattern=\"{PhonePattern}\" title=\"A phone number: digits, spaces and + ( ) - .\"" : "";
+        column.RuleOf(project, table)?.Shape is { } shape && PatternOf(shape) is { } pattern
+            ? $"pattern=\"{pattern}\" title=\"{(shape == TextShape.Phone ? "A phone number: digits, spaces and + ( ) - ." : shape == TextShape.Postal ? "A postal code: 3 to 10 letters, digits, spaces or hyphens" : "A social security number: 123-45-6789 or 123456789")}\""
+            : "";
 
     private static bool Names(ColumnModel column, params string[] words) => words.Any(word => column.Name.ContainsIgnoreCase(word));
 }

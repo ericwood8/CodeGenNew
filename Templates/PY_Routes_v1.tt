@@ -356,8 +356,6 @@
     Line($"def update(id: {keyType}, body: {t.Schema}, session: Session = Depends(get_session){userParameter}):");
     Line($"    if body.{key} != id:");
     Line($"        raise ApiError({HttpStatus.BadRequest}, \"The id in the URL and the id in the body differ.\")");
-    if (validate)
-        Line("    validate(body)");
     Line($"    row = session.get({t.Class}, id)");
     Line("    if row is None:");
     Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
@@ -371,6 +369,8 @@
     }
     if (userPlan is not null)
         Line("    guard_user_row(session, user, body, row)");
+    if (validate)
+        Line("    validate(body, row)  # a value the update leaves as it is stays unjudged");
     Line("    for name, value in body.changes().items():");
     Line("        setattr(row, name, value)");
     foreach (var f in t.StampedOnChange)

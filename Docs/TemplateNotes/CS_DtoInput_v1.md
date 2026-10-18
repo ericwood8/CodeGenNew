@@ -29,3 +29,5 @@ The request body of a table's create and update endpoints when the project sets 
 - A time sheet "detail" answer with the parent's names (the real server's DTO); the output holds the table's own columns.
 - Stamping the audit columns.
 - Name and active tables (`NameActiveCrudApi`).
+
+With `ApiAnnotations=true` each property carries the attributes `ValidationAttributes.Of` gives it (`[Required]`, `[Display]`, `[StringLength]`, the email / phone / URL / pattern attribute, `[Range]`), the same as the entity's metadata class from CS_Validation.

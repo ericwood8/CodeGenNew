@@ -50,15 +50,10 @@
         var rules = new List<string>();
         var values = new List<string>();   // the allowed-value arrays, written above the constructor
 
-        // a date the project says is never in the future (NotFutureDateColumns) has no schema rule of its own, so it is added here
-        var notFuture = ValueGuards.Of(Model, Project).Where(g => g.Kind == ValueGuardKind.NotFuture).Select(g => g.Column).ToHashSet();
-
         foreach (var c in Model.Columns.OrderBy(c => c.OrdinalPosition))
         {
-            var rule = c.RuleOf(Project, Model.TableName);
-            if (rule is null && !notFuture.Contains(c))
+            if (c.RuleOf(Project, Model.TableName) is not { } rule)
                 continue;
-            rule ??= new ColumnRule();
 
             var parts = new List<string>();
             string label = Words(c.Name);
@@ -80,6 +75,10 @@
             {
                 parts.Add(".Matches(@\"^[0-9+()\\-.\\s]{3,25}$\").WithMessage(" + CSharpText.Quote(label + " is not a phone number.") + ")");
             }
+            else if (rule.Shape is TextShape.Postal or TextShape.Ssn)
+            {
+                parts.Add(".Matches(@\"^(?:" + ColumnRules.PatternOf(rule.Shape) + ")$\").WithMessage(" + CSharpText.Quote(label + " is not " + ColumnRules.NounOf(rule.Shape) + ".") + ")");
+            }
             else if (rule.Shape == TextShape.Url)
             {
                 parts.Add(".Must(value => value is null || Uri.IsWellFormedUriString(value, UriKind.Absolute)).WithMessage(" + CSharpText.Quote(label + " is not a URL.") + ")");
@@ -99,7 +98,7 @@
                     parts.Add($".{(rule.MaxStrict ? "LessThan" : "LessThanOrEqualTo")}({Literal(c, max)})");
             }
 
-            if (notFuture.Contains(c))
+            if (rule.NotFuture)
                 parts.Add($".Must(value => {(c.IsNullable ? "value is null || value.Value.Date" : "value.Date")} <= DateTime.Today).WithMessage({CSharpText.Quote(label + " must not be later than today.")})");
 
             rules.Add($"        RuleFor(x => x.{Id(c)}){string.Concat(parts)};");

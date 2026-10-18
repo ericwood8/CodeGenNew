@@ -24,7 +24,7 @@ public static class ArgumentParser
         for (int i = 0; i < args.Length; i++)
         {
             string arg = args[i];
-            if (i == 0 && arg is "generate" or "essentials")
+            if (i == 0 && arg is "generate" or "essentials" or "check-data")
             {
                 command = arg;
                 continue;
@@ -162,6 +162,10 @@ public static class ArgumentParser
                        [--dry-run] [--diff] [--delete-stale] [--force | --write-beside] [--build] [--test]
               A file you edited since the last run, or one no earlier run recorded, is kept and reported (Edited / Unknown).
               --force overwrites it; --write-beside keeps it and writes the new text next to it as <file>.generated.
+            Stored values the generated validators would refuse (a database is read, nothing is written):
+              codegen check-data -S <server> -d <database> (-E | -U <user> [-P <password>]) --project <name> [--table Customer,Item]
+                  Reads the stored rows (read-only, small tables) and lists the values the generated validators would refuse: a phone number with letters, an email without an @, a
+                  postal code of the wrong shape, a value past its limit or a date in the future. Fix them, or list the column in PlainTextColumns. Exit code 1 when any is found.
             The files no table drives (App, MainWindow, styles, Program.cs ...), without a database:
               codegen essentials --stack winui3|react|angular|api [--groups app,mainwindow] --project <name> -o <dir> [--replace] [--dry-run]
               codegen essentials --list

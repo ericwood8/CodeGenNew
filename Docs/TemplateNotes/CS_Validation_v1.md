@@ -61,3 +61,9 @@ NOT require a single-column key - a validation-attribute carrier has no [Key]/Fl
 a composite-key table's columns can still be validated even though CS_Entity.tt itself would refuse
 to generate an entity for it.
 ```
+
+With `ApiAnnotations=true` the class carries no `[MetadataType]` partial stub: the API (`Annotations.cs`, written by `API_EssentialProgram`) finds `<Entity>Metadata` by name and attaches it with `TypeDescriptor.AddProvider`, so the entity need not be partial, and the create and update handlers run `Validator.TryValidateObject` after the audit dates are stamped (400 with the messages). A postal code or social security number gets `[RegularExpression]`.
+
+The attribute list of a column is written by `ValidationAttributes.Of` (Core), shared with `CS_DtoInput` and `BLZ_Model`. A decimal with a minimum and no maximum (a column in `NonNegativeColumns`) gets `[Range(0, double.MaxValue)]`; before, the template stopped on it.
+
+On an update `Annotations.Check(row, stored)` drops the problems of a property whose value equals the stored row's (`StoredAsync` reads it untracked), so a stored value that breaks an attribute does not stop an edit of another column. The generated forms (React, Angular, Blazor, WinUI3) still check every field, and the browser's own `type="email"` check stops the save before a request is sent.

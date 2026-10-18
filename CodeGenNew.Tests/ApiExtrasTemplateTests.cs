@@ -323,6 +323,6 @@ public class ApiExtrasTemplateTests
         Expect.Contains(with, "SwaggerUIBundle({ url: '/openapi.yaml', dom_id: '#swagger' });");
         Expect.Contains(with, "@@@FILE ValidationFilter.cs@@@");
         Expect.Contains(with, "public class ValidationFilter<T> : IEndpointFilter where T : class");
-        Expect.Contains(with, "Results.ValidationProblem(result.ToDictionary())");
+        Expect.Contains(with, "Results.ValidationProblem(problems)");
     }
 }

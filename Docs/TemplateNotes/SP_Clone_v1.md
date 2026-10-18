@@ -51,3 +51,5 @@ Requires a primary key (that is how the source row is named); tables only.
 **Applying to SQL Server:** use `sqlcmd -I` (quoted identifiers on). Without it the procedure is stored with `QUOTED_IDENTIFIER OFF`, and any write to a table that has a filtered index or an indexed computed column then fails with error 1934.
 
 Now: a stamp column of type datetime2 is set with SYSDATETIME() and a datetimeoffset with SYSDATETIMEOFFSET() (ColumnModel.SqlServerNow), so it keeps its own precision; any other date uses GETDATE().
+
+Value rules (NonNegativeColumns, NotFutureDateColumns): a column the clone copies as it is gets a check on the source row before the copy (`IF EXISTS (... AND <test on src.col>)` then `THROW` / `RAISE EXCEPTION` / `SIGNAL`), so a stored row that breaks a rule cannot be cloned. Columns the clone sets by rule or takes an override for are not checked.

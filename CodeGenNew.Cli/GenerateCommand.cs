@@ -31,6 +31,9 @@ public static class GenerateCommand
         if (options.ProjectOverrides.Count > 0)
             project = project.WithOverrides(options.ProjectOverrides);
 
+        if (options.Command == "check-data")
+            return await CheckDataAsync(options, project, specialLogicColumnsConfigPath);
+
         var stacks = ResolveStacks(options, project, out string? stackError);
         if (stackError is not null)
         {
@@ -41,6 +44,59 @@ public static class GenerateCommand
         return options.Command == "essentials"
             ? await EssentialsAsync(options, project, stacks, templatesDirectory, outputDirectory)
             : await GenerateAsync(options, project, stacks, templatesDirectory, specialLogicColumnsConfigPath, outputDirectory);
+    }
+
+    private static ISchemaProvider CreateProvider(CliOptions options, ProjectSettings project, string specialLogicColumnsConfigPath)
+    {
+        string? password = options.Password;
+        if (!options.Trusted && password is null && options.Provider != DatabaseProvider.Sqlite)
+            password = ConsolePasswordReader.Read($"Password for {options.UserName}@{options.Server}: ");
+        var request = new ConnectionRequest
+        {
+            Provider = options.Provider, ServerName = options.Server, DatabaseName = options.Database,
+            AuthMode = options.Trusted && options.Provider == DatabaseProvider.SqlServer ? AuthMode.WindowsAuth : AuthMode.SqlLogin,
+            UserName = options.UserName, Password = password
+        };
+        return SchemaProviderFactory.Create(request, specialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns);
+    }
+
+    /// <summary> <c>codegen check-data</c>: reads the rows of each table (a read-only SELECT, small tables only) and lists the stored values the generated validators would refuse, so a person can fix them or
+    /// list the column in <c>PlainTextColumns</c> before a form blocks an unrelated edit. Exit code 1 when anything was found. </summary>
+    private static async Task<int> CheckDataAsync(CliOptions options, ProjectSettings project, string specialLogicColumnsConfigPath)
+    {
+        if (ArgumentParser.MissingConnection(options) is { } missing)
+        {
+            Console.Error.WriteLine($"Error: {missing}");
+            return ExitCodes.Failure;
+        }
+
+        var provider = CreateProvider(options, project, specialLogicColumnsConfigPath);
+        var wanted = string.IsNullOrWhiteSpace(options.Table) ? null : options.Table.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var tables = (await provider.ListTablesAsync()).Where(t => t.SchemaName.EqualsIgnoreCase(options.Schema) && (wanted is null || wanted.Contains(t.TableName, StringComparer.OrdinalIgnoreCase))).ToList();
+
+        int found = 0, checkedTables = 0;
+        foreach (var summary in tables)
+        {
+            TableModel model;
+            try { model = await provider.BuildTableModelAsync(summary.SchemaName, summary.TableName, includeRowData: true); }
+            catch (Exception ex) when (ex.Message.Contains("more than", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"Skipped    {summary.TableName}: too many rows to read ({ex.Message})");
+                continue;
+            }
+
+            checkedTables++;
+            foreach (var finding in DataCheck.Of(model, project))
+            {
+                found++;
+                Console.WriteLine($"{finding.Table}.{finding.Column}: {finding.Count} of {finding.Total} value(s) must be {finding.Rule}, for example {string.Join(", ", finding.Examples.Select(e => "'" + e + "'"))}");
+            }
+        }
+
+        Console.WriteLine(found == 0
+            ? $"Checked {checkedTables} table(s): every stored value passes the rules."
+            : $"Checked {checkedTables} table(s): {found} column(s) hold values a form would refuse. Fix them, or list the column in PlainTextColumns (a text shape) or remove the rule.");
+        return found == 0 ? ExitCodes.Success : ExitCodes.Failure;
     }
 
     private static List<string> ResolveStacks(CliOptions options, ProjectSettings project, out string? error)
@@ -117,16 +173,7 @@ public static class GenerateCommand
             return ExitCodes.Failure;
         }
 
-        string? password = options.Password;
-        if (!options.Trusted && password is null && options.Provider != DatabaseProvider.Sqlite)
-            password = ConsolePasswordReader.Read($"Password for {options.UserName}@{options.Server}: ");
-        var request = new ConnectionRequest
-        {
-            Provider = options.Provider, ServerName = options.Server, DatabaseName = options.Database,
-            AuthMode = options.Trusted && options.Provider == DatabaseProvider.SqlServer ? AuthMode.WindowsAuth : AuthMode.SqlLogin,
-            UserName = options.UserName, Password = password
-        };
-        var provider = SchemaProviderFactory.Create(request, specialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns);
+        var provider = CreateProvider(options, project, specialLogicColumnsConfigPath);
 
         Console.WriteLine($"Generating {string.Join(" + ", stacks)} for {project.ProjectName ?? options.Database}{(options.DryRun ? " (dry run)" : "")} into {outputDirectory}");
         var report = await ProjectGenerator.RunAsync(provider, templatesDirectory, new GenerateOptions
