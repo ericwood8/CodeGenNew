@@ -2,28 +2,6 @@ using CodeGenNew.Core;
 
 namespace CodeGenNew.TemplateEngine;
 
-/// <summary> What a template's RequiredPrimaryKeyShape (below) needs a table's TableModel.PrimaryKeyShape /
-/// TableSummary.PrimaryKeyShape to be -- three tiers, matching the three shapes actually needed across the
-/// shipped templates (Docs/Reference.md section 3). </summary>
-public enum PrimaryKeyRequirement
-{
-    /// <summary> Any single primary key column (int, uniqueidentifier, or a natural text/other key) -- just
-    /// not composite. TS_Model.tt: its interface only needs ONE property to be "the key". </summary>
-    SingleColumn,
-
-    /// <summary> A single int or uniqueidentifier column. TS_Service.tt/TS_Component.tt/
-    /// TS_DetailMasterComponent.tt: their routes take the id as {id:int} or {id:guid}. </summary>
-    SingleIntOrGuid,
-
-    /// <summary> A single int, uniqueidentifier or text column: every key <see cref="KeyType"/> describes. A template that reads its key's C#, TypeScript or route form from
-    /// <see cref="KeyType"/> instead of testing for an int asks for this. </summary>
-    SingleIntGuidOrText,
-
-    /// <summary> A single int column only. API_Crud.tt and the WinUI3 CRUD-screen family: their repository
-    /// calls (GenericRepo&lt;T&gt;'s GetById/UpdateAsync/DeleteAsync) all take a plain int. </summary>
-    SingleInt
-}
-
 /// <summary> Parses a &lt;TemplateName&gt;.tt.config file (Docs/Reference.md section 3). Both restrictions
 /// default to true when the file is missing entirely (conservative default for a hand-added .tt file). </summary>
 public class TemplateConfig
@@ -45,12 +23,11 @@ public class TemplateConfig
     /// TableSummary.IsAuditTable / TableModel.IsAuditTable. </summary>
     public bool RequiresAuditTable { get; init; }
 
-    /// <summary> Optional, unset by default (no extra restriction beyond RequiresPrimaryKey). A template
-    /// whose routes or repository calls need a specific key shape (not just "has a primary key") sets this
-    /// so the menu/CLI refuse a table shaped wrong up front, instead of only finding out via the template's
-    /// own Error() call once generation is attempted. Checked against TableSummary.PrimaryKeyShape /
-    /// TableModel.PrimaryKeyShape. </summary>
-    public PrimaryKeyRequirement? RequiredPrimaryKeyShape { get; init; }
+    /// <summary> Defaults to false (a composite key is accepted). A template that reads its key's C#, TypeScript, Python or route form from <see cref="KeyType"/> (the screens, the clients, the CRUD API) sets
+    /// this: the table must have ONE key column that is an int, a uniqueidentifier or text, the keys <see cref="KeyType"/> describes. The menu and the CLI then refuse a table shaped otherwise up front, instead
+    /// of only finding out through the template's own Error() call. Checked against TableSummary.PrimaryKeyShape / TableModel.PrimaryKeyShape. Junction and child-grid templates leave it off:
+    /// they go by their association columns, and a junction table's key may be composite. </summary>
+    public bool RequiresSingleKey { get; init; }
 
     /// <summary> Defaults to false: only a template whose generated code assumes a plain GenericRepo-shaped
     /// backend (a bare getAll()/getById()/create()/update()/delete(), or the WinUI3 equivalent calling
@@ -134,17 +111,9 @@ public class TemplateConfig
     /// <summary> Optional, with <see cref="Base"/>: the value of the base template's <c>Variant</c> parameter (for example <c>OData</c>). Null for an ordinary template. </summary>
     public string? Variant { get; init; }
 
-    /// <summary> True when the given shape satisfies this config's RequiredPrimaryKeyShape (always true when
-    /// RequiredPrimaryKeyShape is unset). </summary>
-    public bool PrimaryKeyShapeSatisfies(PrimaryKeyShape shape) => RequiredPrimaryKeyShape switch
-    {
-        null => true,
-        PrimaryKeyRequirement.SingleColumn => shape is PrimaryKeyShape.SingleInt or PrimaryKeyShape.SingleUniqueIdentifier or PrimaryKeyShape.SingleText or PrimaryKeyShape.SingleOther,
-        PrimaryKeyRequirement.SingleIntOrGuid => shape is PrimaryKeyShape.SingleInt or PrimaryKeyShape.SingleUniqueIdentifier,
-        PrimaryKeyRequirement.SingleIntGuidOrText => shape is PrimaryKeyShape.SingleInt or PrimaryKeyShape.SingleUniqueIdentifier or PrimaryKeyShape.SingleText,
-        PrimaryKeyRequirement.SingleInt => shape == PrimaryKeyShape.SingleInt,
-        _ => true
-    };
+    /// <summary> True when the given shape satisfies this config's <see cref="RequiresSingleKey"/> (always true when it is off). </summary>
+    public bool PrimaryKeyShapeSatisfies(PrimaryKeyShape shape) =>
+        !RequiresSingleKey || shape is PrimaryKeyShape.SingleInt or PrimaryKeyShape.SingleUniqueIdentifier or PrimaryKeyShape.SingleText;
 
     /// <summary> Explains why this template does not apply to <paramref name="model"/> (checking the same
     /// restrictions as AppliesTo, but against a full TableModel and with the reason spelled out for a human
@@ -168,7 +137,7 @@ public class TemplateConfig
         if (RequiresAuditTable && !model.IsAuditTable)
             return "requires a table with audit columns (one that records its creation, like CreateDate or CreateUser, and one that records a change, like ModifiedDate or ModifiedBy), but the table has none.";
         if (!PrimaryKeyShapeSatisfies(model.PrimaryKeyShape))
-            return $"requires a {RequiredPrimaryKeyShape} primary key, but the table has a {model.PrimaryKeyShape} one.";
+            return $"requires a single int, uniqueidentifier or text primary key column, but the table has a {model.PrimaryKeyShape} one.";
         if (RequiresNotNameActiveTable && model.IsNameActiveTable)
             return "assumes a plain GenericRepo-shaped backend, but the table has a Name and an IsActive column, " +
                    "so its repository is a NameActiveRepo and its real API is always hand-maintained.";
@@ -185,7 +154,7 @@ public class TemplateConfig
         bool requiresJunctionTable = false;
         bool requiresChildTables = false;
         bool requiresAuditTable = false;
-        PrimaryKeyRequirement? requiredPrimaryKeyShape = null;
+        bool requiresSingleKey = false;
         bool requiresNotNameActiveTable = false;
         bool needsRowData = false;
         bool sqlServerOnly = false;
@@ -229,8 +198,8 @@ public class TemplateConfig
                 requiresChildTables = boolValue;
             else if (key.EqualsIgnoreCase("RequiresAuditTable"))
                 requiresAuditTable = boolValue;
-            else if (key.EqualsIgnoreCase("RequiredPrimaryKeyShape"))
-                requiredPrimaryKeyShape = Enum.TryParse<PrimaryKeyRequirement>(value, ignoreCase: true, out var parsed) ? parsed : null;
+            else if (key.EqualsIgnoreCase("RequiresSingleKey"))
+                requiresSingleKey = boolValue;
             else if (key.EqualsIgnoreCase("RequiresNotNameActiveTable"))
                 requiresNotNameActiveTable = boolValue;
             else if (key.EqualsIgnoreCase("NeedsRowData"))
@@ -282,7 +251,7 @@ public class TemplateConfig
             RequiresJunctionTable = requiresJunctionTable,
             RequiresChildTables = requiresChildTables,
             RequiresAuditTable = requiresAuditTable,
-            RequiredPrimaryKeyShape = requiredPrimaryKeyShape,
+            RequiresSingleKey = requiresSingleKey,
             RequiresNotNameActiveTable = requiresNotNameActiveTable,
             NeedsRowData = needsRowData,
             SqlServerOnly = sqlServerOnly,

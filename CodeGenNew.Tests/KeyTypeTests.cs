@@ -512,18 +512,14 @@ public class KeyTypeTests
     }
 
     [TestMethod]
-    public void The_text_requirement_accepts_a_text_key_and_the_older_tiers_do_not()
+    public void The_single_key_requirement_accepts_a_text_key()
     {
-        var all = new TemplateConfig { RequiredPrimaryKeyShape = PrimaryKeyRequirement.SingleIntGuidOrText };
+        var all = new TemplateConfig { RequiresSingleKey = true };
         Assert.IsTrue(all.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleText));
         Assert.IsTrue(all.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleInt));
         Assert.IsTrue(all.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleUniqueIdentifier));
         Assert.IsFalse(all.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleOther));
         Assert.IsFalse(all.PrimaryKeyShapeSatisfies(PrimaryKeyShape.Composite));
-
-        Assert.IsFalse(new TemplateConfig { RequiredPrimaryKeyShape = PrimaryKeyRequirement.SingleIntOrGuid }.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleText));
-        Assert.IsFalse(new TemplateConfig { RequiredPrimaryKeyShape = PrimaryKeyRequirement.SingleInt }.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleText));
-        Assert.IsTrue(new TemplateConfig { RequiredPrimaryKeyShape = PrimaryKeyRequirement.SingleColumn }.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleText));
     }
 
     // ------------------------------------------------------------------ React

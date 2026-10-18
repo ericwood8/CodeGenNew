@@ -82,57 +82,39 @@ public class TemplateConfigTests
     }
 
     [TestMethod]
-    public void RequiredPrimaryKeyShape_is_read_and_unknown_values_are_treated_as_unset()
+    public void RequiresSingleKey_is_read_and_is_off_unless_set()
     {
         using var temp = new TempFolder();
 
-        Assert.AreEqual(PrimaryKeyRequirement.SingleInt, TemplateConfig.Load(temp.File("a.tt.config", "RequiredPrimaryKeyShape=SingleInt\n")).RequiredPrimaryKeyShape);
-        Assert.AreEqual(PrimaryKeyRequirement.SingleIntOrGuid, TemplateConfig.Load(temp.File("b.tt.config", "RequiredPrimaryKeyShape=singleintorguid\n")).RequiredPrimaryKeyShape);
-        Assert.IsNull(TemplateConfig.Load(temp.File("c.tt.config", "RequiredPrimaryKeyShape=NotARealShape\n")).RequiredPrimaryKeyShape);
-        Assert.IsNull(TemplateConfig.Load(temp.File("d.tt.config", "TableOnly=true\n")).RequiredPrimaryKeyShape);
+        Assert.IsTrue(TemplateConfig.Load(temp.File("a.tt.config", "RequiresSingleKey=true\n")).RequiresSingleKey);
+        Assert.IsFalse(TemplateConfig.Load(temp.File("b.tt.config", "RequiresSingleKey=false\n")).RequiresSingleKey);
+        Assert.IsFalse(TemplateConfig.Load(temp.File("c.tt.config", "TableOnly=true\n")).RequiresSingleKey);
     }
 
     [TestMethod]
-    public void PrimaryKeyShapeSatisfies_matches_each_tier()
+    public void PrimaryKeyShapeSatisfies_accepts_an_int_guid_or_text_key_only_when_a_single_key_is_required()
     {
-        var singleColumn = new TemplateConfig { RequiredPrimaryKeyShape = PrimaryKeyRequirement.SingleColumn };
-        var singleIntOrGuid = new TemplateConfig { RequiredPrimaryKeyShape = PrimaryKeyRequirement.SingleIntOrGuid };
-        var singleInt = new TemplateConfig { RequiredPrimaryKeyShape = PrimaryKeyRequirement.SingleInt };
+        var single = new TemplateConfig { RequiresSingleKey = true };
         var unrestricted = new TemplateConfig();
 
-        foreach (var shape in new[] { PrimaryKeyShape.SingleInt, PrimaryKeyShape.SingleUniqueIdentifier, PrimaryKeyShape.SingleOther })
-            Assert.IsTrue(singleColumn.PrimaryKeyShapeSatisfies(shape), shape.ToString());
-        Assert.IsFalse(singleColumn.PrimaryKeyShapeSatisfies(PrimaryKeyShape.Composite));
-        Assert.IsFalse(singleColumn.PrimaryKeyShapeSatisfies(PrimaryKeyShape.None));
-
-        Assert.IsTrue(singleIntOrGuid.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleInt));
-        Assert.IsTrue(singleIntOrGuid.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleUniqueIdentifier));
-        Assert.IsFalse(singleIntOrGuid.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleOther));
-        Assert.IsFalse(singleIntOrGuid.PrimaryKeyShapeSatisfies(PrimaryKeyShape.Composite));
-
-        Assert.IsTrue(singleInt.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleInt));
-        Assert.IsFalse(singleInt.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleUniqueIdentifier));
-        Assert.IsFalse(singleInt.PrimaryKeyShapeSatisfies(PrimaryKeyShape.SingleOther));
+        foreach (var shape in new[] { PrimaryKeyShape.SingleInt, PrimaryKeyShape.SingleUniqueIdentifier, PrimaryKeyShape.SingleText })
+            Assert.IsTrue(single.PrimaryKeyShapeSatisfies(shape), shape.ToString());
+        foreach (var shape in new[] { PrimaryKeyShape.SingleOther, PrimaryKeyShape.Composite, PrimaryKeyShape.None })
+            Assert.IsFalse(single.PrimaryKeyShapeSatisfies(shape), shape.ToString());
 
         foreach (var shape in Enum.GetValues<PrimaryKeyShape>())
             Assert.IsTrue(unrestricted.PrimaryKeyShapeSatisfies(shape), shape.ToString());
     }
 
     [TestMethod]
-    public void The_shipped_configs_restrict_the_key_shape_they_actually_need()
+    public void The_shipped_configs_that_read_the_key_form_from_KeyType_require_a_single_key()
     {
-        Assert.AreEqual(PrimaryKeyRequirement.SingleColumn, TemplateConfig.Load(Repo.Template("TS_Model_v1.tt.config")).RequiredPrimaryKeyShape);
-        Assert.AreEqual(PrimaryKeyRequirement.SingleIntGuidOrText, TemplateConfig.Load(Repo.Template("TS_Service_v1.tt.config")).RequiredPrimaryKeyShape);
-        Assert.AreEqual(PrimaryKeyRequirement.SingleIntGuidOrText, TemplateConfig.Load(Repo.Template("TS_Component_v1.tt.config")).RequiredPrimaryKeyShape);
-        Assert.AreEqual(PrimaryKeyRequirement.SingleIntGuidOrText, TemplateConfig.Load(Repo.Template("TS_DetailMasterComponent_v1.tt.config")).RequiredPrimaryKeyShape);
-        Assert.AreEqual(PrimaryKeyRequirement.SingleIntGuidOrText, TemplateConfig.Load(Repo.Template("API_Crud_v1.tt.config")).RequiredPrimaryKeyShape);
-        Assert.AreEqual(PrimaryKeyRequirement.SingleIntGuidOrText, TemplateConfig.Load(Repo.Template("WinUI3_MasterScreen_v1.tt.config")).RequiredPrimaryKeyShape);
-        Assert.AreEqual(PrimaryKeyRequirement.SingleIntGuidOrText, TemplateConfig.Load(Repo.Template("WinUI3_DetailScreen_v1.tt.config")).RequiredPrimaryKeyShape);
-        Assert.AreEqual(PrimaryKeyRequirement.SingleIntGuidOrText, TemplateConfig.Load(Repo.Template("WinUI3_DetailMasterScreen_v1.tt.config")).RequiredPrimaryKeyShape);
+        foreach (string name in new[] { "TS_Model", "TS_Service", "TS_Component", "TS_DetailMasterComponent", "API_Crud", "WinUI3_MasterScreen", "WinUI3_DetailScreen", "WinUI3_DetailMasterScreen" })
+            Assert.IsTrue(TemplateConfig.Load(Repo.Template(name + "_v1.tt.config")).RequiresSingleKey, name);
         // Junction/child-grid data access goes by the two FK columns or the child's own FK, never the table's
         // own primary key shape, so these are deliberately unrestricted.
-        Assert.IsNull(TemplateConfig.Load(Repo.Template("SP_Junction_v1.tt.config")).RequiredPrimaryKeyShape);
-        Assert.IsNull(TemplateConfig.Load(Repo.Template("WinUI3_JunctionEditor_v1.tt.config")).RequiredPrimaryKeyShape);
+        Assert.IsFalse(TemplateConfig.Load(Repo.Template("SP_Junction_v1.tt.config")).RequiresSingleKey);
+        Assert.IsFalse(TemplateConfig.Load(Repo.Template("WinUI3_JunctionEditor_v1.tt.config")).RequiresSingleKey);
     }
 
     [TestMethod]
@@ -222,9 +204,10 @@ public class TemplateConfigRefuseTests
     [TestMethod]
     public void Refuse_explains_a_wrong_primary_key_shape()
     {
-        var config = new TemplateConfig { RequiredPrimaryKeyShape = PrimaryKeyRequirement.SingleInt };
+        var config = new TemplateConfig { RequiresSingleKey = true };
 
-        StringAssert.Contains(config.Refuse(Sample.NaturalKey())!, "SingleInt primary key");
+        StringAssert.Contains(config.Refuse(Sample.CompositeKey())!, "Composite");
+        Assert.IsNull(config.Refuse(Sample.NaturalKey()), "a text key is one of the keys KeyType describes");
     }
 
     [TestMethod]
@@ -245,20 +228,21 @@ public class TemplateConfigRefuseTests
 [TestClass]
 public class TemplateInfoAppliesToTests
 {
-    private static TemplateInfo Template(PrimaryKeyRequirement? shape) => new()
+    private static TemplateInfo Template(bool requiresSingleKey) => new()
     {
         FilePath = "X.tt",
         Name = "X",
-        Config = new TemplateConfig { RequiredPrimaryKeyShape = shape }
+        Config = new TemplateConfig { RequiresSingleKey = requiresSingleKey }
     };
 
     [TestMethod]
-    public void A_template_that_needs_a_single_int_or_guid_key_does_not_apply_to_a_composite_or_natural_key_table()
+    public void A_template_that_needs_a_single_key_does_not_apply_to_a_composite_or_other_key_table()
     {
-        var t = Template(PrimaryKeyRequirement.SingleIntOrGuid);
+        var t = Template(requiresSingleKey: true);
 
         Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: PrimaryKeyShape.SingleInt));
         Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: PrimaryKeyShape.SingleUniqueIdentifier));
+        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: PrimaryKeyShape.SingleText));
         Assert.IsFalse(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: PrimaryKeyShape.Composite));
         Assert.IsFalse(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: PrimaryKeyShape.SingleOther));
     }
@@ -266,7 +250,7 @@ public class TemplateInfoAppliesToTests
     [TestMethod]
     public void A_template_with_no_key_shape_restriction_applies_regardless_of_shape()
     {
-        var t = Template(shape: null);
+        var t = Template(requiresSingleKey: false);
 
         foreach (var shape in Enum.GetValues<PrimaryKeyShape>())
             Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: shape), shape.ToString());

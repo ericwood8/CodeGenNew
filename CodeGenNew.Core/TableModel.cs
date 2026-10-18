@@ -34,7 +34,7 @@ public class TableModel
     public required List<ColumnModel> PrimaryKeyColumns { get; init; }
     public bool HasPrimaryKey => PrimaryKeyColumns.Count > 0;
 
-    /// <summary> See PrimaryKeyShape and TemplateConfig.RequiredPrimaryKeyShape (Docs/Reference.md section 3) --
+    /// <summary> See PrimaryKeyShape and TemplateConfig.RequiresSingleKey (Docs/Reference.md section 3) --
     /// several templates need more than just HasPrimaryKey. </summary>
     /// <summary> What the database says about the table (SQL Server <c>MS_Description</c>, PostgreSQL <c>COMMENT ON TABLE</c>, MySQL <c>COMMENT</c>); null when it says nothing. </summary>
     public string? Description { get; init; }

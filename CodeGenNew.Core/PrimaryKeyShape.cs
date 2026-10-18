@@ -5,7 +5,7 @@ namespace CodeGenNew.Core;
 /// templates need more than just "has a primary key" (RequiresPrimaryKey, section 5.3): the routes of a
 /// stack take the id as {id:int}, {id:guid} or {id}, and a repository is generic over the key's type (see
 /// <see cref="KeyType"/>). Refusing at generation time (a template's own Error() call) still leaves the menu
-/// offering an option that can never work for that table. See TemplateConfig.RequiredPrimaryKeyShape. </summary>
+/// offering an option that can never work for that table. See TemplateConfig.RequiresSingleKey. </summary>
 public enum PrimaryKeyShape
 {
     /// <summary> No primary key at all. </summary>

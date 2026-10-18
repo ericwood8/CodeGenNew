@@ -80,7 +80,7 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 | Key | Meaning |
 |---|---|
 | `RequiresPrimaryKey`, `TableOnly` | hide the template for a table without a key, or for a view (both default to true) |
-| `RequiredPrimaryKeyShape` | `SingleColumn`, `SingleIntOrGuid`, `SingleIntGuidOrText` or `SingleInt`: the key shape the generated routes need |
+| `RequiresSingleKey` | `true` when the table needs one int, uniqueidentifier or text key column (the keys the generated routes can take) |
 | `RequiresJunctionTable`, `RequiresChildTables`, `RequiresAuditTable`, `RequiresNotNameActiveTable` | shape restrictions for the specialised templates |
 | `NeedsRowData`, `NeedsReferencedDisplayColumns` | ask the schema reader for more (rows; the display columns of parent tables) |
 | `DatabaseOnly`, `NoDatabase` | one file for the whole database, or no database at all |
@@ -136,16 +136,20 @@ A generated project still needs a person for: collection navigation properties a
 
 These are the owner's open questions; the list is a draft to be edited by the owner before the review starts.
 
-1. **Generated SQL and user text.** [Security.md](Security.md) says where a value is a parameter and where a name is text in a statement. Values are bound parameters, `LIKE` wildcards are escaped inside the routines, and a sort column is picked from a fixed list. Is the written answer complete? Look at `SP_Search_v1.tt` and its PostgreSQL and MySQL variants, `SqlSecurityTests` and `Docs/Verification/Test-SearchHostileText.py`.
-2. **The template contract.** Is `Model` / `Database` / `Project` plus a `.tt.config` the right surface? Are the config keys the right size, or has restriction logic (`RequiredPrimaryKeyShape`, `RequiresNotNameActiveTable`) outgrown a flat file?
-3. **Regeneration safety.** Whole-project runs overwrite edited generated files; the manifest could prevent that. Is refuse-and-report the right default, or a side file?
-4. **Four screen families from one model.** WinUI 3, Angular and React are written in parallel and must behave the same. Is there a better seam than copying behaviour into each template, such as a neutral screen description rendered three ways?
-5. **Provider growth.** The schema reader normalises to SQL Server's type vocabulary. Does that hold for a fourth database (SQLite has no routines, so search, sort and paging would move into LINQ)?
+1. **Generated SQL and user text.** [Security.md](Security.md) says where a value reaches the database as a bound parameter and where a table or column name is spliced into a statement as text. Values are bound parameters, `LIKE` wildcards are escaped inside the routines, and a sort column is chosen from a fixed list. Does that written account match what the code does, and does it leave anything out? Start with `SP_Search_v1.tt` and its PostgreSQL and MySQL variants, `SqlSecurityTests` and `Docs/Verification/Test-SearchHostileText.py`.
+2. **The template contract.** A template sees three objects (`Model` for the table, `Database` for the schema and `Project` for the settings) and a `.tt.config` file that says where it applies. Is that the right size of interface? Two things to judge: whether the config keys are the right ones, and whether conditions such as `RequiresSingleKey` and `RequiresNotNameActiveTable` have grown too complicated for a flat key-value file.
+3. **Regeneration safety (decided).** A whole-project run keeps a generated file that was edited since the last run, or that no earlier run recorded, and reports it; `--force` overwrites it and `--write-beside` writes the new text next to it as `<file>.generated`. The owner's decision is that refuse-and-report is the right default. A reviewer need only check that nothing writes over an edited file without one of those two flags.
+4. **Four screen families from one model.** WinUI 3, Angular, React and Blazor are written in parallel and must behave the same. Today the decisions are made once in Core (`FormModel`, `SearchPlan`, `DialectInfo`, `ColumnRules`, `ValueGuards`) and each stack's template writes the markup and the wiring. The owner's view is that more could move into Core objects or a shared `TemplateHelpers` class, and sees two other ways to cut the seam:
+   - **Share the state and behaviour, not the layout.** Write the view models, state machines and validation rules once, in a language that reaches every environment (TypeScript for Angular and React, compiled to WebAssembly or bridged for WinUI 3, or C# through Blazor or Uno Platform), and bind it to native screens.
+   - **Share a neutral screen description.** A JSON description of the fields, layout and actions, and one small interpreter per stack: `component: "TextField"` becomes a JSX input in React, an `ngx` component in Angular and a XAML `TextBox` in WinUI 3.
+
+   Both trade the plain, readable, hand-editable code each template writes today for a runtime layer the generated project then depends on. Which is the better seam: the current one with more in Core, either alternative, or a mix?
+5. **Provider growth.** The schema reader normalises every database to SQL Server's type vocabulary, and search, sort, paging, clone and the junction editors can run either as routines in the database (`AccessMode=Routines`) or as LINQ over the EF context (`AccessMode=Ef`, always used for SQLite, which has no routines). SQLite is therefore done. The question for a fifth database (Oracle, say) is whether the same normalisation holds, and whether two ways of carrying out a search (routines and LINQ) can stay in step as the rules grow; `SearchPlan` is the one description both are meant to follow.
 
 ## 11. Limits worth knowing
 
 - Tables only: no views, no keyless tables, no routine metadata.
-- The CLI targets plain `net10.0` but CI runs on Windows only; Linux and macOS are untested. The desktop app is Windows only.
+- The generator and the `codegen` tool run on Windows, Linux and macOS (CI builds and tests all three). The desktop app is Windows only.
 - Template compilation needs the .NET SDK on the machine.
 - The package is version 0.1.0; a breaking template change will be a `_v2` file beside the old one.
 - Git history still holds earlier private names; the working tree has been scrubbed (see `LeftoverNamesTests`).
