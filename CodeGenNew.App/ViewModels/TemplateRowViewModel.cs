@@ -20,9 +20,6 @@ public partial class TemplateRowViewModel : ObservableObject
     [ObservableProperty]
     private bool _requiresPrimaryKey;
 
-    [ObservableProperty]
-    private bool _tableOnly;
-
     // Arms/confirms the Delete button inline (first click arms it, second click deletes) instead of a
     // nested ContentDialog, since WinUI only allows one ContentDialog open at a time and this row lives
     // inside the already-open Manage Templates dialog (see TemplateManagementDialog.xaml.cs).
@@ -42,17 +39,16 @@ public partial class TemplateRowViewModel : ObservableObject
         FilePath = template.FilePath;
         _configPath = template.FilePath + ".config";
         _requiresPrimaryKey = template.Config.RequiresPrimaryKey;
-        _tableOnly = template.Config.TableOnly;
     }
 
     partial void OnRequiresPrimaryKeyChanged(bool value) => Save();
-    partial void OnTableOnlyChanged(bool value) => Save();
 
     private void Save()
     {
-        // This screen only owns the two checkboxes. Rewrite them, but carry over every other line as it is (extra
-        // settings such as NeedsRowData / NeedsReferencedDisplayColumns and their comments), so toggling a checkbox
-        // can never silently switch off something a template depends on.
+        // This screen only owns the Requires line (its primary key checkbox). Rewrite it, but carry over every other line as it is (extra
+        // settings such as NeedsRowData / NeedsReferencedDisplayColumns and their comments), so toggling the checkbox
+        // can never silently switch off something a template depends on. The other restrictions already on the line are kept.
+        var current = TemplateConfig.Load(_configPath);
         var preserved = new List<string>();
         if (File.Exists(_configPath))
         {
@@ -60,19 +56,23 @@ public partial class TemplateRowViewModel : ObservableObject
             {
                 string trimmed = line.Trim();
                 bool isOurs = trimmed.StartsWithIgnoreCase("# Restriction checkboxes for")
-                              || trimmed.StartsWithIgnoreCase("RequiresPrimaryKey")
-                              || trimmed.StartsWithIgnoreCase("TableOnly");
+                              || System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^(Requires\w*|TableOnly)\s*=", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                 if (!isOurs)
                     preserved.Add(line);
             }
         }
 
-        var lines = new List<string>
-        {
-            "# Restriction checkboxes for " + Name + ".tt (see Docs/Reference.md section 3).",
-            $"RequiresPrimaryKey={RequiresPrimaryKey.ToString().ToLowerInvariant()}",
-            $"TableOnly={TableOnly.ToString().ToLowerInvariant()}"
-        };
+        var requires = new List<string>();
+        if (RequiresPrimaryKey) requires.Add("PrimaryKey");
+        if (current.RequiresSingleKey) requires.Add("SingleKey");
+        if (current.RequiresNotNameActiveTable) requires.Add("NotNameActive");
+        if (current.RequiresJunctionTable) requires.Add("JunctionTable");
+        if (current.RequiresChildTables) requires.Add("ChildTables");
+        if (current.RequiresAuditTable) requires.Add("AuditTable");
+
+        var lines = new List<string> { "# Restriction checkbox for " + Name + ".tt (see Docs/Reference.md section 3)." };
+        if (current.Scope == TemplateScope.Table)
+            lines.Add("Requires=" + string.Join(",", requires));
         lines.AddRange(preserved);
 
         File.WriteAllLines(_configPath, lines);

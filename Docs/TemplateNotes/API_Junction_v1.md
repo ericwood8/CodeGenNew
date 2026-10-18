@@ -6,7 +6,7 @@ The full design notes that used to head the template. The template keeps a short
 Generates: <TableName>JunctionApi.cs   (see OutputName in API_Junction_v1.tt.config)
 
 The HTTP companion to SP_Junction.tt for a many-to-many junction table (TableModel.IsJunctionTable,
-RequiresJunctionTable=true) - what WinUI3_JunctionEditor.tt's ViewModel reaches directly via EF Core
+Requires=JunctionTable) - what WinUI3_JunctionEditor.tt's ViewModel reaches directly via EF Core
 (it's in the same process as the database), a browser-based screen (TS_JunctionComponent.tt) cannot,
 so this exposes the same three operations over HTTP instead:
     GET  /<plural>/junction/{anchorId}          every target row + IsSelected  (calls <Table>_List)
@@ -24,7 +24,7 @@ drift apart on.
 Display columns are read as plain strings: SP_Junction.tt CASTs them to NVARCHAR in its SELECT list
 specifically so this DTO never needs to know a display column's real SQL type.
 
-Requires a primary key and TableModel.IsJunctionTable (RequiresJunctionTable=true), and the target
+Requires a primary key and TableModel.IsJunctionTable (Requires=JunctionTable), and the target
 table's display columns (NeedsReferencedDisplayColumns=true), the same restrictions SP_Junction.tt
 itself has - generate that first.
 ```

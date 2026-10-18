@@ -23,7 +23,7 @@ Design notes (revised - see Docs/Reference.md section 6 for the full history):
   - Return convention: 0 = deleted successfully, -1 = blocked by a foreign key elsewhere,
     -2 = the DELETE failed for some other database-level reason.
 
-This template requires a primary key (SP_Delete.tt.config: RequiresPrimaryKey=true) and only
-applies to tables, not views (TableOnly=true). Works uniformly for single, composite, and
+This template requires a primary key (SP_Delete.tt.config: the default Requires=PrimaryKey) and only
+applies to tables, not views. Works uniformly for single, composite, and
 non-integer (e.g. GUID) primary keys - there's no longer a reason to special-case any of them.
 ```

@@ -63,29 +63,13 @@ public class TemplateInfo
     /// <summary> The name of the file a database-level template writes: the OutputName pattern with {Table} replaced by the project's context name. </summary>
     public string BuildDatabaseFileName(string contextName) => BuildFileName(contextName);
 
-    public bool AppliesTo(bool tableHasPrimaryKey, bool isView, bool isJunctionTable = false, bool hasChildForeignKeys = false,
+    /// <summary> Whether the menu offers this template on a table with these facts (a database or no-database template is offered on no table). The restrictions are checked by <see cref="TemplateConfig.Check"/>, the same
+    /// method that gives the reason when a table is refused. </summary>
+    public bool AppliesTo(bool tableHasPrimaryKey, bool isJunctionTable = false, bool hasChildForeignKeys = false,
         PrimaryKeyShape primaryKeyShape = PrimaryKeyShape.None, bool isNameActiveTable = false, SqlDialect dialect = SqlDialect.SqlServer, bool isAuditTable = false)
     {
-        if (Config.DatabaseOnly || Config.NoDatabase)
+        if (Config.Scope != TemplateScope.Table)
             return false; // offered on the database node (or in no database menu at all), not on a table
-        if (Config.SqlServerOnly && dialect != SqlDialect.SqlServer)
-            return false;
-        if (!Config.SupportsDialect(dialect))
-            return false;
-        if (Config.RequiresPrimaryKey && !tableHasPrimaryKey)
-            return false;
-        if (Config.TableOnly && isView)
-            return false;
-        if (Config.RequiresJunctionTable && !isJunctionTable)
-            return false;
-        if (Config.RequiresChildTables && !hasChildForeignKeys)
-            return false;
-        if (Config.RequiresAuditTable && !isAuditTable)
-            return false;
-        if (!Config.PrimaryKeyShapeSatisfies(primaryKeyShape))
-            return false;
-        if (Config.RequiresNotNameActiveTable && isNameActiveTable)
-            return false;
-        return true;
+        return Config.Check(new TableFacts(tableHasPrimaryKey, primaryKeyShape, isJunctionTable, hasChildForeignKeys, isAuditTable, isNameActiveTable, dialect)) is null;
     }
 }

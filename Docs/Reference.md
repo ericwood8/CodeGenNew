@@ -36,19 +36,18 @@ category|flagcolumn(s)|companioncolumn(s)|special
 
 ## 3. `<TemplateName>.tt.config`
 
-One per template, same base name, plain `key=value` lines, `#` comments. A missing key takes its documented default; an unknown key is ignored, so the format can grow.
+One per template, same base name, plain `key=value` lines, `#` comments. A missing key takes its documented default. A key the reader does not know (a typo such as `Requries`, or an item such as `Requires=SingleKye`) is reported: the CLI prints a warning, a whole-project run lists it among its warnings, and a test fails for a shipped template, because the restriction it was meant to state is not applied.
 
 **Restrictions** (decide whether the menu, the CLI and a plan offer the template for a table):
 
 | Key | Default | Meaning |
 |---|---|---|
-| `RequiresPrimaryKey` | true | hidden for a table without a primary key |
-| `TableOnly` | true | hidden for a view (the tree lists tables only today) |
-| `RequiresSingleKey` | `false` | `true` when the table must have one key column that is an int, a uniqueidentifier or text (the keys `KeyType` describes: the template reads the C#, TypeScript, Python and route form of the key from Core). A composite key, a key of another type (a decimal or a date) or none is refused up front. The model's own `PrimaryKeyShape` is the finer `None`, `Composite`, `SingleInt`, `SingleUniqueIdentifier`, `SingleText`, `SingleOther`. Junction and child-grid templates set nothing: they go by their association columns, and a junction table's key may be composite. |
-| `RequiresJunctionTable` | false | only for a many-to-many table: excluding computed, audit and surrogate identity-key columns, exactly two columns remain and each is covered by its own single-column foreign key (a natural composite key and an identity key plus two foreign keys both count; one composite foreign key over both columns does not) |
-| `RequiresChildTables` | false | only when another table has a foreign key back at this one (master-detail screens) |
-| `RequiresAuditTable` | false | only for a table with audit columns: one that records its creation (a name starting `Create`, like CreateDate or CreateUser) and one that records a later change (a name with `Modif` or `Change`, or starting `Update`, like ModifiedDate or UpdatedBy) |
-| `RequiresNotNameActiveTable` | false | hidden for a "name/active" table (a NOT NULL text column `Name` and a NOT NULL bit column `IsActive`). Its repository is a `NameActiveRepo` with duplicate-name checks and trimming a template cannot supply, so the screens that assume a plain list / get / create / update / delete backend (WinUI3, React, Blazor, Rust, Python) set this. `API_Crud` and the Angular service and screens write a variant for it (`NameActiveCrudApi`, `NameActiveCrudScreen`) and do not set it. `CS_Entity` and `CS_Repo` support both shapes. |
+| `Requires` | `PrimaryKey` | the table restrictions of a table template, as one comma-separated list of: `PrimaryKey` (hidden for a table without a primary key), `SingleKey`, `NotNameActive`, `JunctionTable`, `ChildTables`, `AuditTable` (each described below). Without the key a table template requires a primary key and nothing else; `Requires=` (empty) requires nothing. |
+| `Requires=SingleKey` | | the table must have one key column that is an int, a uniqueidentifier or text (the keys `KeyType` describes: the template reads the C#, TypeScript, Python and route form of the key from Core). A composite key, a key of another type (a decimal or a date) or none is refused up front. The model's own `PrimaryKeyShape` is the finer `None`, `Composite`, `SingleInt`, `SingleUniqueIdentifier`, `SingleText`, `SingleOther`. Junction and child-grid templates set nothing: they go by their association columns, and a junction table's key may be composite. |
+| `Requires=JunctionTable` | | only for a many-to-many table: excluding computed, audit and surrogate identity-key columns, exactly two columns remain and each is covered by its own single-column foreign key (a natural composite key and an identity key plus two foreign keys both count; one composite foreign key over both columns does not) |
+| `Requires=ChildTables` | | only when another table has a foreign key back at this one (master-detail screens) |
+| `Requires=AuditTable` | | only for a table with audit columns: one that records its creation (a name starting `Create`, like CreateDate or CreateUser) and one that records a later change (a name with `Modif` or `Change`, or starting `Update`, like ModifiedDate or UpdatedBy) |
+| `Requires=NotNameActive` | | hidden for a "name/active" table (a NOT NULL text column `Name` and a NOT NULL bit column `IsActive`). Its repository is a `NameActiveRepo` with duplicate-name checks and trimming a template cannot supply, so the screens that assume a plain list / get / create / update / delete backend (WinUI3, React, Blazor, Rust, Python) set this. `API_Crud` and the Angular service and screens write a variant for it (`NameActiveCrudApi`, `NameActiveCrudScreen`) and do not set it. `CS_Entity` and `CS_Repo` support both shapes. |
 | `Dialects` | all | the databases the template is for (`SqlServer`, `PostgreSql`, `MySql`, `Sqlite`); a plan skips it silently for another one, the menu does not offer it, and a single run is refused with the reason |
 | `Dashboard` | on unless false: the plan also writes the dashboard: its queries (CS_Dashboard, SP_Dashboard), the GET /api/dashboard endpoint (API_Dashboard), a page and menu entry per front end (TSX_Dashboard, TS_Dashboard, WinUI3_DashboardPage, BLZ_Dashboard, RS_Dashboard, PY_Dashboard) and a Markdown page listing the widgets (MD_Dashboard) |
 | `DashboardStrip` | true (with Dashboard): each table screen shows that table's two or three cards above its grid |
@@ -67,8 +66,7 @@ One per template, same base name, plain `key=value` lines, `#` comments. A missi
 
 | Key | Meaning |
 |---|---|
-| `DatabaseOnly` | one file for the whole database; receives `Database` (every table), run without `-t` |
-| `NoDatabase` | needs neither table nor database; receives only `Project`, run without `-S`, `-d` or `-t` |
+| `Scope` | `Table` (the default: once for a table, receives `Model`), `Database` (one file for the whole database; receives `Database`, every table; run without `-t`) or `None` (needs neither table nor database; receives only `Project`; run without `-S`, `-d` or `-t`) |
 
 **Output:**
 
@@ -296,3 +294,5 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `TestBlazor` | command that tests the Blazor app; blank = no tests |
 | `TestPython` | command that tests the Python API; blank = no tests |
 | `TestRust` | command that tests the Rust API; blank = cargo test |
+
+**Earlier format.** A file that still uses `RequiresPrimaryKey=`, `RequiresSingleKey=`, `RequiresNotNameActiveTable=`, `RequiresJunctionTable=`, `RequiresChildTables=`, `RequiresAuditTable=`, `DatabaseOnly=true` or `NoDatabase=true` is read as before, so a template someone wrote keeps working. `TableOnly` is read and ignored (views are not read) and `SqlServerOnly=true` means `Dialects=SqlServer`. The shipped templates use none of them (a test checks).

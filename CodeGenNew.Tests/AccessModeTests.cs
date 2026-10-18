@@ -296,8 +296,8 @@ public class AccessModeTests
         Assert.IsNotNull(reason);
         StringAssert.Contains(reason, "SQLite");
         Assert.IsNull(search.Config.Refuse(Customer(SqlDialect.PostgreSql)));
-        Assert.IsFalse(search.AppliesTo(true, false, dialect: SqlDialect.Sqlite), "the menu does not offer it");
-        Assert.IsTrue(search.AppliesTo(true, false, dialect: SqlDialect.MySql));
+        Assert.IsFalse(search.AppliesTo(true, dialect: SqlDialect.Sqlite), "the menu does not offer it");
+        Assert.IsTrue(search.AppliesTo(true, dialect: SqlDialect.MySql));
     }
 
     // ------------------------------------------------------------------ the SQLite provider in the generated project

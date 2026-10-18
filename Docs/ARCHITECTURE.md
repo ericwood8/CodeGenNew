@@ -75,15 +75,13 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 - Anything that two templates would both compute (a C# type, a caption, a JSON name, whether a table has an API) is a helper in `Core`, covered by tests over every column type.
 - A switch that is off changes nothing: optional extras are guarded by a project flag, and a test checks both states.
 
-**`.tt.config` keys** (plain `key=value`, `#` comments; the full rules are in [Reference.md](Reference.md)). Unknown keys are ignored; a missing file means the conservative defaults.
+**`.tt.config` keys** (plain `key=value`, `#` comments; the full rules are in [Reference.md](Reference.md)). A key the reader does not know is reported, not applied; a missing file means the conservative defaults (a primary key is required).
 
 | Key | Meaning |
 |---|---|
-| `RequiresPrimaryKey`, `TableOnly` | hide the template for a table without a key, or for a view (both default to true) |
-| `RequiresSingleKey` | `true` when the table needs one int, uniqueidentifier or text key column (the keys the generated routes can take) |
-| `RequiresJunctionTable`, `RequiresChildTables`, `RequiresAuditTable`, `RequiresNotNameActiveTable` | shape restrictions for the specialised templates |
+| `Scope` | `Table` (the default), `Database` (one file for the whole database) or `None` (no database at all) |
+| `Requires` | the table restrictions as one list: `PrimaryKey` (the default), `SingleKey` (one int, uniqueidentifier or text key column), `NotNameActive`, `JunctionTable`, `ChildTables`, `AuditTable` |
 | `NeedsRowData`, `NeedsReferencedDisplayColumns` | ask the schema reader for more (rows; the display columns of parent tables) |
-| `DatabaseOnly`, `NoDatabase` | one file for the whole database, or no database at all |
 | `Dialects` | the databases the template is for; a plan skips it silently for another |
 | `Stacks`, `PlanTables`, `InPlan`, `OutputRoot`, `OutputFolder` | a place in a whole-project run (see section 6) |
 | `OutputName` | a file-name pattern with `{Table}` |
@@ -137,7 +135,7 @@ A generated project still needs a person for: collection navigation properties a
 These are the owner's open questions; the list is a draft to be edited by the owner before the review starts.
 
 1. **Generated SQL and user text.** [Security.md](Security.md) says where a value reaches the database as a bound parameter and where a table or column name is spliced into a statement as text. Values are bound parameters, `LIKE` wildcards are escaped inside the routines, and a sort column is chosen from a fixed list. Does that written account match what the code does, and does it leave anything out? Start with `SP_Search_v1.tt` and its PostgreSQL and MySQL variants, `SqlSecurityTests` and `Docs/Verification/Test-SearchHostileText.py`.
-2. **The template contract.** A template sees three objects (`Model` for the table, `Database` for the schema and `Project` for the settings) and a `.tt.config` file that says where it applies. Is that the right size of interface? Two things to judge: whether the config keys are the right ones, and whether conditions such as `RequiresSingleKey` and `RequiresNotNameActiveTable` have grown too complicated for a flat key-value file.
+2. **The template contract (the owner is content with it).** A template sees three objects (`Model` for the table, `Database` for the schema and `Project` for the settings) and a `.tt.config` file that says where it applies. The owner's view is that the key-shape rules (`Requires=SingleKey`, and the finer `PrimaryKeyShape` the model reports) are as detailed as databases are: a primary key can be an identity int, a GUID, a text code, several columns or none, and the generator has to tell them apart to write routes and screens that work. The review need not question that. The plumbing around those rules was simplified (2026-10-18): the dead `TableOnly` and `SqlServerOnly` settings are gone, `Scope` replaces `DatabaseOnly`, `NoDatabase` and the pair of "not per table" lines, `Requires` is one list in place of six true/false settings, `TemplateConfig.Check` is the one place the restrictions are checked (the menu and the CLI both call it), and a mistyped key is reported instead of ignored. A reviewer can judge whether the list of restrictions is the right one and whether `Check` leaves anything out.
 3. **Regeneration safety (decided).** A whole-project run keeps a generated file that was edited since the last run, or that no earlier run recorded, and reports it; `--force` overwrites it and `--write-beside` writes the new text next to it as `<file>.generated`. The owner's decision is that refuse-and-report is the right default. A reviewer need only check that nothing writes over an edited file without one of those two flags.
 4. **Four screen families from one model.** WinUI 3, Angular, React and Blazor are written in parallel and must behave the same. Today the decisions are made once in Core (`FormModel`, `SearchPlan`, `DialectInfo`, `ColumnRules`, `ValueGuards`) and each stack's template writes the markup and the wiring. The owner's view is that more could move into Core objects or a shared `TemplateHelpers` class, and sees two other ways to cut the seam:
    - **Share the state and behaviour, not the layout.** Write the view models, state machines and validation rules once, in a language that reaches every environment (TypeScript for Angular and React, compiled to WebAssembly or bridged for WinUI 3, or C# through Blazor or Uno Platform), and bind it to native screens.

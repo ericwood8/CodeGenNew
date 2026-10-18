@@ -56,6 +56,9 @@ public static class Program
             return ExitCodes.Failure;
         }
 
+        if (template.Config.UnknownKeys.Count > 0)
+            Console.Error.WriteLine($"Warning: {template.FileStem}.tt.config has a key CodeGenNew does not know ({string.Join(", ", template.Config.UnknownKeys)}); the restriction it was meant to state is not applied.");
+
         // The project is read first: its NamingStyle decides the names the schema reader gives tables and columns.
         ProjectSettings project = ProjectSettings.None;
         if (options.Project is not null)

@@ -73,7 +73,7 @@ public class DirectoryListingTests
         var config = TemplateConfig.Load(Repo.Template("WinUI3_DirectoryListing_v1.tt") + ".config");
         Assert.IsTrue(config.NoDatabase);
         var info = TemplateCatalog.FindByName(Repo.TemplatesDirectory, "WinUI3_DirectoryListing_v1.tt")!;
-        Assert.IsFalse(info.AppliesTo(tableHasPrimaryKey: true, isView: false));
+        Assert.IsFalse(info.AppliesTo(tableHasPrimaryKey: true));
 
         var options = ArgumentParser.Parse(["-T", "WinUI3_DirectoryListing_v1.tt"]);   // no -S, -d, -U
         Assert.AreEqual("WinUI3_DirectoryListing_v1.tt", options.Template);

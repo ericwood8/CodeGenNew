@@ -49,7 +49,7 @@ public class TemplateConfigTests
         var config = TemplateConfig.Load(Path.Combine(Path.GetTempPath(), "does-not-exist-" + Guid.NewGuid().ToString("N") + ".config"));
 
         Assert.IsTrue(config.RequiresPrimaryKey);
-        Assert.IsTrue(config.TableOnly);
+        Assert.AreEqual(TemplateScope.Table, config.Scope);
         Assert.IsFalse(config.NeedsRowData);
         Assert.IsFalse(config.NeedsReferencedDisplayColumns);
         Assert.IsNull(config.OutputName);
@@ -64,7 +64,7 @@ public class TemplateConfigTests
         var config = TemplateConfig.Load(path);
 
         Assert.IsFalse(config.RequiresPrimaryKey);
-        Assert.IsFalse(config.TableOnly);
+        CollectionAssert.AreEqual(new[] { "UnknownKey" }, config.UnknownKeys.ToArray());
         Assert.IsTrue(config.NeedsRowData);
         Assert.IsTrue(config.NeedsReferencedDisplayColumns);
         Assert.AreEqual("{Table}Api.cs", config.OutputName);
@@ -162,9 +162,9 @@ public class TemplateConfigRefuseTests
     }
 
     [TestMethod]
-    public void A_SQL_Server_only_template_refuses_a_PostgreSQL_table_but_not_a_SQL_Server_one()
+    public void A_template_for_one_database_refuses_a_table_of_another()
     {
-        var config = new TemplateConfig { SqlServerOnly = true };
+        var config = new TemplateConfig { Dialects = ["SqlServer"] };
         var columns = new List<ColumnModel> { Sample.Column("ThingId", System.Data.SqlDbType.Int, primaryKey: true) };
         var sqlServerTable = Sample.Table("Thing", columns);
         var postgresTable = new TableModel
@@ -174,15 +174,59 @@ public class TemplateConfigRefuseTests
         };
 
         Assert.IsNull(config.Refuse(sqlServerTable));
-        StringAssert.Contains(config.Refuse(postgresTable)!, "no PostgreSQL version");
+        StringAssert.Contains(config.Refuse(postgresTable)!, "is not written for");
     }
 
     [TestMethod]
-    public void No_shipped_template_is_SQL_Server_only()
+    public void The_earlier_keys_are_still_read_and_reported_as_legacy()
     {
-        // The junction templates call the database's own routines (EXEC, a function call, CALL) through JunctionCall, so every template runs on every database.
-        foreach (string config in Directory.GetFiles(Repo.TemplatesDirectory, "*.tt.config"))
-            Assert.IsFalse(TemplateConfig.Load(config).SqlServerOnly, Path.GetFileName(config));
+        using var temp = new TempFolder();
+        var config = TemplateConfig.Load(temp.File("a.tt.config", "RequiresPrimaryKey=false\nTableOnly=true\nDatabaseOnly=true\nSqlServerOnly=true\nRequiresSingleKey=true\n"));
+
+        Assert.AreEqual(TemplateScope.Database, config.Scope);
+        Assert.IsFalse(config.RequiresPrimaryKey);
+        Assert.IsTrue(config.RequiresSingleKey);
+        CollectionAssert.AreEqual(new[] { "SqlServer" }, config.Dialects.ToArray(), "SqlServerOnly is Dialects=SqlServer");
+        CollectionAssert.AreEquivalent(new[] { "RequiresPrimaryKey", "TableOnly", "DatabaseOnly", "SqlServerOnly", "RequiresSingleKey" }, config.LegacyKeys.ToArray());
+        Assert.IsEmpty(config.UnknownKeys);
+    }
+
+    [TestMethod]
+    public void Scope_and_Requires_are_read()
+    {
+        using var temp = new TempFolder();
+        var none = TemplateConfig.Load(temp.File("a.tt.config", "Scope=None\n"));
+        var database = TemplateConfig.Load(temp.File("b.tt.config", "Scope=Database\n"));
+        var all = TemplateConfig.Load(temp.File("c.tt.config", "Requires=PrimaryKey,SingleKey,NotNameActive,JunctionTable,ChildTables,AuditTable\n"));
+        var nothing = TemplateConfig.Load(temp.File("d.tt.config", "Requires=\n"));
+
+        Assert.IsTrue(none.NoDatabase);
+        Assert.IsFalse(none.DatabaseOnly);
+        Assert.IsTrue(database.DatabaseOnly);
+        Assert.IsTrue(all.RequiresPrimaryKey && all.RequiresSingleKey && all.RequiresNotNameActiveTable && all.RequiresJunctionTable && all.RequiresChildTables && all.RequiresAuditTable);
+        Assert.IsFalse(nothing.RequiresPrimaryKey || nothing.RequiresSingleKey || nothing.RequiresNotNameActiveTable);
+        Assert.IsEmpty(all.UnknownKeys);
+    }
+
+    [TestMethod]
+    public void A_mistyped_key_or_value_is_reported_not_silently_ignored()
+    {
+        using var temp = new TempFolder();
+        var config = TemplateConfig.Load(temp.File("a.tt.config", "Requries=PrimaryKey\nRequires=PrimaryKey,SingleKye\nScope=Tabel\nRequiredPrimaryKeyShape=SingleInt\nOutputFolder.React=src\n"));
+
+        CollectionAssert.AreEquivalent(new[] { "Requries", "Requires=SingleKye", "Scope=Tabel", "RequiredPrimaryKeyShape" }, config.UnknownKeys.ToArray());
+    }
+
+    [TestMethod]
+    public void No_shipped_config_has_an_unknown_or_earlier_format_key()
+    {
+        // The earlier keys still work for a template someone wrote, but the shipped ones are in the current format, and a typo in one of them would drop a restriction without a word.
+        foreach (string path in Directory.GetFiles(Repo.TemplatesDirectory, "*.tt.config"))
+        {
+            var config = TemplateConfig.Load(path);
+            Assert.IsEmpty(config.UnknownKeys, Path.GetFileName(path) + " has an unknown key: " + string.Join(", ", config.UnknownKeys));
+            Assert.IsEmpty(config.LegacyKeys, Path.GetFileName(path) + " uses an earlier key: " + string.Join(", ", config.LegacyKeys));
+        }
     }
 
     [TestMethod]
@@ -240,11 +284,11 @@ public class TemplateInfoAppliesToTests
     {
         var t = Template(requiresSingleKey: true);
 
-        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: PrimaryKeyShape.SingleInt));
-        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: PrimaryKeyShape.SingleUniqueIdentifier));
-        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: PrimaryKeyShape.SingleText));
-        Assert.IsFalse(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: PrimaryKeyShape.Composite));
-        Assert.IsFalse(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: PrimaryKeyShape.SingleOther));
+        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, primaryKeyShape: PrimaryKeyShape.SingleInt));
+        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, primaryKeyShape: PrimaryKeyShape.SingleUniqueIdentifier));
+        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, primaryKeyShape: PrimaryKeyShape.SingleText));
+        Assert.IsFalse(t.AppliesTo(tableHasPrimaryKey: true, primaryKeyShape: PrimaryKeyShape.Composite));
+        Assert.IsFalse(t.AppliesTo(tableHasPrimaryKey: true, primaryKeyShape: PrimaryKeyShape.SingleOther));
     }
 
     [TestMethod]
@@ -253,7 +297,7 @@ public class TemplateInfoAppliesToTests
         var t = Template(requiresSingleKey: false);
 
         foreach (var shape in Enum.GetValues<PrimaryKeyShape>())
-            Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, primaryKeyShape: shape), shape.ToString());
+            Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, primaryKeyShape: shape), shape.ToString());
     }
 
     [TestMethod]
@@ -261,8 +305,8 @@ public class TemplateInfoAppliesToTests
     {
         var t = new TemplateInfo { FilePath = "X.tt", Name = "X", Config = new TemplateConfig { RequiresNotNameActiveTable = true } };
 
-        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, isNameActiveTable: false));
-        Assert.IsFalse(t.AppliesTo(tableHasPrimaryKey: true, isView: false, isNameActiveTable: true));
+        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isNameActiveTable: false));
+        Assert.IsFalse(t.AppliesTo(tableHasPrimaryKey: true, isNameActiveTable: true));
     }
 
     [TestMethod]
@@ -270,8 +314,8 @@ public class TemplateInfoAppliesToTests
     {
         var t = new TemplateInfo { FilePath = "X.tt", Name = "X", Config = new TemplateConfig() };
 
-        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, isNameActiveTable: false));
-        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isView: false, isNameActiveTable: true));
+        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isNameActiveTable: false));
+        Assert.IsTrue(t.AppliesTo(tableHasPrimaryKey: true, isNameActiveTable: true));
     }
 }
 

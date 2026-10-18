@@ -56,7 +56,7 @@ is required even for a CS_Entity-generated entity. Whatever in the target projec
 Validator.TryValidateObject (or wires ASP.NET Core's own model-validation pipeline) is also up to that
 project, the same way this tool never wires a DbSet registration or an Angular route either.
 
-Requires a primary key (RequiresPrimaryKey=true) and a table, not a view. Unlike CS_Entity.tt, does
+Requires a primary key (Requires=PrimaryKey, the default) and a table. Unlike CS_Entity.tt, does
 NOT require a single-column key - a validation-attribute carrier has no [Key]/Fluent-API concern, so
 a composite-key table's columns can still be validated even though CS_Entity.tt itself would refuse
 to generate an entity for it.

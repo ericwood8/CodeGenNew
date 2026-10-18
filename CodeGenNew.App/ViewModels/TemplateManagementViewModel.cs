@@ -56,9 +56,8 @@ public partial class TemplateManagementViewModel : StatusMessageViewModel
 
         File.WriteAllLines(ttPath + ".config",
         [
-            $"# Restriction checkboxes for {name}.tt (see Docs/Reference.md section 3).",
-            "RequiresPrimaryKey=true",
-            "TableOnly=true"
+            $"# Restriction checkbox for {name}.tt (see Docs/Reference.md section 3).",
+            "Requires=PrimaryKey"
         ]);
 
         Refresh();

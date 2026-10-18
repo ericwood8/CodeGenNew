@@ -175,8 +175,8 @@ public class AuditTemplateTests
         var template = TemplateCatalog.Discover(Repo.TemplatesDirectory).Single(t => t.Name == "SP_AuditTable");
 
         Assert.IsTrue(template.Config.RequiresAuditTable);
-        Assert.IsTrue(template.AppliesTo(tableHasPrimaryKey: true, isView: false, isAuditTable: true));
-        Assert.IsFalse(template.AppliesTo(tableHasPrimaryKey: true, isView: false, isAuditTable: false));
+        Assert.IsTrue(template.AppliesTo(tableHasPrimaryKey: true, isAuditTable: true));
+        Assert.IsFalse(template.AppliesTo(tableHasPrimaryKey: true, isAuditTable: false));
         Assert.IsNull(template.Config.Refuse(Probe()));
         Expect.Contains(template.Config.Refuse(Sample.Table("Plain", [Sample.Column("PlainId", SqlDbType.Int, primaryKey: true, ordinal: 1)]))!, "audit columns");
     }

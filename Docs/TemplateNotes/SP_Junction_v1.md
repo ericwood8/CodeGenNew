@@ -32,9 +32,9 @@ hardcoded to GETDATE() on Link; a CreateUserColumn match is an optional caller-s
 Any OTHER extra column (there normally isn't one - see TableModel.IsJunctionTable) is not written by
 Link at all and is left at its database default.
 
-Requires a primary key (RequiresPrimaryKey=true in .tt.config - NOT the junction's own PK
-specifically, just that TableOnly/RequiresJunctionTable can be checked against a real TableModel) and
-TableModel.IsJunctionTable (RequiresJunctionTable=true), and the target table's display columns
+Requires a primary key (Requires=PrimaryKey in .tt.config - NOT the junction's own PK
+specifically, just that the junction check can be made against a real TableModel) and
+TableModel.IsJunctionTable (Requires=JunctionTable), and the target table's display columns
 (NeedsReferencedDisplayColumns=true), the same way SP_Lookup.tt does.
 ```
 

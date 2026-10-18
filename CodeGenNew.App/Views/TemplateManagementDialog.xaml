@@ -80,7 +80,6 @@
                                                    FontFamily="{ThemeResource NocturneMonoFontFamily}"
                                                    ToolTipService.ToolTip="{x:Bind SupersededTip}" />
                                         <CheckBox Grid.Column="1" Content="Requires Primary Key" IsChecked="{x:Bind RequiresPrimaryKey, Mode=TwoWay}" />
-                                        <CheckBox Grid.Column="2" Content="Table Only" IsChecked="{x:Bind TableOnly, Mode=TwoWay}" />
                                         <Button Grid.Column="3" Content="Edit" Tag="{x:Bind}" Click="OnOpenClick"
                                                 ToolTipService.ToolTip="Open this template in your editor" />
                                         <Button Grid.Column="4" Content="Rename" Tag="{x:Bind}" Click="OnRenameClick" />

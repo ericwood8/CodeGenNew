@@ -135,7 +135,7 @@ public partial class MainViewModel : ObservableObject
     /// <summary> Templates applicable to this table's shape, for building its right-click menu (section 8). </summary>
     public List<TemplateInfo> GetApplicableTemplates(TableNodeViewModel table) =>
         TemplateCatalog.Discover(_settings.TemplatesDirectory)
-            .Where(t => t.AppliesTo(table.Summary.HasPrimaryKey, isView: false, table.Summary.IsJunctionTable, table.Summary.HasChildForeignKeys, table.Summary.PrimaryKeyShape, table.Summary.IsNameActiveTable,
+            .Where(t => t.AppliesTo(table.Summary.HasPrimaryKey, table.Summary.IsJunctionTable, table.Summary.HasChildForeignKeys, table.Summary.PrimaryKeyShape, table.Summary.IsNameActiveTable,
                 _connectionRequest?.Provider switch { DatabaseProvider.PostgreSql => SqlDialect.PostgreSql, DatabaseProvider.MySql => SqlDialect.MySql, DatabaseProvider.Sqlite => SqlDialect.Sqlite, _ => SqlDialect.SqlServer },
                 table.Summary.IsAuditTable))
             .ToList();

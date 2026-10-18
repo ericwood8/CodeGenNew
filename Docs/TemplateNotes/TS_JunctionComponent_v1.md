@@ -11,7 +11,7 @@ paths are written by the template itself, see GeneratedFiles):
     <table>-junction.component.ts     the standalone component
 
 The Angular counterpart to WinUI3_JunctionEditor.tt for a many-to-many junction table
-(TableModel.IsJunctionTable, RequiresJunctionTable=true): two <select multiple> lists ("Available"/
+(TableModel.IsJunctionTable, Requires=JunctionTable): two <select multiple> lists ("Available"/
 "Selected") with >>/>/</<< buttons, calling API_Junction.tt's three endpoints directly via
 HttpClient (no separate TS_Service-style service class - unlike a plain table's five-method CRUD
 service, a junction has only List/Link/Unlink, and folding them straight into the component matches
@@ -25,7 +25,7 @@ TimeSheetJunctionComponent). anchorId is an @Input() - this component is meant t
 whatever screen already has the anchor row selected (e.g. a generated detail screen, once a
 WinUI3/Angular detail-screen template exists), not routed to on its own.
 
-Requires TableModel.IsJunctionTable (RequiresJunctionTable=true) and the target table's display
+Requires TableModel.IsJunctionTable (Requires=JunctionTable) and the target table's display
 columns (NeedsReferencedDisplayColumns=true), the same restrictions SP_Junction.tt/API_Junction.tt
 have - generate those first.
 ```

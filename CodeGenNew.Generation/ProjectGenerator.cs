@@ -83,6 +83,8 @@ public static class ProjectGenerator
                 report.Warnings.Add($"column {table.DbTableName}.{column.DbName} has the type '{column.SqlTypeDeclaration}', which CodeGenNew does not map; list it in IgnoredColumns to leave it out.");
 
         var templates = TemplateCatalog.Discover(templatesDirectory);
+        foreach (var template in templates.Where(t => !t.IsSuperseded && t.Config.UnknownKeys.Count > 0))
+            report.Warnings.Add($"{template.FileStem}.tt.config has a key CodeGenNew does not know ({string.Join(", ", template.Config.UnknownKeys)}); the restriction it was meant to state is not applied.");
         var steps = ProjectPlan.Build(templates, database, project, options.Stacks);
         bool partial = options.OnlyTemplates is { Count: > 0 } || options.Tables is { Count: > 0 };
         if (options.Tables is { Count: > 0 } wantedTables)

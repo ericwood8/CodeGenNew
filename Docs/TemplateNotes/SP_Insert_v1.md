@@ -42,8 +42,8 @@ Design notes (deliberately different from SP_Update.tt):
     DateIn/TimeIn/DateOut/TimeOut quartet (e.g. the CMS table): when both sides are supplied,
     rejects the insert with RAISERROR if the range is backwards.
 
-This template does not require a primary key (SP_Insert.tt.config: RequiresPrimaryKey=false) -
-a table can be inserted into without one - but only applies to tables, not views (TableOnly=true).
+This template does not require a primary key (SP_Insert.tt.config: Requires=) -
+a table can be inserted into without one - but only applies to tables, not views.
 ```
 
 Guard clauses (project lists): a column in `NonNegativeColumns` or `NotFutureDateColumns` that the database states no rule for (a column whose CHECK already has a minimum needs none) gets an `IF` before the write that raises `[Column] must not be negative.` or `[Column] must not be later than today.` (`RAISERROR` and `RETURN` on SQL Server; `RAISE EXCEPTION` on PostgreSQL; `SIGNAL SQLSTATE '45000'` on MySQL). The tests are inline, not shared procedures, so a database needs no extra script. A NULL parameter never trips one.

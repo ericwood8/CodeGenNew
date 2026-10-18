@@ -8,7 +8,7 @@ template itself, see GeneratedFiles - point the output folder at the React app's
 colocated components/__tests__/<Table>Junction.test.tsx.
 
 The React counterpart of TS_JunctionComponent.tt for a many-to-many junction table
-(TableModel.IsJunctionTable, RequiresJunctionTable=true): two <select multiple> lists ("Available"/
+(TableModel.IsJunctionTable, Requires=JunctionTable): two <select multiple> lists ("Available"/
 "Selected") with >>/>/</<< buttons, calling API_Junction.tt's three endpoints directly via the shared
 request<T> helper (imported from "../api/client", same assumption TSX_Api.tt makes) - no separate
 TSX_Api-style module, since a junction has only List/Link/Unlink, folded straight into the component the
@@ -23,7 +23,7 @@ page already has the anchor row selected (e.g. a generated detail page), not rou
 placed in componentsFolder rather than pagesFolder for that reason - matching the same "small reusable
 piece vs. a data-fetching page" split a components/ vs. pages/ folder layout already uses.
 
-Requires TableModel.IsJunctionTable (RequiresJunctionTable=true) and the target table's display columns
+Requires TableModel.IsJunctionTable (Requires=JunctionTable) and the target table's display columns
 (NeedsReferencedDisplayColumns=true), the same restrictions SP_Junction.tt/API_Junction.tt/
 TS_JunctionComponent.tt have - generate those first.
 ```

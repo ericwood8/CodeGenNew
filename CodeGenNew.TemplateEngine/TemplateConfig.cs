@@ -2,12 +2,33 @@ using CodeGenNew.Core;
 
 namespace CodeGenNew.TemplateEngine;
 
-/// <summary> Parses a &lt;TemplateName&gt;.tt.config file (Docs/Reference.md section 3). Both restrictions
-/// default to true when the file is missing entirely (conservative default for a hand-added .tt file). </summary>
+/// <summary> Where a template runs: once for each table, once for the whole database, or with no database at all. </summary>
+public enum TemplateScope
+{
+    /// <summary> Once for a table: the template receives <c>Model</c> (the default). </summary>
+    Table,
+    /// <summary> Once for the whole database: the template receives every table as <c>Database</c>. It needs no table name: the menu offers it on the database, and the CLI runs it without -t. </summary>
+    Database,
+    /// <summary> Neither a table nor a database (the files every app of a kind needs, a directory listing): the template receives only <c>Project</c>. The CLI runs it without -S, -d or -t, and no table or database menu offers it. </summary>
+    None
+}
+
+/// <summary> The facts about one table that a template's restrictions are checked against. Built from a full <see cref="TableModel"/>, or from a table summary by the menu, so the two checks cannot disagree. </summary>
+public readonly record struct TableFacts(bool HasPrimaryKey, PrimaryKeyShape PrimaryKeyShape, bool IsJunctionTable, bool HasChildForeignKeys, bool IsAuditTable, bool IsNameActiveTable, SqlDialect Dialect)
+{
+    public static TableFacts Of(TableModel model) =>
+        new(model.HasPrimaryKey, model.PrimaryKeyShape, model.IsJunctionTable, model.HasAtLeastOneChildForeignKey, model.IsAuditTable, model.IsNameActiveTable, model.Dialect);
+}
+
+/// <summary> Parses a &lt;TemplateName&gt;.tt.config file (Docs/Reference.md section 3). A table template requires a primary key when the file is missing entirely (the conservative default for a hand-added .tt file). </summary>
 public class TemplateConfig
 {
+    /// <summary> Where the template runs (<c>Scope=Table|Database|None</c>); Table when not set. </summary>
+    public TemplateScope Scope { get; init; } = TemplateScope.Table;
+
+    /// <summary> The table restrictions the template names in <c>Requires=PrimaryKey,SingleKey,NotNameActive,JunctionTable,ChildTables,AuditTable</c>. Without the key a table template requires a primary key and nothing else;
+    /// <c>Requires=</c> (empty) requires nothing. Meaningless for a database or no-database template. </summary>
     public bool RequiresPrimaryKey { get; init; } = true;
-    public bool TableOnly { get; init; } = true;
 
     /// <summary> Defaults to false, unlike the two restrictions above: only a template built specifically
     /// for many-to-many junction/bridge tables (e.g. WinUI3_JunctionEditor) asks for this. Checked against
@@ -43,18 +64,18 @@ public class TemplateConfig
     /// template that generates from the table's actual data (e.g. SP_Load.tt) asks for its rows to be read. </summary>
     public bool NeedsRowData { get; init; }
 
-    /// <summary> Defaults to false. A template that writes T-SQL (a stored procedure; or C# that EXECs one) sets this, so a table read from
-    /// PostgreSQL is refused with a reason instead of getting code that cannot run there. SP_Search is not one of them: it writes PostgreSQL functions too. </summary>
-    public bool SqlServerOnly { get; init; }
+    /// <summary> True for a template that writes ONE file for the whole database (the DbContext, the API registration): <c>Scope=Database</c>. </summary>
+    public bool DatabaseOnly => Scope == TemplateScope.Database;
 
-    /// <summary> Defaults to false. A template that writes ONE file for the whole database (the DbContext, the API registration) and so is
-    /// given every table as <c>DatabaseModel</c> instead of one table. It needs no table name: the menu offers it on the database, and the
-    /// CLI runs it without -t. </summary>
-    public bool DatabaseOnly { get; init; }
+    /// <summary> True for a template that needs neither a table nor a database: <c>Scope=None</c>. </summary>
+    public bool NoDatabase => Scope == TemplateScope.None;
 
-    /// <summary> Defaults to false. A template that needs neither a table nor a database (the files every app of a kind needs, a directory listing): it is given only the
-    /// <c>Project</c> settings. The CLI runs it without -S, -d or -t, and no table or database menu offers it. </summary>
-    public bool NoDatabase { get; init; }
+    /// <summary> Keys the file used that this reader does not know (a typo, or a key from a later version): the restriction they were meant to state is NOT applied. Always empty for the shipped templates (a test checks). </summary>
+    public IReadOnlyList<string> UnknownKeys { get; init; } = [];
+
+    /// <summary> Keys of the earlier format (<c>RequiresPrimaryKey=</c> and the other true/false restrictions, <c>DatabaseOnly=</c>, <c>NoDatabase=</c>, <c>TableOnly=</c>, <c>SqlServerOnly=</c>) that the file still uses. They are read, so a template written
+    /// for an earlier version keeps working; the shipped templates use none (a test checks). </summary>
+    public IReadOnlyList<string> LegacyKeys { get; init; } = [];
 
     /// <summary> The stacks whose generation includes this template (<c>Stacks=Api,WinUI3</c>): <c>Api</c>, <c>WinUI3</c>, <c>React</c>, <c>Angular</c>, <c>Blazor</c>, <c>Rust</c> and <c>Python</c>. Empty: the template is run by hand
     /// only and is not part of "generate everything for a project". </summary>
@@ -115,42 +136,48 @@ public class TemplateConfig
     public bool PrimaryKeyShapeSatisfies(PrimaryKeyShape shape) =>
         !RequiresSingleKey || shape is PrimaryKeyShape.SingleInt or PrimaryKeyShape.SingleUniqueIdentifier or PrimaryKeyShape.SingleText;
 
-    /// <summary> Explains why this template does not apply to <paramref name="model"/> (checking the same
-    /// restrictions as AppliesTo, but against a full TableModel and with the reason spelled out for a human
-    /// instead of just a bool) -- or null when every restriction is satisfied. Shared by the CLI's own
-    /// pre-check and the TreeView's right-click menu is the cheaper AppliesTo/TableSummary path instead,
-    /// since building a full TableModel for every table up front is too expensive; this is for the one
-    /// table a caller has already committed to generating against. Does not check TableOnly (TableModel
-    /// doesn't carry an IsView flag in v1 -- generation is table-only already). </summary>
-    public string? Refuse(TableModel model)
+    /// <summary> Explains why this template does not apply to <paramref name="model"/> (the reason spelled out for a person), or null when every restriction is satisfied. For the one table a caller has already
+    /// committed to generating against; a menu uses <see cref="Check"/> on the cheaper table summary. </summary>
+    public string? Refuse(TableModel model) => Check(TableFacts.Of(model));
+
+    /// <summary> The one place the restrictions are checked: why the template does not apply to a table with these facts, or null when it does. </summary>
+    public string? Check(TableFacts table)
     {
-        if (!SupportsDialect(model.Dialect))
-            return $"is not written for {DialectInfo.For(model.Dialect).Name} (it is for {string.Join(", ", Dialects)}).";
-        if (SqlServerOnly && model.Dialect != SqlDialect.SqlServer)
-            return "writes T-SQL (a SQL Server stored procedure) and has no PostgreSQL version yet.";
-        if (RequiresPrimaryKey && !model.HasPrimaryKey)
+        if (!SupportsDialect(table.Dialect))
+            return $"is not written for {DialectInfo.For(table.Dialect).Name} (it is for {string.Join(", ", Dialects)}).";
+        if (RequiresPrimaryKey && !table.HasPrimaryKey)
             return "requires a primary key, but the table doesn't have one.";
-        if (RequiresJunctionTable && !model.IsJunctionTable)
+        if (RequiresJunctionTable && !table.IsJunctionTable)
             return "requires a many-to-many junction/bridge table, but the table isn't shaped like one.";
-        if (RequiresChildTables && !model.HasAtLeastOneChildForeignKey)
+        if (RequiresChildTables && !table.HasChildForeignKeys)
             return "requires at least one other table with a foreign key pointing back at it, but none was found.";
-        if (RequiresAuditTable && !model.IsAuditTable)
+        if (RequiresAuditTable && !table.IsAuditTable)
             return "requires a table with audit columns (one that records its creation, like CreateDate or CreateUser, and one that records a change, like ModifiedDate or ModifiedBy), but the table has none.";
-        if (!PrimaryKeyShapeSatisfies(model.PrimaryKeyShape))
-            return $"requires a single int, uniqueidentifier or text primary key column, but the table has a {model.PrimaryKeyShape} one.";
-        if (RequiresNotNameActiveTable && model.IsNameActiveTable)
+        if (!PrimaryKeyShapeSatisfies(table.PrimaryKeyShape))
+            return $"requires a single int, uniqueidentifier or text primary key column, but the table has a {table.PrimaryKeyShape} one.";
+        if (RequiresNotNameActiveTable && table.IsNameActiveTable)
             return "assumes a plain GenericRepo-shaped backend, but the table has a Name and an IsActive column, " +
                    "so its repository is a NameActiveRepo and its real API is always hand-maintained.";
         return null;
     }
+
+    private static readonly string[] RequiresNames = ["PrimaryKey", "SingleKey", "NotNameActive", "JunctionTable", "ChildTables", "AuditTable"];
+
+    // Keys of the earlier format. TableOnly never had an effect and SqlServerOnly is Dialects=SqlServer, so both are read and dropped / translated.
+    private static readonly string[] LegacyKeyNames =
+        ["RequiresPrimaryKey", "RequiresSingleKey", "RequiresNotNameActiveTable", "RequiresJunctionTable", "RequiresChildTables", "RequiresAuditTable", "DatabaseOnly", "NoDatabase", "TableOnly", "SqlServerOnly"];
+
+    private static readonly string[] KnownKeyNames =
+        ["Scope", "Requires", "NeedsRowData", "Stacks", "PlanTables", "InPlan", "Dialects", "AccessMode", "OutputRoot", "OutputFolder", "EssentialsGroup", "Description", "Needs", "EssentialsDefault",
+         "NeedsReferencedDisplayColumns", "OutputName", "Base", "Variant"];
 
     public static TemplateConfig Load(string ttConfigPath)
     {
         if (!File.Exists(ttConfigPath))
             return new TemplateConfig();
 
+        var scope = TemplateScope.Table;
         bool requiresPrimaryKey = true;
-        bool tableOnly = true;
         bool requiresJunctionTable = false;
         bool requiresChildTables = false;
         bool requiresAuditTable = false;
@@ -159,8 +186,6 @@ public class TemplateConfig
         bool needsRowData = false;
         bool sqlServerOnly = false;
         bool needsReferencedDisplayColumns = false;
-        bool databaseOnly = false;
-        bool noDatabase = false;
         var stacks = new List<string>();
         var planTables = PlanTableSet.Entity;
         string outputRoot = "Stack";
@@ -173,6 +198,8 @@ public class TemplateConfig
         var needs = new List<string>();
         string? outputName = null;
         string? baseTemplate = null, variant = null;
+        var unknown = new List<string>();
+        var legacy = new List<string>();
 
         foreach (string rawLine in File.ReadAllLines(ttConfigPath))
         {
@@ -187,11 +214,33 @@ public class TemplateConfig
             string key = line[..equalsIndex].Trim();
             string value = line[(equalsIndex + 1)..].Trim();
             bool boolValue = value.EqualsIgnoreCase("true");
+            var list = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
 
-            if (key.EqualsIgnoreCase("RequiresPrimaryKey"))
+            if (LegacyKeyNames.Contains(key, StringComparer.OrdinalIgnoreCase))
+                legacy.Add(key);
+            else if (!KnownKeyNames.Contains(key, StringComparer.OrdinalIgnoreCase) && !key.StartsWithIgnoreCase("OutputFolder."))
+                unknown.Add(key);
+
+            if (key.EqualsIgnoreCase("Scope"))
+            {
+                if (Enum.TryParse<TemplateScope>(value, ignoreCase: true, out var parsedScope))
+                    scope = parsedScope;
+                else
+                    unknown.Add("Scope=" + value);
+            }
+            else if (key.EqualsIgnoreCase("Requires"))
+            {
+                unknown.AddRange(list.Where(item => !RequiresNames.Contains(item, StringComparer.OrdinalIgnoreCase)).Select(item => "Requires=" + item));
+                bool Has(string name) => list.Contains(name, StringComparer.OrdinalIgnoreCase);
+                requiresPrimaryKey = Has("PrimaryKey");
+                requiresSingleKey = Has("SingleKey");
+                requiresNotNameActiveTable = Has("NotNameActive");
+                requiresJunctionTable = Has("JunctionTable");
+                requiresChildTables = Has("ChildTables");
+                requiresAuditTable = Has("AuditTable");
+            }
+            else if (key.EqualsIgnoreCase("RequiresPrimaryKey"))
                 requiresPrimaryKey = boolValue;
-            else if (key.EqualsIgnoreCase("TableOnly"))
-                tableOnly = boolValue;
             else if (key.EqualsIgnoreCase("RequiresJunctionTable"))
                 requiresJunctionTable = boolValue;
             else if (key.EqualsIgnoreCase("RequiresChildTables"))
@@ -207,17 +256,23 @@ public class TemplateConfig
             else if (key.EqualsIgnoreCase("SqlServerOnly"))
                 sqlServerOnly = boolValue;
             else if (key.EqualsIgnoreCase("DatabaseOnly"))
-                databaseOnly = boolValue;
+            {
+                if (boolValue)
+                    scope = TemplateScope.Database;
+            }
             else if (key.EqualsIgnoreCase("NoDatabase"))
-                noDatabase = boolValue;
+            {
+                if (boolValue)
+                    scope = TemplateScope.None;
+            }
             else if (key.EqualsIgnoreCase("Stacks"))
-                stacks = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+                stacks = list;
             else if (key.EqualsIgnoreCase("PlanTables"))
                 planTables = Enum.TryParse<PlanTableSet>(value, ignoreCase: true, out var set) ? set : PlanTableSet.Entity;
             else if (key.EqualsIgnoreCase("InPlan"))
                 inPlan = boolValue;
             else if (key.EqualsIgnoreCase("Dialects"))
-                dialects = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+                dialects = list;
             else if (key.EqualsIgnoreCase("AccessMode"))
                 accessMode = Enum.TryParse<AccessMode>(value, ignoreCase: true, out var mode) ? mode : null;
             else if (key.EqualsIgnoreCase("OutputRoot"))
@@ -231,7 +286,7 @@ public class TemplateConfig
             else if (key.EqualsIgnoreCase("Description"))
                 description = value.Length > 0 ? value : null;
             else if (key.EqualsIgnoreCase("Needs"))
-                needs = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
+                needs = list;
             else if (key.EqualsIgnoreCase("EssentialsDefault"))
                 essentialsDefault = boolValue;
             else if (key.EqualsIgnoreCase("NeedsReferencedDisplayColumns"))
@@ -244,20 +299,21 @@ public class TemplateConfig
                 variant = value.Length > 0 ? value : null;
         }
 
+        // SqlServerOnly=true was the earlier way to write Dialects=SqlServer
+        if (sqlServerOnly && dialects.Count == 0)
+            dialects = ["SqlServer"];
+
         return new TemplateConfig
         {
+            Scope = scope,
             RequiresPrimaryKey = requiresPrimaryKey,
-            TableOnly = tableOnly,
             RequiresJunctionTable = requiresJunctionTable,
             RequiresChildTables = requiresChildTables,
             RequiresAuditTable = requiresAuditTable,
             RequiresSingleKey = requiresSingleKey,
             RequiresNotNameActiveTable = requiresNotNameActiveTable,
             NeedsRowData = needsRowData,
-            SqlServerOnly = sqlServerOnly,
             NeedsReferencedDisplayColumns = needsReferencedDisplayColumns,
-            DatabaseOnly = databaseOnly,
-            NoDatabase = noDatabase,
             Stacks = stacks,
             PlanTables = planTables,
             OutputRoot = outputRoot,
@@ -271,7 +327,9 @@ public class TemplateConfig
             Needs = needs,
             OutputName = outputName,
             Base = baseTemplate,
-            Variant = variant
+            Variant = variant,
+            UnknownKeys = unknown,
+            LegacyKeys = legacy
         };
     }
 }

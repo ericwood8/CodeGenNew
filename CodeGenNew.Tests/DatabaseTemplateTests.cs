@@ -121,7 +121,7 @@ public class DatabaseTemplateTests
             Assert.IsTrue(config.DatabaseOnly, name);
 
             var template = new TemplateInfo { FilePath = "X.tt", Name = "X", Config = config };
-            Assert.IsFalse(template.AppliesTo(tableHasPrimaryKey: true, isView: false), name);
+            Assert.IsFalse(template.AppliesTo(tableHasPrimaryKey: true), name);
         }
     }
 

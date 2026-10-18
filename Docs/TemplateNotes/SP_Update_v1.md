@@ -49,8 +49,8 @@ Behavior (see Docs/Reference.md sections 5 and 7):
     against whatever's already in the row would need an extra SELECT this template doesn't do;
     review generated output for that case if it matters for a given table.
 
-This template requires a primary key (see SP_Update.tt.config: RequiresPrimaryKey=true) and
-only applies to tables, not views (TableOnly=true).
+This template requires a primary key (see SP_Update.tt.config: the default Requires=PrimaryKey) and
+only applies to tables, not views.
 ```
 
 Guard clauses (project lists): a column in `NonNegativeColumns` or `NotFutureDateColumns` that the database states no rule for (a column whose CHECK already has a minimum needs none) gets an `IF` before the write that raises `[Column] must not be negative.` or `[Column] must not be later than today.` (`RAISERROR` and `RETURN` 0 on SQL Server; `RAISE EXCEPTION` on PostgreSQL; `SIGNAL SQLSTATE '45000'` on MySQL). The tests are inline, not shared procedures, so a database needs no extra script. A NULL parameter never trips one ("leave the column as it is"); this procedure's parameters are all text, so the value is converted with `TRY_CAST` first and a value that is no number or date is left to the statement that stores it.
