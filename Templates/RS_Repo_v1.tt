@@ -40,7 +40,7 @@
     bool scoped = ownerField is not null || (ownerColumn is null && linkField is not null);
     var scopeField = ownerField ?? linkField;
     var adminColumn = FieldOf(userPlan?.Admin);
-    var activeColumn = t.Fields.FirstOrDefault(f => f.Column.IsBooleanColumn && !f.Column.IsNullable && f.Column.Name == "IsActive");
+    var activeColumn = t.ActiveField;
 
     Line($"@@@FILE src/repos/{t.Module}.rs@@@");
     Line($"use crate::models::{t.Module}::{t.Struct};");

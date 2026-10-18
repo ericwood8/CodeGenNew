@@ -51,7 +51,7 @@
     var nameField = FieldOf(userPlan?.UserName);
     var adminField = FieldOf(userPlan?.Admin);
     var guarded = new[] { FieldOf(userPlan?.Admin), FieldOf(userPlan?.Role) }.Where(f => f is not null).Select(f => f!).ToList();
-    var activeField = t.Fields.FirstOrDefault(f => f.Column.IsBooleanColumn && !f.Column.IsNullable && f.Column.Name == "IsActive");
+    var activeField = t.ActiveField;
     string AdminTest(string row) => adminField is null ? "false" : (adminField.IsOption ? $"{row}.{adminField.Name} == Some(true)" : $"{row}.{adminField.Name}") + (activeField is null ? "" : $" && {row}.{activeField.Name}");
     string DefaultOf(RustField f) => f.BaseType == "bool" ? (f.IsOption ? "Some(false)" : "false") : f.IsOption ? "None" : "String::new()";
     string keyRef = textKey ? "&" : "";

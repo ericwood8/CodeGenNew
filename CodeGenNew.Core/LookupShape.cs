@@ -28,10 +28,7 @@ public readonly record struct LookupShape(bool LooksLikeLookup, long RowCount, b
         if (primaryKey.Count != 1 || !primaryKey[0].IsIntegerColumn || foreignKeyCount > 0)
             return false;
 
-        bool nameActive =
-            columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name") &&
-            columns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
-        if (nameActive)
+        if (TableModel.HasNameActiveShape(columns))
             return false;
 
         var others = columns.Where(c => !c.IsPrimaryKey && !c.IsAuditColumn).ToList();

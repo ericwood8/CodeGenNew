@@ -52,7 +52,7 @@
     var nameField = FieldOf(userPlan?.UserName);
     var adminField = FieldOf(userPlan?.Admin);
     var guarded = new[] { FieldOf(userPlan?.Admin), FieldOf(userPlan?.Role) }.Where(f => f is not null).Select(f => f!).ToList();
-    var activeField = t.SchemaFields.FirstOrDefault(f => f.Column.IsBooleanColumn && !f.Column.IsNullable && f.Column.Name == "IsActive");
+    var activeField = t.ActiveField;
     string AdminTest(string row) => adminField is null ? "False" : $"bool({row}.{adminField.Name})" + (activeField is null ? "" : $" and bool({row}.{activeField.Name})");
     string DefaultOf(PythonField f) => f.Annotation == "bool" ? "False" : f.IsNullable ? "None" : "\"\"";
 

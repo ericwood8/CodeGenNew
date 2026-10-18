@@ -72,6 +72,7 @@ public sealed class RustTable
         foreach (var field in fields.Where(f => f != HashField))
             fieldOf.TryAdd(field.Column, field);
         _fieldOf = fieldOf;
+        ActiveField = model.IsActiveColumn is { } activeColumn && fieldOf.TryGetValue(activeColumn, out var activeField) ? activeField : null;
         Navigations = EntityNavigations.Of(model, fk => project.NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape) ?? false)
             .Where(n => fieldOf.ContainsKey(n.Column))
             .Select(n => new RustNavigation(RustNames.Ident(RustNames.Snake(n.Role)), JsonNames.Camel(n.Role))).ToList();
@@ -123,6 +124,9 @@ public sealed class RustTable
     public string Route { get; }
 
     public IReadOnlyList<RustField> Fields { get; }
+
+    /// <summary> The field of the NOT NULL <c>IsActive</c> flag (<see cref="TableModel.IsActiveColumn"/>), or null when the table has none or the crate does not carry it. </summary>
+    public RustField? ActiveField { get; }
     public IReadOnlyList<ColumnModel> Skipped { get; }
     public RustField Key { get; }
 
@@ -325,8 +329,7 @@ public sealed class RustTable
             name = _di.ToText(name);
         if (display.IsNullable)
             name = $"COALESCE({name}, '')";
-        var active = Model.Columns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive" && _fieldOf.ContainsKey(c));
-        string flag = active is null ? "NULL" : _di.Quote(active.DbName);
+        string flag = ActiveField is null ? "NULL" : _di.Quote(ActiveField.Column.DbName);
         string select = $"SELECT {_di.Quote(Key.Column.DbName)} AS id, {name} AS name, {flag} AS is_active FROM {Table}";
         LookupSql = $"{select} ORDER BY {name}";
         LookupBase = $"{select} WHERE 1 = 1";

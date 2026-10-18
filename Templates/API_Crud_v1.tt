@@ -108,7 +108,6 @@
 
     // GET <route>/lookup answers { id, name, isActive } (only the key, the display column and the flag are read) for a table with a display column (DisplayColumnSelector); a Name and IsActive table always has one.
     var displayColumn = supported && !nameActive ? Model.DisplayColumns.FirstOrDefault() : null;   // the column the screens' drop-downs show (ForeignKeyModel.ReferencedDisplayColumns[0])
-    var activeColumn = Model.Columns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
     string lookupName = displayColumn is null ? ""
         : displayColumn.IsStringColumn ? $"c.{displayColumn.Name}" + (displayColumn.IsNullable ? " ?? \"\"" : "")
         : displayColumn.IsNullable ? $"c.{displayColumn.Name} == null ? \"\" : c.{displayColumn.Name}.ToString()!"
@@ -125,12 +124,12 @@
     string userKey = keyProperty;
     string userName = userPlan?.UserName.CSharpName() ?? "";
     string userHash = userPlan?.PasswordHash.CSharpName() ?? "";
-    string userActive = activeColumn?.CSharpName() ?? "";
+    string userActive = Model.IsActiveColumn?.CSharpName() ?? "";
     string UserDefault(ColumnModel c) => c.IsBooleanColumn ? "false" : c.IsNullable ? "null" : "\"\"";
-    string UserIsAdmin(string row, string? active = null) => userAdmin is null ? "false" : $"{row}.{userAdmin.CSharpName()} == true" + (activeColumn is null ? "" : $" && {row}.{active ?? userActive}");
+    string UserIsAdmin(string row, string? active = null) => userAdmin is null ? "false" : $"{row}.{userAdmin.CSharpName()} == true" + (Model.IsActiveColumn is null ? "" : $" && {row}.{active ?? userActive}");
     string userStoredMembers = string.Join(", ", new[] { $"Hash = u.{userHash}" }
         .Concat(userGuarded.Select(c => $"{c.CSharpName()} = u.{c.CSharpName()}"))
-        .Concat(userAdmin is not null && activeColumn is not null ? new[] { $"Active = u.{userActive}" } : Array.Empty<string>()));
+        .Concat(userAdmin is not null && Model.IsActiveColumn is not null ? new[] { $"Active = u.{userActive}" } : Array.Empty<string>()));
 
     if (supported)
     {
@@ -266,7 +265,7 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
     protected override bool CanLookup => true;
 
     protected override IQueryable<<#= lookupItem #>> LookupQuery(IQueryable<<#= entity #>> rows) =>
-        rows.OrderBy(c => <#= lookupName #>).Select(c => new <#= lookupItem #>(c.<#= keyProperty #>, <#= lookupName #>, <#= activeColumn is null ? "null" : "c." + activeColumn.Name #>));
+        rows.OrderBy(c => <#= lookupName #>).Select(c => new <#= lookupItem #>(c.<#= keyProperty #>, <#= lookupName #>, <#= Model.IsActiveColumn is null ? "null" : "c." + Model.IsActiveColumn.Name #>));
 
     protected override Expression<Func<<#= entity #>, string>>? LookupText => c => <#= lookupName #>;
 <#

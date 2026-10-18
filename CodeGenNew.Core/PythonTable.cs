@@ -75,7 +75,8 @@ public sealed class PythonTable
             DefaultOrder = [Key];
 
         LookupName = model.DisplayColumns.Where(fieldOf.ContainsKey).Select(c => fieldOf[c]).FirstOrDefault();
-        LookupActive = LookupName is null ? null : SchemaFields.FirstOrDefault(f => f.Column.IsBooleanColumn && !f.Column.IsNullable && f.Column.Name == "IsActive");
+        ActiveField = model.IsActiveColumn is { } activeColumn && fieldOf.TryGetValue(activeColumn, out var activeField) ? activeField : null;
+        LookupActive = LookupName is null ? null : ActiveField;
 
         if (CloneShape.CanClone(model, project))
             BuildClone();
@@ -141,6 +142,9 @@ public sealed class PythonTable
     /// <summary> The field <c>GET &lt;route&gt;/lookup</c> answers as <c>name</c> (the first display column, read as text and blank when null): the list the drop-downs and the "name of" columns of other screens read.
     /// Null when the table has no display column, and then it has no lookup. </summary>
     public PythonField? LookupName { get; }
+
+    /// <summary> The field of the NOT NULL <c>IsActive</c> flag (<see cref="TableModel.IsActiveColumn"/>), or null when the table has none or the schema does not carry it. </summary>
+    public PythonField? ActiveField { get; }
 
     /// <summary> The NOT NULL <c>IsActive</c> flag a lookup answers as <c>isActive</c>, or null (the lookup answers null). </summary>
     public PythonField? LookupActive { get; }

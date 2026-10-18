@@ -70,9 +70,7 @@ public class IconProvider
             using var buffer = new MemoryStream();
             await resourceStream.CopyToAsync(buffer);
 
-            // Write the bytes with a DataWriter and StoreAsync them: that really commits them to the stream. The
-            // earlier approach copied through Stream.AsStreamForWrite(), a buffering adapter that was never
-            // flushed, so the decoder was handed an empty stream and EVERY icon silently rendered blank.
+            // Write the bytes with a DataWriter and StoreAsync them: that commits them to the stream before the decoder reads it.
             using var randomAccessStream = new InMemoryRandomAccessStream();
             using (var writer = new DataWriter(randomAccessStream))
             {

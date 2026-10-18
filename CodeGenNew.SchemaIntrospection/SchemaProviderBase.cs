@@ -5,7 +5,7 @@ using CodeGenNew.Core;
 namespace CodeGenNew.SchemaIntrospection;
 
 /// <summary> What the app and the CLI need from a database: the table list, a table's columns for the tree, and a fully
-/// populated TableModel. One implementation per database (SQL Server, PostgreSQL). </summary>
+/// populated TableModel. One implementation per database (SQL Server, PostgreSQL, MySQL, SQLite). </summary>
 public interface ISchemaProvider
 {
     Task<List<TableSummary>> ListTablesAsync(CancellationToken cancellationToken = default);
@@ -120,11 +120,9 @@ public abstract class SchemaProviderBase : ISchemaProvider
     /// keeps a mis-click on a big table from reading the whole thing into memory and into one generated file. </summary>
     public const int MaxRowDataRows = 5000;
 
-    /// <param name="includeRowData"> Also read the table's rows into TableModel.Rows (read-only SELECT). Only
-    /// templates that set NeedsRowData=true in their .tt.config need this. </param>
-    /// <param name="includeReferencedDisplayColumns"> Also read each foreign-keyed table's columns to fill
-    /// ForeignKeyModel.ReferencedDisplayColumns (read-only catalog queries). Only templates that set
-    /// NeedsReferencedDisplayColumns=true (SP_Lookup) need this. </param>
+    /// <param name="includeRowData"> Also read the table's rows into TableModel.Rows (a read-only SELECT), for a template that sets NeedsRowData. </param>
+    /// <param name="includeReferencedDisplayColumns"> Also read, with read-only catalog queries, the display columns of the foreign-keyed tables
+    /// (ForeignKeyModel.ReferencedDisplayColumns) and the columns, keys and foreign keys of the child tables (ChildForeignKeyModel), for a template that sets NeedsReferencedDisplayColumns. </param>
     public async Task<TableModel> BuildTableModelAsync(
         string schemaName, string tableName, bool includeRowData = false, bool includeReferencedDisplayColumns = false,
         CancellationToken cancellationToken = default)

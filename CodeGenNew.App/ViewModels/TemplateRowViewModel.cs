@@ -45,9 +45,7 @@ public partial class TemplateRowViewModel : ObservableObject
 
     private void Save()
     {
-        // This screen only owns the Requires line (its primary key checkbox). Rewrite it, but carry over every other line as it is (extra
-        // settings such as NeedsRowData / NeedsReferencedDisplayColumns and their comments), so toggling the checkbox
-        // can never silently switch off something a template depends on. The other restrictions already on the line are kept.
+        // The checkbox owns the header comment and the Requires line. Every other line is kept as it is, and the other items of Requires are carried over from the file.
         var current = TemplateConfig.Load(_configPath);
         var preserved = new List<string>();
         if (File.Exists(_configPath))
@@ -55,7 +53,7 @@ public partial class TemplateRowViewModel : ObservableObject
             foreach (string line in File.ReadAllLines(_configPath))
             {
                 string trimmed = line.Trim();
-                bool isOurs = trimmed.StartsWithIgnoreCase("# Restriction checkboxes for")
+                bool isOurs = trimmed.StartsWithIgnoreCase("# Restriction checkbox")
                               || System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^(Requires\w*|TableOnly)\s*=", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
                 if (!isOurs)
                     preserved.Add(line);

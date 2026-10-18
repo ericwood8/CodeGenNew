@@ -46,13 +46,11 @@
         // ==== C# type of a column (same mapping CS_Entity.tt/CS_Validation.tt use)
         string ClrType(ColumnModel c) => c.CSharp();
 
-        var nameColumn = Model.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
-        var activeColumn = Model.Columns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
         var searchableColumns = Model.SearchableColumns;
         var searchKeys = Model.SearchKeyColumns;
         // With AccessMode=Ef the search, the sort and the clone are LINQ over the context (CS_SearchQuery writes the query), not calls to the routines SP_Search and SP_Clone write.
         bool ef = Project.AccessModeFor(Model.Dialect) == AccessMode.Ef;
-        bool nameActive = nameColumn is not null && activeColumn is not null;
+        bool nameActive = Model.IsNameActiveTable;
         // the base follows the key (KeyType): GenericRepo<Entity> for an int key, GenericRepo<Entity, string> / <Entity, Guid> / <Entity, long> for the others
         var keyType = Model.PrimaryKeyType;
         string baseRepo = nameActive ? $"NameActiveRepo<{entity}>" : keyType?.RepoBase(entity) ?? $"GenericRepo<{entity}>";
@@ -128,28 +126,17 @@
             });
         }
 
-        // CloneAsync: the grids' Clone button (CloneShape says which tables get one). Calls <Table>_Clone (SP_Clone) and returns the new row's id; a unique text column gets a
+        // CloneAsync: the grids' Clone button (CloneShape says which tables get one). Calls <Table>_Clone (SP_Clone), or LINQ with AccessMode=Ef, and returns the new row's id; a unique text column gets a
         // free value from SuggestUnique<Column> above.
         if (CloneShape.CanClone(Model, Project))
             methods.Add((ef ? CloneEf.RepoMethod(Model, entity) : CloneCall.RepoMethod(Model, entity)).ToArray());
 
-        // Pagination: this repo method calls the same
-        // generated <Table>_Search/<Table>_SearchCount pair directly through the DbContext, the identical
-        // Database.SqlQueryRaw<T> call API_Search.tt's minimal-API endpoint makes, so WinUI3 (in-process)
-        // and the web API (over HTTP) share one source of truth for "how do I search+page this table"
-        // instead of two independently-maintained filter implementations. Returns a plain tuple, not a
-        // PagedResult<T>-shaped record: API_Search.tt's own <TableName>SearchResult lives in a different,
-        // independently-generated file this template cannot assume was ever run for this table.
-        //
-        // Always generated - not gated on searchableColumns.Count > 0. Pagination and searchability are
-        // separate concerns (SP_Search.tt's own header comment): a table with no searchable column (e.g. one
-        // keyed only by ids/numbers) still grows without bound and still needs a paged GetAll, just with zero
-        // filter parameters - found live needing exactly this on such a table (2026-09-28).
+        // SearchAsync: the one search-and-page call WinUI3 (in process) and the web API share. It is LINQ with AccessMode=Ef (CS_SearchQuery), else a call of the <Table>_Search / _SearchCount routines
+        // through the DbContext. It returns a plain tuple, not API_Search's <Table>SearchResult, which lives in a file this template cannot assume was generated.
+        // Always written, even with no searchable column: a table keyed only by numbers still needs a paged list, with zero filters.
         {
             var filters = searchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
-            // Filter params, then pageNumber/pageSize - joined as ONE list so the comma placement is correct
-            // whether there are zero filters or several (a naive "{paramList}, int pageNumber" would leave a
-            // leading ", " when paramList is empty).
+            // One list of the filters, then the paging parameters, so no leading comma appears when there is no filter.
             var signatureParams = filters.Select(f => $"string? {f.ParamName} = null")
                 .Append("int pageNumber = 1").Append("int pageSize = 100")
                 // The grid's chosen sort: a column name (null = the default order) and the direction. The procedure compares the name with its own list of columns (SearchSort).
@@ -199,20 +186,13 @@
                 body.Add("            " + call.KeyParameter(searchKeys[i], LowerFirst(searchKeys[i].Name)) + (i < searchKeys.Count - 1 ? "," : ""));
             body.Add("        };");
             body.Add("");
-            // Set<T>().FromSqlRaw(...), NOT Database.SqlQueryRaw<T>(...): SqlQueryRaw<T> builds an ad hoc
-            // EF model for T on the fly and that model rejects any navigation property T has ("Navigations
-            // are not supported when using 'SqlQuery'") - it throws for any table with a foreign key, found
-            // live running this exact generated code against a table with a parent lookup (2026-09-28).
-            // FromSqlRaw uses the real, already-validated entity model (navigations and all), so it works
-            // whether or not T has any.
+            // Set<T>().FromSqlRaw, not Database.SqlQueryRaw<T>: SqlQueryRaw<T> builds an ad hoc EF model that rejects a navigation property, so it throws for any table with a foreign key;
+            // FromSqlRaw uses the real entity model.
             body.Add("        var items = await _context.Set<" + entity + ">()");
             body.Add($"            .FromSqlRaw(\"{call.SearchSql}\", parameters)");
             body.Add("            .ToListAsync();");
             body.Add("");
-            // Explicitly typed (not "var ... = new[]"): with zero searchable columns this array has zero
-            // elements, and an implicitly-typed array initializer with nothing in it is a compile error
-            // (CS0826) - found while testing pagination-without-search, the case that first makes this array
-            // possibly empty.
+            // Explicitly typed: an implicitly typed empty array initializer is a compile error (CS0826), and this array is empty when there is no filter.
             body.Add($"        var countParameters = new {call.ParameterNamespace}.{call.ParameterType}[]");
             body.Add("        {");
             var countArguments = filters.Select(f => call.TextParameter(f.Name, f.ParamName))
@@ -221,11 +201,7 @@
                 body.Add("            " + countArguments[i] + (i < countArguments.Count - 1 ? "," : ""));
             body.Add("        };");
             body.Add("");
-            // .SingleAsync() (or any operator EF must COMPOSE the SQL for) throws InvalidOperationException
-            // ("was called with non-composable SQL") against an EXEC call - a stored-procedure call cannot be
-            // wrapped in a derived-table subquery the way a plain SELECT can. Found live, running this exact
-            // generated code for real: .ToListAsync() executes the EXEC as-is (no composition needed), then
-            // .Single() enforces "exactly one row" in memory instead of in SQL.
+            // ToListAsync, then Single in memory: SingleAsync makes EF compose the SQL, which fails for an EXEC call (a stored-procedure call cannot be wrapped in a subquery).
             body.Add("        var totalCountRows = await _context.Database");
             body.Add($"            .SqlQueryRaw<int>(\"{call.CountSql}\", countParameters)");
             body.Add("            .ToListAsync();");
@@ -244,12 +220,8 @@
             foreach (string u in usings) L($"using {u};");
             L();
         }
-        // partial: in a WinUI3/Windows App SDK project, the CsWinRT source generator scans every type for
-        // WinRT-projected interfaces - GenericRepo<T>/NameActiveRepo<T> both implement IDisposable (WinRT's
-        // IClosable) - and needs to add generated members onto the concrete (non-generic) class implementing
-        // it, which it can only do if that class is declared partial. Without this, every generated repo in a
-        // WinUI3 target project gets "Class {Table}Repo implements WinRT interfaces but ... isn't marked
-        // partial" - found live, building a real WinUI3 target project (2026-09-27).
+        // partial: a WinUI3 project's CsWinRT source generator adds members to a class that implements WinRT interfaces (GenericRepo and NameActiveRepo implement IDisposable, WinRT's IClosable),
+        // and can only do that to a partial class.
         L($"public partial class {Model.TableName}Repo : {baseRepo}");
         L("{");
         L($"    public {Model.TableName}Repo({contextType} context) : base(context)");

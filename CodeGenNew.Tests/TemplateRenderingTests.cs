@@ -1034,6 +1034,23 @@ public class TemplateRenderingTests
     }
 
     [TestMethod]
+    public async Task An_enum_finds_its_name_column_by_the_table_name_without_the_SY_or_E_prefix()
+    {
+        var roles = Sample.Table("SY_Role",
+        [
+            Sample.Column("SY_RoleId", SqlDbType.Int, primaryKey: true, ordinal: 1),
+            Sample.Column("RoleName", SqlDbType.NVarChar, characters: 50, ordinal: 2),
+            Sample.Column("Note", SqlDbType.NVarChar, characters: 50, ordinal: 3)
+        ],
+        rows: [[1, "Admin", "x"], [2, "Manager", "y"]]);
+
+        string cs = await Render("CS_Enum_v1.tt", roles);
+
+        Expect.Contains(cs, "    Admin = 1,");
+        Expect.Contains(cs, "    Manager = 2\n");
+    }
+
+    [TestMethod]
     public async Task An_enum_refuses_a_table_it_cannot_read_meaningfully()
     {
         StringAssert.Contains(await Refusal("CS_Enum_v1.tt", Sample.CompositeKey()), "single integer primary key");

@@ -46,9 +46,7 @@
         string Words(string name, bool isBit) => Labels.Words(name, isBit);
 
         // ==== base class
-        var nameColumn = Model.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
-        var activeColumn = Model.Columns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
-        bool nameActive = nameColumn is not null && activeColumn is not null;
+        bool nameActive = Model.IsNameActiveTable;
         string baseClass = nameActive ? baseNameActiveEntity : baseEntity;
 
         // ==== foreign keys: single-column ones only
@@ -119,7 +117,7 @@
         }
 
         // ==== the rest of the columns
-        foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && !fkByColumn.ContainsKey(c.Name) && !(nameActive && (c == nameColumn || c == activeColumn))))
+        foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && !fkByColumn.ContainsKey(c.Name) && !(nameActive && (c == Model.RequiredNameColumn || c == Model.IsActiveColumn))))
         {
             B();
             bool isBit = c.IsBooleanColumn;

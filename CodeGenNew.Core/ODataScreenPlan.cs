@@ -45,7 +45,7 @@ public sealed class ODataScreenPlan
         }).ToList();
 
         var display = table.DisplayColumns.FirstOrDefault();
-        var active = table.Columns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
+        var active = table.IsActiveColumn;
         return new ODataScreenPlan
         {
             Set = ODataNames.SetName(table.TableName),

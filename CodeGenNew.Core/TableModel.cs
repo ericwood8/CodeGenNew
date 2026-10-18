@@ -80,19 +80,22 @@ public class TableModel
     /// and a child grid compare codes to codes through it. Null when the foreign key has several columns, the column is not here, or its type is not a key type. </summary>
     public KeyType? ForeignKeyType(ForeignKeyModel foreignKey) => KeyType.OfForeignKey(Columns, foreignKey);
 
-    /// <summary> A NOT NULL text column called exactly "Name" plus a NOT NULL bit column called exactly
-    /// "IsActive" -- the one shape test repeated identically across API_Crud.tt, CS_Entity.tt, CS_Repo.tt and
-    /// the WinUI3 CRUD-screen family (each used to spell it out inline; canonical here so they can't drift
-    /// apart). Such a table's repository is a NameActiveRepo, not a GenericRepo -- see
-    /// TemplateConfig.RequiresNotNameActiveTable (Docs/Reference.md section 3) for which templates that rules
-    /// out and why. Exact-name match, not a SpecialLogicColumns.config pattern rule, matching how the
-    /// existing inline checks were always written. </summary>
+    /// <summary> A NOT NULL text column called exactly "Name" plus a NOT NULL bit column called exactly "IsActive" (<see cref="RequiredNameColumn"/> and <see cref="IsActiveColumn"/>): the one shape test the
+    /// API, entity and repository templates and the WinUI3 CRUD-screen family share. Such a table's repository is a NameActiveRepo, not a GenericRepo -- see
+    /// TemplateConfig.RequiresNotNameActiveTable (Docs/Reference.md section 3) for which templates that rules out and why. Exact-name match, not a SpecialLogicColumns.config pattern rule. </summary>
     public bool IsNameActiveTable => _isNameActiveTable ??= HasNameActiveShape(Columns);
 
     /// <summary> Whether these columns are those of a name / active table (see <see cref="IsNameActiveTable"/>): lets a template ask the question of a child table, whose columns it holds but not its model. </summary>
     public static bool HasNameActiveShape(IEnumerable<ColumnModel> columns) =>
-        columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name") &&
-        columns.Any(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
+        FindRequiredName(columns) is not null && FindIsActive(columns) is not null;
+
+    /// <summary> The NOT NULL text column called exactly "Name" among these columns, or null. </summary>
+    public static ColumnModel? FindRequiredName(IEnumerable<ColumnModel> columns) =>
+        columns.FirstOrDefault(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
+
+    /// <summary> The NOT NULL bit column called exactly "IsActive" among these columns, or null. </summary>
+    public static ColumnModel? FindIsActive(IEnumerable<ColumnModel> columns) =>
+        columns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsNullable && c.Name == "IsActive");
 
     private bool? _isNameActiveTable;
     private bool? _isJunctionTable;
@@ -122,8 +125,14 @@ public class TableModel
     public required List<ForeignKeyModel> ForeignKeys { get; init; }
     public bool HasAtLeastOneForeignKey => ForeignKeys.Count > 0;
 
+    /// <summary> The text column called exactly Name that is NOT NULL (its repository has GetByName), or null. </summary>
+    public ColumnModel? RequiredNameColumn => FindRequiredName(Columns);
+
+    /// <summary> The bit column called exactly IsActive that is NOT NULL, or null. Not <see cref="ActiveColumn"/>: that is the active / inactive flag a SpecialLogicColumns.config rule found, whatever its name. </summary>
+    public ColumnModel? IsActiveColumn => FindIsActive(Columns);
+
     /// <summary> The table has a text column called Name that is NOT NULL: its repository has GetByName. </summary>
-    public bool HasRequiredNameColumn => Columns.Any(c => c.IsStringColumn && !c.IsNullable && c.Name == "Name");
+    public bool HasRequiredNameColumn => RequiredNameColumn is not null;
 
     /// <summary> The API answers <c>GET &lt;route&gt;/{name}</c> and the clients have <c>findByName</c>: a table with a required Name that is not a name / active table. A text key has none, since
     /// <c>GET &lt;route&gt;/{id}</c> and <c>GET &lt;route&gt;/{name}</c> would be one route. The API, the repository and every client ask this one question. </summary>

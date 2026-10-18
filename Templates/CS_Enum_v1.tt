@@ -38,7 +38,7 @@
     // the column that names each row, first match wins: a text column called "Name"; then "<Table>Name" (Company ->
     // CompanyName; a leading "E_" / "SY_" on the table name is ignored, so SY_Role -> RoleName); then the display column
     // ranked best by SpecialLogicColumns.config; then any text column whose name ends in "Name"
-    string tableStem = System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(Model.TableName, "^E_", ""), "^SY_", "");
+    string tableStem = TemplateHelpers.BaseName(Model.TableName);
     ColumnModel TextColumnNamed(string name) => Model.Columns.FirstOrDefault(c => c.IsStringColumn && c.Name.EqualsIgnoreCase(name));
     var nameColumn = TextColumnNamed("Name")
                      ?? TextColumnNamed(Model.TableName + "Name")
