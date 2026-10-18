@@ -24,7 +24,7 @@ public static class ProjectSettingChoices
     private static SettingChoice NotSet(string meaning) => new("", $"Not set ({meaning})");
 
     /// <summary> The stacks a project can generate; the same list as ProjectPlan.KnownStacks (a test keeps them equal). </summary>
-    public static readonly string[] Stacks = ["Api", "WinUI3", "React", "Angular", "Blazor", "Rust", "Python"];
+    public static readonly string[] Stacks = ["Api", "WinUI3", "React", "Angular", "Blazor", "Uno", "Rust", "Python"];
 
     public const int HighestPort = 65535;
 

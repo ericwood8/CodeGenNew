@@ -102,7 +102,7 @@
 @@@FILE appsettings.json@@@
 {
   "ConnectionStrings": {
-    "DbConnectionString": "<#= connection #>"
+    "DbConnectionString": "<#= connection.Replace("\\", "\\\\").Replace("\"", "\\\"") #>"
   }
 }
 @@@FILE GlobalUsings.cs@@@

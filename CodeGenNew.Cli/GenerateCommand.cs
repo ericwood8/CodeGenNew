@@ -116,7 +116,7 @@ public static class GenerateCommand
                 stacks.Add(stack);
         }
         if (stacks.Count == 0)
-            error = "No stack chosen: pass --stack (Api, WinUI3, React, Angular, Blazor, Rust) or set Stacks in the project file.";
+            error = "No stack chosen: pass --stack (Api, WinUI3, React, Angular, Blazor, Uno, Rust, Python) or set Stacks in the project file.";
         return stacks;
     }
 

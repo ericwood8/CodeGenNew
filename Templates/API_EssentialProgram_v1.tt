@@ -38,10 +38,12 @@
             : $"Server={Project.DatabaseServer};Database={Project.DatabaseName};Trusted_Connection=True;TrustServerCertificate=True;"
     };
     // the front ends that call this API from another origin
-    var stacks = Project.Stacks.Where(s => s.EqualsIgnoreCase("React") || s.EqualsIgnoreCase("Angular") || s.EqualsIgnoreCase("Blazor")).ToList();
+    var stacks = Project.Stacks.Where(s => s.EqualsIgnoreCase("React") || s.EqualsIgnoreCase("Angular") || s.EqualsIgnoreCase("Blazor") || s.EqualsIgnoreCase("Uno")).ToList();
     if (stacks.Count == 0) stacks = ["React"];
     string origins = string.Join(", ", stacks.Select(s => $"\"http://localhost:{Project.DevPort(s)}\""));
-    var proxied = stacks.Where(s => !s.EqualsIgnoreCase("Blazor")).ToList();   // the dev servers that forward /api; a Blazor app calls the API itself
+    var direct = stacks.Where(s => s.EqualsIgnoreCase("Blazor") || s.EqualsIgnoreCase("Uno")).ToList();   // the apps that call the API themselves (the dev servers of the others forward /api)
+    var proxied = stacks.Where(s => !direct.Contains(s)).ToList();
+    string callers = string.Join(" and ", direct.Select(s => s.EqualsIgnoreCase("Uno") ? "Uno app" : "Blazor app"));
     string frontEnd = string.Join(" / ", proxied.Select(s => s == "Angular" ? "Angular" : "React"));
     string contextName = Project.ContextName ?? "AppContext";
     // with ApiAuth the fallback policy asks for a token everywhere, so the documents and health checks say they are open
@@ -98,8 +100,8 @@
     };
     string errorConstants = string.Join("\n", errors.Constants.Select(c => "    " + c));
     string errorArms = string.Join("\n", errors.Arms.Select(a => "            " + a));
-    string corsNote = proxied.Count == 0 ? "The Blazor app calls this API from its own origin, which is allowed below."
-        : $"The {frontEnd} dev server proxies /api here (see {proxyFile}), so CORS only matters if the front end is served elsewhere." + (stacks.Count > proxied.Count ? " The Blazor app calls this API directly, so its origin is allowed below." : "");
+    string corsNote = proxied.Count == 0 ? $"The {callers} calls this API from its own origin, which is allowed below."
+        : $"The {frontEnd} dev server proxies /api here (see {proxyFile}), so CORS only matters if the front end is served elsewhere." + (stacks.Count > proxied.Count ? $" The {callers} calls this API directly, so its origin is allowed below." : "");
 #>
 @@@FILE <#= projectName #>.Api.csproj@@@
 <Project Sdk="Microsoft.NET.Sdk.Web">
@@ -459,7 +461,7 @@ public sealed class ApiExceptionHandler(IProblemDetailsService problems, IHostEn
 @@@FILE appsettings.json@@@
 {
   "ConnectionStrings": {
-    "DbConnectionString": "<#= connection #>"
+    "DbConnectionString": "<#= connection.Replace("\\", "\\\\").Replace("\"", "\\\"") #>"
   },
   "Logging": {
     "LogLevel": {

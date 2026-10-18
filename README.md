@@ -140,7 +140,7 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 
 ### UI layer
 
-Angular, React, Blazor and WinUI3 code: models, services, screens and dashboards.
+Angular, React, Blazor, Uno and WinUI3 code: models, services, screens and dashboards.
 
 | Group | Template | Writes |
 |---|---|---|
@@ -149,6 +149,11 @@ Angular, React, Blazor and WinUI3 code: models, services, screens and dashboards
 | `BLZ` | `BLZ_Page` | `Pages/TablePage.razor` - the Blazor screen: grid, search, sortable headers, paging, add / edit panel with drop-downs for foreign keys. |
 | `BLZ` | `BLZ_Dashboard` | the dashboard page for Blazor (`Services/DashboardClient.cs`, `Components/DashboardWidgetView.razor`, `Pages/Dashboard.razor`; money shown as currency; no strip above each grid). |
 | `BLZ` | `BLZ_ODataClient` | `Services/TableODataClient.cs` for each table the project serves as OData: a short class on `ODataClient` (`BLZ_EssentialOData`) with the entity set, the key, the search boxes, the header sorts and the REST route a clone goes through (opt in with `OData=true`). |
+| `UNO` | `UNO_Model`, `UNO_Client` | `Models/Table.cs` and `Services/TableClient.cs` - the class a table's JSON becomes in the Uno app and its `HttpClient` calls, the Blazor client's. |
+| `UNO` | `UNO_MasterScreen`, `UNO_DetailScreen`, `UNO_DetailMasterScreen` | the WinUI 3 list page and add / edit dialog (`Views/TableListPage.xaml`, `Views/TableDetailDialog.xaml`, and for a table with child tables `Views/TableDetailMasterDialog.xaml` with a grid per child) and their view models, reading and writing through the clients. |
+| `UNO` | `UNO_Dashboard`, `UNO_JunctionEditor` | the dashboard page over `GET /api/dashboard` (`Dashboard=true`), and the two-list editor of a many-to-many junction table over the junction routes. |
+| `UNO` | `UNO_ODataClient`, `UNO_ODataPage` | an OData client and a list page per served table (`OData=true`), with a menu entry "<Table> (OData)". |
+| `UNO` | `UNO_Screens` | `MainPage.Screens.cs` and `Services/ApiClients.cs` - the menu, the screen switch and one client per table. |
 | `BLZ` | `BLZ_ODataPage` | `BLZ_Page` run as its OData form (`Base`/`Variant` in its config): `Pages/TableODataPage.razor`, the same page over the table's OData client with the several-column sort (Shift-click) and the filter row; `ODataScreens=Replace` gives it the REST page's route. |
 | `BLZ` | `BLZ_Screens` | `Layout/NavMenu.razor`, `Pages/Home.razor` and `Services/ApiClients.cs` - whole-database: the menu in `Screens` order and the registration of every client. |
 | `TS` | `TS_GridColumns` | `grid-columns.ts` - whole-database support code for the Columns list every Angular grid has: the saved choice of columns, the rule that reads it back, the cut of a long text and the `GridColumns` object a screen holds. |
@@ -325,6 +330,8 @@ SQL Server, PostgreSQL and MySQL are supported, in the command-line tool and in 
 ## Details
 
 **Blazor.** `Stacks=Blazor` writes a standalone Blazor WebAssembly app (.NET 10) that calls the generated API: a model and an `HttpClient` client per table, a page with grid, search, sort, paging and an add / edit panel (foreign keys as drop-downs), the menu, and the essentials (project file, layout, styles, `.gitignore`). The API allows the app's origin (`DevPort`, default 5190). No tabs or editable child rows yet (a master shows its child tables as read-only grids); the dashboard comes with `Dashboard=true`; `Auth=true` adds the sign-in with the role rules (`WriteRoles`, `ReadRoles`) and `OData=true` the OData clients and pages; see `Docs/TemplateNotes/BLZ_Screens_v1.md`.
+
+**Uno.** `Stacks=Uno` writes a single-project Uno Platform app (.NET 10) that calls the generated API: a model and an `HttpClient` client per table and, per table, the WinUI 3 list page and add / edit dialog (Uno implements the WinUI 3 API, so the same XAML runs) reading and writing through the clients, the menu, and the essentials (project file with the desktop, browser and Windows heads, entry points, app and main page, `.gitignore`). The desktop head (Skia: Windows, macOS, Linux) needs only the .NET SDK; the browser head needs `dotnet workload install wasm-tools`. The API address is `ApiPort` (or `API_BASE_URL`) and the API allows the browser head's origin (`DevPort`, default 5195). A table with child tables gets the master-detail dialog; `Dashboard=true` adds the dashboard, `Auth=true` the sign-in page with the role rules and the guarded columns (`WriteRoles`, `ReadRoles`, `GuardedColumns`), and `OData=true` an OData page per served table. The junction editor is written but not opened from a page, and the pages are the desktop layout; see `Docs/TemplateNotes/UNO_Screens_v1.md`.
 
 **Python.** `Stacks=Python` writes a FastAPI API over SQLAlchemy 2.0 models and Pydantic 2 schemas for SQL Server, PostgreSQL, MySQL or SQLite: the same routes and JSON as the other stacks (so the React, Angular and Blazor apps call it unchanged), validation in the ASP.NET problem form, `requirements.txt` and the essentials (engine, error forms, CORS). The password comes from the environment, never a file. See `Docs/TemplateNotes/PY_Routes_v1.md`.
 

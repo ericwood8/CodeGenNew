@@ -1,0 +1,1068 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Text.RegularExpressions" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
+    // folders, lists of tables). Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string viewNamespace = "MyApp.Views";
+    string viewModelNamespace = "MyApp.ViewModels";
+    string modelsNamespace = "MyApp.Models";      // the model classes (UNO_Model)
+    string servicesNamespace = "MyApp.Services";  // the API clients and ApiClients (UNO_Client, UNO_Screens)
+    // Namespaces the generated files must "using" beyond the ones every file needs (Microsoft.UI.Xaml.*,
+    // System.Collections.ObjectModel, CommunityToolkit.Mvvm.ComponentModel).
+    string[] usings = { };
+    // Folders under the Uno project root (where -o points) the generated files go in.
+    string viewsFolder = "Views";
+    string viewModelsFolder = "ViewModels";
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    viewNamespace = Project.ViewNamespace ?? viewNamespace;
+    viewModelNamespace = Project.ViewModelNamespace ?? viewModelNamespace;
+    if (Project.ViewNamespace is not null || Project.ProjectName is not null)
+    {
+        modelsNamespace = UnoNames.ModelsNamespace(Project);
+        servicesNamespace = UnoNames.ServicesNamespace(Project);
+    }
+    usings = Project.Usings ?? usings;
+    viewsFolder = Project.ViewsFolder ?? viewsFolder;
+    viewModelsFolder = Project.ViewModelsFolder ?? viewModelsFolder;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // UNO_DetailScreen_v1.tt
+    // Generates: Views/<Table>DetailDialog.xaml and .xaml.cs, ViewModels/<Table>DetailViewModel.cs (and CurrencyNumberFormatter when a money column exists)
+    // The Uno Platform twin of WinUI3_DetailScreen: the same dialog (a field per column on tabs, drop-downs for foreign keys and listed values, a calendar picker,
+    // number boxes, currency boxes, validation, Save/Cancel), reading and writing through the generated API clients (UNO_Client) instead of an EF context. A table
+    // that has child tables gets UNO_DetailMasterScreen's dialog instead.
+    // Full notes: Docs/TemplateNotes/UNO_DetailScreen_v1.md
+    // ==========================================================================================
+
+    // Every whole-number column (a foreign key to a lookup is handled before this) is edited in a number box, whose value is a double:
+    // the ViewModel holds it as a double (NaN = blank) and the save converts it back, after checking it is whole and in range.
+    // A currency column (money, or a decimal whose name says money) is also edited in a number box, formatted as currency in code-behind
+    // (a NumberFormatter cannot be declared in XAML; CurrencyNumberFormatter.cs, written alongside, formats as currency and also reads a plain number), and converted back to a decimal rounded to the column's scale on save.
+    // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is edited in a number box too: its value is a double
+    // (NaN = blank), limited to what the column can hold (NumericClassifier.DecimalRange), and converted back on save.
+
+    var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
+    var keyColumn = form.KeyColumn;
+    bool isNameActive = form.IsNameActive;
+
+    var keyType = form.KeyType;   // how the key travels: a text key is typed by the person on a new row and read-only afterwards
+    if (UnoNames.Refusal(Model, Project) is { } reason)
+    {
+        Error($"UNO_DetailScreen writes no dialog for [{Model.SchemaName}].[{Model.TableName}]: {reason}");
+    }
+    else if (keyColumn is null || keyType is null || isNameActive)
+    {
+        Error($"UNO_DetailScreen needs a plain table with a single int, uniqueidentifier or text primary key, but [{Model.SchemaName}].[{Model.TableName}] is not one.");
+    }
+    else
+    {
+        string table = Model.TableName;
+        string type = BlazorNames.TypeName(table);   // the model class (UNO_Model): the table without an E_ or SY_ prefix
+        string title = form.Title;
+        string keyProp = keyColumn.Name;
+        bool textKey = form.TextKey;
+
+        // The checks the project's validation rules ask of a field (the same classification as the validators of every language): the shape of an email address, phone number, URL, postal code or
+        // social security number in a text box, and a date that is never later than today. Null when the column has no such rule.
+        string? ShapeCheck(ColumnModel c, string prop, string label, bool optional)
+        {
+            if (c.RuleOf(Project, Model.TableName) is not { Shape: not TextShape.None } rule)
+                return null;
+            string test = ColumnRules.CSharpTest(rule.Shape, prop);
+            string refuse = "{ ErrorMessage = \"" + label + " is not " + ColumnRules.NounOf(rule.Shape) + ".\"; return false; }";
+            // a value still equal to the stored one (the entity holds it until the assignment below) is not held against the person: an old value that breaks the rule does not stop an edit of another field
+            string changed = "!string.Equals(entity." + prop + ", " + prop + ")";
+            return optional ? "if (!string.IsNullOrWhiteSpace(" + prop + ") && " + changed + " && !(" + test + ")) " + refuse : "if (" + changed + " && !(" + test + ")) " + refuse;
+        }
+
+        string? FutureCheck(ColumnModel c, string prop, string label) =>
+            c.RuleOf(Project, Model.TableName) is { NotFuture: true }
+                ? "else if (" + prop + ".Value.Date > DateTime.Today && ((DateTime?)entity." + prop + ")?.Date != " + prop + ".Value.Date) { ErrorMessage = \"" + label + " must not be later than today.\"; return false; }"
+                : null;
+
+        var shown = form.Columns;
+
+        // A form with more than one kind of field is tabbed (Main / Billing & Shipping / Notes): see FormPages. A narrow table keeps its single column.
+        var pages = form.Pages.Select(p => (Header: p.Header.Replace("&", "&amp;"), Columns: p.Columns)).ToList();
+        bool tabbed = pages.Count > 1;
+
+        var parents = form.Parents;
+        // a parent with too many rows for a drop-down is found by typing: an AutoSuggestBox that asks the context for the rows whose text contains what was typed
+        var aheadParents = parents.Where(p => p.TypeAhead).ToList();
+        var aheadColumns = shown.Where(c => form.KindOf(c) == FieldKind.Lookup && form.ParentOf(c) is { TypeAhead: true }).ToList();
+
+        if (!Model.HasReferencedDisplayColumns && parents.Count > 0)
+            Error("UNO_DetailScreen needs the foreign-keyed tables' display columns for its drop-downs; its .tt.config must say NeedsReferencedDisplayColumns=true.");
+#>
+@@@FILE <#= viewsFolder #>/<#= table #>DetailDialog.xaml@@@
+<ContentDialog
+    x:Class="<#= viewNamespace #>.<#= table #>DetailDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="{x:Bind ViewModel.DialogTitle, Mode=OneWay}"
+    PrimaryButtonText="Save"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+    PrimaryButtonClick="OnPrimaryButtonClick">
+
+    <!-- A ContentDialog's width is capped by these two theme resources (about 320-548 by default), NOT by its own
+         MinWidth/MaxWidth or by anything inside it, which is why setting those has no effect. Raising the cap
+         lets the ScrollViewer's own MinWidth below (and the content) decide the width, up to the window. -->
+    <ContentDialog.Resources>
+        <x:Double x:Key="ContentDialogMinWidth">320</x:Double>
+        <x:Double x:Key="ContentDialogMaxWidth">1400</x:Double>
+        <!-- every button's caption is bold -->
+        <Style x:Key="BoldDialogButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style x:Key="BoldAccentDialogButton" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+<#= form.Columns.Any(form.IsMarked) ? RequiredMark.XamlHeaderTemplate : "" #>    </ContentDialog.Resources>
+    <!-- The two button styles are declared above and applied here: an attribute on the root element is read before the Resources element, so a StaticResource there is not found and the dialog fails to open. -->
+    <ContentDialog.PrimaryButtonStyle>
+        <StaticResource ResourceKey="BoldAccentDialogButton" />
+    </ContentDialog.PrimaryButtonStyle>
+    <ContentDialog.CloseButtonStyle>
+        <StaticResource ResourceKey="BoldDialogButton" />
+    </ContentDialog.CloseButtonStyle>
+
+<#
+        if (tabbed)
+        {
+#>
+    <StackPanel MinWidth="420" Spacing="12">
+        <InfoBar Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
+                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" />
+        <TabView IsAddTabButtonVisible="False" TabWidthMode="SizeToContent" CanReorderTabs="False" CanDragTabs="False" SelectedIndex="0">
+<#
+        }
+        else
+        {
+#>
+    <!-- The error bar sits ABOVE the scrolling area: inside it, a validation message is out of sight whenever the person has scrolled down. -->
+    <StackPanel Spacing="12">
+        <InfoBar Severity="Error" IsOpen="{x:Bind ViewModel.HasError, Mode=OneWay}"
+                 Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" IsClosable="False" />
+    <ScrollViewer MinWidth="420" MaxHeight="560">
+        <StackPanel Spacing="12">
+<#
+        }
+        foreach (var page in pages)
+        {
+            if (tabbed)
+            {
+#>
+            <TabViewItem Header="<#= page.Header #>" IsClosable="False">
+                <ScrollViewer Height="460">
+                    <StackPanel Spacing="12" Padding="0,8,12,8">
+<#
+            }
+        foreach (var c in page.Columns)
+        {
+            var kind = form.KindOf(c);
+            var value = form.ValueOf(c);
+            string prop = c.Name;
+            string label = Labels.Column(c.Name);
+            if (kind == FieldKind.SystemStamp)
+            {
+                // who made the row and when it changed: the system writes it, so it is text, not a box
+#>
+            <StackPanel Spacing="2">
+                <TextBlock Text="<#= label #>" FontWeight="SemiBold" />
+                <TextBlock Text="{x:Bind ViewModel.<#= prop #>, Mode=OneWay}" IsTextSelectionEnabled="True" />
+            </StackPanel>
+<#
+                continue;
+            }
+            var guard = form.GuardOf(c);
+            if (guard is not null)
+            {
+                // a guarded column is a control only for a person who may change it (the API's guards answer); everyone else sees it disabled and why
+#>
+            <StackPanel IsEnabled="{x:Bind ViewModel.<#= prop #>Allowed, Mode=OneWay}">
+<#
+            }
+            if (kind == FieldKind.Lookup)
+            {
+                var p = form.ParentOf(c)!;
+                if (p.TypeAhead)
+                {
+#>
+            <AutoSuggestBox<#= form.IsMarked(c) ? "" : " Header=\"" + label + "\"" #><#= RequiredMark.XamlAttributes(form.IsRequired(c), false) #> AutomationProperties.Name="<#= label #>" PlaceholderText="Type to find" DisplayMemberPath="Text" TextMemberPath="Text"
+                            Text="{x:Bind ViewModel.<#= prop #>Text, Mode=TwoWay}" TextChanged="On<#= prop #>TextChanged" SuggestionChosen="On<#= prop #>Chosen">
+<#
+                    if (form.IsMarked(c))
+                    {
+                        // an AutoSuggestBox has no header template: the caption and its red asterisk are the header itself
+#>
+                <AutoSuggestBox.Header>
+                    <TextBlock><Run Text="<#= label #>" /><Run Text=" <#= RequiredMark.Glyph #>" Foreground="Red" /></TextBlock>
+                </AutoSuggestBox.Header>
+<#
+                    }
+#>
+            </AutoSuggestBox>
+<#
+                }
+                else
+                {
+#>
+            <ComboBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> ItemsSource="{x:Bind ViewModel.<#= WinUI3Names.OptionsProperty(p) #>}"
+                      SelectedValuePath="Id" DisplayMemberPath="Text"
+                      SelectedValue="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
+<#
+                }
+            }
+            else if (kind == FieldKind.Choices)
+            {
+#>
+            <ComboBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> ItemsSource="{x:Bind ViewModel.<#= prop #>Choices}"
+                      SelectedItem="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
+<#
+            }
+            else if (kind == FieldKind.Money)
+            {
+#>
+            <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+                       <#= Project.MoneyLimitAttributes(table, c) #>ValidationMode="InvalidInputOverwritten" Width="180" HorizontalAlignment="Left" />
+<#
+            }
+            else if (value == ValueKind.Decimal)
+            {
+                var (decMin, decMax) = NumericClassifier.DecimalRange(c);
+                int decDigits = Inv(decMax).Length + (c.SqlType == SqlDbType.Decimal ? NumericClassifier.DecimalPlaces(c) : 4);
+                string decWidth = $" Width=\"{Math.Max(Math.Min(decDigits, 12) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
+#>
+            <NumberBox x:Name="<#= prop #>Box" Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+                       Minimum="<#= Inv(decMin) #>" Maximum="<#= Inv(decMax) #>" SmallChange="1" LargeChange="10"
+                       SpinButtonPlacementMode="Inline" ValidationMode="InvalidInputOverwritten"<#= decWidth #> />
+<#
+            }
+            else if (value == ValueKind.WholeNumber)
+            {
+                var range = Project.RangeFor(c)!.Value;
+                // Narrow to the widest number the range allows (a month is two digits, a year four) plus what the box itself needs
+                // around the text - two inline spin buttons, the clear ("x") button and padding, about 150 pixels; any less leaves
+                // no visible room to type - and never narrower than the header text. The digits count at most nine, so a number box over a
+                // whole int (a foreign key shown as a plain number) is not stretched across the dialog.
+                int digits = Math.Max(range.Min.ToString().Length, range.Max.ToString().Length);
+                string width = $" Width=\"{Math.Max(Math.Min(digits, 9) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
+#>
+            <NumberBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Value="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+                       Minimum="<#= range.Min #>" Maximum="<#= range.Max #>" SmallChange="1" LargeChange="<#= range.Max - range.Min >= 100 ? 10 : 1 #>"
+                       SpinButtonPlacementMode="Inline" ValidationMode="InvalidInputOverwritten"<#= width #> />
+<#
+            }
+            else if (kind == FieldKind.Boolean)
+            {
+#>
+            <CheckBox Content="<#= label #>?" IsChecked="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}" />
+<#
+            }
+            else if (kind == FieldKind.Date)
+            {
+#>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <CalendarDatePicker Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Date="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+                                    DateFormat="{}{month.integer}/{day.integer}/{year.full}" PlaceholderText="mm/dd/yyyy" Width="180" />
+<#
+                if (c.IsNullable)
+                {
+#>
+                <Button Content="Clear" VerticalAlignment="Bottom" Click="OnClear<#= prop #>Click" />
+<#
+                }
+#>
+            </StackPanel>
+<#
+            }
+            else if (kind == FieldKind.Multiline)
+            {
+#>
+            <TextBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Text="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"
+                     AcceptsReturn="True" TextWrapping="Wrap" Height="80" MaxLength="<#= Chars(c) #>" />
+<#
+            }
+            else
+            {
+                string maxLen = IsText(c) && Chars(c) > 0 ? $" MaxLength=\"{Chars(c)}\"" : "";
+                // the key of a new row is typed; once the row exists it is read-only (the API does not change a key)
+                string readOnly = textKey && c.IsPrimaryKey ? " IsReadOnly=\"{x:Bind ViewModel.IsExisting}\"" : "";
+#>
+            <TextBox Header="<#= label #>"<#= RequiredMark.XamlAttributes(form.IsRequired(c), form.IsMarked(c)) #> Text="{x:Bind ViewModel.<#= prop #>, Mode=TwoWay}"<#= maxLen #><#= readOnly #> />
+<#
+            }
+            if (guard is not null)
+            {
+#>
+            </StackPanel>
+            <TextBlock Text="<#= System.Security.SecurityElement.Escape(guard.Note) #>" TextWrapping="Wrap" FontStyle="Italic" Visibility="{x:Bind ViewModel.<#= prop #>NoteVisibility, Mode=OneWay}" />
+<#
+            }
+        }
+            if (tabbed)
+            {
+#>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabViewItem>
+<#
+            }
+        }
+        if (tabbed)
+        {
+#>
+        </TabView>
+    </StackPanel>
+<#
+        }
+        else
+        {
+#>
+        </StackPanel>
+    </ScrollViewer>
+    </StackPanel>
+<#
+        }
+#>
+</ContentDialog>
+@@@FILE <#= viewsFolder #>/<#= table #>DetailDialog.xaml.cs@@@
+using <#= viewModelNamespace #>;
+using <#= modelsNamespace #>;
+using <#= servicesNamespace #>;
+using Microsoft.UI.Xaml.Controls;
+<#
+        var currencyColumns = shown.Where(c => form.ValueOf(c) == ValueKind.Money).ToList();
+        foreach (string u in usings)
+        {
+#>
+using <#= u #>;
+<#
+        }
+#>
+
+namespace <#= viewNamespace #>;
+
+public sealed partial class <#= table #>DetailDialog : ContentDialog
+{
+    public <#= table #>DetailViewModel ViewModel { get; }
+    private System.Threading.Tasks.Task _loading = System.Threading.Tasks.Task.CompletedTask;
+
+    /// <param name="editing"> The row being edited, or null to add a new one. </param>
+    public <#= table #>DetailDialog(ApiClients api, <#= type #>? editing = null)
+    {
+        ViewModel = new <#= table #>DetailViewModel(api, editing);
+        InitializeComponent();
+<#
+        foreach (var c in currencyColumns)
+        {
+#>
+        <#= c.Name #>Box.NumberFormatter = new CurrencyNumberFormatter("<#= Project.CurrencyCode #>", <#= NumericClassifier.CurrencyDigits(c) #>);
+<#
+        }
+#>
+<#
+        foreach (var c in shown.Where(c => form.ValueOf(c) == ValueKind.Decimal && c.SqlType == SqlDbType.Decimal))
+        {
+#>
+        <#= c.Name #>Box.NumberFormatter = new Windows.Globalization.NumberFormatting.DecimalFormatter
+        {
+            IntegerDigits = 1, FractionDigits = <#= NumericClassifier.DecimalPlaces(c) #>, IsGrouped = false,
+            NumberRounder = new Windows.Globalization.NumberFormatting.IncrementNumberRounder { Increment = <#= Inv(Math.Pow(10, -NumericClassifier.DecimalPlaces(c))) #>, RoundingAlgorithm = Windows.Globalization.NumberFormatting.RoundingAlgorithm.RoundHalfUp }
+        };
+<#
+        }
+#>
+        Loaded += (_, _) => _loading = ViewModel.LoadLookupsAsync();
+    }
+
+    // ShowAsync() returns the moment the dialog closes, which can be before the dialog's own LoadLookupsAsync() has finished. A caller that is about to
+    // reload the list or open another dialog calls this instead and waits for that load first.
+    public async System.Threading.Tasks.Task<ContentDialogResult> ShowAndWaitAsync()
+    {
+        var result = await ShowAsync();
+        await _loading;
+        return result;
+    }
+
+<#
+        foreach (var c in aheadColumns)
+        {
+            var p = form.ParentOf(c)!;
+#>
+    // Typing in the <#= Labels.Column(c.Name) #> box takes the chosen row off and lists the rows whose text contains what was typed; picking one chooses it.
+    private async void On<#= c.Name #>TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
+            return;
+        ViewModel.<#= c.Name #> = null;
+        sender.ItemsSource = string.IsNullOrWhiteSpace(sender.Text) ? null : await ViewModel.Suggest<#= p.BaseName #>Async(sender.Text);
+    }
+
+    private void On<#= c.Name #>Chosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args) =>
+        ViewModel.<#= c.Name #> = ((<#= WinUI3Names.LookupOptionClass(table, "Detail", p.KeyCs) #>)args.SelectedItem).Id;
+
+<#
+        }
+#>
+    // Validation failure keeps the dialog open instead of closing it - see ViewModel.SaveAsync.
+    private async void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+    {
+        var deferral = args.GetDeferral();
+        try
+        {
+            if (!await ViewModel.SaveAsync())
+                args.Cancel = true;
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+<#
+        foreach (var c in shown.Where(c => form.ValueOf(c) == ValueKind.Date && c.IsNullable))
+        {
+#>
+
+    // CalendarDatePicker has no clear button of its own; a nullable date gets one beside it.
+    private void OnClear<#= c.Name #>Click(object sender, RoutedEventArgs e) => ViewModel.<#= c.Name #> = null;
+<#
+        }
+#>
+}
+@@@FILE <#= viewModelsFolder #>/<#= table #>DetailViewModel.cs@@@
+<#
+        if (parents.Count > 0)
+        {
+#>
+using System.Collections.ObjectModel;
+<#
+        }
+#>
+using System.Threading.Tasks;
+using <#= modelsNamespace #>;
+using <#= servicesNamespace #>;
+using CommunityToolkit.Mvvm.ComponentModel;
+<#
+        foreach (string u in usings)
+        {
+#>
+using <#= u #>;
+<#
+        }
+#>
+
+namespace <#= viewModelNamespace #>;
+
+/// <summary> One entry of a <#= table #>DetailDialog drop-down: an id plus the text to show for it. </summary>
+public class <#= WinUI3Names.LookupOptionClass(table, "Detail", "int") #>
+{
+    public int Id { get; set; }
+    public string Text { get; set; } = "";
+}
+<#
+        // a drop-down over a parent whose key is not an int (a country or currency code, a GUID) has an option class of its own
+        foreach (string optionKey in parents.Select(p => p.KeyCs).Where(k => k != "int").Distinct())
+        {
+#>
+
+/// <summary> One entry of a <#= table #>DetailDialog drop-down whose ids are <#= optionKey #>: an id plus the text to show for it. </summary>
+public class <#= WinUI3Names.LookupOptionClass(table, "Detail", optionKey) #>
+{
+    public <#= optionKey #> Id { get; set; }<#= optionKey == "string" ? " = \"\";" : "" #>
+    public string Text { get; set; } = "";
+}
+<#
+        }
+#>
+
+public partial class <#= table #>DetailViewModel : ObservableObject
+{
+    private readonly ApiClients _api;
+    private readonly <#= type #>? _editing;
+
+    public string DialogTitle => _editing is null ? "Add <#= title #>" : "Edit <#= title #>";
+<#
+        if (textKey)
+        {
+#>
+    /// <summary> True when the row was read from the database: its key can no longer be changed. </summary>
+    public bool IsExisting => _editing is not null;
+<#
+        }
+#>
+
+<#
+        foreach (var p in parents.Where(p => !p.TypeAhead))
+        {
+#>
+    public ObservableCollection<<#= WinUI3Names.LookupOptionClass(table, "Detail", p.KeyCs) #>> <#= WinUI3Names.OptionsProperty(p) #> { get; } = [];
+<#
+        }
+        if (aheadParents.Count > 0)
+        {
+#>
+    // Loading the dialog and the suggestions of a type-ahead take turns, so an old answer never replaces a newer one.
+    private readonly System.Threading.SemaphoreSlim _gate = new(1, 1);
+
+<#
+        }
+        foreach (var c in aheadColumns)
+        {
+#>
+    /// <summary> What the <#= Labels.Column(c.Name) #> box shows: what was typed, or the name of the row that was picked. </summary>
+    [ObservableProperty]
+    private string _<#= char.ToLowerInvariant(c.Name[0]) #><#= c.Name[1..] #>Text = "";
+
+<#
+        }
+        foreach (var p in aheadParents)
+        {
+#>
+    /// <summary> The first few <#= p.Table #> rows whose text contains what was typed. </summary>
+    public async Task<IReadOnlyList<<#= WinUI3Names.LookupOptionClass(table, "Detail", p.KeyCs) #>>> Suggest<#= p.BaseName #>Async(string text)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            var found = await _api.<#= UnoNames.ClientProperty(p.Table) #>.GetLookupAsync(search: text.Trim(), take: 10);
+            return found.Select(r => new <#= WinUI3Names.LookupOptionClass(table, "Detail", p.KeyCs) #> { Id = r.Id, Text = r.Name }).ToList();
+        }
+        finally { _gate.Release(); }
+    }
+
+<#
+        }
+#>
+
+<#
+        // The values the database lists for a column (a MySQL enum), shown as a drop-down.
+        foreach (var c in shown.Where(c => c.HasChoices))
+        {
+#>
+    public string[] <#= c.Name #>Choices { get; } = [<#= string.Join(", ", c.Choices!.Select(v => "\"" + ChoiceFormat.CSharp(v) + "\"")) #>];
+<#
+        }
+#>
+
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [ObservableProperty]
+    private string? _errorMessage;
+    public bool HasError => ErrorMessage is not null;
+<#
+        foreach (var c in shown.Where(c => form.GuardOf(c) is not null))
+        {
+#>
+
+    /// <summary> The signed-in person may change <#= c.Name #> (a guarded column, read from the API's guards); otherwise its field is disabled and the note shows. </summary>
+    [NotifyPropertyChangedFor(nameof(<#= c.Name #>NoteVisibility))]
+    [ObservableProperty]
+    private bool _<#= char.ToLowerInvariant(c.Name[0]) #><#= c.Name[1..] #>Allowed;
+    public Visibility <#= c.Name #>NoteVisibility => <#= c.Name #>Allowed ? Visibility.Collapsed : Visibility.Visible;
+<#
+        }
+#>
+
+<#
+        foreach (var c in shown)
+        {
+            var value = form.ValueOf(c);
+            string prop = c.Name;
+            string fieldType = value == ValueKind.Lookup ? form.ParentOf(c)!.KeyCs + "?" : value == ValueKind.Boolean ? "bool?" : value is ValueKind.Money or ValueKind.Decimal or ValueKind.WholeNumber ? "double" : IsDate(c) ? "DateTimeOffset?" : "string?";
+#>
+    [ObservableProperty]
+    private <#= fieldType #> _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #><#= fieldType == "double" ? " = double.NaN" : "" #>;
+<#
+            if (value == ValueKind.Date)
+            {
+#>
+    private TimeSpan _<#= char.ToLowerInvariant(prop[0]) #><#= prop[1..] #>Time; // the time of day a stored date-and-time had: the calendar edits only the date
+<#
+            }
+        }
+#>
+
+    public <#= table #>DetailViewModel(ApiClients api, <#= type #>? editing)
+    {
+        _api = api;
+        _editing = editing;
+        // Add leaves every field at its default (null/blank); Edit fills them in from the row being edited.
+        if (editing is not null)
+        {
+<#
+        foreach (var c in shown)
+        {
+            var value = form.ValueOf(c);
+            string prop = c.Name;
+            if (value == ValueKind.Lookup)
+            {
+                // Deliberately NOT set here - see LoadLookupsAsync below. A ComboBox's SelectedValue binding
+                // does not retroactively select an item once its ItemsSource is populated AFTER SelectedValue
+                // was already assigned to a value with no match yet (a real, known WinUI3/UWP limitation, not
+                // just a timing quirk): the box renders as if empty even though editing.{prop} is correct,
+                // until the person types in it (found live clicking through a real running app, 2026-09-28).
+            }
+            else if (value == ValueKind.Money)
+            {
+#>
+            <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? (double)editing.{prop}.Value : double.NaN" : $"(double)editing.{prop}" #>;
+<#
+            }
+            else if (value == ValueKind.Decimal)
+            {
+#>
+            <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? (double)editing.{prop}.Value : double.NaN" : $"(double)editing.{prop}" #>;
+<#
+            }
+            else if (value == ValueKind.WholeNumber)
+            {
+#>
+            <#= prop #> = editing.<#= prop #><#= c.IsNullable ? " ?? double.NaN" : "" #>;
+<#
+            }
+            else if (value == ValueKind.Boolean)
+            {
+#>
+            <#= prop #> = editing.<#= prop #>;
+<#
+            }
+            else if (value == ValueKind.Date)
+            {
+#>
+            <#= prop #> = <#= c.IsNullable ? $"editing.{prop}.HasValue ? new DateTimeOffset(editing.{prop}.Value) : null" : $"new DateTimeOffset(editing.{prop})" #>;
+            _<#= char.ToLowerInvariant(prop[0]) + prop[1..] #>Time = editing.<#= prop #><#= c.IsNullable ? "?.TimeOfDay ?? TimeSpan.Zero" : ".TimeOfDay" #>;
+<#
+            }
+            else
+            {
+#>
+            <#= prop #> = editing.<#= prop #><#= c.IsNullable ? "?.ToString()" : ".ToString()" #>;
+<#
+            }
+        }
+#>
+        }
+    }
+
+    // A table with no foreign-key lookups and no guarded column has nothing to load here: a plain Task.CompletedTask avoids CS1998 (an async method with no await).
+<#
+        if (parents.Count == 0 && form.Guards.Count == 0)
+        {
+#>
+    public Task LoadLookupsAsync() => Task.CompletedTask;
+<#
+        }
+        else
+        {
+#>
+<#
+        if (aheadParents.Count > 0)
+        {
+#>
+    public async Task LoadLookupsAsync()
+    {
+        await _gate.WaitAsync();
+        try { await LoadLookupsCoreAsync(); }
+        finally { _gate.Release(); }
+    }
+
+<#
+        }
+#>
+    public async Task <#= aheadParents.Count > 0 ? "LoadLookupsCoreAsync" : "LoadLookupsAsync" #>()
+    {
+<#
+        foreach (var p in parents)
+        {
+            var lookupColumnsForThisParent = shown.Where(c => form.LookupOf(c) is ForeignKeyModel fk && fk.ReferencedTable.EqualsIgnoreCase(p.Table)).ToList();
+            if (p.TypeAhead)
+            {
+                // too many rows to read: only the row being edited is read, for the name the box shows
+                foreach (var c in lookupColumnsForThisParent)
+                {
+#>
+        if (_editing is not null)
+        {
+            <#= c.Name #> = _editing.<#= c.Name #>;
+            if (_editing.<#= c.Name #> is <#= p.KeyCs #> <#= TemplateHelpers.LowerFirst(c.Name) #>Key)
+                <#= c.Name #>Text = (await _api.<#= UnoNames.ClientProperty(p.Table) #>.GetLookupAsync(ids: [<#= TemplateHelpers.LowerFirst(c.Name) #>Key])).FirstOrDefault()?.Name ?? "";
+        }
+<#
+                }
+                continue;
+            }
+#>
+        <#= WinUI3Names.OptionsProperty(p) #>.Clear();
+        foreach (var row in (await _api.<#= UnoNames.ClientProperty(p.Table) #>.<#= BlazorNames.LoadCall(p) #>()).OrderBy(r => r.<#= BlazorNames.DisplayProperty(p) #>))
+            <#= WinUI3Names.OptionsProperty(p) #>.Add(new <#= WinUI3Names.LookupOptionClass(table, "Detail", p.KeyCs) #> { Id = row.<#= BlazorNames.KeyProperty(p) #>, Text = row.<#= BlazorNames.DisplayProperty(p) #>?.ToString() ?? "" });
+<#
+            if (lookupColumnsForThisParent.Count > 0)
+            {
+#>
+        if (_editing is not null)
+        {
+<#
+                foreach (var c in lookupColumnsForThisParent)
+                {
+#>
+            <#= c.Name #> = _editing.<#= c.Name #>;
+<#
+                }
+#>
+        }
+<#
+            }
+        }
+        if (form.Guards.Count > 0)
+        {
+#>
+        // which guarded columns the signed-in person may change (GET guards); until it answers, and when it cannot, they are read-only
+        try
+        {
+            var guards = await _api.<#= UnoNames.ClientProperty(table) #>.GetGuardsAsync();
+<#
+            foreach (var c in shown.Where(c => form.GuardOf(c) is not null))
+            {
+#>
+            <#= c.Name #>Allowed = guards.GetValueOrDefault("<#= form.GuardOf(c)!.Json #>");
+<#
+            }
+#>
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+        }
+<#
+        }
+#>
+    }
+<#
+        }
+#>
+
+    /// <summary> Parses every text-backed field into the entity's real column type, sets ErrorMessage and
+    /// returns false on the first bad or missing value, otherwise saves through the API and returns true. A refused save (the API's answer) is shown in ErrorMessage too. </summary>
+    public async Task<bool> SaveAsync()
+    {
+        ErrorMessage = null;
+        var entity = _editing ?? new <#= type #>();
+
+<#
+        foreach (var c in shown)
+        {
+            var value = form.ValueOf(c);
+            string prop = c.Name;
+            string label = Labels.Column(c.Name);
+            if (value == ValueKind.Lookup)
+            {
+                if (!c.IsNullable)
+                {
+#>
+        if (<#= prop #> is null) { ErrorMessage = "<#= label #> is required."; return false; }
+        entity.<#= prop #> = <#= prop #><#= form.ParentOf(c)!.KeyCs == "string" ? "" : ".Value" #>;
+<#
+                }
+                else
+                {
+#>
+        entity.<#= prop #> = <#= prop #>;
+<#
+                }
+            }
+            else if (value == ValueKind.Money)
+            {
+#>
+        if (double.IsNaN(<#= prop #>))
+        {
+<#
+                if (!c.IsNullable)
+                {
+#>
+            ErrorMessage = "<#= label #> is required."; return false;
+<#
+                }
+                else
+                {
+#>
+            entity.<#= prop #> = null;
+<#
+                }
+#>
+        }
+        else { entity.<#= prop #> = Math.Round((decimal)<#= prop #>, <#= NumericClassifier.CurrencyDigits(c) #>); }
+<#
+            }
+            else if (value == ValueKind.Decimal)
+            {
+                var (decMin, decMax) = NumericClassifier.DecimalRange(c);
+                string decValue = c.SqlType == SqlDbType.Decimal ? $"Math.Round((decimal){prop}, {NumericClassifier.DecimalPlaces(c)})" : c.SqlType == SqlDbType.Real ? $"(float){prop}" : prop;
+#>
+        if (double.IsNaN(<#= prop #>))
+        {
+<#
+                if (!c.IsNullable)
+                {
+#>
+            ErrorMessage = "<#= label #> is required."; return false;
+<#
+                }
+                else
+                {
+#>
+            entity.<#= prop #> = null;
+<#
+                }
+#>
+        }
+        else if (<#= prop #> < <#= Inv(decMin) #> || <#= prop #> > <#= Inv(decMax) #>) { ErrorMessage = "<#= label #> must be between <#= Inv(decMin) #> and <#= Inv(decMax) #>."; return false; }
+        else { entity.<#= prop #> = <#= decValue #>; }
+<#
+            }
+            else if (value == ValueKind.WholeNumber)
+            {
+                var range = Project.RangeFor(c)!.Value;
+                string intType = NumericClassifier.NumericCSharpType(c);
+#>
+        if (double.IsNaN(<#= prop #>))
+        {
+<#
+                if (!c.IsNullable)
+                {
+#>
+            ErrorMessage = "<#= label #> is required."; return false;
+<#
+                }
+                else
+                {
+#>
+            entity.<#= prop #> = null;
+<#
+                }
+#>
+        }
+        else if (<#= prop #> != Math.Floor(<#= prop #>)) { ErrorMessage = "<#= label #> must be a whole number."; return false; }
+        else if (<#= prop #> < <#= range.Min #> || <#= prop #> > <#= range.Max #>) { ErrorMessage = "<#= label #> must be between <#= range.Min #> and <#= range.Max #>."; return false; }
+        else { entity.<#= prop #> = (<#= intType #>)<#= prop #>; }
+<#
+            }
+            else if (value == ValueKind.Boolean)
+            {
+#>
+        entity.<#= prop #> = <#= prop #><#= c.IsNullable ? "" : " ?? false" #>;
+<#
+            }
+            else if (value == ValueKind.Date)
+            {
+#>
+        if (<#= prop #> is null)
+        {
+<#
+                if (!c.IsNullable)
+                {
+#>
+            ErrorMessage = "<#= label #> is required."; return false;
+<#
+                }
+                else
+                {
+#>
+            entity.<#= prop #> = null;
+<#
+                }
+#>
+        }
+<#
+                if (FutureCheck(c, prop, label) is { } futureCheck)
+                {
+#>
+        <#= futureCheck #>
+<#
+                }
+#>
+        else { entity.<#= prop #> = <#= prop #>.Value.Date + _<#= char.ToLowerInvariant(prop[0]) + prop[1..] #>Time; }
+<#
+            }
+            else if (value == ValueKind.Guid)
+            {
+#>
+        if (string.IsNullOrWhiteSpace(<#= prop #>))
+        {
+<#
+                if (!c.IsNullable)
+                {
+#>
+            ErrorMessage = "<#= label #> is required."; return false;
+<#
+                }
+                else
+                {
+#>
+            entity.<#= prop #> = null;
+<#
+                }
+#>
+        }
+        else if (!Guid.TryParse(<#= prop #>, out var <#= prop #>Value)) { ErrorMessage = "<#= label #> is not a valid value."; return false; }
+        else { entity.<#= prop #> = <#= prop #>Value; }
+<#
+            }
+            else if (value == ValueKind.Number)
+            {
+                string numType = NumericClassifier.NumericCSharpType(c);
+#>
+        if (string.IsNullOrWhiteSpace(<#= prop #>))
+        {
+<#
+                if (!c.IsNullable)
+                {
+#>
+            ErrorMessage = "<#= label #> is required."; return false;
+<#
+                }
+                else
+                {
+#>
+            entity.<#= prop #> = null;
+<#
+                }
+#>
+        }
+        else if (!<#= numType #>.TryParse(<#= prop #>, out var <#= prop #>Value)) { ErrorMessage = "<#= label #> is not a valid number."; return false; }
+        else { entity.<#= prop #> = <#= prop #>Value; }
+<#
+            }
+            else // plain text
+            {
+                if (!c.IsNullable)
+                {
+#>
+        if (string.IsNullOrWhiteSpace(<#= prop #>)) { ErrorMessage = "<#= label #> is required."; return false; }
+<#
+                    if (ShapeCheck(c, prop, label, false) is { } requiredShape)
+                    {
+#>
+        <#= requiredShape #>
+<#
+                    }
+#>
+        entity.<#= prop #> = <#= prop #>;
+<#
+                }
+                else
+                {
+                    if (ShapeCheck(c, prop, label, true) is { } optionalShape)
+                    {
+#>
+        <#= optionalShape #>
+<#
+                    }
+#>
+        entity.<#= prop #> = string.IsNullOrWhiteSpace(<#= prop #>) ? null : <#= prop #>;
+<#
+                }
+            }
+        }
+#>
+
+<#
+        if (textKey)
+        {
+#>
+        if (_editing is null && await ExistsAsync(entity.<#= keyProp #>))
+        {
+            ErrorMessage = "A <#= title.ToLowerInvariant() #> with this <#= Labels.Column(keyColumn.Name).ToLowerInvariant() #> already exists.";
+            return false;
+        }
+
+<#
+        }
+#>
+        try
+        {
+            if (_editing is null)
+                await _api.<#= UnoNames.ClientProperty(table) #>.CreateAsync(entity);
+            else
+                await _api.<#= UnoNames.ClientProperty(table) #>.UpdateAsync(entity.<#= keyProp #>, entity);
+        }
+        catch (ApiException ex)
+        {
+            ErrorMessage = ex.Explain("saving");
+            return false;
+        }
+        catch (HttpRequestException)
+        {
+            ErrorMessage = "The server could not be reached.";
+            return false;
+        }
+        return true;
+    }
+<#
+        if (textKey)
+        {
+#>
+
+    // The key of a new row is typed, so the API is asked whether a row has it already.
+    private async Task<bool> ExistsAsync(<#= keyType.CSharp #> key)
+    {
+        try
+        {
+            await _api.<#= UnoNames.ClientProperty(table) #>.GetAsync(key);
+            return true;
+        }
+        catch (ApiException ex) when (ex.Status == <#= HttpStatus.NotFound #>)
+        {
+            return false;
+        }
+    }
+<#
+        }
+#>
+}
+<#
+        if (currencyColumns.Count > 0)
+        {
+#>
+@@@FILE <#= viewsFolder #>/CurrencyNumberFormatter.cs@@@
+using Windows.Globalization.NumberFormatting;
+
+namespace <#= viewNamespace #>;
+
+// Shows a number as currency, but reads it with OR without the currency symbol. A plain CurrencyFormatter only parses text that
+// includes the symbol, so typing 7777.77 into a currency NumberBox was silently thrown away. NumberBox needs one object that both
+// formats (INumberFormatter2) and parses (INumberParser).
+public sealed partial class CurrencyNumberFormatter : INumberFormatter2, INumberParser
+{
+    private readonly CurrencyFormatter _currency;
+    private readonly DecimalFormatter _plain;
+
+    public CurrencyNumberFormatter(string currencyCode, int fractionDigits)
+    {
+        _currency = new CurrencyFormatter(currencyCode) { FractionDigits = fractionDigits };
+        _plain = new DecimalFormatter { FractionDigits = fractionDigits };
+    }
+
+    public string FormatInt(long value) => _currency.FormatInt(value);
+    public string FormatUInt(ulong value) => _currency.FormatUInt(value);
+    public string FormatDouble(double value) => _currency.FormatDouble(value);
+
+    public long? ParseInt(string text) => _currency.ParseInt(text) ?? _plain.ParseInt(text);
+    public ulong? ParseUInt(string text) => _currency.ParseUInt(text) ?? _plain.ParseUInt(text);
+    public double? ParseDouble(string text) => _currency.ParseDouble(text) ?? _plain.ParseDouble(text);
+}
+<#
+        }
+#>
+<#
+    }
+#>

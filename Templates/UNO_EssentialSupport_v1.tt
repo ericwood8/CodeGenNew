@@ -1,0 +1,52 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // UNO_EssentialSupport_v1.tt
+    // Generates: Services/ApiSupport.cs   (no table, no database: an essentials group; the output folder is the Uno app's own folder)
+    // What every generated client and screen shares: ApiException (the HTTP status of a failed call and a sentence for the screen), PagedResult<T> (the search endpoint's answer) and the
+    // helpers the clients use to read a response.
+    // ==========================================================================================
+    string ns = UnoNames.ServicesNamespace(Project);
+#>
+@@@FILE Services/ApiSupport.cs@@@
+using System.Net.Http.Json;
+
+namespace <#= ns #>;
+
+public class ApiException(int status, string message) : Exception(message)
+{
+    public int Status => status;
+
+    // The sentence a screen shows for a failed save, delete or clone.
+    public string Explain(string action) => Status switch
+    {
+        <#= HttpStatus.BadRequest #> => action == "deleting" ? "It cannot be deleted because it is in use!" : "Some of the values are not acceptable!",
+        <#= HttpStatus.NotFound #> => "It no longer exists!",
+        _ => $"Problem while {action}!"
+    };
+}
+
+public class PagedResult<T>
+{
+    public List<T> Items { get; set; } = [];
+    public int Page { get; set; }
+    public int PageSize { get; set; }
+    public int TotalCount { get; set; }
+    public int TotalPages { get; set; }
+}
+
+public static class ApiSupport
+{
+    public static Task EnsureSuccessAsync(this HttpResponseMessage response) =>
+        response.IsSuccessStatusCode
+            ? Task.CompletedTask
+            : throw new ApiException((int)response.StatusCode, $"{(int)response.StatusCode} {response.ReasonPhrase}");
+
+    public static async Task<T> ReadAsync<T>(this HttpResponseMessage response)
+    {
+        await response.EnsureSuccessAsync();
+        return (await response.Content.ReadFromJsonAsync<T>())!;
+    }
+}

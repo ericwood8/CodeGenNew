@@ -259,7 +259,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `ListingName` | WinUI3_DirectoryListing: the class stem, e.g. Document (DocumentListPage); blank = Document |
 | `ListingFolder` | WinUI3_DirectoryListing: the folder whose files are listed (for example %LocalAppData%/Project/Name); blank = under LocalAppData |
 | `ListingPattern` | WinUI3_DirectoryListing: which files are listed; blank = *.* |
-| `Stacks` | stacks to generate: Api, WinUI3, React, Angular, Blazor, Rust, Python (comma-separated), e.g. Api,React |
+| `Stacks` | stacks to generate: Api, WinUI3, React, Angular, Blazor, Uno, Rust, Python (comma-separated), e.g. Api,React |
 | `PlanAlso` | templates to run in a whole-project generate although their config leaves them out, e.g. SP_Insert,SP_Update |
 | `OutputApi` | folder of the API project under the output folder; blank = &lt;ProjectName&gt;.Api |
 | `OutputWinUI3` | folder of the WinUI3 app under the output folder; blank = &lt;ProjectName&gt;.App |
@@ -270,6 +270,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `RustPort` | the port the Rust API listens on; blank = ApiPort (5080) |
 | `OutputAngular` | folder of the Angular app; blank = frontend |
 | `OutputBlazor` | folder of the Blazor WebAssembly app; blank = &lt;ProjectName&gt;.Blazor |
+| `OutputUno` | folder of the Uno Platform app; blank = &lt;ProjectName&gt;.Uno |
 | `OutputPython` | folder of the Python API; blank = &lt;ProjectName&gt;.Python |
 | `OutputSql` | folder of the generated SQL; blank = sql |
 | `AppNamespace` | root namespace of the WinUI3 app; blank = &lt;ProjectName&gt;.App |
@@ -278,13 +279,14 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `DatabaseName` | database for appsettings.json (for SQLite the path of the database file); blank = the project name |
 | `DatabaseUser` | login for appsettings.json (never the password); blank = Windows authentication |
 | `ApiPort` | port the API listens on; blank = 5080 |
-| `DevPort` | port of the front end's dev server; blank = 5173 (React), 4200 (Angular) or 5190 (Blazor) |
+| `DevPort` | port of the front end's dev server; blank = 5173 (React), 4200 (Angular), 5190 (Blazor) or 5195 (the Uno app's browser head) |
 | `ProjectTitle` | the web app's title; blank = the project name in words |
 | `BuildApi` | command that builds the API after a generate; blank = dotnet build -v q (none skips it) |
 | `BuildWinUI3` | command that builds the WinUI3 app after a generate; blank = dotnet build -v q |
 | `BuildReact` | command that builds the React app; blank = npm run build |
 | `BuildAngular` | command that builds the Angular app; blank = npm run build |
 | `BuildBlazor` | command that builds the Blazor app; blank = dotnet build -v q |
+| `BuildUno` | command that builds the Uno app; blank = dotnet build -v q -f net10.0-desktop |
 | `BuildPython` | command that checks the Python API after a generate; blank = python -m compileall -q app |
 | `BuildRust` | command that checks the Rust API after a generate; blank = cargo check (on Windows, a script that sets up the C++ build tools first, then runs cargo) |
 | `TestApi` | command that tests the API; blank = no tests |
@@ -292,6 +294,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `TestReact` | command that tests the React app; blank = npm test |
 | `TestAngular` | command that tests the Angular app; blank = npm test -- --watch=false |
 | `TestBlazor` | command that tests the Blazor app; blank = no tests |
+| `TestUno` | command that tests the Uno app; blank = no tests |
 | `TestPython` | command that tests the Python API; blank = no tests |
 | `TestRust` | command that tests the Rust API; blank = cargo test |
 

@@ -1,0 +1,191 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // UNO_EssentialProject_v1.tt
+    // Generates: <ProjectName>.Uno.csproj, global.json, Directory.Build.props, GlobalUsings.cs, app.manifest, Package.appxmanifest, Platforms/Desktop/Program.cs,
+    // Platforms/WebAssembly/Program.cs, Platforms/WebAssembly/WasmScripts/AppManifest.js, Platforms/WebAssembly/LinkerConfig.xml and Properties/launchSettings.json
+    // (no table, no database: an essentials group; the output folder is the Uno app's own folder)
+    // A single-project Uno Platform app (the Uno.Sdk) with the heads that build on a Windows machine without a phone SDK: net10.0-desktop (Skia: Windows, macOS and Linux),
+    // net10.0-browserwasm (WebAssembly, which needs the wasm-tools workload) and net10.0-windows (WinAppSDK). Add net10.0-android and net10.0-ios to TargetFrameworks to build the
+    // phone heads (their workloads and, for iOS, a Mac are needed). The app calls the generated API: the address is API_BASE_URL (else http://localhost:<ApiPort>, see MainPage.xaml.cs);
+    // the browser head is served on DevPort (default 5195), which API_EssentialProgram allows. Settings: ProjectName, ProjectTitle, AppNamespace, ApiPort, DevPort.
+    // ==========================================================================================
+    string projectName = Project.ProjectName ?? "MyApp";
+    string appNamespace = Project.AppNamespace;
+    string title = Project.ProjectTitle;
+    string applicationId = "com.companyname." + new string(projectName.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+    string modelsNamespace = UnoNames.ModelsNamespace(Project);
+    string servicesNamespace = UnoNames.ServicesNamespace(Project);
+#>
+@@@FILE <#= projectName #>.Uno.csproj@@@
+<Project Sdk="Uno.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-desktop;net10.0-browserwasm;net10.0-windows10.0.26100</TargetFrameworks>
+
+    <OutputType>Exe</OutputType>
+    <UnoSingleProject>true</UnoSingleProject>
+    <RootNamespace><#= appNamespace #></RootNamespace>
+
+    <ApplicationTitle><#= title #></ApplicationTitle>
+    <ApplicationId><#= applicationId #></ApplicationId>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationPublisher><#= projectName #></ApplicationPublisher>
+    <Description><#= title #> powered by Uno Platform.</Description>
+
+    <!-- UnoFeatures add and manage the Uno packages the app uses: https://aka.platform.uno/singleproject-features -->
+    <UnoFeatures>
+      Mvvm;
+      SkiaRenderer;
+    </UnoFeatures>
+  </PropertyGroup>
+
+</Project>
+@@@FILE global.json@@@
+{
+  "msbuild-sdks": {
+    "Uno.Sdk": "6.7.30"
+  },
+  "sdk": {
+    "allowPrerelease": false
+  }
+}
+@@@FILE Directory.Build.props@@@
+<Project>
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- NU1507: several package sources and no source mapping. NETSDK1201: a runtime identifier does not make a self-contained app. PRI257: the default language (en) is not
+         one of the included resources. MVVMTK0045: the generated view models use the classic backing-field [ObservableProperty] style, which raises this recommendation harmlessly. -->
+    <NoWarn>$(NoWarn);NU1507;NETSDK1201;PRI257;MVVMTK0045</NoWarn>
+  </PropertyGroup>
+</Project>
+@@@FILE GlobalUsings.cs@@@
+global using Microsoft.UI.Xaml;
+global using System.ComponentModel.DataAnnotations;
+global using <#= modelsNamespace #>;
+global using <#= servicesNamespace #>;
+@@@FILE app.manifest@@@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.0.0.0" name="<#= projectName #>.app"/>
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
+    <security>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+    </application>
+  </compatibility>
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+    </windowsSettings>
+  </application>
+</assembly>
+@@@FILE Package.appxmanifest@@@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity />
+  <Properties />
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.19041.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.19041.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="x-generate"/>
+  </Resources>
+
+  <Applications>
+    <Application Id="App"
+      Executable="$targetnametoken$.exe"
+      EntryPoint="$targetentrypoint$">
+      <uap:VisualElements />
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>
+@@@FILE Platforms/Desktop/Program.cs@@@
+using Uno.UI.Hosting;
+
+namespace <#= appNamespace #>;
+
+internal class Program
+{
+    [STAThread]
+    public static void Main(string[] args)
+    {
+        var host = UnoPlatformHostBuilder.Create()
+            .App(() => new App())
+            .UseX11()
+            .UseLinuxFrameBuffer()
+            .UseMacOS()
+            .UseWin32()
+            .Build();
+
+        host.Run();
+    }
+}
+@@@FILE Platforms/WebAssembly/Program.cs@@@
+using Uno.UI.Hosting;
+
+namespace <#= appNamespace #>;
+
+public class Program
+{
+    public static async Task Main(string[] args)
+    {
+        var host = UnoPlatformHostBuilder.Create()
+            .App(() => new App())
+            .UseWebAssembly()
+            .Build();
+
+        await host.RunAsync();
+    }
+}
+@@@FILE Platforms/WebAssembly/WasmScripts/AppManifest.js@@@
+var UnoAppManifest = {
+    displayName: "<#= title #>"
+}
+@@@FILE Platforms/WebAssembly/LinkerConfig.xml@@@
+<linker>
+  <assembly fullname="<#= projectName #>.Uno" />
+</linker>
+@@@FILE Properties/launchSettings.json@@@
+{
+  "profiles": {
+    "<#= projectName #> (WebAssembly)": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "applicationUrl": "http://localhost:<#= Project.DevPort("Uno") #>",
+      "inspectUri": "{wsProtocol}://{url.hostname}:{url.port}/_framework/debug/ws-proxy?browser={browserInspectUri}",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "<#= projectName #> (Desktop)": {
+      "commandName": "Project",
+      "dotnetRunMessages": true
+    }
+  }
+}

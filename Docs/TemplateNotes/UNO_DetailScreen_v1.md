@@ -1,0 +1,5 @@
+# UNO_DetailScreen_v1
+
+The Uno twin of `WinUI3_DetailScreen` (see `WinUI3_DetailScreen_v1.md`): `Views/<Table>DetailDialog.xaml` and `.xaml.cs`, `ViewModels/<Table>DetailViewModel.cs` and, when a money column exists, `Views/CurrencyNumberFormatter.cs`. The XAML and the field rules are the WinUI 3 dialog's (`FormModel` decides them for every stack). The view model gets its parents' rows from `GetLookupAsync` (or `GetAllAsync` for a parent with no lookup endpoint), finds the typed name of a type-ahead by `ids`, and saves with `CreateAsync` or `UpdateAsync`; a refused save puts the API's sentence in `ErrorMessage` and keeps the dialog open. A text key is checked with `GetAsync` before a new row is created (a 404 means it is free).
+
+With `GuardedColumns` the field of a guarded column is wrapped in a panel enabled only when `GetGuardsAsync()` says the signed-in person may change it, with the guard's sentence under it otherwise (`UNO_EssentialAuth_v1.md`). The dialog takes `ApiClients` and the model class (`UNO_Model`), not an EF context. See `UNO_Screens_v1.md` for the whole stack.

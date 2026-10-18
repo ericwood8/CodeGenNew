@@ -28,8 +28,8 @@ public class ProjectSettings
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode",
         "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "TypeAheadRows", "TypeAheadParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "ApiAnnotations", "NonNegativeColumns", "NotFutureDateColumns", "PlainTextColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "WriteRoles", "TableWriteRoles", "ReadRoles", "TableReadRoles", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "ListingName", "ListingFolder", "ListingPattern",
-        "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputRust", "OutputPython", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
-        "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildPython", "BuildRust", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestPython", "TestRust"
+        "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputUno", "OutputRust", "OutputPython", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
+        "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildUno", "BuildPython", "BuildRust", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestUno", "TestPython", "TestRust"
     ];
 
     private readonly Dictionary<string, string> _values;
@@ -287,7 +287,7 @@ public class ProjectSettings
         get
         {
             if (ApiDocs) yield return "API_OpenApi";
-            if (OData) { yield return "API_OData"; yield return "TS_ODataService"; yield return "TS_ODataComponent"; yield return "TS_ODataDetailMasterComponent"; yield return "TSX_ODataApi"; yield return "TSX_ODataPage"; yield return "TSX_ODataDetailMasterPage"; yield return "BLZ_ODataClient"; yield return "BLZ_ODataPage"; }
+            if (OData) { yield return "API_OData"; yield return "TS_ODataService"; yield return "TS_ODataComponent"; yield return "TS_ODataDetailMasterComponent"; yield return "TSX_ODataApi"; yield return "TSX_ODataPage"; yield return "TSX_ODataDetailMasterPage"; yield return "BLZ_ODataClient"; yield return "BLZ_ODataPage"; yield return "UNO_ODataClient"; yield return "UNO_ODataPage"; }
             if (ApiAuth && (ChangeGates is not null || GuardedColumns is not null)) yield return "API_Gates";
             if (ApiAuth && UserTable is not null) { yield return "API_UserDirectory"; yield return "PY_UserDirectory"; yield return "RS_UserDirectory"; }
             if (ApiHttp) yield return "API_Http";
@@ -303,7 +303,7 @@ public class ProjectSettings
             if (EfConfigurations) yield return "CS_EfConfiguration";
             if (Dashboard)
             {
-                foreach (string name in new[] { "CS_Dashboard", "API_Dashboard", "TSX_Dashboard", "TS_Dashboard", "WinUI3_DashboardPage", "BLZ_Dashboard", "RS_Dashboard", "PY_Dashboard", "SP_Dashboard", "MD_Dashboard" })
+                foreach (string name in new[] { "CS_Dashboard", "API_Dashboard", "TSX_Dashboard", "TS_Dashboard", "WinUI3_DashboardPage", "BLZ_Dashboard", "UNO_Dashboard", "RS_Dashboard", "PY_Dashboard", "SP_Dashboard", "MD_Dashboard" })
                     yield return name;
             }
         }
@@ -504,7 +504,7 @@ public class ProjectSettings
 
     // ---- generating a whole project (codegen generate) and the essentials files
 
-    /// <summary> The stacks a project generates (<c>Stacks=Api,React</c>): <c>Api</c>, <c>WinUI3</c>, <c>React</c>, <c>Angular</c>, <c>Blazor</c>, <c>Rust</c>, <c>Python</c>. Empty when not set (the command line then names them). </summary>
+    /// <summary> The stacks a project generates (<c>Stacks=Api,React</c>): <c>Api</c>, <c>WinUI3</c>, <c>React</c>, <c>Angular</c>, <c>Blazor</c>, <c>Uno</c>, <c>Rust</c>, <c>Python</c>. Empty when not set (the command line then names them). </summary>
     public string[] Stacks => Items("Stacks");
 
     /// <summary> Templates a plan runs although their config does not put them in it (<c>PlanAlso=SP_Insert,SP_Update</c>: the PostgreSQL / MySQL routines nothing calls by default). </summary>
@@ -519,6 +519,7 @@ public class ProjectSettings
         "react" => Explicit("OutputReact") ?? "frontend",
         "angular" => Explicit("OutputAngular") ?? "frontend",
         "blazor" => Explicit("OutputBlazor") ?? (ProjectName ?? "MyApp") + ".Blazor",
+        "uno" => Explicit("OutputUno") ?? (ProjectName ?? "MyApp") + ".Uno",
         "python" => Explicit("OutputPython") ?? (ProjectName ?? "MyApp") + ".Python",
         "rust" => Explicit("OutputRust") ?? (ProjectName ?? "MyApp") + ".Rust",
         "apitests" => Explicit("OutputApiTests") ?? (ProjectName ?? "MyApp") + ".Api.Tests",
@@ -549,10 +550,10 @@ public class ProjectSettings
     public string DatabaseName => Explicit("DatabaseName") ?? ProjectName ?? "MyDatabase";
     public string? DatabaseUser => Explicit("DatabaseUser");
 
-    /// <summary> The port the API listens on (default 5080), the dev server's (React 5173, Angular 4200, Blazor 5190) and the window title of a web app. </summary>
+    /// <summary> The port the API listens on (default 5080), the dev server's (React 5173, Angular 4200, Blazor 5190, the Uno app's browser head 5195) and the window title of a web app. </summary>
     public int ApiPort => int.TryParse(Explicit("ApiPort"), out int port) ? port : 5080;
     public int DevPort(string stack) => int.TryParse(Explicit("DevPort"), out int port) ? port
-        : stack.EqualsIgnoreCase("Angular") ? 4200 : stack.EqualsIgnoreCase("Blazor") ? 5190 : 5173;
+        : stack.EqualsIgnoreCase("Angular") ? 4200 : stack.EqualsIgnoreCase("Blazor") ? 5190 : stack.EqualsIgnoreCase("Uno") ? 5195 : 5173;
     public string ProjectTitle => Explicit("ProjectTitle") ?? System.Text.RegularExpressions.Regex.Replace(ProjectName ?? "My App", "(?<=[a-z0-9])(?=[A-Z])", " ");
 
     /// <summary> The command a stack's build or test step runs after a generate (<c>BuildReact=npm run build</c>, <c>TestApi=dotnet test</c>); null when the project says nothing (the stack's

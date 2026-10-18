@@ -77,7 +77,7 @@ public class TemplateConfig
     /// for an earlier version keeps working; the shipped templates use none (a test checks). </summary>
     public IReadOnlyList<string> LegacyKeys { get; init; } = [];
 
-    /// <summary> The stacks whose generation includes this template (<c>Stacks=Api,WinUI3</c>): <c>Api</c>, <c>WinUI3</c>, <c>React</c>, <c>Angular</c>, <c>Blazor</c>, <c>Rust</c> and <c>Python</c>. Empty: the template is run by hand
+    /// <summary> The stacks whose generation includes this template (<c>Stacks=Api,WinUI3</c>): <c>Api</c>, <c>WinUI3</c>, <c>React</c>, <c>Angular</c>, <c>Blazor</c>, <c>Uno</c>, <c>Rust</c> and <c>Python</c>. Empty: the template is run by hand
     /// only and is not part of "generate everything for a project". </summary>
     public IReadOnlyList<string> Stacks { get; init; } = [];
 

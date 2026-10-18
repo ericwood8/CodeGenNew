@@ -37,9 +37,9 @@ public static class ProjectSettingGroups
         new("Web", "This tab has the React and Angular folders, Angular version, toasts, sign-in, the container's API variable, the list protocol and dev port.",
             ["ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "DevPort"]),
         new("Output", "This tab has Stacks (which front ends and APIs are generated), plan-also, the output folders, and the Rust crate and port.",
-            ["Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputRust", "OutputPython", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql"]),
+            ["Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputUno", "OutputRust", "OutputPython", "OutputApiTests", "RustCrateName", "RustPort", "OutputSql"]),
         new("Build", "This tab has the build and test commands.",
-            ["BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildPython", "BuildRust", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestPython", "TestRust"]),
+            ["BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildUno", "BuildPython", "BuildRust", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestUno", "TestPython", "TestRust"]),
     ];
 
     /// <summary> The title of the tab a key is shown on. </summary>

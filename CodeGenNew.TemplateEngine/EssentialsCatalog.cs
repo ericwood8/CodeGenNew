@@ -20,6 +20,7 @@ public static class EssentialsCatalog
         ("React", "React essentials"),
         ("Angular", "Angular essentials"),
         ("Blazor", "Blazor essentials"),
+        ("Uno", "Uno essentials"),
         ("Api", "API essentials"),
         ("Rust", "Rust essentials"),
         ("Python", "Python essentials")

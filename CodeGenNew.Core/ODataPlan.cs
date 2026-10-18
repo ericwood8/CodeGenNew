@@ -46,6 +46,10 @@ public static class ODataPlan
     public static List<TableModel> BlazorScreenTables(DatabaseModel database, ProjectSettings project) =>
         database.ScreenTables(project, "Blazor").Where(t => Serves(t, project) && BlazorNames.HasClient(t, project)).ToList();
 
+    /// <summary> The tables that get an Uno OData page: served, listed as a screen of the Uno stack and given a client by <see cref="UnoNames"/>. </summary>
+    public static List<TableModel> UnoScreenTables(DatabaseModel database, ProjectSettings project) =>
+        database.ScreenTables(project, "Uno").Where(t => Serves(t, project) && UnoNames.HasClient(t, project)).ToList();
+
     /// <summary> A table is probably served as OData, known from its name and the project's settings alone (the screen of another table cannot read its model): <c>OData=true</c>, the list names it or is blank, and none of
     /// the settings that refuse a table (the user table, <c>NoApiTables</c>, DTOs) names it. A table that only the model refuses (an owner column that is missing, editable child lists) is not known here. </summary>
     public static bool ServesByName(string table, ProjectSettings project) =>

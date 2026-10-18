@@ -1,0 +1,7 @@
+# UNO_MasterScreen_v1
+
+The Uno twin of `WinUI3_MasterScreen` (see `WinUI3_MasterScreen_v1.md`): `Views/<Table>ListPage.xaml` and `.xaml.cs`, `ViewModels/<Table>ListViewModel.cs`, `ViewModels/GridSortStore.cs` and `Views/PaginationBar`. The XAML is the WinUI 3 page's. The view model reads through the table's client (`UNO_Client`): `GetPageAsync` for the rows (filters by the names the API's search endpoint reads, the sort column and direction, paging), `GetLookupAsync` for the parents' names (the whole list for a drop-down, only the keys the page shows, by `ids`, for a parent with too many rows) and `GetAsync`, `DeleteAsync` and `CloneAsync` for the row buttons.
+
+A call that fails does not throw into the page: `LoadAsync` puts the sentence in `ErrorMessage` (the page's error bar) and marks the page as loaded. Delete shows "This row cannot be deleted because it is in use." for a 400 and "This row no longer exists." for a 404. Clone opens the copy the API returns in the edit dialog.
+
+Add and Edit open `UNO_DetailScreen`'s dialog, or `UNO_DetailMasterScreen`'s for a table that has child tables. With `Auth=true` Add New and the Edit, Clone and Delete buttons show only to the roles `WriteRoles` names for the table. Run with `Variant=OData` the template is `UNO_ODataPage` (`UNO_ODataPage_v1.md`). The page takes `ApiClients`, not an EF context. See `UNO_Screens_v1.md` for the whole stack.

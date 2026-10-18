@@ -54,11 +54,11 @@ public static class BlazorNames
     /// <summary> Whether the table gets a model and a client: the API has CRUD for it, its single key is an int, a guid or text (the routes take <c>{id:int}</c>, <c>{id:guid}</c> or <c>{id}</c>) and it is not a name / active table. </summary>
     public static bool HasClient(TableModel table, ProjectSettings project) => Refusal(table, project) is null;
 
-    /// <summary> The reason a table gets no client, or null. </summary>
-    public static string? Refusal(TableModel table, ProjectSettings project)
+    /// <summary> The reason a table gets no client, or null. <paramref name="stack"/> is the name the message gives the app (the Uno stack shares this rule). </summary>
+    public static string? Refusal(TableModel table, ProjectSettings project, string stack = "Blazor")
     {
         if (!table.HasCrudApiOfAnyKey(project))
-            return $"[{table.SchemaName}].[{table.TableName}] has no API of its own (an enum, a lookup table or a table with no entity), so there is nothing for a Blazor client to call.";
+            return $"[{table.SchemaName}].[{table.TableName}] has no API of its own (an enum, a lookup table or a table with no entity), so there is nothing for a {stack} client to call.";
         var key = table.PrimaryKeyColumns.Count == 1 ? table.PrimaryKeyColumns[0] : null;
         if (key is null || KeyType.Of(key) is null)
             return $"the routes take the id as {{id:int}}, {{id:guid}} or {{id}} (text), but [{table.SchemaName}].[{table.TableName}] has "

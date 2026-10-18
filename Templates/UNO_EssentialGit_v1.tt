@@ -1,0 +1,22 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // UNO_EssentialGit_v1.tt
+    // Generates: .gitignore   (no table, no database: an essentials group; the output folder is the Uno app's own folder)
+    // What an Uno Platform app keeps out of version control: the build output and the files of editors, Visual Studio and operating systems.
+    // ==========================================================================================
+#>
+@@@FILE .gitignore@@@
+bin/
+obj/
+.vs/
+*.user
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+.DS_Store
+Thumbs.db

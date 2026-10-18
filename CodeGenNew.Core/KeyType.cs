@@ -54,7 +54,7 @@ public sealed record KeyType(KeyKind Kind, string CSharp, string TypeScript, str
 
     /// <summary> The stacks whose templates read <see cref="KeyType"/>, so the tables with a uniqueidentifier or text key get their files and their menu entries. A stack is added here
     /// when its templates have been moved (spec item 103); until then it leaves those tables out. </summary>
-    private static readonly string[] StacksThatHandleEveryKey = ["Api", "Angular", "React", "Blazor", "WinUI3"];
+    private static readonly string[] StacksThatHandleEveryKey = ["Api", "Angular", "React", "Blazor", "WinUI3", "Uno"];
 
     /// <summary> True when every stack in <paramref name="stacks"/> handles every key type (and there is at least one). </summary>
     public static bool StackHandlesEveryKey(params string?[] stacks) =>
