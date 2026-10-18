@@ -34,7 +34,7 @@
     var missingChildren = DatabaseModel.ChildrenWithoutScreen(screens, Project);
     var odataScreens = ODataPlan.ReactScreenTables(Database, Project);
     // Auth=true with ReadRoles: a screen of a table whose reads are limited to some roles carries them (the shell hides it from the menu and the route sends another role to the start page)
-    string RolesOf(TableModel t) => Project.Auth && WriteRolePlan.ReadFor(Project, t) is { Count: > 0 } roles ? ", roles: [" + WriteRolePlan.Literal(roles, (char)39) + "]" : "";
+    string RolesOf(TableModel t) => ScreenMenu.RolesOf(Project, t) is { Count: > 0 } roles ? ", roles: [" + WriteRolePlan.Literal(roles, (char)39) + "]" : "";
 
     string PageName(TableModel t) => ReactNames.PageName(t, Project);
 

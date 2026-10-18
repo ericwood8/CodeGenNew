@@ -30,6 +30,10 @@
     var entries = ScreenMenu.For(Project, screens, odataScreens)
         .Select(m => (Route: m.Kind switch { ScreenMenuKind.Dashboard => "dashboard", ScreenMenuKind.Screen => ScreenNames.Route(m.Table!.TableName), _ => AngularNames.ODataRoute(m.Table!.TableName) }, m.Label, m.Roles))
         .ToList();
+    // the junction tables whose page BLZ_Junction writes: one more entry each, after the others
+    var junctionTables = Database.Tables.Where(t => BlazorNames.HasJunctionPage(t, Project)).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    foreach (var t in junctionTables)
+        entries.Add((BlazorNames.JunctionRoute(t.TableName), BlazorNames.JunctionLabel(t.TableName), Project.Auth ? WriteRolePlan.ReadFor(Project, t) : []));
 
     var o = new StringBuilder();
     void L(string s = "") => o.Append(s).Append('\n');
@@ -135,6 +139,8 @@
         L($"        services.AddScoped<{BlazorNames.TypeName(t.TableName)}Client>();");
     foreach (var t in odataClients)
         L($"        services.AddScoped<{BlazorNames.ODataClientName(t.TableName)}>();");
+    foreach (var t in junctionTables)
+        L($"        services.AddScoped<{t.TableName}JunctionClient>();");
     if (Project.Dashboard)
         L("        services.AddScoped<DashboardClient>();");
     L("        return services;");

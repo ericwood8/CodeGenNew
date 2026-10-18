@@ -165,7 +165,13 @@
     spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n});\n");
 
     var o = new StringBuilder();
-    o.Append($"@@@FILE {componentsFolder}/{stem}-junction/{stem}-junction.component.css@@@\n");
+    // outer line round each list, a line under every row, and the buttons on a shaded bar
+    css.Append(".shuttle-control { display: flex; gap: 12px; align-items: center; }\n");
+    css.Append(".shuttle-list select { min-width: 200px; border: 1px solid #8886; }\n");
+    css.Append(".shuttle-list option { padding: 4px 6px; border-bottom: 1px solid #8884; }\n");
+    css.Append(".shuttle-buttons { display: flex; flex-direction: column; gap: 8px; padding: 8px; background: #8883; border: 1px solid #8886; border-radius: 4px; }\n");
+    css.Append(".shuttle-buttons button { font-weight: 700; }\n");
+    o.Append($"@@@FILE {componentsFolder}/{stem}-junction/{stem}-junction.component.css@@@\n").Append(css);
     o.Append($"@@@FILE {componentsFolder}/{stem}-junction/{stem}-junction.component.html@@@\n").Append(Project.AdaptAngularHtml(html.ToString()));
     o.Append($"@@@FILE {componentsFolder}/{stem}-junction/{stem}-junction.component.spec.ts@@@\n").Append(Project.AdaptAngularSpec(spec.ToString()));
     o.Append($"@@@FILE {componentsFolder}/{stem}-junction/{stem}-junction.component.ts@@@\n").Append(ts);

@@ -207,4 +207,61 @@ public class BlazorTests
         Expect.Contains(react, "// The React dev server proxies /api here (see frontend/vite.config.ts), so CORS only matters if the front end is served elsewhere.");
         Expect.DoesNotContain(react, "Blazor");
     }
+
+    [TestMethod]
+    public async Task A_junction_table_gets_a_page_a_client_a_menu_entry_and_a_registration()
+    {
+        string database = Path.Combine(Path.GetTempPath(), "codegen_blz_j_" + Guid.NewGuid().ToString("N") + ".db");
+        using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = database, Pooling = false }.ConnectionString))
+        {
+            connection.Open();
+            foreach (string statement in new[]
+            {
+                "CREATE TABLE Person (PersonId INTEGER PRIMARY KEY, Name VARCHAR(40) NOT NULL)",
+                "CREATE TABLE Tag (TagId INTEGER PRIMARY KEY, Name VARCHAR(40) NOT NULL)",
+                "CREATE TABLE PersonTag (PersonId INTEGER NOT NULL REFERENCES Person (PersonId), TagId INTEGER NOT NULL REFERENCES Tag (TagId), PRIMARY KEY (PersonId, TagId))"
+            })
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = statement;
+                command.ExecuteNonQuery();
+            }
+        }
+        string output = Path.Combine(Path.GetTempPath(), "codegen_blz_j_out_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var project = ProjectSettings.FromValues(new Dictionary<string, string>
+            {
+                ["ProjectName"] = "Shop", ["DatabaseProvider"] = "Sqlite", ["DatabaseName"] = "shop.db", ["EnumTables"] = "none", ["Stacks"] = "Blazor", ["Screens"] = "Person,Tag"
+            });
+            var request = new ConnectionRequest { Provider = DatabaseProvider.Sqlite, ServerName = "", DatabaseName = database };
+            var provider = SchemaProviderFactory.Create(request, Path.Combine(Repo.Root, "SpecialLogicColumns.config"));
+            var report = await Repo.GenerateAsync(provider, new GenerateOptions
+            {
+                Project = project, Stacks = ["Blazor"], OutputDirectory = output, DatabaseName = database, Schema = "main", Essentials = true
+            });
+            Assert.IsTrue(report.Success, string.Join(" | ", report.Errors));
+            string Read(string relative) => File.ReadAllText(Path.Combine(output, relative)).Replace("\r\n", "\n");
+
+            string client = Read("Shop.Blazor/Services/PersonTagJunctionClient.cs");
+            Expect.Contains(client, "private const string Url = \"/api/persontags/junction\";");
+            Expect.Contains(client, "public async Task LinkAsync(int anchorId, int targetId)");
+            Expect.Contains(client, "public string DisplayText => Name ?? \"\";");
+
+            string page = Read("Shop.Blazor/Pages/PersonTagJunctionPage.razor");
+            Expect.Contains(page, "@page \"/person-tag-links\"");
+            Expect.Contains(page, "@inject PersonTagJunctionClient Client");
+            Expect.Contains(page, "@inject PersonClient AnchorClient");
+            Expect.Contains(page, "private List<PersonLookup> anchors = [];");
+            Expect.Contains(page, "<button type=\"button\" title=\"Add selected\" @onclick=\"AddPicked\">&gt;</button>");
+
+            Expect.Contains(Read("Shop.Blazor/Layout/NavMenu.razor"), "<NavLink href=\"person-tag-links\">Person Tag Links</NavLink>");
+            Expect.Contains(Read("Shop.Blazor/Services/ApiClients.cs"), "services.AddScoped<PersonTagJunctionClient>();");
+        }
+        finally
+        {
+            foreach (string path in new[] { database, output })
+                try { if (Directory.Exists(path)) Directory.Delete(path, true); else File.Delete(path); } catch (IOException) { }
+        }
+    }
 }

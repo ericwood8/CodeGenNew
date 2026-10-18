@@ -62,7 +62,10 @@
         }
     }
     var displayColumns = junction.DisplayColumns;
-    string DisplayExpr(string prefix) => string.Join(" + \" \" + ", displayColumns.Select(d => $"{prefix}.{d}"));
+    // the display columns are nullable strings: one column falls back to "", several are joined by an interpolated string (a null shows as nothing)
+    string DisplayExpr(string prefix) => displayColumns.Count == 1
+        ? $"{prefix}.{displayColumns[0]} ?? \"\""
+        : "$\"" + string.Join(" ", displayColumns.Select(d => "{" + prefix + "." + d + "}")) + "\"";
 #>
 @@@FILE <#= viewsFolder #>/<#= stem #>JunctionEditor.xaml@@@
 <ContentDialog
@@ -85,23 +88,42 @@
 
         <StackPanel Grid.Column="0" Spacing="4">
             <TextBlock Text="Available" FontWeight="SemiBold" />
-            <ListView x:Name="AvailableList" ItemsSource="{x:Bind ViewModel.Available}"
-                      SelectionMode="Extended" Height="360"
-                      DisplayMemberPath="DisplayText" />
+            <Border BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1">
+                <ListView x:Name="AvailableList" ItemsSource="{x:Bind ViewModel.Available}" SelectionMode="Extended" Height="360">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Margin="-12,-4" Padding="12,6">
+                                <TextBlock Text="{Binding DisplayText}" />
+                            </Border>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Border>
         </StackPanel>
 
-        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="8">
-            <Button Content="&gt;&gt;" Click="OnAddAllClick" ToolTipService.ToolTip="Add all" HorizontalAlignment="Stretch" />
-            <Button Content="&gt;" Click="OnAddClick" ToolTipService.ToolTip="Add selected" HorizontalAlignment="Stretch" />
-            <Button Content="&lt;" Click="OnRemoveClick" ToolTipService.ToolTip="Remove selected" HorizontalAlignment="Stretch" />
-            <Button Content="&lt;&lt;" Click="OnRemoveAllClick" ToolTipService.ToolTip="Remove all" HorizontalAlignment="Stretch" />
-        </StackPanel>
+        <Border Grid.Column="1" VerticalAlignment="Center" Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4" Padding="8">
+            <StackPanel Spacing="8">
+                <Button Content="&gt;&gt;" Click="OnAddAllClick" ToolTipService.ToolTip="Add all" HorizontalAlignment="Stretch" FontWeight="Bold" />
+                <Button Content="&gt;" Click="OnAddClick" ToolTipService.ToolTip="Add selected" HorizontalAlignment="Stretch" FontWeight="Bold" />
+                <Button Content="&lt;" Click="OnRemoveClick" ToolTipService.ToolTip="Remove selected" HorizontalAlignment="Stretch" FontWeight="Bold" />
+                <Button Content="&lt;&lt;" Click="OnRemoveAllClick" ToolTipService.ToolTip="Remove all" HorizontalAlignment="Stretch" FontWeight="Bold" />
+            </StackPanel>
+        </Border>
 
         <StackPanel Grid.Column="2" Spacing="4">
             <TextBlock Text="Selected" FontWeight="SemiBold" />
-            <ListView x:Name="SelectedList" ItemsSource="{x:Bind ViewModel.Selected}"
-                      SelectionMode="Extended" Height="360"
-                      DisplayMemberPath="DisplayText" />
+            <Border BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1">
+                <ListView x:Name="SelectedList" ItemsSource="{x:Bind ViewModel.Selected}" SelectionMode="Extended" Height="360">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Margin="-12,-4" Padding="12,6">
+                                <TextBlock Text="{Binding DisplayText}" />
+                            </Border>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Border>
         </StackPanel>
     </Grid>
 </ContentDialog>

@@ -30,6 +30,12 @@ public sealed class JunctionShape
     /// <summary> The columns of the target that name its rows in the two lists. </summary>
     public IReadOnlyList<string> DisplayColumns => TargetForeignKey.ReferencedDisplayColumns;
 
+    /// <summary> Whether the anchor table has a lookup endpoint, which a screen that picks the anchor's row (the Blazor junction page) reads its names from. </summary>
+    public bool AnchorHasLookup(ProjectSettings project) =>
+        AnchorForeignKey.ReferencedColumns.Count == 1
+        && !project.NoApiFor(AnchorForeignKey.ReferencedTable, AnchorForeignKey.ReferencedLookupShape)
+        && !project.NoLookupFor(AnchorForeignKey.ReferencedTable, AnchorForeignKey.ReferencedLookupShape);
+
     /// <summary> The C# types of the two keys (<c>int</c> when the column is of a type the routes do not name). </summary>
     public string AnchorCs => CSharpType(AnchorColumn.SqlType);
     public string TargetCs => CSharpType(TargetColumn.SqlType);

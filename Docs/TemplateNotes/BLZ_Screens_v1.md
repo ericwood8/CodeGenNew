@@ -29,7 +29,7 @@ Search boxes for the searchable columns, headers that sort (click again to flip)
 
 ## Limits
 
-- The form is one panel; there are no tabs and no master-detail child grids (a master shows its child tables as read-only grids under the form) and no enum-table drop-downs (the dashboard is BLZ_Dashboard, with Dashboard=true) (an enum column is a number box).
+- The form is one panel; there are no tabs and no master-detail child grids (a master shows its child tables as read-only grids under the form) and no enum-table drop-downs (the dashboard is BLZ_Dashboard, with Dashboard=true; a junction table has its page from BLZ_Junction, listed in the menu as "<Table> Links" and registered here) (an enum column is a number box).
 - A foreign key to the table itself is a plain box. A foreign key to a table that has no client (a name / active table) needs that page written by hand.
 - Binary columns are not on the form. Date columns edit the date only.
 - No tests are generated for the Blazor app.

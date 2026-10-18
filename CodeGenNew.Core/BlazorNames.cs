@@ -45,6 +45,13 @@ public static class BlazorNames
     /// <summary> The client over the table's OData entity set (the OData twin of the REST client): <c>CustomerODataClient</c>. </summary>
     public static string ODataClientName(string table) => TypeName(table) + "ODataClient";
 
+    /// <summary> The route of a junction table's page ("ItemWarehouse" -> "item-warehouse-links") and its menu label ("Item Warehouse Links"). </summary>
+    public static string JunctionRoute(string table) => ScreenNames.Route(table) + "-links";
+    public static string JunctionLabel(string table) => ScreenNames.Label(table) + " Links";
+
+    /// <summary> Whether the junction table gets a page: it is a many-to-many junction table and its anchor table has a lookup endpoint to pick a row from. </summary>
+    public static bool HasJunctionPage(TableModel table, ProjectSettings project) => table.IsJunctionTable && table.Junction!.AnchorHasLookup(project);
+
     /// <summary> The OData page's class, and the stem of its file: <c>CustomerODataPage</c>. </summary>
     public static string ODataPageName(string table) => TypeName(table) + "ODataPage";
 

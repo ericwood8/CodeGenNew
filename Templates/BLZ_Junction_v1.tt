@@ -1,0 +1,217 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_Junction_v1.tt
+    // Generates: Services/<Table>JunctionClient.cs and Pages/<Table>JunctionPage.razor   (the paths are written by the template; point the output folder at the Blazor app's folder)
+    // The Blazor counterpart of UNO_JunctionEditor and TSX_JunctionPage: a page for a many-to-many junction table. A drop-down picks the row of the anchor table, and two lists, Available and Selected,
+    // hold the rows of the target table; the buttons >>, >, < and << move rows between them. Each move commits at once through the routes API_Junction writes (GET <route>/junction/{anchorId},
+    // POST .../link and .../unlink), so there is no Save. The page is routed at <table>-links and BLZ_Screens gives it a menu entry. Needs a table detected as a junction table
+    // (TableModel.IsJunctionTable) whose anchor table has a lookup endpoint (the drop-down reads its names).
+    // Full notes: Docs/TemplateNotes/BLZ_Junction_v1.md
+    // ==========================================================================================
+
+    if (!Model.IsJunctionTable)
+        Error($"BLZ_Junction cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it is not a many-to-many junction table - TableModel.IsJunctionTable is false.");
+    if (!Model.HasReferencedDisplayColumns)
+        Error("BLZ_Junction needs the target table's display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
+
+    var junction = Model.Junction!;
+    if (!junction.AnchorHasLookup(Project))
+        Error($"BLZ_Junction writes no page for [{Model.SchemaName}].[{Model.TableName}]: its anchor table {junction.AnchorRole} has no lookup endpoint to pick a row from.");
+
+    string ns = BlazorNames.Namespace(Project);
+    string anchorType = junction.AnchorCs;
+    string targetType = junction.TargetCs;
+    string anchorRole = junction.AnchorRole;
+    string targetRole = junction.TargetRole;
+    string anchorBase = BlazorNames.TypeName(anchorRole);
+    string stem = Model.TableName;
+    var displayColumns = junction.DisplayColumns;
+    // the display columns are nullable strings: one column falls back to "", several are joined by an interpolated string (a null shows as nothing)
+    string DisplayExpr() => displayColumns.Count == 1
+        ? $"{displayColumns[0]} ?? \"\""
+        : "$\"" + string.Join(" ", displayColumns.Select(d => "{" + d + "}")) + "\"";
+    string pageClass = stem + "JunctionPage";
+    string anchorLabel = Labels.Words(anchorBase);
+    string targetLabel = Labels.Words(BlazorNames.TypeName(targetRole));
+#>
+@@@FILE Services/<#= stem #>JunctionClient.cs@@@
+using System.Net.Http.Json;
+
+namespace <#= ns #>.Services;
+
+/// <summary> One row of GET <#= BlazorNames.ApiRoute(Model.TableName) #>/junction/{anchorId}: the <#= targetRole #> side of the association, and whether it is linked to the <#= anchorRole #> being edited. </summary>
+public class <#= stem #>JunctionItem
+{
+<#
+    foreach (string d in displayColumns)
+    {
+#>
+    public string? <#= d #> { get; set; }
+<#
+    }
+#>
+    public <#= targetType #> TargetId { get; set; }
+    public bool IsSelected { get; set; }
+
+    public string DisplayText => <#= displayColumns.Count > 0 ? DisplayExpr() : "TargetId.ToString()" #>;
+}
+
+public record <#= stem #>JunctionLinkRequest(<#= anchorType #> AnchorId, <#= targetType #> TargetId);
+
+public class <#= stem #>JunctionClient(HttpClient http)
+{
+    private const string Url = "<#= BlazorNames.ApiRoute(Model.TableName) #>/junction";
+
+    public async Task<List<<#= stem #>JunctionItem>> GetAsync(<#= anchorType #> anchorId) => await (await http.GetAsync($"{Url}/{anchorId}")).ReadAsync<List<<#= stem #>JunctionItem>>();
+
+    public async Task LinkAsync(<#= anchorType #> anchorId, <#= targetType #> targetId) => await (await http.PostAsJsonAsync($"{Url}/link", new <#= stem #>JunctionLinkRequest(anchorId, targetId))).EnsureSuccessAsync();
+
+    public async Task UnlinkAsync(<#= anchorType #> anchorId, <#= targetType #> targetId) => await (await http.PostAsJsonAsync($"{Url}/unlink", new <#= stem #>JunctionLinkRequest(anchorId, targetId))).EnsureSuccessAsync();
+}
+@@@FILE Pages/<#= pageClass #>.razor@@@
+@page "/<#= BlazorNames.JunctionRoute(Model.TableName) #>"
+@using <#= ns #>.Services
+<#
+    if (Project.Auth)
+    {
+#>
+@attribute [Authorize]
+<#
+    }
+#>
+@inject <#= stem #>JunctionClient Client
+@inject <#= anchorBase #>Client AnchorClient
+
+<PageTitle><#= targetLabel.Pluralize() #> by <#= anchorLabel #></PageTitle>
+
+<h1><#= targetLabel.Pluralize() #> by <#= anchorLabel #></h1>
+
+<div class="junction-anchor">
+    <label for="junction-anchor"><#= anchorLabel #></label>
+    <select id="junction-anchor" @bind="anchorId" @bind:after="LoadAsync">
+        <option value="">Choose a <#= anchorLabel.ToLowerInvariant() #></option>
+        @foreach (var a in anchors)
+        {
+            <option value="@a.Id">@a.Name</option>
+        }
+    </select>
+</div>
+
+@if (message is not null)
+{
+    <p class="error" role="alert">@message</p>
+}
+
+@if (HasAnchor)
+{
+    <div class="junction-shuttle">
+        <div>
+            <label>Available</label>
+            <div class="junction-list" role="listbox" aria-label="Available">
+                @foreach (var item in available)
+                {
+                    <div class="junction-row @(picked.Contains(item.TargetId) ? "picked" : "")" role="option" aria-selected="@picked.Contains(item.TargetId)" @onclick="() => Toggle(item)">@item.DisplayText</div>
+                }
+            </div>
+        </div>
+        <div class="junction-bar">
+            <button type="button" title="Add all" @onclick="AddAll">&gt;&gt;</button>
+            <button type="button" title="Add selected" @onclick="AddPicked">&gt;</button>
+            <button type="button" title="Remove selected" @onclick="RemovePicked">&lt;</button>
+            <button type="button" title="Remove all" @onclick="RemoveAll">&lt;&lt;</button>
+        </div>
+        <div>
+            <label>Selected</label>
+            <div class="junction-list" role="listbox" aria-label="Selected">
+                @foreach (var item in selected)
+                {
+                    <div class="junction-row @(picked.Contains(item.TargetId) ? "picked" : "")" role="option" aria-selected="@picked.Contains(item.TargetId)" @onclick="() => Toggle(item)">@item.DisplayText</div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .junction-anchor { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .junction-shuttle { display: flex; gap: 12px; align-items: center; }
+    .junction-list { min-width: 240px; min-height: 240px; max-height: 360px; overflow-y: auto; border: 1px solid #8886; }
+    .junction-row { padding: 4px 8px; border-bottom: 1px solid #8884; cursor: pointer; user-select: none; }
+    .junction-row.picked { background: #0078d466; }
+    .junction-bar { display: flex; flex-direction: column; gap: 8px; padding: 8px; background: #8883; border: 1px solid #8886; border-radius: 4px; }
+    .junction-bar button { font-weight: 700; }
+</style>
+
+@code {
+    private List<<#= anchorBase #>Lookup> anchors = [];
+    private <#= anchorType #>? anchorId;
+    private List<<#= stem #>JunctionItem> available = [];
+    private List<<#= stem #>JunctionItem> selected = [];
+    private readonly HashSet<<#= targetType #>> picked = [];
+    private string? message;
+
+    private bool HasAnchor => anchorId is not null<#= anchorType == "string" ? " && anchorId.Length > 0" : "" #>;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { anchors = await AnchorClient.GetLookupAsync(); }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException) { message = "Failed to load the <#= anchorLabel.ToLowerInvariant().Pluralize() #>."; }
+    }
+
+    // the two lists of the chosen row; a move the API refuses leaves them as they are and says why
+    private async Task LoadAsync()
+    {
+        message = null;
+        picked.Clear();
+        available = [];
+        selected = [];
+        if (!HasAnchor)
+            return;
+        try
+        {
+            var rows = await Client.GetAsync(anchorId!<#= anchorType is "string" ? "" : ".Value" #>);
+            available = rows.Where(r => !r.IsSelected).ToList();
+            selected = rows.Where(r => r.IsSelected).ToList();
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException) { message = "Failed to load the <#= targetLabel.ToLowerInvariant().Pluralize() #>."; }
+    }
+
+    private void Toggle(<#= stem #>JunctionItem item)
+    {
+        if (!picked.Remove(item.TargetId))
+            picked.Add(item.TargetId);
+    }
+
+    private Task AddAll() => MoveAsync(available.ToList(), link: true);
+    private Task RemoveAll() => MoveAsync(selected.ToList(), link: false);
+    private Task AddPicked() => MoveAsync(available.Where(r => picked.Contains(r.TargetId)).ToList(), link: true);
+    private Task RemovePicked() => MoveAsync(selected.Where(r => picked.Contains(r.TargetId)).ToList(), link: false);
+
+    private async Task MoveAsync(List<<#= stem #>JunctionItem> items, bool link)
+    {
+        message = null;
+        foreach (var item in items)
+        {
+            try
+            {
+                var anchor = anchorId!<#= anchorType is "string" ? "" : ".Value" #>;
+                if (link)
+                    await Client.LinkAsync(anchor, item.TargetId);
+                else
+                    await Client.UnlinkAsync(anchor, item.TargetId);
+            }
+            catch (ApiException ex) { message = ex.Explain(link ? "adding" : "removing"); return; }
+            catch (HttpRequestException) { message = "Problem while " + (link ? "adding" : "removing") + "!"; return; }
+            (link ? available : selected).Remove(item);
+            (link ? selected : available).Add(item);
+            picked.Remove(item.TargetId);
+        }
+    }
+}

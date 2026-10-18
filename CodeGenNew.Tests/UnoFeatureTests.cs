@@ -189,7 +189,7 @@ public class UnoFeatureTests
             string client = read("Shop.Uno/Services/PersonTagJunctionClient.cs");
             Expect.Contains(client, "private const string Url = \"/api/persontags/junction\";");
             Expect.Contains(client, "public async Task LinkAsync(int anchorId, int targetId)");
-            Expect.Contains(client, "public string DisplayText => Name;");
+            Expect.Contains(client, "public string DisplayText => Name ?? \"\";");
             Expect.Contains(read("Shop.Uno/Views/PersonTagJunctionEditor.xaml.cs"), "public PersonTagJunctionEditor(ApiClients api, int anchorId)");
             Expect.Contains(read("Shop.Uno/Services/ApiClients.cs"), "public PersonTagJunctionClient PersonTagJunction => _personTagJunction ??= new(http);");
             return Task.CompletedTask;

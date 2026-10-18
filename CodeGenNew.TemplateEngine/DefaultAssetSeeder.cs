@@ -113,6 +113,7 @@ public static class DefaultAssetSeeder
         "BLZ_Page_v1.tt", "BLZ_Page_v1.tt.config",
         "BLZ_Screens_v1.tt", "BLZ_Screens_v1.tt.config",
         "BLZ_Dashboard_v1.tt", "BLZ_Dashboard_v1.tt.config",
+        "BLZ_Junction_v1.tt", "BLZ_Junction_v1.tt.config",
         "BLZ_EssentialProject_v1.tt", "BLZ_EssentialProject_v1.tt.config",
         "BLZ_EssentialLayout_v1.tt", "BLZ_EssentialLayout_v1.tt.config",
         "BLZ_EssentialSupport_v1.tt", "BLZ_EssentialSupport_v1.tt.config",

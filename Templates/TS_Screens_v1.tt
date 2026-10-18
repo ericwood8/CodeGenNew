@@ -48,8 +48,8 @@
     // Auth=true: every generated route has the guard of the Auth group, and /login is the sign-in page.
     bool auth = Project.Auth;
     // ReadRoles with the sign-in: a screen of a table whose reads are limited to some roles carries them (the menu hides it, the route sends the person to a screen they may open)
-    string RolesOf(TableModel t) => auth && WriteRolePlan.ReadFor(Project, t) is { Count: > 0 } roles ? ", roles: [" + WriteRolePlan.Literal(roles, (char)39) + "]" : "";
-    bool anyRoles = auth && screens.Concat(odataScreens).Any(t => WriteRolePlan.ReadFor(Project, t).Count > 0);
+    string RolesOf(TableModel t) => auth && ScreenMenu.RolesOf(Project, t) is { Count: > 0 } roles ? ", roles: [" + WriteRolePlan.Literal(roles, (char)39) + "]" : "";
+    bool anyRoles = auth && screens.Concat(odataScreens).Any(t => ScreenMenu.RolesOf(Project, t).Count > 0);
     string guard = auth ? (anyRoles ? ", canActivate: [canRead], data: { roles: s.roles }" : ", canActivate: [authGuard]") : "";
     string stripGuard = auth ? (anyRoles ? ", canActivate: [canRead]" : ", canActivate: [authGuard]") : "";
     if (anyRoles)
