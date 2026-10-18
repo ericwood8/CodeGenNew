@@ -13,6 +13,10 @@ See **[Docs/specs.md](Docs/specs.md)** for what the product promises and decides
 Project is actively being worked on. Issues and Pull Requests are welcomed.  We welcome contributions.
 
 
+## Supported operating systems
+
+Windows, Linux and macOS. The generator and the `codegen` command-line tool run on all three (CI builds and tests on each); the desktop app (`CodeGenNew.App`, WinUI 3) is Windows only.
+
 ## Known dependencies
 
 | Dependency | Used by | Notes |

@@ -29,10 +29,15 @@ jobs:
           name: test-results
           path: "**/tests.trx"
 
-  # The generator and the command-line tool are plain net10.0; this job shows they build and pass their tests on Linux
-  # (case-sensitive paths, / separators, LF line endings). The WinUI3 desktop app is Windows only.
-  linux-build-and-test:
-    runs-on: ubuntu-latest
+  # The generator and the command-line tool are plain net10.0; this job shows they build and pass their tests on Linux and macOS
+  # (case-sensitive paths on Linux, / separators, LF line endings, /bin/sh instead of cmd.exe, Apple silicon on macOS).
+  # The WinUI3 desktop app is Windows only.
+  unix-build-and-test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -47,7 +52,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results-linux
+          name: test-results-${{ matrix.os }}
           path: "**/tests.trx"
 
   desktop-app:
