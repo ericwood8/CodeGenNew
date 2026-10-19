@@ -56,7 +56,7 @@ CLI argument parsing is hand-rolled rather than pulling in a library, given the 
 
 One hundred and twenty-eight templates ship in `Templates\` (the no-database essentials groups described below come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
 
-The templates are shown in three grids, one for each layer of an application.
+The templates are shown in 3 grids, one for each layer of an application.
 
 ### Database layer
 
@@ -88,7 +88,7 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | Group | Template | Writes |
 |---|---|---|
 | `API` | `API_Crud` | `TableApi.cs` — a minimal-API class: get all, get by id, create, update, delete, each over the table's repository. |
-| `API` | `API_Junction` | `TableJunctionApi.cs` — HTTP endpoints over `SP_Junction`'s three procedures, called straight through the `DbContext` (no repository) — the HTTP companion `TS_JunctionComponent` needs (also junction-only). |
+| `API` | `API_Junction` | `TableJunctionApi.cs` — HTTP endpoints over `SP_Junction`'s 3 procedures, called straight through the `DbContext` (no repository) — the HTTP companion `TS_JunctionComponent` needs (also junction-only). |
 | `API` | `API_Search` | `TableSearchApi.cs` — a `/search?...&pageNumber=&pageSize=` endpoint over `SP_Search`/`SP_SearchCount`, called straight through the `DbContext` (no repository), returning `TableSearchResult` (`Items`/`Page`/`PageSize`/`TotalCount`/`TotalPages`) — the HTTP companion the Angular/React pagination wiring needs (only offered for a table with at least one searchable column). |
 | `API` | `API_Registration` | `ApiRegistration.cs` — also whole-DB: `AddGeneratedDbContext(configuration)` and `RegisterGeneratedApis()`, so a sample's `Program.cs` lists no table. |
 | `API` | `API_OpenApi` | `openapi.yaml` - whole-DB: an OpenAPI 3.0 document of the API the other `API` templates write (paths, search parameters, schemas with types, lengths, CHECK limits, enum lists, required and nullable), for Kiota, NSwag, openapi-generator or a Swagger UI. |
@@ -114,9 +114,9 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `CS` | `CS_DtoInput` | `TableInput.cs` - `Dtos=true`: the request body of a table's create and update (only the columns a caller may set) with `ToEntity()` and `ApplyTo(entity)`; the API answers the `CS_Dto` class. |
 | `CS` | `CS_Mapper` | `TableMapping.cs` - static class copying a table between its entity (`CS_Entity`) and its transfer class (`CS_Dto`): `ToDto`, `ToEntity`, list versions and `FromReader`. |
 | `CS` | `CS_MapperlyMapper` | `TableMapper.cs` - Mapperly counterpart of `CS_Mapper`: a `[Mapper]` partial class (`ToDto`, `ToEntity`, `ProjectToDto`) whose bodies Mapperly writes at compile time. |
-| `CS` | `CS_DataContractDto` | `TableContract.cs` - `[DataContract]` class with four constructors (empty, from a `DataRow`, from a reader row, copy), for a WCF-style service. |
+| `CS` | `CS_DataContractDto` | `TableContract.cs` - `[DataContract]` class with 4 constructors (empty, from a `DataRow`, from a reader row, copy), for a WCF-style service. |
 | `CS` | `CS_TypedDataRow` | `TableDataTable.cs` - typed-DataSet shape of a table: a `DataTable` with its columns and a `DataRow` with one typed property per column and `IsXNull` / `SetXNull` pairs. |
-| `CS` | `CS_SerializationDtos` | `TableSerializationDtos.cs` - same data class in three contracts side by side: plain `[Serializable]`, custom `ISerializable`, and `XmlSerializer` attributes. |
+| `CS` | `CS_SerializationDtos` | `TableSerializationDtos.cs` - same data class in 3 contracts side by side: plain `[Serializable]`, custom `ISerializable`, and `XmlSerializer` attributes. |
 | `CS` | `CS_EfConfiguration` | `Data/Configurations/TableConfiguration.cs` - `IEntityTypeConfiguration` per table (table, key, column details, indexes); with `EfConfigurations=true` the context applies them with `ApplyConfigurationsFromAssembly`. |
 | `CS` | `CS_CqrsHandlers` | `Application/` - whole-DB, only with `PlanAlso`: commands, queries and handlers per table (create, update, delete, get by id, paged list) behind two small interfaces, and `AddApplicationHandlers()`. No package. |
 | `FS` | `FS_Entity` | `Table.fs` - immutable F# record (a nullable column is an `option`) and module with `validate` and `ofStrings`, both returning `Result` that lists every problem; limits include DB's CHECK ranges. |
@@ -165,12 +165,12 @@ Angular, React, Blazor, Uno and WinUI3 code: models, services, screens and dashb
 | `TS` | `TS_Model` | `models/table.ts` — Angular interface matching JSON the API really sends. |
 | `TS` | `TS_Validators` | `validators/table.validators.ts` - Angular `Validators` schema states for each field (required, length, allowed values, ranges, email, phone, URL), keyed by property name. |
 | `TS` | `TS_Service` | `services/table.service.ts` — `HttpClient` wrapper with same table method names. |
-| `TS` | `TS_Component` | Four files in `components/table/` — CSS, HTML, spec and TypeScript for a grid + add/edit form screen. |
-| `TS` | `TS_ODataComponent` | `TS_Component` run as its OData form (`Base`/`Variant` in its config): four files in `components/table-odata/`, same screen over the table's OData service, with its own route and menu entry; `OData=true`, tables served as OData. |
+| `TS` | `TS_Component` | 4 files in `components/table/` — CSS, HTML, spec and TypeScript for a grid + add/edit form screen. |
+| `TS` | `TS_ODataComponent` | `TS_Component` run as its OData form (`Base`/`Variant` in its config): 4 files in `components/table-odata/`, same screen over the table's OData service, with its own route and menu entry; `OData=true`, tables served as OData. |
 | `TS` | `TS_ODataDetailMasterComponent` | `TS_DetailMasterComponent` run as its OData form (`Base`/`Variant` in its config): master-detail screen over table's OData service in `components/table-odata/`, with filter row, several-column sort and slim grid; child grids read child's entity set filtered by  parent's key when it is served too. `OData=true`. |
 | `TS` | `TS_ODataService` | `services/table-odata.service.ts` for each table served as OData - whole-database: a short class on `ODataCrudService` (`odata/<set>`), `OData=true`. |
-| `TS` | `TS_JunctionComponent` | Four files in `components/table-junction/` — a two-`<select multiple>` shuttle-control screen calling `API_Junction` (also junction-only). |
-| `TS` | `TS_DetailMasterComponent` | Four files in `components/table-detail-master/` — `TS_Component`'s own grid + form plus one read-only grid per child table (only offered when there's at least one). |
+| `TS` | `TS_JunctionComponent` | 4 files in `components/table-junction/` — 2-`<select multiple>` shuttle-control screen calling `API_Junction` (also junction-only). |
+| `TS` | `TS_DetailMasterComponent` | 4 files in `components/table-detail-master/` — `TS_Component`'s own grid + form plus one read-only grid per child table (only offered when there's at least one). |
 | `TSX` | `TSX_Screens` | `screens.tsx` - also whole-database: React app's screen list (route, menu text, page) in menu order; `App.tsx` imports it, so a new table is a regenerate, not an edit of shell. |
 | `TSX` | `TSX_ODataApi` | `api/tableODataApi.ts` for each table served as OData - whole-database: a short module on `createODataApi` (`/odata/<set>`) with same method names as `TSX_Api`; `OData=true`. |
 | `TSX` | `TSX_ODataPage` | `TSX_Page` run as its OData form (`Base`/`Variant` in its config): `pages/TableODataPage.tsx` and its test, same page over table's OData api module with several-column sort (Shift-click), filter row and slim grid; `OData=true`. |
@@ -182,7 +182,7 @@ Angular, React, Blazor, Uno and WinUI3 code: models, services, screens and dashb
 | `TSX` | `TSX_Schema` | `schemas/table.ts` - zod schema of editable fields with same limits, and form type inferred from it. |
 | `TSX` | `TSX_Page` | `pages/TablePage.tsx` plus a colocated `pages/__tests__/TablePage.test.tsx` — React counterpart of `TS_Component`: one function component (grid + add/edit form) using `useState`/`useEffect` instead of a class. |
 | `TSX` | `TSX_DetailMasterPage` | `pages/TableDetailMasterPage.tsx` plus its test — `TSX_Page`'s own grid + form plus one read-only grid per child table (only offered when there's at least one). |
-| `TSX` | `TSX_JunctionPage` | `components/TableJunction.tsx` plus its test — a two-`<select multiple>` shuttle-control component (an `anchorId` prop, not routed on its own) calling `API_Junction` (also junction-only). |
+| `TSX` | `TSX_JunctionPage` | `components/TableJunction.tsx` plus its test — 2-`<select multiple>` shuttle-control component (an `anchorId` prop, not routed on its own) calling `API_Junction` (also junction-only). |
 | `UNO` | `UNO_Model`, `UNO_Client` | `Models/Table.cs` and `Services/TableClient.cs` - class a table's JSON becomes in Uno app and its `HttpClient` calls, Blazor client's. |
 | `UNO` | `UNO_MasterScreen`, `UNO_DetailScreen`, `UNO_DetailMasterScreen` | UNO list page and add / edit dialog (`Views/TableListPage.xaml`, `Views/TableDetailDialog.xaml`, and for a table with child tables `Views/TableDetailMasterDialog.xaml` with a grid per child) and their view models, reading and writing through clients. |
 | `UNO` | `UNO_Dashboard`, `UNO_JunctionEditor` | UNO dashboard page over `GET /api/dashboard` (`Dashboard=true`), and 2-list editor of a many-to-many junction table over junction routes. |
@@ -190,15 +190,15 @@ Angular, React, Blazor, Uno and WinUI3 code: models, services, screens and dashb
 | `UNO` | `UNO_Screens` | `MainPage.Screens.cs` and `Services/ApiClients.cs` - menu, screen switch and one client per table. |
 | `WinUI3` | `WinUI3_Screens` | `MainWindow.Screens.cs` - whole-database: other half of `partial class MainWindow` (`AddScreens()` adds menu entries, `ShowPage(tag)` shows page). |
 | `WinUI3` | `WinUI3_DashboardPage` | dashboard page for desktop, built in code, with strip above each list page. |
-| `WinUI3` | `WinUI3_JunctionEditor` | Three files (View, code-behind, ViewModel) — same shuttle-control idea as a desktop `ContentDialog`, calling `SP_Junction` directly through EF Core (also junction-only). |
-| `WinUI3` | `WinUI3_DirectoryListing` | Four files — **no table and no database**: a `Page` listing files in a folder (sortable Name / Size / Modified, a filter box, Add File..., Open, Rename, Delete, Open Folder). The project settings `ListingName`, `ListingFolder` and `ListingPattern` name it; run it with the CLI without `-S`, `-d` or `-t`. |
-| `WinUI3` | `WinUI3_MasterScreen` | Three files — a `Page` listing every row (grid + Add/Edit/Delete), calling `TableRepo` (`CS_Repo`) directly. |
-| `WinUI3` | `WinUI3_DetailScreen` | Three files — a `ContentDialog` add/edit form, one field per column, drop-downs for foreign keys. |
+| `WinUI3` | `WinUI3_JunctionEditor` | 3 files (View, code-behind, ViewModel) — same shuttle-control idea as a desktop `ContentDialog`, calling `SP_Junction` directly through EF Core (also junction-only). |
+| `WinUI3` | `WinUI3_DirectoryListing` | 4 files — **no table and no database**: a `Page` listing files in a folder (sortable Name / Size / Modified, a filter box, Add File..., Open, Rename, Delete, Open Folder). The project settings `ListingName`, `ListingFolder` and `ListingPattern` name it; run it with the CLI without `-S`, `-d` or `-t`. |
+| `WinUI3` | `WinUI3_MasterScreen` | 3 files — a `Page` listing every row (grid + Add/Edit/Delete), calling `TableRepo` (`CS_Repo`) directly. |
+| `WinUI3` | `WinUI3_DetailScreen` | 3 files — a `ContentDialog` add/edit form, one field per column, drop-downs for foreign keys. |
 | `WinUI3` | `WinUI3_DetailMasterScreen` | `WinUI3_DetailScreen`'s form plus one read-only child grid per table in `TableModel.ChildForeignKeys` (only offered when there's at least one). |
 
 ### Screen-family mapping across platforms
 
-WinUI3 (and Uno, which shares its XAML) needs three list/form templates where Angular, React and Blazor each need only two or one, because they split the job differently rather than covering different ground:
+WinUI3 (and Uno, which shares its XAML) needs 3 list/form templates where Angular, React and Blazor each need only 2 or 1, because they split the job differently rather than covering different ground:
 
 | Concept | WinUI3 | Uno (`UNO`) | Angular (`TS`) | React (`TSX`) | Blazor (`BLZ`) |
 |---|---|---|---|---|---|
@@ -207,7 +207,7 @@ WinUI3 (and Uno, which shares its XAML) needs three list/form templates where An
 | Master-detail (parent + child grids; editable child rows with `EditableChildren` on the web stacks) | `WinUI3_DetailMasterScreen` | `UNO_DetailMasterScreen` | `TS_DetailMasterComponent` | `TSX_DetailMasterPage` | folded into `BLZ_Page` |
 | Junction (many-to-many editor) | `WinUI3_JunctionEditor` | `UNO_JunctionEditor` | `TS_JunctionComponent` | `TSX_JunctionPage` | `BLZ_Junction` |
 
-WinUI3's list page and its add/edit form are two separate templates because the idiomatic WinUI3 pattern is a `ContentDialog` opened from the grid page. `TS_Component` and `TSX_Page` each generate a single file that already contains both the grid *and* an inline add/edit form on one screen, matching how a hand-written CRUD screen in those frameworks is usually built. Uno runs the same XAML as WinUI3, so its templates mirror the WinUI3 ones but read and write through the generated API instead of the database. Blazor, like Angular and React, fits the list and the form into one page (`BLZ_Page`, which also draws the child grids of a master-detail table); its junction page is a template of its own, routed at `/<table>-links`. Every platform ends up with the same coverage — list, add/edit, master-detail, junction — the web stacks just fit two or three of WinUI3's roles into one generated file.
+WinUI3's list page and its add/edit form are 2 separate templates because the idiomatic WinUI3 pattern is a `ContentDialog` opened from the grid page. `TS_Component` and `TSX_Page` each generate a single file that already contains both the grid *and* an inline add/edit form on one screen, matching how a hand-written CRUD screen in those frameworks is usually built. Uno runs the same XAML as WinUI3, so its templates mirror the WinUI3 ones but read and write through the generated API instead of the database. Blazor, like Angular and React, fits the list and the form into one page (`BLZ_Page`, which also draws the child grids of a master-detail table); its junction page is a template of its own, routed at `/<table>-links`. Every platform ends up with the same coverage — list, add/edit, master-detail, junction — the web stacks just fit 2 or 3 of WinUI3's roles into one generated file.
 
 Templates carry a version in file name (`SP_Save_v1.tt`). The menu shows only newest version of each; older ones stay on disk. Files you customize are never overwritten by an update — new shipped copy is written beside yours as `<name>.new`.
 
