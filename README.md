@@ -103,46 +103,46 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `CS` | `CS_DbContext` | `<Context>.cs` — **one file for the whole database** (the CLI needs no `-t`; the app has a toolbar button, Alt+D): the EF Core context as a `partial` class with a `DbSet` per table, both constructors, `OnConfiguring` and the one place the provider is chosen (`UseSqlServer`, `UseNpgsql` or `UseMySQL`; PostgreSQL's `timestamp` convention; the MySQL password from `MYSQL_PWD`). |
 | `CS` | `CS_Validation` | `TableValidation.cs` — a `[MetadataType]` buddy class adding `[Required]`/`[StringLength]`/`[DataType]`/`[Display]` to the entity (works for a hand-maintained entity too; the entity class must be `partial`). |
 | `CS` | `CS_Enum` | `Table.cs` — a C# enum whose members are the **rows** of a small lookup table. |
-| `CS` | `CS_Repo` | `TableRepo.cs` — the thin repository class over your shared generic repository, plus a `HasDuplicate<Column>` check and (for a string column) a `SuggestUnique<Column>` name generator for every column in a unique index other than the primary key. |
-| `CS` | `CS_Dashboard` | `DashboardData.cs` - whole-database, only with `Dashboard=true`: the chosen widgets with their fixed SQL and `LoadAsync`, which runs them through the context; the web API and the desktop page both call it. |
-| `CS` | `CS_SearchQuery` | `TableSearchQuery.cs` - the search as LINQ (filter by contains, sort from a fixed list, default order), written when the project uses `AccessMode=Ef` (always for SQLite); `CS_Repo` and `API_Search` call it instead of the routines. |
+| `CS` | `CS_Repo` | `TableRepo.cs` — thin repo class over your shared generic repository, plus a `HasDuplicate<Column>` check and (for a string column) a `SuggestUnique<Column>` name generator for every column in a unique index other than the primary key. |
+| `CS` | `CS_Dashboard` | `DashboardData.cs` - whole-database, only with `Dashboard=true`: chosen widgets with their fixed SQL and `LoadAsync`, which runs them through the context; web API and the desktop page both call it. |
+| `CS` | `CS_SearchQuery` | `TableSearchQuery.cs` - search as LINQ (filter by contains, sort from a fixed list, default order), written when the project uses `AccessMode=Ef` (always for SQLite); `CS_Repo` and `API_Search` call it instead of the routines. |
 | `CS` | `CS_Validator` | `TableValidator.cs` - a FluentValidation `AbstractValidator<Entity>`: required, length, ranges from the name rules and CHECK constraints, CHECK lists, email / phone / URL / latitude / longitude by column name. |
-| `CS` | `CS_Faker` | `TableFaker.cs` - a Bogus fake-data generator per table: text of the right kind and length, numbers inside their CHECK ranges, choices from CHECK lists, nullable columns sometimes NULL, a seed for repeatable rows. |
-| `CS` | `CS_Seed` | `TableSeed.cs` - the rows a small table holds when you generate, as a class that adds them when the table is empty (a lookup table that is not an enum); the project's `SeedTables` names the tables, a parent before its children. |
+| `CS` | `CS_Faker` | `TableFaker.cs` - Bogus fake-data generator per table: text of the right kind and length, numbers inside their CHECK ranges, choices from CHECK lists, nullable columns sometimes NULL, a seed for repeatable rows. |
+| `CS` | `CS_Seed` | `TableSeed.cs` - rows a small table holds when you generate, as a class that adds them when the table is empty (a lookup table that is not an enum); the project's `SeedTables` names the tables, a parent before its children. |
 | `CS` | `CS_SeedData` | `SeedData.cs` - whole-database: runs the seed class of every seeded table and `app.SeedGeneratedDataAsync()` for Program.cs. |
-| `CS` | `CS_Dto` | `TableDto.cs` - a plain transfer class filled from any `IDataRecord`: a `Populate` method (required columns, then optional ones), an `IsIdentical` comparer over the columns that matter, a `ToString` on the display column. |
+| `CS` | `CS_Dto` | `TableDto.cs` - plain transfer class filled from any `IDataRecord`: a `Populate` method (required columns, then optional ones), an `IsIdentical` comparer over the columns that matter, a `ToString` on the display column. |
 | `CS` | `CS_DtoInput` | `TableInput.cs` - `Dtos=true`: the request body of a table's create and update (only the columns a caller may set) with `ToEntity()` and `ApplyTo(entity)`; the API answers the `CS_Dto` class. |
-| `CS` | `CS_Mapper` | `TableMapping.cs` - a static class copying a table between its entity (`CS_Entity`) and its transfer class (`CS_Dto`): `ToDto`, `ToEntity`, list versions and `FromReader`. |
-| `CS` | `CS_MapperlyMapper` | `TableMapper.cs` - the Mapperly counterpart of `CS_Mapper`: a `[Mapper]` partial class (`ToDto`, `ToEntity`, `ProjectToDto`) whose bodies Mapperly writes at compile time. |
-| `CS` | `CS_DataContractDto` | `TableContract.cs` - a `[DataContract]` class with four constructors (empty, from a `DataRow`, from a reader row, copy), for a WCF-style service. |
-| `CS` | `CS_TypedDataRow` | `TableDataTable.cs` - the typed-DataSet shape of a table: a `DataTable` with its columns and a `DataRow` with one typed property per column and `IsXNull` / `SetXNull` pairs. |
-| `CS` | `CS_SerializationDtos` | `TableSerializationDtos.cs` - the same data class in three contracts side by side: plain `[Serializable]`, custom `ISerializable`, and `XmlSerializer` attributes. |
-| `CS` | `CS_EfConfiguration` | `Data/Configurations/TableConfiguration.cs` - an `IEntityTypeConfiguration` per table (table, key, column details, indexes); with `EfConfigurations=true` the context applies them with `ApplyConfigurationsFromAssembly`. |
+| `CS` | `CS_Mapper` | `TableMapping.cs` - static class copying a table between its entity (`CS_Entity`) and its transfer class (`CS_Dto`): `ToDto`, `ToEntity`, list versions and `FromReader`. |
+| `CS` | `CS_MapperlyMapper` | `TableMapper.cs` - Mapperly counterpart of `CS_Mapper`: a `[Mapper]` partial class (`ToDto`, `ToEntity`, `ProjectToDto`) whose bodies Mapperly writes at compile time. |
+| `CS` | `CS_DataContractDto` | `TableContract.cs` - `[DataContract]` class with four constructors (empty, from a `DataRow`, from a reader row, copy), for a WCF-style service. |
+| `CS` | `CS_TypedDataRow` | `TableDataTable.cs` - typed-DataSet shape of a table: a `DataTable` with its columns and a `DataRow` with one typed property per column and `IsXNull` / `SetXNull` pairs. |
+| `CS` | `CS_SerializationDtos` | `TableSerializationDtos.cs` - same data class in three contracts side by side: plain `[Serializable]`, custom `ISerializable`, and `XmlSerializer` attributes. |
+| `CS` | `CS_EfConfiguration` | `Data/Configurations/TableConfiguration.cs` - `IEntityTypeConfiguration` per table (table, key, column details, indexes); with `EfConfigurations=true` the context applies them with `ApplyConfigurationsFromAssembly`. |
 | `CS` | `CS_CqrsHandlers` | `Application/` - whole-database, only with `PlanAlso`: commands, queries and handlers per table (create, update, delete, get by id, paged list) behind two small interfaces, and `AddApplicationHandlers()`. No package. |
-| `FS` | `FS_Entity` | `Table.fs` - an immutable F# record (a nullable column is an `option`) and a module with `validate` and `ofStrings`, both returning a `Result` that lists every problem; the limits include the database's CHECK ranges. |
+| `FS` | `FS_Entity` | `Table.fs` - immutable F# record (a nullable column is an `option`) and module with `validate` and `ofStrings`, both returning `Result` that lists every problem; the limits include the database's CHECK ranges. |
 | `FS` | `FS_Rop` | `Rop.fs` - no table, no database: the shared `Result` helpers, the error-collecting `<*>` operator and the text parsers the records use. |
-| `MD` | `MD_Postman`, `MD_Bruno` | `collections/<Project>.postman_collection.json` and `collections/bruno/` - whole-database, only with `PlanAlso`: a Postman and a Bruno collection of the API requests (a folder per table: all, one, search, add, change, remove, copy) with sample bodies and a `baseUrl` variable. |
+| `MD` | `MD_Postman`, `MD_Bruno` | `collections/<Project>.postman_collection.json` and `collections/bruno/` - whole-database, only with `PlanAlso`: Postman and Bruno API requests (folder per table: all, one, search, add, change, remove, copy) with sample bodies and `baseUrl` variable. |
 | `MD` | `MD_Dashboard` | `Dashboard.md` - whole-database, only with `Dashboard=true`: the widgets the dashboard shows, each with the schema fact that chose it and the statement that fills it, then what the caps left out. |
-| `PROTO` | `PROTO_Message` | `Table.proto` - a proto3 message per table, its key message, list messages and a CRUD service (a decimal is a string, a date a Timestamp, a nullable column optional). |
-| `PY` | `PY_Model`, `PY_Schema` | `app/models/table.py` and `app/schemas/table.py` - the SQLAlchemy 2.0 class and the Pydantic 2 schema of a table, for the Python stack (all four databases). |
-| `PY` | `PY_Routes` | `app/routes/table.py` - the FastAPI router with the contract of the other stacks (201 and `Location`, 400, 404, clone, search with paging and sort). |
-| `PY` | `PY_Validate` | `app/validation/table.py` - `validate`, the schema's rules for a row (`ApiValidation=true`). |
+| `PROTO` | `PROTO_Message` | `Table.proto` - proto3 message per table, its key message, list messages and a CRUD service (a decimal is a string, a date a Timestamp, a nullable column optional). |
+| `PY` | `PY_Model`, `PY_Schema` | `app/models/table.py` and `app/schemas/table.py` - SQLAlchemy 2.0 class and Pydantic 2 table schema, for Python stack (all four databases). |
+| `PY` | `PY_Routes` | `app/routes/table.py` - FastAPI router with contract of other stacks (201 and `Location`, 400, 404, clone, search with paging and sort). |
+| `PY` | `PY_Validate` | `app/validation/table.py` - `validate`, schema's rules for a row (`ApiValidation=true`). |
 | `PY` | `PY_Dashboard` | `app/routes/dashboard.py` - `GET /api/dashboard` for the Python stack: the widgets and statements of `DashboardPlan`, kept for a minute, without the widgets of tables the caller's role may not read (`Dashboard=true`). |
-| `PY` | `PY_Mod` | the package lists and the list of routers that `main.py` includes: every table's, the junction tables' (`PY_Junction`), the dashboard's and, with `ApiCsv=true`, the CSV routes (listed first, so a table's `/{id}` route does not read `export.csv` as a key). |
-| `PY` | `PY_Junction` | `app/routes/table_junction.py` for a many-to-many junction table - the junction routes of `API_Junction` (list with `isSelected`, link, unlink) for the Python API, so the junction screens of every UI stack work against it. |
+| `PY` | `PY_Mod` | package lists and list of routers that `main.py` includes: every table's, the junction tables' (`PY_Junction`), the dashboard's and, with `ApiCsv=true`, the CSV routes (listed first, so a table's `/{id}` route does not read `export.csv` as a key). |
+| `PY` | `PY_Junction` | `app/routes/table_junction.py` for a many-to-many junction table - junction routes of `API_Junction` (list with `isSelected`, link, unlink) for the Python API, so the junction screens of every UI stack work against it. |
 | `PY` | `PY_Csv` | `app/routes/csv_files.py` - `GET /api/table/export.csv` and `POST /api/table/import` for every table (`ApiCsv=true`); the import is all or nothing. |
-| `PY` | `PY_Gates` | `app/gates.py` - the checks of `ChangeGates` and `GuardedColumns` (409 `change-not-allowed`, 403 `column-not-yours`, stamps, the clone reset) that the routes call, and `GET /api/table/guards` (`ApiAuth=true`). |
-| `PY` | `PY_UserDirectory` | `app/users.py` - the people who sign in, read from the `UserTable` of the project, and `python -m app.users set-password` (`ApiAuth=true` with `UserTable`). |
-| `RS` | `RS_Struct` | `src/models/table.rs` - the Rust struct of a table (serde and sqlx), with the JSON names the other stacks send; for the Rust stack (PostgreSQL, MySQL, SQLite). |
-| `RS` | `RS_Repo` | `src/repos/table.rs` - the table's fixed SQL for the database that was read and the sqlx functions that run it: get, insert, update, delete, clone, and a search with filters, a fixed sort list and paging; with `ApiCsv=true` also `insert_all`, which adds all the rows of a CSV import in one transaction. |
-| `RS` | `RS_Routes` | `src/routes/table.rs` - the Axum handlers with the contract of the other stacks (201 and `Location`, 400, 404, `/search`, `/clone`). |
-| `RS` | `RS_Validate` | `src/validation/table.rs` - `validate`, the schema's rules for a row (`ApiValidation=true`); the answer is the ASP.NET validation problem. |
-| `RS` | `RS_Dashboard` | `src/routes/dashboard.rs` - `GET /api/dashboard` for the Rust stack: the widgets and statements of `DashboardPlan`, kept for a minute (`Dashboard=true`). |
-| `RS` | `RS_Mod` | the module lists and the router that merges every table's routes, the junction routes (`RS_Junction`), the dashboard, the CSV routes (`ApiCsv=true`) and the gates router (`RS_Gates`). |
+| `PY` | `PY_Gates` | `app/gates.py` - checks of `ChangeGates` and `GuardedColumns` (409 `change-not-allowed`, 403 `column-not-yours`, stamps, the clone reset) that the routes call, and `GET /api/table/guards` (`ApiAuth=true`). |
+| `PY` | `PY_UserDirectory` | `app/users.py` - people who sign in, read from the `UserTable` of the project, and `python -m app.users set-password` (`ApiAuth=true` with `UserTable`). |
+| `RS` | `RS_Struct` | `src/models/table.rs` - Rust struct of a table (serde and sqlx), with the JSON names the other stacks send; for the Rust stack (PostgreSQL, MySQL, SQLite). |
+| `RS` | `RS_Repo` | `src/repos/table.rs` - table's fixed SQL for DB that was read and sqlx functions: get, insert, update, delete, clone, and search with filters, fixed sort list and paging; with `ApiCsv=true` also `insert_all`, that adds all the rows of CSV import in one transaction. |
+| `RS` | `RS_Routes` | `src/routes/table.rs` - the Axum handlers with contract of other stacks (201 and `Location`, 400, 404, `/search`, `/clone`). |
+| `RS` | `RS_Validate` | `src/validation/table.rs` - `validate`, schema's rules for a row (`ApiValidation=true`); the answer is the ASP.NET validation problem. |
+| `RS` | `RS_Dashboard` | `src/routes/dashboard.rs` - Rust dashboard: widgets and statements of `DashboardPlan`, kept for a minute (`Dashboard=true`). |
+| `RS` | `RS_Mod` | module lists and router that merges every table's routes, junction routes (`RS_Junction`), the dashboard, the CSV routes (`ApiCsv=true`) and the gates router (`RS_Gates`). |
 | `RS` | `RS_Junction` | `src/routes/table_junction.rs` for a many-to-many junction table - the junction routes of `API_Junction` for the Rust API. |
-| `RS` | `RS_Csv` | `src/routes/csv_files.rs` - the CSV export and import routes for every table (`ApiCsv=true`); the rows are inserted in one transaction. |
-| `RS` | `RS_Gates` | `src/routes/gates.rs` - the same checks for the Rust API, and the guards routes. |
-| `RS` | `RS_UserDirectory` | `src/users.rs` - the people who sign in, read from the `UserTable` of the project, and the `set-password` command (`ApiAuth=true` with `UserTable`). |
+| `RS` | `RS_Csv` | `src/routes/csv_files.rs` - CSV export and import routes for every table (`ApiCsv=true`); the rows are inserted in one transaction. |
+| `RS` | `RS_Gates` | `src/routes/gates.rs` - same checks for the Rust API, and the guards routes. |
+| `RS` | `RS_UserDirectory` | `src/users.rs` - people who sign in, read from `UserTable` of the project, and `set-password` command (`ApiAuth=true` with `UserTable`). |
 
 ### UI layer
 
@@ -152,19 +152,19 @@ Angular, React, Blazor, Uno and WinUI3 code: models, services, screens and dashb
 |---|---|---|
 | `BLZ` | `BLZ_Model`, `BLZ_Client` | `Models/Table.cs` and `Services/TableClient.cs` - the class a table's JSON becomes in the Blazor app and its `HttpClient` calls (get, search with paging and sort, create, update, delete, clone). |
 | `BLZ` | `BLZ_GridColumns` | `Services/GridColumns.cs` - whole-database support code for the Columns list every Blazor grid has: the saved choice of columns and the cut of a long text. |
-| `BLZ` | `BLZ_Page` | `Pages/TablePage.razor` - the Blazor screen: grid, search, sortable headers, paging, add / edit panel with drop-downs for foreign keys. |
-| `BLZ` | `BLZ_Dashboard` | the dashboard page for Blazor (`Services/DashboardClient.cs`, `Components/DashboardWidgetView.razor`, `Pages/Dashboard.razor`; money shown as currency; no strip above each grid). |
+| `BLZ` | `BLZ_Page` | `Pages/TablePage.razor` - Blazor screen: grid, search, sortable headers, paging, add / edit panel with drop-downs for foreign keys. |
+| `BLZ` | `BLZ_Dashboard` | Blazor dashboard page (`Services/DashboardClient.cs`, `Components/DashboardWidgetView.razor`, `Pages/Dashboard.razor`; money shown as currency; no strip above each grid). |
 | `BLZ` | `BLZ_ODataClient` | `Services/TableODataClient.cs` for each table the project serves as OData: a short class on `ODataClient` (`BLZ_EssentialOData`) with the entity set, the key, the search boxes, the header sorts and the REST route a clone goes through (opt in with `OData=true`). |
 | `BLZ` | `BLZ_Junction` | `Pages/TableJunctionPage.razor` and `Services/TableJunctionClient.cs` for a many-to-many junction table - a routed page (`/table-links`) that picks a row of the anchor table and moves rows of the other table between an Available and a Selected list over the junction routes; each move is saved at once. |
 | `BLZ` | `BLZ_ODataPage` | `BLZ_Page` run as its OData form (`Base`/`Variant` in its config): `Pages/TableODataPage.razor`, the same page over the table's OData client with the several-column sort (Shift-click) and the filter row; `ODataScreens=Replace` gives it the REST page's route. |
 | `BLZ` | `BLZ_Screens` | `Layout/NavMenu.razor`, `Pages/Home.razor` and `Services/ApiClients.cs` - whole-database: the menu in `Screens` order and the registration of every client. |
 | `TS` | `TS_GridColumns` | `grid-columns.ts` - whole-database support code for the Columns list every Angular grid has: the saved choice of columns, the rule that reads it back, the cut of a long text and the `GridColumns` object a screen holds. |
-| `TS` | `TS_GridSort` | `grid-sort.ts` - the Angular counterpart: how the sort is saved, loaded and flipped. |
+| `TS` | `TS_GridSort` | `grid-sort.ts` - Angular counterpart: how the sort is saved, loaded and flipped. |
 | `TS` | `TS_Screens` | `app.routes.ts` - whole-database: the Angular app's `screens` and `routes`, from the same list. |
-| `TS` | `TS_Dashboard` | the same for Angular: a service, the page, a widget component, the strip and the host that puts it above a screen. |
-| `TS` | `TS_Model` | `models/table.ts` — an Angular interface matching the JSON the API really sends. |
-| `TS` | `TS_Validators` | `validators/table.validators.ts` - the Angular `Validators` the schema states for each field (required, length, allowed values, ranges, email, phone, URL), keyed by property name. |
-| `TS` | `TS_Service` | `services/table.service.ts` — the `HttpClient` wrapper with the same method names on every table. |
+| `TS` | `TS_Dashboard` | Angular dashboard: service, page, widget component, strip and host that puts it above a screen. |
+| `TS` | `TS_Model` | `models/table.ts` — Angular interface matching the JSON the API really sends. |
+| `TS` | `TS_Validators` | `validators/table.validators.ts` - Angular `Validators` the schema states for each field (required, length, allowed values, ranges, email, phone, URL), keyed by property name. |
+| `TS` | `TS_Service` | `services/table.service.ts` — `HttpClient` wrapper with the same method names on every table. |
 | `TS` | `TS_Component` | Four files in `components/table/` — CSS, HTML, spec and TypeScript for a grid + add/edit form screen. |
 | `TS` | `TS_ODataComponent` | `TS_Component` run as its OData form (`Base`/`Variant` in its config): four files in `components/table-odata/`, the same screen over the table's OData service, with its own route and menu entry; `OData=true`, tables served as OData. |
 | `TS` | `TS_ODataDetailMasterComponent` | `TS_DetailMasterComponent` run as its OData form (`Base`/`Variant` in its config): the master-detail screen over the table's OData service in `components/table-odata/`, with the filter row, the several-column sort and the slim grid; the child grids read the child's entity set filtered by the parent's key when it is served too. `OData=true`. |
@@ -177,19 +177,19 @@ Angular, React, Blazor, Uno and WinUI3 code: models, services, screens and dashb
 | `TSX` | `TSX_ODataDetailMasterPage` | `TSX_DetailMasterPage` run as its OData form: the master-detail page over the table's OData api module; a child grid whose table is served too reads the child's entity set filtered by the parent's key. `OData=true`. |
 | `TSX` | `TSX_GridColumns` | `components/gridColumns.tsx` - whole-database support code for the Columns list every React grid has: the Columns button, the saved choice of columns, the cut of a long text. |
 | `TSX` | `TSX_GridSort` | `components/gridSort.tsx` - whole-database support code every React grid imports: the sortable header, the right-click **Clear sort** menu and the saved sort. |
-| `TSX` | `TSX_Dashboard` | the dashboard page for React (cards, bar lists, a sparkline, recent rows; no chart package) and, with `DashboardStrip=true`, the strip above each table's grid. |
-| `TSX` | `TSX_Api` | `api/tableApi.ts` — the React counterpart of `TS_Service`: a plain object of `fetch`-based functions instead of an `HttpClient` class (reuses `TS_Model`'s own output for the row type — no separate React model template exists). |
-| `TSX` | `TSX_Schema` | `schemas/table.ts` - a zod schema of the editable fields with the same limits, and the form type inferred from it. |
-| `TSX` | `TSX_Page` | `pages/TablePage.tsx` plus a colocated `pages/__tests__/TablePage.test.tsx` — the React counterpart of `TS_Component`: one function component (grid + add/edit form) using `useState`/`useEffect` instead of a class. |
+| `TSX` | `TSX_Dashboard` | React dashboard (cards, bar lists, a sparkline, recent rows; no chart package) and, with `DashboardStrip=true`, the strip above each table's grid. |
+| `TSX` | `TSX_Api` | `api/tableApi.ts` — React Service: plain object of `fetch`-based functions instead of an `HttpClient` class (reuses `TS_Model`'s own output for the row type — no separate React model template exists). |
+| `TSX` | `TSX_Schema` | `schemas/table.ts` - a zod schema of editable fields with same limits, and form type inferred from it. |
+| `TSX` | `TSX_Page` | `pages/TablePage.tsx` plus a colocated `pages/__tests__/TablePage.test.tsx` — React counterpart of `TS_Component`: one function component (grid + add/edit form) using `useState`/`useEffect` instead of a class. |
 | `TSX` | `TSX_DetailMasterPage` | `pages/TableDetailMasterPage.tsx` plus its test — `TSX_Page`'s own grid + form plus one read-only grid per child table (only offered when there's at least one). |
 | `TSX` | `TSX_JunctionPage` | `components/TableJunction.tsx` plus its test — a two-`<select multiple>` shuttle-control component (an `anchorId` prop, not routed on its own) calling `API_Junction` (also junction-only). |
-| `UNO` | `UNO_Model`, `UNO_Client` | `Models/Table.cs` and `Services/TableClient.cs` - the class a table's JSON becomes in the Uno app and its `HttpClient` calls, the Blazor client's. |
-| `UNO` | `UNO_MasterScreen`, `UNO_DetailScreen`, `UNO_DetailMasterScreen` | the WinUI 3 list page and add / edit dialog (`Views/TableListPage.xaml`, `Views/TableDetailDialog.xaml`, and for a table with child tables `Views/TableDetailMasterDialog.xaml` with a grid per child) and their view models, reading and writing through the clients. |
-| `UNO` | `UNO_Dashboard`, `UNO_JunctionEditor` | the dashboard page over `GET /api/dashboard` (`Dashboard=true`), and the two-list editor of a many-to-many junction table over the junction routes. |
-| `UNO` | `UNO_ODataClient`, `UNO_ODataPage` | an OData client and a list page per served table (`OData=true`), with a menu entry `Table (OData)`. |
-| `UNO` | `UNO_Screens` | `MainPage.Screens.cs` and `Services/ApiClients.cs` - the menu, the screen switch and one client per table. |
+| `UNO` | `UNO_Model`, `UNO_Client` | `Models/Table.cs` and `Services/TableClient.cs` - class a table's JSON becomes in the Uno app and its `HttpClient` calls, the Blazor client's. |
+| `UNO` | `UNO_MasterScreen`, `UNO_DetailScreen`, `UNO_DetailMasterScreen` | UNO list page and add / edit dialog (`Views/TableListPage.xaml`, `Views/TableDetailDialog.xaml`, and for a table with child tables `Views/TableDetailMasterDialog.xaml` with a grid per child) and their view models, reading and writing through the clients. |
+| `UNO` | `UNO_Dashboard`, `UNO_JunctionEditor` | UNO dashboard page over `GET /api/dashboard` (`Dashboard=true`), and the two-list editor of a many-to-many junction table over the junction routes. |
+| `UNO` | `UNO_ODataClient`, `UNO_ODataPage` | OData client and list page per served table (`OData=true`), with a menu entry `Table (OData)`. |
+| `UNO` | `UNO_Screens` | `MainPage.Screens.cs` and `Services/ApiClients.cs` - menu, the screen switch and one client per table. |
 | `WinUI3` | `WinUI3_Screens` | `MainWindow.Screens.cs` - whole-database: the other half of `partial class MainWindow` (`AddScreens()` adds the menu entries, `ShowPage(tag)` shows the page). |
-| `WinUI3` | `WinUI3_DashboardPage` | the same for the desktop app, built in code, with the strip above each list page. |
+| `WinUI3` | `WinUI3_DashboardPage` | dashboard page for desktop, built in code, with the strip above each list page. |
 | `WinUI3` | `WinUI3_JunctionEditor` | Three files (View, code-behind, ViewModel) — the same shuttle-control idea as a desktop `ContentDialog`, calling `SP_Junction` directly through EF Core (also junction-only). |
 | `WinUI3` | `WinUI3_DirectoryListing` | Four files — **no table and no database**: a `Page` listing the files of a folder (sortable Name / Size / Modified, a filter box, Add File..., Open, Rename, Delete, Open Folder). The project settings `ListingName`, `ListingFolder` and `ListingPattern` name it; run it with the CLI without `-S`, `-d` or `-t`. |
 | `WinUI3` | `WinUI3_MasterScreen` | Three files — a `Page` listing every row (grid + Add/Edit/Delete), calling `TableRepo` (`CS_Repo`) directly. |
