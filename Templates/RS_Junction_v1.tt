@@ -1,0 +1,154 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Junction_v1.tt
+    // Generates: src/routes/<table>_junction.rs   (the template writes its own path with an @@@FILE marker; the output folder is the Rust crate's folder)
+    // The Rust side of a many-to-many junction table, with the routes API_Junction writes so the five junction screens work against it unchanged: GET /api/<plural>/junction/{anchorId}
+    // (every row of the target table as { <display columns>, targetId, isSelected }, ordered by the first display column), POST .../junction/link and POST .../junction/unlink with
+    // { anchorId, targetId }. A link that exists is left as it is and an unlink of a link that does not exist is a 200, so a screen may repeat a move. The statements are fixed text written
+    // here for the database that was read (the quotes, the placeholders, the cast of a display column to text). RS_Mod merges the router.
+    // Needs a table detected as a junction table (TableModel.IsJunctionTable) and the target table's display columns; anything else stops with an error.
+    // Full notes: Docs/TemplateNotes/RS_Junction_v1.md
+    // ==========================================================================================
+
+    if (!Model.IsJunctionTable)
+        Error($"RS_Junction cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it is not a many-to-many junction table - TableModel.IsJunctionTable is false.");
+    if (!Model.HasReferencedDisplayColumns)
+        Error("RS_Junction needs the target table's display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
+
+    var junction = Model.Junction!;
+    var di = DialectInfo.For(Model.Dialect);
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+
+    string module = RustNames.Snake(Model.TableName) + "_junction";
+    string route = BlazorNames.ApiRoute(Model.TableName);
+    string anchorType = RustTable.RustType(junction.AnchorColumn, Model.Dialect) ?? "i32";
+    string targetType = RustTable.RustType(junction.TargetColumn, Model.Dialect) ?? "i32";
+    var display = junction.DisplayColumns;
+    var displayDb = junction.TargetForeignKey.ReferencedDisplayDbColumns;
+    string targetKeyDb = junction.TargetForeignKey.ReferencedDbColumns[0];
+    string orderColumn = displayDb.Count > 0 ? displayDb[0] : targetKeyDb;
+    string textType = Model.Dialect == SqlDialect.MySql ? "CHAR" : "TEXT";
+
+    string links = di.QuoteTable(Model.SchemaName, Model.DbTableName);
+    string targets = di.QuoteTable(junction.TargetForeignKey.ReferencedSchema, junction.TargetForeignKey.ReferencedDbTable);
+    string anchorColumn = di.Quote(junction.AnchorColumn.DbName);
+    string targetColumn = di.Quote(junction.TargetColumn.DbName);
+    var createDate = junction.CreateDateColumn;
+    var createUser = junction.CreateUserColumn;
+
+    var insertColumns = new List<string> { anchorColumn, targetColumn };
+    var insertValues = new List<string> { di.Placeholder(1), di.Placeholder(2) };
+    if (createDate is not null)
+    {
+        insertColumns.Add(di.Quote(createDate.DbName));
+        insertValues.Add("CURRENT_TIMESTAMP");
+    }
+    if (createUser is not null)
+    {
+        insertColumns.Add(di.Quote(createUser.DbName));
+        insertValues.Add("''");
+    }
+    var shown = displayDb.Select(d => $"CAST({di.Quote(d)} AS {textType})").Append(di.Quote(targetKeyDb));
+
+    var readRoles = WriteRolePlan.ReadFor(Project, Model);
+    var writeRoles = WriteRolePlan.For(Project, Model);
+    string readLayer = readRoles.Count > 0 ? ".route_layer(middleware::from_fn(|request, next| check_roles(READ_ROLES, false, request, next)))" : "";
+    string writeLayer = writeRoles.Count > 0 ? ".route_layer(middleware::from_fn(|request, next| check_roles(WRITE_ROLES, true, request, next)))" : "";
+    bool roles = readRoles.Count > 0 || writeRoles.Count > 0;
+
+    Line($"@@@FILE src/routes/{module}.rs@@@");
+    Line("use axum::{");
+    Line("    Json, Router,");
+    Line("    extract::{Path, State},");
+    Line("    http::StatusCode,");
+    Line("    routing::{get, post},");
+    if (roles)
+        Line("    middleware,");
+    Line("};");
+    if (roles)
+        Line("use crate::auth::check_roles;");
+    Line("use crate::support::{ApiJson, ApiResult, Pool};");
+    Line("use serde::{Deserialize, Serialize};");
+    Line("use sqlx::Row;");
+    if (anchorType == "Uuid" || targetType == "Uuid")
+        Line("use uuid::Uuid;");
+    Line();
+    if (readRoles.Count > 0)
+        Line($"const READ_ROLES: &[&str] = &[{WriteRolePlan.Literal(readRoles)}];");
+    if (writeRoles.Count > 0)
+        Line($"const WRITE_ROLES: &[&str] = &[{WriteRolePlan.Literal(writeRoles)}];");
+    Line($"const LINKED: &str = {RustTable.Raw($"SELECT {targetColumn} FROM {links} WHERE {anchorColumn} = {di.Placeholder(1)}")};");
+    Line($"const TARGETS: &str = {RustTable.Raw($"SELECT {string.Join(", ", shown)} FROM {targets} ORDER BY {di.Quote(orderColumn)}, {di.Quote(targetKeyDb)}")};");
+    Line($"const LINK_COUNT: &str = {RustTable.Raw($"SELECT COUNT(*) FROM {links} WHERE {anchorColumn} = {di.Placeholder(1)} AND {targetColumn} = {di.Placeholder(2)}")};");
+    Line($"const LINK: &str = {RustTable.Raw($"INSERT INTO {links} ({string.Join(", ", insertColumns)}) VALUES ({string.Join(", ", insertValues)})")};");
+    Line($"const UNLINK: &str = {RustTable.Raw($"DELETE FROM {links} WHERE {anchorColumn} = {di.Placeholder(1)} AND {targetColumn} = {di.Placeholder(2)}")};");
+    Line();
+    Line("pub fn router() -> Router<Pool> {");
+    Line("    Router::new()");
+    Line($"        .route(\"{route}/junction/{{anchor_id}}\", get(list_links){readLayer})");
+    Line($"        .route(\"{route}/junction/link\", post(link){writeLayer})");
+    Line($"        .route(\"{route}/junction/unlink\", post(unlink){writeLayer})");
+    Line("}");
+    Line();
+    Line("/// One row of the target table, and whether it is linked to the row being edited.");
+    Line("#[derive(Serialize)]");
+    Line("struct JunctionItem {");
+    for (int i = 0; i < display.Count; i++)
+    {
+        Line($"    #[serde(rename = \"{JsonNames.Camel(display[i])}\")]");
+        Line($"    {RustNames.Ident(RustNames.Snake(display[i]))}: Option<String>,");
+    }
+    Line("    #[serde(rename = \"targetId\")]");
+    Line($"    target_id: {targetType},");
+    Line("    #[serde(rename = \"isSelected\")]");
+    Line("    is_selected: bool,");
+    Line("}");
+    Line();
+    Line("#[derive(Deserialize)]");
+    Line("struct LinkRequest {");
+    Line("    #[serde(rename = \"anchorId\")]");
+    Line($"    anchor_id: {anchorType},");
+    Line("    #[serde(rename = \"targetId\")]");
+    Line($"    target_id: {targetType},");
+    Line("}");
+    Line();
+    Line($"async fn list_links(State(pool): State<Pool>, Path(anchor_id): Path<{anchorType}>) -> ApiResult<Json<Vec<JunctionItem>>> {{");
+    Line($"    let linked: Vec<{targetType}> = sqlx::query_scalar(LINKED).bind(&anchor_id).fetch_all(&pool).await?;");
+    Line("    let rows = sqlx::query(TARGETS).fetch_all(&pool).await?;");
+    Line("    let mut items = Vec::with_capacity(rows.len());");
+    Line("    for row in rows {");
+    Line($"        let target_id: {targetType} = row.try_get({display.Count})?;");
+    Line("        items.push(JunctionItem {");
+    for (int i = 0; i < display.Count; i++)
+        Line($"            {RustNames.Ident(RustNames.Snake(display[i]))}: row.try_get({i})?,");
+    Line("            is_selected: linked.contains(&target_id),");
+    Line("            target_id,");
+    Line("        });");
+    Line("    }");
+    Line("    Ok(Json(items))");
+    Line("}");
+    Line();
+    Line("/// Adds the link unless it exists.");
+    Line("async fn link(State(pool): State<Pool>, ApiJson(body): ApiJson<LinkRequest>) -> ApiResult<StatusCode> {");
+    Line("    let existing: i64 = sqlx::query_scalar(LINK_COUNT).bind(&body.anchor_id).bind(&body.target_id).fetch_one(&pool).await?;");
+    Line("    if existing == 0 {");
+    Line("        sqlx::query(LINK).bind(&body.anchor_id).bind(&body.target_id).execute(&pool).await?;");
+    Line("    }");
+    Line("    Ok(StatusCode::OK)");
+    Line("}");
+    Line();
+    Line("/// Removes the link when it exists.");
+    Line("async fn unlink(State(pool): State<Pool>, ApiJson(body): ApiJson<LinkRequest>) -> ApiResult<StatusCode> {");
+    Line("    sqlx::query(UNLINK).bind(&body.anchor_id).bind(&body.target_id).execute(&pool).await?;");
+    Line("    Ok(StatusCode::OK)");
+    Line("}");
+    Write(sb.ToString());
+#>

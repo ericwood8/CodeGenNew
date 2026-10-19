@@ -46,9 +46,9 @@ public sealed class JunctionEf
     {
         string anchor = _anchor.CSharpName(), target = _target.CSharpName();
         var initializers = new List<string> { $"{anchor} = {anchorExpression}", $"{target} = {targetExpression}" };
-        if (_model.Columns.FirstOrDefault(c => c.IsCreateDateColumn) is { } createDate && createDate.CSharpBase() is "DateTime" or "DateTimeOffset")
+        if (_model.Junction!.CreateDateColumn is { } createDate)
             initializers.Add($"{createDate.CSharpName()} = {createDate.CSharpBase()}.Now");
-        if (_model.Columns.FirstOrDefault(c => c.IsCreateUserColumn) is { IsStringColumn: true } createUser)
+        if (_model.Junction!.CreateUserColumn is { } createUser)
             initializers.Add($"{createUser.CSharpName()} = \"\"");
 
         var lines = new List<string>

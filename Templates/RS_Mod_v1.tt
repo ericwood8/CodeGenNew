@@ -35,7 +35,12 @@
     Line("use crate::support::Pool;");
     Line();
     // the dashboard (RS_Dashboard) is one route file for the whole database, merged with the tables' routers
-    var routeModules = Project.Dashboard ? modules.Append("dashboard").OrderBy(m => m, StringComparer.Ordinal).ToList() : modules;
+    var routeModules = modules.Concat(Database.Tables.Where(t => t.IsJunctionTable).Select(t => RustNames.Snake(t.TableName) + "_junction")).ToList();
+    if (Project.Dashboard)
+        routeModules.Add("dashboard");
+    routeModules = routeModules.OrderBy(m => m, StringComparer.Ordinal).ToList();
+    if (Project.ApiCsv)
+        routeModules.Add("csv_files");
     foreach (string m in routeModules)
         Line($"pub mod {m};");
     Line();

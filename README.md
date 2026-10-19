@@ -129,6 +129,8 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `PY` | `PY_Validate` | `app/validation/table.py` - `validate`, the schema's rules for a row (`ApiValidation=true`). |
 | `PY` | `PY_Dashboard` | `app/routes/dashboard.py` - `GET /api/dashboard` for the Python stack: the widgets and statements of `DashboardPlan`, kept for a minute, without the widgets of tables the caller's role may not read (`Dashboard=true`). |
 | `PY` | `PY_Mod` | the package lists and the list of routers that `main.py` includes. |
+| `PY` | `PY_Junction` | `app/routes/table_junction.py` for a many-to-many junction table - the junction routes of `API_Junction` (list with `isSelected`, link, unlink) for the Python API, so the junction screens of every UI stack work against it. |
+| `PY` | `PY_Csv` | `app/routes/csv_files.py` - `GET /api/table/export.csv` and `POST /api/table/import` for every table (`ApiCsv=true`); the import is all or nothing. |
 | `PY` | `PY_UserDirectory` | `app/users.py` - the people who sign in, read from the `UserTable` of the project, and `python -m app.users set-password` (`ApiAuth=true` with `UserTable`). |
 | `RS` | `RS_Struct` | `src/models/table.rs` - the Rust struct of a table (serde and sqlx), with the JSON names the other stacks send; for the Rust stack (PostgreSQL, MySQL, SQLite). |
 | `RS` | `RS_Repo` | `src/repos/table.rs` - the table's fixed SQL for the database that was read and the sqlx functions that run it: get, insert, update, delete, clone, and a search with filters, a fixed sort list and paging. |
@@ -136,6 +138,8 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `RS` | `RS_Validate` | `src/validation/table.rs` - `validate`, the schema's rules for a row (`ApiValidation=true`); the answer is the ASP.NET validation problem. |
 | `RS` | `RS_Dashboard` | `src/routes/dashboard.rs` - `GET /api/dashboard` for the Rust stack: the widgets and statements of `DashboardPlan`, kept for a minute (`Dashboard=true`). |
 | `RS` | `RS_Mod` | the module lists and the router that merges every table's routes. |
+| `RS` | `RS_Junction` | `src/routes/table_junction.rs` for a many-to-many junction table - the junction routes of `API_Junction` for the Rust API. |
+| `RS` | `RS_Csv` | `src/routes/csv_files.rs` - the CSV export and import routes for every table (`ApiCsv=true`); the rows are inserted in one transaction. |
 | `RS` | `RS_UserDirectory` | `src/users.rs` - the people who sign in, read from the `UserTable` of the project, and the `set-password` command (`ApiAuth=true` with `UserTable`). |
 
 ### UI layer

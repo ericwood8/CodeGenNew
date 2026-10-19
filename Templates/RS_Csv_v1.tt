@@ -1,0 +1,325 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Csv_v1.tt
+    // Generates: src/routes/csv_files.rs   (whole-database; the path is written by the template)
+    // The Rust counterpart of API_Csv, with the same routes and rules and no new crate: GET /api/<table>/export.csv writes every row (a header line of the column names, RFC 4180 quoting, UTF-8)
+    // and POST /api/<table>/import reads a CSV request body and adds its rows. Written for every table that has an API of its own. With ApiAuth the routes of a table in OwnedTables are for the
+    // administrator role only, and so is the import into a table with a ChangeGates or GuardedColumns rule (an import saves rows without the routes' checks). The import is all or nothing: a row
+    // that does not convert (a number, a date, a yes / no, a missing required value, a text longer than its column) or that the table's validate refuses (ApiValidation=true) is reported by its
+    // row number, and then nothing is saved (the rows are inserted in one transaction, repo::insert_all); a 400 lists the problems. Identity and computed columns are not read. A text cell that
+    // starts with = + - or @ is exported with a leading apostrophe, so a spreadsheet does not run it, and the apostrophe is dropped again on import. At most 10000 rows an import. The user table's
+    // password hash is never exported. A row is read through the model's own serde rules, so a date or a GUID that does not parse is reported with the model's message.
+    // For a project that sets ApiCsv=true. Full notes: Docs/TemplateNotes/RS_Csv_v1.md
+    // ==========================================================================================
+
+    var tables = Database.CrudApiTables(Project).Select(t => RustTable.Of(t, Project)).OrderBy(t => t.Module, StringComparer.Ordinal).ToList();
+    if (tables.Count == 0)
+        Error("RS_Csv found no table to write routes for: none has an API of its own (a single int, uniqueidentifier or text key, not an enum or a name/active table).");
+    bool validate = Project.ApiValidation;
+    bool auth = Project.ApiAuth;
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+    string Bool(bool value) => value ? "true" : "false";
+    string KindOf(RustField f) => f.BaseType switch
+    {
+        "String" => "Text",
+        "bool" => "Bool",
+        "i8" or "i16" or "i32" or "i64" or "u8" or "u16" or "u32" or "u64" => "Int",
+        "f32" or "f64" or "Decimal" => "Float",
+        _ => "Raw"
+    };
+    // the routes that need the caller: an owned table's two, a gated table's import
+    bool NeedsUser(RustTable t) => auth && (OwnedTable.IsScoped(t.Model, Project) || GatePlan.HasRules(Project, t.Model));
+
+    Line("@@@FILE src/routes/csv_files.rs@@@");
+    Line("use axum::{");
+    Line(auth ? "    Extension, Router," : "    Router,");
+    Line("    body::Bytes,");
+    Line("    extract::{DefaultBodyLimit, State},");
+    Line("    http::{StatusCode, header},");
+    Line("    response::{IntoResponse, Response},");
+    Line("    routing::{get, post},");
+    Line("};");
+    if (auth)
+        Line("use crate::auth::{CurrentUser, PROBLEM_ROLE_NOT_ALLOWED};");
+    foreach (var t in tables)
+    {
+        Line($"use crate::models::{t.Module}::{t.Struct};");
+        Line($"use crate::repos::{t.Module} as {t.Module}_repo;");
+        if (validate)
+            Line($"use crate::validation::{t.Module}::validate as validate_{t.Module};");
+    }
+    Line(auth || validate ? "use crate::support::{ApiError, ApiResult, Pool};" : "use crate::support::{ApiResult, Pool};");
+    Line("use serde::{Serialize, de::DeserializeOwned};");
+    Line("use serde_json::{Map, Value, json};");
+    Line();
+    Line("const MAX_ROWS: usize = 10000;");
+    Line("const FORMULA_STARTS: [char; 6] = ['=', '+', '-', '@', '\\t', '\\r'];");
+    Line("const UPLOAD_LIMIT: usize = 32 * 1024 * 1024;");
+    Line();
+    Line("#[derive(Clone, Copy, PartialEq)]");
+    Line("enum Kind {");
+    Line("    Text,");
+    Line("    Int,");
+    Line("    Float,");
+    Line("    Bool,");
+    Line("    /// A date, a time or a GUID: the model's own serde rules judge it.");
+    Line("    Raw,");
+    Line("}");
+    Line();
+    Line("/// One column of a table's CSV: its header, its JSON name, its type, whether an import reads it, whether it must have a value, whether it can be NULL and its text length (0: none).");
+    Line("struct Column {");
+    Line("    name: &'static str,");
+    Line("    json: &'static str,");
+    Line("    kind: Kind,");
+    Line("    can_import: bool,");
+    Line("    required: bool,");
+    Line("    nullable: bool,");
+    Line("    max_length: usize,");
+    Line("}");
+    Line();
+    foreach (var t in tables)
+    {
+        Line($"const {t.Module.ToUpperInvariant()}_COLUMNS: &[Column] = &[");
+        foreach (var f in t.Fields.Where(f => f != t.HashField))
+        {
+            var c = f.Column;
+            bool import = !c.IsIdentity && !c.IsComputed && !c.IsRowVersionColumn;
+            int length = c.CSharpBase() == "string" ? Math.Max(c.CharacterLength, 0) : 0;
+            Line($"    Column {{ name: \"{c.Name}\", json: \"{f.Json}\", kind: Kind::{KindOf(f)}, can_import: {Bool(import)}, required: {Bool(import && !c.IsNullable)}, nullable: {Bool(c.IsNullable)}, max_length: {length} }},");
+        }
+        Line("];");
+        Line();
+    }
+    Line("pub fn router() -> Router<Pool> {");
+    Line("    Router::new()");
+    foreach (var t in tables)
+    {
+        Line($"        .route(\"{t.Route}/export.csv\", get(export_{t.Module}))");
+        Line($"        .route(\"{t.Route}/import\", post(import_{t.Module}))");
+    }
+    Line("        .layer(DefaultBodyLimit::max(UPLOAD_LIMIT))");
+    Line("}");
+    Line();
+    foreach (var t in tables)
+    {
+        string file = t.Model.TableName.Pluralize().ToLowerInvariant();
+        bool owned = auth && OwnedTable.IsScoped(t.Model, Project);
+        bool gated = auth && GatePlan.HasRules(Project, t.Model);
+        string user = NeedsUser(t) ? ", Extension(user): Extension<CurrentUser>" : "";
+        Line($"async fn export_{t.Module}(State(pool): State<Pool>{(owned ? user : "")}) -> ApiResult<Response> {{");
+        if (owned)
+            Line("    administrator_only(&user)?;");
+        Line($"    let rows = {t.Module}_repo::get_all(&pool).await?;");
+        Line($"    Ok(export_text(\"{file}\", {t.Module.ToUpperInvariant()}_COLUMNS, &rows))");
+        Line("}");
+        Line();
+        Line($"async fn import_{t.Module}(State(pool): State<Pool>{user}, body: Bytes) -> ApiResult<Response> {{");
+        if (owned || gated)
+            Line("    administrator_only(&user)?;");
+        Line("    let text = String::from_utf8_lossy(&body);");
+        Line(validate
+            ? $"    let (rows, errors) = read_rows::<{t.Struct}>(&text, {t.Module.ToUpperInvariant()}_COLUMNS, &|row| problems_of(validate_{t.Module}(row, None)));"
+            : $"    let (rows, errors) = read_rows::<{t.Struct}>(&text, {t.Module.ToUpperInvariant()}_COLUMNS, &|_| Vec::new());");
+        Line("    if !errors.is_empty() {");
+        Line("        return Ok(refused(errors));");
+        Line("    }");
+        Line($"    match {t.Module}_repo::insert_all(&pool, &rows).await {{");
+        Line("        Ok(()) => Ok((StatusCode::OK, axum::Json(json!({ \"imported\": rows.len() }))).into_response()),");
+        Line("        Err(sqlx::Error::Database(_)) => Ok(refused(vec![\"The database refused the rows (a missing parent row, or a value that must be unique). Nothing was imported.\".to_string()])),");
+        Line("        Err(error) => Err(error.into()),");
+        Line("    }");
+        Line("}");
+        Line();
+    }
+    if (auth)
+    {
+        Line("fn administrator_only(user: &CurrentUser) -> ApiResult<()> {");
+        Line("    if user.is_admin() {");
+        Line("        Ok(())");
+        Line("    } else {");
+        Line($"        Err(ApiError::Problem({HttpStatus.Forbidden}, PROBLEM_ROLE_NOT_ALLOWED, \"Not allowed\", Some(\"Only an administrator may use the CSV routes of this table.\")))");
+        Line("    }");
+        Line("}");
+        Line();
+    }
+    Line("fn refused(errors: Vec<String>) -> Response {");
+    Line("    (StatusCode::BAD_REQUEST, axum::Json(json!({ \"imported\": 0, \"errors\": errors }))).into_response()");
+    Line("}");
+    Line();
+    if (validate)
+    {
+        Line("/// The messages of a refused row; any other failure of the check is left to the insert.");
+        Line("fn problems_of(result: Result<(), ApiError>) -> Vec<String> {");
+        Line("    match result {");
+        Line("        Err(ApiError::Validation(problems)) => problems.into_iter().map(|(_, message)| message.to_string()).collect(),");
+        Line("        _ => Vec::new(),");
+        Line("    }");
+        Line("}");
+        Line();
+    }
+    Line("fn escape(text: &str) -> String {");
+    Line("    if text.contains([',', '\"', '\\r', '\\n']) { format!(\"\\\"{}\\\"\", text.replace('\"', \"\\\"\\\"\")) } else { text.to_string() }");
+    Line("}");
+    Line();
+    Line("/// A value as the CSV writes it: a yes / no as true / false, a text that a spreadsheet could run with a leading apostrophe.");
+    Line("fn format_value(value: Option<&Value>) -> String {");
+    Line("    match value {");
+    Line("        None | Some(Value::Null) => String::new(),");
+    Line("        Some(Value::String(text)) => if text.starts_with(FORMULA_STARTS) { format!(\"'{text}\") } else { text.clone() },");
+    Line("        Some(other) => other.to_string(),");
+    Line("    }");
+    Line("}");
+    Line();
+    Line("fn export_text<T: Serialize>(file: &str, columns: &[Column], rows: &[T]) -> Response {");
+    Line("    let mut text = columns.iter().map(|c| c.name).collect::<Vec<_>>().join(\",\");");
+    Line("    text.push_str(\"\\r\\n\");");
+    Line("    for row in rows {");
+    Line("        let value = serde_json::to_value(row).unwrap_or(Value::Null);");
+    Line("        let cells: Vec<String> = columns.iter().map(|c| escape(&format_value(value.get(c.json)))).collect();");
+    Line("        text.push_str(&cells.join(\",\"));");
+    Line("        text.push_str(\"\\r\\n\");");
+    Line("    }");
+    Line("    let disposition = format!(\"attachment; filename=\\\"{file}.csv\\\"\");");
+    Line("    ([(header::CONTENT_TYPE, \"text/csv; charset=utf-8\".to_string()), (header::CONTENT_DISPOSITION, disposition)], text).into_response()");
+    Line("}");
+    Line();
+    Line("/// The cells of every row of an RFC 4180 text: quoted cells, doubled quotes, line breaks inside quotes, CRLF or LF; blank lines are skipped.");
+    Line("fn parse(text: &str) -> Vec<Vec<String>> {");
+    Line("    let text = text.strip_prefix('\\u{feff}').unwrap_or(text);");
+    Line("    let mut rows = Vec::new();");
+    Line("    let mut row: Vec<String> = Vec::new();");
+    Line("    let mut cell = String::new();");
+    Line("    let (mut quoted, mut any) = (false, false);");
+    Line("    let mut chars = text.chars().peekable();");
+    Line("    while let Some(c) = chars.next() {");
+    Line("        if quoted {");
+    Line("            if c == '\"' && chars.peek() == Some(&'\"') {");
+    Line("                cell.push('\"');");
+    Line("                chars.next();");
+    Line("            } else if c == '\"' {");
+    Line("                quoted = false;");
+    Line("            } else {");
+    Line("                cell.push(c);");
+    Line("            }");
+    Line("        } else if c == '\"' {");
+    Line("            quoted = true;");
+    Line("            any = true;");
+    Line("        } else if c == ',' {");
+    Line("            row.push(std::mem::take(&mut cell));");
+    Line("            any = true;");
+    Line("        } else if c == '\\r' || c == '\\n' {");
+    Line("            if c == '\\r' && chars.peek() == Some(&'\\n') {");
+    Line("                chars.next();");
+    Line("            }");
+    Line("            if any || !cell.is_empty() {");
+    Line("                row.push(std::mem::take(&mut cell));");
+    Line("                rows.push(std::mem::take(&mut row));");
+    Line("            }");
+    Line("            any = false;");
+    Line("        } else {");
+    Line("            cell.push(c);");
+    Line("            any = true;");
+    Line("        }");
+    Line("    }");
+    Line("    if any || !cell.is_empty() {");
+    Line("        row.push(cell);");
+    Line("        rows.push(row);");
+    Line("    }");
+    Line("    rows");
+    Line("}");
+    Line();
+    Line("/// The cell as a JSON value of the column's type, or the reason it is not.");
+    Line("fn convert(column: &Column, cell: &str) -> Result<Value, String> {");
+    Line("    if cell.is_empty() {");
+    Line("        return match (column.kind, column.nullable) {");
+    Line("            (_, true) => Ok(Value::Null),");
+    Line("            (Kind::Text, false) => Ok(Value::String(String::new())),");
+    Line("            _ => Err(\"is required\".to_string()),");
+    Line("        };");
+    Line("    }");
+    Line("    let trimmed = cell.trim();");
+    Line("    match column.kind {");
+    Line("        Kind::Text => {");
+    Line("            if column.max_length > 0 && cell.chars().count() > column.max_length {");
+    Line("                return Err(format!(\"is longer than {} characters\", column.max_length));");
+    Line("            }");
+    Line("            let mut chars = cell.chars();");
+    Line("            let text = match (chars.next(), chars.next()) {");
+    Line("                (Some('\\''), Some(second)) if FORMULA_STARTS.contains(&second) => cell[1..].to_string(),");
+    Line("                _ => cell.to_string(),");
+    Line("            };");
+    Line("            Ok(Value::String(text))");
+    Line("        }");
+    Line("        Kind::Bool => match trimmed.to_lowercase().as_str() {");
+    Line("            \"true\" | \"1\" | \"yes\" | \"y\" => Ok(Value::Bool(true)),");
+    Line("            \"false\" | \"0\" | \"no\" | \"n\" => Ok(Value::Bool(false)),");
+    Line("            _ => Err(\"must be true or false\".to_string()),");
+    Line("        },");
+    Line("        Kind::Int => trimmed.parse::<i64>().map(Value::from).map_err(|_| \"must be a valid whole number\".to_string()),");
+    Line("        Kind::Float => trimmed.parse::<f64>().ok().and_then(serde_json::Number::from_f64).map(Value::Number).ok_or_else(|| \"must be a valid number\".to_string()),");
+    Line("        Kind::Raw => Ok(Value::String(trimmed.to_string())),");
+    Line("    }");
+    Line("}");
+    Line();
+    Line("/// The new rows of a CSV text and every problem found. The first line names the columns (any order, any case); every column that must have a value has to be there.");
+    Line("fn read_rows<T: DeserializeOwned>(text: &str, columns: &[Column], check: &dyn Fn(&T) -> Vec<String>) -> (Vec<T>, Vec<String>) {");
+    Line("    let lines = parse(text);");
+    Line("    let Some(first) = lines.first() else {");
+    Line("        return (Vec::new(), vec![\"The file is empty: the first line must name the columns.\".to_string()]);");
+    Line("    };");
+    Line("    let header: Vec<String> = first.iter().map(|h| h.trim().to_lowercase()).collect();");
+    Line("    let mut errors = Vec::new();");
+    Line("    let mut positions = Vec::new();");
+    Line("    for column in columns.iter().filter(|c| c.can_import) {");
+    Line("        match header.iter().position(|h| *h == column.name.to_lowercase()) {");
+    Line("            Some(at) => positions.push((column, at)),");
+    Line("            None if column.required => errors.push(format!(\"The column {} is missing from the first line.\", column.name)),");
+    Line("            None => {}");
+    Line("        }");
+    Line("    }");
+    Line("    if lines.len() - 1 > MAX_ROWS {");
+    Line("        errors.push(format!(\"At most {MAX_ROWS} rows can be imported at once.\"));");
+    Line("    }");
+    Line("    if !errors.is_empty() {");
+    Line("        return (Vec::new(), errors);");
+    Line("    }");
+    Line("    let mut rows = Vec::new();");
+    Line("    for (number, cells) in lines.iter().enumerate().skip(1) {");
+    Line("        let before = errors.len();");
+    Line("        let mut object = Map::new();");
+    Line("        for (column, at) in &positions {");
+    Line("            match convert(column, cells.get(*at).map(String::as_str).unwrap_or(\"\")) {");
+    Line("                Ok(value) => {");
+    Line("                    object.insert(column.json.to_string(), value);");
+    Line("                }");
+    Line("                Err(problem) => errors.push(format!(\"Row {number}: {} {problem}.\", column.name)),");
+    Line("            }");
+    Line("        }");
+    Line("        if errors.len() > before {");
+    Line("            continue;");
+    Line("        }");
+    Line("        match serde_json::from_value::<T>(Value::Object(object)) {");
+    Line("            Ok(row) => {");
+    Line("                let problems = check(&row);");
+    Line("                if problems.is_empty() {");
+    Line("                    rows.push(row);");
+    Line("                } else {");
+    Line("                    errors.extend(problems.into_iter().map(|message| format!(\"Row {number}: {message}\")));");
+    Line("                }");
+    Line("            }");
+    Line("            Err(error) => errors.push(format!(\"Row {number}: {error}.\")),");
+    Line("        }");
+    Line("    }");
+    Line("    (rows, errors)");
+    Line("}");
+    Write(sb.ToString());
+#>

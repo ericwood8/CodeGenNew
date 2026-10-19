@@ -268,9 +268,9 @@ public class RustTests
         var database = new DatabaseModel { DatabaseName = "Acme", SchemaName = "public", Dialect = SqlDialect.PostgreSql, Tables = [Account(SqlDialect.PostgreSql)] };
 
         var plain = ProjectPlan.Build(templates, database, Project(("Stacks", "Rust")), ["Rust"]).Select(s => s.Template.Name).ToList();
-        CollectionAssert.AreEquivalent(new[] { "RS_Dashboard", "RS_Mod", "RS_Repo", "RS_Routes", "RS_Struct" }, plain, "the dashboard is on unless the project turns it off");
+        CollectionAssert.AreEquivalent(new[] { "RS_Dashboard", "RS_Junction", "RS_Mod", "RS_Repo", "RS_Routes", "RS_Struct" }, plain, "the dashboard is on unless the project turns it off");
         var noDashboard = ProjectPlan.Build(templates, database, Project(("Stacks", "Rust"), ("Dashboard", "false")), ["Rust"]).Select(s => s.Template.Name).ToList();
-        CollectionAssert.AreEquivalent(new[] { "RS_Mod", "RS_Repo", "RS_Routes", "RS_Struct" }, noDashboard);
+        CollectionAssert.AreEquivalent(new[] { "RS_Junction", "RS_Mod", "RS_Repo", "RS_Routes", "RS_Struct" }, noDashboard);
 
         var validated = ProjectPlan.Build(templates, database, Project(("ApiValidation", "true")), ["Rust"]).Select(s => s.Template.Name).ToList();
         CollectionAssert.Contains(validated, "RS_Validate");

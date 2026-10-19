@@ -1,0 +1,275 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_Csv_v1.tt
+    // Generates: app/routes/csv_files.py   (whole-database; the path is written by the template)
+    // The Python counterpart of API_Csv, with the same routes and rules and no package: GET /api/<table>/export.csv writes every row (a header line of the column names, RFC 4180 quoting, UTF-8) and
+    // POST /api/<table>/import reads a CSV request body (text/csv) and adds its rows. Written for every table that has an API of its own. With ApiAuth the routes of a table in OwnedTables are for the
+    // administrator role only, and so is the import into a table with a ChangeGates or GuardedColumns rule (an import saves rows without the routes' checks). The import is all or nothing: a row
+    // that does not convert (a number, a date, a yes / no, a missing required value, a text longer than its column) or that the table's validate refuses (ApiValidation=true) is reported by
+    // its row number, and then nothing is saved; a 400 lists the problems. Identity and computed columns are not read. A text cell that starts with = + - or @ is exported with a leading
+    // apostrophe, so a spreadsheet does not run it, and the apostrophe is dropped again on import. At most 10000 rows an import. The user table's password hash is never exported.
+    // PY_Mod puts this router before the tables' routers (a table's /{id} route would read export.csv as a key). For a project that sets ApiCsv=true. Full notes: Docs/TemplateNotes/PY_Csv_v1.md
+    // ==========================================================================================
+
+    var tables = Database.CrudApiTables(Project).Select(t => PythonTable.Of(t, Project)).OrderBy(t => t.Module, StringComparer.Ordinal).ToList();
+    if (tables.Count == 0)
+        Error("PY_Csv found no table to write routes for: none has an API of its own (a single int, uniqueidentifier or text key, not an enum or a name/active table).");
+    bool validate = Project.ApiValidation;
+    bool auth = Project.ApiAuth;
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+    string Str(string text) => PythonNames.Str(text);
+    string Bool(bool value) => value ? "True" : "False";
+
+    Line("@@@FILE app/routes/csv_files.py@@@");
+    Line("import csv");
+    Line("import io");
+    Line("from datetime import date, datetime, time");
+    Line("from decimal import Decimal, InvalidOperation");
+    Line("from typing import NamedTuple");
+    Line("from uuid import UUID");
+    Line();
+    Line("from fastapi import APIRouter, Depends, Request, Response");
+    Line("from fastapi.concurrency import run_in_threadpool");
+    Line("from fastapi.responses import JSONResponse");
+    if (validate)
+        Line("from pydantic import ValidationError");
+    Line("from sqlalchemy import select");
+    Line("from sqlalchemy.exc import IntegrityError");
+    Line("from sqlalchemy.orm import Session");
+    Line();
+    if (auth)
+        Line("from app.auth import PROBLEM_ROLE_NOT_ALLOWED, CurrentUser, require_user");
+    Line("from app.db import get_session");
+    foreach (var t in tables)
+    {
+        Line($"from app.models.{t.Module} import {t.Class}");
+        Line($"from app.schemas.{t.Module} import {t.Schema}");
+    }
+    if (auth)
+        Line($"from app.support import ApiError{(validate ? ", ApiValidationError" : "")}");
+    else if (validate)
+        Line("from app.support import ApiValidationError");
+    if (validate)
+    {
+        foreach (var t in tables)
+            Line($"from app.validation.{t.Module} import validate as validate_{t.Module}");
+    }
+    Line();
+    Line("MAX_ROWS = 10000");
+    Line("FORMULA_STARTS = \"=+-@\\t\\r\"");
+    Line("SEPARATOR = chr(13) + chr(10)");
+    Line();
+    Line();
+    Line("class Column(NamedTuple):");
+    Line("    \"\"\"One column of a table's CSV: the header, the attribute of the model and schema, the type, whether an import reads it, whether it must have a value, whether it can be NULL and its text length (0: none).\"\"\"");
+    Line();
+    Line("    name: str");
+    Line("    attr: str");
+    Line("    kind: str");
+    Line("    can_import: bool");
+    Line("    required: bool");
+    Line("    nullable: bool");
+    Line("    max_length: int");
+    Line();
+    Line();
+    Line("class CsvTable(NamedTuple):");
+    Line("    route: str");
+    Line("    file: str");
+    Line("    model: type");
+    Line("    schema: type");
+    Line("    key: str");
+    Line("    columns: list[Column]");
+    Line("    validate: object");
+    Line("    owned: bool");
+    Line("    gated: bool");
+    Line();
+    Line();
+    Line("def column_list(*columns) -> list[Column]:");
+    Line("    return [Column(*c) for c in columns]");
+    Line();
+    Line();
+    Line("TABLES = [");
+    foreach (var t in tables)
+    {
+        var cells = new List<string>();
+        foreach (var f in t.SchemaFields)
+        {
+            var c = f.Column;
+            bool import = !c.IsIdentity && !c.IsComputed && !c.IsRowVersionColumn;
+            int length = c.CSharpBase() == "string" ? c.CharacterLength : 0;
+            cells.Add($"({Str(c.Name)}, {Str(f.Name)}, {Str(f.Annotation)}, {Bool(import)}, {Bool(import && !c.IsNullable)}, {Bool(c.IsNullable)}, {Math.Max(length, 0)})");
+        }
+        bool owned = auth && OwnedTable.IsScoped(t.Model, Project);
+        bool gated = auth && GatePlan.HasRules(Project, t.Model);
+        string rules = validate ? $"validate_{t.Module}" : "None";
+        Line($"    CsvTable({Str(t.Route)}, {Str(t.Model.TableName.Pluralize().ToLowerInvariant())}, {t.Class}, {t.Schema}, {Str(t.Key.Name)}, column_list(");
+        foreach (string cell in cells)
+            Line($"        {cell},");
+        Line($"    ), {rules}, {Bool(owned)}, {Bool(gated)}),");
+    }
+    Line("]");
+    Line();
+    Line("router = APIRouter()");
+    Line();
+    Line();
+    if (auth)
+    {
+        Line("def administrator_only(user: CurrentUser = Depends(require_user)) -> None:");
+        Line("    if not user.is_admin:");
+        Line($"        raise ApiError({HttpStatus.Forbidden}, \"Not allowed\", problem_type=PROBLEM_ROLE_NOT_ALLOWED, detail=\"Only an administrator may use the CSV routes of this table.\")");
+        Line();
+        Line();
+    }
+    Line("def escape(text: str) -> str:");
+    Line("    return '\"' + text.replace('\"', '\"\"') + '\"' if any(c in text for c in ',\"\\r\\n') else text");
+    Line();
+    Line();
+    Line("def format_value(value) -> str:");
+    Line("    \"\"\"A value as the CSV writes it: a date as 2026-01-15T00:00:00, a yes / no as true / false, a number without a locale.\"\"\"");
+    Line("    if value is None:");
+    Line("        return \"\"");
+    Line("    if isinstance(value, bool):");
+    Line("        return \"true\" if value else \"false\"");
+    Line("    if isinstance(value, datetime):");
+    Line("        return value.isoformat(timespec=\"seconds\")");
+    Line("    if isinstance(value, date):");
+    Line("        return value.isoformat() + \"T00:00:00\"");
+    Line("    if isinstance(value, Decimal):");
+    Line("        return format(value, \"f\")");
+    Line("    text = str(value)");
+    Line("    return \"'\" + text if isinstance(value, str) and text and text[0] in FORMULA_STARTS else text");
+    Line();
+    Line();
+    Line("def export_text(rows, columns: list[Column]) -> str:");
+    Line("    lines = [\",\".join(c.name for c in columns)]");
+    Line("    for row in rows:");
+    Line("        lines.append(\",\".join(escape(format_value(getattr(row, c.attr))) for c in columns))");
+    Line("    return SEPARATOR.join(lines) + SEPARATOR");
+    Line();
+    Line();
+    Line("def convert(kind: str, cell: str, column: Column):");
+    Line("    \"\"\"(value, problem): the cell as the column's type, or the reason it is not.\"\"\"");
+    Line("    if cell == \"\":");
+    Line("        if kind == \"str\":");
+    Line("            return (None if column.nullable else \"\"), None");
+    Line("        return (None, None) if column.nullable else (None, \"is required\")");
+    Line("    if kind == \"str\":");
+    Line("        if column.max_length > 0 and len(cell) > column.max_length:");
+    Line("            return None, f\"is longer than {column.max_length} characters\"");
+    Line("        return (cell[1:] if len(cell) > 1 and cell[0] == \"'\" and cell[1] in FORMULA_STARTS else cell), None");
+    Line("    text = cell.strip()");
+    Line("    try:");
+    Line("        if kind == \"bool\":");
+    Line("            lowered = text.lower()");
+    Line("            if lowered in (\"true\", \"1\", \"yes\", \"y\"):");
+    Line("                return True, None");
+    Line("            if lowered in (\"false\", \"0\", \"no\", \"n\"):");
+    Line("                return False, None");
+    Line("            return None, \"must be true or false\"");
+    Line("        if kind == \"int\":");
+    Line("            return int(text), None");
+    Line("        if kind == \"float\":");
+    Line("            return float(text), None");
+    Line("        if kind == \"Decimal\":");
+    Line("            return Decimal(text), None");
+    Line("        if kind == \"UUID\":");
+    Line("            return UUID(text), None");
+    Line("        if kind == \"date\":");
+    Line("            return datetime.fromisoformat(text).date(), None");
+    Line("        if kind == \"datetime\":");
+    Line("            return datetime.fromisoformat(text), None");
+    Line("        if kind == \"time\":");
+    Line("            return time.fromisoformat(text), None");
+    Line("    except (ValueError, InvalidOperation):");
+    Line("        return None, {\"date\": \"must be a date\", \"datetime\": \"must be a date\", \"UUID\": \"must be a GUID\"}.get(kind, \"must be a valid \" + kind.lower())");
+    Line("    return None, \"must be a valid \" + kind.lower()");
+    Line();
+    Line();
+    Line("def read_rows(text: str, spec: CsvTable):");
+    Line("    \"\"\"(rows, lines, errors): the new model objects of a CSV text, the line each came from, and every problem found. The first line names the columns (any order, any case).\"\"\"");
+    Line("    lines = [cells for cells in csv.reader(io.StringIO(text, newline=\"\")) if cells]");
+    Line("    if not lines:");
+    Line("        return [], [], [\"The file is empty: the first line must name the columns.\"]");
+    Line("    header = [h.strip().lower() for h in lines[0]]");
+    Line("    errors: list[str] = []");
+    Line("    positions = []");
+    Line("    for column in spec.columns:");
+    Line("        if not column.can_import:");
+    Line("            continue");
+    Line("        if column.name.lower() in header:");
+    Line("            positions.append((column, header.index(column.name.lower())))");
+    Line("        elif column.required:");
+    Line("            errors.append(f\"The column {column.name} is missing from the first line.\")");
+    Line("    if len(lines) - 1 > MAX_ROWS:");
+    Line("        errors.append(f\"At most {MAX_ROWS} rows can be imported at once.\")");
+    Line("    if errors:");
+    Line("        return [], [], errors");
+    Line("    rows, numbers = [], []");
+    Line("    for number, cells in enumerate(lines[1:], start=1):");
+    Line("        values, before = {}, len(errors)");
+    Line("        for column, at in positions:");
+    Line("            value, problem = convert(column.kind, cells[at] if at < len(cells) else \"\", column)");
+    Line("            if problem:");
+    Line("                errors.append(f\"Row {number}: {column.name} {problem}.\")");
+    Line("            else:");
+    Line("                values[column.attr] = value");
+    Line("        if len(errors) > before:");
+    Line("            continue");
+    if (validate)
+    {
+        Line("        if spec.validate is not None:");
+        Line("            try:");
+        Line("                spec.validate(spec.schema.model_validate(values))");
+        Line("            except ApiValidationError as refused:");
+        Line("                errors.extend(f\"Row {number}: {message}\" for _, message in refused.problems)");
+        Line("                continue");
+        Line("            except ValidationError as refused:");
+        Line("                errors.extend(f\"Row {number}: {problem['msg']}\" for problem in refused.errors())");
+        Line("                continue");
+    }
+    Line("        rows.append(spec.model(**values))");
+    Line("        numbers.append(number)");
+    Line("    return rows, numbers, errors");
+    Line();
+    Line();
+    Line("def import_text(session: Session, spec: CsvTable, text: str) -> JSONResponse:");
+    Line("    rows, _, errors = read_rows(text, spec)");
+    Line("    if errors:");
+    Line($"        return JSONResponse(status_code={HttpStatus.BadRequest}, content={{\"imported\": 0, \"errors\": errors}})");
+    Line("    session.add_all(rows)");
+    Line("    try:");
+    Line("        session.commit()");
+    Line("    except IntegrityError:");
+    Line("        session.rollback()");
+    Line($"        return JSONResponse(status_code={HttpStatus.BadRequest}, content={{\"imported\": 0, \"errors\": [\"The database refused the rows (a missing parent row, or a value that must be unique). Nothing was imported.\"]}})");
+    Line($"    return JSONResponse(status_code={HttpStatus.Ok}, content={{\"imported\": len(rows)}})");
+    Line();
+    Line();
+    Line("def register(spec: CsvTable) -> None:");
+    string exportOnly = auth ? "dependencies=[Depends(administrator_only)] if spec.owned else None" : "";
+    string importOnly = auth ? "dependencies=[Depends(administrator_only)] if spec.owned or spec.gated else None" : "";
+    Line($"    @router.get(spec.route + \"/export.csv\", name=\"Export \" + spec.file + \" Csv\"{(auth ? ", " + exportOnly : "")})");
+    Line("    def export(session: Session = Depends(get_session)):");
+    Line("        rows = session.scalars(select(spec.model).order_by(getattr(spec.model, spec.key))).all()");
+    Line("        headers = {\"Content-Disposition\": f'attachment; filename=\"{spec.file}.csv\"'}");
+    Line("        return Response(content=export_text(rows, spec.columns).encode(\"utf-8\"), media_type=\"text/csv; charset=utf-8\", headers=headers)");
+    Line();
+    Line($"    @router.post(spec.route + \"/import\", name=\"Import \" + spec.file + \" Csv\"{(auth ? ", " + importOnly : "")})");
+    Line("    async def import_rows(request: Request, session: Session = Depends(get_session)):");
+    Line("        text = (await request.body()).decode(\"utf-8-sig\", errors=\"replace\")");
+    Line("        return await run_in_threadpool(import_text, session, spec, text)");
+    Line();
+    Line();
+    Line("for table in TABLES:");
+    Line("    register(table)");
+    Write(sb.ToString());
+#>

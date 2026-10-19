@@ -113,6 +113,18 @@
         Line($"    sqlx::query_as::<_, {t.Struct}>(INSERT){Binds(t.InsertBound)}.fetch_one(pool).await");
     Line("}");
     Line();
+    if (Project.ApiCsv)
+    {
+        // the CSV import (RS_Csv) adds all its rows or none
+        Line($"pub async fn insert_all(pool: &Pool, rows: &[{t.Struct}]) -> Result<(), sqlx::Error> {{");
+        Line("    let mut transaction = pool.begin().await?;");
+        Line("    for row in rows {");
+        Line($"        sqlx::query(INSERT){Binds(t.InsertBound)}.execute(&mut *transaction).await?;");
+        Line("    }");
+        Line("    transaction.commit().await");
+        Line("}");
+        Line();
+    }
     Line($"pub async fn update(pool: &Pool, id: {keyArg}, row: &{t.Struct}) -> Result<Option<{t.Struct}>, sqlx::Error> {{");
     if (mysql)
     {

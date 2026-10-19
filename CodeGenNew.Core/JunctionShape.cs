@@ -12,6 +12,8 @@ public sealed class JunctionShape
         TargetForeignKey = table.JunctionForeignKeys[1];
         AnchorColumn = table.Columns.First(c => c.Name.EqualsIgnoreCase(AnchorForeignKey.ReferencingColumns[0]));
         TargetColumn = table.Columns.First(c => c.Name.EqualsIgnoreCase(TargetForeignKey.ReferencingColumns[0]));
+        CreateDateColumn = table.Columns.FirstOrDefault(c => c.IsCreateDateColumn && c.CSharpBase() is "DateTime" or "DateTimeOffset");
+        CreateUserColumn = table.Columns.FirstOrDefault(c => c.IsCreateUserColumn && c.IsStringColumn);
     }
 
     public ForeignKeyModel AnchorForeignKey { get; }
@@ -22,6 +24,11 @@ public sealed class JunctionShape
 
     /// <summary> The junction column that holds the target's key. </summary>
     public ColumnModel TargetColumn { get; }
+
+    /// <summary> The junction's create-date column when it holds a date and time (date, datetime, datetime2 and datetimeoffset all do, whatever their precision), and its create-user column when it holds text.
+    /// A link written without a routine (EF, SQLAlchemy, sqlx) sets the first to the current time and the second to an empty text; null when the table has no such column. </summary>
+    public ColumnModel? CreateDateColumn { get; }
+    public ColumnModel? CreateUserColumn { get; }
 
     /// <summary> The table whose row is being edited, and the table whose rows are linked to it. </summary>
     public string AnchorRole => AnchorForeignKey.ReferencedTable;

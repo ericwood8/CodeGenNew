@@ -297,7 +297,7 @@ public class ProjectSettings
             if (ProjectDocs) { yield return "MD_DataDictionary"; yield return "MD_Erd"; }
             if (ApiAnnotations) yield return "CS_Validation";
             if (ApiValidation) { yield return "CS_Validator"; yield return "RS_Validate"; yield return "PY_Validate"; }
-            if (ApiCsv) yield return "API_Csv";
+            if (ApiCsv) { yield return "API_Csv"; yield return "PY_Csv"; yield return "RS_Csv"; }
             if (Dtos) { yield return "CS_Dto"; yield return "CS_DtoInput"; yield return "CS_Mapper"; }
             if (SeedTables.Length > 0) { yield return "CS_Seed"; yield return "CS_SeedData"; }
             if (EfConfigurations) yield return "CS_EfConfiguration";

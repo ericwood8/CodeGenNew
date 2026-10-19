@@ -1,0 +1,155 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_Junction_v1.tt
+    // Generates: app/routes/<table>_junction.py   (the template writes its own path with an @@@FILE marker; the output folder is the Python API's folder)
+    // The Python side of a many-to-many junction table, with the routes API_Junction writes so the five junction screens work against it unchanged: GET /api/<plural>/junction/{anchorId}
+    // (every row of the target table as { <display columns>, targetId, isSelected }, ordered by the first display column), POST .../junction/link and POST .../junction/unlink with
+    // { anchorId, targetId }. A link that exists is left as it is and an unlink of a link that does not exist is a 200, so a screen may repeat a move. The statements are SQLAlchemy Core over the
+    // database's own table and column names, so they run on every database the Python stack reads. PY_Mod lists the router.
+    // Needs a table detected as a junction table (TableModel.IsJunctionTable) and the target table's display columns; anything else stops with an error.
+    // Full notes: Docs/TemplateNotes/PY_Junction_v1.md
+    // ==========================================================================================
+
+    if (!Model.IsJunctionTable)
+        Error($"PY_Junction cannot generate from [{Model.SchemaName}].[{Model.TableName}]: it is not a many-to-many junction table - TableModel.IsJunctionTable is false.");
+    if (!Model.HasReferencedDisplayColumns)
+        Error("PY_Junction needs the target table's display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
+
+    var junction = Model.Junction!;
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+    string Str(string text) => PythonNames.Str(text);
+
+    string module = PythonNames.Snake(Model.TableName) + "_junction";
+    string stem = PythonNames.Pascal(Model.TableName);
+    string route = BlazorNames.ApiRoute(Model.TableName);
+    var anchorKey = KeyType.Of(junction.AnchorColumn)!;
+    var targetKey = KeyType.Of(junction.TargetColumn)!;
+    var display = junction.DisplayColumns;
+    var displayDb = junction.TargetForeignKey.ReferencedDisplayDbColumns;
+    string targetKeyDb = junction.TargetForeignKey.ReferencedDbColumns[0];
+    string orderColumn = displayDb.Count > 0 ? displayDb[0] : targetKeyDb;
+    bool UsesSchema(SqlDialect dialect, string schema) => dialect is SqlDialect.SqlServer or SqlDialect.PostgreSql && !schema.EqualsIgnoreCase(dialect == SqlDialect.SqlServer ? "dbo" : "public");
+    string SchemaArgument(string schema) => UsesSchema(Model.Dialect, schema) ? $", schema={Str(schema)}" : "";
+
+    var createDate = junction.CreateDateColumn;
+    var createUser = junction.CreateUserColumn;
+
+    var readRoles = WriteRolePlan.ReadFor(Project, Model);
+    var writeRoles = WriteRolePlan.For(Project, Model);
+    string RoleTuple(IReadOnlyList<string> roles) => "(" + string.Join(", ", roles.Select(Str)) + (roles.Count == 1 ? "," : "") + ")";
+    string readDepends = readRoles.Count > 0 ? ", dependencies=[Depends(require_roles(READ_ROLES, False))]" : "";
+    string writeDepends = writeRoles.Count > 0 ? ", dependencies=[Depends(require_roles(WRITE_ROLES, True))]" : "";
+
+    Line($"@@@FILE app/routes/{module}.py@@@");
+    if (createDate is not null)
+        Line("from datetime import datetime");
+    var uuids = anchorKey.Kind == KeyKind.Guid || targetKey.Kind == KeyKind.Guid;
+    if (uuids)
+        Line("from uuid import UUID");
+    if (createDate is not null || uuids)
+        Line();
+    Line("from fastapi import APIRouter, Depends, Response");
+    Line("from pydantic import BaseModel, ConfigDict, Field");
+    Line("from sqlalchemy import column, delete, func, insert, select, table");
+    Line("from sqlalchemy.exc import IntegrityError");
+    Line("from sqlalchemy.orm import Session");
+    Line();
+    if (readRoles.Count > 0 || writeRoles.Count > 0)
+        Line("from app.auth import require_roles");
+    Line("from app.db import get_session");
+    Line("from app.support import ApiError");
+    Line();
+    Line("router = APIRouter()");
+    if (readRoles.Count > 0)
+        Line($"READ_ROLES = {RoleTuple(readRoles)}");
+    if (writeRoles.Count > 0)
+        Line($"WRITE_ROLES = {RoleTuple(writeRoles)}");
+    Line($"REFUSED = \"The database refused the link (a missing row on either side).\"");
+    Line();
+
+    var linkColumns = new List<string> { Str(junction.AnchorColumn.DbName), Str(junction.TargetColumn.DbName) };
+    if (createDate is not null)
+        linkColumns.Add(Str(createDate.DbName));
+    if (createUser is not null)
+        linkColumns.Add(Str(createUser.DbName));
+    Line($"LINKS = table({Str(Model.DbTableName)}, {string.Join(", ", linkColumns.Select(c => $"column({c})"))}{SchemaArgument(Model.SchemaName)})");
+    var targetColumns = display.Select((d, i) => Str(displayDb[i])).Append(Str(targetKeyDb)).Distinct().ToList();
+    Line($"TARGETS = table({Str(junction.TargetForeignKey.ReferencedDbTable)}, {string.Join(", ", targetColumns.Select(c => $"column({c})"))}{SchemaArgument(junction.TargetForeignKey.ReferencedSchema)})");
+    Line();
+    Line();
+    Line($"class {stem}JunctionItem(BaseModel):");
+    Line("    \"\"\"One row of the target table, and whether it is linked to the row being edited.\"\"\"");
+    Line();
+    Line("    model_config = ConfigDict(populate_by_name=True)");
+    Line();
+    foreach (string d in display)
+        Line($"    {PythonNames.Ident(PythonNames.Snake(d))}: str | None = Field(None, alias={Str(JsonNames.Camel(d))})");
+    Line($"    target_id: {targetKey.Python} = Field(alias=\"targetId\")");
+    Line("    is_selected: bool = Field(alias=\"isSelected\")");
+    Line();
+    Line();
+    Line($"class {stem}JunctionLinkRequest(BaseModel):");
+    Line("    model_config = ConfigDict(populate_by_name=True)");
+    Line();
+    Line($"    anchor_id: {anchorKey.Python} = Field(alias=\"anchorId\")");
+    Line($"    target_id: {targetKey.Python} = Field(alias=\"targetId\")");
+    Line();
+    Line();
+    Line("def text_of(value) -> str | None:");
+    Line("    return None if value is None else str(value)");
+    Line();
+    Line();
+    Line($"@router.get(\"{route}/junction/{{anchor_id}}\", response_model=list[{stem}JunctionItem]{readDepends})");
+    Line($"def list_links(anchor_id: {anchorKey.Python}, session: Session = Depends(get_session)):");
+    Line("    linked = set(session.scalars(select(LINKS.c[" + Str(junction.TargetColumn.DbName) + "]).where(LINKS.c[" + Str(junction.AnchorColumn.DbName) + "] == anchor_id)).all())");
+    var selected = display.Select((d, i) => $"TARGETS.c[{Str(displayDb[i])}]").Append($"TARGETS.c[{Str(targetKeyDb)}]");
+    Line($"    rows = session.execute(select({string.Join(", ", selected)}).order_by(TARGETS.c[{Str(orderColumn)}], TARGETS.c[{Str(targetKeyDb)}])).all()");
+    Line("    return [");
+    Line($"        {stem}JunctionItem(");
+    for (int i = 0; i < display.Count; i++)
+        Line($"            {PythonNames.Ident(PythonNames.Snake(display[i]))}=text_of(row[{i}]),");
+    Line($"            target_id=row[{display.Count}],");
+    Line($"            is_selected=row[{display.Count}] in linked,");
+    Line("        )");
+    Line("        for row in rows");
+    Line("    ]");
+    Line();
+    Line();
+    Line($"@router.post(\"{route}/junction/link\"{writeDepends})");
+    Line($"def link(body: {stem}JunctionLinkRequest, session: Session = Depends(get_session)):");
+    Line("    \"\"\"Adds the link unless it exists.\"\"\"");
+    Line($"    same = (LINKS.c[{Str(junction.AnchorColumn.DbName)}] == body.anchor_id, LINKS.c[{Str(junction.TargetColumn.DbName)}] == body.target_id)");
+    Line("    if (session.scalar(select(func.count()).select_from(LINKS).where(*same)) or 0) == 0:");
+    Line("        values = {");
+    Line($"            {Str(junction.AnchorColumn.DbName)}: body.anchor_id,");
+    Line($"            {Str(junction.TargetColumn.DbName)}: body.target_id,");
+    if (createDate is not null)
+        Line($"            {Str(createDate.DbName)}: datetime.now(),");
+    if (createUser is not null)
+        Line($"            {Str(createUser.DbName)}: \"\",");
+    Line("        }");
+    Line("        try:");
+    Line("            session.execute(insert(LINKS).values(values))");
+    Line("            session.commit()");
+    Line("        except IntegrityError:");
+    Line("            session.rollback()");
+    Line($"            raise ApiError({HttpStatus.BadRequest}, REFUSED)");
+    Line($"    return Response(status_code={HttpStatus.Ok})");
+    Line();
+    Line();
+    Line($"@router.post(\"{route}/junction/unlink\"{writeDepends})");
+    Line($"def unlink(body: {stem}JunctionLinkRequest, session: Session = Depends(get_session)):");
+    Line("    \"\"\"Removes the link when it exists.\"\"\"");
+    Line($"    session.execute(delete(LINKS).where(LINKS.c[{Str(junction.AnchorColumn.DbName)}] == body.anchor_id, LINKS.c[{Str(junction.TargetColumn.DbName)}] == body.target_id))");
+    Line("    session.commit()");
+    Line($"    return Response(status_code={HttpStatus.Ok})");
+    Write(sb.ToString());
+#>
