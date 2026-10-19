@@ -198,16 +198,16 @@ Angular, React, Blazor, Uno and WinUI3 code: models, services, screens and dashb
 
 ### Screen-family mapping across platforms
 
-WinUI3 needs three list/form templates where Angular and React each need only two, because they split the job differently rather than covering different ground:
+WinUI3 (and Uno, which shares its XAML) needs three list/form templates where Angular, React and Blazor each need only two or one, because they split the job differently rather than covering different ground:
 
-| Concept | WinUI3 | Angular (`TS`) | React (`TSX`) |
-|---|---|---|---|
-| List grid | `WinUI3_MasterScreen` | folded into `TS_Component` | folded into `TSX_Page` |
-| Add/edit form | `WinUI3_DetailScreen` | folded into `TS_Component` | folded into `TSX_Page` |
-| Master-detail (parent + read-only child grids) | `WinUI3_DetailMasterScreen` | `TS_DetailMasterComponent` | `TSX_DetailMasterPage` |
-| Junction (many-to-many editor) | `WinUI3_JunctionEditor` | `TS_JunctionComponent` | `TSX_JunctionPage` |
+| Concept | WinUI3 | Uno (`UNO`) | Angular (`TS`) | React (`TSX`) | Blazor (`BLZ`) |
+|---|---|---|---|---|---|
+| List grid | `WinUI3_MasterScreen` | `UNO_MasterScreen` | folded into `TS_Component` | folded into `TSX_Page` | folded into `BLZ_Page` |
+| Add/edit form | `WinUI3_DetailScreen` | `UNO_DetailScreen` | folded into `TS_Component` | folded into `TSX_Page` | folded into `BLZ_Page` |
+| Master-detail (parent + child grids; editable child rows with `EditableChildren` on the web stacks) | `WinUI3_DetailMasterScreen` | `UNO_DetailMasterScreen` | `TS_DetailMasterComponent` | `TSX_DetailMasterPage` | folded into `BLZ_Page` |
+| Junction (many-to-many editor) | `WinUI3_JunctionEditor` | `UNO_JunctionEditor` | `TS_JunctionComponent` | `TSX_JunctionPage` | `BLZ_Junction` |
 
-WinUI3's list page and its add/edit form are two separate templates because the idiomatic WinUI3 pattern is a `ContentDialog` opened from the grid page. `TS_Component` and `TSX_Page` each generate a single file that already contains both the grid *and* an inline add/edit form on one screen, matching how a hand-written CRUD screen in those frameworks is usually built. All three platforms end up with the same coverage — list, add/edit, master-detail, junction — Angular and React just fit two of WinUI3's roles into one generated file.
+WinUI3's list page and its add/edit form are two separate templates because the idiomatic WinUI3 pattern is a `ContentDialog` opened from the grid page. `TS_Component` and `TSX_Page` each generate a single file that already contains both the grid *and* an inline add/edit form on one screen, matching how a hand-written CRUD screen in those frameworks is usually built. Uno runs the same XAML as WinUI3, so its templates mirror the WinUI3 ones but read and write through the generated API instead of the database. Blazor, like Angular and React, fits the list and the form into one page (`BLZ_Page`, which also draws the child grids of a master-detail table); its junction page is a template of its own, routed at `/<table>-links`. Every platform ends up with the same coverage — list, add/edit, master-detail, junction — the web stacks just fit two or three of WinUI3's roles into one generated file.
 
 Templates carry a version in the file name (`SP_Save_v1.tt`). The menu shows only the newest version of each; older ones stay on disk. Files you customize are never overwritten by an update — the new shipped copy is written beside yours as `<name>.new`.
 
