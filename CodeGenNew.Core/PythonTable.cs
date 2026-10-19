@@ -124,6 +124,18 @@ public sealed class PythonTable
     /// <summary> A field the server stamps, so the request schema makes it optional. </summary>
     public bool IsStamped(PythonField field) => StampedOnNew.Contains(field) || StampedOnChange.Contains(field);
 
+    /// <summary> The value a column has when nothing was entered, as Python writes it: <c>False</c>, <c>None</c>, <c>""</c>, <c>0</c>. </summary>
+    public static string DefaultValue(ColumnModel column) =>
+        column.IsBooleanColumn ? "False" : column.IsNullable ? "None" : column.IsStringColumn ? "\"\"" : TemplateHelpers.IsNumber(column) ? "0" : "None";
+
+    /// <summary> Whether the column has left its default, in Python: a yes / no or a text is truthy, a number is not 0. </summary>
+    public static string NotDefault(ColumnModel column, string access) =>
+        column.IsBooleanColumn || column.IsStringColumn ? $"bool({access})"
+        : column.IsNullable ? $"({access} or 0) != 0" : $"{access} != 0";
+
+    /// <summary> The field of the column: its attribute in the model and the schema. </summary>
+    public PythonField FieldOf(ColumnModel column) => Fields.First(f => f.Column.Name.EqualsIgnoreCase(column.Name));
+
     /// <summary> The Python expression for "now" in a date field's type. </summary>
     public static string Now(PythonField field) => field.Column.SqlType == SqlDbType.Date ? "date.today()" : "datetime.now()";
 

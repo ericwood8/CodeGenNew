@@ -40,10 +40,50 @@ public sealed record GatePredicate(IReadOnlyList<IReadOnlyList<GateTerm>> AnyOf)
 }
 
 /// <summary> A named column may not change to certain values while the <see cref="When"/> condition holds, unless <see cref="Unless"/> holds. A new row always starts as <see cref="Start"/> when that is given. </summary>
-public sealed record ChangeGate(TableModel Table, ColumnModel Column, GateTerm To, GatePredicate When, GatePredicate? Unless, string? Start, string? Message, string Text);
+public sealed record ChangeGate(TableModel Table, ColumnModel Column, GateTerm To, GatePredicate When, GatePredicate? Unless, string? Start, string? Message, string Text)
+{
+    /// <summary> What the gate says in a comment: <c>not to 2, 3 while Customer Status = 2 unless Customer Ignore Bad Status = true</c>. </summary>
+    public string Description => $"not to {To.ValueWords()} while {When.Words()}" + (Unless is null ? "" : $" unless {Unless.Words()}");
+
+    /// <summary> The sentence of the 409 answer: the rule's own <c>message</c>, else one made from the rule. </summary>
+    public string RefusalText => Message ?? $"{GateCode.Words(Column)} cannot change to {To.ValueWords()} while {When.Words()}" + (Unless is null ? "" : $" unless {Unless.Words()}") + ".";
+
+    /// <summary> The sentence of the 400 answer for a new row that does not start as <see cref="Start"/>; null when the rule has no start. </summary>
+    public string? StartRefusal => Start is null ? null : $"A new {Labels.Words(Table.TableName)} always starts with {GateCode.Words(Column)} = {Start}.";
+
+    /// <summary> The terms of <see cref="When"/> and <see cref="Unless"/> that read a column of a parent row, in the order the rule names them. </summary>
+    public IReadOnlyList<GateTerm> ParentTerms => When.Terms.Concat(Unless?.Terms ?? []).Where(t => t.Via is not null).ToList();
+
+    /// <summary> The parent rows the conditions read, one per foreign key (in the order the rule first names it), with the distinct columns read from each. </summary>
+    public IReadOnlyList<ParentRead> ParentReads => ParentTerms.GroupBy(t => t.Via!.ReferencingColumns[0], StringComparer.OrdinalIgnoreCase)
+        .Select(g => new ParentRead(g.First().Via!, g.First().Table, g.Select(t => t.Column).DistinctBy(c => c.Name).ToList())).ToList();
+}
+
+/// <summary> A parent row a gate's condition reads: the foreign key that reaches it, the table that holds it and the columns read. </summary>
+public sealed record ParentRead(ForeignKeyModel Via, TableModel Holder, IReadOnlyList<ColumnModel> Columns);
 
 /// <summary> Only a person whose row in the user table has the yes/no column <see cref="By"/> set (or an administrator) may change the column. The optional stamp columns say who did it and when. </summary>
-public sealed record ColumnGuard(TableModel Table, ColumnModel Column, TableModel UserTable, ColumnModel By, ColumnModel? StampBy, ColumnModel? StampOn, string Text);
+public sealed record ColumnGuard(TableModel Table, ColumnModel Column, TableModel UserTable, ColumnModel By, ColumnModel? StampBy, ColumnModel? StampOn, string Text)
+{
+    /// <summary> What the guard says in a comment: <c>only a person with Employee.IsManager (or an administrator) changes it</c>. </summary>
+    public string Description => $"only a person with {UserTable.TableName}.{By.Name} (or an administrator) changes it";
+
+    /// <summary> The sentence of the 403 answer. </summary>
+    public string RefusalText => $"Only a person with {Labels.Words(By.Name)} set on {Labels.Words(UserTable.TableName)} (or an administrator) may change {Labels.Words(Column.Name)}.";
+
+    /// <summary> The user table's column that holds the sign-in name the guard looks the caller up by. </summary>
+    public ColumnModel UserNameColumn(ProjectSettings project) => CodeGenNew.Core.UserTable.ResolveTable(UserTable, project).Plan!.UserName;
+}
+
+/// <summary> One check of a table's gates and guards, in the order the API runs them: every guard first (it may stamp the row), then every gate. </summary>
+public sealed record GateCheck(ColumnGuard? Guard, ChangeGate? Gate);
+
+/// <summary> The gates and guards of one table, and the checks they make. </summary>
+public sealed record GatedTable(TableModel Table, IReadOnlyList<ChangeGate> Gates, IReadOnlyList<ColumnGuard> Guards)
+{
+    /// <summary> The guards, then the gates: the order every emitter writes the checks in. </summary>
+    public IReadOnlyList<GateCheck> Checks => [.. Guards.Select(g => new GateCheck(g, null)), .. Gates.Select(g => new GateCheck(null, g))];
+}
 
 /// <summary> A guarded column as a screen sees it: the column, its JSON name (the key of the guards answer), the sentence shown instead of the control and the columns the server stamps (shown as text). </summary>
 public sealed record GuardHint(string Column, string Json, string Note, IReadOnlyList<string> Stamps);
@@ -106,6 +146,19 @@ public sealed record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnlyList<Col
     }
 
     public bool ForTable(TableModel table) => Gates.Any(g => g.Table == table) || Guards.Any(g => g.Table == table);
+
+    /// <summary> The tables that have a gate or a guard, by name, each with its rules: the list every emitter loops over. </summary>
+    public IReadOnlyList<GatedTable> Tables => Gates.Select(g => g.Table).Concat(Guards.Select(g => g.Table)).Distinct()
+        .OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase)
+        .Select(t => new GatedTable(t, Gates.Where(g => g.Table == t).ToList(), Guards.Where(g => g.Table == t).ToList())).ToList();
+
+    /// <summary> The tables the checks read without gating them: the parents a condition reads and the user tables the guards look callers up in. </summary>
+    public IReadOnlyList<TableModel> HolderTables => Gates.SelectMany(g => g.ParentTerms).Select(t => t.Table).Concat(Guards.Select(g => g.UserTable))
+        .Where(t => !Tables.Any(g => g.Table == t)).Distinct().ToList();
+
+    /// <summary> Whether a guard's stamp-on column is a date, or a date and time: what a Python file needs to import. </summary>
+    public bool StampsDate => Guards.Any(g => g.StampOn is { SqlType: System.Data.SqlDbType.Date });
+    public bool StampsDateTime => Guards.Any(g => g.StampOn is { } on && on.SqlType != System.Data.SqlDbType.Date);
 
     /// <summary> The rules that fit the schema, and a sentence for each one that does not. </summary>
     public static GatePlan Resolve(DatabaseModel database, ProjectSettings project)
@@ -440,7 +493,10 @@ public sealed record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnlyList<Col
     }
 }
 
-/// <summary> A gate's conditions as C# for the API template (API_Gates). </summary>
+/// <summary> The kinds of value a Rust gate compares. </summary>
+public enum RustGateKind { Bool, Int, Text }
+
+/// <summary> A gate's conditions as C# for the API template (API_Gates), and as Python and Rust for PY_Gates and RS_Gates. </summary>
 public static class GateCode
 {
     /// <summary> The column as a message says it: <c>Invoice Status</c> for <c>InvoiceStatusId</c> (a key reads as the thing it points at). </summary>
@@ -477,6 +533,85 @@ public static class GateCode
     /// <summary> The whole condition; <paramref name="test"/> writes one term (it knows where the term's column is read from). </summary>
     public static string Predicate(GatePredicate predicate, Func<GateTerm, string> test) =>
         string.Join(" || ", predicate.AnyOf.Select(all => all.Count == 1 ? test(all[0]) : "(" + string.Join(" && ", all.Select(test)) + ")"));
+
+    /// <summary> Whether a guarded column has left its default, in C#: a yes / no is true, a text is not empty, a number is not 0. </summary>
+    public static string CSharpNotDefault(ColumnModel column, string access) =>
+        column.IsBooleanColumn ? $"{access} == true"
+        : column.IsStringColumn ? $"!string.IsNullOrEmpty({access})"
+        : column.IsNullable ? $"({access} ?? 0) != 0" : $"{access} != 0";
+
+    /// <summary> The value as a Python literal: <c>2</c>, <c>True</c>, <c>"text"</c> (a decimal compares with a plain number). </summary>
+    public static string PythonLiteral(ColumnModel column, string value) =>
+        column.IsBooleanColumn ? (value == "true" ? "True" : "False") : column.IsStringColumn ? PythonNames.Str(value) : value;
+
+    /// <summary> <paramref name="access"/> compared as the term says, in Python. A nullable column is compared with an ordering operator only when it holds a value (Python cannot order None). </summary>
+    public static string PythonTest(string access, GateTerm term)
+    {
+        string[] literals = term.Values.Select(v => PythonLiteral(term.Column, v)).ToArray();
+        string Ordered(string op) => term.Column.IsNullable ? $"({access} is not None and {access} {op} {literals[0]})" : $"{access} {op} {literals[0]}";
+        return term.Operator switch
+        {
+            GateOperator.Equal => $"{access} == {literals[0]}",
+            GateOperator.NotEqual => $"{access} != {literals[0]}",
+            GateOperator.Less => Ordered("<"),
+            GateOperator.LessOrEqual => Ordered("<="),
+            GateOperator.Greater => Ordered(">"),
+            GateOperator.GreaterOrEqual => Ordered(">="),
+            _ => $"{access} in ({string.Join(", ", literals)}{(literals.Length == 1 ? "," : "")})"
+        };
+    }
+
+    /// <summary> What a Rust gate compares: a whole number, a yes / no or a text. Null for a column type the Rust gates do not compare (a decimal, a date), which the template reports. </summary>
+    public static RustGateKind? RustKindOf(ColumnModel column, SqlDialect dialect) => RustTable.RustType(column, dialect) switch
+    {
+        "bool" => RustGateKind.Bool,
+        "String" => RustGateKind.Text,
+        "i8" or "i16" or "i32" or "i64" or "u8" or "u16" or "u32" or "u64" => RustGateKind.Int,
+        _ => null
+    };
+
+    /// <summary> The value as a Rust literal: <c>2</c>, <c>true</c>, <c>"text"</c>. </summary>
+    public static string RustLiteral(RustGateKind kind, string value) =>
+        kind == RustGateKind.Text ? "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"" : value;
+
+    /// <summary> <paramref name="access"/> compared as the term says, in Rust. With <paramref name="isOption"/> the access is an <c>Option</c> and a missing value matches nothing except <c>&lt;&gt;</c>. </summary>
+    public static string RustTest(string access, GateTerm term, RustGateKind kind, bool isOption)
+    {
+        string[] literals = term.Values.Select(v => RustLiteral(kind, v)).ToArray();
+        string text = kind == RustGateKind.Text ? ".as_deref()" : "";
+        string asRef = kind == RustGateKind.Text ? ".as_str()" : "";
+        if (!isOption)
+        {
+            return term.Operator switch
+            {
+                GateOperator.Equal => $"{access} == {literals[0]}",
+                GateOperator.NotEqual => $"{access} != {literals[0]}",
+                GateOperator.Less => $"{access} < {literals[0]}",
+                GateOperator.LessOrEqual => $"{access} <= {literals[0]}",
+                GateOperator.Greater => $"{access} > {literals[0]}",
+                GateOperator.GreaterOrEqual => $"{access} >= {literals[0]}",
+                _ => $"[{string.Join(", ", literals)}].contains(&{access}{asRef})"
+            };
+        }
+        return term.Operator switch
+        {
+            GateOperator.Equal => $"{access}{text} == Some({literals[0]})",
+            GateOperator.NotEqual => $"{access}{text} != Some({literals[0]})",
+            GateOperator.Less => $"{access}.is_some_and(|v| v < {literals[0]})",
+            GateOperator.LessOrEqual => $"{access}.is_some_and(|v| v <= {literals[0]})",
+            GateOperator.Greater => $"{access}.is_some_and(|v| v > {literals[0]})",
+            GateOperator.GreaterOrEqual => $"{access}.is_some_and(|v| v >= {literals[0]})",
+            _ => $"{access}{text}.is_some_and(|v| [{string.Join(", ", literals)}].contains(&v))"
+        };
+    }
+
+    /// <summary> The whole condition in Rust. </summary>
+    public static string RustPredicate(GatePredicate predicate, Func<GateTerm, string> test) =>
+        string.Join(" || ", predicate.AnyOf.Select(all => all.Count == 1 ? test(all[0]) : "(" + string.Join(" && ", all.Select(test)) + ")"));
+
+    /// <summary> The whole condition in Python. </summary>
+    public static string PythonPredicate(GatePredicate predicate, Func<GateTerm, string> test) =>
+        string.Join(" or ", predicate.AnyOf.Select(all => all.Count == 1 ? test(all[0]) : "(" + string.Join(" and ", all.Select(test)) + ")"));
 }
 
 /// <summary> The words a screen shows for a guard's stamp column (who changed the guarded column, and when) on a row that was saved before the stamp existed. </summary>

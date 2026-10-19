@@ -109,6 +109,29 @@ public sealed class RustTable
 
     public static RustTable Of(TableModel model, ProjectSettings project) => new(model, project);
 
+    /// <summary> The field of the column. </summary>
+    public RustField FieldOf(ColumnModel column) => Fields.First(f => f.Column.Name.EqualsIgnoreCase(column.Name));
+
+    /// <summary> The value a field has when nothing was entered, as Rust writes it: <c>None</c>, <c>false</c>, <c>String::new()</c>, <c>0</c>. </summary>
+    public static string DefaultValue(RustField f) => f.IsOption ? "None" : f.BaseType switch { "bool" => "false", "String" => "String::new()", "f32" or "f64" => "0.0", "Decimal" => "rust_decimal::Decimal::ZERO", _ => "0" };
+
+    /// <summary> Whether the field has left its default, in Rust: a yes / no is true, a text is not empty, a number is not 0. </summary>
+    public static string NotDefault(RustField f, string access) => f.BaseType switch
+    {
+        "bool" => f.IsOption ? $"{access} == Some(true)" : access,
+        "String" => f.IsOption ? $"{access}.as_deref().is_some_and(|v| !v.is_empty())" : $"!{access}.is_empty()",
+        "Decimal" => f.IsOption ? $"{access}.is_some_and(|v| !v.is_zero())" : $"!{access}.is_zero()",
+        "f32" or "f64" => f.IsOption ? $"{access}.unwrap_or(0.0) != 0.0" : $"{access} != 0.0",
+        _ => f.IsOption ? $"{access}.unwrap_or(0) != 0" : $"{access} != 0"
+    };
+
+    /// <summary> The Rust expression for "now" in a date field's type, wrapped in <c>Some</c> for an optional field. </summary>
+    public static string Now(RustField f)
+    {
+        string now = f.BaseType switch { "NaiveDate" => "chrono::Local::now().date_naive()", "NaiveDateTime" => "chrono::Local::now().naive_local()", _ => "chrono::Utc::now()" };
+        return f.IsOption ? $"Some({now})" : now;
+    }
+
     /// <summary> SQL as a Rust raw string literal (<c>r#"..."#</c>), so the quotes of an identifier need no escape. </summary>
     public static string Raw(string text) => text.Contains("\"#", StringComparison.Ordinal) ? "r##\"" + text + "\"##" : "r#\"" + text + "\"#";
 

@@ -43,16 +43,15 @@
             string source = f.IsOption ? $"&row.{f.Name}" : $"&row.{f.Name}";
             var body = new List<string>();
             if (rule.Required && !f.IsOption)
-                body.Add($"if {v}.trim().is_empty() {{ problems.push(({Str(property)}, {Str(label + " must not be empty.")})); }}");
+                body.Add($"if {v}.trim().is_empty() {{ problems.push(({Str(property)}, {Str(RuleMessages.Required(label))})); }}");
             if (rule.MaxLength > 0)
-                body.Add($"if {v}.chars().count() > {rule.MaxLength} {{ problems.push(({Str(property)}, {Str(label + " must be " + rule.MaxLength + " characters or fewer.")})); }}");
+                body.Add($"if {v}.chars().count() > {rule.MaxLength} {{ problems.push(({Str(property)}, {Str(RuleMessages.MaxLength(label, rule.MaxLength))})); }}");
             if (rule.Choices is { Count: > 0 } choices)
-                body.Add($"if !{v}.is_empty() && ![{string.Join(", ", choices.Select(Str))}].contains(&{v}.as_str()) {{ problems.push(({Str(property)}, {Str(label + " must be one of: " + string.Join(", ", choices) + ".")})); }}");
+                body.Add($"if !{v}.is_empty() && ![{string.Join(", ", choices.Select(Str))}].contains(&{v}.as_str()) {{ problems.push(({Str(property)}, {Str(RuleMessages.Choices(label, choices))})); }}");
             if (rule.Shape != TextShape.None)
             {
-                string function = rule.Shape switch { TextShape.Email => "looks_like_email", TextShape.Phone => "looks_like_phone", TextShape.Postal => "looks_like_postal_code", TextShape.Ssn => "looks_like_ssn", _ => "looks_like_url" };
-                string what = ColumnRules.NounOf(rule.Shape);
-                body.Add($"if !{v}.is_empty() && !crate::support::{function}({v}) {{ problems.push(({Str(property)}, {Str(label + " must be " + what + ".")})); }}");
+                string function = RuleMessages.ShapeFunction(rule.Shape);
+                body.Add($"if !{v}.is_empty() && !crate::support::{function}({v}) {{ problems.push(({Str(property)}, {Str(RuleMessages.Shape(label, rule.Shape))})); }}");
             }
             if (body.Count == 0)
                 continue;
@@ -73,7 +72,7 @@
             // a day later than today (the server's local day) is refused; a date and time is compared by its day
             string today = "chrono::Local::now().date_naive()";
             string Day(string v) => f.BaseType switch { "NaiveDate" => $"*{v}", "NaiveDateTime" => $"{v}.date()", _ => $"{v}.date_naive()" };
-            string refuse = $"problems.push(({Str(property)}, {Str(label + " must not be later than today.")}));";
+            string refuse = $"problems.push(({Str(property)}, {Str(RuleMessages.NotFuture(label))}));";
             if (f.IsOption)
             {
                 lines.Add($"    if let Some(value) = &row.{f.Name} {{");
@@ -93,9 +92,9 @@
             var body = new List<string>();
             string numeric = $"let n = {Number(f, f.IsOption ? "value" : "number")};";
             if (rule.Min is { } min)
-                body.Add($"if {(rule.MinStrict ? "n <= " : "n < ")}{TemplateHelpers.Num(min)}_f64 {{ problems.push(({Str(property)}, {Str(label + " must be " + (rule.MinStrict ? "greater than " : "at least ") + min.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ".")})); }}");
+                body.Add($"if {(rule.MinStrict ? "n <= " : "n < ")}{TemplateHelpers.Num(min)}_f64 {{ problems.push(({Str(property)}, {Str(RuleMessages.AtLeast(label, min, rule.MinStrict))})); }}");
             if (rule.Max is { } max)
-                body.Add($"if {(rule.MaxStrict ? "n >= " : "n > ")}{TemplateHelpers.Num(max)}_f64 {{ problems.push(({Str(property)}, {Str(label + " must be " + (rule.MaxStrict ? "less than " : "at most ") + max.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ".")})); }}");
+                body.Add($"if {(rule.MaxStrict ? "n >= " : "n > ")}{TemplateHelpers.Num(max)}_f64 {{ problems.push(({Str(property)}, {Str(RuleMessages.AtMost(label, max, rule.MaxStrict))})); }}");
             if (f.IsOption)
             {
                 lines.Add($"    if let Some(value) = &row.{f.Name} {{");

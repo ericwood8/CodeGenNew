@@ -288,7 +288,7 @@ public class ProjectSettings
         {
             if (ApiDocs) yield return "API_OpenApi";
             if (OData) { yield return "API_OData"; yield return "TS_ODataService"; yield return "TS_ODataComponent"; yield return "TS_ODataDetailMasterComponent"; yield return "TSX_ODataApi"; yield return "TSX_ODataPage"; yield return "TSX_ODataDetailMasterPage"; yield return "BLZ_ODataClient"; yield return "BLZ_ODataPage"; yield return "UNO_ODataClient"; yield return "UNO_ODataPage"; }
-            if (ApiAuth && (ChangeGates is not null || GuardedColumns is not null)) yield return "API_Gates";
+            if (ApiAuth && (ChangeGates is not null || GuardedColumns is not null)) { yield return "API_Gates"; yield return "PY_Gates"; yield return "RS_Gates"; }
             if (ApiAuth && UserTable is not null) { yield return "API_UserDirectory"; yield return "PY_UserDirectory"; yield return "RS_UserDirectory"; }
             if (ApiHttp) yield return "API_Http";
             if (ApiFakers) yield return "CS_Faker";

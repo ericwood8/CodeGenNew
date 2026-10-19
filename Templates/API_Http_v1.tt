@@ -12,7 +12,7 @@
     // API_Http_v1.tt
     // Generates: <TableName>.http   (see OutputName in API_Http_v1.tt.config)
     // A request file for one table's API, for Visual Studio, Visual Studio Code (REST Client) and Rider: get all, get one, search, create, update, delete and (where the clone routine exists) clone,
-    // against http://localhost:<ApiPort>. The create and update bodies hold one value for every column that cannot be NULL, shaped by the column (a choice from its CHECK list, a number inside its
+    // against http://localhost:<ApiPort> (the Rust port for a project with a Rust stack and no Api stack; the Python and Rust APIs answer the same routes). The create and update bodies hold one value for every column that cannot be NULL, shaped by the column (a choice from its CHECK list, a number inside its
     // range, an email address for an email column); a nullable column is left out. Change the host and the id at the top; run the requests one by one.
     // Writes for the tables API_Crud writes an API for, with the routes the API templates use. Does not log in: with ApiAuth=true every request carries Authorization: Bearer {{token}} and the token variable at the top is yours to fill from POST /api/auth/login.
     // Full notes: Docs/TemplateNotes/API_Http_v1.md
@@ -37,7 +37,9 @@
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
 
-        L("@host = http://localhost:" + Project.ApiPort);
+        // the Python and Rust APIs serve the same routes; a project with a Rust stack and no Api stack calls the Rust port
+        bool rustOnly = Project.Stacks.Any(s => s.EqualsIgnoreCase("Rust")) && !Project.Stacks.Any(s => s.EqualsIgnoreCase("Api"));
+        L("@host = http://localhost:" + (rustOnly ? Project.RustPort : Project.ApiPort));
         L("@" + idVar + " = " + ApiSampleValues.SampleId(Model));   // the key the add request creates: 1, a GUID, or a text key's example
         L();
         L("### All " + plural);

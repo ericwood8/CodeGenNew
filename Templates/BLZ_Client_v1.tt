@@ -22,6 +22,6 @@
     else
     {
         string type = BlazorNames.TypeName(Model.TableName);
-        Write($"@@@FILE Services/{type}Client.cs@@@\n" + ApiClientCode.Client(Model, Project, BlazorNames.Namespace(Project) + ".Models", BlazorNames.Namespace(Project) + ".Services"));
+        Write($"@@@FILE Services/{type}Client.cs@@@\n" + ApiClientCode.Client(Model, Project, BlazorNames.Namespace(Project) + ".Models", BlazorNames.Namespace(Project) + ".Services", EditableChild.Lists(Model, Project)));
     }
 #>

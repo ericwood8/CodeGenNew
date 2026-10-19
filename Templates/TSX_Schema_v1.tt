@@ -66,7 +66,7 @@
             }
 
             if (rule is { NotFuture: true })
-                o.Append(".refine((value) => !value || value.substring(0, 10) <= new Date().toLocaleDateString(\"en-CA\"), " + CSharpText.Quote(label + " must not be later than today.") + ")");
+                o.Append(".refine((value) => !value || value.substring(0, 10) <= new Date().toLocaleDateString(\"en-CA\"), " + CSharpText.Quote(RuleMessages.NotFuture(label)) + ")");
 
             if (c.IsNullable)
                 o.Append(".nullable()");

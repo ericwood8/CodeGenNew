@@ -1,0 +1,214 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_Gates_v1.tt
+    // Generates: app/gates.py   (whole-database; the path is written by the template)
+    // The Python counterpart of API_Gates: the checks of the project's ChangeGates and GuardedColumns, one set of functions per table, called from that table's router (PY_Routes) before a row is
+    // saved. A gate refuses a change of a column (409 change-not-allowed) while its condition holds unless its exemption does; a guard lets only a person whose user-table row has a yes/no column
+    // set (or an administrator) change a column (403 column-not-yours) and stamps who did it and when. after_clone_<table> makes a copy start the way a new row does, and GET <route>/guards answers
+    // which guarded columns the caller may change (the router writes it). The rules, and the sentence of a rule that does not fit the schema, are GatePlan (Core), the one the ASP.NET API reads.
+    // Needs ApiAuth; written only when the project names a rule (the plan adds it). Full notes: Docs/TemplateNotes/PY_Gates_v1.md
+    // ==========================================================================================
+
+    var plan = GatePlan.Resolve(Database, Project);
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+    string Str(string text) => PythonNames.Str(text);
+
+    if (plan.Problems.Count > 0)
+    {
+        Error(string.Join(" | ", plan.Problems));
+    }
+    else if (plan.Gates.Count == 0 && plan.Guards.Count == 0)
+    {
+        Error("PY_Gates found no rule: name one in ChangeGates or GuardedColumns.");
+    }
+    else
+    {
+        var python = new Dictionary<TableModel, PythonTable>();
+        PythonTable T(TableModel table) => python.TryGetValue(table, out var known) ? known : python[table] = PythonTable.Of(table, Project);
+        string Attr(TableModel table, ColumnModel column) => T(table).FieldOf(column).Name;
+        string Cls(TableModel table) => T(table).Class;
+        string Mod(TableModel table) => T(table).Module;
+        string Now(TableModel table, ColumnModel column) => PythonTable.Now(T(table).FieldOf(column));
+
+        var tables = plan.Tables.Select(t => t.Table).ToList();
+        var holders = plan.HolderTables;
+
+        Line("@@@FILE app/gates.py@@@");
+        var datetimeNames = new List<string>();
+        if (plan.StampsDate) datetimeNames.Add("date");
+        if (plan.StampsDateTime) datetimeNames.Add("datetime");
+        if (datetimeNames.Count > 0)
+            Line($"from datetime import {string.Join(", ", datetimeNames)}");
+        if (datetimeNames.Count > 0)
+            Line();
+        Line("from sqlalchemy import select");
+        Line("from sqlalchemy.orm import Session");
+        Line();
+        Line("from app.auth import CurrentUser");
+        foreach (var t in tables.Concat(holders).DistinctBy(t => Mod(t)).OrderBy(t => Mod(t), StringComparer.Ordinal))
+            Line($"from app.models.{Mod(t)} import {Cls(t)}");
+        Line("from app.support import ApiError, ApiValidationError");
+        Line();
+        Line($"PROBLEM_CHANGE_NOT_ALLOWED = \"{ProblemTypes.ChangeNotAllowed}\"");
+        Line($"PROBLEM_COLUMN_NOT_YOURS = \"{ProblemTypes.ColumnNotYours}\"");
+
+        foreach (var gated in plan.Tables)
+        {
+            var table = gated.Table;
+            string entity = table.TableName;
+            string module = Mod(table);
+            var gates = gated.Gates;
+            var guards = gated.Guards;
+
+            foreach (var guard in guards)
+            {
+                string column = Attr(table, guard.Column);
+                string userClass = Cls(guard.UserTable);
+                Line();
+                Line();
+                Line($"def may_{module}_{column}(session: Session, user: CurrentUser) -> bool:");
+                Line($"    \"\"\"True when the caller is an administrator or has {guard.UserTable.TableName}.{guard.By.Name} set.\"\"\"");
+                Line("    if user.is_admin:");
+                Line("        return True");
+                Line("    if not user.name:");
+                Line("        return False");
+                Line($"    return bool(session.scalar(select({userClass}.{Attr(guard.UserTable, guard.By)}).where({userClass}.{Attr(guard.UserTable, guard.UserNameColumn(Project))} == user.name)))");
+            }
+
+            foreach (var gate in gates)
+            {
+                string column = Attr(table, gate.Column);
+                var parents = gate.ParentReads;
+                string TermTest(GateTerm term) => term.Via is null
+                    ? GateCode.PythonTest("row." + Attr(table, term.Column), term)
+                    : $"(parent_{term.Via.ReferencingColumns[0].ToLowerInvariant()} is not None and {GateCode.PythonTest($"parent_{term.Via.ReferencingColumns[0].ToLowerInvariant()}.{Attr(term.Table, term.Column)}", term)})";
+                string to = GateCode.PythonTest("row." + column, gate.To);
+                string when = GateCode.PythonPredicate(gate.When, TermTest);
+                string unless = gate.Unless is null ? "" : GateCode.PythonPredicate(gate.Unless, TermTest);
+                string toWords = gate.To.ValueWords();
+                string message = gate.RefusalText;
+
+                Line();
+                Line();
+                Line($"def gate_{module}_{column}(session: Session, row, current) -> None:");
+                Line($"    # gate {entity}.{gate.Column.Name}: {gate.Description}");
+                Line("    if current is None:");
+                if (gate.Start is { } start)
+                {
+                    Line($"        if row.{column} != {GateCode.PythonLiteral(gate.Column, start)}:");
+                    Line($"            raise ApiValidationError([({Str(JsonNames.Camel(gate.Column.Name))}, {Str(gate.StartRefusal!)})])");
+                    Line("        moves = False");
+                }
+                else
+                    Line("        moves = True");
+                Line("    else:");
+                Line($"        moves = current.{column} != row.{column}");
+                Line($"    if moves and {to}:");
+                foreach (var parent in parents)
+                {
+                    var via = parent.Via;
+                    var holder = parent.Holder;
+                    string fk = via.ReferencingColumns[0];
+                    var fkColumn = table.Columns.First(c => c.Name.EqualsIgnoreCase(fk));
+                    var referenced = holder.Columns.First(c => c.Name.EqualsIgnoreCase(via.ReferencedColumns[0]));
+                    Line($"        parent_{fk.ToLowerInvariant()} = session.scalars(select({Cls(holder)}).where({Cls(holder)}.{Attr(holder, referenced)} == row.{Attr(table, fkColumn)})).first()");
+                }
+                Line($"        if ({when}){(unless.Length == 0 ? "" : $" and not ({unless})")}:");
+                Line($"            raise ApiError({HttpStatus.Conflict}, \"Change not allowed\", problem_type=PROBLEM_CHANGE_NOT_ALLOWED, detail={Str(message)})");
+            }
+
+            Line();
+            Line();
+            Line($"def check_{module}(session: Session, user: CurrentUser, row, current) -> None:");
+            Line($"    \"\"\"The gates and guards of {entity}, checked before a row is saved: row is the body, current the stored row (None for a new one).\"\"\"");
+            Line("    is_new = current is None");
+            foreach (var check in gated.Checks)
+            {
+                if (check.Gate is { } checkedGate)
+                {
+                    Line($"    gate_{module}_{Attr(table, checkedGate.Column)}(session, row, current)");
+                    continue;
+                }
+                var guard = check.Guard!;
+                string column = Attr(table, guard.Column);
+                string defaultTest = PythonTable.NotDefault(guard.Column, "row." + column);
+                string changed = "changed_" + column;
+                Line($"    # guard {entity}.{guard.Column.Name}: {guard.Description}");
+                Line($"    {changed} = {defaultTest} if is_new else row.{column} != current.{column}");
+                Line($"    if {changed} and not may_{module}_{column}(session, user):");
+                Line($"        raise ApiError({HttpStatus.Forbidden}, \"Not allowed\", problem_type=PROBLEM_COLUMN_NOT_YOURS, detail={Str(guard.RefusalText)})");
+                if (guard.StampBy is not null || guard.StampOn is not null)
+                {
+                    Line($"    if {changed}:");
+                    if (guard.StampBy is { } by)
+                        Line($"        row.{Attr(table, by)} = user.name{(by.IsNullable ? "" : " or \"\"")}");
+                    if (guard.StampOn is { } on)
+                        Line($"        row.{Attr(table, on)} = {Now(table, on)}");
+                    Line("    else:");
+                    if (guard.StampBy is { } keepBy)
+                        Line($"        row.{Attr(table, keepBy)} = None if is_new else current.{Attr(table, keepBy)}");
+                    if (guard.StampOn is { } keepOn)
+                        Line($"        row.{Attr(table, keepOn)} = None if is_new else current.{Attr(table, keepOn)}");
+                }
+            }
+            if (guards.Count == 0 && gates.Count == 0)
+                Line("    return None");
+
+            // a clone is a new row made without the request's body: it starts the way a new row does and the guarded columns do not carry the source's value over
+            Line();
+            Line();
+            Line($"def after_clone_{module}(session: Session, user: CurrentUser, copy) -> None:");
+            Line($"    \"\"\"Runs after {entity} was cloned: the copy starts as a new row does (the gated columns at their start, the guarded columns reset unless the caller may change them) and a gate that holds a new row removes the copy.\"\"\"");
+            foreach (var gate in gates.Where(g => g.Start is not null))
+                Line($"    copy.{Attr(table, gate.Column)} = {GateCode.PythonLiteral(gate.Column, gate.Start!)}");
+            foreach (var guard in guards)
+            {
+                string column = Attr(table, guard.Column);
+                string notDefault = PythonTable.NotDefault(guard.Column, "copy." + column);
+                Line($"    if {notDefault}:");
+                Line($"        if may_{module}_{column}(session, user):");
+                if (guard.StampBy is { } stampBy)
+                    Line($"            copy.{Attr(table, stampBy)} = user.name{(stampBy.IsNullable ? "" : " or \"\"")}");
+                if (guard.StampOn is { } stampOn)
+                    Line($"            copy.{Attr(table, stampOn)} = {Now(table, stampOn)}");
+                if (guard.StampBy is null && guard.StampOn is null)
+                    Line("            pass");
+                Line("        else:");
+                Line($"            copy.{column} = {PythonTable.DefaultValue(guard.Column)}");
+                if (guard.StampBy is { } clearBy)
+                    Line($"            copy.{Attr(table, clearBy)} = None");
+                if (guard.StampOn is { } clearOn)
+                    Line($"            copy.{Attr(table, clearOn)} = None");
+                if (guard.StampBy is not null || guard.StampOn is not null)
+                {
+                    Line("    else:");
+                    if (guard.StampBy is { } emptyBy)
+                        Line($"        copy.{Attr(table, emptyBy)} = None");
+                    if (guard.StampOn is { } emptyOn)
+                        Line($"        copy.{Attr(table, emptyOn)} = None");
+                }
+            }
+            Line("    session.commit()");
+            if (gates.Count > 0)
+            {
+                Line("    try:");
+                foreach (var gate in gates)
+                    Line($"        gate_{module}_{Attr(table, gate.Column)}(session, copy, None)");
+                Line("    except (ApiError, ApiValidationError):");
+                Line("        session.delete(copy)");
+                Line("        session.commit()");
+                Line("        raise");
+            }
+        }
+        Write(sb.ToString());
+    }
+#>

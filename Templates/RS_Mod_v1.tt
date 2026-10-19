@@ -41,6 +41,9 @@
     routeModules = routeModules.OrderBy(m => m, StringComparer.Ordinal).ToList();
     if (Project.ApiCsv)
         routeModules.Add("csv_files");
+    // the gates (RS_Gates) answer GET <route>/guards and hold the checks the tables' routes call
+    if (Project.ApiAuth && (Project.ChangeGates is not null || Project.GuardedColumns is not null))
+        routeModules.Add("gates");
     foreach (string m in routeModules)
         Line($"pub mod {m};");
     Line();

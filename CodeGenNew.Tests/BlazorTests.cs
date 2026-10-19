@@ -264,4 +264,68 @@ public class BlazorTests
                 try { if (Directory.Exists(path)) Directory.Delete(path, true); else File.Delete(path); } catch (IOException) { }
         }
     }
+
+    [TestMethod]
+    public async Task A_child_in_EditableChildren_is_a_table_of_boxes_in_the_form_saved_with_the_row()
+    {
+        string database = Path.Combine(Path.GetTempPath(), "codegen_blz_ec_" + Guid.NewGuid().ToString("N") + ".db");
+        using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = database, Pooling = false }.ConnectionString))
+        {
+            connection.Open();
+            foreach (string statement in new[]
+            {
+                "CREATE TABLE Region (RegionId INTEGER PRIMARY KEY, Name VARCHAR(40) NOT NULL)",
+                "CREATE TABLE Project (ProjectId INTEGER PRIMARY KEY, Name VARCHAR(40) NOT NULL, Budget DECIMAL(10,2) NOT NULL, Manager VARCHAR(40) NULL, StartedOn DATE NULL, Priority INTEGER NOT NULL DEFAULT 0, Comments VARCHAR(200) NULL)",
+                "CREATE TABLE ProjectTask (ProjectTaskId INTEGER PRIMARY KEY AUTOINCREMENT, ProjectId INTEGER NOT NULL REFERENCES Project (ProjectId), RegionId INTEGER NOT NULL REFERENCES Region (RegionId), Title VARCHAR(30) NOT NULL, Hours INTEGER NOT NULL, Done BIT NOT NULL, DueOn DATE NOT NULL)"
+            })
+            {
+                using var command = connection.CreateCommand();
+                command.CommandText = statement;
+                command.ExecuteNonQuery();
+            }
+        }
+        string output = Path.Combine(Path.GetTempPath(), "codegen_blz_ec_out_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            async Task<string> Generate(params (string Key, string Value)[] extra)
+            {
+                var values = new Dictionary<string, string>
+                {
+                    ["ProjectName"] = "Shop", ["DatabaseProvider"] = "Sqlite", ["DatabaseName"] = "shop.db", ["EnumTables"] = "none", ["Stacks"] = "Blazor", ["Screens"] = "Project,ProjectTask,Region"
+                };
+                foreach (var (key, value) in extra)
+                    values[key] = value;
+                var request = new ConnectionRequest { Provider = DatabaseProvider.Sqlite, ServerName = "", DatabaseName = database };
+                var provider = SchemaProviderFactory.Create(request, Path.Combine(Repo.Root, "SpecialLogicColumns.config"));
+                var report = await Repo.GenerateAsync(provider, new GenerateOptions
+                {
+                    Project = ProjectSettings.FromValues(values), Stacks = ["Blazor"], OutputDirectory = output, DatabaseName = database, Schema = "main", Essentials = true, Force = true
+                });
+                Assert.IsTrue(report.Success, string.Join(" | ", report.Errors));
+                return File.ReadAllText(Path.Combine(output, "Shop.Blazor/Pages/ProjectPage.razor")).Replace(new string([(char)13, (char)10]), ((char)10).ToString());
+            }
+
+            string plain = await Generate();
+            Expect.Contains(plain, "<h3>Project Task</h3>");
+            Expect.DoesNotContain(plain, "fieldset class=\"child-rows\"");
+            Expect.DoesNotContain(File.ReadAllText(Path.Combine(output, "Shop.Blazor/Services/ProjectClient.cs")), "WithChildren");
+
+            string editable = await Generate(("EditableChildren", "Project.ProjectTask"));
+            Expect.Contains(editable, "<fieldset class=\"child-rows\">");
+            Expect.Contains(editable, "<InputSelect @bind-Value=\"line.RegionId\" aria-label=\"Region\">");
+            Expect.Contains(editable, "<InputCheckbox @bind-Value=\"line.Done\" aria-label=\"Done?\" />");
+            Expect.Contains(editable, "private void AddchildProjectTask() => childProjectTaskEdit.Add(new ProjectTask { DueOn = DateTime.Today });");
+            Expect.Contains(editable, "new Dictionary<string, object> { [\"projectTasks\"] = childProjectTaskEdit };");
+            Expect.Contains(editable, "await Client.UpdateAsync(row.ProjectId, row, children);");
+            Expect.DoesNotContain(editable, "<h3>Project Task</h3>");
+            Expect.DoesNotContain(editable, "DeletechildProjectTask");
+            string client = File.ReadAllText(Path.Combine(output, "Shop.Blazor/Services/ProjectClient.cs"));
+            Expect.Contains(client, "public async Task UpdateAsync(int id, Project row, IReadOnlyDictionary<string, object> children)");
+        }
+        finally
+        {
+            foreach (string path in new[] { database, output })
+                try { if (Directory.Exists(path)) Directory.Delete(path, true); else File.Delete(path); } catch (IOException) { }
+        }
+    }
 }

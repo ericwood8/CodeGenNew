@@ -92,7 +92,7 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `API` | `API_Search` | `TableSearchApi.cs` — a `/search?...&pageNumber=&pageSize=` endpoint over `SP_Search`/`SP_SearchCount`, called straight through the `DbContext` (no repository), returning `TableSearchResult` (`Items`/`Page`/`PageSize`/`TotalCount`/`TotalPages`) — the HTTP companion the Angular/React pagination wiring needs (only offered for a table with at least one searchable column). |
 | `API` | `API_Registration` | `ApiRegistration.cs` — also whole-database: `AddGeneratedDbContext(configuration)` and `RegisterGeneratedApis()`, so a sample's `Program.cs` lists no table. |
 | `API` | `API_OpenApi` | `openapi.yaml` - whole-database: an OpenAPI 3.0 document of the API the other `API` templates write (paths, search parameters, schemas with types, lengths, CHECK limits, enum lists, required and nullable), for Kiota, NSwag, openapi-generator or a Swagger UI. |
-| `API` | `API_Http` | `Table.http` - a request file per table (all, one, search, create, update, delete, clone) with example bodies shaped by the columns, for Visual Studio, VS Code and Rider. |
+| `API` | `API_Http` | `Table.http` - a request file per table (all, one, search, create, update, delete, clone) with example bodies shaped by the columns, for Visual Studio, VS Code and Rider; also written for a Python or Rust stack (the same routes). |
 | `API` | `API_Test` | `TableApiTests.cs` - an MSTest integration test class per table in its own test project (`ApiTests=true`): add, read, change and remove a row, a 404, the search page, and with `ApiValidation` the limits. Runs the API in process over a scratch database (SQLite: a copy of the file; others: `<PROJECT>_TEST_CONNECTION`). |
 | `API` | `API_Dashboard` | `DashboardApi.cs` - `GET /api/dashboard` (every widget) and `?table=Customer` (that table's cards), cached for a minute. |
 | `API` | `API_Csv` | `Apis/Csv.cs` - whole-database, `ApiCsv=true`: `GET /api/table/export.csv` and an all-or-nothing `POST /api/table/import` for every table, no package. |
@@ -131,6 +131,7 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `PY` | `PY_Mod` | the package lists and the list of routers that `main.py` includes. |
 | `PY` | `PY_Junction` | `app/routes/table_junction.py` for a many-to-many junction table - the junction routes of `API_Junction` (list with `isSelected`, link, unlink) for the Python API, so the junction screens of every UI stack work against it. |
 | `PY` | `PY_Csv` | `app/routes/csv_files.py` - `GET /api/table/export.csv` and `POST /api/table/import` for every table (`ApiCsv=true`); the import is all or nothing. |
+| `PY` | `PY_Gates` | `app/gates.py` - the checks of `ChangeGates` and `GuardedColumns` (409 `change-not-allowed`, 403 `column-not-yours`, stamps, the clone reset) that the routes call, and `GET /api/table/guards` (`ApiAuth=true`). |
 | `PY` | `PY_UserDirectory` | `app/users.py` - the people who sign in, read from the `UserTable` of the project, and `python -m app.users set-password` (`ApiAuth=true` with `UserTable`). |
 | `RS` | `RS_Struct` | `src/models/table.rs` - the Rust struct of a table (serde and sqlx), with the JSON names the other stacks send; for the Rust stack (PostgreSQL, MySQL, SQLite). |
 | `RS` | `RS_Repo` | `src/repos/table.rs` - the table's fixed SQL for the database that was read and the sqlx functions that run it: get, insert, update, delete, clone, and a search with filters, a fixed sort list and paging. |
@@ -140,6 +141,7 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `RS` | `RS_Mod` | the module lists and the router that merges every table's routes. |
 | `RS` | `RS_Junction` | `src/routes/table_junction.rs` for a many-to-many junction table - the junction routes of `API_Junction` for the Rust API. |
 | `RS` | `RS_Csv` | `src/routes/csv_files.rs` - the CSV export and import routes for every table (`ApiCsv=true`); the rows are inserted in one transaction. |
+| `RS` | `RS_Gates` | `src/routes/gates.rs` - the same checks for the Rust API, and the guards routes. |
 | `RS` | `RS_UserDirectory` | `src/users.rs` - the people who sign in, read from the `UserTable` of the project, and the `set-password` command (`ApiAuth=true` with `UserTable`). |
 
 ### UI layer

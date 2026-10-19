@@ -1,0 +1,280 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Gates_v1.tt
+    // Generates: src/routes/gates.rs   (whole-database; the path is written by the template)
+    // The Rust counterpart of API_Gates: the checks of the project's ChangeGates and GuardedColumns, one set of functions per table, called from that table's routes (RS_Routes) before a row is saved.
+    // A gate refuses a change of a column (409 change-not-allowed) while its condition holds unless its exemption does; a guard lets only a person whose user-table row has a yes/no column set (or an
+    // administrator) change a column (403 column-not-yours) and stamps who did it and when. after_clone_<table> makes a copy start the way a new row does, and the module's router answers
+    // GET <route>/guards (which guarded columns the caller may change). RS_Mod merges the router. The rules, and the sentence of a rule that does not fit the schema, are GatePlan (Core).
+    // A condition compares whole numbers, yes / no values and text (a decimal or a date in a rule is reported); a stamp-on column must be nullable. The parent's values are read with their own
+    // statements. Needs ApiAuth; written only when the project names a rule (the plan adds it). Full notes: Docs/TemplateNotes/RS_Gates_v1.md
+    // ==========================================================================================
+
+    var plan = GatePlan.Resolve(Database, Project);
+    var sb = new StringBuilder();
+    void Line(string text = "") => sb.Append(text).Append('\n');
+    string Str(string text) => "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+    var di = DialectInfo.For(Database.Dialect);
+
+    var problems = new List<string>(plan.Problems);
+    foreach (var term in plan.Gates.SelectMany(g => g.When.Terms.Concat(g.Unless?.Terms ?? []).Append(g.To)))
+        if (GateCode.RustKindOf(term.Column, Database.Dialect) is null)
+            problems.Add($"RS_Gates compares whole numbers, yes / no values and text, and {term.Table.TableName}.{term.Column.Name} is neither.");
+    foreach (var gate in plan.Gates)
+        if (GateCode.RustKindOf(gate.Column, Database.Dialect) is null)
+            problems.Add($"RS_Gates watches a whole number, yes / no or text column, and {gate.Table.TableName}.{gate.Column.Name} is not one.");
+    foreach (var guard in plan.Guards)
+    {
+        var field = RustTable.Of(guard.Table, Project).Fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(guard.Column.Name));
+        if (field is null || field.BaseType is "NaiveDate" or "NaiveDateTime" or "NaiveTime" || field.BaseType.StartsWith("DateTime"))
+            problems.Add($"RS_Gates guards a yes / no, number or text column, and {guard.Table.TableName}.{guard.Column.Name} is not one.");
+        if (guard.StampOn is { IsNullable: false })
+            problems.Add($"RS_Gates needs the stampOn column {guard.Table.TableName}.{guard.StampOn.Name} to be nullable.");
+    }
+
+    if (problems.Count > 0)
+    {
+        Error(string.Join(" | ", problems));
+    }
+    else if (plan.Gates.Count == 0 && plan.Guards.Count == 0)
+    {
+        Error("RS_Gates found no rule: name one in ChangeGates or GuardedColumns.");
+    }
+    else
+    {
+        var rust = new Dictionary<TableModel, RustTable>();
+        RustTable T(TableModel table) => rust.TryGetValue(table, out var known) ? known : rust[table] = RustTable.Of(table, Project);
+        RustField FieldOf(TableModel table, ColumnModel column) => T(table).FieldOf(column);
+        string Mod(TableModel table) => T(table).Module;
+        string Struct(TableModel table) => T(table).Struct;
+        string Name(RustField f, string who) => f.IsOption ? $"Some({who}.name.clone())" : $"{who}.name.clone()";
+
+        var tables = plan.Tables.Select(t => t.Table).ToList();
+        var guardedTables = plan.Tables.Where(t => t.Guards.Count > 0).Select(t => t.Table).ToList();
+
+        Line("@@@FILE src/routes/gates.rs@@@");
+        Line(guardedTables.Count > 0 ? "use axum::{Extension, Json, Router, extract::State, routing::get};" : "use axum::Router;");
+        Line(plan.Guards.Count > 0 ? "use crate::auth::{CurrentUser, PROBLEM_COLUMN_NOT_YOURS};" : "use crate::auth::CurrentUser;");
+        foreach (var t in tables)
+        {
+            Line($"use crate::models::{Mod(t)}::{Struct(t)};");
+            Line($"use crate::repos::{Mod(t)} as {Mod(t)}_repo;");
+        }
+        Line("use crate::support::{ApiError, ApiResult, Pool};");
+        Line();
+        Line($"const PROBLEM_CHANGE_NOT_ALLOWED: &str = \"{ProblemTypes.ChangeNotAllowed}\";");
+        Line();
+        Line("pub fn router() -> Router<Pool> {");
+        Line("    Router::new()");
+        foreach (var t in guardedTables)
+            Line($"        .route(\"{T(t).Route}/guards\", get(guards_{Mod(t)}))");
+        Line("}");
+
+        foreach (var table in guardedTables)
+        {
+            Line();
+            Line($"/// Which guarded columns of {table.TableName} the caller may change, by the column's JSON name (the screens show the others as read-only).");
+            Line($"async fn guards_{Mod(table)}(State(pool): State<Pool>, Extension(user): Extension<CurrentUser>) -> ApiResult<Json<serde_json::Value>> {{");
+            Line("    Ok(Json(serde_json::json!({");
+            foreach (var guard in plan.Guards.Where(g => g.Table == table))
+                Line($"        {Str(JsonNames.Camel(guard.Column.Name))}: may_{Mod(table)}_{FieldOf(table, guard.Column).Name}(&pool, &user).await?,");
+            Line("    })))");
+            Line("}");
+        }
+
+        foreach (var gated in plan.Tables)
+        {
+            var table = gated.Table;
+            string entity = table.TableName;
+            string module = Mod(table);
+            var t = T(table);
+            var gates = gated.Gates;
+            var guards = gated.Guards;
+            string keyRef = KeyType.Of(table)!.Kind == KeyKind.Text ? "&" : "";
+
+            foreach (var guard in guards)
+            {
+                string column = FieldOf(table, guard.Column).Name;
+                var userDi = DialectInfo.For(guard.UserTable.Dialect);
+                string sql = $"SELECT {userDi.Quote(guard.By.DbName)} FROM {userDi.QuoteTable(guard.UserTable.SchemaName, guard.UserTable.DbTableName)} WHERE {userDi.Quote(guard.UserNameColumn(Project).DbName)} = {userDi.Placeholder(1)}";
+                Line();
+                Line($"/// True when the caller is an administrator or has {guard.UserTable.TableName}.{guard.By.Name} set.");
+                Line($"pub async fn may_{module}_{column}(pool: &Pool, user: &CurrentUser) -> ApiResult<bool> {{");
+                Line("    if user.is_admin() {");
+                Line("        return Ok(true);");
+                Line("    }");
+                Line("    if user.name.is_empty() {");
+                Line("        return Ok(false);");
+                Line("    }");
+                Line($"    let flag: Option<Option<bool>> = sqlx::query_scalar({RustTable.Raw(sql)}).bind(&user.name).fetch_optional(pool).await?;");
+                Line("    Ok(flag.flatten().unwrap_or(false))");
+                Line("}");
+            }
+
+            foreach (var gate in gates)
+            {
+                var gateField = FieldOf(table, gate.Column);
+                string column = gateField.Name;
+                var kind = GateCode.RustKindOf(gate.Column, Database.Dialect)!.Value;
+                var parentTerms = gate.ParentTerms;
+                // the parent's value of a term, read with its own statement: an Option (none when there is no parent row or the value is NULL)
+                string ParentVar(GateTerm term) => "parent_" + term.Via!.ReferencingColumns[0].ToLowerInvariant() + "_" + term.Column.Name.ToLowerInvariant();
+                string TermTest(GateTerm term)
+                {
+                    var termKind = GateCode.RustKindOf(term.Column, Database.Dialect)!.Value;
+                    if (term.Via is null)
+                    {
+                        var f = FieldOf(table, term.Column);
+                        return GateCode.RustTest("row." + f.Name, term, termKind, f.IsOption);
+                    }
+                    return GateCode.RustTest(ParentVar(term), term, termKind, true);
+                }
+                string to = GateCode.RustTest("row." + column, gate.To, kind, gateField.IsOption);
+                string when = GateCode.RustPredicate(gate.When, TermTest);
+                string unless = gate.Unless is null ? "" : GateCode.RustPredicate(gate.Unless, TermTest);
+                string toWords = gate.To.ValueWords();
+                string message = gate.RefusalText;
+
+                Line();
+                Line($"// gate {entity}.{gate.Column.Name}: {gate.Description}");
+                Line($"async fn gate_{module}_{column}(pool: &Pool, row: &{Struct(table)}, current: Option<&{Struct(table)}>) -> ApiResult<()> {{");
+                Line("    let moves = match current {");
+                Line("        None => {");
+                if (gate.Start is { } start)
+                {
+                    string startLiteral = GateCode.RustLiteral(kind, start);
+                    string startTest = gateField.IsOption ? (kind == RustGateKind.Text ? $"row.{column}.as_deref() != Some({startLiteral})" : $"row.{column} != Some({startLiteral})") : $"row.{column} != {startLiteral}";
+                    Line($"            if {startTest} {{");
+                    Line($"                return Err(ApiError::Validation(vec![({Str(JsonNames.Camel(gate.Column.Name))}, {Str(gate.StartRefusal!)})]));");
+                    Line("            }");
+                    Line("            false");
+                }
+                else
+                    Line("            true");
+                Line("        }");
+                Line($"        Some(current) => current.{column} != row.{column},");
+                Line("    };");
+                Line($"    if moves && {to} {{");
+                foreach (var term in parentTerms.DistinctBy(ParentVar))
+                {
+                    var via = term.Via!;
+                    var holder = term.Table;
+                    var holderDi = DialectInfo.For(holder.Dialect);
+                    string fk = via.ReferencingColumns[0];
+                    var fkField = FieldOf(table, table.Columns.First(c => c.Name.EqualsIgnoreCase(fk)));
+                    var referenced = holder.Columns.First(c => c.Name.EqualsIgnoreCase(via.ReferencedColumns[0]));
+                    string sql = $"SELECT {holderDi.Quote(term.Column.DbName)} FROM {holderDi.QuoteTable(holder.SchemaName, holder.DbTableName)} WHERE {holderDi.Quote(referenced.DbName)} = {holderDi.Placeholder(1)}";
+                    string valueType = RustTable.RustType(term.Column, Database.Dialect)!;
+                    if (term.Column.IsNullable)
+                        Line($"        let {ParentVar(term)}: Option<{valueType}> = sqlx::query_scalar::<_, Option<{valueType}>>({RustTable.Raw(sql)}).bind(&row.{fkField.Name}).fetch_optional(pool).await?.flatten();");
+                    else
+                        Line($"        let {ParentVar(term)}: Option<{valueType}> = sqlx::query_scalar::<_, {valueType}>({RustTable.Raw(sql)}).bind(&row.{fkField.Name}).fetch_optional(pool).await?;");
+                }
+                Line($"        if {(unless.Length == 0 ? when : $"({when}) && !({unless})")} {{");
+                Line($"            return Err(ApiError::Problem({HttpStatus.Conflict}, PROBLEM_CHANGE_NOT_ALLOWED, \"Change not allowed\", Some({Str(message)})));");
+                Line("        }");
+                Line("    }");
+                Line("    Ok(())");
+                Line("}");
+            }
+
+            Line();
+            Line($"/// The gates and guards of {entity}, checked before a row is saved: row is the body, current the stored row (None for a new one).");
+            Line($"pub async fn check_{module}(pool: &Pool, user: &CurrentUser, row: &mut {Struct(table)}, current: Option<&{Struct(table)}>) -> ApiResult<()> {{");
+            foreach (var check in gated.Checks)
+            {
+                if (check.Gate is { } checkedGate)
+                {
+                    Line($"    gate_{module}_{FieldOf(table, checkedGate.Column).Name}(pool, row, current).await?;");
+                    continue;
+                }
+                var guard = check.Guard!;
+                var f = FieldOf(table, guard.Column);
+                string column = f.Name;
+                string changed = "changed_" + column;
+                Line($"    // guard {entity}.{guard.Column.Name}: {guard.Description}");
+                Line($"    let {changed} = match current {{ None => {RustTable.NotDefault(f, "row." + column)}, Some(current) => row.{column} != current.{column} }};");
+                Line($"    if {changed} && !may_{module}_{column}(pool, user).await? {{");
+                Line($"        return Err(ApiError::Problem({HttpStatus.Forbidden}, PROBLEM_COLUMN_NOT_YOURS, \"Not allowed\", Some({Str(guard.RefusalText)})));");
+                Line("    }");
+                if (guard.StampBy is not null || guard.StampOn is not null)
+                {
+                    Line($"    if {changed} {{");
+                    if (guard.StampBy is { } by)
+                        Line($"        row.{FieldOf(table, by).Name} = {Name(FieldOf(table, by), "user")};");
+                    if (guard.StampOn is { } on)
+                        Line($"        row.{FieldOf(table, on).Name} = {RustTable.Now(FieldOf(table, on))};");
+                    Line("    } else {");
+                    if (guard.StampBy is { } keepBy)
+                        Line($"        row.{FieldOf(table, keepBy).Name} = current.map(|c| c.{FieldOf(table, keepBy).Name}.clone()).unwrap_or({RustTable.DefaultValue(FieldOf(table, keepBy))});");
+                    if (guard.StampOn is { } keepOn)
+                        Line($"        row.{FieldOf(table, keepOn).Name} = current.and_then(|c| c.{FieldOf(table, keepOn).Name}.clone());");
+                    Line("    }");
+                }
+            }
+            if (guards.Count == 0)
+                Line("    let _ = user;");
+            Line("    Ok(())");
+            Line("}");
+
+            // a clone is a new row made without the request's body: it starts the way a new row does and the guarded columns do not carry the source's value over
+            Line();
+            Line($"/// Runs after {entity} was cloned: the copy starts as a new row does (the gated columns at their start, the guarded columns reset unless the caller may change them) and a gate that holds a new row removes the copy.");
+            Line($"pub async fn after_clone_{module}(pool: &Pool, user: &CurrentUser, copy: &mut {Struct(table)}) -> ApiResult<()> {{");
+            if (guards.Count == 0)
+                Line("    let _ = user;");
+            foreach (var gate in gates.Where(g => g.Start is not null))
+            {
+                var f = FieldOf(table, gate.Column);
+                string literal = GateCode.RustLiteral(GateCode.RustKindOf(gate.Column, Database.Dialect)!.Value, gate.Start!);
+                Line($"    copy.{f.Name} = {(f.IsOption ? $"Some({literal}{(f.BaseType == "String" ? ".to_string()" : "")})" : literal + (f.BaseType == "String" ? ".to_string()" : ""))};");
+            }
+            foreach (var guard in guards)
+            {
+                var f = FieldOf(table, guard.Column);
+                string column = f.Name;
+                Line($"    if {RustTable.NotDefault(f, "copy." + column)} {{");
+                Line($"        if may_{module}_{column}(pool, user).await? {{");
+                if (guard.StampBy is { } stampBy)
+                    Line($"            copy.{FieldOf(table, stampBy).Name} = {Name(FieldOf(table, stampBy), "user")};");
+                if (guard.StampOn is { } stampOn)
+                    Line($"            copy.{FieldOf(table, stampOn).Name} = {RustTable.Now(FieldOf(table, stampOn))};");
+                Line("        } else {");
+                Line($"            copy.{column} = {RustTable.DefaultValue(f)};");
+                if (guard.StampBy is { } clearBy)
+                    Line($"            copy.{FieldOf(table, clearBy).Name} = {RustTable.DefaultValue(FieldOf(table, clearBy))};");
+                if (guard.StampOn is { } clearOn)
+                    Line($"            copy.{FieldOf(table, clearOn).Name} = None;");
+                Line("        }");
+                if (guard.StampBy is not null || guard.StampOn is not null)
+                {
+                    Line("    } else {");
+                    if (guard.StampBy is { } emptyBy)
+                        Line($"        copy.{FieldOf(table, emptyBy).Name} = {RustTable.DefaultValue(FieldOf(table, emptyBy))};");
+                    if (guard.StampOn is { } emptyOn)
+                        Line($"        copy.{FieldOf(table, emptyOn).Name} = None;");
+                }
+                Line("    }");
+            }
+            Line($"    {module}_repo::update(pool, {keyRef}copy.{t.Key.Name}, copy).await?;");
+            foreach (var gate in gates)
+            {
+                Line($"    if let Err(refused) = gate_{module}_{FieldOf(table, gate.Column).Name}(pool, copy, None).await {{");
+                Line($"        {module}_repo::delete(pool, {keyRef}copy.{t.Key.Name}).await?;");
+                Line("        return Err(refused);");
+                Line("    }");
+            }
+            Line("    Ok(())");
+            Line("}");
+        }
+        Write(sb.ToString());
+    }
+#>

@@ -48,6 +48,8 @@
     string parentModule = ownerLink is null ? "" : RustNames.Snake(ownerLink.ParentTable);
     string parentOwner = ownerLink is null ? "" : RustNames.Ident(RustNames.Snake(ownerLink.ParentOwner));
     string parentKey = ownerLink is null ? "" : RustNames.Ident(RustNames.Snake(ownerLink.ParentKey));
+    // ChangeGates and GuardedColumns (RS_Gates): checked before a row is saved, and a copy starts like a new row
+    bool gated = auth && GatePlan.HasRules(Project, Model);
     var nameField = FieldOf(userPlan?.UserName);
     var adminField = FieldOf(userPlan?.Admin);
     var guarded = new[] { FieldOf(userPlan?.Admin), FieldOf(userPlan?.Role) }.Where(f => f is not null).Select(f => f!).ToList();
@@ -55,7 +57,7 @@
     string AdminTest(string row) => adminField is null ? "false" : (adminField.IsOption ? $"{row}.{adminField.Name} == Some(true)" : $"{row}.{adminField.Name}") + (activeField is null ? "" : $" && {row}.{activeField.Name}");
     string DefaultOf(RustField f) => f.BaseType == "bool" ? (f.IsOption ? "Some(false)" : "false") : f.IsOption ? "None" : "String::new()";
     string keyRef = textKey ? "&" : "";
-    string userArgument = auth && (scoped || userPlan is not null) ? ", Extension(user): Extension<CurrentUser>" : "";
+    string userArgument = auth && (scoped || userPlan is not null || gated) ? ", Extension(user): Extension<CurrentUser>" : "";
     string userRead = scoped ? userArgument : "";   // the reading handlers need the caller only to scope the rows
 
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
@@ -79,6 +81,8 @@
     Line(textKey ? "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created, path_segment};" : "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
     if (validate)
         Line($"use crate::validation::{t.Module}::validate;");
+    if (gated)
+        Line($"use crate::routes::gates::{{after_clone_{t.Module}, check_{t.Module}}};");
     if (search)
         Line("use serde::Serialize;");
     if (guidKey)
@@ -248,7 +252,7 @@
         Line($"    repo::get_by_id(&pool, {idArg}).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");
     Line();
-    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
     if (validate)
     {
         Line("    validate(&row, None)?;");
@@ -274,6 +278,8 @@
     }
     if (userPlan is not null)
         Line("    guard_user_row(&pool, &user, &mut row, None).await?;");
+    if (gated)
+        Line($"    check_{t.Module}(&pool, &user, &mut row, None).await?;");
     if (textKey)
     {
         // a text key is chosen by the person: a blank one is refused and one that exists is a conflict (the answers the ASP.NET API gives)
@@ -297,11 +303,11 @@
         : $"    Ok(created(format!(\"{t.Route}/{{}}\", row.{t.Key.Name}), row))");
     Line("}");
     Line();
-    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
+    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
     Line($"    if row.{t.Key.Name} != id {{");
     Line("        return Err(ApiError::BadRequest(\"The id in the URL and the id in the body differ.\".into()));");
     Line("    }");
-    if (scoped || userPlan is not null || validate)
+    if (scoped || userPlan is not null || validate || gated)
     {
         Line($"    let current = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
         if (scoped)
@@ -314,6 +320,8 @@
             Line("    guard_user_row(&pool, &user, &mut row, Some(&current)).await?;");
         if (validate)
             Line("    validate(&row, Some(&current))?; // a value the update leaves as it is stays unjudged");
+        if (gated)
+            Line($"    check_{t.Module}(&pool, &user, &mut row, Some(&current)).await?;");
     }
     Line($"    repo::update(&pool, {idArg}, &row).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");
@@ -352,7 +360,9 @@
             Line("        return Err(not_yours());");
             Line("    }");
         }
-        Line("    let copy = repo::clone_row(&pool, id).await?.ok_or(ApiError::NotFound)?;");
+        Line(gated ? "    let mut copy = repo::clone_row(&pool, id).await?.ok_or(ApiError::NotFound)?;" : "    let copy = repo::clone_row(&pool, id).await?.ok_or(ApiError::NotFound)?;");
+        if (gated)
+            Line($"    after_clone_{t.Module}(&pool, &user, &mut copy).await?;");
         Line($"    Ok(created(format!(\"{t.Route}/{{}}\", copy.{t.Key.Name}), copy))");
         Line("}");
     }

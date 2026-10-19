@@ -37,31 +37,30 @@
         if (f.Annotation == "str")
         {
             if (rule.Required && !f.IsNullable)
-                body.Add($"if not {value}.strip():\n    problems.append(({Str(property)}, {Str(label + " must not be empty.")}))");
+                body.Add($"if not {value}.strip():\n    problems.append(({Str(property)}, {Str(RuleMessages.Required(label))}))");
             if (rule.MaxLength > 0)
-                body.Add($"if len({value}) > {rule.MaxLength}:\n    problems.append(({Str(property)}, {Str(label + " must be " + rule.MaxLength + " characters or fewer.")}))");
+                body.Add($"if len({value}) > {rule.MaxLength}:\n    problems.append(({Str(property)}, {Str(RuleMessages.MaxLength(label, rule.MaxLength))}))");
             if (rule.Choices is { Count: > 0 } choices)
-                body.Add($"if {value} and {value} not in ({string.Join(", ", choices.Select(Str))},):\n    problems.append(({Str(property)}, {Str(label + " must be one of: " + string.Join(", ", choices) + ".")}))");
+                body.Add($"if {value} and {value} not in ({string.Join(", ", choices.Select(Str))},):\n    problems.append(({Str(property)}, {Str(RuleMessages.Choices(label, choices))}))");
             if (rule.Shape != TextShape.None)
             {
-                string function = rule.Shape switch { TextShape.Email => "looks_like_email", TextShape.Phone => "looks_like_phone", TextShape.Postal => "looks_like_postal_code", TextShape.Ssn => "looks_like_ssn", _ => "looks_like_url" };
-                string what = ColumnRules.NounOf(rule.Shape);
+                string function = RuleMessages.ShapeFunction(rule.Shape);
                 shapes.Add(function);
-                body.Add($"if {value} and not {function}({value}):\n    problems.append(({Str(property)}, {Str(label + " must be " + what + ".")}))");
+                body.Add($"if {value} and not {function}({value}):\n    problems.append(({Str(property)}, {Str(RuleMessages.Shape(label, rule.Shape))}))");
             }
         }
         else if (rule.NotFuture && f.Annotation is "date" or "datetime")
         {
             anyFuture = true;
             string day = f.Annotation == "datetime" ? $"{value}.date()" : value;
-            body.Add($"if {value} is not None and {day} > date.today():\n    problems.append(({Str(property)}, {Str(label + " must not be later than today.")}))");
+            body.Add($"if {value} is not None and {day} > date.today():\n    problems.append(({Str(property)}, {Str(RuleMessages.NotFuture(label))}))");
         }
         else if (rule.HasRange && f.Annotation is "int" or "float" or "Decimal")
         {
             if (rule.Min is { } min)
-                body.Add($"if {value} is not None and float({value}) {(rule.MinStrict ? "<=" : "<")} {Num(min)}:\n    problems.append(({Str(property)}, {Str(label + " must be " + (rule.MinStrict ? "greater than " : "at least ") + Num(min) + ".")}))");
+                body.Add($"if {value} is not None and float({value}) {(rule.MinStrict ? "<=" : "<")} {Num(min)}:\n    problems.append(({Str(property)}, {Str(RuleMessages.AtLeast(label, min, rule.MinStrict))}))");
             if (rule.Max is { } max)
-                body.Add($"if {value} is not None and float({value}) {(rule.MaxStrict ? ">=" : ">")} {Num(max)}:\n    problems.append(({Str(property)}, {Str(label + " must be " + (rule.MaxStrict ? "less than " : "at most ") + Num(max) + ".")}))");
+                body.Add($"if {value} is not None and float({value}) {(rule.MaxStrict ? ">=" : ">")} {Num(max)}:\n    problems.append(({Str(property)}, {Str(RuleMessages.AtMost(label, max, rule.MaxStrict))}))");
         }
         // a nullable text column is only checked when it has a value, and on an update only when the value is not the stored one
         var fieldChecks = body.Select(b => f.Annotation == "str" && f.IsNullable ? $"if {value} is not None:\n" + string.Join("\n", b.Split('\n').Select(l => "    " + l)) : b).ToList();

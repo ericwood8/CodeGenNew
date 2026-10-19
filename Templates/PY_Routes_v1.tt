@@ -49,6 +49,9 @@
     string parentModule = ownerLink is null ? "" : PythonNames.Snake(ownerLink.ParentTable);
     var linkField = ownerLink is null ? null : t.SchemaFields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(ownerLink.ForeignKey));
     bool scoped = ownerField is not null || (ownerColumn is null && linkField is not null);
+    // ChangeGates and GuardedColumns (PY_Gates): checked before a row is saved, a copy starts like a new row, and GET /guards says which guarded columns the caller may change
+    bool gated = auth && GatePlan.HasRules(Project, Model);
+    var guardHints = gated ? GatePlan.GuardsOf(Project, Model) : [];
     var nameField = FieldOf(userPlan?.UserName);
     var adminField = FieldOf(userPlan?.Admin);
     var guarded = new[] { FieldOf(userPlan?.Admin), FieldOf(userPlan?.Role) }.Where(f => f is not null).Select(f => f!).ToList();
@@ -86,7 +89,7 @@
     Line("from sqlalchemy.orm import Session");
     Line();
     var authNames = new List<string>();
-    if (scoped || userPlan is not null)
+    if (scoped || userPlan is not null || gated)
         authNames.AddRange(new[] { "CurrentUser", "require_user" });
     if (scoped)
         authNames.AddRange(new[] { "not_yours", "visible_owners" });
@@ -94,6 +97,13 @@
         authNames.Add("require_roles");
     if (auth && authNames.Count > 0)
         Line("from app.auth import " + string.Join(", ", authNames.OrderBy(n => n, StringComparer.Ordinal)));
+    if (gated)
+    {
+        var gateNames = new List<string> { $"after_clone_{t.Module}", $"check_{t.Module}" };
+        foreach (var hint in guardHints)
+            gateNames.Add($"may_{t.Module}_{t.SchemaFields.First(f => f.Column.Name.EqualsIgnoreCase(hint.Column)).Name}");
+        Line("from app.gates import " + string.Join(", ", gateNames.OrderBy(n => n, StringComparer.Ordinal)));
+    }
     Line("from app.db import get_session");
     Line($"from app.models.{t.Module} import {t.Class}");
     if (ownerLink is not null)
@@ -123,7 +133,7 @@
     Line($"IN_USE = \"The database refused the row (a missing parent row, or a value that must be unique).\"");
     Line();
 
-    string userParameter = scoped || userPlan is not null ? ", user: CurrentUser = Depends(require_user)" : "";
+    string userParameter = scoped || userPlan is not null || gated ? ", user: CurrentUser = Depends(require_user)" : "";
     if (scoped)
     {
         // who owns a row: its own owner column, or the owner of the parent row it belongs to (a schema object has the same attribute names as the row)
@@ -218,6 +228,20 @@
     else
         Line($"    return session.scalars(select({t.Class}).order_by({t.Class}.{key})).all()");
     Line();
+
+    if (guardHints.Count > 0)
+    {
+        // before the route with the key in its path, which would read "guards" as a key
+        Line();
+        Line($"@router.get(\"{t.Route}/guards\")");
+        Line("def guards(session: Session = Depends(get_session), user: CurrentUser = Depends(require_user)):");
+        Line("    \"\"\"Which guarded columns the caller may change, by the column's JSON name (the screens show the others as read-only).\"\"\"");
+        Line("    return {");
+        foreach (var hint in guardHints)
+            Line($"        {Str(hint.Json)}: may_{t.Module}_{t.SchemaFields.First(f => f.Column.Name.EqualsIgnoreCase(hint.Column)).Name}(session, user),");
+        Line("    }");
+        Line();
+    }
 
     if (t.LookupName is { } lookupName)
     {
@@ -322,6 +346,8 @@
     }
     if (userPlan is not null)
         Line("    guard_user_row(session, user, body, None)");
+    if (gated)
+        Line($"    check_{t.Module}(session, user, body, None)");
     if (textKey)
     {
         // a text key is chosen by the person: a blank one is refused and one that exists is a conflict (the answers the ASP.NET API gives)
@@ -371,6 +397,8 @@
         Line("    guard_user_row(session, user, body, row)");
     if (validate)
         Line("    validate(body, row)  # a value the update leaves as it is stays unjudged");
+    if (gated)
+        Line($"    check_{t.Module}(session, user, body, row)");
     Line("    for name, value in body.changes().items():");
     Line("        setattr(row, name, value)");
     foreach (var f in t.StampedOnChange)
@@ -426,6 +454,8 @@
         Line("    session.add(row)");
         Line("    session.commit()");
         Line("    session.refresh(row)");
+        if (gated)
+            Line($"    after_clone_{t.Module}(session, user, row)");
         Line($"    response.headers[\"Location\"] = f\"{t.Route}/{{row.{key}}}\"");
         Line("    return row");
     }

@@ -44,7 +44,7 @@ public static class ApiClientCode
 
     /// <summary> The client class of the table (<c>&lt;Type&gt;Client</c>) with the lookup row record: GetAll, GetLookup (with a search or keys for a type-ahead), Get, Create, Update, Delete, Clone (a table
     /// <see cref="CloneShape"/> allows), GetGuards (a table with guarded columns) and GetPage (search, paging and sort). The table must have a client (<see cref="BlazorNames.Refusal"/> is null). </summary>
-    public static string Client(TableModel table, ProjectSettings project, string modelNamespace, string clientNamespace)
+    public static string Client(TableModel table, ProjectSettings project, string modelNamespace, string clientNamespace, bool childRows = false)
     {
         string type = BlazorNames.TypeName(table.TableName);
         var key = KeyType.Of(table)!;
@@ -83,6 +83,22 @@ public static class ApiClientCode
         L($"    public async Task<{type}> CreateAsync({type} row) => await (await http.PostAsJsonAsync(Url, row)).ReadAsync<{type}>();");
         L();
         L($"    public async Task UpdateAsync({keyType} id, {type} row) => await (await http.PutAsJsonAsync($\"{{Url}}/{{{id}}}\", row)).EnsureSuccessAsync();");
+        if (childRows)
+        {
+            L();
+            L("    // The row with the rows of its editable child tables (EditableChildren), saved in one request: each key of children is the name of a list in the body (departmentTeams), each value the rows of that child.");
+            L($"    public async Task<{type}> CreateAsync({type} row, IReadOnlyDictionary<string, object> children) => await (await http.PostAsJsonAsync(Url, WithChildren(row, children))).ReadAsync<{type}>();");
+            L();
+            L($"    public async Task UpdateAsync({keyType} id, {type} row, IReadOnlyDictionary<string, object> children) => await (await http.PutAsJsonAsync($\"{{Url}}/{{{id}}}\", WithChildren(row, children))).EnsureSuccessAsync();");
+            L();
+            L($"    private static System.Text.Json.Nodes.JsonObject WithChildren({type} row, IReadOnlyDictionary<string, object> children)");
+            L("    {");
+            L("        var body = System.Text.Json.JsonSerializer.SerializeToNode(row, System.Text.Json.JsonSerializerOptions.Web)!.AsObject();");
+            L("        foreach (var (name, rows) in children)");
+            L("            body[name] = System.Text.Json.JsonSerializer.SerializeToNode(rows, rows.GetType(), System.Text.Json.JsonSerializerOptions.Web);");
+            L("        return body;");
+            L("    }");
+        }
         L();
         L($"    public async Task DeleteAsync({keyType} id) => await (await http.DeleteAsync($\"{{Url}}/{{{id}}}\")).EnsureSuccessAsync();");
         if (CloneShape.CanClone(table, project))

@@ -65,7 +65,7 @@
             {
                 string array = c.Name.Replace("@", "") + "Values";
                 values.Add($"    private static readonly string[] {array} = [{string.Join(", ", rule.Choices.Select(CSharpText.Quote))}];");
-                parts.Add($".Must(value => value is null || {array}.Contains(value)).WithMessage({CSharpText.Quote(label + " must be one of: " + string.Join(", ", rule.Choices) + ".")})");
+                parts.Add($".Must(value => value is null || {array}.Contains(value)).WithMessage({CSharpText.Quote(RuleMessages.Choices(label, rule.Choices))})");
             }
             else if (rule.Shape == TextShape.Email)
             {
@@ -99,7 +99,7 @@
             }
 
             if (rule.NotFuture)
-                parts.Add($".Must(value => {(c.IsNullable ? "value is null || value.Value.Date" : "value.Date")} <= DateTime.Today).WithMessage({CSharpText.Quote(label + " must not be later than today.")})");
+                parts.Add($".Must(value => {(c.IsNullable ? "value is null || value.Value.Date" : "value.Date")} <= DateTime.Today).WithMessage({CSharpText.Quote(RuleMessages.NotFuture(label))})");
 
             rules.Add($"        RuleFor(x => x.{Id(c)}){string.Concat(parts)};");
         }

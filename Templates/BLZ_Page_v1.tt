@@ -142,11 +142,61 @@
                     // Edit opens the child's own page, which exists unless the project's Screens setting leaves it out
                     HasPage = Project.Screens.Length == 0 || Project.Screens.Contains(g.Table, StringComparer.OrdinalIgnoreCase),
                     Lookups = lookups,
-                    Filters = lookups.Take(ChildGrid.MaxFilters).ToList(),   // a drop-down of the names the rows have, per foreign key shown as a name
-                    Columns = GridColumns.For(columns)
+                    Filters = g.IsEditable ? [] : lookups.Take(ChildGrid.MaxFilters).ToList(),   // a drop-down of the names the rows have, per foreign key shown as a name
+                    Columns = GridColumns.For(columns),
+                    // EditableChildren: the rows are a table of boxes inside the form, sent with the row in one request, instead of a read-only grid
+                    Grid = g,
+                    IsEditable = g.IsEditable,
+                    JsonName = g.JsonName,
+                    Name = g.Name,
+                    EditColumns = g.IsEditable ? g.EditColumns : (IReadOnlyList<ColumnModel>)[]
                 };
             }).ToList();
         var childLookups = children.SelectMany(ch => ch.Lookups).GroupBy(l => l.Field).Select(g => g.First()).ToList();
+        var readOnlyChildren = children.Where(ch => !ch.IsEditable).ToList();
+        var editableChildren = children.Where(ch => ch.IsEditable).ToList();
+
+        // The box of one column of an editable child row (the row is the variable `line`).
+        string ChildInput(ChildGrid grid, string childVar, ColumnModel c)
+        {
+            string bind = $"line.{c.CSharpName()}";
+            string required = c.IsNullable ? "" : " required";
+            string label = Labels.Field(c).Replace("\"", "'");
+            string aria = $" aria-label=\"{label}\"";
+            var l = grid.Lookups.FirstOrDefault(x => x.ColumnName.EqualsIgnoreCase(c.Name));
+            if (l is not null)
+            {
+                string field = BlazorNames.ChildLookupField(l.ParentTable);
+                string idType = c.CSharpBase();
+                if (l.TypeAhead)
+                    return $"<TypeAhead TValue=\"{idType}\" Label=\"{label}\" Required=\"{(c.IsNullable ? "false" : "true")}\" Name=\"@Name{field}({bind})\" Find=\"@Find{field}\" OnPick=\"@(option => Pick{childVar}{c.CSharpName()}(line, option))\" />";
+                string blank = c.IsNullable ? "<option value=\"\">None</option>" : idType == "string" ? "<option value=\"\">Select</option>" : $"<option value=\"@(default({idType}))\">Select</option>";
+                string keyProp = l.UsesLookupEndpoint ? "Id" : l.ParentKeyName;
+                string displayProp = l.UsesLookupEndpoint ? "Name" : l.ParentDisplayName;
+                return $"<InputSelect @bind-Value=\"{bind}\"{aria}>{blank}@foreach (var parent in {field}) {{ <option value=\"@parent.{keyProp}\">@parent.{displayProp}</option> }}</InputSelect>";
+            }
+            if (c.HasChoices)
+            {
+                string choices = string.Join("", c.Choices!.Select(choice => $"<option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>"));
+                return $"<InputSelect @bind-Value=\"{bind}\"{aria}{required}><option value=\"\"></option>{choices}</InputSelect>";
+            }
+            if (c.IsBooleanColumn)
+                return c.IsNullable
+                    ? $"<InputSelect @bind-Value=\"{bind}\"{aria}><option value=\"\"></option><option value=\"true\">Yes</option><option value=\"false\">No</option></InputSelect>"
+                    : $"<InputCheckbox @bind-Value=\"{bind}\"{aria} />";
+            if (IsDate(c))
+                return $"<InputDate @bind-Value=\"{bind}\"{aria}{required} />";
+            if (grid.IsMoneyInput(c))
+                return $"<CurrencyInput @bind-Value=\"{bind}\" Digits=\"{NumericClassifier.CurrencyDigits(c)}\" Symbol=\"{Symbol()}\"{required} />";
+            if (IsNumber(c))
+                return $"<InputNumber @bind-Value=\"{bind}\"{aria}{required} />";
+            if (c.CSharpBase() == "string")
+            {
+                string max = Chars(c) is > 0 and < 4000 ? $" maxlength=\"{Chars(c)}\"" : "";
+                return $"<InputText @bind-Value=\"{bind}\"{aria}{max}{required} />";
+            }
+            return $"<input @bind=\"{bind}\"{aria}{required} />";
+        }
 
         // A cell of a grid row: the lookup's name for a foreign key, yes / no, a date, money with its symbol, or the value.
         string Cell(ColumnModel c, string prop, string lookupCall)
@@ -411,17 +461,52 @@
             }
             L($"            <div class=\"field\"><label for=\"{id}\">{label}{RequiredMark.Html(form.IsMarked(c))}</label>{input}</div>");
         }
+        foreach (var ch in editableChildren)
+        {
+            L($"            <fieldset class=\"child-rows\">");
+            L($"                <legend>{ch.Title}</legend>");
+            L($"                @if ({ch.Var}Edit.Count == 0)");
+            L("                {");
+            L("                    <p class=\"no-rows\">Nothing yet.</p>");
+            L("                }");
+            L("                else");
+            L("                {");
+            L("                    <div class=\"child-scroll\" style=\"overflow-x: auto\">");
+            L("                    <table>");
+            L("                        <thead>");
+            L("                            <tr>");
+            foreach (var c in ch.EditColumns)
+                L($"                                <th>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Html(ch.Grid.IsMarked(c))}</th>");
+            L("                                <th></th>");
+            L("                            </tr>");
+            L("                        </thead>");
+            L("                        <tbody>");
+            L($"                            @foreach (var line in {ch.Var}Edit)");
+            L("                            {");
+            L("                                <tr>");
+            foreach (var c in ch.EditColumns)
+                L($"                                    <td>{ChildInput(ch.Grid, ch.Var, c)}</td>");
+            L($"                                    <td><button type=\"button\" @onclick=\"() => Remove{ch.Var}(line)\">Remove</button></td>");
+            L("                                </tr>");
+            L("                            }");
+            L("                        </tbody>");
+            L("                    </table>");
+            L("                    </div>");
+            L("                }");
+            L($"                <button type=\"button\" @onclick=\"Add{ch.Var}\">Add {Labels.Words(ch.Grid.BaseName)}</button>");
+            L("            </fieldset>");
+        }
         L("            <ValidationSummary />");
         L("            <div class=\"actions\">");
         L("                <button type=\"submit\">Save</button>");
         L("                <button type=\"button\" @onclick=\"Cancel\">Cancel</button>");
         L("            </div>");
         L("        </EditForm>");
-        if (children.Count > 0)
+        if (readOnlyChildren.Count > 0)
         {
             L("        @if (!isNew)");
             L("        {");
-            foreach (var ch in children)
+            foreach (var ch in readOnlyChildren)
             {
                 L($"            <h3>{ch.Title}</h3>");
                 foreach (var f in ch.Filters)
@@ -489,6 +574,8 @@
         foreach (var ch in children)
         {
             L($"    private List<{ch.Type}> {ch.Var}Rows = [];");
+            if (ch.IsEditable)
+                L($"    private List<{ch.Type}> {ch.Var}Edit = [];   // the {ch.Title} rows being edited in the form; sent with the row");
             foreach (var f in ch.Filters)
                 L($"    private string? {ch.Var}Filter{f.Prop};   // the name picked in the {ch.Title} grid's {f.Label} drop-down (a key, as text)");
         }
@@ -882,6 +969,8 @@
             foreach (var ch in children)
             {
                 L($"        {ch.Var}Rows = [];");
+                if (ch.IsEditable)
+                    L($"        {ch.Var}Edit = [];");
                 foreach (var f in ch.Filters)
                     L($"        {ch.Var}Filter{f.Prop} = null;");
             }
@@ -900,9 +989,38 @@
                     : $"        try {{ {ch.Var}Rows = (await {ch.Var}Client.GetAllAsync()).Where(line => line.{ch.FkProp} == rowKey).ToList(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ {ch.Var}Rows = []; }}");
                 foreach (var l in ch.Lookups.Where(l => l.TypeAhead))
                     L($"        await Know{l.Field}Async({ch.Var}Rows.Select(r => r.{l.Prop}).OfType<{l.IdType}>());");
+                if (ch.IsEditable)
+                    L($"        {ch.Var}Edit = {ch.Var}Rows.Select(r => r.Copy()).ToList();");
             }
             L("    }");
-            foreach (var ch in children)
+            foreach (var ch in editableChildren)
+            {
+                var starts = ch.EditColumns.Where(c => c.IsBooleanColumn && !c.IsNullable && c.DatabaseDefaultSql is not null && c.DatabaseDefaultSql.Trim('(', ')', ' ') == "1").Select(c => $"{c.CSharpName()} = true")
+                    .Concat(ch.EditColumns.Where(c => IsDate(c) && !c.IsNullable).Select(c => $"{c.CSharpName()} = DateTime.Today")).ToList();
+                L();
+                L($"    private void Add{ch.Var}() => {ch.Var}Edit.Add(new {ch.Type}{(starts.Count == 0 ? "()" : " { " + string.Join(", ", starts) + " }")});");
+                L();
+                L($"    private void Remove{ch.Var}({ch.Type} line) => {ch.Var}Edit.Remove(line);");
+                foreach (var c in ch.EditColumns)
+                {
+                    var l = ch.Grid.Lookups.FirstOrDefault(x => x.ColumnName.EqualsIgnoreCase(c.Name));
+                    if (l is null || !l.TypeAhead)
+                        continue;
+                    string field = BlazorNames.ChildLookupField(l.ParentTable);
+                    string idType = c.CSharpBase();
+                    L();
+                    L($"    private async Task<IReadOnlyList<TypeAheadOption<{idType}>>> Find{field}(string text) =>");
+                    L($"        (await {field}Client.GetLookupAsync(search: text, take: 10)).Select(r => new TypeAheadOption<{idType}>(r.Id, r.Name)).ToList();");
+                    L();
+                    L($"    private void Pick{ch.Var}{c.CSharpName()}({ch.Type} line, TypeAheadOption<{idType}>? option)");
+                    L("    {");
+                    L($"        if (option is not null && !{field}.Any(p => Equals(p.Id, option.Id)))");
+                    L($"            {field}.Add(new {BlazorNames.LookupType(l.ParentTable)}(option.Id, option.Name));");
+                    L($"        line.{c.CSharpName()} = option is null ? {(c.IsNullable ? "null" : "default")} : option.Id;");
+                    L("    }");
+                }
+            }
+            foreach (var ch in readOnlyChildren)
             {
                 if (ch.HasPage)
                 {
@@ -942,8 +1060,18 @@
         L("        if (row is null) return;");
         L("        try");
         L("        {");
-        L("            if (isNew) await Client.CreateAsync(row);");
-        L("            else await Client.UpdateAsync(row.§K, row);");
+        if (editableChildren.Count > 0)
+        {
+            string lists = string.Join(", ", editableChildren.Select(ch => $"[\"{ch.JsonName}\"] = {ch.Var}Edit"));
+            L($"            var children = new Dictionary<string, object> {{ {lists} }};");
+            L("            if (isNew) await Client.CreateAsync(row, children);");
+            L("            else await Client.UpdateAsync(row.§K, row, children);");
+        }
+        else
+        {
+            L("            if (isNew) await Client.CreateAsync(row);");
+            L("            else await Client.UpdateAsync(row.§K, row);");
+        }
         L("            row = null;");
         L("            await LoadAsync(pageNumber);");
         L("            if (Back is not null) Navigation.NavigateTo(Back);");
