@@ -8,7 +8,7 @@ It replaces a series of hand-rolled "write lines to a text file with substitutio
 
 See **[Docs/specs.md](Docs/specs.md)** for what the product promises and decides, and **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)** for the code layout, how a run flows, the `.tt.config` keys and where a reviewer should look first.
 
-**[Docs/QuickStart.md](Docs/QuickStart.md)** covers installing, building and running the command-line tool and the desktop app: every option, generating a whole project, essentials, project settings and the screen settings. **[Docs/Details.md](Docs/Details.md)** covers the per-stack notes (Blazor, Uno, Python, Rust), the dashboard, access mode, SQLite, names, passwords, security and the drop-downs for listed values.
+**[Docs/QuickStart.md](Docs/QuickStart.md)** covers installing, building and running the command-line tool and the desktop app: every option, generating a whole project, essentials, project settings and the screen settings. **[Docs/Details.md](Docs/Details.md)** covers the per-stack notes (Blazor, Uno, Python, Rust), the dashboard, access mode, SQLite, names, passwords, security and the drop-downs for listed values. **[Docs/OwnProject.md](Docs/OwnProject.md)** shows how to use the templates in your own project: the block of project settings at the top of each template, what each setting changes, and what the templates assume about your plumbing.
 
 ## Status
 <img width="126" height="20" alt="image" src="https://github.com/user-attachments/assets/3ea8d6d1-74b0-4b49-9821-5daf70302241" />
@@ -212,36 +212,6 @@ WinUI3 (and Uno, which shares its XAML) needs 3 list/form templates where Angula
 WinUI3's list page and its add/edit form are 2 separate templates because the idiomatic WinUI3 pattern is a `ContentDialog` opened from the grid page. `TS_Component` and `TSX_Page` each generate a single file that already contains both the grid *and* an inline add/edit form on one screen, matching how a hand-written CRUD screen in those frameworks is usually built. Uno runs the same XAML as WinUI3, so its templates mirror the WinUI3 ones but read and write through the generated API instead of the database. Blazor, like Angular and React, fits the list and the form into one page (`BLZ_Page`, which also draws the child grids of a master-detail table); its junction page is a template of its own, routed at `/<table>-links`. Every platform ends up with the same coverage — list, add/edit, master-detail, junction — the web stacks just fit 2 or 3 of WinUI3's roles into one generated file.
 
 Templates carry a version in file name (`SP_Save_v1.tt`). The menu shows only newest version of each; older ones stay on disk. Files you customize are never overwritten by an update — new shipped copy is written beside yours as `<name>.new`.
-
-## Using the templates in your own project
-
-The `SP`/`API`/`CS`/`TS`/`WinUI3` templates were written against a layered sample (`MyApp.Common`, `MyApp.ApiService`, an Angular front end); the `TSX` family against a React front end with a small `request` helper. **The names that belong to a project are a block at the very top of each template**, under a banner:
-
-```
-// ==========================================================================================
-// PROJECT SETTINGS -- the lines to change to use this template in your own project ...
-// ==========================================================================================
-string apiNamespace = "MyApp.ApiService.Apis";
-string contextType = "MyAppContext";
-string[] usings = { };          // namespaces the generated file must "using"
-```
-
-Open the `.tt` file (or the app's *Templates* button → Edit), change those lines, and save; the next generation uses them — there is nothing to rebuild.
-
-| Setting | In | Tells the template |
-|---|---|---|
-| `apiNamespace`, `entityNamespace`, `enumNamespace`, `repositoryNamespace` | `API_Crud`, `API_Search`, `CS_Entity`, `CS_Validation`, `CS_Enum`, `CS_Repo` | the `namespace` the generated file declares |
-| `usings` | `API_Crud`, `API_Search`, `CS_Entity`, `CS_Validation`, `CS_Repo` | extra `using` lines to write (leave empty if your project uses global usings) |
-| `contextType` | `API_Crud`, `API_Search`, `CS_Repo` | your `DbContext` class |
-| `TypeAheadRows`, `TypeAheadParents` | `TS_*`, `TSX_*`, `BLZ_*`, `WinUI3_*` | a parent with more rows than `TypeAheadRows` (default 1000) or listed in `TypeAheadParents` is found by typing instead of from a drop-down of every row; the API's `lookup` route takes `search` and `ids` |
-| `baseEntity`, `baseNameActiveEntity` | `CS_Entity` | the base classes your entities derive from |
-| `modelsFolder`, `servicesFolder`, `componentsFolder`, `apiPrefix` | `TS_*` | where the Angular files go and the API URL prefix |
-| `pagesFolder`, `apiFolder`, `componentsFolder`, `apiPrefix` | `TSX_*` | where the React files go and the API URL prefix |
-| `NoNavigationTables`, `NoRepositoryTables`, `NoApiTables`, `NoLookupParents` | several | tables that are enums, lookups or have no entity, and so get no navigation property, repository, API or screen |
-
-The templates also assume the shape of the sample project's plumbing: a generic repository with `GetAll`, `GetByIdAsync`, `ExistsAsync` and `DeleteAsync`, a `BaseApi<T>` that registers routes, Angular's own `HttpClient`, and — for `TSX_*` only, since React has no framework-supplied HTTP client — a shared `request<T>(path, init)`/`ApiError` pair the target project must already have (`import { request } from './client'`). Each template's header comment says what it assumes and what it deliberately does **not** write (collection navigations, hand-written business rules, detail grids), so you know what stays yours.
-
-Column-name rules (which column means "created date", "is active", a display name, …) live in `SpecialLogicColumns.config`; edit it to match your naming.
 
 ## Solution structure
 
