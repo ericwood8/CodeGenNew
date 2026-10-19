@@ -40,6 +40,14 @@ The values in the block are the defaults for a run with no project file. Open th
 
 The Angular and React templates have no names in the block to edit: the folders they write into (`ApiFolder`, `ModelsFolder`, `ServicesFolder`, `ComponentsFolder`, `PagesFolder`) are project keys, relative to the output folder (`src\app` for Angular, `src` for React).
 
+## Python and Rust
+
+Neither stack has namespaces to match: they write a whole project of their own, so there is nothing in it for your code to reference.
+
+- **Python** always writes one package called `app` (`app.main`, `app.db`, `app.models.<table>`, `app.routes.<table>`, and `app.auth` / `app.gates` when sign-in or gates are on). No setting renames it; `ProjectName` only names the output folder (`<ProjectName>.Python`, or `OutputPython`). The module and class names come from the table names, so `NamingStyle` and `Acronyms` shape them as they do in C#.
+- **Rust** writes one crate. `RustCrateName` sets its package name (default: `ProjectName` in snake_case, so `InvoiceSystem` becomes `invoice_system`), which is also the library name another crate or a test imports (`use invoice_system::...`). `RustPort` sets the port (default `ApiPort`) and `OutputRust` the folder (`<ProjectName>.Rust`). The module names follow the table names.
+- The database connection comes from the environment (`DATABASE_URL` or `DATABASE_FILE`, `Jwt__Key`), never from a file; see the *Details* page.
+
 ## Settings that only the project file has
 
 - Which tables are enums, lookups or have no entity, and so get no navigation property, repository, API or screen: `EnumTables`, `NoNavigationTables`, `NoRepositoryTables`, `NoApiTables`, `NoLookupParents`.
