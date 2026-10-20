@@ -291,7 +291,7 @@
             T();
             T("function orderColumns(keys: string[], hidden: string[]): string[] {");
             T("  // Only the child table's own columns: the API also sends each navigation property (customer, customerMonthlySummary, ...), which is not a column.");
-            T($"  return keys.filter((k) => k in childCaptions && !hidden.includes(k) && !childLongTextColumns.includes(k)).slice(0, {GridColumns.MaxColumns});");
+            T($"  return keys.filter((k) => k in childCaptions && !hidden.includes(k) && !childLongTextColumns.includes(k)).slice(0, {Project.MaxGridColumns});");
             T("}");
             T();
             T("function caption(key: string): string {");

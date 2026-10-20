@@ -82,12 +82,25 @@ public class ChosenGridColumnsTests
     }
 
     [TestMethod]
+    public void MaxGridColumns_sets_how_many_columns_a_grid_starts_with()
+    {
+        var offered = ChosenGridColumns.For(FormModel.For(Wide(), Project(("MaxGridColumns", "10"))));
+
+        Assert.HasCount(25, offered.Offered);
+        Assert.HasCount(10, offered.Initial);
+        Assert.AreEqual(18, Project().MaxGridColumns, "blank = 18");
+        Assert.AreEqual(18, Project(("MaxGridColumns", "0")).MaxGridColumns, "below 1 is ignored");
+        Assert.AreEqual(18, Project(("MaxGridColumns", "many")).MaxGridColumns);
+        Expect.Contains(ProjectSettingsHints.All["MaxGridColumns"], "blank = 18");
+    }
+
+    [TestMethod]
     public void A_grid_of_more_than_eighteen_columns_offers_the_rest()
     {
         var offered = ChosenGridColumns.For(FormModel.For(Wide(), Project()));
 
         Assert.HasCount(25, offered.Offered);
-        Assert.HasCount(GridColumns.MaxColumns, offered.Initial);
+        Assert.HasCount(GridColumns.DefaultMaxColumns, offered.Initial);
         Assert.IsFalse(offered.Initial.Any(c => c.Name == "Field26"));
         Assert.IsTrue(offered.Offered.Any(c => c.Name == "Field26"));
     }

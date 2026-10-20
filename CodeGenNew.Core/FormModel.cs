@@ -37,7 +37,7 @@ public sealed class FormModel
         Variable = TemplateHelpers.LowerFirst(BaseName);
         Stem = ScreenNames.Stem(table.TableName);
         Pages = FormPages.For(Columns);
-        GridColumns = Core.GridColumns.For(Columns);
+        GridColumns = Core.GridColumns.For(Columns, project.MaxGridColumns);
         SortableColumns = GridColumns.Where(SearchSort.IsSortable).ToList();
         SearchKeys = _project.ListSearchProtocol ? [] : table.SearchKeyColumns
             .Select(c => (Column: c, Parent: ParentOf(c)))

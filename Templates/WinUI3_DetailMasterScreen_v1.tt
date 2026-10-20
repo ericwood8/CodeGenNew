@@ -858,7 +858,7 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         var propertyNames = entityType.GetProperties().Select(p => p.Name)
             .Where(name => !HideFrom<#= child.Table #>Grid.Contains(name, StringComparer.OrdinalIgnoreCase))
             .Where(name => !LongTextIn<#= child.Table #>Grid.Contains(name, StringComparer.OrdinalIgnoreCase)) // long text never shows in a grid
-            .Take(<#= GridColumns.MaxColumns #>).ToList();
+            .Take(<#= Project.MaxGridColumns #>).ToList();
         _<#= child.Var #>Columns = propertyNames;
         _<#= child.Var #>Captions = propertyNames.Select(name => HeaderLabelFor<#= child.Table #>Grid.TryGetValue(name, out string? label) ? label : SpacedHeader(name)).ToList();
         // The saved sort, if its column is still in the grid.

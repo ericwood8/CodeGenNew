@@ -154,6 +154,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `EntityNamespace` | blank = &lt;ProjectName&gt;.App.Entities |
 | `MinYear` | blank = 2000 |
 | `MaxYear` | blank = 2100 |
+| `MaxGridColumns` | the most columns a generated grid shows (long text is never shown); blank = 18 |
 | `ViewsFolder` | blank = the template's own folder |
 | `ViewModelsFolder` | blank = the template's own folder |
 | `CurrencyCode` | ISO currency code for money fields; blank = USD |
@@ -194,7 +195,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `ProjectDocs` | true: the plan also writes a data dictionary page per table and the ER diagram (MD_DataDictionary, MD_Erd) |
 | `ApiProduction` | true: the API project also gets a production profile (ProductionProfile.cs: Problem Details, health checks, rate limiting, response compression, security headers) and a Dockerfile; no package is added |
 | `ApiTelemetry` | true: the API project also gets OpenTelemetry traces, metrics and logs (Telemetry.cs) and references the OpenTelemetry packages; they are exported over OTLP only when `OTEL_EXPORTER_OTLP_ENDPOINT` names a collector |
-| `ApiTests` | on unless `ApiTests=false`: the plan also writes an integration test class per table (API_Test) and the test project (Tests essentials group) beside the API, and with `Dtos=true` also a database-free round-trip test class per table (CS_RoundTripTest); folder `OutputApiTests`, default `<ProjectName>.Api.Tests` |
+| `ApiTests` | true: the plan also writes an integration test class per table (API_Test) and the test project (Tests essentials group) beside the API, and with `Dtos=true` also a database-free round-trip test class per table (CS_RoundTripTest); folder `OutputApiTests`, default `<ProjectName>.Api.Tests` |
 | `ApiAuth` | true: the API signs people in. JWT bearer wiring, `POST /api/auth/login` and a fallback policy that makes every other endpoint need a token (the `Jwt` essentials group and the package `Microsoft.AspNetCore.Authentication.JwtBearer`). The signing key is `Jwt:Key` (an environment variable, never a file); the first administrator is `Bootstrap:AdminUserName` and `Bootstrap:AdminPassword`; register your own `IUserDirectory` for real users. Regenerate the project and refresh the `CrudApi` and `Program` groups with `--replace`. The Python stack gets `app/auth.py` and the Rust stack `src/auth.rs` (the `Jwt` group of each: the standard library, or the crates `hmac`, `sha2`, `pbkdf2` and `base64`; the key is `Jwt__Key` there too, the first administrator `Bootstrap__AdminUserName` and `Bootstrap__AdminPassword`) |
 | `OwnedTables` | with `ApiAuth`: comma-separated tables whose rows belong to a person (TimeSheet,Expense); `Table:Column` names another owner column (`DonateLeave:DonateFrom_EmployeeId`). A caller reads and writes only the rows the `IOwnerScope` allows (their own, or everyone's for the administrator role); blank: no table is scoped |
 | `OwnerColumn` | with `OwnedTables`: the NOT NULL whole-number column that holds a row's owner; blank: EmployeeId |
@@ -265,7 +266,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `OutputWinUI3` | folder of the WinUI3 app under the output folder; blank = &lt;ProjectName&gt;.App |
 | `OutputReact` | folder of the React app; blank = frontend |
 | `OutputRust` | folder of the Rust API; blank = &lt;ProjectName&gt;.Rust |
-| `OutputApiTests` | folder of the API test project (on unless `ApiTests=false`); blank = &lt;ProjectName&gt;.Api.Tests |
+| `OutputApiTests` | folder of the API test project (`ApiTests=true`); blank = &lt;ProjectName&gt;.Api.Tests |
 | `RustCrateName` | the crate name of the Rust API; blank = the project name in snake_case |
 | `RustPort` | the port the Rust API listens on; blank = ApiPort (5080) |
 | `OutputAngular` | folder of the Angular app; blank = frontend |

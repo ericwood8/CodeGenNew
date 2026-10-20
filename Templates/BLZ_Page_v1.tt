@@ -143,7 +143,7 @@
                     HasPage = Project.Screens.Length == 0 || Project.Screens.Contains(g.Table, StringComparer.OrdinalIgnoreCase),
                     Lookups = lookups,
                     Filters = g.IsEditable ? [] : lookups.Take(ChildGrid.MaxFilters).ToList(),   // a drop-down of the names the rows have, per foreign key shown as a name
-                    Columns = GridColumns.For(columns),
+                    Columns = GridColumns.For(columns, Project.MaxGridColumns),
                     // EditableChildren: the rows are a table of boxes inside the form, sent with the row in one request, instead of a read-only grid
                     Grid = g,
                     IsEditable = g.IsEditable,
