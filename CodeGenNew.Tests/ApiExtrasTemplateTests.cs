@@ -170,9 +170,9 @@ public class ApiExtrasTemplateTests
     [TestMethod]
     public void The_flags_name_the_templates_they_add()
     {
-        CollectionAssert.AreEqual(Array.Empty<string>(), Project(("Dashboard", "false")).ImpliedPlanTemplates.ToArray());
+        CollectionAssert.AreEqual(Array.Empty<string>(), Project(("Dashboard", "false"), ("ApiTests", "false")).ImpliedPlanTemplates.ToArray());
         CollectionAssert.AreEquivalent(new[] { "API_OpenApi", "API_Http", "CS_Faker", "MD_DataDictionary", "MD_Erd", "CS_Validator", "RS_Validate", "PY_Validate" },
-            Project(("ApiDocs", "true"), ("ApiHttp", "TRUE"), ("ApiFakers", "1"), ("ProjectDocs", "yes"), ("ApiValidation", "true"), ("ApiProduction", "true"), ("Dashboard", "false")).ImpliedPlanTemplates.ToArray());
+            Project(("ApiDocs", "true"), ("ApiHttp", "TRUE"), ("ApiFakers", "1"), ("ProjectDocs", "yes"), ("ApiValidation", "true"), ("ApiProduction", "true"), ("Dashboard", "false"), ("ApiTests", "false")).ImpliedPlanTemplates.ToArray());
         Assert.IsFalse(Project(("ApiDocs", "false")).ApiDocs);
         Assert.IsFalse(Project(("ApiDocs", "maybe")).ApiDocs);
     }
@@ -284,7 +284,7 @@ public class ApiExtrasTemplateTests
     [TestMethod]
     public async Task The_telemetry_switch_adds_the_packages_the_registration_and_the_class_only_when_asked()
     {
-        var plain = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project());
+        var plain = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("ApiTests", "false")));
         var telemetry = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("ApiTelemetry", "true")));
         Assert.IsTrue(plain.Success && telemetry.Success, string.Join(" | ", plain.Errors.Concat(telemetry.Errors)));
         string without = plain.GeneratedText!.Replace("\r\n", "\n"), with = telemetry.GeneratedText!.Replace("\r\n", "\n");
@@ -299,7 +299,7 @@ public class ApiExtrasTemplateTests
         Expect.Contains(with, "resource.AddService(\"Acme.Api\")");
         Expect.Contains(with, "builder.Configuration[\"OTEL_EXPORTER_OTLP_ENDPOINT\"]");
         Expect.Contains(with, "telemetry.UseOtlpExporter();");
-        Assert.IsFalse(Project(("ApiTelemetry", "true"), ("Dashboard", "false")).ImpliedPlanTemplates.Any(), "no template is implied: it is part of the essentials");
+        Assert.IsFalse(Project(("ApiTelemetry", "true"), ("Dashboard", "false"), ("ApiTests", "false")).ImpliedPlanTemplates.Any(), "no template is implied: it is part of the essentials");
     }
 
     [TestMethod]

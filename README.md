@@ -56,7 +56,7 @@ CLI argument parsing is hand-rolled rather than pulling in a library, given the 
 
 ## What it generates
 
-One hundred and twenty-nine templates ship in `Templates\` (the no-DB essentials groups described in [Docs/QuickStart.md](Docs/QuickStart.md) come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
+One hundred and thirty templates ship in `Templates\` (the no-DB essentials groups described in [Docs/QuickStart.md](Docs/QuickStart.md) come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
 
 The templates are shown in 3 grids, one for each layer of an application.
 
@@ -95,7 +95,7 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `API` | `API_Registration` | `ApiRegistration.cs` — also whole-DB: `AddGeneratedDbContext(configuration)` and `RegisterGeneratedApis()`, so a sample's `Program.cs` lists no table. |
 | `API` | `API_OpenApi` | `openapi.yaml` - whole-DB: an OpenAPI 3.0 document of the API the other `API` templates write (paths, search parameters, schemas with types, lengths, CHECK limits, enum lists, required and nullable), for Kiota, NSwag, openapi-generator or a Swagger UI. |
 | `API` | `API_Http` | `Table.http` - a request file per table (all, one, search, create, update, delete, clone) with example bodies shaped by the columns, for Visual Studio, VS Code and Rider; also written for a Python or Rust stack (the same routes). |
-| `API` | `API_Test` | `TableApiTests.cs` - an MSTest integration test class per table in its own test project (`ApiTests=true`): add, read, change and remove a row, a 404, the search page, and with `ApiValidation` the limits. Runs the API in process over a scratch DB (SQLite: a copy of the file; others: `<PROJECT>_TEST_CONNECTION`). |
+| `API` | `API_Test` | `TableApiTests.cs` - an MSTest integration test class per table in its own test project (on unless `ApiTests=false`): add, read, change and remove a row, a 404, the search page, and with `ApiValidation` the limits. Runs the API in process over a scratch DB (SQLite: a copy of the file; others: `<PROJECT>_TEST_CONNECTION`). |
 | `API` | `API_Dashboard` | `DashboardApi.cs` - `GET /api/dashboard` (every widget) and `?table=Customer` (that table's cards), cached for a minute. |
 | `API` | `API_Csv` | `Apis/Csv.cs` - whole-DB, `ApiCsv=true`: `GET /api/table/export.csv` and an all-or-nothing `POST /api/table/import` for every table, no package. |
 | `API` | `API_OData` | `Apis/OData.cs` - whole-DB, `OData=true`: the tables `ODataPlan` selects served as OData v4 under `/odata` (`$filter`, `$orderby`, `$top`, `$skip`, `$count`, `$select`, `$expand`, and writes), next to the REST routes; needs the `Microsoft.AspNetCore.OData` package. |
@@ -115,7 +115,8 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `CS` | `CS_Dto` | `TableDto.cs` - plain transfer class filled from any `IDataRecord`: a `Populate` method (required columns, then optional ones), an `IsIdentical` comparer over the columns that matter, a `ToString` on the display column. |
 | `CS` | `CS_DtoInput` | `TableInput.cs` - `Dtos=true`: the request body of a table's create and update (only the columns a caller may set) with `ToEntity()` and `ApplyTo(entity)`; the API answers the `CS_Dto` class. |
 | `CS` | `CS_Mapper` | `TableMapping.cs` - static class copying a table between its entity (`CS_Entity`) and its transfer class (`CS_Dto`): `ToDto`, `ToEntity`, list versions and `FromReader`. |
-| `CS` | `CS_RoundTripTest` | `TableRoundTripTests.cs` - an MSTest class per table in the API test project (`ApiTests=true` with `Dtos=true`) that needs no database: the transfer class through a JSON round trip (every column, and with every optional column NULL), `IsIdentical`, and the `CS_Mapper` copy of the entity both ways. |
+| `CS` | `CS_RoundTripTest` | `TableRoundTripTests.cs` - an MSTest class per table in the API test project (`Dtos=true`, tests on) that needs no database: the transfer class through a JSON round trip (every column, and with every optional column NULL), the reader constructor over a `DataTable`, `IsIdentical`, and the `CS_Mapper` copy of the entity both ways. |
+| `CS` | `CS_SerializationTest` | `TableSerializationTests.cs` - an MSTest class for the three classes `CS_SerializationDtos` writes: `Basic` and `Serializable` (the custom `ISerializable` contract) through the `DataContractSerializer`, `Xml` through the `XmlSerializer`, every column compared, once with the optional columns NULL. Run by hand beside `CS_SerializationDtos`. |
 | `CS` | `CS_MapperlyMapper` | `TableMapper.cs` - Mapperly counterpart of `CS_Mapper`: a `[Mapper]` partial class (`ToDto`, `ToEntity`, `ProjectToDto`) whose bodies Mapperly writes at compile time. |
 | `CS` | `CS_DataContractDto` | `TableContract.cs` - `[DataContract]` class with 4 constructors (empty, from a `DataRow`, from a reader row, copy), for a WCF-style service. |
 | `CS` | `CS_TypedDataRow` | `TableDataTable.cs` - typed-DataSet shape of a table: a `DataTable` with its columns and a `DataRow` with one typed property per column and `IsXNull` / `SetXNull` pairs. |

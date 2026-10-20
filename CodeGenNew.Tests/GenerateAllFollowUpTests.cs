@@ -192,7 +192,7 @@ public class GenerateAllFollowUpTests
         Assert.AreEqual("npm test", ProjectBuilder.CommandFor(Project(), "React", "test"));
         Assert.AreEqual("npm test -- --watch=false", ProjectBuilder.CommandFor(Project(), "Angular", "test"));
         Assert.AreEqual("dotnet build -v q", ProjectBuilder.CommandFor(Project(), "Api", "build"));
-        Assert.IsNull(ProjectBuilder.CommandFor(Project(), "Api", "test"), "no tests by default");
+        Assert.IsNull(ProjectBuilder.CommandFor(Project(("ApiTests", "false")), "Api", "test"), "no tests when switched off");
         Assert.AreEqual("dotnet test", ProjectBuilder.CommandFor(Project(("TestApi", "dotnet test")), "Api", "test"));
         Assert.IsNull(ProjectBuilder.CommandFor(Project(("BuildReact", "none")), "React", "build"));
     }

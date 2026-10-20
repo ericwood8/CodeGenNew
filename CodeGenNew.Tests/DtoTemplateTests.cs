@@ -207,7 +207,46 @@ public class DtoTemplateTests
         Expect.Contains(cs, "public void A_changed_Name_is_not_identical()");
         Expect.Contains(cs, "other.Name = \"Other\";");
         Expect.Contains(cs, "CustomerMapping.ToDto(entity)!");
+        Expect.Contains(cs, "table.Columns.Add(\"CreditLimit\", typeof(decimal));");
+        Expect.Contains(cs, "(object?)sample.Photo ?? DBNull.Value");
+        Expect.Contains(cs, "public void The_reader_constructor_reads_every_column()");
+        Expect.Contains(cs, "public void The_reader_constructor_keeps_a_NULL_a_null()");
+        Expect.Contains(cs, "var again = new CustomerDto(reader);");
         Expect.Contains(cs, "Assert.IsEmpty(CustomerMapping.ToDtos((IEnumerable<Customer>?)null));");
+    }
+
+    [TestMethod]
+    public async Task The_serialization_test_uses_the_contract_of_each_class()
+    {
+        string cs = await Render("CS_SerializationTest_v1.tt", Customer());
+
+        Expect.Contains(cs, "namespace Acme.Api.Tests;");
+        Expect.Contains(cs, "public class CustomerSerializationTests");
+        Expect.Contains(cs, "var serializer = new DataContractSerializer(typeof(T));");
+        Expect.Contains(cs, "var serializer = new XmlSerializer(typeof(T));");
+        Expect.Contains(cs, "public void The_basic_class_keeps_every_column()");
+        Expect.Contains(cs, "var source = new CustomerSerializable");
+        Expect.Contains(cs, "var again = ThroughXml(source);");
+        Expect.Contains(cs, "CollectionAssert.AreEqual(source.Photo, again.Photo, \"Photo\");");
+        Expect.Contains(cs, "public void The_xml_class_keeps_a_null_a_null()");
+        Expect.Contains(cs, "Photo = null,");
+    }
+
+    [TestMethod]
+    public async Task The_xml_test_leaves_a_computed_column_out()
+    {
+        var table = Sample.Table("Line",
+        [
+            Sample.Column("LineId", SqlDbType.Int, primaryKey: true, ordinal: 1),
+            Sample.Column("Qty", SqlDbType.Int, ordinal: 2),
+            Sample.Column("Total", SqlDbType.Decimal, computed: true, precision: 10, scale: 2, ordinal: 3)
+        ]);
+
+        string cs = await Render("CS_SerializationTest_v1.tt", table);
+        string xml = cs[cs.IndexOf("The_xml_class_keeps_every_column", StringComparison.Ordinal)..];
+
+        Expect.Contains(cs, "Assert.AreEqual(source.Total, again.Total, \"Total\");");   // the other two classes keep it
+        Expect.DoesNotContain(xml, "again.Total");
     }
 
     [TestMethod]
@@ -240,7 +279,7 @@ public class DtoTemplateTests
     [TestMethod]
     public void The_round_trip_test_is_in_the_plan_only_with_both_flags()
     {
-        CollectionAssert.DoesNotContain(Project(("Dtos", "true")).ImpliedPlanTemplates.ToArray(), "CS_RoundTripTest");
+        CollectionAssert.DoesNotContain(Project(("Dtos", "true"), ("ApiTests", "false")).ImpliedPlanTemplates.ToArray(), "CS_RoundTripTest");
         CollectionAssert.DoesNotContain(Project(("ApiTests", "true")).ImpliedPlanTemplates.ToArray(), "CS_RoundTripTest");
         CollectionAssert.Contains(Project(("Dtos", "true"), ("ApiTests", "true")).ImpliedPlanTemplates.ToArray(), "CS_RoundTripTest");
     }
@@ -255,6 +294,7 @@ public class DtoTemplateTests
         Assert.AreEqual("CustomerDto.cs", offered["CS_Dto"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerMapping.cs", offered["CS_Mapper"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerRoundTripTests.cs", offered["CS_RoundTripTest"].BuildFileName("Customer"));
+        Assert.AreEqual("CustomerSerializationTests.cs", offered["CS_SerializationTest"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerContract.cs", offered["CS_DataContractDto"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerDataTable.cs", offered["CS_TypedDataRow"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerSerializationDtos.cs", offered["CS_SerializationDtos"].BuildFileName("Customer"));

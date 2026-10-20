@@ -10,10 +10,10 @@
     // CS_RoundTripTest_v1.tt
     // Generates: <TableName>RoundTripTests.cs   (see OutputName in CS_RoundTripTest_v1.tt.config; goes to the test project, OutputApiTests)
     // An MSTest class that needs no database and no running API. It builds the table's transfer class (CS_Dto) with a sample value in every column, writes it as JSON, reads it back and checks every
-    // column, then does the same with every optional column NULL; changes one column that matters and checks IsIdentical sees it. With a primary key it also copies an entity (CS_Entity) to the
+    // column, then does the same with every optional column NULL; fills a DataTable with the same row and reads it through the reader constructor (Populate) the same two ways; changes one column that matters and checks IsIdentical sees it. With a primary key it also copies an entity (CS_Entity) to the
     // transfer class and back with CS_Mapper and checks every column, and that a null in gives a null out.
     // Runs for a project with ApiTests=true and Dtos=true. A table with a column of an unsupported type is refused. The project file comes from the Tests essentials group (API_EssentialTests).
-    // Does not test the reader constructor (it needs a data reader) or any rule of the database.
+    // Does not test any rule of the database or the SQL the reader came from.
     // Full notes: Docs/TemplateNotes/CS_RoundTripTest_v1.md
     // ==========================================================================================
 
@@ -22,7 +22,7 @@
 
     var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
     string? hashColumn = UserTable.PlanOf(Model, Project)?.PasswordHash.Name;
-    if (columns.Any(c => c.CSharpBase() == "object"))
+    if (!columns.All(TestSampleValues.Has))
     {
         Error($"CS_RoundTripTest cannot make a sample value for the column of an unsupported type in [{Model.SchemaName}].[{Model.TableName}].");
     }
@@ -37,25 +37,7 @@
         var meaningful = columns.Where(c => !c.IsPrimaryKey && !c.IsIdentity && !c.IsComputed && !c.IsAuditColumn && !c.IsStampColumn && (hashColumn is null || !c.Name.EqualsIgnoreCase(hashColumn))).ToList();
         var changed = meaningful.FirstOrDefault();
 
-        // two different C# values of the column's type, so a copy can be told from a changed one
-        string Sample(ColumnModel c, int n) => c.CSharpBase() switch
-        {
-            "int" => n.ToString(),
-            "long" => n + "L",
-            "short" => $"(short){n}",
-            "byte" => $"(byte){n}",
-            "bool" => n == 1 ? "true" : "false",
-            "decimal" => n + ".5m",
-            "double" => n + ".5",
-            "float" => n + ".5f",
-            "DateTime" => $"new DateTime(2026, 1, {14 + n}, 8, 30, 0)",
-            "DateTimeOffset" => $"new DateTimeOffset(2026, 1, {14 + n}, 8, 30, 0, TimeSpan.Zero)",
-            "TimeSpan" => $"TimeSpan.FromMinutes({480 + n})",
-            "Guid" => $"new Guid(\"00000000-0000-0000-0000-00000000000{n}\")",
-            "string" => n == 1 ? "\"Sample\"" : "\"Other\"",
-            "byte[]" => n == 1 ? "new byte[] { 1, 2, 3 }" : "new byte[] { 4, 5 }",
-            _ => "null"
-        };
+        string Sample(ColumnModel c, int n) => TestSampleValues.Value(c, n);
         string Id(ColumnModel c) => c.CSharpName();
         bool IsBytes(ColumnModel c) => c.CSharpBase() == "byte[]";
 
@@ -79,6 +61,7 @@
             }
         }
 
+        L("using System.Data;");
         L("using System.Text.Json;");
         L("using " + dtoNamespace + ";");
         if (hasKey)
@@ -114,6 +97,40 @@
             L("    {");
             L("        var source = Sample(withNulls: true);");
             L("        var again = RoundTrip(source);");
+            Compares("        ", "source", "again");
+            L("    }");
+            L();
+        }
+        L("    private static DataTable SampleTable(" + dto + " sample)");
+        L("    {");
+        L("        var table = new DataTable();");
+        foreach (var c in columns)
+            L("        table.Columns.Add(" + CSharpText.Quote(c.DbName) + ", typeof(" + c.CSharpBase() + "));");
+        L("        table.Rows.Add(");
+        for (int i = 0; i < columns.Count; i++)
+            L("            (object?)sample." + Id(columns[i]) + " ?? DBNull.Value" + (i == columns.Count - 1 ? ");" : ","));
+        L("        return table;");
+        L("    }");
+        L();
+        L("    [TestMethod]");
+        L("    public void The_reader_constructor_reads_every_column()");
+        L("    {");
+        L("        var source = Sample(withNulls: false);");
+        L("        using var reader = SampleTable(source).CreateDataReader();");
+        L("        Assert.IsTrue(reader.Read());");
+        L("        var again = new " + dto + "(reader);");
+        Compares("        ", "source", "again");
+        L("    }");
+        L();
+        if (columns.Any(c => c.IsNullable))
+        {
+            L("    [TestMethod]");
+            L("    public void The_reader_constructor_keeps_a_NULL_a_null()");
+            L("    {");
+            L("        var source = Sample(withNulls: true);");
+            L("        using var reader = SampleTable(source).CreateDataReader();");
+            L("        Assert.IsTrue(reader.Read());");
+            L("        var again = new " + dto + "(reader);");
             Compares("        ", "source", "again");
             L("    }");
             L();

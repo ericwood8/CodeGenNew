@@ -1,0 +1,109 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the line to change to use this template in your own project. A project settings file (DtoNamespace, or ProjectName for <ProjectName>.App.Dtos) overrides it.
+    // ==========================================================================================
+    string dtoNamespace = Project.DtoNamespace ?? "MyApp.Dtos";
+
+    // ==========================================================================================
+    // CS_SerializationTest_v1.tt
+    // Generates: <TableName>SerializationTests.cs   (see OutputName in CS_SerializationTest_v1.tt.config; point the output folder at the test project, OutputApiTests)
+    // An MSTest class that needs no database: for the three classes CS_SerializationDtos writes it builds one with a sample value in every column, writes it to memory with the serializer of its contract,
+    // reads it back and checks every column. <Table>Basic and <Table>Serializable go through the DataContractSerializer (the custom ISerializable contract is the one under test: GetObjectData and the
+    // protected constructor), <Table>Xml through the XmlSerializer (a computed column is ignored by the contract, so it is not compared). Optional columns are set, and once more left NULL.
+    // Run it by hand or from the menu beside CS_SerializationDtos for the same table (neither is in a whole-project plan); the classes it tests must exist, so run CS_SerializationDtos first.
+    // Does not test a version number, a file format of a partner or the code that reads or writes files.
+    // Full notes: Docs/TemplateNotes/CS_SerializationTest_v1.md
+    // ==========================================================================================
+
+    var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
+    if (!columns.All(TestSampleValues.Has))
+    {
+        Error($"CS_SerializationTest cannot make a sample value for the column of an unsupported type in [{Model.SchemaName}].[{Model.TableName}].");
+    }
+    else
+    {
+        string projectName = Project.ProjectName ?? "MyApp";
+        string table = Model.TableName;
+        string Id(ColumnModel c) => c.CSharpName();
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+        void Fill(string indent, bool withNulls)
+        {
+            foreach (var c in columns)
+                L(indent + Id(c) + " = " + (withNulls && c.IsNullable ? "null" : TestSampleValues.Value(c, 1)) + ",");
+        }
+        void Compares(string expected, string actual, bool skipComputed)
+        {
+            foreach (var c in columns.Where(c => !(skipComputed && c.IsComputed)))
+            {
+                string e = expected + "." + Id(c);
+                string a = actual + "." + Id(c);
+                L(c.CSharpBase() == "byte[]" ? $"        CollectionAssert.AreEqual({e}, {a}, \"{Id(c)}\");" : $"        Assert.AreEqual({e}, {a}, \"{Id(c)}\");");
+            }
+        }
+        void Test(string name, string cls, string serializer, bool withNulls, bool skipComputed)
+        {
+            L("    [TestMethod]");
+            L("    public void " + name + "()");
+            L("    {");
+            L("        var source = new " + cls + "");
+            L("        {");
+            Fill("            ", withNulls);
+            L("        };");
+            L("        var again = " + serializer + "(source);");
+            Compares("source", "again", skipComputed);
+            L("    }");
+            L();
+        }
+
+        L("using System.Runtime.Serialization;");
+        L("using System.Xml.Serialization;");
+        L("using " + dtoNamespace + ";");
+        L();
+        L("namespace " + projectName + ".Api.Tests;");
+        L();
+        L("/// <summary> " + table + ": the three serialization classes of CS_SerializationDtos keep every column through their own contract. No database. </summary>");
+        L("[TestClass]");
+        L("public class " + table + "SerializationTests");
+        L("{");
+        L("    private static T ThroughDataContract<T>(T source)");
+        L("    {");
+        L("        var serializer = new DataContractSerializer(typeof(T));");
+        L("        using var stream = new MemoryStream();");
+        L("        serializer.WriteObject(stream, source);");
+        L("        stream.Position = 0;");
+        L("        return (T)serializer.ReadObject(stream)!;");
+        L("    }");
+        L();
+        L("    private static T ThroughXml<T>(T source)");
+        L("    {");
+        L("        var serializer = new XmlSerializer(typeof(T));");
+        L("        using var stream = new MemoryStream();");
+        L("        serializer.Serialize(stream, source);");
+        L("        stream.Position = 0;");
+        L("        return (T)serializer.Deserialize(stream)!;");
+        L("    }");
+        L();
+        Test("The_basic_class_keeps_every_column", table + "Basic", "ThroughDataContract", false, false);
+        Test("The_serializable_class_keeps_every_column", table + "Serializable", "ThroughDataContract", false, false);
+        Test("The_xml_class_keeps_every_column", table + "Xml", "ThroughXml", false, true);
+        if (columns.Any(c => c.IsNullable))
+        {
+            Test("The_basic_class_keeps_a_null_a_null", table + "Basic", "ThroughDataContract", true, false);
+            Test("The_serializable_class_keeps_a_null_a_null", table + "Serializable", "ThroughDataContract", true, false);
+            Test("The_xml_class_keeps_a_null_a_null", table + "Xml", "ThroughXml", true, true);
+        }
+        if (o.Length > 0 && o[o.Length - 2] == '\n')
+            o.Length -= 1;
+        L("}");
+        Write(o.ToString());
+    }
+#>

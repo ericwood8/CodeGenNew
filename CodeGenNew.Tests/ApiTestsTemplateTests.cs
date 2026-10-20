@@ -115,9 +115,9 @@ public class ApiTestsTemplateTests
     }
 
     [TestMethod]
-    public async Task The_test_project_is_written_only_when_asked_and_points_at_the_api()
+    public async Task The_test_project_is_written_unless_switched_off_and_points_at_the_api()
     {
-        var off = await Repo.Cache.RunAsync(Repo.Template("API_EssentialTests_v1.tt"), Project());
+        var off = await Repo.Cache.RunAsync(Repo.Template("API_EssentialTests_v1.tt"), Project(("ApiTests", "false")));
         var sqlite = await Repo.Cache.RunAsync(Repo.Template("API_EssentialTests_v1.tt"), Project(("ApiTests", "true"), ("DatabaseProvider", "Sqlite"), ("DatabaseName", "shop.db")));
         var server = await Repo.Cache.RunAsync(Repo.Template("API_EssentialTests_v1.tt"), Project(("ApiTests", "true")));
         Assert.IsTrue(off.Success && sqlite.Success && server.Success, string.Join(" | ", off.Errors.Concat(sqlite.Errors).Concat(server.Errors)));
@@ -163,9 +163,9 @@ public class ApiTestsTemplateTests
     }
 
     [TestMethod]
-    public async Task The_program_is_public_for_the_test_project_only_when_asked()
+    public async Task The_program_is_public_for_the_test_project_unless_tests_are_off()
     {
-        var plain = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project());
+        var plain = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("ApiTests", "false")));
         var tests = await Repo.Cache.RunAsync(Repo.Template("API_EssentialProgram_v1.tt"), Project(("ApiTests", "true")));
         Assert.IsTrue(plain.Success && tests.Success, string.Join(" | ", plain.Errors.Concat(tests.Errors)));
 
@@ -176,7 +176,8 @@ public class ApiTestsTemplateTests
     [TestMethod]
     public void The_setting_adds_the_template_and_the_test_project_has_its_own_folder()
     {
-        CollectionAssert.DoesNotContain(Project().ImpliedPlanTemplates.ToArray(), "API_Test");
+        CollectionAssert.DoesNotContain(Project(("ApiTests", "false")).ImpliedPlanTemplates.ToArray(), "API_Test");
+        CollectionAssert.Contains(Project().ImpliedPlanTemplates.ToArray(), "API_Test");
         CollectionAssert.Contains(Project(("ApiTests", "true")).ImpliedPlanTemplates.ToArray(), "API_Test");
         Assert.AreEqual("Acme.Api.Tests", Project().OutputFolderOf("apitests"));
         Assert.AreEqual("Tests/Api", Project(("OutputApiTests", "Tests/Api")).OutputFolderOf("apitests"));
@@ -186,7 +187,8 @@ public class ApiTestsTemplateTests
     [TestMethod]
     public void The_api_test_step_runs_the_test_project()
     {
-        Assert.IsNull(ProjectBuilder.CommandFor(Project(), "Api", "test"));
+        Assert.IsNull(ProjectBuilder.CommandFor(Project(("ApiTests", "false")), "Api", "test"));
+        Expect.Contains(ProjectBuilder.CommandFor(Project(), "Api", "test")!, "dotnet test");
         string? command = ProjectBuilder.CommandFor(Project(("ApiTests", "true")), "Api", "test");
         Expect.Contains(command!, "dotnet test");
         Expect.Contains(command!, "Acme.Api.Tests");

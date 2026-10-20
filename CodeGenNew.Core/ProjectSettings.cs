@@ -216,8 +216,8 @@ public class ProjectSettings
     /// <summary> <c>ApiTelemetry=true</c>: the API project also gets OpenTelemetry traces, metrics and logs (Telemetry.cs) and references the OpenTelemetry packages; they are exported over OTLP when <c>OTEL_EXPORTER_OTLP_ENDPOINT</c> is set. </summary>
     public bool ApiTelemetry => Flag("ApiTelemetry");
 
-    /// <summary> <c>ApiTests=true</c>: the plan also writes an integration test class per table (API_Test) and the test project around them (the Tests essentials group), in <see cref="OutputFolderOf"/> <c>apitests</c>. </summary>
-    public bool ApiTests => Flag("ApiTests");
+    /// <summary> On unless <c>ApiTests=false</c>: the plan also writes an integration test class per table (API_Test) and the test project around them (the Tests essentials group), in <see cref="OutputFolderOf"/> <c>apitests</c>. </summary>
+    public bool ApiTests => Explicit("ApiTests") is null || Flag("ApiTests");
 
     /// <summary> <c>ApiValidation=true</c>: the plan also writes a FluentValidation validator per table (CS_Validator), and the create and update endpoints run them (a 400 with the messages). </summary>
     public bool ApiValidation => Flag("ApiValidation");
