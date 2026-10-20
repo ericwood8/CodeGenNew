@@ -187,6 +187,64 @@ public class DtoTemplateTests
         Expect.Contains(await Render("CS_SerializationDtos_v1.tt", table), "[XmlIgnore]\n    public decimal Gross { get; set; }");
     }
 
+    // ------------------------------------------------------------------ CS_RoundTripTest
+
+    [TestMethod]
+    public async Task The_round_trip_test_checks_every_column_through_json_and_the_mapper()
+    {
+        string cs = await Render("CS_RoundTripTest_v1.tt", Customer());
+
+        Expect.Contains(cs, "namespace Acme.Api.Tests;");
+        Expect.Contains(cs, "using Acme.App.Dtos;");
+        Expect.Contains(cs, "public class CustomerRoundTripTests");
+        Expect.Contains(cs, "CreditLimit = withNulls ? null : 1.5m,");
+        Expect.Contains(cs, "IsTaxable = true,");
+        Expect.Contains(cs, "Photo = withNulls ? null : new byte[] { 1, 2, 3 },");
+        Expect.Contains(cs, "@class = withNulls ? null : \"Sample\",");
+        Expect.Contains(cs, "CollectionAssert.AreEqual(source.Photo, again.Photo, \"Photo\");");
+        Expect.Contains(cs, "Assert.AreEqual(source.Name, again.Name, \"Name\");");
+        Expect.Contains(cs, "public void Json_round_trip_keeps_a_null_a_null()");
+        Expect.Contains(cs, "public void A_changed_Name_is_not_identical()");
+        Expect.Contains(cs, "other.Name = \"Other\";");
+        Expect.Contains(cs, "CustomerMapping.ToDto(entity)!");
+        Expect.Contains(cs, "Assert.IsEmpty(CustomerMapping.ToDtos((IEnumerable<Customer>?)null));");
+    }
+
+    [TestMethod]
+    public async Task A_table_without_a_key_gets_the_json_tests_but_no_mapper_tests()
+    {
+        var keyless = Sample.Table("Log", [Sample.Column("Text", SqlDbType.NVarChar, characters: 50, ordinal: 1)]);
+
+        string cs = await Render("CS_RoundTripTest_v1.tt", keyless);
+
+        Expect.Contains(cs, "public void Json_round_trip_keeps_every_column()");
+        Expect.DoesNotContain(cs, "LogMapping");
+        Expect.DoesNotContain(cs, "using Acme.App.Entities;");
+    }
+
+    [TestMethod]
+    public async Task The_round_trip_test_refuses_a_column_it_cannot_make_a_value_for()
+    {
+        var odd = Sample.Table("Odd",
+        [
+            Sample.Column("OddId", SqlDbType.Int, primaryKey: true, ordinal: 1),
+            Sample.Column("Anything", SqlDbType.Variant, ordinal: 2)
+        ]);
+
+        var result = await Repo.Cache.RunAsync(Repo.Template("CS_RoundTripTest_v1.tt"), odd, Project());
+
+        Assert.IsFalse(result.Success);
+        Assert.IsTrue(result.Errors.Any(e => e.Contains("unsupported type")));
+    }
+
+    [TestMethod]
+    public void The_round_trip_test_is_in_the_plan_only_with_both_flags()
+    {
+        CollectionAssert.DoesNotContain(Project(("Dtos", "true")).ImpliedPlanTemplates.ToArray(), "CS_RoundTripTest");
+        CollectionAssert.DoesNotContain(Project(("ApiTests", "true")).ImpliedPlanTemplates.ToArray(), "CS_RoundTripTest");
+        CollectionAssert.Contains(Project(("Dtos", "true"), ("ApiTests", "true")).ImpliedPlanTemplates.ToArray(), "CS_RoundTripTest");
+    }
+
     // ------------------------------------------------------------------ the family as a whole
 
     [TestMethod]
@@ -196,6 +254,7 @@ public class DtoTemplateTests
 
         Assert.AreEqual("CustomerDto.cs", offered["CS_Dto"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerMapping.cs", offered["CS_Mapper"].BuildFileName("Customer"));
+        Assert.AreEqual("CustomerRoundTripTests.cs", offered["CS_RoundTripTest"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerContract.cs", offered["CS_DataContractDto"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerDataTable.cs", offered["CS_TypedDataRow"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerSerializationDtos.cs", offered["CS_SerializationDtos"].BuildFileName("Customer"));

@@ -1,0 +1,170 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // CS_RoundTripTest_v1.tt
+    // Generates: <TableName>RoundTripTests.cs   (see OutputName in CS_RoundTripTest_v1.tt.config; goes to the test project, OutputApiTests)
+    // An MSTest class that needs no database and no running API. It builds the table's transfer class (CS_Dto) with a sample value in every column, writes it as JSON, reads it back and checks every
+    // column, then does the same with every optional column NULL; changes one column that matters and checks IsIdentical sees it. With a primary key it also copies an entity (CS_Entity) to the
+    // transfer class and back with CS_Mapper and checks every column, and that a null in gives a null out.
+    // Runs for a project with ApiTests=true and Dtos=true. A table with a column of an unsupported type is refused. The project file comes from the Tests essentials group (API_EssentialTests).
+    // Does not test the reader constructor (it needs a data reader) or any rule of the database.
+    // Full notes: Docs/TemplateNotes/CS_RoundTripTest_v1.md
+    // ==========================================================================================
+
+    string entityNamespace = Project.EntityNamespace ?? "MyApp.Common.Entities";
+    string dtoNamespace = Project.DtoNamespace ?? "MyApp.Dtos";
+
+    var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
+    string? hashColumn = UserTable.PlanOf(Model, Project)?.PasswordHash.Name;
+    if (columns.Any(c => c.CSharpBase() == "object"))
+    {
+        Error($"CS_RoundTripTest cannot make a sample value for the column of an unsupported type in [{Model.SchemaName}].[{Model.TableName}].");
+    }
+    else
+    {
+        string projectName = Project.ProjectName ?? "MyApp";
+        string table = Model.TableName;
+        string dto = table + "Dto";
+        string mapping = table + "Mapping";
+        bool hasKey = Model.PrimaryKeyColumns.Count > 0;
+        var checkedColumns = columns.Where(c => hashColumn is null || !c.Name.EqualsIgnoreCase(hashColumn)).ToList();
+        var meaningful = columns.Where(c => !c.IsPrimaryKey && !c.IsIdentity && !c.IsComputed && !c.IsAuditColumn && !c.IsStampColumn && (hashColumn is null || !c.Name.EqualsIgnoreCase(hashColumn))).ToList();
+        var changed = meaningful.FirstOrDefault();
+
+        // two different C# values of the column's type, so a copy can be told from a changed one
+        string Sample(ColumnModel c, int n) => c.CSharpBase() switch
+        {
+            "int" => n.ToString(),
+            "long" => n + "L",
+            "short" => $"(short){n}",
+            "byte" => $"(byte){n}",
+            "bool" => n == 1 ? "true" : "false",
+            "decimal" => n + ".5m",
+            "double" => n + ".5",
+            "float" => n + ".5f",
+            "DateTime" => $"new DateTime(2026, 1, {14 + n}, 8, 30, 0)",
+            "DateTimeOffset" => $"new DateTimeOffset(2026, 1, {14 + n}, 8, 30, 0, TimeSpan.Zero)",
+            "TimeSpan" => $"TimeSpan.FromMinutes({480 + n})",
+            "Guid" => $"new Guid(\"00000000-0000-0000-0000-00000000000{n}\")",
+            "string" => n == 1 ? "\"Sample\"" : "\"Other\"",
+            "byte[]" => n == 1 ? "new byte[] { 1, 2, 3 }" : "new byte[] { 4, 5 }",
+            _ => "null"
+        };
+        string Id(ColumnModel c) => c.CSharpName();
+        bool IsBytes(ColumnModel c) => c.CSharpBase() == "byte[]";
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+        void Assigns(string indent, int n)
+        {
+            foreach (var c in columns)
+                L(indent + Id(c) + " = " + Sample(c, n) + ",");
+        }
+        void Compares(string indent, string expected, string actual)
+        {
+            foreach (var c in checkedColumns)
+            {
+                string e = expected + "." + Id(c);
+                string a = actual + "." + Id(c);
+                if (IsBytes(c))
+                    L(indent + $"CollectionAssert.AreEqual({e}, {a}, \"{Id(c)}\");");
+                else
+                    L(indent + $"Assert.AreEqual({e}, {a}, \"{Id(c)}\");");
+            }
+        }
+
+        L("using System.Text.Json;");
+        L("using " + dtoNamespace + ";");
+        if (hasKey)
+            L("using " + entityNamespace + ";");
+        L();
+        L("namespace " + projectName + ".Api.Tests;");
+        L();
+        L("/// <summary> " + table + ": the transfer class survives a JSON round trip" + (hasKey ? " and the mapper copies the entity both ways" : "") + ". No database. </summary>");
+        L("[TestClass]");
+        L("public class " + table + "RoundTripTests");
+        L("{");
+        L("    private static " + dto + " Sample(bool withNulls) => new()");
+        L("    {");
+        foreach (var c in columns)
+            L("        " + Id(c) + " = " + (c.IsNullable ? "withNulls ? null : " + Sample(c, 1) : Sample(c, 1)) + ",");
+        L("    };");
+        L();
+        L("    private static " + dto + " RoundTrip(" + dto + " source) =>");
+        L("        JsonSerializer.Deserialize<" + dto + ">(JsonSerializer.Serialize(source))!;");
+        L();
+        L("    [TestMethod]");
+        L("    public void Json_round_trip_keeps_every_column()");
+        L("    {");
+        L("        var source = Sample(withNulls: false);");
+        L("        var again = RoundTrip(source);");
+        Compares("        ", "source", "again");
+        L("    }");
+        L();
+        if (columns.Any(c => c.IsNullable))
+        {
+            L("    [TestMethod]");
+            L("    public void Json_round_trip_keeps_a_null_a_null()");
+            L("    {");
+            L("        var source = Sample(withNulls: true);");
+            L("        var again = RoundTrip(source);");
+            Compares("        ", "source", "again");
+            L("    }");
+            L();
+        }
+        L("    [TestMethod]");
+        L("    public void A_copy_is_identical_to_its_source()");
+        L("    {");
+        L("        var source = Sample(withNulls: false);");
+        L("        Assert.IsTrue(source.IsIdentical(RoundTrip(source)));");
+        L("        Assert.IsFalse(source.IsIdentical(null));");
+        L("    }");
+        if (changed is not null)
+        {
+            L();
+            L("    [TestMethod]");
+            L("    public void A_changed_" + Id(changed) + "_is_not_identical()");
+            L("    {");
+            L("        var source = Sample(withNulls: false);");
+            L("        var other = RoundTrip(source);");
+            L("        other." + Id(changed) + " = " + Sample(changed, 2) + ";");
+            L("        Assert.IsFalse(source.IsIdentical(other));");
+            L("    }");
+        }
+        if (hasKey)
+        {
+            L();
+            L("    private static " + table + " SampleEntity() => new()");
+            L("    {");
+            Assigns("        ", 1);
+            L("    };");
+            L();
+            L("    [TestMethod]");
+            L("    public void The_mapper_copies_every_column_both_ways()");
+            L("    {");
+            L("        var entity = SampleEntity();");
+            L("        var dto = " + mapping + ".ToDto(entity)!;");
+            Compares("        ", "entity", "dto");
+            L("        var back = " + mapping + ".ToEntity(dto)!;");
+            Compares("        ", "entity", "back");
+            L("    }");
+            L();
+            L("    [TestMethod]");
+            L("    public void The_mapper_gives_null_for_null_and_an_empty_list_for_no_list()");
+            L("    {");
+            L("        Assert.IsNull(" + mapping + ".ToDto((" + table + "?)null));");
+            L("        Assert.IsNull(" + mapping + ".ToEntity((" + dto + "?)null));");
+            L("        Assert.IsEmpty(" + mapping + ".ToDtos((IEnumerable<" + table + ">?)null));");
+            L("        Assert.IsEmpty(" + mapping + ".ToEntities((IEnumerable<" + dto + ">?)null));");
+            L("    }");
+        }
+        L("}");
+        Write(o.ToString());
+    }
+#>

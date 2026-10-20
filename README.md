@@ -56,7 +56,7 @@ CLI argument parsing is hand-rolled rather than pulling in a library, given the 
 
 ## What it generates
 
-One hundred and twenty-eight templates ship in `Templates\` (the no-DB essentials groups described in [Docs/QuickStart.md](Docs/QuickStart.md) come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
+One hundred and twenty-nine templates ship in `Templates\` (the no-DB essentials groups described in [Docs/QuickStart.md](Docs/QuickStart.md) come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
 
 The templates are shown in 3 grids, one for each layer of an application.
 
@@ -115,6 +115,7 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `CS` | `CS_Dto` | `TableDto.cs` - plain transfer class filled from any `IDataRecord`: a `Populate` method (required columns, then optional ones), an `IsIdentical` comparer over the columns that matter, a `ToString` on the display column. |
 | `CS` | `CS_DtoInput` | `TableInput.cs` - `Dtos=true`: the request body of a table's create and update (only the columns a caller may set) with `ToEntity()` and `ApplyTo(entity)`; the API answers the `CS_Dto` class. |
 | `CS` | `CS_Mapper` | `TableMapping.cs` - static class copying a table between its entity (`CS_Entity`) and its transfer class (`CS_Dto`): `ToDto`, `ToEntity`, list versions and `FromReader`. |
+| `CS` | `CS_RoundTripTest` | `TableRoundTripTests.cs` - an MSTest class per table in the API test project (`ApiTests=true` with `Dtos=true`) that needs no database: the transfer class through a JSON round trip (every column, and with every optional column NULL), `IsIdentical`, and the `CS_Mapper` copy of the entity both ways. |
 | `CS` | `CS_MapperlyMapper` | `TableMapper.cs` - Mapperly counterpart of `CS_Mapper`: a `[Mapper]` partial class (`ToDto`, `ToEntity`, `ProjectToDto`) whose bodies Mapperly writes at compile time. |
 | `CS` | `CS_DataContractDto` | `TableContract.cs` - `[DataContract]` class with 4 constructors (empty, from a `DataRow`, from a reader row, copy), for a WCF-style service. |
 | `CS` | `CS_TypedDataRow` | `TableDataTable.cs` - typed-DataSet shape of a table: a `DataTable` with its columns and a `DataRow` with one typed property per column and `IsXNull` / `SetXNull` pairs. |
