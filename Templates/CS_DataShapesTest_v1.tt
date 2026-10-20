@@ -1,0 +1,160 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the line to change to use this template in your own project. A project settings file (DtoNamespace, or ProjectName for <ProjectName>.App.Dtos) overrides it.
+    // ==========================================================================================
+    string dtoNamespace = Project.DtoNamespace ?? "MyApp.Dtos";
+
+    // ==========================================================================================
+    // CS_DataShapesTest_v1.tt
+    // Generates: <TableName>DataShapesTests.cs   (see OutputName in CS_DataShapesTest_v1.tt.config; point the output folder at the test project, OutputApiTests)
+    // An MSTest class that needs no database, for the two ADO.NET shapes of a table. <Table>Contract (CS_DataContractDto): the DataContractSerializer round trip, and the constructors from a DataRow,
+    // from a data reader and the copy constructor, each checked column by column, with and without NULLs. <Table>DataTable and <Table>Row (CS_TypedDataRow): every typed property reads back what it
+    // was given, a NULL column answers Is<Column>Null and throws StrongTypingException when read, and a cloned table makes rows that work.
+    // Run it by hand or from the menu beside the two templates for the same table (neither is in a whole-project plan); the classes it tests must exist, so run them first.
+    // Does not test a DataSet, a relation or an adapter (none is written).
+    // Full notes: Docs/TemplateNotes/CS_DataShapesTest_v1.md
+    // ==========================================================================================
+
+    var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
+    if (!columns.All(TestSampleValues.Has))
+    {
+        Error($"CS_DataShapesTest cannot make a sample value for the column of an unsupported type in [{Model.SchemaName}].[{Model.TableName}].");
+    }
+    else
+    {
+        string projectName = Project.ProjectName ?? "MyApp";
+        string name = Model.TableName;
+        string contract = name + "Contract";
+        string dataTable = name + "DataTable";
+        string row = name + "Row";
+        string Id(ColumnModel c) => c.CSharpName();
+        string Sample(ColumnModel c) => TestSampleValues.Value(c, 1);
+        var nullable = columns.Where(c => c.IsNullable).ToList();
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+        void Compare(ColumnModel c, string expected, string actual)
+        {
+            string e = expected + "." + Id(c), a = actual + "." + Id(c);
+            L(c.CSharpBase() == "byte[]" ? $"        CollectionAssert.AreEqual({e}, {a}, \"{Id(c)}\");" : $"        Assert.AreEqual({e}, {a}, \"{Id(c)}\");");
+        }
+        void CompareAll(string expected, string actual)
+        {
+            foreach (var c in columns)
+                Compare(c, expected, actual);
+        }
+        void Source(bool withNulls)
+        {
+            L("        var source = new " + contract);
+            L("        {");
+            foreach (var c in columns)
+                L("            " + Id(c) + " = " + (withNulls && c.IsNullable ? "null" : Sample(c)) + ",");
+            L("        };");
+        }
+
+        L("using System.Data;");
+        L("using System.Runtime.Serialization;");
+        L("using " + dtoNamespace + ";");
+        L();
+        L("namespace " + projectName + ".Api.Tests;");
+        L();
+        L("/// <summary> " + name + ": the data-contract class and the typed table keep every column. No database. </summary>");
+        L("[TestClass]");
+        L("public class " + name + "DataShapesTests");
+        L("{");
+        L("    private static DataTable TableOf(" + contract + " sample)");
+        L("    {");
+        L("        var table = new DataTable();");
+        foreach (var c in columns)
+            L("        table.Columns.Add(" + CSharpText.Quote(c.DbName) + ", typeof(" + c.CSharpBase() + "));");
+        L("        table.Rows.Add(");
+        for (int i = 0; i < columns.Count; i++)
+            L("            (object?)sample." + Id(columns[i]) + " ?? DBNull.Value" + (i == columns.Count - 1 ? ");" : ","));
+        L("        return table;");
+        L("    }");
+        L();
+        foreach (bool withNulls in nullable.Count > 0 ? new[] { false, true } : new[] { false })
+        {
+            string tail = withNulls ? "_with_NULLs" : "";
+            L("    [TestMethod]");
+            L("    public void The_contract_keeps_every_column_through_the_serializer" + tail + "()");
+            L("    {");
+            Source(withNulls);
+            L("        var serializer = new DataContractSerializer(typeof(" + contract + "));");
+            L("        using var stream = new MemoryStream();");
+            L("        serializer.WriteObject(stream, source);");
+            L("        stream.Position = 0;");
+            L("        var again = (" + contract + ")serializer.ReadObject(stream)!;");
+            CompareAll("source", "again");
+            L("    }");
+            L();
+            L("    [TestMethod]");
+            L("    public void The_contract_constructors_read_a_row_a_reader_and_a_copy" + tail + "()");
+            L("    {");
+            Source(withNulls);
+            L("        var table = TableOf(source);");
+            L("        var fromRow = new " + contract + "(table.Rows[0]);");
+            L("        using var reader = table.CreateDataReader();");
+            L("        Assert.IsTrue(reader.Read());");
+            L("        var fromReader = new " + contract + "(reader);");
+            L("        var copy = new " + contract + "(source);");
+            foreach (var c in columns)
+            {
+                Compare(c, "source", "fromRow");
+                Compare(c, "source", "fromReader");
+                Compare(c, "source", "copy");
+            }
+            L("    }");
+            L();
+        }
+        L("    [TestMethod]");
+        L("    public void The_typed_row_reads_back_every_column()");
+        L("    {");
+        L("        var table = new " + dataTable + "();");
+        L("        var row = table.NewRow();");
+        foreach (var c in columns)
+            L("        row." + Id(c) + " = " + Sample(c) + ";");
+        L("        table.Add" + name + "Row(row);");
+        L("        var again = table." + name + "Rows.Single();");
+        CompareAll("row", "again");
+        L("    }");
+        L();
+        foreach (var c in nullable)
+        {
+            string member = c.Name.Replace("@", "");
+            L("    [TestMethod]");
+            L("    public void The_typed_row_knows_a_NULL_" + member + "()");
+            L("    {");
+            L("        var table = new " + dataTable + "();");
+            L("        var row = table.NewRow();");
+            foreach (var other in columns.Where(x => !x.IsNullable))
+                L("        row." + Id(other) + " = " + Sample(other) + ";");
+            L("        row.Set" + member + "Null();");
+            L("        table.Add" + name + "Row(row);");
+            L("        var again = table." + name + "Rows.Single();");
+            L("        Assert.IsTrue(again.Is" + member + "Null());");
+            L("        Assert.Throws<StrongTypingException>(() => _ = again." + Id(c) + ");");
+            L("    }");
+            L();
+        }
+        L("    [TestMethod]");
+        L("    public void A_cloned_typed_table_makes_working_rows()");
+        L("    {");
+        L("        var clone = (" + dataTable + ")new " + dataTable + "().Clone();");
+        L("        var row = clone.NewRow();");
+        foreach (var c in columns.Where(x => !x.IsNullable))
+            L("        row." + Id(c) + " = " + Sample(c) + ";");
+        L("        clone.Add" + name + "Row(row);");
+        L("        Assert.HasCount(1, clone.Rows);");
+        L("    }");
+        L("}");
+        Write(o.ToString());
+    }
+#>

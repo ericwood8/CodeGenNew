@@ -250,6 +250,23 @@ public class DtoTemplateTests
     }
 
     [TestMethod]
+    public async Task The_data_shapes_test_covers_the_contract_constructors_and_the_typed_row()
+    {
+        string cs = await Render("CS_DataShapesTest_v1.tt", Customer());
+
+        Expect.Contains(cs, "public class CustomerDataShapesTests");
+        Expect.Contains(cs, "new DataContractSerializer(typeof(CustomerContract))");
+        Expect.Contains(cs, "var fromRow = new CustomerContract(table.Rows[0]);");
+        Expect.Contains(cs, "var fromReader = new CustomerContract(reader);");
+        Expect.Contains(cs, "var copy = new CustomerContract(source);");
+        Expect.Contains(cs, "public void The_contract_keeps_every_column_through_the_serializer_with_NULLs()");
+        Expect.Contains(cs, "row.CreditLimit = 1.5m;");
+        Expect.Contains(cs, "public void The_typed_row_knows_a_NULL_CreditLimit()");
+        Expect.Contains(cs, "Assert.Throws<StrongTypingException>(() => _ = again.CreditLimit);");
+        Expect.Contains(cs, "var clone = (CustomerDataTable)new CustomerDataTable().Clone();");
+    }
+
+    [TestMethod]
     public async Task A_table_without_a_key_gets_the_json_tests_but_no_mapper_tests()
     {
         var keyless = Sample.Table("Log", [Sample.Column("Text", SqlDbType.NVarChar, characters: 50, ordinal: 1)]);
@@ -295,6 +312,7 @@ public class DtoTemplateTests
         Assert.AreEqual("CustomerMapping.cs", offered["CS_Mapper"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerRoundTripTests.cs", offered["CS_RoundTripTest"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerSerializationTests.cs", offered["CS_SerializationTest"].BuildFileName("Customer"));
+        Assert.AreEqual("CustomerDataShapesTests.cs", offered["CS_DataShapesTest"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerContract.cs", offered["CS_DataContractDto"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerDataTable.cs", offered["CS_TypedDataRow"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerSerializationDtos.cs", offered["CS_SerializationDtos"].BuildFileName("Customer"));
