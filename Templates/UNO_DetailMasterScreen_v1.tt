@@ -531,7 +531,7 @@ public class <#= table #>ChildGridHeader
     public string Column { get; init; } = "";
 }
 
-public partial class <#= table #>DetailMasterViewModel : ObservableObject
+public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 {
     private readonly ApiClients _api;
     private readonly <#= type #>? _editing;
@@ -717,10 +717,6 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
         }
 #>
 
-    [NotifyPropertyChangedFor(nameof(HasError))]
-    [ObservableProperty]
-    private string? _errorMessage;
-    public bool HasError => ErrorMessage is not null;
 <#
         Write(DesktopFormCode.GuardProperties(form));
 #>

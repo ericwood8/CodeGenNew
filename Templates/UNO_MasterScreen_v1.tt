@@ -299,6 +299,8 @@
                     NextClicked="OnNextClick"
                     PageSizeChanged="OnPageSizeChanged" />
             </Border>
+
+            <views:BusyOverlay Grid.RowSpan="2" IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
         </Grid>
     </Grid>
 </Page>
@@ -541,7 +543,7 @@ public sealed record <#= stemName #>KeyChoice(object? Id, string Name);
 <#
         }
 #>
-public partial class <#= stemName #>ListViewModel : ObservableObject
+public partial class <#= stemName #>ListViewModel : ViewModelBase
 {
     private readonly ApiClients _api;
     private <#= type #>Client Client => _api.<#= UnoNames.ClientProperty(table) #>;
@@ -555,11 +557,6 @@ public partial class <#= stemName #>ListViewModel : ObservableObject
 #>
 
     public ObservableCollection<<#= stemName #>ListRow> Rows { get; } = [];
-
-    [NotifyPropertyChangedFor(nameof(HasError))]
-    [ObservableProperty]
-    private string? _errorMessage;
-    public bool HasError => ErrorMessage is not null;
 
     /// <summary> The page sizes the person can pick under the grid (PaginationBar). </summary>
     public static readonly int[] PageSizeChoices = [10, 20, 50, 100];
@@ -704,7 +701,9 @@ public partial class <#= stemName #>ListViewModel : ObservableObject
         }
 #>
     /// <summary> Reads the current page from the API. A call that fails shows its sentence in ErrorMessage instead of throwing. </summary>
-    public async Task LoadAsync()
+    public Task LoadAsync() => RunBusyAsync(LoadCoreAsync);
+
+    private async Task LoadCoreAsync()
     {
 <#
         if (anyAhead)

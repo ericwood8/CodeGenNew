@@ -328,7 +328,7 @@ public class <#= WinUI3Names.LookupOptionClass(table, "Detail", optionKey) #>
         }
 #>
 
-public partial class <#= table #>DetailViewModel : ObservableObject
+public partial class <#= table #>DetailViewModel : ViewModelBase
 {
     private readonly ApiClients _api;
     private readonly <#= type #>? _editing;
@@ -397,10 +397,6 @@ public partial class <#= table #>DetailViewModel : ObservableObject
         }
 #>
 
-    [NotifyPropertyChangedFor(nameof(HasError))]
-    [ObservableProperty]
-    private string? _errorMessage;
-    public bool HasError => ErrorMessage is not null;
 <#
         Write(DesktopFormCode.GuardProperties(form));
 #>

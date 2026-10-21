@@ -4,8 +4,8 @@
 <#
     // ==========================================================================================
     // UNO_EssentialControls_v1.tt
-    // Generates: ViewModels/GridSortStore.cs, Views/PaginationBar.xaml and .xaml.cs, Views/CurrencyNumberFormatter.cs   (no table, no database: an essentials group)
-    // The controls and helpers every generated list page and dialog of the Uno app shares: the pager under a grid (Previous, Next, rows per page), the store that remembers each grid's sort between runs
+    // Generates: ViewModels/ViewModelBase.cs, ViewModels/GridSortStore.cs, Views/BusyOverlay.xaml and .xaml.cs, Views/PaginationBar.xaml and .xaml.cs, Views/CurrencyNumberFormatter.cs   (no table, no database: an essentials group)
+    // The base class of every generated view model (the error sentence and the busy flag), the busy overlay that shows it, and the controls and helpers every generated list page and dialog of the Uno app shares: the pager under a grid (Previous, Next, rows per page), the store that remembers each grid's sort between runs
     // (GridSorts.json in the local application data folder), and the formatter a currency number box uses (it also reads a plain number). The table templates use them and no longer write them,
     // so run this group once before generating screens.
     // Needs the project settings AppNamespace, ViewNamespace, ViewModelNamespace, ViewsFolder and ViewModelsFolder (defaults derive from ProjectName).
@@ -17,6 +17,73 @@
     string viewsFolder = Project.ViewsFolder ?? "Views";
     string viewModelsFolder = Project.ViewModelsFolder ?? "ViewModels";
 #>
+@@@FILE <#= viewModelsFolder #>/ViewModelBase.cs@@@
+using CommunityToolkit.Mvvm.ComponentModel;
+
+namespace <#= viewModelNamespace #>;
+
+/// <summary> The base of the generated view models: the sentence the page shows in its error bar, and a busy flag for work the person waits for. </summary>
+public abstract partial class ViewModelBase : ObservableObject
+{
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    [ObservableProperty]
+    private string? _errorMessage;
+    public bool HasError => ErrorMessage is not null;
+
+    [ObservableProperty]
+    private bool _isBusy;
+
+    /// <summary> Runs the work with IsBusy set, and clears it afterwards even when the work throws. Calls can nest: the flag clears when the last one ends. </summary>
+    protected async Task RunBusyAsync(Func<Task> work)
+    {
+        _busyDepth++;
+        IsBusy = true;
+        try { await work(); }
+        finally
+        {
+            _busyDepth -= 1;
+            if (_busyDepth == 0)
+                IsBusy = false;
+        }
+    }
+
+    private int _busyDepth;
+}
+@@@FILE <#= viewsFolder #>/BusyOverlay.xaml@@@
+<UserControl
+    x:Class="<#= viewNamespace #>.BusyOverlay"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Visibility="{x:Bind IsActive, Mode=OneWay}" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}" Opacity="0.8">
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+            <ProgressRing IsActive="{x:Bind IsActive, Mode=OneWay}" Width="48" Height="48" AutomationProperties.Name="Loading" />
+            <TextBlock Text="Loading..." HorizontalAlignment="Center" />
+        </StackPanel>
+    </Grid>
+</UserControl>
+@@@FILE <#= viewsFolder #>/BusyOverlay.xaml.cs@@@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+
+namespace <#= viewNamespace #>;
+
+/// <summary> A dimmed cover with a progress ring over the area it is placed in while IsActive is true; it also blocks clicks on what is under it. </summary>
+public sealed partial class BusyOverlay : UserControl
+{
+    public static readonly DependencyProperty IsActiveProperty =
+        DependencyProperty.Register(nameof(IsActive), typeof(bool), typeof(BusyOverlay), new PropertyMetadata(false));
+
+    public bool IsActive
+    {
+        get => (bool)GetValue(IsActiveProperty);
+        set => SetValue(IsActiveProperty, value);
+    }
+
+    public BusyOverlay()
+    {
+        InitializeComponent();
+    }
+}
 @@@FILE <#= viewModelsFolder #>/GridSortStore.cs@@@
 using System.IO;
 using System.Text.Json;
