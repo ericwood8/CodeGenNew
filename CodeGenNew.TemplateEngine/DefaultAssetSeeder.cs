@@ -144,6 +144,7 @@ public static class DefaultAssetSeeder
         "UNO_ODataPage_v1.tt", "UNO_ODataPage_v1.tt.config",
         "UNO_EssentialProject_v1.tt", "UNO_EssentialProject_v1.tt.config",
         "UNO_EssentialApp_v1.tt", "UNO_EssentialApp_v1.tt.config",
+        "UNO_EssentialControls_v1.tt", "UNO_EssentialControls_v1.tt.config",
         "UNO_EssentialSupport_v1.tt", "UNO_EssentialSupport_v1.tt.config",
         "UNO_EssentialGit_v1.tt", "UNO_EssentialGit_v1.tt.config",
         "UNO_EssentialAuth_v1.tt", "UNO_EssentialAuth_v1.tt.config",

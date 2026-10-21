@@ -10,4 +10,4 @@ The table templates (`WinUI3_MasterScreen`, `WinUI3_DetailScreen`, `WinUI3_Detai
 
 Namespaces and folders follow the project: `ViewNamespace` (default `<AppNamespace>.Views`), `ViewModelNamespace`, `ViewsFolder` and `ViewModelsFolder`.
 
-Not part of the group: a status / busy overlay and an error base for the view models. Those need the table templates to adopt them first (item 56). The Uno stack still writes its own copies.
+Not part of the group: a status / busy overlay and an error base for the view models. Those need the table templates to adopt them first (item 56). The Uno stack has the same group (`UNO_EssentialControls`).

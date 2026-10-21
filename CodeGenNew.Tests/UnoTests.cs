@@ -38,7 +38,7 @@ public class UnoTests
     {
         Assert.AreEqual("Uno", EssentialsCatalog.FindStack("uno"));
         var names = EssentialsCatalog.Groups(Repo.TemplatesDirectory, "Uno").Select(g => g.Name).ToList();
-        CollectionAssert.AreEquivalent(new[] { "App", "Auth", "Git", "OData", "Project", "Support" }, names);
+        CollectionAssert.AreEquivalent(new[] { "App", "Auth", "Controls", "Git", "OData", "Project", "Support" }, names);
     }
 
     [TestMethod]

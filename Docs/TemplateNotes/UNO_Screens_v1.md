@@ -11,8 +11,8 @@ The rest of the stack:
 |---|---|
 | `UNO_Model` | `Models/<Table>.cs`: a class with a property per column |
 | `UNO_Client` | `Services/<Table>Client.cs`: GetAll, GetLookup, Get, Create, Update, Delete, GetPage (search, paging, sort), Clone |
-| `UNO_MasterScreen` | `Views/<Table>ListPage.xaml` and `.xaml.cs`, `ViewModels/<Table>ListViewModel.cs`, `ViewModels/GridSortStore.cs`, `Views/PaginationBar`: the list page |
-| `UNO_DetailScreen` | `Views/<Table>DetailDialog.xaml` and `.xaml.cs`, `ViewModels/<Table>DetailViewModel.cs`, `Views/CurrencyNumberFormatter.cs`: the add / edit dialog |
+| `UNO_MasterScreen` | `Views/<Table>ListPage.xaml` and `.xaml.cs`, `ViewModels/<Table>ListViewModel.cs`: the list page |
+| `UNO_DetailScreen` | `Views/<Table>DetailDialog.xaml` and `.xaml.cs`, `ViewModels/<Table>DetailViewModel.cs`: the add / edit dialog |
 | `UNO_DetailMasterScreen` | `Views/<Table>DetailMasterDialog.xaml` and `.xaml.cs`, `ViewModels/<Table>DetailMasterViewModel.cs`: the same dialog with a grid per child table (a table that has child tables) |
 | `UNO_Dashboard` | `Services/DashboardClient.cs`, `Views/DashboardPage.cs`, `Views/DashboardWidgetViews.cs` (`Dashboard=true`) |
 | `UNO_JunctionEditor` | `Services/<Table>JunctionClient.cs`, `Views/<Table>JunctionEditor.xaml` and `.xaml.cs`, `ViewModels/<Table>JunctionEditorViewModel.cs` for each junction table |

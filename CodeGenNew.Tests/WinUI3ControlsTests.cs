@@ -57,4 +57,32 @@ public class WinUI3ControlsTests
         Expect.DoesNotContain(text, "@@@FILE <#= viewModelsFolder #>/GridSortStore.cs");
         Assert.HasCount(3, TableTemplates);
     }
+
+    [TestMethod]
+    public async Task The_uno_group_writes_the_same_three_controls()
+    {
+        var project = ProjectSettings.FromValues([new("ProjectName", "Acme")]);
+        var result = await Repo.Cache.RunAsync(Repo.Template("UNO_EssentialControls_v1.tt"), project);
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        var files = GeneratedFiles.Split(result.GeneratedText!).ToDictionary(f => f.RelativePath.Replace('\\', '/'), f => f.Content.ReplaceLineEndings("\n"));
+
+        CollectionAssert.AreEquivalent(
+            new[] { "ViewModels/GridSortStore.cs", "Views/CurrencyNumberFormatter.cs", "Views/PaginationBar.xaml", "Views/PaginationBar.xaml.cs" },
+            files.Keys.ToArray());
+        Expect.Contains(files["Views/PaginationBar.xaml"], "x:Class=\"Acme.App.Views.PaginationBar\"");
+        Expect.Contains(files["ViewModels/GridSortStore.cs"], "namespace Acme.App.ViewModels;");
+    }
+
+    [TestMethod]
+    [DataRow("UNO_MasterScreen_v1.tt")]
+    [DataRow("UNO_DetailScreen_v1.tt")]
+    [DataRow("UNO_DetailMasterScreen_v1.tt")]
+    public void The_uno_table_templates_no_longer_write_them(string template)
+    {
+        string text = File.ReadAllText(Repo.Template(template));
+
+        foreach (string file in new[] { "PaginationBar.xaml", "CurrencyNumberFormatter.cs" })
+            Expect.DoesNotContain(text, "@@@FILE <#= viewsFolder #>/" + file);
+        Expect.DoesNotContain(text, "@@@FILE <#= viewModelsFolder #>/GridSortStore.cs");
+    }
 }
