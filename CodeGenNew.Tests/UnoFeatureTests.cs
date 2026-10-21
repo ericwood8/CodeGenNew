@@ -207,7 +207,7 @@ public class UnoFeatureTests
             Expect.Contains(read("Shop.Uno/Services/CustomerODataClient.cs"), "public class CustomerODataClient(HttpClient http) : ODataClient<Customer, int>(http, \"customers\"");
             Expect.DoesNotContain(read("Shop.Uno/Services/ODataSupport.cs"), "JSRuntime");
             string model = read("Shop.Uno/ViewModels/CustomerODataListViewModel.cs");
-            Expect.Contains(model, "public partial class CustomerODataListViewModel : ObservableObject");
+            Expect.Contains(model, "public partial class CustomerODataListViewModel : ViewModelBase");
             Expect.Contains(model, "await OData.QueryPageAsync(new ODataPageQuery(PageNumber, PageSize, filters, ");
             Expect.Contains(read("Shop.Uno/Views/CustomerODataListPage.xaml"), "(OData)");
             string screens = read("Shop.Uno/MainPage.Screens.cs");

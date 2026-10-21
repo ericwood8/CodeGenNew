@@ -75,7 +75,7 @@ public class WinUI3ControlsTests
     }
 
     [TestMethod]
-    public async Task The_uno_group_writes_the_same_three_controls()
+    public async Task The_uno_group_writes_the_same_controls_and_base()
     {
         var project = ProjectSettings.FromValues([new("ProjectName", "Acme")]);
         var result = await Repo.Cache.RunAsync(Repo.Template("UNO_EssentialControls_v1.tt"), project);
@@ -83,10 +83,25 @@ public class WinUI3ControlsTests
         var files = GeneratedFiles.Split(result.GeneratedText!).ToDictionary(f => f.RelativePath.Replace('\\', '/'), f => f.Content.ReplaceLineEndings("\n"));
 
         CollectionAssert.AreEquivalent(
-            new[] { "ViewModels/GridSortStore.cs", "Views/CurrencyNumberFormatter.cs", "Views/PaginationBar.xaml", "Views/PaginationBar.xaml.cs" },
+            new[] { "ViewModels/ViewModelBase.cs", "ViewModels/GridSortStore.cs", "Views/BusyOverlay.xaml", "Views/BusyOverlay.xaml.cs", "Views/CurrencyNumberFormatter.cs", "Views/PaginationBar.xaml", "Views/PaginationBar.xaml.cs" },
             files.Keys.ToArray());
         Expect.Contains(files["Views/PaginationBar.xaml"], "x:Class=\"Acme.App.Views.PaginationBar\"");
         Expect.Contains(files["ViewModels/GridSortStore.cs"], "namespace Acme.App.ViewModels;");
+        Expect.Contains(files["ViewModels/ViewModelBase.cs"], "protected async Task RunBusyAsync(Func<Task> work)");
+        Expect.Contains(files["Views/BusyOverlay.xaml"], "x:Class=\"Acme.App.Views.BusyOverlay\"");
+    }
+
+    [TestMethod]
+    [DataRow("UNO_MasterScreen_v1.tt")]
+    [DataRow("UNO_DetailScreen_v1.tt")]
+    [DataRow("UNO_DetailMasterScreen_v1.tt")]
+    public void The_uno_view_models_derive_from_the_base_and_do_not_repeat_its_members(string template)
+    {
+        string text = File.ReadAllText(Repo.Template(template));
+
+        Expect.Contains(text, "ViewModel : ViewModelBase");
+        Expect.DoesNotContain(text, "private string? _errorMessage;");
+        Expect.DoesNotContain(text, "public bool HasError =>");
     }
 
     [TestMethod]

@@ -12,4 +12,4 @@ The table templates (`WinUI3_MasterScreen`, `WinUI3_DetailScreen`, `WinUI3_Detai
 
 Namespaces and folders follow the project: `ViewNamespace` (default `<AppNamespace>.Views`), `ViewModelNamespace`, `ViewsFolder` and `ViewModelsFolder`.
 
-The three table view models derive from `ViewModelBase` and no longer repeat `ErrorMessage` and `HasError`; the list view model's `LoadAsync` runs through `RunBusyAsync`. The detail dialogs do not show the overlay (a save is quick and has its own error bar). The Uno group (`UNO_EssentialControls`) has the pager, the sort store and the formatter but not the base class or the overlay yet.
+The three table view models derive from `ViewModelBase` and no longer repeat `ErrorMessage` and `HasError`; the list view model's `LoadAsync` runs through `RunBusyAsync`. The detail dialogs do not show the overlay (a save is quick and has its own error bar). The Uno group (`UNO_EssentialControls`) writes the same files.
