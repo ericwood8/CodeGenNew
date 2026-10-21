@@ -522,7 +522,7 @@ public class <#= table #>ChildGridHeader
     public string Column { get; init; } = "";
 }
 
-public partial class <#= table #>DetailMasterViewModel : ObservableObject
+public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 {
     private readonly <#= contextType #> _context;
     private readonly <#= table #>Repo _repo;
@@ -712,11 +712,6 @@ public partial class <#= table #>DetailMasterViewModel : ObservableObject
 <#
         }
 #>
-
-    [NotifyPropertyChangedFor(nameof(HasError))]
-    [ObservableProperty]
-    private string? _errorMessage;
-    public bool HasError => ErrorMessage is not null;
 
 <#
         foreach (var c in shown)

@@ -390,7 +390,7 @@ public class TypeAheadTests
         Expect.Contains(vm, ".Where(r => r.CustomerName.ToString()!.ToLower().Contains(wanted))");
         Expect.Contains(vm, "Dictionary<int, string> customerNames = [];");
         Expect.Contains(vm, "var ids = rows.Select(r => r.CustomerId).OfType<int>().Distinct().ToList();");
-        Expect.Contains(vm, "public async Task LoadAsync()\n    {\n        await _gate.WaitAsync();\n        try { await LoadCoreAsync(); }");
+        Expect.Contains(vm, "public Task LoadAsync() => RunBusyAsync(async () =>\n    {\n        await _gate.WaitAsync();\n        try { await LoadCoreAsync(); }");
         Expect.DoesNotContain(vm, "CustomerIdChoices");
         Expect.Contains(vm, "InvoiceStatusIdChoices");
     }

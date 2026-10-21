@@ -330,7 +330,7 @@ public class <#= WinUI3Names.LookupOptionClass(table, "Detail", optionKey) #>
         }
 #>
 
-public partial class <#= table #>DetailViewModel : ObservableObject
+public partial class <#= table #>DetailViewModel : ViewModelBase
 {
     private readonly <#= contextType #> _context;
     private readonly <#= table #>Repo _repo;
@@ -403,11 +403,6 @@ public partial class <#= table #>DetailViewModel : ObservableObject
 <#
         }
 #>
-
-    [NotifyPropertyChangedFor(nameof(HasError))]
-    [ObservableProperty]
-    private string? _errorMessage;
-    public bool HasError => ErrorMessage is not null;
 
 <#
         foreach (var c in shown)

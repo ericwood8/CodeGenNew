@@ -24,8 +24,11 @@ public class WinUI3ControlsTests
         var files = await Files();
 
         CollectionAssert.AreEquivalent(
-            new[] { "ViewModels/GridSortStore.cs", "Views/CurrencyNumberFormatter.cs", "Views/PaginationBar.xaml", "Views/PaginationBar.xaml.cs" },
+            new[] { "ViewModels/ViewModelBase.cs", "ViewModels/GridSortStore.cs", "Views/BusyOverlay.xaml", "Views/BusyOverlay.xaml.cs", "Views/CurrencyNumberFormatter.cs", "Views/PaginationBar.xaml", "Views/PaginationBar.xaml.cs" },
             files.Keys.ToArray());
+        Expect.Contains(files["ViewModels/ViewModelBase.cs"], "public abstract partial class ViewModelBase : ObservableObject");
+        Expect.Contains(files["ViewModels/ViewModelBase.cs"], "protected async Task RunBusyAsync(Func<Task> work)");
+        Expect.Contains(files["Views/BusyOverlay.xaml"], "Visibility=\"{x:Bind IsActive, Mode=OneWay}\"");
         Expect.Contains(files["Views/PaginationBar.xaml"], "x:Class=\"Acme.App.Views.PaginationBar\"");
         Expect.Contains(files["Views/PaginationBar.xaml.cs"], "namespace Acme.App.Views;");
         Expect.Contains(files["Views/PaginationBar.xaml.cs"], "public sealed partial class PaginationBar : UserControl");
@@ -42,6 +45,19 @@ public class WinUI3ControlsTests
         Expect.Contains(files["Pages/PaginationBar.xaml"], "x:Class=\"Shop.Screens.PaginationBar\"");
         Expect.Contains(files["Logic/GridSortStore.cs"], "namespace Shop.Models;");
         Expect.Contains(files["Pages/CurrencyNumberFormatter.cs"], "namespace Shop.Screens;");
+    }
+
+    [TestMethod]
+    [DataRow("WinUI3_MasterScreen_v1.tt")]
+    [DataRow("WinUI3_DetailScreen_v1.tt")]
+    [DataRow("WinUI3_DetailMasterScreen_v1.tt")]
+    public void The_view_models_derive_from_the_base_and_do_not_repeat_its_members(string template)
+    {
+        string text = File.ReadAllText(Repo.Template(template));
+
+        Expect.Contains(text, "ViewModel : ViewModelBase");
+        Expect.DoesNotContain(text, "private string? _errorMessage;");
+        Expect.DoesNotContain(text, "public bool HasError =>");
     }
 
     [TestMethod]

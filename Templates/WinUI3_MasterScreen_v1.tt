@@ -281,6 +281,8 @@
                     NextClicked="OnNextClick"
                     PageSizeChanged="OnPageSizeChanged" />
             </Border>
+
+            <views:BusyOverlay Grid.RowSpan="2" IsActive="{x:Bind ViewModel.IsBusy, Mode=OneWay}" />
         </Grid>
     </Grid>
 </Page>
@@ -519,17 +521,12 @@ public sealed record <#= table #>KeyChoice(object? Id, string Name);
 <#
         }
 #>
-public partial class <#= table #>ListViewModel : ObservableObject
+public partial class <#= table #>ListViewModel : ViewModelBase
 {
     private readonly <#= contextType #> _context;
     private readonly <#= table #>Repo _repo;
 
     public ObservableCollection<<#= table #>ListRow> Rows { get; } = [];
-
-    [NotifyPropertyChangedFor(nameof(HasError))]
-    [ObservableProperty]
-    private string? _errorMessage;
-    public bool HasError => ErrorMessage is not null;
 
     /// <summary> The page sizes the person can pick under the grid (PaginationBar). </summary>
     public static readonly int[] PageSizeChoices = [10, 20, 50, 100];
@@ -665,17 +662,24 @@ public partial class <#= table #>ListViewModel : ObservableObject
     // A DbContext is not thread-safe: a load and the suggestions of a type-ahead take turns.
     private readonly System.Threading.SemaphoreSlim _gate = new(1, 1);
 
-    public async Task LoadAsync()
+    public Task LoadAsync() => RunBusyAsync(async () =>
     {
         await _gate.WaitAsync();
         try { await LoadCoreAsync(); }
         finally { _gate.Release(); }
-    }
+    });
+
+<#
+        }
+        else
+        {
+#>
+    public Task LoadAsync() => RunBusyAsync(LoadCoreAsync);
 
 <#
         }
 #>
-    public async Task <#= anyAhead ? "LoadCoreAsync" : "LoadAsync" #>()
+    public async Task LoadCoreAsync()
     {
         ErrorMessage = null;
         Rows.Clear();
