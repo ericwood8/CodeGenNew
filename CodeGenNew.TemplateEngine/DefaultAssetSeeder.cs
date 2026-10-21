@@ -163,6 +163,7 @@ public static class DefaultAssetSeeder
         "FS_Rop_v1.tt", "FS_Rop_v1.tt.config",
         "WinUI3_DirectoryListing_v1.tt", "WinUI3_DirectoryListing_v1.tt.config",
         "WinUI3_EssentialApp_v1.tt", "WinUI3_EssentialApp_v1.tt.config",
+        "WinUI3_EssentialControls_v1.tt", "WinUI3_EssentialControls_v1.tt.config",
         "WinUI3_EssentialMainWindow_v1.tt", "WinUI3_EssentialMainWindow_v1.tt.config",
         "WinUI3_EssentialProject_v1.tt", "WinUI3_EssentialProject_v1.tt.config",
         "TSX_EssentialShell_v1.tt", "TSX_EssentialShell_v1.tt.config",

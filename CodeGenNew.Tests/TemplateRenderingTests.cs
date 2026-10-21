@@ -415,7 +415,7 @@ public class TemplateRenderingTests
         var files = GeneratedFiles.Split(await Render("WinUI3_MasterScreen_v1.tt", Sample.DonateLeave()))
             .ToDictionary(f => Path.GetFileName(f.RelativePath));
 
-        Assert.HasCount(6, files); // the page, its code-behind, its ViewModel, the shared PaginationBar (xaml + code-behind) and the saved-sort store
+        Assert.HasCount(3, files); // the page, its code-behind and its ViewModel (the shared controls come from the Controls essentials group)
         string xaml = files["E_DonateLeaveListPage.xaml"].Content;
         string codeBehind = files["E_DonateLeaveListPage.xaml.cs"].Content;
         string viewModel = files["E_DonateLeaveListViewModel.cs"].Content;
@@ -559,7 +559,7 @@ public class TemplateRenderingTests
         var files = GeneratedFiles.Split(await Render("WinUI3_DetailMasterScreen_v1.tt", Sample.DepartmentWithTeams()))
             .ToDictionary(f => Path.GetFileName(f.RelativePath));
 
-        Assert.HasCount(5, files); // the page/dialog, its code-behind, its ViewModel, and the shared PaginationBar (xaml + code-behind)
+        Assert.HasCount(3, files); // the page/dialog, its code-behind and its ViewModel (the shared controls come from the Controls essentials group)
         string xaml = files["DepartmentDetailMasterDialog.xaml"].Content;
         string codeBehind = files["DepartmentDetailMasterDialog.xaml.cs"].Content;
         string viewModel = files["DepartmentDetailMasterViewModel.cs"].Content;

@@ -111,25 +111,12 @@ public class PagedGridTests
         Expect.Contains(files, "PageNumber = TotalPages;");
         Expect.Contains(files, "public async Task ChangePageSizeAsync(int size)");
         Expect.Contains(files, "public string PageLabel => !HasLoaded ? \"\" : TotalRows == 0 ? \"Nothing found.\" : $\"Page {PageNumber} of {TotalPages} ({TotalRows} rows)\";");
-        // the bar and the page that uses it
-        Expect.Contains(files, "<ComboBox x:Name=\"PageSizeBox\" Width=\"80\" AutomationProperties.Name=\"Rows per page\" SelectionChanged=\"OnPageSizeSelected\" />");
-        Expect.Contains(files, "public event EventHandler<int>? PageSizeChanged;");
+        // the bar (written once by the Controls group) and the page that uses it
+        string bar = string.Join("\n", (await WinUI3ControlsTests.Files()).Values);
+        Expect.Contains(bar, "<ComboBox x:Name=\"PageSizeBox\" Width=\"80\" AutomationProperties.Name=\"Rows per page\" SelectionChanged=\"OnPageSizeSelected\" />");
+        Expect.Contains(bar, "public event EventHandler<int>? PageSizeChanged;");
         Expect.Contains(files, "PageSizeChanged=\"OnPageSizeChanged\"");
         Expect.Contains(files, "private async void OnPageSizeChanged(object? sender, int size) => await ViewModel.ChangePageSizeAsync(size);");
-    }
-
-    [TestMethod]
-    public void The_two_winui3_templates_that_write_the_pagination_bar_write_the_same_one()
-    {
-        static string Bar(string file)
-        {
-            string text = File.ReadAllText(Repo.Template(file)).ReplaceLineEndings("\n");
-            int start = text.IndexOf("/PaginationBar.xaml@@@", StringComparison.Ordinal);
-            const string last = "OnNextClick(object sender, RoutedEventArgs e) => NextClicked?.Invoke(this, e);\n}\n";
-            return text[start..(text.IndexOf(last, start, StringComparison.Ordinal) + last.Length)];
-        }
-
-        Assert.AreEqual(Bar("WinUI3_MasterScreen_v1.tt"), Bar("WinUI3_DetailMasterScreen_v1.tt"));
     }
 
     [TestMethod]

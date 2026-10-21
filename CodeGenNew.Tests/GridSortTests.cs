@@ -166,7 +166,7 @@ public class GridSortTests
         string xaml = files.Single(f => f.RelativePath.EndsWith("ListPage.xaml")).Content;
         string page = files.Single(f => f.RelativePath.EndsWith("ListPage.xaml.cs")).Content;
         string vm = files.Single(f => f.RelativePath.EndsWith("ListViewModel.cs")).Content;
-        string store = files.Single(f => f.RelativePath.EndsWith("GridSortStore.cs")).Content;
+        string store = (await WinUI3ControlsTests.Files())["ViewModels/GridSortStore.cs"];
 
         Expect.Contains(xaml, "<Button x:Name=\"SortHeaderDescription\"");
         Expect.Contains(xaml, "Click=\"OnSortHeaderClick\"");

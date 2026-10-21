@@ -553,39 +553,5 @@ public partial class <#= table #>DetailViewModel : ObservableObject
     }
 }
 <#
-        if (currencyColumns.Count > 0)
-        {
-#>
-@@@FILE <#= viewsFolder #>/CurrencyNumberFormatter.cs@@@
-using Windows.Globalization.NumberFormatting;
-
-namespace <#= viewNamespace #>;
-
-// Shows a number as currency, but reads it with OR without the currency symbol. A plain CurrencyFormatter only parses text that
-// includes the symbol, so typing 7777.77 into a currency NumberBox was silently thrown away. NumberBox needs one object that both
-// formats (INumberFormatter2) and parses (INumberParser).
-public sealed partial class CurrencyNumberFormatter : INumberFormatter2, INumberParser
-{
-    private readonly CurrencyFormatter _currency;
-    private readonly DecimalFormatter _plain;
-
-    public CurrencyNumberFormatter(string currencyCode, int fractionDigits)
-    {
-        _currency = new CurrencyFormatter(currencyCode) { FractionDigits = fractionDigits };
-        _plain = new DecimalFormatter { FractionDigits = fractionDigits };
-    }
-
-    public string FormatInt(long value) => _currency.FormatInt(value);
-    public string FormatUInt(ulong value) => _currency.FormatUInt(value);
-    public string FormatDouble(double value) => _currency.FormatDouble(value);
-
-    public long? ParseInt(string text) => _currency.ParseInt(text) ?? _plain.ParseInt(text);
-    public ulong? ParseUInt(string text) => _currency.ParseUInt(text) ?? _plain.ParseUInt(text);
-    public double? ParseDouble(string text) => _currency.ParseDouble(text) ?? _plain.ParseDouble(text);
-}
-<#
-        }
-#>
-<#
     }
 #>

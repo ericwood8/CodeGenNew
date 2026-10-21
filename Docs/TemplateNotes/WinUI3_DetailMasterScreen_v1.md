@@ -10,7 +10,8 @@ Department's Teams, a TimeSheet's lines):
     Views/<TableName>DetailMasterDialog.xaml
     Views/<TableName>DetailMasterDialog.xaml.cs
     ViewModels/<TableName>DetailMasterViewModel.cs
-    Views/PaginationBar.xaml and .xaml.cs   the Previous/Next bar the list pages use (same file for every table)
+
+`Views/PaginationBar` and `Views/CurrencyNumberFormatter.cs` come from the `Controls` essentials group (`WinUI3_EssentialControls`), not from this template.
 
 Per the project's own answer on this ("just have the generated code assume all are grids and the
 developer can cut out what grids are not needed"): EVERY child table gets a grid, unconditionally -

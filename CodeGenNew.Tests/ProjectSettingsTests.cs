@@ -285,17 +285,16 @@ public class ProjectSettingsTests
     [TestMethod]
     [DataRow("WinUI3_MasterScreen_v1.tt")]
     [DataRow("WinUI3_DetailMasterScreen_v1.tt")]
-    public async Task The_list_and_detail_master_templates_also_write_the_shared_PaginationBar(string template)
+    public async Task The_list_and_detail_master_templates_use_the_PaginationBar_without_writing_it(string template)
     {
         var project = ProjectSettings.Parse("ProjectName=Acme");
 
         var result = await Repo.Cache.RunAsync(Repo.Template(template), Sample.OrderWithLines(), project);
 
         Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
-        var files = GeneratedFiles.Split(result.GeneratedText!).ToDictionary(f => f.RelativePath.Replace('\\', '/'));
-        Expect.Contains(files["Views/PaginationBar.xaml"].Content, "x:Class=\"Acme.App.Views.PaginationBar\"");
-        Expect.Contains(files["Views/PaginationBar.xaml.cs"].Content, "namespace Acme.App.Views;");
-        Expect.Contains(files["Views/PaginationBar.xaml.cs"].Content, "public sealed partial class PaginationBar : UserControl");
+        var files = GeneratedFiles.Split(result.GeneratedText!).Select(f => Path.GetFileName(f.RelativePath)).ToList();
+        CollectionAssert.DoesNotContain(files, "PaginationBar.xaml");
+        CollectionAssert.DoesNotContain(files, "PaginationBar.xaml.cs");
     }
 
     private static ProjectSettings With(params (string Key, string Value)[] values) =>
@@ -497,8 +496,9 @@ public class ProjectSettingsTests
         Expect.Contains(codeBehind, "ItemPriceBox.NumberFormatter = new CurrencyNumberFormatter(\"EUR\", 2);");
         Expect.Contains(codeBehind, "DiscountBox.NumberFormatter = new CurrencyNumberFormatter(\"EUR\", 4);");
         Expect.Contains(xaml, "Width=\"180\" HorizontalAlignment=\"Left\"");
-        // the formatter that reads a plain number as well as a currency one is written next to the dialog
-        string formatter = files["CurrencyNumberFormatter.cs"].Content;
+        // the formatter that reads a plain number as well as a currency one comes from the Controls group, not the dialog
+        Assert.IsFalse(files.ContainsKey("CurrencyNumberFormatter.cs"));
+        string formatter = (await WinUI3ControlsTests.Files())["Views/CurrencyNumberFormatter.cs"];
         Expect.Contains(formatter, "public sealed partial class CurrencyNumberFormatter : INumberFormatter2, INumberParser");
         Expect.Contains(formatter, "public double? ParseDouble(string text) => _currency.ParseDouble(text) ?? _plain.ParseDouble(text);");
         Expect.Contains(viewModel, "private double _itemPrice = double.NaN;");
