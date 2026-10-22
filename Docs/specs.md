@@ -17,7 +17,7 @@ It runs as a WinUI 3 desktop app (right-click a table), as a command-line tool (
 3. **Rules are data, not code.** What a template does for a soft-delete pair, an audit date or a lookup table is decided when the schema is read and stored on the model; a template branches on a property and never re-scans names itself.
 4. **Templates are the extension point.** Behaviour that belongs to a kind of file lives in its template; behaviour that belongs to a project lives in the project settings; behaviour shared by many templates lives in one helper in `CodeGenNew.Core`.
 5. **Output is reviewable and reproducible.** The same schema, settings and templates give the same files, byte for byte. A run can be previewed (`--dry-run`, `--diff`), a project's files are tracked so stale ones are found, and a file is only rewritten when its text changed.
-6. **A template never leaves a shipped sample different without saying so.** Eleven sample applications are regenerated from the templates; a template change that alters them is a deliberate, reviewed change.
+6. **A template never leaves a shipped sample different without saying so.** The sample applications are regenerated from the templates; a template change that alters them is a deliberate, reviewed change.
 
 ## 3. What it reads
 
@@ -27,7 +27,7 @@ Tables only. Views, keyless tables and routine metadata are not read.
 
 ## 4. What it writes
 
-About one hundred and eighty templates in groups named by the text before the first underscore, which also gives the file extension:
+The templates are in groups named by the text before the first underscore, which also gives the file extension:
 
 | Group | Writes |
 |---|---|
@@ -68,8 +68,8 @@ A template may write several files (`@@@FILE` markers), one file for a table, or
 
 ## 7. Quality bar
 
-- An automated suite of more than 800 tests: unit tests of the model and helpers, rendering tests of every template against hand-built tables, tests that parse generated documents with real parsers (the OpenAPI document, generated XAML), and live tests against SQL Server, PostgreSQL and MySQL that run only when their environment variables are set and otherwise report themselves as inconclusive.
-- The seven sample applications are regenerated and must come out unchanged; generated projects are built and run.
+- An automated test suite: unit tests of the model and helpers, rendering tests of every template against hand-built tables, tests that parse generated documents with real parsers (the OpenAPI document, generated XAML), and live tests against SQL Server, PostgreSQL and MySQL that run only when their environment variables are set and otherwise report themselves as inconclusive.
+- The sample applications are regenerated and must come out unchanged; generated projects are built and run.
 - `Docs/Verification` holds the scripts that check a running app (a scratch copy of the database, a UI Automation module for the desktop app, an API walk, an OpenAPI route check, recipes for the web front ends).
 - Continuous integration builds, tests and packs on Windows for every push.
 

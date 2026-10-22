@@ -59,7 +59,7 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 | `Python` | FastAPI over SQLAlchemy 2.0 and Pydantic 2 (`PY_`) | environment password, ASP.NET problem form, junction, CSV, gates and sign-in |
 | `Rust` | Axum and sqlx crate (`RS_`) | PostgreSQL, MySQL or SQLite (sqlx has no SQL Server driver); optional Tauri shell; no OData |
 
-Python and Rust have no EF context or routines: they write their own SQL for the database that was read and take `DialectInfo` and `SearchPlan` as the description of what search must do. Sign-in (`ApiAuth`, `UserTable`) is written for the API stacks (`API_UserDirectory`, `PY_UserDirectory`, `RS_UserDirectory`, each with a `set-password` command) and for every front end (`TSX_`, `TS_`, `BLZ_`, `UNO_EssentialAuth`); `Docs/Verification/Test-ApiSignIn.py` runs the same 55 checks against the ASP.NET, Python and Rust APIs. The per-stack notes are `Docs/TemplateNotes/UNO_Screens_v1.md`, `PY_Routes_v1.md` and the `RS_` notes.
+Python and Rust have no EF context or routines: they write their own SQL for the database that was read and take `DialectInfo` and `SearchPlan` as the description of what search must do. Sign-in (`ApiAuth`, `UserTable`) is written for the API stacks (`API_UserDirectory`, `PY_UserDirectory`, `RS_UserDirectory`, each with a `set-password` command) and for every front end (`TSX_`, `TS_`, `BLZ_`, `UNO_EssentialAuth`); `Docs/Verification/Test-ApiSignIn.py` runs the same checks against the ASP.NET, Python and Rust APIs. The per-stack notes are `Docs/TemplateNotes/UNO_Screens_v1.md`, `PY_Routes_v1.md` and the `RS_` notes.
 
 ## 4. The schema model
 
@@ -120,7 +120,7 @@ Python and Rust have no EF context or routines: they write their own SQL for the
 
 ## 8. Tests and verification
 
-`CodeGenNew.Tests` (MSTest, about 1,800 tests, about a minute without a database):
+`CodeGenNew.Tests` (MSTest, no database needed):
 
 | Kind | Examples | Needs a database |
 |---|---|---|
@@ -132,7 +132,7 @@ Python and Rust have no EF context or routines: they write their own SQL for the
 | Hygiene | `LeftoverNamesTests` (no private names), `SqlSecurityTests` (escaped search text, no statement built from text), a test that forbids double hyphens in templates | no |
 
 Two checks are not unit tests and are the ones to trust most:
-- **Samples unchanged.** Eleven sample applications (one per stack or database) are regenerated with `codegen generate --dry-run`; a refactor is correct only if every one reports 0 created and 0 updated. The samples live outside this repository.
+- **Samples unchanged.** The sample applications (one per stack or database) are regenerated with `codegen generate --dry-run`; a refactor is correct only if every one reports 0 created and 0 updated. The samples live outside this repository.
 - **Run it.** [Verification](Verification) has scripts that build a generated project, start it against a scratch copy of the database and use it: an API create/read/update/delete walk, an OpenAPI route check, a UI Automation click-through of the desktop app, and recipes for the Angular and React pages. A build cannot see a blank drop-down or a dialog that never closes.
 
 CI (`.github/workflows`) builds and tests on Windows, packs the tool, and builds the desktop app. [Examples/GettingStarted/Generated](../Examples/GettingStarted/Generated) holds the generated API of the getting-started shop, so the output can be read without running anything.
@@ -145,7 +145,7 @@ A generated project still needs a person for: collection navigation properties a
 
 These are the owner's open questions; the list is a draft to be edited by the owner before the review starts.
 
-1. **Generated SQL and user text.** [Security.md](Security.md) says where a value reaches the database as a bound parameter and where a table or column name is spliced into a statement as text. Values are bound parameters, `LIKE` wildcards are escaped inside the routines, and a sort column is chosen from a fixed list. Does that written account match what the code does, and does it leave anything out? Start with `SP_Search_v1.tt` and its PostgreSQL and MySQL variants, `SqlSecurityTests` and `Docs/Verification/Test-SearchHostileText.py`.
+1. **Generated SQL and user text (the owner is content with it).** [Security.md](Security.md) says where a value reaches the database as a bound parameter and where a table or column name is spliced into a statement as text. Values are bound parameters, `LIKE` wildcards are escaped inside the routines, and a sort column is chosen from a fixed list. Does that written account match what the code does, and does it leave anything out? Start with `SP_Search_v1.tt` and its PostgreSQL and MySQL variants, `SqlSecurityTests` and `Docs/Verification/Test-SearchHostileText.py`.
 2. **The template contract (the owner is content with it).** A template sees three objects (`Model` for the table, `Database` for the schema and `Project` for the settings) and a `.tt.config` file that says where it applies. The owner's view is that the key-shape rules (`Requires=SingleKey`, and the finer `PrimaryKeyShape` the model reports) are as detailed as databases are: a primary key can be an identity int, a GUID, a text code, several columns or none, and the generator has to tell them apart to write routes and screens that work. The review need not question that. The plumbing around those rules was simplified (2026-10-18): the dead `TableOnly` and `SqlServerOnly` settings are gone, `Scope` replaces `DatabaseOnly`, `NoDatabase` and the pair of "not per table" lines, `Requires` is one list in place of six true/false settings, `TemplateConfig.Check` is the one place the restrictions are checked (the menu and the CLI both call it), and a mistyped key is reported instead of ignored. A reviewer can judge whether the list of restrictions is the right one and whether `Check` leaves anything out.
 3. **Regeneration safety (decided).** A whole-project run keeps a generated file that was edited since the last run, or that no earlier run recorded, and reports it; `--force` overwrites it and `--write-beside` writes the new text next to it as `<file>.generated`. The owner's decision is that refuse-and-report is the right default. A reviewer need only check that nothing writes over an edited file without one of those two flags.
 4. **Four screen families from one model (decided).** WinUI 3, Angular, React and Blazor are written in parallel and must behave the same. Today the decisions are made once in Core (`FormModel`, `SearchPlan`, `DialectInfo`, `ColumnRules`, `ValueGuards`) and each stack's template writes the markup and the wiring. The owner's decision is to keep that seam and move more into Core objects or a shared `TemplateHelpers` class as the stacks grow. Two other seams were considered:

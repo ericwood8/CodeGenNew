@@ -56,7 +56,7 @@ CLI argument parsing is hand-rolled rather than pulling in a library, given the 
 
 ## What it generates
 
-One hundred and thirty-two templates ship in `Templates\` (the no-DB essentials groups described in [Docs/QuickStart.md](Docs/QuickStart.md) come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
+The templates ship in `Templates\` (the no-DB essentials groups described in [Docs/QuickStart.md](Docs/QuickStart.md) come on top). A table's right-click menu (or the CLI's `-T`) offers them grouped by the text before the first underscore.
 
 The templates are shown in 3 grids, one for each layer of an application.
 
@@ -238,7 +238,7 @@ CodeGenNew.slnx
 dotnet test CodeGenNew.Tests\CodeGenNew.Tests.csproj
 ```
 
-The suite needs **no database** (live PostgreSQL and MySQL integration tests run only when `CODEGENNEW_PG_*` / `CODEGENNEW_MYSQL_*` environment variables name a server, and are skipped otherwise). It covers the file-writing engine (`@@@FILE` splitting, unsafe paths, output naming), template discovery and versioning, the seeder (created / refreshed / kept-customized, and that **every file in `Templates\` is actually shipped**), the literal and display-column helpers, and it runs every shipped template against hand-built tables to check what it writes — the API, entity, validation, enum, repository, model, service, component and React-page rules, each template's refusals (composite keys, enum tables), and that changing a project setting changes the output. It takes about a minute, mostly compiling templates.
+The suite needs **no database** (live PostgreSQL and MySQL integration tests run only when `CODEGENNEW_PG_*` / `CODEGENNEW_MYSQL_*` environment variables name a server, and are skipped otherwise). It covers the file-writing engine (`@@@FILE` splitting, unsafe paths, output naming), template discovery and versioning, the seeder (created / refreshed / kept-customized, and that **every file in `Templates\` is actually shipped**), the literal and display-column helpers, and it runs every shipped template against hand-built tables to check what it writes — the API, entity, validation, enum, repository, model, service, component and React-page rules, each template's refusals (composite keys, enum tables), and that changing a project setting changes the output. Most of the time goes to compiling templates.
 
 ## Functionality Status
 
