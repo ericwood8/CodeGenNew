@@ -111,8 +111,9 @@
 
         // The child tables: each is a read-only grid under the form while a row is edited (as the React page does). The whole child table is read and filtered here by this row's key.
         // The child must have a client of its own: a plain table with a usable key, not a name / active table (whose API has no plain list).
+        // the project's DetailMasterTables, when it lists any, says which tables show their child tables
         var children = ChildGrid.For(Model, Project)
-            .Where(g => g.KeyColumn is not null && g.KeyType is not null && !g.IsNameActive && !Project.NoRepositoryFor(g.Table, default))
+            .Where(g => DatabaseModel.IsDetailMaster(Model, Project) && g.KeyColumn is not null && g.KeyType is not null && !g.IsNameActive && !Project.NoRepositoryFor(g.Table, default))
             .Select(g =>
             {
                 string childType = BlazorNames.TypeName(g.Table);

@@ -310,6 +310,10 @@ public class BlazorTests
             Expect.DoesNotContain(plain, "fieldset class=\"child-rows\"");
             Expect.DoesNotContain(File.ReadAllText(Path.Combine(output, "Shop.Blazor/Services/ProjectClient.cs")), "WithChildren");
 
+            // DetailMasterTables names the tables that show their child tables: Project is not on this list, so it gets a plain form
+            Expect.DoesNotContain(await Generate(("DetailMasterTables", "Region")), "<h3>Project Task</h3>");
+            Expect.Contains(await Generate(("DetailMasterTables", "Project")), "<h3>Project Task</h3>");
+
             string editable = await Generate(("EditableChildren", "Project.ProjectTask"));
             Expect.Contains(editable, "<fieldset class=\"child-rows\">");
             Expect.Contains(editable, "<InputSelect @bind-Value=\"line.RegionId\" aria-label=\"Region\">");
