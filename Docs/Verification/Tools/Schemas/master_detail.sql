@@ -1,0 +1,27 @@
+CREATE TABLE Region (
+    RegionId INTEGER PRIMARY KEY AUTOINCREMENT,
+    Name VARCHAR(40) NOT NULL,
+    Code VARCHAR(10) NOT NULL,
+    Population INTEGER NOT NULL,
+    Founded DATETIME NULL,
+    Note VARCHAR(50) NULL
+);
+
+CREATE TABLE Customer (
+    CustomerId INTEGER PRIMARY KEY AUTOINCREMENT,
+    RegionId INTEGER NOT NULL REFERENCES Region (RegionId),
+    Name VARCHAR(40) NOT NULL,
+    Email VARCHAR(80) NOT NULL,
+    CreditLimit DECIMAL(10,2) NOT NULL,
+    IsActive2 BOOLEAN NOT NULL,
+    Note VARCHAR(50) NULL
+);
+
+CREATE TABLE CustomerOrder (
+    CustomerOrderId INTEGER PRIMARY KEY AUTOINCREMENT,
+    CustomerId INTEGER NOT NULL REFERENCES Customer (CustomerId),
+    Reference VARCHAR(20) NOT NULL,
+    OrderDate DATETIME NOT NULL,
+    Total DECIMAL(10,2) NOT NULL,
+    Notes VARCHAR(100) NULL
+);
