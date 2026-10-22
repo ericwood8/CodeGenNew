@@ -39,6 +39,8 @@ public static partial class ProjectBuilder
             return custom.Length == 0 || custom.EqualsIgnoreCase("none") ? null : custom;
         if (step == "test" && stack.EqualsIgnoreCase("Api") && project.ApiTests)
             return $"dotnet test \"{Path.GetRelativePath(project.OutputFolderOf("api"), project.OutputFolderOf("apitests"))}\" -v q";
+        if (step == "test" && stack.EqualsIgnoreCase("Blazor") && project.BlazorTests)
+            return $"dotnet test \"{Path.GetRelativePath(project.OutputFolderOf("blazor"), project.OutputFolderOf("blazortests"))}\" -v q";
         return DefaultCommand(stack, step);
     }
 

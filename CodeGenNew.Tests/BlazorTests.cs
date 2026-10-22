@@ -37,7 +37,7 @@ public class BlazorTests
     {
         Assert.AreEqual("Blazor", EssentialsCatalog.FindStack("blazor"));
         var names = EssentialsCatalog.Groups(Repo.TemplatesDirectory, "Blazor").Select(g => g.Name).ToList();
-        CollectionAssert.AreEquivalent(new[] { "Auth", "Git", "Layout", "OData", "Project", "Support" }, names);
+        CollectionAssert.AreEquivalent(new[] { "Auth", "Git", "Layout", "OData", "Project", "Support", "Tests" }, names);
     }
 
     [TestMethod]
@@ -331,5 +331,16 @@ public class BlazorTests
             foreach (string path in new[] { database, output })
                 try { if (Directory.Exists(path)) Directory.Delete(path, true); else File.Delete(path); } catch (IOException) { }
         }
+    }
+
+    [TestMethod]
+    public void BlazorTests_adds_the_page_test_template_a_test_folder_and_a_test_command()
+    {
+        CollectionAssert.Contains(Project(("BlazorTests", "true")).ImpliedPlanTemplates.ToArray(), "BLZ_Test");
+        CollectionAssert.DoesNotContain(Project().ImpliedPlanTemplates.ToArray(), "BLZ_Test");
+        Assert.AreEqual("Acme.Blazor.Tests", Project().OutputFolderOf("blazortests"));
+        Assert.AreEqual("tests", Project(("OutputBlazorTests", "tests")).OutputFolderOf("blazortests"));
+        Expect.Contains(ProjectBuilder.CommandFor(Project(("BlazorTests", "true")), "Blazor", "test")!, "Acme.Blazor.Tests");
+        Assert.IsNull(ProjectBuilder.CommandFor(Project(), "Blazor", "test"));
     }
 }

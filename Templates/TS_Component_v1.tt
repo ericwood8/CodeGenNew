@@ -611,6 +611,7 @@
         }
         spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + (rowSpecs.Count > 0 ? "\n" + string.Join("\n", rowSpecs) : "") + (columnSpecs.Count > 0 ? "\n" + string.Join("\n", columnSpecs) : "") + "\n});\n");
         if (writeRoles.Count > 0) spec.Append(WriteRoleSpec.For(Project, cls, writeRoles));
+        if (testRow is not null) spec.Append(testRow.AngularOpenedFromAnotherPage(title, cls));
 
         // ================= ts
         // The screen is a short class on PagedCrudScreen (components/crud-screen.ts, written by TS_EssentialCrud): the rows, the open row, add / edit / submit / delete / clone / cancel, the way back to

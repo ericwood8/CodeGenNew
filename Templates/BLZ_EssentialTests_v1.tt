@@ -1,0 +1,195 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_EssentialTests_v1.tt
+    // Generates: <ProjectName>.Blazor.Tests.csproj, FakeApi.cs and PageTestContext.cs   (no table, no database: an essentials group; the output folder is the test project's own folder, OutputBlazorTests)
+    // The project the per-table BLZ_Test classes live in. FakeApi stands in for the API (a list answers the rows it was given, a read by key the row, every write 204, and it remembers what was sent);
+    // PageTestContext is the bUnit context every test class derives from: the HttpClient over FakeApi, the app's clients, a loose JS runtime and, with Auth=true, the sign-in (SignIn(role)).
+    // Writes nothing unless the project sets BlazorTests=true. Settings: BlazorTests, OutputBlazorTests, OutputBlazor, Auth. Full notes: Docs/TemplateNotes/BLZ_Test_v1.md
+    // ==========================================================================================
+    if (Project.BlazorTests)
+    {
+        string ns = BlazorNames.Namespace(Project);
+        string testsFolder = Project.OutputFolderOf("blazortests");
+        string appFolder = Project.OutputFolderOf("blazor");
+        string appPath = Path.GetRelativePath(testsFolder, appFolder).Replace('\\', '/');
+        string appProject = (Project.ProjectName ?? "MyApp") + ".Blazor.csproj";
+#>
+@@@FILE <#= ns #>.Tests.csproj@@@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RootNamespace><#= ns #>.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MSTest" Version="4.0.2" />
+    <PackageReference Include="bunit" Version="2.12.5" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="<#= appPath #>/<#= appProject #>" />
+  </ItemGroup>
+
+</Project>
+@@@FILE FakeApi.cs@@@
+using System.Net;
+using System.Text;
+
+namespace <#= ns #>.Tests;
+
+/// <summary> Stands in for the API: a read answers the text given for the end of its path (an empty list when none), a failure the status given, a write answers 204, and every call is remembered. </summary>
+public class FakeApi : HttpMessageHandler
+{
+    private readonly Dictionary<string, string> answers = [];
+    private readonly Dictionary<string, HttpStatusCode> failures = [];
+
+    /// <summary> The calls made so far: the method, the path with its query and the body sent. </summary>
+    public List<(HttpMethod Method, string Path, string Body)> Requests { get; } = [];
+
+    /// <summary> The role the sign-in answers with. </summary>
+    public string Role { get; set; } = "Tester";
+
+    /// <summary> A read whose path ends with <paramref name="pathEnd"/> answers <paramref name="json"/>. </summary>
+    public FakeApi Answer(string pathEnd, string json)
+    {
+        answers[pathEnd] = json;
+        return this;
+    }
+
+    /// <summary> A read whose path ends with <paramref name="pathEnd"/> fails with this status. </summary>
+    public FakeApi Fail(string pathEnd, HttpStatusCode status)
+    {
+        failures[pathEnd] = status;
+        return this;
+    }
+
+    /// <summary> The answer of an OData list: <paramref name="rowsJson"/> (the rows, separated by commas) and their count. </summary>
+    public static string ODataPage(string rowsJson, int count) => "{ \"value\": [" + rowsJson + "], \"@odata.count\": " + count + " }";
+
+    /// <summary> The answer of a search: one page holding <paramref name="rowsJson"/> (the rows, separated by commas). </summary>
+    public static string Page(string rowsJson, int count) =>
+        "{ \"items\": [" + rowsJson + "], \"page\": 1, \"pageSize\": 10, \"totalCount\": " + count + ", \"totalPages\": 1 }";
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        string path = request.RequestUri!.AbsolutePath;
+        string body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
+        Requests.Add((request.Method, request.RequestUri.PathAndQuery, body));
+        if (request.Method == HttpMethod.Post && path.EndsWith("/auth/login", StringComparison.OrdinalIgnoreCase))
+            return Json("{ \"token\": \"abc\", \"expiresUtc\": \"2999-01-01T00:00:00Z\", \"user\": { \"name\": \"Pat\", \"role\": \"" + Role + "\", \"ownerId\": null } }");
+        if (request.Method != HttpMethod.Get)
+            return new HttpResponseMessage(HttpStatusCode.NoContent);
+        if (failures.FirstOrDefault(f => path.EndsWith(f.Key, StringComparison.OrdinalIgnoreCase)) is { Key: not null } failure)
+            return new HttpResponseMessage(failure.Value);
+        return Json(answers.FirstOrDefault(a => path.EndsWith(a.Key, StringComparison.OrdinalIgnoreCase)).Value ?? (path.StartsWith("/odata/", StringComparison.OrdinalIgnoreCase) ? "{ \"value\": [] }" : "[]"));
+    }
+
+    private static HttpResponseMessage Json(string json) => new(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+}
+@@@FILE PageTestContext.cs@@@
+using Bunit;
+<# if (Project.Auth) { #>
+using Microsoft.AspNetCore.Components.Authorization;
+<# } #>
+using Microsoft.Extensions.DependencyInjection;
+using <#= ns #>.Services;
+
+namespace <#= ns #>.Tests;
+
+/// <summary> What every page test needs: the app's clients over <see cref="FakeApi"/> and a JS runtime that accepts any call (the pages keep the shown columns and the sorts in the browser's storage). </summary>
+public abstract class PageTestContext : BunitContext
+{
+    protected FakeApi Api { get; } = new();
+
+    protected PageTestContext()
+    {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        Services.AddScoped(_ => new HttpClient(Api) { BaseAddress = new Uri("http://localhost") });
+        Services.AddApiClients();
+<# if (Project.Auth) { #>
+        Services.AddAuthorizationCore();
+        Services.AddCascadingAuthenticationState();
+        Services.AddScoped<AuthSession>();
+        Services.AddScoped<AuthenticationStateProvider, SessionAuthenticationStateProvider>();
+<# } #>
+    }
+<# if (Project.Auth) { #>
+
+    /// <summary> Signs in as someone with this role, as the sign-in page would. </summary>
+    protected void SignIn(string role)
+    {
+        Api.Role = role;
+        Services.GetRequiredService<AuthSession>().LoginAsync(Services.GetRequiredService<HttpClient>(), "pat", "secret").GetAwaiter().GetResult();
+    }
+<# } #>
+
+    [TestCleanup]
+    public void Cleanup() => Dispose();
+}
+<#
+    }
+#>
+<#
+    if (Project.BlazorTests && Project.Dashboard)
+    {
+        string ns2 = BlazorNames.Namespace(Project);
+        string symbol = Project.CurrencySymbol.Replace("\\", "\\\\").Replace("\"", "\\\"");
+#>
+@@@FILE DashboardPageTests.cs@@@
+using Bunit;
+using System.Net;
+using <#= ns2 #>.Pages;
+
+namespace <#= ns2 #>.Tests;
+
+[TestClass]
+public class DashboardPageTests : PageTestContext
+{
+    private const string Widgets = """
+        { "widgets": [
+          { "id": "count", "kind": "count", "title": "Sample count", "table": "T", "route": "", "isMoney": false, "points": [ { "label": "Rows", "value": 7 } ], "rows": [] },
+          { "id": "money", "kind": "money", "title": "Sample money", "table": "T", "route": "", "isMoney": true, "points": [ { "label": "Total", "value": 1234.5 } ], "rows": [] },
+          { "id": "top", "kind": "topBy", "title": "Sample bars", "table": "T", "route": "", "isMoney": false, "points": [ { "label": "First place", "value": 9 }, { "label": "Second place", "value": 3 } ], "rows": [] },
+          { "id": "recent", "kind": "recent", "title": "Sample recent", "table": "T", "route": "", "isMoney": false, "points": [], "rows": [ { "label": "Newest row", "detail": "2026-01-01" } ] }
+        ] }
+        """;
+
+    [TestMethod]
+    public void Shows_a_card_a_money_card_a_bar_list_and_the_recent_rows()
+    {
+        Api.Answer("/api/dashboard", Widgets);
+        var page = Render<Dashboard>();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "Sample count"));
+        StringAssert.Contains(page.Find("section[aria-label='Sample count']").TextContent, "7");
+        StringAssert.Contains(page.Find("section[aria-label='Sample money']").TextContent, "<#= symbol #>1,234.50");
+        StringAssert.Contains(page.Find("section[aria-label='Sample bars']").TextContent, "First place");
+        StringAssert.Contains(page.Find("section[aria-label='Sample recent']").TextContent, "Newest row");
+    }
+
+    [TestMethod]
+    public void Says_so_when_the_schema_suggests_nothing_to_show()
+    {
+        Api.Answer("/api/dashboard", "{ \"widgets\": [] }");
+        var page = Render<Dashboard>();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "The schema suggests nothing to show."));
+    }
+
+    [TestMethod]
+    public void Says_so_when_the_dashboard_cannot_be_loaded()
+    {
+        Api.Fail("/api/dashboard", HttpStatusCode.InternalServerError);
+        var page = Render<Dashboard>();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "Failed to load the dashboard."));
+    }
+}
+<#
+    }
+#>

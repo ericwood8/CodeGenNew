@@ -198,6 +198,8 @@ public static class ProjectGenerator
             scope.Add("Sql");
         if (scope.Contains("Api"))
             scope.Add("ApiTests");
+        if (scope.Contains("Blazor"))
+            scope.Add("BlazorTests");
 
         var kept = new List<ManifestEntry>();
         foreach (var old in manifest.Entries)

@@ -1,0 +1,99 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_Test_v1.tt
+    // Generates: <Table>PageTests.cs   (the output folder is the Blazor test project, OutputBlazorTests; the BLZ_EssentialTests group writes the project around it)
+    // bUnit tests of the pages BLZ_Page writes for the table, over FakeApi (no server, no database): the REST page, and with OData=true a second class for the OData page. Each checks the heading, a row
+    // the server returns, the Edit button opening the dialog, Save sending the row in a PUT and ?edit=<key> opening a row. A master-detail page also checks that each read-only child grid shows the
+    // child rows of the row being edited. The row is GridTestRow's, the same one the React and Angular tests use; a table with no column to recognise a row by has the heading test only.
+    // With Auth=true the test signs in first, as a role that may read and write the table. Writes nothing unless the project sets BlazorTests=true.
+    // Full notes: Docs/TemplateNotes/BLZ_Test_v1.md
+    // ==========================================================================================
+    if (!Project.BlazorTests)
+    {
+    }
+    else if (BlazorNames.Refusal(Model, Project) is { } reason)
+    {
+        Error($"BLZ_Test writes no test for [{Model.SchemaName}].[{Model.TableName}]: {reason}");
+    }
+    else
+    {
+        string ns = BlazorNames.Namespace(Project);
+        var form = FormModel.For(Model, Project);
+        var row = GridTestRow.For(form, ChosenGridColumns.For(form));
+        string type = BlazorNames.TypeName(Model.TableName);
+        string title = form.Title;
+        string apiRoute = BlazorNames.ApiRoute(Model.TableName);
+        string set = "/odata/" + ODataNames.SetName(Model.TableName);
+        string keyText = row is null ? "1" : Uri.EscapeDataString(row.KeyText);
+        IReadOnlyList<string> readRoles = Project.Auth ? WriteRolePlan.ReadFor(Project, Model) : new List<string>();
+        IReadOnlyList<string> writeRoles = Project.Auth ? WriteRolePlan.For(Project, Model) : new List<string>();
+        string role = writeRoles.Count > 0 ? WriteRoleSpec.AllowedRole(writeRoles) : readRoles.Count > 0 ? readRoles[0] : "Tester";
+        string signIn = Project.Auth ? $"        SignIn(\"{role.Replace("\\", "\\\\").Replace("\"", "\\\"")}\");\n" : "";
+        string parentKeyJson = form.TextKey && row is not null ? "\"" + row.KeyText + "\"" : "1";
+        var children = ChildGrid.For(Model, Project)
+            .Where(g => DatabaseModel.IsDetailMaster(Model, Project) && g.KeyColumn is not null && g.KeyType is not null && !g.IsNameActive && !Project.NoRepositoryFor(g.Table, default) && !g.IsEditable)
+            .ToList();
+        var o = new System.Text.StringBuilder();
+        o.Append($"using Bunit;\nusing Microsoft.AspNetCore.Components;\nusing Microsoft.Extensions.DependencyInjection;\nusing {ns}.Pages;\n\nnamespace {ns}.Tests;\n");
+
+        void Tests(bool odata)
+        {
+            string pageType = odata ? BlazorNames.ODataPageName(Model.TableName) : type + "Page";
+            string route = "/" + (odata && !Project.ODataReplacesScreens ? AngularNames.ODataRoute(Model.TableName) : ScreenNames.Route(Model.TableName));
+            string listPath = odata ? set : "/search";
+            string listAnswer = odata ? "FakeApi.ODataPage(Row, 1)" : "FakeApi.Page(Row, 1)";
+            string keyPath = (odata ? set : apiRoute) + "/" + keyText;
+            o.Append($"\n[TestClass]\npublic class {type}{(odata ? "ODataPage" : "Page")}Tests : PageTestContext\n{{\n");
+            if (row is not null)
+                o.Append($"    private const string Row = \"\"\"{row.Json}\"\"\";\n\n");
+            o.Append($"    private IRenderedComponent<{pageType}> Open()\n    {{\n");
+            if (row is not null)
+                o.Append($"        Api.Answer(\"{listPath}\", {listAnswer});\n" + (odata ? $"        Api.Answer(\"{keyPath}\", Row);\n" : "") + signIn);
+            else
+                o.Append($"        Api.Answer(\"{listPath}\", {(odata ? "FakeApi.ODataPage(\"\", 0)" : "FakeApi.Page(\"\", 0)")});\n" + signIn);
+            o.Append($"        return Render<{pageType}>();\n    }}\n\n");
+            if (row is not null)
+                o.Append($"    private IRenderedComponent<{pageType}> OpenWithRow()\n    {{\n        var page = Open();\n        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, \"{row.Marker}\"));\n        return page;\n    }}\n\n");
+            o.Append($"    [TestMethod]\n    public void Shows_the_heading()\n    {{\n        var page = Open();\n        StringAssert.Contains(page.Markup, \"<h1>{title.Pluralize()}</h1>\");\n    }}\n");
+            if (row is not null)
+            {
+                o.Append($"\n    [TestMethod]\n    public void Shows_a_row_the_server_returns() => OpenWithRow();\n");
+                o.Append($"\n    [TestMethod]\n    public void Opens_the_{BlazorNames.Identifier(Model.TableName).ToLowerInvariant()}_dialog_from_the_Edit_button_of_a_row()\n    {{\n");
+                o.Append("        var page = OpenWithRow();\n        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Edit\").Click();\n");
+                o.Append($"        page.WaitForAssertion(() => StringAssert.Contains(page.Find(\"[role=dialog]\").TextContent, \"Edit {title}\"));\n    }}\n");
+                o.Append($"\n    [TestMethod]\n    public void Fills_the_dialog_with_the_row_and_sends_it_in_a_PUT_on_Save()\n    {{\n");
+                o.Append("        var page = OpenWithRow();\n        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Edit\").Click();\n");
+                o.Append($"        page.WaitForAssertion(() => Assert.IsTrue(page.FindAll(\"[role=dialog] input\").Any(i => i.GetAttribute(\"value\") == \"{row.Marker}\")));\n");
+                o.Append("        page.Find(\"[role=dialog] button[type=submit]\").Click();\n");
+                o.Append($"        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Put && r.Body.Contains(\"{row.Marker}\"))));\n    }}\n");
+                o.Append($"\n    [TestMethod]\n    public void Opens_the_row_named_by_the_edit_query_parameter()\n    {{\n");
+                o.Append($"        Services.GetRequiredService<NavigationManager>().NavigateTo(\"{route}?edit={keyText}\");\n");
+                o.Append($"        Api.Answer(\"{keyPath}\", Row);\n");
+                o.Append("        var page = Open();\n        page.WaitForAssertion(() => StringAssert.Contains(page.Find(\"[role=dialog]\").TextContent, \"Edit " + title + "\"));\n    }\n");
+                foreach (var child in children)
+                {
+                    bool served = odata && ODataPlan.ServesByName(child.Table, Project);
+                    string childPath = (served ? "/odata/" : "/api/") + child.ApiRoute;
+                    string childRows = "[" + ChildTestRow.Json(child, parentKeyJson) + "]";
+                    string answer = (served ? "{ \"value\": " + childRows + " }" : childRows).Replace("\\", "\\\\").Replace("\"", "\\\"");
+                    o.Append($"\n    [TestMethod]\n    public void Shows_the_{BlazorNames.Identifier(child.Name).ToLowerInvariant()}_rows_of_the_row_in_the_dialog()\n    {{\n");
+                    o.Append($"        Api.Answer(\"{childPath}\", \"{answer}\");\n");
+                    o.Append("        var page = OpenWithRow();\n        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Edit\").Click();\n");
+                    o.Append("        page.WaitForAssertion(() => Assert.AreEqual(1, page.FindAll(\"[role=dialog] tbody tr\").Count));\n    }\n");
+                }
+            }
+            o.Append("}\n");
+        }
+
+        Tests(false);
+        if (ODataPlan.Serves(Model, Project))
+            Tests(true);
+        Write("@@@FILE " + type + "PageTests.cs@@@\n" + o);
+    }
+#>

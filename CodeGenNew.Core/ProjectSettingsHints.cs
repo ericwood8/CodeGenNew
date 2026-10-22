@@ -7,7 +7,7 @@ public static class ProjectSettingsHints
     /// <summary> The settings that are true or false: the settings screen shows a check box for each. </summary>
     public static IReadOnlySet<string> BooleanKeys { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiAuth", "Dtos", "Dashboard", "DashboardStrip", "Auth"
+        "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "BlazorTests", "ApiAuth", "Dtos", "Dashboard", "DashboardStrip", "Auth"
     };
 
     /// <summary> The caption of a setting with the words apart: "DashboardStrip" -> "Dashboard Strip". </summary>
@@ -49,6 +49,7 @@ public static class ProjectSettingsHints
         ["ApiFakers"] = "The plan also writes a Bogus fake-data generator per table (CS_Faker) and the generated project references Bogus.",
         ["ApiProduction"] = "The API project also gets a production profile (Problem Details, health checks at /health/live and /health/ready, rate limiting, response compression, security headers) and a Dockerfile. Nothing beyond ASP.NET Core is referenced.",
         ["ApiTelemetry"] = "The API project also gets OpenTelemetry traces, metrics and logs (Telemetry.cs) and references the OpenTelemetry packages. Nothing is sent until OTEL_EXPORTER_OTLP_ENDPOINT names a collector (environment variable or appsettings.json).",
+        ["BlazorTests"] = "The plan also writes a bUnit test class per Blazor page (BLZ_Test) and a test project (MSTest and bUnit) beside the Blazor app: the page shows a row the server returns, Edit opens the dialog, Save sends the row, and ?edit=<key> opens a row. The API is a stand-in, so no database is needed.",
         ["ApiTests"] = "The plan also writes an integration test class per table (API_Test) and a test project (MSTest and Microsoft.AspNetCore.Mvc.Testing) beside the API. SQLite tests run over a copy of the database file; other databases need <ProjectName>_TEST_CONNECTION (a scratch copy) or the tests report themselves as inconclusive.",
         ["ApiAuth"] = "The API signs people in: JWT bearer wiring, POST /api/auth/login, and every other endpoint needs a token (the Jwt essentials group; the package Microsoft.AspNetCore.Authentication.JwtBearer). The signing key comes from Jwt:Key (an environment variable, never a file) and the first administrator from Bootstrap:AdminUserName and Bootstrap:AdminPassword; register your own IUserDirectory for real users. Regenerate the project and refresh the CrudApi and Program groups with --replace.",
         ["OwnedTables"] = "With ApiAuth: comma-separated tables whose rows belong to a person (TimeSheet,Expense); Table:Column names another owner column (DonateLeave:DonateFrom_EmployeeId). A caller reads and writes only the rows of the owners the IOwnerScope allows (their own, or everyone's for the administrator role); blank = no table is scoped",
@@ -72,6 +73,7 @@ public static class ProjectSettingsHints
         ["WriteRoles"] = "With ApiAuth: the roles that may create, change and delete rows (Administrator,Manager); the administrator role always may. Blank = any signed-in person. Reading stays open. Regenerate the API and the screens",
         ["TableWriteRoles"] = "With ApiAuth: the write roles of single tables, separated by ; (Holiday:Administrator;LeaveType:Administrator,Manager), instead of WriteRoles; Table: alone lets any signed-in person write it. Blank = WriteRoles for every table",
         ["GuardedColumns"] ="With ApiAuth and UserTable: columns only some people may change, separated by |: Table.Column; by Employee.IsManager (a yes/no column of the user table; administrators may too); stampBy Column; stampOn Column (set to the person and the time). Anyone else may save the row if the value is unchanged. Blank = none. Regenerate the API and the screens",
+        ["OutputBlazorTests"] ="folder of the Blazor test project under the output folder; blank = <ProjectName>.Blazor.Tests",
         ["OutputApiTests"] ="folder of the API test project under the output folder; blank = <ProjectName>.Api.Tests",
         ["ApiHttp"] = "The plan also writes a .http request file per table (API_Http).",
         ["ProjectDocs"] = "The plan also writes a data dictionary page per table and the ER diagram (MD_DataDictionary, MD_Erd).",

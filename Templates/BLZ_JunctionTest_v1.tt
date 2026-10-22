@@ -1,0 +1,91 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_JunctionTest_v1.tt
+    // Generates: <Table>JunctionPageTests.cs   (the output folder is the Blazor test project, OutputBlazorTests)
+    // bUnit tests of the two-list page BLZ_Junction writes for a many-to-many junction table, over FakeApi: the drop-down lists the anchor rows, choosing one fills Available and Selected, a row picked in
+    // Available moves to Selected with a POST to .../link, and Remove all unlinks the selected rows with a POST to .../unlink. Writes nothing unless the project sets BlazorTests=true.
+    // Full notes: Docs/TemplateNotes/BLZ_Test_v1.md
+    // ==========================================================================================
+    if (!Project.BlazorTests)
+    {
+    }
+    else if (!Model.IsJunctionTable || !Model.Junction!.AnchorHasLookup(Project))
+    {
+        Error($"BLZ_JunctionTest writes no test for [{Model.SchemaName}].[{Model.TableName}]: it is not a many-to-many junction table whose anchor table has a lookup endpoint.");
+    }
+    else
+    {
+        string ns = BlazorNames.Namespace(Project);
+        var junction = Model.Junction!;
+        string stem = Model.TableName;
+        string page = stem + "JunctionPage";
+        string anchorLookup = BlazorNames.ApiRoute(junction.AnchorRole) + "/lookup";
+        string junctionPath = BlazorNames.ApiRoute(Model.TableName) + "/junction";
+        string Key(string csharp, int n) => csharp switch
+        {
+            "string" => $"\\\"K{n}\\\"",
+            "Guid" => $"\\\"00000000-0000-0000-0000-00000000000{n}\\\"",
+            _ => n.ToString()
+        };
+        string anchorValue = junction.AnchorCs switch { "string" => "K1", "Guid" => "00000000-0000-0000-0000-000000000001", _ => "1" };
+        string display = junction.DisplayColumns.Count > 0 ? "\\\"" + JsonNames.Camel(junction.DisplayColumns[0]) + "\\\": \\\"{0}\\\", " : "";
+        string first = junction.DisplayColumns.Count > 0 ? "Target one" : Key(junction.TargetCs, 1).Replace("\\\"", "");
+        string second = junction.DisplayColumns.Count > 0 ? "Target two" : Key(junction.TargetCs, 2).Replace("\\\"", "");
+        string Item(string text, int n, bool selected) => "{ " + string.Format(display, text) + $"\\\"targetId\\\": {Key(junction.TargetCs, n)}, \\\"isSelected\\\": {(selected ? "true" : "false")} }}";
+#>
+@@@FILE <#= stem #>JunctionPageTests.cs@@@
+using Bunit;
+using <#= ns #>.Pages;
+
+namespace <#= ns #>.Tests;
+
+[TestClass]
+public class <#= stem #>JunctionPageTests : PageTestContext
+{
+    private IRenderedComponent<<#= page #>> OpenAnchor()
+    {
+        Api.Answer("<#= anchorLookup #>", "[ { \"id\": <#= Key(junction.AnchorCs, 1) #>, \"name\": \"Anchor one\" } ]");
+        Api.Answer("<#= junctionPath #>/<#= anchorValue #>", "[ <#= Item("Target one", 1, false) #>, <#= Item("Target two", 2, true) #> ]");
+        var page = Render<<#= page #>>();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "Anchor one"));
+        page.Find("#junction-anchor").Change("<#= anchorValue #>");
+        page.WaitForAssertion(() => StringAssert.Contains(page.Find("[aria-label=Selected]").TextContent, "<#= second #>"));
+        return page;
+    }
+
+    [TestMethod]
+    public void Lists_the_rows_linked_and_not_linked_to_the_chosen_row()
+    {
+        var page = OpenAnchor();
+        StringAssert.Contains(page.Find("[aria-label=Available]").TextContent, "<#= first #>");
+        StringAssert.Contains(page.Find("[aria-label=Selected]").TextContent, "<#= second #>");
+    }
+
+    [TestMethod]
+    public void Moves_a_picked_row_to_Selected_with_a_POST_to_link()
+    {
+        var page = OpenAnchor();
+        page.Find("[aria-label=Available] [role=option]").Click();
+        page.Find("button[title='Add selected']").Click();
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Post && r.Path.EndsWith("/junction/link"))));
+        StringAssert.Contains(page.Find("[aria-label=Selected]").TextContent, "<#= first #>");
+    }
+
+    [TestMethod]
+    public void Removes_every_selected_row_with_a_POST_to_unlink()
+    {
+        var page = OpenAnchor();
+        page.Find("button[title='Remove all']").Click();
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Post && r.Path.EndsWith("/junction/unlink"))));
+        StringAssert.Contains(page.Find("[aria-label=Available]").TextContent, "<#= second #>");
+    }
+}
+<#
+    }
+#>

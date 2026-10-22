@@ -19,6 +19,13 @@ public class GridTestRowTests
         Sample.Column("IsOpen", SqlDbType.Bit, ordinal: 5)
     ]);
 
+    private static async Task<string> RenderProject(string template, params (string, string)[] values)
+    {
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), Project(values));
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        return result.GeneratedText!.ReplaceLineEndings("\n");
+    }
+
     private static async Task<string> Render(string template, params (string, string)[] values)
     {
         var result = await Repo.Cache.RunAsync(Repo.Template(template), Account(), Project(values));
@@ -105,7 +112,7 @@ public class GridTestRowTests
     }
 
     [TestMethod]
-    public void A_grid_with_no_plain_required_text_column_has_no_row_to_look_for()
+    public void A_grid_with_no_plain_required_text_column_marks_a_required_whole_number()
     {
         var numbers = Sample.Table("Count",
         [
@@ -115,6 +122,69 @@ public class GridTestRowTests
         ]);
         var form = FormModel.For(numbers, Project());
 
+        var row = GridTestRow.For(form, ChosenGridColumns.For(form))!;
+
+        Assert.AreEqual("42", row.Marker);
+        Expect.Contains(row.Literal, "total: 42");
+    }
+
+    [TestMethod]
+    public void A_grid_with_no_required_text_or_whole_number_column_has_no_row_to_look_for()
+    {
+        var flags = Sample.Table("Flag",
+        [
+            Sample.Column("FlagId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("IsOn", SqlDbType.Bit, ordinal: 2),
+            Sample.Column("Note", SqlDbType.NVarChar, characters: 20, nullable: true, ordinal: 3)
+        ]);
+        var form = FormModel.For(flags, Project());
+
         Assert.IsNull(GridTestRow.For(form, ChosenGridColumns.For(form)));
+    }
+
+    [TestMethod]
+    public async Task The_angular_spec_opens_the_row_named_by_the_edit_query_parameter()
+    {
+        string spec = await Render("TS_Component_v1.tt");
+
+        Expect.Contains(spec, "describe('AccountComponent opened from another page', () => {");
+        Expect.Contains(spec, "convertToParamMap({ edit: '1' })");
+        Expect.Contains(spec, "r.url.endsWith('/1')");
+    }
+
+    [TestMethod]
+    public async Task The_blazor_test_has_the_row_as_json_and_signs_in_when_the_app_has_a_sign_in()
+    {
+        string plain = await Render("BLZ_Test_v1.tt", ("BlazorTests", "true"));
+
+        Expect.Contains(plain, "public class AccountPageTests : PageTestContext");
+        Expect.Contains(plain, "\"title\": \"Sample row\"");
+        Expect.Contains(plain, "NavigateTo(\"/account?edit=1\")");
+        Expect.DoesNotContain(plain, "SignIn(");
+
+        string signedIn = await Render("BLZ_Test_v1.tt", ("BlazorTests", "true"), ("Auth", "true"), ("ApiAuth", "true"), ("WriteRoles", "Administrator,Manager"));
+
+        Expect.Contains(signedIn, "SignIn(\"Manager\");");
+    }
+
+    [TestMethod]
+    public async Task The_blazor_test_adds_a_class_for_the_odata_page_when_the_table_is_served_as_odata()
+    {
+        string text = await Render("BLZ_Test_v1.tt", ("BlazorTests", "true"), ("OData", "true"));
+
+        Expect.Contains(text, "public class AccountODataPageTests : PageTestContext");
+        Expect.Contains(text, "FakeApi.ODataPage(Row, 1)");
+        Expect.Contains(text, "Api.Answer(\"/odata/accounts/1\", Row);");
+        Expect.DoesNotContain(await Render("BLZ_Test_v1.tt", ("BlazorTests", "true")), "ODataPageTests");
+    }
+
+    [TestMethod]
+    public async Task The_blazor_test_project_tests_the_dashboard_only_when_the_project_has_one()
+    {
+        string with = await RenderProject("BLZ_EssentialTests_v1.tt", ("BlazorTests", "true"), ("Dashboard", "true"), ("CurrencyCode", "EUR"));
+
+        Expect.Contains(with, "public class DashboardPageTests : PageTestContext");
+        Expect.Contains(with, "EUR 1,234.50");
+        Expect.DoesNotContain(await RenderProject("BLZ_EssentialTests_v1.tt", ("BlazorTests", "true"), ("Dashboard", "false")), "DashboardPageTests");
     }
 }
