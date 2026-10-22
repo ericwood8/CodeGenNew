@@ -74,12 +74,34 @@ public class GridTestRowTests
     }
 
     [TestMethod]
-    public async Task A_screen_whose_Edit_button_needs_a_sign_in_gets_only_the_row_check()
+    public async Task A_screen_whose_Edit_button_needs_a_sign_in_signs_the_spec_in_first()
     {
         string spec = await Render("TS_Component_v1.tt", ("ApiAuth", "true"), ("WriteRoles", "Administrator,Manager"), ("Auth", "true"));
 
-        Expect.Contains(spec, "it('shows a row the server returns', () => {");
-        Expect.DoesNotContain(spec, "from the Edit button of a row");
+        Expect.Contains(spec, "sessionStorage.setItem(");
+        Expect.Contains(spec, "role: 'Manager'");
+        Expect.Contains(spec, "it('opens the Account dialog from the Edit button of a row', () => {");
+        Expect.Contains(spec, "afterEach(() => sessionStorage.clear());");
+    }
+
+    [TestMethod]
+    public async Task The_angular_spec_fills_the_dialog_and_submits_the_row()
+    {
+        string spec = await Render("TS_Component_v1.tt");
+
+        Expect.Contains(spec, "it('fills the Account dialog with the row and sends the row to the service on Submit', async () => {");
+        Expect.Contains(spec, "r.method === 'PUT'");
+    }
+
+    [TestMethod]
+    public void The_angular_odata_spec_answers_the_read_by_key_that_Edit_makes()
+    {
+        var row = new GridTestRow("{ id: 1 }", "x");
+
+        string spec = string.Join("\n", row.AngularSpecs("Account", "(r) => true", "{}", "(r) => r.url.startsWith('odata/accounts/')"));
+
+        Expect.Contains(spec, "http.match((r) => r.url.startsWith('odata/accounts/')).forEach((request) => request.flush({ id: 1 }));");
+        Expect.DoesNotContain(string.Join("\n", row.AngularSpecs("Account", "(r) => true", "{}")), "http.match(");
     }
 
     [TestMethod]

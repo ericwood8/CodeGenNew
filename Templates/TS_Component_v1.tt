@@ -437,8 +437,8 @@
         spec.Append($"describe('{cls}', () => {{\n  let component: {cls};\n  let fixture: ComponentFixture<{cls}>;\n\n");
         // the screen's service needs an HttpClient; the testing one never touches the network. mat-paginator
         // needs animations provided (even as the no-op stub) or TestBed throws.
-        spec.Append($"  beforeEach(async () => {{\n    await TestBed.configureTestingModule({{\n      imports: [{cls}],\n      providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations(), provideRouter([])]\n    }})\n    .compileComponents();\n\n");
-        spec.Append($"    fixture = TestBed.createComponent({cls});\n    component = fixture.componentInstance;\n    fixture.detectChanges();\n  }});\n\n");
+        spec.Append($"  beforeEach(async () => {{\n{(writeRoles.Count > 0 ? WriteRoleSpec.SignIn(Project, writeRoles) : "")}    await TestBed.configureTestingModule({{\n      imports: [{cls}],\n      providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations(), provideRouter([])]\n    }})\n    .compileComponents();\n\n");
+        spec.Append($"    fixture = TestBed.createComponent({cls});\n    component = fixture.componentInstance;\n    fixture.detectChanges();\n  }});\n\n" + (writeRoles.Count > 0 ? "  afterEach(() => sessionStorage.clear());\n\n" : ""));
         // Server paging: the first page is asked for, and a page past the end (the last row of the last page was deleted) falls back to the last page there is.
         // The project's list protocol decides how the request and the answer are written.
         bool searchProtocol = Project.ListSearchProtocol;
@@ -521,7 +521,7 @@
             string firstReply = odata ? $"{{ value: [{testRow.Literal}], '@odata.count': 1 }}"
                 : searchProtocol ? $"{{ '{Project.ItemsMember}': [{testRow.Literal}], '{Project.TotalMember}': 1 }}"
                 : $"{{ items: [{testRow.Literal}], page: 1, pageSize: component.pageSize, totalCount: 1, totalPages: 1 }}";
-            rowSpecs.AddRange(testRow.AngularSpecs(title, firstPage, firstReply, writeRoles.Count == 0 && !odata));
+            rowSpecs.AddRange(testRow.AngularSpecs(title, firstPage, firstReply, odata ? $"(r) => r.method === 'GET' && r.urlWithParams.startsWith('odata/{stem.Pluralize()}/')" : null));
         }
         // A name/active screen reads the whole list from the table's route and narrows it on the page.
         var listSpecs = new[]

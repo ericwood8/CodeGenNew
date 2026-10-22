@@ -6,10 +6,16 @@ public static class WriteRoleSpec
 {
     public static string StorageKey(ProjectSettings project) => (project.ProjectName ?? "app").ToLowerInvariant() + ".auth";
 
+    /// <summary> The role a spec signs in as: one that may write (the administrator role is first, a second one is a plainer role the table also allows). </summary>
+    public static string AllowedRole(IReadOnlyList<string> roles) => (roles.Count > 1 ? roles[1] : roles[0]).Replace("'", "\\'");
+
+    /// <summary> The line a screen's own spec starts its beforeEach with, so the Edit button (shown to a role that may write) is on the page. </summary>
+    public static string SignIn(ProjectSettings project, IReadOnlyList<string> roles) =>
+        $"    sessionStorage.setItem('{StorageKey(project)}', JSON.stringify({{ token: 'abc', expiresUtc: '2999-01-01T00:00:00Z', user: {{ name: 'Pat', role: '{AllowedRole(roles)}' }} }}));\n";
+
     /// <summary> The describe block to append after the screen's own; <paramref name="roles"/> is <see cref="WriteRolePlan.For(ProjectSettings, string)"/> (the administrator role first). </summary>
     public static string For(ProjectSettings project, string screenClass, IReadOnlyList<string> roles)
     {
-        string allowed = roles.Count > 1 ? roles[1] : roles[0];
         return """
 
 describe('§C write roles', () => {
@@ -40,6 +46,6 @@ describe('§C write roles', () => {
   });
 });
 
-""".Replace("§C", screenClass).Replace("§K", StorageKey(project)).Replace("§A", allowed.Replace("'", "\'"));
+""".Replace("§C", screenClass).Replace("§K", StorageKey(project)).Replace("§A", AllowedRole(roles));
     }
 }

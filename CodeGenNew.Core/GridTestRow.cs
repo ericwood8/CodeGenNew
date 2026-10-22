@@ -29,9 +29,10 @@ public sealed record GridTestRow(string Literal, string Marker)
         return new GridTestRow("{ " + string.Join(", ", members) + " }", MarkerText);
     }
 
-    /// <summary> The Angular spec lines (each starts with a blank line): the first page request is answered with the row; the page shows it; with <paramref name="withEdit"/> its Edit button opens the dialog.
-    /// <paramref name="firstPage"/> is the request matcher of the first page and <paramref name="firstReply"/> its answer holding <see cref="Literal"/>. </summary>
-    public IReadOnlyList<string> AngularSpecs(string title, string firstPage, string firstReply, bool withEdit)
+    /// <summary> The Angular spec lines (each starts with a blank line): the first page request is answered with the row; the page shows it; its Edit button opens the dialog.
+    /// <paramref name="firstPage"/> is the request matcher of the first page and <paramref name="firstReply"/> its answer holding <see cref="Literal"/>. An OData page reads the row again by its key when Edit
+    /// is pressed (a slim grid has not read every property), so <paramref name="rowRead"/> is the matcher of that request (null: the page makes none). A screen with write roles is signed in by the spec's beforeEach. </summary>
+    public IReadOnlyList<string> AngularSpecs(string title, string firstPage, string firstReply, string? rowRead = null)
     {
         var lines = new List<string>
         {
@@ -43,25 +44,50 @@ public sealed record GridTestRow(string Literal, string Marker)
             $"    expect(fixture.nativeElement.textContent).toContain('{Marker}');",
             "  });"
         };
-        if (withEdit)
-        {
-            lines.AddRange(
-            [
-                "",
-                $"  it('opens the {title} dialog from the Edit button of a row', () => {{",
-                "    // jsdom has no showModal, so the test gives the dialog one that just opens it",
-                "    " + ShowModal,
-                "    const http = TestBed.inject(HttpTestingController);",
-                $"    http.expectOne({firstPage}).flush({firstReply});",
-                "    fixture.detectChanges();",
-                "    const edit = (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]).find((b) => b.textContent?.trim() === 'Edit');",
-                "    expect(edit).toBeTruthy();",
-                "    edit!.click();",
-                "    fixture.detectChanges();",
-                $"    expect(fixture.nativeElement.textContent).toContain('Edit {title}');",
-                "  });"
-            ]);
-        }
+        lines.AddRange(
+        [
+            "",
+            $"  it('opens the {title} dialog from the Edit button of a row', () => {{",
+            "    // jsdom has no showModal, so the test gives the dialog one that just opens it",
+            "    " + ShowModal,
+            "    const http = TestBed.inject(HttpTestingController);",
+            $"    http.expectOne({firstPage}).flush({firstReply});",
+            "    fixture.detectChanges();",
+            "    const edit = (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]).find((b) => b.textContent?.trim() === 'Edit');",
+            "    expect(edit).toBeTruthy();",
+            "    edit!.click();"
+        ]);
+        if (rowRead is not null)
+            lines.Add($"    http.match({rowRead}).forEach((request) => request.flush({Literal}));");
+        lines.AddRange(
+        [
+            "    fixture.detectChanges();",
+            $"    expect(fixture.nativeElement.textContent).toContain('Edit {title}');",
+            "  });",
+            "",
+            $"  it('fills the {title} dialog with the row and sends the row to the service on Submit', async () => {{",
+            "    " + ShowModal,
+            "    const http = TestBed.inject(HttpTestingController);",
+            $"    http.expectOne({firstPage}).flush({firstReply});",
+            "    fixture.detectChanges();",
+            "    const edit = (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]).find((b) => b.textContent?.trim() === 'Edit');",
+            "    edit!.click();"
+        ]);
+        if (rowRead is not null)
+            lines.Add($"    http.match({rowRead}).forEach((request) => request.flush({Literal}));");
+        lines.AddRange(
+        [
+            "    fixture.detectChanges();",
+            "    await fixture.whenStable();",
+            "    fixture.detectChanges();",
+            "    const fields = Array.from(fixture.nativeElement.querySelectorAll('dialog input')) as HTMLInputElement[];",
+            $"    expect(fields.some((f) => f.value === '{Marker}')).toBe(true);",
+            "    (fixture.nativeElement.querySelector('dialog button[type=\"submit\"]') as HTMLButtonElement).click();",
+            "    const save = http.expectOne((r) => r.method === 'PUT');",
+            $"    expect(JSON.stringify(save.request.body)).toContain('{Marker}');",
+            "    save.flush(null);",
+            "  });"
+        ]);
         return lines;
     }
 
