@@ -9,6 +9,6 @@ An MSTest class per table (`<Table>DataShapesTests.cs`) for the two ADO.NET shap
 - **Clone:** a cloned `<Table>DataTable` makes rows that work (its typed columns are bound to its own columns).
 - **Sample values:** the same fixed values as the other round-trip tests (`TestSampleValues` in Core). A table with a column of an unsupported type is refused.
 
-Run it by hand or from the menu beside `CS_DataContractDto` and `CS_TypedDataRow` for the same table, pointing the output folder at the test project (`OutputApiTests`). None of the three is in a whole-project plan, and the classes it tests must exist, so run those two first.
+Run it by hand or from the menu beside `CS_DataContractDto` and `CS_TypedDataRow` for the same table, pointing the output folder at the test project (`OutputApiTests`), or name all three in `PlanAlso`; a whole-project run then writes the classes into `Dtos` and the tests into the test project (`ApiTests=true` writes it). The classes it tests must exist, so run those two first.
 
 Does not test a `DataSet`, a relation or an adapter (none is written).

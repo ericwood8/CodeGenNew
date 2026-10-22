@@ -8,6 +8,6 @@ An MSTest class per table (`<Table>SerializationTests.cs`) for the three classes
 - **NULL:** each class is also run with every optional column NULL, so a null stays a null.
 - **Sample values:** the same fixed values as `CS_RoundTripTest` (`TestSampleValues` in Core). A table with a column of an unsupported type is refused.
 
-Run it by hand or from the menu beside `CS_SerializationDtos` for the same table, pointing the output folder at the test project (`OutputApiTests`). Neither is in a whole-project plan, and the classes it tests must exist, so run `CS_SerializationDtos` first.
+Run it by hand or from the menu beside `CS_SerializationDtos` for the same table, pointing the output folder at the test project (`OutputApiTests`), or name both in `PlanAlso` (`PlanAlso=CS_SerializationDtos,CS_SerializationTest`): a whole-project run then writes the classes into `Dtos` and the tests into the test project, which `ApiTests=true` writes. The classes it tests must exist, so run `CS_SerializationDtos` first.
 
 Does not test a version number, the file format of a partner, or the code that reads or writes the files.

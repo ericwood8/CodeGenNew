@@ -267,6 +267,33 @@ public class DtoTemplateTests
     }
 
     [TestMethod]
+    public async Task The_mapperly_test_covers_both_ways_and_the_projection()
+    {
+        string cs = await Render("CS_MapperlyTest_v1.tt", Customer());
+
+        Expect.Contains(cs, "public class CustomerMapperlyTests");
+        Expect.Contains(cs, "var dto = CustomerMapper.ToDto(entity);");
+        Expect.Contains(cs, "var back = CustomerMapper.ToEntity(dto);");
+        Expect.Contains(cs, "new[] { entity }.AsQueryable().ProjectToDto().Single();");
+        var keyless = Sample.Table("Log", [Sample.Column("Text", SqlDbType.NVarChar, characters: 50, ordinal: 1)]);
+        var result = await Repo.Cache.RunAsync(Repo.Template("CS_MapperlyTest_v1.tt"), keyless, Project());
+        Assert.IsFalse(result.Success);
+        Assert.IsTrue(result.Errors.Any(e => e.Contains("primary key")));
+    }
+
+    [TestMethod]
+    public void The_hand_run_transfer_and_test_templates_can_be_named_in_PlanAlso()
+    {
+        var offered = TemplateCatalog.Discover(Repo.TemplatesDirectory).ToDictionary(t => t.Name);
+
+        foreach (string name in new[] { "CS_SerializationDtos", "CS_DataContractDto", "CS_TypedDataRow", "CS_SerializationTest", "CS_DataShapesTest", "CS_MapperlyTest" })
+        {
+            Assert.IsFalse(offered[name].Config.InPlan, name + " is not in a plan by default");
+            CollectionAssert.Contains(offered[name].Config.Stacks.ToArray(), "Api", name);
+        }
+    }
+
+    [TestMethod]
     public async Task A_table_without_a_key_gets_the_json_tests_but_no_mapper_tests()
     {
         var keyless = Sample.Table("Log", [Sample.Column("Text", SqlDbType.NVarChar, characters: 50, ordinal: 1)]);
@@ -313,6 +340,7 @@ public class DtoTemplateTests
         Assert.AreEqual("CustomerRoundTripTests.cs", offered["CS_RoundTripTest"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerSerializationTests.cs", offered["CS_SerializationTest"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerDataShapesTests.cs", offered["CS_DataShapesTest"].BuildFileName("Customer"));
+        Assert.AreEqual("CustomerMapperlyTests.cs", offered["CS_MapperlyTest"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerContract.cs", offered["CS_DataContractDto"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerDataTable.cs", offered["CS_TypedDataRow"].BuildFileName("Customer"));
         Assert.AreEqual("CustomerSerializationDtos.cs", offered["CS_SerializationDtos"].BuildFileName("Customer"));

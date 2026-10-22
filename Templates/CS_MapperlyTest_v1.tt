@@ -1,0 +1,86 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project. A project settings file (EntityNamespace, DtoNamespace, or ProjectName) overrides them.
+    // ==========================================================================================
+    string entityNamespace = Project.EntityNamespace ?? "MyApp.Common.Entities";
+    string dtoNamespace = Project.DtoNamespace ?? "MyApp.Dtos";
+
+    // ==========================================================================================
+    // CS_MapperlyTest_v1.tt
+    // Generates: <TableName>MapperlyTests.cs   (see OutputName in CS_MapperlyTest_v1.tt.config; goes to the test project, OutputApiTests)
+    // An MSTest class that needs no database, for the Mapperly mapper CS_MapperlyMapper writes: an entity copied to the transfer class and back keeps every column, and ProjectToDto over an
+    // IQueryable gives the same rows. Needs the Riok.Mapperly package in the API project (CS_MapperlyMapper does too; nothing adds it) and a table with a primary key.
+    // Full notes: Docs/TemplateNotes/CS_MapperlyTest_v1.md
+    // ==========================================================================================
+
+    var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
+    if (Model.PrimaryKeyColumns.Count == 0)
+    {
+        Error($"CS_MapperlyTest needs a table with a primary key, but [{Model.SchemaName}].[{Model.TableName}] has none.");
+    }
+    else if (!columns.All(TestSampleValues.Has))
+    {
+        Error($"CS_MapperlyTest cannot make a sample value for the column of an unsupported type in [{Model.SchemaName}].[{Model.TableName}].");
+    }
+    else
+    {
+        string projectName = Project.ProjectName ?? "MyApp";
+        string table = Model.TableName;
+        string mapper = table + "Mapper";
+        string? hashColumn = UserTable.PlanOf(Model, Project)?.PasswordHash.Name;
+        string Id(ColumnModel c) => c.CSharpName();
+
+        var o = new StringBuilder();
+        void L(string s = "") => o.Append(s).Append('\n');
+        void Compares(string expected, string actual)
+        {
+            foreach (var c in columns)
+            {
+                string e = expected + "." + Id(c), a = actual + "." + Id(c);
+                L(c.CSharpBase() == "byte[]" ? $"        CollectionAssert.AreEqual({e}, {a}, \"{Id(c)}\");" : $"        Assert.AreEqual({e}, {a}, \"{Id(c)}\");");
+            }
+        }
+
+        L("using " + dtoNamespace + ";");
+        L("using " + entityNamespace + ";");
+        L();
+        L("namespace " + projectName + ".Api.Tests;");
+        L();
+        L("/// <summary> " + table + ": the Mapperly mapper copies every column both ways. No database. </summary>");
+        L("[TestClass]");
+        L("public class " + table + "MapperlyTests");
+        L("{");
+        L("    private static " + table + " Sample() => new()");
+        L("    {");
+        foreach (var c in columns)
+            L("        " + Id(c) + " = " + TestSampleValues.Value(c, 1) + ",");
+        L("    };");
+        L();
+        L("    [TestMethod]");
+        L("    public void The_mapper_copies_every_column_both_ways()");
+        L("    {");
+        L("        var entity = Sample();");
+        L("        var dto = " + mapper + ".ToDto(entity);");
+        Compares("entity", "dto");
+        L("        var back = " + mapper + ".ToEntity(dto);");
+        Compares("entity", "back");
+        L("    }");
+        L();
+        L("    [TestMethod]");
+        L("    public void ProjectToDto_gives_the_same_rows()");
+        L("    {");
+        L("        var entity = Sample();");
+        L("        var dto = new[] { entity }.AsQueryable().ProjectToDto().Single();");
+        Compares("entity", "dto");
+        L("    }");
+        L("}");
+        Write(o.ToString());
+    }
+#>

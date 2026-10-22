@@ -72,6 +72,7 @@ public static class DefaultAssetSeeder
         "CS_RoundTripTest_v1.tt", "CS_RoundTripTest_v1.tt.config",
         "CS_SerializationTest_v1.tt", "CS_SerializationTest_v1.tt.config",
         "CS_DataShapesTest_v1.tt", "CS_DataShapesTest_v1.tt.config",
+        "CS_MapperlyTest_v1.tt", "CS_MapperlyTest_v1.tt.config",
         "CS_MapperlyMapper_v1.tt", "CS_MapperlyMapper_v1.tt.config",
         "CS_DataContractDto_v1.tt", "CS_DataContractDto_v1.tt.config",
         "CS_TypedDataRow_v1.tt", "CS_TypedDataRow_v1.tt.config",
