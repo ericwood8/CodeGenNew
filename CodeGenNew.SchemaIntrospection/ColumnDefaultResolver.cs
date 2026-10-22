@@ -10,7 +10,7 @@ namespace CodeGenNew.SchemaIntrospection;
 /// only when there is no database default at all. This is a rarely-used,
 /// low-priority convenience value -- an unparseable database default simply yields no suggestion, never an error.
 /// </summary>
-public static class ColumnDefaultResolver
+public static partial class ColumnDefaultResolver
 {
     public static string? Resolve(string columnName, SqlDbType sqlType, string? databaseDefaultSql, bool isBooleanColumn,
         bool isDateColumn, bool isMoneyColumn, bool isNumericColumn, bool isIntegerColumn, bool isStringColumn)
@@ -44,7 +44,7 @@ public static class ColumnDefaultResolver
         if (decimal.TryParse(expr, out decimal numericValue))
             return numericValue.ToString();
 
-        var stringLiteralMatch = Regex.Match(expr, "^N?'(.*)'$");
+        var stringLiteralMatch = QuotedLiteral().Match(expr);
         if (stringLiteralMatch.Success)
         {
             string literalText = stringLiteralMatch.Groups[1].Value.Replace("''", "'");
@@ -75,4 +75,7 @@ public static class ColumnDefaultResolver
 
         return null;
     }
+
+    [GeneratedRegex("^N?'(.*)'$")]
+    private static partial Regex QuotedLiteral();
 }

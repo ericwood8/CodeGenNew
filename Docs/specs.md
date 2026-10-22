@@ -17,7 +17,7 @@ It runs as a WinUI 3 desktop app (right-click a table), as a command-line tool (
 3. **Rules are data, not code.** What a template does for a soft-delete pair, an audit date or a lookup table is decided when the schema is read and stored on the model; a template branches on a property and never re-scans names itself.
 4. **Templates are the extension point.** Behaviour that belongs to a kind of file lives in its template; behaviour that belongs to a project lives in the project settings; behaviour shared by many templates lives in one helper in `CodeGenNew.Core`.
 5. **Output is reviewable and reproducible.** The same schema, settings and templates give the same files, byte for byte. A run can be previewed (`--dry-run`, `--diff`), a project's files are tracked so stale ones are found, and a file is only rewritten when its text changed.
-6. **A template never leaves a shipped sample different without saying so.** Seven sample applications are regenerated from the templates; a template change that alters them is a deliberate, reviewed change.
+6. **A template never leaves a shipped sample different without saying so.** Eleven sample applications are regenerated from the templates; a template change that alters them is a deliberate, reviewed change.
 
 ## 3. What it reads
 
@@ -27,7 +27,7 @@ Tables only. Views, keyless tables and routine metadata are not read.
 
 ## 4. What it writes
 
-About seventy templates in groups named by the text before the first underscore, which also gives the file extension:
+About one hundred and eighty templates in groups named by the text before the first underscore, which also gives the file extension:
 
 | Group | Writes |
 |---|---|
@@ -36,6 +36,9 @@ About seventy templates in groups named by the text before the first underscore,
 | `API` | minimal-API CRUD, search and junction endpoints, the endpoint registration, an OpenAPI document, `.http` request files |
 | `TS` / `TSX` | the Angular and React model, service, grid-and-form screen, master-detail screen, junction screen, sorting helpers, the list of screens |
 | `WinUI3` | the desktop screen family: master list, detail dialog, master-detail dialog, junction editor, directory listing, the list of screens |
+| `BLZ` / `UNO` | the Blazor WebAssembly and Uno Platform apps: models, clients, pages, dialogs, menu, sign-in |
+| `PY` / `RS` | the Python (FastAPI) and Rust (Axum) APIs: models, routes, validators, junction, CSV, gates, sign-in |
+| `PROTO` | Protocol Buffers definitions |
 | `FS` | F# records with validation |
 | `MD` | a data dictionary and an entity-relationship diagram |
 | `Essential*` | the files every app of a stack needs and no table drives: project files, shell, styles, base classes, `Program.cs` |

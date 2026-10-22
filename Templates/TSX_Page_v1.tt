@@ -950,7 +950,7 @@
         var ticked = chooseColumns ? columnList.FirstOrDefault(c => !c.Initial && Own(c)) : null;
         var sortedColumn = chooseColumns && initialCountOk ? columnList.FirstOrDefault(c => c.Initial && c.Sortable && Own(c)) : null;
         bool columnTests = cleared is not null || ticked is not null || sortedColumn is not null;
-        S(textKey || odata || nameActive || form.Guards.Count > 0 || columnTests ? "import { fireEvent, render, screen } from '@testing-library/react';" : "import { render, screen } from '@testing-library/react';");
+        S(textKey || odata || nameActive || form.Guards.Count > 0 || columnTests || (!nameActive && GridTestRow.For(form, chosen) is not null) ? "import { fireEvent, render, screen } from '@testing-library/react';" : "import { render, screen } from '@testing-library/react';");
         S("import { MemoryRouter } from 'react-router-dom';");
         S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
         S($"import {{ {pageName} }} from '../{pageName}';");
@@ -975,6 +975,13 @@
         S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
         S($"    expect(await screen.findByText('{title.Pluralize()}')).toBeInTheDocument();");
         S("  });");
+        var testRow = nameActive ? null : GridTestRow.For(form, chosen);
+        if (testRow is not null)
+        {
+            // a row the server returns is on the page, and its Edit button opens the dialog
+            foreach (string line in testRow.ReactTests(apiVar, pageName, title, odata ? "queryPage" : "getPage", pageSize, gated ? (writeRoles.Count > 1 ? writeRoles[1] : writeRoles[0]) : null, odata))
+                S(line);
+        }
         if (gated)
         {
             string allowed = writeRoles.Count > 1 ? writeRoles[1] : writeRoles[0];

@@ -11,7 +11,7 @@ namespace CodeGenNew.Core;
 ///   - errors are raised with SIGNAL SQLSTATE '45000' (MYSQL_ERRNO 55508 / 55509 as in the SQL Server procedures); a foreign-key delete failure is error 1451;
 ///   - there is no CREATE OR REPLACE PROCEDURE: each file is DROP PROCEDURE IF EXISTS + DELIMITER + CREATE PROCEDURE, which the mysql client runs as it is.
 /// The template files (SP_Insert.tt and so on) call these when TableModel.Dialect is MySql. </summary>
-public static class MySqlProcedures
+public static partial class MySqlProcedures
 {
     private static string Q(string identifier) => "`" + identifier.Replace("`", "``") + "`";
     private static string P(ColumnModel c) => Q(c.ParameterName.TrimStart('@'));
@@ -27,7 +27,7 @@ public static class MySqlProcedures
 
     /// <summary> MySQL's NOW() keeps whole seconds; a datetime(6) or timestamp(3) column is stamped with NOW(6) / NOW(3) so it keeps the digits it holds. </summary>
     private static string Now(ColumnModel c) =>
-        System.Text.RegularExpressions.Regex.Match(c.SqlTypeDeclaration, @"\((\d)\)") is { Success: true } digits && digits.Groups[1].Value != "0" ? $"NOW({digits.Groups[1].Value})" : "NOW()";
+        FractionDigits().Match(c.SqlTypeDeclaration) is { Success: true } digits && digits.Groups[1].Value != "0" ? $"NOW({digits.Groups[1].Value})" : "NOW()";
 
     private static string Trimmed(ColumnModel c, string expression) => c.IsStringColumn ? $"TRIM({expression})" : expression;
 
@@ -511,4 +511,7 @@ public static class MySqlProcedures
 
         return list + "\n" + link + "\n" + unlink;
     }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\((\d)\)")]
+    private static partial System.Text.RegularExpressions.Regex FractionDigits();
 }

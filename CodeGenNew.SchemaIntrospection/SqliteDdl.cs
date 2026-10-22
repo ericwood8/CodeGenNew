@@ -6,7 +6,7 @@ namespace CodeGenNew.SchemaIntrospection;
 /// <summary> What only the text of a SQLite <c>CREATE TABLE</c> statement says (<c>sqlite_master.sql</c>): the CHECK constraints, whether the table is <c>WITHOUT ROWID</c> or <c>STRICT</c>. SQLite's
 /// pragmas report columns, keys, foreign keys and indexes but not CHECK constraints, so the statement is cut apart here. The scanner follows SQLite's quoting (<c>'text'</c>, <c>"name"</c>,
 /// <c>`name`</c>, <c>[name]</c>) and comments, so a comma or a parenthesis inside a literal or an identifier is never taken for structure. </summary>
-public static class SqliteDdl
+public static partial class SqliteDdl
 {
     /// <summary> One CHECK constraint: the column it was written on (null for a table constraint, which may name any column) and the expression inside the parentheses. </summary>
     public sealed record CheckConstraint(string? Column, string Expression);
@@ -28,7 +28,7 @@ public static class SqliteDdl
         string body = createSql[(open + 1)..close];
         string options = createSql[(close + 1)..];
         bool withoutRowId = options.ContainsIgnoreCase("WITHOUT") && options.ContainsIgnoreCase("ROWID");
-        bool strict = System.Text.RegularExpressions.Regex.IsMatch(options, @"\bSTRICT\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        bool strict = StrictKeyword().IsMatch(options);
 
         var checks = new List<CheckConstraint>();
         foreach (string segment in SplitTopLevel(body))
@@ -204,4 +204,7 @@ public static class SqliteDdl
         }
         return i;
     }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"\bSTRICT\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase, "en-US")]
+    private static partial System.Text.RegularExpressions.Regex StrictKeyword();
 }

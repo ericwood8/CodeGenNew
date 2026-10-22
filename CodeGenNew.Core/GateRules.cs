@@ -89,7 +89,7 @@ public sealed record GatedTable(TableModel Table, IReadOnlyList<ChangeGate> Gate
 public sealed record GuardHint(string Column, string Json, string Note, IReadOnlyList<string> Stamps);
 
 /// <summary> The gates and guards a project names (<c>ChangeGates</c>, <c>GuardedColumns</c>), checked against the schema. A rule that does not fit is a sentence in <see cref="Problems"/>, never a half-built rule. </summary>
-public sealed record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnlyList<ColumnGuard> Guards, IReadOnlyList<string> Problems)
+public sealed partial record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnlyList<ColumnGuard> Guards, IReadOnlyList<string> Problems)
 {
     /// <summary> Splits a setting into its rules (separated by <c>|</c>) without reading the schema. </summary>
     public static IReadOnlyList<string> RulesOf(string? setting) => setting is null ? [] : SplitOutsideQuotes(setting, '|').Where(r => r.Length > 0).ToList();
@@ -344,7 +344,7 @@ public sealed record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnlyList<Col
     private static string? ParseTermWithPath(string text, DatabaseModel database, TableModel table, out GateTerm? term)
     {
         term = null;
-        var match = System.Text.RegularExpressions.Regex.Match(text.Trim(), @"^(?:(?<parent>\w+)\.)?(?<column>\w+)\s*(?<op><>|<=|>=|=|<|>|\s+in\s+)\s*(?<value>.+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var match = QualifiedComparison().Match(text.Trim());
         if (!match.Success)
             return $"'{text.Trim()}' is not Column = value, Parent.Column = value, or a comparison with <>, <, >, <=, >= or in.";
         TableModel holder = table;
@@ -373,7 +373,7 @@ public sealed record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnlyList<Col
     private static string? ParseTerm(string text, TableModel holder, ColumnModel column, out GateTerm? term, bool forOwnColumn, ForeignKeyModel? via = null)
     {
         term = null;
-        var match = System.Text.RegularExpressions.Regex.Match(text.Trim(), @"^\S+\s*(?<op><>|<=|>=|=|<|>|in)\s*(?<value>.+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var match = PlainComparison().Match(text.Trim());
         if (!match.Success)
             return $"'{text.Trim()}' is not an operator and a value.";
         var op = match.Groups["op"].Value.ToLowerInvariant() switch
@@ -491,6 +491,11 @@ public sealed record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnlyList<Col
         parts.Add(current.ToString().Trim());
         return parts;
     }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^(?:(?<parent>\w+)\.)?(?<column>\w+)\s*(?<op><>|<=|>=|=|<|>|\s+in\s+)\s*(?<value>.+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase, "en-US")]
+    private static partial System.Text.RegularExpressions.Regex QualifiedComparison();
+    [System.Text.RegularExpressions.GeneratedRegex(@"^\S+\s*(?<op><>|<=|>=|=|<|>|in)\s*(?<value>.+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase, "en-US")]
+    private static partial System.Text.RegularExpressions.Regex PlainComparison();
 }
 
 /// <summary> The kinds of value a Rust gate compares. </summary>

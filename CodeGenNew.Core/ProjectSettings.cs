@@ -17,7 +17,7 @@ namespace CodeGenNew.Core;
 /// not list one, it is empty rather than the template's built-in list, because those built-in lists name another
 /// project's tables.
 /// </summary>
-public class ProjectSettings
+public partial class ProjectSettings
 {
     public const int DefaultMinYear = 2000;
     public const int DefaultMaxYear = 2100;
@@ -555,7 +555,7 @@ public class ProjectSettings
     public int ApiPort => int.TryParse(Explicit("ApiPort"), out int port) ? port : 5080;
     public int DevPort(string stack) => int.TryParse(Explicit("DevPort"), out int port) ? port
         : stack.EqualsIgnoreCase("Angular") ? 4200 : stack.EqualsIgnoreCase("Blazor") ? 5190 : stack.EqualsIgnoreCase("Uno") ? 5195 : 5173;
-    public string ProjectTitle => Explicit("ProjectTitle") ?? System.Text.RegularExpressions.Regex.Replace(ProjectName ?? "My App", "(?<=[a-z0-9])(?=[A-Z])", " ");
+    public string ProjectTitle => Explicit("ProjectTitle") ?? WordBoundary().Replace(ProjectName ?? "My App", " ");
 
     /// <summary> The command a stack's build or test step runs after a generate (<c>BuildReact=npm run build</c>, <c>TestApi=dotnet test</c>); null when the project says nothing (the stack's
     /// default applies), an empty string or <c>none</c> to switch the step off. <paramref name="step"/> is <c>build</c> or <c>test</c>. </summary>
@@ -791,4 +791,6 @@ public class ProjectSettings
 
     /// <summary> The file (without its extension) of the TypeScript model that holds this table's interface: the project's <c>ModelFileOverrides</c> entry, else <paramref name="conventionalFile"/>. </summary>
     public string ModelFileOf(string table, string conventionalFile) => ModelFileOverrides is { } map && map.TryGetValue(table, out var file) ? file : conventionalFile;
+    [System.Text.RegularExpressions.GeneratedRegex("(?<=[a-z0-9])(?=[A-Z])")]
+    private static partial System.Text.RegularExpressions.Regex WordBoundary();
 }

@@ -11,7 +11,7 @@ namespace CodeGenNew.SchemaIntrospection;
 /// foreign keys and indexes. SQLite has no schemas (the schema is always <c>main</c>), no routines, no sequences and no declared types that mean anything to the engine, so the declared type
 /// name is read the way ORMs read it and put in the SQL Server vocabulary the rest of the generator classifies by. Everything the pragmas cannot say (CHECK constraints) comes from the
 /// statement text (<see cref="SqliteDdl"/>). </summary>
-public class SqliteSchemaProvider : SchemaProviderBase
+public partial class SqliteSchemaProvider : SchemaProviderBase
 {
     /// <summary> The only schema a SQLite connection has. </summary>
     public const string MainSchema = "main";
@@ -46,8 +46,8 @@ public class SqliteSchemaProvider : SchemaProviderBase
     {
         string declared = (declaredType ?? "").Trim();
         string upper = declared.ToUpperInvariant();
-        string baseName = Regex.Replace(upper, @"\(.*\)", "").Trim();
-        var arguments = Regex.Match(upper, @"\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?\)");
+        string baseName = ParenthesizedArguments().Replace(upper, "").Trim();
+        var arguments = LengthArguments().Match(upper);
         int first = arguments.Success ? int.Parse(arguments.Groups[1].Value, CultureInfo.InvariantCulture) : 0;
         int second = arguments.Success && arguments.Groups[2].Success ? int.Parse(arguments.Groups[2].Value, CultureInfo.InvariantCulture) : 0;
         string text = declared.Length == 0 ? "" : declared;
@@ -98,7 +98,7 @@ public class SqliteSchemaProvider : SchemaProviderBase
     private static PrimaryKeyShape ShapeOf(int primaryKeyColumns, string? declaredType) =>
         PrimaryKeyShapes.Classify(primaryKeyColumns, primaryKeyColumns == 1 ? MapType(declaredType).SqlTypeName : null);
 
-    private static readonly Regex FlagName = new(@"^(is|has|can|should)[_A-Z0-9]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex FlagName = FlagNamePattern();
 
     // =============== reading ===============
 
@@ -211,7 +211,7 @@ public class SqliteSchemaProvider : SchemaProviderBase
     /// <summary> The one column a table-level CHECK mentions, by word; null when it mentions none or several. </summary>
     private static string? ColumnMentionedBy(string expression, List<RawColumnInfo> columns)
     {
-        string withoutLiterals = Regex.Replace(expression, "'(?:[^']|'')*'", "''");
+        string withoutLiterals = QuotedString().Replace(expression, "''");
         var mentioned = columns.Where(c => Regex.IsMatch(withoutLiterals, @"(?<![A-Za-z0-9_])[""`\[]?" + Regex.Escape(c.Name) + @"[""`\]]?(?![A-Za-z0-9_])", RegexOptions.IgnoreCase)).ToList();
         return mentioned.Count == 1 ? mentioned[0].Name : null;
     }
@@ -379,4 +379,13 @@ public class SqliteSchemaProvider : SchemaProviderBase
             .Select(c => new ColumnSummary { Name = c.Name, SqlTypeName = MapType(c.Type).SqlTypeName, IsNullable = !c.NotNull && c.PrimaryKeyPosition == 0, IsPrimaryKey = c.PrimaryKeyPosition > 0 })
             .ToList();
     }
+
+    [GeneratedRegex(@"\(.*\)")]
+    private static partial Regex ParenthesizedArguments();
+    [GeneratedRegex(@"\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?\)")]
+    private static partial Regex LengthArguments();
+    [GeneratedRegex(@"^(is|has|can|should)[_A-Z0-9]", RegexOptions.IgnoreCase | RegexOptions.Compiled, "en-US")]
+    private static partial Regex FlagNamePattern();
+    [GeneratedRegex("'(?:[^']|'')*'")]
+    private static partial Regex QuotedString();
 }

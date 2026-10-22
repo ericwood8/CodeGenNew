@@ -54,7 +54,7 @@ public partial class TemplateRowViewModel : ObservableObject
             {
                 string trimmed = line.Trim();
                 bool isOurs = trimmed.StartsWithIgnoreCase("# Restriction checkbox")
-                              || System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^(Requires\w*|TableOnly)\s*=", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                              || RequiresLine().IsMatch(trimmed);
                 if (!isOurs)
                     preserved.Add(line);
             }
@@ -75,4 +75,7 @@ public partial class TemplateRowViewModel : ObservableObject
 
         File.WriteAllLines(_configPath, lines);
     }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^(Requires\w*|TableOnly)\s*=", System.Text.RegularExpressions.RegexOptions.IgnoreCase, "en-US")]
+    private static partial System.Text.RegularExpressions.Regex RequiresLine();
 }

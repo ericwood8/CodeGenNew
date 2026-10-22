@@ -117,3 +117,5 @@ A parent with more rows than `TypeAheadRows` (default 1000, read from the databa
 The rule is `FormParent.TypeAhead` in Core, the same for every stack; `TypeAheadRows=0` turns the automatic choice off. The API answers `GET <route>/lookup?search=text&take=10` (the first rows whose lookup text contains it) and `GET <route>/lookup?ids=1,2` (the names of those keys): see API_EssentialCrudApi.
 
 - **Stamped dates in the grid:** a created / modified / last-changed column that holds a time (not a plain `date`) shows the day and the time of day (`CellKind.DateTime`: `2026-10-17 16:52`); every other date shows the day only.
+
+**Generated specs that look at the page.** Besides `should create` and the paging specs, the spec flushes the first page with one row, runs change detection and checks the row is in the page, and presses the row's Edit button and checks the dialog heading (`GridTestRow` in Core builds the row, the same one the React tests use). A screen with write roles has no Edit check (its Edit button needs a signed-in role), and the OData screen has the row check only.

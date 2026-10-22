@@ -5,11 +5,11 @@ namespace CodeGenNew.Core;
 /// <summary> Rewrites the structural directives of a generated Angular template (<c>*ngIf</c>, <c>*ngFor</c>, <c>*ngIf="x; else tpl"</c> with its <c>&lt;ng-template&gt;</c>) into
 /// the built-in control flow (<c>@if</c>, <c>@for</c>, <c>@else</c>) that Angular 18 and later prefer (the old directives are deprecated from 20). The generated html is plain and
 /// regular (no self-closing wrapped elements, no <c>&gt;</c> outside a quoted attribute value), so a small tag scanner is enough. </summary>
-public static class AngularControlFlow
+public static partial class AngularControlFlow
 {
-    private static readonly Regex Directive = new("\\*ng(?<kind>If|For)=\"(?<expr>[^\"]*)\"", RegexOptions.Compiled);
-    private static readonly Regex ForExpression = new("^\\s*let\\s+(?<item>\\w+)\\s+of\\s+(?<list>.+?)\\s*$", RegexOptions.Compiled | RegexOptions.Singleline);
-    private static readonly Regex IfElse = new("^(?<cond>.*?)\\s*;\\s*else\\s+(?<template>\\w+)\\s*$", RegexOptions.Compiled | RegexOptions.Singleline);
+    private static readonly Regex Directive = DirectivePattern();
+    private static readonly Regex ForExpression = ForExpressionPattern();
+    private static readonly Regex IfElse = IfElsePattern();
 
     public static string Convert(string html)
     {
@@ -28,7 +28,7 @@ public static class AngularControlFlow
     {
         int tagStart = html.LastIndexOf('<', directive.Index);
         int openEnd = EndOfTag(html, tagStart);
-        string tagName = Regex.Match(html[(tagStart + 1)..], "^[\\w-]+").Value;
+        string tagName = TagNamePattern().Match(html[(tagStart + 1)..]).Value;
         int elementEnd = EndOfElement(html, tagName, openEnd + 1);
 
         // the element without its directive attribute
@@ -105,4 +105,13 @@ public static class AngularControlFlow
         }
         return position;
     }
+
+    [GeneratedRegex("\\*ng(?<kind>If|For)=\"(?<expr>[^\"]*)\"", RegexOptions.Compiled)]
+    private static partial Regex DirectivePattern();
+    [GeneratedRegex("^\\s*let\\s+(?<item>\\w+)\\s+of\\s+(?<list>.+?)\\s*$", RegexOptions.Compiled | RegexOptions.Singleline)]
+    private static partial Regex ForExpressionPattern();
+    [GeneratedRegex("^(?<cond>.*?)\\s*;\\s*else\\s+(?<template>\\w+)\\s*$", RegexOptions.Compiled | RegexOptions.Singleline)]
+    private static partial Regex IfElsePattern();
+    [GeneratedRegex("^[\\w-]+")]
+    private static partial Regex TagNamePattern();
 }

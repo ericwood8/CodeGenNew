@@ -512,6 +512,17 @@
             "    lastPage.flush({ items: [], page: 3, pageSize: 10, totalCount: 25, totalPages: 3 });",
             "  });",
         };
+        // A row the server returns is on the page (the change detection must show it), and its Edit button opens the dialog (a gated screen hides Edit from a spec with no session).
+        var rowSpecs = new List<string>();
+        var testRow = nameActive ? null : GridTestRow.For(form, chosen);
+        if (testRow is not null)
+        {
+            string firstPage = odata ? ODataAsked("0") : searchProtocol ? Asked(1) : "(r) => r.url.endsWith('/search')";
+            string firstReply = odata ? $"{{ value: [{testRow.Literal}], '@odata.count': 1 }}"
+                : searchProtocol ? $"{{ '{Project.ItemsMember}': [{testRow.Literal}], '{Project.TotalMember}': 1 }}"
+                : $"{{ items: [{testRow.Literal}], page: 1, pageSize: component.pageSize, totalCount: 1, totalPages: 1 }}";
+            rowSpecs.AddRange(testRow.AngularSpecs(title, firstPage, firstReply, writeRoles.Count == 0 && !odata));
+        }
         // A name/active screen reads the whole list from the table's route and narrows it on the page.
         var listSpecs = new[]
         {
@@ -598,7 +609,7 @@
                 columnSpecs.Add("  });");
             }
         }
-        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + (columnSpecs.Count > 0 ? "\n" + string.Join("\n", columnSpecs) : "") + "\n});\n");
+        spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + (rowSpecs.Count > 0 ? "\n" + string.Join("\n", rowSpecs) : "") + (columnSpecs.Count > 0 ? "\n" + string.Join("\n", columnSpecs) : "") + "\n});\n");
         if (writeRoles.Count > 0) spec.Append(WriteRoleSpec.For(Project, cls, writeRoles));
 
         // ================= ts

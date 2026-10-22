@@ -34,7 +34,7 @@ public sealed record ChildLookup(ForeignKeyModel ForeignKey, ColumnModel? Column
 /// <summary> One read-only (or, with <c>EditableChildren</c>, editable) grid of a child table under a master's form, decided once for every front end: which child tables get a grid, what the grid
 /// is called, which of the child's columns hold the link back to the row, its own key, and the names it resolves. A child that references the parent twice (a donation has a donor and a
 /// recipient) gets one grid per foreign key, told apart by the <see cref="Role"/> the column plays. </summary>
-public sealed class ChildGrid
+public sealed partial class ChildGrid
 {
     private readonly ProjectSettings _project;
 
@@ -93,7 +93,7 @@ public sealed class ChildGrid
     }
 
     // "Donor_EmployeeId" -> "DonorEmployee": the role the foreign key's column plays.
-    private static string RoleName(string column) => System.Text.RegularExpressions.Regex.Replace(column, "Id$", "").Replace("_", "");
+    private static string RoleName(string column) => IdSuffix().Replace(column, "").Replace("_", "");
 
     public ChildForeignKeyModel Link { get; }
 
@@ -200,4 +200,7 @@ public sealed class ChildGrid
 
     /// <summary> The project lists the table in <c>EditableChildren</c>: its rows are edited inside the parent's form and saved with it. </summary>
     public bool IsEditable { get; }
+
+    [System.Text.RegularExpressions.GeneratedRegex("Id$")]
+    private static partial System.Text.RegularExpressions.Regex IdSuffix();
 }

@@ -4,7 +4,7 @@ namespace CodeGenNew.Core;
 
 /// <summary> What the Blazor templates agree on: which tables get a model and an API client, and the names they go by. The client templates, the page template and the template that registers the clients
 /// must all use the same list, or a page asks for a client that was never written. </summary>
-public static class BlazorNames
+public static partial class BlazorNames
 {
     /// <summary> The root namespace of the Blazor app: <c>&lt;ProjectName&gt;.Blazor</c>. </summary>
     public static string Namespace(ProjectSettings project) => (project.ProjectName ?? "MyApp") + ".Blazor";
@@ -28,7 +28,7 @@ public static class BlazorNames
     public static string LoadCall(FormParent parent) => parent.UsesLookupEndpoint ? "GetLookupAsync" : "GetAllAsync";
 
     /// <summary> A name with everything that is not a letter or digit taken out, so it is a C# identifier part. </summary>
-    public static string Identifier(string name) => System.Text.RegularExpressions.Regex.Replace(name, "[^A-Za-z0-9]", "");
+    public static string Identifier(string name) => NonAlphanumeric().Replace(name, "");
 
     /// <summary> The page field that holds the rows of a parent's drop-down: <c>lookupRegion</c>. </summary>
     public static string LookupField(FormParent parent) => "lookup" + Identifier(TypeName(parent.Table));
@@ -74,4 +74,7 @@ public static class BlazorNames
             return $"[{table.SchemaName}].[{table.TableName}] has a Name and an IsActive column, so its real API is hand-maintained and has no plain getAll(); write its client by hand.";
         return null;
     }
+
+    [System.Text.RegularExpressions.GeneratedRegex("[^A-Za-z0-9]")]
+    private static partial System.Text.RegularExpressions.Regex NonAlphanumeric();
 }

@@ -13,7 +13,7 @@ public sealed record StepResult(string Stack, string Step, string Command, int E
 
 /// <summary> Builds and tests the stacks of a generated project after a generate (<c>--build</c>, <c>--test</c>): the same commands each sample's Regenerate.sh ran. The default command of a stack is
 /// in <see cref="DefaultCommand"/>; a project overrides it with <c>BuildApi</c>, <c>TestReact</c> ... (a blank value, <c>none</c>, skips the step). </summary>
-public static class ProjectBuilder
+public static partial class ProjectBuilder
 {
     public static string? DefaultCommand(string stack, string step) => (stack.ToLowerInvariant(), step) switch
     {
@@ -115,9 +115,12 @@ public static class ProjectBuilder
     public static string Summarise(string output, int exitCode)
     {
         var lines = output.Replace("\r\n", "\n").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
-        var interesting = lines.Where(l => Regex.IsMatch(l, @"\berror\b|\bFAIL|Build succeeded|Tests\s+\d|Test Files|Application bundle|built in|Passed!|Failed!", RegexOptions.IgnoreCase)).Distinct().Take(12).ToList();
+        var interesting = lines.Where(l => InterestingLine().IsMatch(l)).Distinct().Take(12).ToList();
         if (interesting.Count == 0)
             interesting = lines.TakeLast(exitCode == 0 ? 2 : 8).ToList();
         return string.Join("\n", interesting.Select(l => l.Length > 240 ? l[..240] + "..." : l));
     }
+
+    [GeneratedRegex(@"\berror\b|\bFAIL|Build succeeded|Tests\s+\d|Test Files|Application bundle|built in|Passed!|Failed!", RegexOptions.IgnoreCase, "en-US")]
+    private static partial Regex InterestingLine();
 }

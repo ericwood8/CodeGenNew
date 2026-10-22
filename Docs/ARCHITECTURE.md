@@ -14,7 +14,7 @@ This is for someone reading the code for the first time: where things are, how a
 ## 2. The shape of a run
 
 ```
- database (SQL Server | PostgreSQL | MySQL)
+ database (SQL Server | PostgreSQL | MySQL | SQLite file)
         |  read-only catalog queries
         v
  SchemaIntrospection:  ISchemaProvider  ->  TableModel / DatabaseModel      (one provider per database, four of them;
@@ -39,7 +39,7 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 |---|---|---|---|
 | `CodeGenNew.Core` | The model (`TableModel`, `ColumnModel`, `ForeignKeyModel`, `DatabaseModel`), project settings, and the **shared helpers templates call**: `FormModel` (the columns, field kinds, drop-down `FormParent`s, titles, field ids, grid columns, tabs and search boxes of a form, the same for React, Angular, Blazor and WinUI3), `ChildGrid` (the child tables under a master form), `NumberBox` / `MoneyBox` (the limits of a number or money box), `AngularNames` / `ReactNames` / `BlazorNames` / `UnoNames` / `WinUI3Names` (names a definition and its references share), `DesktopFormCode` / `DesktopFormXaml` / `DesktopGridCode` / `DesktopChild` / `DesktopDashboardCode` (the load, save, XAML, list cells, child grids and dashboard drawing the WinUI3 and Uno dialogs and pages write from one place), `ApiClientCode` (the model and `HttpClient` client of the Blazor and Uno apps), `JunctionShape` (the two sides of a junction table for the routes and every editor), `ScreenMenu` (the dashboard, screens and OData entries of the Blazor and Uno menus), `DashboardWire` (the dashboard contract, card kinds and style sheet every stack uses), `GridColumns`, `ColumnTypes` (C#, F#, TypeScript, JSON Schema types), `Labels`, `JsonNames`, `Pluralizer`, `NameConverter`, literal formatting per database, CHECK parsing, call shapes for search / clone / junction routines. No I/O except reading config files. | nothing | `TableModel.cs`, `ProjectSettings.cs`, `ColumnTypes.cs` |
 | `CodeGenNew.Connections` | Builds a connection for SQL Server (SQL login or Windows authentication), PostgreSQL and MySQL; a connection test. | Core | `ConnectionRequest.cs` |
-| `CodeGenNew.SchemaIntrospection` | Reads a database's catalog and builds the model. `SchemaProviderBase` holds everything database-independent (display columns, lookup shape, the special-logic rules, child tables, naming); `SqlServerSchemaProvider`, `PostgresSchemaProvider` and `MySqlSchemaProvider` hold the catalog queries. | Core, Connections | `SchemaProviderBase.cs` |
+| `CodeGenNew.SchemaIntrospection` | Reads a database's catalog and builds the model. `SchemaProviderBase` holds everything database-independent (display columns, lookup shape, the special-logic rules, child tables, naming); `SqlServerSchemaProvider`, `PostgresSchemaProvider`, `MySqlSchemaProvider` and `SqliteSchemaProvider` hold the catalog queries (SQLite's CHECKs are read from the table's DDL by `SqliteDdl`). | Core, Connections | `SchemaProviderBase.cs` |
 | `CodeGenNew.TemplateEngine` | Finds templates and their configs (`TemplateCatalog`, `TemplateConfig`), runs one (`TemplateRunner`) or many with one compile each (`TemplateCache`), splits multi-file output (`GeneratedFiles`), writes files (`OutputWriter`), seeds the shipped templates (`DefaultAssetSeeder`), lists the essentials groups. | Core | `TemplateRunner.cs`, `TemplateConfig.cs` |
 | `CodeGenNew.Generation` | Whole-project generation: `ProjectPlan` decides which templates run for which tables, `ProjectGenerator` runs them, `GenerationManifest` records what was written, `ProjectBuilder` builds and tests the result. | Core, Connections, SchemaIntrospection, TemplateEngine | `ProjectPlan.cs`, `ProjectGenerator.cs` |
 | `CodeGenNew.Cli` | The `codegen` command (packed as a .NET tool): hand-rolled argument parsing, the one-template form, `generate` and `essentials`. | the above | `Program.cs`, `GenerateCommand.cs` |
@@ -48,11 +48,24 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 | `Templates/` | The T4 templates and their `.tt.config` files; embedded into the CLI and the app so a fresh install is seeded. | | section 5 |
 | `Docs/` | `specs.md`, `GettingStarted.md`, one note per template (`TemplateNotes`), the verification scripts (`Verification`). | | |
 
+**The stacks.** A project names the stacks it wants (`Stacks=Api,React`); each stack is a group of templates plus an essentials group, and all of them keep one contract (the same routes, JSON names, status codes, search and clone), so any front end works against any API.
+
+| Stack | Writes | Notes |
+|---|---|---|
+| `Api` | ASP.NET minimal-API project over EF Core (`CS_`, `API_`, `SP_`) | the reference implementation; SQL Server, PostgreSQL, MySQL or SQLite |
+| `React`, `Angular`, `Blazor` | web front ends over the API (`TSX_`, `TS_`, `BLZ_`) | grids, search, sort, paging, add / edit dialogs, master-detail, sign-in, optional OData pages |
+| `WinUI3` | Windows desktop app that reads the database itself (`WinUI3_`) | Windows only |
+| `Uno` | single-project Uno Platform app (`UNO_`) that calls the API through clients | desktop (Skia), browser and Windows heads; reuses the WinUI 3 XAML |
+| `Python` | FastAPI over SQLAlchemy 2.0 and Pydantic 2 (`PY_`) | environment password, ASP.NET problem form, junction, CSV, gates and sign-in |
+| `Rust` | Axum and sqlx crate (`RS_`) | PostgreSQL, MySQL or SQLite (sqlx has no SQL Server driver); optional Tauri shell; no OData |
+
+Python and Rust have no EF context or routines: they write their own SQL for the database that was read and take `DialectInfo` and `SearchPlan` as the description of what search must do. Sign-in (`ApiAuth`, `UserTable`) is written for the API stacks (`API_UserDirectory`, `PY_UserDirectory`, `RS_UserDirectory`, each with a `set-password` command) and for every front end (`TSX_`, `TS_`, `BLZ_`, `UNO_EssentialAuth`); `Docs/Verification/Test-ApiSignIn.py` runs the same 55 checks against the ASP.NET, Python and Rust APIs. The per-stack notes are `Docs/TemplateNotes/UNO_Screens_v1.md`, `PY_Routes_v1.md` and the `RS_` notes.
+
 ## 4. The schema model
 
 **One vocabulary.** Every provider reads its own catalog (`sys.*`, `information_schema` plus `pg_catalog`, `information_schema`) and reports a column as a `RawColumn` whose type is a **SQL Server type name** whatever the source database is. Classification (integer, money, string, date, boolean) and the C#, F# and TypeScript mappings are therefore written once. A database whose spelling of the declaration differs supplies an override for the SQL text only. A type with no mapping (an array, a geometry) is reported as a warning, and the `IgnoredColumns` setting leaves it out.
 
-**What the model holds.** Columns with type, length, precision, nullability, identity, computed definition, default, CHECK range or list, description; primary key and its shape (`None`, `Composite`, `SingleInt`, `SingleUniqueIdentifier`, `SingleText`, `SingleOther`; `KeyType` says how the key travels in C#, TypeScript and Python; `KeyType.StackHandlesEveryKey` lists the stacks whose templates read it, so the screens and menu entries of guid and text key tables are listed only for those: Api, Angular, React, Blazor and WinUI3 so far); foreign keys in both directions; indexes (key columns, for the unindexed-foreign-key script); display columns; whether the table is a many-to-many junction, a lookup (enum-like) table, or a name/active table; the dialect. Rows are read only when a template's config asks (`NeedsRowData`, capped at 5000 rows).
+**What the model holds.** Columns with type, length, precision, nullability, identity, computed definition, default, CHECK range or list, description; primary key and its shape (`None`, `Composite`, `SingleInt`, `SingleUniqueIdentifier`, `SingleText`, `SingleOther`; `KeyType` says how the key travels in C#, TypeScript and Python; `KeyType.StackHandlesEveryKey` lists the stacks whose templates read it, so the screens and menu entries of guid and text key tables are listed only for those: Api, Angular, React, Blazor, WinUI3 and Uno so far); foreign keys in both directions; indexes (key columns, for the unindexed-foreign-key script); display columns; whether the table is a many-to-many junction, a lookup (enum-like) table, or a name/active table; the dialect. Rows are read only when a template's config asks (`NeedsRowData`, capped at 5000 rows).
 
 **Names.** `NamingStyle=Pascal` converts `snake_case` to `PascalCase` (with an `Acronyms` list); the model carries both the generated name and the database name (`DbTableName`, `DbName`), and SQL text always uses the second.
 
@@ -64,7 +77,7 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 
 ## 5. Templates
 
-**Files.** `Templates/<Group>_<Name>_v1.tt` plus `<same name>.tt.config`. The group (`SP`, `CS`, `API`, `TS`, `TSX`, `WinUI3`, `FS`, `MD`) names the menu and decides the default file extension. A trailing `_vN` is the version; the newest version is the one offered, and a script that says `-T SP_Save.tt` follows it. The first lines of every template summarise what it writes, what it refuses and what it needs.
+**Files.** `Templates/<Group>_<Name>_v1.tt` plus `<same name>.tt.config`. The group (`SP`, `CS`, `API`, `FS`, `MD`, `PROTO`, `TS` for Angular, `TSX` for React, `BLZ`, `WinUI3`, `UNO`, `PY`, `RS`) names the menu and decides the default file extension. A trailing `_vN` is the version; the newest version is the one offered, and a script that says `-T SP_Save.tt` follows it. The first lines of every template summarise what it writes, what it refuses and what it needs.
 
 **How one runs.** `TemplateRunner` creates a `Mono.TextTemplating` generator, adds a reference to `CodeGenNew.Core`, puts the model in the session as `Model` (a table) or `Database` (every table) and the settings as `Project`, and processes the file. A template compiles on each run; `TemplateCache` compiles once and reuses the compiled class across tables, which is what makes a whole-project run quick. Compiling shells out to the .NET SDK's compiler, so an SDK must be installed. A template reports a problem with `Error(...)`, which fails that run without writing a file; `Refuse` in the config is the earlier, cheaper check.
 
@@ -99,8 +112,6 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 6. `GenerationManifest` (`.codegen-manifest.json` in the output folder) lists each file with the hash of the generated text. The next run reports files it no longer produces (stale); `--delete-stale` removes only those whose hash still matches, so an edited file is never deleted. The same hash protects hand edits when a file is written: a file whose text no longer matches the recorded hash (`Edited`), or one no earlier run recorded and that differs from the new text (`Unknown`), is kept and reported. `--force` overwrites such files; `--write-beside` keeps them and writes the new text next to each as `<file>.generated`. Essentials keep their own rule (missing files only, `--replace` to overwrite).
 7. `ProjectBuilder` optionally builds and tests each stack (`dotnet build`, `npm run build`, ...), with per-project command overrides.
 
-**Known gap:** a normal run overwrites a generated file the user edited. The manifest already holds what is needed to refuse that; it is not wired in yet.
-
 ## 7. The two front ends
 
 **CLI.** `Program.cs` parses arguments (no library: there are few flags), seeds assets, resolves a project, builds a schema provider through `SchemaProviderFactory`, then either runs one template (`TemplateRunner`) or calls `ProjectGenerator` (`generate`, `essentials`). Schema reads are wrapped in a retry. Exit code 0 means success, anything else is a failure with the message on stderr, so it is safe in a script. The `AppHome` rule decides where `Templates`, `Projects`, `Output` and `Settings.json` live: beside the program, or in `%APPDATA%\CodeGenNew` for the installed tool (a tool's own folder is replaced on update); `CODEGENNEW_HOME` overrides both.
@@ -109,7 +120,7 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 
 ## 8. Tests and verification
 
-`CodeGenNew.Tests` (MSTest, about 1,450 tests, about half a minute without a database):
+`CodeGenNew.Tests` (MSTest, about 1,800 tests, about a minute without a database):
 
 | Kind | Examples | Needs a database |
 |---|---|---|
@@ -121,7 +132,7 @@ Dependencies point downwards; nothing references `App` or `Cli`.
 | Hygiene | `LeftoverNamesTests` (no private names), `SqlSecurityTests` (escaped search text, no statement built from text), a test that forbids double hyphens in templates | no |
 
 Two checks are not unit tests and are the ones to trust most:
-- **Samples unchanged.** Seven sample applications (SQL Server with WinUI 3, Angular and React; PostgreSQL with an API and WinUI 3; MySQL with an API and WinUI 3) are regenerated with `codegen generate --dry-run`; a refactor is correct only if every one reports 0 created and 0 updated. The samples live outside this repository.
+- **Samples unchanged.** Eleven sample applications (one per stack or database) are regenerated with `codegen generate --dry-run`; a refactor is correct only if every one reports 0 created and 0 updated. The samples live outside this repository.
 - **Run it.** [Verification](Verification) has scripts that build a generated project, start it against a scratch copy of the database and use it: an API create/read/update/delete walk, an OpenAPI route check, a UI Automation click-through of the desktop app, and recipes for the Angular and React pages. A build cannot see a blank drop-down or a dialog that never closes.
 
 CI (`.github/workflows`) builds and tests on Windows, packs the tool, and builds the desktop app. [Examples/GettingStarted/Generated](../Examples/GettingStarted/Generated) holds the generated API of the getting-started shop, so the output can be read without running anything.
@@ -148,6 +159,8 @@ These are the owner's open questions; the list is a draft to be edited by the ow
 
 - Tables only: no views, no keyless tables, no routine metadata.
 - The generator and the `codegen` tool run on Windows, Linux and macOS (CI builds and tests all three). The desktop app is Windows only.
-- Template compilation needs the .NET SDK on the machine.
+- Template compilation needs the .NET SDK on the machine. Building what is generated needs that stack's own tools: Node for React and Angular, a Rust toolchain for Rust, Python 3 for Python, and for the Uno browser head `dotnet workload install wasm-tools`.
+- Rust cannot read SQL Server (sqlx has no driver) and writes no OData; the Uno junction editor is written but no page opens it, and its pages are the desktop layout.
+- A table whose key is a GUID or text is handled by the Api, Angular, React, Blazor, WinUI3 and Uno stacks only where `KeyType.StackHandlesEveryKey` says so; other stacks skip its screens.
 - The package is version 0.1.0; a breaking template change will be a `_v2` file beside the old one.
 - Git history still holds earlier private names; the working tree has been scrubbed (see `LeftoverNamesTests`).

@@ -10,7 +10,7 @@ namespace CodeGenNew.SchemaIntrospection;
 /// Table and column facts come from information_schema (tables, columns); keys, indexes and foreign keys come from pg_catalog
 /// (pg_class, pg_namespace, pg_index, pg_constraint, pg_attribute), because information_schema cannot say which index is unique
 /// or give a composite foreign key's column pairs in a form that is easy to join. Everything is read-only. </summary>
-public class PostgresSchemaProvider : SchemaProviderBase
+public partial class PostgresSchemaProvider : SchemaProviderBase
 {
     private readonly ConnectionRequest _connectionRequest;
 
@@ -79,7 +79,7 @@ public class PostgresSchemaProvider : SchemaProviderBase
 
     // Reads a default expression the way the C# default-value resolver expects a SQL Server one: functions by their SQL Server
     // name, booleans as bit literals, casts removed. Anything else is left as it is (the resolver then suggests nothing).
-    private static readonly Regex TrailingCast = new(@"(::[a-zA-Z_][a-zA-Z0-9_ ]*(\[\])?)+$", RegexOptions.Compiled);
+    private static readonly Regex TrailingCast = TrailingCastPattern();
 
     public static string? NormalizeDefault(string? pgDefault)
     {
@@ -102,7 +102,7 @@ public class PostgresSchemaProvider : SchemaProviderBase
         return expr;
     }
 
-    private static readonly Regex StringLiteral = new("'((?:[^']|'')*)'", RegexOptions.Compiled);
+    private static readonly Regex StringLiteral = StringLiteralPattern();
 
     /// <summary> The values a single-column CHECK constraint lists (<c>CHECK (status IN ('Open','Closed'))</c>, which PostgreSQL stores as
     /// <c>= ANY (ARRAY['Open'::text, 'Closed'::text])</c>); null for any other check (a range, an OR, a NOT, a comparison with a column). </summary>
@@ -112,12 +112,12 @@ public class PostgresSchemaProvider : SchemaProviderBase
         string shape = StringLiteral.Replace(constraintDefinition, "''");
         if (!shape.ContainsIgnoreCase("= ANY") || !shape.ContainsIgnoreCase("ARRAY["))
             return null;
-        if (Regex.IsMatch(shape, @"\b(OR|AND|NOT)\b|<>|!=|<|>", RegexOptions.IgnoreCase))
+        if (ComparisonOrLogic().IsMatch(shape))
             return null;
 
         int open = shape.IndexOf("ARRAY[", StringComparison.OrdinalIgnoreCase) + 6;
         int close = shape.IndexOf(']', open);
-        if (close < 0 || Regex.Replace(shape[open..close], @"''(::[a-zA-Z_ ]+)?|,|\s", "").Length > 0)
+        if (close < 0 || ListNoise().Replace(shape[open..close], "").Length > 0)
             return null;                                           // something other than listed values inside the array
 
         var values = StringLiteral.Matches(constraintDefinition).Select(m => m.Groups[1].Value.Replace("''", "'")).ToList();
@@ -584,4 +584,13 @@ public class PostgresSchemaProvider : SchemaProviderBase
 
         return rows;
     }
+
+    [GeneratedRegex(@"(::[a-zA-Z_][a-zA-Z0-9_ ]*(\[\])?)+$", RegexOptions.Compiled)]
+    private static partial Regex TrailingCastPattern();
+    [GeneratedRegex("'((?:[^']|'')*)'", RegexOptions.Compiled)]
+    private static partial Regex StringLiteralPattern();
+    [GeneratedRegex(@"\b(OR|AND|NOT)\b|<>|!=|<|>", RegexOptions.IgnoreCase, "en-US")]
+    private static partial Regex ComparisonOrLogic();
+    [GeneratedRegex(@"''(::[a-zA-Z_ ]+)?|,|\s")]
+    private static partial Regex ListNoise();
 }

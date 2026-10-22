@@ -30,18 +30,17 @@ public sealed record CheckRange(double? Min, bool MinStrict, double? Max, bool M
 /// literals joined by AND, or a column against string literals): an OR of ranges, a function, another column or anything else gives null and the column stays as the name rules say. </summary>
 public static partial class CheckConstraintParser
 {
-    private static readonly Regex StringLiteral = new("N?'((?:[^']|'')*)'", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex Cast = new(@"::[a-z_][a-z0-9_ ]*(\[\])?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex Conjunct = new(@"^(?:(?<col>[a-z0-9_$ ]+?)\s*(?<op>>=|<=|<>|!=|>|<|=)\s*(?<num>-?\d+(?:\.\d+)?)|(?<num2>-?\d+(?:\.\d+)?)\s*(?<op2>>=|<=|>|<|=)\s*(?<col2>[a-z0-9_$ ]+?))$",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex Between = new(@"(?<col>[a-z0-9_$]+)\s+between\s+(?<lo>-?\d+(?:\.\d+)?)\s+and\s+(?<hi>-?\d+(?:\.\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex StringLiteral = StringLiteralPattern();
+    private static readonly Regex Cast = CastPattern();
+    private static readonly Regex Conjunct = ConjunctPattern();
+    private static readonly Regex Between = BetweenPattern();
 
     /// <summary> The names a constraint definition mentions as quoted identifiers (<c>[Name]</c>, <c>`name`</c>, <c>"name"</c>), without duplicates. A constraint that names exactly one
     /// column is a column's own check, whichever way it was written; null otherwise. </summary>
     public static string? SingleColumn(string definition)
     {
         var withoutLiterals = StringLiteral.Replace(definition, "''");
-        var names = Regex.Matches(withoutLiterals, @"\[([^\]]+)\]|`([^`]+)`|""([^""]+)""")
+        var names = QuotedNamePattern().Matches(withoutLiterals)
             .Select(m => (m.Groups[1].Success ? m.Groups[1] : m.Groups[2].Success ? m.Groups[2] : m.Groups[3]).Value)
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         return names.Count == 1 ? names[0] : null;
@@ -50,14 +49,14 @@ public static partial class CheckConstraintParser
     /// <summary> The limits <paramref name="definition"/> puts on <paramref name="column"/>, or null when it is not a plain range check on that column. </summary>
     public static CheckRange? ParseRange(string definition, string column)
     {
-        if (definition.Contains('\'') || Regex.IsMatch(definition, @"\bOR\b", RegexOptions.IgnoreCase))
+        if (definition.Contains('\'') || OrKeyword().IsMatch(definition))
             return null;   // a string comparison, or a choice of alternatives, is not a range
 
         string text = Cast.Replace(definition, "");
-        text = Regex.Replace(text, @"^\s*check\s*", "", RegexOptions.IgnoreCase);
-        text = Regex.Replace(text, @"[\[\]`""]", "");
-        text = Regex.Replace(text, @"[()]", " ");
-        text = Regex.Replace(text, @"\s+", " ").Trim().ToLowerInvariant();
+        text = CheckKeywordPrefix().Replace(text, "");
+        text = IdentifierQuotes().Replace(text, "");
+        text = Parentheses().Replace(text, " ");
+        text = Whitespace().Replace(text, " ").Trim().ToLowerInvariant();
         text = Between.Replace(text, m => $"{m.Groups["col"].Value} >= {m.Groups["lo"].Value} and {m.Groups["col"].Value} <= {m.Groups["hi"].Value}");
 
         string wanted = column.ToLowerInvariant();
@@ -111,7 +110,7 @@ public static partial class CheckConstraintParser
         if (matches.Count > 0)
         {
             string rest = equals.Replace(definition, " ");
-            rest = Regex.Replace(rest, @"\bor\b|\bcheck\b|[()\s]", "", RegexOptions.IgnoreCase);
+            rest = OrCheckOrBracket().Replace(rest, "");
             if (rest.Length == 0)
                 return matches.Select(m => m.Groups[1].Value.Replace("''", "'")).ToList();
         }
@@ -121,11 +120,40 @@ public static partial class CheckConstraintParser
         if (inList.Success)
         {
             string list = inList.Groups["list"].Value;
-            var values = Regex.Matches(list, @"(?:_[a-z0-9]+)?N?'((?:[^']|'')*)'", RegexOptions.IgnoreCase).Select(m => m.Groups[1].Value.Replace("''", "'")).ToList();
-            string rest = Regex.Replace(list, @"(?:_[a-z0-9]+)?N?'(?:[^']|'')*'", "", RegexOptions.IgnoreCase);
-            if (values.Count > 0 && Regex.Replace(rest, @"[,\s()]", "").Length == 0)
+            var values = ListLiteralValue().Matches(list).Select(m => m.Groups[1].Value.Replace("''", "'")).ToList();
+            string rest = ListLiteral().Replace(list, "");
+            if (values.Count > 0 && ListSeparators().Replace(rest, "").Length == 0)
                 return values;
         }
         return null;
     }
+
+    [GeneratedRegex("N?'((?:[^']|'')*)'", RegexOptions.IgnoreCase | RegexOptions.Compiled, "en-US")]
+    private static partial Regex StringLiteralPattern();
+    [GeneratedRegex(@"::[a-z_][a-z0-9_ ]*(\[\])?", RegexOptions.IgnoreCase | RegexOptions.Compiled, "en-US")]
+    private static partial Regex CastPattern();
+    [GeneratedRegex(@"^(?:(?<col>[a-z0-9_$ ]+?)\s*(?<op>>=|<=|<>|!=|>|<|=)\s*(?<num>-?\d+(?:\.\d+)?)|(?<num2>-?\d+(?:\.\d+)?)\s*(?<op2>>=|<=|>|<|=)\s*(?<col2>[a-z0-9_$ ]+?))$", RegexOptions.IgnoreCase | RegexOptions.Compiled, "en-US")]
+    private static partial Regex ConjunctPattern();
+    [GeneratedRegex(@"(?<col>[a-z0-9_$]+)\s+between\s+(?<lo>-?\d+(?:\.\d+)?)\s+and\s+(?<hi>-?\d+(?:\.\d+)?)", RegexOptions.IgnoreCase | RegexOptions.Compiled, "en-US")]
+    private static partial Regex BetweenPattern();
+    [GeneratedRegex(@"\[([^\]]+)\]|`([^`]+)`|""([^""]+)""")]
+    private static partial Regex QuotedNamePattern();
+    [GeneratedRegex(@"\bOR\b", RegexOptions.IgnoreCase, "en-US")]
+    private static partial Regex OrKeyword();
+    [GeneratedRegex(@"^\s*check\s*", RegexOptions.IgnoreCase, "en-US")]
+    private static partial Regex CheckKeywordPrefix();
+    [GeneratedRegex(@"[\[\]`""]")]
+    private static partial Regex IdentifierQuotes();
+    [GeneratedRegex(@"[()]")]
+    private static partial Regex Parentheses();
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex Whitespace();
+    [GeneratedRegex(@"\bor\b|\bcheck\b|[()\s]", RegexOptions.IgnoreCase, "en-US")]
+    private static partial Regex OrCheckOrBracket();
+    [GeneratedRegex(@"(?:_[a-z0-9]+)?N?'((?:[^']|'')*)'", RegexOptions.IgnoreCase, "en-US")]
+    private static partial Regex ListLiteralValue();
+    [GeneratedRegex(@"(?:_[a-z0-9]+)?N?'(?:[^']|'')*'", RegexOptions.IgnoreCase, "en-US")]
+    private static partial Regex ListLiteral();
+    [GeneratedRegex(@"[,\s()]")]
+    private static partial Regex ListSeparators();
 }
