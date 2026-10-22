@@ -210,6 +210,9 @@ public sealed class DashboardPlan
 
         private string Number(string expression) => di.ToDouble(expression);
 
+        /// <summary> The value of an empty sum: SQLite types a value by what it holds, so a plain 0 would reach the reader as an integer where every other value of the column is a real. </summary>
+        private string Zero => di.Dialect == SqlDialect.Sqlite ? "0.0" : "0";
+
         /// <summary> The column as a number an aggregate accepts: PostgreSQL's money type has no AVG and no cast to double, so it becomes numeric first. </summary>
         private string Amount(ColumnModel column, string? alias = null) =>
             di.Dialect == SqlDialect.PostgreSql && column.IsMoneyColumn ? $"CAST({C(column, alias)} AS numeric)" : C(column, alias);
@@ -278,7 +281,7 @@ public sealed class DashboardPlan
                 return;
 
             string x = Number("SUM(" + Amount(money) + ")"), a = Number("AVG(" + Amount(money) + ")"), m = Number("MAX(" + Amount(money) + ")");
-            string sql = $"SELECT 'Total' AS {QLabel}, COALESCE({x}, 0) AS {QValue} FROM {T(table)} UNION ALL SELECT 'Average', COALESCE({a}, 0) FROM {T(table)} UNION ALL SELECT 'Largest', COALESCE({m}, 0) FROM {T(table)}";
+            string sql = $"SELECT 'Total' AS {QLabel}, COALESCE({x}, {Zero}) AS {QValue} FROM {T(table)} UNION ALL SELECT 'Average', COALESCE({a}, {Zero}) FROM {T(table)} UNION ALL SELECT 'Largest', COALESCE({m}, {Zero}) FROM {T(table)}";
             string title = $"{Words(table.TableName)} {ColumnWords(money)}";
             int nameScore = MoneyNameScore(money.Name);
             Add(DashboardWidgetKind.Money, title, table, money.Name, $"{money.Name} is a money column, so its total, average and largest are the numbers a person looks for.", sql, 60 + nameScore / 4 - Penalty(table), money: true);
@@ -413,7 +416,7 @@ public sealed class DashboardPlan
             if (date is null)
             {
                 string expression = aggregate == "count" ? "COUNT(*)" : aggregate.ToUpperInvariant() + "(" + Amount(column) + ")";
-                sql = $"SELECT {Lit(label)} AS {QLabel}, COALESCE({Number(expression)}, 0) AS {QValue} FROM {T(table)}";
+                sql = $"SELECT {Lit(label)} AS {QLabel}, COALESCE({Number(expression)}, {Zero}) AS {QValue} FROM {T(table)}";
                 kind = DashboardWidgetKind.Money;
             }
             else

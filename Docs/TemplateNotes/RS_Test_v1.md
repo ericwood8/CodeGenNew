@@ -1,0 +1,41 @@
+# RS_Test_v1, RS_TestBodies_v1, RS_TestJunction_v1, RS_TestDashboard_v1, RS_TestCsv_v1, RS_TestGates_v1 and RS_EssentialTests_v1
+
+Integration tests of the generated Rust crate. `RustTests=true` in the project file adds them to a whole-project run (or name the templates in `PlanAlso` and run the `Tests` essentials group of the Rust stack). They go into the crate itself, in `tests/api`, as one test program, so the crate is linked once however many tables there are. `codegen generate --test` runs `cargo test` (the default test command of the Rust stack).
+
+- **`tests/api/<table>.rs`** (`RS_Test`, per table with a REST API): a module with the tests of the table, run in process against the crate's router (`app` of `lib.rs`), so no port is opened.
+  - A row is added, read, changed and removed, and a 404 follows the removal.
+  - A key no row has answers 404.
+  - The search answers a page, a page number below one is a 400, each sort the search offers works in both directions, and a sort name it does not offer is ignored.
+  - A row is copied where the API copies (`POST /{id}/clone`).
+  - A second row with the value of a unique index is refused with a client error.
+  - With `ApiValidation=true`, text longer than its column and a number past its `CHECK` range are a 400.
+  - With `ApiAuth=true`, a call without a token is a 401; with `ReadRoles` or `WriteRoles`, a role the rule does not list gets a 403 `role-not-allowed` (before the row is looked for), and a listed role gets through.
+  - With `OwnedTables` (a table with an owner column, or one scoped through its parent), an ordinary person signed in with an owner id sees and changes only that owner's rows: the owner reads, lists and searches the row, another owner and a person with no owner id get a 403 `not-your-row` on a read, a change and a removal and do not find the row in a list or a search, and a row for another owner is refused. The ordinary person is a role every `ReadRoles` and `WriteRoles` list names besides the administrator's (any role when the rules name none); when the rules leave no such role the owner tests are not written.
+- **`tests/api/test_bodies.rs` and `tests/api/main.rs`** (`RS_TestBodies`, once for the database): `main.rs` lists the modules; `test_bodies.rs` has one function per table that makes the body of a request that adds a row, as `API_Http` and `API_Test` do: a value for every column that cannot be NULL, text with a unique ending, a made-up key where the database does not number it. A foreign key points at the first row of the parent's API; when the parent has none, the parent's own function adds one (up to four parents deep), so a test of a child runs on an empty database. The added parent rows stay in the scratch database.
+- **`tests/api/<table>_junction.rs`** (`RS_TestJunction`, per many-to-many junction table whose two sides have a REST API; the junction tables are the only composite-key tables that have routes): the list names the target's rows with their display columns and whether each is linked, a link and an unlink move that flag, repeating either is a 200 that changes nothing more, a row that is not there cannot be linked, and with `ApiAuth` a call without a token is a 401 and a role the rules do not list is a 403. The two rows to link are the first rows of the two APIs, or rows added with their own bodies.
+- **`tests/api/dashboard_routes.rs`** (`RS_TestDashboard`, with a dashboard): the page answers the widgets `DashboardPlan` chose, in its order, each with a title, a kind and the lists its kind fills; with a table in the query string the cards of that table's strip come back whatever the case of the name, and a table with none answers no widget. With `ApiAuth` a call without a token is a 401 and a role the read rules do not list gets no widget of a limited table. The numbers are not compared: the answer is kept for a minute and the other tests change the rows.
+- **`tests/api/csv_routes.rs`** (`RS_TestCsv`, with `ApiCsv=true`): a module per table. The export starts with the header of the table's columns and has the row that was added; an import adds the row of a file made from a request body; a file with one bad row adds none of its rows; a file without a column that must have a value is refused; a text that starts like a formula leaves the export with an apostrophe in front and comes back through the import as it was. With `ApiAuth` a call without a token is a 401, and the routes of a table scoped to a person, and the import into a table with a gate or a guard, are for the administrator only (403). The user table is exported but not imported.
+- **`tests/api/gate_routes.rs`** (`RS_TestGates`, with `ChangeGates` or `GuardedColumns`): a module per table that has a rule.
+  - A guard: `GET <route>/guards` says true for the administrator and false for someone the user table does not know; a person who may not change the guarded column gets a 403 `column-not-yours` when the value changes and may save the row while it stays; the administrator's change is saved and stamps its time. Not written for a table scoped to a person, a guarded column that is a foreign key, or when no role is common to the table's rules.
+  - A gate of a plain shape (the column moves to equal values, the condition and the exemption are terms joined by `and` that each compare for equality): while the condition holds and the exemption does not the move is a 409 `change-not-allowed`; while the exemption holds, or the condition does not, it is a 200. A condition on a parent's column is set through the parent's API and put back. A rule with `start` also gets a test that a new row starting anywhere else is a 400. A column that is a foreign key needs the rows the rule names (the values it moves to) to exist in its table.
+  - A rule of another shape (a comparison other than equality, `or`, a parent without an API, a decimal or a date) has no test here.
+- **`tests/api/test_support.rs`** (`RS_EssentialTests`, essentials group `Tests`, written only with `RustTests=true`): `Client`, which builds the router over a scratch database and sends it requests (`get`, `post`, `put`, `delete`, `post_text`, `anonymous`, and with `ApiAuth` `in_role` and `in_owner`), and the helpers the bodies use.
+- **`Cargo.toml`** (`RS_EssentialCargo`) names the one dev-dependency the tests need (`tower`) when `RustTests=true`.
+
+## The scratch database
+
+The tests add and remove rows, so they never run on the real database.
+
+- **SQLite:** a copy of the file in the temporary folder, made from `DATABASE_FILE` or else the file the project names (relative to the crate's folder, a `.env` file is read). The original is never written. Windows keeps a copy locked while its connections close, so a copy that stays is removed by a later run.
+- **PostgreSQL and MySQL:** the URL in `<PROJECT>_TEST_CONNECTION` (`postgres://user@host/db_scratch`), a scratch copy of the database (`Docs/Verification/ScratchDatabase.ps1` makes one). The password is read only from `PGPASSWORD` or `MYSQL_PWD`.
+- **None of these:** a test prints why it did nothing (visible with `cargo test -- --nocapture`) and passes. A missing scratch database is not a failure of the code.
+
+## Signing in
+
+With `ApiAuth=true` the helper puts a signing key and a bootstrap administrator made for the run into the environment and signs in through `POST /api/auth/login`, so every request carries a token. `in_role` makes a token in any role with the key of the run, and `in_owner` one that also names an owner id. With `UserTable` the sign-in reads that table and there is no bootstrap administrator: set `<PROJECT>_TEST_USER` and `<PROJECT>_TEST_PASSWORD` to an administrator of the scratch database, or the tests report that and pass. The password hash takes a noticeable part of a second, which is why every test of a signed-in crate takes a few seconds.
+
+## Not done
+
+- A refused row (a `CHECK` the body breaks) is tested only where the validator has a limit.
+- A test that fails before its last line leaves the rows it added in the scratch database.
+- The tests of a gate that moves a column to a value of a foreign key need those parent rows to exist.

@@ -8,7 +8,8 @@
     // Generates: Cargo.toml, .env.example and .gitignore   (no table, no database: an essentials group; the output folder is the Rust crate's own folder)
     // The crate: the package name (RustCrateName), the dependencies pinned to the versions this release was built and checked with (all in this one place; a bump is a template change with a
     // regenerate and a compile), and the sqlx features of the project's DatabaseProvider. .env.example names the variables the API reads; no password is written, a real .env is ignored by git.
-    // Settings: ProjectName, RustCrateName, DatabaseProvider, DatabaseServer, DatabaseName, DatabaseUser, RustPort.
+    // With RustTests=true it also names the dev-dependency the integration tests of tests/ need.
+    // Settings: ProjectName, RustCrateName, DatabaseProvider, DatabaseServer, DatabaseName, DatabaseUser, RustPort, RustTests.
     // ==========================================================================================
     var dialect = Project.DatabaseDialect;
     string driver = dialect switch { SqlDialect.PostgreSql => "postgres", SqlDialect.MySql => "mysql", _ => "sqlite" };
@@ -71,6 +72,15 @@ tokio = { version = "1.53.2", features = ["macros", "net", "rt-multi-thread"] }
 tower-http = { version = "0.7.1", features = ["cors", "fs"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 <#
+    if (Project.RustTests)
+    {
+#>
+
+# what the integration tests of tests/ use (RustTests=true): the router is called in process
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+<#
+    }
     if (Project.ApiAuth)
     {
 #>

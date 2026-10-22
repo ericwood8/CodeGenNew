@@ -1,0 +1,176 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestJunction_v1.tt
+    // Generates: tests/api/<table>_junction.rs   (per many-to-many junction table whose two sides have a REST API; the output folder is the Rust crate's folder)
+    // Integration tests of the junction routes RS_Junction writes (GET <route>/junction/{anchorId}, POST .../link and .../unlink), run in process over a scratch database like RS_Test: the list names
+    // every row of the target with its display columns and whether it is linked, a link and an unlink move that flag, repeating either is a 200 that changes nothing more, a row that is not there
+    // cannot be linked, and with ApiAuth a call without a token is a 401 and a role the table's rules do not list is a 403. The two rows to link are the first rows of the two sides' APIs, or rows
+    // added with their own bodies (test_bodies.rs). Written only for a project with RustTests=true; tests/api/main.rs (RS_TestBodies) lists the modules.
+    // Full notes: Docs/TemplateNotes/RS_Test_v1.md
+    // ==========================================================================================
+    if (Project.RustTests)
+    {
+        var sb = new StringBuilder();
+        void Line(string text = "") => sb.Append(text).Append('\n');
+        string Json(string text) => ApiSampleValues.Json(text);
+
+        foreach (var table in new[] { Model }.Where(t => RustTestBodies.JunctionTested(t, Project)))
+        {
+            var junction = table.Junction!;
+            string route = BlazorNames.ApiRoute(table.TableName);
+            var readRoles = WriteRolePlan.ReadFor(Project, table);
+            var writeRoles = WriteRolePlan.For(Project, table);
+            string anchorJson = Json(JsonNames.Camel(junction.AnchorForeignKey.ReferencedColumns[0]));
+            string targetJson = Json(JsonNames.Camel(junction.TargetForeignKey.ReferencedColumns[0]));
+            string absentTarget = junction.TargetColumn.SqlType switch
+            {
+                SqlDbType.Int or SqlDbType.BigInt => "json!(2147483647)",
+                SqlDbType.UniqueIdentifier => "json!(uuid::Uuid::new_v4().to_string())",
+                _ => ""
+            };
+            string[] shown = [.. junction.DisplayColumns.Select(c => Json(JsonNames.Camel(c)))];
+
+            Line($"@@@FILE tests/api/{RustTestBodies.JunctionModule(table)}.rs@@@");
+            Line("use axum::http::StatusCode;");
+            Line("use serde_json::{Value, json};");
+            Line();
+            Line("use crate::test_bodies;");
+            Line("use crate::test_support::*;");
+            Line();
+            Line($"const ROUTE: &str = {Json(route)};");
+            Line();
+            Line($"/// The keys of a row of the anchor ({junction.AnchorRole}) and of one of the target ({junction.TargetRole}): the first row of each API, or a row added with the table's own body.");
+            Line("async fn a_pair(api: &Client) -> Option<(Value, Value)> {");
+            Line($"    let anchor = parent_key(api, {Json(RustTestBodies.Route(junction.AnchorRole))}, {anchorJson}, json!(1), Some(test_bodies::{RustNames.Snake(junction.AnchorRole)}(api, 1)), 0).await?;");
+            Line($"    let target = parent_key(api, {Json(RustTestBodies.Route(junction.TargetRole))}, {targetJson}, json!(1), Some(test_bodies::{RustNames.Snake(junction.TargetRole)}(api, 1)), 0).await?;");
+            Line("    Some((anchor, target))");
+            Line("}");
+            Line();
+            Line("/// Whether the target is linked to the anchor, as the junction list says; None when the list does not have the target.");
+            Line("async fn is_linked(api: &Client, anchor: &Value, target: &Value) -> Option<bool> {");
+            Line("    let list = api.get(&format!(\"{ROUTE}/junction/{}\", segment(anchor))).await;");
+            Line("    assert_eq!(list.status, StatusCode::OK, \"{}\", list.body);");
+            Line($"    list.json().as_array()?.iter().find(|item| item[\"targetId\"] == *target).map(|item| item[\"isSelected\"] == true)");
+            Line("}");
+            Line();
+            Line("#[tokio::test]");
+            Line("async fn a_target_can_be_linked_and_unlinked_and_either_can_be_repeated() {");
+            Line("    let Some(api) = Client::start().await else { return };");
+            Line("    let Some((anchor, target)) = a_pair(&api).await else { return };");
+            Line("    let link = json!({ \"anchorId\": anchor, \"targetId\": target });");
+            Line("    api.post(&format!(\"{ROUTE}/junction/unlink\"), &link).await;");
+            Line("    assert_eq!(is_linked(&api, &anchor, &target).await, Some(false), \"the target is in the list and not linked\");");
+            Line();
+            Line("    for _ in 0..2 {");
+            Line("        let linked = api.post(&format!(\"{ROUTE}/junction/link\"), &link).await;");
+            Line("        assert_eq!(linked.status, StatusCode::OK, \"{}\", linked.body);");
+            Line("        assert_eq!(is_linked(&api, &anchor, &target).await, Some(true), \"the target is linked\");");
+            Line("    }");
+            Line("    for _ in 0..2 {");
+            Line("        let unlinked = api.post(&format!(\"{ROUTE}/junction/unlink\"), &link).await;");
+            Line("        assert_eq!(unlinked.status, StatusCode::OK, \"{}\", unlinked.body);");
+            Line("        assert_eq!(is_linked(&api, &anchor, &target).await, Some(false), \"the target is not linked\");");
+            Line("    }");
+            Line("}");
+            Line();
+            Line("#[tokio::test]");
+            Line("async fn the_list_names_every_target_with_its_display_columns() {");
+            Line("    let Some(api) = Client::start().await else { return };");
+            Line("    let Some((anchor, target)) = a_pair(&api).await else { return };");
+            Line("    let list = api.get(&format!(\"{ROUTE}/junction/{}\", segment(&anchor))).await;");
+            Line("    assert_eq!(list.status, StatusCode::OK, \"{}\", list.body);");
+            Line("    let items = list.json();");
+            Line("    let item = items.as_array().and_then(|items| items.iter().find(|item| item[\"targetId\"] == target)).expect(\"the target is in the list\");");
+            if (shown.Length > 0)
+            {
+                Line($"    for column in [{string.Join(", ", shown)}] {{");
+                Line("        assert!(item.get(column).is_some(), \"the item has {column}: {item}\");");
+                Line("    }");
+            }
+            Line("    assert!(item[\"isSelected\"].is_boolean());");
+            Line("}");
+            if (absentTarget.Length > 0)
+            {
+                Line();
+                Line("#[tokio::test]");
+                Line("async fn a_row_that_is_not_there_cannot_be_linked() {");
+                Line("    let Some(api) = Client::start().await else { return };");
+                Line("    let Some((anchor, _)) = a_pair(&api).await else { return };");
+                Line($"    let link = json!({{ \"anchorId\": anchor, \"targetId\": {absentTarget} }});");
+                Line("    let refused = api.post(&format!(\"{ROUTE}/junction/link\"), &link).await;");
+                Line("    if refused.status.is_success() {");
+                Line("        api.post(&format!(\"{ROUTE}/junction/unlink\"), &link).await;");
+                Line("    }");
+                Line("    assert!(!refused.status.is_success(), \"a link to a row that is not there is refused: {}\", refused.status);");
+                Line("}");
+            }
+            if (Project.ApiAuth)
+            {
+                Line();
+                Line("#[tokio::test]");
+                Line("async fn without_a_token_the_junction_answers_401() {");
+                Line("    let Some(api) = Client::start().await else { return };");
+                Line("    let Some((anchor, target)) = a_pair(&api).await else { return };");
+                Line("    let nobody = api.anonymous();");
+                Line("    assert_eq!(nobody.get(&format!(\"{ROUTE}/junction/{}\", segment(&anchor))).await.status, StatusCode::UNAUTHORIZED);");
+                Line("    let link = json!({ \"anchorId\": anchor, \"targetId\": target });");
+                Line("    assert_eq!(nobody.post(&format!(\"{ROUTE}/junction/link\"), &link).await.status, StatusCode::UNAUTHORIZED);");
+                Line("    assert_eq!(nobody.post(&format!(\"{ROUTE}/junction/unlink\"), &link).await.status, StatusCode::UNAUTHORIZED);");
+                Line("}");
+                if (writeRoles.Count > 0)
+                {
+                    Line();
+                    Line("#[tokio::test]");
+                    Line("async fn a_role_the_write_rule_does_not_list_cannot_link() {");
+                    Line("    let Some(api) = Client::start().await else { return };");
+                    Line("    let Some((anchor, target)) = a_pair(&api).await else { return };");
+                    Line("    let other = api.in_role(\"NoSuchRole\");");
+                    Line("    let link = json!({ \"anchorId\": anchor, \"targetId\": target });");
+                    Line("    for action in [\"link\", \"unlink\"] {");
+                    Line("        let reply = other.post(&format!(\"{ROUTE}/junction/{action}\"), &link).await;");
+                    Line("        assert_eq!(reply.status, StatusCode::FORBIDDEN, \"{action}: {}\", reply.body);");
+                    Line($"        assert_eq!(reply.json()[\"type\"], \"{ProblemTypes.RoleNotAllowed}\");");
+                    Line("    }");
+                    Line("    assert_eq!(is_linked(&api, &anchor, &target).await, Some(false), \"nothing was linked\");");
+                    Line("}");
+                    if (writeRoles.Count > 1)
+                    {
+                        Line();
+                        Line("#[tokio::test]");
+                        Line("async fn a_role_the_write_rule_lists_can_link() {");
+                        Line("    let Some(api) = Client::start().await else { return };");
+                        Line("    let Some((anchor, target)) = a_pair(&api).await else { return };");
+                        Line($"    let writer = api.in_role({Json(writeRoles[1])});");
+                        Line("    let link = json!({ \"anchorId\": anchor, \"targetId\": target });");
+                        Line("    let linked = writer.post(&format!(\"{ROUTE}/junction/link\"), &link).await;");
+                        Line("    assert_eq!(linked.status, StatusCode::OK, \"{}\", linked.body);");
+                        Line("    assert_eq!(is_linked(&api, &anchor, &target).await, Some(true));");
+                        Line("    writer.post(&format!(\"{ROUTE}/junction/unlink\"), &link).await;");
+                        Line("}");
+                    }
+                }
+                if (readRoles.Count > 0)
+                {
+                    Line();
+                    Line("#[tokio::test]");
+                    Line("async fn a_role_the_read_rule_does_not_list_cannot_read_the_list() {");
+                    Line("    let Some(api) = Client::start().await else { return };");
+                    Line("    let Some((anchor, _)) = a_pair(&api).await else { return };");
+                    Line("    let list = api.in_role(\"NoSuchRole\").get(&format!(\"{ROUTE}/junction/{}\", segment(&anchor))).await;");
+                    Line("    assert_eq!(list.status, StatusCode::FORBIDDEN, \"{}\", list.body);");
+                    Line($"    assert_eq!(list.json()[\"type\"], \"{ProblemTypes.RoleNotAllowed}\");");
+                    Line("}");
+                }
+            }
+            Line();
+        }
+        Write(sb.ToString());
+    }
+#>

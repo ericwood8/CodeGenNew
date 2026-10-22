@@ -148,6 +148,12 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `RS` | `RS_Junction` | `src/routes/table_junction.rs` for a many-to-many junction table - junction routes of `API_Junction` for Rust API. |
 | `RS` | `RS_Csv` | `src/routes/csv_files.rs` - CSV export and import routes for every table (`ApiCsv=true`); rows are inserted in one transaction. |
 | `RS` | `RS_Gates` | `src/routes/gates.rs` - same checks for Rust API, and guards routes. |
+| `RS` | `RS_Test` | `tests/api/table.rs` - integration tests of a table's routes that run the crate's router in process (`RustTests=true`): add, read, change and remove a row, a 404, the search and its sorts, a copy, a unique value, the validation limits, and with `ApiAuth` the 401 and 403 answers and the owner rule of `OwnedTables`. Run by `cargo test` over a scratch database (SQLite: a copy of the file; others: `<PROJECT>_TEST_CONNECTION`).
+| `RS` | `RS_TestBodies` | `tests/api/main.rs` and `tests/api/test_bodies.rs` - the request bodies of the tests, with a row added to a parent that has none (`RustTests=true`).
+| `RS` | `RS_TestCsv` | `tests/api/csv_routes.rs` - tests of the CSV export and import of every table (`RustTests=true` with `ApiCsv=true`): the header, an import, a bad row that adds none, a formula text, and the administrator-only routes.
+| `RS` | `RS_TestDashboard` | `tests/api/dashboard_routes.rs` - tests of `GET /api/dashboard` against the plan's widgets and strips (`RustTests=true` with a dashboard).
+| `RS` | `RS_TestGates` | `tests/api/gate_routes.rs` - tests of the guards route, a guarded column and the 409 of a change gate, with the condition set through the parent's API (`RustTests=true` with `ChangeGates` or `GuardedColumns`).
+| `RS` | `RS_TestJunction` | `tests/api/table_junction.rs` - tests of the junction list, link and unlink routes of a many-to-many table (`RustTests=true`).
 | `RS` | `RS_UserDirectory` | `src/users.rs` - people who sign in, read from `UserTable` of project, and `set-password` command (`ApiAuth=true` with `UserTable`). |
 
 ### UI layer

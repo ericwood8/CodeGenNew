@@ -1,0 +1,106 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Globalization" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestBodies_v1.tt
+    // Generates: tests/api/main.rs and tests/api/test_bodies.rs   (whole-database; the output folder is the Rust crate's folder)
+    // One function per table that has an API: the body of a request that adds a row, made like API_Http's and API_Test's (one value for every column that cannot be NULL, text with a unique ending,
+    // a key the database does not number made up). A foreign key points at the first row of the parent's API; when the parent has none the function of the parent adds one, so a test of a child
+    // runs on an empty database. The modules tests/api/<table>.rs (RS_Test) call these functions; main.rs lists them and the junction, dashboard, CSV and gate modules the other RS_Test templates write,
+    // so the tests are one program that links the crate once.
+    // Written only for a project with RustTests=true.
+    // Full notes: Docs/TemplateNotes/RS_Test_v1.md
+    // ==========================================================================================
+    if (Project.RustTests)
+    {
+        var tables = Database.CrudApiTables(Project);
+        var withApi = tables.Select(x => x.TableName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var sb = new StringBuilder();
+        void Line(string text = "") => sb.Append(text).Append('\n');
+        string Json(string text) => ApiSampleValues.Json(text);
+
+        // one test program for the whole crate (tests/api): the crate is linked once, not once per table
+        Line("@@@FILE tests/api/main.rs@@@");
+        Line("// The integration tests of the tables, as one test program (the test program named api). Written by RS_TestBodies; regenerated with the tables.");
+        Line("mod test_bodies;");
+        Line("mod test_support;");
+        var modules = tables.Select(x => RustTable.Of(x, Project).Module).ToList();
+        modules.AddRange(RustTestBodies.JunctionTables(Database, Project).Select(RustTestBodies.JunctionModule));
+        if (RustTestBodies.HasDashboardTests(Project))
+            modules.Add("dashboard_routes");
+        if (RustTestBodies.HasCsvTests(Database, Project))
+            modules.Add("csv_routes");
+        if (RustTestBodies.HasGateTests(Database, Project))
+            modules.Add("gate_routes");
+        foreach (string module in modules.Order(StringComparer.Ordinal))
+            Line($"mod {module};");
+        Line();
+        Line("@@@FILE tests/api/test_bodies.rs@@@");
+        Line("// The body of a request that adds a row, for every table that has an API. Written by RS_TestBodies; regenerated with the tables.");
+        Line("#![allow(dead_code, unused_imports)]");
+        Line();
+        Line("use std::future::Future;");
+        Line("use std::pin::Pin;");
+        Line();
+        Line("use serde_json::{Value, json};");
+        Line();
+        Line("use crate::test_support::{Client, new_code, new_key, parent_key, unique};");
+        Line();
+        Line("/// A body, once the parent rows it needs are found or added; None (after saying why) when they cannot be.");
+        Line("pub type Body<'a> = Pin<Box<dyn Future<Output = Option<Value>> + 'a>>;");
+
+        foreach (var table in tables.OrderBy(x => RustNames.Snake(x.TableName), StringComparer.Ordinal))
+        {
+            var t = RustTable.Of(table, Project);
+            var keyType = KeyType.Of(table)!;
+            var lets = new List<string>();
+            string Expression(ColumnModel c)
+            {
+                string sample = ApiSampleValues.Value(c, Project);
+                if (c.IsPrimaryKey)
+                {
+                    if (keyType.Kind == KeyKind.Guid)
+                        return "uuid::Uuid::new_v4().to_string()";
+                    if (keyType.Kind == KeyKind.Text)
+                        return $"new_code({(c.CharacterLength > 0 ? c.CharacterLength : 8)})";
+                    if (c.IsIdentity)
+                        return sample;
+                    var range = NumericClassifier.TypeRange(c.SqlType);
+                    long high = Math.Min(range.Max, 2_000_000_000);
+                    return $"new_key({Math.Max(1, high / 2).ToString(CultureInfo.InvariantCulture)}, {high.ToString(CultureInfo.InvariantCulture)})";
+                }
+                if (RustTestBodies.IsFreeText(table, c))
+                    return $"unique({Json(ApiSampleValues.Text(c))}, {Math.Max(c.CharacterLength, 0)})";
+                if (RustTestBodies.ParentKey(table, c, Project) is { } fk)
+                {
+                    string name = "parent_" + RustNames.Snake(c.Name);
+                    string parent = withApi.Contains(fk.ReferencedTable) ? $"Some({RustNames.Snake(fk.ReferencedTable)}(api, depth + 1))" : "None";
+                    lets.Add($"let {name} = parent_key(api, {Json(RustTestBodies.Route(fk.ReferencedTable))}, {Json(JsonNames.Camel(fk.ReferencedColumns[0]))}, json!({sample}), {parent}, depth).await?;");
+                    return name;
+                }
+                return sample;
+            }
+            var members = ApiSampleValues.BodyColumns(table).Where(c => c != t.HashField?.Column).Select(c => (Name: Json(JsonNames.Camel(c.Name)), Value: Expression(c))).ToList();
+
+            Line();
+            Line($"/// A body that adds a row to {t.Route}.");
+            Line($"pub fn {t.Module}<'a>({(lets.Count == 0 ? "_api" : "api")}: &'a Client, {(lets.Count == 0 ? "_depth" : "depth")}: u8) -> Body<'a> {{");
+            Line("    Box::pin(async move {");
+            foreach (string let in lets)
+                Line("        " + let);
+            Line("        Some(json!({");
+            foreach (var member in members)
+                Line($"            {member.Name}: {member.Value},");
+            Line("        }))");
+            Line("    })");
+            Line("}");
+        }
+        Write(sb.ToString());
+    }
+#>

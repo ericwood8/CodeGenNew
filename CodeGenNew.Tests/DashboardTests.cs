@@ -328,6 +328,21 @@ public class DashboardTests
         Assert.IsFalse(plan.Candidates.Any(w => w.Sql.Contains("--") || w.Sql.Contains(';')), "one fixed statement, no comment, no second statement");
     }
 
+    [TestMethod]
+    [DataRow(SqlDialect.SqlServer, ", 0)")]
+    [DataRow(SqlDialect.PostgreSql, ", 0)")]
+    [DataRow(SqlDialect.MySql, ", 0)")]
+    [DataRow(SqlDialect.Sqlite, ", 0.0)")]
+    public void The_sum_of_an_empty_table_is_written_as_the_type_the_database_gives_a_sum(SqlDialect dialect, string zero)
+    {
+        var plan = DashboardPlan.Build(Typed(dialect), Project(("Screens", "Invoice,Customer")));
+        string money = plan.Candidates.First(w => w.Kind == DashboardWidgetKind.Money).Sql;
+
+        Expect.Contains(money, "COALESCE(");
+        Expect.Contains(money, zero);
+        Assert.AreEqual(3, money.Split("COALESCE(").Length - 1);
+    }
+
     // ------------------------------------------------------------------ the files
 
     [TestMethod]

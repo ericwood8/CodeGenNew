@@ -1,0 +1,467 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Globalization" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Test_v1.tt
+    // Generates: tests/api/<table>.rs   (the template writes its own path with an @@@FILE marker; the output folder is the Rust crate's folder; tests/api/main.rs, from RS_TestBodies, makes the modules one test program)
+    // Integration tests of one table's API that run the crate's router in process (no port) over a scratch database: add a row, read it, change it, remove it and see a 404 afterwards; ask for a
+    // row that is not there; fetch a page of the search and sort it by each column it offers; copy a row where the API copies; a second row with a unique value; and, with ApiValidation=true, a value
+    // past a limit gets a 400. With ApiAuth=true a call without a token is a 401 and a role the table's rules do not list is a 403, and for a table scoped to a person (OwnedTables) another owner and
+    // a person with no owner id are refused (403 not-your-row) and cannot list the row, while its owner can. The bodies are made like API_Test's: one value for every column
+    // that cannot be NULL, text with a unique ending, a foreign key pointing at the first row of the parent's API. The bodies are written once for the database by RS_TestBodies, which also adds a
+    // row to a parent that has none.
+    // Writes nothing unless the project sets RustTests=true. The helpers come from the Tests essentials group (RS_EssentialTests).
+    // Full notes: Docs/TemplateNotes/RS_Test_v1.md
+    // ==========================================================================================
+    if (!Project.RustTests)
+    {
+    }
+    else
+    {
+        var t = RustTable.Of(Model, Project);
+        string route = t.Route;
+        var key = Model.PrimaryKeyColumns[0];
+        string keyJson = JsonNames.Camel(key.Name);
+        var keyType = KeyType.Of(Model)!;
+        bool intKey = keyType.Kind == KeyKind.Int;
+        string absentKey = keyType.Kind switch
+        {
+            KeyKind.Int => "\"2147483647\".to_string()",
+            KeyKind.Guid => "uuid::Uuid::new_v4().to_string()",
+            _ => $"\"{new string('~', Math.Max(1, Math.Min(key.CharacterLength > 0 ? key.CharacterLength : 3, 12)))}\".to_string()"
+        };
+        var bodyColumns = ApiSampleValues.BodyColumns(Model).Where(c => c != t.HashField?.Column).ToList();
+        string Json(string text) => ApiSampleValues.Json(text);
+
+        bool IsFreeText(ColumnModel c) => RustTestBodies.IsFreeText(Model, c);
+        string ForeignKeyParentRoute(ColumnModel c, out string parentKey)
+        {
+            var fk = RustTestBodies.ParentKey(Model, c, Project);
+            parentKey = fk is null ? "" : JsonNames.Camel(fk.ReferencedColumns[0]);
+            return fk is null ? "" : RustTestBodies.Route(fk.ReferencedTable);
+        }
+
+        // the one column the update step changes: a free text column, else a bit column, else a whole number that has room to go up by one
+        bool HasRoomToGrow(ColumnModel c) => c.IsIntegerColumn && !c.IsPrimaryKey && ForeignKeyParentRoute(c, out string _).Length == 0
+            && (Project.RangeFor(c) is not { } range || range.Max > long.Parse(ApiSampleValues.Value(c, Project), CultureInfo.InvariantCulture));
+        var changed = bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0)
+            ?? bodyColumns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsPrimaryKey)
+            ?? bodyColumns.FirstOrDefault(HasRoomToGrow);
+        string changedJson = changed is null ? "" : Json(JsonNames.Camel(changed.Name));
+
+        bool search = Model.HasSearchApiOfAnyKey(Project);
+        var sortNames = search ? t.Sorts.Select(s => s.Name).Distinct().ToList() : new List<string>();
+        bool canClone = intKey && t.Clone is not null;
+        var uniqueText = Model.Indexes.Where(i => i.IsUnique && i.Columns.Count == 1)
+            .Select(i => bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0 && (c.Name == i.Columns[0] || c.DbName == i.Columns[0])))
+            .FirstOrDefault(c => c is not null);
+
+        // ReadRoles and WriteRoles: the roles a rule lists (the administrator role first); a table scoped to a person is not written by a role with no owner
+        var writeRoles = WriteRolePlan.For(Project, Model);
+        var readRoles = WriteRolePlan.ReadFor(Project, Model);
+        bool scopedToPerson = OwnedTable.IsScoped(Model, Project);
+
+        // OwnedTables: who owns a row is its own owner column or the owner of the parent row it belongs to; the tests sign in as an ordinary person with a token that names an owner
+        var ownerColumn = OwnedTable.OwnerColumn(Model, Project);
+        var ownerLink = OwnedTable.Through(Model, Project);
+        string? plainRole = scopedToPerson ? RustTestBodies.PlainRole(Project, readRoles, writeRoles) : null;
+        bool ownerTests = Project.ApiAuth && plainRole is not null && (ownerColumn is not null || ownerLink is not null);
+        string ownerJson = ownerColumn is not null ? JsonNames.Camel(ownerColumn.Name) : ownerLink is not null ? JsonNames.Camel(ownerLink.ParentOwner) : "";
+        string linkJson = ownerLink is null ? "" : JsonNames.Camel(ownerLink.ForeignKey);
+        string parentRoute = ownerLink is null ? "" : RustTestBodies.Route(ownerLink.ParentTable);
+
+        // limits the validators enforce, for the 400 tests
+        var longText = Project.ApiValidation ? bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0 && c.RuleOf(Project, Model.TableName) is { MaxLength: > 0 }) : null;
+        ColumnModel? ranged = null;
+        long over = 0;
+        if (Project.ApiValidation)
+        {
+            foreach (var c in bodyColumns.Where(c => !c.IsPrimaryKey && c.IsIntegerColumn))
+            {
+                if (Project.RangeFor(c) is { } range && range.Max < NumericClassifier.TypeRange(c.SqlType).Max && ForeignKeyParentRoute(c, out string _).Length == 0)
+                {
+                    ranged = c;
+                    over = range.Max + 1;
+                    break;
+                }
+            }
+        }
+#>
+@@@FILE tests/api/<#= t.Module #>.rs@@@
+use axum::http::StatusCode;
+use serde_json::{<#= changed is not null || longText is not null || ranged is not null ? "Value, json" : "Value" #>};
+
+use crate::test_bodies;
+use crate::test_support::*;
+
+const ROUTE: &str = "<#= route #>";
+
+/// A body that adds a row (test_bodies.rs): a value for every column that cannot be NULL, and a row added to a parent that has none. None, after saying why, when that cannot be done.
+async fn new_body(api: &Client) -> Option<Value> {
+    test_bodies::<#= t.Module #>(api, 0).await
+}
+
+#[tokio::test]
+async fn a_row_can_be_added_read_changed_and_removed() {
+    let Some(api) = Client::start().await else { return };
+    let Some(body) = new_body(&api).await else { return };
+
+    let created = api.post(ROUTE, &body).await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.body);
+    let <#= changed is null ? "" : "mut " #>row = created.json();
+    let id = segment(&row[<#= Json(keyJson) #>]);
+
+    let read = api.get(&format!("{ROUTE}/{id}")).await;
+    assert_eq!(read.status, StatusCode::OK, "the new row can be read");
+<#
+        if (changed is not null)
+        {
+#>
+
+<#
+            if (changed.IsStringColumn)
+            {
+#>
+    let after = json!(unique("Changed", <#= changed.CharacterLength #>));
+<#
+            }
+            else if (changed.IsBooleanColumn)
+            {
+#>
+    let after = json!(!row[<#= changedJson #>].as_bool().unwrap_or(false));
+<#
+            }
+            else
+            {
+#>
+    let after = json!(row[<#= changedJson #>].as_i64().unwrap_or(0) + 1);
+<#
+            }
+#>
+    row[<#= changedJson #>] = after.clone();
+    let updated = api.put(&format!("{ROUTE}/{id}"), &row).await;
+    assert_eq!(updated.status, StatusCode::OK, "{}", updated.body);
+    assert_eq!(api.get(&format!("{ROUTE}/{id}")).await.json()[<#= changedJson #>], after, "the change was saved");
+<#
+        }
+#>
+
+    let removed = api.delete(&format!("{ROUTE}/{id}")).await;
+    assert_eq!(removed.status, StatusCode::OK, "{}", removed.body);
+    assert_eq!(api.get(&format!("{ROUTE}/{id}")).await.status, StatusCode::NOT_FOUND, "the removed row is gone");
+}
+
+#[tokio::test]
+async fn a_row_that_is_not_there_answers_404() {
+    let Some(api) = Client::start().await else { return };
+    let absent = <#= absentKey #>;
+    assert_eq!(api.get(&format!("{ROUTE}/{absent}")).await.status, StatusCode::NOT_FOUND);
+}
+<#
+        if (ownerTests)
+        {
+#>
+
+const PLAIN_ROLE: &str = <#= Json(plainRole!) #>;
+const KEY: &str = <#= Json(keyJson) #>;
+<#
+            if (ownerLink is null)
+            {
+#>
+
+/// Who owns a row: its owner column.
+async fn owner_of(_api: &Client, row: &Value) -> Option<i64> {
+    row[<#= Json(ownerJson) #>].as_i64()
+}
+<#
+            }
+            else
+            {
+#>
+
+/// Who owns a row: the owner of the parent row it belongs to (read as the administrator).
+async fn owner_of(api: &Client, row: &Value) -> Option<i64> {
+    api.get(&format!("<#= parentRoute #>/{}", segment(&row[<#= Json(linkJson) #>]))).await.json()[<#= Json(ownerJson) #>].as_i64()
+}
+<#
+            }
+#>
+
+#[tokio::test]
+async fn a_person_sees_and_changes_only_the_rows_of_their_own_owner() {
+    let Some(api) = Client::start().await else { return };
+    let Some(body) = new_body(&api).await else { return };
+    let created = api.post(ROUTE, &body).await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.body);
+    let row = created.json();
+    let id = segment(&row[KEY]);
+    let Some(owner) = owner_of(&api, &row).await else {
+        skip("the owner of the new row could not be read");
+        return;
+    };
+    let mine = api.in_owner(PLAIN_ROLE, owner);
+
+    assert_eq!(mine.get(&format!("{ROUTE}/{id}")).await.status, StatusCode::OK, "the owner reads the row");
+    assert!(keys_of(&mine.get(ROUTE).await.json(), KEY).contains(&row[KEY]), "the list of the owner has the row");
+<#
+            if (search)
+            {
+#>
+    assert!(keys_of(&mine.get(&format!("{ROUTE}/search?pageNumber=1&pageSize=1000")).await.json()["items"], KEY).contains(&row[KEY]), "the search of the owner has the row");
+<#
+            }
+#>
+
+    let someone_else = api.in_owner(PLAIN_ROLE, owner + 1);
+    let no_owner = api.in_role(PLAIN_ROLE);
+    for (who, name) in [(&someone_else, "another owner"), (&no_owner, "a person with no owner")] {
+        let read = who.get(&format!("{ROUTE}/{id}")).await;
+        assert_eq!(read.status, StatusCode::FORBIDDEN, "{name} cannot read the row");
+        assert_eq!(read.json()["type"], "<#= ProblemTypes.NotYours #>");
+        assert_eq!(who.put(&format!("{ROUTE}/{id}"), &row).await.status, StatusCode::FORBIDDEN, "{name} cannot change the row");
+        assert_eq!(who.delete(&format!("{ROUTE}/{id}")).await.status, StatusCode::FORBIDDEN, "{name} cannot remove the row");
+        assert!(!keys_of(&who.get(ROUTE).await.json(), KEY).contains(&row[KEY]), "the list of {name} has not got the row");
+<#
+            if (search)
+            {
+#>
+        assert!(!keys_of(&who.get(&format!("{ROUTE}/search?pageNumber=1&pageSize=1000")).await.json()["items"], KEY).contains(&row[KEY]), "the search of {name} has not got the row");
+<#
+            }
+#>
+    }
+
+    assert_eq!(api.get(&format!("{ROUTE}/{id}")).await.status, StatusCode::OK, "the row is still there");
+    api.delete(&format!("{ROUTE}/{id}")).await;
+}
+
+#[tokio::test]
+async fn a_person_adds_rows_only_for_their_own_owner() {
+    let Some(api) = Client::start().await else { return };
+    let Some(body) = new_body(&api).await else { return };
+    let created = api.post(ROUTE, &body).await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.body);
+    let row = created.json();
+    let id = segment(&row[KEY]);
+    let Some(owner) = owner_of(&api, &row).await else {
+        skip("the owner of the new row could not be read");
+        return;
+    };
+
+    let Some(for_someone_else) = new_body(&api).await else { return };
+    let refused = api.in_owner(PLAIN_ROLE, owner + 1).post(ROUTE, &for_someone_else).await;
+    if refused.status.is_success() {
+        api.delete(&format!("{ROUTE}/{}", segment(&refused.json()[KEY]))).await;
+    }
+    assert_eq!(refused.status, StatusCode::FORBIDDEN, "a row for another owner is refused: {}", refused.body);
+    assert_eq!(refused.json()["type"], "<#= ProblemTypes.NotYours #>");
+
+    let Some(for_the_owner) = new_body(&api).await else { return };
+    let added = api.in_owner(PLAIN_ROLE, owner).post(ROUTE, &for_the_owner).await;
+    assert_eq!(added.status, StatusCode::CREATED, "{}", added.body);
+    api.delete(&format!("{ROUTE}/{}", segment(&added.json()[KEY]))).await;
+    api.delete(&format!("{ROUTE}/{id}")).await;
+}
+<#
+        }
+        if (Project.ApiAuth)
+        {
+#>
+
+#[tokio::test]
+async fn without_a_token_the_list_answers_401() {
+    let Some(api) = Client::start().await else { return };
+    assert_eq!(api.anonymous().get(ROUTE).await.status, StatusCode::UNAUTHORIZED);
+}
+<#
+            if (writeRoles.Count > 0)
+            {
+#>
+
+#[tokio::test]
+async fn a_role_the_write_rule_does_not_list_cannot_change_rows() {
+    let Some(api) = Client::start().await else { return };
+    let Some(body) = new_body(&api).await else { return };
+    let other = api.in_role("NoSuchRole");
+
+    let create = other.post(ROUTE, &body).await;
+    assert_eq!(create.status, StatusCode::FORBIDDEN);
+    assert_eq!(create.json()["type"], "<#= ProblemTypes.RoleNotAllowed #>");
+
+    let absent = <#= absentKey #>;
+    assert_eq!(other.delete(&format!("{ROUTE}/{absent}")).await.status, StatusCode::FORBIDDEN, "the role is refused before the row is looked for");
+}
+<#
+                if (writeRoles.Count > 1 && !scopedToPerson)
+                {
+#>
+
+#[tokio::test]
+async fn a_role_the_write_rule_lists_can_add_a_row() {
+    let Some(api) = Client::start().await else { return };
+    let Some(body) = new_body(&api).await else { return };
+
+    let created = api.in_role(<#= Json(writeRoles[1]) #>).post(ROUTE, &body).await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.body);
+    let id = segment(&created.json()[<#= Json(keyJson) #>]);
+    api.delete(&format!("{ROUTE}/{id}")).await;
+}
+<#
+                }
+            }
+            if (readRoles.Count > 0)
+            {
+#>
+
+#[tokio::test]
+async fn a_role_the_read_rule_does_not_list_cannot_read_rows() {
+    let Some(api) = Client::start().await else { return };
+    let other = api.in_role("NoSuchRole");
+
+    let list = other.get(ROUTE).await;
+    assert_eq!(list.status, StatusCode::FORBIDDEN);
+    assert_eq!(list.json()["type"], "<#= ProblemTypes.RoleNotAllowed #>");
+
+    let absent = <#= absentKey #>;
+    assert_eq!(other.get(&format!("{ROUTE}/{absent}")).await.status, StatusCode::FORBIDDEN, "the role is refused before the row is looked for");
+}
+<#
+                if (readRoles.Count > 1 && !scopedToPerson)
+                {
+#>
+
+#[tokio::test]
+async fn a_role_the_read_rule_lists_can_read_the_list() {
+    let Some(api) = Client::start().await else { return };
+    let list = api.in_role(<#= Json(readRoles[1]) #>).get(ROUTE).await;
+    assert_eq!(list.status, StatusCode::OK, "{}", list.body);
+}
+<#
+                }
+            }
+        }
+        if (search)
+        {
+#>
+
+#[tokio::test]
+async fn the_search_answers_a_page() {
+    let Some(api) = Client::start().await else { return };
+    let page = api.get(&format!("{ROUTE}/search?pageNumber=1&pageSize=5")).await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    assert!(page.json()["items"].is_array(), "{}", page.body);
+}
+
+#[tokio::test]
+async fn a_page_number_below_one_is_refused() {
+    let Some(api) = Client::start().await else { return };
+    assert_eq!(api.get(&format!("{ROUTE}/search?pageNumber=0")).await.status, StatusCode::BAD_REQUEST);
+}
+<#
+        }
+        if (sortNames.Count > 0)
+        {
+#>
+
+#[tokio::test]
+async fn the_search_sorts_by_each_column_it_offers() {
+    let Some(api) = Client::start().await else { return };
+    for column in [<#= string.Join(", ", sortNames.Select(Json)) #>] {
+        for direction in ["asc", "desc"] {
+            let page = api.get(&format!("{ROUTE}/search?pageNumber=1&pageSize=5&sortBy={column}&sortDir={direction}")).await;
+            assert_eq!(page.status, StatusCode::OK, "{column} {direction}: {}", page.body);
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_sort_column_the_search_does_not_offer_is_ignored() {
+    let Some(api) = Client::start().await else { return };
+    let page = api.get(&format!("{ROUTE}/search?pageNumber=1&pageSize=5&sortBy=x%27%20OR%201%3D1%20%2D%2D")).await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+}
+<#
+        }
+        if (canClone)
+        {
+#>
+
+#[tokio::test]
+async fn a_row_can_be_cloned() {
+    let Some(api) = Client::start().await else { return };
+    let Some(body) = new_body(&api).await else { return };
+
+    let created = api.post(ROUTE, &body).await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.body);
+    let id = segment(&created.json()[<#= Json(keyJson) #>]);
+
+    let cloned = api.post_empty(&format!("{ROUTE}/{id}/clone")).await;
+    assert_eq!(cloned.status, StatusCode::CREATED, "{}", cloned.body);
+    let copy_id = segment(&cloned.json()[<#= Json(keyJson) #>]);
+    assert_ne!(id, copy_id, "the copy is a new row");
+
+    api.delete(&format!("{ROUTE}/{copy_id}")).await;
+    api.delete(&format!("{ROUTE}/{id}")).await;
+}
+<#
+        }
+        if (uniqueText is not null)
+        {
+            string uniqueJson = Json(JsonNames.Camel(uniqueText.Name));
+#>
+
+#[tokio::test]
+async fn a_second_row_with_a_value_that_must_be_unique_is_refused() {
+    let Some(api) = Client::start().await else { return };
+    let Some(body) = new_body(&api).await else { return };
+
+    let created = api.post(ROUTE, &body).await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.body);
+    let id = segment(&created.json()[<#= Json(keyJson) #>]);
+
+    let mut again = new_body(&api).await.expect("a second body");
+    again[<#= uniqueJson #>] = body[<#= uniqueJson #>].clone();
+    let duplicate = api.post(ROUTE, &again).await;
+    if duplicate.status.is_success() {
+        let extra = segment(&duplicate.json()[<#= Json(keyJson) #>]);
+        api.delete(&format!("{ROUTE}/{extra}")).await;
+    }
+    assert!(duplicate.status.is_client_error(), "the duplicate is refused with a client error, not saved and not a 500: {}", duplicate.status);
+
+    api.delete(&format!("{ROUTE}/{id}")).await;
+}
+<#
+        }
+        if (longText is not null)
+        {
+#>
+
+#[tokio::test]
+async fn text_longer_than_the_column_is_refused() {
+    let Some(api) = Client::start().await else { return };
+    let Some(mut body) = new_body(&api).await else { return };
+    body[<#= Json(JsonNames.Camel(longText.Name)) #>] = json!("x".repeat(<#= longText.CharacterLength + 1 #>));
+    assert_eq!(api.post(ROUTE, &body).await.status, StatusCode::BAD_REQUEST);
+}
+<#
+        }
+        if (ranged is not null)
+        {
+#>
+
+#[tokio::test]
+async fn a_number_past_its_limit_is_refused() {
+    let Some(api) = Client::start().await else { return };
+    let Some(mut body) = new_body(&api).await else { return };
+    body[<#= Json(JsonNames.Camel(ranged.Name)) #>] = json!(<#= over.ToString(CultureInfo.InvariantCulture) #>);
+    assert_eq!(api.post(ROUTE, &body).await.status, StatusCode::BAD_REQUEST);
+}
+<#
+        }
+    }
+#>

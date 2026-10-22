@@ -1,0 +1,263 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Globalization" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestCsv_v1.tt
+    // Generates: tests/api/csv_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // Integration tests of the CSV routes RS_Csv writes (GET <route>/export.csv, POST <route>/import), run in process over a scratch database like RS_Test, one module for every table that has an API:
+    // the export starts with the header of the table's columns and has a row that was added; an import adds the rows of a file made from a request body (the keys the database numbers are not in the file);
+    // a file with one bad row adds none of its rows; a file without a column that must have a value is refused; a text that starts like a formula leaves the export with an apostrophe in front
+    // and comes back through the import as it was; with ApiAuth a call without a token is a 401 and the routes of a table scoped to a person, and the import into a table with a gate or a guard, are
+    // for the administrator only (403). The user table is only exported (its import cannot make a password hash). Written only for a project with RustTests=true and ApiCsv=true.
+    // Full notes: Docs/TemplateNotes/RS_Test_v1.md
+    // ==========================================================================================
+    if (RustTestBodies.HasCsvTests(Database, Project))
+    {
+        var tables = Database.CrudApiTables(Project).OrderBy(t => RustNames.Snake(t.TableName), StringComparer.Ordinal).ToList();
+        bool auth = Project.ApiAuth;
+        string Json(string text) => ApiSampleValues.Json(text);
+        bool IsInt(RustField f) => f.BaseType is "i8" or "i16" or "i32" or "i64" or "u8" or "u16" or "u32" or "u64";
+
+        var sb = new StringBuilder();
+        void Line(string text = "") => sb.Append(text).Append('\n');
+
+        Line("@@@FILE tests/api/csv_routes.rs@@@");
+        Line("use axum::http::StatusCode;");
+        Line("use serde_json::{Value, json};");
+        Line();
+        Line("use crate::test_bodies;");
+        Line("use crate::test_support::*;");
+        Line();
+        Line("const CSV: &str = \"text/csv\";");
+        Line();
+        Line("/// A cell as the file writes it: quoted when it holds a comma, a quote or a line break.");
+        Line("fn cell(value: &Value) -> String {");
+        Line("    let text = match value {");
+        Line("        Value::Null => String::new(),");
+        Line("        Value::String(text) => text.clone(),");
+        Line("        other => other.to_string(),");
+        Line("    };");
+        Line("    if text.contains([',', '\"', '\\r', '\\n']) { format!(\"\\\"{}\\\"\", text.replace('\"', \"\\\"\\\"\")) } else { text }");
+        Line("}");
+        Line();
+        Line("/// A file of the given columns (header, JSON name) and the rows, as the import reads it.");
+        Line("fn file_of(columns: &[(&str, &str)], rows: &[Value]) -> String {");
+        Line("    let mut text = columns.iter().map(|(name, _)| *name).collect::<Vec<_>>().join(\",\");");
+        Line("    text.push_str(\"\\r\\n\");");
+        Line("    for row in rows {");
+        Line("        text.push_str(&columns.iter().map(|(_, json)| cell(&row[*json])).collect::<Vec<_>>().join(\",\"));");
+        Line("        text.push_str(\"\\r\\n\");");
+        Line("    }");
+        Line("    text");
+        Line("}");
+        Line();
+        Line("/// The keys of the rows that hold a value in a property. The rows an import added are found by what they hold, since the other tests add and remove rows in the same database at the same time.");
+        Line("async fn rows_with(api: &Client, route: &str, key: &str, property: &str, value: &Value) -> Vec<Value> {");
+        Line("    let rows = api.get(route).await.json();");
+        Line("    rows.as_array().map(|rows| rows.iter().filter(|row| row[property] == *value).map(|row| row[key].clone()).collect()).unwrap_or_default()");
+        Line("}");
+        Line();
+        Line("/// The keys the table lists now that were not in `before`: for a table with nothing in a row to tell it by.");
+        Line("async fn new_keys(api: &Client, route: &str, key: &str, before: &[Value]) -> Vec<Value> {");
+        Line("    keys_of(&api.get(route).await.json(), key).into_iter().filter(|k| !before.contains(k)).collect()");
+        Line("}");
+
+        foreach (var table in tables)
+        {
+            var t = RustTable.Of(table, Project);
+            string keyJson = JsonNames.Camel(table.PrimaryKeyColumns[0].Name);
+            var shown = t.Fields.Where(f => f != t.HashField).ToList();
+            bool isUserTable = auth && Project.UserTable is { } userTable && userTable.EqualsIgnoreCase(table.TableName);
+            bool owned = auth && OwnedTable.IsScoped(table, Project);
+            bool gated = auth && GatePlan.HasRules(Project, table);
+
+            // what an import reads: every column but the numbered, computed and row-version ones; the body must have a value for each one that must have one
+            bool CanImport(ColumnModel c) => !c.IsIdentity && !c.IsComputed && !c.IsRowVersionColumn;
+            var body = ApiSampleValues.BodyColumns(table).ToList();
+            var imported = shown.Where(f => CanImport(f.Column) && body.Contains(f.Column)).ToList();
+            bool importable = !isUserTable && t.HashField is null && shown.Where(f => CanImport(f.Column) && !f.Column.IsNullable).All(f => body.Contains(f.Column)) && imported.Count > 0;
+            string columns = string.Join(", ", imported.Select(f => $"({Json(f.Column.Name)}, {Json(f.Json)})"));
+
+            var text = imported.Where(f => RustTestBodies.IsFreeText(table, f.Column)).ToList();
+            var marker = text.FirstOrDefault();
+            var formula = text.FirstOrDefault(f => f.Column.CharacterLength == 0 || f.Column.CharacterLength >= 8);
+            var number = imported.FirstOrDefault(f => IsInt(f) && !f.IsOption);
+            var required = imported.FirstOrDefault(f => !f.Column.IsNullable);
+            // how a test finds the row an import added: by its key when the body chooses it, else by a text, else by the keys that appeared
+            var key = shown.FirstOrDefault(f => f.Column.IsPrimaryKey);
+            var identifier = key is not null && !key.Column.IsIdentity && imported.Contains(key) ? key : marker;
+            string Before() => identifier is null ? "        let before = keys_of(&api.get(ROUTE).await.json(), KEY);" : "";
+            string Added(string value) => identifier is null ? "new_keys(&api, ROUTE, KEY, &before).await" : $"rows_with(&api, ROUTE, KEY, ID, &{value}).await";
+
+            Line();
+            Line($"mod {t.Module} {{");
+            Line("    use super::*;");
+            Line();
+            Line($"    const ROUTE: &str = {Json(t.Route)};");
+            Line($"    const KEY: &str = {Json(keyJson)};");
+            Line($"    const HEADER: &str = {Json(string.Join(",", shown.Select(f => f.Column.Name)))};");
+            if (importable)
+                Line($"    const COLUMNS: &[(&str, &str)] = &[{columns}];");
+            if (importable && identifier is not null)
+                Line($"    const ID: &str = {Json(identifier.Json)};");
+            Line();
+            Line("    #[tokio::test]");
+            Line("    async fn the_export_has_the_header_and_the_rows_of_the_table() {");
+            Line("        let Some(api) = Client::start().await else { return };");
+            Line($"        let Some(body) = test_bodies::{t.Module}(&api, 0).await else {{ return }};");
+            Line("        let created = api.post(ROUTE, &body).await;");
+            Line("        assert_eq!(created.status, StatusCode::CREATED, \"{}\", created.body);");
+            Line("        let id = segment(&created.json()[KEY]);");
+            Line();
+            Line("        let export = api.get(&format!(\"{ROUTE}/export.csv\")).await;");
+            Line("        assert_eq!(export.status, StatusCode::OK, \"{}\", export.body);");
+            Line("        assert_eq!(export.body.lines().next(), Some(HEADER), \"the first line names the columns\");");
+            if (marker is not null)
+            {
+                Line($"        let marker = body[{Json(marker.Json)}].as_str().unwrap_or_default();");
+                Line("        assert!(export.body.contains(marker), \"the row that was added is in the export: {}\", export.body);");
+            }
+            else
+                Line("        assert!(export.body.lines().count() >= 2, \"the row that was added is in the export: {}\", export.body);");
+            Line();
+            Line("        api.delete(&format!(\"{ROUTE}/{id}\")).await;");
+            Line("    }");
+
+            if (importable)
+            {
+                string identity = identifier is null ? "" : $"        let identity = body[ID].clone();";
+                Line();
+                Line("    #[tokio::test]");
+                Line("    async fn an_import_adds_the_rows_of_the_file() {");
+                Line("        let Some(api) = Client::start().await else { return };");
+                Line($"        let Some(body) = test_bodies::{t.Module}(&api, 0).await else {{ return }};");
+                if (identifier is not null)
+                    Line(identity);
+                else
+                    Line(Before());
+                Line();
+                Line("        let imported = api.post_text(&format!(\"{ROUTE}/import\"), CSV, file_of(COLUMNS, &[body])).await;");
+                Line($"        let added = {Added("identity")};");
+                Line("        for key in &added {");
+                Line("            api.delete(&format!(\"{ROUTE}/{}\", segment(key))).await;");
+                Line("        }");
+                Line("        assert_eq!(imported.status, StatusCode::OK, \"{}\", imported.body);");
+                Line("        assert_eq!(imported.json()[\"imported\"], 1, \"{}\", imported.body);");
+                Line("        assert_eq!(added.len(), 1, \"one row was added\");");
+                Line("    }");
+
+                if (number is not null)
+                {
+                    Line();
+                    Line("    #[tokio::test]");
+                    Line("    async fn a_bad_row_adds_none_of_the_rows_of_the_file() {");
+                    Line("        let Some(api) = Client::start().await else { return };");
+                    Line($"        let Some(good) = test_bodies::{t.Module}(&api, 0).await else {{ return }};");
+                    Line($"        let Some(mut bad) = test_bodies::{t.Module}(&api, 0).await else {{ return }};");
+                    Line($"        bad[{Json(number.Json)}] = json!(\"not a number\");");
+                    if (identifier is not null)
+                        Line("        let identity = good[ID].clone();");
+                    else
+                        Line(Before());
+                    Line();
+                    Line("        let refused = api.post_text(&format!(\"{ROUTE}/import\"), CSV, file_of(COLUMNS, &[good, bad])).await;");
+                    Line($"        let added = {Added("identity")};");
+                    Line("        for key in &added {");
+                    Line("            api.delete(&format!(\"{ROUTE}/{}\", segment(key))).await;");
+                    Line("        }");
+                    Line("        assert_eq!(refused.status, StatusCode::BAD_REQUEST, \"{}\", refused.body);");
+                    Line("        assert!(refused.json()[\"errors\"].to_string().contains(\"Row 2\"), \"the problem names the row: {}\", refused.body);");
+                    Line("        assert!(added.is_empty(), \"the good row was not saved either\");");
+                    Line("    }");
+                }
+                if (required is not null && imported.Count > 1)
+                {
+                    Line();
+                    Line("    #[tokio::test]");
+                    Line("    async fn a_file_without_a_column_that_must_have_a_value_is_refused() {");
+                    Line("        let Some(api) = Client::start().await else { return };");
+                    Line($"        let Some(body) = test_bodies::{t.Module}(&api, 0).await else {{ return }};");
+                    if (identifier is not null)
+                        Line("        let identity = body[ID].clone();");
+                    else
+                        Line(Before());
+                    Line($"        let without: Vec<(&str, &str)> = COLUMNS.iter().copied().filter(|(name, _)| *name != {Json(required.Column.Name)}).collect();");
+                    Line();
+                    Line("        let refused = api.post_text(&format!(\"{ROUTE}/import\"), CSV, file_of(&without, &[body])).await;");
+                    Line($"        let added = {Added("identity")};");
+                    Line("        for key in &added {");
+                    Line("            api.delete(&format!(\"{ROUTE}/{}\", segment(key))).await;");
+                    Line("        }");
+                    Line("        assert_eq!(refused.status, StatusCode::BAD_REQUEST, \"{}\", refused.body);");
+                    Line($"        assert!(refused.json()[\"errors\"].to_string().contains(\"The column {required.Column.Name} is missing\"), \"{{}}\", refused.body);");
+                    Line("        assert!(added.is_empty(), \"nothing was added\");");
+                    Line("    }");
+                }
+                if (formula is not null)
+                {
+                    int room = formula.Column.CharacterLength == 0 ? 0 : formula.Column.CharacterLength - 1;
+                    Line();
+                    Line("    #[tokio::test]");
+                    Line("    async fn a_text_that_starts_like_a_formula_is_exported_with_an_apostrophe_and_imported_as_it_was() {");
+                    Line("        let Some(api) = Client::start().await else { return };");
+                    Line($"        let Some(mut body) = test_bodies::{t.Module}(&api, 0).await else {{ return }};");
+                    Line($"        let formula = format!(\"={{}}\", unique(\"sum\", {room}));");
+                    Line($"        body[{Json(formula.Json)}] = json!(formula);");
+                    Line("        let created = api.post(ROUTE, &body).await;");
+                    Line("        assert_eq!(created.status, StatusCode::CREATED, \"{}\", created.body);");
+                    Line("        let export = api.get(&format!(\"{ROUTE}/export.csv\")).await;");
+                    Line("        api.delete(&format!(\"{ROUTE}/{}\", segment(&created.json()[KEY]))).await;");
+                    Line("        assert!(export.body.contains(&format!(\"'{formula}\")), \"the text has an apostrophe in front: {}\", export.body);");
+                    Line();
+                    Line($"        body[{Json(formula.Json)}] = json!(format!(\"'{{formula}}\"));");
+                    Line("        let imported = api.post_text(&format!(\"{ROUTE}/import\"), CSV, file_of(COLUMNS, &[body])).await;");
+                    Line($"        let added = rows_with(&api, ROUTE, KEY, {Json(formula.Json)}, &json!(formula)).await;");
+                    Line("        for key in &added {");
+                    Line("            api.delete(&format!(\"{ROUTE}/{}\", segment(key))).await;");
+                    Line("        }");
+                    Line("        assert_eq!(imported.status, StatusCode::OK, \"{}\", imported.body);");
+                    Line("        assert_eq!(added.len(), 1, \"a row holds the text without the apostrophe\");");
+                    Line("    }");
+                }
+            }
+            if (auth)
+            {
+                Line();
+                Line("    #[tokio::test]");
+                Line("    async fn without_a_token_the_csv_routes_answer_401() {");
+                Line("        let Some(api) = Client::start().await else { return };");
+                Line("        let nobody = api.anonymous();");
+                Line("        assert_eq!(nobody.get(&format!(\"{ROUTE}/export.csv\")).await.status, StatusCode::UNAUTHORIZED);");
+                Line("        assert_eq!(nobody.post_text(&format!(\"{ROUTE}/import\"), CSV, String::new()).await.status, StatusCode::UNAUTHORIZED);");
+                Line("    }");
+            }
+            if (owned || gated)
+            {
+                Line();
+                Line("    #[tokio::test]");
+                Line($"    async fn only_an_administrator_uses_the_csv_routes_of_this_table() {{");
+                Line("        let Some(api) = Client::start().await else { return };");
+                Line("        let other = api.in_owner(\"NoSuchRole\", 1);");
+                if (owned)
+                {
+                    Line("        let export = other.get(&format!(\"{ROUTE}/export.csv\")).await;");
+                    Line("        assert_eq!(export.status, StatusCode::FORBIDDEN, \"{}\", export.body);");
+                    Line($"        assert_eq!(export.json()[\"type\"], \"{ProblemTypes.RoleNotAllowed}\");");
+                }
+                Line("        let import = other.post_text(&format!(\"{ROUTE}/import\"), CSV, String::new()).await;");
+                Line("        assert_eq!(import.status, StatusCode::FORBIDDEN, \"{}\", import.body);");
+                Line($"        assert_eq!(import.json()[\"type\"], \"{ProblemTypes.RoleNotAllowed}\");");
+                Line("    }");
+            }
+            Line("}");
+        }
+        Write(sb.ToString());
+    }
+#>

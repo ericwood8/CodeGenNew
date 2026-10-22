@@ -1,0 +1,421 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_EssentialTests_v1.tt
+    // Generates: tests/api/test_support.rs   (no table, no database: an essentials group; the output folder is the Rust crate's own folder)
+    // What the per-table RS_Test modules share: Client, which builds the crate's router (lib.rs app) over a scratch database and sends it requests in process (no port is opened), and its helpers.
+    // The database is a scratch copy: for SQLite a temporary copy of the file (DATABASE_FILE, else the file the project names; the original is never written), for PostgreSQL and MySQL the URL in
+    // <PROJECT>_TEST_CONNECTION (a scratch copy of the database; the password only from PGPASSWORD or MYSQL_PWD). With none of these a test prints why it did nothing and passes.
+    // With ApiAuth=true the tests sign in as a bootstrap administrator made for the run (a user table has none: <PROJECT>_TEST_USER and <PROJECT>_TEST_PASSWORD name a real user) and can make a token
+    // in any role. Writes nothing unless the project sets RustTests=true. Settings: RustTests, RustCrateName, DatabaseProvider, DatabaseName, ApiAuth.
+    // Full notes: Docs/TemplateNotes/RS_Test_v1.md
+    // ==========================================================================================
+    if (Project.RustTests)
+    {
+        var dialect = Project.DatabaseDialect;
+        string projectName = Project.ProjectName ?? "MyApp";
+        string prefix = new string(projectName.ToUpperInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
+        string connectionVariable = prefix + "_TEST_CONNECTION";
+        string crate = Project.RustCrateName;
+        bool auth = Project.ApiAuth;
+        bool userTable = auth && Project.UserTable is not null;
+        string Str(string text) => "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+#>
+@@@FILE tests/api/test_support.rs@@@
+// What the integration tests of the tables share (RS_Test). Written by RS_EssentialTests; yours to change.
+// Each table's module uses some of it, so the rest is reported as unused.
+#![allow(dead_code)]
+
+use std::net::SocketAddr;
+<#
+        if (dialect == SqlDialect.Sqlite)
+        {
+#>
+use std::path::PathBuf;
+<#
+        }
+        if (auth)
+        {
+#>
+use std::sync::OnceLock;
+<#
+        }
+#>
+use std::sync::Arc;
+
+use axum::{
+    Router,
+    body::Body,
+    extract::ConnectInfo,
+    http::{Method, Request, StatusCode, header},
+};
+<#
+        if (auth)
+        {
+#>
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use hmac::{Hmac, Mac};
+<#
+        }
+#>
+use <#= crate #>::{Pool, app};
+use serde_json::Value;
+<#
+        if (auth)
+        {
+#>
+use sha2::Sha256;
+<#
+        }
+#>
+use tower::ServiceExt;
+
+<#
+        if (auth)
+        {
+#>
+const ADMIN_USER: &str = "test-admin";
+const ISSUER: &str = "<#= projectName #>.Api";
+const AUDIENCE: &str = "<#= projectName #>";
+const ROLE_CLAIM: &str = <#= Str(Project.AuthRoleClaim) #>;
+const OWNER_CLAIM: &str = <#= Str(Project.AuthOwnerClaim) #>;
+
+<#
+        }
+#>
+/// What the router answered: the status and the body as text.
+pub struct Reply {
+    pub status: StatusCode,
+    pub body: String,
+}
+
+impl Reply {
+    /// The body as JSON (null when it is not).
+    pub fn json(&self) -> Value {
+        serde_json::from_str(&self.body).unwrap_or(Value::Null)
+    }
+}
+
+/// Removes the scratch copy of the database (and SQLite's journal files) when the last client that uses it is gone.
+/// Windows keeps the file locked while the connections close, so a copy that stays is removed by a later run.
+struct Scratch(Option<std::path::PathBuf>);
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        if let Some(path) = &self.0 {
+            for suffix in ["", "-wal", "-shm"] {
+                let mut name = path.clone().into_os_string();
+                name.push(suffix);
+                let _ = std::fs::remove_file(name);
+            }
+        }
+    }
+}
+
+/// The application over a scratch database, with the sign-in of a user (ApiAuth) when there is one. Cloning shares the database.
+#[derive(Clone)]
+pub struct Client {
+    router: Router,
+    token: Option<String>,
+    _scratch: Arc<Scratch>,
+}
+
+/// Says why a test did nothing; the test then passes, since a missing scratch database is not a failure of the code.
+pub fn skip(reason: &str) {
+    eprintln!("skipped: {reason}");
+}
+
+impl Client {
+    /// Starts the application over a scratch database; None (after saying why) when there is none to use.
+    pub async fn start() -> Option<Client> {
+        dotenvy::dotenv().ok();
+<#
+        if (auth)
+        {
+#>
+        // the key and the administrator are in the environment before the application reads them
+        settings();
+<#
+        }
+#>
+        let (pool, scratch) = scratch_pool().await?;
+        let <#= auth ? "mut " : "" #>client = Client { router: app(pool, None), token: None, _scratch: Arc::new(scratch) };
+<#
+        if (auth)
+        {
+#>
+        let (name, password) = match (std::env::var("<#= prefix #>_TEST_USER"), std::env::var("<#= prefix #>_TEST_PASSWORD")) {
+            (Ok(name), Ok(password)) => (name, password),
+<#
+            if (userTable)
+            {
+#>
+            _ => {
+                skip("the sign-in reads the user table: set <#= prefix #>_TEST_USER and <#= prefix #>_TEST_PASSWORD to a user of the scratch database");
+                return None;
+            }
+<#
+            }
+            else
+            {
+#>
+            _ => (ADMIN_USER.to_string(), settings().1.clone()),
+<#
+            }
+#>
+        };
+        let login = client.send(Method::POST, "/api/auth/login", Some(&serde_json::json!({ "userName": name, "password": password }))).await;
+        assert_eq!(login.status, StatusCode::OK, "the sign-in: {}", login.body);
+        client.token = login.json()["token"].as_str().map(str::to_string);
+<#
+        }
+#>
+        Some(client)
+    }
+
+    /// The same application and database with no sign-in.
+    pub fn anonymous(&self) -> Client {
+        Client { token: None, ..self.clone() }
+    }
+<#
+        if (auth)
+        {
+#>
+
+    /// The same application and database for someone who signed in with this role (a token made with the key of the run; no user needs to exist). The token names no owner.
+    pub fn in_role(&self, role: &str) -> Client {
+        self.token_for(role, None)
+    }
+
+    /// The same, for someone who signed in with this role and may act for this owner.
+    pub fn in_owner(&self, role: &str, owner: i64) -> Client {
+        self.token_for(role, Some(owner))
+    }
+
+    fn token_for(&self, role: &str, owner: Option<i64>) -> Client {
+        let (key, _) = settings();
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+        let mut claims = serde_json::json!({ "sub": "role-test", "name": "role-test", "iss": ISSUER, "aud": AUDIENCE, "iat": now, "nbf": now, "exp": now + 1800, ROLE_CLAIM: role });
+        if let Some(owner) = owner {
+            claims[OWNER_CLAIM] = serde_json::json!(owner.to_string());
+        }
+        let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"HS256","typ":"JWT"}"#);
+        let input = format!("{header}.{}", URL_SAFE_NO_PAD.encode(claims.to_string()));
+        let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes()).expect("a key of any length");
+        mac.update(input.as_bytes());
+        let token = format!("{input}.{}", URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes()));
+        Client { token: Some(token), ..self.clone() }
+    }
+<#
+        }
+#>
+
+    pub async fn send(&self, method: Method, path: &str, body: Option<&Value>) -> Reply {
+        self.send_text(method, path, body.map(|body| ("application/json", body.to_string()))).await
+    }
+
+    /// A request whose body is text of the given content type.
+    pub async fn send_text(&self, method: Method, path: &str, body: Option<(&str, String)>) -> Reply {
+        let mut request = Request::builder().method(method).uri(path);
+        if let Some(token) = &self.token {
+            request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        let mut request = match body {
+            Some((content_type, text)) => request.header(header::CONTENT_TYPE, content_type).body(Body::from(text)),
+            None => request.body(Body::empty()),
+        }
+        .expect("a request");
+        // the sign-in counts wrong passwords per address, which a request that did not come through a socket must be given
+        request.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 40000))));
+        let response = self.router.clone().oneshot(request).await.expect("the router answers");
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.expect("the body of the answer");
+        Reply { status, body: String::from_utf8_lossy(&bytes).into_owned() }
+    }
+
+    pub async fn get(&self, path: &str) -> Reply {
+        self.send(Method::GET, path, None).await
+    }
+
+    pub async fn post(&self, path: &str, body: &Value) -> Reply {
+        self.send(Method::POST, path, Some(body)).await
+    }
+
+    pub async fn post_empty(&self, path: &str) -> Reply {
+        self.send(Method::POST, path, None).await
+    }
+
+    pub async fn post_text(&self, path: &str, content_type: &str, text: String) -> Reply {
+        self.send_text(Method::POST, path, Some((content_type, text))).await
+    }
+
+    pub async fn put(&self, path: &str, body: &Value) -> Reply {
+        self.send(Method::PUT, path, Some(body)).await
+    }
+
+    pub async fn delete(&self, path: &str) -> Reply {
+        self.send(Method::DELETE, path, None).await
+    }
+}
+
+<#
+        if (auth)
+        {
+#>
+/// The signing key and the bootstrap administrator's password of this run, made once and put in the environment before the first request reads them.
+fn settings() -> &'static (String, String) {
+    static SETTINGS: OnceLock<(String, String)> = OnceLock::new();
+    SETTINGS.get_or_init(|| {
+        let key = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
+        let password = uuid::Uuid::new_v4().simple().to_string();
+        // SAFETY: this runs once, before the program under test has read the environment, and nothing else here writes it
+        unsafe {
+            std::env::set_var("Jwt__Key", &key);
+            std::env::set_var("Bootstrap__AdminUserName", ADMIN_USER);
+            std::env::set_var("Bootstrap__AdminPassword", &password);
+        }
+        (key, password)
+    })
+}
+
+<#
+        }
+        if (dialect == SqlDialect.Sqlite)
+        {
+#>
+/// A copy of the SQLite file (DATABASE_FILE, else <#= Project.DatabaseName #>, relative to the crate's folder): the tests add and remove rows in the copy and the file itself is never written.
+async fn scratch_pool() -> Option<(Pool, Scratch)> {
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    let source = PathBuf::from(std::env::var("DATABASE_FILE").unwrap_or_else(|_| <#= Str(Project.DatabaseName ?? "") #>.to_string()));
+    if !source.is_file() {
+        skip(&format!("there is no database file {}: set DATABASE_FILE to the SQLite file the tests may copy", source.display()));
+        return None;
+    }
+    static CLEANED: std::sync::Once = std::sync::Once::new();
+    CLEANED.call_once(|| {
+        for entry in std::fs::read_dir(std::env::temp_dir()).into_iter().flatten().flatten() {
+            let old = entry.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() > 600);
+            if old && entry.file_name().to_string_lossy().starts_with("<#= crate #>_test_") {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    });
+    let copy = std::env::temp_dir().join(format!("<#= crate #>_test_{}.db", uuid::Uuid::new_v4().simple()));
+    std::fs::copy(&source, &copy).expect("a copy of the database file");
+    let pool = SqlitePoolOptions::new().max_connections(5).connect_with(SqliteConnectOptions::new().filename(&copy)).await.expect("the scratch database opens");
+    Some((pool, Scratch(Some(copy))))
+}
+<#
+        }
+        else if (dialect == SqlDialect.PostgreSql)
+        {
+#>
+/// Connects to the scratch copy of the database named by <#= connectionVariable #> (a URL; the password only from PGPASSWORD). The tests add and remove rows there.
+async fn scratch_pool() -> Option<(Pool, Scratch)> {
+    use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+    let Ok(url) = std::env::var("<#= connectionVariable #>") else {
+        skip("set <#= connectionVariable #> to the URL of a scratch copy of the database (the tests add and remove rows)");
+        return None;
+    };
+    let mut options: PgConnectOptions = url.parse().expect("<#= connectionVariable #> is a postgres:// URL");
+    if let Ok(password) = std::env::var("PGPASSWORD") {
+        options = options.password(&password);
+    }
+    let pool = PgPoolOptions::new().max_connections(5).connect_with(options).await.expect("the scratch database opens");
+    Some((pool, Scratch(None)))
+}
+<#
+        }
+        else
+        {
+#>
+/// Connects to the scratch copy of the database named by <#= connectionVariable #> (a URL; the password only from MYSQL_PWD). The tests add and remove rows there.
+async fn scratch_pool() -> Option<(Pool, Scratch)> {
+    use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
+    let Ok(url) = std::env::var("<#= connectionVariable #>") else {
+        skip("set <#= connectionVariable #> to the URL of a scratch copy of the database (the tests add and remove rows)");
+        return None;
+    };
+    let mut options: MySqlConnectOptions = url.parse().expect("<#= connectionVariable #> is a mysql:// URL");
+    if let Ok(password) = std::env::var("MYSQL_PWD") {
+        options = options.password(&password);
+    }
+    let pool = MySqlPoolOptions::new().max_connections(5).connect_with(options).await.expect("the scratch database opens");
+    Some((pool, Scratch(None)))
+}
+<#
+        }
+#>
+
+/// Text with a short random ending, cut to the column's length, so a unique index does not stop a second run.
+pub fn unique(text: &str, max_length: usize) -> String {
+    let tail: String = uuid::Uuid::new_v4().simple().to_string().chars().take(6).collect();
+    if max_length == 0 {
+        return format!("{text} {tail}");
+    }
+    let tail: String = tail.chars().take(max_length).collect();
+    let room = max_length.saturating_sub(tail.chars().count() + 1);
+    if room > 0 { format!("{} {tail}", text.chars().take(room).collect::<String>()) } else { tail }
+}
+
+/// A key for a table whose key the database does not number.
+pub fn new_key(low: i64, high: i64) -> i64 {
+    low + (uuid::Uuid::new_v4().as_u128() % (high - low).max(1) as u128) as i64
+}
+
+/// A key for a table whose key is text the person chooses: random capital letters and digits, as long as the column allows (up to 12).
+pub fn new_code(length: usize) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let bytes = uuid::Uuid::new_v4().into_bytes();
+    (0..length.clamp(1, 12)).map(|i| ALPHABET[bytes[i] as usize % ALPHABET.len()] as char).collect()
+}
+
+/// A key as one segment of a path: everything but letters, digits and - . _ ~ is written as %XX.
+pub fn segment(key: &Value) -> String {
+    let text = match key {
+        Value::String(text) => text.clone(),
+        other => other.to_string(),
+    };
+    text.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-._~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect()
+}
+
+/// The key property of every row of a JSON list (empty when the value is not a list).
+pub fn keys_of(rows: &Value, key_property: &str) -> Vec<Value> {
+    rows.as_array().map(|rows| rows.iter().map(|row| row[key_property].clone()).collect()).unwrap_or_default()
+}
+
+/// How many parents deep a body adds rows to empty parents.
+const MAX_DEPTH: u8 = 4;
+
+/// The key of the first row the parent's API lists, for a foreign key to point at. When the parent has no list route the fallback is used. When it has no rows, a row is added with
+/// the parent's own body (`body`, from test_bodies.rs; the row stays in the scratch database); None (after saying why) when that cannot be done.
+pub async fn parent_key(client: &Client, route: &str, key_property: &str, fallback: Value, body: Option<crate::test_bodies::Body<'_>>, depth: u8) -> Option<Value> {
+    let reply = client.get(route).await;
+    if !reply.status.is_success() {
+        return Some(fallback);
+    }
+    if let Some(key) = reply.json().as_array().and_then(|rows| rows.first()).map(|row| row[key_property].clone()) {
+        return Some(key);
+    }
+    let Some(body) = body.filter(|_| depth < MAX_DEPTH) else {
+        skip(&format!("there is no row in {route} for a foreign key to point at"));
+        return None;
+    };
+    let created = client.post(route, &body.await?).await;
+    if !created.status.is_success() {
+        skip(&format!("there is no row in {route} for a foreign key to point at, and adding one answered {}", created.status));
+        return None;
+    }
+    let key = created.json()[key_property].clone();
+    if key.is_null() {
+        skip(&format!("the row added to {route} did not answer its key ({key_property})"));
+        return None;
+    }
+    Some(key)
+}
+<#
+    }
+#>

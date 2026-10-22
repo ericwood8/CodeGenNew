@@ -1,0 +1,243 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestGates_v1.tt
+    // Generates: tests/api/gate_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // Integration tests of the checks RS_Gates writes for ChangeGates and GuardedColumns, run in process over a scratch database like RS_Test, one module for every table that has a rule.
+    // A guard: GET <route>/guards says true for the administrator and false for someone the user table does not know, a person who may not change the guarded column gets a 403 column-not-yours
+    // when the value changes and may save the row while it stays, the administrator's change is saved and stamps its time. A gate of a plain shape (the column moves to equal values, the condition and
+    // the exemption are terms joined by and that compare for equality): while the condition holds and the exemption does not, the move is a 409 change-not-allowed; while the exemption holds, or the
+    // condition does not, it is a 200; a rule with a start value refuses a new row that starts anywhere else. The values a condition reads in another table are set through that table's API and put back.
+    // A rule of another shape has no test here. Written only for a project with RustTests=true and a rule that fits the schema.
+    // Full notes: Docs/TemplateNotes/RS_Test_v1.md
+    // ==========================================================================================
+    if (RustTestBodies.HasGateTests(Database, Project))
+    {
+        var plan = GatePlan.Resolve(Database, Project);
+        string Json(string text) => ApiSampleValues.Json(text);
+        var sb = new StringBuilder();
+        void Line(string text = "") => sb.Append(text).Append('\n');
+
+        Line("@@@FILE tests/api/gate_routes.rs@@@");
+        Line("use axum::http::StatusCode;");
+        Line("use serde_json::{Value, json};");
+        Line();
+        Line("use crate::test_bodies;");
+        Line("use crate::test_support::*;");
+        Line();
+        Line("/// Sets one property of a row of another table and saves it; the row as it was goes to `undo`. None (after saying why) when that cannot be done.");
+        Line("async fn set_other(api: &Client, route: &str, id: &str, property: &str, value: Value, undo: &mut Vec<(String, Value)>) -> Option<()> {");
+        Line("    let path = format!(\"{route}/{id}\");");
+        Line("    let current = api.get(&path).await;");
+        Line("    if current.status != StatusCode::OK {");
+        Line("        skip(&format!(\"the row {path} could not be read: {}\", current.status));");
+        Line("        return None;");
+        Line("    }");
+        Line("    let original = current.json();");
+        Line("    if original[property] == value {");
+        Line("        return Some(());");
+        Line("    }");
+        Line("    let mut changed = original.clone();");
+        Line("    changed[property] = value;");
+        Line("    let saved = api.put(&path, &changed).await;");
+        Line("    if saved.status != StatusCode::OK {");
+        Line("        skip(&format!(\"{path} could not be set to {}: {}\", changed[property], saved.body));");
+        Line("        return None;");
+        Line("    }");
+        Line("    undo.push((path, original));");
+        Line("    Some(())");
+        Line("}");
+        Line();
+        Line("/// Puts back the rows `set_other` changed, the last change first, so the first state is the one that stays.");
+        Line("async fn put_back(api: &Client, undo: Vec<(String, Value)>) {");
+        Line("    for (path, original) in undo.into_iter().rev() {");
+        Line("        api.put(&path, &original).await;");
+        Line("    }");
+        Line("}");
+
+        foreach (var gated in plan.Tables)
+        {
+            var table = gated.Table;
+            var t = RustTable.Of(table, Project);
+            string keyJson = JsonNames.Camel(table.PrimaryKeyColumns[0].Name);
+            string roleName = RustTestBodies.PlainRole(Project, WriteRolePlan.ReadFor(Project, table), WriteRolePlan.For(Project, table)) ?? "";
+            bool scoped = OwnedTable.IsScoped(table, Project);
+
+            Line();
+            Line($"mod {t.Module} {{");
+            Line("    use super::*;");
+            Line();
+            Line($"    const ROUTE: &str = {Json(t.Route)};");
+            Line($"    const KEY: &str = {Json(keyJson)};");
+
+            if (gated.Guards.Count > 0)
+            {
+                Line();
+                Line("    #[tokio::test]");
+                Line("    async fn the_guards_say_what_the_caller_may_change() {");
+                Line("        let Some(api) = Client::start().await else { return };");
+                Line("        let administrator = api.get(&format!(\"{ROUTE}/guards\")).await;");
+                Line("        assert_eq!(administrator.status, StatusCode::OK, \"{}\", administrator.body);");
+                Line("        let someone = api.in_role(\"NoSuchRole\").get(&format!(\"{ROUTE}/guards\")).await;");
+                Line("        assert_eq!(someone.status, StatusCode::OK, \"{}\", someone.body);");
+                foreach (var guard in gated.Guards)
+                {
+                    string name = Json(JsonNames.Camel(guard.Column.Name));
+                    Line($"        assert_eq!(administrator.json()[{name}], true, \"the administrator may change it\");");
+                    Line($"        assert_eq!(someone.json()[{name}], false, \"a person the user table does not know may not\");");
+                }
+                Line("    }");
+            }
+
+            foreach (var guard in gated.Guards)
+            {
+                var field = t.FieldOf(guard.Column);
+                var kind = GateCode.RustKindOf(guard.Column, Database.Dialect);
+                bool foreignKey = table.ForeignKeys.Any(f => f.ReferencingColumns.Contains(guard.Column.Name, StringComparer.OrdinalIgnoreCase));
+                if (kind is null || foreignKey || scoped || roleName.Length == 0)
+                    continue;
+                string column = Json(JsonNames.Camel(guard.Column.Name));
+                string changed = kind switch
+                {
+                    RustGateKind.Bool => $"json!(!row[{column}].as_bool().unwrap_or(false))",
+                    RustGateKind.Int => $"json!(row[{column}].as_i64().unwrap_or(0) + 1)",
+                    _ => $"json!(unique(\"Changed\", {Math.Max(guard.Column.CharacterLength, 0)}))"
+                };
+                Line();
+                Line("    #[tokio::test]");
+                Line($"    async fn {field.Name}_is_changed_only_by_who_may() {{");
+                Line("        let Some(api) = Client::start().await else { return };");
+                Line($"        let Some(body) = test_bodies::{t.Module}(&api, 0).await else {{ return }};");
+                Line("        let created = api.post(ROUTE, &body).await;");
+                Line("        assert_eq!(created.status, StatusCode::CREATED, \"{}\", created.body);");
+                Line("        let row = created.json();");
+                Line("        let path = format!(\"{ROUTE}/{}\", segment(&row[KEY]));");
+                Line("        let mut changed = row.clone();");
+                Line($"        changed[{column}] = {changed};");
+                Line();
+                Line($"        let plain = api.in_role({Json(roleName)});");
+                Line("        let refused = plain.put(&path, &changed).await;");
+                Line("        let unchanged = plain.put(&path, &row).await;");
+                Line("        let allowed = api.put(&path, &changed).await;");
+                Line("        let saved = api.get(&path).await.json();");
+                Line("        api.delete(&path).await;");
+                Line();
+                Line("        assert_eq!(refused.status, StatusCode::FORBIDDEN, \"{}\", refused.body);");
+                Line($"        assert_eq!(refused.json()[\"type\"], \"{ProblemTypes.ColumnNotYours}\");");
+                Line("        assert_eq!(unchanged.status, StatusCode::OK, \"a row can be saved while the guarded value stays: {}\", unchanged.body);");
+                Line("        assert_eq!(allowed.status, StatusCode::OK, \"the administrator may change it: {}\", allowed.body);");
+                Line($"        assert_eq!(saved[{column}], changed[{column}], \"the administrator's change was saved\");");
+                if (guard.StampOn is { } on)
+                    Line($"        assert!(!saved[{Json(JsonNames.Camel(on.Name))}].is_null(), \"the time of the change is stamped\");");
+                Line("    }");
+            }
+
+            foreach (var gate in gated.Gates)
+            {
+                var field = t.FieldOf(gate.Column);
+                string column = Json(JsonNames.Camel(gate.Column.Name));
+                var scenario = RustGateTests.Scenario(gate, Database, Project);
+                if (scenario?.Start is { } start)
+                {
+                    Line();
+                    Line("    #[tokio::test]");
+                    Line($"    async fn a_new_row_must_start_with_{field.Name}_at_its_start_value() {{");
+                    Line("        let Some(api) = Client::start().await else { return };");
+                    Line($"        let Some(mut body) = test_bodies::{t.Module}(&api, 0).await else {{ return }};");
+                    Line($"        body[{column}] = json!({scenario.NotStart});");
+                    Line("        let refused = api.post(ROUTE, &body).await;");
+                    Line("        if refused.status.is_success() {");
+                    Line("            api.delete(&format!(\"{ROUTE}/{}\", segment(&refused.json()[KEY]))).await;");
+                    Line("        }");
+                    Line("        assert_eq!(refused.status, StatusCode::BAD_REQUEST, \"{}\", refused.body);");
+                    Line("    }");
+                }
+                if (scenario is null)
+                    continue;
+
+                // sets a term of the condition or the exemption: a column of the row itself, or a column of the parent row the row points at
+                void Set(GateTerm term, string value)
+                {
+                    string property = Json(JsonNames.Camel(term.Column.Name));
+                    if (term.Via is null)
+                    {
+                        Line($"            row[{property}] = json!({value});");
+                        return;
+                    }
+                    string reference = Json(JsonNames.Camel(term.Via.ReferencingColumns[0]));
+                    Line($"            set_other(&api, {Json(RustTestBodies.Route(term.Table.TableName))}, &segment(&row[{reference}]), {property}, json!({value}), &mut undo).await?;");
+                }
+
+                Line();
+                Line("    #[tokio::test]");
+                Line($"    async fn {field.Name}_is_held_by_its_gate() {{");
+                Line("        let Some(api) = Client::start().await else { return };");
+                Line($"        let Some(mut body) = test_bodies::{t.Module}(&api, 0).await else {{ return }};");
+                if (scenario.Start is { } startLiteral)
+                    Line($"        body[{column}] = json!({startLiteral});");
+                else
+                {
+                    Line($"        if [{string.Join(", ", scenario.Targets.Select(v => $"json!({v})"))}].contains(&body[{column}]) {{");
+                    Line("            skip(\"the new row starts with a value the gate holds\");");
+                    Line("            return;");
+                    Line("        }");
+                }
+                Line("        let created = api.post(ROUTE, &body).await;");
+                Line("        assert_eq!(created.status, StatusCode::CREATED, \"{}\", created.body);");
+                Line("        let mut row = created.json();");
+                Line("        let path = format!(\"{ROUTE}/{}\", segment(&row[KEY]));");
+                Line($"        let initial = row[{column}].clone();");
+                bool readsParent = scenario.When.Concat(scenario.Unless).Any(term => term.Via is not null);
+                Line($"        let {(readsParent ? "mut " : "")}undo: Vec<(String, Value)> = Vec::new();");
+                Line();
+                Line("        let outcome: Option<(Reply, Option<Reply>, Reply)> = async {");
+                Line("            // the condition holds and the exemption does not");
+                foreach (var term in scenario.When)
+                    Set(term, scenario.Holds(term));
+                if (scenario.Unless.Count > 0)
+                    Set(scenario.Unless[0], scenario.Fails(scenario.Unless[0]));
+                Line($"            row[{column}] = json!({scenario.Targets.First()});");
+                Line("            let held = api.put(&path, &row).await;");
+                Line();
+                if (scenario.Unless.Count > 0)
+                {
+                    Line("            // the exemption holds");
+                    foreach (var term in scenario.Unless)
+                        Set(term, scenario.Holds(term));
+                    Line("            let exempt = api.put(&path, &row).await;");
+                    Line($"            row[{column}] = initial.clone();");
+                    Line("            api.put(&path, &row).await;");
+                    Set(scenario.Unless[0], scenario.Fails(scenario.Unless[0]));
+                    Line();
+                }
+                Line("            // the condition does not hold");
+                Set(scenario.When[0], scenario.Fails(scenario.When[0]));
+                Line($"            row[{column}] = json!({scenario.Targets.First()});");
+                Line("            let free = api.put(&path, &row).await;");
+                Line(scenario.Unless.Count > 0 ? "            Some((held, Some(exempt), free))" : "            Some((held, None, free))");
+                Line("        }");
+                Line("        .await;");
+                Line("        put_back(&api, undo).await;");
+                Line("        api.delete(&path).await;");
+                Line();
+                Line("        let Some((held, exempt, free)) = outcome else { return };");
+                Line("        assert_eq!(held.status, StatusCode::CONFLICT, \"{}\", held.body);");
+                Line($"        assert_eq!(held.json()[\"type\"], \"{ProblemTypes.ChangeNotAllowed}\");");
+                Line("        if let Some(exempt) = exempt {");
+                Line("            assert_eq!(exempt.status, StatusCode::OK, \"the exemption lets the change through: {}\", exempt.body);");
+                Line("        }");
+                Line("        assert_eq!(free.status, StatusCode::OK, \"the gate lets the change through when its condition does not hold: {}\", free.body);");
+                Line("    }");
+            }
+            Line("}");
+        }
+        Write(sb.ToString());
+    }
+#>

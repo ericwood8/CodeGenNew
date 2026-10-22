@@ -1,0 +1,130 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestDashboard_v1.tt
+    // Generates: tests/api/dashboard_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // Integration tests of GET /api/dashboard (RS_Dashboard), run in process over a scratch database like RS_Test: the page answers the widgets DashboardPlan chose, in its order, each with its title,
+    // its kind and the lists of points and rows its kind fills; with a table in the query string the cards of that table's strip come back (the strip tables the plan found, whatever the case of the
+    // name) and a table with none answers no widget; with ApiAuth a call without a token is a 401 and, where ReadRoles or TableReadRoles limit a table, a role they do not list gets no widget of it.
+    // The numbers are not compared: the answer is kept for a minute, and the other tests change the rows. Written only for a project with RustTests=true and a dashboard.
+    // Full notes: Docs/TemplateNotes/RS_Test_v1.md
+    // ==========================================================================================
+    if (RustTestBodies.HasDashboardTests(Project))
+    {
+        var plan = DashboardPlan.Build(Database, Project);
+        foreach (string problem in plan.Problems)
+            Error(problem);
+
+        var strip = Project.DashboardStrip ? plan.StripTables.SelectMany(plan.StripOf).Select(w => w.Id).ToHashSet() : new HashSet<string>();
+        var onDashboard = plan.Widgets.Select(w => w.Id).ToHashSet();
+        var widgets = plan.Widgets.Concat(plan.Candidates.Where(w => strip.Contains(w.Id) && !onDashboard.Contains(w.Id))).ToList();
+        var stripTables = Project.DashboardStrip ? plan.StripTables.Where(t => widgets.Any(w => strip.Contains(w.Id) && w.Table.EqualsIgnoreCase(t))).ToList() : new List<string>();
+        var limited = Database.Tables.Select(t => (t.TableName, Roles: WriteRolePlan.ReadFor(Project, t))).Where(t => t.Roles.Count > 0).ToList();
+        string Json(string text) => ApiSampleValues.Json(text);
+        string List(IEnumerable<string> items) => string.Join(", ", items.Select(Json));
+
+        var sb = new StringBuilder();
+        void Line(string text = "") => sb.Append(text).Append('\n');
+
+        Line("@@@FILE tests/api/dashboard_routes.rs@@@");
+        Line("use axum::http::StatusCode;");
+        Line("use serde_json::Value;");
+        Line();
+        Line("use crate::test_support::*;");
+        Line();
+        Line("const ROUTE: &str = \"/api/dashboard\";");
+        Line();
+        Line("/// The ids of the widgets the plan put on the dashboard page, in order.");
+        Line($"const PAGE: &[&str] = &[{List(widgets.Where(w => onDashboard.Contains(w.Id)).Select(w => w.Id))}];");
+        Line();
+        Line("/// The widgets of a table's strip, by table: (table, ids in order).");
+        Line("const STRIPS: &[(&str, &[&str])] = &[");
+        foreach (string table in stripTables)
+            Line($"    ({Json(table)}, &[{List(widgets.Where(w => strip.Contains(w.Id) && w.Table.EqualsIgnoreCase(table)).Select(w => w.Id))}]),");
+        Line("];");
+        if (limited.Count > 0)
+        {
+            Line();
+            Line("/// The tables whose reads ReadRoles or TableReadRoles limit.");
+            Line($"const LIMITED: &[&str] = &[{List(limited.Select(t => t.TableName))}];");
+        }
+        Line();
+        Line("fn widgets_of(reply: &Reply) -> Vec<Value> {");
+        Line("    reply.json()[\"widgets\"].as_array().cloned().unwrap_or_default()");
+        Line("}");
+        Line();
+        Line("fn ids_of(widgets: &[Value]) -> Vec<String> {");
+        Line("    widgets.iter().map(|w| w[\"id\"].as_str().unwrap_or_default().to_string()).collect()");
+        Line("}");
+        Line();
+        Line("#[tokio::test]");
+        Line("async fn the_dashboard_answers_the_widgets_the_plan_chose() {");
+        Line("    let Some(api) = Client::start().await else { return };");
+        Line("    let reply = api.get(ROUTE).await;");
+        Line("    assert_eq!(reply.status, StatusCode::OK, \"{}\", reply.body);");
+        Line("    let widgets = widgets_of(&reply);");
+        Line("    assert_eq!(ids_of(&widgets), PAGE, \"the widgets of the page, in the order of the plan\");");
+        Line("    for widget in &widgets {");
+        Line("        assert!(widget[\"title\"].as_str().is_some_and(|title| !title.is_empty()), \"a widget has a title: {widget}\");");
+        Line("        assert!(widget[\"kind\"].as_str().is_some_and(|kind| !kind.is_empty()), \"a widget has a kind: {widget}\");");
+        Line("        assert!(widget[\"points\"].is_array() && widget[\"rows\"].is_array(), \"a widget has points and rows: {widget}\");");
+        Line("        let empty = |list: &Value| list.as_array().is_some_and(|items| items.is_empty());");
+        Line("        if widget[\"kind\"] == \"recent\" {");
+        Line("            assert!(empty(&widget[\"points\"]), \"a recent widget fills rows, not points: {widget}\");");
+        Line("        } else {");
+        Line("            assert!(empty(&widget[\"rows\"]), \"only a recent widget fills rows: {widget}\");");
+        Line("        }");
+        Line("    }");
+        Line("}");
+        Line();
+        Line("#[tokio::test]");
+        Line("async fn a_table_with_a_strip_answers_its_cards_whatever_the_case_of_its_name() {");
+        Line("    let Some(api) = Client::start().await else { return };");
+        Line("    for (table, ids) in STRIPS {");
+        Line("        for name in [table.to_string(), table.to_lowercase(), table.to_uppercase()] {");
+        Line("            let reply = api.get(&format!(\"{ROUTE}?table={name}\")).await;");
+        Line("            assert_eq!(reply.status, StatusCode::OK, \"{}\", reply.body);");
+        Line("            assert_eq!(ids_of(&widgets_of(&reply)), *ids, \"the strip of {name}\");");
+        Line("        }");
+        Line("    }");
+        Line("}");
+        Line();
+        Line("#[tokio::test]");
+        Line("async fn a_table_without_a_strip_answers_no_widget() {");
+        Line("    let Some(api) = Client::start().await else { return };");
+        Line("    let reply = api.get(&format!(\"{ROUTE}?table=NoSuchTable\")).await;");
+        Line("    assert_eq!(reply.status, StatusCode::OK, \"{}\", reply.body);");
+        Line("    assert!(widgets_of(&reply).is_empty(), \"{}\", reply.body);");
+        Line("}");
+        if (Project.ApiAuth)
+        {
+            Line();
+            Line("#[tokio::test]");
+            Line("async fn without_a_token_the_dashboard_answers_401() {");
+            Line("    let Some(api) = Client::start().await else { return };");
+            Line("    assert_eq!(api.anonymous().get(ROUTE).await.status, StatusCode::UNAUTHORIZED);");
+            Line("}");
+        }
+        if (Project.ApiAuth && limited.Count > 0)
+        {
+            Line();
+            Line("#[tokio::test]");
+            Line("async fn a_role_the_read_rules_do_not_list_gets_no_widget_of_a_limited_table() {");
+            Line("    let Some(api) = Client::start().await else { return };");
+            Line("    let all = widgets_of(&api.get(ROUTE).await);");
+            Line("    let other = widgets_of(&api.in_role(\"NoSuchRole\").get(ROUTE).await);");
+            Line("    let limited = |widget: &Value| LIMITED.iter().any(|table| widget[\"table\"].as_str().is_some_and(|name| name.eq_ignore_ascii_case(table)));");
+            Line("    assert!(other.iter().all(|widget| !limited(widget)), \"a limited table has a widget: {other:?}\");");
+            Line("    let allowed: Vec<Value> = all.iter().filter(|widget| !limited(widget)).cloned().collect();");
+            Line("    assert_eq!(ids_of(&other), ids_of(&allowed), \"the other widgets stay\");");
+            Line("}");
+        }
+        Write(sb.ToString());
+    }
+#>
