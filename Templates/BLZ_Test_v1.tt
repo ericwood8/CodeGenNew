@@ -43,13 +43,17 @@
         var o = new System.Text.StringBuilder();
         o.Append($"using Bunit;\nusing Microsoft.AspNetCore.Components;\nusing Microsoft.Extensions.DependencyInjection;\nusing {ns}.Pages;\n\nnamespace {ns}.Tests;\n");
 
-        // the tests of the REST grid itself: sorting, searching, paging, the Columns list, a refused Save, Delete and Clone
-        string GridTests()
+        // the tests of the grid itself, REST or OData: sorting, searching or the filter row, paging, the Columns list, a refused Save, Delete and Clone
+        string GridTests(bool odata)
         {
-            string keyUrl = apiRoute + "/" + keyText;
+            string keyUrl = apiRoute + "/" + keyText;   // a clone goes through the REST route on both pages
+            string deleteUrl = (odata ? set : apiRoute) + "/" + keyText;
+            string inUse = odata ? "Conflict" : "BadRequest";   // what each route answers for a row another table points at
             string edit = "page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Edit\").Click();";
+            string paged = odata ? "FakeApi.ODataPage(Row, 45)" : "FakeApi.Page(Row, 45, 1, 20)";
+            string nextAsked = odata ? "Uri.UnescapeDataString(r.Path).Contains(\"$skip=" + BlazorTestPlan.PageSize + "\")" : "r.Path.Contains(\"pageNumber=2\")";
             var t = new System.Text.StringBuilder();
-            if (sortName is not null)
+            if (!odata && sortName is not null)
             {
                 string sort = Uri.EscapeDataString(sortName);
                 t.Append($$"""
@@ -66,7 +70,7 @@
 
 """);
             }
-            if (search is not null)
+            if (!odata && search is not null)
             {
                 string label = search.Label.Replace("\\", "\\\\").Replace("\"", "\\\"");
                 string param = search.ParamName;
@@ -86,16 +90,100 @@
 
 """);
             }
+            if (odata && plan.ODataSort is { } sortColumn)
+            {
+                string path = sortColumn.Property;
+                t.Append($$"""
+
+    [TestMethod]
+    public void Sorts_by_a_header_flips_the_direction_and_Shift_click_adds_a_second_sort()
+    {
+        var page = OpenWithRow();
+        var headers = page.FindAll("button.sort");
+        string Last() => Uri.UnescapeDataString(Api.Requests.Last(r => r.Path.Contains("$orderby=")).Path);
+        Api.Requests.Clear();
+        headers.First(h => h.GetAttribute("title")!.Contains("sort by {{sortColumn.Caption}}.")).Click();
+        page.WaitForAssertion(() => StringAssert.Contains(Last(), "$orderby={{path}},"));   // ascending is written without a word
+        page.FindAll("button.sort").First(h => h.GetAttribute("title")!.Contains("sort by {{sortColumn.Caption}}.")).Click();
+        page.WaitForAssertion(() => StringAssert.Contains(Last(), "{{path}} desc"));
+        var other = page.FindAll("button.sort").FirstOrDefault(h => !h.GetAttribute("title")!.Contains("sort by {{sortColumn.Caption}}."));
+        if (other is not null)
+        {
+            other.Click(new Microsoft.AspNetCore.Components.Web.MouseEventArgs { ShiftKey = true });
+            page.WaitForAssertion(() => StringAssert.Contains(Last(), "{{path}} desc,"));
+        }
+    }
+
+""");
+            }
+            if (odata && plan.ODataText is { } textColumn)
+            {
+                string label = textColumn.Caption.Replace("\\", "\\\\").Replace("\"", "\\\"");
+                string contains = $"contains(tolower({textColumn.Property}),'zz9')";
+                t.Append($$"""
+
+    [TestMethod]
+    public void Filters_by_the_text_typed_in_the_filter_row_and_Clear_drops_it()
+    {
+        var page = OpenWithRow();
+        page.Find("[aria-label=\"Filter by {{label}}\"]").Input("ZZ9");
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Search").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(Uri.UnescapeDataString(Api.Requests.Last().Path), "$filter=" + "{{contains}}"));
+        Api.Requests.Clear();
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Clear").Click();
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Path.StartsWith("{{set}}?") && !Uri.UnescapeDataString(r.Path).Contains("zz9"))));
+    }
+
+""");
+            }
+            if (odata && plan.ODataNumber is { } numberColumn)
+            {
+                string label = numberColumn.Caption.Replace("\\", "\\\\").Replace("\"", "\\\"");
+                t.Append($$"""
+
+    [TestMethod]
+    public void Filters_a_number_column_by_a_range_and_never_sends_text_that_is_not_a_number()
+    {
+        var page = OpenWithRow();
+        page.Find("[aria-label=\"{{label}} from\"]").Input("5");
+        page.Find("[aria-label=\"{{label}} to\"]").Input("9");
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Search").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(Uri.UnescapeDataString(Api.Requests.Last().Path), "$filter=" + "{{numberColumn.Property}} ge 5 and {{numberColumn.Property}} le 9"));
+        Api.Requests.Clear();
+        page.Find("[aria-label=\"{{label}} from\"]").Input("abc");
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Search").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "is not a number"));
+        Assert.IsFalse(Api.Requests.Any(r => r.Path.Contains("abc")), "text that is not a number is not sent");
+    }
+
+""");
+            }
+            if (odata && plan.ODataBoolean is { } flagColumn)
+            {
+                string label = flagColumn.Caption.Replace("\\", "\\\\").Replace("\"", "\\\"");
+                t.Append($$"""
+
+    [TestMethod]
+    public void Filters_a_yes_or_no_column_by_the_choice_made()
+    {
+        var page = OpenWithRow();
+        page.Find("select[aria-label=\"Filter by {{label}}\"]").Change("true");
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Search").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(Uri.UnescapeDataString(Api.Requests.Last().Path), "$filter=" + "{{flagColumn.Property}} eq true"));
+    }
+
+""");
+            }
             t.Append($$"""
 
     [TestMethod]
     public void Pages_forward_with_Next_and_the_first_page_has_no_Previous()
     {
-        var page = Open(FakeApi.Page(Row, 45, 1, 20));
+        var page = Open({{paged}});
         page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "Page 1 of 3"));
         Assert.IsTrue(page.FindAll("button").First(b => b.TextContent.Trim() == "Previous").HasAttribute("disabled"));
         page.FindAll("button").First(b => b.TextContent.Trim() == "Next").Click();
-        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Path.Contains("pageNumber=2"))));
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => {{nextAsked}})));
     }
 
     [TestMethod]
@@ -131,7 +219,7 @@
         Assert.IsFalse(Api.Requests.Any(r => r.Method == HttpMethod.Delete), "no confirmation, no delete");
         JSInterop.Setup<bool>("confirm", _ => true).SetResult(true);
         page.FindAll("button").First(b => b.TextContent.Trim() == "Delete").Click();
-        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Delete && r.Path == "{{keyUrl}}")));
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Delete && r.Path == "{{deleteUrl}}")));
     }
 
     [TestMethod]
@@ -139,12 +227,39 @@
     {
         var page = OpenWithRow();
         JSInterop.Setup<bool>("confirm", _ => true).SetResult(true);
-        Api.FailWrite(HttpMethod.Delete, "/{{keyText}}", System.Net.HttpStatusCode.BadRequest);
+        Api.FailWrite(HttpMethod.Delete, "/{{keyText}}", System.Net.HttpStatusCode.{{inUse}});
         page.FindAll("button").First(b => b.TextContent.Trim() == "Delete").Click();
         page.WaitForAssertion(() => StringAssert.Contains(page.Find("p.error").TextContent, "It cannot be deleted because it is in use!"));
     }
 
 """);
+            if (odata)
+            {
+                t.Append($$"""
+
+    [TestMethod]
+    public void Asks_only_for_the_columns_that_are_shown()
+    {
+        var page = OpenWithRow();
+        string Select() => Uri.UnescapeDataString(Api.Requests.Last(r => r.Path.Contains("$select=")).Path);
+        int before = Select().Length;
+        page.FindAll(".column-list input[type=checkbox]").First(i => i.HasAttribute("checked") && !i.HasAttribute("disabled")).Change(false);
+        page.WaitForAssertion(() => Assert.IsTrue(Select().Length < before, "a hidden column is left out of $select"));
+    }
+
+    [TestMethod]
+    public void Says_a_value_already_exists_when_the_API_answers_a_conflict_to_a_Save()
+    {
+        var page = OpenWithRow();
+        {{edit}}
+        page.WaitForAssertion(() => Assert.IsTrue(page.FindAll("[role=dialog] input").Any(i => i.GetAttribute("value") == "{{row!.Marker}}")));
+        Api.FailWrite(HttpMethod.Put, "/{{keyText}}", System.Net.HttpStatusCode.Conflict);
+        page.Find("[role=dialog] button[type=submit]").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Find("[role=dialog] [role=alert]").TextContent, "A row with this value already exists!"));
+    }
+
+""");
+            }
             if (form.CanClone)
             {
                 t.Append($$"""
@@ -174,9 +289,9 @@
             o.Append($"\n[TestClass]\npublic class {type}{(odata ? "ODataPage" : "Page")}Tests : PageTestContext\n{{\n");
             if (row is not null)
                 o.Append($"    private const string Row = \"\"\"{row.Json}\"\"\";\n\n");
-            o.Append($"    private IRenderedComponent<{pageType}> Open({(row is not null && !odata ? "string? list = null" : "")})\n    {{\n");
+            o.Append($"    private IRenderedComponent<{pageType}> Open({(row is not null ? "string? list = null" : "")})\n    {{\n");
             if (row is not null)
-                o.Append($"        Api.Answer(\"{listPath}\", {(odata ? listAnswer : "list ?? " + listAnswer)});\n" + (odata ? $"        Api.Answer(\"{keyPath}\", Row);\n" : "") + signIn);
+                o.Append($"        Api.Answer(\"{listPath}\", list ?? {listAnswer});\n" + (odata ? $"        Api.Answer(\"{keyPath}\", Row);\n" : "") + signIn);
             else
                 o.Append($"        Api.Answer(\"{listPath}\", {(odata ? "FakeApi.ODataPage(\"\", 0)" : "FakeApi.Page(\"\", 0)")});\n" + signIn);
             o.Append($"        return Render<{pageType}>();\n    }}\n\n");
@@ -198,8 +313,7 @@
                 o.Append($"        Services.GetRequiredService<NavigationManager>().NavigateTo(\"{route}?edit={keyText}\");\n");
                 o.Append($"        Api.Answer(\"{keyPath}\", Row);\n");
                 o.Append("        var page = Open();\n        page.WaitForAssertion(() => StringAssert.Contains(page.Find(\"[role=dialog]\").TextContent, \"Edit " + title + "\"));\n    }\n");
-                if (!odata)
-                    o.Append(GridTests());
+                o.Append(GridTests(odata));
                 foreach (var child in children)
                 {
                     bool served = odata && ODataPlan.ServesByName(child.Table, Project);

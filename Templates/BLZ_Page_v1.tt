@@ -64,7 +64,7 @@
         string title = form.Title;
         string key = keyColumn.CSharpName();
         bool textKey = form.TextKey;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
-        const int pageSize = 20;
+        const int pageSize = BlazorTestPlan.PageSize;   // the tests of the page count pages by it
 
         var searchFields = form.SearchFields.Select(f => (Column: f.Column!, f.ParamName, Field: "filter" + Ident(f.Name), f.Label)).ToList();
         // a drop-down of the parent's rows per whole-number foreign key: an exact match on the key (the OData page has its own filter row)

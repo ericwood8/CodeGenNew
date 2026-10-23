@@ -1,0 +1,19 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // SP_CreateSchema_v1.tt
+    // Generates: CreateSchema.sql   (one script for the whole database; SQL Server, PostgreSQL and MySQL)
+    // A create script written from what the database reported: tables, columns, keys, indexes and foreign keys (SchemaScript). The generated API tests fill a throwaway container
+    // from it when the project names no ApiTestSchema. Checks, filtered indexes, triggers and routines are not in it. codegen never applies it.
+    // Settings: ApiTests, ApiTestContainers, ApiTestSchema (a project that names its own scripts does not get this one).
+    // Full notes: Docs/TemplateNotes/SP_CreateSchema_v1.md
+    // ==========================================================================================
+
+    if (!SchemaScript.Supports(Database.Dialect))
+        Error("SP_CreateSchema writes a script for SQL Server, PostgreSQL or MySQL; " + Database.Dialect + " needs no container.");
+#>
+@@@FILE CreateSchema.sql@@@
+<#= SchemaScript.For(Database).TrimEnd() #>

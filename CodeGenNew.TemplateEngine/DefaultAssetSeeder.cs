@@ -62,6 +62,7 @@ public static class DefaultAssetSeeder
         "CS_Validation_v1.tt", "CS_Validation_v1.tt.config",
         "CS_Enum_v1.tt", "CS_Enum_v1.tt.config",
         "CS_DbContext_v1.tt", "CS_DbContext_v1.tt.config",
+        "SP_CreateSchema_v1.tt", "SP_CreateSchema_v1.tt.config",
         "SP_EnumCasts_v1.tt", "SP_EnumCasts_v1.tt.config",
         "SP_KeySequence_v1.tt", "SP_KeySequence_v1.tt.config",
         "SP_ForeignKeyIndexes_v1.tt", "SP_ForeignKeyIndexes_v1.tt.config",

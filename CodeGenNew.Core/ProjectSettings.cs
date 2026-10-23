@@ -307,6 +307,7 @@ public partial class ProjectSettings
             if (ApiFakers) yield return "CS_Faker";
             if (TemporalTables.Length > 0) yield return "SP_TemporalTable";
             if (ApiTests) { yield return "API_Test"; yield return "API_JunctionTest"; }
+            if (ApiTests && ApiTestContainers && ApiTestSchema.Length == 0 && DatabaseDialect != SqlDialect.Sqlite) yield return "SP_CreateSchema";
             if (BlazorTests) { yield return "BLZ_Test"; yield return "BLZ_JunctionTest"; yield return "BLZ_TestMenu"; }
             if (RustTests)
             {

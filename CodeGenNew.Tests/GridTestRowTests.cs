@@ -179,7 +179,7 @@ public class GridTestRowTests
     }
 
     [TestMethod]
-    public async Task The_blazor_rest_page_test_checks_the_sort_the_search_the_paging_the_columns_a_refused_save_delete_and_clone_and_the_odata_page_does_not()
+    public async Task The_blazor_page_tests_check_the_sort_the_search_or_filter_row_the_paging_the_columns_a_refused_save_delete_and_clone_on_the_rest_page_and_the_odata_page()
     {
         string text = await Render("BLZ_Test_v1.tt", ("BlazorTests", "true"), ("OData", "true"));
         string rest = text[..text.IndexOf("public class AccountODataPageTests", StringComparison.Ordinal)];
@@ -204,9 +204,31 @@ public class GridTestRowTests
         Expect.Contains(rest, "\"It cannot be deleted because it is in use!\"");
         Expect.Contains(rest, "Api.AnswerWrite(HttpMethod.Post, \"/1/clone\", Row);");
         Expect.Contains(rest, "r.Path == \"/api/accounts/1/clone\"");
-        Expect.DoesNotContain(odata, "Sorts_by_a_header");
-        Expect.DoesNotContain(odata, "Deletes_a_row_only_after");
-        Expect.DoesNotContain(odata, "Pages_forward");
+
+        // the OData page has its own sorts (ascending is written without a word, Shift-click adds a column), the filter row in place of the search box, a count and $skip for paging and a $select of the shown columns
+        Expect.DoesNotContain(odata, "Sorts_by_a_header_and_flips");
+        Expect.DoesNotContain(odata, "Searches_with_the_text_typed");
+        Expect.Contains(odata, "public void Sorts_by_a_header_flips_the_direction_and_Shift_click_adds_a_second_sort()");
+        Expect.Contains(odata, "StringAssert.Contains(Last(), \"$orderby=title,\")");
+        Expect.Contains(odata, "StringAssert.Contains(Last(), \"title desc\")");
+        Expect.Contains(odata, "new Microsoft.AspNetCore.Components.Web.MouseEventArgs { ShiftKey = true }");
+        Expect.Contains(odata, "public void Filters_by_the_text_typed_in_the_filter_row_and_Clear_drops_it()");
+        Expect.Contains(odata, "page.Find(\"[aria-label=\\\"Filter by Title\\\"]\").Input(\"ZZ9\");");
+        Expect.Contains(odata, "\"$filter=\" + \"contains(tolower(title),'zz9')\"");
+        Expect.Contains(odata, "public void Filters_a_number_column_by_a_range_and_never_sends_text_that_is_not_a_number()");
+        Expect.Contains(odata, "\"$filter=\" + \"balance ge 5 and balance le 9\"");
+        Expect.Contains(odata, "public void Filters_a_yes_or_no_column_by_the_choice_made()");
+        Expect.Contains(odata, "\"$filter=\" + \"isOpen eq true\"");
+        Expect.Contains(odata, "Open(FakeApi.ODataPage(Row, 45))");
+        Expect.Contains(odata, "\"Page 1 of 3\"");
+        Expect.Contains(odata, "Uri.UnescapeDataString(r.Path).Contains(\"$skip=20\")");
+        Expect.Contains(odata, "public void Asks_only_for_the_columns_that_are_shown()");
+        Expect.Contains(odata, "public void Hides_a_column_unticked_in_the_Columns_list_and_Reset_shows_it_again()");
+        Expect.Contains(odata, "Api.FailWrite(HttpMethod.Put, \"/1\", System.Net.HttpStatusCode.Conflict);");
+        Expect.Contains(odata, "\"A row with this value already exists!\"");
+        Expect.Contains(odata, "r.Method == HttpMethod.Delete && r.Path == \"/odata/accounts/1\"");
+        Expect.Contains(odata, "Api.FailWrite(HttpMethod.Delete, \"/1\", System.Net.HttpStatusCode.Conflict);");
+        Expect.Contains(odata, "r.Path == \"/api/accounts/1/clone\"");
     }
 
     [TestMethod]

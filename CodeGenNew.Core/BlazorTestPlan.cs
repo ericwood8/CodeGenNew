@@ -29,8 +29,17 @@ public sealed class BlazorTestPlan
         Editable = childGrids.Where(g => g.IsEditable).ToList();
 
         SortName = Chosen.Initial.FirstOrDefault(c => c.Sortable)?.Name;
+
+        // the OData page's own grid: the header it sorts by (a column of the table itself, not a parent's display column), and one filter row control of each kind a test can type into
+        ODataSort = Chosen.Initial.FirstOrDefault(c => c.Sortable && c.Filter?.Kind is not (ODataFilterKind.Parent or ODataFilterKind.Choice));
+        ODataText = Chosen.Initial.FirstOrDefault(c => c.Filter?.Kind == ODataFilterKind.Text);
+        ODataNumber = Chosen.Initial.FirstOrDefault(c => c.Filter?.Kind == ODataFilterKind.Number);
+        ODataBoolean = Chosen.Initial.FirstOrDefault(c => c.Filter?.Kind == ODataFilterKind.Boolean);
         Search = Form.SearchFields.FirstOrDefault(f => f.Column is not null);
     }
+
+    /// <summary> The rows on a page of the grid, REST or OData (BLZ_Page asks for this many). </summary>
+    public const int PageSize = 20;
 
     public static BlazorTestPlan For(TableModel model, ProjectSettings project) => new(model, project);
 
@@ -63,4 +72,10 @@ public sealed class BlazorTestPlan
 
     /// <summary> The first search box that searches a column, or null. </summary>
     public SearchField? Search { get; }
+
+    /// <summary> The OData page's sortable header whose sort path is the column's own property, the text, number and yes-or-no filter row columns; null when the grid has none of that kind. </summary>
+    public ChosenColumn? ODataSort { get; }
+    public ChosenColumn? ODataText { get; }
+    public ChosenColumn? ODataNumber { get; }
+    public ChosenColumn? ODataBoolean { get; }
 }

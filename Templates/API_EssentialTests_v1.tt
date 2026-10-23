@@ -33,6 +33,12 @@
         };
         string containerNamespace = Project.DatabaseDialect switch { SqlDialect.PostgreSql => "PostgreSql", SqlDialect.MySql => "MySql", _ => "MsSql" };
         string[] schema = Project.ApiTestSchema;
+        if (containers && schema.Length == 0)
+        {
+            // no script of the project's own: the create script SP_CreateSchema writes from the catalog, then the routines of the SQL folder when the project uses them
+            string sqlPath = Path.GetRelativePath(apiFolder, Project.OutputFolderOf("sql")).Replace('\\', '/');
+            schema =Project.AccessModeFor(Project.DatabaseDialect) == AccessMode.Ef ? [sqlPath + "/CreateSchema.sql"] : [sqlPath + "/CreateSchema.sql", sqlPath];
+        }
 #>
 @@@FILE <#= projectName #>.Api.Tests.csproj@@@
 <Project Sdk="Microsoft.NET.Sdk">
@@ -325,16 +331,20 @@ public static class ApiFixture
     private static IEnumerable<string> ScriptFiles()
     {
         string api = ApiFolder();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (string entry in SchemaScripts)
         {
             string path = Path.GetFullPath(Path.Combine(api, entry));
             if (Directory.Exists(path))
             {
-                foreach (string file in Directory.EnumerateFiles(path, "*.sql", SearchOption.AllDirectories).Order(StringComparer.OrdinalIgnoreCase))
+                foreach (string file in Directory.EnumerateFiles(path, "*.sql", SearchOption.AllDirectories).Order(StringComparer.OrdinalIgnoreCase).Where(seen.Add))
                     yield return file;
             }
             else if (File.Exists(path))
-                yield return path;
+            {
+                if (seen.Add(path))
+                    yield return path;
+            }
             else
                 throw new FileNotFoundException("ApiTestSchema names " + entry + ", which is not in " + api);
         }
