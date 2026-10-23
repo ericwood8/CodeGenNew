@@ -150,7 +150,9 @@ public class PostgresIntegrationTests
                     account_number varchar(20) NOT NULL UNIQUE,
                     created_date timestamp NOT NULL DEFAULT now(),
                     credit_limit numeric,
-                    tags text[])
+                    labels text[],
+                    span interval,
+                    visits tsrange)
                 """);
             await Run("""
                 CREATE TABLE codegen_snake_test.customer_note (
@@ -175,14 +177,16 @@ public class PostgresIntegrationTests
             Assert.AreEqual((SqlDbType.Decimal, 38, 4, "numeric"), (limit.SqlType, (int)limit.Precision!, (int)limit.Scale!, limit.SqlTypeDeclaration));
             Assert.AreEqual(2, NumericClassifier.CurrencyDigits(limit));
 
-            // an array has no mapping: it is reported, and listing it leaves it out
-            CollectionAssert.AreEqual(new[] { "Tags" }, model.UnsupportedColumns.Select(c => c.Name).ToList());
-            var ignoring = new PostgresSchemaProvider(request, config, NamingStyle.Pascal) { IgnoredColumns = ["tags"] };
+            // an array, an interval, a range and a shape are text with their type; a type with no mapping (tsrange) is reported, and listing it leaves it out
+            Assert.AreEqual("text[]", model.Columns.Single(c => c.Name == "Labels").DbTextType);
+            Assert.AreEqual("interval", model.Columns.Single(c => c.Name == "Span").DbTextType);
+            CollectionAssert.AreEqual(new[] { "Visits" }, model.UnsupportedColumns.Select(c => c.Name).ToList());
+            var ignoring = new PostgresSchemaProvider(request, config, NamingStyle.Pascal) { IgnoredColumns = ["visits"] };
             var without = await ignoring.BuildTableModelAsync("codegen_snake_test", "customer_account");
-            Assert.IsFalse(without.Columns.Any(c => c.DbName == "tags"));
+            Assert.IsFalse(without.Columns.Any(c => c.DbName == "visits"));
             Assert.IsFalse(without.UnsupportedColumns.Any());
-            var byGeneratedName = await new PostgresSchemaProvider(request, config, NamingStyle.Pascal) { IgnoredColumns = ["CustomerAccount.Tags"] }.BuildTableModelAsync("codegen_snake_test", "customer_account");
-            Assert.IsFalse(byGeneratedName.Columns.Any(c => c.DbName == "tags"));
+            var byGeneratedName = await new PostgresSchemaProvider(request, config, NamingStyle.Pascal) { IgnoredColumns = ["CustomerAccount.Visits"] }.BuildTableModelAsync("codegen_snake_test", "customer_account");
+            Assert.IsFalse(byGeneratedName.Columns.Any(c => c.DbName == "visits"));
             var primaryKeyKept = await new PostgresSchemaProvider(request, config, NamingStyle.Pascal) { IgnoredColumns = ["customer_account_id"] }.BuildTableModelAsync("codegen_snake_test", "customer_account");
             Assert.IsTrue(primaryKeyKept.Columns.Any(c => c.DbName == "customer_account_id"), "a primary key column is never left out");
 
@@ -205,6 +209,75 @@ public class PostgresIntegrationTests
         finally
         {
             await Run("DROP SCHEMA IF EXISTS codegen_snake_test CASCADE");
+        }
+    }
+
+    [TestMethod]
+    public async Task Array_interval_range_and_shape_columns_are_text_with_their_type_and_their_functions_cast_it()
+    {
+        // Writes a throwaway schema (dropped again whatever happens).
+        var request = Request();
+        if (request is null)
+            Assert.Inconclusive("Set CODEGENNEW_PG_HOST, CODEGENNEW_PG_DATABASE, CODEGENNEW_PG_USER and CODEGENNEW_PG_PASSWORD to run the PostgreSQL integration tests.");
+
+        await using var connection = request!.CreatePostgresConnection();
+        await connection.OpenAsync();
+        async Task Run(string sql) { await using var command = new Npgsql.NpgsqlCommand(sql, connection); await command.ExecuteNonQueryAsync(); }
+        async Task<string?> Scalar(string sql) { await using var command = new Npgsql.NpgsqlCommand(sql, connection); return (await command.ExecuteScalarAsync())?.ToString(); }
+        try
+        {
+            await Run("DROP SCHEMA IF EXISTS codegen_text_test CASCADE");
+            await Run("CREATE SCHEMA codegen_text_test");
+            await Run("""
+                CREATE TABLE codegen_text_test.place (
+                    place_id serial PRIMARY KEY,
+                    place_name varchar(50) NOT NULL UNIQUE,
+                    tags text[] NOT NULL DEFAULT '{}',
+                    scores int4[], weights numeric[], flags bool[], ids uuid[], days date[],
+                    span interval,
+                    budget int4range, big int8range, cost numrange, period daterange,
+                    spot point, edge lseg, area box, ring circle, route path, zone polygon, axis line)
+                """);
+
+            var provider = new PostgresSchemaProvider(request, Path.Combine(AppContext.BaseDirectory, "SpecialLogicColumns.config"), NamingStyle.Pascal);
+            var model = await provider.BuildTableModelAsync("codegen_text_test", "place");
+
+            var expected = new Dictionary<string, string>
+            {
+                ["Tags"] = "text[]", ["Scores"] = "int4[]", ["Weights"] = "numeric[]", ["Flags"] = "bool[]", ["Ids"] = "uuid[]", ["Days"] = "date[]", ["Span"] = "interval",
+                ["Budget"] = "int4range", ["Big"] = "int8range", ["Cost"] = "numrange", ["Period"] = "daterange",
+                ["Spot"] = "point", ["Edge"] = "lseg", ["Area"] = "box", ["Ring"] = "circle", ["Route"] = "path", ["Zone"] = "polygon", ["Axis"] = "line"
+            };
+            foreach (var (name, type) in expected)
+            {
+                var column = model.Columns.Single(c => c.Name == name);
+                Assert.AreEqual(type, column.DbTextType, name);
+                Assert.AreEqual(SqlDbType.VarChar, column.SqlType, name);
+                Assert.IsTrue(column.IsStringColumn, name);
+                Assert.AreEqual($"varchar({column.PgText!.MaxLength})", column.SqlTypeDeclaration, name);
+                Assert.IsFalse(column.IsLongTextColumn, name);
+            }
+            Assert.IsFalse(model.UnsupportedColumns.Any());
+            Assert.IsFalse(model.Columns.Single(c => c.Name == "Tags").IsNullable);
+
+            // every function the generator writes for the table runs, and the row they write is read back in the database's own notation
+            var project = ProjectSettings.FromValues([new("ProjectName", "Text")]);
+            foreach (string template in new[] { "SP_Insert_v1.tt", "SP_Update_v1.tt", "SP_Save_v1.tt", "SP_Delete_v1.tt", "SP_Clone_v1.tt", "SP_Search_v1.tt", "SP_Lookup_v1.tt" })
+            {
+                var result = await Repo.Cache.RunAsync(Repo.Template(template), model, project);
+                Assert.IsTrue(result.Success, $"{template}: {string.Join(" | ", result.Errors)}");
+                await Run(result.GeneratedText!);
+            }
+            string args = "'First', '', '{1,2}', '{1.5}', '{t,f}', null, '{2024-01-02}', '90 minutes', '[3,9)', null, null, '[2024-01-01,2024-01-05]', '(1,2)', null, '(1,1),(2,2)', '<(0,0),1>', '[(1,1),(2,2)]', '((0,0),(0,1),(1,1))', '{1,2,3}'";
+            await Run($"SELECT codegen_text_test.\"Place_Insert\"({args})");
+            Assert.AreEqual("{}", await Scalar("SELECT tags::text FROM codegen_text_test.place WHERE place_name = 'First'"));
+            Assert.AreEqual("01:30:00", await Scalar("SELECT span::text FROM codegen_text_test.place WHERE place_name = 'First'"));
+            Assert.AreEqual("[2024-01-01,2024-01-06)", await Scalar("SELECT period::text FROM codegen_text_test.place WHERE place_name = 'First'"));
+            Assert.AreEqual("(2,2),(1,1)", await Scalar("SELECT area::text FROM codegen_text_test.place WHERE place_name = 'First'"));
+        }
+        finally
+        {
+            await Run("DROP SCHEMA IF EXISTS codegen_text_test CASCADE");
         }
     }
 }

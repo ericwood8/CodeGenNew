@@ -34,7 +34,7 @@ public static class CloneShape
         && m.PrimaryKeyColumns[0].IsIdentity
         && m.PrimaryKeyColumns[0].IsInt32Column
         && !m.IsNameActiveTable
-        && OverrideColumns(m).All(c => c.IsStringColumn && c.DbEnumType is null)
+        && OverrideColumns(m).All(c => c.IsStringColumn && c.DbCastType is null)
         && !project.NoClone(m.TableName);
 
     /// <summary> Why CanClone is false, for a template's header comment or an error; null when it is true. </summary>

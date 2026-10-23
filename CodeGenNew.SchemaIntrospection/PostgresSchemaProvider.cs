@@ -34,7 +34,7 @@ public partial class PostgresSchemaProvider : SchemaProviderBase
 
     /// <summary> A PostgreSQL type (information_schema udt_name) in the SQL Server vocabulary the generator classifies by, plus the
     /// PostgreSQL spelling of the declaration. Length -1 means unbounded (text, bytea, json). A type with no equivalent
-    /// (arrays, enums, geometry ...) maps to sql_variant, which the generators treat as an unsupported "object" column. </summary>
+    /// (PostGIS geometry, a range of timestamps ...) maps to sql_variant; an array, interval, range or built-in shape is text with its type (<see cref="PgTextType"/>), found before this is called, which the generators treat as an unsupported "object" column. </summary>
     public static (string SqlTypeName, int MaxLength, int Precision, int Scale, string Declaration) MapType(
         string udtName, int? characterMaximumLength, int? numericPrecision, int? numericScale, IReadOnlyList<string>? enumLabels = null)
     {
@@ -397,8 +397,10 @@ public partial class PostgresSchemaProvider : SchemaProviderBase
             string udtName = reader.GetString(reader.GetOrdinal("udt_name"));
             int enumOrdinal = reader.GetOrdinal("enum_labels"), checkOrdinal = reader.GetOrdinal("check_definitions");
             var enumLabels = reader.IsDBNull(enumOrdinal) ? null : ((string[])reader.GetValue(enumOrdinal)).ToList();
-            var (sqlType, maxLength, precision, scale, declaration) = MapType(
-                udtName, Int("character_maximum_length"), Int("numeric_precision"), Int("numeric_scale"), enumLabels);
+            var textType = PgTextType.FromUdt(udtName);
+            var (sqlType, maxLength, precision, scale, declaration) = textType is null
+                ? MapType(udtName, Int("character_maximum_length"), Int("numeric_precision"), Int("numeric_scale"), enumLabels)
+                : ("varchar", textType.MaxLength, 0, 0, $"varchar({textType.MaxLength})");   // text to the generator and in a function's parameters; the cast is DbTextType
 
             // A value from a list: a native enum type, or a text column a CHECK constraint limits to listed values. The form shows either as a drop-down.
             var choices = enumLabels;
@@ -434,6 +436,7 @@ public partial class PostgresSchemaProvider : SchemaProviderBase
                 DefaultForCSharp: serial ? null : NormalizeDefault(columnDefault),
                 Choices: choices,
                 EnumType: enumLabels is null ? null : reader.GetString(reader.GetOrdinal("udt_schema")) + "." + udtName,
+                TextType: textType?.Name,
                 CheckDefinitions: reader.IsDBNull(checkOrdinal) ? null : ((string[])reader.GetValue(checkOrdinal)).ToList()));
         }
 

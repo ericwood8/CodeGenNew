@@ -29,13 +29,49 @@
 import os
 from collections.abc import Iterator
 
+<# if (dialect == SqlDialect.PostgreSql) { #>
+from sqlalchemy import String, cast, create_engine, func
+<# } else { #>
 from sqlalchemy import create_engine
+<# } #>
 from sqlalchemy.engine import URL
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+<# if (dialect == SqlDialect.PostgreSql) { #>
+from sqlalchemy.types import TypeDecorator, UserDefinedType
+<# } #>
 
 
 class Base(DeclarativeBase):
     pass
+<# if (dialect == SqlDialect.PostgreSql) { #>
+
+
+class _Named(UserDefinedType):
+    cache_ok = True
+
+    def __init__(self, name: str):
+        self.name = name
+
+    def get_col_spec(self, **kw) -> str:
+        return self.name
+
+
+class PgText(TypeDecorator):
+    """A PostgreSQL array, interval, range or shape column, held as its text in PostgreSQL's own notation: read with a cast to text, written with a cast to the column's type (blank is NULL)."""
+
+    impl = String
+    cache_ok = True
+
+    def __init__(self, pg_type: str):
+        super().__init__()
+        self.pg_type = pg_type
+
+    def bind_expression(self, bindvalue):
+        return cast(func.nullif(bindvalue, ""), _Named(self.pg_type))
+
+    def column_expression(self, column):
+        return cast(column, String)
+<# } #>
 
 
 def database_url() -> str | URL:
@@ -258,6 +294,15 @@ def looks_like_ssn(value: str) -> bool:
 
 def looks_like_url(value: str) -> bool:
     return value.startswith(("http://", "https://")) and len(value) > 8 and " " not in value
+<# if (dialect == SqlDialect.PostgreSql) { #>
+
+
+def matches_pattern(value: str, pattern: str) -> bool:
+    """Whether the whole text has the notation of an array, interval, range or shape column (PostgreSQL's own)."""
+    import re
+
+    return re.fullmatch(pattern, value.strip()) is not None
+<# } #>
 @@@FILE app/main.py@@@
 """The API: every table's router, the error forms and CORS for the front ends' dev servers. Run it with: uvicorn app.main:app <#= portFlag #> <#= Project.ApiPort #>"""
 import os

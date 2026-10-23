@@ -45,7 +45,7 @@ public static class DataCheck
             if (rule.Choices is { Count: > 0 } choices)
                 yield return ("one of: " + string.Join(", ", choices), v => v is string s && s.Length > 0 && !choices.Contains(s));
             if (rule.Shape != TextShape.None)
-                yield return (ColumnRules.NounOf(rule.Shape), v => v is string s && s.Trim().Length > 0 && !HasShape(rule.Shape, s));
+                yield return (ColumnRules.NounOf(rule), v => v is string s && s.Trim().Length > 0 && !HasShape(rule, s));
         }
         else if (rule.HasRange)
         {
@@ -67,10 +67,10 @@ public static class DataCheck
     };
 
     /// <summary> Whether a stored text has the shape, by the same test the generated C# validator and attributes make. </summary>
-    public static bool HasShape(TextShape shape, string value) => shape switch
+    public static bool HasShape(ColumnRule rule, string value) => rule.Shape switch
     {
         TextShape.Email => new EmailAddressAttribute().IsValid(value),
         TextShape.Url => Uri.IsWellFormedUriString(value, UriKind.Absolute),
-        _ => ColumnRules.PatternOf(shape) is { } pattern && Regex.IsMatch(value, "^(?:" + pattern + ")$")
+        _ => ColumnRules.PatternOf(rule) is { } pattern && Regex.IsMatch(value, "^(?:" + pattern + ")$")
     };
 }

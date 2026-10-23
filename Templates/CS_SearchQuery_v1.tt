@@ -45,9 +45,9 @@
         {
             string name = filter.ParameterName;
             string property = filter.Column.CSharpName();
-            if (filter.Column.DbEnumType is not null)
+            if (filter.Column.DbCastType is not null)
             {
-                L($"        // {property} is a database enum, which has no text comparison: it is not filtered here.");
+                L($"        // {property} is a database enum, array, interval, range or shape, which has no text comparison: it is not filtered here.");
                 continue;
             }
             L($"        if (!string.IsNullOrWhiteSpace({name}))");

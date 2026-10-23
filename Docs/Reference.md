@@ -258,7 +258,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `TotalMember` | ListProtocol=Search: the member of the answer that holds the number of rows in all; blank = count |
 | `SearchColumns` | ListProtocol=Search: Table=Column or Table=Parent.Column pairs, comma-separated (TimeSheet=Notes,TimeSheet=Employee.Name): what the one search box matches; blank = the table's searchable text columns and the display column of its parents |
 | `DefaultSorts` | Table=Column:asc\|desc pairs, comma-separated (TimeSheet=WhenEntered:desc,Holiday=Name): the sort an Angular grid starts with until the person sorts it |
-| `IgnoredColumns` | comma-separated columns to leave out (Tags, or Place.Location): a type CodeGenNew cannot map, such as an array or geometry |
+| `IgnoredColumns` | comma-separated columns to leave out (Visits, or Place.Location): a type CodeGenNew cannot map, such as PostGIS geometry or a range of timestamps (a PostgreSQL array, interval, range of numbers or dates and the built-in shapes are mapped as text) |
 | `ListingName` | WinUI3_DirectoryListing: the class stem, e.g. Document (DocumentListPage); blank = Document |
 | `ListingFolder` | WinUI3_DirectoryListing: the folder whose files are listed (for example %LocalAppData%/Project/Name); blank = under LocalAppData |
 | `ListingPattern` | WinUI3_DirectoryListing: which files are listed; blank = *.* |

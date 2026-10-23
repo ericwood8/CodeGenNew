@@ -22,7 +22,7 @@ public sealed record RawColumn(
     string Name, int OrdinalPosition, string SqlTypeName, int MaxLength, int Precision, int Scale,
     bool IsNullable, bool IsIdentity, int? IdentitySeed, int? IdentityIncrement,
     string? ComputedDefinition, string? DefaultDefinition, bool IsPrimaryKey, bool IsInUniqueIndex,
-    string? DeclarationOverride = null, string? DefaultForCSharp = null, List<string>? Choices = null, string? EnumType = null, IReadOnlyList<string>? CheckDefinitions = null, string? Description = null);
+    string? DeclarationOverride = null, string? DefaultForCSharp = null, List<string>? Choices = null, string? EnumType = null, IReadOnlyList<string>? CheckDefinitions = null, string? Description = null, string? TextType = null);
 
 /// <summary> One foreign key, either direction: the OTHER table's name and the two column lists. </summary>
 public sealed record ForeignKeyRow(string ConstraintName, string OtherSchema, string OtherTable, List<string> ReferencingColumns, List<string> ReferencedColumns);
@@ -49,7 +49,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
     }
 
     /// <summary> Columns the project leaves out (its IgnoredColumns setting: <c>Column</c> for every table or <c>Table.Column</c>, by the database's name or the generated one): a
-    /// type CodeGenNew cannot map (an array, geometry) is listed here so the table still generates. A primary key column is never left out. </summary>
+    /// type CodeGenNew cannot map (PostGIS geometry, a range of timestamps) is listed here so the table still generates. A primary key column is never left out. </summary>
     public IReadOnlyCollection<string>? IgnoredColumns { get; set; }
 
     private async Task<List<RawColumn>> ReadVisibleColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
@@ -412,6 +412,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
             IsBooleanColumn = isBoolean,
             Choices = raw.Choices ?? ListFromChecks(raw, isString),
             DbEnumType = raw.EnumType,
+            DbTextType = raw.TextType,
             Check = isNumeric || isInteger || isMoney ? RangeFromChecks(raw) : null,
             Description = raw.Description,
             NumericKind = isInteger ? NumericClassifier.Classify(name) : NumericKind.None,

@@ -31,7 +31,7 @@ public static class ValidationAttributes
                 TextShape.Email => "[EmailAddress]",
                 TextShape.Phone => "[Phone]",
                 TextShape.Url => "[Url]",
-                TextShape.Postal or TextShape.Ssn => "[RegularExpression(@\"^(?:" + ColumnRules.PatternOf(rule.Shape) + ")$\", ErrorMessage = \"" + words + " is not " + ColumnRules.NounOf(rule.Shape) + ".\")]",
+                TextShape.Postal or TextShape.Ssn or TextShape.Custom => "[RegularExpression(@\"^(?:" + ColumnRules.PatternOf(rule)!.Replace("\"", "\"\"") + ")$\", ErrorMessage = \"" + words + " is not " + ColumnRules.NounOf(rule).Replace("\"", "\\\"") + ".\")]",
                 _ => null
             } is { } shape)
             attributes.Add(shape);

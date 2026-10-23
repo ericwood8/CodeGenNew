@@ -63,7 +63,7 @@ public static class SearchSort
         {
             string expr = e.Parent is { } fk
                 ? $"(SELECT p.{Q(DisplayDbColumn(fk))} FROM {Q(fk.ReferencedSchema)}.{Q(fk.ReferencedDbTable)} AS p WHERE p.{Q(fk.ReferencedDbColumns[0])} = t.{Q(e.Column.DbName)} LIMIT 1)"
-                : "t." + Q(e.Column.DbName) + (e.Column.DbEnumType is null ? "" : "::text");   // an enum sorts by its text (its declared order is not what a person expects)
+                : "t." + Q(e.Column.DbName) + (e.Column.DbCastType is null ? "" : "::text");   // an enum sorts by its text (its declared order is not what a person expects); an array, interval, range or shape by its text too
             string name = e.Name.ToLowerInvariant().Replace("'", "''");
             o.Append($"\t\tCASE WHEN lower(\"SortColumn\") = '{name}' AND NOT \"SortDescending\" THEN {expr} END ASC,\n");
             o.Append($"\t\tCASE WHEN lower(\"SortColumn\") = '{name}' AND \"SortDescending\" THEN {expr} END DESC,\n");

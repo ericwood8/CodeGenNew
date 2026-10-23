@@ -77,8 +77,8 @@
                 list.Add("Validators.email");
             else if (rule.Shape == TextShape.Phone)
                 list.Add("Validators.pattern(" + RegexLiteral(@"^[0-9+()\-.\s]{3,25}$") + ")");
-            else if (rule.Shape is TextShape.Postal or TextShape.Ssn)
-                list.Add("Validators.pattern(" + RegexLiteral("^(?:" + ColumnRules.PatternOf(rule.Shape) + ")$") + ")");
+            else if (rule.Shape is TextShape.Postal or TextShape.Ssn or TextShape.Custom)
+                list.Add("Validators.pattern(" + RegexLiteral("^(?:" + ColumnRules.PatternOf(rule) + ")$") + ")");
             else if (rule.Shape == TextShape.Url)
                 list.Add("Validators.pattern(" + RegexLiteral(@"^https?://\S+$") + "i)");
             if (rule.NotFuture)

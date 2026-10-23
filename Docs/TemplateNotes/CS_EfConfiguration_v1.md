@@ -9,6 +9,8 @@ What a configuration says:
 - per column, only what the class does not state by its type: `HasColumnName` (when `NamingStyle` gave the property another name), `HasColumnType` (money, a PostgreSQL `timestamp` or `jsonb`), `HasMaxLength`, `HasPrecision`, `IsRequired` for text, `ValueGeneratedOnAdd` (identity), `ValueGeneratedOnAddOrUpdate` (computed), `IsRowVersion`;
 - each index (`HasIndex`, `HasDatabaseName`, `IsUnique`), except the one that is the primary key.
 
+A PostgreSQL array, interval, range or built-in shape column is text in the entity, so its line also says `HasConversion(PgText.<converter>, PgText.Comparer)` and its `HasColumnType` is the real type (`int4[]`, `interval`, `int4range`, `point`); `PgText` is written at the end of the context file by `CS_DbContext`.
+
 Foreign keys stay where they are (the `[ForeignKey]` attributes and navigation properties of `CS_Entity`). The entity class keeps its attributes, so the two say the same thing; the configuration is the place to make a hand edit.
 
 **`CS_DbContext` with `EfConfigurations=true`:** `OnModelCreating` is `modelBuilder.ApplyConfigurationsFromAssembly(typeof(<Context>).Assembly)` followed by `OnModelCreatingPartial`; the composite keys are no longer written there (they are in their configurations). Without the flag the context is as it was.

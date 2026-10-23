@@ -12,6 +12,8 @@ public static class RuleMessages
 
     public static string Shape(string label, TextShape shape) => label + " must be " + ColumnRules.NounOf(shape) + ".";
 
+    public static string Shape(string label, ColumnRule rule) => label + " must be " + ColumnRules.NounOf(rule) + ".";
+
     public static string NotFuture(string label) => label + " must not be later than today.";
 
     public static string AtLeast(string label, double min, bool strict) => label + " must be " + (strict ? "greater than " : "at least ") + TemplateHelpers.Num(min) + ".";

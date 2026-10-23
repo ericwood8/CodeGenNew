@@ -6,7 +6,7 @@ public static class RustTestBodies
     private static readonly string[] FixedFormatWords = ["Email", "Phone", "Fax", "Url", "Website"];
 
     /// <summary> A text value that is not a fixed format and not a key: it can take a unique ending, so a unique index does not stop a second run. </summary>
-    public static bool IsFreeText(TableModel table, ColumnModel c) => c.IsStringColumn && !c.HasChoices && !c.IsPrimaryKey
+    public static bool IsFreeText(TableModel table, ColumnModel c) => c.IsStringColumn && !c.HasChoices && !c.IsPrimaryKey && c.PgText is null
         && !table.ForeignKeys.Any(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name)
         && !FixedFormatWords.Any(word => c.Name.ContainsIgnoreCase(word));
 

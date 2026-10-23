@@ -75,9 +75,15 @@
             {
                 parts.Add(".Matches(@\"^[0-9+()\\-.\\s]{3,25}$\").WithMessage(" + CSharpText.Quote(label + " is not a phone number.") + ")");
             }
+            else if (rule.Shape == TextShape.Custom)
+            {
+                // an array, interval, range or shape: a blank optional value is NULL, so only a value that is there is held to the notation
+                parts.Add(".Matches(@\"^(?:" + ColumnRules.PatternOf(rule)!.Replace("\"", "\"\"") + ")$\").WithMessage(" + CSharpText.Quote(label + " is not " + ColumnRules.NounOf(rule) + ".")
+                    + ").When(value => !string.IsNullOrEmpty(value." + Id(c) + "), ApplyConditionTo.CurrentValidator)");
+            }
             else if (rule.Shape is TextShape.Postal or TextShape.Ssn)
             {
-                parts.Add(".Matches(@\"^(?:" + ColumnRules.PatternOf(rule.Shape) + ")$\").WithMessage(" + CSharpText.Quote(label + " is not " + ColumnRules.NounOf(rule.Shape) + ".") + ")");
+                parts.Add(".Matches(@\"^(?:" + ColumnRules.PatternOf(rule)!.Replace("\"", "\"\"") + ")$\").WithMessage(" + CSharpText.Quote(label + " is not " + ColumnRules.NounOf(rule) + ".") + ")");
             }
             else if (rule.Shape == TextShape.Url)
             {

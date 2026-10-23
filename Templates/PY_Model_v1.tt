@@ -23,7 +23,7 @@
     bool schemaNamed = Model.Dialect is SqlDialect.SqlServer or SqlDialect.PostgreSql
         && !Model.SchemaName.EqualsIgnoreCase(Model.Dialect == SqlDialect.SqlServer ? "dbo" : "public");
 
-    var saTypes = t.Fields.Select(f => System.Text.RegularExpressions.Regex.Match(f.SqlAlchemyType, "^[A-Za-z]+").Value).Where(n => n != "PgEnum").Distinct().OrderBy(n => n, StringComparer.Ordinal).ToList();
+    var saTypes = t.Fields.Select(f => System.Text.RegularExpressions.Regex.Match(f.SqlAlchemyType, "^[A-Za-z]+").Value).Where(n => n is not ("PgEnum" or "PgText")).Distinct().OrderBy(n => n, StringComparer.Ordinal).ToList();
     bool anyServerGenerated = t.Fields.Any(f => f.ReadOnly);
     if (anyServerGenerated)
         saTypes.Add("FetchedValue");
@@ -43,7 +43,7 @@
         Line("from sqlalchemy.dialects.postgresql import ENUM as PgEnum");
     Line("from sqlalchemy.orm import Mapped, mapped_column");
     Line();
-    Line("from app.db import Base");
+    Line(t.Fields.Any(f => f.SqlAlchemyType.StartsWith("PgText")) ? "from app.db import Base, PgText" : "from app.db import Base");
     Line();
     Line();
     Line($"class {t.Class}(Base):");

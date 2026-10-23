@@ -42,7 +42,12 @@
                 body.Add($"if len({value}) > {rule.MaxLength}:\n    problems.append(({Str(property)}, {Str(RuleMessages.MaxLength(label, rule.MaxLength))}))");
             if (rule.Choices is { Count: > 0 } choices)
                 body.Add($"if {value} and {value} not in ({string.Join(", ", choices.Select(Str))},):\n    problems.append(({Str(property)}, {Str(RuleMessages.Choices(label, choices))}))");
-            if (rule.Shape != TextShape.None)
+            if (rule.Shape == TextShape.Custom)
+            {
+                shapes.Add("matches_pattern");
+                body.Add($"if {value} and not matches_pattern({value}, {Str(rule.Pattern!)}):\n    problems.append(({Str(property)}, {Str(RuleMessages.Shape(label, rule))}))");
+            }
+            else if (rule.Shape != TextShape.None)
             {
                 string function = RuleMessages.ShapeFunction(rule.Shape);
                 shapes.Add(function);

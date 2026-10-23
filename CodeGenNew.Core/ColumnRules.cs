@@ -3,7 +3,7 @@ using System.Data;
 namespace CodeGenNew.Core;
 
 /// <summary> A text column whose name says what it holds, so its value can be checked for that shape. </summary>
-public enum TextShape { None, Email, Phone, Url, Postal, Ssn }
+public enum TextShape { None, Email, Phone, Url, Postal, Ssn, Custom }
 
 /// <summary> What the schema says a column's value must be: the one fact list behind the validators of every language (FluentValidation, zod, Angular). </summary>
 public sealed record ColumnRule
@@ -15,6 +15,9 @@ public sealed record ColumnRule
     /// <summary> The only values a text column accepts (a CHECK list or an enum); null for any text. </summary>
     public IReadOnlyList<string>? Choices { get; init; }
     public TextShape Shape { get; init; }
+    /// <summary> For <see cref="TextShape.Custom"/>: the regular expression the whole text must match (an array, interval, range or shape of PostgreSQL), and what a value is called in a message. </summary>
+    public string? Pattern { get; init; }
+    public string? Noun { get; init; }
     public double? Min { get; init; }
     public bool MinStrict { get; init; }
     public double? Max { get; init; }
@@ -57,12 +60,15 @@ public static class ColumnRules
                     shape = TextShape.Ssn;
             }
 
+            var text = column.PgText;
             rule = new ColumnRule
             {
                 Required = !column.IsNullable,
                 MaxLength = Math.Max(0, column.CharacterLength),
                 Choices = column.HasChoices ? column.Choices : null,
-                Shape = shape
+                Shape = text is null ? shape : TextShape.Custom,
+                Pattern = text?.Pattern,
+                Noun = text?.Description
             };
         }
         else if (column.IsIntegerColumn && (column.NumericKind != NumericKind.None || column.Check is not null) && project.RangeFor(column) is { } range)
@@ -119,12 +125,18 @@ public static class ColumnRules
         _ => null
     };
 
+    /// <summary> The regular expression of the rule's shape (the rule's own for <see cref="TextShape.Custom"/>), or null. </summary>
+    public static string? PatternOf(ColumnRule rule) => rule.Shape == TextShape.Custom ? rule.Pattern : PatternOf(rule.Shape);
+
+    /// <summary> What a value of the rule's shape is called in a message. </summary>
+    public static string NounOf(ColumnRule rule) => rule.Shape == TextShape.Custom ? rule.Noun ?? "a value of the column's type" : NounOf(rule.Shape);
+
     /// <summary> A C# condition that is true when <paramref name="value"/> (a non-empty string) has the shape, for code that checks a form field itself (the WinUI3 view models). </summary>
-    public static string CSharpTest(TextShape shape, string value) => shape switch
+    public static string CSharpTest(ColumnRule rule, string value) => rule.Shape switch
     {
         TextShape.Email => $"new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid({value})",
         TextShape.Url => $"Uri.TryCreate({value}, UriKind.Absolute, out var {value}Uri) && ({value}Uri.Scheme == Uri.UriSchemeHttp || {value}Uri.Scheme == Uri.UriSchemeHttps)",
-        _ => $"System.Text.RegularExpressions.Regex.IsMatch({value}, @\"^(?:{PatternOf(shape)})$\")"
+        _ => $"System.Text.RegularExpressions.Regex.IsMatch({value}, @\"^(?:{PatternOf(rule)!.Replace("\"", "\"\"")})$\")"
     };
 
     /// <summary> What a value of the shape is called in a message: "an email address", "a postal code". </summary>

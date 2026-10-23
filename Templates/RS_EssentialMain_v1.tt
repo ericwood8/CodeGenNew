@@ -395,6 +395,13 @@ pub fn looks_like_ssn(value: &str) -> bool {
 pub fn looks_like_url(value: &str) -> bool {
     (value.starts_with("http://") || value.starts_with("https://")) && value.len() > 8 && !value.contains(' ')
 }
+<# if (dialect == SqlDialect.PostgreSql) { #>
+
+// Whether the whole text has the notation of an array, interval, range or shape column (PostgreSQL's own).
+pub fn matches_pattern(value: &str, pattern: &str) -> bool {
+    regex::Regex::new(&format!("^(?:{pattern})$")).is_ok_and(|expression| expression.is_match(value.trim()))
+}
+<# } #>
 
 // ASP.NET writes a date as 2026-10-04T00:00:00 and accepts a bare 2026-10-04 (what a date input sends); these modules do the same for chrono's types.
 pub mod json_date_time {

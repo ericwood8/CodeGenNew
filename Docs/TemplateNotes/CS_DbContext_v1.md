@@ -14,6 +14,9 @@ The EF Core context for the whole database, written for the database the schema 
     OnConfiguring reads the connection string from appsettings.json next to the exe;
   - the provider call - UseSqlServer, UseNpgsql or UseMySQL - in ONE place, UseProvider, which the API registration
     (API_Registration) calls too, so changing database is a regenerate and not a hand edit;
+  - for PostgreSQL, a converter for every array, interval, range and built-in shape column (OnModelCreating, or the table's configuration with EfConfigurations): the entity holds the
+    text in PostgreSQL's own notation and the converter turns it into what Npgsql writes. The converters are a small internal PgText class written at the end of the same file
+    when any column needs it; the class is generated, so change the notation in CodeGenNew and regenerate;
   - for PostgreSQL, "timestamp" as the column type of every DateTime: a DateTime maps to timestamptz by default and Npgsql then
     refuses any value that is not UTC, while the columns this generator reads are plain timestamps;
   - for PostgreSQL and MySQL the password is never in appsettings.json: Npgsql reads PGPASSWORD itself and, because the MySQL

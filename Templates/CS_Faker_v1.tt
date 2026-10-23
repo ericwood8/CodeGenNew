@@ -52,6 +52,7 @@
         {
             string name = c.Name;
             bool Has(params string[] words) => words.Any(w => name.ContainsIgnoreCase(w));
+            if (c.PgText is { } pgText) return CSharpText.Quote(pgText.Sample);   // an array, interval, range or shape has a notation of its own
             if (Has("Email")) return "f.Internet.Email()";
             if (Has("Phone", "Fax", "Mobile")) return "f.Phone.PhoneNumber()";
             if (Has("Url", "Website", "Link")) return "f.Internet.Url()";

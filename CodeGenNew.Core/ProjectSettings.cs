@@ -510,7 +510,7 @@ public partial class ProjectSettings
     public string AdaptAngularHtml(string html) => AngularControlFlow ? CodeGenNew.Core.AngularControlFlow.Convert(html) : html;
 
     /// <summary> Columns left out of every table (<c>IgnoredColumns=Tags,Place.Location</c>: a column name for every table, or <c>Table.Column</c>): a type CodeGenNew cannot map
-    /// (a PostgreSQL array, geometry) is listed here so the rest of the table still generates. A primary key column is never left out. </summary>
+    /// (PostGIS geometry, a range of timestamps) is listed here so the rest of the table still generates. A primary key column is never left out. </summary>
     public string[] IgnoredColumns => Items("IgnoredColumns");
 
     /// <summary> WinUI3_DirectoryListing: the class stem (<c>DocumentListPage</c>), the folder whose files are listed (environment variables are expanded when the app runs) and

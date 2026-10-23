@@ -25,8 +25,8 @@ public static class DesktopFormCode
     {
         if (column.RuleOf(project, table.TableName) is not { Shape: not TextShape.None } rule)
             return null;
-        string test = ColumnRules.CSharpTest(rule.Shape, prop);
-        string refuse = "{ ErrorMessage = \"" + label + " is not " + ColumnRules.NounOf(rule.Shape) + ".\"; return false; }";
+        string test = ColumnRules.CSharpTest(rule, prop);
+        string refuse = "{ ErrorMessage = \"" + label + " is not " + ColumnRules.NounOf(rule) + ".\"; return false; }";
         string changed = "!string.Equals(entity." + prop + ", " + prop + ")";
         return optional ? "if (!string.IsNullOrWhiteSpace(" + prop + ") && " + changed + " && !(" + test + ")) " + refuse : "if (" + changed + " && !(" + test + ")) " + refuse;
     }

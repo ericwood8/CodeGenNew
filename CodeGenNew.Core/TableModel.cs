@@ -14,7 +14,7 @@ public class TableModel
     /// <summary> The table's real name in the database when the project's naming style changed <see cref="TableName"/> (customer_item -> CustomerItem); null when they are the same. </summary>
     public string? DatabaseTableName { get; init; }
 
-    /// <summary> Columns whose database type CodeGenNew does not map (a PostgreSQL array, geometry ...): they come through as an unsupported object column that an EF Core
+    /// <summary> Columns whose database type CodeGenNew does not map (PostGIS geometry, a range of timestamps ...): they come through as an unsupported object column that an EF Core
     /// context cannot map, so the project lists them in IgnoredColumns. </summary>
     public IEnumerable<ColumnModel> UnsupportedColumns => Columns.Where(c => c.SqlType == System.Data.SqlDbType.Variant);
 
@@ -218,7 +218,7 @@ public class TableModel
     /// key, an audit or system column, or a flag. A text key is no search box: the drop-down replaces it, so the column is not in <see cref="SearchableColumns"/>. At most <see cref="MaxSearchKeys"/>, in
     /// table order. It needs only the foreign keys, which every model carries, so every template that lists the parameters gets the same list. </summary>
     public List<ColumnModel> SearchKeyColumns =>
-        Columns.Where(c => (c.IsIntegerColumn && !c.IsBooleanColumn || c.IsGuidColumn || c.IsStringColumn && !c.IsLongTextColumn && !c.IsCredentialColumn && c.DbEnumType is null)
+        Columns.Where(c => (c.IsIntegerColumn && !c.IsBooleanColumn || c.IsGuidColumn || c.IsStringColumn && !c.IsLongTextColumn && !c.IsCredentialColumn && c.DbCastType is null)
                            && !c.IsPrimaryKey && !c.IsAuditColumn && !c.IsSystemStampColumn && ForeignKeyByColumn.ContainsKey(c.Name))
             .Take(MaxSearchKeys).ToList();
 

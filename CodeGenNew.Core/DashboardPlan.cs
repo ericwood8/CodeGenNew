@@ -310,7 +310,7 @@ public sealed class DashboardPlan
         {
             foreach (var column in table.Columns.Where(c => c.HasChoices && c.Choices!.Count is >= MinBreakdownValues and <= MaxBreakdownValues && !c.IsAuditColumn))
             {
-                string label = column.DbEnumType is not null || !column.IsStringColumn ? di.ToText(C(column)) : C(column);
+                string label = column.DbCastType is not null || !column.IsStringColumn ? di.ToText(C(column)) : C(column);
                 string sql = $"SELECT COALESCE({label}, '(none)') AS {QLabel}, {Number("COUNT(*)")} AS {QValue} FROM {T(table)} GROUP BY {C(column)} ORDER BY COUNT(*) DESC";
                 Add(DashboardWidgetKind.Breakdown, $"{Plural(table.TableName)} by {ColumnWords(column)}", table, column.Name,
                     $"{column.Name} accepts only {column.Choices!.Count} values, so the rows can be counted per value.", sql, 70 - Penalty(table));

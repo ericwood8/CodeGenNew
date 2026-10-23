@@ -48,7 +48,11 @@
                 body.Add($"if {v}.chars().count() > {rule.MaxLength} {{ problems.push(({Str(property)}, {Str(RuleMessages.MaxLength(label, rule.MaxLength))})); }}");
             if (rule.Choices is { Count: > 0 } choices)
                 body.Add($"if !{v}.is_empty() && ![{string.Join(", ", choices.Select(Str))}].contains(&{v}.as_str()) {{ problems.push(({Str(property)}, {Str(RuleMessages.Choices(label, choices))})); }}");
-            if (rule.Shape != TextShape.None)
+            if (rule.Shape == TextShape.Custom)
+            {
+                body.Add($"if !{v}.is_empty() && !crate::support::matches_pattern({v}, {Str(rule.Pattern!)}) {{ problems.push(({Str(property)}, {Str(RuleMessages.Shape(label, rule))})); }}");
+            }
+            else if (rule.Shape != TextShape.None)
             {
                 string function = RuleMessages.ShapeFunction(rule.Shape);
                 body.Add($"if !{v}.is_empty() && !crate::support::{function}({v}) {{ problems.push(({Str(property)}, {Str(RuleMessages.Shape(label, rule.Shape))})); }}");

@@ -73,7 +73,7 @@
         Line("from uuid import UUID");
     if (clonedDates.Count > 0 || textKey || guidKey || uuidFilter)
         Line();
-    bool castsEnum = search && t.Filters.Any(f => f.Field.Column.DbEnumType is not null);
+    bool castsEnum = search && t.Filters.Any(f => f.Field.Column.DbCastType is not null);
     var sqlalchemy = new List<string> { "select" };
     if (search || userPlan is not null)
         sqlalchemy.Add("func");
@@ -294,7 +294,7 @@
         Line(scoped ? $"    statement = only_owned(select({t.Class}), user)" : $"    statement = select({t.Class})");
         foreach (var f in t.Filters)
         {
-            string column = f.Field.Column.DbEnumType is not null ? $"cast({t.Class}.{f.Field.Name}, String)" : $"{t.Class}.{f.Field.Name}";
+            string column = f.Field.Column.DbCastType is not null ? $"cast({t.Class}.{f.Field.Name}, String)" : $"{t.Class}.{f.Field.Name}";
             Line($"    if {f.Field.Name}:");
             Line($"        statement = statement.where(contains({column}, {f.Field.Name}))");
         }

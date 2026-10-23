@@ -30,11 +30,16 @@ public static class PostgresProcedures
         : c.IsBooleanColumn ? (value ? "true" : "false")
         : (value ? "1" : "0");
 
-    private static string Trimmed(ColumnModel c, string expression) => c.IsStringColumn ? EnumTyped(c, $"btrim({expression})") : expression;
+    private static string Trimmed(ColumnModel c, string expression) => c.IsStringColumn ? NativeTyped(c, $"btrim({expression})") : expression;
 
-    /// <summary> The text of a parameter (declared varchar) as the column's native enum type; PostgreSQL gives text no implicit way into an enum column, in COALESCE or in SET. </summary>
-    private static string EnumTyped(ColumnModel c, string expression)
+    /// <summary> The text of a parameter (declared varchar) as the column's native type; PostgreSQL gives text no implicit way into an enum, array, interval, range or geometric column, in COALESCE or in SET.
+    /// Blank text is no value of those types, so it becomes NULL (an empty array for an array column that cannot be NULL). </summary>
+    private static string NativeTyped(ColumnModel c, string expression)
     {
+        if (c.DbTextType is { } textType)
+            return c.PgText is { Family: PgTextFamily.Array } && !c.IsNullable
+                ? $"COALESCE(NULLIF({expression}, '')::{textType}, '{{}}')"
+                : $"NULLIF({expression}, '')::{textType}";
         if (c.DbEnumType is not { } type)
             return expression;
         int dot = type.IndexOf('.');
@@ -95,7 +100,7 @@ public static class PostgresProcedures
 
         // Non-key string columns default to '' and money to 0 (as in SP_Insert), everything else to NULL.
         var parameters = parameterColumns.Select(c => (P(c), c.SqlTypeDeclaration,
-            c.IsPrimaryKey ? null : c.IsStringColumn && c.DbEnumType is null ? "''" : c.IsMoneyColumn ? "0" : "NULL"));   // '' is no label of an enum
+            c.IsPrimaryKey ? null : c.IsStringColumn && c.DbCastType is null ? "''" : c.IsMoneyColumn ? "0" : "NULL"));   // '' is no label of an enum
 
         var o = new StringBuilder("BEGIN\n");
         Validations(o, m, parameterColumns.Contains, project);
@@ -181,14 +186,14 @@ public static class PostgresProcedures
         {
             updatePairs.Add((c.DbName, c == active && triggers.Count > 0
                 ? $"CASE WHEN {string.Join(" OR ", triggers.Select(Supplied))} THEN {Flag(c, negative)} ELSE {P(c)} END"
-                : EnumTyped(c, P(c))));
+                : NativeTyped(c, P(c))));
         }
         foreach (var c in m.Columns.Where(c => !c.IsComputed && (c.IsModifiedDateColumn || c.IsLastChangedDateColumn)))
             updatePairs.Add((c.DbName, "now()"));
 
         var insertPairs = parameterColumns
             .Where(c => c != identityKey && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn && !c.IsModifiedUserColumn && c != m.InactiveDateColumn && c != active)
-            .Select(c => (Name: c.DbName, Value: EnumTyped(c, P(c)))).ToList();
+            .Select(c => (Name: c.DbName, Value: NativeTyped(c, P(c)))).ToList();
         foreach (var c in m.Columns.Where(c => !c.IsComputed && c.IsInsertStampColumn))
             insertPairs.Add((c.DbName, "now()"));
         if (active is not null)

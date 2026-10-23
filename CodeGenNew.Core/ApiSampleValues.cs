@@ -13,6 +13,7 @@ public static class ApiSampleValues
     /// <summary> The text a string column's example is made of, before it is cut to the column's length. </summary>
     public static string Text(ColumnModel column) =>
         column.HasChoices ? column.Choices![0]
+        : column.PgText is { } pgText ? pgText.Sample
         : column.Name.ContainsIgnoreCase("Email") ? "someone@example.com"
         : column.Name.ContainsIgnoreCase("Phone") || column.Name.ContainsIgnoreCase("Fax") ? "555-0100"
         : column.Name.ContainsIgnoreCase("Url") || column.Name.ContainsIgnoreCase("Website") ? "https://example.com"

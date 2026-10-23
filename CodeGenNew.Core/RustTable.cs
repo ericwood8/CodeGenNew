@@ -286,7 +286,7 @@ public sealed class RustTable
         {
             if (column.IsMoneyColumn)
                 return $"{q}::numeric AS {q}";
-            if (column.DbEnumType is not null)
+            if (column.DbCastType is not null)
                 return $"{q}::text AS {q}";
         }
         // SQLite stores a whole number that was written to a DECIMAL or FLOAT column as an integer, and sqlx refuses to read an integer as a double: read the value as the real it means
@@ -295,7 +295,8 @@ public sealed class RustTable
         return q;
     }
 
-    // The placeholder of a bound value, with the cast PostgreSQL needs for the two types sqlx sends as something else: money (sent as numeric) and an enum (sent as text).
+    // The placeholder of a bound value, with the cast PostgreSQL needs for the types sqlx sends as something else: money (sent as numeric), and an enum, array, interval, range or shape (sent as text;
+    // blank text is no value of those last types, so it is NULL).
     private string Parameter(RustField field, int index)
     {
         string p = _di.Placeholder(index);
@@ -303,6 +304,8 @@ public sealed class RustTable
             return p;
         if (field.Column.IsMoneyColumn)
             return $"{p}::numeric::money";
+        if (field.Column.DbTextType is { } textType)
+            return $"CAST(NULLIF({p}::text, '') AS {textType})";
         if (field.Column.DbEnumType is { } type)
             return $"CAST({p}::text AS {string.Join(".", type.Split('.').Select(_di.Quote))})";
         return p;
@@ -315,7 +318,7 @@ public sealed class RustTable
         SearchItems = $"SELECT {SelectList} FROM {from} WHERE 1 = 1";
         SearchCount = $"SELECT COUNT(*) FROM {from} WHERE 1 = 1";
 
-        string TextOf(ColumnModel c) => "t." + _di.Quote(c.DbName) + (_di.Dialect == SqlDialect.PostgreSql && c.DbEnumType is not null ? "::text" : "");
+        string TextOf(ColumnModel c) => "t." + _di.Quote(c.DbName) + (_di.Dialect == SqlDialect.PostgreSql && c.DbCastType is not null ? "::text" : "");
 
         Filters = plan.Filters.Where(f => _fieldOf.ContainsKey(f.Column)).Select(f =>
         {
@@ -346,7 +349,7 @@ public sealed class RustTable
         if (display is null)
             return;
         string name = _di.Quote(display.DbName);
-        if (_di.Dialect == SqlDialect.PostgreSql && display.DbEnumType is not null)
+        if (_di.Dialect == SqlDialect.PostgreSql && display.DbCastType is not null)
             name += "::text";
         else if (!display.IsStringColumn)
             name = _di.ToText(name);

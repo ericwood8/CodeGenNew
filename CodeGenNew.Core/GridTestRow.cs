@@ -21,7 +21,7 @@ public sealed record GridTestRow(string Literal, string Marker, string KeyText =
         if (form.KeyColumn is null)
             return null;
         bool Plain(ChosenColumn c) => c.Initial && !c.Cut && !c.Column.IsNullable && !c.Column.IsPrimaryKey && form.ParentOf(c.Column) is null;
-        var marked = chosen.Offered.FirstOrDefault(c => Plain(c) && c.Column.IsStringColumn && !c.Column.IsLongTextColumn);
+        var marked = chosen.Offered.FirstOrDefault(c => Plain(c) && c.Column.IsStringColumn && !c.Column.IsLongTextColumn && c.Column.PgText is null);
         bool number = marked is null;
         marked ??= chosen.Offered.FirstOrDefault(c => Plain(c) && c.Column.IsIntegerColumn && !c.Column.IsCurrencyColumn && !c.Column.IsMoneyColumn
             && !c.Column.IsBooleanColumn && !c.Column.IsDateColumn && !c.Column.IsStringColumn);

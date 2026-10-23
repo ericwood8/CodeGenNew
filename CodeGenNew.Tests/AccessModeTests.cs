@@ -154,7 +154,7 @@ public class AccessModeTests
 
         string cs = await Render("CS_SearchQuery_v1.tt", table);
 
-        Expect.Contains(cs, "// Priority is a database enum, which has no text comparison: it is not filtered here.");
+        Expect.Contains(cs, "// Priority is a database enum, array, interval, range or shape, which has no text comparison: it is not filtered here.");
         Expect.DoesNotContain(cs, "priorityTerm");
     }
 

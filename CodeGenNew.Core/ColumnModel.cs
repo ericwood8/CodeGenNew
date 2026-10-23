@@ -81,6 +81,17 @@ public class ColumnModel
     /// search function casts the column to text, and the SP_EnumCasts script creates the assignment cast (text to the enum) that lets EF Core, which sends text, write it. </summary>
     public string? DbEnumType { get; init; }
 
+    /// <summary> The PostgreSQL type of an array, interval, range or geometric column as a cast writes it (<c>int4[]</c>, <c>interval</c>, <c>int4range</c>, <c>point</c>); null for any other
+    /// column. The column is a text column to the generator, holding the value in PostgreSQL's notation (see <see cref="PgTextType"/>): the raw SQL of the Python and Rust stacks reads it as
+    /// text and casts what it writes, and the EF Core context converts it. </summary>
+    public string? DbTextType { get; init; }
+
+    /// <summary> The array, interval, range or geometric type behind <see cref="DbTextType"/>, or null. </summary>
+    public PgTextType? PgText => PgTextType.FromName(DbTextType);
+
+    /// <summary> The column's PostgreSQL type when it is not text, so the database has to be told what a text value is: an enum or one of the types of <see cref="DbTextType"/>. </summary>
+    public string? DbCastType => DbTextType ?? DbEnumType;
+
     /// <summary> The limits a CHECK constraint of the database puts on this numeric column (<c>CHECK (credit_limit &gt;= 0)</c>); null when it has none or the check is not a plain range. The number
     /// boxes, the web inputs and the validation attributes use it with the limits the column's type and name already give. </summary>
     public CheckRange? Check { get; init; }

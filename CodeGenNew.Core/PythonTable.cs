@@ -176,6 +176,9 @@ public sealed class PythonTable
             return ("str", $"PgEnum({string.Join(", ", choices.Select(PythonNames.Str))}, name={PythonNames.Str(parts[^1])}{schema}, create_type=False)");
         }
 
+        if (dialect == SqlDialect.PostgreSql && column.DbTextType is { } textType)
+            return ("str", $"PgText({PythonNames.Str(textType)})");
+
         switch (column.SqlType)
         {
             case SqlDbType.Int:
