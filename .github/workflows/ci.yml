@@ -89,10 +89,9 @@ jobs:
       - name: Walk the ${{ matrix.stack }} app
         run: python Docs/Verification/Test-FrontEndPages.py --stack ${{ matrix.stack }} --build-cli
 
-  # The Uno browser head needs the wasm-tools workload and draws on a canvas, so it is driven through its accessibility page; it does not stop the build.
+  # The Uno browser head needs the wasm-tools workload and draws on a canvas, so it is driven through its accessibility page.
   browser-walk-uno:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6

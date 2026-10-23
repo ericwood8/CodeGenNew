@@ -7,7 +7,7 @@
 
 Generates the master_detail sample schema (API and the chosen front end) with Tools/new_scratch_project.py, builds and starts the API (port 5080) and the
 dev server (Vite on 5173, ng serve on 4200, dotnet run on 5190 for Blazor and on 5195 for Uno), then walks the Region screen: the empty form is refused by the browser, a row is added, found by the search, edited, cloned and
-deleted; React, Angular and Blazor then walk a drop-down fed by another table (a customer order picks its customer), the child grid of a master-detail dialog (the customers of a region) and the paging bar. Uno walks the drop-down only: its calendar date picker cannot be driven through the accessibility page, so the order is never saved there and the check is that a picked customer stops being reported as missing. After each step the API is asked what the database holds, so a screen that looks right but saved nothing fails. Prints PASS / FAIL lines, the elapsed time on the way out, and
+deleted; React, Angular and Blazor then walk a drop-down fed by another table (a customer order picks its customer), the child grid of a master-detail dialog (the customers of a region) and the paging bar. Uno also walks the child grid and the paging bar (by Next and Previous and the rows on show), and its drop-down only as far as listing and picking: its calendar date picker cannot be driven through the accessibility page, so the order is never saved there and the check is that a picked customer stops being reported as missing. After each step the API is asked what the database holds, so a screen that looks right but saved nothing fails. Prints PASS / FAIL lines, the elapsed time on the way out, and
 exits 1 on a failure. Everything it started is stopped at the end; the generated folder is kept and printed.
 
 --prove-failure aborts the browser's POST to the API, so the add and everything after it must fail: it shows that the checks can fail.
@@ -411,6 +411,71 @@ def drive_uno_dropdown(page, prove_failure):
         clean()
 
 
+def drive_uno_grids(page, prove_failure):
+    """The child grid of the Region dialog (the customers of a region) and the paging bar of the Region list on the Uno head, reached through the
+    semantic page by focus and keys."""
+    def press(locator):
+        locator.focus()
+        page.wait_for_timeout(300)
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(1200)
+
+    def clean():
+        for customer in api_rows("/api/customers"):
+            if customer["name"].startswith("Harness"):
+                api_send("DELETE", f"/api/customers/{customer['customerId']}")
+        for region in api_rows("/api/regions"):
+            if region["name"].startswith("Harness"):
+                api_send("DELETE", f"/api/regions/{region['regionId']}")
+
+    ascii_ = lambda text: str(text).encode("ascii", "replace").decode()
+    texts = "[...document.querySelectorAll('[aria-label],button')].map(e => e.getAttribute('role') + '/' + (e.getAttribute('aria-label') || e.textContent)).filter(t => t.length > 6).join(' | ')"
+    clean()
+    try:
+        region = api_send("POST", "/api/regions", {"regionId": 0, "name": "Harness Region", "code": "HR", "population": 1})
+        for name in ("Harness Alpha", "Harness Beta"):
+            api_send("POST", "/api/customers", {"customerId": 0, "regionId": region["regionId"], "name": name, "email": "a@example.com", "creditLimit": 1, "isActive2": True})
+        for number in range(1, 26):
+            api_send("POST", "/api/regions", {"regionId": 0, "name": f"Harness Page {number:02d}", "code": "HP", "population": number})
+
+        page.goto(DEV)
+        page.wait_for_selector("#uno-enable-accessibility", state="attached", timeout=120000)
+        page.wait_for_timeout(3000)
+        page.evaluate("document.getElementById('uno-enable-accessibility').focus()")
+        page.keyboard.press("Enter")
+        page.get_by_role("option", name="Region", exact=True).wait_for(timeout=30000)
+        page.get_by_role("option", name="Region", exact=True).focus()
+        page.keyboard.press("Enter")
+        page.get_by_role("button", name="Add New", exact=True).wait_for(timeout=30000)
+
+        page.locator('input[aria-label="Name"]').first.focus()
+        page.wait_for_timeout(300)
+        page.keyboard.type("Harness Page")
+        press(page.get_by_role("button", name="Search", exact=True))
+        page.wait_for_timeout(800)
+        shown = lambda: re.findall(r"Harness Page \d\d", page.evaluate(texts))
+        previous = page.get_by_role("button", name="Previous", exact=True)
+        following = page.get_by_role("button", name="Next", exact=True)
+        check("the first page starts at the first row", "Harness Page 01" in shown() and "Harness Page 25" not in shown(), str(shown()[:3]))
+        press(following)
+        check("page 2 holds the last row and not the first", "Harness Page 25" in shown() and "Harness Page 01" not in shown(), str(shown()[:3]))
+        press(previous)
+        check("Previous goes back to page 1", "Harness Page 01" in shown() and "Harness Page 25" not in shown(), str(shown()[:3]))
+
+        page.locator('input[aria-label="Name"]').first.focus()
+        page.keyboard.press("Control+a")
+        page.keyboard.type("Harness Region")
+        press(page.get_by_role("button", name="Search", exact=True))
+        page.wait_for_timeout(800)
+        press(page.get_by_role("button", name="Edit", exact=True).last)
+        page.get_by_role("tab", name="Main").wait_for()
+        page.wait_for_timeout(1500)
+        children = lambda: re.findall(r"Harness (?:Alpha|Beta)", page.evaluate(texts))
+        check("the child grid lists the customers of the region", sorted(set(children())) == ["Harness Alpha", "Harness Beta"], ascii_(page.evaluate(texts))[-500:])
+    finally:
+        clean()
+
+
 def uno_profile(project):
     profiles = json.loads((project / "Properties" / "launchSettings.json").read_text(encoding="utf-8"))["profiles"]
     return next(name for name in profiles if "WebAssembly" in name)
@@ -472,7 +537,7 @@ def main():
                 errors = []
                 page.on("pageerror", lambda e: errors.append(str(e)))
                 page.set_default_timeout(5000)
-                walks = [drive_uno, drive_uno_dropdown] if args.stack == "uno" else [drive, drive_more]
+                walks = [drive_uno, drive_uno_dropdown, drive_uno_grids] if args.stack == "uno" else [drive, drive_more]
                 for walk in walks:
                     try:
                         walk(page, args.prove_failure)
@@ -490,9 +555,24 @@ def main():
 
 if __name__ == "__main__":
     started = time.perf_counter()
+
+    def elapsed():
+        seconds = time.perf_counter() - started
+        print(f"Elapsed: {int(seconds // 60)} min {seconds % 60:.1f} s ({seconds:.1f} s)", flush=True)
+
+    # a stop by the system (a cancelled CI run, a kill) raises SystemExit too, so the processes are stopped and the time is printed
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     try:
         main()
-    finally:
-        # printed on every way out (a finished run, a failed check, a build that stopped the script), so the log shows how long it took
-        seconds = time.perf_counter() - started
-        print(f"Elapsed: {int(seconds // 60)} min {seconds % 60:.1f} s ({seconds:.1f} s)")
+    except SystemExit as stop:
+        # a message given to sys.exit is printed by Python after this block, so it is printed here first, then the time comes last
+        if isinstance(stop.code, str):
+            print(stop.code, file=sys.stderr, flush=True)
+            stop = SystemExit(1)
+        elapsed()
+        raise stop
+    except BaseException:
+        elapsed()
+        raise
+    else:
+        elapsed()
