@@ -301,7 +301,12 @@ public static class ApiFixture
             await _container.StartAsync();
             foreach (string script in ScriptFiles())
             {
+<# if (Project.DatabaseDialect == SqlDialect.SqlServer) { #>
+                // sqlcmd starts with QUOTED_IDENTIFIER off, which makes a routine that writes a table with a filtered or computed-column index fail when it runs
+                var result = await _container.ExecScriptAsync("SET QUOTED_IDENTIFIER ON;\nGO\n" + await File.ReadAllTextAsync(script));
+<# } else { #>
                 var result = await _container.ExecScriptAsync(await File.ReadAllTextAsync(script));
+<# } #>
                 if (result.ExitCode != 0)
                     throw new InvalidOperationException(Path.GetFileName(script) + " failed: " + result.Stderr);
             }

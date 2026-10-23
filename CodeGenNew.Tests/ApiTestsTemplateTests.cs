@@ -124,6 +124,11 @@ public class ApiTestsTemplateTests
         Expect.Contains(with, "_container?.DisposeAsync()");
         Expect.Contains(with, "The test container could not be made: ");
         Expect.Contains(with, "ApiFolder()");
+        // sqlcmd starts with QUOTED_IDENTIFIER off, so only the SQL Server container script gets the SET first
+        if (provider == "SqlServer")
+            Expect.Contains(with, "ExecScriptAsync(\"SET QUOTED_IDENTIFIER ON;\\nGO\\n\" + await File.ReadAllTextAsync(script))");
+        else
+            Expect.DoesNotContain(with, "QUOTED_IDENTIFIER");
     }
 
     [TestMethod]
