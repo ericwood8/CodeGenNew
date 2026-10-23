@@ -35,9 +35,17 @@ public class PostgresIntegrationTests
         return new PostgresSchemaProvider(request!, Path.Combine(AppContext.BaseDirectory, "SpecialLogicColumns.config"));
     }
 
+    /// <summary> The tests that read the InvoiceSystem sample's tables report themselves as inconclusive where the database is an empty scratch one (<c>CODEGENNEW_SAMPLE_DATA=none</c>, as in the CI job). </summary>
+    private static void NeedsSampleData()
+    {
+        if (Environment.GetEnvironmentVariable("CODEGENNEW_SAMPLE_DATA") == "none")
+            Assert.Inconclusive("This test reads the InvoiceSystem sample's tables, and CODEGENNEW_SAMPLE_DATA says the database does not have them.");
+    }
+
     [TestMethod]
     public async Task The_table_list_has_the_sample_tables_with_their_key_shapes()
     {
+        NeedsSampleData();
         var tables = await Provider().ListTablesAsync();
 
         var customer = tables.Single(t => t.TableName == "Customer");
@@ -51,6 +59,7 @@ public class PostgresIntegrationTests
     [TestMethod]
     public async Task A_table_model_has_typed_columns_keys_and_foreign_keys()
     {
+        NeedsSampleData();
         var model = await Provider().BuildTableModelAsync("public", "Customer", includeReferencedDisplayColumns: true);
 
         Assert.AreEqual(SqlDialect.PostgreSql, model.Dialect);
@@ -75,6 +84,7 @@ public class PostgresIntegrationTests
     [TestMethod]
     public async Task Row_data_comes_back_for_a_small_table()
     {
+        NeedsSampleData();
         var model = await Provider().BuildTableModelAsync("public", "CustomerStatus", includeRowData: true);
 
         Assert.HasCount(2, model.Rows);
@@ -303,6 +313,8 @@ public class PostgresIntegrationTests
                     five varchar(10) CHECK (length(five) = 5),
                     spread varchar(10) CHECK (char_length(spread) >= 3 AND char_length(spread) <= 8),
                     other varchar(10) CHECK (length(other) > 2 OR other = 'x'),
+                    check_in date, check_out date, CHECK (check_out >= check_in),
+                    first_day date, last_day date, CHECK (last_day IS NULL OR first_day <= last_day),
                     big numeric(5,2) CHECK (big >= 0 AND big <= 100000))
                 """);
 
@@ -314,6 +326,9 @@ public class PostgresIntegrationTests
             Assert.AreEqual("text of 5 characters", Of("Five").CheckNotation!.Noun);
             Assert.AreEqual("text of 3 to 8 characters", Of("Spread").CheckNotation!.Noun);
             Assert.IsNull(Of("Other").CheckNotation, "an OR is left to the database");
+            Assert.AreEqual("CheckIn", Of("CheckOut").NotBeforeColumn);
+            Assert.AreEqual("FirstDay", Of("LastDay").NotBeforeColumn, "a blank-guarded CHECK is the pair too");
+            Assert.IsNull(Of("CheckIn").NotBeforeColumn);
             var rule = Of("Big").RuleOf(ProjectSettings.FromValues([new("ProjectName", "Acme")]))!;
             Assert.AreEqual((0.0, 999.99), (rule.Min, rule.Max), "the check is wider than numeric(5,2)");
         }

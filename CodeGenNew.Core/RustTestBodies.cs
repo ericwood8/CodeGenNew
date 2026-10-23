@@ -33,9 +33,7 @@ public static class RustTestBodies
 
     /// <summary> Whether the junction routes of a many-to-many table get a test module: both sides have a REST API, whose rows the test links. </summary>
     public static bool JunctionTested(TableModel table, ProjectSettings project) =>
-        project.RustTests && table.IsJunctionTable && table.Junction is { } j && HasApi(j.AnchorForeignKey, project) && HasApi(j.TargetForeignKey, project);
-
-    private static bool HasApi(ForeignKeyModel fk, ProjectSettings project) => fk.ReferencedColumns.Count == 1 && !project.NoApiFor(fk.ReferencedTable, fk.ReferencedLookupShape);
+        project.RustTests && table.IsJunctionTable && table.Junction is { } j && j.BothSidesHaveApi(project);
 
     /// <summary> The tables whose junction routes get a test module, in name order. </summary>
     public static IReadOnlyList<TableModel> JunctionTables(DatabaseModel database, ProjectSettings project) =>

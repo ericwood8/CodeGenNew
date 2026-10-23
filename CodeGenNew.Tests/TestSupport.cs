@@ -90,7 +90,7 @@ internal static class Sample
         string name, SqlDbType type, bool nullable = false, bool primaryKey = false, bool identity = false,
         int? characters = null, int? precision = null, int? scale = null, string? defaultSql = null, int ordinal = 0,
         bool modifiedUserColumn = false, bool createDateColumn = false, bool createUserColumn = false,
-        bool inUniqueIndex = false, NumericKind numericKind = NumericKind.None, bool currency = false, List<string>? choices = null, string? enumType = null, string? textType = null, string? spatialType = null, int srid = 0, List<string>? setValues = null, int? bitWidth = null, TextNotation? checkNotation = null, string? sqlDeclaration = null, CheckRange? check = null, bool computed = false, bool modifiedDateColumn = false, string? description = null)
+        bool inUniqueIndex = false, NumericKind numericKind = NumericKind.None, bool currency = false, List<string>? choices = null, string? enumType = null, string? textType = null, string? spatialType = null, int srid = 0, List<string>? setValues = null, int? bitWidth = null, TextNotation? checkNotation = null, string? sqlDeclaration = null, CheckRange? check = null, bool computed = false, bool modifiedDateColumn = false, string? description = null, string? notBefore = null)
     {
         bool isText = type is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
         bool isUnicode = type is SqlDbType.NChar or SqlDbType.NVarChar;
@@ -135,6 +135,7 @@ internal static class Sample
             Check = check,
             IsComputed = computed,
             Description = description,
+            NotBeforeColumn = notBefore,
             IsCSharpReservedWordName = name.IsCSharpReservedWord(),
             IsNumericColumn = type is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real,
             IsMoneyColumn = type is SqlDbType.Money or SqlDbType.SmallMoney,
@@ -194,8 +195,11 @@ internal static class Sample
     };
 
     public static TableModel Table(string name, List<ColumnModel> columns, List<ForeignKeyModel>? foreignKeys = null,
-        List<object?[]>? rows = null, List<ChildForeignKeyModel>? childForeignKeys = null, List<IndexModel>? indexes = null, SqlDialect dialect = SqlDialect.SqlServer) => new()
+        List<object?[]>? rows = null, List<ChildForeignKeyModel>? childForeignKeys = null, List<IndexModel>? indexes = null, SqlDialect dialect = SqlDialect.SqlServer, string? startDate = null, string? endDate = null) => new()
     {
+        HasStartEndDatePair = startDate is not null && endDate is not null,
+        StartDateColumn = startDate is null ? null : columns.Single(c => c.Name == startDate),
+        EndDateColumn = endDate is null ? null : columns.Single(c => c.Name == endDate),
         Dialect = dialect,
         SchemaName = dialect == SqlDialect.Sqlite ? "main" : "dbo",
         TableName = name,

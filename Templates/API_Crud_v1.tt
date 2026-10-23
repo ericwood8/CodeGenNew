@@ -19,8 +19,6 @@
     contextType = Project.ContextName ?? contextType;
     apiNamespace = Project.ApiNamespace ?? apiNamespace;
     usings = Project.Usings ?? usings;
-    // Which tables count as enums (no entity, repository or API of their own) comes from the project's EnumTables, else from the schema (LookupShape).
-    bool NoRepository(string table, LookupShape shape) => Project.NoRepositoryFor(table, shape);
     // ==========================================================================================
 
     // ==========================================================================================
@@ -35,101 +33,51 @@
     // Full notes: Docs/TemplateNotes/API_Crud_v1.md
     // ==========================================================================================
 
-    // the key's C# type, route and kind come from KeyType (Core): an int, a bigint, a uniqueidentifier or a text key
-    var keyColumn = Model.PrimaryKeyColumns.Count == 1 ? Model.PrimaryKeyColumns[0] : null;
-    var keyType = Model.PrimaryKeyType;
-    bool supported = keyType is not null && !NoRepository(Model.TableName, Model.LookupShape)
-                     && (!Model.IsNameActiveTable || keyColumn!.IsInt32Column);   // a Name and IsActive table stays int-keyed
-    if (NoRepository(Model.TableName, Model.LookupShape))
-    {
-        Error($"API_Crud writes no API for [{Model.SchemaName}].[{Model.TableName}]: it is an enum or lookup table (an enum, a *Type lookup table, or a table with no entity class), so it has no repository for the handlers to use.");
-    }
-    else if (!supported)
-    {
-        Error($"API_Crud needs a table with a single int, uniqueidentifier or text primary key (a Name and IsActive table needs an int one), but [{Model.SchemaName}].[{Model.TableName}] has "
-              + (Model.PrimaryKeyColumns.Count == 0 ? "no primary key." : Model.PrimaryKeyColumns.Count > 1
-                    ? "a composite primary key (" + string.Join(", ", Model.PrimaryKeyColumns.Select(c => c.Name)) + ")."
-                    : $"a {Model.PrimaryKeyColumns[0].SqlTypeDeclaration} primary key."));
-    }
+    // what the class says (its base, key, lookup, roles, owner scope, editable children, search, stamps, user table and gates) is CrudApiPlan's (Core); this template writes the text
+    var plan = CrudApiPlan.For(Model, Project);
+    bool supported = plan.Supported;
+    if (plan.Refusal is { } refusal)
+        Error(refusal);
 
-    // Dtos: the API takes <Table>Input (CS_DtoInput) and answers <Table>Dto (CS_Dto) in the DtoNamespace; DtoShape is the one rule the DTO templates ask too
-    bool dtos = supported && !Model.IsNameActiveTable && DtoShape.Uses(Model, Project);
+    bool dtos = plan.UsesDtos;
     if (dtos)
         usings = usings.Append(Project.DtoNamespace ?? "MyApp.Dtos").ToArray();
 
     string usingLines = string.Concat(usings.Select(u => $"using {u};\n"));
 
-    // A table with a Name and an IsActive column: NameActiveRepo is its repository, NameActiveCrudApi its base (no clone, no search; CloneShape leaves it out).
-    bool nameActive = supported && Model.IsNameActiveTable;
-
-    // A table with a database-assigned int key and a clone routine gets POST <route>/{id}/clone (CloneShape; CS_Repo writes CloneAsync for the same tables).
-    bool canClone = supported && !nameActive && CloneShape.CanClone(Model, Project);
-
-    bool canFindByName = supported && Model.CanFindByName;
-
-    string entity = Model.TableName;
-    string keyProperty = keyColumn?.Name ?? "";
-    string keyCSharp = keyType?.CSharp ?? "int";
-    // the int key keeps the original two-argument base and the non-generic LookupItem; any other key names its type
-    string apiBase = nameActive ? "NameActiveCrudApi" : "CrudApi";
-    string keyArgument = nameActive || keyCSharp == "int" ? "" : ", " + keyCSharp;
-    // an API with an input and an output type names both after its repository (and its key, unless it is an int)
-    string dtoArguments = dtos ? $", {Model.TableName}Input, {Model.TableName}Dto" : "";
-    string lookupItem = keyCSharp == "int" ? "LookupItem" : "LookupItem<" + keyCSharp + ">";
-
-    // ApiAuth with WriteRoles or TableWriteRoles: the roles that may write this table (empty: any signed-in person)
-    IReadOnlyList<string> writeRoles = supported ? WriteRolePlan.For(Project, Model) : new List<string>();
-    IReadOnlyList<string> readRoles = supported ? WriteRolePlan.ReadFor(Project, Model) : new List<string>();
-
-    // ApiAuth with OwnedTables: a caller reaches only the rows of the owners the IOwnerScope allows (the owner column; a Name and IsActive table is never scoped)
-    var ownerColumn = supported && !nameActive ? OwnedTable.OwnerColumn(Model, Project) : null;
-    bool ownerUnusable = supported && !nameActive && OwnedTable.IsListedButUnusable(Model, Project);
-    // a table with no owner column of its own, hanging off an owned table (the detail rows of a time sheet), belongs to the owner of its parent row
-    var ownerLink = supported && !nameActive ? OwnedTable.Through(Model, Project) : null;
+    bool nameActive = plan.NameActive;
+    bool canClone = plan.CanClone;
+    bool canFindByName = plan.CanFindByName;
+    string entity = plan.Entity;
+    string keyProperty = plan.KeyProperty;
+    string keyCSharp = plan.KeyCSharp;
+    string apiBase = plan.ApiBase;
+    string keyArgument = plan.KeyArgument;
+    string dtoArguments = plan.DtoArguments;
+    string lookupItem = plan.LookupItem;
+    var writeRoles = plan.WriteRoles;
+    var readRoles = plan.ReadRoles;
+    var ownerColumn = plan.OwnerColumn;
+    bool ownerUnusable = plan.OwnerUnusable;
+    var ownerLink = plan.OwnerLink;
     string ownerUsing = ownerLink is not null && !usings.Contains("Microsoft.EntityFrameworkCore") ? "using Microsoft.EntityFrameworkCore;\n" : "";
-
-    // EditableChildren: the child tables a form of this table saves in the same request (EditableChild, the one rule the Angular screen asks too)
-    var editableChildren = supported ? EditableChild.Of(Model, Project) : [];
-
-    // ListProtocol=Search: the one search box matches SearchBox's columns and the grid sorts by SearchPlan's (the same names the Columns protocol sorts by)
-    bool listSearch = supported && !nameActive && Project.ListSearchProtocol;
-    var searchNavigations = listSearch ? EntityNavigations.Of(Model, fk => Project.NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape) ?? false) : new List<EntityNavigation>();
-    var searchPlan = listSearch ? SearchPlan.For(Model, searchNavigations) : null;
-    var searchTerms = listSearch ? SearchBox.For(Model, Project, searchNavigations) : new List<SearchBoxTerm>();
-
-    // ==== the column GetAll sorts by (see above)
-    bool IsSortableDate(ColumnModel c) =>
-        c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime;
-    var sortColumn = nameActive ? null : Model.Columns
-        .Where(c => IsSortableDate(c) && !c.IsNullable && !c.IsComputed && !c.IsAuditColumn
-                    && !c.IsAuditDateColumn)
-        .OrderBy(c => c.OrdinalPosition)
-        .FirstOrDefault();
-
-    // GET <route>/lookup answers { id, name, isActive } (only the key, the display column and the flag are read) for a table with a display column (DisplayColumnSelector); a Name and IsActive table always has one.
-    var displayColumn = supported && !nameActive ? Model.DisplayColumns.FirstOrDefault() : null;   // the column the screens' drop-downs show (ForeignKeyModel.ReferencedDisplayColumns[0])
-    string lookupName = displayColumn is null ? ""
-        : displayColumn.IsStringColumn ? $"c.{displayColumn.Name}" + (displayColumn.IsNullable ? " ?? \"\"" : "")
-        : displayColumn.IsNullable ? $"c.{displayColumn.Name} == null ? \"\" : c.{displayColumn.Name}.ToString()!"
-        : $"c.{displayColumn.Name}.ToString()";
-
-    // The user table (UserTable with ApiAuth): its API never sends or takes the password hash, lets only an administrator change the administrator and role columns, keeps a sign-in name unique
-    // and keeps the last administrator (UserTable, API_UserDirectory).
-    // ChangeGates and GuardedColumns (API_Gates): the table's checks run before a row is saved.
-    bool hasGates = supported && GatePlan.HasRules(Project, Model);
-    var userPlan = supported ? UserTable.PlanOf(Model, Project) : null;
-    var userAdmin = userPlan?.Admin;
-    var userRole = userPlan?.Role;
-    var userGuarded = new[] { userAdmin, userRole }.Where(c => c is not null).Select(c => c!).ToList();
+    var editableChildren = plan.EditableChildren;
+    bool listSearch = plan.ListSearch;
+    var searchPlan = plan.SearchPlan;
+    var searchTerms = plan.SearchTerms;
+    var sortColumn = plan.SortColumn;
+    var displayColumn = plan.DisplayColumn;
+    string lookupName = plan.LookupName;
+    bool hasGates = plan.HasGates;
+    var userPlan = plan.UserPlan;
+    var userAdmin = plan.UserAdmin;
+    var userGuarded = plan.UserGuarded;
     string userKey = keyProperty;
-    string userName = userPlan?.UserName.CSharpName() ?? "";
-    string userHash = userPlan?.PasswordHash.CSharpName() ?? "";
-    string userActive = Model.IsActiveColumn?.CSharpName() ?? "";
-    string UserDefault(ColumnModel c) => c.IsBooleanColumn ? "false" : c.IsNullable ? "null" : "\"\"";
-    string UserIsAdmin(string row, string? active = null) => userAdmin is null ? "false" : $"{row}.{userAdmin.CSharpName()} == true" + (Model.IsActiveColumn is null ? "" : $" && {row}.{active ?? userActive}");
-    string userStoredMembers = string.Join(", ", new[] { $"Hash = u.{userHash}" }
-        .Concat(userGuarded.Select(c => $"{c.CSharpName()} = u.{c.CSharpName()}"))
-        .Concat(userAdmin is not null && Model.IsActiveColumn is not null ? new[] { $"Active = u.{userActive}" } : Array.Empty<string>()));
+    string userName = plan.UserName;
+    string userHash = plan.UserHash;
+    string UserDefault(ColumnModel c) => CrudApiPlan.UserDefault(c);
+    string UserIsAdmin(string row, string? active = null) => plan.UserIsAdmin(row, active);
+    string userStoredMembers = plan.UserStoredMembers;
 
     if (supported)
     {
@@ -280,9 +228,9 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
 <#
         }
         // the audit dates no caller sets: a create date the database does not default and the last-changed date on a new row, the modified and last-changed dates on a changed one
-        var stampOnNew = Model.Columns.Where(c => !c.IsComputed && c.IsDateColumn && (c.IsLastChangedDateColumn || (c.IsCreateDateColumn && c.DatabaseDefaultSql is null))).ToList();
-        var stampOnChange = Model.Columns.Where(c => !c.IsComputed && c.IsDateColumn && (c.IsModifiedDateColumn || c.IsLastChangedDateColumn)).ToList();
-        string Now(ColumnModel c) => c.CSharpBase() == "DateTimeOffset" ? "DateTimeOffset.Now" : "LocalNow";
+        var stampOnNew = plan.StampOnNew;
+        var stampOnChange = plan.StampOnChange;
+        string Now(ColumnModel c) => CrudApiPlan.Now(c);
         if (!nameActive && (stampOnNew.Count > 0 || stampOnChange.Count > 0))
         {
 #>

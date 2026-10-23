@@ -7,12 +7,13 @@
 
 Generates the master_detail sample schema (API and the chosen front end) with Tools/new_scratch_project.py, builds and starts the API (port 5080) and the
 dev server (Vite on 5173, ng serve on 4200, dotnet run on 5190 for Blazor and on 5195 for Uno), then walks the Region screen: the empty form is refused by the browser, a row is added, found by the search, edited, cloned and
-deleted. After each step the API is asked what the database holds, so a screen that looks right but saved nothing fails. Prints PASS / FAIL lines and
+deleted; React, Angular and Blazor then walk a drop-down fed by another table (a customer order picks its customer), the child grid of a master-detail dialog (the customers of a region) and the paging bar. After each step the API is asked what the database holds, so a screen that looks right but saved nothing fails. Prints PASS / FAIL lines, the elapsed time on the way out, and
 exits 1 on a failure. Everything it started is stopped at the end; the generated folder is kept and printed.
 
 --prove-failure aborts the browser's POST to the API, so the add and everything after it must fail: it shows that the checks can fail.
 --stack react|angular|blazor|uno picks the front end (Angular is generated for version 22). The Uno app draws on a canvas, so it is driven through the semantic page that its accessibility switch builds, by focus and keys.
 --out <folder> uses an already generated project (the folder that holds the Api project and the frontend folder or Blazor project) instead of generating one.
+--build-cli builds the command-line tool before generating (a fresh checkout, as in CI, has not built it).
 --browser chrome|msedge picks the installed browser (default chrome). Needs `pip install playwright`; no browser is downloaded.
 """
 import argparse
@@ -20,6 +21,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -70,13 +72,16 @@ def port_free(port):
 
 def stop(process):
     if process and process.poll() is None:
-        subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(process.pid)], capture_output=True)
+        else:
+            os.killpg(os.getpgid(process.pid), signal.SIGTERM)   # the process was started as the leader of its own group, so its children go too
 
 
-def generate(stack):
+def generate(stack, build_cli=False):
     extra = ["--set", "AngularVersion=22"] if stack == "angular" else []
     result = subprocess.run([sys.executable, str(HERE / "Tools" / "new_scratch_project.py"), "PwShop" + stack.title(), "--schema", "master_detail",
-                             "--stack", "api," + stack, "--set", "Dtos=true", *extra], capture_output=True, text=True, cwd=HERE / "Tools")
+                             "--stack", "api," + stack, "--set", "Dtos=true", *extra, *(["--build-cli"] if build_cli else [])], capture_output=True, text=True, cwd=HERE / "Tools")
     if result.returncode != 0:
         sys.exit(result.stderr or result.stdout)
     return Path(re.search(r"^output:\s+(.+)$", result.stdout, re.M).group(1).strip())
@@ -158,6 +163,107 @@ def drive(page, prove_failure):
         page.wait_for_timeout(900)
     check("Delete removes the rows from the database", not any(r["name"].startswith("Harness") for r in regions()))
     check("the grid shows no such row", page.locator("table").first.locator("tbody tr", has_text="Harness").count() == 0)
+
+
+def api_send(method, path, body=None):
+    request = urllib.request.Request(f"{API}{path}", data=None if body is None else json.dumps(body).encode(), method=method, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=10) as response:
+        text = response.read().decode()
+    return json.loads(text) if text else None
+
+
+def api_rows(path):
+    data = get_json(f"{API}{path}")
+    return data if isinstance(data, list) else next(v for v in data.values() if isinstance(v, list))
+
+
+def drive_more(page, prove_failure):
+    """The screens the Region walk does not reach: a drop-down fed by another table (a customer order picks its customer), the child grid of a master-detail
+    dialog (the customers of a region) and the paging bar (more rows than a page). The rows they need are added through the API and removed again."""
+    if prove_failure:
+        page.route("**/api/customerorders", lambda route: route.abort() if route.request.method == "POST" else route.continue_())
+    form = page.locator('dialog[open], [role="dialog"]')
+    table = lambda: page.locator("table").first
+
+    def clean():
+        for order in api_rows("/api/customerorders"):
+            if order["reference"].startswith("Harness"):
+                api_send("DELETE", f"/api/customerorders/{order['customerOrderId']}")
+        for customer in api_rows("/api/customers"):
+            if customer["name"].startswith("Harness"):
+                api_send("DELETE", f"/api/customers/{customer['customerId']}")
+        for region in api_rows("/api/regions"):
+            if region["name"].startswith("Harness"):
+                api_send("DELETE", f"/api/regions/{region['regionId']}")
+
+    clean()
+    try:
+        region = api_send("POST", "/api/regions", {"regionId": 0, "name": "Harness Region", "code": "HR", "population": 1})
+        for name in ("Harness Alpha", "Harness Beta"):
+            api_send("POST", "/api/customers", {"customerId": 0, "regionId": region["regionId"], "name": name, "email": "a@example.com", "creditLimit": 1, "isActive2": True})
+        customers = {c["name"]: c["customerId"] for c in api_rows("/api/customers") if c["name"].startswith("Harness")}
+
+        # the lookup drop-down
+        page.goto(f"{DEV}/customer-order")
+        page.get_by_role("heading", name="Customer Orders").wait_for(timeout=90000)
+        page.get_by_role("button", name="Add New").click()
+        form.wait_for()
+        customer = form.locator('select[aria-label="Customer"], #customerOrderCustomerId').first
+        labels = [t.strip() for t in customer.locator("option").all_inner_texts()]
+        check("the Customer drop-down lists the customers of the other table", "Harness Alpha" in labels and "Harness Beta" in labels, str(labels[:6]))
+        customer.select_option(label="Harness Beta")
+        field_ = lambda label, ident: form.locator(f'[aria-label="{label}"], #{ident}').first
+        field_("Reference", "customerOrderReference").fill("Harness Order")
+        field_("Order Date", "customerOrderOrderDate").fill("2026-04-01")
+        field_("Total", "customerOrderTotal").fill("12.5")
+        form.get_by_role("button", name=SUBMIT).click()
+        try:
+            form.wait_for(state="hidden", timeout=4000)
+        except Exception:
+            pass
+        orders = [o for o in api_rows("/api/customerorders") if o["reference"] == "Harness Order"]
+        check("the order is saved with the customer that was picked", len(orders) == 1 and orders[0]["customerId"] == customers["Harness Beta"], str(orders))
+        table().locator("tbody tr", has_text="Harness Order").get_by_role("button", name="Edit").click()
+        form.wait_for()
+        selected = customer.evaluate("e => e.options[e.selectedIndex]?.text.trim()")
+        check("Edit shows the saved customer in the drop-down", selected == "Harness Beta", str(selected))
+        form.get_by_role("button", name="Cancel").click()
+
+        # the child grid of a master-detail dialog
+        page.goto(f"{DEV}/region")
+        page.get_by_role("heading", name="Regions").wait_for(timeout=90000)
+        search_box(page, "Name").fill("Harness Region")
+        page.get_by_role("button", name="Search").click()
+        page.wait_for_timeout(700)
+        table().locator("tbody tr", has_text="Harness Region").get_by_role("button", name="Edit").click()
+        form.wait_for()
+        page.wait_for_timeout(1200)
+        children = form.locator("table tbody tr")
+        shown = [t for t in children.all_inner_texts() if "Harness" in t]
+        check("the child grid lists the customers of the region", len(shown) == 2 and any("Alpha" in t for t in shown) and any("Beta" in t for t in shown), str(shown))
+        form.get_by_role("button", name="Cancel").click()
+
+        # the paging bar: more rows than one page
+        for number in range(1, 26):
+            api_send("POST", "/api/regions", {"regionId": 0, "name": f"Harness Page {number:02d}", "code": "HP", "population": number})
+        search_box(page, "Name").fill("Harness Page")
+        page.get_by_role("button", name="Search").click()
+        page.wait_for_timeout(900)
+        grid_rows = lambda: table().locator("tbody tr").count()
+        first_page = grid_rows()
+        previous = page.get_by_role("button", name=re.compile("^Previous( page)?$"))
+        following = page.get_by_role("button", name=re.compile("^Next( page)?$"))
+        check("the first page holds a full page and Previous is off", 10 <= first_page < 25 and previous.is_disabled(), f"{first_page} rows")
+        following.click()
+        page.wait_for_timeout(900)
+        second_page = grid_rows()
+        check("Next shows the rest of the rows", first_page + second_page == 25, f"{first_page} + {second_page}")
+        check("the last page has no Next", following.is_disabled())
+        previous.click()
+        page.wait_for_timeout(900)
+        check("Previous goes back to the first page", grid_rows() == first_page)
+    finally:
+        clean()
 
 
 def drive_uno(page, prove_failure):
@@ -259,6 +365,7 @@ def main():
     parser.add_argument("--stack", choices=list(STACKS), default="react")
     parser.add_argument("--out")
     parser.add_argument("--prove-failure", action="store_true")
+    parser.add_argument("--build-cli", action="store_true", help="build the command-line tool first (a fresh checkout has not)")
     parser.add_argument("--browser", default="chrome")
     args = parser.parse_args()
     try:
@@ -271,7 +378,7 @@ def main():
         if not port_free(port):
             sys.exit(f"port {port} is in use: stop what is listening there")
 
-    out = Path(args.out) if args.out else generate(args.stack)
+    out = Path(args.out) if args.out else generate(args.stack, args.build_cli)
     print(f"project: {out}")
     api_dir = next(out.glob("*.Api"))
     front = next(out.glob("*.Blazor" if args.stack == "blazor" else "*.Uno")) if args.stack in ("blazor", "uno") else out / "frontend"
@@ -290,12 +397,12 @@ def main():
 
     api = dev = None
     try:
-        api = subprocess.Popen(["dotnet", "run", "--no-build"], cwd=api_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        api = subprocess.Popen(["dotnet", "run", "--no-build"], cwd=api_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=os.name != "nt")
         wait_for(f"{API}/api/regions", 60, "the API")
         command = {"react": [npm, "run", "dev", "--", "--strictPort"], "angular": [npm, "start", "--", "--port", "4200"],
                    "blazor": ["dotnet", "run", "--no-build", "--launch-profile", "http"],
                    "uno": ["dotnet", "run", "-f", "net10.0-browserwasm", "--no-build", "--launch-profile", uno_profile(front) if args.stack == "uno" else ""]}[args.stack]
-        dev = subprocess.Popen(command, cwd=front, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=dict(os.environ, NG_CLI_ANALYTICS="false"))
+        dev = subprocess.Popen(command, cwd=front, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=dict(os.environ, NG_CLI_ANALYTICS="false"), start_new_session=os.name != "nt")
         wait_for(DEV, 240, "the dev server")
         with sync_playwright() as p:
             browser = p.chromium.launch(channel=args.browser, headless=True)
@@ -304,10 +411,12 @@ def main():
                 errors = []
                 page.on("pageerror", lambda e: errors.append(str(e)))
                 page.set_default_timeout(5000)
-                try:
-                    (drive_uno if args.stack == "uno" else drive)(page, args.prove_failure)
-                except Exception as e:
-                    check("the walk reached its end", False, str(e).splitlines()[0][:160])
+                walks = [drive_uno] if args.stack == "uno" else [drive, drive_more]
+                for walk in walks:
+                    try:
+                        walk(page, args.prove_failure)
+                    except Exception as e:
+                        check(f"the {walk.__name__.replace('_', ' ')} walk reached its end", False, str(e).splitlines()[0][:160])
                 check("the page raised no script error", not errors, "; ".join(errors)[:200])
             finally:
                 browser.close()
@@ -319,4 +428,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    started = time.perf_counter()
+    try:
+        main()
+    finally:
+        # printed on every way out (a finished run, a failed check, a build that stopped the script), so the log shows how long it took
+        seconds = time.perf_counter() - started
+        print(f"Elapsed: {int(seconds // 60)} min {seconds % 60:.1f} s ({seconds:.1f} s)")

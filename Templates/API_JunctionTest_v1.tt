@@ -16,12 +16,11 @@
     // ==========================================================================================
 
     var junction = Model.Junction;
-    bool HasApi(ForeignKeyModel fk) => fk.ReferencedColumns.Count == 1 && !Project.NoApiFor(fk.ReferencedTable, fk.ReferencedLookupShape);
     if (!Model.IsJunctionTable || junction is null)
     {
         Error($"API_JunctionTest writes tests for a many-to-many junction table, and [{Model.SchemaName}].[{Model.TableName}] is not one.");
     }
-    else if (!HasApi(junction.AnchorForeignKey) || !HasApi(junction.TargetForeignKey))
+    else if (!junction.BothSidesHaveApi(Project))
     {
         Error($"API_JunctionTest needs an API for both sides of [{Model.TableName}] ({junction.AnchorRole} and {junction.TargetRole}) to take the rows to link from.");
     }
@@ -32,16 +31,11 @@
         var writeRoles = WriteRolePlan.For(Project, Model);
         string anchorJson = ApiSampleValues.Json(JsonNames.Camel(junction.AnchorForeignKey.ReferencedColumns[0]));
         string targetJson = ApiSampleValues.Json(JsonNames.Camel(junction.TargetForeignKey.ReferencedColumns[0]));
-        bool IsText(ColumnModel c) => c.SqlType is not (SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt);
-        string Existing(string role, string keyJson, ColumnModel c) =>
-            $"await ApiFixture.{(IsText(c) ? "ExistingCodeAsync" : "ExistingKeyAsync")}({ApiSampleValues.Json(BlazorNames.ApiRoute(role))}, {keyJson}, {(IsText(c) ? "\"\"" : "1")}, {ApiSampleValues.Json(role)})";
-        string keyType(ColumnModel c) => IsText(c) ? "string" : "long";
-        string absentTarget = junction.TargetColumn.SqlType switch
-        {
-            SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt => "int.MaxValue",
-            SqlDbType.UniqueIdentifier => "Guid.NewGuid()",
-            _ => ""
-        };
+        string Existing(string role, string keyJson, bool text) =>
+            $"await ApiFixture.{(text ? "ExistingCodeAsync" : "ExistingKeyAsync")}({ApiSampleValues.Json(BlazorNames.ApiRoute(role))}, {keyJson}, {(text ? "\"\"" : "1")}, {ApiSampleValues.Json(role)})";
+        string anchorType = junction.AnchorKeyIsText ? "string" : "long";
+        string targetType = junction.TargetKeyIsText ? "string" : "long";
+        string absentTarget = junction.AbsentTargetCs;
         string[] shown = [.. junction.DisplayColumns.Select(c => ApiSampleValues.Json(JsonNames.Camel(c)))];
 #>
 namespace <#= projectName #>.Api.Tests;
@@ -52,11 +46,11 @@ public class <#= Model.TableName #>JunctionApiTests
     private const string Route = "<#= route #>";
 
     /// <summary> The keys of a row of the anchor (<#= junction.AnchorRole #>) and of one of the target (<#= junction.TargetRole #>): the first row of each API, or a row added with the table's own body. </summary>
-    private static async Task<(<#= keyType(junction.AnchorColumn) #> Anchor, <#= keyType(junction.TargetColumn) #> Target)> APairAsync() =>
-        (<#= Existing(junction.AnchorRole, anchorJson, junction.AnchorColumn) #>, <#= Existing(junction.TargetRole, targetJson, junction.TargetColumn) #>);
+    private static async Task<(<#= anchorType #> Anchor, <#= targetType #> Target)> APairAsync() =>
+        (<#= Existing(junction.AnchorRole, anchorJson, junction.AnchorKeyIsText) #>, <#= Existing(junction.TargetRole, targetJson, junction.TargetKeyIsText) #>);
 
     /// <summary> Whether the target is linked to the anchor, as the junction list says; null when the list does not have the target. </summary>
-    private static async Task<bool?> IsLinkedAsync(HttpClient client, <#= keyType(junction.AnchorColumn) #> anchor, <#= keyType(junction.TargetColumn) #> target)
+    private static async Task<bool?> IsLinkedAsync(HttpClient client, <#= anchorType #> anchor, <#= targetType #> target)
     {
         using var response = await client.GetAsync($"{Route}/junction/{Uri.EscapeDataString(anchor.ToString()!)}");
         Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
@@ -65,7 +59,7 @@ public class <#= Model.TableName #>JunctionApiTests
         return item is null ? null : item["isSelected"]!.GetValue<bool>();
     }
 
-    private static async Task AssertLinkedAsync(HttpClient client, <#= keyType(junction.AnchorColumn) #> anchor, <#= keyType(junction.TargetColumn) #> target, bool expected, string message)
+    private static async Task AssertLinkedAsync(HttpClient client, <#= anchorType #> anchor, <#= targetType #> target, bool expected, string message)
     {
         bool? state = await IsLinkedAsync(client, anchor, target);
         Assert.IsNotNull(state, "the target is in the list");
@@ -75,7 +69,7 @@ public class <#= Model.TableName #>JunctionApiTests
             Assert.IsFalse(state.Value, message);
     }
 
-    private static object Link(<#= keyType(junction.AnchorColumn) #> anchor, <#= keyType(junction.TargetColumn) #> target) => new { anchorId = anchor, targetId = target };
+    private static object Link(<#= anchorType #> anchor, <#= targetType #> target) => new { anchorId = anchor, targetId = target };
 
     [TestMethod]
     public async Task A_target_can_be_linked_and_unlinked_and_either_can_be_repeated()

@@ -3,8 +3,6 @@
 <#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Text" #>
-<#@ import namespace="System.Text.RegularExpressions" #>
-<#@ import namespace="System.Data" #>
 <#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="CodeGenNew.Core" #>
 <#
@@ -28,7 +26,7 @@
     // ==========================================================================================
     // CS_Entity_v1.tt
     // Generates: <TableName>.cs   (see OutputName in CS_Entity_v1.tt.config)
-    // An EF Core entity class named like the table, one property per column, with [Key] on a single primary key (a composite key is named in
+    // An EF Core entity class named like the table (EntityCode in Core writes its members), one property per column, with [Key] on a single primary key (a composite key is named in
     // the context), a navigation property per single-column foreign key, [Display] / [DataType] attributes and, for NamingStyle=Pascal,
     // [Table] / [Column] with the real database names. Needs a primary key.
     // Does not write collection navigations, validation attributes beyond the column's own, or any business rule.
@@ -41,154 +39,12 @@
     }
     else
     {
-        // ==== naming helpers
-        string Id(ColumnModel c) => c.CSharpName();
-        string Words(string name, bool isBit) => Labels.Words(name, isBit);
-
-        // ==== base class
-        bool nameActive = Model.IsNameActiveTable;
-        string baseClass = nameActive ? baseNameActiveEntity : baseEntity;
-
-        // ==== foreign keys: single-column ones only
-        var fkByColumn = new Dictionary<string, ForeignKeyModel>(StringComparer.OrdinalIgnoreCase);
-        foreach (var fk in Model.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1))
-            fkByColumn[fk.ReferencingColumns[0]] = fk;
-
-        var navigations = EntityNavigations.Of(Model, fk => Project.NoNavigationFor(fk.ReferencedTable, fk.ReferencedLookupShape))
-            .Select(n => (Column: n.Column, Role: n.Role, Type: n.Type)).ToList();
-        var navByColumn = navigations.ToDictionary(n => n.Column.Name, n => n, StringComparer.OrdinalIgnoreCase);
-
-        // the user table's password hash is never written to an answer or read from a request body
-        string? hashColumn = UserTable.PlanOf(Model, Project)?.PasswordHash.Name;
-
-        // ==== C# type of a column
-        string ClrType(ColumnModel c) => c.CSharp();
-
+        // the members (the key, the foreign keys, the navigations, one property per other column) are EntityCode's: Core, the one place the entity text is decided
+        var members = EntityCode.Of(Model, Project);
+        string baseClass = Model.IsNameActiveTable ? baseNameActiveEntity : baseEntity;
+        bool usesSchema = members.UsesSchema;   // System.ComponentModel.DataAnnotations.Schema: [ForeignKey], [Column], [Table]
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
-        var body = new StringBuilder();
-        void B(string s = "") => body.Append(s).Append('\n');
-        bool usesSchema = false; // System.ComponentModel.DataAnnotations.Schema: [ForeignKey], [Column], [Table]
-
-        // EF Core allows one [Column] per property: it carries the column's real name when the project's NamingStyle gave the property another one
-        // (customer_id -> CustomerId), and the column type when one has to be said (money, a PostgreSQL timestamp or jsonb).
-        string? ColumnAttribute(ColumnModel col, string? columnType)
-        {
-            string? name = col.DatabaseName;
-            if (name is null && columnType is null) return null;
-            usesSchema = true;
-            return "    [Column(" + (name is null ? "" : $"\"{name}\"" + (columnType is null ? "" : ", ")) + (columnType is null ? "" : $"TypeName = \"{columnType}\"") + ")]";
-        }
-
-        // ==== Omitted: the key, then the foreign keys, in column order
-        B("    #region Omitted");
-        bool firstOmitted = true;
-        foreach (var c in Model.Columns.Where(c => c.IsPrimaryKey || fkByColumn.ContainsKey(c.Name)))
-        {
-            if (!firstOmitted) B();
-            firstOmitted = false;
-            if (c.IsPrimaryKey)
-            {
-                if (Model.PrimaryKeyColumns.Count == 1)
-                    B("    [Key]");
-                B("    [Display(Order = -1, AutoGenerateField = true)]");
-            }
-            else
-            {
-                if (navByColumn.TryGetValue(c.Name, out var nav))
-                {
-                    B($"    [ForeignKey(nameof({nav.Role}))]");
-                    usesSchema = true;
-                }
-                B("    [Display(Order = -1, AutoGenerateField = false)]");
-            }
-            if (ColumnAttribute(c, null) is { } omittedColumnAttribute) B(omittedColumnAttribute);
-            B($"    public {(c.IsNullable ? "" : "required ")}{ClrType(c)} {Id(c)} {{ get; set; }}");
-        }
-        B("    #endregion Omitted");
-
-        // ==== navigation properties
-        if (navigations.Count > 0)
-        {
-            B();
-            B("    // entities");
-            foreach (var n in navigations)
-                B($"    public {n.Type}? {n.Role} {{ get; set; }}");
-        }
-
-        // ==== the rest of the columns
-        foreach (var c in Model.Columns.Where(c => !c.IsPrimaryKey && !fkByColumn.ContainsKey(c.Name) && !(nameActive && (c == Model.RequiredNameColumn || c == Model.IsActiveColumn))))
-        {
-            B();
-            bool isBit = c.IsBooleanColumn;
-            string words = CSharpText.Escape(Words(c.Name, isBit));
-            int chars = c.CharacterLength;
-            bool isText = c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
-            bool multiline = isText && chars >= 100;
-            string? columnType = null;
-
-            B($"    [Display({(multiline ? "Order = -1, " : "")}Name = \"{words}\", Description = \"{words}\")]");
-            if (c.SqlType is SqlDbType.Date or SqlDbType.DateTime or SqlDbType.DateTime2 or SqlDbType.SmallDateTime)
-            {
-                B("    [DisplayFormat(DataFormatString = \"{0:MM/dd/yyyy}\")]");
-                B("    [DataType(DataType.Date)]");
-                // PostgreSQL: Npgsql maps a DateTime to "timestamp with time zone" (UTC only) unless the column type is said: timestamp (no zone) or date.
-                if (Model.Dialect == SqlDialect.PostgreSql)
-                    columnType = c.SqlTypeDeclaration;
-            }
-            else if (c.IsMoneyColumn)
-            {
-                B("    [DisplayFormat(ApplyFormatInEditMode = true)]");
-                B("    [DataType(DataType.Currency)]");
-                columnType = c.SqlType == SqlDbType.Money ? "money" : "smallmoney";
-            }
-            else if (c.SqlType == SqlDbType.Decimal)
-            {
-                int scale = c.Scale ?? 0;
-                B($"    [DisplayFormat(ApplyFormatInEditMode = true, DataFormatString = \"#0{(scale > 0 ? "." + new string('0', scale) : "")}\")]");
-                if (!(Model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration == "numeric")) // a bare PostgreSQL numeric has no precision to state
-                    B($"    [Precision({c.Precision ?? 18}, {scale})]");
-            }
-            else if (isText)
-            {
-                // PostgreSQL json / jsonb arrive as a string column; the column type has to be said or Npgsql sends text.
-                if (Model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration is "json" or "jsonb")
-                    columnType = c.SqlTypeDeclaration;                if (chars > 0) B($"    [StringLength({chars})]");
-                if (multiline) B("    [DataType(DataType.MultilineText)]");
-                else if (c.Name.ContainsIgnoreCase("Phone")) B("    [DataType(DataType.PhoneNumber)]");
-            }
-            else if (c.IsRowVersionColumn)
-            {
-                B("    [Timestamp]");
-            }
-
-            if (c.IsComputed) { B("    [DatabaseGenerated(DatabaseGeneratedOption.Computed)]"); usesSchema = true; }
-            else if (c.IsIdentity) { B("    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]"); usesSchema = true; }
-            // a create date the database fills in (DEFAULT sysdatetime()): EF Core leaves it out of the insert while it is still the type's default, so the column default applies
-            else if (c.IsCreateDateColumn && !c.IsNullable && c.IsDateColumn && c.DatabaseDefaultSql is not null) { B("    [DatabaseGenerated(DatabaseGeneratedOption.Identity)]"); usesSchema = true; }
-
-            string initializer = "";
-            if (isBit && c.DatabaseDefaultSql is not null)
-            {
-                string d = c.DatabaseDefaultSql.Trim('(', ')', ' ');
-                // SQL Server writes a bit default as ((1)) / ((0)); PostgreSQL writes true / false.
-                if (d == "1" || d.EqualsIgnoreCase("true")) initializer = " = true;";
-                else if (d == "0" || d.EqualsIgnoreCase("false")) initializer = " = false;";
-            }
-            if (hashColumn is not null && c.Name.EqualsIgnoreCase(hashColumn)) B("    [System.Text.Json.Serialization.JsonIgnore]");
-            if (ColumnAttribute(c, columnType) is { } columnAttribute) B(columnAttribute);
-            bool needsRequired = !c.IsNullable && !c.IsComputed && !c.IsIdentity && !c.IsRowVersionColumn;
-            // the constructor below says the required members are set, which the nullable analysis does not believe for a string or a byte array
-            if (initializer.Length == 0) initializer = CSharpText.NotNullInitializer(c);
-            B($"    public {(needsRequired ? "required " : "")}{ClrType(c)} {Id(c)} {{ get; set; }}{initializer}");
-        }
-
-        // ==== ToString on a table that has a plain "Name"
-        if (!nameActive && Model.Columns.Any(c => c.IsStringColumn && c.Name == "Name"))
-        {
-            B();
-            B("    public override string? ToString() => Name;");
-        }
 
         // ==== assemble
         var headUsings = usings.ToList();
@@ -208,16 +64,11 @@
         if (Model.DatabaseTableName is not null) L($"[Table(\"{Model.DatabaseTableName}\")]");
         L($"public class {className} : {baseClass}");
         L("{");
-        // A brand-new row (WinUI3_DetailScreen.tt's "Add" case, CS_Repo.tt's own GenericRepo<T> internals) does
-        // `new {Table}()` and fills every property in afterward, one line at a time - plain C# does not let a
-        // caller do that for a "required" property (CS9035) unless the constructor that ran first is annotated
-        // as having already set them. Found live, the first time this entity family was ever actually compiled
-        // against a real WinUI3 project: every NOT NULL column above is `required`, so a bare `new {Table}()`
-        // failed to build wherever WinUI3_DetailScreen.tt/WinUI3_DetailMasterScreen.tt used it.
+        // a new row is made with `new {Table}()` and filled in afterwards, which C# refuses for a "required" property (CS9035) unless the constructor says it set them
         L($"    [SetsRequiredMembers]");
         L($"    public {className}() {{ }}");
         L();
-        o.Append(body);
+        o.Append(members.Body);
         L("}");
         Write(o.ToString());
     }

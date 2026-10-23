@@ -335,6 +335,9 @@ public abstract class SchemaProviderBase : ISchemaProvider
         foreach (var (column, definition) in checks)
         {
             string? name = column ?? CheckConstraintParser.SingleColumn(definition);
+            // a constraint that puts two date columns in order belongs to the one that must not be earlier
+            if (name is null && CheckConstraintParser.DateOrder(definition) is { } order && columns.Any(c => c.Name.EqualsIgnoreCase(order.Start)))
+                name = order.End;
             if (name is null || !columns.Any(c => c.Name.EqualsIgnoreCase(name)))
                 continue;
             if (!byColumn.TryGetValue(name, out var list))
@@ -351,6 +354,10 @@ public abstract class SchemaProviderBase : ISchemaProvider
             .ToDictionary(g => g.Key, g => g.First().Text.Trim(), StringComparer.OrdinalIgnoreCase);
         return columns.Select(c => byColumn.TryGetValue(c.Name, out string? text) ? c with { Description = text } : c).ToList();
     }
+
+    /// <summary> The date column a CHECK constraint says this date column must not be earlier than; the constraint is kept by the column that must not be earlier (<see cref="WithChecks"/>). </summary>
+    private static string? DateOrderFromChecks(RawColumn raw) =>
+        (raw.CheckDefinitions ?? []).Select(CheckConstraintParser.DateOrder).FirstOrDefault(o => o is { } order && order.End.EqualsIgnoreCase(raw.Name))?.Start;
 
     /// <summary> The values a text column's CHECK constraint lists (SQL Server and MySQL spell it as an OR chain or an IN list), which make it a drop-down like a MySQL enum. </summary>
     private static List<string>? ListFromChecks(RawColumn raw, bool isString) =>
@@ -444,6 +451,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
             DbBitWidth = raw.BitWidth,
             Check = isNumeric || isInteger || isMoney ? RangeFromChecks(raw) : null,
             CheckNotation = isString ? TextFromChecks(raw) : null,
+            NotBeforeColumn = isDate && DateOrderFromChecks(raw) is { } startColumn ? Named(startColumn) : null,
             Description = raw.Description,
             NumericKind = isInteger ? NumericClassifier.Classify(name) : NumericKind.None,
             IsCurrencyColumn = isMoney || (sqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real && IsCurrency(raw, sqlType, name, tableName)),

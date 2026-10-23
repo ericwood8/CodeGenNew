@@ -226,6 +226,8 @@ public class CheckConstraintTests
 
             Assert.AreEqual((1.0, 5.0), (model.Columns.Single(c => c.Name == "rating").Check!.Min!.Value, model.Columns.Single(c => c.Name == "rating").Check!.Max!.Value));
             Assert.AreEqual(0.0, model.Columns.Single(c => c.Name == "credit_limit").Check!.Min);   // a table-level constraint on one column counts
+            Assert.AreEqual("start_date", model.Columns.Single(c => c.Name == "end_date").NotBeforeColumn, "a table-level CHECK of one date against another");
+            Assert.IsNull(model.Columns.Single(c => c.Name == "start_date").NotBeforeColumn);
             CollectionAssert.AreEqual(new[] { "Open", "On hold", "Closed" }, model.Columns.Single(c => c.Name == "status").Choices!.OrderBy(v => v == "Open" ? 0 : v == "On hold" ? 1 : 2).ToArray());
             Assert.IsNull(model.Columns.Single(c => c.Name == "start_date").Check);                 // a check over two columns belongs to neither
             Assert.IsNull(model.Columns.Single(c => c.Name == "id").Check);

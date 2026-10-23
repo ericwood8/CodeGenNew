@@ -106,6 +106,9 @@ public class ColumnModel
     /// <summary> The notation a CHECK constraint of the database puts on this text column (<c>CHECK (len(code) = 5)</c>, <c>CHECK (code LIKE 'AB%')</c>); null when it has none or the check is not that plain. </summary>
     public TextNotation? CheckNotation { get; init; }
 
+    /// <summary> For a date column: the name of another date column of the table that a CHECK constraint says this one must not be earlier than (<c>CHECK (start_date &lt;= end_date)</c> on end_date gives start_date); null otherwise. </summary>
+    public string? NotBeforeColumn { get; init; }
+
     public TextNotation? Notation => PgText is { } pg ? new TextNotation(pg.Pattern, pg.Description, pg.Sample)
         : MySqlSpatialType.FromName(DbSpatialType)?.Notation ?? (SetValues is { Count: > 0 } members ? MySqlSetNotation.Of(members) : null) ?? CheckNotation;
 

@@ -2,7 +2,7 @@
 
   python new_scratch_project.py Shop --schema plain --stack api,react --set Dtos=true --set ApiTests=true
 
---schema is a name in Tools/Schemas (plain, master_detail, junction) or a path to a .sql file. Settings are the project file's keys
+--schema is a name in Tools/Schemas (plain, master_detail, junction, date_pairs) or a path to a .sql file. Settings are the project file's keys
 (see Docs/Reference.md); EnumTables=none and AccessMode=Ef are the defaults, since SQLite has no routines. Tables need five or
 more columns to get a screen. Prints the database, project file and output folder. The project file is written to the CLI's
 Projects folder as <name>.config, so a later `codegen generate --project <name>` finds it.

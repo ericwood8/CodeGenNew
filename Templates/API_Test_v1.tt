@@ -23,107 +23,30 @@
     }
     else
     {
+        // what the class checks and with which values is ApiTestPlan's (Core); this template writes the text
+        var plan = ApiTestPlan.For(Model, Project)!;
         string projectName = Project.ProjectName ?? "MyApp";
-        string singular = Model.TableName;
-        string route = "/api/" + singular.Pluralize().ToLowerInvariant();
-        var key = Model.PrimaryKeyColumns[0];
-        string keyJson = JsonNames.Camel(key.Name);
-        var keyType = KeyType.Of(Model)!;
-        bool intKey = keyType.Kind == KeyKind.Int;
-        string keyCs = intKey ? "long" : "string";                                  // a guid travels as the text of the JSON
-        string idRef = intKey ? "id" : "Uri.EscapeDataString(id)";                  // the key as it goes into a route
-        string absentKey = keyType.Kind switch                                      // a key no row has, for the 404 test
-        {
-            KeyKind.Int => "int.MaxValue",
-            KeyKind.Guid => "Guid.NewGuid()",
-            _ => $"Uri.EscapeDataString(new string('~', {Math.Max(1, Math.Min(key.CharacterLength > 0 ? key.CharacterLength : 3, 12))}))"
-        };
-        var bodyColumns = ApiSampleValues.BodyColumns(Model);
-
-        // a text value that is not a fixed format: it can take a unique ending
-        bool IsFreeText(ColumnModel c) => c.IsStringColumn && !c.HasChoices && !c.IsPrimaryKey && c.Notation is null
-            && !Model.ForeignKeys.Any(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name)
-            && !ApiSampleValues.HasFixedFormat(c, Project, Model.TableName);
-
-        string ForeignKeyParentRoute(ColumnModel c, out string parentKey)
-        {
-            parentKey = "";
-            var fk = Model.ForeignKeys.FirstOrDefault(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name && f.ReferencedColumns.Count == 1);
-            if (fk is null || fk.ReferencedTable == Model.TableName || !(c.IsIntegerColumn || c.IsStringColumn || c.IsGuidColumn) || Project.NoRepository(fk.ReferencedTable, fk.ReferencedLookupShape) == true)
-                return "";
-            parentKey = JsonNames.Camel(fk.ReferencedColumns[0]);
-            return "/api/" + fk.ReferencedTable.Pluralize().ToLowerInvariant();
-        }
-
-        // the table a foreign key column points at: its ApiTests class is where a row for an empty parent comes from
-        string ParentTable(ColumnModel c) => Model.ForeignKeys.First(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name).ReferencedTable;
-
-        string Expression(ColumnModel c)
-        {
-            string sample = ApiSampleValues.Value(c, Project, Model.TableName);
-            if (c.IsPrimaryKey)
-            {
-                if (keyType.Kind == KeyKind.Guid)
-                    return "Guid.NewGuid()";
-                if (keyType.Kind == KeyKind.Text)
-                    return $"ApiFixture.NewCode({(c.CharacterLength > 0 ? c.CharacterLength : 8)})";
-                if (c.IsIdentity)
-                    return sample;
-                var range = NumericClassifier.TypeRange(c.SqlType);
-                long high = Math.Min(range.Max, 2_000_000_000);
-                return $"ApiFixture.NewKey({Math.Max(1, high / 2).ToString(CultureInfo.InvariantCulture)}, {high.ToString(CultureInfo.InvariantCulture)})";
-            }
-            if (IsFreeText(c))
-                return $"ApiFixture.Unique({ApiSampleValues.Json(ApiSampleValues.Text(c, Project, Model.TableName))}, {c.CharacterLength})";
-            string parentRoute = ForeignKeyParentRoute(c, out string parentKey);
-            if (parentRoute.Length > 0)
-                return $"await ApiFixture.{(c.IsStringColumn || c.IsGuidColumn ? "ExistingCodeAsync" : "ExistingKeyAsync")}({ApiSampleValues.Json(parentRoute)}, {ApiSampleValues.Json(parentKey)}, {sample}, {ApiSampleValues.Json(ParentTable(c))})";
-            return sample;
-        }
-
-        // the one column the update step changes: a free text column, else a bit column, else a whole number that has room to go up by one
-        bool HasRoomToGrow(ColumnModel c) => c.IsIntegerColumn && !c.IsPrimaryKey && ForeignKeyParentRoute(c, out string _).Length == 0
-            && (Project.RangeFor(c) is not { } range || range.Max > long.Parse(ApiSampleValues.Value(c, Project, Model.TableName), CultureInfo.InvariantCulture));
-        var changed = bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0)
-            ?? bodyColumns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsPrimaryKey)
-            ?? bodyColumns.FirstOrDefault(HasRoomToGrow);
-        string changedJson = changed is null ? "" : JsonNames.Camel(changed.Name);
-        string changedType = changed is null ? "" : changed.IsStringColumn ? "string" : changed.IsBooleanColumn ? "bool" : "long";
-
-        // the same names the search sorts by (SearchPlan), a clone the API offers (CloneShape: an int key the database numbers), and a unique index on one free text column
-        var sortNames = Model.HasSearchApi(Project) ? SearchPlan.For(Model, []).Sorts.Select(s => s.Name.ToLowerInvariant()).Distinct().ToList() : new List<string>();
-        bool canClone = intKey && CloneShape.CanClone(Model, Project);
-        var uniqueText = Model.Indexes.Where(i => i.IsUnique && i.Columns.Count == 1)
-            .Select(i => bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0 && (c.Name == i.Columns[0] || c.DbName == i.Columns[0])))
-            .FirstOrDefault(c => c is not null);
-
-        // ReadRoles and WriteRoles: the roles a rule lists (the administrator role first); a table scoped to a person is not written by a role with no owner
-        var writeRoles = WriteRolePlan.For(Project, Model);
-        var readRoles = WriteRolePlan.ReadFor(Project, Model);
-        bool scopedToPerson = OwnedTable.IsScoped(Model, Project);
-
-        // the parents a row of this table points at whose delete rule refuses the delete while a row uses them: the parent's own DELETE must answer 400, so a screen can say "in use"
-        var usedParents = bodyColumns.Where(c => !c.IsPrimaryKey)
-            .Select(c => (Column: c, Key: Model.ForeignKeys.FirstOrDefault(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name && f.ReferencedColumns.Count == 1)))
-            .Where(x => x.Key is not null && x.Key.DeleteRule.RefusesInUse() && ForeignKeyParentRoute(x.Column, out string _).Length > 0 && !Project.NoApiFor(x.Key.ReferencedTable, x.Key.ReferencedLookupShape))
-            .Take(3).ToList();
-
-        // limits the validators enforce, for the 400 tests
-        var longText = Project.ApiValidation ? bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0) : null;
-        ColumnModel? ranged = null;
-        long over = 0;
-        if (Project.ApiValidation)
-        {
-            foreach (var c in bodyColumns.Where(c => !c.IsPrimaryKey && c.IsIntegerColumn))
-            {
-                if (Project.RangeFor(c) is { } range && range.Max < NumericClassifier.TypeRange(c.SqlType).Max && ForeignKeyParentRoute(c, out string _).Length == 0)
-                {
-                    ranged = c;
-                    over = range.Max + 1;
-                    break;
-                }
-            }
-        }
+        string singular = plan.Singular;
+        string route = plan.Route;
+        string keyJson = plan.KeyJson;
+        string keyCs = plan.KeyCs;
+        string idRef = plan.IdRef;
+        string absentKey = plan.AbsentKey;
+        var bodyColumns = plan.BodyColumns;
+        string Expression(ColumnModel c) => plan.Expression(c);
+        var changed = plan.Changed;
+        string changedJson = plan.ChangedJson;
+        string changedType = plan.ChangedType;
+        var sortNames = plan.SortNames;
+        bool canClone = plan.CanClone;
+        var uniqueText = plan.UniqueText;
+        var writeRoles = plan.WriteRoles;
+        var readRoles = plan.ReadRoles;
+        bool scopedToPerson = plan.ScopedToPerson;
+        var usedParents = plan.UsedParents;
+        var longText = plan.LongText;
+        var ranged = plan.Ranged;
+        long over = plan.OverLimit;
 #>
 namespace <#= projectName #>.Api.Tests;
 
@@ -395,9 +318,11 @@ public class <#= singular #>ApiTests
     }
 <#
         }
-        foreach (var (usedColumn, usedKey) in usedParents)
+        foreach (var used in usedParents)
         {
-            string usedRoute = ForeignKeyParentRoute(usedColumn, out string usedKeyName);
+            var usedColumn = used.Column;
+            var usedKey = used.Key;
+            string usedRoute = used.Route;
 #>
 
     [TestMethod]

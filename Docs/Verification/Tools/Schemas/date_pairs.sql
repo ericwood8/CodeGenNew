@@ -1,0 +1,27 @@
+CREATE TABLE Project (
+    ProjectId INTEGER PRIMARY KEY AUTOINCREMENT,
+    Name VARCHAR(40) NOT NULL,
+    Code VARCHAR(10) NOT NULL,
+    StartDate DATE NOT NULL,
+    EndDate DATE NULL,
+    Budget INTEGER NOT NULL
+);
+
+CREATE TABLE Booking (
+    BookingId INTEGER PRIMARY KEY AUTOINCREMENT,
+    Guest VARCHAR(40) NOT NULL,
+    Room VARCHAR(10) NOT NULL,
+    CheckIn DATE NOT NULL,
+    CheckOut DATE NOT NULL,
+    Note VARCHAR(50) NULL,
+    CHECK (CheckOut >= CheckIn)
+);
+
+CREATE TABLE Leave (
+    LeaveId INTEGER PRIMARY KEY AUTOINCREMENT,
+    Person VARCHAR(40) NOT NULL,
+    Kind VARCHAR(10) NOT NULL,
+    StartDate DATE NOT NULL,
+    EndDate DATE NOT NULL,
+    Note VARCHAR(50) NULL
+);

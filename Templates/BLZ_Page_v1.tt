@@ -438,7 +438,13 @@
                     : $"<InputCheckbox id=\"{id}\" @bind-Value=\"{bind}\" />";
             }
             else if (kind == FieldKind.Date)
-                input = $"<InputDate id=\"{id}\" @bind-Value=\"{bind}\"{required} />";
+            {
+                // an end date cannot be picked before its start (the browser refuses a Save with one)
+                string minimum = DatePairs.EndingAt(Model, Project, c) is { } endsAfter
+                    ? $" min=\"@row.{endsAfter.Start.CSharpName()}{(endsAfter.Start.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd\")\""
+                    : "";
+                input = $"<InputDate id=\"{id}\" @bind-Value=\"{bind}\"{minimum}{required} />";
+            }
             else if (kind == FieldKind.Money)
                 input = $"<CurrencyInput id=\"{id}\" @bind-Value=\"{bind}\" Digits=\"{NumericClassifier.CurrencyDigits(c)}\" Symbol=\"{Symbol()}\"{required} />";
             else if (kind == FieldKind.Number)

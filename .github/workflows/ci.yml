@@ -64,3 +64,101 @@ jobs:
           dotnet-version: 10.0.x
       - name: Build the WinUI3 app
         run: dotnet build CodeGenNew.App -c Release -p:Platform=x64
+
+  # The generated front ends in a real browser: Docs/Verification/Test-FrontEndPages.py generates a throwaway SQLite project, builds and starts the API and
+  # the front end, and walks the Region screen, a drop-down fed by another table, a master-detail dialog and the paging bar, checking the database after each step.
+  # It uses the Chrome that the runner already has, so no browser is downloaded.
+  browser-walk:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [react, angular, blazor]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install playwright
+      - name: Walk the ${{ matrix.stack }} app
+        run: python Docs/Verification/Test-FrontEndPages.py --stack ${{ matrix.stack }} --build-cli
+
+  # The Uno browser head needs the wasm-tools workload and draws on a canvas, so it is driven through its accessibility page; it does not stop the build.
+  browser-walk-uno:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: dotnet workload install wasm-tools
+      - run: pip install playwright
+      - name: Walk the Uno app
+        run: python Docs/Verification/Test-FrontEndPages.py --stack uno --build-cli
+
+  # The live schema tests (what the databases report about tables, keys, checks, comments and indexes) over throwaway servers: GitHub service containers for
+  # PostgreSQL, MySQL and SQL Server. The databases are empty, so the tests that read the InvoiceSystem sample's tables report themselves as inconclusive
+  # (CODEGENNEW_SAMPLE_DATA=none); the others make their own tables and drop them again.
+  live-schema-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci
+          MYSQL_DATABASE: codegen
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -pci" --health-interval 5s --health-timeout 5s --health-retries 20
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Ci-Passw0rd-1"
+        ports: ["1433:1433"]
+    env:
+      CODEGENNEW_SAMPLE_DATA: none
+      CODEGENNEW_PG_HOST: localhost
+      CODEGENNEW_PG_DATABASE: postgres
+      CODEGENNEW_PG_USER: postgres
+      CODEGENNEW_PG_PASSWORD: ci
+      CODEGENNEW_MYSQL_HOST: 127.0.0.1
+      CODEGENNEW_MYSQL_DATABASE: codegen
+      CODEGENNEW_MYSQL_USER: root
+      CODEGENNEW_MYSQL_PASSWORD: ci
+      CODEGENNEW_SQLSERVER_HOST: localhost
+      CODEGENNEW_SQLSERVER_DATABASE: master
+      CODEGENNEW_SQLSERVER_USER: sa
+      CODEGENNEW_SQLSERVER_PASSWORD: "Ci-Passw0rd-1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      # SQL Server takes the longest to accept a login
+      - name: Wait for SQL Server
+        run: |
+          for i in $(seq 1 60); do
+            (echo > /dev/tcp/localhost/1433) 2>/dev/null && break
+            sleep 2
+          done
+          sleep 15
+      - name: Live schema tests
+        run: dotnet test CodeGenNew.Tests -c Release --filter "FullyQualifiedName~PostgresIntegrationTests|FullyQualifiedName~MySqlTests|FullyQualifiedName~SchemaDescriptionTests|FullyQualifiedName~SchemaIndexTests|FullyQualifiedName~CheckConstraintTests"

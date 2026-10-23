@@ -37,6 +37,30 @@ public static class DesktopFormCode
             ? "else if (" + prop + ".Value.Date > DateTime.Today && ((DateTime?)entity." + prop + ")?.Date != " + prop + ".Value.Date) { ErrorMessage = \"" + label + " must not be later than today.\"; return false; }"
             : null;
 
+    /// <summary> For each date that must not be earlier than another (<see cref="DatePairs"/>): the earliest date the end's calendar offers, which follows the start, and the notice that tells the calendar when the start changes
+    /// (four spaces in). Empty when the table has no pair. </summary>
+    public static string PairProperties(FormModel form, ProjectSettings project)
+    {
+        var o = new StringBuilder();
+        foreach (var pair in DatePairs.For(form.Table, project).Where(p => form.Columns.Contains(p.End) && form.Columns.Contains(p.Start) && form.ValueOf(p.End) == ValueKind.Date && form.ValueOf(p.Start) == ValueKind.Date))
+        {
+            o.Append('\n');
+            o.Append($"    /// <summary> The earliest date the {pair.End.Name} calendar offers: the {pair.Start.Name} date (the calendar's own first date while there is none). </summary>\n");
+            o.Append($"    public DateTimeOffset {pair.End.Name}MinDate => {pair.Start.Name}?.Date is {{ }} start ? new DateTimeOffset(start, TimeSpan.Zero) : new DateTimeOffset(1920, 1, 1, 0, 0, 0, TimeSpan.Zero);\n");
+            o.Append($"    partial void On{pair.Start.Name}Changed(DateTimeOffset? value) => OnPropertyChanged(nameof({pair.End.Name}MinDate));\n");
+        }
+        return o.ToString();
+    }
+
+    /// <summary> The check of a date that must not be earlier than the date it follows (a changed value only), or null when the column ends no pair. </summary>
+    public static string? PairCheck(FormModel form, ProjectSettings project, TableModel table, ColumnModel column, string prop)
+    {
+        if (DatePairs.EndingAt(table, project, column) is not { } pair || !form.Columns.Contains(pair.Start) || form.ValueOf(pair.Start) != ValueKind.Date)
+            return null;
+        string start = pair.Start.Name;
+        return $"else if ({start} is not null && {prop}.Value.Date < {start}.Value.Date && (((DateTime?)entity.{prop})?.Date != {prop}.Value.Date || ((DateTime?)entity.{start})?.Date != {start}.Value.Date)) {{ ErrorMessage = \"{pair.Message}\"; return false; }}";
+    }
+
     /// <summary> The line that fills the view-model property from <c>editing</c>, the row being edited (twelve spaces in). A foreign key is not set here: its drop-down is filled first. Empty for it. </summary>
     public static string LoadLines(FormModel form, ColumnModel column)
     {
@@ -173,6 +197,8 @@ public static class DesktopFormCode
                 L("}");
                 if (FutureCheck(project, table, column, prop, label) is { } futureCheck)
                     L(futureCheck);
+                if (PairCheck(form, project, table, column, prop) is { } pairCheck)
+                    L(pairCheck);
                 L($"else {{ entity.{prop} = {prop}.Value.Date + _{char.ToLowerInvariant(prop[0]) + prop[1..]}Time; }}");
                 break;
             }

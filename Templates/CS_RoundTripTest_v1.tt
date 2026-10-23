@@ -20,8 +20,8 @@
     string entityNamespace = Project.EntityNamespace ?? "MyApp.Common.Entities";
     string dtoNamespace = Project.DtoNamespace ?? "MyApp.Dtos";
 
-    var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
-    string? hashColumn = UserTable.PlanOf(Model, Project)?.PasswordHash.Name;
+    var testColumns = DtoTestColumns.Of(Model, Project);
+    var columns = testColumns.All;
     if (!columns.All(TestSampleValues.Has))
     {
         Error($"CS_RoundTripTest cannot make a sample value for the column of an unsupported type in [{Model.SchemaName}].[{Model.TableName}].");
@@ -33,9 +33,9 @@
         string dto = table + "Dto";
         string mapping = table + "Mapping";
         bool hasKey = Model.PrimaryKeyColumns.Count > 0;
-        var checkedColumns = columns.Where(c => hashColumn is null || !c.Name.EqualsIgnoreCase(hashColumn)).ToList();
-        var meaningful = columns.Where(c => !c.IsPrimaryKey && !c.IsIdentity && !c.IsComputed && !c.IsAuditColumn && !c.IsStampColumn && (hashColumn is null || !c.Name.EqualsIgnoreCase(hashColumn))).ToList();
-        var changed = meaningful.FirstOrDefault();
+        var checkedColumns = testColumns.Checked;
+        var meaningful = testColumns.Meaningful;
+        var changed = testColumns.Changed;
 
         string Sample(ColumnModel c, int n) => TestSampleValues.Value(c, n);
         string Id(ColumnModel c) => c.CSharpName();

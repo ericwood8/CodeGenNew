@@ -339,8 +339,8 @@ public partial class PostgresSchemaProvider : SchemaProviderBase
                (SELECT array_agg(pg_get_constraintdef(con.oid)) FROM pg_constraint con
                          JOIN pg_class t ON t.oid = con.conrelid
                          JOIN pg_namespace n ON n.oid = t.relnamespace
-                         JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = con.conkey[1]
-                        WHERE con.contype = 'c' AND array_length(con.conkey, 1) = 1
+                         JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY (con.conkey)
+                        WHERE con.contype = 'c' AND array_length(con.conkey, 1) <= 2
                           AND n.nspname = c.table_schema AND t.relname = c.table_name AND a.attname = c.column_name) AS check_definitions
         FROM information_schema.columns c
         WHERE c.table_schema = @schema AND c.table_name = @table

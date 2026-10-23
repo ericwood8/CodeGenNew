@@ -33,6 +33,14 @@ public static class DataCheck
                     findings.Add(new DataFinding(table.TableName, column.Name, name, failing.Count, values.Count, failing.OrderBy(v => v.Length).Distinct().Take(ExamplesPerFinding).ToList()));
             }
         }
+        foreach (var pair in DatePairs.For(table, project))
+        {
+            int startIndex = table.Columns.IndexOf(pair.Start), endIndex = table.Columns.IndexOf(pair.End);
+            var failing = table.Rows.Where(row => row[startIndex] is DateTime start && row[endIndex] is DateTime end && end.Date < start.Date)
+                .Select(row => ((DateTime)row[startIndex]!).ToString("yyyy-MM-dd") + " to " + ((DateTime)row[endIndex]!).ToString("yyyy-MM-dd")).ToList();
+            if (failing.Count > 0)
+                findings.Add(new DataFinding(table.TableName, pair.End.Name, "a date not earlier than " + pair.Start.Name, failing.Count, table.Rows.Count, failing.Distinct().Take(ExamplesPerFinding).ToList()));
+        }
         return findings;
     }
 

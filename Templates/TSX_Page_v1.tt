@@ -844,6 +844,9 @@
                 T($"            <input");
                 T($"              id=\"{id}\"");
                 T("              type=\"date\"");
+                // an end date cannot be picked before its start (the form's own check refuses it too, for a field that changed)
+                if (DatePairs.EndingAt(Model, Project, c) is { } endsAfter)
+                    T($"              min={{selectedRow.{JsonNames.Camel(endsAfter.Start.Name)}?.substring(0, 10)}}");
                 T($"              aria-label=\"{Labels.Field(c)}\"");
                 T(c.IsNullable ? $"              value={{selectedRow.{prop} ?? ''}}" : $"              value={{selectedRow.{prop}}}");
                 T(c.IsNullable ? $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value || undefined }})}}" : $"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: event.target.value }})}}");

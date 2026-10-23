@@ -395,6 +395,9 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
 #>
 
 <#
+        Write(DesktopFormCode.PairProperties(form, Project));
+#>
+<#
         // The values the database lists for a column (a MySQL enum), shown as a drop-down.
         foreach (var c in shown.Where(c => c.HasChoices))
         {

@@ -284,6 +284,13 @@ public class MySqlProcedureTests
 [TestClass]
 public class MySqlIntegrationTests
 {
+    /// <summary> The tests that read the InvoiceSystem sample's tables report themselves as inconclusive where the database is an empty scratch one (<c>CODEGENNEW_SAMPLE_DATA=none</c>, as in the CI job). </summary>
+    private static void NeedsSampleData()
+    {
+        if (Environment.GetEnvironmentVariable("CODEGENNEW_SAMPLE_DATA") == "none")
+            Assert.Inconclusive("This test reads the InvoiceSystem sample's tables, and CODEGENNEW_SAMPLE_DATA says the database does not have them.");
+    }
+
     private static MySqlSchemaProvider Provider(NamingStyle naming)
     {
         string? host = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_HOST");
@@ -303,6 +310,7 @@ public class MySqlIntegrationTests
     [TestMethod]
     public async Task The_table_list_has_the_sample_tables_under_their_real_names()
     {
+        NeedsSampleData();
         var tables = await Provider(NamingStyle.AsIs).ListTablesAsync();
 
         var customer = tables.Single(t => t.TableName == "customer");
@@ -315,6 +323,7 @@ public class MySqlIntegrationTests
     [TestMethod]
     public async Task A_table_that_is_not_there_is_reported_at_once_and_a_wrong_case_name_is_not_found_on_a_case_sensitive_server()
     {
+        NeedsSampleData();
         string database = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_DATABASE")!;
         var provider = Provider(NamingStyle.AsIs);
 
@@ -329,6 +338,7 @@ public class MySqlIntegrationTests
     [TestMethod]
     public async Task A_table_model_read_with_Pascal_naming_has_generated_and_real_names()
     {
+        NeedsSampleData();
         var model = await Provider(NamingStyle.Pascal).BuildTableModelAsync(Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_DATABASE")!, "customer_item", includeReferencedDisplayColumns: true);
 
         Assert.AreEqual("CustomerItem", model.TableName);
@@ -350,6 +360,7 @@ public class MySqlIntegrationTests
     [TestMethod]
     public async Task Types_and_row_data_come_back()
     {
+        NeedsSampleData();
         var provider = Provider(NamingStyle.Pascal);
         string database = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_DATABASE")!;
 
@@ -504,7 +515,9 @@ public class MySqlIntegrationTests
                     code varchar(10) NULL CHECK (code LIKE 'AB%'),
                     five varchar(10) NULL CHECK (char_length(five) = 5),
                     spread varchar(10) NULL CHECK (char_length(spread) >= 3 AND char_length(spread) <= 8),
-                    other varchar(10) NULL CHECK (char_length(other) > 2 OR other = 'x'))
+                    other varchar(10) NULL CHECK (char_length(other) > 2 OR other = 'x'),
+                    check_in date NULL, check_out date NULL, CHECK (check_out >= check_in),
+                    first_day date NULL, last_day date NULL, CHECK (last_day IS NULL OR first_day <= last_day))
                 """);
 
             var model = await provider.BuildTableModelAsync(database, "codegen_checks_test");
@@ -515,6 +528,9 @@ public class MySqlIntegrationTests
             Assert.AreEqual("text of 5 characters", Of("Five").CheckNotation!.Noun);
             Assert.AreEqual("text of 3 to 8 characters", Of("Spread").CheckNotation!.Noun);
             Assert.IsNull(Of("Other").CheckNotation, "an OR is left to the database");
+            Assert.AreEqual("CheckIn", Of("CheckOut").NotBeforeColumn);
+            Assert.AreEqual("FirstDay", Of("LastDay").NotBeforeColumn, "a blank-guarded CHECK is the pair too");
+            Assert.IsNull(Of("CheckIn").NotBeforeColumn);
         }
         finally
         {

@@ -25,27 +25,21 @@
     else
     {
         string ns = BlazorNames.Namespace(Project);
-        var form = FormModel.For(Model, Project);
-        var row = GridTestRow.For(form, ChosenGridColumns.For(form));
-        string type = BlazorNames.TypeName(Model.TableName);
-        string title = form.Title;
-        string apiRoute = BlazorNames.ApiRoute(Model.TableName);
-        string set = "/odata/" + ODataNames.SetName(Model.TableName);
-        string keyText = row is null ? "1" : Uri.EscapeDataString(row.KeyText);
-        IReadOnlyList<string> readRoles = Project.Auth ? WriteRolePlan.ReadFor(Project, Model) : new List<string>();
-        IReadOnlyList<string> writeRoles = Project.Auth ? WriteRolePlan.For(Project, Model) : new List<string>();
-        string role = writeRoles.Count > 0 ? WriteRoleSpec.AllowedRole(writeRoles) : readRoles.Count > 0 ? readRoles[0] : "Tester";
-        string signIn = Project.Auth ? $"        SignIn(\"{role.Replace("\\", "\\\\").Replace("\"", "\\\"")}\");\n" : "";
-        string parentKeyJson = form.TextKey && row is not null ? "\"" + row.KeyText + "\"" : "1";
-        var children = ChildGrid.For(Model, Project)
-            .Where(g => DatabaseModel.IsDetailMaster(Model, Project) && g.KeyColumn is not null && g.KeyType is not null && !g.IsNameActive && !Project.NoRepositoryFor(g.Table, default) && !g.IsEditable)
-            .ToList();
-        var editable = ChildGrid.For(Model, Project)
-            .Where(g => DatabaseModel.IsDetailMaster(Model, Project) && g.KeyColumn is not null && g.KeyType is not null && !g.IsNameActive && !Project.NoRepositoryFor(g.Table, default) && g.IsEditable)
-            .ToList();
-        var chosen = ChosenGridColumns.For(form);
-        string? sortName = chosen.Initial.FirstOrDefault(c => c.Sortable)?.Name;
-        var search = form.SearchFields.FirstOrDefault(f => f.Column is not null);
+        // what the tests look for and with which values is BlazorTestPlan's (Core); this template writes the text
+        var plan = BlazorTestPlan.For(Model, Project);
+        var form = plan.Form;
+        var row = plan.Row;
+        string type = plan.Type;
+        string title = plan.Title;
+        string apiRoute = plan.ApiRoute;
+        string set = plan.ODataSet;
+        string keyText = plan.KeyText;
+        string signIn = plan.SignIn;
+        string parentKeyJson = plan.ParentKeyJson;
+        var children = plan.Children;
+        var editable = plan.Editable;
+        string? sortName = plan.SortName;
+        var search = plan.Search;
         var o = new System.Text.StringBuilder();
         o.Append($"using Bunit;\nusing Microsoft.AspNetCore.Components;\nusing Microsoft.Extensions.DependencyInjection;\nusing {ns}.Pages;\n\nnamespace {ns}.Tests;\n");
 

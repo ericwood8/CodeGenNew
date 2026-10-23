@@ -379,7 +379,10 @@
             {
                 // A nullable date has a Clear button on the same line, like WinUI3's calendar.
                 if (c.IsNullable) H("                <div class=\"date-with-clear\">");
-                H($"                <input type=\"date\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{req}>");
+                string minimum = DatePairs.EndingAt(Model, Project, c) is { } endsAfter
+                    ? $" [attr.min]=\"selectedRow.{JsonNames.Camel(endsAfter.Start.Name)} ? selectedRow.{JsonNames.Camel(endsAfter.Start.Name)}.substring(0, 10) : null\""
+                    : "";
+                H($"                <input type=\"date\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{minimum}{req}>");
                 if (c.IsNullable)
                 {
                     H($"                <button type=\"button\" class=\"btn-action\" (click)=\"{model} = undefined\">Clear</button>");

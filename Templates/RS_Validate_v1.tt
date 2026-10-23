@@ -118,6 +118,27 @@
             checks.Add(new[] { $"    if stored.is_none_or(|s| s.{f.Name} != row.{f.Name}) {{" }.Concat(lines.Select(l => "    " + l)).Append("    }").ToArray());
     }
 
+    // a date that must not be earlier than another date of the row (an end and its start); checked when either changed
+    foreach (var pair in DatePairs.For(Model, Project))
+    {
+        var start = t.Fields.FirstOrDefault(x => x.Column.Name == pair.Start.Name);
+        var end = t.Fields.FirstOrDefault(x => x.Column.Name == pair.End.Name);
+        if (start is null || end is null || start.BaseType is not ("NaiveDate" or "NaiveDateTime" or "DateTime<Utc>") || end.BaseType is not ("NaiveDate" or "NaiveDateTime" or "DateTime<Utc>"))
+            continue;
+        // the day of a value that may be missing: None when it is, else the day (a date and time is compared by its day)
+        string Day(RustField f) => f.IsOption
+            ? $"row.{f.Name}.as_ref().map(|v| {(f.BaseType switch { "NaiveDate" => "*v", "NaiveDateTime" => "v.date()", _ => "v.date_naive()" })})"
+            : $"Some({(f.BaseType switch { "NaiveDate" => $"row.{f.Name}", "NaiveDateTime" => $"row.{f.Name}.date()", _ => $"row.{f.Name}.date_naive()" })})";
+        checks.Add(new[]
+        {
+            $"    if stored.is_none_or(|s| s.{start.Name} != row.{start.Name} || s.{end.Name} != row.{end.Name}) {{",
+            $"        if let (Some(start), Some(end)) = ({Day(start)}, {Day(end)}) {{",
+            $"            if end < start {{ problems.push(({Str(pair.End.Name)}, {Str(pair.Message)})); }}",
+            "        }",
+            "    }"
+        });
+    }
+
     Line($"@@@FILE src/validation/{t.Module}.rs@@@");
     Line($"use crate::models::{t.Module}::{t.Struct};");
     Line("use crate::support::ApiError;");

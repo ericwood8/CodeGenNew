@@ -73,6 +73,17 @@
             checks.Add($"if stored is None or {value} != stored.{f.Name}:\n" + string.Join("\n", fieldChecks.SelectMany(c => c.Split('\n')).Select(l => "    " + l)));
     }
 
+    // a date that must not be earlier than another date of the row (an end and its start); checked when either changed
+    foreach (var pair in DatePairs.For(Model, Project))
+    {
+        var start = t.SchemaFields.FirstOrDefault(x => x.Column.Name == pair.Start.Name);
+        var end = t.SchemaFields.FirstOrDefault(x => x.Column.Name == pair.End.Name);
+        if (start is null || end is null || start.ReadOnly || end.ReadOnly || start.Annotation is not ("date" or "datetime") || end.Annotation is not ("date" or "datetime"))
+            continue;
+        string Day(string name, string annotation) => annotation == "datetime" ? $"row.{name}.date()" : $"row.{name}";
+        checks.Add($"if stored is None or row.{start.Name} != stored.{start.Name} or row.{end.Name} != stored.{end.Name}:\n    if row.{start.Name} is not None and row.{end.Name} is not None and {Day(end.Name, end.Annotation)} < {Day(start.Name, start.Annotation)}:\n        problems.append(({Str(pair.End.Name)}, {Str(pair.Message)}))");
+    }
+
     Line($"@@@FILE app/validation/{t.Module}.py@@@");
     if (anyFuture)
         Line("from datetime import date");

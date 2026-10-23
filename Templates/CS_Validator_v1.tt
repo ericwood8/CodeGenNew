@@ -110,6 +110,10 @@
             rules.Add($"        RuleFor(x => x.{Id(c)}){string.Concat(parts)};");
         }
 
+        // a date that must not be earlier than another date of the row (an end and its start); a blank one is not judged
+        foreach (var pair in DatePairs.For(Model, Project))
+            rules.Add($"        RuleFor(x => x.{Id(pair.End)}).Must((x, end) => ((DateTime?)x.{Id(pair.Start)}) is not {{ }} start || ((DateTime?)end) is not {{ }} stop || stop.Date >= start.Date).WithMessage({CSharpText.Quote(pair.Message)});");
+
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
 

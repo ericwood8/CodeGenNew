@@ -164,14 +164,14 @@ public partial class SqliteSchemaProvider : SchemaProviderBase
         // INTEGER PRIMARY KEY is an alias of the row id: the database fills it in (a WITHOUT ROWID table has no row id)
         bool rowIdAlias = !definition.WithoutRowId && primaryKey.Count == 1 && string.Equals(primaryKey[0].Type?.Trim(), "INTEGER", StringComparison.OrdinalIgnoreCase);
 
-        var checks = definition.Checks.Select(c => (c.Column ?? ColumnMentionedBy(c.Expression, info), c.Expression))
-            .Where(c => c.Item1 is not null).Select(c => (c.Item1, c.Expression)).ToList();
+        // a constraint over two columns has no column of its own here; WithChecks gives one that puts two dates in order to the later one
+        var checks = definition.Checks.Select(c => (Column: c.Column ?? ColumnMentionedBy(c.Expression, info), c.Expression)).ToList();
 
         var columns = new List<RawColumn>();
         foreach (var c in info)
         {
             var (sqlType, maxLength, precision, scale, declaration) = MapType(c.Type);
-            var columnChecks = checks.Where(k => string.Equals(k.Item1, c.Name, StringComparison.OrdinalIgnoreCase)).Select(k => k.Expression).ToList();
+            var columnChecks = checks.Where(k => string.Equals(k.Column, c.Name, StringComparison.OrdinalIgnoreCase)).Select(k => k.Expression).ToList();
             if (sqlType is "int" or "smallint" or "bigint" && c.PrimaryKeyPosition == 0 && IsFlag(c.Name, columnChecks))
                 sqlType = "bit";
 
@@ -197,7 +197,7 @@ public partial class SqliteSchemaProvider : SchemaProviderBase
                 Choices: null));
         }
 
-        return WithChecks(columns, checks.Select(k => (k.Item1, k.Expression)));
+        return WithChecks(columns, checks);
     }
 
     /// <summary> An integer column is a flag when its name says so (IsActive, has_photo) or its only allowed values are 0 and 1: SQLite has no boolean type, so a flag is an integer by another name. </summary>

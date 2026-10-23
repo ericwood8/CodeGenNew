@@ -16,6 +16,9 @@ public static class RuleMessages
 
     public static string NotFuture(string label) => label + " must not be later than today.";
 
+    /// <summary> The sentence for a date that comes before the date it must follow (an end before its start). </summary>
+    public static string NotBefore(string label, string startLabel) => label + " must not be earlier than " + startLabel + ".";
+
     public static string AtLeast(string label, double min, bool strict) => label + " must be " + (strict ? "greater than " : "at least ") + TemplateHelpers.Num(min) + ".";
 
     public static string AtMost(string label, double max, bool strict) => label + " must be " + (strict ? "less than " : "at most ") + TemplateHelpers.Num(max) + ".";

@@ -8,3 +8,5 @@ A zod schema, `schemas/<table>.ts`, of the fields a person fills in, and the for
 - Not in a plan unless the project names it in `PlanAlso`; the files go under `src/schemas`.
 - **Checked** by compiling the output for the PostgreSQL sample's customer table with `tsc --strict` and running `safeParse` on a good row and a bad one (all four faults reported).
 - **Shapes and dates:** a postal code and a social security number get `.regex(...)` with the shared patterns; a column in `NotFutureDateColumns` gets `.refine(...)` against `new Date().toLocaleDateString("en-CA")`.
+
+**Dates in order.** A pair of dates (`DatePairs`, see CS_Validator_v1) is a `.refine` on the whole object, with the sentence on the end field: the same rule as the API validators, on the first 10 characters of the two values.

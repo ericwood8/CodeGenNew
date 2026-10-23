@@ -43,6 +43,25 @@ public sealed class JunctionShape
         && !project.NoApiFor(AnchorForeignKey.ReferencedTable, AnchorForeignKey.ReferencedLookupShape)
         && !project.NoLookupFor(AnchorForeignKey.ReferencedTable, AnchorForeignKey.ReferencedLookupShape);
 
+    /// <summary> Whether both sides have a REST API of their own, whose rows a test (or a screen) takes the two rows to link from. </summary>
+    public bool BothSidesHaveApi(ProjectSettings project) => HasApi(AnchorForeignKey, project) && HasApi(TargetForeignKey, project);
+
+    private static bool HasApi(ForeignKeyModel fk, ProjectSettings project) => fk.ReferencedColumns.Count == 1 && !project.NoApiFor(fk.ReferencedTable, fk.ReferencedLookupShape);
+
+    /// <summary> Whether a side's key is text or a guid (a key that is not a whole number travels as text in the tests). </summary>
+    public bool AnchorKeyIsText => IsTextKey(AnchorColumn);
+    public bool TargetKeyIsText => IsTextKey(TargetColumn);
+
+    private static bool IsTextKey(ColumnModel c) => c.SqlType is not (SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt or SqlDbType.TinyInt);
+
+    /// <summary> The C# expression of a target key no row has, for the test that a missing target cannot be linked; blank when the key is text the person chooses (any text may exist). </summary>
+    public string AbsentTargetCs => TargetColumn.SqlType switch
+    {
+        SqlDbType.Int or SqlDbType.BigInt or SqlDbType.SmallInt => "int.MaxValue",
+        SqlDbType.UniqueIdentifier => "Guid.NewGuid()",
+        _ => ""
+    };
+
     /// <summary> The C# types of the two keys (<c>int</c> when the column is of a type the routes do not name). </summary>
     public string AnchorCs => CSharpType(AnchorColumn.SqlType);
     public string TargetCs => CSharpType(TargetColumn.SqlType);

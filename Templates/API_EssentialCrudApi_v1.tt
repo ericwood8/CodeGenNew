@@ -14,33 +14,30 @@
     // there (so the columns it leaves out keep their values), and every answer is the output type. CrudApi<TEntity, TRepo> keeps taking and answering the entity.
     // Full notes: Docs/TemplateNotes/API_EssentialCrudApi_v1.md
     // ==========================================================================================
-    string projectName = Project.ProjectName ?? "MyApp";
-    string apiNamespace = Project.ApiNamespace ?? projectName + ".Api.Apis";
-    string entityNamespace = Project.EntityNamespace ?? projectName + ".Api.Entities";
-    string repoNamespace = Project.RepoNamespace ?? projectName + ".Api.Repositories";
-    string contextNamespace = Project.ContextNamespace ?? projectName + ".Api.Data";
-    string contextType = Project.ContextName ?? "AppContext";
-    string baseNameActiveEntity = Project.BaseNameActiveEntity ?? "BaseNameActiveEntity";
-    string validation(string when) => Project.ApiValidation ? when : "";
-    string auth(string when) => Project.ApiAuth ? when : "";
+    // what the project's settings change in these classes is CrudApiOptions' (Core); this template is their text
+    var options = CrudApiOptions.Of(Project);
+    string apiNamespace = options.ApiNamespace;
+    string entityNamespace = options.EntityNamespace;
+    string repoNamespace = options.RepoNamespace;
+    string contextNamespace = options.ContextNamespace;
+    string contextType = options.ContextType;
+    string baseNameActiveEntity = options.BaseNameActiveEntity;
+    string validation(string when) => options.Validation ? when : "";
+    string auth(string when) => options.Auth ? when : "";
     // WriteRoles: the write routes refuse a role the table's WriteRoles does not list (RoleGate, written by the Jwt group)
-    string roles(string indent) => Project.ApiAuth ? indent + ".RequireWriteRoles(WriteRoles)\n" : "";
+    string roles(string indent) => options.Auth ? indent + ".RequireWriteRoles(WriteRoles)\n" : "";
     // ReadRoles: the list, one row, find by name and the active list refuse a role the table's ReadRoles does not list (the lookup stays open for the drop-downs of other screens)
-    string reads(string indent) => Project.ApiAuth ? indent + ".RequireReadRoles(ReadRoles)\n" : "";
-    // EditableChildren: a form saves the rows of some child tables together with the parent (ChildRows); written only when the project lists a child
-    bool children = Project.EditableChildren.Length > 0;
-    // Dtos: a table's API can take an input type and answer an output type (CS_DtoInput, CS_Dto) instead of its entity; the entity-typed classes below stay for a table that does not
-    bool dtos = Project.Dtos;
-    string input = dtos ? "TInput" : "TEntity";
-    string output = dtos ? "TOutput" : "TEntity";
-    string map(string row) => dtos ? $"ToOutput({row})" : row;
-    string mapAll(string rows) => dtos ? $"{rows}.Select(ToOutput).ToList()" : rows;
-    // the create and update handlers receive the entity's validator themselves, because the endpoint filter only sees a body of the entity type
-    string validatorParameter = dtos && Project.ApiValidation ? ", [FromServices] IValidator<TEntity>? validator" : "";
-    string validatorArgument = dtos && Project.ApiValidation ? ", validator" : "";
-    // ListProtocol=Search: the list route takes the parameter names of the project's list protocol and answers { data, count }; the table's class says what the search box matches and what can be sorted
-    bool listSearch = Project.ListSearchProtocol;
-    int firstPage = Project.PageBase;
+    string reads(string indent) => options.Auth ? indent + ".RequireReadRoles(ReadRoles)\n" : "";
+    bool children = options.Children;
+    bool dtos = options.Dtos;
+    string input = options.Input;
+    string output = options.Output;
+    string map(string row) => options.Map(row);
+    string mapAll(string rows) => options.MapAll(rows);
+    string validatorParameter = options.ValidatorParameter;
+    string validatorArgument = options.ValidatorArgument;
+    bool listSearch = options.ListSearch;
+    int firstPage = options.FirstPage;
 #>
 @@@FILE Apis/CrudApi.cs@@@
 namespace <#= apiNamespace #>;

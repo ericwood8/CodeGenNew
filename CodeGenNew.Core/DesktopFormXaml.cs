@@ -102,7 +102,9 @@ public static class DesktopFormXaml
         else if (kind == FieldKind.Date)
         {
             L(I + "<StackPanel Orientation=\"Horizontal\" Spacing=\"8\">");
-            L(I + $"    <CalendarDatePicker Header=\"{label}\"{required} Date=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"");
+            // an end date cannot be picked before its start: the calendar's first date follows the start's
+            string minimum = DatePairs.EndingAt(table, project, column) is { } endsAfter && form.Columns.Contains(endsAfter.Start) && form.ValueOf(endsAfter.Start) == ValueKind.Date ? $" MinDate=\"{{x:Bind ViewModel.{prop}MinDate, Mode=OneWay}}\"" : "";
+            L(I + $"    <CalendarDatePicker Header=\"{label}\"{required}{minimum} Date=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"");
             L(I + "                        DateFormat=\"{}{month.integer}/{day.integer}/{year.full}\" PlaceholderText=\"mm/dd/yyyy\" Width=\"180\" />");
             if (column.IsNullable)
                 L(I + $"    <Button Content=\"Clear\" VerticalAlignment=\"Bottom\" Click=\"OnClear{prop}Click\" />");

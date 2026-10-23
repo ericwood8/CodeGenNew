@@ -20,7 +20,8 @@
     // Full notes: Docs/TemplateNotes/CS_MapperlyTest_v1.md
     // ==========================================================================================
 
-    var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
+    var testColumns = DtoTestColumns.Of(Model, Project);
+    var columns = testColumns.All;
     if (Model.PrimaryKeyColumns.Count == 0)
     {
         Error($"CS_MapperlyTest needs a table with a primary key, but [{Model.SchemaName}].[{Model.TableName}] has none.");
@@ -34,7 +35,7 @@
         string projectName = Project.ProjectName ?? "MyApp";
         string table = Model.TableName;
         string mapper = table + "Mapper";
-        string? hashColumn = UserTable.PlanOf(Model, Project)?.PasswordHash.Name;
+        string? hashColumn = testColumns.HashColumn;
         string Id(ColumnModel c) => c.CSharpName();
 
         var o = new StringBuilder();

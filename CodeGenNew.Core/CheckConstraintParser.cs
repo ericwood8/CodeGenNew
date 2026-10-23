@@ -46,6 +46,43 @@ public static partial class CheckConstraintParser
         return names.Count == 1 ? names[0] : null;
     }
 
+    /// <summary> The two columns a CHECK constraint puts in order (<c>CHECK (start_date &lt;= end_date)</c>, <c>[End] &gt;= [Start]</c>, or either guarded for a blank: <c>[End] IS NULL OR [Start] &lt;= [End]</c>):
+    /// the one that comes first and the one that must not be earlier, as the definition spells them; null for anything else (a literal, a function, an AND or an OR of other things). A strict comparison counts as the
+    /// pair too, since the form only has to refuse the earlier date and the database refuses the equal one. </summary>
+    public static (string Start, string End)? DateOrder(string definition)
+    {
+        if (definition.Contains('\''))
+            return null;
+        string text = Cast.Replace(definition, "");
+        text = Regex.Replace(text, @"^\s*check\s*(?=\()", "", RegexOptions.IgnoreCase);   // the keyword, not a column that starts with it
+        text = IdentifierQuotes().Replace(text, "");
+        text = Parentheses().Replace(text, " ");
+        text = Whitespace().Replace(text, " ").Trim();
+        if (Regex.IsMatch(text, @"\sand\s", RegexOptions.IgnoreCase))
+            return null;
+
+        (string Left, string Op, string Right)? comparison = null;
+        var guarded = new List<string>();
+        foreach (string part in Regex.Split(text, @"\sor\s", RegexOptions.IgnoreCase))
+        {
+            var isNull = Regex.Match(part.Trim(), @"^(?<name>[\w$ ]+?)\s+is\s+null$", RegexOptions.IgnoreCase);
+            if (isNull.Success)
+            {
+                guarded.Add(isNull.Groups["name"].Value.Trim());
+                continue;
+            }
+            var compare = Regex.Match(part.Trim(), @"^(?<a>[A-Za-z_][\w$]*)\s*(?<op><=|>=|<|>)\s*(?<b>[A-Za-z_][\w$]*)$");
+            if (!compare.Success || comparison is not null)
+                return null;
+            comparison = (compare.Groups["a"].Value, compare.Groups["op"].Value, compare.Groups["b"].Value);
+        }
+        if (comparison is not { } c || guarded.Any(g => !g.Equals(c.Left, StringComparison.OrdinalIgnoreCase) && !g.Equals(c.Right, StringComparison.OrdinalIgnoreCase)))
+            return null;
+        if (c.Left.Equals(c.Right, StringComparison.OrdinalIgnoreCase))
+            return null;
+        return c.Op.StartsWith('<') ? (c.Left, c.Right) : (c.Right, c.Left);
+    }
+
     /// <summary> The limits <paramref name="definition"/> puts on <paramref name="column"/>, or null when it is not a plain range check on that column. </summary>
     public static CheckRange? ParseRange(string definition, string column)
     {

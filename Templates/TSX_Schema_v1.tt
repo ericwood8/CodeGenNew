@@ -81,7 +81,20 @@
         L("export const " + baseName + "Schema = z.object({");
         for (int i = 0; i < columns.Count; i++)
             L("    " + JsonNames.Camel(columns[i].Name) + ": " + Field(columns[i]) + (i == columns.Count - 1 ? "" : ","));
-        L("});");
+        // a date that must not be earlier than another date of the row (an end and its start): a check of the whole row, put on the end's field
+        var pairs = DatePairs.For(Model, Project).Where(p => columns.Any(c => c.Name == p.Start.Name) && columns.Any(c => c.Name == p.End.Name)).ToList();
+        if (pairs.Count == 0)
+        {
+            L("});");
+        }
+        else
+        {
+            L("})" + string.Concat(pairs.Select(p =>
+            {
+                string start = JsonNames.Camel(p.Start.Name), end = JsonNames.Camel(p.End.Name);
+                return $".refine((value) => !value.{start} || !value.{end} || value.{end}.substring(0, 10) >= value.{start}.substring(0, 10), {{ message: " + CSharpText.Quote(p.Message) + $", path: [\"{end}\"] }})";
+            })) + ";");
+        }
         L();
         L("export type " + baseName + "Form = z.infer<typeof " + baseName + "Schema>;");
         Write(sb.ToString());

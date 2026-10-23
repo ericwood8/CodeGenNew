@@ -7,3 +7,5 @@ The Angular twin of `TSX_Schema`: `validators/<table>.validators.ts` exports `cu
 - Not in a plan unless the project names it in `PlanAlso`; the files go under `src/app/validators`. A table the schema says nothing about gets an empty record.
 - **Checked** by compiling the output for the PostgreSQL sample's customer table against `@angular/forms` with `tsc --strict`.
 - **Shapes and dates:** a postal code and a social security number get `Validators.pattern(...)` with the shared patterns; a column in `NotFutureDateColumns` gets a local `notFuture()` validator (the day, compared as text with the local today).
+
+**Dates in order.** A pair of dates (`DatePairs`, see CS_Validator_v1) adds `notBefore(start, end)`, a validator of the whole form group, and `<table>GroupValidators`, the list to pass to the `FormGroup` (the per-field record cannot see another field). The error is `{ notBefore: { start, end } }`.
