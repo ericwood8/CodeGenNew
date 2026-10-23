@@ -280,4 +280,46 @@ public class PostgresIntegrationTests
             await Run("DROP SCHEMA IF EXISTS codegen_text_test CASCADE");
         }
     }
+
+    [TestMethod]
+    public async Task A_length_or_like_check_on_a_text_column_is_its_notation()
+    {
+        // Writes a throwaway schema (dropped again whatever happens).
+        var request = Request();
+        if (request is null)
+            Assert.Inconclusive("Set CODEGENNEW_PG_HOST, CODEGENNEW_PG_DATABASE, CODEGENNEW_PG_USER and CODEGENNEW_PG_PASSWORD to run the PostgreSQL integration tests.");
+
+        await using var connection = request!.CreatePostgresConnection();
+        await connection.OpenAsync();
+        async Task Run(string sql) { await using var command = new Npgsql.NpgsqlCommand(sql, connection); await command.ExecuteNonQueryAsync(); }
+        try
+        {
+            await Run("DROP SCHEMA IF EXISTS codegen_checks_test CASCADE");
+            await Run("CREATE SCHEMA codegen_checks_test");
+            await Run("""
+                CREATE TABLE codegen_checks_test.part (
+                    part_id serial PRIMARY KEY,
+                    code varchar(10) CHECK (code LIKE 'AB%'),
+                    five varchar(10) CHECK (length(five) = 5),
+                    spread varchar(10) CHECK (char_length(spread) >= 3 AND char_length(spread) <= 8),
+                    other varchar(10) CHECK (length(other) > 2 OR other = 'x'),
+                    big numeric(5,2) CHECK (big >= 0 AND big <= 100000))
+                """);
+
+            var model = await new PostgresSchemaProvider(request, Path.Combine(AppContext.BaseDirectory, "SpecialLogicColumns.config"), NamingStyle.Pascal).BuildTableModelAsync("codegen_checks_test", "part");
+            ColumnModel Of(string name) => model.Columns.Single(c => c.Name == name);
+
+            Assert.IsTrue(System.Text.RegularExpressions.Regex.IsMatch("AB1", "^(?:" + Of("Code").CheckNotation!.Pattern + ")$"));
+            Assert.IsFalse(System.Text.RegularExpressions.Regex.IsMatch("XB1", "^(?:" + Of("Code").CheckNotation!.Pattern + ")$"));
+            Assert.AreEqual("text of 5 characters", Of("Five").CheckNotation!.Noun);
+            Assert.AreEqual("text of 3 to 8 characters", Of("Spread").CheckNotation!.Noun);
+            Assert.IsNull(Of("Other").CheckNotation, "an OR is left to the database");
+            var rule = Of("Big").RuleOf(ProjectSettings.FromValues([new("ProjectName", "Acme")]))!;
+            Assert.AreEqual((0.0, 999.99), (rule.Min, rule.Max), "the check is wider than numeric(5,2)");
+        }
+        finally
+        {
+            await Run("DROP SCHEMA IF EXISTS codegen_checks_test CASCADE");
+        }
+    }
 }

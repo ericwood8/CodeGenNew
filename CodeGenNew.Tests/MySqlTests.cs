@@ -480,4 +480,45 @@ public class MySqlIntegrationTests
             await Run("DROP TABLE IF EXISTS codegen_types_test");
         }
     }
+
+    [TestMethod]
+    public async Task A_length_or_like_check_on_a_text_column_is_its_notation()
+    {
+        // Writes a throwaway table in the database, dropped again whatever happens.
+        var provider = Provider(NamingStyle.Pascal);
+        string database = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_DATABASE")!;
+        var request = new ConnectionRequest
+        {
+            Provider = DatabaseProvider.MySql, ServerName = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_HOST")!, DatabaseName = database, AuthMode = AuthMode.SqlLogin,
+            UserName = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_USER"), Password = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_PASSWORD")
+        };
+        await using var connection = request.CreateMySqlConnection();
+        await connection.OpenAsync();
+        async Task Run(string sql) { await using var command = connection.CreateCommand(); command.CommandText = sql; await command.ExecuteNonQueryAsync(); }
+        try
+        {
+            await Run("DROP TABLE IF EXISTS codegen_checks_test");
+            await Run("""
+                CREATE TABLE codegen_checks_test (
+                    checks_test_id int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                    code varchar(10) NULL CHECK (code LIKE 'AB%'),
+                    five varchar(10) NULL CHECK (char_length(five) = 5),
+                    spread varchar(10) NULL CHECK (char_length(spread) >= 3 AND char_length(spread) <= 8),
+                    other varchar(10) NULL CHECK (char_length(other) > 2 OR other = 'x'))
+                """);
+
+            var model = await provider.BuildTableModelAsync(database, "codegen_checks_test");
+            ColumnModel Of(string name) => model.Columns.Single(c => c.Name == name);
+
+            Assert.IsTrue(System.Text.RegularExpressions.Regex.IsMatch("AB1", "^(?:" + Of("Code").CheckNotation!.Pattern + ")$"));
+            Assert.IsFalse(System.Text.RegularExpressions.Regex.IsMatch("XB1", "^(?:" + Of("Code").CheckNotation!.Pattern + ")$"));
+            Assert.AreEqual("text of 5 characters", Of("Five").CheckNotation!.Noun);
+            Assert.AreEqual("text of 3 to 8 characters", Of("Spread").CheckNotation!.Noun);
+            Assert.IsNull(Of("Other").CheckNotation, "an OR is left to the database");
+        }
+        finally
+        {
+            await Run("DROP TABLE IF EXISTS codegen_checks_test");
+        }
+    }
 }

@@ -355,6 +355,10 @@ public abstract class SchemaProviderBase : ISchemaProvider
     private static List<string>? ListFromChecks(RawColumn raw, bool isString) =>
         !isString || raw.CheckDefinitions is null ? null : raw.CheckDefinitions.Select(d => CheckConstraintParser.ParseList(d, raw.Name)).FirstOrDefault(v => v is not null);
 
+    /// <summary> The notation a text column's CHECK constraints put on it: a LIKE first, else a length. </summary>
+    private static TextNotation? TextFromChecks(RawColumn raw) =>
+        (raw.CheckDefinitions ?? []).Select(d => CheckTextParser.Parse(d, raw.Name)).Where(n => n is not null).OrderByDescending(n => n!.Noun.StartsWith("text that matches", StringComparison.Ordinal)).FirstOrDefault();
+
     /// <summary> The limits all of a numeric column's CHECK constraints put on it together. </summary>
     private static CheckRange? RangeFromChecks(RawColumn raw)
     {
@@ -438,6 +442,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
             SetValues = raw.SetValues,
             DbBitWidth = raw.BitWidth,
             Check = isNumeric || isInteger || isMoney ? RangeFromChecks(raw) : null,
+            CheckNotation = isString ? TextFromChecks(raw) : null,
             Description = raw.Description,
             NumericKind = isInteger ? NumericClassifier.Classify(name) : NumericKind.None,
             IsCurrencyColumn = isMoney || (sqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real && IsCurrency(raw, sqlType, name, tableName)),

@@ -77,13 +77,17 @@ public static class NumericClassifier
     public static int CurrencyDigits(ColumnModel column) =>
         column.SqlType is SqlDbType.Decimal && column.SqlTypeDeclaration != "numeric" ? Math.Clamp(column.Scale ?? 2, 0, 8) : 2;   // a bare PostgreSQL numeric has no scale to follow
 
+    /// <summary> The largest number a decimal column can hold (decimal(5,2) holds 999.99), or null for a column that is not a decimal with a precision. </summary>
+    public static double? DecimalTypeLimit(ColumnModel column) =>
+        column.SqlType == SqlDbType.Decimal && column.Precision is { } precision && column.Scale is { } scale
+            ? Math.Round(Math.Pow(10, precision - scale) - Math.Pow(10, -scale), scale)
+            : null;
+
     /// <summary> The limits a number box puts on a decimal / float / real column that is not money: what the column's precision and scale can hold
     /// (decimal(5,2) holds -999.99 to 999.99), or +/-10^15 for a floating-point type; a percentage (by name) is 0 to 100 within that. </summary>
     public static (double Min, double Max) DecimalRange(ColumnModel column)
     {
-        double max = 1e15;
-        if (column.SqlType == SqlDbType.Decimal && column.Precision is { } precision && column.Scale is { } scale)
-            max = Math.Round(Math.Pow(10, precision - scale) - Math.Pow(10, -scale), scale);
+        double max = DecimalTypeLimit(column) ?? 1e15;
         double min = -max;
         if (Classify(column.Name) == NumericKind.Percentage)
         {

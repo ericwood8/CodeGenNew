@@ -103,8 +103,11 @@ public class ColumnModel
     public int? DbBitWidth { get; init; }
 
     /// <summary> The notation a value of this text column must be written in (an array, interval, range or shape of PostgreSQL, a MySQL set or spatial column), or null for plain text. </summary>
+    /// <summary> The notation a CHECK constraint of the database puts on this text column (<c>CHECK (len(code) = 5)</c>, <c>CHECK (code LIKE 'AB%')</c>); null when it has none or the check is not that plain. </summary>
+    public TextNotation? CheckNotation { get; init; }
+
     public TextNotation? Notation => PgText is { } pg ? new TextNotation(pg.Pattern, pg.Description, pg.Sample)
-        : MySqlSpatialType.FromName(DbSpatialType)?.Notation ?? (SetValues is { Count: > 0 } members ? MySqlSetNotation.Of(members) : null);
+        : MySqlSpatialType.FromName(DbSpatialType)?.Notation ?? (SetValues is { Count: > 0 } members ? MySqlSetNotation.Of(members) : null) ?? CheckNotation;
 
     /// <summary> The column's PostgreSQL type when it is not text, so the database has to be told what a text value is: an enum or one of the types of <see cref="DbTextType"/>. </summary>
     public string? DbCastType => DbTextType ?? DbEnumType;

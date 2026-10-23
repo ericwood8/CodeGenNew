@@ -65,7 +65,16 @@ public static class ColumnRules
         else if (column.IsNumericColumn || column.IsMoneyColumn)
         {
             if (column.Check is { } check)
-                rule = new ColumnRule { Min = check.Min, MinStrict = check.MinStrict, Max = check.Max, MaxStrict = check.MaxStrict };
+            {
+                // a limit wider than the decimal can hold is the type's limit: the database refuses the number before it reaches the check
+                double? held = NumericClassifier.DecimalTypeLimit(column);
+                bool belowType = held is { } low && check.Min < -low, aboveType = held is { } high && check.Max > high;
+                rule = new ColumnRule
+                {
+                    Min = belowType ? -held : check.Min, MinStrict = !belowType && check.MinStrict,
+                    Max = aboveType ? held : check.Max, MaxStrict = !aboveType && check.MaxStrict
+                };
+            }
             else if (Names(column, "Latitude"))
                 rule = new ColumnRule { Min = -90, Max = 90 };
             else if (Names(column, "Longitude"))
