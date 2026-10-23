@@ -26,10 +26,11 @@ public class MySqlSchemaTests
     [DataRow("text", "text", 65535L, null, null, "varchar", "text")]
     [DataRow("longtext", "longtext", 4294967295L, null, null, "varchar", "longtext")]
     [DataRow("enum", "enum('a','bcd')", 3L, null, null, "varchar", "varchar(3)")]   // as long as the longest listed value
-    [DataRow("set", "set('a','b')", 3L, null, null, "varchar", "varchar(255)")]
+    [DataRow("set", "set('a','b')", 3L, null, null, "varchar", "varchar(3)")]
     [DataRow("json", "json", null, null, null, "varchar", "json")]
     [DataRow("blob", "blob", 65535L, null, null, "varbinary", "blob")]
-    [DataRow("geometry", "geometry", null, null, null, "sql_variant", "geometry")]
+    [DataRow("geometry", "geometry", null, null, null, "varchar", "varchar(4000)")]
+    [DataRow("xyzzy", "xyzzy", null, null, null, "sql_variant", "xyzzy")]
     public void A_mysql_type_maps_to_the_sql_server_vocabulary_and_keeps_its_own_declaration(
         string dataType, string columnType, long? length, int? precision, int? scale, string expectedSqlType, string expectedDeclaration)
     {
@@ -359,5 +360,124 @@ public class MySqlIntegrationTests
 
         var status = await provider.BuildTableModelAsync(database, "customer_status", includeRowData: true);
         Assert.HasCount(2, status.Rows);
+    }
+
+    [TestMethod]
+    public async Task A_decimal_the_size_of_money_is_currency_unless_its_name_or_the_project_says_otherwise()
+    {
+        // The one test that writes: a throwaway table in the database, dropped again whatever happens.
+        var provider = Provider(NamingStyle.Pascal);
+        string database = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_DATABASE")!;
+        var request = new ConnectionRequest
+        {
+            Provider = DatabaseProvider.MySql, ServerName = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_HOST")!, DatabaseName = database, AuthMode = AuthMode.SqlLogin,
+            UserName = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_USER"), Password = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_PASSWORD")
+        };
+        await using var connection = request.CreateMySqlConnection();
+        await connection.OpenAsync();
+        async Task Run(string sql) { await using var command = connection.CreateCommand(); command.CommandText = sql; await command.ExecuteNonQueryAsync(); }
+        try
+        {
+            await Run("DROP TABLE IF EXISTS codegen_money_test");
+            await Run("""
+                CREATE TABLE codegen_money_test (
+                    money_test_id int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                    charge decimal(19,4) NOT NULL,
+                    small_sum decimal(10,4) NOT NULL,
+                    surplus decimal(8,2) NOT NULL,
+                    plain decimal(8,2) NOT NULL,
+                    item_weight decimal(19,4) NOT NULL,
+                    discount_percent decimal(19,4) NOT NULL,
+                    unit_price decimal(19,4) NOT NULL,
+                    exchange_factor decimal(19,4) NOT NULL,
+                    amount_paid double NOT NULL)
+                """);
+
+            bool Currency(TableModel t, string name) => t.Columns.Single(c => c.Name == name).IsCurrencyColumn;
+
+            var model = await provider.BuildTableModelAsync(database, "codegen_money_test");
+            Assert.IsTrue(Currency(model, "Charge"), "decimal(19,4) is the size money is given");
+            Assert.IsTrue(Currency(model, "SmallSum"), "decimal(10,4) is smallmoney's size");
+            Assert.IsFalse(Currency(model, "Surplus"));
+            Assert.IsFalse(Currency(model, "Plain"));
+            Assert.IsFalse(Currency(model, "ItemWeight"), "a weight is not money whatever its size");
+            Assert.IsFalse(Currency(model, "DiscountPercent"), "a percentage is not money");
+            Assert.IsTrue(Currency(model, "UnitPrice"));
+            Assert.IsTrue(Currency(model, "ExchangeFactor"));
+            Assert.IsTrue(Currency(model, "AmountPaid"), "a name that says money still does, whatever the type");
+            Assert.IsFalse(model.Columns.Single(c => c.Name == "Charge").IsMoneyColumn, "currency is how it is shown, the type stays a decimal");
+
+            provider.MoneyColumns = ["Surplus"];
+            provider.NotMoneyColumns = ["codegen_money_test.exchange_factor", "UnitPrice"];
+            var listed = await provider.BuildTableModelAsync(database, "codegen_money_test");
+            Assert.IsTrue(Currency(listed, "Surplus"), "the project says so");
+            Assert.IsFalse(Currency(listed, "ExchangeFactor"), "the project says it is not, by the database name of one table");
+            Assert.IsFalse(Currency(listed, "UnitPrice"), "the project beats the name");
+            Assert.IsTrue(Currency(listed, "Charge"));
+        }
+        finally
+        {
+            await Run("DROP TABLE IF EXISTS codegen_money_test");
+        }
+    }
+
+    [TestMethod]
+    public async Task Set_bit_year_tinyint_and_spatial_columns_are_read_as_what_they_hold()
+    {
+        // Writes a throwaway table in the database, dropped again whatever happens.
+        var provider = Provider(NamingStyle.Pascal);
+        string database = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_DATABASE")!;
+        var request = new ConnectionRequest
+        {
+            Provider = DatabaseProvider.MySql, ServerName = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_HOST")!, DatabaseName = database, AuthMode = AuthMode.SqlLogin,
+            UserName = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_USER"), Password = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_PASSWORD")
+        };
+        await using var connection = request.CreateMySqlConnection();
+        await connection.OpenAsync();
+        async Task Run(string sql) { await using var command = connection.CreateCommand(); command.CommandText = sql; await command.ExecuteNonQueryAsync(); }
+        try
+        {
+            await Run("DROP TABLE IF EXISTS codegen_types_test");
+            await Run("""
+                CREATE TABLE codegen_types_test (
+                    types_test_id int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                    perks set('wifi','parking','late checkout') NOT NULL,
+                    flag bit(1) NULL, flags bit(8) NULL, wide_flags bit(64) NULL,
+                    open_year year NULL, level tinyint NULL, small_count smallint unsigned NULL, middle mediumint NULL,
+                    spot point NULL, home point SRID 4326 NULL, area polygon NULL, anything geometry NULL, many geomcollection NULL)
+                """);
+
+            var model = await provider.BuildTableModelAsync(database, "codegen_types_test");
+            ColumnModel Of(string name) => model.Columns.Single(c => c.Name == name);
+
+            CollectionAssert.AreEqual(new[] { "wifi", "parking", "late checkout" }, Of("Perks").SetValues!);
+            Assert.AreEqual(SqlDbType.VarChar, Of("Perks").SqlType);
+            Assert.AreEqual("wifi".Length + "parking".Length + "late checkout".Length + 2, Of("Perks").MaxLength);
+            Assert.IsNull(Of("Perks").Choices, "a set is not a drop-down");
+
+            Assert.AreEqual(SqlDbType.Bit, Of("Flag").SqlType);
+            Assert.IsNull(Of("Flag").DbBitWidth);
+            Assert.AreEqual((SqlDbType.BigInt, 8), (Of("Flags").SqlType, Of("Flags").DbBitWidth));
+            Assert.AreEqual((0.0, 255.0), (Of("Flags").Check!.Min, Of("Flags").Check!.Max));
+            Assert.AreEqual((SqlDbType.Decimal, 64), (Of("WideFlags").SqlType, Of("WideFlags").DbBitWidth));
+
+            Assert.AreEqual((1901.0, 2155.0), (Of("OpenYear").Check!.Min, Of("OpenYear").Check!.Max));
+            Assert.AreEqual((-128.0, 127.0), (Of("Level").Check!.Min, Of("Level").Check!.Max));
+            Assert.AreEqual((0.0, 65535.0), (Of("SmallCount").Check!.Min, Of("SmallCount").Check!.Max));
+            Assert.AreEqual((-8388608.0, 8388607.0), (Of("Middle").Check!.Min, Of("Middle").Check!.Max));
+
+            foreach (var (name, type, srid) in new[] { ("Spot", "point", 0), ("Home", "point", 4326), ("Area", "polygon", 0), ("Anything", "geometry", 0), ("Many", "geometrycollection", 0) })
+            {
+                Assert.AreEqual(type, Of(name).DbSpatialType, name);
+                Assert.AreEqual(srid, Of(name).DbSrid, name);
+                Assert.AreEqual(SqlDbType.VarChar, Of(name).SqlType, name);
+                Assert.IsNotNull(Of(name).Notation, name);
+            }
+            Assert.IsFalse(model.UnsupportedColumns.Any());
+        }
+        finally
+        {
+            await Run("DROP TABLE IF EXISTS codegen_types_test");
+        }
     }
 }

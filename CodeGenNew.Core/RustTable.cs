@@ -238,7 +238,7 @@ public sealed class RustTable
             case SqlDbType.SmallInt when declaration.StartsWith("tinyint", StringComparison.Ordinal):
                 return "i8";
             case SqlDbType.SmallInt when declaration == "year":
-                return null;
+                return "u16";
             case SqlDbType.SmallInt:
                 return "i16";
             case SqlDbType.TinyInt:
@@ -289,6 +289,13 @@ public sealed class RustTable
             if (column.DbCastType is not null)
                 return $"{q}::text AS {q}";
         }
+        if (_di.Dialect == SqlDialect.MySql)
+        {
+            if (column.DbSpatialType is not null)
+                return $"ST_AsText({q}, 'axis-order=long-lat') AS {q}";
+            if (column.DbBitWidth is { } bits)
+                return bits < 64 ? $"CAST({q} AS SIGNED) AS {q}" : $"CAST({q} AS DECIMAL(20,0)) AS {q}";
+        }
         // SQLite stores a whole number that was written to a DECIMAL or FLOAT column as an integer, and sqlx refuses to read an integer as a double: read the value as the real it means
         if (_di.Dialect == SqlDialect.Sqlite && (column.IsNumericColumn || column.IsMoneyColumn))
             return $"CAST({q} AS REAL) AS {q}";
@@ -300,6 +307,8 @@ public sealed class RustTable
     private string Parameter(RustField field, int index)
     {
         string p = _di.Placeholder(index);
+        if (_di.Dialect == SqlDialect.MySql && field.Column.DbSpatialType is not null)
+            return $"ST_GeomFromText(NULLIF({p}, ''), {field.Column.DbSrid}, 'axis-order=long-lat')";
         if (_di.Dialect != SqlDialect.PostgreSql)
             return p;
         if (field.Column.IsMoneyColumn)

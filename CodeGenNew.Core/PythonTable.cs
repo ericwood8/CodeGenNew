@@ -176,6 +176,12 @@ public sealed class PythonTable
             return ("str", $"PgEnum({string.Join(", ", choices.Select(PythonNames.Str))}, name={PythonNames.Str(parts[^1])}{schema}, create_type=False)");
         }
 
+        // MySQL: a spatial column is read as well-known text and written from it; a bit(n) column is read as the number its bits make (the driver would hand over bytes)
+        if (dialect == SqlDialect.MySql && column.DbSpatialType is not null)
+            return ("str", $"MySqlSpatial({column.DbSrid})");
+        if (dialect == SqlDialect.MySql && column.DbBitWidth is { } bits)
+            return bits < 64 ? ("int", "MySqlBit(False)") : ("Decimal", "MySqlBit(True)");
+
         if (dialect == SqlDialect.PostgreSql && column.DbTextType is { } textType)
             return ("str", $"PgText({PythonNames.Str(textType)})");
 
@@ -186,7 +192,7 @@ public sealed class PythonTable
             case SqlDbType.BigInt:
                 return ("int", "BigInteger");
             case SqlDbType.SmallInt when declaration == "year":
-                return null;
+                return ("int", "YEAR");
             case SqlDbType.SmallInt or SqlDbType.TinyInt:
                 return ("int", "SmallInteger");
             case SqlDbType.Bit:

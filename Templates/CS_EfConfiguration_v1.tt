@@ -75,11 +75,11 @@
             {
                 if (Model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration is "json" or "jsonb")
                     columnType = c.SqlTypeDeclaration;
-                // an array, interval, range or geometric column: the entity holds its text, and the converter says how Npgsql stores it
-                if (Model.Dialect == SqlDialect.PostgreSql && c.PgText is { } pgText)
+                // an array, interval, range, geometric or spatial column: the entity holds its text, and the converter says how the database stores it
+                if (TextConversion.Of(c) is { } conversion)
                 {
-                    columnType = pgText.Name;
-                    chain.Add($".HasConversion({pgText.Converter(c.IsNullable)}, PgText.Comparer)");
+                    columnType = conversion.ColumnType ?? columnType;
+                    chain.Add($".HasConversion({conversion.Expression})");
                 }
                 int chars = c.CharacterLength;
                 if (chars > 0)

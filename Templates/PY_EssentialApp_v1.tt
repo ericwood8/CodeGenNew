@@ -38,6 +38,9 @@ from sqlalchemy.engine import URL
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 <# if (dialect == SqlDialect.PostgreSql) { #>
 from sqlalchemy.types import TypeDecorator, UserDefinedType
+<# } else if (dialect == SqlDialect.MySql) { #>
+from sqlalchemy import BigInteger, Numeric, String, cast, func
+from sqlalchemy.types import TypeDecorator
 <# } #>
 
 
@@ -71,6 +74,41 @@ class PgText(TypeDecorator):
 
     def column_expression(self, column):
         return cast(column, String)
+<# } else if (dialect == SqlDialect.MySql) { #>
+
+
+class MySqlSpatial(TypeDecorator):
+    """A MySQL spatial column, held as well-known text with the longitude first: read with ST_AsText, written with ST_GeomFromText in the column's spatial reference system (blank is NULL)."""
+
+    impl = String
+    cache_ok = True
+
+    def __init__(self, srid: int = 0):
+        super().__init__()
+        self.srid = srid
+
+    def bind_expression(self, bindvalue):
+        return func.ST_GeomFromText(func.nullif(bindvalue, ""), self.srid, "axis-order=long-lat")
+
+    def column_expression(self, column):
+        return func.ST_AsText(column, "axis-order=long-lat")
+
+
+class MySqlBit(TypeDecorator):
+    """A MySQL bit(n) column of more than one bit, held as the whole number its bits make (the driver would hand over bytes)."""
+
+    impl = BigInteger
+    cache_ok = True
+
+    def __init__(self, wide: bool = False):
+        super().__init__()
+        self.wide = wide
+
+    def load_dialect_impl(self, dialect):
+        return dialect.type_descriptor(Numeric(20, 0) if self.wide else BigInteger())
+
+    def column_expression(self, column):
+        return cast(column, Numeric(20, 0) if self.wide else BigInteger())
 <# } #>
 
 
@@ -294,7 +332,7 @@ def looks_like_ssn(value: str) -> bool:
 
 def looks_like_url(value: str) -> bool:
     return value.startswith(("http://", "https://")) and len(value) > 8 and " " not in value
-<# if (dialect == SqlDialect.PostgreSql) { #>
+<# if (dialect is SqlDialect.PostgreSql or SqlDialect.MySql) { #>
 
 
 def matches_pattern(value: str, pattern: str) -> bool:

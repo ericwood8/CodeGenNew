@@ -17,6 +17,7 @@ The EF Core context for the whole database, written for the database the schema 
   - for PostgreSQL, a converter for every array, interval, range and built-in shape column (OnModelCreating, or the table's configuration with EfConfigurations): the entity holds the
     text in PostgreSQL's own notation and the converter turns it into what Npgsql writes. The converters are a small internal PgText class written at the end of the same file
     when any column needs it; the class is generated, so change the notation in CodeGenNew and regenerate;
+  - for MySQL, a converter for every spatial column (the entity holds well-known text, `POINT(1 2)`, and the converter turns it into MySQL's binary form with the column's spatial reference system); the `MySqlSpatial` class is written at the end of the same file when a column needs it;
   - for PostgreSQL, "timestamp" as the column type of every DateTime: a DateTime maps to timestamptz by default and Npgsql then
     refuses any value that is not UTC, while the columns this generator reads are plain timestamps;
   - for PostgreSQL and MySQL the password is never in appsettings.json: Npgsql reads PGPASSWORD itself and, because the MySQL

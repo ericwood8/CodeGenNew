@@ -47,11 +47,18 @@ public static class NumericClassifier
     /// <summary> Whether a decimal or floating-point column's NAME says it holds money: one of its words is a Fee, Balance, Amount, Surcharge, Upcharge, Discount, Price, Total, Average, Tax, Cost or Rate
     /// (or a Charge, Salary, Wage, Payment, MSRP), in the singular or plural, and no word says it is a percentage, a quantity, an hour count, a ratio or a unit. A column of the money / smallmoney SQL
     /// types is currency regardless of its name. </summary>
-    public static bool IsCurrencyName(string columnName)
+    public static bool IsCurrencyName(string columnName) => HasWord(columnName, CurrencyWords) && !IsNotMoneyName(columnName);
+
+    /// <summary> Whether a column's name also says what the number counts or measures (a percentage, a quantity, an hour count, a ratio, a unit), so it is not money whatever else its name says. </summary>
+    public static bool IsNotMoneyName(string columnName) => HasWord(columnName, NotMoneyWords);
+
+    /// <summary> The size a money column is given in a database with no money type: 19 digits and 4 places (SQL Server's money), or 10 and 4 (its smallmoney). </summary>
+    public static bool IsMoneySize(int precision, int scale) => scale == 4 && precision is 19 or 10;
+
+    private static bool HasWord(string columnName, string[] list)
     {
-        var words = ScreenNames.Words(columnName).Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w.ToLowerInvariant()).ToList();
-        bool Is(string word, string[] list) => list.Contains(word) || (word.EndsWith("es") && list.Contains(word[..^2])) || (word.EndsWith('s') && list.Contains(word[..^1]));
-        return words.Any(w => Is(w, CurrencyWords)) && !words.Any(w => Is(w, NotMoneyWords));
+        var words = ScreenNames.Words(columnName).Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w.ToLowerInvariant());
+        return words.Any(word => list.Contains(word) || (word.EndsWith("es") && list.Contains(word[..^2])) || (word.EndsWith('s') && list.Contains(word[..^1])));
     }
 
     /// <summary> The decimal places a decimal column keeps in a number box: its scale, between 0 and 8 (2 when unknown). </summary>

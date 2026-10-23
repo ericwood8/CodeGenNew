@@ -156,7 +156,7 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var project = LoadActiveProject();
-            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns);
+            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns);
             var database = await schemaProvider.BuildAsync(_connectionRequest.DatabaseName, schema);
 
             var result = await TemplateRunner.RunAsync(template.FilePath, database, project);
@@ -189,7 +189,7 @@ public partial class MainViewModel : ObservableObject
         if (_connectionRequest is not { } request || MainSchema is not { } schema)
             return null;
         return new GenerateAllDialogViewModel(_settings.ProjectsDirectory, _settings.TemplatesDirectory, _settings.OutputDirectory, _settings.Current.LastProject,
-            project => SchemaProviderFactory.Create(request, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns),
+            project => SchemaProviderFactory.Create(request, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns),
             schema, request.DatabaseName, dispatcher);
     }
 
@@ -224,7 +224,7 @@ public partial class MainViewModel : ObservableObject
         {
             // The project's NamingStyle decides the names the schema reader gives tables and columns (customer_item -> CustomerItem).
             var project = LoadActiveProject();
-            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns);
+            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns);
             var model = await schemaProvider.BuildTableModelAsync(
                 table.SchemaName, table.TableName, template.Config.NeedsRowData, template.Config.NeedsReferencedDisplayColumns);
 

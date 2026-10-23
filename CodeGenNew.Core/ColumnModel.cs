@@ -89,6 +89,23 @@ public class ColumnModel
     /// <summary> The array, interval, range or geometric type behind <see cref="DbTextType"/>, or null. </summary>
     public PgTextType? PgText => PgTextType.FromName(DbTextType);
 
+    /// <summary> The MySQL spatial type of the column (<c>point</c>, <c>polygon</c>, <c>geometry</c> ...); null for any other column. The column is text to the generator, holding well-known text
+    /// (see <see cref="MySqlSpatialType"/>), and the SQL that reads and writes it converts. </summary>
+    public string? DbSpatialType { get; init; }
+
+    /// <summary> The spatial reference system id of a spatial column (0 when it has none). </summary>
+    public int DbSrid { get; init; }
+
+    /// <summary> The members of a MySQL <c>set('a','b')</c> column; null for any other column. The column holds some of them as text separated by commas. </summary>
+    public List<string>? SetValues { get; init; }
+
+    /// <summary> The width in bits of a MySQL <c>bit(n)</c> column of 2 to 64 bits, which is a whole number to the generator; null for any other column. </summary>
+    public int? DbBitWidth { get; init; }
+
+    /// <summary> The notation a value of this text column must be written in (an array, interval, range or shape of PostgreSQL, a MySQL set or spatial column), or null for plain text. </summary>
+    public TextNotation? Notation => PgText is { } pg ? new TextNotation(pg.Pattern, pg.Description, pg.Sample)
+        : MySqlSpatialType.FromName(DbSpatialType)?.Notation ?? (SetValues is { Count: > 0 } members ? MySqlSetNotation.Of(members) : null);
+
     /// <summary> The column's PostgreSQL type when it is not text, so the database has to be told what a text value is: an enum or one of the types of <see cref="DbTextType"/>. </summary>
     public string? DbCastType => DbTextType ?? DbEnumType;
 

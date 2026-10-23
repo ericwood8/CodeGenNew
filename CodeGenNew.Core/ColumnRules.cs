@@ -47,15 +47,15 @@ public static class ColumnRules
         {
             var shape = column.ShapeOf(project, table);
 
-            var text = column.PgText;
+            var text = column.Notation;
             rule = new ColumnRule
             {
-                Required = !column.IsNullable,
+                Required = !column.IsNullable && column.SetValues is null,   // no member chosen is an empty set, a value
                 MaxLength = Math.Max(0, column.CharacterLength),
                 Choices = column.HasChoices ? column.Choices : null,
                 Shape = text is null ? shape : TextShape.Custom,
                 Pattern = text?.Pattern,
-                Noun = text?.Description
+                Noun = text?.Noun
             };
         }
         else if (column.IsIntegerColumn && (column.NumericKind != NumericKind.None || column.Check is not null) && project.RangeFor(column) is { } range)

@@ -32,7 +32,7 @@ public class MySqlSchemaProvider : SchemaProviderBase
 
     /// <summary> A MySQL column type in the SQL Server vocabulary the generator classifies by, plus the MySQL spelling of the declaration (for procedure parameters).
     /// <paramref name="columnType"/> is information_schema's COLUMN_TYPE ("int unsigned", "varchar(50)", "tinyint(1)", "enum('a','b')"). Length -1 means unbounded
-    /// (the text and blob families, json). A type with no equivalent (geometry ...) maps to sql_variant, which the generators treat as an unsupported "object" column. </summary>
+    /// (the text and blob families, json). A set is text of comma-separated members, a bit(2..64) a whole number and a spatial type text (well-known text); a type with no equivalent maps to sql_variant, which the generators treat as an unsupported "object" column. </summary>
     public static (string SqlTypeName, int MaxLength, int Precision, int Scale, string Declaration) MapType(
         string dataType, string columnType, long? characterMaximumLength, int? numericPrecision, int? numericScale)
     {
@@ -49,7 +49,10 @@ public class MySqlSchemaProvider : SchemaProviderBase
             case "mediumint": return ("int", 0, 0, 0, unsigned ? "mediumint unsigned" : "mediumint");
             case "int": case "integer": return unsigned ? ("bigint", 0, 0, 0, "int unsigned") : ("int", 0, 0, 0, "int");
             case "bigint": return unsigned ? ("decimal", 0, 20, 0, "bigint unsigned") : ("bigint", 0, 0, 0, "bigint");
-            case "bit": return numericPrecision == 1 ? ("bit", 0, 0, 0, "bit(1)") : ("varbinary", numericPrecision is > 0 ? (numericPrecision.Value + 7) / 8 : 8, 0, 0, ct);
+            // bit(1) is MySQL's other boolean; a wider bit column is a whole number (its bits, as the unsigned number they make), up to 63 bits in a bigint and 64 in a decimal
+            case "bit":
+                if (numericPrecision is null or 1) return ("bit", 0, 0, 0, "bit(1)");
+                return numericPrecision < 64 ? ("bigint", 0, 0, 0, "bigint") : ("decimal", 0, 20, 0, "decimal(20,0)");
             case "decimal": case "numeric":
             {
                 int precision = numericPrecision ?? 10;
@@ -68,11 +71,15 @@ public class MySqlSchemaProvider : SchemaProviderBase
             case "tinytext": case "text": case "mediumtext": case "longtext": return ("varchar", -1, 0, 0, t);
             // a value from a list: a string as long as the longest listed value (the form shows an enum as a drop-down); a set holds several values at once, so it stays free text
             case "enum": { int longest = ParseEnumValues(columnType)?.Max(v => v.Length) ?? 255; return ("varchar", longest, 0, 0, $"varchar({longest})"); }
-            case "set": return ("varchar", 255, 0, 0, "varchar(255)");
+            case "set": { var members = ParseValueList(columnType, "set("); int longest = members is null ? 255 : Math.Max(1, members.Sum(v => v.Length) + members.Count - 1); return ("varchar", longest, 0, 0, $"varchar({longest})"); }
             case "json": return ("varchar", -1, 0, 0, "json");
             case "binary": case "varbinary": return ("varbinary", length, 0, 0, $"{t}({length})");
             case "tinyblob": case "blob": case "mediumblob": case "longblob": return ("varbinary", -1, 0, 0, t);
-            default: return ("sql_variant", 0, 0, 0, ct);
+            default:
+                // a spatial type is text (well-known text) to the generator
+                if (MySqlSpatialType.FromDataType(t) is { } spatial)
+                    return ("varchar", spatial.MaxLength, 0, 0, $"varchar({spatial.MaxLength})");
+                return ("sql_variant", 0, 0, 0, ct);
         }
     }
 
@@ -80,15 +87,20 @@ public class MySqlSchemaProvider : SchemaProviderBase
     // resolver expects a SQL Server one: functions by their SQL Server name, a string literal quoted.
     /// <summary> The values of an <c>enum('a','b')</c> column type (a quote inside a value is doubled: <c>'it''s'</c>); null for any other type, including <c>set</c>
     /// (a set holds several values at once, which a drop-down cannot express). </summary>
-    public static List<string>? ParseEnumValues(string columnType)
+    public static List<string>? ParseEnumValues(string columnType) => ParseValueList(columnType, "enum(");
+
+    /// <summary> The members of a <c>set('a','b')</c> column type; null for any other type. </summary>
+    public static List<string>? ParseSetValues(string columnType) => ParseValueList(columnType, "set(");
+
+    private static List<string>? ParseValueList(string columnType, string prefix)
     {
-        if (!columnType.StartsWith("enum(", StringComparison.OrdinalIgnoreCase) || !columnType.EndsWith(')'))
+        if (!columnType.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) || !columnType.EndsWith(')'))
             return null;
 
         var values = new List<string>();
         var current = new System.Text.StringBuilder();
         bool inside = false;
-        string body = columnType[5..^1];
+        string body = columnType[prefix.Length..^1];
         for (int i = 0; i < body.Length; i++)
         {
             char c = body[i];
@@ -273,7 +285,8 @@ public class MySqlSchemaProvider : SchemaProviderBase
                (c.IS_NULLABLE = 'YES') AS is_nullable, c.COLUMN_DEFAULT, c.EXTRA, c.GENERATION_EXPRESSION, (c.COLUMN_KEY = 'PRI') AS is_primary_key,
                EXISTS (SELECT 1 FROM information_schema.STATISTICS s
                         WHERE s.TABLE_SCHEMA = c.TABLE_SCHEMA AND s.TABLE_NAME = c.TABLE_NAME AND s.COLUMN_NAME = c.COLUMN_NAME
-                          AND s.NON_UNIQUE = 0 AND s.INDEX_NAME <> 'PRIMARY') AS is_in_unique_index
+                          AND s.NON_UNIQUE = 0 AND s.INDEX_NAME <> 'PRIMARY') AS is_in_unique_index,
+               c.SRS_ID
         FROM information_schema.COLUMNS c
         WHERE c.TABLE_SCHEMA = @schema AND c.TABLE_NAME = @table
         ORDER BY c.ORDINAL_POSITION;
@@ -308,7 +321,8 @@ public class MySqlSchemaProvider : SchemaProviderBase
                 descriptions.Add((described.GetString(0), described.GetString(1)));
         }
         columns = WithDescriptions(columns, descriptions);
-        var checks = new List<(string?, string)>();
+        // the limits of the column's own type, which the generator's wider types (a signed tinyint is a smallint, a year a smallint, a bit(40) a bigint) would not keep
+        var checks = columns.Select(c => (Column: c, Limit: TypeLimit(c))).Where(x => x.Limit is not null).Select(x => ((string?)x.Column.Name, $"(`{x.Column.Name}` between {x.Limit})")).ToList();
         try
         {
             await using var command = new MySqlCommand(CheckConstraintsQuery, (MySqlConnection)connection);
@@ -325,14 +339,37 @@ public class MySqlSchemaProvider : SchemaProviderBase
         return WithChecks(columns, checks);
     }
 
+    /// <summary> The lowest and highest value a MySQL column of a type the generator widens can hold ("-128 and 127"), or null when the generator's type has the same limits. </summary>
+    public static string? TypeLimit(RawColumn column) => column.DeclarationOverride switch
+    {
+        "tinyint" => "-128 and 127",
+        "smallint unsigned" => "0 and 65535",
+        "mediumint" => "-8388608 and 8388607",
+        "mediumint unsigned" => "0 and 16777215",
+        "int unsigned" => "0 and 4294967295",
+        "year" => "1901 and 2155",
+        _ => column.BitWidth is { } bits ? "0 and " + (bits >= 64 ? ulong.MaxValue : (1UL << bits) - 1) : null
+    };
+
     private async Task<List<RawColumn>> ReadRawColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {
         var results = new List<RawColumn>();
+        // SRS_ID (the spatial reference system of a column) exists from MySQL 8.0.3; a server without it has no such column to read
         await using var command = new MySqlCommand(ColumnsQuery, (MySqlConnection)connection);
         command.Parameters.AddWithValue("@schema", schemaName);
         command.Parameters.AddWithValue("@table", tableName);
 
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        System.Data.Common.DbDataReader reader;
+        try
+        {
+            reader = await command.ExecuteReaderAsync(cancellationToken);
+        }
+        catch (MySqlException) when (ColumnsQuery.Contains("c.SRS_ID"))
+        {
+            command.CommandText = ColumnsQuery.Replace("c.SRS_ID", "NULL");
+            reader = await command.ExecuteReaderAsync(cancellationToken);
+        }
+        await using var _ = reader;
         while (await reader.ReadAsync(cancellationToken))
         {
             string columnName = reader.GetString(0);
@@ -369,7 +406,11 @@ public class MySqlSchemaProvider : SchemaProviderBase
                 IsInUniqueIndex: reader.GetBoolean(12),
                 DeclarationOverride: declaration,
                 DefaultForCSharp: NormalizeDefault(columnDefault, extra, isString),
-                Choices: ParseEnumValues(columnType)));
+                Choices: ParseEnumValues(columnType),
+                SpatialType: MySqlSpatialType.FromDataType(dataType)?.Name,
+                Srid: (int?)Long(13) ?? 0,
+                SetValues: ParseSetValues(columnType),
+                BitWidth: dataType.Equals("bit", StringComparison.OrdinalIgnoreCase) && Long(5) is > 1 and <= 64 ? (int)Long(5)!.Value : null));
         }
 
         return results;

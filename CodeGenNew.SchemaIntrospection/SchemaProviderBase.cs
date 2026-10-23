@@ -22,7 +22,8 @@ public sealed record RawColumn(
     string Name, int OrdinalPosition, string SqlTypeName, int MaxLength, int Precision, int Scale,
     bool IsNullable, bool IsIdentity, int? IdentitySeed, int? IdentityIncrement,
     string? ComputedDefinition, string? DefaultDefinition, bool IsPrimaryKey, bool IsInUniqueIndex,
-    string? DeclarationOverride = null, string? DefaultForCSharp = null, List<string>? Choices = null, string? EnumType = null, IReadOnlyList<string>? CheckDefinitions = null, string? Description = null, string? TextType = null);
+    string? DeclarationOverride = null, string? DefaultForCSharp = null, List<string>? Choices = null, string? EnumType = null, IReadOnlyList<string>? CheckDefinitions = null, string? Description = null, string? TextType = null,
+    string? SpatialType = null, int Srid = 0, List<string>? SetValues = null, int? BitWidth = null);
 
 /// <summary> One foreign key, either direction: the OTHER table's name and the two column lists. </summary>
 public sealed record ForeignKeyRow(string ConstraintName, string OtherSchema, string OtherTable, List<string> ReferencingColumns, List<string> ReferencedColumns);
@@ -145,7 +146,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
         foreignKeys = await AttachReferencedDisplayColumnsAsync(connection, foreignKeys, rules, includeReferencedDisplayColumns, cancellationToken);
         var columnNames = rawColumns.Select(c => Named(c.Name)).ToList();
 
-        var columns = rawColumns.Select(c => BuildColumnModel(c, rules)).ToList();
+        var columns = rawColumns.Select(c => BuildColumnModel(c, rules, tableName)).ToList();
         var primaryKeyColumns = columns.Where(c => c.IsPrimaryKey).OrderBy(c => c.OrdinalPosition).ToList();
 
         var (hasActivePair, activeCol, inactiveCol) = EvaluatePair(rules, "IsActiveFlag", columnNames, columns);
@@ -232,7 +233,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
             if (!displayColumnsByTable.TryGetValue(referencedName, out var displayColumns))
             {
                 var referencedColumns = (await ReadColumnsAsync(connection, fk.ReferencedSchema, fk.ReferencedDbTable, cancellationToken))
-                    .Select(raw => BuildColumnModel(raw, rules))
+                    .Select(raw => BuildColumnModel(raw, rules, fk.ReferencedDbTable))
                     .ToList();
                 var referencedForeignKeys = await ReadForeignKeysAsync(connection, fk.ReferencedSchema, fk.ReferencedDbTable, cancellationToken);
                 var displayModels = includeDisplayColumns
@@ -278,7 +279,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
         foreach (var child in childForeignKeys)
         {
             var childColumns = (await ReadColumnsAsync(connection, child.ReferencingSchema, child.ReferencingDbTable, cancellationToken))
-                .Select(raw => BuildColumnModel(raw, rules))
+                .Select(raw => BuildColumnModel(raw, rules, child.ReferencingDbTable))
                 .ToList();
             var childPrimaryKeyColumns = childColumns
                 .Where(c => c.IsPrimaryKey).OrderBy(c => c.OrdinalPosition).Select(c => c.Name).ToList();
@@ -364,7 +365,26 @@ public abstract class SchemaProviderBase : ISchemaProvider
         return range;
     }
 
-    private ColumnModel BuildColumnModel(RawColumn raw, SpecialLogicRuleSet rules)
+    /// <summary> Columns the project says hold money (<c>MoneyColumns</c>) or never do (<c>NotMoneyColumns</c>): a column name for every table or <c>Table.Column</c>, by the database's name or the generated one. </summary>
+    public IReadOnlyCollection<string>? MoneyColumns { get; set; }
+    public IReadOnlyCollection<string>? NotMoneyColumns { get; set; }
+
+    private bool Lists(IReadOnlyCollection<string>? entries, string table, string dbName, string name) =>
+        entries is { Count: > 0 } && entries.Any(entry => entry.EqualsIgnoreCase(dbName) || entry.EqualsIgnoreCase(name)
+            || entry.EqualsIgnoreCase($"{table}.{dbName}") || entry.EqualsIgnoreCase($"{Named(table)}.{name}"));
+
+    /// <summary> Whether a decimal or floating-point column is shown as currency: the project's lists first, then its name, then (MySQL has no money type) the size a money column is given there,
+    /// decimal(19,4) or decimal(10,4), unless the name says it counts or measures something. </summary>
+    private bool IsCurrency(RawColumn raw, SqlDbType sqlType, string name, string table)
+    {
+        if (Lists(NotMoneyColumns, table, raw.Name, name))
+            return false;
+        if (Lists(MoneyColumns, table, raw.Name, name) || NumericClassifier.IsCurrencyName(name))
+            return true;
+        return Dialect == SqlDialect.MySql && sqlType == SqlDbType.Decimal && NumericClassifier.IsMoneySize(raw.Precision, raw.Scale) && !NumericClassifier.IsNotMoneyName(name);
+    }
+
+    private ColumnModel BuildColumnModel(RawColumn raw, SpecialLogicRuleSet rules, string tableName)
     {
         var sqlType = SqlTypeClassifier.MapSqlTypeName(raw.SqlTypeName);
         bool isInteger = SqlTypeClassifier.IsIntegerColumn(sqlType);
@@ -413,10 +433,14 @@ public abstract class SchemaProviderBase : ISchemaProvider
             Choices = raw.Choices ?? ListFromChecks(raw, isString),
             DbEnumType = raw.EnumType,
             DbTextType = raw.TextType,
+            DbSpatialType = raw.SpatialType,
+            DbSrid = raw.Srid,
+            SetValues = raw.SetValues,
+            DbBitWidth = raw.BitWidth,
             Check = isNumeric || isInteger || isMoney ? RangeFromChecks(raw) : null,
             Description = raw.Description,
             NumericKind = isInteger ? NumericClassifier.Classify(name) : NumericKind.None,
-            IsCurrencyColumn = isMoney || ((sqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real) && NumericClassifier.IsCurrencyName(name)),
+            IsCurrencyColumn = isMoney || (sqlType is SqlDbType.Decimal or SqlDbType.Float or SqlDbType.Real && IsCurrency(raw, sqlType, name, tableName)),
             IsAuditColumn = name.IsAuditColumn(),
             IsCreateDateColumn = MatchesCategory(rules, "CreateDateColumn", name),
             DisplayRank = IsDisplayEligibleType(sqlType) ? RankInCategory(rules, "DisplayColumn", name) : null,

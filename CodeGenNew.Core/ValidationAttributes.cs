@@ -16,7 +16,7 @@ public static class ValidationAttributes
         var rule = column.RuleOf(project, table);
 
         if (!column.IsNullable)
-            attributes.Add("[Required]");
+            attributes.Add(column.SetValues is null ? "[Required]" : "[Required(AllowEmptyStrings = true)]");   // no member chosen is an empty set, a value
         attributes.Add($"[Display(Name = \"{words}\", Description = \"{words}\")]");
         if (isText && chars > 0)
             attributes.Add($"[StringLength({chars})]");

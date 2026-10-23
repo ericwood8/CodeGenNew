@@ -13,7 +13,7 @@ public static class ApiSampleValues
     /// <summary> The text a string column's example is made of, before it is cut to the column's length. </summary>
     public static string Text(ColumnModel column, ProjectSettings? project = null, string? table = null) =>
         column.HasChoices ? column.Choices![0]
-        : column.PgText is { } pgText ? pgText.Sample
+        : column.Notation is { } notation ? notation.Sample
         : column.ShapeOf(project ?? ProjectSettings.FromValues([]), table) switch
         {
             TextShape.Email => "someone@example.com",
@@ -24,7 +24,7 @@ public static class ApiSampleValues
 
     /// <summary> Whether the column's value has a fixed format (an email address, phone number or web address), so a test must not add a unique ending to it. </summary>
     public static bool HasFixedFormat(ColumnModel column, ProjectSettings project, string? table = null) =>
-        column.PgText is not null || column.ShapeOf(project, table) is TextShape.Email or TextShape.Phone or TextShape.Url;
+        column.Notation is not null || column.ShapeOf(project, table) is TextShape.Email or TextShape.Phone or TextShape.Url;
 
     /// <summary> The example value of a column as JSON text (which is also a valid C# literal for every type but a null). A key is 0 for an identity column and 1 otherwise. </summary>
     public static string Value(ColumnModel c, ProjectSettings project, string? table = null)

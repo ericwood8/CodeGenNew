@@ -209,7 +209,7 @@ public class TableModel
         get
         {
             var keys = SearchKeyColumns;
-            return Columns.Where(c => c.IsStringColumn && !c.IsAuditColumn && !c.IsLongTextColumn && !c.IsCredentialColumn && !keys.Contains(c)).Take(MaxSearchFields).ToList();
+            return Columns.Where(c => c.IsStringColumn && !c.IsAuditColumn && !c.IsLongTextColumn && !c.IsCredentialColumn && c.DbSpatialType is null && !keys.Contains(c)).Take(MaxSearchFields).ToList();
         }
     }
 

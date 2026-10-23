@@ -5,7 +5,7 @@ public static class RustTestBodies
 {
 
     /// <summary> A text value that is not a fixed format and not a key: it can take a unique ending, so a unique index does not stop a second run. </summary>
-    public static bool IsFreeText(TableModel table, ColumnModel c, ProjectSettings project) => c.IsStringColumn && !c.HasChoices && !c.IsPrimaryKey && c.PgText is null
+    public static bool IsFreeText(TableModel table, ColumnModel c, ProjectSettings project) => c.IsStringColumn && !c.HasChoices && !c.IsPrimaryKey && c.Notation is null
         && !table.ForeignKeys.Any(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name)
         && !ApiSampleValues.HasFixedFormat(c, project, table.TableName);
 

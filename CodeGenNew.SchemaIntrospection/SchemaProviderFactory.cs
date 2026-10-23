@@ -5,7 +5,8 @@ namespace CodeGenNew.SchemaIntrospection;
 
 public static class SchemaProviderFactory
 {
-    public static ISchemaProvider Create(ConnectionRequest request, string specialLogicColumnsConfigPath, NamingStyle naming = NamingStyle.AsIs, IReadOnlyCollection<string>? acronyms = null, IReadOnlyCollection<string>? ignoredColumns = null)
+    public static ISchemaProvider Create(ConnectionRequest request, string specialLogicColumnsConfigPath, NamingStyle naming = NamingStyle.AsIs, IReadOnlyCollection<string>? acronyms = null, IReadOnlyCollection<string>? ignoredColumns = null,
+        IReadOnlyCollection<string>? moneyColumns = null, IReadOnlyCollection<string>? notMoneyColumns = null)
     {
         SchemaProviderBase provider = request.Provider switch
         {
@@ -16,6 +17,8 @@ public static class SchemaProviderFactory
             _ => throw new NotSupportedException($"Provider '{request.Provider}' is not implemented yet. SqlServer, PostgreSql, MySql and Sqlite are supported.")
         };
         provider.IgnoredColumns = ignoredColumns;
+        provider.MoneyColumns = moneyColumns;
+        provider.NotMoneyColumns = notMoneyColumns;
         return provider;
     }
 }

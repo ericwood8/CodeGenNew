@@ -52,7 +52,7 @@
         {
             string name = c.Name;
             bool Has(params string[] words) => words.Any(w => name.ContainsIgnoreCase(w));
-            if (c.PgText is { } pgText) return CSharpText.Quote(pgText.Sample);   // an array, interval, range or shape has a notation of its own
+            if (c.Notation is { } notation) return CSharpText.Quote(notation.Sample);   // an array, interval, range or shape has a notation of its own
             var shape = c.ShapeOf(Project, Model.TableName);   // the name, or the project's EmailColumns and UrlColumns
             if (shape == TextShape.Email) return "f.Internet.Email()";
             if (shape == TextShape.Phone || Has("Mobile")) return "f.Phone.PhoneNumber()";

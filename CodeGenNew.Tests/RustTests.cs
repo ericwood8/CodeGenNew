@@ -73,7 +73,7 @@ public class RustTests
     [DataRow(SqlDbType.BigInt, "bigint", SqlDialect.MySql, "i64")]
     [DataRow(SqlDbType.SmallInt, "tinyint", SqlDialect.MySql, "i8")]
     [DataRow(SqlDbType.SmallInt, "smallint unsigned", SqlDialect.MySql, "u16")]
-    [DataRow(SqlDbType.SmallInt, "year", SqlDialect.MySql, null)]
+    [DataRow(SqlDbType.SmallInt, "year", SqlDialect.MySql, "u16")]
     [DataRow(SqlDbType.TinyInt, "tinyint unsigned", SqlDialect.MySql, "u8")]
     [DataRow(SqlDbType.Decimal, "numeric(5,2)", SqlDialect.PostgreSql, "Decimal")]
     [DataRow(SqlDbType.Money, "money", SqlDialect.PostgreSql, "Decimal")]

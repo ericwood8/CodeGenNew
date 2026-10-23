@@ -29,7 +29,11 @@ public static partial class MySqlProcedures
     private static string Now(ColumnModel c) =>
         FractionDigits().Match(c.SqlTypeDeclaration) is { Success: true } digits && digits.Groups[1].Value != "0" ? $"NOW({digits.Groups[1].Value})" : "NOW()";
 
-    private static string Trimmed(ColumnModel c, string expression) => c.IsStringColumn ? $"TRIM({expression})" : expression;
+    private static string Trimmed(ColumnModel c, string expression) => c.IsStringColumn ? Native(c, $"TRIM({expression})") : expression;
+
+    /// <summary> The text of a parameter as a spatial column's own type: well-known text, longitude first, in the column's spatial reference system; blank is NULL. Any other column's text is as it is. </summary>
+    private static string Native(ColumnModel c, string expression) =>
+        c.DbSpatialType is null ? expression : $"ST_GeomFromText(NULLIF({expression}, ''), {c.DbSrid}, 'axis-order=long-lat')";
 
     private static string Create(TableModel m, string suffix, IEnumerable<(string Name, string Type, string Mode)> parameters, string body)
     {
@@ -191,14 +195,14 @@ public static partial class MySqlProcedures
         {
             updatePairs.Add((c.DbName, c == active && triggers.Count > 0
                 ? $"CASE WHEN {string.Join(" OR ", triggers.Select(Supplied))} THEN {Flag(c, negative)} ELSE {P(c)} END"
-                : P(c)));
+                : Native(c, P(c))));
         }
         foreach (var c in m.Columns.Where(c => !c.IsComputed && (c.IsModifiedDateColumn || c.IsLastChangedDateColumn)))
             updatePairs.Add((c.DbName, Now(c)));
 
         var insertPairs = parameterColumns
             .Where(c => c != identityKey && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn && !c.IsModifiedUserColumn && c != m.InactiveDateColumn && c != active)
-            .Select(c => (Name: c.DbName, Value: P(c))).ToList();
+            .Select(c => (Name: c.DbName, Value: Native(c, P(c)))).ToList();
         foreach (var c in m.Columns.Where(c => !c.IsComputed && c.IsInsertStampColumn))
             insertPairs.Add((c.DbName, Now(c)));
         if (active is not null) insertPairs.Add((active.DbName, Flag(active, !negative)));

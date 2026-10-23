@@ -22,7 +22,7 @@ public static class SearchSort
         .ToList();
 
     public static bool IsSortable(ColumnModel c) =>
-        !c.IsLongTextColumn
+        !c.IsLongTextColumn && c.DbSpatialType is null
         && c.SqlType is not (SqlDbType.Binary or SqlDbType.VarBinary or SqlDbType.Image or SqlDbType.Xml or SqlDbType.Timestamp or SqlDbType.Udt or SqlDbType.Structured or SqlDbType.Variant);
 
     // A single-column foreign key whose parent has a display column: the grid shows the parent's name, so that is what to sort by.
