@@ -7,7 +7,7 @@
 
 Generates the master_detail sample schema (API and the chosen front end) with Tools/new_scratch_project.py, builds and starts the API (port 5080) and the
 dev server (Vite on 5173, ng serve on 4200, dotnet run on 5190 for Blazor and on 5195 for Uno), then walks the Region screen: the empty form is refused by the browser, a row is added, found by the search, edited, cloned and
-deleted; React, Angular and Blazor then walk a drop-down fed by another table (a customer order picks its customer), the child grid of a master-detail dialog (the customers of a region) and the paging bar. After each step the API is asked what the database holds, so a screen that looks right but saved nothing fails. Prints PASS / FAIL lines, the elapsed time on the way out, and
+deleted; React, Angular and Blazor then walk a drop-down fed by another table (a customer order picks its customer), the child grid of a master-detail dialog (the customers of a region) and the paging bar. Uno walks the drop-down only: its calendar date picker cannot be driven through the accessibility page, so the order is never saved there and the check is that a picked customer stops being reported as missing. After each step the API is asked what the database holds, so a screen that looks right but saved nothing fails. Prints PASS / FAIL lines, the elapsed time on the way out, and
 exits 1 on a failure. Everything it started is stopped at the end; the generated folder is kept and printed.
 
 --prove-failure aborts the browser's POST to the API, so the add and everything after it must fail: it shows that the checks can fail.
@@ -350,6 +350,67 @@ def drive_uno(page, prove_failure):
         urllib.request.urlopen(urllib.request.Request(f"{API}/api/regions/{leftover['regionId']}", method="DELETE"), timeout=10).close()
 
 
+def drive_uno_dropdown(page, prove_failure):
+    """The lookup drop-down on the Uno head: a customer order picks its customer from a ComboBox fed by the other table. Runs after drive_uno in the
+    same page; the rows it needs are added through the API and removed again."""
+    if prove_failure:
+        page.route("**/api/customerorders", lambda route: route.abort() if route.request.method == "POST" else route.continue_())
+
+    def press(locator):
+        locator.focus()
+        page.wait_for_timeout(300)
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(1200)
+
+    def clean():
+        for order in api_rows("/api/customerorders"):
+            if order["reference"].startswith("Harness"):
+                api_send("DELETE", f"/api/customerorders/{order['customerOrderId']}")
+        for customer in api_rows("/api/customers"):
+            if customer["name"].startswith("Harness"):
+                api_send("DELETE", f"/api/customers/{customer['customerId']}")
+        for region in api_rows("/api/regions"):
+            if region["name"].startswith("Harness"):
+                api_send("DELETE", f"/api/regions/{region['regionId']}")
+
+    clean()
+    try:
+        region = api_send("POST", "/api/regions", {"regionId": 0, "name": "Harness Region", "code": "HR", "population": 1})
+        for name in ("Harness Alpha", "Harness Beta"):
+            api_send("POST", "/api/customers", {"customerId": 0, "regionId": region["regionId"], "name": name, "email": "a@example.com", "creditLimit": 1, "isActive2": True})
+        customers = {c["name"]: c["customerId"] for c in api_rows("/api/customers") if c["name"].startswith("Harness")}
+
+        page.goto(DEV)
+        page.wait_for_selector("#uno-enable-accessibility", state="attached", timeout=120000)
+        page.wait_for_timeout(3000)
+        page.evaluate("document.getElementById('uno-enable-accessibility').focus()")
+        page.keyboard.press("Enter")
+        page.get_by_role("option", name="Customer Order", exact=True).wait_for(timeout=30000)
+        page.get_by_role("option", name="Customer Order", exact=True).focus()
+        page.keyboard.press("Enter")
+        add = page.get_by_role("button", name="Add New", exact=True)
+        add.wait_for(timeout=30000)
+        press(add)
+        page.get_by_role("tab", name="Main").wait_for()
+        combo = page.get_by_role("combobox", name="Customer", exact=True).last
+        combo.wait_for()
+        press(combo)
+        choices = page.evaluate("[...document.querySelectorAll('[role=option]')].map(e => e.getAttribute('aria-label') || e.textContent.trim())")
+        check("the Customer drop-down lists the customers of the other table", "Harness Alpha" in choices and "Harness Beta" in choices, str(choices))
+        press(page.get_by_role("option", name="Harness Beta", exact=True))
+        check("picking a customer closes the drop-down", page.get_by_role("option", name="Harness Beta", exact=True).count() == 0)
+        page.locator('input[aria-label="Reference"]').last.focus()
+        page.wait_for_timeout(300)
+        page.keyboard.type("Harness Order")
+        press(page.get_by_role("button", name="Save", exact=True))
+        problems =page.evaluate("[...document.querySelectorAll('[role=status]')].map(e => e.textContent.trim()).filter(t => t)")
+        check("a picked customer is no longer reported as missing", "Order Date is required." in problems and "Customer is required." not in problems, str(problems))
+        check("nothing is saved while the order date is missing", not any(o["reference"].startswith("Harness") for o in api_rows("/api/customerorders")))
+        press(page.get_by_role("button", name="Cancel", exact=True))
+    finally:
+        clean()
+
+
 def uno_profile(project):
     profiles = json.loads((project / "Properties" / "launchSettings.json").read_text(encoding="utf-8"))["profiles"]
     return next(name for name in profiles if "WebAssembly" in name)
@@ -411,7 +472,7 @@ def main():
                 errors = []
                 page.on("pageerror", lambda e: errors.append(str(e)))
                 page.set_default_timeout(5000)
-                walks = [drive_uno] if args.stack == "uno" else [drive, drive_more]
+                walks = [drive_uno, drive_uno_dropdown] if args.stack == "uno" else [drive, drive_more]
                 for walk in walks:
                     try:
                         walk(page, args.prove_failure)
