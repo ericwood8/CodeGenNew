@@ -51,6 +51,120 @@ public class ApiTestsTemplateTests
     }
 
     [TestMethod]
+    public async Task A_parent_a_row_points_at_is_checked_for_a_refused_delete_unless_the_key_removes_or_changes_the_row()
+    {
+        string refused = await Render(Customer(), Project());
+        Expect.Contains(refused, "public async Task A_CustomerStatus_row_that_CustomerStatusId_points_at_cannot_be_removed()");
+        Expect.Contains(refused, "var refused = await client.DeleteAsync($\"/api/customerstatus/{parentId}\");");
+        Expect.Contains(refused, "Assert.AreEqual(HttpStatusCode.BadRequest, refused.StatusCode");
+
+        foreach (var rule in new[] { ForeignKeyDeleteRule.Cascade, ForeignKeyDeleteRule.SetNull, ForeignKeyDeleteRule.SetDefault })
+        {
+            var table = Customer();
+            table.ForeignKeys[0] = new ForeignKeyModel { ConstraintName = "FK_s", ReferencingColumns = ["CustomerStatusId"], ReferencedSchema = "dbo", ReferencedTable = "CustomerStatus", ReferencedColumns = ["CustomerStatusId"], DeleteRule = rule };
+            Expect.DoesNotContain(await Render(table, Project()), "cannot_be_removed");
+        }
+    }
+
+    [TestMethod]
+    [DataRow("NO_ACTION", ForeignKeyDeleteRule.NoAction)]
+    [DataRow("NO ACTION", ForeignKeyDeleteRule.NoAction)]
+    [DataRow("a", ForeignKeyDeleteRule.NoAction)]
+    [DataRow("RESTRICT", ForeignKeyDeleteRule.Restrict)]
+    [DataRow("r", ForeignKeyDeleteRule.Restrict)]
+    [DataRow("CASCADE", ForeignKeyDeleteRule.Cascade)]
+    [DataRow("c", ForeignKeyDeleteRule.Cascade)]
+    [DataRow("SET_NULL", ForeignKeyDeleteRule.SetNull)]
+    [DataRow("SET NULL", ForeignKeyDeleteRule.SetNull)]
+    [DataRow("n", ForeignKeyDeleteRule.SetNull)]
+    [DataRow("SET_DEFAULT", ForeignKeyDeleteRule.SetDefault)]
+    [DataRow("d", ForeignKeyDeleteRule.SetDefault)]
+    [DataRow(null, ForeignKeyDeleteRule.NoAction)]
+    public void Each_database_words_the_delete_rule_its_own_way(string? text, ForeignKeyDeleteRule expected)
+    {
+        Assert.AreEqual(expected, ForeignKeyDeleteRules.Parse(text));
+        Assert.AreEqual(expected is ForeignKeyDeleteRule.NoAction or ForeignKeyDeleteRule.Restrict, expected.RefusesInUse());
+    }
+
+    private static TableModel Tag() => Sample.Table("Tag",
+    [
+        Sample.Column("TagId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Sample.Column("Name", SqlDbType.NVarChar, characters: 50, ordinal: 2)
+    ]);
+
+    private static TableModel CustomerTag() => Sample.Table("CustomerTag",
+    [
+        Sample.Column("CustomerId", SqlDbType.Int, primaryKey: true, ordinal: 1),
+        Sample.Column("TagId", SqlDbType.Int, primaryKey: true, ordinal: 2)
+    ],
+    [
+        Sample.ForeignKey("CustomerId", "Customer", "CustomerId", "Name"),
+        Sample.ForeignKey("TagId", "Tag", "TagId", "Name")
+    ]);
+
+    [TestMethod]
+    [DataRow("PostgreSql", "Testcontainers.PostgreSql", "new PostgreSqlBuilder(\"postgres:17-alpine\").WithDatabase(\"codegen_test\").Build()", "PostgreSqlContainer")]
+    [DataRow("MySql", "Testcontainers.MySql", "new MySqlBuilder(\"mysql:8.4\").WithDatabase(\"codegen_test\").Build()", "MySqlContainer")]
+    [DataRow("SqlServer", "Testcontainers.MsSql", "new MsSqlBuilder(\"mcr.microsoft.com/mssql/server:2022-latest\").Build()", "MsSqlContainer")]
+    public async Task A_test_container_of_the_projects_database_is_started_and_filled_when_asked(string provider, string package, string build, string type)
+    {
+        var plain = await Repo.Cache.RunAsync(Repo.Template("API_EssentialTests_v1.tt"), Project(("ApiTests", "true"), ("DatabaseProvider", provider)));
+        var asked = await Repo.Cache.RunAsync(Repo.Template("API_EssentialTests_v1.tt"), Project(("ApiTests", "true"), ("ApiTestContainers", "true"), ("ApiTestSchema", "sql/create.sql,sql/functions"), ("DatabaseProvider", provider)));
+        Assert.IsTrue(plain.Success && asked.Success, string.Join(" | ", plain.Errors.Concat(asked.Errors)));
+        string without = plain.GeneratedText!.ReplaceLineEndings("\n"), with = asked.GeneratedText!.ReplaceLineEndings("\n");
+
+        Expect.DoesNotContain(without, "Testcontainers");
+        Expect.Contains(with, "<PackageReference Include=\"" + package + "\" Version=\"4.15.0\" />");
+        Expect.Contains(with, "private static " + type + "? _container;");
+        Expect.Contains(with, "_container = " + build + ";");
+        Expect.Contains(with, "private static readonly string[] SchemaScripts = [\"sql/create.sql\", \"sql/functions\"];");
+        Expect.Contains(with, "public static async Task Start(TestContext context)");
+        Expect.Contains(with, "connection = await StartContainerAsync();");
+        Expect.Contains(with, "_container.ExecScriptAsync(");
+        Expect.Contains(with, "_container?.DisposeAsync()");
+        Expect.Contains(with, "The test container could not be made: ");
+        Expect.Contains(with, "ApiFolder()");
+    }
+
+    [TestMethod]
+    public async Task SQLite_needs_no_test_container_whatever_the_setting_says()
+    {
+        var result = await Repo.Cache.RunAsync(Repo.Template("API_EssentialTests_v1.tt"), Project(("ApiTests", "true"), ("ApiTestContainers", "true"), ("DatabaseProvider", "Sqlite"), ("DatabaseName", "shop.db")));
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        Expect.DoesNotContain(result.GeneratedText!, "Testcontainers");
+        Expect.Contains(result.GeneratedText!, "File.Copy(source, _scratchFile);");
+    }
+
+    [TestMethod]
+    public async Task A_junction_gets_a_test_class_of_its_list_link_and_unlink_and_an_ordinary_table_is_refused()
+    {
+        var result = await Repo.Cache.RunAsync(Repo.Template("API_JunctionTest_v1.tt"), CustomerTag(), Project());
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string tests = result.GeneratedText!.ReplaceLineEndings("\n");
+        Expect.Contains(tests, "public class CustomerTagJunctionApiTests");
+        Expect.Contains(tests, "private const string Route = \"/api/customertags\";");
+        Expect.Contains(tests, "await ApiFixture.ExistingKeyAsync(\"/api/customers\", \"customerId\", 1, \"Customer\")");
+        Expect.Contains(tests, "A_target_can_be_linked_and_unlinked_and_either_can_be_repeated");
+        Expect.Contains(tests, "The_list_names_every_target_with_its_display_columns");
+        Expect.Contains(tests, "A_row_that_is_not_there_cannot_be_linked");
+        Expect.Contains(tests, "targetId = int.MaxValue");
+        Expect.DoesNotContain(tests, "Without_a_token");
+
+        var signedIn = await Repo.Cache.RunAsync(Repo.Template("API_JunctionTest_v1.tt"), CustomerTag(), Project(("ApiAuth", "true"), ("WriteRoles", "Administrator,Manager")));
+        Assert.IsTrue(signedIn.Success, string.Join(" | ", signedIn.Errors));
+        Expect.Contains(signedIn.GeneratedText!, "Without_a_token_the_junction_answers_401");
+        Expect.Contains(signedIn.GeneratedText!, "A_role_the_write_rule_does_not_list_cannot_link");
+
+        var ordinary = await Repo.Cache.RunAsync(Repo.Template("API_JunctionTest_v1.tt"), Customer(), Project());
+        Assert.IsFalse(ordinary.Success);
+        Expect.Contains(string.Join(" ", ordinary.Errors), "is not one");
+
+        var noApi = await Repo.Cache.RunAsync(Repo.Template("API_JunctionTest_v1.tt"), CustomerTag(), Project(("NoApiTables", "Tag")));
+        Assert.IsFalse(noApi.Success);
+        Expect.Contains(string.Join(" ", noApi.Errors), "needs an API for both sides");
+    }
+
+    [TestMethod]
     public async Task The_clone_sort_and_unique_value_checks_are_written_for_the_tables_that_have_them()
     {
         var unique = Sample.Table("Customer",
@@ -177,7 +291,7 @@ public class ApiTestsTemplateTests
     public void The_setting_adds_the_template_and_the_test_project_has_its_own_folder()
     {
         CollectionAssert.DoesNotContain(Project(("ApiTests", "false")).ImpliedPlanTemplates.ToArray(), "API_Test");
-        CollectionAssert.Contains(Project(("ApiTests", "true")).ImpliedPlanTemplates.ToArray(), "API_Test");
+        CollectionAssert.IsSubsetOf(new[] { "API_Test", "API_JunctionTest" }, Project(("ApiTests", "true")).ImpliedPlanTemplates.ToArray());
         Assert.AreEqual("Acme.Api.Tests", Project().OutputFolderOf("apitests"));
         Assert.AreEqual("Tests/Api", Project(("OutputApiTests", "Tests/Api")).OutputFolderOf("apitests"));
         Assert.AreEqual("ApiTests", TemplateCatalog.Discover(Repo.TemplatesDirectory).Single(t => t.Name == "API_Test").Config.OutputRoot);

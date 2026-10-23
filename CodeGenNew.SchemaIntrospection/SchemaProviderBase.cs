@@ -26,7 +26,7 @@ public sealed record RawColumn(
     string? SpatialType = null, int Srid = 0, List<string>? SetValues = null, int? BitWidth = null);
 
 /// <summary> One foreign key, either direction: the OTHER table's name and the two column lists. </summary>
-public sealed record ForeignKeyRow(string ConstraintName, string OtherSchema, string OtherTable, List<string> ReferencingColumns, List<string> ReferencedColumns);
+public sealed record ForeignKeyRow(string ConstraintName, string OtherSchema, string OtherTable, List<string> ReferencingColumns, List<string> ReferencedColumns, ForeignKeyDeleteRule DeleteRule = ForeignKeyDeleteRule.NoAction);
 
 /// <summary> One index as the catalog reports it: the key columns in order. </summary>
 public sealed record IndexRow(string Name, bool IsUnique, List<string> Columns);
@@ -255,6 +255,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
                 ReferencedSchema = fk.ReferencedSchema,
                 ReferencedTable = fk.ReferencedTable,
                 ReferencedColumns = fk.ReferencedColumns,
+                DeleteRule = fk.DeleteRule,
                 ReferencingDatabaseColumns = fk.ReferencingDatabaseColumns,
                 ReferencedDatabaseTable = fk.ReferencedDatabaseTable,
                 ReferencedDatabaseColumns = fk.ReferencedDatabaseColumns,
@@ -472,7 +473,8 @@ public abstract class SchemaProviderBase : ISchemaProvider
             ReferencedColumns = r.ReferencedColumns.Select(Named).ToList(),
             ReferencingDatabaseColumns = _naming == NamingStyle.AsIs ? null : r.ReferencingColumns,
             ReferencedDatabaseTable = WhenDifferent(r.OtherTable, Named(r.OtherTable)),
-            ReferencedDatabaseColumns = _naming == NamingStyle.AsIs ? null : r.ReferencedColumns
+            ReferencedDatabaseColumns = _naming == NamingStyle.AsIs ? null : r.ReferencedColumns,
+            DeleteRule = r.DeleteRule
         }).ToList();
     }
 
@@ -507,7 +509,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
             var key = (constraintName, otherSchema, otherTable);
             if (!grouped.TryGetValue(key, out var row))
             {
-                row = new ForeignKeyRow(constraintName, otherSchema, otherTable, [], []);
+                row = new ForeignKeyRow(constraintName, otherSchema, otherTable, [], [], ForeignKeyDeleteRules.Parse(reader.GetString(reader.GetOrdinal("DeleteRule"))));
                 grouped[key] = row;
                 order.Add(row);
             }

@@ -45,11 +45,13 @@ using System.Text;
 
 namespace <#= ns #>.Tests;
 
-/// <summary> Stands in for the API: a read answers the text given for the end of its path (an empty list when none), a failure the status given, a write answers 204, and every call is remembered. </summary>
+/// <summary> Stands in for the API: a read answers the text given for the end of its path (an empty list when none), a failure the status given, a write answers 204 (or the text or failure given for its method and the end of its path), and every call is remembered. </summary>
 public class FakeApi : HttpMessageHandler
 {
     private readonly Dictionary<string, string> answers = [];
     private readonly Dictionary<string, HttpStatusCode> failures = [];
+    private readonly Dictionary<(HttpMethod, string), string> writeAnswers = [];
+    private readonly Dictionary<(HttpMethod, string), HttpStatusCode> writeFailures = [];
 
     /// <summary> The calls made so far: the method, the path with its query and the body sent. </summary>
     public List<(HttpMethod Method, string Path, string Body)> Requests { get; } = [];
@@ -71,12 +73,26 @@ public class FakeApi : HttpMessageHandler
         return this;
     }
 
+    /// <summary> A write of this method whose path ends with <paramref name="pathEnd"/> answers <paramref name="json"/> (a clone answers the copy). </summary>
+    public FakeApi AnswerWrite(HttpMethod method, string pathEnd, string json)
+    {
+        writeAnswers[(method, pathEnd)] = json;
+        return this;
+    }
+
+    /// <summary> A write of this method whose path ends with <paramref name="pathEnd"/> fails with this status. </summary>
+    public FakeApi FailWrite(HttpMethod method, string pathEnd, HttpStatusCode status)
+    {
+        writeFailures[(method, pathEnd)] = status;
+        return this;
+    }
+
     /// <summary> The answer of an OData list: <paramref name="rowsJson"/> (the rows, separated by commas) and their count. </summary>
     public static string ODataPage(string rowsJson, int count) => "{ \"value\": [" + rowsJson + "], \"@odata.count\": " + count + " }";
 
-    /// <summary> The answer of a search: one page holding <paramref name="rowsJson"/> (the rows, separated by commas). </summary>
-    public static string Page(string rowsJson, int count) =>
-        "{ \"items\": [" + rowsJson + "], \"page\": 1, \"pageSize\": 10, \"totalCount\": " + count + ", \"totalPages\": 1 }";
+    /// <summary> The answer of a search: page <paramref name="page"/> holding <paramref name="rowsJson"/> (the rows, separated by commas) of <paramref name="count"/> rows in all. </summary>
+    public static string Page(string rowsJson, int count, int page = 1, int pageSize = 10) =>
+        "{ \"items\": [" + rowsJson + "], \"page\": " + page + ", \"pageSize\": " + pageSize + ", \"totalCount\": " + count + ", \"totalPages\": " + Math.Max(1, (count + pageSize - 1) / pageSize) + " }";
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -86,7 +102,13 @@ public class FakeApi : HttpMessageHandler
         if (request.Method == HttpMethod.Post && path.EndsWith("/auth/login", StringComparison.OrdinalIgnoreCase))
             return Json("{ \"token\": \"abc\", \"expiresUtc\": \"2999-01-01T00:00:00Z\", \"user\": { \"name\": \"Pat\", \"role\": \"" + Role + "\", \"ownerId\": null } }");
         if (request.Method != HttpMethod.Get)
+        {
+            if (writeFailures.FirstOrDefault(f => f.Key.Item1 == request.Method && path.EndsWith(f.Key.Item2, StringComparison.OrdinalIgnoreCase)) is { Key.Item2: not null } writeFailure)
+                return new HttpResponseMessage(writeFailure.Value);
+            if (writeAnswers.FirstOrDefault(a => a.Key.Item1 == request.Method && path.EndsWith(a.Key.Item2, StringComparison.OrdinalIgnoreCase)) is { Key.Item2: not null } written)
+                return Json(written.Value);
             return new HttpResponseMessage(HttpStatusCode.NoContent);
+        }
         if (failures.FirstOrDefault(f => path.EndsWith(f.Key, StringComparison.OrdinalIgnoreCase)) is { Key: not null } failure)
             return new HttpResponseMessage(failure.Value);
         return Json(answers.FirstOrDefault(a => path.EndsWith(a.Key, StringComparison.OrdinalIgnoreCase)).Value ?? (path.StartsWith("/odata/", StringComparison.OrdinalIgnoreCase) ? "{ \"value\": [] }" : "[]"));

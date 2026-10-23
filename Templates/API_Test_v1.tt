@@ -102,6 +102,12 @@
         var readRoles = WriteRolePlan.ReadFor(Project, Model);
         bool scopedToPerson = OwnedTable.IsScoped(Model, Project);
 
+        // the parents a row of this table points at whose delete rule refuses the delete while a row uses them: the parent's own DELETE must answer 400, so a screen can say "in use"
+        var usedParents = bodyColumns.Where(c => !c.IsPrimaryKey)
+            .Select(c => (Column: c, Key: Model.ForeignKeys.FirstOrDefault(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name && f.ReferencedColumns.Count == 1)))
+            .Where(x => x.Key is not null && x.Key.DeleteRule.RefusesInUse() && ForeignKeyParentRoute(x.Column, out string _).Length > 0 && !Project.NoApiFor(x.Key.ReferencedTable, x.Key.ReferencedLookupShape))
+            .Take(3).ToList();
+
         // limits the validators enforce, for the 400 tests
         var longText = Project.ApiValidation ? bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0) : null;
         ColumnModel? ranged = null;
@@ -381,6 +387,37 @@ public class <#= singular #>ApiTests
                 using var removedExtra = await client.DeleteAsync($"{Route}/{extra}");
             }
             Assert.IsTrue((int)duplicate.StatusCode is >= 400 and < 500, "the duplicate is refused with a client error, not saved and not a 500: " + (int)duplicate.StatusCode);
+        }
+        finally
+        {
+            using var removed = await client.DeleteAsync($"{Route}/{<#= idRef #>}");
+        }
+    }
+<#
+        }
+        foreach (var (usedColumn, usedKey) in usedParents)
+        {
+            string usedRoute = ForeignKeyParentRoute(usedColumn, out string usedKeyName);
+#>
+
+    [TestMethod]
+    public async Task A_<#= usedKey!.ReferencedTable #>_row_that_<#= usedColumn.Name #>_points_at_cannot_be_removed()
+    {
+        ApiFixture.RequireDatabase();
+        var client = ApiFixture.Client;
+
+        var body = await NewBodyAsync();
+        using var created = await client.PostAsJsonAsync(Route, body);
+        Assert.AreEqual(HttpStatusCode.Created, created.StatusCode, await created.Content.ReadAsStringAsync());
+        <#= keyCs #> id = (await created.Content.ReadFromJsonAsync<JsonObject>())![<#= ApiSampleValues.Json(keyJson) #>]!.GetValue<<#= keyCs #>>();
+        try
+        {
+            string parentId = Uri.EscapeDataString(body[<#= ApiSampleValues.Json(JsonNames.Camel(usedColumn.Name)) #>]!.ToString());
+            using var refused = await client.DeleteAsync($"<#= usedRoute #>/{parentId}");
+            Assert.AreEqual(HttpStatusCode.BadRequest, refused.StatusCode, "a row that is in use is not removed: " + await refused.Content.ReadAsStringAsync());
+
+            using var still = await client.GetAsync($"<#= usedRoute #>/{parentId}");
+            Assert.AreEqual(HttpStatusCode.OK, still.StatusCode, "the row is still there");
         }
         finally
         {

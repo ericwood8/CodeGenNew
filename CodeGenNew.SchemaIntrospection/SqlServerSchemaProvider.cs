@@ -456,7 +456,8 @@ public class SqlServerSchemaProvider : SchemaProviderBase
             cpar.name AS ReferencingColumn,
             OBJECT_SCHEMA_NAME(fk.referenced_object_id) AS OtherSchema,
             OBJECT_NAME(fk.referenced_object_id) AS OtherTable,
-            cref.name AS ReferencedColumn
+            cref.name AS ReferencedColumn,
+            fk.delete_referential_action_desc AS DeleteRule
         FROM sys.foreign_keys fk
         INNER JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
         INNER JOIN sys.columns cpar ON cpar.object_id = fkc.parent_object_id AND cpar.column_id = fkc.parent_column_id
@@ -473,7 +474,8 @@ public class SqlServerSchemaProvider : SchemaProviderBase
             OBJECT_SCHEMA_NAME(fk.parent_object_id) AS OtherSchema,
             OBJECT_NAME(fk.parent_object_id) AS OtherTable,
             cpar.name AS ReferencingColumn,
-            cref.name AS ReferencedColumn
+            cref.name AS ReferencedColumn,
+            fk.delete_referential_action_desc AS DeleteRule
         FROM sys.foreign_keys fk
         INNER JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
         INNER JOIN sys.columns cpar ON cpar.object_id = fkc.parent_object_id AND cpar.column_id = fkc.parent_column_id

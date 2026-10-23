@@ -156,6 +156,8 @@
         var childLookups = children.SelectMany(ch => ch.Lookups).GroupBy(l => l.Field).Select(g => g.First()).ToList();
         var readOnlyChildren = children.Where(ch => !ch.IsEditable).ToList();
         var editableChildren = children.Where(ch => ch.IsEditable).ToList();
+        // the boxes of an editable child row are the Components' (a money box, a type-ahead), so the page needs that namespace for them too
+        bool childBoxesNeedComponents = editableChildren.Any(ch => ch.EditColumns.Any(c => ch.Grid.IsMoneyInput(c) || ch.Grid.Lookups.Any(l => l.TypeAhead && l.ColumnName.EqualsIgnoreCase(c.Name))));
 
         // The box of one column of an editable child row (the row is the variable `line`).
         string ChildInput(ChildGrid grid, string childVar, ColumnModel c)
@@ -220,7 +222,7 @@
             L($"@page \"/{route}\"");
         L($"@using {ns}.Models");
         L($"@using {ns}.Services");
-        if (usesMoneyBox || aheadParents.Count > 0 || Project.ApiAnnotations)
+        if (usesMoneyBox || aheadParents.Count > 0 || Project.ApiAnnotations || childBoxesNeedComponents)
             L($"@using {ns}.Components");
         if (Project.Auth)
             L(readRoles.Count > 0 ? $"@attribute [Authorize(Roles = \"{string.Join(",", readRoles)}\")]" : "@attribute [Authorize]");

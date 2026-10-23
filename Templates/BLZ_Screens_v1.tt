@@ -23,17 +23,11 @@
     if (screens.Count == 0)
         Error("BLZ_Screens found no table to list: no table has an API and a search endpoint, and the project's Screens setting is empty.");
     var clients = Database.CrudApiTables(Project).Where(t => BlazorNames.HasClient(t, Project)).ToList();
-    var odataScreens = ODataPlan.BlazorScreenTables(Database, Project);
     var odataClients = Project.OData ? ODataPlan.For(Database, Project).Tables.Where(t => BlazorNames.HasClient(t, Project)).ToList() : new List<TableModel>();
 
-    // the screens in menu order: the dashboard, the REST screens, then the OData ones that do not take a REST screen's place
-    var entries = ScreenMenu.For(Project, screens, odataScreens)
-        .Select(m => (Route: m.Kind switch { ScreenMenuKind.Dashboard => "dashboard", ScreenMenuKind.Screen => ScreenNames.Route(m.Table!.TableName), _ => AngularNames.ODataRoute(m.Table!.TableName) }, m.Label, m.Roles))
-        .ToList();
-    // the junction tables whose page BLZ_Junction writes: one more entry each, after the others
+    // the screens in menu order: the dashboard, the REST screens, the OData ones that do not take a REST screen's place, then a page for each junction table (BlazorMenu is the one list)
+    var entries = BlazorMenu.Entries(Database, Project);
     var junctionTables = Database.Tables.Where(t => BlazorNames.HasJunctionPage(t, Project)).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
-    foreach (var t in junctionTables)
-        entries.Add((BlazorNames.JunctionRoute(t.TableName), BlazorNames.JunctionLabel(t.TableName), Project.Auth ? WriteRolePlan.ReadFor(Project, t) : []));
 
     var o = new StringBuilder();
     void L(string s = "") => o.Append(s).Append('\n');

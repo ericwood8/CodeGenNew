@@ -10,7 +10,8 @@
     // Generates: <Table>PageTests.cs   (the output folder is the Blazor test project, OutputBlazorTests; the BLZ_EssentialTests group writes the project around it)
     // bUnit tests of the pages BLZ_Page writes for the table, over FakeApi (no server, no database): the REST page, and with OData=true a second class for the OData page. Each checks the heading, a row
     // the server returns, the Edit button opening the dialog, Save sending the row in a PUT and ?edit=<key> opening a row. A master-detail page also checks that each read-only child grid shows the
-    // child rows of the row being edited. The row is GridTestRow's, the same one the React and Angular tests use; a table with no column to recognise a row by has the heading test only.
+    // child rows of the row being edited. On the REST page it also checks the grid's own behaviour: a header sorts and flips, a search sends its box and Clear drops it, Next and Previous page, the Columns
+    // list hides and restores a column, a Save the API refuses shows its sentence, Delete asks first and says when a row is in use, and Clone opens the copy; a child table listed in EditableChildren shows its rows in boxes of the form and sends them, added and removed ones too, with the row in the PUT. The row is GridTestRow's, the same one the React and Angular tests use; a table with no column to recognise a row by has the heading test only.
     // With Auth=true the test signs in first, as a role that may read and write the table. Writes nothing unless the project sets BlazorTests=true.
     // Full notes: Docs/TemplateNotes/BLZ_Test_v1.md
     // ==========================================================================================
@@ -39,8 +40,135 @@
         var children = ChildGrid.For(Model, Project)
             .Where(g => DatabaseModel.IsDetailMaster(Model, Project) && g.KeyColumn is not null && g.KeyType is not null && !g.IsNameActive && !Project.NoRepositoryFor(g.Table, default) && !g.IsEditable)
             .ToList();
+        var editable = ChildGrid.For(Model, Project)
+            .Where(g => DatabaseModel.IsDetailMaster(Model, Project) && g.KeyColumn is not null && g.KeyType is not null && !g.IsNameActive && !Project.NoRepositoryFor(g.Table, default) && g.IsEditable)
+            .ToList();
+        var chosen = ChosenGridColumns.For(form);
+        string? sortName = chosen.Initial.FirstOrDefault(c => c.Sortable)?.Name;
+        var search = form.SearchFields.FirstOrDefault(f => f.Column is not null);
         var o = new System.Text.StringBuilder();
         o.Append($"using Bunit;\nusing Microsoft.AspNetCore.Components;\nusing Microsoft.Extensions.DependencyInjection;\nusing {ns}.Pages;\n\nnamespace {ns}.Tests;\n");
+
+        // the tests of the REST grid itself: sorting, searching, paging, the Columns list, a refused Save, Delete and Clone
+        string GridTests()
+        {
+            string keyUrl = apiRoute + "/" + keyText;
+            string edit = "page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Edit\").Click();";
+            var t = new System.Text.StringBuilder();
+            if (sortName is not null)
+            {
+                string sort = Uri.EscapeDataString(sortName);
+                t.Append($$"""
+
+    [TestMethod]
+    public void Sorts_by_a_header_and_flips_the_direction_when_it_is_clicked_again()
+    {
+        var page = OpenWithRow();
+        page.FindAll("button.sort").First().Click();
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Path.Contains("sortBy={{sort}}&sortDir=asc"))));
+        page.FindAll("button.sort").First().Click();
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Path.Contains("sortBy={{sort}}&sortDir=desc"))));
+    }
+
+""");
+            }
+            if (search is not null)
+            {
+                string label = search.Label.Replace("\\", "\\\\").Replace("\"", "\\\"");
+                string param = search.ParamName;
+                t.Append($$"""
+
+    [TestMethod]
+    public void Searches_with_the_text_typed_and_Clear_drops_it()
+    {
+        var page = OpenWithRow();
+        page.Find("[aria-label=\"Search by {{label}}\"]").Input("zz9");
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Search").Click();
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Path.Contains("{{param}}=zz9"))));
+        Api.Requests.Clear();
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Clear").Click();
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Path.Contains("/search?") && !r.Path.Contains("{{param}}="))));
+    }
+
+""");
+            }
+            t.Append($$"""
+
+    [TestMethod]
+    public void Pages_forward_with_Next_and_the_first_page_has_no_Previous()
+    {
+        var page = Open(FakeApi.Page(Row, 45, 1, 20));
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "Page 1 of 3"));
+        Assert.IsTrue(page.FindAll("button").First(b => b.TextContent.Trim() == "Previous").HasAttribute("disabled"));
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Next").Click();
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Path.Contains("pageNumber=2"))));
+    }
+
+    [TestMethod]
+    public void Hides_a_column_unticked_in_the_Columns_list_and_Reset_shows_it_again()
+    {
+        var page = OpenWithRow();
+        int before = page.FindAll("thead th").Count;
+        page.FindAll(".column-list input[type=checkbox]").First(i => i.HasAttribute("checked") && !i.HasAttribute("disabled")).Change(false);
+        page.WaitForAssertion(() => Assert.AreEqual(before - 1, page.FindAll("thead th").Count));
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Reset").Click();
+        page.WaitForAssertion(() => Assert.AreEqual(before, page.FindAll("thead th").Count));
+    }
+
+    [TestMethod]
+    public void Shows_a_sentence_and_keeps_the_dialog_open_when_the_API_refuses_a_Save()
+    {
+        var page = OpenWithRow();
+        {{edit}}
+        page.WaitForAssertion(() => Assert.IsTrue(page.FindAll("[role=dialog] input").Any(i => i.GetAttribute("value") == "{{row!.Marker}}")));
+        Api.FailWrite(HttpMethod.Put, "/{{keyText}}", System.Net.HttpStatusCode.BadRequest);
+        page.Find("[role=dialog] button[type=submit]").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Find("[role=dialog] [role=alert]").TextContent, "Some of the values are not acceptable!"));
+        Api.FailWrite(HttpMethod.Put, "/{{keyText}}", System.Net.HttpStatusCode.InternalServerError);
+        page.Find("[role=dialog] button[type=submit]").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Find("[role=dialog] [role=alert]").TextContent, "Problem while saving!"));
+    }
+
+    [TestMethod]
+    public void Deletes_a_row_only_after_the_person_confirms()
+    {
+        var page = OpenWithRow();
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Delete").Click();
+        Assert.IsFalse(Api.Requests.Any(r => r.Method == HttpMethod.Delete), "no confirmation, no delete");
+        JSInterop.Setup<bool>("confirm", _ => true).SetResult(true);
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Delete").Click();
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Delete && r.Path == "{{keyUrl}}")));
+    }
+
+    [TestMethod]
+    public void Says_a_row_that_is_in_use_cannot_be_deleted()
+    {
+        var page = OpenWithRow();
+        JSInterop.Setup<bool>("confirm", _ => true).SetResult(true);
+        Api.FailWrite(HttpMethod.Delete, "/{{keyText}}", System.Net.HttpStatusCode.BadRequest);
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Delete").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Find("p.error").TextContent, "It cannot be deleted because it is in use!"));
+    }
+
+""");
+            if (form.CanClone)
+            {
+                t.Append($$"""
+
+    [TestMethod]
+    public void Clones_a_row_and_opens_the_copy_in_the_dialog()
+    {
+        Api.AnswerWrite(HttpMethod.Post, "/{{keyText}}/clone", Row);
+        var page = OpenWithRow();
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Clone").Click();
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Post && r.Path == "{{keyUrl}}/clone")));
+        page.WaitForAssertion(() => StringAssert.Contains(page.Find("[role=dialog]").TextContent, "Edit {{title}}"));
+    }
+
+""");
+            }
+            return t.ToString();
+        }
 
         void Tests(bool odata)
         {
@@ -52,9 +180,9 @@
             o.Append($"\n[TestClass]\npublic class {type}{(odata ? "ODataPage" : "Page")}Tests : PageTestContext\n{{\n");
             if (row is not null)
                 o.Append($"    private const string Row = \"\"\"{row.Json}\"\"\";\n\n");
-            o.Append($"    private IRenderedComponent<{pageType}> Open()\n    {{\n");
+            o.Append($"    private IRenderedComponent<{pageType}> Open({(row is not null && !odata ? "string? list = null" : "")})\n    {{\n");
             if (row is not null)
-                o.Append($"        Api.Answer(\"{listPath}\", {listAnswer});\n" + (odata ? $"        Api.Answer(\"{keyPath}\", Row);\n" : "") + signIn);
+                o.Append($"        Api.Answer(\"{listPath}\", {(odata ? listAnswer : "list ?? " + listAnswer)});\n" + (odata ? $"        Api.Answer(\"{keyPath}\", Row);\n" : "") + signIn);
             else
                 o.Append($"        Api.Answer(\"{listPath}\", {(odata ? "FakeApi.ODataPage(\"\", 0)" : "FakeApi.Page(\"\", 0)")});\n" + signIn);
             o.Append($"        return Render<{pageType}>();\n    }}\n\n");
@@ -76,6 +204,8 @@
                 o.Append($"        Services.GetRequiredService<NavigationManager>().NavigateTo(\"{route}?edit={keyText}\");\n");
                 o.Append($"        Api.Answer(\"{keyPath}\", Row);\n");
                 o.Append("        var page = Open();\n        page.WaitForAssertion(() => StringAssert.Contains(page.Find(\"[role=dialog]\").TextContent, \"Edit " + title + "\"));\n    }\n");
+                if (!odata)
+                    o.Append(GridTests());
                 foreach (var child in children)
                 {
                     bool served = odata && ODataPlan.ServesByName(child.Table, Project);
@@ -86,6 +216,47 @@
                     o.Append($"        Api.Answer(\"{childPath}\", \"{answer}\");\n");
                     o.Append("        var page = OpenWithRow();\n        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Edit\").Click();\n");
                     o.Append("        page.WaitForAssertion(() => Assert.AreEqual(1, page.FindAll(\"[role=dialog] tbody tr\").Count));\n    }\n");
+                }
+            }
+            if (!odata && row is not null)
+            {
+                foreach (var child in editable)
+                {
+                    string childPath = "/api/" + child.ApiRoute;
+                    string answer = ("[" + ChildTestRow.Json(child, parentKeyJson) + "]").Replace("\\", "\\\\").Replace("\"", "\\\"");
+                    string id = BlazorNames.Identifier(child.Name).ToLowerInvariant();
+                    string words = Labels.Words(child.BaseName);
+                    o.Append($$"""
+
+    [TestMethod]
+    public void Shows_the_{{id}}_rows_of_the_row_in_boxes_of_the_form()
+    {
+        Api.Answer("{{childPath}}", "{{answer}}");
+        var page = OpenWithRow();
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Edit").Click();
+        page.WaitForAssertion(() => Assert.AreEqual(1, page.FindAll("[role=dialog] fieldset.child-rows tbody tr").Count));
+        Assert.IsTrue(page.FindAll("[role=dialog] fieldset.child-rows tbody tr input").Count > 0, "the row is made of boxes");
+    }
+
+    [TestMethod]
+    public void Adds_and_removes_a_{{id}}_row_and_sends_the_rows_with_the_row_in_the_PUT()
+    {
+        Api.Answer("{{childPath}}", "{{answer}}");
+        var page = OpenWithRow();
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Edit").Click();
+        page.WaitForAssertion(() => Assert.AreEqual(1, page.FindAll("[role=dialog] fieldset.child-rows tbody tr").Count));
+
+        page.FindAll("[role=dialog] fieldset.child-rows button").First(b => b.TextContent.Trim() == "Add {{words}}").Click();
+        page.WaitForAssertion(() => Assert.AreEqual(2, page.FindAll("[role=dialog] fieldset.child-rows tbody tr").Count));
+        page.FindAll("[role=dialog] fieldset.child-rows button").First(b => b.TextContent.Trim() == "Remove").Click();
+        page.WaitForAssertion(() => Assert.AreEqual(1, page.FindAll("[role=dialog] fieldset.child-rows tbody tr").Count));
+        page.FindAll("[role=dialog] fieldset.child-rows button").First(b => b.TextContent.Trim() == "Add {{words}}").Click();
+
+        page.Find("[role=dialog] button[type=submit]").Click();
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Put
+            && System.Text.Json.Nodes.JsonNode.Parse(r.Body)!["{{child.JsonName}}"] is System.Text.Json.Nodes.JsonArray { Count: 2 })));
+    }
+""");
                 }
             }
             o.Append("}\n");

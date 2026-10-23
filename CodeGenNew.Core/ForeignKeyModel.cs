@@ -8,6 +8,9 @@ public class ForeignKeyModel
     public required string ReferencedTable { get; init; }
     public required List<string> ReferencedColumns { get; init; }
 
+    /// <summary> The foreign key's ON DELETE rule: what happens to a row that points at a deleted row. </summary>
+    public ForeignKeyDeleteRule DeleteRule { get; init; }
+
     // The database's own names where the project's naming style changed the ones above (null: the same). SQL text uses these.
     public List<string>? ReferencingDatabaseColumns { get; init; }
     public string? ReferencedDatabaseTable { get; init; }

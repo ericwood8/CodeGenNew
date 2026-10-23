@@ -521,4 +521,48 @@ public class MySqlIntegrationTests
             await Run("DROP TABLE IF EXISTS codegen_checks_test");
         }
     }
+
+    [TestMethod]
+    public async Task A_foreign_keys_delete_rule_is_read()
+    {
+        // Writes two throwaway tables in the database, dropped again whatever happens.
+        var provider = Provider(NamingStyle.Pascal);
+        string database = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_DATABASE")!;
+        var request = new ConnectionRequest
+        {
+            Provider = DatabaseProvider.MySql, ServerName = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_HOST")!, DatabaseName = database, AuthMode = AuthMode.SqlLogin,
+            UserName = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_USER"), Password = Environment.GetEnvironmentVariable("CODEGENNEW_MYSQL_PASSWORD")
+        };
+        await using var connection = request.CreateMySqlConnection();
+        await connection.OpenAsync();
+        async Task Run(string sql) { await using var command = connection.CreateCommand(); command.CommandText = sql; await command.ExecuteNonQueryAsync(); }
+        try
+        {
+            await Run("DROP TABLE IF EXISTS codegen_rules_child");
+            await Run("DROP TABLE IF EXISTS codegen_rules_parent");
+            await Run("CREATE TABLE codegen_rules_parent (parent_id int NOT NULL AUTO_INCREMENT PRIMARY KEY)");
+            await Run("""
+                CREATE TABLE codegen_rules_child (
+                    child_id int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                    plain_id int NOT NULL, restrict_id int NOT NULL, cascade_id int NOT NULL, null_id int NULL,
+                    FOREIGN KEY (plain_id) REFERENCES codegen_rules_parent (parent_id),
+                    FOREIGN KEY (restrict_id) REFERENCES codegen_rules_parent (parent_id) ON DELETE RESTRICT,
+                    FOREIGN KEY (cascade_id) REFERENCES codegen_rules_parent (parent_id) ON DELETE CASCADE,
+                    FOREIGN KEY (null_id) REFERENCES codegen_rules_parent (parent_id) ON DELETE SET NULL)
+                """);
+
+            var model = await provider.BuildTableModelAsync(database, "codegen_rules_child");
+            ForeignKeyDeleteRule RuleOf(string column) => model.ForeignKeys.Single(f => f.ReferencingColumns[0] == column).DeleteRule;
+
+            Assert.IsTrue(RuleOf("PlainId").RefusesInUse());
+            Assert.AreEqual(ForeignKeyDeleteRule.Restrict, RuleOf("RestrictId"));
+            Assert.AreEqual(ForeignKeyDeleteRule.Cascade, RuleOf("CascadeId"));
+            Assert.AreEqual(ForeignKeyDeleteRule.SetNull, RuleOf("NullId"));
+        }
+        finally
+        {
+            await Run("DROP TABLE IF EXISTS codegen_rules_child");
+            await Run("DROP TABLE IF EXISTS codegen_rules_parent");
+        }
+    }
 }

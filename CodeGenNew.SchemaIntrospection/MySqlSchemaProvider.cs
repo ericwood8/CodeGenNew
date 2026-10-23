@@ -456,16 +456,18 @@ public class MySqlSchemaProvider : SchemaProviderBase
 
     private const string ForeignKeysQuery = """
         SELECT k.CONSTRAINT_NAME AS ConstraintName, k.REFERENCED_TABLE_SCHEMA AS OtherSchema, k.REFERENCED_TABLE_NAME AS OtherTable,
-               k.COLUMN_NAME AS ReferencingColumn, k.REFERENCED_COLUMN_NAME AS ReferencedColumn
+               k.COLUMN_NAME AS ReferencingColumn, k.REFERENCED_COLUMN_NAME AS ReferencedColumn, rc.DELETE_RULE AS DeleteRule
         FROM information_schema.KEY_COLUMN_USAGE k
+        JOIN information_schema.REFERENTIAL_CONSTRAINTS rc ON rc.CONSTRAINT_SCHEMA = k.TABLE_SCHEMA AND rc.TABLE_NAME = k.TABLE_NAME AND rc.CONSTRAINT_NAME = k.CONSTRAINT_NAME
         WHERE k.TABLE_SCHEMA = @schema AND k.TABLE_NAME = @table AND k.REFERENCED_TABLE_NAME IS NOT NULL
         ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION;
         """;
 
     private const string ChildForeignKeysQuery = """
         SELECT k.CONSTRAINT_NAME AS ConstraintName, k.TABLE_SCHEMA AS OtherSchema, k.TABLE_NAME AS OtherTable,
-               k.COLUMN_NAME AS ReferencingColumn, k.REFERENCED_COLUMN_NAME AS ReferencedColumn
+               k.COLUMN_NAME AS ReferencingColumn, k.REFERENCED_COLUMN_NAME AS ReferencedColumn, rc.DELETE_RULE AS DeleteRule
         FROM information_schema.KEY_COLUMN_USAGE k
+        JOIN information_schema.REFERENTIAL_CONSTRAINTS rc ON rc.CONSTRAINT_SCHEMA = k.TABLE_SCHEMA AND rc.TABLE_NAME = k.TABLE_NAME AND rc.CONSTRAINT_NAME = k.CONSTRAINT_NAME
         WHERE k.REFERENCED_TABLE_SCHEMA = @schema AND k.REFERENCED_TABLE_NAME = @table
         ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION;
         """;

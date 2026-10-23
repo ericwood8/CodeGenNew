@@ -255,17 +255,17 @@ public partial class SqliteSchemaProvider : SchemaProviderBase
 
     protected override async Task<List<ForeignKeyRow>> ReadForeignKeyRowsAsync(DbConnection connection, string schemaName, string tableName, bool children, CancellationToken cancellationToken)
     {
-        var rows = new List<(string Table, int Id, int Seq, string From, string? To, string ReferencedTable)>();
+        var rows = new List<(string Table, int Id, int Seq, string From, string? To, string ReferencedTable, string OnDelete)>();
         await using (var command = (SqliteCommand)connection.CreateCommand())
         {
             command.CommandText = children
-                ? "SELECT m.name, f.id, f.seq, f.\"from\", f.\"to\", f.\"table\" FROM sqlite_master m, pragma_foreign_key_list(m.name) f " +
+                ? "SELECT m.name, f.id, f.seq, f.\"from\", f.\"to\", f.\"table\", f.on_delete FROM sqlite_master m, pragma_foreign_key_list(m.name) f " +
                   "WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' AND f.\"table\" = @t COLLATE NOCASE ORDER BY m.name, f.id, f.seq"
-                : "SELECT @t, f.id, f.seq, f.\"from\", f.\"to\", f.\"table\" FROM pragma_foreign_key_list(@t) f ORDER BY f.id, f.seq";
+                : "SELECT @t, f.id, f.seq, f.\"from\", f.\"to\", f.\"table\", f.on_delete FROM pragma_foreign_key_list(@t) f ORDER BY f.id, f.seq";
             command.Parameters.AddWithValue("@t", tableName);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
-                rows.Add((reader.GetString(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetString(5)));
+                rows.Add((reader.GetString(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetString(5), reader.GetString(6)));
         }
 
         // a foreign key written without target columns points at the other table's primary key
@@ -285,7 +285,7 @@ public partial class SqliteSchemaProvider : SchemaProviderBase
             var referenced = list.Select((r, i) => r.To ?? (i < targetKey.Count ? targetKey[i] : "")).ToList();
             string other = children ? group.Key.Table : list[0].ReferencedTable;
             string constraint = $"FK_{group.Key.Table}_{group.Key.Id}";
-            grouped.Add(new ForeignKeyRow(constraint, MainSchema, other, list.Select(r => r.From).ToList(), referenced));
+            grouped.Add(new ForeignKeyRow(constraint, MainSchema, other, list.Select(r => r.From).ToList(), referenced, ForeignKeyDeleteRules.Parse(list[0].OnDelete)));
         }
         return grouped;
     }

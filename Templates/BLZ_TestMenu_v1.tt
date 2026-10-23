@@ -1,0 +1,120 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_TestMenu_v1.tt
+    // Generates: MenuTests.cs   (the output folder is the Blazor test project, OutputBlazorTests; the BLZ_EssentialTests group writes the project around it)
+    // bUnit tests of the menu and the layout BLZ_Screens and the Layout essentials write, over FakeApi: the menu has one link to every screen (the list is BlazorMenu's, the one BLZ_Screens writes the menu from),
+    // in menu order, and the hamburger of the layout hides and shows the menu. With Auth=true a person who is not signed in sees no menu and no hamburger, a role sees the links its roles allow, and Sign out
+    // takes the menu away. Writes nothing unless the project sets BlazorTests=true.
+    // Full notes: Docs/TemplateNotes/BLZ_Test_v1.md
+    // ==========================================================================================
+    if (Project.BlazorTests)
+    {
+        string ns = BlazorNames.Namespace(Project);
+        var entries = BlazorMenu.Entries(Database, Project);
+        string Literal(string text) => "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        string Link(BlazorMenuEntry e) => e.Route + "|" + e.Label;
+        string Expected(IEnumerable<BlazorMenuEntry> list) => string.Join(";", list.Select(Link));
+        var o = new StringBuilder();
+        o.Append($$"""
+@@@FILE MenuTests.cs@@@
+using Bunit;
+using {{ns}}.Layout;
+
+namespace {{ns}}.Tests;
+
+/// <summary> The menu (a link to every screen, in menu order) and the layout around it (the hamburger hides and shows the menu). </summary>
+[TestClass]
+public class MenuTests : PageTestContext
+{
+    private static string[] LinksOf(IRenderedComponent<NavMenu> menu) => [.. menu.FindAll("a").Select(a => a.GetAttribute("href") + "|" + a.TextContent.Trim())];
+
+    private static IRenderedComponent<MainLayout> OpenLayout(MenuTests test) => test.Render<MainLayout>(p => p.Add(l => l.Body, "<p id=\"page\">the page</p>"));
+
+""");
+        if (!Project.Auth)
+        {
+            o.Append($$"""
+
+    [TestMethod]
+    public void The_menu_has_a_link_to_every_screen_in_menu_order()
+    {
+        CollectionAssert.AreEqual(new[] { {{string.Join(", ", entries.Select(e => Literal(Link(e))))}} }, LinksOf(Render<NavMenu>()));
+    }
+
+    [TestMethod]
+    public void The_layout_shows_the_page_beside_the_menu_and_the_hamburger_hides_and_shows_the_menu()
+    {
+        var layout = OpenLayout(this);
+        StringAssert.Contains(layout.Find("main").InnerHtml, "the page");
+        Assert.AreEqual(1, layout.FindAll("nav.rail").Count);
+
+        layout.Find("button.hamburger").Click();
+        Assert.AreEqual(0, layout.FindAll("nav.rail").Count);
+        StringAssert.Contains(layout.Markup, "menu-closed");
+
+        layout.Find("button.hamburger").Click();
+        Assert.AreEqual(1, layout.FindAll("nav.rail").Count);
+    }
+
+""");
+        }
+        else
+        {
+            // a person with each role the rules name sees the links that role may read; a role no rule names sees the links with no role listed
+            var roles = entries.SelectMany(e => e.Roles).Distinct().OrderBy(r => r, StringComparer.Ordinal).Append("NoSuchRole").ToList();
+            o.Append("""
+
+    [TestMethod]
+    public void A_person_who_is_not_signed_in_sees_no_menu_and_no_hamburger()
+    {
+        var layout = OpenLayout(this);
+        Assert.AreEqual(0, layout.FindAll("nav.rail a").Count);
+        Assert.AreEqual(0, layout.FindAll("button.hamburger").Count);
+        StringAssert.Contains(layout.Find("main").InnerHtml, "the page");
+    }
+
+""");
+            o.Append("\n    [TestMethod]\n");
+            foreach (string role in roles)
+            {
+                string allowed = Expected(entries.Where(e => e.Roles.Count == 0 || e.Roles.Contains(role)));
+                o.Append($"    [DataRow({Literal(role)}, {Literal(allowed)})]\n");
+            }
+            o.Append("""
+    public void A_signed_in_person_sees_the_links_the_role_may_read(string role, string expected)
+    {
+        SignIn(role);
+        CollectionAssert.AreEqual(expected.Length == 0 ? Array.Empty<string>() : expected.Split(';'), LinksOf(Render<NavMenu>()));
+    }
+
+    [TestMethod]
+    public void The_hamburger_and_Sign_out_of_a_signed_in_person()
+    {
+        SignIn("NoSuchRole");
+        var layout = OpenLayout(this);
+        StringAssert.Contains(layout.Find(".topbar .who").TextContent, "Pat");
+        Assert.AreEqual(1, layout.FindAll("nav.rail").Count);
+
+        layout.Find("button.hamburger").Click();
+        Assert.AreEqual(0, layout.FindAll("nav.rail").Count);
+        layout.Find("button.hamburger").Click();
+        Assert.AreEqual(1, layout.FindAll("nav.rail").Count);
+
+        layout.FindAll("button").First(b => b.TextContent.Trim() == "Sign out").Click();
+        layout.WaitForAssertion(() => Assert.AreEqual(0, layout.FindAll("nav.rail").Count));
+        Assert.AreEqual(0, layout.FindAll("button.hamburger").Count);
+    }
+
+""");
+        }
+        o.Append("}\n");
+        Write(o.ToString());
+    }
+#>

@@ -27,7 +27,7 @@ public static class ProjectSettingGroups
         new("API", "This tab has docs, HTTP, fakers, validation, CSV, OData, EF configurations, production profile, telemetry, project docs, folder, port, and DTOs.",
             ["ApiDocs", "ApiHttp", "ApiFakers", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ProjectDocs", "ApiFolder", "ApiPort", "Dtos"]),
         new("Tests", "This tab has the generated test projects: the API integration tests, the Blazor page tests and the Rust crate tests.",
-            ["ApiTests", "BlazorTests", "RustTests"]),
+            ["ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "RustTests"]),
         new("Sign-in", "This tab has the API sign-in, the owned tables and claim names, and the user table the people sign in against.",
             ["ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns"]),
         new("Roles", "This tab has the roles that may read and the roles that may write, for every table and for single tables.",

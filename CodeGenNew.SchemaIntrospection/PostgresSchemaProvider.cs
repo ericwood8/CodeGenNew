@@ -489,7 +489,7 @@ public partial class PostgresSchemaProvider : SchemaProviderBase
     // pg_constraint keeps the two column lists as parallel arrays (conkey, confkey); unnest pairs them in order.
     private const string ForeignKeysQueryTemplate = """
         SELECT con.conname AS "ConstraintName", {other}n.nspname AS "OtherSchema", {other}c.relname AS "OtherTable",
-               pa.attname AS "ReferencingColumn", ra.attname AS "ReferencedColumn"
+               pa.attname AS "ReferencingColumn", ra.attname AS "ReferencedColumn", con.confdeltype::text AS "DeleteRule"
         FROM pg_constraint con
         JOIN pg_class pc ON pc.oid = con.conrelid
         JOIN pg_namespace pn ON pn.oid = pc.relnamespace

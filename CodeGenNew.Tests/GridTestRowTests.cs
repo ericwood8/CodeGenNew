@@ -179,6 +179,83 @@ public class GridTestRowTests
     }
 
     [TestMethod]
+    public async Task The_blazor_rest_page_test_checks_the_sort_the_search_the_paging_the_columns_a_refused_save_delete_and_clone_and_the_odata_page_does_not()
+    {
+        string text = await Render("BLZ_Test_v1.tt", ("BlazorTests", "true"), ("OData", "true"));
+        string rest = text[..text.IndexOf("public class AccountODataPageTests", StringComparison.Ordinal)];
+        string odata = text[text.IndexOf("public class AccountODataPageTests", StringComparison.Ordinal)..];
+
+        Expect.Contains(rest, "public void Sorts_by_a_header_and_flips_the_direction_when_it_is_clicked_again()");
+        Expect.Contains(rest, "r.Path.Contains(\"sortBy=Title&sortDir=asc\")");
+        Expect.Contains(rest, "r.Path.Contains(\"sortBy=Title&sortDir=desc\")");
+        Expect.Contains(rest, "public void Searches_with_the_text_typed_and_Clear_drops_it()");
+        Expect.Contains(rest, "page.Find(\"[aria-label=\\\"Search by Title\\\"]\").Input(\"zz9\");");
+        Expect.Contains(rest, "r.Path.Contains(\"title=zz9\")");
+        Expect.Contains(rest, "Open(FakeApi.Page(Row, 45, 1, 20))");
+        Expect.Contains(rest, "\"Page 1 of 3\"");
+        Expect.Contains(rest, "r.Path.Contains(\"pageNumber=2\")");
+        Expect.Contains(rest, "public void Hides_a_column_unticked_in_the_Columns_list_and_Reset_shows_it_again()");
+        Expect.Contains(rest, "Api.FailWrite(HttpMethod.Put, \"/1\", System.Net.HttpStatusCode.BadRequest);");
+        Expect.Contains(rest, "\"Some of the values are not acceptable!\"");
+        Expect.Contains(rest, "\"Problem while saving!\"");
+        Expect.Contains(rest, "public void Deletes_a_row_only_after_the_person_confirms()");
+        Expect.Contains(rest, "JSInterop.Setup<bool>(\"confirm\", _ => true).SetResult(true);");
+        Expect.Contains(rest, "r.Method == HttpMethod.Delete && r.Path == \"/api/accounts/1\"");
+        Expect.Contains(rest, "\"It cannot be deleted because it is in use!\"");
+        Expect.Contains(rest, "Api.AnswerWrite(HttpMethod.Post, \"/1/clone\", Row);");
+        Expect.Contains(rest, "r.Path == \"/api/accounts/1/clone\"");
+        Expect.DoesNotContain(odata, "Sorts_by_a_header");
+        Expect.DoesNotContain(odata, "Deletes_a_row_only_after");
+        Expect.DoesNotContain(odata, "Pages_forward");
+    }
+
+    [TestMethod]
+    public async Task The_blazor_fake_api_can_answer_and_fail_a_write_and_pages_a_search()
+    {
+        string fake = await RenderProject("BLZ_EssentialTests_v1.tt", ("BlazorTests", "true"));
+
+        Expect.Contains(fake, "public FakeApi AnswerWrite(HttpMethod method, string pathEnd, string json)");
+        Expect.Contains(fake, "public FakeApi FailWrite(HttpMethod method, string pathEnd, HttpStatusCode status)");
+        Expect.Contains(fake, "public static string Page(string rowsJson, int count, int page = 1, int pageSize = 10)");
+        Expect.Contains(fake, "Math.Max(1, (count + pageSize - 1) / pageSize)");
+    }
+
+    [TestMethod]
+    public async Task The_blazor_menu_test_lists_a_link_for_every_screen_and_with_a_sign_in_the_links_each_role_may_read()
+    {
+        var table = Sample.Table("Account",
+        [
+            Sample.Column("AccountId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("Title", SqlDbType.NVarChar, characters: 40, ordinal: 2),
+            Sample.Column("Note", SqlDbType.NVarChar, characters: 20, nullable: true, ordinal: 3),
+            Sample.Column("Code", SqlDbType.NVarChar, characters: 10, nullable: true, ordinal: 4),
+            Sample.Column("Size", SqlDbType.Int, nullable: true, ordinal: 5)
+        ]);
+        var database = new DatabaseModel { DatabaseName = "Acme", SchemaName = "main", Dialect = SqlDialect.Sqlite, Tables = [table] };
+
+        async Task<string> Menu(params (string Key, string Value)[] values)
+        {
+            var result = await Repo.Cache.RunAsync(Repo.Template("BLZ_TestMenu_v1.tt"), database, ProjectSettings.FromValues(values.Select(v => new KeyValuePair<string, string>(v.Key, v.Value)).Append(new("ProjectName", "Acme"))));
+            Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+            return result.GeneratedText!.ReplaceLineEndings("\n");
+        }
+
+        string plain = await Menu(("BlazorTests", "true"));
+        Expect.Contains(plain, "public class MenuTests : PageTestContext");
+        Expect.Contains(plain, "\"account|Account\"");
+        Expect.Contains(plain, "The_layout_shows_the_page_beside_the_menu_and_the_hamburger_hides_and_shows_the_menu");
+        Expect.DoesNotContain(plain, "SignIn(");
+
+        string signedIn = await Menu(("BlazorTests", "true"), ("Auth", "true"), ("ApiAuth", "true"), ("ReadRoles", "Administrator,Clerk"), ("TableReadRoles", "Account:Administrator"));
+        Expect.Contains(signedIn, "[DataRow(\"Administrator\", \"dashboard|Dashboard;account|Account\")]");
+        Expect.Contains(signedIn, "[DataRow(\"NoSuchRole\", \"dashboard|Dashboard\")]");
+        Expect.Contains(signedIn, "A_person_who_is_not_signed_in_sees_no_menu_and_no_hamburger");
+        Expect.Contains(signedIn, "SignIn(role);");
+
+        Assert.AreEqual("", (await Menu(("BlazorTests", "false"))).Trim());
+    }
+
+    [TestMethod]
     public async Task The_blazor_test_project_tests_the_dashboard_only_when_the_project_has_one()
     {
         string with = await RenderProject("BLZ_EssentialTests_v1.tt", ("BlazorTests", "true"), ("Dashboard", "true"), ("CurrencyCode", "EUR"));

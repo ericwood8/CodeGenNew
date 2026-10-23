@@ -322,4 +322,43 @@ public class PostgresIntegrationTests
             await Run("DROP SCHEMA IF EXISTS codegen_checks_test CASCADE");
         }
     }
+
+    [TestMethod]
+    public async Task A_foreign_keys_delete_rule_is_read()
+    {
+        // Writes a throwaway schema (dropped again whatever happens).
+        var request = Request();
+        if (request is null)
+            Assert.Inconclusive("Set CODEGENNEW_PG_HOST, CODEGENNEW_PG_DATABASE, CODEGENNEW_PG_USER and CODEGENNEW_PG_PASSWORD to run the PostgreSQL integration tests.");
+
+        await using var connection = request!.CreatePostgresConnection();
+        await connection.OpenAsync();
+        async Task Run(string sql) { await using var command = new Npgsql.NpgsqlCommand(sql, connection); await command.ExecuteNonQueryAsync(); }
+        try
+        {
+            await Run("DROP SCHEMA IF EXISTS codegen_rules_test CASCADE");
+            await Run("CREATE SCHEMA codegen_rules_test");
+            await Run("CREATE TABLE codegen_rules_test.parent (parent_id serial PRIMARY KEY)");
+            await Run("""
+                CREATE TABLE codegen_rules_test.child (
+                    child_id serial PRIMARY KEY,
+                    plain_id int NOT NULL REFERENCES codegen_rules_test.parent,
+                    restrict_id int NOT NULL REFERENCES codegen_rules_test.parent ON DELETE RESTRICT,
+                    cascade_id int NOT NULL REFERENCES codegen_rules_test.parent ON DELETE CASCADE,
+                    null_id int NULL REFERENCES codegen_rules_test.parent ON DELETE SET NULL)
+                """);
+
+            var model = await new PostgresSchemaProvider(request, Path.Combine(AppContext.BaseDirectory, "SpecialLogicColumns.config"), NamingStyle.Pascal).BuildTableModelAsync("codegen_rules_test", "child");
+            ForeignKeyDeleteRule RuleOf(string column) => model.ForeignKeys.Single(f => f.ReferencingColumns[0] == column).DeleteRule;
+
+            Assert.AreEqual(ForeignKeyDeleteRule.NoAction, RuleOf("PlainId"));
+            Assert.AreEqual(ForeignKeyDeleteRule.Restrict, RuleOf("RestrictId"));
+            Assert.AreEqual(ForeignKeyDeleteRule.Cascade, RuleOf("CascadeId"));
+            Assert.AreEqual(ForeignKeyDeleteRule.SetNull, RuleOf("NullId"));
+        }
+        finally
+        {
+            await Run("DROP SCHEMA IF EXISTS codegen_rules_test CASCADE");
+        }
+    }
 }

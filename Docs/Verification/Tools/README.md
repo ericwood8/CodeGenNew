@@ -4,7 +4,7 @@ Small Python scripts for the steps that are repeated whenever a template or a Co
 
 | Script | Use |
 |---|---|
-| `new_scratch_project.py` | Builds a throwaway SQLite database from a schema file (`Schemas/plain.sql`, `Schemas/master_detail.sql`, or your own), writes a project file for it in the CLI's `Projects` folder and generates into a temp folder. `--set Key=Value` adds project settings, `--stack` picks the stacks. |
+| `new_scratch_project.py` | Builds a throwaway SQLite database from a schema file (`Schemas/plain.sql`, `Schemas/master_detail.sql`, `Schemas/junction.sql` with a many-to-many table and a cascading key, or your own), writes a project file for it in the CLI's `Projects` folder and generates into a temp folder. `--set Key=Value` adds project settings, `--stack` picks the stacks. |
 | `compare_with_head.py` | Generates with the working tree's templates, puts the committed copy of every changed template back, generates again and lists the files that differ (`--diff` shows the lines). Run it with the scratch project to prove that a change moved only what it should. |
 
 A typical check of a template change:

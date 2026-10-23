@@ -9,7 +9,9 @@
     // Generates: <ProjectName>.Api.Tests.csproj, ApiFixture.cs and GlobalUsings.cs   (no table, no database: an essentials group; the output folder is the test project's own folder, OutputApiTests)
     // The project the per-table API_Test classes live in. ApiFixture starts the API in process (WebApplicationFactory) once for the run and hands every test an HttpClient. The database is a scratch
     // copy: for SQLite a temporary copy of the database file (the file is never written), for the others the connection string in <PROJECT>_TEST_CONNECTION, and with neither the tests report
-    // themselves as inconclusive. Writes nothing unless the project sets ApiTests=true. Settings: ApiTests, OutputApiTests, OutputApi, DatabaseProvider, DatabaseName.
+    // themselves as inconclusive. With ApiTestContainers=true and a PostgreSQL, MySQL or SQL Server database the fixture starts a throwaway container of that database (Testcontainers, Docker must run)
+    // when the variable is not set, fills it from the ApiTestSchema scripts and removes it at the end. Writes nothing unless the project sets ApiTests=true.
+    // Settings: ApiTests, ApiTestContainers, ApiTestSchema, OutputApiTests, OutputApi, DatabaseProvider, DatabaseName.
     // Full notes: Docs/TemplateNotes/API_Test_v1.md
     // ==========================================================================================
     if (Project.ApiTests)
@@ -20,6 +22,17 @@
         string apiPath = Path.GetRelativePath(testsFolder, apiFolder).Replace('\\', '/');
         string variable = new string(projectName.ToUpperInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray()) + "_TEST_CONNECTION";
         bool sqlite = Project.DatabaseDialect == SqlDialect.Sqlite;
+        bool containers = Project.ApiTestContainers && !sqlite;
+        string containerPackage = Project.DatabaseDialect switch { SqlDialect.PostgreSql => "Testcontainers.PostgreSql", SqlDialect.MySql => "Testcontainers.MySql", _ => "Testcontainers.MsSql" };
+        string containerType = Project.DatabaseDialect switch { SqlDialect.PostgreSql => "PostgreSqlContainer", SqlDialect.MySql => "MySqlContainer", _ => "MsSqlContainer" };
+        string containerBuild = Project.DatabaseDialect switch
+        {
+            SqlDialect.PostgreSql => "new PostgreSqlBuilder(\"postgres:17-alpine\").WithDatabase(\"codegen_test\").Build()",
+            SqlDialect.MySql => "new MySqlBuilder(\"mysql:8.4\").WithDatabase(\"codegen_test\").Build()",
+            _ => "new MsSqlBuilder(\"mcr.microsoft.com/mssql/server:2022-latest\").Build()"
+        };
+        string containerNamespace = Project.DatabaseDialect switch { SqlDialect.PostgreSql => "PostgreSql", SqlDialect.MySql => "MySql", _ => "MsSql" };
+        string[] schema = Project.ApiTestSchema;
 #>
 @@@FILE <#= projectName #>.Api.Tests.csproj@@@
 <Project Sdk="Microsoft.NET.Sdk">
@@ -35,6 +48,14 @@
   <ItemGroup>
     <PackageReference Include="MSTest" Version="4.0.2" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
+<#
+        if (containers)
+        {
+#>
+    <PackageReference Include="<#= containerPackage #>" Version="4.15.0" />
+<#
+        }
+#>
   </ItemGroup>
 
   <ItemGroup>
@@ -81,6 +102,14 @@ public class AuthApiTests
 #>
 @@@FILE ApiFixture.cs@@@
 using Microsoft.AspNetCore.Mvc.Testing;
+<#
+        if (containers)
+        {
+#>
+using Testcontainers.<#= containerNamespace #>;
+<#
+        }
+#>
 
 namespace <#= projectName #>.Api.Tests;
 
@@ -107,13 +136,23 @@ public static class ApiFixture
     private static string? _scratchFile;
 <#
         }
+        if (containers)
+        {
+#>
+    private static <#= containerType #>? _container;
+    private static string? _containerProblem;
+
+    // the scripts the container is filled from (ApiTestSchema, relative to the API project's folder), applied in this order; a folder means every .sql file in it by name
+    private static readonly string[] SchemaScripts = [<#= string.Join(", ", schema.Select(x => ApiSampleValues.Json(x))) #>];
+<#
+        }
 #>
 
     public static HttpClient Client { get; private set; } = null!;
     public static bool HasDatabase { get; private set; }
 
     [AssemblyInitialize]
-    public static <#= Project.ApiAuth ? "async Task" : "void" #> Start(TestContext context)
+    public static <#= Project.ApiAuth || containers ? "async Task" : "void" #> Start(TestContext context)
     {
         string? connection = Environment.GetEnvironmentVariable(ConnectionVariable);
 <#
@@ -129,6 +168,17 @@ public static class ApiFixture
             _scratchFile = Path.Combine(Path.GetTempPath(), "<#= projectName #>_test_" + Guid.NewGuid().ToString("N") + ".db");
             File.Copy(source, _scratchFile);
             connection = "Data Source=" + _scratchFile;
+        }
+<#
+        }
+        else if (containers)
+        {
+#>
+        if (string.IsNullOrEmpty(connection))
+        {
+            connection = await StartContainerAsync();
+            if (connection is null)
+                return;
         }
 <#
         }
@@ -180,6 +230,14 @@ public static class ApiFixture
         Client?.Dispose();
         _factory?.Dispose();
 <#
+        if (containers)
+        {
+#>
+        _container?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+<#
+        }
+#>
+<#
         if (sqlite)
         {
 #>
@@ -227,8 +285,58 @@ public static class ApiFixture
     public static void RequireDatabase()
     {
         if (!HasDatabase)
-            Assert.Inconclusive("Set " + ConnectionVariable + " to the connection string of a scratch copy of the database (the tests add and remove rows).");
+            Assert.Inconclusive("Set " + ConnectionVariable + " to the connection string of a scratch copy of the database (the tests add and remove rows)."<#= containers ? " + (_containerProblem is null ? \"\" : \" The test container could not be made: \" + _containerProblem)" : "" #>);
     }
+<#
+        if (containers)
+        {
+#>
+
+    /// <summary> Starts a container of the project's database, fills it from the schema scripts and answers its connection string; null (with the reason kept for the tests' message) when Docker is not there or a script fails. </summary>
+    private static async Task<string?> StartContainerAsync()
+    {
+        try
+        {
+            _container = <#= containerBuild #>;
+            await _container.StartAsync();
+            foreach (string script in ScriptFiles())
+            {
+                var result = await _container.ExecScriptAsync(await File.ReadAllTextAsync(script));
+                if (result.ExitCode != 0)
+                    throw new InvalidOperationException(Path.GetFileName(script) + " failed: " + result.Stderr);
+            }
+            return _container.GetConnectionString();
+        }
+        catch (Exception problem)
+        {
+            _containerProblem = problem.GetType().Name + ": " + problem.Message;
+            if (_container is not null)
+                await _container.DisposeAsync();
+            _container = null;
+            return null;
+        }
+    }
+
+    private static IEnumerable<string> ScriptFiles()
+    {
+        string api = ApiFolder();
+        foreach (string entry in SchemaScripts)
+        {
+            string path = Path.GetFullPath(Path.Combine(api, entry));
+            if (Directory.Exists(path))
+            {
+                foreach (string file in Directory.EnumerateFiles(path, "*.sql", SearchOption.AllDirectories).Order(StringComparer.OrdinalIgnoreCase))
+                    yield return file;
+            }
+            else if (File.Exists(path))
+                yield return path;
+            else
+                throw new FileNotFoundException("ApiTestSchema names " + entry + ", which is not in " + api);
+        }
+    }
+<#
+        }
+#>
 
     /// <summary> Text with a short random ending, cut to the column's length, so a unique index does not stop a second run. </summary>
     public static string Unique(string text, int maxLength)
@@ -322,7 +430,7 @@ public static class ApiFixture
         Seeded.Clear();
     }
 <#
-        if (sqlite)
+        if (sqlite || containers)
         {
 #>
 

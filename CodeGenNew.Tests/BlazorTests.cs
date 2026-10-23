@@ -276,7 +276,7 @@ public class BlazorTests
             {
                 "CREATE TABLE Region (RegionId INTEGER PRIMARY KEY, Name VARCHAR(40) NOT NULL)",
                 "CREATE TABLE Project (ProjectId INTEGER PRIMARY KEY, Name VARCHAR(40) NOT NULL, Budget DECIMAL(10,2) NOT NULL, Manager VARCHAR(40) NULL, StartedOn DATE NULL, Priority INTEGER NOT NULL DEFAULT 0, Comments VARCHAR(200) NULL)",
-                "CREATE TABLE ProjectTask (ProjectTaskId INTEGER PRIMARY KEY AUTOINCREMENT, ProjectId INTEGER NOT NULL REFERENCES Project (ProjectId), RegionId INTEGER NOT NULL REFERENCES Region (RegionId), Title VARCHAR(30) NOT NULL, Hours INTEGER NOT NULL, Done BIT NOT NULL, DueOn DATE NOT NULL)"
+                "CREATE TABLE ProjectTask (ProjectTaskId INTEGER PRIMARY KEY AUTOINCREMENT, ProjectId INTEGER NOT NULL REFERENCES Project (ProjectId), RegionId INTEGER NOT NULL REFERENCES Region (RegionId), Title VARCHAR(30) NOT NULL, Hours INTEGER NOT NULL, Done BIT NOT NULL, DueOn DATE NOT NULL, Total DECIMAL(10,2) NOT NULL)"
             })
             {
                 using var command = connection.CreateCommand();
@@ -308,6 +308,7 @@ public class BlazorTests
             string plain = await Generate();
             Expect.Contains(plain, "<h3>Project Task</h3>");
             Expect.DoesNotContain(plain, "fieldset class=\"child-rows\"");
+            Expect.DoesNotContain(plain, "@using Shop.Blazor.Components");
             Expect.DoesNotContain(File.ReadAllText(Path.Combine(output, "Shop.Blazor/Services/ProjectClient.cs")), "WithChildren");
 
             // DetailMasterTables names the tables that show their child tables: Project is not on this list, so it gets a plain form
@@ -316,6 +317,8 @@ public class BlazorTests
 
             string editable = await Generate(("EditableChildren", "Project.ProjectTask"));
             Expect.Contains(editable, "<fieldset class=\"child-rows\">");
+            Expect.Contains(editable, "<CurrencyInput @bind-Value=\"line.Total\"");
+            Expect.Contains(editable, "@using Shop.Blazor.Components");
             Expect.Contains(editable, "<InputSelect @bind-Value=\"line.RegionId\" aria-label=\"Region\">");
             Expect.Contains(editable, "<InputCheckbox @bind-Value=\"line.Done\" aria-label=\"Done?\" />");
             Expect.Contains(editable, "private void AddchildProjectTask() => childProjectTaskEdit.Add(new ProjectTask { DueOn = DateTime.Today });");
@@ -336,7 +339,7 @@ public class BlazorTests
     [TestMethod]
     public void BlazorTests_adds_the_page_test_template_a_test_folder_and_a_test_command()
     {
-        CollectionAssert.Contains(Project(("BlazorTests", "true")).ImpliedPlanTemplates.ToArray(), "BLZ_Test");
+        CollectionAssert.IsSubsetOf(new[] { "BLZ_Test", "BLZ_TestMenu" }, Project(("BlazorTests", "true")).ImpliedPlanTemplates.ToArray());
         CollectionAssert.DoesNotContain(Project().ImpliedPlanTemplates.ToArray(), "BLZ_Test");
         Assert.AreEqual("Acme.Blazor.Tests", Project().OutputFolderOf("blazortests"));
         Assert.AreEqual("tests", Project(("OutputBlazorTests", "tests")).OutputFolderOf("blazortests"));

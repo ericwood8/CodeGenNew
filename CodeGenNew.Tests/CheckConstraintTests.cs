@@ -310,4 +310,52 @@ public class CheckConstraintTests
             await Run("DROP TABLE IF EXISTS codegen_check_test");
         }
     }
+
+    [TestMethod]
+    public async Task SQL_Server_reads_the_delete_rule_of_a_foreign_key()
+    {
+        string? host = Env("CODEGENNEW_SQLSERVER_HOST"), database = Env("CODEGENNEW_SQLSERVER_DATABASE");
+        if (host is null || database is null)
+            Assert.Inconclusive("Set CODEGENNEW_SQLSERVER_HOST and CODEGENNEW_SQLSERVER_DATABASE (Windows authentication, or also _USER and _PASSWORD) to run the SQL Server delete rule test.");
+        string? user = Env("CODEGENNEW_SQLSERVER_USER");
+        var request = new ConnectionRequest
+        {
+            Provider = DatabaseProvider.SqlServer, ServerName = host!, DatabaseName = database!,
+            AuthMode = user is null ? AuthMode.WindowsAuth : AuthMode.SqlLogin, UserName = user, Password = Env("CODEGENNEW_SQLSERVER_PASSWORD")
+        };
+
+        await using var connection = request.CreateConnection();
+        await connection.OpenAsync();
+        async Task Run(string sql) { await using var command = connection.CreateCommand(); command.CommandText = sql; await command.ExecuteNonQueryAsync(); }
+        async Task Drop()
+        {
+            await Run("IF OBJECT_ID('dbo.codegen_rules_other') IS NOT NULL DROP TABLE dbo.codegen_rules_other");
+            await Run("IF OBJECT_ID('dbo.codegen_rules_child') IS NOT NULL DROP TABLE dbo.codegen_rules_child");
+            await Run("IF OBJECT_ID('dbo.codegen_rules_parent') IS NOT NULL DROP TABLE dbo.codegen_rules_parent");
+        }
+        try
+        {
+            await Drop();
+            await Run("CREATE TABLE dbo.codegen_rules_parent (parent_id int IDENTITY PRIMARY KEY)");
+            await Run("""
+                CREATE TABLE dbo.codegen_rules_child (
+                    child_id int IDENTITY PRIMARY KEY,
+                    plain_id int NOT NULL REFERENCES dbo.codegen_rules_parent,
+                    cascade_id int NOT NULL REFERENCES dbo.codegen_rules_parent ON DELETE CASCADE)
+                """);
+            await Run("CREATE TABLE dbo.codegen_rules_other (other_id int IDENTITY PRIMARY KEY, null_id int NULL REFERENCES dbo.codegen_rules_parent ON DELETE SET NULL)");
+
+            var model = await new SqlServerSchemaProvider(request, Path.Combine(AppContext.BaseDirectory, "SpecialLogicColumns.config")).BuildTableModelAsync("dbo", "codegen_rules_child");
+            ForeignKeyDeleteRule RuleOf(string column) => model.ForeignKeys.Single(f => f.ReferencingColumns[0] == column).DeleteRule;
+
+            Assert.AreEqual(ForeignKeyDeleteRule.NoAction, RuleOf("plain_id"));
+            Assert.AreEqual(ForeignKeyDeleteRule.Cascade, RuleOf("cascade_id"));
+            var other = await new SqlServerSchemaProvider(request, Path.Combine(AppContext.BaseDirectory, "SpecialLogicColumns.config")).BuildTableModelAsync("dbo", "codegen_rules_other");
+            Assert.AreEqual(ForeignKeyDeleteRule.SetNull, other.ForeignKeys.Single().DeleteRule);
+        }
+        finally
+        {
+            await Drop();
+        }
+    }
 }
