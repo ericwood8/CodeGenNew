@@ -393,7 +393,7 @@ def main():
     elif not (front / "node_modules").exists():
         install = subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=front, capture_output=True, text=True)
         if install.returncode != 0:
-            sys.exit("npm install failed:\n" + install.stderr[-800:])
+            sys.exit("npm install failed:\n" + (install.stderr + install.stdout)[-800:])
 
     api = dev = None
     try:
