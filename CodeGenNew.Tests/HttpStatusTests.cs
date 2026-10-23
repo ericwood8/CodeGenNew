@@ -22,8 +22,9 @@ public class HttpStatusTests
     [TestMethod]
     public void The_exit_codes_are_the_usual_pair()
     {
-        Assert.AreEqual(0, ExitCodes.Success);
-        Assert.AreNotEqual(ExitCodes.Success, ExitCodes.Failure);
+        int[] codes = [ExitCodes.Success, ExitCodes.Failure];
+        Assert.AreEqual(0, codes[0]);
+        Assert.AreEqual(2, codes.Distinct().Count());
     }
 
     // where a template writes a status into code: a call, a comparison or a keyword argument of the generated C#, TypeScript, Python or Rust (a number in a comment or in prose is left alone)
