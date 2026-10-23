@@ -62,7 +62,7 @@
             var lets = new List<string>();
             string Expression(ColumnModel c)
             {
-                string sample = ApiSampleValues.Value(c, Project);
+                string sample = ApiSampleValues.Value(c, Project, table.TableName);
                 if (c.IsPrimaryKey)
                 {
                     if (keyType.Kind == KeyKind.Guid)
@@ -75,8 +75,8 @@
                     long high = Math.Min(range.Max, 2_000_000_000);
                     return $"new_key({Math.Max(1, high / 2).ToString(CultureInfo.InvariantCulture)}, {high.ToString(CultureInfo.InvariantCulture)})";
                 }
-                if (RustTestBodies.IsFreeText(table, c))
-                    return $"unique({Json(ApiSampleValues.Text(c))}, {Math.Max(c.CharacterLength, 0)})";
+                if (RustTestBodies.IsFreeText(table, c, Project))
+                    return $"unique({Json(ApiSampleValues.Text(c, Project, table.TableName))}, {Math.Max(c.CharacterLength, 0)})";
                 if (RustTestBodies.ParentKey(table, c, Project) is { } fk)
                 {
                     string name = "parent_" + RustNames.Snake(c.Name);

@@ -45,20 +45,7 @@ public static class ColumnRules
         ColumnRule? rule = null;
         if (column.IsStringColumn)
         {
-            var shape = TextShape.None;
-            if (!column.HasChoices && !project.IsPlainText(table ?? "", column.Name))
-            {
-                if (Names(column, "Email"))
-                    shape = TextShape.Email;
-                else if (Names(column, "Phone", "Fax"))
-                    shape = TextShape.Phone;
-                else if (Names(column, "Url", "Website", "Link"))
-                    shape = TextShape.Url;
-                else if (Names(column, "Zip", "PostalCode", "PostCode"))
-                    shape = TextShape.Postal;
-                else if (Names(column, "Ssn", "SocialSecurity"))
-                    shape = TextShape.Ssn;
-            }
+            var shape = column.ShapeOf(project, table);
 
             var text = column.PgText;
             rule = new ColumnRule
@@ -154,6 +141,28 @@ public static class ColumnRules
         column.RuleOf(project, table)?.Shape is { } shape && PatternOf(shape) is { } pattern
             ? $"pattern=\"{pattern}\" title=\"{(shape == TextShape.Phone ? "A phone number: digits, spaces and + ( ) - ." : shape == TextShape.Postal ? "A postal code: 3 to 10 letters, digits, spaces or hyphens" : "A social security number: 123-45-6789 or 123456789")}\""
             : "";
+
+    /// <summary> The shape a text column's value must have: an email address, phone number, web address, postal code or social security number. The project's <c>EmailColumns</c> and <c>UrlColumns</c> say so
+    /// for a column whatever its name; otherwise the name does (Email, or a name that is Mail or ends in Mail with a capital, as OwnerMail; Phone, Fax; Url, Website, Link, Homepage, WebPage, WebAddress, a name that is Web or ends in Web with a capital; Zip, PostalCode, PostCode;
+    /// Ssn, SocialSecurity). A column with a list of values, or one the project lists in <c>PlainTextColumns</c>, has none. </summary>
+    public static TextShape ShapeOf(this ColumnModel column, ProjectSettings project, string? table = null)
+    {
+        if (!column.IsStringColumn || column.HasChoices || project.IsPlainText(table ?? "", column.Name))
+            return TextShape.None;
+        if (project.IsEmail(table ?? "", column.Name))
+            return TextShape.Email;
+        if (project.IsUrl(table ?? "", column.Name))
+            return TextShape.Url;
+        if (Names(column, "Email") || column.Name.EqualsIgnoreCase("Mail") || column.Name.EndsWith("Mail", StringComparison.Ordinal) || column.Name.EqualsIgnoreCase("MailAddress"))
+            return TextShape.Email;
+        if (Names(column, "Phone", "Fax"))
+            return TextShape.Phone;
+        if (Names(column, "Url", "Website", "Link", "Homepage", "WebPage", "WebAddress") || column.Name.EqualsIgnoreCase("Web") || column.Name.EndsWith("Web", StringComparison.Ordinal))
+            return TextShape.Url;
+        if (Names(column, "Zip", "PostalCode", "PostCode"))
+            return TextShape.Postal;
+        return Names(column, "Ssn", "SocialSecurity") ? TextShape.Ssn : TextShape.None;
+    }
 
     private static bool Names(ColumnModel column, params string[] words) => words.Any(word => column.Name.ContainsIgnoreCase(word));
 }

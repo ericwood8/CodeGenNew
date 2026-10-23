@@ -3,12 +3,11 @@ namespace CodeGenNew.Core;
 /// <summary> What the generated Rust integration tests (RS_Test, RS_TestBodies) decide about a column of a request body. </summary>
 public static class RustTestBodies
 {
-    private static readonly string[] FixedFormatWords = ["Email", "Phone", "Fax", "Url", "Website"];
 
     /// <summary> A text value that is not a fixed format and not a key: it can take a unique ending, so a unique index does not stop a second run. </summary>
-    public static bool IsFreeText(TableModel table, ColumnModel c) => c.IsStringColumn && !c.HasChoices && !c.IsPrimaryKey && c.PgText is null
+    public static bool IsFreeText(TableModel table, ColumnModel c, ProjectSettings project) => c.IsStringColumn && !c.HasChoices && !c.IsPrimaryKey && c.PgText is null
         && !table.ForeignKeys.Any(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name)
-        && !FixedFormatWords.Any(word => c.Name.ContainsIgnoreCase(word));
+        && !ApiSampleValues.HasFixedFormat(c, project, table.TableName);
 
     /// <summary> The foreign key a body column points through to a parent table that has a REST API: its table, or null (a composite or self reference, a key of another kind, a parent without an API). </summary>
     public static ForeignKeyModel? ParentKey(TableModel table, ColumnModel c, ProjectSettings project)

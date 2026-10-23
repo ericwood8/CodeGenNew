@@ -11,16 +11,23 @@ public static class ApiSampleValues
     public static string Json(string text) => "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
 
     /// <summary> The text a string column's example is made of, before it is cut to the column's length. </summary>
-    public static string Text(ColumnModel column) =>
+    public static string Text(ColumnModel column, ProjectSettings? project = null, string? table = null) =>
         column.HasChoices ? column.Choices![0]
         : column.PgText is { } pgText ? pgText.Sample
-        : column.Name.ContainsIgnoreCase("Email") ? "someone@example.com"
-        : column.Name.ContainsIgnoreCase("Phone") || column.Name.ContainsIgnoreCase("Fax") ? "555-0100"
-        : column.Name.ContainsIgnoreCase("Url") || column.Name.ContainsIgnoreCase("Website") ? "https://example.com"
-        : "Sample " + Labels.Words(column.Name).ToLowerInvariant();
+        : column.ShapeOf(project ?? ProjectSettings.FromValues([]), table) switch
+        {
+            TextShape.Email => "someone@example.com",
+            TextShape.Phone => "555-0100",
+            TextShape.Url => "https://example.com",
+            _ => "Sample " + Labels.Words(column.Name).ToLowerInvariant()
+        };
+
+    /// <summary> Whether the column's value has a fixed format (an email address, phone number or web address), so a test must not add a unique ending to it. </summary>
+    public static bool HasFixedFormat(ColumnModel column, ProjectSettings project, string? table = null) =>
+        column.PgText is not null || column.ShapeOf(project, table) is TextShape.Email or TextShape.Phone or TextShape.Url;
 
     /// <summary> The example value of a column as JSON text (which is also a valid C# literal for every type but a null). A key is 0 for an identity column and 1 otherwise. </summary>
-    public static string Value(ColumnModel c, ProjectSettings project)
+    public static string Value(ColumnModel c, ProjectSettings project, string? table = null)
     {
         if (c.IsPrimaryKey && c.IsStringColumn)
             return Json(KeyText(c));
@@ -28,7 +35,7 @@ public static class ApiSampleValues
             return c.IsIdentity ? "0" : "1";
         if (c.IsStringColumn)
         {
-            string text = Text(c);
+            string text = Text(c, project, table);
             int chars = c.CharacterLength;
             if (chars > 0 && text.Length > chars)
                 text = text[..chars];

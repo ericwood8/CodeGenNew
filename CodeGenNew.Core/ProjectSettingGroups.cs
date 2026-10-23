@@ -21,7 +21,7 @@ public static class ProjectSettingGroups
             ["Screens", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "NoLookupParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NoCloneTables",
              "BaseEntity", "BaseNameActiveEntity", "DbSetNames", "IgnoredColumns", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "ErdTables"]),
         new("Validation", "This tab has running the validation attributes in the API, the columns the project says are never negative, the date columns that cannot be in the future and the text columns that get no email, phone, URL, postal code or social security number check.",
-            ["ApiAnnotations", "NonNegativeColumns", "NotFutureDateColumns", "PlainTextColumns"]),
+            ["ApiAnnotations", "NonNegativeColumns", "NotFutureDateColumns", "PlainTextColumns", "EmailColumns", "UrlColumns"]),
         new("Database", "This tab has the provider, server, name, user, access mode, replication, temporal, key-sequence and bulk-update settings.",
             ["DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "AccessMode", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression"]),
         new("API", "This tab has docs, HTTP, fakers, validation, CSV, OData, EF configurations, production profile, telemetry, project docs, folder, port, and DTOs.",

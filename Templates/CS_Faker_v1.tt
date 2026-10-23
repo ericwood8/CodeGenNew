@@ -53,9 +53,10 @@
             string name = c.Name;
             bool Has(params string[] words) => words.Any(w => name.ContainsIgnoreCase(w));
             if (c.PgText is { } pgText) return CSharpText.Quote(pgText.Sample);   // an array, interval, range or shape has a notation of its own
-            if (Has("Email")) return "f.Internet.Email()";
-            if (Has("Phone", "Fax", "Mobile")) return "f.Phone.PhoneNumber()";
-            if (Has("Url", "Website", "Link")) return "f.Internet.Url()";
+            var shape = c.ShapeOf(Project, Model.TableName);   // the name, or the project's EmailColumns and UrlColumns
+            if (shape == TextShape.Email) return "f.Internet.Email()";
+            if (shape == TextShape.Phone || Has("Mobile")) return "f.Phone.PhoneNumber()";
+            if (shape == TextShape.Url) return "f.Internet.Url()";
             if (Has("FirstName", "GivenName")) return "f.Name.FirstName()";
             if (Has("LastName", "Surname", "FamilyName")) return "f.Name.LastName()";
             if (Has("Address2", "Suite", "Unit")) return "f.Address.SecondaryAddress()";

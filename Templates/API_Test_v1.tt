@@ -43,7 +43,7 @@
         // a text value that is not a fixed format: it can take a unique ending
         bool IsFreeText(ColumnModel c) => c.IsStringColumn && !c.HasChoices && !c.IsPrimaryKey && c.PgText is null
             && !Model.ForeignKeys.Any(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name)
-            && !new[] { "Email", "Phone", "Fax", "Url", "Website" }.Any(word => c.Name.ContainsIgnoreCase(word));
+            && !ApiSampleValues.HasFixedFormat(c, Project, Model.TableName);
 
         string ForeignKeyParentRoute(ColumnModel c, out string parentKey)
         {
@@ -60,7 +60,7 @@
 
         string Expression(ColumnModel c)
         {
-            string sample = ApiSampleValues.Value(c, Project);
+            string sample = ApiSampleValues.Value(c, Project, Model.TableName);
             if (c.IsPrimaryKey)
             {
                 if (keyType.Kind == KeyKind.Guid)
@@ -74,7 +74,7 @@
                 return $"ApiFixture.NewKey({Math.Max(1, high / 2).ToString(CultureInfo.InvariantCulture)}, {high.ToString(CultureInfo.InvariantCulture)})";
             }
             if (IsFreeText(c))
-                return $"ApiFixture.Unique({ApiSampleValues.Json(ApiSampleValues.Text(c))}, {c.CharacterLength})";
+                return $"ApiFixture.Unique({ApiSampleValues.Json(ApiSampleValues.Text(c, Project, Model.TableName))}, {c.CharacterLength})";
             string parentRoute = ForeignKeyParentRoute(c, out string parentKey);
             if (parentRoute.Length > 0)
                 return $"await ApiFixture.{(c.IsStringColumn || c.IsGuidColumn ? "ExistingCodeAsync" : "ExistingKeyAsync")}({ApiSampleValues.Json(parentRoute)}, {ApiSampleValues.Json(parentKey)}, {sample}, {ApiSampleValues.Json(ParentTable(c))})";
@@ -83,7 +83,7 @@
 
         // the one column the update step changes: a free text column, else a bit column, else a whole number that has room to go up by one
         bool HasRoomToGrow(ColumnModel c) => c.IsIntegerColumn && !c.IsPrimaryKey && ForeignKeyParentRoute(c, out string _).Length == 0
-            && (Project.RangeFor(c) is not { } range || range.Max > long.Parse(ApiSampleValues.Value(c, Project), CultureInfo.InvariantCulture));
+            && (Project.RangeFor(c) is not { } range || range.Max > long.Parse(ApiSampleValues.Value(c, Project, Model.TableName), CultureInfo.InvariantCulture));
         var changed = bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0)
             ?? bodyColumns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsPrimaryKey)
             ?? bodyColumns.FirstOrDefault(HasRoomToGrow);

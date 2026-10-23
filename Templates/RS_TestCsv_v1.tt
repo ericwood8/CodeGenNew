@@ -85,7 +85,7 @@
             bool importable = !isUserTable && t.HashField is null && shown.Where(f => CanImport(f.Column) && !f.Column.IsNullable).All(f => body.Contains(f.Column)) && imported.Count > 0;
             string columns = string.Join(", ", imported.Select(f => $"({Json(f.Column.Name)}, {Json(f.Json)})"));
 
-            var text = imported.Where(f => RustTestBodies.IsFreeText(table, f.Column)).ToList();
+            var text = imported.Where(f => RustTestBodies.IsFreeText(table, f.Column, Project)).ToList();
             var marker = text.FirstOrDefault();
             var formula = text.FirstOrDefault(f => f.Column.CharacterLength == 0 || f.Column.CharacterLength >= 8);
             var number = imported.FirstOrDefault(f => IsInt(f) && !f.IsOption);

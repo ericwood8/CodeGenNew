@@ -38,7 +38,7 @@
         var bodyColumns = ApiSampleValues.BodyColumns(Model).Where(c => c != t.HashField?.Column).ToList();
         string Json(string text) => ApiSampleValues.Json(text);
 
-        bool IsFreeText(ColumnModel c) => RustTestBodies.IsFreeText(Model, c);
+        bool IsFreeText(ColumnModel c) => RustTestBodies.IsFreeText(Model, c, Project);
         string ForeignKeyParentRoute(ColumnModel c, out string parentKey)
         {
             var fk = RustTestBodies.ParentKey(Model, c, Project);
@@ -48,7 +48,7 @@
 
         // the one column the update step changes: a free text column, else a bit column, else a whole number that has room to go up by one
         bool HasRoomToGrow(ColumnModel c) => c.IsIntegerColumn && !c.IsPrimaryKey && ForeignKeyParentRoute(c, out string _).Length == 0
-            && (Project.RangeFor(c) is not { } range || range.Max > long.Parse(ApiSampleValues.Value(c, Project), CultureInfo.InvariantCulture));
+            && (Project.RangeFor(c) is not { } range || range.Max > long.Parse(ApiSampleValues.Value(c, Project, Model.TableName), CultureInfo.InvariantCulture));
         var changed = bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0)
             ?? bodyColumns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsPrimaryKey)
             ?? bodyColumns.FirstOrDefault(HasRoomToGrow);
