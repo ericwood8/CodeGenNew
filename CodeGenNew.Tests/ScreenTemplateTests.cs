@@ -1,3 +1,4 @@
+using System.Data;
 using CodeGenNew.Core;
 using CodeGenNew.TemplateEngine;
 
@@ -44,6 +45,51 @@ public class ScreenTemplateTests
         Expect.Contains(tsx, "{ path: 'order', label: 'Order', element: <OrderDetailMasterPage /> },");
         Assert.IsLessThan(tsx.IndexOf("path: 'order'"), tsx.IndexOf("path: 'donate-leave'"), "alphabetical by default");
         Expect.Contains(tsx, "WARNING: these child tables are linked from a master-detail screen but have no screen of their own: OrderLine (a child of Order)");
+    }
+
+    private static TableModel CustomerWithTagLinks()
+    {
+        var link = new ChildForeignKeyModel
+        {
+            ConstraintName = "FK_CustomerTag_Customer",
+            ReferencingSchema = "dbo",
+            ReferencingTable = "CustomerTag",
+            ReferencingColumns = ["CustomerId"],
+            ReferencedColumns = ["CustomerId"],
+            ReferencingPrimaryKeyColumns = ["CustomerId", "TagId"],
+            ReferencingTableColumns =
+            [
+                Sample.Column("CustomerId", SqlDbType.Int, primaryKey: true, ordinal: 1),
+                Sample.Column("TagId", SqlDbType.Int, primaryKey: true, ordinal: 2)
+            ],
+            ReferencingTableForeignKeys = [Sample.ForeignKey("CustomerId", "Customer", "CustomerId", "Name"), Sample.ForeignKey("TagId", "Tag", "TagId", "Name")]
+        };
+        return Sample.Table("Customer",
+        [
+            Sample.Column("CustomerId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("Name", SqlDbType.NVarChar, characters: 100, ordinal: 2),
+            Sample.Column("Email", SqlDbType.NVarChar, characters: 100, ordinal: 3),
+            Sample.Column("Credit", SqlDbType.Int, ordinal: 4),
+            Sample.Column("Note", SqlDbType.NVarChar, nullable: true, characters: 100, ordinal: 5)
+        ], childForeignKeys: [link]);
+    }
+
+    [TestMethod]
+    public async Task A_composite_key_child_such_as_a_junction_table_gets_no_grid_because_its_api_has_no_list_to_read()
+    {
+        var customer = CustomerWithTagLinks();
+        Assert.AreEqual(1, ChildGrid.For(customer, Project()).Count);
+        Assert.AreEqual(0, ChildGrid.ForWeb(customer, Project()).Count);
+        Assert.AreEqual(0, DatabaseModel.ChildrenWithoutScreen([customer], Project()).Count);
+
+        var react = await Repo.Cache.RunAsync(Repo.Template("TSX_DetailMasterPage_v1.tt"), customer, Project());
+        Assert.IsTrue(react.Success, string.Join(" | ", react.Errors));
+        Expect.DoesNotContain(react.GeneratedText!, "/api/customertags");
+        Expect.DoesNotContain(react.GeneratedText!, "customerTagRows");
+
+        var angular = await Repo.Cache.RunAsync(Repo.Template("TS_DetailMasterComponent_v1.tt"), customer, Project(("AngularVersion", "22")));
+        Assert.IsTrue(angular.Success, string.Join(" | ", angular.Errors));
+        Expect.DoesNotContain(angular.GeneratedText!, "customertags");
     }
 
     [TestMethod]

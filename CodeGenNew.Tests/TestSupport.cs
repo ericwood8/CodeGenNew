@@ -195,7 +195,8 @@ internal static class Sample
     };
 
     public static TableModel Table(string name, List<ColumnModel> columns, List<ForeignKeyModel>? foreignKeys = null,
-        List<object?[]>? rows = null, List<ChildForeignKeyModel>? childForeignKeys = null, List<IndexModel>? indexes = null, SqlDialect dialect = SqlDialect.SqlServer, string? startDate = null, string? endDate = null) => new()
+        List<object?[]>? rows = null, List<ChildForeignKeyModel>? childForeignKeys = null, List<IndexModel>? indexes = null, SqlDialect dialect = SqlDialect.SqlServer, string? startDate = null, string? endDate = null,
+        List<PartialIndexModel>? partialIndexes = null, List<CheckConstraintModel>? checks = null) => new()
     {
         HasStartEndDatePair = startDate is not null && endDate is not null,
         StartDateColumn = startDate is null ? null : columns.Single(c => c.Name == startDate),
@@ -209,6 +210,8 @@ internal static class Sample
         ForeignKeys = foreignKeys ?? [],
         ChildForeignKeys = childForeignKeys ?? [],
         Indexes = indexes ?? [],
+        PartialIndexes = partialIndexes ?? [],
+        CheckConstraints = checks ?? [],
         // what the schema reader fills in when a template's .tt.config asks for referenced display columns
         HasReferencedDisplayColumns = foreignKeys?.Any(f => f.ReferencedDisplayColumns.Count > 0) ?? false,
         DisplayColumns = columns.SelectDisplayColumns((foreignKeys ?? []).SelectMany(f => f.ReferencingColumns).ToList()),

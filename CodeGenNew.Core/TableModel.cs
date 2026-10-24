@@ -153,6 +153,12 @@ public class TableModel
     /// <summary> The table's indexes, the primary key's included. </summary>
     public IReadOnlyList<IndexModel> Indexes { get; init; } = [];
 
+    /// <summary> The filtered or partial indexes, which <see cref="Indexes"/> leaves out. </summary>
+    public IReadOnlyList<PartialIndexModel> PartialIndexes { get; init; } = [];
+
+    /// <summary> Every CHECK constraint of the table, whole, whichever columns it names. </summary>
+    public IReadOnlyList<CheckConstraintModel> CheckConstraints { get; init; } = [];
+
     /// <summary> True when some index starts with exactly these columns (database names, in any order), so a lookup or join on them can use it. </summary>
     public bool IsIndexed(IReadOnlyList<string> databaseColumns) => Indexes.Any(index =>
         index.Columns.Count >= databaseColumns.Count

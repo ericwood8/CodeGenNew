@@ -22,6 +22,8 @@ columns are whatever keys the first loaded row has (Object.keys), discovered at 
 generation time - the same "read the shape at run time, not generation time" idea the Angular and WinUI3
 families already use for this exact gap.
 
+A child with a composite key (a junction table) or no repository has no list in the API to read, so it gets no grid (`ChildGrid.ForWeb`); its rows are reached through the junction route.
+
 Only loaded once the row being edited has a real key (a brand-new, unsaved row has no child rows yet);
 the child sections show a "save first" message instead while adding. A text key is typed on a new row,
 so the key cannot say whether the row is new: the page has an `adding` flag (set by Add New, cleared by

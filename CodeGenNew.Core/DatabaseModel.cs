@@ -91,7 +91,7 @@ public class DatabaseModel
         var screenNames = screens.Select(s => s.TableName).ToHashSet(StringComparer.Ordinal);
         return screens
             .Where(t => IsDetailMaster(t, project))
-            .SelectMany(t => t.ChildForeignKeys.Where(c => !screenNames.Contains(c.ReferencingTable)).Select(c => $"{c.ReferencingTable} (a child of {t.TableName})"))
+            .SelectMany(t => ChildGrid.ForWeb(t, project).Where(g => !screenNames.Contains(g.Table)).Select(g => $"{g.Table} (a child of {t.TableName})"))
             .Distinct().ToList();
     }
 

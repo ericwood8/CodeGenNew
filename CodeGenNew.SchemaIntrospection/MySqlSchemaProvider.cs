@@ -490,6 +490,33 @@ public class MySqlSchemaProvider : SchemaProviderBase
         ORDER BY INDEX_NAME, SEQ_IN_INDEX;
         """;
 
+    private const string WholeCheckConstraintsQuery = """
+        SELECT cc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
+        FROM information_schema.CHECK_CONSTRAINTS cc
+        JOIN information_schema.TABLE_CONSTRAINTS tc ON tc.CONSTRAINT_SCHEMA = cc.CONSTRAINT_SCHEMA AND tc.CONSTRAINT_NAME = cc.CONSTRAINT_NAME
+        WHERE tc.CONSTRAINT_TYPE = 'CHECK' AND tc.TABLE_SCHEMA = @schema AND tc.TABLE_NAME = @table
+        ORDER BY cc.CONSTRAINT_NAME
+        """;
+
+    protected override async Task<List<CheckConstraintModel>> ReadCheckConstraintsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        var checks = new List<CheckConstraintModel>();
+        try
+        {
+            await using var command = new MySqlCommand(WholeCheckConstraintsQuery, (MySqlConnection)connection);
+            command.Parameters.AddWithValue("@schema", schemaName);
+            command.Parameters.AddWithValue("@table", tableName);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                checks.Add(new CheckConstraintModel(reader.GetString(0), "CHECK (" + reader.GetString(1) + ")"));
+        }
+        catch (MySqlException)
+        {
+            // a server without information_schema.CHECK_CONSTRAINTS: no checks to read
+        }
+        return checks;
+    }
+
     protected override async Task<List<IndexRow>> ReadIndexRowsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {
         await using var command = new MySqlCommand(IndexesQuery, (MySqlConnection)connection);

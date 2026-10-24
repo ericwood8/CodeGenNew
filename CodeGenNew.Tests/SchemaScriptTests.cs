@@ -99,6 +99,22 @@ public class SchemaScriptTests
     }
 
     [TestMethod]
+    public void Checks_and_partial_indexes_are_written_back_after_the_tables()
+    {
+        var database = Shop(SqlDialect.SqlServer);
+        var old = database.Tables[0];
+        database.Tables[0] = Sample.Table("Order", old.Columns, foreignKeys: old.ForeignKeys, indexes: [.. old.Indexes], dialect: SqlDialect.SqlServer,
+            partialIndexes: [new PartialIndexModel("UX_Order_Customer", true, ["CustomerId"], ["Total"], "([Total]>(0))")],
+            checks: [new CheckConstraintModel("CK_Order_Total", "CHECK ([Total]>=(0))")]);
+
+        string script = SchemaScript.For(database).ReplaceLineEndings("\n");
+
+        Expect.Contains(script, "CREATE UNIQUE INDEX [UX_Order_Customer] ON [dbo].[Order] ([CustomerId]) INCLUDE ([Total]) WHERE ([Total]>(0));");
+        Expect.Contains(script, "ALTER TABLE [dbo].[Order] ADD CONSTRAINT [CK_Order_Total] CHECK ([Total]>=(0));");
+        Assert.IsTrue(script.IndexOf("CREATE TABLE [dbo].[Customer]", StringComparison.Ordinal) < script.IndexOf("ADD CONSTRAINT [CK_Order_Total]", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void SQLite_has_no_container_so_no_script_is_written()
     {
         Assert.IsFalse(SchemaScript.Supports(SqlDialect.Sqlite));

@@ -22,8 +22,8 @@ public sealed class BlazorTestPlan
         ParentKeyJson = Form.TextKey && Row is not null ? "\"" + Row.KeyText + "\"" : "1";
 
         // the child tables a master-detail page shows under the form: a read-only grid each, or (EditableChildren) rows in boxes of the form
-        var childGrids = ChildGrid.For(model, project)
-            .Where(g => DatabaseModel.IsDetailMaster(model, project) && g.KeyColumn is not null && g.KeyType is not null && !g.IsNameActive && !project.NoRepositoryFor(g.Table, default))
+        var childGrids = ChildGrid.ForWeb(model, project)
+            .Where(g => DatabaseModel.IsDetailMaster(model, project) && g.KeyColumn is not null && g.KeyType is not null && !g.IsNameActive)
             .ToList();
         Children = childGrids.Where(g => !g.IsEditable).ToList();
         Editable = childGrids.Where(g => g.IsEditable).ToList();

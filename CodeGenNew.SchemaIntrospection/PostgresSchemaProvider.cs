@@ -530,6 +530,51 @@ public partial class PostgresSchemaProvider : SchemaProviderBase
         ORDER BY ic.relname, k.position;
         """;
 
+    private const string WholeCheckConstraintsQuery = """
+        SELECT con.conname, pg_get_constraintdef(con.oid)
+        FROM pg_constraint con
+        JOIN pg_class tc ON tc.oid = con.conrelid
+        JOIN pg_namespace n ON n.oid = tc.relnamespace
+        WHERE con.contype = 'c' AND n.nspname = @schema AND tc.relname = @table
+        ORDER BY con.conname;
+        """;
+
+    protected override async Task<List<CheckConstraintModel>> ReadCheckConstraintsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(WholeCheckConstraintsQuery, (NpgsqlConnection)connection);
+        command.Parameters.AddWithValue("schema", schemaName);
+        command.Parameters.AddWithValue("table", tableName);
+        var checks = new List<CheckConstraintModel>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            checks.Add(new CheckConstraintModel(reader.GetString(0), reader.GetString(1)));
+        return checks;
+    }
+
+    private const string PartialIndexesQuery = """
+        SELECT ic.relname, i.indisunique, pg_get_expr(i.indpred, i.indrelid), a.attname, k.position > i.indnkeyatts
+        FROM pg_index i
+        JOIN pg_class ic ON ic.oid = i.indexrelid
+        JOIN pg_class tc ON tc.oid = i.indrelid
+        JOIN pg_namespace n ON n.oid = tc.relnamespace
+        CROSS JOIN LATERAL unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, position)
+        JOIN pg_attribute a ON a.attrelid = tc.oid AND a.attnum = k.attnum
+        WHERE n.nspname = @schema AND tc.relname = @table AND i.indisvalid AND i.indpred IS NOT NULL AND i.indexprs IS NULL
+        ORDER BY ic.relname, k.position;
+        """;
+
+    protected override async Task<List<PartialIndexModel>> ReadPartialIndexesAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(PartialIndexesQuery, (NpgsqlConnection)connection);
+        command.Parameters.AddWithValue("schema", schemaName);
+        command.Parameters.AddWithValue("table", tableName);
+        var rows = new List<(string, bool, string, string, bool)>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            rows.Add((reader.GetString(0), reader.GetBoolean(1), reader.GetString(2), reader.GetString(3), reader.GetBoolean(4)));
+        return GroupPartialIndexes(rows);
+    }
+
     protected override async Task<List<IndexRow>> ReadIndexRowsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(IndexesQuery, (NpgsqlConnection)connection);

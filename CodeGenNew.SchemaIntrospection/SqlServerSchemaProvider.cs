@@ -503,6 +503,44 @@ public class SqlServerSchemaProvider : SchemaProviderBase
         ORDER BY i.index_id, ic.key_ordinal;
         """;
 
+    private const string WholeCheckConstraintsQuery = """
+        SELECT cc.name, cc.definition
+        FROM sys.check_constraints cc
+        WHERE cc.parent_object_id = OBJECT_ID(@fullTableName) AND cc.is_disabled = 0
+        ORDER BY cc.name;
+        """;
+
+    protected override async Task<List<CheckConstraintModel>> ReadCheckConstraintsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand(WholeCheckConstraintsQuery, (SqlConnection)connection);
+        command.Parameters.AddWithValue("@fullTableName", QuotedTable(schemaName, tableName));
+        var checks = new List<CheckConstraintModel>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            checks.Add(new CheckConstraintModel(reader.GetString(0), "CHECK " + reader.GetString(1)));
+        return checks;
+    }
+
+    private const string PartialIndexesQuery = """
+        SELECT i.name, CAST(i.is_unique AS int), i.filter_definition, c.name, ic.is_included_column
+        FROM sys.indexes i
+        JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id AND (ic.key_ordinal > 0 OR ic.is_included_column = 1)
+        JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+        WHERE i.object_id = OBJECT_ID(@fullTableName) AND i.type > 0 AND i.is_hypothetical = 0 AND i.has_filter = 1
+        ORDER BY i.index_id, ic.is_included_column, ic.key_ordinal, ic.index_column_id;
+        """;
+
+    protected override async Task<List<PartialIndexModel>> ReadPartialIndexesAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand(PartialIndexesQuery, (SqlConnection)connection);
+        command.Parameters.AddWithValue("@fullTableName", QuotedTable(schemaName, tableName));
+        var rows = new List<(string, bool, string, string, bool)>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            rows.Add((reader.GetString(0), reader.GetInt32(1) == 1, reader.GetString(2), reader.GetString(3), reader.GetBoolean(4)));
+        return GroupPartialIndexes(rows);
+    }
+
     protected override async Task<List<IndexRow>> ReadIndexRowsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {
         await using var command = new SqlCommand(IndexesQuery, (SqlConnection)connection);

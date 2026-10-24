@@ -37,6 +37,25 @@ public class SchemaIndexTests
         Assert.IsFalse(model.IsIndexed([otherColumn]));
     }
 
+    /// <summary> What only the create script needs: the whole CHECK constraint (it names two columns) and, where the database has them, the partial index with its row condition. </summary>
+    private static void AssertScriptParts(TableModel model, string? partialIndex, string? partialColumn)
+    {
+        var check = model.CheckConstraints.Single();
+        Assert.AreEqual("ck_owner_kind", check.Name, ignoreCase: true);
+        StringAssert.StartsWith(check.Definition, "CHECK ");
+        StringAssert.Contains(check.Definition, "kind_id", StringComparison.OrdinalIgnoreCase);
+        if (partialIndex is null)
+        {
+            Assert.AreEqual(0, model.PartialIndexes.Count);
+            return;
+        }
+        var partial = model.PartialIndexes.Single();
+        Assert.AreEqual(partialIndex, partial.Name);
+        CollectionAssert.AreEqual(new[] { partialColumn! }, partial.Columns.ToArray());
+        StringAssert.Contains(partial.Filter, partialColumn!, StringComparison.OrdinalIgnoreCase);
+        Assert.IsFalse(model.Indexes.Any(i => i.Name == partialIndex), "the plain index list still leaves the partial index out");
+    }
+
     [TestMethod]
     public async Task SQL_Server_reads_the_key_columns_of_every_index()
     {
@@ -56,13 +75,14 @@ public class SchemaIndexTests
         try
         {
             await Run("IF OBJECT_ID('dbo.codegen_index_test') IS NOT NULL DROP TABLE dbo.codegen_index_test");
-            await Run("CREATE TABLE dbo.codegen_index_test (id int IDENTITY PRIMARY KEY, owner_id int NOT NULL, kind_id int NOT NULL, other_id int NULL, note nvarchar(50) NULL)");
+            await Run("CREATE TABLE dbo.codegen_index_test (id int IDENTITY PRIMARY KEY, owner_id int NOT NULL, kind_id int NOT NULL, other_id int NULL, note nvarchar(50) NULL, CONSTRAINT ck_owner_kind CHECK (owner_id > 0 AND kind_id >= owner_id))");
             await Run("CREATE INDEX ix_owner_kind ON dbo.codegen_index_test (owner_id, kind_id) INCLUDE (note)");
             await Run("CREATE INDEX ix_filtered ON dbo.codegen_index_test (other_id) WHERE other_id IS NOT NULL");
 
             var model = await new SqlServerSchemaProvider(request, ConfigPath).BuildTableModelAsync("dbo", "codegen_index_test");
 
             AssertIndexes(model, "owner_id", "kind_id", "other_id");
+            AssertScriptParts(model, "ix_filtered", "other_id");
         }
         finally
         {
@@ -85,7 +105,7 @@ public class SchemaIndexTests
         {
             await Run("DROP SCHEMA IF EXISTS codegen_index_test CASCADE");
             await Run("CREATE SCHEMA codegen_index_test");
-            await Run("CREATE TABLE codegen_index_test.item (item_id serial PRIMARY KEY, owner_id int NOT NULL, kind_id int NOT NULL, other_id int NULL, note varchar(50) NULL)");
+            await Run("CREATE TABLE codegen_index_test.item (item_id serial PRIMARY KEY, owner_id int NOT NULL, kind_id int NOT NULL, other_id int NULL, note varchar(50) NULL, CONSTRAINT ck_owner_kind CHECK (owner_id > 0 AND kind_id >= owner_id))");
             await Run("CREATE INDEX ix_owner_kind ON codegen_index_test.item (owner_id, kind_id) INCLUDE (note)");
             await Run("CREATE INDEX ix_partial ON codegen_index_test.item (other_id) WHERE other_id IS NOT NULL");
             await Run("CREATE INDEX ix_expression ON codegen_index_test.item (lower(note))");
@@ -93,6 +113,7 @@ public class SchemaIndexTests
             var model = await new PostgresSchemaProvider(request, ConfigPath).BuildTableModelAsync("codegen_index_test", "item");
 
             AssertIndexes(model, "owner_id", "kind_id", "other_id");
+            AssertScriptParts(model, "ix_partial", "other_id");
         }
         finally
         {
@@ -114,12 +135,13 @@ public class SchemaIndexTests
         try
         {
             await Run("DROP TABLE IF EXISTS codegen_index_test");
-            await Run("CREATE TABLE codegen_index_test (id int AUTO_INCREMENT PRIMARY KEY, owner_id int NOT NULL, kind_id int NOT NULL, other_id int NULL, note varchar(50) NULL)");
+            await Run("CREATE TABLE codegen_index_test (id int AUTO_INCREMENT PRIMARY KEY, owner_id int NOT NULL, kind_id int NOT NULL, other_id int NULL, note varchar(50) NULL, CONSTRAINT ck_owner_kind CHECK (owner_id > 0 AND kind_id >= owner_id))");
             await Run("CREATE INDEX ix_owner_kind ON codegen_index_test (owner_id, kind_id)");
 
             var model = await new MySqlSchemaProvider(request, ConfigPath).BuildTableModelAsync(database!, "codegen_index_test");
 
             AssertIndexes(model, "owner_id", "kind_id", "other_id");
+            AssertScriptParts(model, null, null);
         }
         finally
         {

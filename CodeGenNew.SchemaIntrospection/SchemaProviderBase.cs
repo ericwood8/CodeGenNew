@@ -91,6 +91,17 @@ public abstract class SchemaProviderBase : ISchemaProvider
     /// <summary> Foreign keys this table has (<paramref name="children"/> false) or that point at it (true), grouped per constraint. </summary>
     protected abstract Task<List<ForeignKeyRow>> ReadForeignKeyRowsAsync(DbConnection connection, string schemaName, string tableName, bool children, CancellationToken cancellationToken);
     /// <summary> The table's indexes (key columns only, none filtered or partial). A provider that cannot read them leaves the list empty. </summary>
+    /// <summary> The table's CHECK constraints, whole (the create script writes them back). </summary>
+    protected virtual Task<List<CheckConstraintModel>> ReadCheckConstraintsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken) => Task.FromResult(new List<CheckConstraintModel>());
+
+    /// <summary> The table's filtered or partial indexes (the create script writes them back). </summary>
+    protected virtual Task<List<PartialIndexModel>> ReadPartialIndexesAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken) => Task.FromResult(new List<PartialIndexModel>());
+
+    /// <summary> One row per column of a partial index, in index order, grouped back into the indexes. </summary>
+    protected static List<PartialIndexModel> GroupPartialIndexes(IEnumerable<(string Name, bool IsUnique, string Filter, string Column, bool Included)> rows) =>
+        rows.GroupBy(r => r.Name).Select(g => new PartialIndexModel(g.Key, g.First().IsUnique, g.Where(r => !r.Included).Select(r => r.Column).ToList(),
+            g.Where(r => r.Included).Select(r => r.Column).ToList(), g.First().Filter)).ToList();
+
     protected virtual Task<List<IndexRow>> ReadIndexRowsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken) => Task.FromResult(new List<IndexRow>());
 
     /// <summary> Groups rows of (index name, unique flag, column name), already ordered by index and position, into indexes. </summary>
@@ -186,6 +197,8 @@ public abstract class SchemaProviderBase : ISchemaProvider
             ForeignKeys = foreignKeys,
             ChildForeignKeys = childForeignKeys,
             Indexes = (await ReadIndexRowsAsync(connection, schemaName, tableName, cancellationToken)).Select(row => new IndexModel(row.Name, row.IsUnique, row.Columns)).ToList(),
+            PartialIndexes = await ReadPartialIndexesAsync(connection, schemaName, tableName, cancellationToken),
+            CheckConstraints = await ReadCheckConstraintsAsync(connection, schemaName, tableName, cancellationToken),
             HasActiveInactivePair = hasActivePair,
             ActiveColumn = activeCol,
             InactiveDateColumn = inactiveCol,

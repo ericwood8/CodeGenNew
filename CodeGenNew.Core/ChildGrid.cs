@@ -92,6 +92,12 @@ public sealed partial class ChildGrid
         }).ToList();
     }
 
+    /// <summary> The child tables a web page can show a grid of: <see cref="For"/> without the children whose API has no plain list to read (a junction or other composite-key table, a table the project gives no repository). </summary>
+    public static IReadOnlyList<ChildGrid> ForWeb(TableModel table, ProjectSettings project) => For(table, project).Where(g => g.HasWebList).ToList();
+
+    /// <summary> The child's API serves the plain list of its rows that a web grid reads: not a composite key, and a repository. </summary>
+    public bool HasWebList => Link.ReferencingPrimaryKeyColumns.Count <= 1 && (Link.ReferencingTableColumns.Count == 0 || KeyColumn is not null) && !_project.NoRepositoryFor(Table, default);
+
     // "Donor_EmployeeId" -> "DonorEmployee": the role the foreign key's column plays.
     private static string RoleName(string column) => IdSuffix().Replace(column, "").Replace("_", "");
 

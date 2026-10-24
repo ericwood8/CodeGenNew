@@ -108,7 +108,7 @@
         bool anyBox = shown.Any(c => form.KindOf(c) == FieldKind.Lookup && Ahead(form.ParentOf(c)!)) || searchKeys.Any(k => Ahead(k.Parent)) || (odataFilters?.Any(FilterAhead) ?? false);
 
         // The child tables, decided in Core for every stack (ChildGrid): which ones get a grid, its heading and role, its key, and the foreign keys shown as names.
-        var children = ChildGrid.For(Model, Project);
+        var children = ChildGrid.ForWeb(Model, Project);
 
 
         // EditableChildren: the child tables whose rows are added, changed and removed inside this form and sent with it in one request (EditableChild, the rule the API's create and update use too);

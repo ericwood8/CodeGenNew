@@ -4,6 +4,7 @@
   python Test-FrontEndPages.py --stack blazor
   python Test-FrontEndPages.py --stack uno
   python Test-FrontEndPages.py --stack angular --prove-failure
+  python Test-FrontEndPages.py --stack react --schema junction
 
 Generates the master_detail sample schema (API and the chosen front end) with Tools/new_scratch_project.py, builds and starts the API (port 5080) and the
 dev server (Vite on 5173, ng serve on 4200, dotnet run on 5190 for Blazor and on 5195 for Uno), then walks the Region screen: the empty form is refused by the browser, a row is added, found by the search, edited, cloned and
@@ -12,6 +13,7 @@ exits 1 on a failure. Everything it started is stopped at the end; the generated
 
 --prove-failure aborts the browser's POST to the API, so the add and everything after it must fail: it shows that the checks can fail.
 --stack react|angular|blazor|uno picks the front end (Angular is generated for version 22). The Uno app draws on a canvas, so it is driven through the semantic page that its accessibility switch builds, by focus and keys.
+--schema junction generates the many-to-many sample (Region, Customer, Tag, CustomerTag) and walks the Customer dialog of React, Angular or Blazor: the junction table has no grid there and the page asks the API for nothing that is refused.
 --out <folder> uses an already generated project (the folder that holds the Api project and the frontend folder or Blazor project) instead of generating one.
 --build-cli builds the command-line tool before generating (a fresh checkout, as in CI, has not built it).
 --browser chrome|msedge picks the installed browser (default chrome). Needs `pip install playwright`; no browser is downloaded.
@@ -78,9 +80,9 @@ def stop(process):
             os.killpg(os.getpgid(process.pid), signal.SIGTERM)   # the process was started as the leader of its own group, so its children go too
 
 
-def generate(stack, build_cli=False):
+def generate(stack, build_cli=False, schema="master_detail"):
     extra = ["--set", "AngularVersion=22"] if stack == "angular" else []
-    result = subprocess.run([sys.executable, str(HERE / "Tools" / "new_scratch_project.py"), "PwShop" + stack.title(), "--schema", "master_detail",
+    result = subprocess.run([sys.executable, str(HERE / "Tools" / "new_scratch_project.py"), "PwShop" + stack.title() + ("Junction" if schema == "junction" else ""), "--schema", schema,
                              "--stack", "api," + stack, "--set", "Dtos=true", *extra, *(["--build-cli"] if build_cli else [])], capture_output=True, text=True, cwd=HERE / "Tools")
     if result.returncode != 0:
         sys.exit(result.stderr or result.stdout)
@@ -476,6 +478,50 @@ def drive_uno_grids(page, prove_failure):
         clean()
 
 
+def drive_junction(page, prove_failure):
+    """The Customer dialog of a database with a many-to-many table (CustomerTag): the junction table has no API list of its own, so the dialog shows no grid of it
+    and asks the API for nothing that is refused. The tags are linked through the junction route first, so a grid that read the table would have rows to show."""
+    form = page.locator('dialog[open], [role="dialog"]')
+    refused = []
+    page.on("response", lambda r: refused.append(f"{r.status} {r.url}") if "/api/" in r.url and r.status >= 400 else None)
+
+    def clean():
+        for customer_ in api_rows("/api/customers"):
+            if customer_["name"].startswith("Harness"):
+                api_send("DELETE", f"/api/customers/{customer_['customerId']}")
+        for tag in api_rows("/api/tags"):
+            if tag["name"].startswith("Harness"):
+                api_send("DELETE", f"/api/tags/{tag['tagId']}")
+        for region in api_rows("/api/regions"):
+            if region["name"].startswith("Harness"):
+                api_send("DELETE", f"/api/regions/{region['regionId']}")
+
+    clean()
+    try:
+        region = api_send("POST", "/api/regions", {"regionId": 0, "name": "Harness Region", "code": "HR", "population": 1})
+        customer = api_send("POST", "/api/customers", {"customerId": 0, "regionId": region["regionId"], "name": "Harness Customer", "email": "a@example.com", "creditLimit": 1, "isActive2": True})
+        for name in ("Harness Red", "Harness Green"):
+            tag = api_send("POST", "/api/tags", {"tagId": 0, "name": name, "colour": "x", "priority": 1, "created": "2026-04-01T00:00:00"})
+            api_send("POST", "/api/customertags/junction/link", {"anchorId": customer["customerId"], "targetId": tag["tagId"]})
+        linked = [r["name"] for r in api_send("GET", f"/api/customertags/junction/{customer['customerId']}") if r["isSelected"]]
+        check("the tags are linked through the junction route", sorted(linked) == ["Harness Green", "Harness Red"], str(linked))
+
+        page.goto(f"{DEV}/customer")
+        page.get_by_role("heading", name="Customers").wait_for(timeout=90000)
+        search_box(page, "Name").fill("Harness Customer")
+        page.get_by_role("button", name="Search").click()
+        page.wait_for_timeout(800)
+        page.locator("table").first.locator("tbody tr", has_text="Harness Customer").get_by_role("button", name="Edit").click()
+        form.wait_for()
+        page.wait_for_timeout(1500)
+        check("the Customer dialog opens on the saved row", form.locator('input[aria-label="Name"], #customerName').first.input_value() == "Harness Customer")
+        check("the dialog shows no grid of the junction table", form.get_by_text("Customer Tag", exact=True).count() == 0)
+        check("the page asked the API for nothing that was refused", not refused, "; ".join(refused)[:200])
+        form.get_by_role("button", name="Cancel").click()
+    finally:
+        clean()
+
+
 def uno_profile(project):
     profiles = json.loads((project / "Properties" / "launchSettings.json").read_text(encoding="utf-8"))["profiles"]
     return next(name for name in profiles if "WebAssembly" in name)
@@ -490,6 +536,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--stack", choices=list(STACKS), default="react")
     parser.add_argument("--out")
+    parser.add_argument("--schema", choices=["master_detail", "junction"], default="master_detail", help="master_detail: the Region walks; junction: the Customer dialog of a table with a many-to-many link to Tag")
     parser.add_argument("--prove-failure", action="store_true")
     parser.add_argument("--build-cli", action="store_true", help="build the command-line tool first (a fresh checkout has not)")
     parser.add_argument("--browser", default="chrome")
@@ -504,7 +551,7 @@ def main():
         if not port_free(port):
             sys.exit(f"port {port} is in use: stop what is listening there")
 
-    out = Path(args.out) if args.out else generate(args.stack, args.build_cli)
+    out = Path(args.out) if args.out else generate(args.stack, args.build_cli, args.schema)
     print(f"project: {out}")
     api_dir = next(out.glob("*.Api"))
     front = next(out.glob("*.Blazor" if args.stack == "blazor" else "*.Uno")) if args.stack in ("blazor", "uno") else out / "frontend"
@@ -537,7 +584,7 @@ def main():
                 errors = []
                 page.on("pageerror", lambda e: errors.append(str(e)))
                 page.set_default_timeout(5000)
-                walks = [drive_uno, drive_uno_dropdown, drive_uno_grids] if args.stack == "uno" else [drive, drive_more]
+                walks = [drive_junction] if args.schema == "junction" else [drive_uno, drive_uno_dropdown, drive_uno_grids] if args.stack == "uno" else [drive, drive_more]
                 for walk in walks:
                     try:
                         walk(page, args.prove_failure)

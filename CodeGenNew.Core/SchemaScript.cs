@@ -19,7 +19,7 @@ public static partial class SchemaScript
         var dialect = database.Dialect;
         var tables = database.Tables.OrderBy(t => t.SchemaName, StringComparer.OrdinalIgnoreCase).ThenBy(t => t.DatabaseTableName ?? t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
         var script = new StringBuilder();
-        script.AppendLine($"-- Create script of {database.DatabaseName}, written from its catalog: tables, keys, indexes and foreign keys (no checks, filtered indexes, triggers or routines).");
+        script.AppendLine($"-- Create script of {database.DatabaseName}, written from its catalog: tables, keys, indexes, foreign keys and checks (no triggers, views or routines).");
 
         if (dialect != SqlDialect.MySql)
             foreach (string schema in tables.Select(t => t.SchemaName).Where(s => !s.EqualsIgnoreCase("dbo") && !s.EqualsIgnoreCase("public")).Distinct(StringComparer.OrdinalIgnoreCase))
@@ -53,6 +53,15 @@ public static partial class SchemaScript
                     name = index.Name + "_" + n;   // PostgreSQL index names are per schema
                 script.AppendLine($"CREATE {(index.IsUnique ? "UNIQUE " : "")}INDEX {Quote(name, dialect)} ON {TableName(table, dialect)} ({string.Join(", ", index.Columns.Select(c => Quote(c, dialect)))});");
             }
+
+            foreach (var index in table.PartialIndexes)
+            {
+                string name = index.Name;
+                for (int n = 2; !usedIndexNames.Add(dialect == SqlDialect.MySql ? table.TableName + "." + name : name); n++)
+                    name = index.Name + "_" + n;
+                string included = index.IncludedColumns.Count == 0 ? "" : $" INCLUDE ({string.Join(", ", index.IncludedColumns.Select(c => Quote(c, dialect)))})";
+                script.AppendLine($"CREATE {(index.IsUnique ? "UNIQUE " : "")}INDEX {Quote(name, dialect)} ON {TableName(table, dialect)} ({string.Join(", ", index.Columns.Select(c => Quote(c, dialect)))}){included} WHERE {index.Filter};");
+            }
         }
 
         foreach (var table in tables)
@@ -64,6 +73,10 @@ public static partial class SchemaScript
                 script.AppendLine($"ALTER TABLE {TableName(table, dialect)} ADD CONSTRAINT {Quote(foreignKey.ConstraintName, dialect)} FOREIGN KEY ({string.Join(", ", foreignKey.ReferencingDbColumns.Select(c => Quote(c, dialect)))}) "
                     + $"REFERENCES {TableName(parent, dialect)} ({string.Join(", ", foreignKey.ReferencedDbColumns.Select(c => Quote(c, dialect)))}){DeleteClause(foreignKey.DeleteRule)};");
             }
+
+        foreach (var table in tables)
+            foreach (var check in table.CheckConstraints)
+                script.AppendLine($"ALTER TABLE {TableName(table, dialect)} ADD CONSTRAINT {Quote(check.Name, dialect)} {check.Definition};");
 
         return script.ToString();
     }

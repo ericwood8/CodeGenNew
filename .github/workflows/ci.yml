@@ -88,6 +88,8 @@ jobs:
       - run: pip install playwright
       - name: Walk the ${{ matrix.stack }} app
         run: python Docs/Verification/Test-FrontEndPages.py --stack ${{ matrix.stack }} --build-cli
+      - name: Walk the ${{ matrix.stack }} Customer dialog of the many-to-many schema
+        run: python Docs/Verification/Test-FrontEndPages.py --stack ${{ matrix.stack }} --schema junction
 
   # The Uno browser head needs the wasm-tools workload and draws on a canvas, so it is driven through its accessibility page.
   browser-walk-uno:
