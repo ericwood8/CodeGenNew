@@ -114,6 +114,44 @@ public class SchemaScriptTests
         Assert.IsTrue(script.IndexOf("CREATE TABLE [dbo].[Customer]", StringComparison.Ordinal) < script.IndexOf("ADD CONSTRAINT [CK_Order_Total]", StringComparison.Ordinal));
     }
 
+    private static DatabaseModel WithViewsAndTriggers(SqlDialect dialect, string viewOne, string viewTwo, string trigger, bool disabled = false)
+    {
+        var database = Shop(dialect);
+        var old = database.Tables[0];
+        database.Tables[0] = Sample.Table("Order", old.Columns, foreignKeys: old.ForeignKeys, indexes: [.. old.Indexes], dialect: dialect, triggers: [new TriggerModel("TR_Order", trigger, disabled)]);
+        return new DatabaseModel
+        {
+            DatabaseName = database.DatabaseName, SchemaName = database.SchemaName, Dialect = dialect, Tables = database.Tables,
+            Views = [new ViewModel("dbo", "vOrderList", viewTwo), new ViewModel("dbo", "vOrder", viewOne)]
+        };
+    }
+
+    [TestMethod]
+    public void Views_follow_the_views_they_name_and_triggers_come_last_with_SQL_Server_batches_split_by_GO()
+    {
+        var database = WithViewsAndTriggers(SqlDialect.SqlServer, "CREATE VIEW dbo.vOrder AS SELECT 1 AS a", "CREATE VIEW dbo.vOrderList AS SELECT a FROM dbo.vOrder", "CREATE TRIGGER dbo.TR_Order ON dbo.[Order] AFTER INSERT AS SELECT 1", disabled: true);
+
+        string script = SchemaScript.For(database).ReplaceLineEndings("\n");
+
+        Expect.Contains(script, "GO\nCREATE VIEW dbo.vOrder AS SELECT 1 AS a\nGO\n");
+        Assert.IsTrue(script.IndexOf("CREATE VIEW dbo.vOrder AS", StringComparison.Ordinal) < script.IndexOf("CREATE VIEW dbo.vOrderList", StringComparison.Ordinal), "a view over a view comes second");
+        Assert.IsTrue(script.IndexOf("CREATE VIEW dbo.vOrderList", StringComparison.Ordinal) < script.IndexOf("CREATE TRIGGER dbo.TR_Order", StringComparison.Ordinal), "triggers come after the views");
+        Expect.Contains(script, "DISABLE TRIGGER [dbo].[TR_Order] ON [dbo].[Order];");
+    }
+
+    [TestMethod]
+    public void PostgreSQL_views_end_with_a_semicolon_and_MySQL_trigger_bodies_are_written_between_DELIMITER_lines()
+    {
+        string postgres = SchemaScript.For(WithViewsAndTriggers(SqlDialect.PostgreSql, "CREATE VIEW \"dbo\".\"vOrder\" AS SELECT 1 AS a;", "CREATE VIEW \"dbo\".\"vOrderList\" AS SELECT a FROM \"vOrder\"", "CREATE FUNCTION f() RETURNS trigger AS $$ BEGIN RETURN NEW; END $$ LANGUAGE plpgsql;\nCREATE TRIGGER \"TR_Order\" AFTER INSERT ON \"Order\" FOR EACH ROW EXECUTE FUNCTION f()", disabled: true)).ReplaceLineEndings("\n");
+        Expect.Contains(postgres, "CREATE VIEW \"dbo\".\"vOrder\" AS SELECT 1 AS a;\n");
+        Expect.DoesNotContain(postgres, "GO\n");
+        Expect.Contains(postgres, "ALTER TABLE \"dbo\".\"Order\" DISABLE TRIGGER \"TR_Order\";");
+
+        string mysql = SchemaScript.For(WithViewsAndTriggers(SqlDialect.MySql, "CREATE VIEW `vOrder` AS select 1 AS `a`", "CREATE VIEW `vOrderList` AS select `a` from `vOrder`", "CREATE TRIGGER `TR_Order` AFTER INSERT ON `Order` FOR EACH ROW BEGIN SET @x = 1; END")).ReplaceLineEndings("\n");
+        Expect.Contains(mysql, "DELIMITER $$\nCREATE TRIGGER `TR_Order` AFTER INSERT ON `Order` FOR EACH ROW BEGIN SET @x = 1; END$$\nDELIMITER ;");
+        Expect.Contains(mysql, "CREATE VIEW `vOrder` AS select 1 AS `a`;\n");
+    }
+
     [TestMethod]
     public void SQLite_has_no_container_so_no_script_is_written()
     {

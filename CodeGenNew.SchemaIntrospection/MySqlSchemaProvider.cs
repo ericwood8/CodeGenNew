@@ -490,6 +490,48 @@ public class MySqlSchemaProvider : SchemaProviderBase
         ORDER BY INDEX_NAME, SEQ_IN_INDEX;
         """;
 
+    private const string ViewsQuery = """
+        SELECT TABLE_NAME, VIEW_DEFINITION
+        FROM information_schema.VIEWS
+        WHERE TABLE_SCHEMA = @schema
+        ORDER BY TABLE_NAME
+        """;
+
+    // the definition names its tables with the database in front (`shop`.`customer`), which a container made from the script does not have
+    public override async Task<IReadOnlyList<ViewModel>> ListViewsAsync(string schemaName, CancellationToken cancellationToken = default)
+    {
+        await using var connection = (MySqlConnection)await OpenConnectionAsync(cancellationToken);
+        await using var command = new MySqlCommand(ViewsQuery, connection);
+        command.Parameters.AddWithValue("@schema", schemaName);
+        var views = new List<ViewModel>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            string body = reader.GetString(1).Replace($"`{schemaName}`.", "", StringComparison.OrdinalIgnoreCase).Trim();
+            views.Add(new ViewModel(schemaName, reader.GetString(0), $"CREATE VIEW {Quote(reader.GetString(0))} AS {body}"));
+        }
+        return views;
+    }
+
+    private const string TriggersQuery = """
+        SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, ACTION_STATEMENT
+        FROM information_schema.TRIGGERS
+        WHERE TRIGGER_SCHEMA = @schema AND EVENT_OBJECT_TABLE = @table
+        ORDER BY ACTION_TIMING, EVENT_MANIPULATION, ACTION_ORDER
+        """;
+
+    protected override async Task<List<TriggerModel>> ReadTriggersAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = new MySqlCommand(TriggersQuery, (MySqlConnection)connection);
+        command.Parameters.AddWithValue("@schema", schemaName);
+        command.Parameters.AddWithValue("@table", tableName);
+        var triggers = new List<TriggerModel>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            triggers.Add(new TriggerModel(reader.GetString(0), $"CREATE TRIGGER {Quote(reader.GetString(0))} {reader.GetString(1)} {reader.GetString(2)} ON {Quote(tableName)} FOR EACH ROW {reader.GetString(3).Trim()}"));
+        return triggers;
+    }
+
     private const string WholeCheckConstraintsQuery = """
         SELECT cc.CONSTRAINT_NAME, cc.CHECK_CLAUSE
         FROM information_schema.CHECK_CONSTRAINTS cc

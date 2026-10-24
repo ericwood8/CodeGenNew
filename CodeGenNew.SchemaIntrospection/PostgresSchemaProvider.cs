@@ -530,6 +530,51 @@ public partial class PostgresSchemaProvider : SchemaProviderBase
         ORDER BY ic.relname, k.position;
         """;
 
+    private const string ViewsQuery = """
+        SELECT n.nspname, c.relname, pg_get_viewdef(c.oid, true)
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relkind = 'v' AND n.nspname = @schema
+        ORDER BY c.relname;
+        """;
+
+    public override async Task<IReadOnlyList<ViewModel>> ListViewsAsync(string schemaName, CancellationToken cancellationToken = default)
+    {
+        await using var connection = (NpgsqlConnection)await OpenConnectionAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(ViewsQuery, connection);
+        command.Parameters.AddWithValue("schema", schemaName);
+        var views = new List<ViewModel>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            string body = reader.GetString(2).Trim().TrimEnd(';');
+            views.Add(new ViewModel(reader.GetString(0), reader.GetString(1), $"CREATE VIEW {Quote(reader.GetString(0))}.{Quote(reader.GetString(1))} AS {body}"));
+        }
+        return views;
+    }
+
+    // the trigger function comes first in the definition (CREATE OR REPLACE, so a function that serves two triggers is written twice without harm)
+    private const string TriggersQuery = """
+        SELECT t.tgname, pg_get_functiondef(t.tgfoid), pg_get_triggerdef(t.oid, true), t.tgenabled = 'D'
+        FROM pg_trigger t
+        JOIN pg_class c ON c.oid = t.tgrelid
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE NOT t.tgisinternal AND n.nspname = @schema AND c.relname = @table
+        ORDER BY t.tgname;
+        """;
+
+    protected override async Task<List<TriggerModel>> ReadTriggersAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand(TriggersQuery, (NpgsqlConnection)connection);
+        command.Parameters.AddWithValue("schema", schemaName);
+        command.Parameters.AddWithValue("table", tableName);
+        var triggers = new List<TriggerModel>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            triggers.Add(new TriggerModel(reader.GetString(0), reader.GetString(1).Trim().TrimEnd(';') + ";\n" + reader.GetString(2).Trim().TrimEnd(';'), reader.GetBoolean(3)));
+        return triggers;
+    }
+
     private const string WholeCheckConstraintsQuery = """
         SELECT con.conname, pg_get_constraintdef(con.oid)
         FROM pg_constraint con

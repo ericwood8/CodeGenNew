@@ -104,7 +104,7 @@ public class ApiTestsTemplateTests
 
     [TestMethod]
     [DataRow("PostgreSql", "Testcontainers.PostgreSql", "new PostgreSqlBuilder(\"postgres:17-alpine\").WithDatabase(\"codegen_test\").Build()", "PostgreSqlContainer")]
-    [DataRow("MySql", "Testcontainers.MySql", "new MySqlBuilder(\"mysql:8.4\").WithDatabase(\"codegen_test\").Build()", "MySqlContainer")]
+    [DataRow("MySql", "Testcontainers.MySql", "new MySqlBuilder(\"mysql:8.4\").WithDatabase(\"codegen_test\").WithCommand(\"-\" + \"-skip-log-bin\").Build()", "MySqlContainer")]
     [DataRow("SqlServer", "Testcontainers.MsSql", "new MsSqlBuilder(\"mcr.microsoft.com/mssql/server:2022-latest\").Build()", "MsSqlContainer")]
     public async Task A_test_container_of_the_projects_database_is_started_and_filled_when_asked(string provider, string package, string build, string type)
     {

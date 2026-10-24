@@ -159,6 +159,9 @@ public class TableModel
     /// <summary> Every CHECK constraint of the table, whole, whichever columns it names. </summary>
     public IReadOnlyList<CheckConstraintModel> CheckConstraints { get; init; } = [];
 
+    /// <summary> The triggers of the table. </summary>
+    public IReadOnlyList<TriggerModel> Triggers { get; init; } = [];
+
     /// <summary> True when some index starts with exactly these columns (database names, in any order), so a lookup or join on them can use it. </summary>
     public bool IsIndexed(IReadOnlyList<string> databaseColumns) => Indexes.Any(index =>
         index.Columns.Count >= databaseColumns.Count

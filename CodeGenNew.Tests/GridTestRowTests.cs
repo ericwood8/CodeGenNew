@@ -232,6 +232,34 @@ public class GridTestRowTests
     }
 
     [TestMethod]
+    public async Task The_blazor_odata_page_tests_check_the_date_range_the_values_listed_and_the_parent_drop_down_of_the_filter_row()
+    {
+        var table = Sample.Table("Account",
+        [
+            Sample.Column("AccountId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("Title", SqlDbType.NVarChar, characters: 40, ordinal: 2),
+            Sample.Column("Opened", SqlDbType.Date, ordinal: 3),
+            Sample.Column("Tier", SqlDbType.VarChar, characters: 10, ordinal: 4, choices: ["Gold", "Silver"]),
+            Sample.Column("OwnerId", SqlDbType.Int, ordinal: 5)
+        ], foreignKeys: [Sample.ForeignKey("OwnerId", "Owner", "OwnerId", "Name")]);
+        var result = await Repo.Cache.RunAsync(Repo.Template("BLZ_Test_v1.tt"), table, Project(("BlazorTests", "true"), ("OData", "true")));
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string text = result.GeneratedText!.ReplaceLineEndings("\n");
+        string odata = text[text.IndexOf("public class AccountODataPageTests", StringComparison.Ordinal)..];
+
+        Expect.Contains(odata, "public void Filters_a_date_column_by_a_range_that_includes_the_last_day()");
+        Expect.Contains(odata, "page.Find(\"[aria-label=\\\"Opened from\\\"]\").Change(\"2026-03-05\");");
+        Expect.Contains(odata, "\"$filter=\" + \"opened ge 2026-03-05 and opened lt 2026-03-10\"");
+        Expect.Contains(odata, "public void Filters_a_column_whose_values_the_database_lists_by_the_value_picked()");
+        Expect.Contains(odata, "page.Find(\"select[aria-label=\\\"Filter by Tier\\\"]\").Change(\"Gold\");");
+        Expect.Contains(odata, "\"$filter=\" + \"tier eq 'Gold'\"");
+        Expect.Contains(odata, "public void Filters_a_foreign_key_by_the_parent_row_picked_from_its_drop_down()");
+        Expect.Contains(odata, "Api.Answer(\"/api/owners/lookup\"");
+        Expect.Contains(odata, "\"$filter=\" + \"ownerId eq 7\"");
+        Expect.DoesNotContain(text[..text.IndexOf("public class AccountODataPageTests", StringComparison.Ordinal)], "Filters_a_date_column");
+    }
+
+    [TestMethod]
     public async Task The_blazor_fake_api_can_answer_and_fail_a_write_and_pages_a_search()
     {
         string fake = await RenderProject("BLZ_EssentialTests_v1.tt", ("BlazorTests", "true"));

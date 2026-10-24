@@ -35,6 +35,11 @@ public sealed class BlazorTestPlan
         ODataText = Chosen.Initial.FirstOrDefault(c => c.Filter?.Kind == ODataFilterKind.Text);
         ODataNumber = Chosen.Initial.FirstOrDefault(c => c.Filter?.Kind == ODataFilterKind.Number);
         ODataBoolean = Chosen.Initial.FirstOrDefault(c => c.Filter?.Kind == ODataFilterKind.Boolean);
+        ODataDate = Chosen.Initial.FirstOrDefault(c => c.Filter?.Kind == ODataFilterKind.Date);
+        ODataChoice = Chosen.Initial.FirstOrDefault(c => c.Filter?.Kind == ODataFilterKind.Choice && c.Filter.Choices.Any(IsPlainChoice));
+        ODataChoiceValue = ODataChoice?.Filter!.Choices.First(IsPlainChoice);
+        // a drop-down of a number-keyed parent's lookup list; a parent that is searched as the person types has no list to pick from
+        ODataParent = Chosen.Initial.FirstOrDefault(c => c.Filter is { Kind: ODataFilterKind.Parent, Literal: "number", Parent: { UsesLookupEndpoint: true, TypeAhead: false } });
         Search = Form.SearchFields.FirstOrDefault(f => f.Column is not null);
     }
 
@@ -78,4 +83,13 @@ public sealed class BlazorTestPlan
     public ChosenColumn? ODataText { get; }
     public ChosenColumn? ODataNumber { get; }
     public ChosenColumn? ODataBoolean { get; }
+    public ChosenColumn? ODataDate { get; }
+    public ChosenColumn? ODataChoice { get; }
+
+    /// <summary> The choice the test picks: one that needs no escaping in HTML or in <c>$filter</c>. </summary>
+    public string? ODataChoiceValue { get; }
+
+    public ChosenColumn? ODataParent { get; }
+
+    private static bool IsPlainChoice(string choice) => choice.Length > 0 && choice.All(ch => char.IsLetterOrDigit(ch) || ch is ' ' or '_' or '-');
 }

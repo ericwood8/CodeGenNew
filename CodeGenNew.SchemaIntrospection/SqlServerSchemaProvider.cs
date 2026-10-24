@@ -503,6 +503,46 @@ public class SqlServerSchemaProvider : SchemaProviderBase
         ORDER BY i.index_id, ic.key_ordinal;
         """;
 
+    private const string ViewsQuery = """
+        SELECT s.name, v.name, m.definition
+        FROM sys.views v
+        JOIN sys.schemas s ON s.schema_id = v.schema_id
+        JOIN sys.sql_modules m ON m.object_id = v.object_id
+        WHERE v.is_ms_shipped = 0 AND s.name = @schema AND m.definition IS NOT NULL
+        ORDER BY v.name;
+        """;
+
+    public override async Task<IReadOnlyList<ViewModel>> ListViewsAsync(string schemaName, CancellationToken cancellationToken = default)
+    {
+        await using var connection = (SqlConnection)await OpenConnectionAsync(cancellationToken);
+        await using var command = new SqlCommand(ViewsQuery, connection);
+        command.Parameters.AddWithValue("@schema", schemaName);
+        var views = new List<ViewModel>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            views.Add(new ViewModel(reader.GetString(0), reader.GetString(1), reader.GetString(2).Trim()));
+        return views;
+    }
+
+    private const string TriggersQuery = """
+        SELECT tr.name, m.definition, tr.is_disabled
+        FROM sys.triggers tr
+        JOIN sys.sql_modules m ON m.object_id = tr.object_id
+        WHERE tr.parent_class = 1 AND tr.parent_id = OBJECT_ID(@fullTableName) AND tr.is_ms_shipped = 0 AND m.definition IS NOT NULL
+        ORDER BY tr.name;
+        """;
+
+    protected override async Task<List<TriggerModel>> ReadTriggersAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = new SqlCommand(TriggersQuery, (SqlConnection)connection);
+        command.Parameters.AddWithValue("@fullTableName", QuotedTable(schemaName, tableName));
+        var triggers = new List<TriggerModel>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            triggers.Add(new TriggerModel(reader.GetString(0), reader.GetString(1).Trim(), reader.GetBoolean(2)));
+        return triggers;
+    }
+
     private const string WholeCheckConstraintsQuery = """
         SELECT cc.name, cc.definition
         FROM sys.check_constraints cc

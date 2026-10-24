@@ -12,6 +12,9 @@ public interface ISchemaProvider
     Task<List<ColumnSummary>> ListColumnSummariesAsync(string schemaName, string tableName, CancellationToken cancellationToken = default);
     Task<TableModel> BuildTableModelAsync(string schemaName, string tableName, bool includeRowData = false,
         bool includeReferencedDisplayColumns = false, CancellationToken cancellationToken = default);
+
+    /// <summary> The views of a schema with their create statements; none for a provider that does not read them. </summary>
+    Task<IReadOnlyList<ViewModel>> ListViewsAsync(string schemaName, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<ViewModel>>([]);
 }
 
 /// <summary> A column as one database's catalog describes it, already put in the vocabulary the rest of the generator
@@ -93,6 +96,12 @@ public abstract class SchemaProviderBase : ISchemaProvider
     /// <summary> The table's indexes (key columns only, none filtered or partial). A provider that cannot read them leaves the list empty. </summary>
     /// <summary> The table's CHECK constraints, whole (the create script writes them back). </summary>
     protected virtual Task<List<CheckConstraintModel>> ReadCheckConstraintsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken) => Task.FromResult(new List<CheckConstraintModel>());
+
+    /// <summary> The table's triggers (the create script writes them back). </summary>
+    protected virtual Task<List<TriggerModel>> ReadTriggersAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken) => Task.FromResult(new List<TriggerModel>());
+
+    /// <summary> The views of a schema (the create script writes them back). </summary>
+    public virtual Task<IReadOnlyList<ViewModel>> ListViewsAsync(string schemaName, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<ViewModel>>([]);
 
     /// <summary> The table's filtered or partial indexes (the create script writes them back). </summary>
     protected virtual Task<List<PartialIndexModel>> ReadPartialIndexesAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken) => Task.FromResult(new List<PartialIndexModel>());
@@ -199,6 +208,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
             Indexes = (await ReadIndexRowsAsync(connection, schemaName, tableName, cancellationToken)).Select(row => new IndexModel(row.Name, row.IsUnique, row.Columns)).ToList(),
             PartialIndexes = await ReadPartialIndexesAsync(connection, schemaName, tableName, cancellationToken),
             CheckConstraints = await ReadCheckConstraintsAsync(connection, schemaName, tableName, cancellationToken),
+            Triggers = await ReadTriggersAsync(connection, schemaName, tableName, cancellationToken),
             HasActiveInactivePair = hasActivePair,
             ActiveColumn = activeCol,
             InactiveDateColumn = inactiveCol,

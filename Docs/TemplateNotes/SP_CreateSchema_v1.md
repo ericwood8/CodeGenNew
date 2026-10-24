@@ -19,8 +19,12 @@ A default is the database's own text. MySQL reports a literal without quotes, so
 
 ## What is not
 
-The model does not carry triggers, views or routines, so none of them is in the script (the routines come from the other templates). A container made from it can differ from the real database where a trigger or a view mattered. The generated tests do not depend on any of these.
+Stored routines are not in the script (the routines come from the other templates), so a view or trigger that calls one fails to run in a container made from it. A view that names a table the model does not hold fails to be created.
+
+## Views and triggers
+
+The views follow the tables, each after the views its text names, and the triggers come last. A view is the database's own create statement; PostgreSQL's is rebuilt from its definition, and MySQL's loses the database name in front of its tables, since a container has its own. A PostgreSQL trigger is written with its function (`CREATE OR REPLACE FUNCTION`, then `CREATE TRIGGER`); a trigger that is switched off is created and then disabled (SQL Server, PostgreSQL). SQL Server views and triggers are set apart by `GO` and MySQL trigger bodies are written between `DELIMITER` lines, so the script is run with `sqlcmd` or the `mysql` client, which the test container does. The MySQL test container starts without a binary log, since a login without SUPER cannot create a trigger while it is on. A table with an enabled trigger cannot be saved by the generated Entity Framework code on SQL Server (the database refuses an insert or update with an OUTPUT clause), which is how the real database behaves too.
 
 ## Checked
 
-The InvoiceSystem sample of SQL Server, PostgreSQL and MySQL, with no `ApiTestSchema`: every generated test passed over a container filled from this script (and, on SQL Server, in `Ef` mode too). The unit tests (`SchemaScriptTests`) check the text per dialect, the delete rule, the order and the plan.
+The InvoiceSystem sample of SQL Server, PostgreSQL and MySQL, with no `ApiTestSchema`: every generated test passed over a container filled from this script (and, on SQL Server, in `Ef` mode too). The unit tests (`SchemaScriptTests`) check the text per dialect, the delete rule, the order, the views and triggers and the plan. A table with a view over a view and a trigger was added to the SQL Server, PostgreSQL and MySQL samples and every generated test passed over the containers (SQL Server with the trigger disabled; with it enabled the database refuses the insert, as noted above); the tables were dropped again.

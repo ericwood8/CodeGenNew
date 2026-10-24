@@ -4,8 +4,9 @@ using System.Text.RegularExpressions;
 namespace CodeGenNew.Core;
 
 /// <summary> A create script written from what the database reported about its tables: the tables with their columns (type, identity, computed expression, null rule, default), primary keys, unique and ordinary indexes and
-/// foreign keys with their delete rule, in the dialect the model was read from (SQL Server, PostgreSQL or MySQL). It lets a test container be filled without a script of the project's own. The model does not carry check
-/// constraints, filtered or partial indexes, included columns, triggers, views or routines, so those are not in it: a container made from this script accepts a few values the real database refuses. </summary>
+/// foreign keys with their delete rule, check constraints, filtered or partial indexes with their included columns, views and triggers, in the dialect the model was read from (SQL Server, PostgreSQL or MySQL). It lets a
+/// test container be filled without a script of the project's own. Stored routines are not in it, so a container made from this script lacks the routines a trigger or view might call. SQL Server batches are
+/// separated by GO and MySQL trigger bodies by DELIMITER, so run the script with sqlcmd or the mysql client, which read both. </summary>
 public static partial class SchemaScript
 {
     /// <summary> Whether a script can be written for the dialect (SQLite has no container to fill). </summary>
@@ -19,7 +20,7 @@ public static partial class SchemaScript
         var dialect = database.Dialect;
         var tables = database.Tables.OrderBy(t => t.SchemaName, StringComparer.OrdinalIgnoreCase).ThenBy(t => t.DatabaseTableName ?? t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
         var script = new StringBuilder();
-        script.AppendLine($"-- Create script of {database.DatabaseName}, written from its catalog: tables, keys, indexes, foreign keys and checks (no triggers, views or routines).");
+        script.AppendLine($"-- Create script of {database.DatabaseName}, written from its catalog: tables, keys, indexes, foreign keys, checks, views and triggers (no routines).");
 
         if (dialect != SqlDialect.MySql)
             foreach (string schema in tables.Select(t => t.SchemaName).Where(s => !s.EqualsIgnoreCase("dbo") && !s.EqualsIgnoreCase("public")).Distinct(StringComparer.OrdinalIgnoreCase))
@@ -78,8 +79,58 @@ public static partial class SchemaScript
             foreach (var check in table.CheckConstraints)
                 script.AppendLine($"ALTER TABLE {TableName(table, dialect)} ADD CONSTRAINT {Quote(check.Name, dialect)} {check.Definition};");
 
+        foreach (var view in InDependencyOrder(database.Views))
+            AppendStatement(script, view.Definition, dialect, delimited: false);
+
+        foreach (var table in tables)
+            foreach (var trigger in table.Triggers)
+            {
+                AppendStatement(script, trigger.Definition, dialect, delimited: true);
+                if (trigger.IsDisabled)
+                    script.AppendLine(dialect switch
+                    {
+                        SqlDialect.SqlServer => $"DISABLE TRIGGER {Quote(table.SchemaName, dialect)}.{Quote(trigger.Name, dialect)} ON {TableName(table, dialect)};",
+                        SqlDialect.PostgreSql => $"ALTER TABLE {TableName(table, dialect)} DISABLE TRIGGER {Quote(trigger.Name, dialect)};",
+                        _ => ""
+                    });
+            }
+
         return script.ToString();
     }
+
+    /// <summary> One create statement. SQL Server wants a view or trigger first in its batch, so GO goes before and after; a MySQL trigger body holds semicolons, so it is written between DELIMITER lines. </summary>
+    private static void AppendStatement(StringBuilder script, string definition, SqlDialect dialect, bool delimited)
+    {
+        script.AppendLine();
+        switch (dialect)
+        {
+            case SqlDialect.SqlServer:
+                script.AppendLine("GO").AppendLine(definition.Trim()).AppendLine("GO");
+                break;
+            case SqlDialect.MySql when delimited:
+                script.AppendLine("DELIMITER $$").AppendLine(definition.Trim() + "$$").AppendLine("DELIMITER ;");
+                break;
+            default:
+                script.AppendLine(definition.Trim().TrimEnd(';') + ";");
+                break;
+        }
+    }
+
+    /// <summary> The views with each after the views its text names, so a view over a view is created second; views that name each other, or neither, stay in name order. </summary>
+    private static List<ViewModel> InDependencyOrder(IReadOnlyList<ViewModel> views)
+    {
+        var remaining = views.OrderBy(v => v.SchemaName, StringComparer.OrdinalIgnoreCase).ThenBy(v => v.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        var ordered = new List<ViewModel>();
+        while (remaining.Count > 0)
+        {
+            var next = remaining.FirstOrDefault(v => !remaining.Any(other => other != v && Names(v.Definition, other.Name))) ?? remaining[0];
+            ordered.Add(next);
+            remaining.Remove(next);
+        }
+        return ordered;
+    }
+
+    private static bool Names(string text, string name) => Regex.IsMatch(text, @"(?<![\w])" + Regex.Escape(name) + @"(?![\w])", RegexOptions.IgnoreCase);
 
     /// <summary> The table as the script names it: schema and name, but for MySQL the name alone, since its schema is the database it was read from, which a container does not have. </summary>
     private static string TableName(TableModel table, SqlDialect dialect) => dialect == SqlDialect.MySql ? Quote(table.DatabaseTableName ?? table.TableName, dialect) : Quote(table.SchemaName, dialect) + "." + Quote(table.DatabaseTableName ?? table.TableName, dialect);

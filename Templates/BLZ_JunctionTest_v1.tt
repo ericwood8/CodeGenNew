@@ -9,7 +9,7 @@
     // BLZ_JunctionTest_v1.tt
     // Generates: <Table>JunctionPageTests.cs   (the output folder is the Blazor test project, OutputBlazorTests)
     // bUnit tests of the two-list page BLZ_Junction writes for a many-to-many junction table, over FakeApi: the drop-down lists the anchor rows, choosing one fills Available and Selected, a row picked in
-    // Available moves to Selected with a POST to .../link, and Remove all unlinks the selected rows with a POST to .../unlink. Writes nothing unless the project sets BlazorTests=true.
+    // Available moves to Selected with a POST to .../link, and Remove all unlinks the selected rows with a POST to .../unlink; a refused link, a failed unlink and a failing lookup or list show their sentence. Writes nothing unless the project sets BlazorTests=true.
     // Full notes: Docs/TemplateNotes/BLZ_Test_v1.md
     // ==========================================================================================
     if (!Project.BlazorTests)
@@ -33,6 +33,8 @@
             "Guid" => $"\\\"00000000-0000-0000-0000-00000000000{n}\\\"",
             _ => n.ToString()
         };
+        string anchorLabel = Labels.Words(BlazorNames.TypeName(junction.AnchorRole)).ToLowerInvariant().Pluralize();
+        string targetLabel = Labels.Words(BlazorNames.TypeName(junction.TargetRole)).ToLowerInvariant().Pluralize();
         string anchorValue = junction.AnchorCs switch { "string" => "K1", "Guid" => "00000000-0000-0000-0000-000000000001", _ => "1" };
         string display = junction.DisplayColumns.Count > 0 ? "\\\"" + JsonNames.Camel(junction.DisplayColumns[0]) + "\\\": \\\"{0}\\\", " : "";
         string first = junction.DisplayColumns.Count > 0 ? "Target one" : Key(junction.TargetCs, 1).Replace("\\\"", "");
@@ -84,6 +86,47 @@ public class <#= stem #>JunctionPageTests : PageTestContext
         page.Find("button[title='Remove all']").Click();
         page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Post && r.Path.EndsWith("/junction/unlink"))));
         StringAssert.Contains(page.Find("[aria-label=Available]").TextContent, "<#= second #>");
+    }
+
+    [TestMethod]
+    public void Says_why_when_the_API_refuses_a_link_and_leaves_the_row_in_Available()
+    {
+        var page = OpenAnchor();
+        Api.FailWrite(HttpMethod.Post, "/junction/link", System.Net.HttpStatusCode.BadRequest);
+        page.Find("[aria-label=Available] [role=option]").Click();
+        page.Find("button[title='Add selected']").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Find("p.error").TextContent, "Some of the values are not acceptable!"));
+        StringAssert.Contains(page.Find("[aria-label=Available]").TextContent, "<#= first #>");
+        Assert.DoesNotContain("<#= first #>", page.Find("[aria-label=Selected]").TextContent);
+    }
+
+    [TestMethod]
+    public void Says_there_was_a_problem_when_an_unlink_fails_and_keeps_the_row_in_Selected()
+    {
+        var page = OpenAnchor();
+        Api.FailWrite(HttpMethod.Post, "/junction/unlink", System.Net.HttpStatusCode.InternalServerError);
+        page.Find("button[title='Remove all']").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Find("p.error").TextContent, "Problem while removing!"));
+        StringAssert.Contains(page.Find("[aria-label=Selected]").TextContent, "<#= second #>");
+    }
+
+    [TestMethod]
+    public void Says_the_lists_could_not_be_loaded_when_the_API_fails_to_answer()
+    {
+        Api.Answer("<#= anchorLookup #>", "[ { \"id\": <#= Key(junction.AnchorCs, 1) #>, \"name\": \"Anchor one\" } ]");
+        Api.Fail("<#= junctionPath #>/<#= anchorValue #>", System.Net.HttpStatusCode.InternalServerError);
+        var page = Render<<#= page #>>();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "Anchor one"));
+        page.Find("#junction-anchor").Change("<#= anchorValue #>");
+        page.WaitForAssertion(() => StringAssert.Contains(page.Find("p.error").TextContent, "Failed to load the <#= targetLabel #>."));
+    }
+
+    [TestMethod]
+    public void Says_the_choices_could_not_be_loaded_when_the_lookup_fails()
+    {
+        Api.Fail("<#= anchorLookup #>", System.Net.HttpStatusCode.InternalServerError);
+        var page = Render<<#= page #>>();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Find("p.error").TextContent, "Failed to load the <#= anchorLabel #>."));
     }
 }
 <#

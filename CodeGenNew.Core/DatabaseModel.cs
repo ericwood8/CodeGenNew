@@ -9,6 +9,9 @@ public class DatabaseModel
     public SqlDialect Dialect { get; init; } = SqlDialect.SqlServer;
     public required List<TableModel> Tables { get; init; }
 
+    /// <summary> The views of the schema (only the create script uses them). </summary>
+    public IReadOnlyList<ViewModel> Views { get; init; } = [];
+
     /// <summary> The tables that get an entity class, a repository and an API: a table with a single-column primary key. </summary>
     public List<TableModel> EntityTables => _entityTables ??= Tables.Where(t => t.PrimaryKeyColumns.Count == 1).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
     private List<TableModel>? _entityTables;

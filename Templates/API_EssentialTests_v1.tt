@@ -28,7 +28,8 @@
         string containerBuild = Project.DatabaseDialect switch
         {
             SqlDialect.PostgreSql => "new PostgreSqlBuilder(\"postgres:17-alpine\").WithDatabase(\"codegen_test\").Build()",
-            SqlDialect.MySql => "new MySqlBuilder(\"mysql:8.4\").WithDatabase(\"codegen_test\").Build()",
+            // no binary log (the option is written in two pieces), so a trigger in the create script can be made without the SUPER privilege
+            SqlDialect.MySql => "new MySqlBuilder(\"mysql:8.4\").WithDatabase(\"codegen_test\").WithCommand(\"-\" + \"-skip-log-bin\").Build()",
             _ => "new MsSqlBuilder(\"mcr.microsoft.com/mssql/server:2022-latest\").Build()"
         };
         string containerNamespace = Project.DatabaseDialect switch { SqlDialect.PostgreSql => "PostgreSql", SqlDialect.MySql => "MySql", _ => "MsSql" };
