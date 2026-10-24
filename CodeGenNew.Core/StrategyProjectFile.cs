@@ -18,7 +18,8 @@ public static class StrategyProjectFile
     /// <summary> A project name made from a database name or a SQLite file path: its letters, digits and underscores, not starting with a digit. </summary>
     public static string NameFor(string databaseName)
     {
-        string stem = Path.GetFileNameWithoutExtension(databaseName.Trim().TrimEnd('\\', '/'));
+        string last = databaseName.Trim().TrimEnd('\\', '/').Split('\\', '/')[^1];
+        string stem = Path.GetFileNameWithoutExtension(last);
         string name = new(stem.Where(c => char.IsAsciiLetterOrDigit(c) || c == '_').ToArray());
         if (name.Length == 0)
             return DefaultName;
