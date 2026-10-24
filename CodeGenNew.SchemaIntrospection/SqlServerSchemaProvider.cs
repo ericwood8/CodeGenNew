@@ -36,7 +36,7 @@ public class SqlServerSchemaProvider : SchemaProviderBase
             (SELECT COUNT(*) FROM sys.index_columns pkc
              INNER JOIN sys.indexes pk ON pk.object_id = pkc.object_id AND pk.index_id = pkc.index_id
              WHERE pk.object_id = t.object_id AND pk.is_primary_key = 1) AS PrimaryKeyColumnCount,
-            (SELECT TOP 1 ty.name FROM sys.index_columns pkc
+            (SELECT TOP 1 COALESCE((SELECT bt.name FROM sys.types bt WHERE bt.user_type_id = ty.system_type_id), ty.name) FROM sys.index_columns pkc
              INNER JOIN sys.indexes pk ON pk.object_id = pkc.object_id AND pk.index_id = pkc.index_id
              INNER JOIN sys.columns c ON c.object_id = pkc.object_id AND c.column_id = pkc.column_id
              INNER JOIN sys.types ty ON ty.user_type_id = c.user_type_id
@@ -200,7 +200,7 @@ public class SqlServerSchemaProvider : SchemaProviderBase
     // family). One catalog query, grouped in-memory, rather than a per-table round trip.
     private const string AllNameActiveCandidateColumnsQuery = """
         SELECT OBJECT_SCHEMA_NAME(c.object_id) AS SchemaName, OBJECT_NAME(c.object_id) AS TableName, c.name AS ColumnName,
-               ty.name AS SqlTypeName, c.is_nullable AS IsNullable
+               COALESCE((SELECT bt.name FROM sys.types bt WHERE bt.user_type_id = ty.system_type_id), ty.name) AS SqlTypeName, c.is_nullable AS IsNullable
         FROM sys.columns c
         INNER JOIN sys.tables t ON t.object_id = c.object_id
         INNER JOIN sys.types ty ON ty.user_type_id = c.user_type_id
@@ -237,7 +237,7 @@ public class SqlServerSchemaProvider : SchemaProviderBase
     private const string ColumnSummariesQuery = """
         SELECT
             c.name AS ColumnName,
-            t.name AS SqlTypeName,
+            COALESCE((SELECT bt.name FROM sys.types bt WHERE bt.user_type_id = t.system_type_id), t.name) AS SqlTypeName,
             c.is_nullable AS IsNullable,
             CASE WHEN pk.column_id IS NOT NULL THEN 1 ELSE 0 END AS IsPrimaryKey
         FROM sys.columns c
@@ -330,7 +330,7 @@ public class SqlServerSchemaProvider : SchemaProviderBase
         SELECT
             c.name AS ColumnName,
             c.column_id AS OrdinalPosition,
-            t.name AS SqlTypeName,
+            COALESCE((SELECT bt.name FROM sys.types bt WHERE bt.user_type_id = t.system_type_id), t.name) AS SqlTypeName,
             c.max_length AS MaxLength,
             c.precision AS Precision,
             c.scale AS Scale,

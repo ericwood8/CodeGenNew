@@ -39,8 +39,10 @@
     foreach (string u in usings)
         Line($"using {u};");
     Line("using Microsoft.EntityFrameworkCore;");
+    // an enum table has no entity class (CS_Enum writes an enum), so the context holds no set for it
+    var contextTables = Database.ContextTables.Where(t => Project.NoRepository(t.TableName, t.LookupShape) != true).ToList();
     // PostgreSQL array, interval, range and geometric columns and MySQL spatial columns: the entity holds their text, and a converter per property says how the database stores it.
-    var textColumns = Database.ContextTables.SelectMany(t => t.Columns.Where(c => TextConversion.Of(c) is not null).Select(c => (Table: t, Column: c))).ToList();
+    var textColumns = contextTables.SelectMany(t => t.Columns.Where(c => TextConversion.Of(c) is not null).Select(c => (Table: t, Column: c))).ToList();
     var helpers = TextConversion.Helpers(textColumns.Select(x => x.Column));
     if (Database.Dialect == SqlDialect.Sqlite || textColumns.Count > 0)
         Line("using Microsoft.EntityFrameworkCore.Storage.ValueConversion;");
@@ -59,7 +61,7 @@
         string plural = table.TableName.Pluralize();
         return Database.Tables.Any(t => t != table && t.TableName.EqualsIgnoreCase(plural)) ? table.TableName : plural;
     }
-    foreach (var table in Database.ContextTables)
+    foreach (var table in contextTables)
         Line($"    public DbSet<{table.TableName}> {SetName(table)} => Set<{table.TableName}>();");
     Line();
     Line($"    public {contextType}()");
