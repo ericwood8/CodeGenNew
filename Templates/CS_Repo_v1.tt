@@ -135,17 +135,17 @@
         // through the DbContext. It returns a plain tuple, not API_Search's <Table>SearchResult, which lives in a file this template cannot assume was generated.
         // Always written, even with no searchable column: a table keyed only by numbers still needs a paged list, with zero filters.
         {
-            var filters = searchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
+            var filters = searchableColumns.Select(c => new { ParamName = CSharpIdentifier(LowerFirst(c.Name)), c.Name }).ToList();
             // One list of the filters, then the paging parameters, so no leading comma appears when there is no filter.
             var signatureParams = filters.Select(f => $"string? {f.ParamName} = null")
                 .Append("int pageNumber = 1").Append("int pageSize = 100")
                 // The grid's chosen sort: a column name (null = the default order) and the direction. The procedure compares the name with its own list of columns (SearchSort).
                 .Append("string? sortColumn = null").Append("bool sortDescending = false")
                 // one optional exact match per whole-number foreign key, after the older parameters so an existing call still lines up
-                .Concat(searchKeys.Select(k => $"{k.CSharpBase()}? {LowerFirst(k.Name)} = null")).ToList();
+                .Concat(searchKeys.Select(k => $"{k.CSharpBase()}? {CSharpIdentifier(LowerFirst(k.Name))} = null")).ToList();
             if (ef)
             {
-                string filterArguments = string.Concat(filters.Select(f => ", " + f.ParamName).Concat(searchKeys.Select(k => ", " + LowerFirst(k.Name))));
+                string filterArguments = string.Concat(filters.Select(f => ", " + f.ParamName).Concat(searchKeys.Select(k => ", " + CSharpIdentifier(LowerFirst(k.Name)))));
                 string queryClass = Model.TableName + "SearchQuery";
                 methods.Add(new[]
                 {
@@ -183,7 +183,7 @@
             body.Add("            " + call.SortColumnParameter("sortColumn") + ",");
             body.Add("            " + call.SortDescendingParameter("sortDescending") + (searchKeys.Count > 0 ? "," : ""));
             for (int i = 0; i < searchKeys.Count; i++)
-                body.Add("            " + call.KeyParameter(searchKeys[i], LowerFirst(searchKeys[i].Name)) + (i < searchKeys.Count - 1 ? "," : ""));
+                body.Add("            " + call.KeyParameter(searchKeys[i], CSharpIdentifier(LowerFirst(searchKeys[i].Name))) + (i < searchKeys.Count - 1 ? "," : ""));
             body.Add("        };");
             body.Add("");
             // Set<T>().FromSqlRaw, not Database.SqlQueryRaw<T>: SqlQueryRaw<T> builds an ad hoc EF model that rejects a navigation property, so it throws for any table with a foreign key;
@@ -196,7 +196,7 @@
             body.Add($"        var countParameters = new {call.ParameterNamespace}.{call.ParameterType}[]");
             body.Add("        {");
             var countArguments = filters.Select(f => call.TextParameter(f.Name, f.ParamName))
-                .Concat(searchKeys.Select(k => call.KeyParameter(k, LowerFirst(k.Name)))).ToList();
+                .Concat(searchKeys.Select(k => call.KeyParameter(k, CSharpIdentifier(LowerFirst(k.Name))))).ToList();
             for (int i = 0; i < countArguments.Count; i++)
                 body.Add("            " + countArguments[i] + (i < countArguments.Count - 1 ? "," : ""));
             body.Add("        };");

@@ -9,14 +9,17 @@ public sealed record DesktopChildLookup(string Column, string ReferencedTable, s
 public sealed record DesktopChildFilter(string Column, string Label, string All, string Choices, string Prop);
 
 /// <summary> One child grid of a desktop master-detail dialog (WinUI3 and Uno): the child table and its model class, the grid's variable, the link back to the row, what the child's columns show and how, and the
-/// names it resolves. <see cref="HasDialog"/> is false for a child that has no screen (a many-to-many junction table has a composite key, so the plan writes no dialog for it): its rows are listed and can be deleted,
+/// names it resolves. <see cref="Member"/> is the child table plus the role of the link (two grids of one table, a bill of materials' assembly and component, differ by it) and names the grid's methods and handlers. <see cref="HasDialog"/> is false for a child that has no screen (a many-to-many junction table has a composite key, so the plan writes no dialog for it): its rows are listed and can be deleted,
 /// but there is no Edit button, and a click on a row opens nothing. </summary>
 public sealed record DesktopChild(
-    string Table, string Type, string? KeyProp, bool HasChildren, bool HasDialog, string Title, string Var, string FkColumn, string ParentKeyColumn, string ParentKeyCs,
+    string Member, string Table, string Type, string? KeyProp, bool HasChildren, bool HasDialog, string Title, string Var, string FkColumn, string ParentKeyColumn, string ParentKeyCs,
     IReadOnlyList<string> HideColumns, IReadOnlyList<DesktopChildLookup> Resolvable, IReadOnlyList<DesktopChildFilter> Filters,
     IReadOnlyList<(string Name, int Digits)> Currency, IReadOnlyList<string> LongText, IReadOnlyList<(string Name, string Caption)> Captions)
 {
     // the child's own dialog exists when the table is a screen: listed in the project's Screens, or (with none listed) a plain table with a single-column key
+    // two foreign keys of one child to the same parent (a component and an assembly, both products) need a names dictionary each
+    private static bool SharesParent(ChildGrid grid, ChildLookup lookup) => grid.Lookups.Count(o => o.ParentTable == lookup.ParentTable) > 1;
+
     private static bool HasScreen(ChildGrid grid, ProjectSettings project) =>
         project.Screens.Length > 0
             ? project.Screens.Contains(grid.Table, StringComparer.OrdinalIgnoreCase)
@@ -35,14 +38,14 @@ public sealed record DesktopChild(
                 string gridVar = TemplateHelpers.LowerFirst(g.Table + g.Role);
                 var resolvable = g.Lookups.Select(l => new DesktopChildLookup(
                     l.ColumnName, l.ParentTable, l.ParentKeyName, l.ParentDisplayName,
-                    l.ColumnKeyType?.CSharp ?? "int", l.TypeAhead, l.UsesLookupEndpoint, gridVar + l.ParentTable + "Names",
+                    l.ColumnKeyType?.CSharp ?? "int", l.TypeAhead, l.UsesLookupEndpoint, gridVar + (SharesParent(g, l) ? l.ColumnName : l.ParentTable) + "Names",
                     GridCaption.From(Labels.Column(l.ColumnName)))).ToList();
                 // a drop-down per foreign key shown as a name: the names the rows have, picked from here; the grid holds every row of the child, so it filters them itself
                 var filters = resolvable.Take(ChildGrid.MaxFilters)
                     .Select(r => new DesktopChildFilter(r.Column, r.Label, "All " + r.Label.Pluralize(), gridVar + r.Column + "Choices", TemplateHelpers.UpperFirst(gridVar) + r.Column + "Filter")).ToList();
 
                 return new DesktopChild(
-                    fk.ReferencingTable, BlazorNames.TypeName(fk.ReferencingTable), g.KeyName, fk.ReferencingTableHasChildren,
+                    g.Table + g.Role, fk.ReferencingTable, BlazorNames.TypeName(fk.ReferencingTable), g.KeyName, fk.ReferencingTableHasChildren,
                     HasScreen(g, project), g.Title, gridVar,
                     fk.ReferencingColumns[0], fk.ReferencedColumns[0],
                     table.Columns.First(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[0])).CSharpBase(),   // int, Guid or string: the type the grid's filter compares

@@ -19,73 +19,80 @@
     </ContentDialog.Resources>
 
     <StackPanel Spacing="10" MinWidth="860">
-        <TextBlock TextWrapping="Wrap" Opacity="0.8"
-                   Text="Every file of the chosen technologies for every table of the connected database, in one run. Each table gets the templates that fit its shape. Pick New from choices to choose the technologies here and save them as a project, or pick a saved project. A file whose text did not change is not touched." />
-
-        <Grid ColumnSpacing="16">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" Spacing="8">
-                <ComboBox x:Name="ProjectCombo" Header="Project" AccessKey="P" ItemsSource="{x:Bind ViewModel.Projects}" SelectedItem="{x:Bind ViewModel.SelectedProject, Mode=TwoWay}" MinWidth="320"
-                          ToolTipService.ToolTip="New from choices saves a project from the technologies picked here; a saved project keeps its own settings." />
-                <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsNewProject, Mode=OneWay}">
-                    <TextBox Header="Database technology" Text="{x:Bind ViewModel.DatabaseText}" IsReadOnly="True" IsTabStop="False"
-                             ToolTipService.ToolTip="Taken from the open connection." />
-                    <ComboBox Header="UI technology" AccessKey="U" ItemsSource="{x:Bind ViewModel.UiChoices}" SelectedItem="{x:Bind ViewModel.SelectedUi, Mode=TwoWay}" MinWidth="320"
-                              ToolTipService.ToolTip="One UI per run. WinUI3 reads the database directly and needs no API choice." />
-                    <ComboBox Header="API access mode" AccessKey="M" ItemsSource="{x:Bind ViewModel.AccessChoices}" SelectedItem="{x:Bind ViewModel.SelectedAccess, Mode=TwoWay}" MinWidth="320"
-                              IsEnabled="{x:Bind ViewModel.ApiChoicesEnabled, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.AccessHint, Mode=OneWay}" />
-                    <ComboBox Header="API style" AccessKey="Y" ItemsSource="{x:Bind ViewModel.StyleChoices}" SelectedItem="{x:Bind ViewModel.SelectedStyle, Mode=TwoWay}" MinWidth="320"
-                              IsEnabled="{x:Bind ViewModel.ApiChoicesEnabled, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.StyleHint, Mode=OneWay}" />
-                    <ComboBox Header="API language" AccessKey="L" ItemsSource="{x:Bind ViewModel.LanguageChoices}" SelectedItem="{x:Bind ViewModel.SelectedLanguage, Mode=TwoWay}" MinWidth="320"
-                              IsEnabled="{x:Bind ViewModel.ApiChoicesEnabled, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.LanguageHint, Mode=OneWay}" />
-                    <TextBox Header="Project name" AccessKey="N" Text="{x:Bind ViewModel.NewProjectName, Mode=TwoWay}" Visibility="{x:Bind ViewModel.NeedsProjectName, Mode=OneWay}"
-                             ToolTipService.ToolTip="A project of the database's name exists with other settings; the project is saved under this name." />
-                </StackPanel>
-                <Grid ColumnSpacing="8">
+        <Pivot SelectedIndex="{x:Bind ViewModel.SelectedTab, Mode=TwoWay}">
+            <PivotItem Header="Generate">
+                <StackPanel Spacing="10">
+                <TextBlock TextWrapping="Wrap" Opacity="0.8"
+                           Text="Every file of the chosen technologies for every table of the connected database, in one run. Each table gets the templates that fit its shape. Pick New from choices to choose the technologies here and save them as a project, or pick a saved project. A file whose text did not change is not touched." />
+                <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <TextBox Grid.Column="0" Header="Output folder" AccessKey="O" Text="{x:Bind ViewModel.OutputDirectory, Mode=TwoWay}"
-                             ToolTipService.ToolTip="The folder the stack folders go under." />
-                    <Button Grid.Column="1" VerticalAlignment="Bottom" Content="Browse..." AccessKey="B" Click="OnBrowseClick" />
+                    <StackPanel Grid.Column="0" Spacing="8">
+                        <ComboBox x:Name="ProjectCombo" Header="Project" AccessKey="P" ItemsSource="{x:Bind ViewModel.Projects}" SelectedItem="{x:Bind ViewModel.SelectedProject, Mode=TwoWay}" MinWidth="320"
+                                  ToolTipService.ToolTip="New from choices saves a project from the technologies picked here; a saved project keeps its own settings." />
+                        <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsNewProject, Mode=OneWay}">
+                            <TextBox Header="Database technology" Text="{x:Bind ViewModel.DatabaseText}" IsReadOnly="True" IsTabStop="False"
+                                     ToolTipService.ToolTip="Taken from the open connection." />
+                            <ComboBox Header="UI technology" AccessKey="U" ItemsSource="{x:Bind ViewModel.UiChoices}" SelectedItem="{x:Bind ViewModel.SelectedUi, Mode=TwoWay}" MinWidth="320"
+                                      ToolTipService.ToolTip="One UI per run. WinUI3 reads the database directly and needs no API choice." />
+                            <ComboBox Header="API access mode" AccessKey="M" ItemsSource="{x:Bind ViewModel.AccessChoices}" SelectedItem="{x:Bind ViewModel.SelectedAccess, Mode=TwoWay}" MinWidth="320"
+                                      IsEnabled="{x:Bind ViewModel.ApiChoicesEnabled, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.AccessHint, Mode=OneWay}" />
+                            <ComboBox Header="API style" AccessKey="Y" ItemsSource="{x:Bind ViewModel.StyleChoices}" SelectedItem="{x:Bind ViewModel.SelectedStyle, Mode=TwoWay}" MinWidth="320"
+                                      IsEnabled="{x:Bind ViewModel.ApiChoicesEnabled, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.StyleHint, Mode=OneWay}" />
+                            <ComboBox Header="API language" AccessKey="L" ItemsSource="{x:Bind ViewModel.LanguageChoices}" SelectedItem="{x:Bind ViewModel.SelectedLanguage, Mode=TwoWay}" MinWidth="320"
+                                      IsEnabled="{x:Bind ViewModel.ApiChoicesEnabled, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind ViewModel.LanguageHint, Mode=OneWay}" />
+                            <TextBox Header="Project name" AccessKey="N" Text="{x:Bind ViewModel.NewProjectName, Mode=TwoWay}" Visibility="{x:Bind ViewModel.NeedsProjectName, Mode=OneWay}"
+                                     ToolTipService.ToolTip="A project of the database's name exists with other settings; the project is saved under this name." />
+                        </StackPanel>
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Header="Output folder" AccessKey="O" Text="{x:Bind ViewModel.OutputDirectory, Mode=TwoWay}"
+                                     ToolTipService.ToolTip="The folder the stack folders go under." />
+                            <Button Grid.Column="1" VerticalAlignment="Bottom" Content="Browse..." AccessKey="B" Click="OnBrowseClick" />
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Spacing="2" Visibility="{x:Bind ViewModel.IsSavedProject, Mode=OneWay}">
+                        <TextBlock Text="Stacks" FontWeight="SemiBold" />
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.Stacks}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:StackRowViewModel">
+                                    <CheckBox Content="{x:Bind Stack}" IsChecked="{x:Bind IsChecked, Mode=TwoWay}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
                 </Grid>
-            </StackPanel>
-            <StackPanel Grid.Column="1" Spacing="2" Visibility="{x:Bind ViewModel.IsSavedProject, Mode=OneWay}">
-                <TextBlock Text="Stacks" FontWeight="SemiBold" />
-                <ItemsControl ItemsSource="{x:Bind ViewModel.Stacks}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:StackRowViewModel">
-                            <CheckBox Content="{x:Bind Stack}" IsChecked="{x:Bind IsChecked, Mode=TwoWay}" />
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </StackPanel>
-        </Grid>
 
-        <StackPanel Orientation="Horizontal" Spacing="16">
-            <CheckBox Content="Dry run (write nothing)" IsChecked="{x:Bind ViewModel.DryRun, Mode=TwoWay}" />
-            <CheckBox Content="Also the essentials (missing files only)" IsChecked="{x:Bind ViewModel.Essentials, Mode=TwoWay}" />
-            <CheckBox Content="Delete stale files" IsChecked="{x:Bind ViewModel.DeleteStale, Mode=TwoWay}" />
-            <CheckBox Content="Overwrite my edits" IsChecked="{x:Bind ViewModel.OverwriteEdited, Mode=TwoWay}" />
-        </StackPanel>
-        <StackPanel Orientation="Horizontal" Spacing="16">
-            <CheckBox Content="Build afterwards" IsChecked="{x:Bind ViewModel.Build, Mode=TwoWay}" />
-            <CheckBox Content="Run tests afterwards" IsChecked="{x:Bind ViewModel.Test, Mode=TwoWay}" />
-        </StackPanel>
-
+                <StackPanel Orientation="Horizontal" Spacing="16">
+                    <CheckBox Content="Dry run (write nothing)" IsChecked="{x:Bind ViewModel.DryRun, Mode=TwoWay}" />
+                    <CheckBox Content="Also the essentials (missing files only)" IsChecked="{x:Bind ViewModel.Essentials, Mode=TwoWay}" />
+                    <CheckBox Content="Delete stale files" IsChecked="{x:Bind ViewModel.DeleteStale, Mode=TwoWay}" />
+                    <CheckBox Content="Overwrite my edits" IsChecked="{x:Bind ViewModel.OverwriteEdited, Mode=TwoWay}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="16">
+                    <CheckBox Content="Build afterwards" IsChecked="{x:Bind ViewModel.Build, Mode=TwoWay}" />
+                    <CheckBox Content="Run tests afterwards" IsChecked="{x:Bind ViewModel.Test, Mode=TwoWay}" />
+                </StackPanel>
+                </StackPanel>
+            </PivotItem>
+            <PivotItem Header="Log">
+                <StackPanel Spacing="10">
+                <TextBlock Text="{x:Bind ViewModel.Summary, Mode=OneWay}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <ListView ItemsSource="{x:Bind ViewModel.Results}" SelectedItem="{x:Bind ViewModel.SelectedResult, Mode=TwoWay}" MaxHeight="360" />
+                <TextBox Text="{x:Bind ViewModel.Diff, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" MaxHeight="220" FontFamily="Consolas"
+                         Header="What differs (the selected file)" Visibility="{x:Bind ViewModel.HasDiff, Mode=OneWay}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                </StackPanel>
+            </PivotItem>
+        </Pivot>
         <TextBlock Text="{x:Bind ViewModel.MissingText, Mode=OneWay}" Opacity="0.8" TextWrapping="Wrap" />
         <InfoBar IsOpen="{x:Bind ViewModel.HasStatusMessage, Mode=OneWay}" IsClosable="False" Severity="Warning" Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}" />
         <ProgressBar IsIndeterminate="True" Visibility="{x:Bind ViewModel.IsRunning, Mode=OneWay}" />
         <TextBlock Text="{x:Bind ViewModel.Progress, Mode=OneWay}" Opacity="0.7" />
-        <TextBlock Text="{x:Bind ViewModel.Summary, Mode=OneWay}" FontWeight="SemiBold" TextWrapping="Wrap" />
-
-        <ListView ItemsSource="{x:Bind ViewModel.Results}" SelectedItem="{x:Bind ViewModel.SelectedResult, Mode=TwoWay}" MaxHeight="200" />
-        <TextBox Text="{x:Bind ViewModel.Diff, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" MaxHeight="220" FontFamily="Consolas"
-                 Header="What differs (the selected file)" Visibility="{x:Bind ViewModel.HasDiff, Mode=OneWay}"
-                 ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Auto" />
     </StackPanel>
 </ContentDialog>

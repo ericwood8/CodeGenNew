@@ -184,10 +184,10 @@
 <#
             }
 #>
-            <!-- Boxed like the master screen's grid. A click on a row opens its own dialog (On<#= child.Table #>ItemClick); a click on a header sorts
+            <!-- Boxed like the master screen's grid. A click on a row opens its own dialog (On<#= child.Member #>ItemClick); a click on a header sorts
                  (again: flips the direction); a right-click on the grid offers Clear sort. -->
             <Border BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4"
-                    Background="Transparent" RightTapped="On<#= child.Table #>GridRightTapped">
+                    Background="Transparent" RightTapped="On<#= child.Member #>GridRightTapped">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -204,7 +204,7 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Button Content="{Binding Text}" Tag="{Binding Column}" Click="On<#= child.Table #>HeaderClick" Width="120" Padding="0"
+                                        <Button Content="{Binding Text}" Tag="{Binding Column}" Click="On<#= child.Member #>HeaderClick" Width="120" Padding="0"
                                                 Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Left" FontWeight="SemiBold" />
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -213,7 +213,7 @@
                         </StackPanel>
                     </Border>
                     <ListView Grid.Row="1" ItemsSource="{x:Bind ViewModel.<#= child.Var #>Rows}"
-                              <#= child.HasDialog ? "IsItemClickEnabled=\"True\" ItemClick=\"On" + child.Table + "ItemClick\" " : "" #>MaxHeight="200" Padding="0">
+                              <#= child.HasDialog ? "IsItemClickEnabled=\"True\" ItemClick=\"On" + child.Member + "ItemClick\" " : "" #>MaxHeight="200" Padding="0">
                         <!-- Row containers have a 40 pixel minimum height, so shorter rows made the grid too short and cut off its last row. -->
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
@@ -243,11 +243,11 @@
             if (child.HasDialog)
             {
 #>
-                                        <Button Content="Edit" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Padding="8,2" Click="On<#= child.Table #>EditClick" />
+                                        <Button Content="Edit" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Padding="8,2" Click="On<#= child.Member #>EditClick" />
 <#
             }
 #>
-                                        <Button Content="Delete" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Padding="8,2" Click="On<#= child.Table #>DeleteClick" LostFocus="On<#= child.Table #>DeleteLostFocus" />
+                                        <Button Content="Delete" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Padding="8,2" Click="On<#= child.Member #>DeleteClick" LostFocus="On<#= child.Member #>DeleteLostFocus" />
                                     </StackPanel>
                                   </StackPanel>
                                 </Border>
@@ -382,23 +382,23 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
     // Opens the clicked <#= child.Table #> row's own dialog. WinUI3 allows one ContentDialog at a time, so this one hides first and does not reopen:
     // Hide() resolves its ShowAsync(), which also releases any ancestor dialog awaiting it, and three or more levels deep that
     // lets two dialogs call ShowAsync() at once and crashes the process.
-    private async void On<#= child.Table #>ItemClick(object sender, ItemClickEventArgs e)
+    private async void On<#= child.Member #>ItemClick(object sender, ItemClickEventArgs e)
     {
         if (e.ClickedItem is <#= table #>ChildGridRow { Entity: <#= child.Table #> entity })
-            await Open<#= child.Table #>Async(entity);
+            await Open<#= child.Member #>Async(entity);
     }
 
-    private async void On<#= child.Table #>EditClick(object sender, RoutedEventArgs e)
+    private async void On<#= child.Member #>EditClick(object sender, RoutedEventArgs e)
     {
         if (((FrameworkElement)sender).DataContext is <#= table #>ChildGridRow { Entity: <#= child.Table #> entity })
-            await Open<#= child.Table #>Async(entity);
+            await Open<#= child.Member #>Async(entity);
     }
 <#
             }
 #>
 
     // The first click on Delete only asks ("Confirm?"); the second deletes the row and reloads the grid. Losing focus puts the label back.
-    private async void On<#= child.Table #>DeleteClick(object sender, RoutedEventArgs e)
+    private async void On<#= child.Member #>DeleteClick(object sender, RoutedEventArgs e)
     {
         var button = (Button)sender;
         if (button.DataContext is not <#= table #>ChildGridRow { Entity: <#= child.Table #> entity })
@@ -422,16 +422,16 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
         }
     }
 
-    private void On<#= child.Table #>DeleteLostFocus(object sender, RoutedEventArgs e) => ((Button)sender).Content = "Delete";
+    private void On<#= child.Member #>DeleteLostFocus(object sender, RoutedEventArgs e) => ((Button)sender).Content = "Delete";
 
     // A click on a column header sorts the rows by it (again: flips the direction); the rows are all loaded, so it sorts them here.
-    private void On<#= child.Table #>HeaderClick(object sender, RoutedEventArgs e) => ViewModel.Sort<#= child.Table #>By((string)((Button)sender).Tag);
+    private void On<#= child.Member #>HeaderClick(object sender, RoutedEventArgs e) => ViewModel.Sort<#= child.Member #>By((string)((Button)sender).Tag);
 
     // A right-click on the grid offers Clear sort, which also forgets the saved sort.
-    private void On<#= child.Table #>GridRightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
+    private void On<#= child.Member #>GridRightTapped(object sender, Microsoft.UI.Xaml.Input.RightTappedRoutedEventArgs e)
     {
-        var clear = new MenuFlyoutItem { Text = "Clear sort", IsEnabled = ViewModel.Has<#= child.Table #>Sort };
-        clear.Click += (_, _) => ViewModel.Clear<#= child.Table #>Sort();
+        var clear = new MenuFlyoutItem { Text = "Clear sort", IsEnabled = ViewModel.Has<#= child.Member #>Sort };
+        clear.Click += (_, _) => ViewModel.Clear<#= child.Member #>Sort();
         var flyout = new MenuFlyout();
         flyout.Items.Add(clear);
         flyout.ShowAt((FrameworkElement)sender, e.GetPosition((FrameworkElement)sender));
@@ -442,7 +442,7 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
             if (child.HasDialog)
             {
 #>
-    private async System.Threading.Tasks.Task Open<#= child.Table #>Async(<#= child.Table #> entity)
+    private async System.Threading.Tasks.Task Open<#= child.Member #>Async(<#= child.Table #> entity)
     {
         _drillDown = new System.Threading.Tasks.TaskCompletionSource();
         Hide();
@@ -598,7 +598,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
     private string? _<#= child.Var #>SortColumn;
     private bool _<#= child.Var #>SortDescending;
 
-    public bool Has<#= child.Table #>Sort => _<#= child.Var #>SortColumn is not null;
+    public bool Has<#= child.Member #>Sort => _<#= child.Var #>SortColumn is not null;
 <#
         foreach (var f in child.Filters)
         {
@@ -614,7 +614,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         set
         {
             if (SetProperty(ref _<#= TemplateHelpers.LowerFirst(f.Prop) #>, value))
-                Show<#= child.Table #>Sorted();
+                Show<#= child.Member #>Sorted();
         }
     }
 <#
@@ -622,25 +622,25 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 #>
 
     /// <summary> A click on a column header: another column sorts ascending, the sorted column flips its direction. </summary>
-    public void Sort<#= child.Table #>By(string column)
+    public void Sort<#= child.Member #>By(string column)
     {
         _<#= child.Var #>SortDescending = _<#= child.Var #>SortColumn == column && !_<#= child.Var #>SortDescending;
         _<#= child.Var #>SortColumn = column;
         GridSortStore.Save(GridKeyFor("<#= child.Var #>"), new GridSortEntry(column, _<#= child.Var #>SortDescending));
-        Show<#= child.Table #>Sorted();
+        Show<#= child.Member #>Sorted();
     }
 
     /// <summary> Back to the order the rows came in, and forget the saved sort. </summary>
-    public void Clear<#= child.Table #>Sort()
+    public void Clear<#= child.Member #>Sort()
     {
         _<#= child.Var #>SortColumn = null;
         _<#= child.Var #>SortDescending = false;
         GridSortStore.Save(GridKeyFor("<#= child.Var #>"), null);
-        Show<#= child.Table #>Sorted();
+        Show<#= child.Member #>Sorted();
     }
 
     // The headers (an arrow after the sorted one) and the rows in the grid's sort order.
-    private void Show<#= child.Table #>Sorted()
+    private void Show<#= child.Member #>Sorted()
     {
         <#= child.Var #>ColumnHeaders.Clear();
         for (int i = 0; i < _<#= child.Var #>Columns.Count; i++)
@@ -812,7 +812,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         foreach (var child in children)
         {
 #>
-        await Load<#= child.Table #>Async();
+        await Load<#= child.Member #>Async();
 <#
         }
 #>
@@ -822,7 +822,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         foreach (var child in children)
         {
 #>
-    private async Task Load<#= child.Table #>Async()
+    private async Task Load<#= child.Member #>Async()
     {
         <#= child.Var #>ColumnHeaders.Clear();
         <#= child.Var #>Rows.Clear();
@@ -854,11 +854,11 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         // <#= child.FkColumn #> (the filter column, one value here) and ids with no display name are left out.
         var entityType = _context.Model.FindEntityType(typeof(<#= child.Table #>))!;
         var propertyNames = entityType.GetProperties().Select(p => p.Name)
-            .Where(name => !HideFrom<#= child.Table #>Grid.Contains(name, StringComparer.OrdinalIgnoreCase))
-            .Where(name => !LongTextIn<#= child.Table #>Grid.Contains(name, StringComparer.OrdinalIgnoreCase)) // long text never shows in a grid
+            .Where(name => !HideFrom<#= child.Member #>Grid.Contains(name, StringComparer.OrdinalIgnoreCase))
+            .Where(name => !LongTextIn<#= child.Member #>Grid.Contains(name, StringComparer.OrdinalIgnoreCase)) // long text never shows in a grid
             .Take(<#= Project.MaxGridColumns #>).ToList();
         _<#= child.Var #>Columns = propertyNames;
-        _<#= child.Var #>Captions = propertyNames.Select(name => HeaderLabelFor<#= child.Table #>Grid.TryGetValue(name, out string? label) ? label : SpacedHeader(name)).ToList();
+        _<#= child.Var #>Captions = propertyNames.Select(name => HeaderLabelFor<#= child.Member #>Grid.TryGetValue(name, out string? label) ? label : SpacedHeader(name)).ToList();
         // The saved sort, if its column is still in the grid.
         var savedSort = GridSortStore.Load(GridKeyFor("<#= child.Var #>"), propertyNames);
         _<#= child.Var #>SortColumn = savedSort?.Column;
@@ -905,7 +905,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
             var cells = values.Select((value, i) =>
             {
                 // Money shows in the project's CurrencyCode with the column's own decimals, as on the list screens.
-                if (value is decimal moneyValue && CurrencyDigitsFor<#= child.Table #>Grid.TryGetValue(propertyNames[i], out int moneyDigits)) return new Windows.Globalization.NumberFormatting.CurrencyFormatter("<#= Project.CurrencyCode #>") { IsGrouped = true, FractionDigits = moneyDigits }.FormatDouble((double)moneyValue);
+                if (value is decimal moneyValue && CurrencyDigitsFor<#= child.Member #>Grid.TryGetValue(propertyNames[i], out int moneyDigits)) return new Windows.Globalization.NumberFormatting.CurrencyFormatter("<#= Project.CurrencyCode #>") { IsGrouped = true, FractionDigits = moneyDigits }.FormatDouble((double)moneyValue);
                 // A date-and-time shows as its date only.
                 if (value is DateTime dateValue) return dateValue.ToString("MM/dd/yyyy");
                 if (value is DateTimeOffset dateOffsetValue) return dateOffsetValue.ToString("MM/dd/yyyy");
@@ -929,12 +929,12 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 <#
         }
 #>
-        Show<#= child.Table #>Sorted();
+        Show<#= child.Member #>Sorted();
     }
 
-    private static readonly string[] HideFrom<#= child.Table #>Grid = [ <#= string.Join(", ", child.HideColumns.Select(c => $"\"{c}\"")) #> ];
-    private static readonly string[] LongTextIn<#= child.Table #>Grid = [ <#= string.Join(", ", child.LongText.Select(c => $"\"{c}\"")) #> ];
-    private static readonly Dictionary<string, int> CurrencyDigitsFor<#= child.Table #>Grid = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly string[] HideFrom<#= child.Member #>Grid = [ <#= string.Join(", ", child.HideColumns.Select(c => $"\"{c}\"")) #> ];
+    private static readonly string[] LongTextIn<#= child.Member #>Grid = [ <#= string.Join(", ", child.LongText.Select(c => $"\"{c}\"")) #> ];
+    private static readonly Dictionary<string, int> CurrencyDigitsFor<#= child.Member #>Grid = new(StringComparer.OrdinalIgnoreCase)
     {
 <#
         foreach (var money in child.Currency)
@@ -946,7 +946,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 #>
     };
     // The headers known at generation time (a resolved column reads "Customer", not "CustomerId"); any other column is spaced by SpacedHeader.
-    private static readonly Dictionary<string, string> HeaderLabelFor<#= child.Table #>Grid = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, string> HeaderLabelFor<#= child.Member #>Grid = new(StringComparer.OrdinalIgnoreCase)
     {
 <#
         foreach (var r in child.Resolvable)

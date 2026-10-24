@@ -515,7 +515,8 @@ public abstract class SchemaProviderBase : ISchemaProvider
     private async Task<List<ChildForeignKeyModel>> ReadChildForeignKeysAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {
         var rows = await ReadForeignKeyRowsAsync(connection, schemaName, tableName, children: true, cancellationToken);
-        return rows.Select(r => new ChildForeignKeyModel
+        // a table of another schema is not part of this run, so it has no entity or screen for a child grid to open
+        return rows.Where(r => r.OtherSchema.EqualsIgnoreCase(schemaName)).Select(r => new ChildForeignKeyModel
         {
             ConstraintName = r.ConstraintName,
             ReferencingSchema = r.OtherSchema,

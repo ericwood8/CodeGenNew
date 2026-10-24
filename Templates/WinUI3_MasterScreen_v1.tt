@@ -703,10 +703,10 @@ public partial class <#= table #>ListViewModel : ViewModelBase
 #>
 
 <#
-        string filterArgs = string.Concat(searchFields.Select(f => $"{f.ParamName}: string.IsNullOrWhiteSpace({f.Prop}) ? null : {f.Prop}, "))
+        string filterArgs = string.Concat(searchFields.Select(f => $"{CSharpIdentifier(f.ParamName)}: string.IsNullOrWhiteSpace({f.Prop}) ? null : {f.Prop}, "))
             + string.Concat(searchKeys.Select(k => k.Convert is null
-                ? $"{k.ParamName}: ({k.Type}?){k.Prop}?.Id, "
-                : $"{k.ParamName}: {k.Prop}?.Id is null ? null : Convert.{k.Convert}({k.Prop}.Id), "));   // a whole-number key is boxed as the parent's own type: convert it to this column's
+                ? $"{CSharpIdentifier(k.ParamName)}: ({k.Type}?){k.Prop}?.Id, "
+                : $"{CSharpIdentifier(k.ParamName)}: {k.Prop}?.Id is null ? null : Convert.{k.Convert}({k.Prop}.Id), "));   // a whole-number key is boxed as the parent's own type: convert it to this column's
         foreach (var k in searchKeys.Where(k => !k.Parent.TypeAhead))
         {
 #>

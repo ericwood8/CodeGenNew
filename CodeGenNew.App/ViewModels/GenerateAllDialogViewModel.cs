@@ -161,6 +161,10 @@ public partial class GenerateAllDialogViewModel : StatusMessageViewModel
     [ObservableProperty]
     private bool _test;
 
+    /// <summary> The page of the dialog shown: 0 the choices and options, 1 the log of the run. </summary>
+    [ObservableProperty]
+    private int _selectedTab;
+
     [ObservableProperty]
     private bool _isRunning;
 
@@ -404,6 +408,7 @@ public partial class GenerateAllDialogViewModel : StatusMessageViewModel
             }
         }
 
+        SelectedTab = 1;
         IsRunning = true;
         try
         {

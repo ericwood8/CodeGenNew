@@ -157,10 +157,10 @@ public sealed partial class <#= stem #>JunctionEditor : ContentDialog
     }
 
     private async void OnAddClick(object sender, RoutedEventArgs e) =>
-        await ViewModel.LinkAsync(AvailableList.SelectedItems.Cast<JunctionListItem>().ToList());
+        await ViewModel.LinkAsync(AvailableList.SelectedItems.Cast<<#= Model.TableName #>JunctionListItem>().ToList());
 
     private async void OnRemoveClick(object sender, RoutedEventArgs e) =>
-        await ViewModel.UnlinkAsync(SelectedList.SelectedItems.Cast<JunctionListItem>().ToList());
+        await ViewModel.UnlinkAsync(SelectedList.SelectedItems.Cast<<#= Model.TableName #>JunctionListItem>().ToList());
 
     private async void OnAddAllClick(object sender, RoutedEventArgs e) =>
         await ViewModel.LinkAsync(ViewModel.Available.ToList());
@@ -190,7 +190,7 @@ namespace <#= viewModelNamespace #>;
 /// <summary> One row of <#= stem #>_List's result set: the <#= targetRole #> side of the association, plus
 /// whether it's currently linked to the <#= anchorRole #> this dialog is editing. Display columns are bound
 /// as plain strings - see <#= stem #>_List's CAST in SP_Junction.tt's output for why. </summary>
-public class JunctionListItem
+public class <#= Model.TableName #>JunctionListItem
 {
 <#
     for (int i = 0; i < displayColumns.Count; i++)
@@ -211,8 +211,8 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
     private readonly <#= contextType #> _context;
     private readonly <#= anchorType #> _anchorId;
 
-    public ObservableCollection<JunctionListItem> Available { get; } = [];
-    public ObservableCollection<JunctionListItem> Selected { get; } = [];
+    public ObservableCollection<<#= Model.TableName #>JunctionListItem> Available { get; } = [];
+    public ObservableCollection<<#= Model.TableName #>JunctionListItem> Selected { get; } = [];
 
     public <#= stem #>JunctionEditorViewModel(<#= contextType #> context, <#= anchorType #> anchorId)
     {
@@ -227,12 +227,12 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
 
 <#
     if (ef)
-        Emit(efJunction.List("JunctionListItem", "_context", "_anchorId", "        "));
+        Emit(efJunction.List(Model.TableName + "JunctionListItem", "_context", "_anchorId", "        "));
     else
     {
 #>
         var rows = await _context.Database
-            .SqlQueryRaw<JunctionListItem>("<#= call.ListSql #>",
+            .SqlQueryRaw<<#= Model.TableName #>JunctionListItem>("<#= call.ListSql #>",
                 <#= call.AnchorParameter("_anchorId") #>)
             .ToListAsync();
 <#
@@ -243,7 +243,7 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
             (row.IsSelected ? Selected : Available).Add(row);
     }
 
-    public async Task LinkAsync(IReadOnlyList<JunctionListItem> items)
+    public async Task LinkAsync(IReadOnlyList<<#= Model.TableName #>JunctionListItem> items)
     {
         foreach (var item in items)
         {
@@ -263,7 +263,7 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
         }
     }
 
-    public async Task UnlinkAsync(IReadOnlyList<JunctionListItem> items)
+    public async Task UnlinkAsync(IReadOnlyList<<#= Model.TableName #>JunctionListItem> items)
     {
         foreach (var item in items)
         {

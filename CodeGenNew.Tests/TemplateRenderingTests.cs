@@ -311,12 +311,12 @@ public class TemplateRenderingTests
         Expect.Contains(xaml, "ItemsSource=\"{x:Bind ViewModel.Selected}\"");
 
         Expect.Contains(codeBehind, "public sealed partial class NameBaseGroupXrefJunctionEditor : ContentDialog");
-        Expect.Contains(codeBehind, "AvailableList.SelectedItems.Cast<JunctionListItem>()");
+        Expect.Contains(codeBehind, "AvailableList.SelectedItems.Cast<NameBaseGroupXrefJunctionListItem>()");
 
         Expect.Contains(viewModel, "public string? ShortDescr { get; set; }"); // Groups' display column
         Expect.Contains(viewModel, "public int TargetId { get; set; }");
         Expect.Contains(viewModel, "public NameBaseGroupXrefJunctionEditorViewModel(MyAppContext context, int anchorId)");
-        Expect.Contains(viewModel, "SqlQueryRaw<JunctionListItem>(\"EXEC [dbo].[NameBaseGroupXref_List] @AnchorNameBaseID\"");
+        Expect.Contains(viewModel, "SqlQueryRaw<NameBaseGroupXrefJunctionListItem>(\"EXEC [dbo].[NameBaseGroupXref_List] @AnchorNameBaseID\"");
         Expect.Contains(viewModel, "$\"EXEC [dbo].[NameBaseGroupXref_Link] {_anchorId}, {item.TargetId}\"");
         Expect.Contains(viewModel, "$\"EXEC [dbo].[NameBaseGroupXref_Unlink] {_anchorId}, {item.TargetId}\"");
     }

@@ -38,7 +38,7 @@
     string usingLines = string.Concat(usings.Select(u => $"using {u};\n"));
 
     // ==== one (paramName, columnName) pair per searchable column, e.g. ("title", "Title")
-    var filters = searchableColumns.Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
+    var filters = searchableColumns.Select(c => new { ParamName = CSharpIdentifier(LowerFirst(c.Name)), c.Name }).ToList();
     // Filters, then @PageNumber/@PageSize - joined as ONE list so the comma placement is correct whether
     // there are zero filters or several (a naive "{filters}, @PageNumber" would leave a leading ", " when
     // filters is empty).
@@ -46,7 +46,7 @@
     var call = new SearchCall(Model, entity, filters.Select(f => f.Name));
     // With AccessMode=Ef the search is LINQ over the context (the CS_SearchQuery class of this table), not a call to the routines SP_Search writes.
     bool ef = Project.AccessModeFor(Model.Dialect) == AccessMode.Ef;
-    var efFilters = string.Concat(filters.Select(f => ", " + f.ParamName).Concat(searchKeys.Select(k => ", " + LowerFirst(k.Name))));
+    var efFilters = string.Concat(filters.Select(f => ", " + f.ParamName).Concat(searchKeys.Select(k => ", " + CSharpIdentifier(LowerFirst(k.Name)))));
     // ApiAuth with OwnedTables: only the rows of the owners the caller may act for. The routines cannot take an owner, so the routine form answers 403 to a caller who is limited to some owners.
     // ReadRoles: the search refuses a role the table's ReadRoles does not list
     var readRoles = WriteRolePlan.ReadFor(Project, Model);
@@ -98,7 +98,7 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
     foreach (var k in searchKeys)
     {
 #>
-        [FromQuery] <#= k.CSharpBase() #>? <#= LowerFirst(k.Name) #>,
+        [FromQuery] <#= k.CSharpBase() #>? <#= CSharpIdentifier(LowerFirst(k.Name)) #>,
 <#
     }
 #>
@@ -188,7 +188,7 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
     for (int i = 0; i < searchKeys.Count; i++)
     {
 #>
-            <#= call.KeyParameter(searchKeys[i], LowerFirst(searchKeys[i].Name)) #><#= i < searchKeys.Count - 1 ? "," : "" #>
+            <#= call.KeyParameter(searchKeys[i], CSharpIdentifier(LowerFirst(searchKeys[i].Name))) #><#= i < searchKeys.Count - 1 ? "," : "" #>
 <#
     }
 #>
@@ -222,7 +222,7 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
     foreach (var k in searchKeys)
     {
 #>
-            <#= call.KeyParameter(k, LowerFirst(k.Name)) #>,
+            <#= call.KeyParameter(k, CSharpIdentifier(LowerFirst(k.Name))) #>,
 <#
     }
 #>
