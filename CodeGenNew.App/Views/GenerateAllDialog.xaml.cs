@@ -18,6 +18,7 @@ public sealed partial class GenerateAllDialog : ContentDialog
         InitializeComponent();
         ContentDialogUx.Apply(this, primaryAccessKey: "G", closeAccessKey: "C");
         PrimaryButtonClick += OnGenerateClick;
+        Opened += (_, _) => ProjectCombo.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
     }
 
     private void OnBrowseClick(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)

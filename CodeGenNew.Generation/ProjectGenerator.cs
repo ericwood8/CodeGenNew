@@ -32,6 +32,8 @@ public sealed class GenerateOptions
     public bool Force { get; init; }
     /// <summary> Write the new text of a kept file beside it as <c>.generated</c>. Ignored with <see cref="Force"/>. </summary>
     public bool WriteBeside { get; init; }
+    /// <summary> Also list the tables no template of the stacks fits and the child tables a master-detail screen links to without a screen of their own (<see cref="GenerateReport.TableNotes"/>). </summary>
+    public bool ReportTableShapes { get; init; }
 }
 
 /// <summary> One run of one template over one table (or the whole database): its files and how each went. </summary>
@@ -45,6 +47,8 @@ public sealed class GenerateReport
     /// <summary> A template that failed to compile or run. </summary>
     public List<string> Errors { get; } = [];
     public List<string> Warnings { get; } = [];
+    /// <summary> Tables that got fewer files than their neighbours, each with its reason (only when <see cref="GenerateOptions.ReportTableShapes"/> is set). Not a failure. </summary>
+    public List<string> TableNotes { get; } = [];
     public EssentialsRun? Essentials { get; set; }
     /// <summary> Files an earlier whole-project run wrote that this run does not produce (a table or template that is gone). Empty after a partial run (--only, --table). </summary>
     public List<StaleFile> Stale { get; } = [];
@@ -87,6 +91,8 @@ public static class ProjectGenerator
             report.Warnings.Add($"{template.FileStem}.tt.config has a key CodeGenNew does not know ({string.Join(", ", template.Config.UnknownKeys)}); the restriction it was meant to state is not applied.");
         var steps = ProjectPlan.Build(templates, database, project, options.Stacks);
         bool partial = options.OnlyTemplates is { Count: > 0 } || options.Tables is { Count: > 0 };
+        if (options.ReportTableShapes && !partial)
+            report.TableNotes.AddRange(TableShapeNotes.Of(steps, database, project, options.Stacks));
         if (options.Tables is { Count: > 0 } wantedTables)
         {
             var knownNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

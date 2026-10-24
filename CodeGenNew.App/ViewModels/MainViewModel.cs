@@ -188,9 +188,11 @@ public partial class MainViewModel : ObservableObject
     {
         if (_connectionRequest is not { } request || MainSchema is not { } schema)
             return null;
-        return new GenerateAllDialogViewModel(_settings.ProjectsDirectory, _settings.TemplatesDirectory, _settings.OutputDirectory, _settings.Current.LastProject,
+        var dialect = request.Provider switch { DatabaseProvider.PostgreSql => SqlDialect.PostgreSql, DatabaseProvider.MySql => SqlDialect.MySql, DatabaseProvider.Sqlite => SqlDialect.Sqlite, _ => SqlDialect.SqlServer };
+        bool isFile = request.Provider == DatabaseProvider.Sqlite;
+        return new GenerateAllDialogViewModel(_settings.ProjectsDirectory, _settings.TemplatesDirectory, _settings.OutputDirectory,
             project => SchemaProviderFactory.Create(request, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns),
-            schema, request.DatabaseName, dispatcher);
+            schema, request.DatabaseName, dialect, isFile ? null : request.ServerName, isFile || request.AuthMode == AuthMode.WindowsAuth ? null : request.UserName, dispatcher);
     }
 
     /// <summary> Every file the last successful RunTemplateAsync wrote (most templates write one; the TS_ templates several). </summary>

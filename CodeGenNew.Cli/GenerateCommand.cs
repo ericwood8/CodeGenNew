@@ -18,7 +18,22 @@ public static class GenerateCommand
         }
 
         var project = ProjectSettings.None;
-        if (options.Project is not null)
+        if (options.HasStrategy)
+        {
+            if (options.Command != "generate")
+            {
+                Console.Error.WriteLine("Error: --ui, --access-mode, --api-style and --api-language belong to 'codegen generate'.");
+                return ExitCodes.Failure;
+            }
+            var chosen = ApplyStrategy(options, baseDirectory, settings);
+            if (chosen.Error is not null)
+            {
+                Console.Error.WriteLine($"Error: {chosen.Error}");
+                return ExitCodes.Failure;
+            }
+            project = chosen.Project!;
+        }
+        else if (options.Project is not null)
         {
             string projectsDirectory = options.ProjectsDirectory ?? Path.Combine(baseDirectory, settings.ProjectsDirectory);
             try { project = ProjectSettings.LoadNamed(projectsDirectory, options.Project); }
@@ -44,6 +59,39 @@ public static class GenerateCommand
         return options.Command == "essentials"
             ? await EssentialsAsync(options, project, stacks, templatesDirectory, outputDirectory)
             : await GenerateAsync(options, project, stacks, templatesDirectory, specialLogicColumnsConfigPath, outputDirectory);
+    }
+
+    private static SqlDialect DialectOf(DatabaseProvider provider) => provider switch
+    {
+        DatabaseProvider.PostgreSql => SqlDialect.PostgreSql,
+        DatabaseProvider.MySql => SqlDialect.MySql,
+        DatabaseProvider.Sqlite => SqlDialect.Sqlite,
+        _ => SqlDialect.SqlServer
+    };
+
+    /// <summary> The project a run with technology choices uses: the choices checked by <see cref="StrategyRules"/> (nothing is written when they are refused), saved as the project file named
+    /// by --project or after the database, or laid over the settings of the project file of that name when there is one. A dry run writes no file. </summary>
+    private static (ProjectSettings? Project, string? Error) ApplyStrategy(CliOptions options, string baseDirectory, AppSettings settings)
+    {
+        if (options.Stacks.Count > 0)
+            return (null, "--stack and the technology choices (--ui and so on) both say which stacks to generate; use one of them.");
+        var choice = new StrategyChoice(DialectOf(options.Provider), options.Ui, options.Access, options.ApiStyle, options.ApiLanguage);
+        if (StrategyRules.Refusal(choice) is { } refusal)
+            return (null, refusal);
+        if (StrategyRules.Missing(choice) is { Count: > 0 } missing)
+            return (null, $"Still to choose: {string.Join(", ", missing)} (--ui, --access-mode, --api-style, --api-language).");
+
+        string projectName = options.Project ?? StrategyProjectFile.NameFor(options.Database);
+        string projectsDirectory = options.ProjectsDirectory ?? Path.Combine(baseDirectory, settings.ProjectsDirectory);
+        bool isFile = options.Provider == DatabaseProvider.Sqlite;
+        var fromChoices = StrategyRules.ToSettings(choice, projectName, options.Database, isFile ? null : options.Server, options.Trusted || isFile ? null : options.UserName);
+        var saved = StrategyProjectFile.Save(projectsDirectory, projectName, fromChoices, write: !options.DryRun);
+        if (saved == StrategySaveResult.Saved && !options.DryRun)
+            Console.WriteLine($"Saved project '{projectName}' in {projectsDirectory}");
+        if (saved != StrategySaveResult.NameTaken)
+            return (saved == StrategySaveResult.Saved ? fromChoices : ProjectSettings.LoadNamed(projectsDirectory, projectName), null);
+        Console.WriteLine($"Project '{projectName}' exists with other settings; they stay, and the choices win for this run.");
+        return (StrategyProjectFile.ChoicesOver(ProjectSettings.LoadNamed(projectsDirectory, projectName), fromChoices), null);
     }
 
     private static ISchemaProvider CreateProvider(CliOptions options, ProjectSettings project, string specialLogicColumnsConfigPath)
@@ -182,7 +230,7 @@ public static class GenerateCommand
             DryRun = options.DryRun, Essentials = options.Essentials, EssentialsGroups = options.Groups.Count > 0 ? options.Groups : null, ReplaceEssentials = options.Replace,
             OnlyTemplates = options.Only.Count > 0 ? options.Only : null,
             Tables = string.IsNullOrWhiteSpace(options.Table) ? null : options.Table.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
-            DeleteStale = options.DeleteStale, WithDiff = options.Diff, Force = options.Force, WriteBeside = options.WriteBeside
+            DeleteStale = options.DeleteStale, WithDiff = options.Diff, Force = options.Force, WriteBeside = options.WriteBeside, ReportTableShapes = options.HasStrategy
         }, progress: null);
 
         foreach (string warning in report.Warnings)
@@ -191,6 +239,8 @@ public static class GenerateCommand
         PrintDiffs(report.AllFiles);
         foreach (string refusal in report.Refusals)
             Console.WriteLine($"Skipped: {refusal}");
+        foreach (string note in report.TableNotes)
+            Console.WriteLine($"Note: {note}");
         foreach (var stale in report.Stale)
             Console.WriteLine(stale.Deleted ? $"Deleted    {stale.Path} (stale: no table or template produces it any more)"
                 : $"Stale      {stale.Path} ({(stale.Edited ? "edited since it was generated, so it is left alone" : "no table or template produces it any more; --delete-stale removes it")})");

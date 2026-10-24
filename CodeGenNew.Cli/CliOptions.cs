@@ -1,4 +1,5 @@
 using CodeGenNew.Connections;
+using CodeGenNew.Core;
 
 namespace CodeGenNew.Cli;
 
@@ -22,6 +23,12 @@ public class CliOptions
     public string? Command { get; set; }
     /// <summary> --stack: the stacks to generate (Api, WinUI3, React, Angular, Blazor, Uno, Rust, Python); empty = the project's Stacks setting. </summary>
     public List<string> Stacks { get; } = [];
+    /// <summary> --ui, --access-mode, --api-style and --api-language: the technologies to generate for, in place of --stack and the project's Stacks (see <see cref="StrategyRules"/>). </summary>
+    public StrategyUi? Ui { get; set; }
+    public StrategyAccess? Access { get; set; }
+    public StrategyStyle? ApiStyle { get; set; }
+    public StrategyLanguage? ApiLanguage { get; set; }
+    public bool HasStrategy => Ui is not null || Access is not null || ApiStyle is not null || ApiLanguage is not null;
     /// <summary> --essentials: a whole-project generate also writes the essentials groups. </summary>
     public bool Essentials { get; set; }
     /// <summary> --groups: the essentials groups to write (App,MainWindow ...); empty = those ticked by default. </summary>

@@ -19,6 +19,10 @@ public static class ArgumentParser
         var stacks = new List<string>();
         var groups = new List<string>();
         var only = new List<string>();
+        StrategyUi? ui = null;
+        StrategyAccess? access = null;
+        StrategyStyle? apiStyle = null;
+        StrategyLanguage? apiLanguage = null;
         bool essentials = false, replace = false, dryRun = false, list = false, deleteStale = false, build = false, test = false, diff = false, force = false, writeBeside = false;
 
         for (int i = 0; i < args.Length; i++)
@@ -50,6 +54,22 @@ public static class ArgumentParser
                 case "-E": case "--trusted": trusted = true; break;
                 case "--project": project = Value(); break;
                 case "--stack": stacks.AddRange(Value().Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)); break;
+                case "--ui":
+                    string uiText = Value();
+                    ui = StrategyRules.TryParseUi(uiText, out var parsedUi) ? parsedUi : throw new ArgumentParseException($"Unknown --ui '{uiText}'. Valid values: {string.Join(", ", StrategyRules.Uis)}.");
+                    break;
+                case "--access-mode":
+                    string accessText = Value();
+                    access = StrategyRules.TryParseAccess(accessText, out var parsedAccess) ? parsedAccess : throw new ArgumentParseException($"Unknown --access-mode '{accessText}'. Valid values: Routines, Ef, OwnSql.");
+                    break;
+                case "--api-style":
+                    string styleText = Value();
+                    apiStyle = StrategyRules.TryParseStyle(styleText, out var parsedStyle) ? parsedStyle : throw new ArgumentParseException($"Unknown --api-style '{styleText}'. Valid values: Rest, OData.");
+                    break;
+                case "--api-language":
+                    string languageText = Value();
+                    apiLanguage = StrategyRules.TryParseLanguage(languageText, out var parsedLanguage) ? parsedLanguage : throw new ArgumentParseException($"Unknown --api-language '{languageText}'. Valid values: CSharp, Rust, Python.");
+                    break;
                 case "--groups": groups.AddRange(Value().Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)); break;
                 case "--only": only.AddRange(Value().Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)); break;
                 case "--essentials": essentials = true; break;
@@ -127,7 +147,11 @@ public static class ArgumentParser
             UserName = userName,
             Password = password,
             Project = project,
-            ProjectsDirectory = projectsDirectory
+            ProjectsDirectory = projectsDirectory,
+            Ui = ui,
+            Access = access,
+            ApiStyle = apiStyle,
+            ApiLanguage = apiLanguage
         };
         foreach (var (key, value) in overrides)
             options.ProjectOverrides[key] = value;
@@ -160,6 +184,10 @@ public static class ArgumentParser
               codegen generate -S <server> -d <database> (-E | -U <user> [-P <password>]) --project <name> -o <dir>
                        [--stack api,winui3,react,angular] [--essentials [--groups a,b] [--replace]] [--only SP_Search,CS_Entity] [--table Customer,Item]
                        [--dry-run] [--diff] [--delete-stale] [--force | --write-beside] [--build] [--test]
+              Instead of --stack, the technologies can be chosen: --ui winui3|react|angular|blazor|uno, and unless the UI is winui3 also
+                       --access-mode routines|ef|ownsql  --api-style rest|odata  --api-language csharp|rust|python
+              A combination the rules refuse (Rust with OData, routines on SQLite ...) stops before any file is written. The choices are saved as the project file named by
+              --project (default: the database name) unless one of that name exists; an existing project keeps its settings and the choices win for this run.
               A file you edited since the last run, or one no earlier run recorded, is kept and reported (Edited / Unknown).
               --force overwrites it; --write-beside keeps it and writes the new text next to it as <file>.generated.
             Stored values the generated validators would refuse (a database is read, nothing is written):
