@@ -5,6 +5,7 @@
   python Test-FrontEndPages.py --stack uno
   python Test-FrontEndPages.py --stack angular --prove-failure
   python Test-FrontEndPages.py --stack react --schema junction
+  python Test-FrontEndPages.py --stack react --schema owner_scoped
 
 Generates the master_detail sample schema (API and the chosen front end) with Tools/new_scratch_project.py, builds and starts the API (port 5080) and the
 dev server (Vite on 5173, ng serve on 4200, dotnet run on 5190 for Blazor and on 5195 for Uno), then walks the Region screen: the empty form is refused by the browser, a row is added, found by the search, edited, cloned and
@@ -14,6 +15,7 @@ exits 1 on a failure. Everything it started is stopped at the end; the generated
 --prove-failure aborts the browser's POST to the API, so the add and everything after it must fail: it shows that the checks can fail.
 --stack react|angular|blazor|uno picks the front end (Angular is generated for version 22). The Uno app draws on a canvas, so it is driven through the semantic page that its accessibility switch builds, by focus and keys.
 --schema junction generates the many-to-many sample (Region, Customer, Tag, CustomerTag) and walks the Customer dialog of React, Angular or Blazor: the junction table has no grid there and the page asks the API for nothing that is refused.
+--schema owner_scoped generates an API with sign-in (ApiAuth, Auth, the Employee user table, OData screens) over Employee and Expense, an expense belonging to the employee in EmployeeId, sets passwords for three people (ann, bob and root, the administrator) and walks the Expense screen of React, Angular, Blazor or Uno signed in as each: the sign-in page, each person's own rows only, add (not on Uno, whose calendar date picker cannot be driven), edit and delete of one's own row, a row for someone else refused (not on Uno), and the API's refusals of another person's row.
 --out <folder> uses an already generated project (the folder that holds the Api project and the frontend folder or Blazor project) instead of generating one.
 --build-cli builds the command-line tool before generating (a fresh checkout, as in CI, has not built it).
 --browser chrome|msedge picks the installed browser (default chrome). Needs `pip install playwright`; no browser is downloaded.
@@ -27,6 +29,7 @@ import signal
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -61,6 +64,8 @@ def wait_for(url, seconds, what):
         try:
             urllib.request.urlopen(url, timeout=3).close()
             return
+        except urllib.error.HTTPError:
+            return   # the server answered (a 401 from an API that wants a sign-in is an answer)
         except Exception:
             time.sleep(1)
     sys.exit(f"{what} did not answer at {url} within {seconds} s")
@@ -80,10 +85,23 @@ def stop(process):
             os.killpg(os.getpgid(process.pid), signal.SIGTERM)   # the process was started as the leader of its own group, so its children go too
 
 
+OWNER_SETTINGS = ["ApiAuth=true", "Auth=true", "OData=true", "ODataScreens=Replace", "UserTable=Employee", "UserNameColumn=Login", "PasswordHashColumn=PasswordHash",
+                  "UserOwnerColumn=EmployeeId", "UserAdminColumn=IsAdministrator", "OwnedTables=Expense"]
+OWNER_KEY = "harness-signing-key-0123456789-0123456789-abcdef"
+OWNER_PEOPLE = {"ann": ("Ann", False), "bob": ("Bob", False), "root": ("Root", True)}   # sign-in name: (name, administrator); they are employees 1, 2 and 3
+
+
+def owner_password(login):
+    return f"Pw-{login}-1234567"
+
+
 def generate(stack, build_cli=False, schema="master_detail"):
     extra = ["--set", "AngularVersion=22"] if stack == "angular" else []
-    result = subprocess.run([sys.executable, str(HERE / "Tools" / "new_scratch_project.py"), "PwShop" + stack.title() + ("Junction" if schema == "junction" else ""), "--schema", schema,
-                             "--stack", "api," + stack, "--set", "Dtos=true", *extra, *(["--build-cli"] if build_cli else [])], capture_output=True, text=True, cwd=HERE / "Tools")
+    # OData and Dtos exclude each other; the owner-scoped sample is served as OData screens
+    settings = [x for pair in (("--set", s) for s in OWNER_SETTINGS) for x in pair] if schema == "owner_scoped" else ["--set", "Dtos=true"]
+    suffix = {"junction": "Junction", "owner_scoped": "Owner"}.get(schema, "")
+    result = subprocess.run([sys.executable, str(HERE / "Tools" / "new_scratch_project.py"), "PwShop" + stack.title() + suffix, "--schema", schema,
+                             "--stack", "api," + stack, *settings, *extra, *(["--build-cli"] if build_cli else [])], capture_output=True, text=True, cwd=HERE / "Tools")
     if result.returncode != 0:
         sys.exit(result.stderr or result.stdout)
     return Path(re.search(r"^output:\s+(.+)$", result.stdout, re.M).group(1).strip())
@@ -522,6 +540,289 @@ def drive_junction(page, prove_failure):
         clean()
 
 
+def call(token, method, path, body=None):
+    """One API call with a bearer token; answers (status, json or None) and never raises on a refusal."""
+    headers = {"Content-Type": "application/json", **({"Authorization": f"Bearer {token}"} if token else {})}
+    request = urllib.request.Request(f"{API}{path}", data=None if body is None else json.dumps(body).encode(), method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            status, text = response.status, response.read().decode()
+    except urllib.error.HTTPError as error:
+        status, text = error.code, error.read().decode()
+    try:
+        return status, json.loads(text) if text else None
+    except ValueError:
+        return status, None
+
+
+def drive_owner(page, prove_failure):
+    """A table whose rows belong to a person (Expense, owned through EmployeeId) served as an OData screen behind a sign-in: a visitor who is not signed in is sent to
+    the sign-in page, a wrong password gets nowhere, each person's grid lists only their own rows (the administrator's lists all), a person adds, edits and deletes their
+    own row, cannot save a row for someone else, and the API refuses another person's row by key and the unscoped REST search. The rows are made through the API with each person's token."""
+    form = page.locator('dialog[open], [role="dialog"]')
+    refused = []
+    page.on("response", lambda r: refused.append(f"{r.status} {r.url}") if "/odata/" in r.url and r.status >= 400 and r.request.method == "GET" else None)
+    if prove_failure:
+        page.route(re.compile(r".*/(odata|api)/expenses.*"), lambda route: route.abort() if route.request.method == "POST" else route.continue_())
+
+    tokens = {login: call(None, "POST", "/api/auth/login", {"userName": login, "password": owner_password(login)})[1]["token"] for login in OWNER_PEOPLE}
+    employee_ids = {login: number for number, login in enumerate(OWNER_PEOPLE, start=1)}
+
+    def expenses(token="root"):
+        status, data = call(tokens[token], "GET", "/odata/expenses?$top=100")
+        return data["value"] if status == 200 else []
+
+    def clean():
+        for row in [r for r in expenses() if r["description"].startswith("Harness")]:
+            call(tokens["root"], "DELETE", f"/api/expenses/{row['expenseId']}")
+
+    def make(login, description, amount):
+        return call(tokens[login], "POST", "/api/expenses", {"expenseId": 0, "employeeId": employee_ids[login], "description": description, "amount": amount, "expenseDate": "2026-04-01T00:00:00"})
+
+    def sign_in(login, password=None):
+        page.goto(f"{DEV}/login")
+        page.get_by_role("heading", name="Sign in").wait_for(timeout=90000)
+        page.locator("#userName").fill(login)
+        page.locator("#password").fill(password or owner_password(login))
+        page.get_by_role("button", name="Sign in").click()
+
+    def sign_out():
+        page.get_by_role("button", name="Sign out").click()
+        page.wait_for_timeout(500)
+
+    def open_expenses():
+        page.wait_for_timeout(1000)
+        page.goto(f"{DEV}/expense")
+        page.get_by_role("heading", name="Expenses").wait_for(timeout=90000)
+        page.wait_for_timeout(900)
+
+    def grid():
+        return page.locator("table").first.locator("tbody tr", has_text="Harness")
+
+    def grid_text():
+        return " | ".join(grid().all_inner_texts())
+
+    clean()
+    try:
+        make("ann", "Harness Ann Taxi", 12.5)
+        make("ann", "Harness Ann Lunch", 8)
+        make("bob", "Harness Bob Hotel", 99)
+        ids = {r["description"]: r["expenseId"] for r in expenses() if r["description"].startswith("Harness")}
+        check("the rows were made, each for its person", len(ids) == 3 and all(r["employeeId"] == employee_ids[l] for r in expenses() for l in ("ann", "bob") if r["description"].startswith(f"Harness {l.title()}")), str(ids))
+
+        page.goto(f"{DEV}/expense")
+        page.get_by_role("heading", name="Sign in").wait_for(timeout=90000)
+        check("a visitor who is not signed in is sent to the sign-in page", "login" in page.url)
+        sign_in("ann", "not-the-password")
+        page.wait_for_timeout(1200)
+        check("a wrong password gets nowhere", "login" in page.url and page.get_by_role("heading", name="Sign in").is_visible())
+
+        sign_in("ann")
+        open_expenses()
+        text = grid_text()
+        check("the grid lists the two rows of the person who signed in", grid().count() == 2 and "Taxi" in text and "Lunch" in text, text)
+        check("it does not list another person's row", "Hotel" not in text)
+
+        page.get_by_role("button", name="Add New").click()
+        form.wait_for()
+        employee = form.locator('select[aria-label="Employee"], #expenseEmployeeId').first
+        field_ = lambda label, ident: form.locator(f'[aria-label="{label}"], #{ident}').first
+        employee.select_option(label="Ann")
+        field_("Description", "expenseDescription").fill("Harness Ann Train")
+        field_("Amount", "expenseAmount").fill("30")
+        field_("Expense Date", "expenseExpenseDate").fill("2026-04-02")
+        form.get_by_role("button", name=SUBMIT).click()
+        try:
+            form.wait_for(state="hidden", timeout=4000)
+        except Exception:
+            pass
+        saved = [r for r in expenses() if r["description"] == "Harness Ann Train"]
+        check("a row added on the screen is saved for the person who signed in", len(saved) == 1 and saved[0]["employeeId"] == employee_ids["ann"] and saved[0]["amount"] == 30, str(saved))
+        page.wait_for_timeout(900)
+        check("it shows in the grid", grid().count() == 3 and "Train" in grid_text())
+
+        page.get_by_role("button", name="Add New").click()
+        form.wait_for()
+        employee.select_option(label="Bob")
+        field_("Description", "expenseDescription").fill("Harness Ann For Bob")
+        field_("Amount", "expenseAmount").fill("5")
+        field_("Expense Date", "expenseExpenseDate").fill("2026-04-02")
+        form.get_by_role("button", name=SUBMIT).click()
+        page.wait_for_timeout(1200)
+        check("a row for someone else is refused: nothing is saved", not any(r["description"] == "Harness Ann For Bob" for r in expenses()))
+        form.get_by_role("button", name="Cancel").click()
+
+        grid().filter(has_text="Train").get_by_role("button", name="Edit").click()
+        form.wait_for()
+        page.wait_for_timeout(800)
+        field_("Description", "expenseDescription").fill("Harness Ann Train Home")
+        form.get_by_role("button", name=SUBMIT).click()
+        try:
+            form.wait_for(state="hidden", timeout=4000)
+        except Exception:
+            pass
+        edited = [r for r in expenses() if r["description"] == "Harness Ann Train Home"]
+        check("Edit saves a change to the person's own row", len(edited) == 1 and edited[0]["expenseId"] == saved[0]["expenseId"] if saved else False)
+
+        page.on("dialog", lambda d: d.accept())
+        grid().filter(has_text="Train Home").get_by_role("button", name="Delete").click()
+        page.wait_for_timeout(1200)
+        check("Delete removes the person's own row", not any(r["description"].startswith("Harness Ann Train") for r in expenses()) and grid().count() == 2)
+
+        sign_out()
+        sign_in("bob")
+        open_expenses()
+        text = grid_text()
+        check("another person's grid lists only their own row", grid().count() == 1 and "Hotel" in text and "Taxi" not in text and "Lunch" not in text, text)
+
+        sign_out()
+        sign_in("root")
+        open_expenses()
+        check("the administrator's grid lists everyone's rows", grid().count() == 3 and "Hotel" in grid_text() and "Taxi" in grid_text(), grid_text())
+
+        status, _ = call(tokens["bob"], "GET", f"/odata/expenses/{ids['Harness Ann Taxi']}")
+        check("the API refuses another person's row by key", status == 403, str(status))
+        status, _ = call(tokens["bob"], "PUT", f"/api/expenses/{ids['Harness Ann Taxi']}", {"expenseId": ids["Harness Ann Taxi"], "employeeId": employee_ids["ann"], "description": "Harness changed", "amount": 1, "expenseDate": "2026-04-01T00:00:00"})
+        check("the API refuses a change to another person's row", status in (403, 404) and any(r["description"] == "Harness Ann Taxi" for r in expenses()), str(status))
+        status, found = call(tokens["bob"], "GET", "/api/expenses/search?pageNumber=1&pageSize=100")
+        listed = found if isinstance(found, list) else next((v for v in (found or {}).values() if isinstance(v, list)), [])
+        check("the REST search lists only the caller's rows", status == 200 and len(listed) > 0 and all(r["employeeId"] == employee_ids["bob"] for r in listed), f"{status} {len(listed)} rows")
+        check("the screen asked the OData routes for nothing that was refused", not refused, "; ".join(refused)[:200])
+    finally:
+        clean()
+
+
+def seed_people(out, api_dir, env):
+    """The people who sign in: three employees in the project's database, each with a password set through the generated API's own set-password command."""
+    import sqlite3
+    database = next(out.parent.glob("*.db"))
+    connection = sqlite3.connect(database)
+    if not connection.execute("SELECT COUNT(*) FROM Employee").fetchone()[0]:
+        connection.executemany("INSERT INTO Employee (Login, Name, IsAdministrator) VALUES (?, ?, ?)", [(login, name, int(admin)) for login, (name, admin) in OWNER_PEOPLE.items()])
+        connection.commit()
+    connection.close()
+    for login in OWNER_PEOPLE:
+        result = subprocess.run(["dotnet", "run", "--no-build", "--", "set-password", login], cwd=api_dir, env=dict(env, NEW_PASSWORD=owner_password(login)), capture_output=True, text=True)
+        if result.returncode != 0 or f"Password set for {login}" not in result.stdout:
+            sys.exit(f"set-password failed for {login}: " + (result.stdout + result.stderr)[-600:])
+
+
+def drive_owner_uno(page, prove_failure):
+    """The Expense screen of the owner-scoped sample on the Uno head, through its accessibility page: the sign-in, each person's own rows only (the administrator's all),
+    Edit and Delete of one's own row, and the API's refusals of another person's row. A row cannot be added there: the calendar date picker cannot be driven."""
+    if prove_failure:
+        page.route(re.compile(r".*/(odata|api)/expenses.*"), lambda route: route.abort() if route.request.method in ("PUT", "DELETE") else route.continue_())
+
+    tokens = {login: call(None, "POST", "/api/auth/login", {"userName": login, "password": owner_password(login)})[1]["token"] for login in OWNER_PEOPLE}
+    employee_ids = {login: number for number, login in enumerate(OWNER_PEOPLE, start=1)}
+
+    def expenses():
+        status, data = call(tokens["root"], "GET", "/odata/expenses?$top=100")
+        return data["value"] if status == 200 else []
+
+    def clean():
+        for row in [r for r in expenses() if r["description"].startswith("Harness")]:
+            call(tokens["root"], "DELETE", f"/api/expenses/{row['expenseId']}")
+
+    def make(login, description, amount):
+        return call(tokens[login], "POST", "/api/expenses", {"expenseId": 0, "employeeId": employee_ids[login], "description": description, "amount": amount, "expenseDate": "2026-04-01T00:00:00"})
+
+    def press(locator):
+        locator.focus()
+        page.wait_for_timeout(300)
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(1200)
+
+    def type_into(locator, text, replace=False):
+        locator.focus()
+        page.wait_for_timeout(300)
+        if replace:
+            page.keyboard.press("Control+a")
+        page.keyboard.type(text)
+        page.wait_for_timeout(300)
+
+    def button(name):
+        return page.get_by_role("button", name=name, exact=True)
+
+    def enable_accessibility():
+        page.wait_for_selector("#uno-enable-accessibility", state="attached", timeout=120000)
+        page.wait_for_timeout(3000)
+        page.evaluate("document.getElementById('uno-enable-accessibility').focus()")
+        page.keyboard.press("Enter")
+
+    def sign_in(login, password=None):
+        type_into(page.locator('input[aria-label="User name"]').last, login, replace=True)
+        type_into(page.locator('input[type="password"]').last, password or owner_password(login), replace=True)
+        press(button("Sign in"))
+
+    def open_expenses():
+        page.get_by_role("option", name="Expense", exact=True).wait_for(timeout=30000)
+        press(page.get_by_role("option", name="Expense", exact=True))
+        button("Add New").wait_for(timeout=30000)
+        page.wait_for_timeout(1000)
+
+    def shown(text):
+        return page.get_by_text(text, exact=True).count() >= 1
+
+    clean()
+    try:
+        make("ann", "Harness Ann Taxi", 12.5)
+        make("ann", "Harness Ann Lunch", 8)
+        make("bob", "Harness Bob Hotel", 99)
+        ids = {r["description"]: r["expenseId"] for r in expenses() if r["description"].startswith("Harness")}
+        check("the rows were made, each for its person", len(ids) == 3, str(ids))
+
+        page.goto(DEV)
+        enable_accessibility()
+        page.locator('input[aria-label="User name"]').last.wait_for(timeout=30000)
+        check("the app opens on the sign-in page", True)
+        sign_in("ann", "not-the-password")
+        page.wait_for_timeout(1000)
+        check("a wrong password gets nowhere", page.locator('input[aria-label="User name"]').count() >= 1)
+
+        sign_in("ann")
+        open_expenses()
+        check("the grid lists the two rows of the person who signed in", shown("Harness Ann Taxi") and shown("Harness Ann Lunch"))
+        check("it does not list another person's row", not shown("Harness Bob Hotel"))
+
+        press(button("Edit").last)
+        description = page.locator('input[aria-label="Description"]').last
+        check("Edit opens the form with the saved description", description.input_value() in ("Harness Ann Taxi", "Harness Ann Lunch"), description.input_value())
+        opened = description.input_value()
+        type_into(description, opened + " Home", replace=True)
+        press(button("Save"))
+        page.wait_for_timeout(1000)
+        check("the edit reaches the database for the person's own row", any(r["description"] == opened + " Home" and r["employeeId"] == employee_ids["ann"] for r in expenses()))
+
+        for _ in range(2):
+            press(button("Delete").last)
+            press(button("Delete").last)
+            page.wait_for_timeout(800)
+        check("Delete removes the person's own rows and no one else's", [r["description"] for r in expenses() if r["description"].startswith("Harness")] == ["Harness Bob Hotel"], str([r["description"] for r in expenses()]))
+        make("ann", "Harness Ann Taxi", 12.5)
+        make("ann", "Harness Ann Lunch", 8)
+
+        press(button("Sign out"))
+        page.wait_for_timeout(1000)
+        sign_in("bob")
+        open_expenses()
+        check("another person's grid lists only their own row", shown("Harness Bob Hotel") and not shown("Harness Ann Taxi") and not shown("Harness Ann Lunch"))
+
+        press(button("Sign out"))
+        page.wait_for_timeout(1000)
+        sign_in("root")
+        open_expenses()
+        check("the administrator's grid lists everyone's rows", shown("Harness Bob Hotel") and shown("Harness Ann Taxi") and shown("Harness Ann Lunch"))
+
+        ids = {r["description"]: r["expenseId"] for r in expenses() if r["description"].startswith("Harness")}
+        status, _ = call(tokens["bob"], "GET", f"/odata/expenses/{ids['Harness Ann Taxi']}")
+        check("the API refuses another person's row by key", status == 403, str(status))
+        status, _ = call(tokens["bob"], "PUT", f"/api/expenses/{ids['Harness Ann Taxi']}", {"expenseId": ids["Harness Ann Taxi"], "employeeId": employee_ids["ann"], "description": "Harness changed", "amount": 1, "expenseDate": "2026-04-01T00:00:00"})
+        check("the API refuses a change to another person's row", status in (403, 404) and any(r["description"] == "Harness Ann Taxi" for r in expenses()), str(status))
+    finally:
+        clean()
+
+
 def uno_profile(project):
     profiles = json.loads((project / "Properties" / "launchSettings.json").read_text(encoding="utf-8"))["profiles"]
     return next(name for name in profiles if "WebAssembly" in name)
@@ -536,7 +837,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--stack", choices=list(STACKS), default="react")
     parser.add_argument("--out")
-    parser.add_argument("--schema", choices=["master_detail", "junction"], default="master_detail", help="master_detail: the Region walks; junction: the Customer dialog of a table with a many-to-many link to Tag")
+    parser.add_argument("--schema", choices=["master_detail", "junction", "owner_scoped"], default="master_detail", help="master_detail: the Region walks; junction: the Customer dialog of a table with a many-to-many link to Tag; owner_scoped: the Expense screen of a table whose rows belong to a signed-in person")
     parser.add_argument("--prove-failure", action="store_true")
     parser.add_argument("--build-cli", action="store_true", help="build the command-line tool first (a fresh checkout has not)")
     parser.add_argument("--browser", default="chrome")
@@ -569,9 +870,13 @@ def main():
             sys.exit("npm install failed:\n" + (install.stderr + install.stdout)[-800:])
 
     api = dev = None
+    api_env = dict(os.environ)
+    if args.schema == "owner_scoped":
+        api_env["Jwt__Key"] = OWNER_KEY
+        seed_people(out, api_dir, api_env)
     try:
-        api = subprocess.Popen(["dotnet", "run", "--no-build"], cwd=api_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=os.name != "nt")
-        wait_for(f"{API}/api/regions", 60, "the API")
+        api = subprocess.Popen(["dotnet", "run", "--no-build"], cwd=api_dir, env=api_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=os.name != "nt")
+        wait_for(f"{API}/api/{'expenses' if args.schema == 'owner_scoped' else 'regions'}", 60, "the API")
         command = {"react": [npm, "run", "dev", "--", "--strictPort"], "angular": [npm, "start", "--", "--port", "4200"],
                    "blazor": ["dotnet", "run", "--no-build", "--launch-profile", "http"],
                    "uno": ["dotnet", "run", "-f", "net10.0-browserwasm", "--no-build", "--launch-profile", uno_profile(front) if args.stack == "uno" else ""]}[args.stack]
@@ -584,7 +889,7 @@ def main():
                 errors = []
                 page.on("pageerror", lambda e: errors.append(str(e)))
                 page.set_default_timeout(5000)
-                walks = [drive_junction] if args.schema == "junction" else [drive_uno, drive_uno_dropdown, drive_uno_grids] if args.stack == "uno" else [drive, drive_more]
+                walks = [drive_junction] if args.schema == "junction" else [drive_owner_uno if args.stack == "uno" else drive_owner] if args.schema == "owner_scoped" else [drive_uno, drive_uno_dropdown, drive_uno_grids] if args.stack == "uno" else [drive, drive_more]
                 for walk in walks:
                     try:
                         walk(page, args.prove_failure)

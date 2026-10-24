@@ -1,0 +1,17 @@
+CREATE TABLE Employee (
+    EmployeeId INTEGER PRIMARY KEY AUTOINCREMENT,
+    Login VARCHAR(30) NOT NULL,
+    PasswordHash VARCHAR(200) NULL,
+    Name VARCHAR(40) NOT NULL,
+    IsAdministrator BOOLEAN NOT NULL,
+    Note VARCHAR(50) NULL
+);
+
+CREATE TABLE Expense (
+    ExpenseId INTEGER PRIMARY KEY AUTOINCREMENT,
+    EmployeeId INTEGER NOT NULL REFERENCES Employee (EmployeeId),
+    Description VARCHAR(60) NOT NULL,
+    Amount DECIMAL(10,2) NOT NULL,
+    ExpenseDate DATETIME NOT NULL,
+    Note VARCHAR(50) NULL
+);

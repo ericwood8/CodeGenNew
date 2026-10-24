@@ -90,6 +90,8 @@ jobs:
         run: python Docs/Verification/Test-FrontEndPages.py --stack ${{ matrix.stack }} --build-cli
       - name: Walk the ${{ matrix.stack }} Customer dialog of the many-to-many schema
         run: python Docs/Verification/Test-FrontEndPages.py --stack ${{ matrix.stack }} --schema junction
+      - name: Walk the ${{ matrix.stack }} Expense screen of the owner-scoped schema
+        run: python Docs/Verification/Test-FrontEndPages.py --stack ${{ matrix.stack }} --schema owner_scoped
 
   # The Uno browser head needs the wasm-tools workload and draws on a canvas, so it is driven through its accessibility page.
   browser-walk-uno:
@@ -106,6 +108,8 @@ jobs:
       - run: pip install playwright
       - name: Walk the Uno app
         run: python Docs/Verification/Test-FrontEndPages.py --stack uno --build-cli
+      - name: Walk the Uno Expense screen of the owner-scoped schema
+        run: python Docs/Verification/Test-FrontEndPages.py --stack uno --schema owner_scoped
 
   # The live schema tests (what the databases report about tables, keys, checks, comments and indexes) over throwaway servers: GitHub service containers for
   # PostgreSQL, MySQL and SQL Server. The databases are empty, so the tests that read the InvoiceSystem sample's tables report themselves as inconclusive
