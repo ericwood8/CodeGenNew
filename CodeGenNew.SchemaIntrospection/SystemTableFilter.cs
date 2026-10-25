@@ -17,7 +17,7 @@ public static class SystemTableFilter
 
     private static readonly string[] Prefixes =
     [
-        "conflict_", "MSpeer_", "MSpub_", "MSreplication_", "MSsubscription_", "sysarticle", "aspnet_"
+        "conflict_", "MSpeer_", "MSpub_", "MSreplication_", "MSsubscription_", "sysarticle", "aspnet_", "scope_info"
     ];
 
     public static bool IsSystemTable(this string tableName) =>

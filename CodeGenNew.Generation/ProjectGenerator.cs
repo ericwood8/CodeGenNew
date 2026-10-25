@@ -82,13 +82,15 @@ public static class ProjectGenerator
             return report;
         }
 
-        foreach (var table in database.Tables)
+        // an enum table has no entity class, so its columns cannot clash with anything
+        var withEntity = database.Tables.Where(t => project.NoRepository(t.TableName, t.LookupShape) != true).ToList();
+        foreach (var table in withEntity)
             foreach (var column in table.Columns.Where(c => c.Name == table.TableName))
                 report.Warnings.Add($"column {table.DbTableName}.{column.DbName} has the name of its table, which C# does not allow for a member of the class; list {table.DbTableName}.{column.DbName} in IgnoredColumns to leave it out.");
         bool desktop = options.Stacks.Any(s => s.EqualsIgnoreCase("WinUI3") || s.EqualsIgnoreCase("Uno"));
         if (desktop && project.Naming != NamingStyle.Pascal)
         {
-            var lowerCase = database.Tables.SelectMany(t => t.Columns.Where(c => char.IsLower(c.Name[0])).Select(c => $"{t.DbTableName}.{c.DbName}")).ToList();
+            var lowerCase = withEntity.SelectMany(t => t.Columns.Where(c => char.IsLower(c.Name[0])).Select(c => $"{t.DbTableName}.{c.DbName}")).ToList();
             if (lowerCase.Count > 0)
                 report.Warnings.Add($"column {string.Join(", ", lowerCase.Take(3))}{(lowerCase.Count > 3 ? " and others" : "")} starts with a lower-case letter, which the WinUI3 and Uno view models cannot use as a property name; set NamingStyle=Pascal in the project (the SQL keeps the real names).");
         }

@@ -124,6 +124,9 @@ public static class StrategyRules
             values.Add(new("DatabaseServer", databaseServer ?? ""));
             values.Add(new("DatabaseUser", databaseUser ?? ""));
         }
+        // the desktop view models turn a field into a property by capitalising its first letter, so a lower-case column name breaks them
+        if (choice.Ui is StrategyUi.WinUI3 or StrategyUi.Uno)
+            values.Add(new("NamingStyle", "Pascal"));
         if (choice.Access is StrategyAccess.Routines or StrategyAccess.Ef)
             values.Add(new("AccessMode", choice.Access.ToString()!));
         if (choice.Style == StrategyStyle.OData)
