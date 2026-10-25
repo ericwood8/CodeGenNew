@@ -31,9 +31,9 @@ public class BlankLookupOptionTests
     [DataRow("UNO_DetailScreen_v1.tt")]
     public async Task An_optional_lookup_starts_its_options_with_a_blank_entry(string template)
     {
-        string vm = await ViewModel(template);
+        string vm = System.Text.RegularExpressions.Regex.Replace(await ViewModel(template), @"\s+", " ");
         Expect.Contains(vm, "public int? Id { get; set; }");
-        Expect.Contains(vm, "EmployeeOptions.Clear();\n        EmployeeOptions.Add(new E_DonateLeaveDetailLookupOption { Text = \"\" });");
+        Expect.Contains(vm, "EmployeeOptions.Clear(); EmployeeOptions.Add(new E_DonateLeaveDetailLookupOption { Text = \"\" });");
     }
 
     [TestMethod]
