@@ -48,7 +48,9 @@
 
         // ==== assemble
         var headUsings = usings.ToList();
-        if (Model.DatabaseTableName is not null) usesSchema = true; // [Table("customer_item")] below
+        // a table outside the database's default schema (Production.Product) needs its schema said, or EF looks for dbo.Product
+        bool outsideDefaultSchema = (Model.Dialect == SqlDialect.SqlServer && !Model.SchemaName.EqualsIgnoreCase("dbo")) || (Model.Dialect == SqlDialect.PostgreSql && !Model.SchemaName.EqualsIgnoreCase("public"));
+        if (Model.DatabaseTableName is not null || outsideDefaultSchema) usesSchema = true; // [Table("customer_item")] below
         if (usesSchema && !headUsings.Contains("System.ComponentModel.DataAnnotations.Schema"))
             headUsings.Insert(0, "System.ComponentModel.DataAnnotations.Schema");
         if (!headUsings.Contains("System.Diagnostics.CodeAnalysis"))
@@ -61,7 +63,7 @@
         L($"namespace {entityNamespace};");
         L();
         string className = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
-        if (Model.DatabaseTableName is not null) L($"[Table(\"{Model.DatabaseTableName}\")]");
+        if (Model.DatabaseTableName is not null || outsideDefaultSchema) L($"[Table(\"{Model.DatabaseTableName ?? Model.TableName}\"{(outsideDefaultSchema ? $", Schema = \"{Model.SchemaName}\"" : "")})]");
         L($"public class {className} : {baseClass}");
         L("{");
         // a new row is made with `new {Table}()` and filled in afterwards, which C# refuses for a "required" property (CS9035) unless the constructor says it set them

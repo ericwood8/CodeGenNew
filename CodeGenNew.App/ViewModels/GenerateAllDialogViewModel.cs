@@ -86,6 +86,8 @@ public partial class GenerateAllDialogViewModel : StatusMessageViewModel
     /// <summary> The database technology of the open connection, shown and not changeable. </summary>
     public string DatabaseText { get; }
 
+    public string DatabaseLine => "Database technology: " + DatabaseText;
+
     public bool IsNewProject => SelectedProject == NewProjectEntry;
     public bool IsSavedProject => !IsNewProject;
     public bool ApiChoicesEnabled => IsNewProject && SelectedUi is { } ui && ui.Value != (int)StrategyUi.WinUI3;

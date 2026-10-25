@@ -809,7 +809,7 @@ public class KeyTypeTests
     {
         var files = BlazorFiles(await Render("WinUI3_DetailScreen_v1.tt", Observance()));
         string vm = files["ObservanceDetailViewModel.cs"];
-        Expect.Contains(vm, "public class ObservanceDetailLookupOptionString\n{\n    public string Id { get; set; } = \"\";");
+        Expect.Contains(vm, "public class ObservanceDetailLookupOptionString\n{\n    public string? Id { get; set; }");
         Expect.Contains(vm, "public ObservableCollection<ObservanceDetailLookupOptionString> CountryOptions { get; } = [];");
         Expect.Contains(vm, "private string? _countryCode;");
         Expect.Contains(vm, "entity.CountryCode = CountryCode;");

@@ -309,7 +309,7 @@ namespace <#= viewModelNamespace #>;
 /// <summary> One entry of a <#= table #>DetailDialog drop-down: an id plus the text to show for it. </summary>
 public class <#= WinUI3Names.LookupOptionClass(table, "Detail", "int") #>
 {
-    public int Id { get; set; }
+    public int? Id { get; set; }
     public string Text { get; set; } = "";
 }
 <#
@@ -321,7 +321,7 @@ public class <#= WinUI3Names.LookupOptionClass(table, "Detail", "int") #>
 /// <summary> One entry of a <#= table #>DetailDialog drop-down whose ids are <#= optionKey #>: an id plus the text to show for it. </summary>
 public class <#= WinUI3Names.LookupOptionClass(table, "Detail", optionKey) #>
 {
-    public <#= optionKey #> Id { get; set; }<#= optionKey == "string" ? " = \"\";" : "" #>
+    public <#= optionKey #>? Id { get; set; }
     public string Text { get; set; } = "";
 }
 <#
@@ -486,6 +486,14 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
             }
 #>
         <#= WinUI3Names.OptionsProperty(p) #>.Clear();
+<#
+            if (lookupColumnsForThisParent.Any(c => !form.IsRequired(c)))
+            {
+#>
+        <#= WinUI3Names.OptionsProperty(p) #>.Add(new <#= WinUI3Names.LookupOptionClass(table, "Detail", p.KeyCs) #> { Text = "" });
+<#
+            }
+#>
         foreach (var row in (await _api.<#= UnoNames.ClientProperty(p.Table) #>.<#= BlazorNames.LoadCall(p) #>()).OrderBy(r => r.<#= BlazorNames.DisplayProperty(p) #>))
             <#= WinUI3Names.OptionsProperty(p) #>.Add(new <#= WinUI3Names.LookupOptionClass(table, "Detail", p.KeyCs) #> { Id = row.<#= BlazorNames.KeyProperty(p) #>, Text = row.<#= BlazorNames.DisplayProperty(p) #>?.ToString() ?? "" });
 <#

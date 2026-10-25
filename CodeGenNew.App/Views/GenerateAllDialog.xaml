@@ -33,8 +33,7 @@
                         <ComboBox x:Name="ProjectCombo" Header="Project" AccessKey="P" ItemsSource="{x:Bind ViewModel.Projects}" SelectedItem="{x:Bind ViewModel.SelectedProject, Mode=TwoWay}" MinWidth="320"
                                   ToolTipService.ToolTip="New from choices saves a project from the technologies picked here; a saved project keeps its own settings." />
                         <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.IsNewProject, Mode=OneWay}">
-                            <TextBox Header="Database technology" Text="{x:Bind ViewModel.DatabaseText}" IsReadOnly="True" IsTabStop="False"
-                                     ToolTipService.ToolTip="Taken from the open connection." />
+                            <TextBlock Text="{x:Bind ViewModel.DatabaseLine}" ToolTipService.ToolTip="Taken from the open connection." />
                             <ComboBox Header="UI technology" AccessKey="U" ItemsSource="{x:Bind ViewModel.UiChoices}" SelectedItem="{x:Bind ViewModel.SelectedUi, Mode=TwoWay}" MinWidth="320"
                                       ToolTipService.ToolTip="One UI per run. WinUI3 reads the database directly and needs no API choice." />
                             <ComboBox Header="API access mode" AccessKey="M" ItemsSource="{x:Bind ViewModel.AccessChoices}" SelectedItem="{x:Bind ViewModel.SelectedAccess, Mode=TwoWay}" MinWidth="320"
