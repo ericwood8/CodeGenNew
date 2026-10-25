@@ -32,6 +32,14 @@ public class EnumNameColumnTests
     }
 
     [TestMethod]
+    public void An_empty_lookup_table_is_not_an_enum_until_it_has_rows()
+    {
+        var project = ProjectSettings.FromValues([new("ProjectName", "Acme")]);
+        Assert.IsFalse(project.IsEnumTable("MachineRequest", new LookupShape(true, 0)));
+        Assert.IsTrue(project.IsEnumTable("MachineRequest", new LookupShape(true, 3)));
+    }
+
+    [TestMethod]
     public void A_desktop_strategy_project_uses_pascal_names()
     {
         var settings = StrategyRules.ToSettings(new StrategyChoice(SqlDialect.SqlServer, StrategyUi.WinUI3, null, null, null), "Acme", "Db", "srv");

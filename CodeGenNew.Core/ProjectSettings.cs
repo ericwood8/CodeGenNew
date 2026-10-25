@@ -804,7 +804,8 @@ public partial class ProjectSettings
             return null;
         if (EnumTables is { } listed)
             return listed.Contains(table, StringComparer.OrdinalIgnoreCase);
-        return shape.RowCount <= EnumMaxRows && (shape.LooksLikeLookup || (shape.HasIntKeyAndText && NameSaysEnum(table)));
+        // an enum's members are the table's rows, so an empty table stays an ordinary table until it is loaded
+        return shape.RowCount is > 0 && shape.RowCount <= EnumMaxRows && (shape.LooksLikeLookup || (shape.HasIntKeyAndText && NameSaysEnum(table)));
     }
 
     // Each of the four questions the templates ask about an enum table has its own optional list in the project file
