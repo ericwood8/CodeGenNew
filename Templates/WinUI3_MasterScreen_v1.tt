@@ -660,7 +660,7 @@ public partial class <#= table #>ListViewModel : ViewModelBase
         {
 #>
     // A DbContext is not thread-safe: a load and the suggestions of a type-ahead take turns.
-    private readonly System.Threading.SemaphoreSlim _gate = new(1, 1);
+    private System.Threading.SemaphoreSlim _gate => ContextGate;
 
     public Task LoadAsync() => RunBusyAsync(async () =>
     {

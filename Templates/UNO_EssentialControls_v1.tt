@@ -48,6 +48,9 @@ public abstract partial class ViewModelBase : ObservableObject
     }
 
     private int _busyDepth;
+
+    /// <summary> The one context of the app is not thread-safe, and a page can start loading while the page before it still is: every view model takes turns on this gate. </summary>
+    protected static readonly System.Threading.SemaphoreSlim ContextGate = new(1, 1);
 }
 @@@FILE <#= viewsFolder #>/BusyOverlay.xaml@@@
 <UserControl

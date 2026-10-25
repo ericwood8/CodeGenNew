@@ -358,7 +358,7 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
         {
 #>
     // A DbContext is not thread-safe: loading the dialog and the suggestions of a type-ahead take turns.
-    private readonly System.Threading.SemaphoreSlim _gate = new(1, 1);
+    private System.Threading.SemaphoreSlim _gate => ContextGate;
 
 <#
         }

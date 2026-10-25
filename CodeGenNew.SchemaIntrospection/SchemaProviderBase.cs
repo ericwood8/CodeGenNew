@@ -248,6 +248,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
         var displayColumnsByTable = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         var displayDbColumnsByTable = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         var lookupShapeByTable = new Dictionary<string, LookupShape>(StringComparer.OrdinalIgnoreCase);
+        var primaryKeyByTable = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         var result = new List<ForeignKeyModel>();
 
         foreach (var fk in foreignKeys)
@@ -265,6 +266,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
                 displayColumns = displayModels.Select(c => c.Name).ToList();
                 displayColumnsByTable[referencedName] = displayColumns;
                 displayDbColumnsByTable[referencedName] = displayModels.Select(c => c.DbName).ToList();
+                primaryKeyByTable[referencedName] = referencedColumns.Where(c => c.IsPrimaryKey).Select(c => c.Name).ToList();
                 lookupShapeByTable[referencedName] = new LookupShape(
                     LookupShape.Looks(referencedColumns, referencedForeignKeys.Count),
                     await ReadRowCountAsync(connection, fk.ReferencedSchema, fk.ReferencedDbTable, cancellationToken),
@@ -284,7 +286,9 @@ public abstract class SchemaProviderBase : ISchemaProvider
                 ReferencedDatabaseColumns = fk.ReferencedDatabaseColumns,
                 ReferencedDisplayColumns = displayColumns,
                 ReferencedDisplayDatabaseColumns = _naming == NamingStyle.AsIs ? null : displayDbColumnsByTable[referencedName],
-                ReferencedLookupShape = lookupShapeByTable[referencedName]
+                ReferencedLookupShape = lookupShapeByTable[referencedName],
+                ReferencesPrimaryKey = fk.ReferencedColumns.Count == primaryKeyByTable[referencedName].Count
+                    && fk.ReferencedColumns.All(c => primaryKeyByTable[referencedName].Contains(c, StringComparer.OrdinalIgnoreCase))
             });
         }
 

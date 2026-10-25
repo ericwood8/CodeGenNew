@@ -18,7 +18,7 @@ public static class EntityNavigations
         foreach (var column in model.Columns.Where(c => foreignKeyByColumn.ContainsKey(c.Name) && !c.IsPrimaryKey))
         {
             var fk = foreignKeyByColumn[column.Name];
-            if (skip(fk))
+            if (skip(fk) || !fk.ReferencesPrimaryKey)
                 continue;
 
             string role = column.Name.Length > 2 && column.Name.EndsWith("Id", StringComparison.Ordinal) ? column.Name[..^2] : column.Name + "Ref";

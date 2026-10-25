@@ -31,4 +31,8 @@ public class ForeignKeyModel
     /// <summary> Whether the referenced table looks like a small lookup table (see LookupShape). Always read, not
     /// gated behind a .tt.config flag; the default (not known) is never an enum. </summary>
     public LookupShape ReferencedLookupShape { get; init; }
+
+    /// <summary> False when the key points at a column that is not the parent's primary key (an alternate key). Such a key gets no navigation property and no drop-down:
+    /// EF Core would make the alternate key column required, and a parent row with no value there could not be read. </summary>
+    public bool ReferencesPrimaryKey { get; init; } = true;
 }

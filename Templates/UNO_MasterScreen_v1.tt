@@ -695,7 +695,7 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
         {
 #>
     // A load and the suggestions of a type-ahead take turns, so an old answer never replaces a newer one.
-    private readonly System.Threading.SemaphoreSlim _gate = new(1, 1);
+    private System.Threading.SemaphoreSlim _gate => ContextGate;
 
 <#
         }

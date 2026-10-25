@@ -79,6 +79,7 @@ public sealed class FormModel
         KeyType.Of(column) is not null
         && _foreignKeyByColumn.TryGetValue(column.Name, out var fk)
         && !_project.NoLookupFor(fk.ReferencedTable, fk.ReferencedLookupShape)
+        && fk.ReferencesPrimaryKey
         && fk.ReferencedDisplayColumns.Count > 0
             ? fk : null;
 
