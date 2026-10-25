@@ -1,6 +1,7 @@
 <#@ template language="C#" #>
 <#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
 <#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="System.Linq" #>
 <#@ import namespace="System.Text" #>
 <#@ import namespace="CodeGenNew.Core" #>
@@ -97,6 +98,17 @@
         Line("    }");
     }
     var composite = Database.CompositeKeyTables;
+    // A foreign key to a column that is not the parent's primary key (an alternate key) has to say so: EF Core assumes the primary key and refuses the model otherwise.
+    var alternateKeys = new List<string>();
+    foreach (var table in contextTables)
+        foreach (var nav in EntityNavigations.Of(table, fk => Project.NoNavigationFor(fk.ReferencedTable, fk.ReferencedLookupShape)))
+        {
+            var parent = contextTables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(nav.Type));
+            if (parent is null || nav.ForeignKey.ReferencedColumns.Count != 1 || parent.PrimaryKeyColumns.Any(k => k.Name.EqualsIgnoreCase(nav.ForeignKey.ReferencedColumns[0])))
+                continue;
+            string parentKey = parent.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(nav.ForeignKey.ReferencedColumns[0]))?.CSharpName() ?? nav.ForeignKey.ReferencedColumns[0];
+            alternateKeys.Add($"        modelBuilder.Entity<{table.TableName}>().HasOne(e => e.{nav.Role}).WithMany().HasForeignKey(e => e.{nav.Column.CSharpName()}).HasPrincipalKey(p => p.{parentKey});");
+        }
     if (Project.EfConfigurations)
     {
         Line();
@@ -105,18 +117,22 @@
         Line("    protected override void OnModelCreating(ModelBuilder modelBuilder)");
         Line("    {");
         Line($"        modelBuilder.ApplyConfigurationsFromAssembly(typeof({contextType}).Assembly);");
+        foreach (string alternate in alternateKeys)
+            Line(alternate);
         Line("        OnModelCreatingPartial(modelBuilder);");
         Line("    }");
         Line();
         Line("    partial void OnModelCreatingPartial(ModelBuilder modelBuilder);");
     }
-    else if (composite.Count > 0 || textColumns.Count > 0)
+    else if (composite.Count > 0 || textColumns.Count > 0 || alternateKeys.Count > 0)
     {
         Line();
         if (composite.Count > 0)
             Line("    // A composite primary key cannot be said with an attribute, so the key of each junction table is named here.");
         if (textColumns.Count > 0)
             Line("    // A column of an array, interval, range, geometric or spatial type is text in the entity; its converter (PgText or MySqlSpatial, below) turns the text into what the database stores.");
+        if (alternateKeys.Count > 0)
+            Line("    // A foreign key to a column that is not the parent's primary key names that column here.");
         Line("    // Extra model configuration of your own goes in OnModelCreatingPartial, in another part of this class.");
         Line("    protected override void OnModelCreating(ModelBuilder modelBuilder)");
         Line("    {");
@@ -124,6 +140,8 @@
             Line($"        modelBuilder.Entity<{table.TableName}>().HasKey(e => new {{ {string.Join(", ", table.PrimaryKeyColumns.Select(c => "e." + (c.IsCSharpReservedWordName ? "@" : "") + c.Name))} }});");
         foreach (var (table, column) in textColumns)
             Line($"        modelBuilder.Entity<{table.TableName}>().Property(e => e.{(column.IsCSharpReservedWordName ? "@" : "")}{column.Name}).HasConversion({TextConversion.Of(column)!.Expression}){(TextConversion.Of(column)!.ColumnType is { } columnType ? $".HasColumnType({CSharpText.Quote(columnType)})" : "")};");
+        foreach (string alternate in alternateKeys)
+            Line(alternate);
         Line("        OnModelCreatingPartial(modelBuilder);");
         Line("    }");
         Line();
