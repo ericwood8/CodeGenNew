@@ -555,9 +555,20 @@ public partial class ProjectSettings
         "rust" => Explicit("OutputRust") ?? (ProjectName ?? "MyApp") + ".Rust",
         "apitests" => Explicit("OutputApiTests") ?? (ProjectName ?? "MyApp") + ".Api.Tests",
         "blazortests" => Explicit("OutputBlazorTests") ?? (ProjectName ?? "MyApp") + ".Blazor.Tests",
-        "sql" => Explicit("OutputSql") ?? "sql",
+        "sql" => Explicit("OutputSql") ?? SqlFolderBesideCode(),
         _ => root
     });
+
+    /// <summary> The SQL goes inside the project's own code folder (<c>&lt;ProjectName&gt;.App/sql</c> for a desktop app, else the API's), so it travels with the other files. A project with no name keeps <c>sql</c>. </summary>
+    private string SqlFolderBesideCode()
+    {
+        if (ProjectName is null)
+            return "sql";
+        string root = Stacks.Any(s => s.EqualsIgnoreCase("WinUI3")) ? OutputFolderOf("winui3")
+            : Stacks.Any(s => s.EqualsIgnoreCase("Uno")) ? OutputFolderOf("uno")
+            : OutputFolderOf("api");
+        return Path.Combine(root, "sql");
+    }
 
     /// <summary> The WinUI3 app's root namespace (App.xaml, MainWindow, GlobalUsings): <c>&lt;ProjectName&gt;.App</c> unless AppNamespace says otherwise. </summary>
     public string AppNamespace => Explicit("AppNamespace")

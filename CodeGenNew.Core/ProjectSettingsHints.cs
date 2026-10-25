@@ -151,7 +151,7 @@ public static class ProjectSettingsHints
         ["OutputRust"] = "folder of the Rust API; blank = <ProjectName>.Rust",
         ["RustCrateName"] = "the crate name of the Rust API; blank = the project name in snake_case",
         ["RustPort"] = "the port the Rust API listens on; blank = ApiPort (5080)",
-        ["OutputSql"] = "folder of the generated SQL; blank = sql",
+        ["OutputSql"] = "folder of the generated SQL; blank = <ProjectName>.App/sql",
         ["AppNamespace"] = "root namespace of the WinUI3 app; blank = <ProjectName>.App",
         ["DatabaseProvider"] = "SqlServer, PostgreSql, MySql or Sqlite (appsettings.json and the package reference); blank = SqlServer",
         ["DatabaseServer"] = "server for appsettings.json; blank = localhost",

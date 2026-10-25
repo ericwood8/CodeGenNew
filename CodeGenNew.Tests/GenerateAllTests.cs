@@ -131,7 +131,7 @@ public class GenerateAllTests
         Assert.IsTrue(File.Exists(Api("Data/AcmeContext.cs")));
         Assert.IsTrue(File.Exists(System.IO.Path.Combine(temp.Path, "frontend", "src", "models", "employee.ts")));
         Assert.IsTrue(File.Exists(System.IO.Path.Combine(temp.Path, "frontend", "src", "pages", "DepartmentDetailMasterPage.tsx")));
-        Assert.IsTrue(File.Exists(System.IO.Path.Combine(temp.Path, "sql", "Employee_Search.sql")));
+        Assert.IsTrue(File.Exists(System.IO.Path.Combine(temp.Path, "Acme.Api", "sql", "Employee_Search.sql")));
         Assert.IsGreaterThan(20, first.Count(FileOutcomeKind.Created));
         Assert.AreEqual(0, first.Count(FileOutcomeKind.Updated));
 

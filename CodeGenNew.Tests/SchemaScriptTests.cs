@@ -193,8 +193,8 @@ public class SchemaScriptTests
         var own = await Repo.Cache.RunAsync(Repo.Template("API_EssentialTests_v1.tt"), Project(("ApiTests", "true"), ("ApiTestContainers", "true"), ("DatabaseProvider", "PostgreSql"), ("ApiTestSchema", "db/create.sql")));
         Assert.IsTrue(plain.Success && ef.Success && own.Success, string.Join(" | ", plain.Errors.Concat(ef.Errors).Concat(own.Errors)));
 
-        Expect.Contains(plain.GeneratedText!, "SchemaScripts = [\"../sql/CreateSchema.sql\", \"../sql\"];");
-        Expect.Contains(ef.GeneratedText!, "SchemaScripts = [\"../sql/CreateSchema.sql\"];");
+        Expect.Contains(plain.GeneratedText!, "SchemaScripts = [\"sql/CreateSchema.sql\", \"sql\"];");
+        Expect.Contains(ef.GeneratedText!, "SchemaScripts = [\"sql/CreateSchema.sql\"];");
         Expect.Contains(own.GeneratedText!, "SchemaScripts = [\"db/create.sql\"];");
         Expect.Contains(plain.GeneratedText!, ".Where(seen.Add)");
     }
