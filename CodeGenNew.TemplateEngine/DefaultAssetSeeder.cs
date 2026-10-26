@@ -206,6 +206,8 @@ public static class DefaultAssetSeeder
         "SP_ApprovalTable_v1.tt", "SP_ApprovalTable_v1.tt.config",
         "API_Approvals_v1.tt", "API_Approvals_v1.tt.config",
         "TSX_Approvals_v1.tt", "TSX_Approvals_v1.tt.config",
+        "PY_Approvals_v1.tt", "PY_Approvals_v1.tt.config",
+        "RS_Approvals_v1.tt", "RS_Approvals_v1.tt.config",
         "TS_Approvals_v1.tt", "TS_Approvals_v1.tt.config",
         "BLZ_Approvals_v1.tt", "BLZ_Approvals_v1.tt.config",
         "UNO_Approvals_v1.tt", "UNO_Approvals_v1.tt.config",

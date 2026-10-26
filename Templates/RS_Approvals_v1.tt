@@ -1,0 +1,26 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Approvals_v1.tt
+    // Generates: src/routes/approvals.rs   (whole-database; the path is written by the template)
+    // The Rust counterpart of API_Approvals: for each table of RowApprovals the routes request, approve, reject and withdraw, GET toapprove and GET {id}/approvals over the <Table>Approval side table, with
+    // the same sentences, problem types and status codes as the ASP.NET API (ApprovalWords and ApprovalWriter in Core). A decision is one guarded UPDATE of the Pending row inside a transaction; the
+    // requester and the approver are people of the user table, and an approver is never the requester. HOOKS.validate (no side effects, a fixed sentence) and HOOKS.on_decided (with the transaction) are
+    // the project's own rules. RS_Mod merges the router; axum prefers the fixed path toapprove to a table's /{id}. A ChangeGates clause approval is checked by RS_Gates. Needs ApiAuth, UserTable and the
+    // side tables (SP_ApprovalTable writes their script).
+    // Full notes: Docs/TemplateNotes/API_Approvals_v1.md
+    // ==========================================================================================
+    var plan = ApprovalPlan.Resolve(Database, Project);
+    if (plan.Problems.Count > 0)
+    {
+        Error(string.Join(" | ", plan.Problems));
+    }
+    else if (plan.Tables.Count > 0)
+    {
+        Write("@@@FILE src/routes/approvals.rs@@@\n" + RustApprovalWriter.File(plan, Project, Database.Dialect));
+    }
+#>

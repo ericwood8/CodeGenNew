@@ -305,7 +305,7 @@ public partial class ProjectSettings
             if (ApiDocs) yield return "API_OpenApi";
             if (OData) { yield return "API_OData"; yield return "TS_ODataService"; yield return "TS_ODataComponent"; yield return "TS_ODataDetailMasterComponent"; yield return "TSX_ODataApi"; yield return "TSX_ODataPage"; yield return "TSX_ODataDetailMasterPage"; yield return "BLZ_ODataClient"; yield return "BLZ_ODataPage"; yield return "UNO_ODataClient"; yield return "UNO_ODataPage"; }
             if (ApiAuth && (ChangeGates is not null || GuardedColumns is not null)) { yield return "API_Gates"; yield return "PY_Gates"; yield return "RS_Gates"; yield return "WinUI3_Gates"; }
-            if (ApiAuth && RowApprovals.Length > 0) { yield return "API_Approvals"; yield return "SP_ApprovalTable"; yield return "TSX_Approvals"; yield return "TS_Approvals"; yield return "BLZ_Approvals"; yield return "UNO_Approvals"; yield return "WinUI3_Approvals"; }
+            if (ApiAuth && RowApprovals.Length > 0) { yield return "API_Approvals"; yield return "SP_ApprovalTable"; yield return "PY_Approvals"; yield return "RS_Approvals"; yield return "TSX_Approvals"; yield return "TS_Approvals"; yield return "BLZ_Approvals"; yield return "UNO_Approvals"; yield return "WinUI3_Approvals"; }
             if (ApiAuth && UserTable is not null) { yield return "API_UserDirectory"; yield return "PY_UserDirectory"; yield return "RS_UserDirectory"; }
             if (ApiHttp) yield return "API_Http";
             if (ApiFakers) yield return "CS_Faker";

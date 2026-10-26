@@ -56,6 +56,11 @@
         Line("from app.auth import CurrentUser");
         foreach (var t in tables.Concat(holders).DistinctBy(t => Mod(t)).OrderBy(t => Mod(t), StringComparer.Ordinal))
             Line($"from app.models.{Mod(t)} import {Cls(t)}");
+        foreach (var approved in plan.Gates.Where(g => g.RequiresApproval).Select(g => g.Table).Distinct())
+        {
+            var approval = ApprovalPlan.Resolve(Database, Project).Tables.First(a => a.Table == approved);
+            Line($"from app.models.{Mod(approval.Side)} import {Cls(approval.Side)}");
+        }
         Line("from app.support import ApiError, ApiValidationError");
         Line();
         Line($"PROBLEM_CHANGE_NOT_ALLOWED = \"{ProblemTypes.ChangeNotAllowed}\"");
@@ -82,6 +87,18 @@
                 Line("    if not user.name:");
                 Line("        return False");
                 Line($"    return bool(session.scalar(select({userClass}.{Attr(guard.UserTable, guard.By)}).where({userClass}.{Attr(guard.UserTable, guard.UserNameColumn(Project))} == user.name)))");
+            }
+
+            if (gates.Any(g => g.RequiresApproval))
+            {
+                var approval = ApprovalPlan.Resolve(Database, Project).Tables.First(a => a.Table == table);
+                string side = Cls(approval.Side);
+                Line();
+                Line();
+                Line($"def row_approved_{module}(session: Session, row_id) -> bool:");
+                Line("    \"\"\"True when the latest request for the row was approved (RowApprovals).\"\"\"");
+                Line($"    status = session.scalar(select({side}.{Attr(approval.Side, approval.Status)}).where({side}.{Attr(approval.Side, approval.Link)} == row_id).order_by({side}.{Attr(approval.Side, approval.Revision)}.desc()))");
+                Line($"    return status == {ApprovalStatus.Approved}");
             }
 
             foreach (var gate in gates)
@@ -122,7 +139,9 @@
                     var referenced = holder.Columns.First(c => c.Name.EqualsIgnoreCase(via.ReferencedColumns[0]));
                     Line($"        parent_{fk.ToLowerInvariant()} = session.scalars(select({Cls(holder)}).where({Cls(holder)}.{Attr(holder, referenced)} == row.{Attr(table, fkColumn)})).first()");
                 }
-                Line($"        if ({when}){(unless.Length == 0 ? "" : $" and not ({unless})")}:");
+                if (gate.RequiresApproval)
+                    Line($"        approved = current is not None and row_approved_{module}(session, current.{T(table).Key.Name})");
+                Line($"        if ({when}){(unless.Length == 0 ? "" : $" and not ({unless})")}{(gate.RequiresApproval ? " and not approved" : "")}:");
                 Line($"            raise ApiError({HttpStatus.Conflict}, \"Change not allowed\", problem_type=PROBLEM_CHANGE_NOT_ALLOWED, detail={Str(message)})");
             }
 

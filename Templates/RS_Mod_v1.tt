@@ -44,6 +44,9 @@
     // the gates (RS_Gates) answer GET <route>/guards and hold the checks the tables' routes call
     if (Project.ApiAuth && (Project.ChangeGates is not null || Project.GuardedColumns is not null))
         routeModules.Add("gates");
+    // the approval routes (RS_Approvals) are one route file for the whole database
+    if (Project.ApiAuth && ApprovalPlan.Resolve(Database, Project).Tables.Count > 0)
+        routeModules.Add("approvals");
     foreach (string m in routeModules)
         Line($"pub mod {m};");
     Line();

@@ -1,6 +1,6 @@
 # API_Approvals_v1
 
-`Apis/Approvals.cs`: the approval of single rows, for the tables of `RowApprovals=TimeSheet,Expense`. Whole-database, written only when the project names a table. Needs `ApiAuth=true`, `UserTable` and `UserRoleColumn` as a yes/no column. The ASP.NET API, plus an approvals page in every front end (below).
+`Apis/Approvals.cs`: the approval of single rows, for the tables of `RowApprovals=TimeSheet,Expense`. Whole-database, written only when the project names a table. Needs `ApiAuth=true`, `UserTable` and `UserRoleColumn` as a yes/no column. The ASP.NET API, the same routes in the Python and Rust APIs (below), and an approvals page in every front end.
 
 ## The side table
 
@@ -30,9 +30,18 @@ Every front end gets one **Approvals** page and a menu entry, written when the p
 - A gate with the clause `approval` works in WinUI3 too (`WinUI3_Gates`).
 - Tests: Vitest (React), the Angular spec, bUnit with `BlazorTests=true`, `ApprovalsClientTests` (Uno) and `ApprovalServiceTests` (WinUI3, over SQLite) with `DesktopTests=true`.
 
+## Python and Rust
+
+`PY_Approvals` writes `app/routes/approvals.py` and `RS_Approvals` writes `src/routes/approvals.rs`: the same routes, status codes, problem types and sentences as the ASP.NET API (`ApprovalWords` and `ApprovalWriter` in Core). Both read the user table for the requester and the approver, decide with one guarded UPDATE of the Pending row, and answer the same JSON (`id`, `rowId`, `revision`, `status`, `reason`, `requestedBy`, `requestedOn`, `decidedBy`, `decidedOn`, `decisionNote`).
+
+- **Python:** `PY_Mod` lists the approvals router before the tables' routers (their `/{id}` would read `toapprove` as a key). The hooks are `hooks.validate(event)` (no side effects; a sentence refuses) and `hooks.on_decided(event)`; the event carries the session, so what `on_decided` changes is committed with the decision.
+- **Rust:** axum prefers the fixed path `toapprove` to a table's `/{id}`. The side table has no model of its own (it has no CRUD API), so `approvals.rs` reads it into a struct written there. The hooks are `HOOKS.write().unwrap().validate = Some(f)` (a sync function returning a fixed sentence) and `on_decided` (an async function that receives the transaction, so its changes commit with the decision). The Rust stack reads PostgreSQL, MySQL and SQLite only.
+- **The gate clause `approval`:** `PY_Gates` and `RS_Gates` check it the same way (`row_approved_<table>`).
+- The Python and Rust APIs have no generated tests for approvals yet; the routes were checked with a scratch harness over SQLite (a stranger, a second request, a non-approver, the four eyes, withdrawal, deciding twice, the history, the gate holding until the latest request is approved, and the hooks), the same cases as the ASP.NET API.
+
 ## Not built
 
-A panel on each table's edit form (request and withdraw next to the row, its status in the grid): the page asks for the row by its number. More than one level, delegation, time limits and notification; an alternative that uses the table's own status column with a move table; Python and Rust APIs.
+A panel on each table's edit form (request and withdraw next to the row, its status in the grid): the page asks for the row by its number. More than one level, delegation, time limits and notification; an alternative that uses the table's own status column with a move table; generated tests for the Python and Rust routes.
 
 ## Checked
 

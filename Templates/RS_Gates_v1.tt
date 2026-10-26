@@ -119,6 +119,19 @@
                 Line("}");
             }
 
+            if (gates.Any(g => g.RequiresApproval))
+            {
+                var approval = ApprovalPlan.Resolve(Database, Project).Tables.First(a => a.Table == table);
+                var sideDi = DialectInfo.For(approval.Side.Dialect);
+                string sideSql = $"SELECT {sideDi.Quote(approval.Status.DbName)} FROM {sideDi.QuoteTable(approval.Side.SchemaName, approval.Side.DbTableName)} WHERE {sideDi.Quote(approval.Link.DbName)} = {sideDi.Placeholder(1)} ORDER BY {sideDi.Quote(approval.Revision.DbName)} DESC LIMIT 1";
+                Line();
+                Line("/// True when the latest request for the row was approved (RowApprovals).");
+                Line($"async fn row_approved_{module}(pool: &Pool, id: {t.Key.BaseType}) -> ApiResult<bool> {{");
+                Line($"    let status: Option<i32> = sqlx::query_scalar({RustTable.Raw(sideSql)}).bind(id).fetch_optional(pool).await?;");
+                Line($"    Ok(status == Some({ApprovalStatus.Approved}))");
+                Line("}");
+            }
+
             foreach (var gate in gates)
             {
                 var gateField = FieldOf(table, gate.Column);
@@ -163,6 +176,8 @@
                 Line($"        Some(current) => current.{column} != row.{column},");
                 Line("    };");
                 Line($"    if moves && {to} {{");
+                if (gate.RequiresApproval)
+                    Line($"        let approved = match current {{ Some(current) => row_approved_{module}(pool, current.{t.Key.Name}).await?, None => false }};");
                 foreach (var term in parentTerms.DistinctBy(ParentVar))
                 {
                     var via = term.Via!;
@@ -178,7 +193,8 @@
                     else
                         Line($"        let {ParentVar(term)}: Option<{valueType}> = sqlx::query_scalar::<_, {valueType}>({RustTable.Raw(sql)}).bind(&row.{fkField.Name}).fetch_optional(pool).await?;");
                 }
-                Line($"        if {(unless.Length == 0 ? when : $"({when}) && !({unless})")} {{");
+                string condition = unless.Length == 0 ? when : $"({when}) && !({unless})";
+                Line($"        if {(gate.RequiresApproval ? $"({condition}) && !approved" : condition)} {{");
                 Line($"            return Err(ApiError::Problem({HttpStatus.Conflict}, PROBLEM_CHANGE_NOT_ALLOWED, \"Change not allowed\", Some({Str(message)})));");
                 Line("        }");
                 Line("    }");
