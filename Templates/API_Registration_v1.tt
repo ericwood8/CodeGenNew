@@ -60,6 +60,11 @@
         Line();
         Line("        GatesApi.Register(app);");
     }
+    if (Project.ApiAuth && ApprovalPlan.Resolve(Database, Project).Tables.Count > 0)
+    {
+        Line();
+        Line("        ApprovalsApi.Register(app);");
+    }
     if (Project.Dashboard)
     {
         Line();

@@ -17,7 +17,8 @@ public abstract class GateFlavor
     /// <summary> The expression that answers a check when the row to change is gone. </summary>
     public abstract string NotFound { get; }
     public abstract string StartRefused(ChangeGate gate);
-    public abstract string Conflict(ChangeGate gate);
+    /// <summary> The answer for a held change; <paramref name="text"/> is the C# expression of its sentence. </summary>
+    public abstract string Conflict(ChangeGate gate, string text);
     public abstract string Forbidden(ColumnGuard guard);
     /// <summary> An expression of type <c>string?</c>: the name of the person who changes the row. </summary>
     public abstract string CallerName { get; }
@@ -38,8 +39,8 @@ public sealed class ApiGateFlavor : GateFlavor
     public override string StartRefused(ChangeGate gate) =>
         $"Results.ValidationProblem(new Dictionary<string, string[]> {{ [{CSharpText.Quote(JsonNames.Camel(gate.Column.Name))}] = [{CSharpText.Quote(gate.StartRefusal!)}] }})";
 
-    public override string Conflict(ChangeGate gate) =>
-        $"Results.Problem(statusCode: {HttpStatus.Conflict}, type: {CSharpText.Quote(ProblemTypes.ChangeNotAllowed)}, title: \"Change not allowed\", detail: {CSharpText.Quote(gate.RefusalText)})";
+    public override string Conflict(ChangeGate gate, string text) =>
+        $"Results.Problem(statusCode: {HttpStatus.Conflict}, type: {CSharpText.Quote(ProblemTypes.ChangeNotAllowed)}, title: \"Change not allowed\", detail: {text})";
 
     public override string Forbidden(ColumnGuard guard) =>
         $"Results.Problem(statusCode: {HttpStatus.Forbidden}, type: {CSharpText.Quote(ProblemTypes.ColumnNotYours)}, title: \"Not allowed\", detail: {CSharpText.Quote(guard.RefusalText)})";
@@ -70,7 +71,7 @@ public sealed class DesktopGateFlavor : GateFlavor
     public override string NotFound => CSharpText.Quote(NotFoundText);
     public override string CallerName => "DesktopCaller.Name";
     public override string StartRefused(ChangeGate gate) => CSharpText.Quote(gate.StartRefusal!);
-    public override string Conflict(ChangeGate gate) => CSharpText.Quote(gate.RefusalText);
+    public override string Conflict(ChangeGate gate, string text) => text;
     public override string Forbidden(ColumnGuard guard) => CSharpText.Quote(guard.RefusalText);
 
     public override IEnumerable<string> MayBody(ColumnGuard guard, ProjectSettings project, string contextType)
@@ -92,15 +93,46 @@ public sealed class DesktopGateFlavor : GateFlavor
 public static class GateWriter
 {
     /// <summary> One static class per gated table, whole lines ending in a line feed. </summary>
-    public static string Tables(GatePlan plan, string contextType, ProjectSettings project, GateFlavor flavor)
+    public static string Tables(GatePlan plan, DatabaseModel database, string contextType, ProjectSettings project, GateFlavor flavor)
     {
         var sb = new StringBuilder();
         foreach (var gated in plan.Tables)
-            Table(sb, gated, contextType, project, flavor);
+            Table(sb, gated, database, contextType, project, flavor);
         return sb.ToString();
     }
 
-    private static void Table(StringBuilder sb, GatedTable gated, string contextType, ProjectSettings project, GateFlavor flavor)
+    private static string NameKey(ForeignKeyModel fk) => fk.ReferencedTable;
+
+    /// <summary> The referenced table's entity, key, display column and key type; null when the table has no column worth showing (then the id stays in the sentence). </summary>
+    private static (string Entity, string Key, string Display, string KeyType)? LookupOf(ForeignKeyModel fk, DatabaseModel database)
+    {
+        var table = database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(fk.ReferencedTable));
+        var key = table?.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[0]));
+        if (table is null || key is null)
+            return null;
+        var display = table.Columns.ToList().SelectDisplayColumns(table.ForeignKeys.SelectMany(f => f.ReferencingColumns).ToList()).FirstOrDefault();
+        return display is null ? null : (table.TableName, key.CSharpName(), display.CSharpName(), table.PrimaryKeyType?.CSharp ?? "int");
+    }
+
+    /// <summary> The C# expression of a held change's sentence: the project's own message as it is, else the default sentence with each id of a lookup (a status) said as its name, read when the change is refused. </summary>
+    private static string RefusalExpression(ChangeGate gate, DatabaseModel database)
+    {
+        if (gate.Message is not null || !gate.NamedTerms.Any(t => LookupOf(t.NamedBy!, database) is not null))
+            return CSharpText.Quote(gate.RefusalText);
+        const char open = '', close = '';
+        string text = gate.RefusalWith((term, value) =>
+        {
+            if (term.NamedBy is not { } fk || LookupOf(fk, database) is not { } lookup)
+                return value;
+            return $"{open}await {lookup.Entity}NameAsync(context, {value}){close}";
+        });
+        var o = new StringBuilder("$\"");
+        foreach (char c in text)
+            o.Append(c switch { open => "{", close => "}", '"' => "\\\"", '\\' => "\\\\", '{' => "{{", '}' => "}}", _ => c.ToString() });
+        return o.Append('"').ToString();
+    }
+
+    private static void Table(StringBuilder sb, GatedTable gated, DatabaseModel database, string contextType, ProjectSettings project, GateFlavor flavor)
     {
         void Line(string text = "") => sb.Append(text).Append('\n');
 
@@ -211,11 +243,32 @@ public static class GateWriter
                 Line($"            var parent_{fk} = await context.Set<{holder.TableName}>().AsNoTracking().Where(p => p.{referenced} == row.{fkColumn.CSharpName()})");
                 Line($"                .Select(p => new {{ {string.Join(", ", members)} }}).FirstOrDefaultAsync();");
             }
-            Line($"            if (({when}){(unless.Length == 0 ? "" : $" && !({unless})")})");
-            Line($"                return {flavor.Conflict(gate)};");
+            if (gate.RequiresApproval)
+                Line($"            bool approved = !isNew && await RowApprovedAsync(context, row.{key.CSharpName()});");
+            Line($"            if (({when}){(unless.Length == 0 ? "" : $" && !({unless})")}{(gate.RequiresApproval ? " && !approved" : "")})");
+            Line($"                return {flavor.Conflict(gate, RefusalExpression(gate, database))};");
             Line("        }");
             Line("        return null;");
             Line("    }");
+        }
+
+        if (gates.Any(g => g.RequiresApproval))
+        {
+            var approval = ApprovalPlan.Resolve(database, project).Tables.First(a => a.Table == table);
+            Line();
+            Line($"    /// <summary> True when the latest request for the row was approved (RowApprovals). </summary>");
+            Line($"    private static async Task<bool> RowApprovedAsync({contextType} context, {table.PrimaryKeyType?.CSharp ?? "int"} id) =>");
+            Line($"        await context.Set<{approval.Side.TableName}>().AsNoTracking().Where(a => a.{approval.Link.CSharpName()} == id).OrderByDescending(a => a.{approval.Revision.CSharpName()})");
+            Line($"            .Select(a => a.{approval.Status.CSharpName()}).FirstOrDefaultAsync() == {ApprovalStatus.Approved};");
+        }
+
+        foreach (var fk in gates.Where(g => g.Message is null).SelectMany(g => g.NamedTerms).Select(t => t.NamedBy!).Where(fk => LookupOf(fk, database) is not null).DistinctBy(NameKey))
+        {
+            var (entityName, keyName, displayName, keyType) = LookupOf(fk, database)!.Value;
+            Line();
+            Line($"    /// <summary> The name of a {entityName} row for a message, or its id when the row is gone. </summary>");
+            Line($"    private static async Task<string> {entityName}NameAsync({contextType} context, {keyType} id) =>");
+            Line($"        (await context.Set<{entityName}>().AsNoTracking().Where(r => r.{keyName} == id).Select(r => r.{displayName}).FirstOrDefaultAsync())?.ToString() ?? id.ToString();");
         }
 
         // a clone is a new row made without the request's body: it starts the way a new row does and the guarded columns do not carry the source's value over

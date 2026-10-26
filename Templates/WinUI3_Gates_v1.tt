@@ -50,7 +50,7 @@
         Line("    public static string? Name { get; set; } = Environment.UserName;");
         Line("}");
         Line();
-        sb.Append(GateWriter.Tables(plan, contextType, Project, new DesktopGateFlavor()));
+        sb.Append(GateWriter.Tables(plan, Database, contextType, Project, new DesktopGateFlavor()));
         Write(sb.ToString());
     }
 #>

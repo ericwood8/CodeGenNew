@@ -203,6 +203,8 @@ public static class DefaultAssetSeeder
         "API_Test_v1.tt", "API_Test_v1.tt.config",
         "SP_AuditTable_v1.tt", "SP_AuditTable_v1.tt.config",
         "SP_TemporalTable_v1.tt", "SP_TemporalTable_v1.tt.config",
+        "SP_ApprovalTable_v1.tt", "SP_ApprovalTable_v1.tt.config",
+        "API_Approvals_v1.tt", "API_Approvals_v1.tt.config",
         "CS_EssentialEditorConfig_v1.tt", "CS_EssentialEditorConfig_v1.tt.config",
         "TSX_EssentialGit_v1.tt", "TSX_EssentialGit_v1.tt.config",
         "TSX_EssentialDocker_v1.tt", "TSX_EssentialDocker_v1.tt.config",

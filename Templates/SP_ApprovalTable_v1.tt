@@ -1,0 +1,21 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // SP_ApprovalTable_v1.tt
+    // Generates: ApprovalTables.sql   (see OutputName in SP_ApprovalTable_v1.tt.config)
+    // The create script of the <Table>Approval side table of every table in RowApprovals, in the dialect of the source database: one row per request cycle (ApprovalStatusId Pending 1, Approved 2,
+    // Rejected 3, Withdrawn 4; Reason, RequestedBy, RequestedOn, DecidedBy, DecidedOn, DecisionNote, Revision). It writes nothing for a table whose side table exists. Review it, run it yourself and generate
+    // again: codegen never applies it. API_Approvals needs the table to exist.
+    // Full notes: Docs/TemplateNotes/API_Approvals_v1.md
+    // ==========================================================================================
+
+    var missing = Project.RowApprovals
+        .Where(t => Database.Tables.Any(x => x.TableName.EqualsIgnoreCase(t)) && !Database.Tables.Any(x => x.TableName.EqualsIgnoreCase(ApprovalPlan.SideName(t))))
+        .ToList();
+    foreach (string table in missing)
+        Write(ApprovalPlan.CreateScript(Database.Dialect, Database.Tables.First(x => x.TableName.EqualsIgnoreCase(table)).TableName) + "\n");
+#>

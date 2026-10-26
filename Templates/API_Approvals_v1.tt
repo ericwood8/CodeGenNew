@@ -1,0 +1,40 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string apiNamespace = "MyApp.ApiService.Apis";
+    string contextType = "MyAppContext";
+    string[] usings = { };   // namespaces the generated file must "using" (the context's)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    contextType = Project.ContextName ?? contextType;
+    apiNamespace = Project.ApiNamespace ?? apiNamespace;
+    usings = Project.Usings ?? usings;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // API_Approvals_v1.tt
+    // Generates: Approvals.cs   (see OutputName in API_Approvals_v1.tt.config)
+    // The approval of single rows (RowApprovals): for each table POST request, approve, reject and withdraw, GET toapprove and GET {id}/approvals, over a <Table>Approval side table with one row per request
+    // cycle. The requester and the approver are people of the user table; an approver is an administrator or a person whose role flag is set, never the person who made the request (four eyes). A decision is
+    // one guarded UPDATE of the Pending row in a transaction. ApprovalHooks.Validate (no side effects) and ApprovalHooks.OnDecided (in the decision's transaction) are the project's own rules. A ChangeGates
+    // rule with the clause approval is exempt once the row's latest request is approved. Needs ApiAuth=true, UserTable and the side tables (SP_ApprovalTable writes their create script).
+    // Full notes: Docs/TemplateNotes/API_Approvals_v1.md
+    // ==========================================================================================
+
+    var plan = ApprovalPlan.Resolve(Database, Project);
+    if (plan.Problems.Count > 0)
+    {
+        Error(string.Join(" | ", plan.Problems));
+    }
+    else if (plan.Tables.Count > 0)
+    {
+        Write("namespace " + apiNamespace + ";\n\n");
+        Write(ApprovalWriter.File(plan, contextType, usings));
+    }
+#>

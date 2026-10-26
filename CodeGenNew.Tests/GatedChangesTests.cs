@@ -121,7 +121,7 @@ public class GatedChangesTests
     [DataRow("SalesInvoice.InvoiceStatusId; to 2.5; when Customer.CustomerStatusId=2", "whole-number")]
     [DataRow("SalesInvoice.InvoiceStatusId; to 2; when Customer.CustomerStatusId ~ 2", "is not Column = value")]
     [DataRow("SalesInvoice.InvoiceStatusId; to 2; when Customer.IgnoreBadStatus > 0", "is not a number")]
-    [DataRow("SalesInvoice.InvoiceStatusId; to 2; when Customer.CustomerStatusId=2; soon 3", "is not to, when, unless, start or message")]
+    [DataRow("SalesInvoice.InvoiceStatusId; to 2; when Customer.CustomerStatusId=2; soon 3", "is not to, when, unless, start, approval or message")]
     [DataRow("SalesInvoice.SalesInvoiceId; to 2; when Customer.CustomerStatusId=2", "key or a computed column")]
     public void A_rule_that_does_not_fit_is_a_sentence_and_not_a_half_built_rule(string rule, string expected)
     {

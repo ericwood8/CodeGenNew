@@ -1,0 +1,31 @@
+# API_Approvals_v1
+
+`Apis/Approvals.cs`: the approval of single rows, for the tables of `RowApprovals=TimeSheet,Expense`. Whole-database, written only when the project names a table. Needs `ApiAuth=true`, `UserTable` and `UserRoleColumn` as a yes/no column. ASP.NET API only; no screen yet.
+
+## The side table
+
+Each table needs a `<Table>Approval` table, one row per request cycle. `SP_ApprovalTable` writes its create script (`Sql/ApprovalTables.sql`, in the dialect of the source database) for every table that lacks one. Review it, run it, generate again: until the table exists the run stops with that sentence. The columns are fixed: `<Table>ApprovalId` (whole-number key), `<Table>Id`, `ApprovalStatusId` (1 Pending, 2 Approved, 3 Rejected, 4 Withdrawn), `Reason`, `RequestedBy`, `RequestedOn`, `DecidedBy`, `DecidedOn`, `DecisionNote`, `Revision`. The side table gets no CRUD API of its own, since that would let a caller skip the four eyes.
+
+## Routes (all need a token)
+
+- `POST <route>/{id}/request` with `{ "reason": "..." }`: a new cycle, `Revision` one more than the last. 409 while a request is already waiting. The requester must be a person of the user table (403 `approval-requester-unknown` otherwise).
+- `POST <route>/{id}/approve` and `reject` with `{ "note": "..." }`: only an administrator or a person whose role flag is set (403 `approval-not-approver`), never the person who made the request (403 `approval-four-eyes`). The decision is one guarded UPDATE of the Pending row inside a transaction; a second decision of the same request is a 409 `approval-wrong-state`.
+- `POST <route>/{id}/withdraw`: only the requester, only while Pending.
+- `GET <route>/toapprove`: the requests waiting for a decision, without the caller's own; approvers only.
+- `GET <route>/{id}/approvals`: the history of a row, newest first.
+
+## The project's own rules
+
+`ApprovalHooks.Validate` runs before every action and must have no side effects: a sentence refuses it (409 `approval-refused`). `ApprovalHooks.OnDecided` runs after an approval or rejection is written and before it commits, with the same context, so what it changes is saved in the decision's transaction. Set them at start-up.
+
+## The gate
+
+A `ChangeGates` rule may end with the clause `approval`: the change that the rule holds is allowed once the row's latest request is Approved. A new request starts a new cycle, so a row that must be approved again asks again. A row edited after its approval is not asked again on its own.
+
+## Not built
+
+More than one level, delegation, time limits and notification; an alternative that uses the table's own status column with a move table; screens (Angular, React, Blazor, Uno, WinUI3); Python and Rust APIs.
+
+## Checked
+
+`RowApprovalsTests` (the plan, the script, the generated routes, the gate clause) and, over a scratch SQLite copy, the generated routes called with real principals: a stranger refused, a second request refused while waiting, a non-approver refused, a requester who is also an approver refused (four eyes), withdraw, decide twice, the history, the gate holding until the latest request is approved, and both hooks.

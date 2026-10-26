@@ -11,24 +11,35 @@ public enum GateOperator { Equal, NotEqual, Less, LessOrEqual, Greater, GreaterO
 public sealed record GateTerm(TableModel Table, ForeignKeyModel? Via, ColumnModel Column, GateOperator Operator, IReadOnlyList<string> Values)
 {
     /// <summary> The values as a message says them: <c>2</c>, <c>2, 3, 4</c>, <c>anything but 1</c>, <c>a value &gt; 1</c>. </summary>
-    public string ValueWords() => Operator switch
+    public string ValueWords(Func<GateTerm, string, string>? say = null)
     {
-        GateOperator.Equal or GateOperator.In => string.Join(", ", Values),
-        GateOperator.NotEqual => "anything but " + Values[0],
-        GateOperator.Less => "a value < " + Values[0],
-        GateOperator.LessOrEqual => "a value <= " + Values[0],
-        GateOperator.Greater => "a value > " + Values[0],
-        _ => "a value >= " + Values[0]
-    };
+        say ??= (_, value) => value;
+        string First() => say(this, Values[0]);
+        return Operator switch
+        {
+            GateOperator.Equal or GateOperator.In => string.Join(", ", Values.Select(v => say(this, v))),
+            GateOperator.NotEqual => "anything but " + First(),
+            GateOperator.Less => "a value < " + First(),
+            GateOperator.LessOrEqual => "a value <= " + First(),
+            GateOperator.Greater => "a value > " + First(),
+            _ => "a value >= " + First()
+        };
+    }
+
+    /// <summary> The foreign key of the term's column when its values are ids of a lookup row (a status table), so a message can say the name instead of the id; else null. Only
+    /// whole-number ids compared with <c>=</c>, <c>&lt;&gt;</c> or <c>in</c> are named. </summary>
+    public ForeignKeyModel? NamedBy => Operator is GateOperator.Equal or GateOperator.NotEqual or GateOperator.In && Column.IsIntegerColumn && Values.All(v => int.TryParse(v, out _))
+        ? Table.ForeignKeys.FirstOrDefault(fk => fk.ReferencingColumns.Count == 1 && fk.ReferencingColumns[0].EqualsIgnoreCase(Column.Name))
+        : null;
 
     /// <summary> The words of the comparison for a message: <c>Customer Status Id = 2</c>. </summary>
-    public string Words()
+    public string Words(Func<GateTerm, string, string>? say = null)
     {
         string column = GateCode.Words(Column);
         string parent = ScreenNames.Words(ScreenNames.BaseName(Table.TableName));
         string name = Via is null || column.StartsWith(parent, StringComparison.OrdinalIgnoreCase) ? column : parent + " " + column;
         string symbol = Operator switch { GateOperator.Equal => "=", GateOperator.NotEqual => "<>", GateOperator.Less => "<", GateOperator.LessOrEqual => "<=", GateOperator.Greater => ">", GateOperator.GreaterOrEqual => ">=", _ => "in" };
-        return $"{name} {symbol} {string.Join(", ", Values)}";
+        return $"{name} {symbol} {string.Join(", ", Values.Select(v => say is null ? v : say(this, v)))}";
     }
 }
 
@@ -36,17 +47,28 @@ public sealed record GateTerm(TableModel Table, ForeignKeyModel? Via, ColumnMode
 public sealed record GatePredicate(IReadOnlyList<IReadOnlyList<GateTerm>> AnyOf)
 {
     public IEnumerable<GateTerm> Terms => AnyOf.SelectMany(all => all);
-    public string Words() => string.Join(" or ", AnyOf.Select(all => string.Join(" and ", all.Select(t => t.Words()))));
+    public string Words(Func<GateTerm, string, string>? say = null) => string.Join(" or ", AnyOf.Select(all => string.Join(" and ", all.Select(t => t.Words(say)))));
 }
 
 /// <summary> A named column may not change to certain values while the <see cref="When"/> condition holds, unless <see cref="Unless"/> holds. A new row always starts as <see cref="Start"/> when that is given. </summary>
-public sealed record ChangeGate(TableModel Table, ColumnModel Column, GateTerm To, GatePredicate When, GatePredicate? Unless, string? Start, string? Message, string Text)
+public sealed record ChangeGate(TableModel Table, ColumnModel Column, GateTerm To, GatePredicate When, GatePredicate? Unless, string? Start, string? Message, string Text, bool RequiresApproval = false)
 {
+    /// <summary> The exemption as a message says it: the <c>unless</c> condition, and <c>approved</c> when the row's latest request (RowApprovals) was approved; null when there is none. </summary>
+    private string? UnlessWords(Func<GateTerm, string, string>? say) =>
+        Unless is null && !RequiresApproval ? null : string.Join(" or ", new[] { Unless?.Words(say), RequiresApproval ? "the row is approved" : null }.Where(w => w is not null));
+
     /// <summary> What the gate says in a comment: <c>not to 2, 3 while Customer Status = 2 unless Customer Ignore Bad Status = true</c>. </summary>
-    public string Description => $"not to {To.ValueWords()} while {When.Words()}" + (Unless is null ? "" : $" unless {Unless.Words()}");
+    public string Description => $"not to {To.ValueWords()} while {When.Words()}" + (UnlessWords(null) is { } unlessWords ? $" unless {unlessWords}" : "");
 
     /// <summary> The sentence of the 409 answer: the rule's own <c>message</c>, else one made from the rule. </summary>
-    public string RefusalText => Message ?? $"{GateCode.Words(Column)} cannot change to {To.ValueWords()} while {When.Words()}" + (Unless is null ? "" : $" unless {Unless.Words()}") + ".";
+    public string RefusalText => Message ?? RefusalWith(null);
+
+    /// <summary> The default sentence with each value passed through <paramref name="say"/> (which may name a lookup row instead of its id); the project's own <c>message</c> is not used. </summary>
+    public string RefusalWith(Func<GateTerm, string, string>? say) =>
+        $"{GateCode.Words(Column)} cannot change to {To.ValueWords(say)} while {When.Words(say)}" + (UnlessWords(say) is { } unlessWords ? $" unless {unlessWords}" : "") + ".";
+
+    /// <summary> Every term of the default sentence that can be said as a name: the new values and the conditions. </summary>
+    public IReadOnlyList<GateTerm> NamedTerms => new[] { To }.Concat(When.Terms).Concat(Unless?.Terms ?? []).Where(t => t.NamedBy is not null).ToList();
 
     /// <summary> The sentence of the 400 answer for a new row that does not start as <see cref="Start"/>; null when the rule has no start. </summary>
     public string? StartRefusal => Start is null ? null : $"A new {Labels.Words(Table.TableName)} always starts with {GateCode.Words(Column)} = {Start}.";
@@ -190,6 +212,14 @@ public sealed partial record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnly
         foreach (var table in gates.Select(g => g.Table).Concat(guards.Select(g => g.Table)).Distinct())
             if (UserTable.IsUserTable(table, project))
                 problems.Add($"{table.TableName} is the user table; its own rules (credentials, administrators) cannot be combined with a gate or a guard.");
+        foreach (var gate in gates.Where(g => g.RequiresApproval && !project.RowApprovals.Any(t => t.EqualsIgnoreCase(g.Table.TableName))))
+            problems.Add($"ChangeGates: {gate.Table.TableName}.{gate.Column.Name} has 'approval' but {gate.Table.TableName} is not in RowApprovals.");
+        if (gates.Any(g => g.RequiresApproval && project.RowApprovals.Any(t => t.EqualsIgnoreCase(g.Table.TableName))))
+        {
+            var approvals = ApprovalPlan.Resolve(database, project);
+            foreach (var gate in gates.Where(g => g.RequiresApproval && !approvals.Tables.Any(a => a.Table == g.Table)))
+                problems.Add($"ChangeGates: {gate.Table.TableName}.{gate.Column.Name} has 'approval' but the approval of {gate.Table.TableName} is not set up: " + (approvals.Problems.Count > 0 ? string.Join(" ", approvals.Problems) : "see RowApprovals."));
+        }
         foreach (var duplicate in gates.GroupBy(g => (g.Table, g.Column)).Where(g => g.Count() > 1))
             problems.Add($"ChangeGates names {duplicate.Key.Table.TableName}.{duplicate.Key.Column.Name} more than once.");
         foreach (var duplicate in guards.GroupBy(g => (g.Table, g.Column)).Where(g => g.Count() > 1))
@@ -209,6 +239,7 @@ public sealed partial record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnly
         GateTerm? to = null;
         GatePredicate? when = null, unless = null;
         string? start = null, message = null;
+        bool approval = false;
         foreach (string clause in clauses.Skip(1))
         {
             var (keyword, rest) = Keyword(clause);
@@ -231,15 +262,18 @@ public sealed partial record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnly
                 case "message":
                     message = Unquote(rest);
                     break;
+                case "approval":
+                    approval = true;
+                    break;
                 default:
-                    return (null, $"'{clause.Trim()}' is not to, when, unless, start or message.");
+                    return (null, $"'{clause.Trim()}' is not to, when, unless, start, approval or message.");
             }
         }
         if (to is null)
             return (null, "it needs 'to', the values the column may not change to (to 2,3,4 or to > 1).");
         if (when is null)
             return (null, "it needs 'when', the condition that holds the change (when Customer.CustomerStatusId=2).");
-        return (new ChangeGate(table!, column, to, when, unless, start, message, rule), null);
+        return (new ChangeGate(table!, column, to, when, unless, start, message, rule, approval), null);
     }
 
     // GuardedColumns: Customer.IgnoreBadStatus; by Employee.IsManager; stampBy IgnoreBadStatusBy; stampOn IgnoreBadStatusOn

@@ -47,7 +47,7 @@ public class TableModel
 
     /// <summary> True when API_Crud writes an API for the table under these project settings: a single whole-number key, not a name/active table, not one the project says has no repository (an enum). </summary>
     public bool HasCrudApi(ProjectSettings project) =>
-        PrimaryKeyShape == PrimaryKeyShape.SingleInt && !IsNameActiveTable && project.NoRepository(TableName, LookupShape) != true;
+        PrimaryKeyShape == PrimaryKeyShape.SingleInt && !IsNameActiveTable && project.NoRepository(TableName, LookupShape) != true && !project.IsApprovalSide(TableName);
 
     /// <summary> True when API_Crud writes an API for a table whose single key is a uniqueidentifier or text (<c>CrudApi&lt;TEntity, TRepo, TKey&gt;</c>), under the same exclusions as <see cref="HasCrudApi"/>.
     /// Only the ASP.NET API handles these tables so far; the other stacks (<see cref="HasCrudApi"/> is false for them) are moved to <see cref="KeyType"/> one at a time (spec item 103). </summary>

@@ -1,3 +1,8 @@
+CREATE TABLE CustomerStatus (
+    CustomerStatusId INTEGER PRIMARY KEY,
+    Description VARCHAR(30) NOT NULL
+);
+
 CREATE TABLE Employee (
     EmployeeId INTEGER PRIMARY KEY AUTOINCREMENT,
     FullName VARCHAR(40) NOT NULL,
@@ -10,7 +15,7 @@ CREATE TABLE Employee (
 CREATE TABLE Customer (
     CustomerId INTEGER PRIMARY KEY AUTOINCREMENT,
     CustomerName VARCHAR(40) NOT NULL,
-    CustomerStatusId INTEGER NOT NULL DEFAULT 1,
+    CustomerStatusId INTEGER NOT NULL DEFAULT 1 REFERENCES CustomerStatus (CustomerStatusId),
     IgnoreBadStatus BOOLEAN NOT NULL DEFAULT 0,
     IgnoreBadStatusBy VARCHAR(30) NULL,
     IgnoreBadStatusOn DATETIME NULL

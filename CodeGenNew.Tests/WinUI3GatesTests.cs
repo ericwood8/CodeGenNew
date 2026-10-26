@@ -21,7 +21,8 @@ public class WinUI3GatesTests
         foreach (string statement in new[]
         {
             "CREATE TABLE Employee (EmployeeId INTEGER PRIMARY KEY, FullName VARCHAR(40) NOT NULL, Login VARCHAR(30) NOT NULL, PasswordHash VARCHAR(200) NOT NULL, IsManager BOOLEAN NOT NULL, IsAdministrator BOOLEAN NOT NULL)",
-            "CREATE TABLE Customer (CustomerId INTEGER PRIMARY KEY, CustomerName VARCHAR(40) NOT NULL, CustomerStatusId INTEGER NOT NULL, IgnoreBadStatus BOOLEAN NOT NULL, IgnoreBadStatusBy VARCHAR(30) NULL, IgnoreBadStatusOn DATETIME NULL)",
+            "CREATE TABLE CustomerStatus (CustomerStatusId INTEGER PRIMARY KEY, Description VARCHAR(30) NOT NULL)",
+            "CREATE TABLE Customer (CustomerId INTEGER PRIMARY KEY, CustomerName VARCHAR(40) NOT NULL, CustomerStatusId INTEGER NOT NULL REFERENCES CustomerStatus (CustomerStatusId), IgnoreBadStatus BOOLEAN NOT NULL, IgnoreBadStatusBy VARCHAR(30) NULL, IgnoreBadStatusOn DATETIME NULL)",
             "CREATE TABLE SalesInvoice (SalesInvoiceId INTEGER PRIMARY KEY, CustomerId INTEGER NOT NULL REFERENCES Customer (CustomerId), InvoiceStatusId INTEGER NOT NULL, IsPrinted BOOLEAN NOT NULL, InvoiceDate DATE NOT NULL, Notes VARCHAR(200) NULL)"
         })
         {
@@ -84,6 +85,8 @@ public class WinUI3GatesTests
             Expect.Contains(gates, "public static async Task<string?> CheckAsync(ShopContext context, Customer row, bool isNew)");
             Expect.Contains(gates, "return \"A new Sales Invoice always starts with Invoice Status = 1.\";");
             Expect.Contains(gates, "context.Set<Employee>().AsNoTracking().Where(u => u.Login == name)");
+            Expect.Contains(gates, "while Customer Status = {await CustomerStatusNameAsync(context, 2)} unless Customer Ignore Bad Status = true.");
+            Expect.Contains(gates, "context.Set<CustomerStatus>().AsNoTracking().Where(r => r.CustomerStatusId == id).Select(r => r.Description)");
             Expect.DoesNotContain(gates, "ClaimsPrincipal");
             Expect.DoesNotContain(gates, "Results.");
 
