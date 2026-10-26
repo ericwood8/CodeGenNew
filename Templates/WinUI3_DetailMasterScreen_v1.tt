@@ -80,6 +80,8 @@
         // The child tables, decided in Core for every stack (ChildGrid): which ones get a grid, its heading and role, its key, and the foreign keys shown as names.
         // A raw id with no display name (the child's own key, or a foreign key to a table without one) is hidden; a foreign key with one shows that name.
         var children = DesktopChild.For(Model, Project, needsOwnKey: false);
+        var gridChildren = children.Where(ch => !ch.Editable).ToList();   // read-only grids; the others are tables of boxes (DesktopEditRows)
+        var editChildren = children.Where(ch => ch.Editable).ToList();
 #>
 @@@FILE <#= viewsFolder #>/<#= table #>DetailMasterDialog.xaml@@@
 <ContentDialog
@@ -154,10 +156,17 @@
         }
 #>
 
+<#
+        if (gridChildren.Count > 0)
+        {
+#>
             <TextBlock Text="Save this <#= title #> first to add or see child rows below." FontStyle="Italic"
                        Visibility="{x:Bind ViewModel.IsAddModeVisibility}" />
 <#
-        foreach (var child in children)
+        }
+#>
+<#
+        foreach (var child in gridChildren)
         {
 #>
 
@@ -254,6 +263,13 @@
             </Border>
 <#
         }
+        foreach (var child in editChildren)
+        {
+#>
+
+            <StackPanel x:Name="<#= child.Var #>EditHost" />
+<#
+        }
 #>
         </StackPanel>
     </ScrollViewer>
@@ -307,9 +323,46 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
 <#
         }
 #>
-        Loaded += (_, _) => _loading = ViewModel.LoadAsync();
+<#
+        foreach (var child in editChildren)
+        {
+#>
+        _<#= child.Var #>Panel = new <#= DesktopEditRows.PanelClass(table, child.Member) #>(ViewModel.<#= child.Var #>Edit, ViewModel.<#= child.Var #>Lookups);
+        <#= child.Var #>EditHost.Children.Add(_<#= child.Var #>Panel);
+<#
+        }
+#>
+        Loaded += (_, _) => _loading = <#= editChildren.Count > 0 ? "LoadAndShowAsync()" : "ViewModel.LoadAsync()" #>;
     }
 
+<#
+        foreach (var child in editChildren)
+        {
+#>
+    private readonly <#= DesktopEditRows.PanelClass(table, child.Member) #> _<#= child.Var #>Panel;
+<#
+        }
+        if (editChildren.Count > 0)
+        {
+#>
+
+    // The boxes of the editable rows list the parents' rows, so they are built again once those have been read.
+    private async System.Threading.Tasks.Task LoadAndShowAsync()
+    {
+        await ViewModel.LoadAsync();
+<#
+            foreach (var child in editChildren)
+            {
+#>
+        _<#= child.Var #>Panel.Refresh();
+<#
+            }
+#>
+    }
+
+<#
+        }
+#>
     // ShowAsync() returns when the dialog closes or hides to open a child's dialog, possibly before LoadAsync() finishes or while the child is still showing.
     // A DbContext is not thread-safe, so a caller about to reuse it calls this instead: it also waits for that load and for any child dialog opened from here.
     public async System.Threading.Tasks.Task<ContentDialogResult> ShowAndWaitAsync()
@@ -366,7 +419,7 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
         }
 #>
 <#
-        foreach (var child in children)
+        foreach (var child in gridChildren)
         {
             string childDialog = child.Table + (DatabaseModel.IsDetailMaster(child.Table, child.HasChildren, Project) ? "DetailMasterDialog" : "DetailDialog");
 #>
@@ -466,7 +519,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using <#= contextNamespace #>;
 using CommunityToolkit.Mvvm.ComponentModel;
-using Microsoft.EntityFrameworkCore;
+<#= editChildren.Count > 0 ? "using " + viewNamespace + ";\n" : "" #>using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml;
 <#
         foreach (string u in usings)
@@ -544,6 +597,27 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         }
 #>
     public Visibility IsAddModeVisibility => _editing is null ? Visibility.Visible : Visibility.Collapsed;
+<#
+        foreach (var child in editChildren)
+        {
+#>
+
+    public ObservableCollection<<#= DesktopEditRows.RowClass(table, child.Member) #>> <#= child.Var #>Edit { get; } = [];
+    public <#= DesktopEditRows.LookupsClass(table, child.Member) #> <#= child.Var #>Lookups { get; } = new();
+<#
+        }
+        if (editChildren.Count > 0)
+        {
+#>
+
+    // The first line of the editable rows that cannot be saved, as a sentence, or null when every line can.
+    private string? CheckEditRows()
+    {
+<#= DesktopEditRows.CheckLines(editChildren.Select(ch => (ch.Var, ch.Title))) #>        return null;
+    }
+<#
+        }
+#>
 
 <#
         foreach (var p in parents.Where(p => !p.TypeAhead))
@@ -590,7 +664,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 
 <#
         }
-        foreach (var child in children)
+        foreach (var child in gridChildren)
         {
 #>
     public ObservableCollection<<#= table #>ChildGridHeader> <#= child.Var #>ColumnHeaders { get; } = [];
@@ -832,7 +906,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
     }
 
 <#
-        foreach (var child in children)
+        foreach (var child in gridChildren)
         {
 #>
     private async Task Load<#= child.Member #>Async()
@@ -980,6 +1054,116 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 <#
         }
 #>
+<#
+        foreach (var child in editChildren)
+        {
+            var grid = child.Grid;
+            string rowClass = DesktopEditRows.RowClass(table, child.Member), option = DesktopEditRows.OptionClass(table);
+#>
+    // The <#= child.Title #> rows are boxes in the dialog: the lists they choose from are read first, then the rows of the row being edited.
+    private async Task Load<#= child.Member #>Async()
+    {
+        <#= child.Var #>Edit.Clear();
+<#
+            foreach (var c in grid.EditColumns.Where(c => grid.EditLookupOf(c) is not null))
+            {
+                var r = child.Resolvable.First(x => x.Column.EqualsIgnoreCase(c.Name));
+                if (grid.EditTypeAhead(c))
+                {
+#>
+        <#= child.Var #>Lookups.Find<#= c.CSharpName() #> = async text =>
+        {
+            string wanted = text.Trim().ToLower();
+            await ContextGate.WaitAsync();
+            try
+            {
+                var found = await _context.Set<<#= r.ReferencedTable #>>().AsNoTracking()
+                    .Where(r => r.<#= r.DisplayProp #>.ToString()!.ToLower().Contains(wanted))
+                    .OrderBy(r => r.<#= r.DisplayProp #>).Take(10)
+                    .Select(r => new { Id = r.<#= r.KeyProp #>, Text = r.<#= r.DisplayProp #> }).ToListAsync();
+                return found.Select(r => new <#= option #>(r.Id, r.Text?.ToString() ?? "")).ToList();
+            }
+            finally { ContextGate.Release(); }
+        };
+<#
+                }
+                else
+                {
+#>
+        <#= child.Var #>Lookups.<#= c.CSharpName() #>Options = (await _context.Set<<#= r.ReferencedTable #>>().AsNoTracking().OrderBy(r => r.<#= r.DisplayProp #>).ToListAsync())
+            .Select(r => new <#= option #>(r.<#= r.KeyProp #>, r.<#= r.DisplayProp #>?.ToString() ?? "")).ToList();
+<#
+                }
+            }
+#>
+        if (_editing is null)
+            return; // the rows of a new <#= title #> are added in the dialog
+
+        var rows = await _context.Set<<#= child.Table #>>().AsNoTracking()
+            .Where(c => EF.Property<<#= child.ParentKeyCs #>>(c, "<#= child.FkColumn #>") == _editing.<#= child.ParentKeyColumn #>)
+            .ToListAsync();
+        var lines = rows.Select(<#= rowClass #>.From).ToList();
+<#
+            foreach (var c in grid.EditColumns.Where(c => grid.EditTypeAhead(c)))
+            {
+                var r = child.Resolvable.First(x => x.Column.EqualsIgnoreCase(c.Name));
+#>
+        var wanted<#= c.CSharpName() #> = lines.Select(l => l.<#= c.CSharpName() #>).OfType<<#= r.KeyCs #>>().Distinct().ToList();
+        if (wanted<#= c.CSharpName() #>.Count > 0)
+        {
+            var names = await _context.Set<<#= r.ReferencedTable #>>().AsNoTracking().Where(p => wanted<#= c.CSharpName() #>.Contains(p.<#= r.KeyProp #>))
+                .ToDictionaryAsync(p => p.<#= r.KeyProp #>, p => p.<#= r.DisplayProp #>?.ToString() ?? "");
+            foreach (var line in lines)
+                if (line.<#= c.CSharpName() #> is { } id && names.TryGetValue(id, out string? name))
+                    line.<#= c.CSharpName() #>Text = name;
+        }
+<#
+            }
+#>
+        foreach (var line in lines)
+            <#= child.Var #>Edit.Add(line);
+    }
+
+<#
+        }
+        if (editChildren.Count > 0)
+        {
+#>
+    // Writes the editable rows after the row itself, in the same transaction: a line whose key is stored is updated, a line without one is added, and a stored row that is no longer listed is removed.
+    private async Task SaveEditRowsAsync(<#= table #> parent)
+    {
+<#
+            foreach (var child in editChildren)
+            {
+#>
+        {
+            var parentKey = parent.<#= child.ParentKeyColumn #>;
+            var stored = await _context.Set<<#= child.Table #>>().Where(c => EF.Property<<#= child.ParentKeyCs #>>(c, "<#= child.FkColumn #>") == parentKey).ToListAsync();
+            var kept = <#= child.Var #>Edit.Where(l => l.RowKey != default).Select(l => l.RowKey).ToHashSet();
+            foreach (var gone in stored.Where(c => !kept.Contains(c.<#= child.KeyProp #>)))
+                _context.Remove(gone);
+            foreach (var line in <#= child.Var #>Edit)
+            {
+                if (line.RowKey != default && stored.FirstOrDefault(c => c.<#= child.KeyProp #> == line.RowKey) is { } found)
+                {
+                    line.ApplyTo(found);
+                    continue;
+                }
+                var added = new <#= child.Table #>();
+                line.ApplyTo(added);
+                _context.Add(added);
+                _context.Entry(added).Property("<#= child.FkColumn #>").CurrentValue = parentKey;
+            }
+        }
+<#
+            }
+#>
+        await _context.SaveChangesAsync();
+    }
+
+<#
+        }
+#>
     /// <summary> Converts every field to its column type and saves through <#= table #>Repo; sets ErrorMessage and returns false on the first bad or missing value. </summary>
     public async Task<bool> SaveAsync()
     {
@@ -989,6 +1173,16 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 <#
         foreach (var c in shown)
             Write(DesktopFormCode.SaveLines(form, Project, c));
+        if (editChildren.Count > 0)
+        {
+#>
+        if (CheckEditRows() is { } rowError)
+        {
+            ErrorMessage = rowError;
+            return false;
+        }
+<#
+        }
 #>
 
 <#
@@ -1029,16 +1223,52 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         else
         {
 #>
+<#
+            if (editChildren.Count > 0)
+            {
+#>
+        // the row and its editable rows are one unit of work
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            if (_editing is null)
+                await _repo.AddAsync(entity);
+            else
+                await _repo.UpdateAsync(entity.<#= keyProp #>, entity);
+            await SaveEditRowsAsync(entity);
+            await transaction.CommitAsync();
+        }
+        catch (DbUpdateException)
+        {
+            ErrorMessage = "The rows could not be saved.";
+            return false;
+        }
+        return true;
+<#
+            }
+            else
+            {
+#>
         if (_editing is null)
             await _repo.AddAsync(entity);
         else
             await _repo.UpdateAsync(entity.<#= keyProp #>, entity);
         return true;
 <#
+            }
+#>
+<#
         }
 #>
     }
 }
 <#
+        if (editChildren.Count > 0)
+        {
+#>
+@@@FILE <#= viewsFolder #>/<#= table #>DetailMasterEditRows.cs@@@
+<#= DesktopEditRows.File(viewNamespace, table, "", Project, editChildren.Select(ch => (ch, ch.Grid)).ToList(), ch => ch.Table) #>
+<#
+        }
     }
 #>

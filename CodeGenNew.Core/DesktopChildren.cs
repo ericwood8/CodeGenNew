@@ -14,7 +14,7 @@ public sealed record DesktopChildFilter(string Column, string Label, string All,
 public sealed record DesktopChild(
     string Member, string Table, string Type, string? KeyProp, bool HasChildren, bool HasDialog, string Title, string Var, string FkColumn, string ParentKeyColumn, string ParentKeyCs,
     IReadOnlyList<string> HideColumns, IReadOnlyList<DesktopChildLookup> Resolvable, IReadOnlyList<DesktopChildFilter> Filters,
-    IReadOnlyList<(string Name, int Digits)> Currency, IReadOnlyList<string> LongText, IReadOnlyList<(string Name, string Caption)> Captions)
+    IReadOnlyList<(string Name, int Digits)> Currency, IReadOnlyList<string> LongText, IReadOnlyList<(string Name, string Caption)> Captions, ChildGrid Grid, bool Editable)
 {
     // the child's own dialog exists when the table is a screen: listed in the project's Screens, or (with none listed) a plain table with a single-column key
     // two foreign keys of one child to the same parent (a component and an assembly, both products) need a names dictionary each
@@ -54,7 +54,8 @@ public sealed record DesktopChild(
                     fk.ReferencingTableColumns.Where(c => c.IsMoneyAmount).Select(c => (c.Name, NumericClassifier.CurrencyDigits(c))).ToList(),
                     fk.ReferencingTableColumns.Where(c => c.IsLongTextColumn).Select(c => c.Name).ToList(),
                     // The caption each child column gets (date columns lose "Date", yes/no columns end in "?", Number -> #, Percent -> %).
-                    fk.ReferencingTableColumns.Select(c => (c.Name, GridCaption.For(c, Labels.Column(c.Name)))).ToList());
+                    fk.ReferencingTableColumns.Select(c => (c.Name, GridCaption.For(c, Labels.Column(c.Name)))).ToList(),
+                    g, DesktopEditRows.Applies(g, table));
             }).ToList();
     }
 }

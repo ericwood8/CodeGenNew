@@ -33,7 +33,7 @@ The same as the WinUI 3 screens: a list page with search boxes, headers that sor
 
 ## Limits
 
-- No editable child rows (`EditableChildren`): a child grid is read-only apart from Edit and Delete. With `DashboardStrip=true` a table that has cards shows them above its list page (`UNO_Dashboard` writes `Views/DashboardStrip.cs`). The junction editor is not opened from a page by the generator (like the WinUI 3 editor). The OData page has no filter row and sorts by one column. The session is kept in memory only.
+- With `EditableChildren` a child's rows are boxes in the master dialog, saved with the row (`UNO_DetailMasterScreen`). With `DashboardStrip=true` a table that has cards shows them above its list page (`UNO_Dashboard` writes `Views/DashboardStrip.cs`). The junction editor is not opened from a page by the generator (like the WinUI 3 editor). The OData page has no filter row and sorts by one column. The session is kept in memory only.
 - The project written by `Project` has the heads `net10.0-desktop` (Skia: Windows, macOS, Linux), `net10.0-browserwasm` (needs `dotnet workload install wasm-tools`) and `net10.0-windows10.0.26100` (WinAppSDK). Add `net10.0-android` or `net10.0-ios` to `TargetFrameworks` for the phone heads (their workloads are needed, and a Mac for iOS); the pages are the desktop layout, not a phone layout.
 - A grid with many columns is as cramped as the WinUI 3 grid at a narrow window width.
 - No tests are generated for the Uno app.

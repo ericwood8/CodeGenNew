@@ -24,6 +24,6 @@
     else
     {
         string type = BlazorNames.TypeName(Model.TableName);
-        Write($"@@@FILE Services/{type}Client.cs@@@\n" + ApiClientCode.Client(Model, Project, UnoNames.ModelsNamespace(Project), UnoNames.ServicesNamespace(Project), pagedHere: true));
+        Write($"@@@FILE Services/{type}Client.cs@@@\n" + ApiClientCode.Client(Model, Project, UnoNames.ModelsNamespace(Project), UnoNames.ServicesNamespace(Project), EditableChild.Lists(Model, Project), pagedHere: true));
     }
 #>
