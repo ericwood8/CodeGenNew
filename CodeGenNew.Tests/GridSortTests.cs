@@ -168,12 +168,13 @@ public class GridSortTests
         string vm = files.Single(f => f.RelativePath.EndsWith("ListViewModel.cs")).Content;
         string store = (await WinUI3ControlsTests.Files())["ViewModels/GridSortStore.cs"];
 
-        Expect.Contains(xaml, "<Button x:Name=\"SortHeaderDescription\"");
-        Expect.Contains(xaml, "Click=\"OnSortHeaderClick\"");
+        Expect.Contains(xaml, "<Grid x:Name=\"HeaderCells\"");
         Expect.Contains(xaml, "RightTapped=\"OnGridRightTapped\"");
-        Expect.DoesNotContain(xaml, "SortHeaderNotes");
+        Expect.Contains(vm, "new(\"Description\", \"Description\", true)");   // a header that sorts
+        Expect.Contains(vm, "new(\"Notes\", \"Notes\", false)");   // long text is offered, and does not sort
+        Expect.Contains(page, "button.Click += OnSortHeaderClick;");
+        Expect.Contains(page, "Content = columns[i].Caption + ViewModel.SortMark(columns[i].Name),");
         Expect.Contains(page, "new MenuFlyoutItem { Text = \"Clear sort\", IsEnabled = ViewModel.HasSort }");
-        Expect.Contains(page, "SortHeaderDescription.Content = \"Description\" + ViewModel.SortMark(\"Description\");");
         Expect.Contains(vm, "sortColumn: _sortColumn, sortDescending: _sortDescending);");
         Expect.Contains(vm, "GridSortStore.Save(GridKey, null);");
         Expect.Contains(store, "\"GridSorts.json\"");

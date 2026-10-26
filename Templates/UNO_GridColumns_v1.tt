@@ -1,0 +1,22 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // UNO_GridColumns_v1.tt
+    // Generates: ViewModels/GridColumnStore.cs and Views/GridCells.cs   (point the output folder at the app's folder)
+    // The shared helpers of the Columns list every list page has: GridColumnInfo (a column the list offers), GridColumnStore (the choice of columns kept between runs in GridColumns.json, the rule that reads
+    // it back, the tick-or-clear rule and the cut of a long text cell) and GridCells (the cells of one row, one equal-width column each). The text is DesktopGridColumns in Core, the same for the WinUI3 and
+    // Uno stacks. One file each for the whole project; every run writes them again.
+    // Full notes: Docs/TemplateNotes/UNO_GridColumns_v1.md
+    // ==========================================================================================
+    string appNamespace = Project.AppNamespace;
+    string viewNamespace = Project.ViewNamespace ?? appNamespace + ".Views";
+    string viewModelNamespace = Project.ViewModelNamespace ?? appNamespace + ".ViewModels";
+    string viewsFolder = Project.ViewsFolder ?? "Views";
+    string viewModelsFolder = Project.ViewModelsFolder ?? "ViewModels";
+
+    Write("@@@FILE " + viewModelsFolder + "/GridColumnStore.cs@@@\n" + DesktopGridColumns.StoreFile(viewModelNamespace) + "\n");
+    Write("@@@FILE " + viewsFolder + "/GridCells.cs@@@\n" + DesktopGridColumns.CellsFile(viewNamespace) + "\n");
+#>

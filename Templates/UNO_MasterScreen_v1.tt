@@ -95,7 +95,9 @@
         int gridRow = canSearch ? 4 : 3;
 
         // At most 20 columns, no long text (see GridColumns for when multi-line text is let in).
-        var shown = form.GridColumns;
+        // the columns the Columns list offers (every column of the form); the grid shows the ones the person chose, starting with what GridColumns picks
+        var chosen = ChosenGridColumns.For(form);
+        var shown = chosen.Offered.Select(c => c.Column).ToList();
 
         var parents = form.ParentsOf(shown);
         // a parent with too many rows for a drop-down is found by typing: the filter is an AutoSuggestBox that asks the API for the rows whose text contains what was typed, and the grid reads
@@ -107,12 +109,10 @@
         if (!Model.HasReferencedDisplayColumns && parents.Count > 0)
             Error("UNO_MasterScreen needs the foreign-keyed tables' display columns; its .tt.config must say NeedsReferencedDisplayColumns=true.");
 
-        int columnCount = shown.Count + 1; // +1 for the Edit/Delete actions column
         // A header sorts the grid unless its column is binary or long text (SearchSort.IsSortable).
         var sortableShown = shown.Where(SearchSort.IsSortable).ToList();
         // A Clone button for the tables CloneShape allows (CS_Repo writes CloneAsync for the same ones).
         bool canClone = CloneShape.CanClone(Model, Project);
-        string SortButtonName(ColumnModel c) => "SortHeader" + c.Name;
 #>
 @@@FILE <#= viewsFolder #>/<#= stemName #>ListPage.xaml@@@
 <Page
@@ -147,6 +147,7 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button Content="Add New" Click="OnAddClick"<#= gated ? " Visibility=\"{x:Bind ViewModel.WriteVisibility}\"" : "" #> />
                 <Button Content="Refresh" Click="OnRefreshClick" />
+                <Button Content="Columns" Click="OnColumnsClick" />
             </StackPanel>
         </Border>
 <#
@@ -220,34 +221,12 @@
                     <Border Grid.Row="0" BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="0,0,0,1" Padding="8">
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
-<#
-        for (int i = 0; i < columnCount; i++)
-        {
-#>
-                                <ColumnDefinition Width="<#= i == columnCount - 1 ? (canClone ? "250" : "175") : "*" #>" />
-<#
-        }
-#>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="<#= canClone ? "250" : "175" #>" />
                             </Grid.ColumnDefinitions>
-<#
-        for (int i = 0; i < shown.Count; i++)
-        {
-            if (sortableShown.Contains(shown[i]))
-            {
-#>
-                            <Button x:Name="<#= SortButtonName(shown[i]) #>" Grid.Column="<#= i #>" Content="<#= GridCaption.For(shown[i], Labels.Column(shown[i].Name)) #>" Tag="<#= shown[i].Name #>"
-                                    Click="OnSortHeaderClick" FontWeight="SemiBold" Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left" />
-<#
-            }
-            else
-            {
-#>
-                            <TextBlock Grid.Column="<#= i #>" Text="<#= GridCaption.For(shown[i], Labels.Column(shown[i].Name)) #>" FontWeight="SemiBold" />
-<#
-            }
-        }
-#>
-                            <TextBlock Grid.Column="<#= shown.Count #>" Text="Actions" FontWeight="SemiBold" />
+                            <!-- The header cells of the shown columns are built in code (BuildHeader), as the shown columns change. -->
+                            <Grid x:Name="HeaderCells" Grid.Column="0" ColumnSpacing="8" />
+                            <TextBlock Grid.Column="1" Text="Actions" FontWeight="SemiBold" />
                         </Grid>
                     </Border>
 
@@ -258,24 +237,11 @@
                                 <Border BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="0,0,0,1" Padding="8">
                                     <Grid ColumnSpacing="8">
                                         <Grid.ColumnDefinitions>
-<#
-        for (int i = 0; i < columnCount; i++)
-        {
-#>
-                                            <ColumnDefinition Width="<#= i == columnCount - 1 ? (canClone ? "250" : "175") : "*" #>" />
-<#
-        }
-#>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="<#= canClone ? "250" : "175" #>" />
                                         </Grid.ColumnDefinitions>
-<#
-        for (int i = 0; i < shown.Count; i++)
-        {
-#>
-                                        <TextBlock Grid.Column="<#= i #>" Text="{x:Bind Cells[<#= i #>]}" VerticalAlignment="Center" />
-<#
-        }
-#>
-                                        <StackPanel Grid.Column="<#= shown.Count #>" Orientation="Horizontal" Spacing="4">
+                                        <views:GridCells Grid.Column="0" Cells="{x:Bind VisibleCells}" />
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
                                             <Button Content="Edit" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnEditClick"<#= gated ? " Visibility=\"{x:Bind WriteVisibility}\"" : "" #> />
 <#
         if (canClone)
@@ -371,18 +337,9 @@ public sealed partial class <#= stemName #>ListPage : Page
     }
 
     // The sorted column's header shows an arrow after its caption.
-    private void ShowSortMarks()
-    {
-<#
-        foreach (var c in sortableShown)
-        {
-#>
-        <#= SortButtonName(c) #>.Content = "<#= GridCaption.For(c, Labels.Column(c.Name)) #>" + ViewModel.SortMark("<#= c.Name #>");
-<#
-        }
-#>
-    }
+    private void ShowSortMarks() => BuildHeader();
 
+<#= DesktopGridColumns.PageMembers(stemName + "ListViewModel") #>
     private async void OnAddClick(object sender, RoutedEventArgs e)
     {
         var dialog = new <#= editDialog #>(_api) { XamlRoot = XamlRoot };
@@ -529,7 +486,10 @@ namespace <#= viewModelNamespace #>;
 public class <#= stemName #>ListRow
 {
     public <#= keyCs #> Id { get; init; }<#= keyCs == "string" ? " = \"\";" : "" #>
+    /// <summary> The texts of every column the Columns list offers, in the list's order. </summary>
     public List<string> Cells { get; init; } = [];
+    /// <summary> The texts of the columns that are shown (what the grid draws). </summary>
+    public List<string> VisibleCells { get; init; } = [];
 <#
         if (gated)
         {
@@ -660,7 +620,8 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
     private bool _sortDescending;
 
     public bool HasSort => _sortColumn is not null;
-<#
+
+<#= DesktopGridColumns.ViewModelMembers(chosen) #><#
         if (gated)
         {
 #>
@@ -674,7 +635,8 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
     public <#= stemName #>ListViewModel(ApiClients api)
     {
         _api = api;
-        var saved = GridSortStore.Load(GridKey, SortableColumns);
+        _chosenColumns = GridColumnStore.Load(GridKey, OfferedNames, InitialColumns);
+        var saved = GridSortStore.Load(GridKey, SortableColumns.Where(IsShown).ToList());
         _sortColumn = saved?.Column;
         _sortDescending = saved?.Descending ?? false;
     }
@@ -852,10 +814,10 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
             [
 <#
         foreach (var c in shown)
-            Write(DesktopGridCode.CellLines(form, Project, c));
+            Write(DesktopGridCode.CellLines(form, Project, c, chosen.Offered.First(o => o.Column == c).Cut));
 #>
             ];
-            Rows.Add(new <#= stemName #>ListRow { Id = e.<#= keyProp #>, Cells = cells<#= gated ? ", WriteVisibility = WriteVisibility" : "" #> });
+            Rows.Add(new <#= stemName #>ListRow { Id = e.<#= keyProp #>, Cells = cells, VisibleCells = VisibleCells(cells)<#= gated ? ", WriteVisibility = WriteVisibility" : "" #> });
         }
     }
 

@@ -939,6 +939,7 @@ public class ProjectSettingsTests
         return text.Contains($"<th>{caption}</th>")
             || text.Contains($"Text={Q}{caption}{Q} FontWeight=")
             || text.Contains($"Content={Q}{caption}{Q} Tag=")
+            || text.Contains($", {Q}{caption}{Q}, ")   // a WinUI3 or Uno grid offers its columns from the view model: new("ItemNumber", "Item #", true)
             || text.Contains($"label={Q}{caption}{Q} column=")
             || text.Contains($">{caption}{{{{ sortMark(");
     }
@@ -951,7 +952,7 @@ public class ProjectSettingsTests
 
     // The columns a web grid starts with (the Columns list offers every column of the form): Angular writes them as the second list of its GridColumns, React as initialColumns.
     private static string StartingColumns(string template, string text) =>
-        text.Split('\n').Single(line => template.StartsWith("TSX") ? line.StartsWith("const initialColumns = [") : line.StartsWith("  ], ['"));
+        text.Split('\n').Single(line => template.StartsWith("TSX") ? line.StartsWith("const initialColumns = [") : template.StartsWith("WinUI3") ? line.StartsWith("    private static readonly string[] InitialColumns = [") : line.StartsWith("  ], ['"));
 
     [TestMethod]
     [DataRow("WinUI3_MasterScreen_v1.tt")]
@@ -965,11 +966,11 @@ public class ProjectSettingsTests
         string text = result.GeneratedText!;
         Assert.IsTrue(HasHeader(text, "Item #"), "the Item Number column is captioned Item #");
         Expect.Contains(text, "Discount %");
-        // Notes is a long text column: a grid does not start with it (a web grid offers it in the Columns list, a WinUI3 grid never shows it)
+        // Notes is a long text column: a grid does not start with it, but every grid offers it in the Columns list
         if (template.StartsWith("WinUI3"))
         {
-            Expect.DoesNotContain(text, "<th>Notes</th>");
-            Expect.DoesNotContain(text, "Text=\"Notes\" FontWeight=");
+            Expect.DoesNotContain(StartingColumns(template, text), "\"Notes\"");
+            Expect.Contains(text, "new(\"Notes\", \"Notes\", false)");
         }
         else
         {
@@ -992,7 +993,11 @@ public class ProjectSettingsTests
         string text = result.GeneratedText!;
         Assert.IsTrue(HasHeader(text, "Quantity R"), "the 18th column is in the grid");
         if (template.StartsWith("WinUI3"))
-            Expect.DoesNotContain(text, "Text=\"Quantity S\" FontWeight=");
+        {
+            Expect.Contains(StartingColumns(template, text), "\"QuantityR\"");
+            Expect.DoesNotContain(StartingColumns(template, text), "\"QuantityS\"");
+            Expect.Contains(text, "new(\"QuantityS\", \"Quantity S\", true)");
+        }
         else
         {
             Expect.Contains(StartingColumns(template, text), "'QuantityR'");

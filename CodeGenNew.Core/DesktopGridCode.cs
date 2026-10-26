@@ -26,8 +26,8 @@ public static class DesktopGridCode
         .ToList();
 
     /// <summary> The element of the view model's <c>cells</c> list that shows the column (sixteen spaces in, a comma at the end): the parent's name for a foreign key, yes / no, a date, an amount of money
-    /// in the project's currency, a decimal with two places, text or the value. </summary>
-    public static string CellLines(FormModel form, ProjectSettings project, ColumnModel column)
+    /// in the project's currency, a decimal with two places, text or the value; <paramref name="cut"/> shows a long text cut to <see cref="ChosenGridColumns.CutLength"/> characters. </summary>
+    public static string CellLines(FormModel form, ProjectSettings project, ColumnModel column, bool cut = false)
     {
         var cellKind = form.CellOf(column);
         string prop = column.Name;
@@ -59,6 +59,9 @@ public static class DesktopGridCode
             text = $"e.{prop}" + (nullable ? " ?? \"\"" : "") + ",";
         else   // number or Guid
             text = $"e.{prop}" + (nullable ? "?.ToString() ?? \"\"" : ".ToString()") + ",";
+        // a long or multi-line text shows its first characters (GridColumnStore.Cut, written by the GridColumns templates)
+        if (cut)
+            text = "GridColumnStore.Cut(" + text.TrimEnd(',') + "),";
         return "                " + text + "\n";
     }
 }

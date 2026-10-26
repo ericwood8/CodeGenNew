@@ -172,7 +172,7 @@ public class ProjectFollowUpTests
 
         vm = vm.Replace("\r\n", "\n");
         Expect.Contains(vm, "            List<string> cells =\n            [\n                e.Name,\n");
-        Expect.Contains(vm, "\n            ];\n            Rows.Add(new InvoiceListRow { Id = e.InvoiceId, Cells = cells });");
+        Expect.Contains(vm, "\n            ];\n            Rows.Add(new InvoiceListRow { Id = e.InvoiceId, Cells = cells, VisibleCells = VisibleCells(cells) });");
         Expect.DoesNotContain(vm, "cells.Add(");
         Expect.DoesNotContain(vm, "new List<string>()");
     }

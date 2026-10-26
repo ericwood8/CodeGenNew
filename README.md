@@ -200,7 +200,9 @@ Angular, React, Blazor, Uno and WinUI3 code: models, services, screens and dashb
 | `UNO` | `UNO_MasterScreen`, `UNO_DetailScreen`, `UNO_DetailMasterScreen` | UNO list page and add / edit dialog (`Views/TableListPage.xaml`, `Views/TableDetailDialog.xaml`, and for a table with child tables `Views/TableDetailMasterDialog.xaml` with a grid per child) and their view models, reading and writing through clients. |
 | `UNO` | `UNO_Dashboard`, `UNO_JunctionEditor` | UNO dashboard page over `GET /api/dashboard` (`Dashboard=true`), and 2-list editor of a many-to-many junction table over junction routes. |
 | `UNO` | `UNO_ODataClient`, `UNO_ODataPage` | OData client and list page per served table (`OData=true`), with a menu entry `Table (OData)`. |
+| `UNO` | `UNO_GridColumns` | `ViewModels/GridColumnStore.cs` and `Views/GridCells.cs` - whole-DB support code for the Columns menu of every Uno list page: saved choice of columns, cut of a long text, the cells of a row. |
 | `UNO` | `UNO_Screens` | `MainPage.Screens.cs` and `Services/ApiClients.cs` - menu, screen switch and one client per table. |
+| `WinUI3` | `WinUI3_GridColumns` | `ViewModels/GridColumnStore.cs` and `Views/GridCells.cs` - whole-DB support code for the Columns menu of every WinUI3 list page: saved choice of columns, cut of a long text, the cells of a row. |
 | `WinUI3` | `WinUI3_Screens` | `MainWindow.Screens.cs` - whole-DB: other half of `partial class MainWindow` (`AddScreens()` adds menu entries, `ShowPage(tag)` shows page). |
 | `WinUI3` | `WinUI3_DashboardPage` | dashboard page for desktop, built in code, with strip above each list page. |
 | `WinUI3` | `WinUI3_JunctionEditor` | 3 files (View, code-behind, ViewModel) — same shuttle-control idea as a desktop `ContentDialog`, calling `SP_Junction` directly through EF Core (also junction-only). |

@@ -740,9 +740,8 @@ public class KeyTypeTests
         Expect.Contains(vm, "public async Task DeleteAsync(string id)");
         Expect.Contains(vm, "Id = e.Alpha3Code");
         Expect.Contains(vm, "e.Alpha3Code,");   // the key is a column of the grid
-        string xaml = files["CountryListPage.xaml"];
-        Assert.IsGreaterThanOrEqualTo(0, xaml.IndexOf("Content=\"Alpha3 Code\"", StringComparison.Ordinal));
-        Assert.IsLessThan(xaml.IndexOf("Content=\"Name\"", StringComparison.Ordinal), xaml.IndexOf("Content=\"Alpha3 Code\"", StringComparison.Ordinal));   // the key is the first column
+        Assert.IsGreaterThanOrEqualTo(0, vm.IndexOf("new(\"Alpha3Code\", \"Alpha3 Code\"", StringComparison.Ordinal));
+        Assert.IsLessThan(vm.IndexOf("new(\"Name\", \"Name\"", StringComparison.Ordinal), vm.IndexOf("new(\"Alpha3Code\", \"Alpha3 Code\"", StringComparison.Ordinal));   // the key is the first column
     }
 
     [TestMethod]

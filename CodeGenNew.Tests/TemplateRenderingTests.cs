@@ -425,9 +425,9 @@ public class TemplateRenderingTests
         string viewModel = files["E_DonateLeaveListViewModel.cs"].Content;
 
         Expect.Contains(xaml, "x:Class=\"MyApp.Desktop.Views.E_DonateLeaveListPage\"");
-        Expect.Contains(xaml, "Content=\"Donate From Employee\"");   // a sortable header is a button
+        Expect.Contains(viewModel, "\"Donate From Employee\", true)");   // a sortable header is a button, built from the columns the view model offers
         Expect.Contains(xaml, "ItemsSource=\"{x:Bind ViewModel.Rows}\"");
-        Expect.Contains(xaml, "Text=\"{x:Bind Cells[0]}\"");
+        Expect.Contains(xaml, "<views:GridCells Grid.Column=\"0\" Cells=\"{x:Bind VisibleCells}\" />");
 
         Expect.Contains(codeBehind, "public sealed partial class E_DonateLeaveListPage : Page");
         Expect.Contains(codeBehind, "new E_DonateLeaveDetailDialog(_context)");
