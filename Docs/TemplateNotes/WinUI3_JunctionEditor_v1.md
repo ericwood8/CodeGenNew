@@ -38,3 +38,5 @@ target table's display columns (NeedsReferencedDisplayColumns=true).
 ```
 
 - **Access mode (EF Core instead of routines):** with `AccessMode=Ef` (always for SQLite) this template writes LINQ over the context instead of calls to the routines. See CS_SearchQuery_v1.md and Docs/Reference.md.
+
+**The page the menu opens.** For a junction table whose anchor table has a lookup endpoint the template also writes `Views/<Table>LinksPage.xaml` and `.xaml.cs`: a drop-down of the anchor's rows (read from the context) and an Edit links button that loads the editor's view model for the row picked and shows the dialog. `WinUI3_Screens` adds the menu entry and the `ShowPage` case. The page's text is `DesktopJunctionPage` in Core, shared with Uno. The route (`<table>-links`), the label (`<Table> Links`), the heading, the roles and the list of tables are `JunctionPlan` in Core, the same for every stack.

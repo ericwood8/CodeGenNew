@@ -29,3 +29,5 @@ Requires TableModel.IsJunctionTable (Requires=JunctionTable) and the target tabl
 columns (NeedsReferencedDisplayColumns=true), the same restrictions SP_Junction.tt/API_Junction.tt
 have - generate those first.
 ```
+
+**The screen the menu opens.** For a junction table whose anchor table has a lookup endpoint the template also writes `components/<table>-links/` (ts, html, spec): a drop-down of the anchor's rows (`GET api/<anchors>/lookup`) and the shuttle for the row picked. The shuttle reads its lists again when `anchorId` changes (`ngOnChanges`). `TS_Screens` lists the screen after the screens with the junction table's read roles. The route (`<table>-links`), the label (`<Table> Links`), the heading, the roles and the list of tables are `JunctionPlan` in Core, the same for every stack.

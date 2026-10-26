@@ -76,9 +76,11 @@ public class JunctionDialectTests
     {
         // A "--" inside an XML comment (an easy slip in a template's explanatory text) breaks the XAML compiler, not the template run.
         var result = await Repo.Cache.RunAsync(Repo.Template("WinUI3_JunctionEditor_v1.tt"), In(Sample.JunctionWithSurrogateKey(), SqlDialect.PostgreSql));
-        var xaml = GeneratedFiles.Split(result.GeneratedText!).Single(f => f.RelativePath.EndsWith(".xaml")).Content;
+        var xamls = GeneratedFiles.Split(result.GeneratedText!).Where(f => f.RelativePath.EndsWith(".xaml")).ToList();
 
-        System.Xml.Linq.XDocument.Parse(xaml);
+        Assert.HasCount(2, xamls);   // the editor and the page that picks the anchor row
+        foreach (var xaml in xamls)
+            System.Xml.Linq.XDocument.Parse(xaml.Content);
     }
 }
 

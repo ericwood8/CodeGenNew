@@ -301,8 +301,8 @@ public class TemplateRenderingTests
         var files = GeneratedFiles.Split(await Render("WinUI3_JunctionEditor_v1.tt", Sample.JunctionWithSurrogateKey()));
 
         Expect.Contains(string.Join("|", files.Select(f => f.RelativePath)), "Views/NameBaseGroupXrefJunctionEditor.xaml");
-        var xaml = files.Single(f => f.RelativePath.EndsWith(".xaml")).Content;
-        var codeBehind = files.Single(f => f.RelativePath.EndsWith(".xaml.cs")).Content;
+        var xaml = files.Single(f => f.RelativePath.EndsWith("JunctionEditor.xaml")).Content;
+        var codeBehind = files.Single(f => f.RelativePath.EndsWith("JunctionEditor.xaml.cs")).Content;
         var viewModel = files.Single(f => f.RelativePath.EndsWith("JunctionEditorViewModel.cs")).Content;
 
         Expect.Contains(xaml, "x:Class=\"MyApp.Desktop.Views.NameBaseGroupXrefJunctionEditor\"");
@@ -858,7 +858,7 @@ public class TemplateRenderingTests
         var files = GeneratedFiles.Split(await Render("TS_JunctionComponent_v1.tt", Sample.JunctionWithSurrogateKey()))
             .ToDictionary(f => Path.GetFileName(f.RelativePath));
 
-        Assert.HasCount(4, files);
+        Assert.HasCount(7, files);   // the four of the shuttle and the three of the screen that picks the anchor row
         Expect.Contains(files["namebasegroupxref-junction.component.html"].Content, "[(ngModel)]=\"availableSelectionIds\"");
         Expect.Contains(files["namebasegroupxref-junction.component.html"].Content, "[(ngModel)]=\"selectedSelectionIds\"");
 
@@ -2101,7 +2101,7 @@ public class TemplateRenderingTests
     public async Task TSX_JunctionPage_writes_a_shuttle_control_component_with_a_colocated_test()
     {
         var files = GeneratedFiles.Split(await Render("TSX_JunctionPage_v1.tt", Sample.JunctionWithSurrogateKey()));
-        string tsx = files.Single(f => f.RelativePath.EndsWith(".tsx") && !f.RelativePath.Contains("__tests__")).Content;
+        string tsx = files.Single(f => f.RelativePath.EndsWith("Junction.tsx") && !f.RelativePath.Contains("__tests__")).Content;
 
         Assert.IsTrue(files.Any(f => f.RelativePath == "components/NameBaseGroupXrefJunction.tsx"));
         Assert.IsTrue(files.Any(f => f.RelativePath == "components/__tests__/NameBaseGroupXrefJunction.test.tsx"));
@@ -2110,13 +2110,15 @@ public class TemplateRenderingTests
         Expect.Contains(tsx, "shortDescr?: string;"); // Groups' display column, camelCased like TS_Model
         Expect.Contains(tsx, "request<NameBaseGroupXrefJunctionItem[]>(`${apiUrl}/${anchorId}`)");
         Expect.Contains(tsx, "request(`${apiUrl}/link`, { method: 'POST', body: JSON.stringify({ anchorId, targetId: item.targetId }) })");
+        Assert.IsTrue(files.Any(f => f.RelativePath == "pages/NameBaseGroupXrefLinksPage.tsx"));
+        Assert.IsTrue(files.Any(f => f.RelativePath == "pages/__tests__/NameBaseGroupXrefLinksPage.test.tsx"));
     }
 
     [TestMethod]
     public async Task TSX_JunctionPage_does_not_double_pluralize_an_already_plural_table_name()
     {
         string tsx = GeneratedFiles.Split(await Render("TSX_JunctionPage_v1.tt", Sample.JunctionWithPluralName()))
-            .Single(f => f.RelativePath.EndsWith(".tsx") && !f.RelativePath.Contains("__tests__")).Content;
+            .Single(f => f.RelativePath.EndsWith("Junction.tsx") && !f.RelativePath.Contains("__tests__")).Content;
 
         Expect.Contains(tsx, "const apiUrl = '/api/ratings/junction';");
         Expect.DoesNotContain(tsx, "'/api/ratingss/junction'");
@@ -2126,7 +2128,7 @@ public class TemplateRenderingTests
     public async Task TSX_JunctionPage_adds_es_for_a_singular_table_name_ending_in_double_s()
     {
         string tsx = GeneratedFiles.Split(await Render("TSX_JunctionPage_v1.tt", Sample.JunctionWithDoubleSName()))
-            .Single(f => f.RelativePath.EndsWith(".tsx") && !f.RelativePath.Contains("__tests__")).Content;
+            .Single(f => f.RelativePath.EndsWith("Junction.tsx") && !f.RelativePath.Contains("__tests__")).Content;
 
         Expect.Contains(tsx, "const apiUrl = '/api/classes/junction';");
         Expect.DoesNotContain(tsx, "'/api/class/junction'");
