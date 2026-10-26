@@ -219,4 +219,20 @@ public class UnoFeatureTests
             return Task.CompletedTask;
         });
     }
+
+    [TestMethod]
+    public async Task ODataScreens_Replace_keeps_the_child_grids_because_the_OData_page_opens_the_same_master_detail_dialog()
+    {
+        await GenerateAsync(new() { ["OData"] = "true", ["ODataTables"] = "Region", ["ODataScreens"] = "Replace" }, (read, files) =>
+        {
+            string screens = read("Shop.Uno/MainPage.Screens.cs");
+            Expect.Contains(screens, "\"Region\" => new RegionODataListPage(_api),");
+            Expect.DoesNotContain(screens, "\"RegionOData\"");
+            string page = read("Shop.Uno/Views/RegionODataListPage.xaml.cs");
+            Expect.Contains(page, "new RegionDetailMasterDialog(_api");
+            CollectionAssert.Contains(files, "Shop.Uno/Views/RegionDetailMasterDialog.xaml");
+            Expect.Contains(read("Shop.Uno/ViewModels/RegionDetailMasterViewModel.cs"), "_api.Customer");
+            return Task.CompletedTask;
+        });
+    }
 }
