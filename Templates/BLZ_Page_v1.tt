@@ -32,6 +32,12 @@
     // type="email" / "tel" / "url" (and a phone pattern) for a text column named like one; the browser checks it when the form is submitted.
     // Without ApiAnnotations the browser is the only check, so it applies only to a box that no longer holds the stored value (an old bad email does not stop an edit of another field).
     bool shapedForm = false;
+    // true while the box holds a value other than the stored one: the limits of a number or date box apply only then, as the shape does
+    string Changed(string bind)
+    {
+        shapedForm = true;
+        return $"stored is null || {bind} != stored.{bind[4..]}";
+    }
     string ShapeAttributes(ColumnModel c, string bind)
     {
         string shape = c.InputType(Project, Model.TableName);
@@ -40,8 +46,7 @@
             return "";
         if (Project.ApiAnnotations)
             return (shape != "text" ? $" type=\"{shape}\"" : "") + (pattern.Length > 0 ? " " + pattern : "");
-        shapedForm = true;
-        string changed = $"stored is null || {bind} != stored.{bind[4..]}";
+        string changed = Changed(bind);
         string attributes = shape != "text" ? $" type=\"@({changed} ? \"{shape}\" : \"text\")\"" : "";
         if (System.Text.RegularExpressions.Regex.Match(pattern, "^pattern=\"(.*)\" title=\"(.*)\"$") is { Success: true } parts)
             attributes += $" pattern=\"@({changed} ? \"{parts.Groups[1].Value.Replace("\\", "\\\\")}\" : null)\" title=\"{parts.Groups[2].Value}\"";
@@ -470,15 +475,20 @@
                 string minimum = DatePairs.EndingAt(Model, Project, c) is { } endsAfter
                     ? $" min=\"@row.{endsAfter.Start.CSharpName()}{(endsAfter.Start.IsNullable ? "?" : "")}.ToString(\"yyyy-MM-dd\")\""
                     : "";
-                input = $"<InputDate id=\"{id}\" @bind-Value=\"{bind}\"{minimum}{required} />";
+                // a date the project says is never later than today cannot be picked later
+                string maximum = c.RuleOf(Project, Model.TableName) is { NotFuture: true }
+                    ? $" max=\"@({Changed(bind)} ? DateTime.Today.ToString(\"yyyy-MM-dd\") : null)\""
+                    : "";
+                input = $"<InputDate id=\"{id}\" @bind-Value=\"{bind}\"{minimum}{maximum}{required} />";
             }
             else if (kind == FieldKind.Money)
-                input = $"<CurrencyInput id=\"{id}\" @bind-Value=\"{bind}\" Digits=\"{NumericClassifier.CurrencyDigits(c)}\" Symbol=\"{Symbol()}\"{required} />";
+                input = $"<CurrencyInput id=\"{id}\" @bind-Value=\"{bind}\" Digits=\"{NumericClassifier.CurrencyDigits(c)}\" Symbol=\"{Symbol()}\"{MoneyBox.For(Model.TableName, c, Project).Razor}{required} />";
             else if (kind is FieldKind.Number or FieldKind.TypedNumberKey)
             {
-                string width = Project.NumberBoxCharacters(c) is { } boxWidth ? $" style=\"width: {boxWidth}ch\"" : "";
+                var box = NumberBox.For(Model.TableName, c, Project);
+                string limits = box.Razor(box.Min is null && box.Max is null ? "" : Changed(bind));
                 string readOnly = kind == FieldKind.TypedNumberKey ? " readonly=\"@(!isNew)\"" : "";   // the key of a new row is typed; once the row exists it is read-only
-                input = $"<InputNumber id=\"{id}\" @bind-Value=\"{bind}\"{width}{readOnly}{required} />";
+                input = $"<InputNumber id=\"{id}\" @bind-Value=\"{bind}\"{limits}{readOnly}{required} />";
             }
             else if (c.CSharpBase() == "string")
             {

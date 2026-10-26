@@ -26,6 +26,11 @@ public sealed class NumberBox
     public string Jsx => (Step is { } step ? $" step=\"{step}\"" : "") + (Min is { } min ? $" min=\"{min}\"" : "") + (Max is { } max ? $" max=\"{max}\"" : "")
                          + (Characters is { } width ? $" style={{{{ width: '{width}ch' }}}}" : "");
 
+    /// <summary> The limits as Razor attributes for an <c>InputNumber</c>, each with a leading space. A <c>min</c> or <c>max</c> applies only while <paramref name="changed"/> (a C# test) is true, so a stored value
+    /// that is already outside the limits does not stop an edit of another field; the step and the width always apply. </summary>
+    public string Razor(string changed) => (Step is { } step ? $" step=\"{step}\"" : "") + (Min is { } min ? $" min=\"@({changed} ? \"{min}\" : null)\"" : "") + (Max is { } max ? $" max=\"@({changed} ? \"{max}\" : null)\"" : "")
+                                           + (Characters is { } width ? $" style=\"width: {width}ch\"" : "");
+
     /// <summary> The number box of <paramref name="column"/> of <paramref name="table"/>. The limits are, in this order: the name and type of a whole number (a month is 1-12), what a decimal column can hold,
     /// and what the CHECK constraint (or the project's <c>NonNegativeColumns</c>) says about an amount of money. </summary>
     public static NumberBox For(string table, ColumnModel column, ProjectSettings project)
@@ -57,6 +62,9 @@ public sealed class NumberBox
 /// <param name="Currency"> The ISO 4217 code the amount is formatted with. </param>
 public sealed record MoneyBox(string? Min, string? Max, int Digits, string Currency)
 {
+    /// <summary> The limits as Razor attributes for a <c>CurrencyInput</c>, each with a leading space. The box checks them only when its text is edited, so a stored value outside them is left alone. </summary>
+    public string Razor => (Min is { } min ? $" min=\"{min}\"" : "") + (Max is { } max ? $" max=\"{max}\"" : "");
+
     public static MoneyBox For(string table, ColumnModel column, ProjectSettings project)
     {
         var (min, max) = project.MoneyLimits(table, column);

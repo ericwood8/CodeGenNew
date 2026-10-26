@@ -425,6 +425,52 @@
                 o.Append($"        Services.GetRequiredService<NavigationManager>().NavigateTo(\"{route}?edit={keyText}\");\n");
                 o.Append($"        Api.Answer(\"{keyPath}\", Row);\n");
                 o.Append("        var page = Open();\n        page.WaitForAssertion(() => StringAssert.Contains(page.Find(\"[role=dialog]\").TextContent, \"Edit " + title + "\"));\n    }\n");
+                if (!form.IsNameActive && !odata)
+                {
+                    // the limits the web stacks write on a number, money or date box (Core's NumberBox, MoneyBox and NotFuture): a new row's box carries them, a stored value is not held to them
+                    var checks = new List<string>();
+                    var storedChecks = new List<string>();
+                    foreach (var c in form.Columns)
+                    {
+                        string field = "[role=dialog] #" + form.FieldId(c);
+                        var kind = form.KindOf(c);
+                        if (kind is FieldKind.Number or FieldKind.TypedNumberKey)
+                        {
+                            var box = NumberBox.For(Model.TableName, c, Project);
+                            if (box.Min is { } min) { checks.Add($"Assert.AreEqual(\"{min}\", page.Find(\"{field}\").GetAttribute(\"min\"));"); storedChecks.Add($"Assert.IsNull(page.Find(\"{field}\").GetAttribute(\"min\"));"); }
+                            if (box.Max is { } max) checks.Add($"Assert.AreEqual(\"{max}\", page.Find(\"{field}\").GetAttribute(\"max\"));");
+                        }
+                        else if (kind == FieldKind.Money)
+                        {
+                            var money = MoneyBox.For(Model.TableName, c, Project);
+                            if (money.Min is { } min) checks.Add($"Assert.AreEqual(\"{min}\", page.Find(\"{field}\").GetAttribute(\"min\"));");
+                            if (money.Max is { } max) checks.Add($"Assert.AreEqual(\"{max}\", page.Find(\"{field}\").GetAttribute(\"max\"));");
+                        }
+                        else if (kind == FieldKind.Date && c.RuleOf(Project, Model.TableName) is { NotFuture: true })
+                        {
+                            checks.Add($"Assert.AreEqual(DateTime.Today.ToString(\"yyyy-MM-dd\"), page.Find(\"{field}\").GetAttribute(\"max\"));");
+                            storedChecks.Add($"Assert.IsNull(page.Find(\"{field}\").GetAttribute(\"max\"));");
+                        }
+                    }
+                    if (checks.Count > 0)
+                    {
+                        o.Append("\n    [TestMethod]\n    public void Limits_the_number_and_date_boxes_of_a_new_row_as_the_column_does()\n    {\n        var page = OpenWithRow();\n");
+                        o.Append("        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Add New\").Click();\n");
+                        o.Append("        page.WaitForAssertion(() => StringAssert.Contains(page.Find(\"[role=dialog]\").TextContent, \"Add " + title + "\"));\n");
+                        foreach (var check in checks)
+                            o.Append("        " + check + "\n");
+                        o.Append("    }\n");
+                    }
+                    if (storedChecks.Count > 0)
+                    {
+                        o.Append("\n    [TestMethod]\n    public void Does_not_limit_a_box_that_still_holds_the_stored_value()\n    {\n        var page = OpenWithRow();\n");
+                        o.Append("        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Edit\").Click();\n");
+                        o.Append("        page.WaitForAssertion(() => StringAssert.Contains(page.Find(\"[role=dialog]\").TextContent, \"Edit " + title + "\"));\n");
+                        foreach (var check in storedChecks)
+                            o.Append("        " + check + "\n");
+                        o.Append("    }\n");
+                    }
+                }
                 o.Append(form.IsNameActive ? NameActiveTests() : GridTests(odata));
                 foreach (var child in children)
                 {

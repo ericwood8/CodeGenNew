@@ -117,7 +117,7 @@ public class FormPolishTests
         string page = (await Run("BLZ_Page_v1.tt", Invoice(), Project())).Single(f => f.Key.EndsWith(".razor")).Value;
         Expect.Contains(page, "@if (!isNew) { <div class=\"field\"><label for=\"invoiceCreateDate\">Create Date</label><span id=\"invoiceCreateDate\">@row.CreateDate.ToString(\"g\")</span></div> }");
         Expect.DoesNotContain(page, "<InputDate id=\"invoiceCreateDate\"");
-        Expect.Contains(page, "<InputNumber id=\"invoiceMonthNumber\" @bind-Value=\"row.MonthNumber\" style=\"width: 7ch\" required />");
+        Expect.Contains(page, "<InputNumber id=\"invoiceMonthNumber\" @bind-Value=\"row.MonthNumber\" min=\"@(stored is null || row.MonthNumber != stored.MonthNumber ? \"1\" : null)\" max=\"@(stored is null || row.MonthNumber != stored.MonthNumber ? \"12\" : null)\" style=\"width: 7ch\" required />");
     }
 
     [TestMethod]

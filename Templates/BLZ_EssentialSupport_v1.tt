@@ -235,6 +235,10 @@ public record TypeAheadOption<TValue>(TValue Id, string Name);
         }
     }
 
+    // min and max arrive as plain attributes (they do nothing on a text box); an edited amount outside them is refused, an untouched stored one is not looked at
+    private decimal? Limit(string name) =>
+        AdditionalAttributes is not null && AdditionalAttributes.TryGetValue(name, out var limit) && decimal.TryParse(Convert.ToString(limit, Invariant), NumberStyles.Float, Invariant, out decimal value) ? value : null;
+
     private void OnFocus() => focused = true;
 
     private void OnBlur() => focused = false;
@@ -256,6 +260,18 @@ public record TypeAheadOption<TValue>(TValue Id, string Name);
 
         if (decimal.TryParse(text, NumberStyles.Number, Invariant, out decimal amount))
         {
+            if (Limit("min") is { } smallest && amount < smallest)
+            {
+                result = default!;
+                validationErrorMessage = "Enter an amount of at least " + smallest.ToString("0.########", Invariant) + ".";
+                return false;
+            }
+            if (Limit("max") is { } largest && amount > largest)
+            {
+                result = default!;
+                validationErrorMessage = "Enter an amount of at most " + largest.ToString("0.########", Invariant) + ".";
+                return false;
+            }
             result = (TValue)Convert.ChangeType(amount, target, Invariant);
             validationErrorMessage = null;
             return true;
