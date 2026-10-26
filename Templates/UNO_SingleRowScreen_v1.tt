@@ -1,0 +1,137 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
+    // folders). Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string viewNamespace = "MyApp.Views";
+    string viewModelNamespace = "MyApp.ViewModels";
+    string modelsNamespace = "MyApp.Models";      // the model classes (UNO_Model)
+    string servicesNamespace = "MyApp.Services";  // the API clients and ApiClients (UNO_Client, UNO_Screens)
+    string[] usings = { };
+    string viewsFolder = "Views";
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    viewNamespace = Project.ViewNamespace ?? viewNamespace;
+    viewModelNamespace = Project.ViewModelNamespace ?? viewModelNamespace;
+    if (Project.ViewNamespace is not null || Project.ProjectName is not null)
+    {
+        modelsNamespace = UnoNames.ModelsNamespace(Project);
+        servicesNamespace = UnoNames.ServicesNamespace(Project);
+    }
+    usings = Project.Usings ?? usings;
+    viewsFolder = Project.ViewsFolder ?? viewsFolder;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // UNO_SingleRowScreen_v1.tt
+    // Generates: Views/<Table>Page.xaml and .xaml.cs
+    // The Uno Platform twin of WinUI3_SingleRowScreen: the screen of a table the application keeps one row of (the SingleRowTables setting: a company's settings, a posting account): the one row as a form on the page itself,
+    // with Save and Reload, no list, no Delete, and no second row. An empty table shows a blank form, and the first Save adds the row. The fields, tabs and the view model are the
+    // ones UNO_DetailScreen writes for the dialog (<Table>DetailViewModel), so a change to a field rule reaches both. The row is read and saved through the table's API client.
+    // Full notes: Docs/TemplateNotes/UNO_SingleRowScreen_v1.md
+    // ==========================================================================================
+
+    var form = FormModel.For(Model, Project);
+    var keyColumn = form.KeyColumn;
+
+    if (UnoNames.Refusal(Model, Project) is { } reason)
+    {
+        Error($"UNO_SingleRowScreen writes no page for [{Model.SchemaName}].[{Model.TableName}]: {reason}");
+    }
+    else if (keyColumn is null || form.KeyType is null || form.IsNameActive)
+    {
+        Error($"UNO_SingleRowScreen needs a plain table with a single int, uniqueidentifier or text primary key, but [{Model.SchemaName}].[{Model.TableName}] is not one.");
+    }
+    else
+    {
+        string table = Model.TableName;
+        string type = BlazorNames.TypeName(table);   // the model class (UNO_Model): the table without an E_ or SY_ prefix
+        string title = form.Title;
+        // With Auth=true: Save shows only to the roles WriteRoles names for this table (none named: every signed-in person)
+        var writeRoles = Project.Auth ? WriteRolePlan.For(Project, Model) : new List<string>();
+        bool gated = writeRoles.Count > 0;
+        string keyProp = keyColumn.Name;
+
+        if (!Model.HasReferencedDisplayColumns && form.Parents.Count > 0)
+            Error("UNO_SingleRowScreen needs the foreign-keyed tables' display columns for its drop-downs; its .tt.config must say NeedsReferencedDisplayColumns=true.");
+#>
+@@@FILE <#= viewsFolder #>/<#= table #>Page.xaml@@@
+<#= DesktopSingleRowPage.Xaml(form, Project, Model, viewNamespace, withGuards: true, loadErrorBar: true, gatedSave: gated) #>@@@FILE <#= viewsFolder #>/<#= table #>Page.xaml.cs@@@
+using <#= viewModelNamespace #>;
+using <#= modelsNamespace #>;
+using <#= servicesNamespace #>;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+<#
+        foreach (string u in usings)
+        {
+#>
+using <#= u #>;
+<#
+        }
+#>
+
+namespace <#= viewNamespace #>;
+
+/// <summary> The <#= title #> screen: the table holds one row for the whole application, shown as a form. </summary>
+public sealed partial class <#= table #>Page : Page
+{
+    private readonly ApiClients _api;
+
+    /// <summary> The form's view model, made again for the row each time it is read; null until the first read has finished. </summary>
+    public <#= table #>DetailViewModel? ViewModel { get; private set; }
+
+    public <#= table #>Page(ApiClients api)
+    {
+        _api = api;
+        InitializeComponent();
+<#= DesktopSingleRowPage.Formatters(form, Project) #>        Loaded += async (_, _) => await ReloadAsync();
+    }
+<#
+        if (gated)
+        {
+#>
+
+    /// <summary> Whether Save shows: the signed-in role may write this table (WriteRoles). </summary>
+    public Visibility WriteVisibility => _api.Session.HasRole([<#= WriteRolePlan.Literal(writeRoles) #>]) ? Visibility.Visible : Visibility.Collapsed;
+<#
+        }
+#>
+
+    // The first row, or none yet: the form is then blank and the first Save adds the row.
+    private async System.Threading.Tasks.Task ReloadAsync()
+    {
+        <#= type #>? row;
+        LoadError.IsOpen = false;
+        try
+        {
+            row = (await _api.<#= UnoNames.ClientProperty(table) #>.GetPageAsync(1, 1, sortBy: "<#= keyProp #>")).Items.FirstOrDefault();
+        }
+        catch (ApiException ex)
+        {
+            LoadError.Message = ex.Explain("loading");
+            LoadError.IsOpen = true;
+            return;
+        }
+        catch (System.Net.Http.HttpRequestException)
+        {
+            LoadError.Message = "The server could not be reached.";
+            LoadError.IsOpen = true;
+            return;
+        }
+        ViewModel = new <#= table #>DetailViewModel(_api, row);
+        Bindings.Update();
+        await ViewModel.LoadLookupsAsync();
+    }
+
+<#= DesktopSingleRowPage.Handlers(form, table) #>}
+<#
+    }
+#>

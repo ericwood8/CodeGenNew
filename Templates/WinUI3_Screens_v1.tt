@@ -95,9 +95,11 @@
     if (dashboard)
         Line("            \"Dashboard\" => new DashboardPage(GoTo),");
     foreach (var t in screens)
-        Line(stripTables.Contains(t.TableName)
-            ? $"            \"{t.TableName}\" => WithStrip(\"{t.TableName}\", new {t.TableName}ListPage(_context)),"
-            : $"            \"{t.TableName}\" => new {t.TableName}ListPage(_context),");
+        Line(SingleRowPlan.Applies(t, Project, "WinUI3")
+            ? $"            \"{t.TableName}\" => new {t.TableName}Page(_context),"   // the table's one row as a form (WinUI3_SingleRowScreen)
+            : stripTables.Contains(t.TableName)
+                ? $"            \"{t.TableName}\" => WithStrip(\"{t.TableName}\", new {t.TableName}ListPage(_context)),"
+                : $"            \"{t.TableName}\" => new {t.TableName}ListPage(_context),");
     Line("            _ => MainContent.Content");
     Line("        };");
     Line("    }");

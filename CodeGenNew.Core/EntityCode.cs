@@ -57,6 +57,12 @@ public static class EntityCode
             {
                 if (model.PrimaryKeyColumns.Count == 1)
                     B("    [Key]");
+                if (model.PrimaryKeyColumns.Count == 1 && KeyType.IsTyped(model, project) && c.IsIntegerColumn)
+                {
+                    // the person gives the key, so EF Core must send it (it would leave out an integer key it takes to be generated)
+                    B("    [DatabaseGenerated(DatabaseGeneratedOption.None)]");
+                    usesSchema = true;
+                }
                 B("    [Display(Order = -1, AutoGenerateField = true)]");
             }
             else

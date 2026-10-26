@@ -20,6 +20,9 @@ public static class ProjectPlan
     public static List<TableModel> Tables(PlanTableSet set, DatabaseModel database, ProjectSettings project, params string[] stacks)
     {
         List<TableModel> Screens() => database.ScreenTables(project, stacks);
+        // a table the project keeps one row of has a form instead of a list on a stack that has one; another stack gives it its ordinary screens
+        bool OneRow(TableModel t) => stacks.Length > 0 && stacks.All(s => SingleRowPlan.Applies(t, project, s));
+        bool OwnPage(TableModel t) => OneRow(t) && stacks.All(SingleRowPlan.HasOwnTemplate);   // the form is a template of its own, not the ordinary page
         return set switch
         {
             PlanTableSet.Entity => database.EntityTables.Where(t => project.NoRepository(t.TableName, t.LookupShape) != true).ToList(),
@@ -30,9 +33,10 @@ public static class ProjectPlan
             PlanTableSet.AspNetApi => database.AspNetApiTables(project),
             PlanTableSet.Search => database.SearchApiTables(project),
             PlanTableSet.AspNetSearch => database.AspNetSearchApiTables(project),
-            PlanTableSet.Screen => Screens(),
-            PlanTableSet.ScreenDetailMaster => Screens().Where(t => DatabaseModel.IsDetailMaster(t, project)).ToList(),
-            PlanTableSet.ScreenForm => Screens().Where(t => !DatabaseModel.IsDetailMaster(t, project)).ToList(),
+            PlanTableSet.Screen => Screens().Where(t => !OwnPage(t)).ToList(),
+            PlanTableSet.SingleRowScreen => Screens().Where(OwnPage).ToList(),
+            PlanTableSet.ScreenDetailMaster => Screens().Where(t => DatabaseModel.IsDetailMaster(t, project) && !(OneRow(t) && !stacks.Any(SingleRowPlan.KeepsDialogs))).ToList(),
+            PlanTableSet.ScreenForm => Screens().Where(t => OneRow(t) || !DatabaseModel.IsDetailMaster(t, project)).ToList(),
             PlanTableSet.Seed => database.SeedTables(project),
             PlanTableSet.Dto => database.DtoTables(project),
             PlanTableSet.Junction => database.Tables.Where(t => t.IsJunctionTable).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),

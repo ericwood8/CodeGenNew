@@ -46,6 +46,7 @@
         return attributes;
     }
     bool odata = Variant == "OData";
+    bool oneRow = !odata && SingleRowPlan.Applies(Model, Project, "Blazor");   // the table's one row is the page: a form, with no list, no paging, no child grids and no Delete
 
     if (odata && !ODataPlan.Serves(Model, Project))
     {
@@ -63,7 +64,7 @@
         string ns = BlazorNames.Namespace(Project);
         string title = form.Title;
         string key = keyColumn.CSharpName();
-        bool textKey = form.TextKey;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
+        bool textKey = form.TypedKey;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
         const int pageSize = BlazorTestPlan.PageSize;   // the tests of the page count pages by it
 
         var searchFields = form.SearchFields.Select(f => (Column: f.Column!, f.ParamName, Field: "filter" + Ident(f.Name), f.Label)).ToList();
@@ -81,7 +82,7 @@
         // every column of this table that points at a type-ahead parent, and the form fields among them
         var aheadColumns = form.Columns.Where(c => form.ParentOf(c) is { } p && Ahead(p)).ToList();
 
-        bool canClone = form.CanClone;
+        bool canClone = form.CanClone && !oneRow;
 
         bool usesMoneyBox = shown.Any(form.IsMoneyInput);
 
@@ -113,7 +114,7 @@
         // The child must have a client of its own: a plain table with a usable key, not a name / active table (whose API has no plain list).
         // the project's DetailMasterTables, when it lists any, says which tables show their child tables
         var children = ChildGrid.ForWeb(Model, Project)
-            .Where(g => DatabaseModel.IsDetailMaster(Model, Project) && g.KeyColumn is not null && g.KeyType is not null && !g.IsNameActive)
+            .Where(g => !oneRow && DatabaseModel.IsDetailMaster(Model, Project) && g.KeyColumn is not null && g.KeyType is not null && !g.IsNameActive)
             .Select(g =>
             {
                 string childType = BlazorNames.TypeName(g.Table);
@@ -238,12 +239,13 @@
         L("@inject IJSRuntime Js");
         L("@inject NavigationManager Navigation");
         L();
-        L($"<PageTitle>{title.Pluralize()}</PageTitle>");
+        string heading = SingleRowPlan.Heading(title, oneRow);
+        L($"<PageTitle>{heading}</PageTitle>");
         L();
-        L($"<h1>{title.Pluralize()}</h1>");
-        L(Gate("", "<button type=\"button\" @onclick=\"Add\">Add New</button>"));
+        L($"<h1>{heading}</h1>");
+        if (!oneRow) L(Gate("", "<button type=\"button\" @onclick=\"Add\">Add New</button>"));
         // the OData page has the filter row under the headers in place of the search boxes
-        if ((searchFields.Count > 0 || searchKeys.Count > 0) && !odata)
+        if ((searchFields.Count > 0 || searchKeys.Count > 0) && !odata && !oneRow)
         {
             L();
             L("<div class=\"search\">");
@@ -257,6 +259,8 @@
             L("    <button type=\"button\" @onclick=\"ClearSearchAsync\">Clear</button>");
             L("</div>");
         }
+        if (!oneRow)
+        {
         L();
         L("<details class=\"column-picker\">");
         L("    <summary>Columns</summary>");
@@ -268,11 +272,14 @@
         L("        <button type=\"button\" @onclick=\"ResetColumnsAsync\">Reset</button>");
         L("    </div>");
         L("</details>");
+        }
         L();
         L("@if (message is not null && row is null)");
         L("{");
         L("    <p class=\"error\">@message</p>");
         L("}");
+        if (!oneRow)
+        {
         L();
         L("<table>");
         L("    <thead>");
@@ -380,6 +387,7 @@
         L("{");
         L("    <p class=\"no-rows\">Nothing found.</p>");
         L("}");
+        }
         L();
         L("@if (row is not null)");
         L("{");
@@ -447,10 +455,11 @@
             }
             else if (kind == FieldKind.Money)
                 input = $"<CurrencyInput id=\"{id}\" @bind-Value=\"{bind}\" Digits=\"{NumericClassifier.CurrencyDigits(c)}\" Symbol=\"{Symbol()}\"{required} />";
-            else if (kind == FieldKind.Number)
+            else if (kind is FieldKind.Number or FieldKind.TypedNumberKey)
             {
                 string width = Project.NumberBoxCharacters(c) is { } boxWidth ? $" style=\"width: {boxWidth}ch\"" : "";
-                input = $"<InputNumber id=\"{id}\" @bind-Value=\"{bind}\"{width}{required} />";
+                string readOnly = kind == FieldKind.TypedNumberKey ? " readonly=\"@(!isNew)\"" : "";   // the key of a new row is typed; once the row exists it is read-only
+                input = $"<InputNumber id=\"{id}\" @bind-Value=\"{bind}\"{width}{readOnly}{required} />";
             }
             else if (c.CSharpBase() == "string")
             {
@@ -507,8 +516,8 @@
         }
         L("            <ValidationSummary />");
         L("            <div class=\"actions\">");
-        L("                <button type=\"submit\">Save</button>");
-        L("                <button type=\"button\" @onclick=\"Cancel\">Cancel</button>");
+        L(oneRow ? Gate("                ", "<button type=\"submit\">Save</button>") : "                <button type=\"submit\">Save</button>");
+        L(oneRow ? "                <button type=\"button\" @onclick=\"Cancel\">Reload</button>" : "                <button type=\"button\" @onclick=\"Cancel\">Cancel</button>");
         L("            </div>");
         L("        </EditForm>");
         if (readOnlyChildren.Count > 0)
@@ -574,10 +583,13 @@
         L("}");
         L();
         L("@code {");
+        if (!oneRow)
+        {
         L($"    private int PageSize = {pageSize};");
         L("    private static readonly int[] PageSizeChoices = [10, 20, 50, 100];");
         L("    private bool loaded;   // true once a page has arrived, so \"Nothing found.\" is not shown while waiting");
         L("    private List<§T> items = [];");
+        }
         foreach (var p in parents)
             L($"    private List<{BlazorNames.ItemType(p)}> {BlazorNames.LookupField(p)} = [];");
         foreach (var ch in children)
@@ -597,8 +609,11 @@
         L("    private string? message;");
         if (form.Guards.Count > 0)
             L("    private Dictionary<string, bool> guards = new();   // which guarded columns the signed-in person may change (GET guards)");
+        if (!oneRow)
+        {
         L("    private int pageNumber = 1;");
         L("    private int totalPages = 1;");
+        }
         if (odata)
         {
             L("    private List<(string Column, bool Descending)> sorts = [];   // a click sorts by the column, a Shift-click adds it as the next sort; kept in the browser under SortsKey");
@@ -608,11 +623,13 @@
             L("    private List<string> applied = [];   // the conditions the last Search asked for, kept while paging");
             L("    private ColumnFilter Typed(string name) => typed.TryGetValue(name, out var filter) ? filter : typed[name] = new ColumnFilter();");
         }
-        else
+        else if (!oneRow)
         {
             L("    private string? sortBy;");
             L("    private bool descending;");
         }
+        if (!oneRow)
+        {
         L("    // the columns the Columns list offers (the grid asks for the shown ones and the key; a row is read whole when it is opened) and the ones the grid starts with");
         L("    private static readonly GridColumn[] AllColumns =");
         L("    [");
@@ -624,6 +641,7 @@
         L("    private List<string> chosen = [];   // the columns shown; kept in the browser under ColumnsKey");
         L("    private bool Shown(string name) => chosen.Contains(name);");
         L("    private bool IsLastColumn(string name) => chosen.Count == 1 && chosen[0] == name;");
+        }
         if (gated)
             L($"    private bool CanWrite => Session.HasRole({RolesExpression(writeRoles)});   // WriteRoles: the roles that may add, change and delete rows");
         if (odata && filterFields!.Any(f => f is not null))
@@ -637,7 +655,7 @@
         L("    // Opened from another page's grid (?edit=<id>&back=<that page>): open this row, and go back to that page when the form is saved or cancelled.");
         L("    [Parameter, SupplyParameterFromQuery(Name = \"edit\")] public string? EditId { get; set; }");
         L("    [Parameter, SupplyParameterFromQuery(Name = \"back\")] public string? Back { get; set; }");
-        if (!odata)
+        if (!odata && !oneRow)
         {
             foreach (var f in searchFields)
                 L($"    private string? {f.Field};");
@@ -653,7 +671,8 @@
             L($"        try {{ {l.Field} = await {l.Field}Client.{l.Load}(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
         if (form.Guards.Count > 0)
             L("        try { guards = await Client.GetGuardsAsync(); } catch (Exception ex) when (ex is ApiException or HttpRequestException) { }");
-        L("        chosen = await GridColumns.LoadAsync(Js, ColumnsKey, AllColumns.Select(c => c.Name).ToList(), InitialColumns);");
+        if (!oneRow)
+            L("        chosen = await GridColumns.LoadAsync(Js, ColumnsKey, AllColumns.Select(c => c.Name).ToList(), InitialColumns);");
         if (odata)
             L("        sorts = await SavedSorts.LoadAsync(Js, SortsKey, SortableColumns.Where(Shown).ToList());");
         L("        await LoadAsync();");
@@ -667,7 +686,7 @@
         L($"            catch (Exception ex) when (ex is ApiException or HttpRequestException or FormatException) {{ message = \"This {title.ToLowerInvariant()} no longer exists!\"; }}");
         L("        }");
         L("    }");
-        if (!odata)
+        if (!odata && !oneRow)
         {
             L();
             if (searchFields.Count > 0 || searchKeys.Count > 0)
@@ -686,6 +705,23 @@
             }
         }
         L();
+        if (oneRow)
+        {
+            L("    // The table's one row is the form: the first row, or a blank form while there is none, and the first Save adds it.");
+            L("    private async Task LoadAsync()");
+            L("    {");
+            L("        try");
+            L("        {");
+            L("            var first = (await Client.GetPageAsync(1, 1, new Dictionary<string, string?>(), null, false)).Items.FirstOrDefault();");
+            if (aheadParents.Count > 0)
+                L("            if (first is not null) await KnowNamesAsync([first]);");
+            L("            if (first is null) Add(); else Edit(first);");
+            L("        }");
+            L($"        catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ message = \"Failed to load {title.ToLowerInvariant()}.\"; }}");
+            L("    }");
+        }
+        else
+        {
         L("    private async Task LoadAsync(int target = 1)");
         L("    {");
         L("        try");
@@ -710,7 +746,11 @@
             L("        catch (FormatException ex) { message = ex.Message; }   // a number, date or guid in the filter row that is not one is never sent");
         L($"        catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ message = \"Failed to load {title.ToLowerInvariant().Pluralize()}.\"; }}");
         L("    }");
-        if (odata)
+        }
+        if (oneRow)
+        {
+        }
+        else if (odata)
         {
             if (filterFields!.Any(f => f is not null))
             {
@@ -793,6 +833,8 @@
             L();
             L("    private string Arrow(string column) => sortBy != column ? \"\" : descending ? \"\\u25BC\" : \"\\u25B2\";");
         }
+        if (!oneRow)
+        {
         L();
         L("    // Showing or hiding a column: the choice is kept, and a sort" + (odata ? " or a filter" : "") + " on a column that is no longer shown is dropped.");
         L("    private async Task ToggleColumnAsync(string name) => await ChooseColumnsAsync(GridColumns.Toggle(chosen, AllColumns.Select(c => c.Name).ToList(), name));");
@@ -826,6 +868,7 @@
             L("        }");
         }
         L("    }");
+        }
         foreach (var p in parents)
         {
             L();
@@ -924,7 +967,7 @@
             L();
             L($"    private string Name{l.Field}({l.IdType}? id) => Convert.ToString({l.Field}.FirstOrDefault(p => Equals(p.{l.KeyProp}, id))?.{l.DisplayProp}) ?? \"\";");
         }
-        if (columnList.Any(c => c.Column.IsMoneyAmount) || children.Any(ch => ch.Columns.Any(c => c.IsMoneyAmount)))
+        if (!oneRow && (columnList.Any(c => c.Column.IsMoneyAmount) || children.Any(ch => ch.Columns.Any(c => c.IsMoneyAmount))))
         {
             L();
             L("    // Money in the grid: the currency symbol, thousands separators and the column's decimals.");
@@ -1057,12 +1100,25 @@
             }
         }
         L();
+        if (oneRow)
+        {
+            L("    // Reload: read the row again, dropping what was typed (or go back to the page that opened it).");
+            L("    private async Task Cancel()");
+            L("    {");
+            L("        row = null;");
+            L("        message = null;");
+            L("        if (Back is not null) Navigation.NavigateTo(Back); else await LoadAsync();");
+            L("    }");
+        }
+        else
+        {
         L("    private void Cancel()");
         L("    {");
         L("        row = null;");
         L("        message = null;");
         L("        if (Back is not null) Navigation.NavigateTo(Back);");
         L("    }");
+        }
         L();
         L("    private async Task SaveAsync()");
         L("    {");
@@ -1082,7 +1138,7 @@
             L("            else await Client.UpdateAsync(row.§K, row);");
         }
         L("            row = null;");
-        L("            await LoadAsync(pageNumber);");
+        L(oneRow ? "            await LoadAsync();" : "            await LoadAsync(pageNumber);");
         L("            if (Back is not null) Navigation.NavigateTo(Back);");
         L("        }");
         // a typed key can already be taken: the API answers 409
@@ -1091,6 +1147,8 @@
         L("        catch (ApiException ex) { message = ex." + ExplainCall + "(\"saving\"); }");
         L("        catch (HttpRequestException) { message = \"Problem while saving!\"; }");
         L("    }");
+        if (!oneRow)
+        {
         L();
         L("    private async Task ChangePageSizeAsync(ChangeEventArgs args)");
         L("    {");
@@ -1135,6 +1193,7 @@
             L("        }");
             L("        catch (HttpRequestException) { message = \"Problem while cloning!\"; }");
             L("    }");
+        }
         }
         L("}");
         Write(o.ToString());

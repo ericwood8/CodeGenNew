@@ -156,7 +156,7 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var project = LoadActiveProject();
-            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns);
+            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns, project.KeyColumns);
             var database = await schemaProvider.BuildAsync(_connectionRequest.DatabaseName, schema);
 
             var result = await TemplateRunner.RunAsync(template.FilePath, database, project);
@@ -191,7 +191,7 @@ public partial class MainViewModel : ObservableObject
         var dialect = request.Provider switch { DatabaseProvider.PostgreSql => SqlDialect.PostgreSql, DatabaseProvider.MySql => SqlDialect.MySql, DatabaseProvider.Sqlite => SqlDialect.Sqlite, _ => SqlDialect.SqlServer };
         bool isFile = request.Provider == DatabaseProvider.Sqlite;
         return new GenerateAllDialogViewModel(_settings.ProjectsDirectory, _settings.TemplatesDirectory, _settings.OutputDirectory,
-            project => SchemaProviderFactory.Create(request, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns),
+            project => SchemaProviderFactory.Create(request, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns, project.KeyColumns),
             schema, request.DatabaseName, dialect, isFile ? null : request.ServerName, isFile || request.AuthMode == AuthMode.WindowsAuth ? null : request.UserName, dispatcher);
     }
 
@@ -226,7 +226,7 @@ public partial class MainViewModel : ObservableObject
         {
             // The project's NamingStyle decides the names the schema reader gives tables and columns (customer_item -> CustomerItem).
             var project = LoadActiveProject();
-            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns);
+            var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns, project.KeyColumns);
             var model = await schemaProvider.BuildTableModelAsync(
                 table.SchemaName, table.TableName, template.Config.NeedsRowData, template.Config.NeedsReferencedDisplayColumns);
 

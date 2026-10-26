@@ -78,7 +78,7 @@
         string keyProp = JsonNames.Camel(keyColumn.Name);         // holidayId
         string keyTs = keyType.TypeScript;
         string emptyKey = keyType.TypeScriptEmpty;
-        bool textKey = form.TextKey;    // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
+        bool textKey = form.TypedKey;    // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
         // the child grids and the "save first" note show once the row exists: for a typed key that is `!adding`, since the key is set on a new row too
         string savedTest = textKey ? "!adding" : "selectedRow." + keyProp;
         string title = form.Title;
@@ -435,10 +435,10 @@
                 string limits = (money.Min is { } lo ? $" [min]=\"{lo}\"" : "") + (money.Max is { } hi ? $" [max]=\"{hi}\"" : "");
                 H($"                <input type=\"text\" inputmode=\"decimal\" id=\"{id}\" name=\"{id}\" appCurrency currencyCode=\"{money.Currency}\" [digits]=\"{money.Digits}\"{limits} [(ngModel)]=\"{model}\"{req}>");
             }
-            else if (kind == FieldKind.Number)
+            else if (kind is FieldKind.Number or FieldKind.TypedNumberKey)
             {
-                // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
-                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{NumberBox.For(Model.TableName, c, Project).Html} placeholder=\"{Labels.Placeholder(c)}\"{req}>");
+                // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...); a typed key is read-only once the row exists.
+                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{NumberBox.For(Model.TableName, c, Project).Html}{(kind == FieldKind.TypedNumberKey ? " [readonly]=\"!adding\"" : "")} placeholder=\"{Labels.Placeholder(c)}\"{req}>");
             }
             else if (kind == FieldKind.Multiline)
             {
@@ -1111,7 +1111,7 @@
                 T($"  // Edit opens the {child.Title}'s own page on that row; saving or cancelling there comes back here with this {title} open again.");
                 T($"  edit{child.Name}(row: any): void {{");
                 string childKey = child.KeyIsText ? $"encodeURIComponent(row['{child.KeyJson}'])" : $"row['{child.KeyJson}']";
-                string selfKey = textKey ? $"encodeURIComponent(this.selectedRow?.{keyProp} ?? '')" : $"this.selectedRow?.{keyProp}";
+                string selfKey = form.TextKey ? $"encodeURIComponent(this.selectedRow?.{keyProp} ?? '')" : $"this.selectedRow?.{keyProp}";
                 T($"    this.router.navigateByUrl(`/{child.PageRoute}?edit=${{{childKey}}}&back=${{encodeURIComponent('/{selfRoute}?edit=' + {selfKey})}}`);");
                 T("  }");
                 T();

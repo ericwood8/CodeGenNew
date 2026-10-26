@@ -487,6 +487,7 @@ public class MySqlSchemaProvider : SchemaProviderBase
         SELECT INDEX_NAME, NON_UNIQUE = 0, COLUMN_NAME
         FROM information_schema.STATISTICS
         WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = @table AND COLUMN_NAME IS NOT NULL AND INDEX_TYPE IN ('BTREE', 'HASH')
+          AND INDEX_NAME NOT IN (SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = @table AND COLUMN_NAME IS NULL)
         ORDER BY INDEX_NAME, SEQ_IN_INDEX;
         """;
 

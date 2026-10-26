@@ -36,7 +36,7 @@ public sealed record KeyType(KeyKind Kind, string CSharp, string TypeScript, str
         if (column.IsIntegerColumn)
         {
             string csharp = column.CSharpBase();
-            return new KeyType(KeyKind.Int, csharp, "number", "int", csharp == "long" ? ":long" : ":int", "0", !column.IsIdentity);
+            return new KeyType(KeyKind.Int, csharp, "number", "int", csharp == "long" ? ":long" : ":int", "0", !column.IsIdentity && column.DatabaseDefaultSql is null);
         }
         if (column.IsStringColumn && !column.IsLargeTextColumn)
             return new KeyType(KeyKind.Text, "string", "string", "str", "", "''", true);
@@ -48,6 +48,11 @@ public sealed record KeyType(KeyKind Kind, string CSharp, string TypeScript, str
         foreignKey.ReferencingColumns.Count == 1 && columns.FirstOrDefault(c => c.Name.Equals(foreignKey.ReferencingColumns[0], StringComparison.OrdinalIgnoreCase)) is { } column
             ? Of(column)
             : null;
+
+    /// <summary> The person gives the key of a new row: a text key, or a whole-number key the database does not hand out (no identity, no default) and the project's key-sequence table does not either.
+    /// Its box is on the form for a new row and read-only afterwards, and the entity says the database does not generate it. </summary>
+    public static bool IsTyped(TableModel table, ProjectSettings project) =>
+        Of(table) is { ChosenByPerson: true } key && (key.Kind == KeyKind.Text || !project.UsesKeySequence(table.TableName));
 
     /// <summary> The key type of a table with a single-column primary key; null for no key, a composite key, or a key of another type. </summary>
     public static KeyType? Of(TableModel table) => table.PrimaryKeyColumns.Count == 1 ? Of(table.PrimaryKeyColumns[0]) : null;

@@ -82,9 +82,9 @@
         string keyProp = JsonNames.Camel(keyColumn.Name);
         string keyTs = keyType.TypeScript;
         string emptyKey = keyType.TypeScriptEmpty;     // "no key yet": the API assigns the real one (a text key is typed by the person, so a new row starts with '')
-        bool textKey = form.TextKey;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
+        bool textKey = form.TypedKey;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
         // a text key is put in a link as a query value, so a character such as & or # cannot end it early
-        string keyInLink = textKey ? $"encodeURIComponent(selectedRow?.{JsonNames.Camel(keyColumn.Name)} ?? '')" : $"selectedRow?.{JsonNames.Camel(keyColumn.Name)}";
+        string keyInLink = form.TextKey ? $"encodeURIComponent(selectedRow?.{JsonNames.Camel(keyColumn.Name)} ?? '')" : $"selectedRow?.{JsonNames.Camel(keyColumn.Name)}";
         string title = form.Title;
         bool hasName = form.HasName; // just for showError's message wording below
         const int pageSize = 20;
@@ -1128,7 +1128,7 @@
                 if (!c.IsNullable) T("              required");
                 T("            />");
             }
-            else if (kind == FieldKind.Number)
+            else if (kind is FieldKind.Number or FieldKind.TypedNumberKey)
             {
                 var box = NumberBox.For(Model.TableName, c, Project);
                 T($"            <input");
@@ -1142,6 +1142,7 @@
                 if (box.Max is { } max) T($"              max=\"{max}\"");
                 T($"              value={{selectedRow.{prop}}}");
                 T($"              onChange={{(event) => setSelectedRow({{ ...selectedRow, {prop}: Number(event.target.value) }})}}");
+                if (kind == FieldKind.TypedNumberKey) T("              readOnly={!adding}");   // the key of a new row is typed; once the row exists it is read-only
                 T($"              placeholder=\"{Labels.Placeholder(c)}\"");
                 if (!c.IsNullable) T("              required");
                 T("            />");
@@ -1295,7 +1296,7 @@
         var ticked = chooseColumns ? columnList.FirstOrDefault(c => !c.Initial && Own(c)) : null;
         var sortedColumn = chooseColumns && initialCountOk ? columnList.FirstOrDefault(c => c.Initial && c.Sortable && Own(c)) : null;
         bool columnTests = cleared is not null || ticked is not null || sortedColumn is not null;
-        S(textKey || editableChildren.Count > 0 || odata || nameActive || columnTests || (!nameActive && GridTestRow.For(form, chosen) is not null) ? "import { fireEvent, render, screen } from '@testing-library/react';" : "import { render, screen } from '@testing-library/react';");
+        S(textKey || editableChildren.Count > 0 || odata || nameActive || columnTests || (!nameActive && GridTestRow.For(form, chosen) is not null) ? (textKey ? "import { fireEvent, render, screen, within } from '@testing-library/react';" : "import { fireEvent, render, screen } from '@testing-library/react';") : "import { render, screen } from '@testing-library/react';");
         S("import { MemoryRouter } from 'react-router-dom';");
         S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
         S($"import {{ {pageName} }} from '../{pageName}';");
@@ -1356,13 +1357,13 @@
             S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
             S($"    fireEvent.click(await screen.findByText('Add New'));");
             S($"    expect(await screen.findByText('Add {title}')).toBeInTheDocument();");
-            S($"    expect(screen.getByLabelText('{Labels.Field(keyColumn)}')).not.toHaveAttribute('readonly');");
+            S($"    expect(within(document.querySelector('dialog') as HTMLElement).getByLabelText('{Labels.Field(keyColumn)}')).not.toHaveAttribute('readonly');");
             if (gridChildren.Count > 0)
                 S($"    expect(screen.getAllByText(/Save this {title} first/)).toHaveLength({gridChildren.Count});");   // one note per child grid
             S("    fireEvent.click(screen.getByText('Cancel'));");
             S("    fireEvent.click(await screen.findByText('Edit'));");
             S($"    expect(await screen.findByText('Edit {title}')).toBeInTheDocument();");
-            S($"    expect(screen.getByLabelText('{Labels.Field(keyColumn)}')).toHaveAttribute('readonly');");
+            S($"    expect(within(document.querySelector('dialog') as HTMLElement).getByLabelText('{Labels.Field(keyColumn)}')).toHaveAttribute('readonly');");
             if (gridChildren.Count > 0)
                 S($"    expect(screen.queryAllByText(/Save this {title} first/)).toHaveLength(0);");
             S("  });");

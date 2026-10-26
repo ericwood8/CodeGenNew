@@ -355,6 +355,8 @@ public enum PlanTableSet
     Client,
     /// <summary> The tables with a screen (the project's Screens setting, else every table with a search). </summary>
     Screen,
+    /// <summary> The screens of the tables the project's SingleRowTables names, for a stack that has a single-record screen: a form for the one row. </summary>
+    SingleRowScreen,
     /// <summary> The screens whose dialog has no child grids. </summary>
     ScreenForm,
     /// <summary> The screens whose dialog also shows child grids. </summary>

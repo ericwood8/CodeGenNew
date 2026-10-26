@@ -61,6 +61,7 @@
     {
         bool odata = Variant == "OData";
         bool nameActive = form.IsNameActive;
+        bool oneRow = !odata && !nameActive && SingleRowPlan.Applies(Model, Project, "Angular");   // the table's one row is the screen: a form, with no list, no paging and no Delete
         string baseName = form.BaseName;
         string stem = form.Stem;
         string screenStem = odata ? AngularNames.ODataComponentStem(Model.TableName) : stem;   // the screen's folder, files, selector and saved-sort key
@@ -70,14 +71,14 @@
         string dateZone = odata ? ":'UTC'" : "";
         // The Columns list: the grid starts with the columns GridColumns picks and offers every column of the form; a name / active list is short and has no such list.
         var chosen = ChosenGridColumns.For(form);
-        bool chooseColumns = !form.IsNameActive;
+        bool chooseColumns = !form.IsNameActive && !oneRow;
         var columnList = chooseColumns ? chosen.Offered : chosen.Initial;   // the columns the grid has a header and a cell for, in order; a hidden one is not drawn
         var odataFilters = odata && !form.IsNameActive ? columnList.Select(c => c.Filter).ToList() : null;   // the filter row's control of each of those columns (null: none)
         string If(ColumnModel c) => chooseColumns ? $" *ngIf=\"columns.has('{c.Name}')\"" : "";   // the attribute that draws a cell only while its column is chosen
         string variable = form.Variable;        // holiday
         string keyProp = JsonNames.Camel(keyColumn.Name);        // holidayId
         string emptyKey = keyType.TypeScriptEmpty;     // "no key yet": the API assigns the real one (a text key is typed by the person, so a new row starts with '')
-        bool textKey = form.TextKey;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
+        bool textKey = form.TypedKey;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
         string title = form.Title;                // Time Sheet
         bool hasName = form.HasName; // just for showError's message wording below
         int pageSize = 20;
@@ -89,7 +90,7 @@
         var searchFields = form.WebSearchFields;
         // a drop-down of the parent's rows per whole-number foreign key: an exact match on the key (the OData screen has its own filter row)
         IReadOnlyList<SearchKeyField> searchKeys = odata ? [] : form.SearchKeys;
-        bool canSearch = !nameActive && (searchFields.Count > 0 || searchKeys.Count > 0);
+        bool canSearch = !nameActive && !oneRow && (searchFields.Count > 0 || searchKeys.Count > 0);
 
         // ==== the columns on the screen: Name first, then table order
         var shown = form.Columns;
@@ -129,8 +130,8 @@
         H("      <div class=\"left-side\">");
         H("<div>");
         H("    <!-- Heading -->");
-        H($"    <h1>{title.Pluralize()}</h1>");
-        H($"    <button{writeOnly} (click)=\"add()\" class=\"btn\">Add New</button>");
+        H($"    <h1>{SingleRowPlan.Heading(title, oneRow)}</h1>");
+        if (!oneRow) H($"    <button{writeOnly} (click)=\"add()\" class=\"btn\">Add New</button>");
         // The OData screen has the filter row under the headers (a control per column, Search and Clear in its last cell); only the one box of the Search list protocol stays above the grid.
         if (canSearch && (!odata || Project.ListSearchProtocol))
         {
@@ -186,6 +187,8 @@
             H("        </div>");
             H("    </details>");
         }
+        if (!oneRow)
+        {
         H();
         H("    <!-- Grid -->");
         // A right-click on the grid opens a small menu with Clear sort; a click on a sortable header sorts by it (again: flips the direction).
@@ -289,10 +292,13 @@
             H("        (page)=\"onPageChange($event)\">");
             H("    </mat-paginator>");
         }
+        }
         H();
         H("    <!-- Add/Edit Form -->");
         // The add/edit form is a modal <dialog> (native, no library): it opens over the page, wherever the grid is scrolled to, and Escape cancels it.
-        H("    <dialog *ngIf=\"selectedRow\" #editDialog class=\"form-container\" (cancel)=\"$event.preventDefault(); cancel()\">");
+        H(oneRow
+            ? "    <section *ngIf=\"selectedRow\" #oneRowForm class=\"form-container\">"   // the form is part of the page, not a dialog
+            : "    <dialog *ngIf=\"selectedRow\" #editDialog class=\"form-container\" (cancel)=\"$event.preventDefault(); cancel()\">");
         // a typed key is set on a new row too, so the screen's `adding` (not the key) says which heading
         string headingTest = textKey ? "adding ? 'Add' : 'Edit'" : "selectedRow." + keyProp + " ? 'Edit' : 'Add'";
         H($"        <h2>{{{{{headingTest}}}}} {title}</h2>");
@@ -396,10 +402,10 @@
                 string limits = (money.Min is { } lo ? $" [min]=\"{lo}\"" : "") + (money.Max is { } hi ? $" [max]=\"{hi}\"" : "");
                 H($"                <input type=\"text\" inputmode=\"decimal\" id=\"{id}\" name=\"{id}\" appCurrency currencyCode=\"{money.Currency}\" [digits]=\"{money.Digits}\"{limits} [(ngModel)]=\"{model}\"{req}>");
             }
-            else if (kind == FieldKind.Number)
+            else if (kind is FieldKind.Number or FieldKind.TypedNumberKey)
             {
-                // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...).
-                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{NumberBox.For(Model.TableName, c, Project).Html} placeholder=\"{Labels.Placeholder(c)}\"{req}>");
+                // A whole-number column carries the limits its name and SQL type imply (a month 1-12, a year MinYear-MaxYear, ...); a typed key is read-only once the row exists.
+                H($"                <input type=\"number\" id=\"{id}\" name=\"{id}\" [(ngModel)]=\"{model}\"{NumberBox.For(Model.TableName, c, Project).Html}{(kind == FieldKind.TypedNumberKey ? " [readonly]=\"!adding\"" : "")} placeholder=\"{Labels.Placeholder(c)}\"{req}>");
             }
             else if (kind == FieldKind.Multiline)
             {
@@ -423,10 +429,10 @@
         if (tabbed) H("            </div>");
         }
         H();
-        H("            <button type=\"submit\" class=\"btn\">Submit</button>");
-        H("            <button type=\"button\" (click)=\"cancel()\" class=\"btn btn-outline\">Cancel</button>");
+        H($"            <button type=\"submit\" class=\"btn\"{(oneRow ? writeOnly : "")}>Submit</button>");
+        H($"            <button type=\"button\" (click)=\"cancel()\" class=\"btn btn-outline\">{(oneRow ? "Reload" : "Cancel")}</button>");
         H("        </form>");
-        H("    </dialog>");
+        H(oneRow ? "    </section>" : "    </dialog>");
         H("</div>");
         H("</div>");
         H("</div>");
@@ -612,9 +618,26 @@
                 columnSpecs.Add("  });");
             }
         }
+        if (oneRow)
+        {
+            // the screen is a form: the one row opens in it, and an empty table opens a blank one
+            string oneRowLiteral = testRow?.Literal ?? SingleRowPlan.TypeScriptRow(form);
+            string onePage = searchProtocol ? Asked(1) : "(r) => r.url.endsWith('/search')";
+            string oneReply(string items, int total) => searchProtocol ? $"{{ '{Project.ItemsMember}': {items}, '{Project.TotalMember}': {total} }}" : $"{{ items: {items}, page: 1, pageSize: 1, totalCount: {total}, totalPages: {total} }}";
+            spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n");
+            spec.Append("  it('opens the one row in the form', () => {\n");
+            spec.Append("    const http = TestBed.inject(HttpTestingController);\n");
+            spec.Append($"    http.expectOne({onePage}).flush({oneReply("[" + oneRowLiteral + "]", 1)});\n");
+            spec.Append("    expect(component.selectedRow).not.toBeNull();\n    expect(component.adding).toBe(false);\n  });\n\n");
+            spec.Append("  it('opens a blank form while the table has no row', () => {\n");
+            spec.Append("    const http = TestBed.inject(HttpTestingController);\n");
+            spec.Append($"    http.expectOne({onePage}).flush({oneReply("[]", 0)});\n");
+            spec.Append("    expect(component.selectedRow).not.toBeNull();\n    expect(component.adding).toBe(true);\n  });\n});\n");
+        }
+        else
         spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + (rowSpecs.Count > 0 ? "\n" + string.Join("\n", rowSpecs) : "") + (columnSpecs.Count > 0 ? "\n" + string.Join("\n", columnSpecs) : "") + "\n});\n");
-        if (writeRoles.Count > 0) spec.Append(WriteRoleSpec.For(Project, cls, writeRoles));
-        if (testRow is not null) spec.Append(testRow.AngularOpenedFromAnotherPage(title, cls));
+        if (writeRoles.Count > 0 && !oneRow) spec.Append(WriteRoleSpec.For(Project, cls, writeRoles));
+        if (testRow is not null && !oneRow) spec.Append(testRow.AngularOpenedFromAnotherPage(title, cls));
 
         // ================= ts
         // The screen is a short class on PagedCrudScreen (components/crud-screen.ts, written by TS_EssentialCrud): the rows, the open row, add / edit / submit / delete / clone / cancel, the way back to
@@ -634,19 +657,19 @@
         T("import { CommonModule } from '@angular/common';");
         T("import { FormsModule } from '@angular/forms';");
         if (UsesCurrencyBox()) T("import { CurrencyInputDirective } from '../currency-input';");
-        if (!nameActive) T("import { MatPaginatorModule } from '@angular/material/paginator';");
+        if (!nameActive && !oneRow) T("import { MatPaginatorModule } from '@angular/material/paginator';");
         if (chooseColumns) T($"import {{ GridColumns{(columnList.Any(c => c.Cut) ? ", cutText" : "")} }} from '../../grid-columns';");
-        T(odata && !nameActive ? "import { ColumnFilterField, ODataPagedScreen, saveSorts } from '../odata-screen';" : $"import {{ {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")} }} from '../crud-screen';");
+        T(odata && !nameActive ? "import { ColumnFilterField, ODataPagedScreen, saveSorts } from '../odata-screen';" : $"import {{ {(nameActive ? "NameActiveCrudScreen" : oneRow ? "SingleRowCrudScreen" : "PagedCrudScreen")} }} from '../crud-screen';");
         T();
         T("@Component({");
         T($"  selector: 'app-{screenStem}',");
         if (Project.AngularStandaloneFlag) T("  standalone: true,");
         T($"  changeDetection: ChangeDetectionStrategy.{Project.AngularEagerStrategy}, // plain properties change inside subscribe callbacks: keep eager checking when OnPush is the default (Angular 22)");
-        T("  imports: [ CommonModule, FormsModule" + (UsesCurrencyBox() ? ", CurrencyInputDirective" : "") + (nameActive ? "" : ", MatPaginatorModule") + " ],");
+        T("  imports: [ CommonModule, FormsModule" + (UsesCurrencyBox() ? ", CurrencyInputDirective" : "") + (nameActive || oneRow ? "" : ", MatPaginatorModule") + " ],");
         T($"  templateUrl: './{screenStem}.component.html',");
         T($"  styleUrl: './{screenStem}.component.css'");
         T("})");
-        T($"export class {cls} extends {(nameActive ? "NameActiveCrudScreen" : odata ? "ODataPagedScreen" : "PagedCrudScreen")}<{baseName}{keyGeneric}> {{");
+        T($"export class {cls} extends {(nameActive ? "NameActiveCrudScreen" : oneRow ? "SingleRowCrudScreen" : odata ? "ODataPagedScreen" : "PagedCrudScreen")}<{baseName}{keyGeneric}> {{");
         T($"  protected readonly service = inject({serviceClass});");
         if (writeRoles.Count > 0)
         {
@@ -657,7 +680,7 @@
         T($"  protected readonly idKey = '{keyProp}';");
         if (keyType.Kind != KeyKind.Int) T($"  protected override readonly emptyKey: {keyType.TypeScript} = {emptyKey};");
         if (textKey) T("  protected override readonly keyChosen = true; // the person types the key of a new row: it is sent as typed");
-        if (!nameActive)
+        if (!nameActive && !oneRow)
         {
             T($"  protected readonly gridKey = '{screenStem}'; // the grid's saved sort is kept in the browser under this key (see grid-sort.ts)");
             T("  // the columns the Columns list offers, then the ones the grid starts with; the person's choice is kept in the browser under the grid's key");

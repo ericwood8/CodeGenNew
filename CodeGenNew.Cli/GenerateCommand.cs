@@ -105,7 +105,7 @@ public static class GenerateCommand
             AuthMode = options.Trusted && options.Provider == DatabaseProvider.SqlServer ? AuthMode.WindowsAuth : AuthMode.SqlLogin,
             UserName = options.UserName, Password = password
         };
-        return SchemaProviderFactory.Create(request, specialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns);
+        return SchemaProviderFactory.Create(request, specialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns, project.KeyColumns);
     }
 
     /// <summary> <c>codegen check-data</c>: reads the rows of each table (a read-only SELECT, small tables only) and lists the stored values the generated validators would refuse, so a person can fix them or

@@ -91,7 +91,9 @@ public static class DesktopFormXaml
             // As wide as the range's widest number (at most nine digits) plus about 150 pixels for the spin buttons, clear button and padding, and never narrower than the header text.
             int digits = Math.Max(range.Min.ToString().Length, range.Max.ToString().Length);
             string width = $" Width=\"{Math.Max(Math.Min(digits, 9) * 10 + 150, label.Length * 7 + 8)}\" HorizontalAlignment=\"Left\"";
-            L(I + $"<NumberBox Header=\"{label}\"{required} Value=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"");
+            // the key of a new row is typed; once the row exists it cannot change, and a NumberBox has no read-only state
+            string enabled = kind == FieldKind.TypedNumberKey ? " IsEnabled=\"{x:Bind ViewModel.IsNewRow}\"" : "";
+            L(I + $"<NumberBox Header=\"{label}\"{required} Value=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\"{enabled}");
             L(I + $"           Minimum=\"{range.Min}\" Maximum=\"{range.Max}\" SmallChange=\"1\" LargeChange=\"{(range.Max - range.Min >= 100 ? 10 : 1)}\"");
             L(I + $"           SpinButtonPlacementMode=\"Inline\" ValidationMode=\"InvalidInputOverwritten\"{width} />");
         }

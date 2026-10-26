@@ -231,6 +231,8 @@ public static class DefaultAssetSeeder
         "WinUI3_MasterScreen_v1.tt", "WinUI3_MasterScreen_v1.tt.config",
         "WinUI3_DetailScreen_v1.tt", "WinUI3_DetailScreen_v1.tt.config",
         "WinUI3_DetailMasterScreen_v1.tt", "WinUI3_DetailMasterScreen_v1.tt.config",
+        "WinUI3_SingleRowScreen_v1.tt", "WinUI3_SingleRowScreen_v1.tt.config",
+        "UNO_SingleRowScreen_v1.tt", "UNO_SingleRowScreen_v1.tt.config",
         "TS_DetailMasterComponent_v1.tt", "TS_DetailMasterComponent_v1.tt.config",
         "TSX_Api_v1.tt", "TSX_Api_v1.tt.config",
         "TSX_Page_v1.tt", "TSX_Page_v1.tt.config",

@@ -334,6 +334,25 @@
         void Tests(bool odata)
         {
             string pageType = odata ? BlazorNames.ODataPageName(Model.TableName) : type + "Page";
+            if (!odata && SingleRowPlan.Applies(Model, Project, "Blazor"))
+            {
+                // the page is a form: the heading, the blank form of an empty table and the form of the one row
+                o.Append($"\n[TestClass]\npublic class {type}PageTests : PageTestContext\n{{\n");
+                if (row is not null)
+                    o.Append($"    private const string Row = \"\"\"{row.Json}\"\"\";\n\n");
+                o.Append($"    private IRenderedComponent<{pageType}> Open(string list)\n    {{\n        Api.Answer(\"/search\", list);\n" + signIn + $"        return Render<{pageType}>();\n    }}\n\n");
+                o.Append($"    [TestMethod]\n    public void Shows_the_heading_and_a_blank_form_while_the_table_has_no_row()\n    {{\n        var page = Open(FakeApi.Page(\"\", 0));\n        StringAssert.Contains(page.Markup, \"<h1>{title}</h1>\");\n        page.WaitForAssertion(() => StringAssert.Contains(page.Find(\"[role=dialog]\").TextContent, \"Add {title}\"));\n        Assert.AreEqual(0, page.FindAll(\"button\").Count(b => b.TextContent.Trim() is \"Add New\" or \"Delete\"));\n    }}\n");
+                if (row is not null)
+                {
+                    o.Append($"\n    [TestMethod]\n    public void Opens_the_one_row_in_the_form_and_sends_it_in_a_PUT_on_Save()\n    {{\n");
+                    o.Append("        var page = Open(FakeApi.Page(Row, 1));\n");
+                    o.Append($"        page.WaitForAssertion(() => Assert.IsTrue(page.FindAll(\"[role=dialog] input\").Any(i => i.GetAttribute(\"value\") == \"{row.Marker}\")));\n");
+                    o.Append("        page.Find(\"[role=dialog] button[type=submit]\").Click();\n");
+                    o.Append($"        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Put && r.Body.Contains(\"{row.Marker}\"))));\n    }}\n");
+                }
+                o.Append("}\n");
+                return;
+            }
             string route = "/" + (odata && !Project.ODataReplacesScreens ? AngularNames.ODataRoute(Model.TableName) : ScreenNames.Route(Model.TableName));
             string listPath = odata ? set : "/search";
             string listAnswer = odata ? "FakeApi.ODataPage(Row, 1)" : "FakeApi.Page(Row, 1)";

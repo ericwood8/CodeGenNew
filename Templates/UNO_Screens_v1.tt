@@ -97,9 +97,11 @@
     if (dashboard)
         L("            \"Dashboard\" => new DashboardPage(_api.Dashboard, GoTo),");
     foreach (var t in screens)
-        L(Project.ODataReplacesScreens && odataScreens.Any(o => o.TableName == t.TableName)
-            ? $"            \"{t.TableName}\" => new {t.TableName}ODataListPage(_api),"   // ODataScreens=Replace: the OData page takes the REST page's place
-            : $"            \"{t.TableName}\" => new {t.TableName}ListPage(_api),");
+        L(SingleRowPlan.Applies(t, Project, "Uno")
+            ? $"            \"{t.TableName}\" => new {t.TableName}Page(_api),"   // the table's one row as a form (UNO_SingleRowScreen)
+            : Project.ODataReplacesScreens && odataScreens.Any(o => o.TableName == t.TableName)
+                ? $"            \"{t.TableName}\" => new {t.TableName}ODataListPage(_api),"   // ODataScreens=Replace: the OData page takes the REST page's place
+                : $"            \"{t.TableName}\" => new {t.TableName}ListPage(_api),");
     if (!Project.ODataReplacesScreens)
         foreach (var t in odataScreens)
             L($"            \"{t.TableName}OData\" => new {t.TableName}ODataListPage(_api),");

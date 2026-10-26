@@ -51,6 +51,14 @@ public abstract partial class ViewModelBase : ObservableObject
 
     /// <summary> The one context of the app is not thread-safe, and a page can start loading while the page before it still is: every view model takes turns on this gate. </summary>
     protected static readonly System.Threading.SemaphoreSlim ContextGate = new(1, 1);
+
+    /// <summary> Runs a read of the context on that gate, for a page that is not a view model. </summary>
+    public static async System.Threading.Tasks.Task<T> InTurnAsync<T>(System.Func<System.Threading.Tasks.Task<T>> work)
+    {
+        await ContextGate.WaitAsync();
+        try { return await work(); }
+        finally { ContextGate.Release(); }
+    }
 }
 @@@FILE <#= viewsFolder #>/BusyOverlay.xaml@@@
 <UserControl

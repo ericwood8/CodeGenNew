@@ -15,16 +15,17 @@ public sealed class FormModel
         KeyColumn = table.PrimaryKeyColumns.Count == 1 ? table.PrimaryKeyColumns[0] : null;
         KeyType = KeyColumn is null ? null : KeyType.Of(KeyColumn);
         TextKey = KeyType?.Kind == KeyKind.Text;
+        TypedKey = KeyType.IsTyped(table, project);
 
         _foreignKeyByColumn = table.ForeignKeyByColumn;
 
         // A typed key is the first field of a new row. Otherwise: not the key, not computed or identity, not a password hash, a type a box can edit, and not a foreign key to a parent the project hides.
         // A column called Name comes first, so the field a person looks for is at the top.
         Columns = table.Columns
-            .Where(c => (TextKey && c.IsPrimaryKey)
+            .Where(c => (TypedKey && c.IsPrimaryKey)
                         || (!c.IsPrimaryKey && !c.IsComputed && !c.IsIdentity && !c.IsCredentialColumn && TemplateHelpers.IsEditableType(c)
                             && !(_foreignKeyByColumn.TryGetValue(c.Name, out var hidden) && IsHiddenParent(hidden.ReferencedTable))))
-            .OrderBy(c => TextKey && c.IsPrimaryKey ? 0 : c.Name == "Name" ? 1 : 2).ThenBy(c => c.OrdinalPosition)
+            .OrderBy(c => TypedKey && c.IsPrimaryKey ? 0 : c.Name == "Name" ? 1 : 2).ThenBy(c => c.OrdinalPosition)
             .ToList();
 
         Parents = Columns.Select(LookupOf).OfType<ForeignKeyModel>()
@@ -49,7 +50,7 @@ public sealed class FormModel
         SearchFields = table.SearchableColumns.Concat(TextKeyBoxes).OrderBy(c => c.OrdinalPosition)
             .Select(c => new SearchField(c, c.Name, TemplateHelpers.LowerFirst(c.Name), GridCaption.For(c, Labels.Field(c)))).ToList();
         DateColumns = Columns.Where(c => TemplateHelpers.IsDate(c) && !c.IsSystemStampColumn && !IsGuardStamp(c)).ToList();
-        NewRowTypeScript = NewRowMembers(table, TextKey, KeyColumn, KeyType);
+        NewRowTypeScript = NewRowMembers(table, TypedKey, KeyColumn, KeyType);
     }
 
     /// <summary> The model of <paramref name="table"/> for the project's settings. </summary>
@@ -63,8 +64,11 @@ public sealed class FormModel
     /// <summary> How the key travels (a number, a uniqueidentifier or text); null when there is no usable single key. </summary>
     public KeyType? KeyType { get; }
 
-    /// <summary> The key is typed by the person on a new row and read-only afterwards, so it is a field of the form and a column of the grid. </summary>
+    /// <summary> The key is a text key. </summary>
     public bool TextKey { get; }
+
+    /// <summary> The key is typed by the person on a new row and read-only afterwards (<see cref="Core.KeyType.IsTyped"/>: a text key, or a whole number the database does not hand out), so it is a field of the form and a column of the grid. </summary>
+    public bool TypedKey { get; }
 
     /// <summary> The columns of the form, in the order they appear. </summary>
     public IReadOnlyList<ColumnModel> Columns { get; }
@@ -179,7 +183,7 @@ public sealed class FormModel
     /// <summary> Which editor a column gets on the form. The order is the rule every stack follows: the first that fits wins. </summary>
     public FieldKind KindOf(ColumnModel column) =>
         column.IsSystemStampColumn || IsGuardStamp(column) ? FieldKind.SystemStamp
-        : TextKey && column.IsPrimaryKey ? FieldKind.TypedKey
+        : TypedKey && column.IsPrimaryKey ? (TextKey ? FieldKind.TypedKey : FieldKind.TypedNumberKey)
         : LookupOf(column) is not null ? FieldKind.Lookup
         : column.HasChoices ? FieldKind.Choices
         : column.IsBooleanColumn ? FieldKind.Boolean
@@ -228,7 +232,7 @@ public sealed class FormModel
 
     /// <summary> A money column that is edited in a money box: a foreign key, a list of choices, a stamp and the typed key are not. </summary>
     public bool IsMoneyInput(ColumnModel column) =>
-        column.IsMoneyAmount && TemplateHelpers.IsNumber(column) && !column.IsSystemStampColumn && LookupOf(column) is null && !column.HasChoices && !(TextKey && column.IsPrimaryKey);
+        column.IsMoneyAmount && TemplateHelpers.IsNumber(column) && !column.IsSystemStampColumn && LookupOf(column) is null && !column.HasChoices && !(TypedKey && column.IsPrimaryKey);
 }
 
 /// <summary> One search box: the column it searches, the name the API takes it by and the caption. </summary>
@@ -247,8 +251,10 @@ public enum FieldKind
 {
     /// <summary> Written by the system (who made the row and when): shown as text once the row exists. </summary>
     SystemStamp,
-    /// <summary> The key a person types on a new row; read-only afterwards. </summary>
+    /// <summary> The text key a person types on a new row; read-only afterwards. </summary>
     TypedKey,
+    /// <summary> The whole-number key a person types on a new row (the database does not hand it out); read-only afterwards. </summary>
+    TypedNumberKey,
     /// <summary> A foreign key: a drop-down of the parent's rows. </summary>
     Lookup,
     /// <summary> A column whose values the database lists: a drop-down of them. </summary>

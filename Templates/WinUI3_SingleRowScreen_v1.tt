@@ -1,0 +1,104 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Data" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#@ import namespace="static CodeGenNew.Core.TemplateHelpers" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names,
+    // folders). Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string viewNamespace = "MyApp.Desktop.Views";
+    string viewModelNamespace = "MyApp.Desktop.ViewModels";
+    string contextType = "MyAppContext";
+    string contextNamespace = "MyApp.Common.Data";
+    string[] usings = { };
+    string viewsFolder = "Views";
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    viewNamespace = Project.ViewNamespace ?? viewNamespace;
+    viewModelNamespace = Project.ViewModelNamespace ?? viewModelNamespace;
+    contextType = Project.ContextName ?? contextType;
+    contextNamespace = Project.ContextNamespace ?? contextNamespace;
+    usings = Project.Usings ?? usings;
+    viewsFolder = Project.ViewsFolder ?? viewsFolder;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // WinUI3_SingleRowScreen_v1.tt
+    // Generates: Views/<Table>Page.xaml and .xaml.cs
+    // The screen of a table the application keeps one row of (the SingleRowTables setting: a company's settings, a posting account): the one row as a form on the page itself,
+    // with Save and Reload, no list, no Delete, and no second row. An empty table shows a blank form, and the first Save adds the row. The fields, tabs and the view model are the
+    // ones WinUI3_DetailScreen writes for the dialog (<Table>DetailViewModel), so a change to a field rule reaches both.
+    // Full notes: Docs/TemplateNotes/WinUI3_SingleRowScreen_v1.md
+    // ==========================================================================================
+
+    var form = FormModel.For(Model, Project);
+    var keyColumn = form.KeyColumn;
+
+    if (keyColumn is null || form.KeyType is null)
+    {
+        Error($"WinUI3_SingleRowScreen needs a table with a single int, uniqueidentifier or text primary key, but [{Model.SchemaName}].[{Model.TableName}] has "
+              + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
+    }
+    else if (form.IsNameActive)
+    {
+        Error($"WinUI3_SingleRowScreen is for plain tables. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo; write that screen by hand.");
+    }
+    else
+    {
+        string table = Model.TableName;
+        string title = form.Title;
+        string keyProp = keyColumn.Name;
+
+        if (!Model.HasReferencedDisplayColumns && form.Parents.Count > 0)
+            Error("WinUI3_SingleRowScreen needs the foreign-keyed tables' display columns for its drop-downs; its .tt.config must say NeedsReferencedDisplayColumns=true.");
+#>
+@@@FILE <#= viewsFolder #>/<#= table #>Page.xaml@@@
+<#= DesktopSingleRowPage.Xaml(form, Project, Model, viewNamespace, withGuards: false, loadErrorBar: false, gatedSave: false) #>@@@FILE <#= viewsFolder #>/<#= table #>Page.xaml.cs@@@
+using <#= viewModelNamespace #>;
+using <#= contextNamespace #>;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+<#
+        foreach (string u in usings)
+        {
+#>
+using <#= u #>;
+<#
+        }
+#>
+
+namespace <#= viewNamespace #>;
+
+/// <summary> The <#= title #> screen: the table holds one row for the whole application, shown as a form. </summary>
+public sealed partial class <#= table #>Page : Page
+{
+    private readonly <#= contextType #> _context;
+
+    /// <summary> The form's view model, made again for the row each time it is read; null until the first read has finished. </summary>
+    public <#= table #>DetailViewModel? ViewModel { get; private set; }
+
+    public <#= table #>Page(<#= contextType #> context)
+    {
+        _context = context;
+        InitializeComponent();
+<#= DesktopSingleRowPage.Formatters(form, Project) #>        Loaded += async (_, _) => await ReloadAsync();
+    }
+
+    // The first row, or none yet: the form is then blank and the first Save adds the row.
+    private async System.Threading.Tasks.Task ReloadAsync()
+    {
+        var row = await ViewModelBase.InTurnAsync(() => _context.Set<<#= table #>>().OrderBy(r => r.<#= keyProp #>).FirstOrDefaultAsync());
+        ViewModel = new <#= table #>DetailViewModel(_context, row);
+        Bindings.Update();
+        await ViewModel.LoadLookupsAsync();
+    }
+
+<#= DesktopSingleRowPage.Handlers(form, table) #>}
+<#
+    }
+#>

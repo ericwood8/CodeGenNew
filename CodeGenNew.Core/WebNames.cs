@@ -31,11 +31,11 @@ public static class AngularNames
 
     /// <summary> The component class of the table's screen: <c>SalesInvoiceComponent</c>, or <c>SalesInvoiceDetailMasterComponent</c> for a table with child grids. </summary>
     public static string ComponentClass(TableModel table, ProjectSettings project) =>
-        ScreenNames.BaseName(table.TableName) + (DatabaseModel.IsDetailMaster(table, project) ? "DetailMasterComponent" : "Component");
+        ScreenNames.BaseName(table.TableName) + (SingleRowPlan.IsDetailMasterScreen(table, project, "Angular") ? "DetailMasterComponent" : "Component");
 
     /// <summary> The folder and file stem of the table's component: <c>salesinvoice</c>, or <c>salesinvoice-detail-master</c>. </summary>
     public static string ComponentStem(TableModel table, ProjectSettings project) =>
-        ScreenNames.Stem(table.TableName) + (DatabaseModel.IsDetailMaster(table, project) ? "-detail-master" : "");
+        ScreenNames.Stem(table.TableName) + (SingleRowPlan.IsDetailMasterScreen(table, project, "Angular") ? "-detail-master" : "");
 }
 
 /// <summary> The names of the React modules and components a table gets (see <see cref="AngularNames"/>). </summary>
@@ -65,5 +65,5 @@ public static class ReactNames
 
     /// <summary> The page component of the table's screen: <c>SalesInvoicePage</c>, or <c>SalesInvoiceDetailMasterPage</c> for a table with child grids. </summary>
     public static string PageName(TableModel table, ProjectSettings project) =>
-        ScreenNames.BaseName(table.TableName) + (DatabaseModel.IsDetailMaster(table, project) ? "DetailMasterPage" : "Page");
+        ScreenNames.BaseName(table.TableName) + (SingleRowPlan.IsDetailMasterScreen(table, project, "React") ? "DetailMasterPage" : "Page");
 }

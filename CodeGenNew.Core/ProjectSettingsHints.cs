@@ -135,6 +135,8 @@ public static class ProjectSettingsHints
         ["Toasts"] = "Angular: ngx-toastr shows the API's refusals as toasts (the package is added to package.json and provideToastr to app.config.ts); blank = the browser's alert and confirm dialogs, no package",
         ["MoneyColumns"] = "comma-separated decimal or floating-point columns that hold money whatever their name (Surplus, or Invoice.Surplus for one table): shown as currency. MySQL has no money type, so a decimal(19,4) or decimal(10,4) is currency without an entry unless its name says it counts something",
         ["NotMoneyColumns"] = "comma-separated columns that are not money though their name or size says so (Rate, or Item.Cost for one table): shown as plain numbers",
+        ["SingleRowTables"] = "comma-separated tables that hold one row for the whole application (Settings, GeneralLedgerPostingAccount): shown as a form, not a list, on every UI stack",
+        ["KeyColumns"] = "the columns that identify a row of a table with no primary key and no unique index (Customer_Memos=Id, or Order_Lines=OrderId+LineNo); comma-separated; every column NOT NULL; without it the unique index, then the identity column, is the key",
         ["IgnoredColumns"] = "comma-separated columns to leave out (Visits, or Place.Location): a type CodeGenNew cannot map, such as PostGIS geometry or a range of timestamps",
         ["ListingName"] = "WinUI3_DirectoryListing: the class stem, e.g. Document (DocumentListPage); blank = Document",
         ["ListingFolder"] = "WinUI3_DirectoryListing: the folder whose files are listed (for example %LocalAppData%/Project/Name); blank = under LocalAppData",

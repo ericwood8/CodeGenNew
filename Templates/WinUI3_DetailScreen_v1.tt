@@ -66,7 +66,7 @@
         string table = Model.TableName;
         string title = form.Title;
         string keyProp = keyColumn.Name;
-        bool textKey = form.TextKey;
+        bool textKey = form.TypedKey;
 
         var shown = form.Columns;
 
@@ -343,6 +343,15 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
 #>
     /// <summary> True when the row was read from the database: its key can no longer be changed. </summary>
     public bool IsExisting => _editing is not null;
+<#
+        if (!form.TextKey)
+        {
+#>
+    /// <summary> True while the row is new: the key is a whole number the person types, and a box cannot be read-only. </summary>
+    public bool IsNewRow => _editing is null;
+<#
+        }
+#>
 <#
         }
 #>

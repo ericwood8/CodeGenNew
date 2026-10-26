@@ -869,6 +869,32 @@ export abstract class NameActiveCrudScreen<T extends { name: string; isActive: b
     this.activeOnly = false;
   }
 }
+/**
+ * A screen of a table that holds one row (the project's SingleRowTables): the row is the form on the page itself, with no list, no paging, no Add and no Delete. The first row is read
+ * when the screen opens and shown in the form; an empty table shows a blank form, and the first save adds the row. After a save, and on Reload (`cancel`), the row is read again.
+ */
+@Directive()
+export abstract class SingleRowCrudScreen<T, K extends number | string = number> extends CrudScreen<T, K> {
+  // The form is part of the page (no dialog): once it is rendered, take the values its fields show, so a stored value that breaks a rule does not stop a save of another field.
+  @ViewChild('oneRowForm') set oneRowForm(element: ElementRef<HTMLElement> | undefined) {
+    const form = element?.nativeElement.querySelector('form');
+    if (form && !this.adding && this.storedValues === null) setTimeout(() => { if (this.storedValues === null) this.storedValues = snapshotOf(form); });
+  }
+
+  protected override load(): void {
+    this.service.searchPage({ pageNumber: 1, pageSize: 1, filters: {} }).subscribe((result) => {
+      const first = result.items[0];
+      if (first) this.edit(first); else this.add();
+      this.loaded = true;
+    });
+  }
+
+  /** Reload: read the row again, dropping what was typed (or go back to the page that opened it). */
+  override cancel(): void {
+    super.cancel();
+    this.load();
+  }
+}
 @@@FILE src/app/<#= componentsFolder #>/currency-input.ts@@@
 import { Directive, ElementRef, HostListener, Input, forwardRef, inject } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';

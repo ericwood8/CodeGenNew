@@ -34,6 +34,12 @@ public class TableModel
     public required List<ColumnModel> PrimaryKeyColumns { get; init; }
     public bool HasPrimaryKey => PrimaryKeyColumns.Count > 0;
 
+    /// <summary> What stands in for a primary key the database does not declare ("the unique index IX_X", "the identity column", "the KeyColumns setting"); null when the key is the declared one or there is none. </summary>
+    public string? KeySource { get; init; }
+
+    /// <summary> For a table with no key: why none was found and what to do about it; for one whose key stands in for a declared primary key: why a KeyColumns entry was not used. Null otherwise. </summary>
+    public string? KeyAdvice { get; init; }
+
     /// <summary> See PrimaryKeyShape and TemplateConfig.RequiresSingleKey (Docs/Reference.md section 3) --
     /// several templates need more than just HasPrimaryKey. </summary>
     /// <summary> What the database says about the table (SQL Server <c>MS_Description</c>, PostgreSQL <c>COMMENT ON TABLE</c>, MySQL <c>COMMENT</c>); null when it says nothing. </summary>

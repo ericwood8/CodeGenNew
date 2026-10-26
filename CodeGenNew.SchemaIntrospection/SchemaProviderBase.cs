@@ -56,15 +56,82 @@ public abstract class SchemaProviderBase : ISchemaProvider
     /// type CodeGenNew cannot map (PostGIS geometry, a range of timestamps) is listed here so the table still generates. A primary key column is never left out. </summary>
     public IReadOnlyCollection<string>? IgnoredColumns { get; set; }
 
-    private async Task<List<RawColumn>> ReadVisibleColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    /// <summary> The project's KeyColumns setting (<c>Table=Column</c> or <c>Table=ColumnA+ColumnB</c>, by the database's name or the generated one): the columns that identify a row of a table
+    /// the database gives no primary key. The owner answers for their uniqueness; a column that allows NULL cannot be one. </summary>
+    public IReadOnlyCollection<string>? KeyColumns { get; set; }
+
+    /// <summary> Where a table's key came from when the database declares no primary key: <see cref="Source"/> says what was used (null: the declared key, or none was found), <see cref="Advice"/> what to do when none was found. </summary>
+    private sealed record KeyChoice(string? Source = null, string? Advice = null);
+
+    private async Task<(List<RawColumn> Columns, KeyChoice Key)> ReadVisibleColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {
-        var columns = await ReadColumnsAsync(connection, schemaName, tableName, cancellationToken);
+        var (columns, key) = await ReadKeyedColumnsAsync(connection, schemaName, tableName, cancellationToken);
         if (IgnoredColumns is not { Count: > 0 } ignored)
-            return columns;
+            return (columns, key);
         bool Listed(RawColumn c) => ignored.Any(entry =>
             entry.EqualsIgnoreCase(c.Name) || entry.EqualsIgnoreCase($"{tableName}.{c.Name}")
             || entry.EqualsIgnoreCase(Named(c.Name)) || entry.EqualsIgnoreCase($"{Named(tableName)}.{Named(c.Name)}"));
-        return columns.Where(c => c.IsPrimaryKey || !Listed(c)).ToList();
+        return (columns.Where(c => c.IsPrimaryKey || !Listed(c)).ToList(), key);
+    }
+
+    private async Task<List<RawColumn>> ReadKeyColumnsOnlyAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken) =>
+        (await ReadKeyedColumnsAsync(connection, schemaName, tableName, cancellationToken)).Columns;
+
+    /// <summary> The table's columns, with the key marked when the database declares none (<see cref="KeyChooser"/>), and the advice when no key is found. </summary>
+    private async Task<(List<RawColumn> Columns, KeyChoice Key)> ReadKeyedColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        var columns = await ReadColumnsAsync(connection, schemaName, tableName, cancellationToken);
+        if (columns.Count == 0 || columns.Any(c => c.IsPrimaryKey))
+            return (columns, new KeyChoice());
+
+        var indexes = await ReadIndexRowsAsync(connection, schemaName, tableName, cancellationToken);
+        var pick = KeyChooser.Choose(columns, indexes, DeclaredKey(tableName), Named);
+        return pick.Columns is not null
+            ? (pick.Columns, new KeyChoice(Source: pick.Source, Advice: pick.Problem))
+            : (columns, new KeyChoice(Advice: await KeyAdviceAsync(connection, schemaName, tableName, columns, pick.Problem, cancellationToken)));
+    }
+
+    /// <summary> The KeyColumns entry for a table (columns in the order written), or null. </summary>
+    private string[]? DeclaredKey(string tableName)
+    {
+        foreach (string entry in KeyColumns ?? [])
+        {
+            int equals = entry.IndexOf('=');
+            if (equals <= 0)
+                continue;
+            string table = entry[..equals].Trim();
+            if (table.EqualsIgnoreCase(tableName) || table.EqualsIgnoreCase(Named(tableName)))
+                return entry[(equals + 1)..].Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        }
+        return null;
+    }
+
+    /// <summary> What to tell the owner of a table with no key: the way out, naming an Id column (Id, TableId or Table_Id) that is NOT NULL and holds no duplicate today when there is one. </summary>
+    private async Task<string> KeyAdviceAsync(DbConnection connection, string schemaName, string tableName, List<RawColumn> columns, string? problem, CancellationToken cancellationToken)
+    {
+        string start = problem is null ? "no primary key and no unique index" : $"no primary key ({problem})";
+        string Setting(string column) => $"KeyColumns={tableName}={column}";
+        var candidate = columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase("Id") || c.Name.EqualsIgnoreCase(tableName + "Id") || c.Name.EqualsIgnoreCase(tableName + "_Id"));
+        if (candidate is null)
+            return $"{start}; add a key in the database, or set KeyColumns={tableName}=<the columns that identify a row>, or leave the table out";
+        if (candidate.IsNullable)
+            return $"{start}; {candidate.Name} allows NULL; make it NOT NULL and add a key in the database, or leave the table out";
+        string? duplicates = null;
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = $"SELECT COUNT(*), COUNT(DISTINCT {Quote(candidate.Name)}) FROM {QuotedTable(schemaName, tableName)}";
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+                duplicates = Convert.ToInt64(reader.GetValue(0)) == Convert.ToInt64(reader.GetValue(1)) ? null : "yes";
+        }
+        catch (DbException)
+        {
+            return $"{start}; add a key in the database, or set {Setting(candidate.Name)} if {candidate.Name} identifies a row, or leave the table out";
+        }
+        return duplicates is null
+            ? $"{start}; add a key in the database, or set {Setting(candidate.Name)} ({candidate.Name} has no duplicate value today), or leave the table out"
+            : $"{start}; {candidate.Name} has duplicate values, so it cannot be the key; add a key in the database or leave the table out";
     }
 
     private (SpecialLogicRuleSet Rules, DateTime Stamp)? _loadedRules;
@@ -150,7 +217,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
     {
         await using var connection = await OpenConnectionAsync(cancellationToken);
 
-        var rawColumns = await ReadVisibleColumnsAsync(connection, schemaName, tableName, cancellationToken);
+        var (rawColumns, keyChoice) = await ReadVisibleColumnsAsync(connection, schemaName, tableName, cancellationToken);
         if (rawColumns.Count == 0)
             throw new TableNotFoundException(schemaName, tableName);
         var foreignKeys = await ReadForeignKeysAsync(connection, schemaName, tableName, cancellationToken);
@@ -198,6 +265,8 @@ public abstract class SchemaProviderBase : ISchemaProvider
             IsCSharpReservedWordName = Named(tableName).IsCSharpReservedWord(),
             Columns = columns,
             PrimaryKeyColumns = primaryKeyColumns,
+            KeySource = keyChoice.Source,
+            KeyAdvice = keyChoice.Advice,
             DisplayColumns = columns.SelectDisplayColumns(foreignKeys.SelectMany(fk => fk.ReferencingColumns).ToList()),
             HasReferencedDisplayColumns = includeReferencedDisplayColumns,
             LookupShape = new LookupShape(LookupShape.Looks(columns, foreignKeys.Count), await ReadRowCountAsync(connection, schemaName, tableName, cancellationToken), LookupShape.HasKeyAndText(columns)),
@@ -256,7 +325,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
             string referencedName = QuotedTable(fk.ReferencedSchema, fk.ReferencedDbTable);
             if (!displayColumnsByTable.TryGetValue(referencedName, out var displayColumns))
             {
-                var referencedColumns = (await ReadColumnsAsync(connection, fk.ReferencedSchema, fk.ReferencedDbTable, cancellationToken))
+                var referencedColumns = (await ReadKeyColumnsOnlyAsync(connection, fk.ReferencedSchema, fk.ReferencedDbTable, cancellationToken))
                     .Select(raw => BuildColumnModel(raw, rules, fk.ReferencedDbTable))
                     .ToList();
                 var referencedForeignKeys = await ReadForeignKeysAsync(connection, fk.ReferencedSchema, fk.ReferencedDbTable, cancellationToken);
@@ -306,7 +375,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
         var result = new List<ChildForeignKeyModel>();
         foreach (var child in childForeignKeys)
         {
-            var childColumns = (await ReadColumnsAsync(connection, child.ReferencingSchema, child.ReferencingDbTable, cancellationToken))
+            var childColumns = (await ReadKeyColumnsOnlyAsync(connection, child.ReferencingSchema, child.ReferencingDbTable, cancellationToken))
                 .Select(raw => BuildColumnModel(raw, rules, child.ReferencingDbTable))
                 .ToList();
             var childPrimaryKeyColumns = childColumns

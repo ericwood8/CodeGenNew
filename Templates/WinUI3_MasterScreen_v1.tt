@@ -63,7 +63,7 @@
         string editDialog = table + (DatabaseModel.IsDetailMaster(Model, Project) ? "DetailMasterDialog" : "DetailDialog");
         string keyProp = keyColumn.Name;
         string keyCs = keyType.CSharp;
-        bool textKey = form.TextKey;   // the key is a column of the grid: the person typed it and it means something
+        bool textKey = form.TypedKey;   // the key is a column of the grid: the person typed it and it means something
         int pageSize = 20;
         // One TextBox and one view-model filter property per searchable column (and per typed key). SearchAsync takes them by name,
         // so the order only sets the boxes' left-to-right layout. Without any, canSearch hides the search bar; paging is always on.

@@ -589,9 +589,9 @@ public class KeyTypeTests
         Expect.Contains(tsx, "countryApi.getById(openId)");   // a text key is not a number
         Expect.Contains(tsx, "err.status === 409) { setError('A country with this alpha3 code already exists!'); }");   // the API refuses a key that is taken
         string spec = files["CountryPage.test.tsx"];
-        Expect.Contains(spec, "import { fireEvent, render, screen } from '@testing-library/react';");
-        Expect.Contains(spec, "expect(screen.getByLabelText('Alpha3 Code')).not.toHaveAttribute('readonly');");
-        Expect.Contains(spec, "expect(screen.getByLabelText('Alpha3 Code')).toHaveAttribute('readonly');");
+        Expect.Contains(spec, "import { fireEvent, render, screen, within } from '@testing-library/react';");
+        Expect.Contains(spec, "expect(within(document.querySelector('dialog') as HTMLElement).getByLabelText('Alpha3 Code')).not.toHaveAttribute('readonly');");   // the Columns list has a check box of the same name
+        Expect.Contains(spec, "expect(within(document.querySelector('dialog') as HTMLElement).getByLabelText('Alpha3 Code')).toHaveAttribute('readonly');");
         Assert.IsLessThan(tsx.IndexOf("selectedRow.name", StringComparison.Ordinal), tsx.IndexOf("value={selectedRow.alpha3Code ?? ''}", StringComparison.Ordinal));   // the key is the first field
     }
 

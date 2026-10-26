@@ -6,7 +6,7 @@ namespace CodeGenNew.SchemaIntrospection;
 public static class SchemaProviderFactory
 {
     public static ISchemaProvider Create(ConnectionRequest request, string specialLogicColumnsConfigPath, NamingStyle naming = NamingStyle.AsIs, IReadOnlyCollection<string>? acronyms = null, IReadOnlyCollection<string>? ignoredColumns = null,
-        IReadOnlyCollection<string>? moneyColumns = null, IReadOnlyCollection<string>? notMoneyColumns = null)
+        IReadOnlyCollection<string>? moneyColumns = null, IReadOnlyCollection<string>? notMoneyColumns = null, IReadOnlyCollection<string>? keyColumns = null)
     {
         SchemaProviderBase provider = request.Provider switch
         {
@@ -19,6 +19,7 @@ public static class SchemaProviderFactory
         provider.IgnoredColumns = ignoredColumns;
         provider.MoneyColumns = moneyColumns;
         provider.NotMoneyColumns = notMoneyColumns;
+        provider.KeyColumns = keyColumns;
         return provider;
     }
 }
