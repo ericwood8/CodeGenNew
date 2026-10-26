@@ -1,0 +1,21 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // UNO_TestApprovals_v1.tt
+    // Generates: ApprovalsClientTests.cs   (the output folder is the Uno test project, OutputUnoTests; the UNO_EssentialTests group writes the project around it)
+    // MSTest tests of ApprovalsClient (UNO_Approvals) over a stand-in for the API: the calls it makes for the requests waiting, the history, a request with its reason, an approval or rejection with its
+    // note and a withdrawal, and that a refused call throws with the status. Writes nothing unless the project sets DesktopTests=true and has RowApprovals.
+    // Full notes: Docs/TemplateNotes/UNO_Test_v1.md
+    // ==========================================================================================
+    var tables = ApprovalScreens.For(Database, Project);
+    if (Project.DesktopTests && tables.Count > 0)
+    {
+        var usings = new List<string> { UnoNames.ServicesNamespace(Project) };
+        Write("@@@FILE ApprovalsClientTests.cs@@@\n" + DesktopApprovalTests.Uno(tables[0], Project.AppNamespace + ".Tests", usings));
+    }
+#>

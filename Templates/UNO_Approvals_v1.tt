@@ -1,0 +1,26 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // UNO_Approvals_v1.tt
+    // Generates: Services/ApprovalSupport.cs, Services/ApprovalsClient.cs and Views/ApprovalsPage.cs   (the paths are written by the template)
+    // The approvals page of the Uno app, for the tables of RowApprovals (API_Approvals): for each table the requests waiting for the signed-in approver with a note and Approve / Reject, and a row's
+    // request, withdrawal and history by its number. The page is WinUI3_Approvals' (DesktopApprovalsCode in Core); the data comes through ApprovalsClient over the API, and a refusal shows the API's own
+    // sentence. UNO_Screens adds the menu entry and holds the client.
+    // Full notes: Docs/TemplateNotes/API_Approvals_v1.md
+    // ==========================================================================================
+    var tables = ApprovalScreens.For(Database, Project);
+    if (tables.Count == 0)
+        return GenerationEnvironment.ToString();
+    string viewNamespace = Project.ViewNamespace ?? (Project.ProjectName is not null ? UnoNames.Namespace(Project) + ".Views" : "MyApp.Views");
+    string viewsFolder = Project.ViewsFolder ?? "Views";
+    string servicesNamespace = UnoNames.ServicesNamespace(Project);
+#>
+@@@FILE Services/ApprovalSupport.cs@@@
+<#= DesktopApprovalsCode.Support(servicesNamespace) #>@@@FILE Services/ApprovalsClient.cs@@@
+<#= DesktopApprovalsCode.Client(servicesNamespace, tables) #>
+@@@FILE <#= viewsFolder #>/ApprovalsPage.cs@@@
+<#= DesktopApprovalsCode.Page(viewNamespace, servicesNamespace) #>

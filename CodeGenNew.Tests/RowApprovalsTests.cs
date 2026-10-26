@@ -33,7 +33,7 @@ public class RowApprovalsTests
         return path;
     }
 
-    private static async Task<(bool Success, List<string> Errors, Func<string, string> Read, List<string> Files)> GenerateAsync(bool withSide, string gates = "")
+    internal static async Task<(bool Success, List<string> Errors, Func<string, string> Read, List<string> Files)> GenerateAsync(bool withSide, string gates = "", string stacks = "Api", Dictionary<string, string>? extra = null)
     {
         string database = CreateDatabase(withSide);
         string output = Path.Combine(Path.GetTempPath(), "codegen_apr_out_" + Guid.NewGuid().ToString("N"));
@@ -41,17 +41,19 @@ public class RowApprovalsTests
         {
             var values = new Dictionary<string, string>
             {
-                ["ProjectName"] = "Shop", ["DatabaseProvider"] = "Sqlite", ["DatabaseName"] = "shop.db", ["EnumTables"] = "none", ["Stacks"] = "Api", ["Dashboard"] = "false", ["AccessMode"] = "Ef",
+                ["ProjectName"] = "Shop", ["DatabaseProvider"] = "Sqlite", ["DatabaseName"] = "shop.db", ["EnumTables"] = "none", ["Stacks"] = stacks, ["Dashboard"] = "false", ["AccessMode"] = "Ef",
                 ["ApiAuth"] = "true", ["UserTable"] = "Employee", ["UserNameColumn"] = "Login", ["PasswordHashColumn"] = "PasswordHash", ["UserRoleColumn"] = "IsManager", ["UserAdminColumn"] = "IsAdministrator",
                 ["RowApprovals"] = "TimeSheet"
             };
             if (gates.Length > 0)
                 values["ChangeGates"] = gates;
+            foreach (var (key, value) in extra ?? [])
+                values[key] = value;
             var request = new ConnectionRequest { Provider = DatabaseProvider.Sqlite, ServerName = "", DatabaseName = database };
             var provider = SchemaProviderFactory.Create(request, Path.Combine(Repo.Root, "SpecialLogicColumns.config"));
             var report = await Repo.GenerateAsync(provider, new GenerateOptions
             {
-                Project = ProjectSettings.FromValues(values), Stacks = ["Api"], OutputDirectory = output, DatabaseName = database, Schema = "main", Essentials = true
+                Project = ProjectSettings.FromValues(values), Stacks = stacks.Split(","), OutputDirectory = output, DatabaseName = database, Schema = "main", Essentials = true
             });
             var files = Directory.GetFiles(output, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(output, f).Replace('\\', '/')).ToList();
             var contents = files.ToDictionary(f => f, f => File.ReadAllText(Path.Combine(output, f)).Replace("\r\n", "\n"));

@@ -44,12 +44,7 @@
             Line($"using {u};");
         Line("using Microsoft.EntityFrameworkCore;");
         Line();
-        Line("/// <summary> Who the guards of the project's GuardedColumns take the person to be: the name looked up in the user table. It starts as the Windows sign-in; an app with a sign-in of its own sets it after the person signs in. </summary>");
-        Line("public static class DesktopCaller");
-        Line("{");
-        Line("    public static string? Name { get; set; } = Environment.UserName;");
-        Line("}");
-        Line();
+        sb.Append(DesktopApprovalsCode.CallerClass());
         sb.Append(GateWriter.Tables(plan, Database, contextType, Project, new DesktopGateFlavor()));
         Write(sb.ToString());
     }

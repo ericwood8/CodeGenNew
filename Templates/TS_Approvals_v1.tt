@@ -1,0 +1,311 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (folders).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string servicesFolder = Project.ServicesFolder;       // under the Angular app's src\app folder (where -o points)
+    string componentsFolder = Project.ComponentsFolder;
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // TS_Approvals_v1.tt
+    // Generates: services/approvals.service.ts and the component approvals (ts, html, css, spec)
+    // The approvals screen of an Angular front end, for the tables of RowApprovals (API_Approvals): for each table the requests waiting for the signed-in approver with a note and Approve / Reject,
+    // and a row's request, withdrawal and history by its number. The API's own sentences are shown as they come. TS_Screens adds the route and menu entry. The words are ApprovalWords in Core.
+    // Full notes: Docs/TemplateNotes/API_Approvals_v1.md
+    // ==========================================================================================
+
+    var tables = ApprovalScreens.For(Database, Project);
+    if (tables.Count == 0)
+        return GenerationEnvironment.ToString();
+    string first = tables[0].Segment;
+    string standalone = Project.AngularStandaloneFlag ? "  standalone: true,\n" : "";
+    string detection = $"  changeDetection: ChangeDetectionStrategy.{Project.AngularEagerStrategy},   // plain properties change inside subscribe callbacks\n";
+    string Html(string text) => Project.AngularControlFlow ? AngularControlFlow.Convert(Unix(text)) : Unix(text);
+    string Unix(string text) => text.Replace((char)13 + "" + (char)10, "\n");
+    string html = Html(
+@"<h1>" + ApprovalWords.Title + @"</h1>
+<section *ngFor=""let t of tables"" [attr.aria-label]=""t.label + ' approvals'"">
+  <h2>{{ t.label }} approvals</h2>
+  <h3>" + ApprovalWords.WaitingHeading + @"</h3>
+  <p *ngIf=""state(t).waitingMessage"" role=""alert"" class=""approvals-error"">{{ state(t).waitingMessage }}</p>
+  <p *ngIf=""!state(t).waitingMessage && state(t).waiting.length === 0"">" + ApprovalWords.NoneWaiting + @"</p>
+  <table *ngIf=""state(t).waiting.length > 0"">
+    <thead><tr><th>Row</th><th>Requested by</th><th>Requested on</th><th>" + ApprovalWords.ReasonLabel + @"</th><th>" + ApprovalWords.NoteLabel + @"</th><th></th></tr></thead>
+    <tbody>
+      <tr *ngFor=""let w of state(t).waiting"">
+        <td>{{ w.rowId }}</td>
+        <td>{{ w.requestedBy }}</td>
+        <td>{{ w.requestedOn }}</td>
+        <td>{{ w.reason }}</td>
+        <td><input [attr.aria-label]=""'" + ApprovalWords.NoteLabel + @" for row ' + w.rowId"" [value]=""state(t).notes[w.rowId] ?? ''"" (input)=""setNote(t, w.rowId, $any($event.target).value)"" /></td>
+        <td>
+          <button type=""button"" (click)=""decide(t, w.rowId, true)"">" + ApprovalWords.Approve + @"</button>
+          <button type=""button"" (click)=""decide(t, w.rowId, false)"">" + ApprovalWords.Reject + @"</button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <h3>" + ApprovalWords.RowHeading + @"</h3>
+  <p>
+    <label>" + ApprovalWords.RowLabel + @" <input [value]=""state(t).row"" (input)=""state(t).row = $any($event.target).value"" /></label>
+    <label>" + ApprovalWords.ReasonLabel + @" <input [value]=""state(t).reason"" (input)=""state(t).reason = $any($event.target).value"" /></label>
+  </p>
+  <p>
+    <button type=""button"" (click)=""requestApproval(t)"">" + ApprovalWords.Request + @"</button>
+    <button type=""button"" (click)=""withdraw(t)"">" + ApprovalWords.Withdraw + @"</button>
+    <button type=""button"" (click)=""lookUp(t)"">" + ApprovalWords.History + @"</button>
+  </p>
+  <p *ngIf=""state(t).message"" [attr.role]=""state(t).failed ? 'alert' : 'status'"" [class.approvals-error]=""state(t).failed"">{{ state(t).message }}</p>
+  <p *ngIf=""state(t).history !== null && state(t).history!.length === 0"">" + ApprovalWords.NoHistory + @"</p>
+  <table *ngIf=""state(t).history !== null && state(t).history!.length > 0"">
+    <caption>{{ t.label }} " + ApprovalWords.History.ToLowerInvariant() + @"</caption>
+    <thead><tr><th>Revision</th><th>Status</th><th>Requested by</th><th>Requested on</th><th>" + ApprovalWords.ReasonLabel + @"</th><th>Decided by</th><th>Decided on</th><th>" + ApprovalWords.NoteLabel + @"</th></tr></thead>
+    <tbody>
+      <tr *ngFor=""let h of state(t).history"">
+        <td>{{ h.revision }}</td><td>{{ h.status }}</td><td>{{ h.requestedBy }}</td><td>{{ h.requestedOn }}</td><td>{{ h.reason }}</td><td>{{ h.decidedBy }}</td><td>{{ h.decidedOn }}</td><td>{{ h.decisionNote }}</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+");
+#>
+@@@FILE <#= servicesFolder #>/approvals.service.ts@@@
+import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+<#= ApprovalScreens.TypeScript() #>
+// The tables that have approvals: the table, the words for it and the route under /api.
+export const approvalTables = [
+<# foreach (var t in tables) { #>
+  { table: '<#= t.Table #>', label: '<#= t.Label #>', segment: '<#= t.Segment #>' },
+<# } #>
+];
+
+@Injectable({
+    providedIn: 'root',
+})
+export class ApprovalsService {
+    constructor(private http: HttpClient) { }
+
+    // The requests waiting for the signed-in approver (not their own).
+    toApprove(segment: string): Observable<ApprovalView[]> {
+        return this.http.get<ApprovalView[]>(`api/${segment}/toapprove`);
+    }
+
+    history(segment: string, id: number): Observable<ApprovalView[]> {
+        return this.http.get<ApprovalView[]>(`api/${segment}/${id}/approvals`);
+    }
+
+    request(segment: string, id: number, reason: string): Observable<ApprovalView> {
+        return this.http.post<ApprovalView>(`api/${segment}/${id}/request`, { reason: reason || null });
+    }
+
+    approve(segment: string, id: number, note: string): Observable<ApprovalView> {
+        return this.http.post<ApprovalView>(`api/${segment}/${id}/approve`, { note: note || null });
+    }
+
+    reject(segment: string, id: number, note: string): Observable<ApprovalView> {
+        return this.http.post<ApprovalView>(`api/${segment}/${id}/reject`, { note: note || null });
+    }
+
+    withdraw(segment: string, id: number): Observable<ApprovalView> {
+        return this.http.post<ApprovalView>(`api/${segment}/${id}/withdraw`, {});
+    }
+}
+
+// The sentence of a refused call: the problem details' own words, else the text of the error.
+export function problemText(error: { error?: { detail?: string } | string; message?: string }): string {
+    const body = error.error;
+    return (typeof body === 'object' && body?.detail) || (typeof body === 'string' && body) || error.message || '';
+}
+@@@FILE <#= componentsFolder #>/approvals/approvals.component.ts@@@
+import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { Observable } from 'rxjs';
+import { ApprovalView, ApprovalsService, approvalTables, problemText } from '../../<#= servicesFolder #>/approvals.service';
+
+interface TableState {
+  waiting: ApprovalView[];
+  waitingMessage: string | null;
+  notes: Record<number, string>;
+  row: string;
+  reason: string;
+  history: ApprovalView[] | null;
+  message: string | null;
+  failed: boolean;
+}
+
+type Table = (typeof approvalTables)[number];
+
+@Component({
+  selector: 'app-approvals',
+<#= detection #><#= standalone #>  imports: [CommonModule],
+  templateUrl: './approvals.component.html',
+  styleUrl: './approvals.component.css'
+})
+export class ApprovalsComponent implements OnInit {
+  tables = approvalTables;
+  private states: Record<string, TableState> = {};
+
+  constructor(private service: ApprovalsService) { }
+
+  ngOnInit(): void {
+    this.tables.forEach((t) => this.load(t));
+  }
+
+  state(t: Table): TableState {
+    return this.states[t.segment] ??= { waiting: [], waitingMessage: null, notes: {}, row: '', reason: '', history: null, message: null, failed: false };
+  }
+
+  setNote(t: Table, row: number, value: string): void {
+    this.state(t).notes[row] = value;
+  }
+
+  load(t: Table): void {
+    const state = this.state(t);
+    this.service.toApprove(t.segment).subscribe({
+      next: (rows) => { state.waiting = rows; state.waitingMessage = null; this.refresh(); },
+      error: (error) => {
+        state.waiting = [];
+        // a person who may not decide is told so in the API's words; anything else is a failed load
+        state.waitingMessage = error.status === <#= HttpStatus.Forbidden #> ? problemText(error) : '<#= ApprovalWords.LoadFailed #>';
+        this.refresh();
+      }
+    });
+  }
+
+  private rowNumber(t: Table): number | null {
+    const state = this.state(t);
+    const n = Number(state.row);
+    if (!state.row.trim() || !Number.isInteger(n)) {
+      state.failed = true;
+      state.message = '<#= ApprovalWords.NeedRow #>';
+      return null;
+    }
+    return n;
+  }
+
+  private act(t: Table, id: number | null, call: (id: number) => Observable<ApprovalView>, done: string): void {
+    if (id === null) return;
+    const state = this.state(t);
+    call(id).subscribe({
+      next: () => {
+        state.failed = false;
+        state.message = done;
+        this.load(t);
+        this.showHistory(t, id);
+      },
+      error: (error) => { state.failed = true; state.message = problemText(error); this.refresh(); }
+    });
+  }
+
+  private showHistory(t: Table, id: number): void {
+    const state = this.state(t);
+    this.service.history(t.segment, id).subscribe({
+      next: (rows) => { state.history = rows; this.refresh(); },
+      error: (error) => { state.failed = true; state.message = problemText(error); this.refresh(); }
+    });
+  }
+
+  decide(t: Table, row: number, approve: boolean): void {
+    const note = this.state(t).notes[row] ?? '';
+    this.act(t, row, (id) => approve ? this.service.approve(t.segment, id, note) : this.service.reject(t.segment, id, note),
+      approve ? '<#= ApprovalWords.Approved #>' : '<#= ApprovalWords.Rejected #>');
+  }
+
+  requestApproval(t: Table): void {
+    this.act(t, this.rowNumber(t), (id) => this.service.request(t.segment, id, this.state(t).reason), '<#= ApprovalWords.Requested #>');
+  }
+
+  withdraw(t: Table): void {
+    this.act(t, this.rowNumber(t), (id) => this.service.withdraw(t.segment, id), '<#= ApprovalWords.Withdrawn #>');
+  }
+
+  lookUp(t: Table): void {
+    const id = this.rowNumber(t);
+    if (id === null) return;
+    this.state(t).failed = false;
+    this.state(t).message = null;
+    this.showHistory(t, id);
+  }
+
+  // OnPush-free strategies still need a nudge for the plain properties changed inside subscribe callbacks
+  private refresh(): void { this.states = { ...this.states }; }
+}
+@@@FILE <#= componentsFolder #>/approvals/approvals.component.html@@@
+<#= html #>@@@FILE <#= componentsFolder #>/approvals/approvals.component.css@@@
+:host { display: block; padding: 16px 24px; }
+table { border-collapse: collapse; margin: 8px 0; }
+th, td { border: 1px solid #888; padding: 4px 8px; text-align: left; }
+section { margin-bottom: 24px; }
+.approvals-error { color: #b00020; }
+@@@FILE <#= componentsFolder #>/approvals/approvals.component.spec.ts@@@
+import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+
+import { ApprovalsComponent } from './approvals.component';
+
+const pending = { id: 1, rowId: 7, revision: 1, status: 'Pending', reason: 'please', requestedBy: 'ann', requestedOn: '2026-01-02T00:00:00', decidedBy: null, decidedOn: null, decisionNote: null };
+
+async function open() {
+  await TestBed.configureTestingModule({
+    imports: [ApprovalsComponent],
+    providers: [provideHttpClient(), provideHttpClientTesting()]
+  }).compileComponents();
+  const fixture = TestBed.createComponent(ApprovalsComponent);
+  fixture.detectChanges();
+  return { fixture, http: TestBed.inject(HttpTestingController), text: () => (fixture.nativeElement as HTMLElement).textContent ?? '' };
+}
+
+describe('ApprovalsComponent', () => {
+  it('says so when nothing is waiting', async () => {
+    const { fixture, http, text } = await open();
+    http.expectOne('api/<#= first #>/toapprove').flush([]);
+    fixture.detectChanges();
+    expect(text()).toContain('<#= ApprovalWords.NoneWaiting #>');
+  });
+
+  it('lists the requests waiting and posts an approval with its note', async () => {
+    const { fixture, http, text } = await open();
+    http.expectOne('api/<#= first #>/toapprove').flush([pending]);
+    fixture.detectChanges();
+    expect(text()).toContain('ann');
+    fixture.componentInstance.setNote(fixture.componentInstance.tables[0], 7, 'ok');
+    fixture.componentInstance.decide(fixture.componentInstance.tables[0], 7, true);
+    const post = http.expectOne('api/<#= first #>/7/approve');
+    expect(post.request.body).toEqual({ note: 'ok' });
+    post.flush({ ...pending, status: 'Approved' });
+    http.expectOne('api/<#= first #>/toapprove').flush([]);
+    http.expectOne('api/<#= first #>/7/approvals').flush([{ ...pending, status: 'Approved' }]);
+    fixture.detectChanges();
+    expect(text()).toContain('<#= ApprovalWords.Approved #>');
+  });
+
+  it('shows the sentence of a refused decision', async () => {
+    const { fixture, http, text } = await open();
+    http.expectOne('api/<#= first #>/toapprove').flush([pending]);
+    fixture.componentInstance.decide(fixture.componentInstance.tables[0], 7, false);
+    http.expectOne('api/<#= first #>/7/reject').flush({ detail: '<#= ApprovalWords.FourEyes #>' }, { status: <#= HttpStatus.Forbidden #>, statusText: 'Forbidden' });
+    fixture.detectChanges();
+    expect(text()).toContain('<#= ApprovalWords.FourEyes #>');
+  });
+
+  it('asks for a row number before it requests', async () => {
+    const { fixture, http, text } = await open();
+    http.expectOne('api/<#= first #>/toapprove').flush([]);
+    fixture.componentInstance.requestApproval(fixture.componentInstance.tables[0]);
+    fixture.detectChanges();
+    expect(text()).toContain('<#= ApprovalWords.NeedRow #>');
+    http.expectNone('api/<#= first #>/0/request');
+  });
+});

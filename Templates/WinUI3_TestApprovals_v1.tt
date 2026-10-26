@@ -1,0 +1,26 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // WinUI3_TestApprovals_v1.tt
+    // Generates: ApprovalServiceTests.cs   (the output folder is the WinUI3 test project, OutputWinUI3Tests; the WinUI3_EssentialTests group writes the project around it)
+    // MSTest tests of the approval rules the WinUI3 app runs in process (ApprovalService, WinUI3_Approvals), over an in-memory SQLite database made from the generated context with an employee, two
+    // managers and a row of the first RowApprovals table: who may request and decide, the four eyes, withdrawal, the history and the hooks. Writes nothing unless the project sets DesktopTests=true
+    // and has RowApprovals.
+    // Full notes: Docs/TemplateNotes/WinUI3_Test_v1.md
+    // ==========================================================================================
+    var plan = ApprovalPlan.Resolve(Database, Project);
+    if (Project.DesktopTests && plan.Problems.Count == 0 && plan.Tables.Count > 0)
+    {
+        string appNamespace = Project.AppNamespace;
+        var usings = new List<string>
+        {
+            Project.EntityNamespace ?? appNamespace + ".Entities", Project.ContextNamespace ?? appNamespace + ".Data", Project.RepoNamespace ?? appNamespace + ".Repositories"
+        };
+        Write("@@@FILE ApprovalServiceTests.cs@@@\n" + DesktopApprovalTests.WinUI3(plan, Project, appNamespace + ".Tests", usings));
+    }
+#>

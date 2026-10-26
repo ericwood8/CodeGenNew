@@ -64,6 +64,9 @@
         if (anyRoles)
             Line($"import {{ AuthService }} from './{Project.ServicesFolder}/auth.service';");
     }
+    bool approvals = ApprovalScreens.For(Database, Project).Count > 0;
+    if (approvals)
+        Line($"import {{ ApprovalsComponent }} from './{componentsFolder}/approvals/approvals.component';");
     if (Project.Dashboard)
         Line($"import {{ DashboardComponent }} from './{componentsFolder}/dashboard/dashboard.component';");
     if (stripTables.Count > 0)
@@ -81,6 +84,8 @@
     Line("export const screens = [");
     if (Project.Dashboard)
         Line("  { path: 'dashboard', label: 'Dashboard', component: DashboardComponent },");
+    if (approvals)
+        Line($"  {{ path: 'approvals', label: '{ApprovalWords.Title}', component: ApprovalsComponent }},");
     foreach (var t in screens)
         if (Replaced(t))
             Line($"  {{ path: '{ScreenNames.Route(t.TableName)}', label: '{ScreenNames.Label(t.TableName)}', {ODataLoad(t)}{RolesOf(t)} }},");

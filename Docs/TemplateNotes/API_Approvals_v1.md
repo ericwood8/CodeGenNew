@@ -1,6 +1,6 @@
 # API_Approvals_v1
 
-`Apis/Approvals.cs`: the approval of single rows, for the tables of `RowApprovals=TimeSheet,Expense`. Whole-database, written only when the project names a table. Needs `ApiAuth=true`, `UserTable` and `UserRoleColumn` as a yes/no column. ASP.NET API only; no screen yet.
+`Apis/Approvals.cs`: the approval of single rows, for the tables of `RowApprovals=TimeSheet,Expense`. Whole-database, written only when the project names a table. Needs `ApiAuth=true`, `UserTable` and `UserRoleColumn` as a yes/no column. The ASP.NET API, plus an approvals page in every front end (below).
 
 ## The side table
 
@@ -22,9 +22,17 @@ Each table needs a `<Table>Approval` table, one row per request cycle. `SP_Appro
 
 A `ChangeGates` rule may end with the clause `approval`: the change that the rule holds is allowed once the row's latest request is Approved. A new request starts a new cycle, so a row that must be approved again asks again. A row edited after its approval is not asked again on its own.
 
+## The screens
+
+Every front end gets one **Approvals** page and a menu entry, written when the project has `RowApprovals` and the side tables exist: `TSX_Approvals` (React), `TS_Approvals` (Angular), `BLZ_Approvals` (Blazor), `UNO_Approvals` and `WinUI3_Approvals`. For each table it shows the requests waiting for the signed-in approver with a note and Approve / Reject, then a row's request, withdrawal and history by the row's number. A refusal shows the API's own sentence; a person who may not decide is told so. The words are `ApprovalWords` in Core, so all five say the same.
+
+- **Uno** reads the API (`ApprovalsClient`). **WinUI3** reads the database itself, so `ApprovalService` runs the same rules in process, in the same words; the person is `DesktopCaller.Name` (the Windows sign-in unless the project sets it), and, like the gates, this is a check in the client, not enforcement. The two desktop apps draw the page from one text (`DesktopApprovalsCode.Page`).
+- A gate with the clause `approval` works in WinUI3 too (`WinUI3_Gates`).
+- Tests: Vitest (React), the Angular spec, bUnit with `BlazorTests=true`, `ApprovalsClientTests` (Uno) and `ApprovalServiceTests` (WinUI3, over SQLite) with `DesktopTests=true`.
+
 ## Not built
 
-More than one level, delegation, time limits and notification; an alternative that uses the table's own status column with a move table; screens (Angular, React, Blazor, Uno, WinUI3); Python and Rust APIs.
+A panel on each table's edit form (request and withdraw next to the row, its status in the grid): the page asks for the row by its number. More than one level, delegation, time limits and notification; an alternative that uses the table's own status column with a move table; Python and Rust APIs.
 
 ## Checked
 

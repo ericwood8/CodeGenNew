@@ -11,10 +11,11 @@ public static class BlazorMenu
     {
         var screens = database.ScreenTables(project, "Blazor");
         var odataScreens = ODataPlan.BlazorScreenTables(database, project);
-        var entries = ScreenMenu.For(project, screens, odataScreens, JunctionPlan.Tables(database, project))
+        var entries = ScreenMenu.For(project, screens, odataScreens, JunctionPlan.Tables(database, project), ApprovalScreens.For(database, project).Count > 0)
             .Select(m => new BlazorMenuEntry(m.Kind switch
             {
                 ScreenMenuKind.Dashboard => "dashboard",
+                ScreenMenuKind.Approvals => "approvals",
                 ScreenMenuKind.Screen => ScreenNames.Route(m.Table!.TableName),
                 ScreenMenuKind.Junction => JunctionPlan.Route(m.Table!.TableName),
                 _ => AngularNames.ODataRoute(m.Table!.TableName)

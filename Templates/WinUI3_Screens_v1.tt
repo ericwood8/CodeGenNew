@@ -33,6 +33,7 @@
         Error("WinUI3_Screens found no table to list: no table has an API and a search endpoint, and the project's Screens setting is empty.");
 
     // With Dashboard=true the dashboard is the first screen; with DashboardStrip=true each table that has cards shows them above its list page.
+    bool approvals = ApprovalScreens.For(Database, Project).Count > 0;   // the approvals page is the last screen (WinUI3_Approvals writes the page and its service)
     bool dashboard = Project.Dashboard;
     var stripTables = Project.DashboardStrip ? DashboardPlan.Build(Database, Project).StripTables.Where(name => screens.Any(t => t.TableName.EqualsIgnoreCase(name))).ToHashSet(StringComparer.OrdinalIgnoreCase) : new HashSet<string>();
 
@@ -63,6 +64,8 @@
         Line($"        NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{ScreenNames.Label(t.TableName)}\", Tag = \"{t.TableName}\" }});");
     foreach (var t in junctions)
         Line($"        NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{JunctionPlan.Label(t.TableName)}\", Tag = \"{t.TableName}Links\" }});");
+    if (approvals)
+        Line($"        NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{ApprovalWords.Title}\", Tag = \"Approvals\" }});");
     Line("    }");
     Line();
     if (dashboard)
@@ -105,6 +108,8 @@
                 : $"            \"{t.TableName}\" => new {t.TableName}ListPage(_context),");
     foreach (var t in junctions)
         Line($"            \"{t.TableName}Links\" => new {DesktopJunctionPage.PageName(t.TableName)}(_context),");
+    if (approvals)
+        Line("            \"Approvals\" => new ApprovalsPage(new ApprovalService(_context), ApprovalService.Tables),");
     Line("            _ => MainContent.Content");
     Line("        };");
     Line("    }");

@@ -1,0 +1,274 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_Approvals_v1.tt
+    // Generates: Services/ApprovalsClient.cs and Pages/Approvals.razor   (the paths are written by the template)
+    // The approvals page of a Blazor app, for the tables of RowApprovals (API_Approvals): for each table the requests waiting for the signed-in approver with a note and Approve / Reject, and a row's
+    // request, withdrawal and history by its number. The API's own sentences are shown as they come. BLZ_Screens adds the menu entry and registers ApprovalsClient. The words are ApprovalWords in Core.
+    // Full notes: Docs/TemplateNotes/API_Approvals_v1.md
+    // ==========================================================================================
+
+    var tables = ApprovalScreens.For(Database, Project);
+    if (tables.Count == 0)
+        return GenerationEnvironment.ToString();
+    string ns = BlazorNames.Namespace(Project);
+#>
+@@@FILE Services/ApprovalsClient.cs@@@
+using System.Net.Http.Json;
+using System.Text.Json;
+
+namespace <#= ns #>.Services;
+
+/// <summary> One request cycle of a row, as the API answers it. </summary>
+public class ApprovalView
+{
+    public int Id { get; set; }
+    public int RowId { get; set; }
+    public int Revision { get; set; }
+    public string Status { get; set; } = "";
+    public string? Reason { get; set; }
+    public string RequestedBy { get; set; } = "";
+    public DateTime RequestedOn { get; set; }
+    public string? DecidedBy { get; set; }
+    public DateTime? DecidedOn { get; set; }
+    public string? DecisionNote { get; set; }
+}
+
+/// <summary> A table that has approvals: the table, the words for it and the route under /api. </summary>
+public record ApprovalTable(string Table, string Label, string Segment);
+
+/// <summary> The approval routes of the tables of RowApprovals. A refused call throws an <see cref="ApiException"/> whose message is the API's own sentence. </summary>
+public class ApprovalsClient(HttpClient http)
+{
+    public static readonly ApprovalTable[] Tables =
+    [
+<#
+    foreach (var t in tables)
+    {
+#>
+        new("<#= t.Table #>", "<#= t.Label #>", "<#= t.Segment #>"),
+<#
+    }
+#>
+    ];
+
+    private static async Task<HttpResponseMessage> CheckAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode)
+            return response;
+        string body = await response.Content.ReadAsStringAsync();
+        string text = $"{(int)response.StatusCode} {response.ReasonPhrase}";
+        try
+        {
+            if (JsonDocument.Parse(body).RootElement.TryGetProperty("detail", out var detail) && detail.GetString() is { Length: > 0 } sentence)
+                text = sentence;
+        }
+        catch (JsonException)
+        {
+        }
+        throw new ApiException((int)response.StatusCode, text);
+    }
+
+    /// <summary> The requests waiting for the signed-in approver (not their own). </summary>
+    public async Task<List<ApprovalView>> ToApproveAsync(string segment) =>
+        (await (await CheckAsync(await http.GetAsync($"/api/{segment}/toapprove"))).Content.ReadFromJsonAsync<List<ApprovalView>>()) ?? [];
+
+    public async Task<List<ApprovalView>> HistoryAsync(string segment, int id) =>
+        (await (await CheckAsync(await http.GetAsync($"/api/{segment}/{id}/approvals"))).Content.ReadFromJsonAsync<List<ApprovalView>>()) ?? [];
+
+    public async Task RequestAsync(string segment, int id, string? reason) =>
+        await CheckAsync(await http.PostAsJsonAsync($"/api/{segment}/{id}/request", new { reason = string.IsNullOrWhiteSpace(reason) ? null : reason }));
+
+    public async Task DecideAsync(string segment, int id, bool approve, string? note) =>
+        await CheckAsync(await http.PostAsJsonAsync($"/api/{segment}/{id}/{(approve ? "approve" : "reject")}", new { note = string.IsNullOrWhiteSpace(note) ? null : note }));
+
+    public async Task WithdrawAsync(string segment, int id) =>
+        await CheckAsync(await http.PostAsJsonAsync($"/api/{segment}/{id}/withdraw", new { }));
+}
+@@@FILE Pages/Approvals.razor@@@
+@page "/approvals"
+@using <#= ns #>.Services
+<#
+    if (Project.Auth)
+    {
+#>
+@attribute [Authorize]
+<#
+    }
+#>
+@inject ApprovalsClient Client
+
+<PageTitle><#= ApprovalWords.Title #></PageTitle>
+
+<h1><#= ApprovalWords.Title #></h1>
+
+@foreach (var table in ApprovalsClient.Tables)
+{
+    var state = StateOf(table);
+    <section aria-label="@(table.Label) approvals">
+        <h2>@table.Label approvals</h2>
+        <h3><#= ApprovalWords.WaitingHeading #></h3>
+        @if (state.WaitingMessage is not null)
+        {
+            <p class="error" role="alert">@state.WaitingMessage</p>
+        }
+        else if (state.Waiting.Count == 0)
+        {
+            <p><#= ApprovalWords.NoneWaiting #></p>
+        }
+        else
+        {
+            <table>
+                <thead><tr><th>Row</th><th>Requested by</th><th>Requested on</th><th><#= ApprovalWords.ReasonLabel #></th><th><#= ApprovalWords.NoteLabel #></th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var w in state.Waiting)
+                    {
+                        <tr>
+                            <td>@w.RowId</td>
+                            <td>@w.RequestedBy</td>
+                            <td>@w.RequestedOn</td>
+                            <td>@w.Reason</td>
+                            <td><input aria-label="<#= ApprovalWords.NoteLabel #> for row @w.RowId" value="@state.NoteOf(w.RowId)" @oninput="e => state.Notes[w.RowId] = e.Value?.ToString() ?? string.Empty" /></td>
+                            <td>
+                                <button type="button" @onclick="() => DecideAsync(table, state, w.RowId, true)"><#= ApprovalWords.Approve #></button>
+                                <button type="button" @onclick="() => DecideAsync(table, state, w.RowId, false)"><#= ApprovalWords.Reject #></button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        <h3><#= ApprovalWords.RowHeading #></h3>
+        <p>
+            <label><#= ApprovalWords.RowLabel #> <input @bind="state.Row" @bind:event="oninput" /></label>
+            <label><#= ApprovalWords.ReasonLabel #> <input @bind="state.Reason" @bind:event="oninput" /></label>
+        </p>
+        <p>
+            <button type="button" @onclick="() => RequestAsync(table, state)"><#= ApprovalWords.Request #></button>
+            <button type="button" @onclick="() => WithdrawAsync(table, state)"><#= ApprovalWords.Withdraw #></button>
+            <button type="button" @onclick="() => LookUpAsync(table, state)"><#= ApprovalWords.History #></button>
+        </p>
+        @if (state.Message is not null)
+        {
+            <p class="@(state.Failed ? "error" : "")" role="@(state.Failed ? "alert" : "status")">@state.Message</p>
+        }
+        @if (state.History is { Count: 0 })
+        {
+            <p><#= ApprovalWords.NoHistory #></p>
+        }
+        else if (state.History is { } history)
+        {
+            <table>
+                <caption>@table.Label <#= ApprovalWords.History.ToLowerInvariant() #></caption>
+                <thead><tr><th>Revision</th><th>Status</th><th>Requested by</th><th>Requested on</th><th><#= ApprovalWords.ReasonLabel #></th><th>Decided by</th><th>Decided on</th><th><#= ApprovalWords.NoteLabel #></th></tr></thead>
+                <tbody>
+                    @foreach (var h in history)
+                    {
+                        <tr><td>@h.Revision</td><td>@h.Status</td><td>@h.RequestedBy</td><td>@h.RequestedOn</td><td>@h.Reason</td><td>@h.DecidedBy</td><td>@h.DecidedOn</td><td>@h.DecisionNote</td></tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </section>
+}
+
+@code {
+    private sealed class TableState
+    {
+        public List<ApprovalView> Waiting { get; set; } = [];
+        public string? WaitingMessage { get; set; }
+        public Dictionary<int, string> Notes { get; } = [];
+        public string Row { get; set; } = "";
+        public string Reason { get; set; } = "";
+        public List<ApprovalView>? History { get; set; }
+        public string? Message { get; set; }
+        public bool Failed { get; set; }
+        public string NoteOf(int row) => Notes.TryGetValue(row, out var note) ? note : "";
+    }
+
+    private readonly Dictionary<string, TableState> states = [];
+
+    private TableState StateOf(ApprovalTable table) => states.TryGetValue(table.Table, out var state) ? state : states[table.Table] = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        foreach (var table in ApprovalsClient.Tables)
+            await LoadAsync(table, StateOf(table));
+    }
+
+    private async Task LoadAsync(ApprovalTable table, TableState state)
+    {
+        try
+        {
+            state.Waiting = await Client.ToApproveAsync(table.Segment);
+            state.WaitingMessage = null;
+        }
+        catch (ApiException ex)
+        {
+            state.Waiting = [];
+            // a person who may not decide is told so in the API's words; anything else is a failed load
+            state.WaitingMessage = ex.Status == <#= HttpStatus.Forbidden #> ? ex.Message : "<#= ApprovalWords.LoadFailed #>";
+        }
+        catch (HttpRequestException)
+        {
+            state.Waiting = [];
+            state.WaitingMessage = "<#= ApprovalWords.LoadFailed #>";
+        }
+    }
+
+    private static bool RowOf(TableState state, out int id)
+    {
+        if (int.TryParse(state.Row, out id))
+            return true;
+        state.Failed = true;
+        state.Message = "<#= ApprovalWords.NeedRow #>";
+        return false;
+    }
+
+    private async Task ActAsync(ApprovalTable table, TableState state, int id, Func<Task> call, string done)
+    {
+        try
+        {
+            await call();
+            state.Failed = false;
+            state.Message = done;
+            await LoadAsync(table, state);
+            state.History = await Client.HistoryAsync(table.Segment, id);
+        }
+        catch (ApiException ex)
+        {
+            state.Failed = true;
+            state.Message = ex.Message;
+        }
+    }
+
+    private Task DecideAsync(ApprovalTable table, TableState state, int row, bool approve) =>
+        ActAsync(table, state, row, () => Client.DecideAsync(table.Segment, row, approve, state.NoteOf(row)), approve ? "<#= ApprovalWords.Approved #>" : "<#= ApprovalWords.Rejected #>");
+
+    private Task RequestAsync(ApprovalTable table, TableState state) =>
+        RowOf(state, out var id) ? ActAsync(table, state, id, () => Client.RequestAsync(table.Segment, id, state.Reason), "<#= ApprovalWords.Requested #>") : Task.CompletedTask;
+
+    private Task WithdrawAsync(ApprovalTable table, TableState state) =>
+        RowOf(state, out var id) ? ActAsync(table, state, id, () => Client.WithdrawAsync(table.Segment, id), "<#= ApprovalWords.Withdrawn #>") : Task.CompletedTask;
+
+    private async Task LookUpAsync(ApprovalTable table, TableState state)
+    {
+        if (!RowOf(state, out var id))
+            return;
+        try
+        {
+            state.Failed = false;
+            state.Message = null;
+            state.History = await Client.HistoryAsync(table.Segment, id);
+        }
+        catch (ApiException ex)
+        {
+            state.Failed = true;
+            state.Message = ex.Message;
+        }
+    }
+}

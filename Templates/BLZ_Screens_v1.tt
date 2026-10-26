@@ -137,6 +137,8 @@
         L($"        services.AddScoped<{t.TableName}JunctionClient>();");
     if (Project.Dashboard)
         L("        services.AddScoped<DashboardClient>();");
+    if (ApprovalScreens.For(Database, Project).Count > 0)
+        L("        services.AddScoped<ApprovalsClient>();");
     L("        return services;");
     L("    }");
     L("}");

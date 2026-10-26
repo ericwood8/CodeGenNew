@@ -52,6 +52,9 @@
     string ODataElement(TableModel t) => $"<Suspense fallback={{null}}><{ReactNames.ODataPageName(t, Project)} /></Suspense>";
     if (odataScreens.Count > 0)
         Line("import { Suspense, lazy } from 'react';");
+    bool approvals = ApprovalScreens.For(Database, Project).Count > 0;
+    if (approvals)
+        Line($"import {{ ApprovalsPage }} from './{pagesFolder}/ApprovalsPage';");
     if (Project.Dashboard)
         Line($"import {{ DashboardPage }} from './{pagesFolder}/DashboardPage';");
     if (stripTables.Count > 0)
@@ -79,6 +82,8 @@
         Line($"  {{ path: '{ScreenNames.Route(t.TableName)}', label: '{ScreenNames.Label(t.TableName)}', element: {(Replaced(t) ? ODataElement(t) : Element(t))}{RolesOf(t)} }},");
     foreach (var t in odataScreens.Where(t => !Replaced(t)))
         Line($"  {{ path: '{AngularNames.ODataRoute(t.TableName)}', label: '{AngularNames.ODataLabel(t.TableName)}', element: {ODataElement(t)}{RolesOf(t)} }},");
+    if (approvals)
+        Line($"  {{ path: 'approvals', label: '{ApprovalWords.Title}', element: <ApprovalsPage /> }},");
     foreach (var t in junctions)
         Line($"  {{ path: '{JunctionPlan.Route(t.TableName)}', label: '{JunctionPlan.Label(t.TableName)}', element: <{JunctionPlan.ReactPage(t.TableName)} />{JunctionRoles(t)} }},");
     Line("];");

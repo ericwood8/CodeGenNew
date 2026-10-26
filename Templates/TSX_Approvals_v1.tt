@@ -1,0 +1,268 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (folders).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string apiFolder = Project.ApiFolder;               // under the React app's src folder (where -o points)
+    string pagesFolder = Project.PagesFolder;
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // TSX_Approvals_v1.tt
+    // Generates: api/approvalsApi.ts, pages/ApprovalsPage.tsx, pages/approvals.css and pages/__tests__/ApprovalsPage.test.tsx
+    // The approvals page of a React front end, for the tables of RowApprovals (API_Approvals): for each table the requests waiting for the signed-in approver with a note and Approve / Reject,
+    // and a row's request, withdrawal and history by its number. The API's own sentences are shown as they come. TSX_Screens adds the menu entry. The words are ApprovalWords in Core.
+    // Full notes: Docs/TemplateNotes/API_Approvals_v1.md
+    // ==========================================================================================
+
+    var tables = ApprovalScreens.For(Database, Project);
+    if (tables.Count == 0)
+        return GenerationEnvironment.ToString();
+    string first = tables[0].Segment;
+#>
+@@@FILE <#= apiFolder #>/approvalsApi.ts@@@
+import { request } from './client';
+
+<#= ApprovalScreens.TypeScript() #>
+// The tables that have approvals: the table, the words for it and the route under /api.
+export const approvalTables = [
+<# foreach (var t in tables) { #>
+  { table: '<#= t.Table #>', label: '<#= t.Label #>', segment: '<#= t.Segment #>' },
+<# } #>
+];
+
+const post = <T>(path: string, body: object) => request<T>(path, { method: 'POST', body: JSON.stringify(body) });
+
+export const approvalsApi = {
+  // The requests waiting for the signed-in approver (not their own).
+  toApprove: (segment: string): Promise<ApprovalView[]> => request<ApprovalView[]>(`/api/${segment}/toapprove`),
+  history: (segment: string, id: number): Promise<ApprovalView[]> => request<ApprovalView[]>(`/api/${segment}/${id}/approvals`),
+  request: (segment: string, id: number, reason: string): Promise<ApprovalView> => post<ApprovalView>(`/api/${segment}/${id}/request`, { reason: reason || null }),
+  approve: (segment: string, id: number, note: string): Promise<ApprovalView> => post<ApprovalView>(`/api/${segment}/${id}/approve`, { note: note || null }),
+  reject: (segment: string, id: number, note: string): Promise<ApprovalView> => post<ApprovalView>(`/api/${segment}/${id}/reject`, { note: note || null }),
+  withdraw: (segment: string, id: number): Promise<ApprovalView> => post<ApprovalView>(`/api/${segment}/${id}/withdraw`, {}),
+};
+
+// The sentence of a refused call: the problem details' own words, else the text of the error.
+export function problemText(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  try {
+    const detail = (JSON.parse(text) as { detail?: string }).detail;
+    if (detail) return detail;
+  } catch {
+    // not a problem document
+  }
+  return text;
+}
+@@@FILE <#= pagesFolder #>/approvals.css@@@
+.approvals table { border-collapse: collapse; margin: 8px 0; }
+.approvals th, .approvals td { border: 1px solid #888; padding: 4px 8px; text-align: left; }
+.approvals section { margin-bottom: 24px; }
+.approvals .approvals-error { color: #b00020; }
+.approvals .approvals-note { font-style: italic; }
+@@@FILE <#= pagesFolder #>/ApprovalsPage.tsx@@@
+import { useCallback, useEffect, useState } from 'react';
+import { approvalTables, approvalsApi, problemText } from '../<#= apiFolder #>/approvalsApi';
+import type { ApprovalView } from '../<#= apiFolder #>/approvalsApi';
+import './approvals.css';
+
+function TableApprovals({ label, segment }: { label: string; segment: string }) {
+  const [waiting, setWaiting] = useState<ApprovalView[]>([]);
+  const [waitingMessage, setWaitingMessage] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Record<number, string>>({});
+  const [row, setRow] = useState('');
+  const [reason, setReason] = useState('');
+  const [history, setHistory] = useState<ApprovalView[] | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setWaiting(await approvalsApi.toApprove(segment));
+      setWaitingMessage(null);
+    } catch (error) {
+      setWaiting([]);
+      // a person who may not decide is told so in the API's words; anything else is a failed load
+      setWaitingMessage((error as { status?: number }).status === <#= HttpStatus.Forbidden #> ? problemText(error) : '<#= ApprovalWords.LoadFailed #>');
+    }
+  }, [segment]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const rowNumber = (): number | null => {
+    const n = Number(row);
+    if (!row.trim() || !Number.isInteger(n)) {
+      setFailed(true);
+      setMessage('<#= ApprovalWords.NeedRow #>');
+      return null;
+    }
+    return n;
+  };
+
+  const showHistory = async (id: number) => setHistory(await approvalsApi.history(segment, id));
+
+  const act = async (id: number | null, call: (id: number) => Promise<ApprovalView>, done: string) => {
+    if (id === null) return;
+    try {
+      await call(id);
+      setFailed(false);
+      setMessage(done);
+      await load();
+      await showHistory(id);
+    } catch (error) {
+      setFailed(true);
+      setMessage(problemText(error));
+    }
+  };
+
+  const lookUp = async () => {
+    const id = rowNumber();
+    if (id === null) return;
+    try {
+      setFailed(false);
+      setMessage(null);
+      await showHistory(id);
+    } catch (error) {
+      setFailed(true);
+      setMessage(problemText(error));
+    }
+  };
+
+  return (
+    <section aria-label={label + ' approvals'}>
+      <h2>{label} approvals</h2>
+      <h3><#= ApprovalWords.WaitingHeading #></h3>
+      {waitingMessage && <p role="alert" className="approvals-error">{waitingMessage}</p>}
+      {!waitingMessage && waiting.length === 0 && <p><#= ApprovalWords.NoneWaiting #></p>}
+      {waiting.length > 0 && (
+        <table>
+          <thead><tr><th>Row</th><th>Requested by</th><th>Requested on</th><th><#= ApprovalWords.ReasonLabel #></th><th><#= ApprovalWords.NoteLabel #></th><th></th></tr></thead>
+          <tbody>
+            {waiting.map((w) => (
+              <tr key={w.id}>
+                <td>{w.rowId}</td>
+                <td>{w.requestedBy}</td>
+                <td>{w.requestedOn}</td>
+                <td>{w.reason}</td>
+                <td><input aria-label={`<#= ApprovalWords.NoteLabel #> for row ${w.rowId}`} value={notes[w.rowId] ?? ''} onChange={(e) => setNotes({ ...notes, [w.rowId]: e.target.value })} /></td>
+                <td>
+                  <button type="button" onClick={() => act(w.rowId, (id) => approvalsApi.approve(segment, id, notes[w.rowId] ?? ''), '<#= ApprovalWords.Approved #>')}><#= ApprovalWords.Approve #></button>{' '}
+                  <button type="button" onClick={() => act(w.rowId, (id) => approvalsApi.reject(segment, id, notes[w.rowId] ?? ''), '<#= ApprovalWords.Rejected #>')}><#= ApprovalWords.Reject #></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <h3><#= ApprovalWords.RowHeading #></h3>
+      <p>
+        <label><#= ApprovalWords.RowLabel #> <input value={row} onChange={(e) => setRow(e.target.value)} /></label>{' '}
+        <label><#= ApprovalWords.ReasonLabel #> <input value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+      </p>
+      <p>
+        <button type="button" onClick={() => act(rowNumber(), (id) => approvalsApi.request(segment, id, reason), '<#= ApprovalWords.Requested #>')}><#= ApprovalWords.Request #></button>{' '}
+        <button type="button" onClick={() => act(rowNumber(), (id) => approvalsApi.withdraw(segment, id), '<#= ApprovalWords.Withdrawn #>')}><#= ApprovalWords.Withdraw #></button>{' '}
+        <button type="button" onClick={lookUp}><#= ApprovalWords.History #></button>
+      </p>
+      {message && <p role={failed ? 'alert' : 'status'} className={failed ? 'approvals-error' : 'approvals-note'}>{message}</p>}
+      {history !== null && history.length === 0 && <p><#= ApprovalWords.NoHistory #></p>}
+      {history !== null && history.length > 0 && (
+        <table>
+          <caption>{label} <#= ApprovalWords.History.ToLowerInvariant() #></caption>
+          <thead><tr><th>Revision</th><th>Status</th><th>Requested by</th><th>Requested on</th><th><#= ApprovalWords.ReasonLabel #></th><th>Decided by</th><th>Decided on</th><th><#= ApprovalWords.NoteLabel #></th></tr></thead>
+          <tbody>
+            {history.map((h) => (
+              <tr key={h.id}>
+                <td>{h.revision}</td><td>{h.status}</td><td>{h.requestedBy}</td><td>{h.requestedOn}</td><td>{h.reason}</td><td>{h.decidedBy}</td><td>{h.decidedOn}</td><td>{h.decisionNote}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+export function ApprovalsPage() {
+  return (
+    <div className="approvals">
+      <h1><#= ApprovalWords.Title #></h1>
+      {approvalTables.map((t) => <TableApprovals key={t.table} label={t.label} segment={t.segment} />)}
+    </div>
+  );
+}
+@@@FILE <#= pagesFolder #>/__tests__/ApprovalsPage.test.tsx@@@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { approvalsApi } from '../../<#= apiFolder #>/approvalsApi';
+import type { ApprovalView } from '../../<#= apiFolder #>/approvalsApi';
+import { ApprovalsPage } from '../ApprovalsPage';
+
+const view = (changes: Partial<ApprovalView>): ApprovalView =>
+  ({ id: 1, rowId: 7, revision: 1, status: 'Pending', reason: 'please', requestedBy: 'ann', requestedOn: '2026-01-02T00:00:00', decidedBy: null, decidedOn: null, decisionNote: null, ...changes });
+
+describe('ApprovalsPage', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('says so when nothing is waiting', async () => {
+    vi.spyOn(approvalsApi, 'toApprove').mockResolvedValue([]);
+    render(<ApprovalsPage />);
+    expect((await screen.findAllByText('<#= ApprovalWords.NoneWaiting #>')).length).toBeGreaterThan(0);
+  });
+
+  it('lists the requests waiting and approves one with its note', async () => {
+    const toApprove = vi.spyOn(approvalsApi, 'toApprove').mockResolvedValue([view({})]);
+    const approve = vi.spyOn(approvalsApi, 'approve').mockResolvedValue(view({ status: 'Approved' }));
+    vi.spyOn(approvalsApi, 'history').mockResolvedValue([view({ status: 'Approved' })]);
+    render(<ApprovalsPage />);
+    fireEvent.change((await screen.findAllByLabelText('<#= ApprovalWords.NoteLabel #> for row 7'))[0], { target: { value: 'ok' } });
+    fireEvent.click(screen.getAllByRole('button', { name: '<#= ApprovalWords.Approve #>' })[0]);
+    await vi.waitFor(() => expect(approve).toHaveBeenCalledWith('<#= first #>', 7, 'ok'));
+    expect((await screen.findAllByText('<#= ApprovalWords.Approved #>')).length).toBeGreaterThan(0);
+    expect(toApprove.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it('shows the sentence of a refused decision', async () => {
+    vi.spyOn(approvalsApi, 'toApprove').mockResolvedValue([view({})]);
+    vi.spyOn(approvalsApi, 'reject').mockRejectedValue(new Error(JSON.stringify({ detail: '<#= ApprovalWords.FourEyes #>' })));
+    render(<ApprovalsPage />);
+    fireEvent.click((await screen.findAllByRole('button', { name: '<#= ApprovalWords.Reject #>' }))[0]);
+    expect((await screen.findAllByRole('alert'))[0]).toHaveTextContent('<#= ApprovalWords.FourEyes #>');
+  });
+
+  it('asks for a row number before it requests', async () => {
+    vi.spyOn(approvalsApi, 'toApprove').mockResolvedValue([]);
+    const request = vi.spyOn(approvalsApi, 'request');
+    render(<ApprovalsPage />);
+    fireEvent.click((await screen.findAllByRole('button', { name: '<#= ApprovalWords.Request #>' }))[0]);
+    expect((await screen.findAllByRole('alert'))[0]).toHaveTextContent('<#= ApprovalWords.NeedRow #>');
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it('requests approval for a row with a reason and shows its history', async () => {
+    vi.spyOn(approvalsApi, 'toApprove').mockResolvedValue([]);
+    const request = vi.spyOn(approvalsApi, 'request').mockResolvedValue(view({}));
+    vi.spyOn(approvalsApi, 'history').mockResolvedValue([view({})]);
+    render(<ApprovalsPage />);
+    fireEvent.change((await screen.findAllByLabelText(/<#= ApprovalWords.RowLabel #>/))[0], { target: { value: '7' } });
+    fireEvent.change(screen.getAllByLabelText(/<#= ApprovalWords.ReasonLabel #>/)[0], { target: { value: 'please' } });
+    fireEvent.click(screen.getAllByRole('button', { name: '<#= ApprovalWords.Request #>' })[0]);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledWith('<#= first #>', 7, 'please'));
+    expect((await screen.findAllByText('Pending')).length).toBeGreaterThan(0);
+  });
+
+  it('says there is no history for a row that was never requested', async () => {
+    vi.spyOn(approvalsApi, 'toApprove').mockResolvedValue([]);
+    vi.spyOn(approvalsApi, 'history').mockResolvedValue([]);
+    render(<ApprovalsPage />);
+    fireEvent.change((await screen.findAllByLabelText(/<#= ApprovalWords.RowLabel #>/))[0], { target: { value: '3' } });
+    fireEvent.click(screen.getAllByRole('button', { name: '<#= ApprovalWords.History #>' })[0]);
+    expect((await screen.findAllByText('<#= ApprovalWords.NoHistory #>')).length).toBeGreaterThan(0);
+  });
+});

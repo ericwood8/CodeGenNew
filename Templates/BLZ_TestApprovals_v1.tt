@@ -1,0 +1,88 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_TestApprovals_v1.tt
+    // Generates: ApprovalsPageTests.cs   (the output folder is the Blazor test project, OutputBlazorTests; the BLZ_EssentialTests group writes the project around it)
+    // bUnit tests of the approvals page BLZ_Approvals writes, over FakeApi: nothing waiting, a request waiting and its approval posted with the note, a row number asked for before a request, and a request
+    // posted with its reason. Writes nothing unless the project sets BlazorTests=true and has RowApprovals.
+    // Full notes: Docs/TemplateNotes/BLZ_Test_v1.md
+    // ==========================================================================================
+    var tables = ApprovalScreens.For(Database, Project);
+    if (Project.BlazorTests && tables.Count > 0)
+    {
+        string ns = BlazorNames.Namespace(Project);
+        string segment = tables[0].Segment;
+#>
+@@@FILE ApprovalsPageTests.cs@@@
+using Bunit;
+using <#= ns #>.Pages;
+
+namespace <#= ns #>.Tests;
+
+/// <summary> The approvals page: the requests waiting for the signed-in approver, a decision with its note, and a request for a row by its number. </summary>
+[TestClass]
+public class ApprovalsPageTests : PageTestContext
+{
+    private const string Waiting = """[{ "id": 1, "rowId": 7, "revision": 1, "status": "Pending", "reason": "please", "requestedBy": "ann", "requestedOn": "2026-01-02T00:00:00", "decidedBy": null, "decidedOn": null, "decisionNote": null }]""";
+
+    [TestMethod]
+    public void Says_so_when_nothing_is_waiting()
+    {
+        Api.Answer("/<#= segment #>/toapprove", "[]");
+
+        var page = Render<Approvals>();
+
+        StringAssert.Contains(page.Markup, "<#= ApprovalWords.NoneWaiting #>");
+    }
+
+    [TestMethod]
+    public void Lists_a_request_waiting_and_posts_the_approval_with_its_note()
+    {
+        Api.Answer("/<#= segment #>/toapprove", Waiting).Answer("/<#= segment #>/7/approvals", Waiting);
+        var page = Render<Approvals>();
+        StringAssert.Contains(page.Markup, "ann");
+
+        page.Find("input[aria-label='<#= ApprovalWords.NoteLabel #> for row 7']").Input("ok");
+        page.FindAll("button").First(b => b.TextContent.Trim() == "<#= ApprovalWords.Approve #>").Click();
+
+        var post = Api.Requests.Single(r => r.Method == HttpMethod.Post);
+        Assert.AreEqual("/api/<#= segment #>/7/approve", post.Path);
+        StringAssert.Contains(post.Body, "\"note\":\"ok\"");
+        StringAssert.Contains(page.Markup, "<#= ApprovalWords.Approved #>");
+    }
+
+    [TestMethod]
+    public void Asks_for_a_row_number_before_it_requests()
+    {
+        Api.Answer("/<#= segment #>/toapprove", "[]");
+        var page = Render<Approvals>();
+
+        page.FindAll("button").First(b => b.TextContent.Trim() == "<#= ApprovalWords.Request #>").Click();
+
+        StringAssert.Contains(page.Markup, "<#= ApprovalWords.NeedRow #>");
+        Assert.IsFalse(Api.Requests.Any(r => r.Method == HttpMethod.Post));
+    }
+
+    [TestMethod]
+    public void Requests_approval_for_a_row_with_a_reason()
+    {
+        Api.Answer("/<#= segment #>/toapprove", "[]").Answer("/<#= segment #>/7/approvals", Waiting);
+        var page = Render<Approvals>();
+        page.FindAll("label input")[0].Input("7");
+        page.FindAll("label input")[1].Input("please");
+
+        page.FindAll("button").First(b => b.TextContent.Trim() == "<#= ApprovalWords.Request #>").Click();
+
+        var post = Api.Requests.Single(r => r.Method == HttpMethod.Post);
+        Assert.AreEqual("/api/<#= segment #>/7/request", post.Path);
+        StringAssert.Contains(post.Body, "\"reason\":\"please\"");
+        StringAssert.Contains(page.Markup, "Pending");
+    }
+}
+<#
+    }
+#>
