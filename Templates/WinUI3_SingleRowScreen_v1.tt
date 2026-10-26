@@ -57,7 +57,7 @@
             Error("WinUI3_SingleRowScreen needs the foreign-keyed tables' display columns for its drop-downs; its .tt.config must say NeedsReferencedDisplayColumns=true.");
 #>
 @@@FILE <#= viewsFolder #>/<#= table #>Page.xaml@@@
-<#= DesktopSingleRowPage.Xaml(form, Project, Model, viewNamespace, withGuards: false, loadErrorBar: false, gatedSave: false) #>@@@FILE <#= viewsFolder #>/<#= table #>Page.xaml.cs@@@
+<#= DesktopSingleRowPage.Xaml(form, Project, Model, viewNamespace, withGuards: true, loadErrorBar: false, gatedSave: false) #>@@@FILE <#= viewsFolder #>/<#= table #>Page.xaml.cs@@@
 using <#= viewModelNamespace #>;
 using <#= contextNamespace #>;
 using Microsoft.EntityFrameworkCore;

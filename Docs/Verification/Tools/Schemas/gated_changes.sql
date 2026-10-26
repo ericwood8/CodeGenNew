@@ -1,0 +1,26 @@
+CREATE TABLE Employee (
+    EmployeeId INTEGER PRIMARY KEY AUTOINCREMENT,
+    FullName VARCHAR(40) NOT NULL,
+    Login VARCHAR(30) NOT NULL,
+    PasswordHash VARCHAR(200) NOT NULL DEFAULT 'x',
+    IsManager BOOLEAN NOT NULL DEFAULT 0,
+    IsAdministrator BOOLEAN NOT NULL DEFAULT 0
+);
+
+CREATE TABLE Customer (
+    CustomerId INTEGER PRIMARY KEY AUTOINCREMENT,
+    CustomerName VARCHAR(40) NOT NULL,
+    CustomerStatusId INTEGER NOT NULL DEFAULT 1,
+    IgnoreBadStatus BOOLEAN NOT NULL DEFAULT 0,
+    IgnoreBadStatusBy VARCHAR(30) NULL,
+    IgnoreBadStatusOn DATETIME NULL
+);
+
+CREATE TABLE SalesInvoice (
+    SalesInvoiceId INTEGER PRIMARY KEY AUTOINCREMENT,
+    CustomerId INTEGER NOT NULL REFERENCES Customer (CustomerId),
+    InvoiceStatusId INTEGER NOT NULL DEFAULT 1,
+    IsPrinted BOOLEAN NOT NULL DEFAULT 0,
+    InvoiceDate DATE NOT NULL,
+    Notes VARCHAR(200) NULL
+);

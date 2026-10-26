@@ -143,7 +143,7 @@
 <#
             }
         foreach (var c in page.Columns)
-            Write(DesktopFormXaml.Field(form, Project, Model, c, textKey));
+            Write(DesktopFormXaml.Field(form, Project, Model, c, textKey, withGuards: true));
             if (tabbed)
             {
 #>
@@ -431,6 +431,10 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
         }
 #>
 
+<#
+        Write(DesktopFormCode.GuardProperties(form));
+#>
+
     public <#= table #>DetailViewModel(<#= contextType #> context, <#= table #>? editing)
     {
         _context = context;
@@ -450,7 +454,7 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
     // avoids CS1998 ("this async method lacks 'await' operators"), found live: this method's body was always
     // empty-but-async for a parentless table.
 <#
-        if (parents.Count == 0)
+        if (parents.Count == 0 && form.Guards.Count == 0)
         {
 #>
     public Task LoadLookupsAsync() => Task.CompletedTask;
@@ -525,6 +529,7 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
 <#
             }
         }
+        Write(DesktopFormCode.GuardContextLoadLines(form, "_context"));
 #>
     }
 <#
@@ -557,6 +562,7 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
         }
 #>
 <#
+        Write(DesktopFormCode.GateCheckLines(Project, Model, "_context"));
         if (isNameActive)
         {
             // NameActiveRepo refuses a name that another active row has: AddAsync answers false and UpdateAsync null

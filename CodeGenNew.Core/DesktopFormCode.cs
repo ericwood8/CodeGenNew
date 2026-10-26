@@ -101,12 +101,42 @@ public static class DesktopFormCode
         foreach (var c in form.Columns.Where(c => form.GuardOf(c) is not null))
         {
             o.Append('\n');
-            o.Append($"    /// <summary> The signed-in person may change {c.Name} (a guarded column, read from the API's guards); otherwise its field is disabled and the note shows. </summary>\n");
+            o.Append($"    /// <summary> The signed-in person may change {c.Name} (a guarded column); otherwise its field is disabled and the note shows. </summary>\n");
             o.Append($"    [NotifyPropertyChangedFor(nameof({c.Name}NoteVisibility))]\n");
             o.Append("    [ObservableProperty]\n");
             o.Append($"    private bool _{char.ToLowerInvariant(c.Name[0])}{c.Name[1..]}Allowed;\n");
             o.Append($"    public Visibility {c.Name}NoteVisibility => {c.Name}Allowed ? Visibility.Collapsed : Visibility.Visible;\n");
         }
+        return o.ToString();
+    }
+
+    /// <summary> The lines of the view model's load that ask the gates class which guarded columns the person may change (eight spaces in), for the app that reads the database itself (WinUI3): the user table's
+    /// row for <c>DesktopCaller.Name</c> answers. <paramref name="context"/> is the view model's context field. Empty when the table has no guarded column. </summary>
+    public static string GuardContextLoadLines(FormModel form, string context)
+    {
+        if (form.Guards.Count == 0)
+            return "";
+        var o = new StringBuilder();
+        o.Append("        // which guarded columns the signed-in person may change (their row of the user table); the others are read-only\n");
+        foreach (var c in form.Columns.Where(c => form.GuardOf(c) is not null))
+            o.Append($"        {c.Name}Allowed = await {form.Table.TableName}Gates.May{c.CSharpName()}Async({context});\n");
+        return o.ToString();
+    }
+
+    /// <summary> The lines of <c>SaveAsync</c> that run the table's change gates and column guards on the row before it is saved (eight spaces in), for the app that reads the database itself: a refusal is
+    /// the dialog's error, and an edited row is read again so the refused values do not stay in the tracked row. Empty when the table has no rule. </summary>
+    public static string GateCheckLines(ProjectSettings project, TableModel table, string context)
+    {
+        if (!GatePlan.HasRules(project, table))
+            return "";
+        var o = new StringBuilder();
+        o.Append($"        if (await {table.TableName}Gates.CheckAsync({context}, entity, _editing is null) is {{ }} refusal)\n");
+        o.Append("        {\n");
+        o.Append("            ErrorMessage = refusal;\n");
+        o.Append("            if (_editing is not null)\n");
+        o.Append($"                await {context}.Entry(entity).ReloadAsync();   // the refused values are not kept in the tracked row\n");
+        o.Append("            return false;\n");
+        o.Append("        }\n\n");
         return o.ToString();
     }
 

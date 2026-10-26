@@ -69,7 +69,7 @@ public sealed class DesktopTestPlan
             }
         }
         string key = ApiSampleValues.SampleId(table);
-        var members = ApiSampleValues.BodyColumns(table).Where(c => !c.IsRowVersionColumn).Select(c => ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + (c.IsPrimaryKey ? (c.IsIntegerColumn ? key : ApiSampleValues.Json(key)) : ApiSampleValues.Value(c, project, table.TableName)));
+        var members = ApiSampleValues.BodyColumns(table).Where(c => !c.IsRowVersionColumn && !c.IsCredentialColumn).Select(c => ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + (c.IsPrimaryKey ? (c.IsIntegerColumn ? key : ApiSampleValues.Json(key)) : ApiSampleValues.Value(c, project, table.TableName)));
         // a row version is filled by the database, and SQLite is given the same starting value for it (TestDb), so an update finds the row it expects
         members = members.Concat(table.Columns.Where(c => c.IsRowVersionColumn).Select(c => ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + ApiSampleValues.Json(DesktopTestCode.RowVersionBase64)));
         string typeName = BlazorNames.TypeName(table.TableName);

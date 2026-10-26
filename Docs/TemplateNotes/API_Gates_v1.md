@@ -32,11 +32,11 @@ Several rules of one setting are separated by `|`; the parts of a rule by `;`. B
 
 ## What the generator does with it
 
-- `GatePlan` (Core) reads and checks the settings once; `GateCode` writes the conditions as C#; `ProblemTypes.ChangeNotAllowed` and `ColumnNotYours` name the answers. `API_Crud` writes `BeforeSaveAsync` (and `AfterCloneAsync` for a table that clones) on a table with a rule; a rule on the user table itself is refused (its own rules are in `API_Crud_v1.md`).
+- `GatePlan` (Core) reads and checks the settings once; `GateCode` writes the conditions as C# and `GateWriter` the per-table classes (shared with `WinUI3_Gates`, which differs only in `GateFlavor`); `ProblemTypes.ChangeNotAllowed` and `ColumnNotYours` name the answers. `API_Crud` writes `BeforeSaveAsync` (and `AfterCloneAsync` for a table that clones) on a table with a rule; a rule on the user table itself is refused (its own rules are in `API_Crud_v1.md`).
 - `API_Registration` maps `GatesApi.Register(app)` when a guard exists.
 - **Angular** (the front end with a sign-in): the table's service gets `getGuards()`; the screen asks once when it opens, shows a guarded field as the control for a person who may change it and as text with the sentence for everyone else (`Only a manager can change this.`, from the name of the `by` column), and shows the stamp columns as text (`not recorded` when empty). A refusal is shown in the API's own words (a toast or an alert). Not colour alone.
 - **React and Blazor** (`Auth=true`): the same as Angular. React's api module and OData api module, and Blazor's `<Table>Client` and `<Table>ODataClient`, get `getGuards()` / `GetGuardsAsync()`; the page asks once when it opens and shows a guarded field as the control for a person who may change it and as its value with the reason for everyone else; the stamp columns are text ("not recorded" on a row from before they existed).
-- **WinUI3:** reads the database directly, so a gate or guard does not reach it; the guarded and stamp columns show as ordinary fields there.
+- **WinUI3:** reads the database directly, so the API's checks never reach it; `WinUI3_Gates` writes the same checks for the app (see `WinUI3_Gates_v1.md`).
 - **Python and Rust APIs** do not read these settings: they have their own sign-in and the same two problem types, but no gate. Do not put a rule on a project that generates them unless the .NET API is the one in use.
 
 ## Checked

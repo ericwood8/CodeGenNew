@@ -1,0 +1,56 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string repositoryNamespace = "MyApp.Common.Repositories";
+    string contextType = "MyAppContext";
+    string[] usings = { };   // namespaces the generated file must "using" (the context's)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    contextType = Project.ContextName ?? contextType;
+    repositoryNamespace = Project.RepoNamespace ?? repositoryNamespace;
+    usings = Project.Usings ?? usings;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // WinUI3_Gates_v1.tt
+    // Generates: Gates.cs   (see OutputName in WinUI3_Gates_v1.tt.config)
+    // The checks of the project's ChangeGates and GuardedColumns for the desktop app, which reads the database itself and so never meets the API's checks: one static class per table, the same C# the API
+    // writes (GateWriter), answering a sentence instead of a problem result. The dialogs call <Table>Gates.CheckAsync before a row is saved, the clone calls AfterCloneAsync, and a guarded field is
+    // enabled only when May<Column>Async says the person may change it. The person is DesktopCaller.Name, the Windows sign-in unless the project sets it, looked up in the user table.
+    // Written only when the project names a rule (the plan adds it). A rule that does not fit the schema stops the run with the reason.
+    // Full notes: Docs/TemplateNotes/WinUI3_Gates_v1.md
+    // ==========================================================================================
+
+    var plan = GatePlan.Resolve(Database, Project);
+    if (plan.Problems.Count > 0)
+    {
+        Error(string.Join(" | ", plan.Problems));
+    }
+    else
+    {
+        var sb = new StringBuilder();
+        void Line(string text = "") => sb.Append(text).Append('\n');
+
+        Line($"namespace {repositoryNamespace};");
+        Line();
+        foreach (string u in usings)
+            Line($"using {u};");
+        Line("using Microsoft.EntityFrameworkCore;");
+        Line();
+        Line("/// <summary> Who the guards of the project's GuardedColumns take the person to be: the name looked up in the user table. It starts as the Windows sign-in; an app with a sign-in of its own sets it after the person signs in. </summary>");
+        Line("public static class DesktopCaller");
+        Line("{");
+        Line("    public static string? Name { get; set; } = Environment.UserName;");
+        Line("}");
+        Line();
+        sb.Append(GateWriter.Tables(plan, contextType, Project, new DesktopGateFlavor()));
+        Write(sb.ToString());
+    }
+#>

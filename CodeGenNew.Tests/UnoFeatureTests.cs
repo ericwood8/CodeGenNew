@@ -138,7 +138,7 @@ public class UnoFeatureTests
         {
             Expect.Contains(read("Shop.Uno/Services/CustomerClient.cs"), "public async Task<Dictionary<string, bool>> GetGuardsAsync()");
             string dialog = read("Shop.Uno/Views/CustomerDetailDialog.xaml");
-            Expect.Contains(dialog, "<StackPanel IsEnabled=\"{x:Bind ViewModel.CreditLimitAllowed, Mode=OneWay}\">");
+            Expect.Contains(dialog, "<ContentControl HorizontalContentAlignment=\"Stretch\" IsEnabled=\"{x:Bind ViewModel.CreditLimitAllowed, Mode=OneWay}\">");
             Expect.Contains(dialog, "Visibility=\"{x:Bind ViewModel.CreditLimitNoteVisibility, Mode=OneWay}\"");
             string model = read("Shop.Uno/ViewModels/CustomerDetailViewModel.cs");
             Expect.Contains(model, "CreditLimitAllowed = guards.GetValueOrDefault(\"creditLimit\");");
@@ -153,7 +153,7 @@ public class UnoFeatureTests
     {
         await GenerateAsync(new() { ["ApiAuth"] = "true", ["GuardedColumns"] = "Region.Name; by Employee.IsManager" }, (read, _) =>
         {
-            Expect.Contains(read("Shop.Uno/Views/RegionDetailMasterDialog.xaml"), "<StackPanel IsEnabled=\"{x:Bind ViewModel.NameAllowed, Mode=OneWay}\">");
+            Expect.Contains(read("Shop.Uno/Views/RegionDetailMasterDialog.xaml"), "<ContentControl HorizontalContentAlignment=\"Stretch\" IsEnabled=\"{x:Bind ViewModel.NameAllowed, Mode=OneWay}\">");
             string model = read("Shop.Uno/ViewModels/RegionDetailMasterViewModel.cs");
             Expect.Contains(model, "private bool _nameAllowed;");
             Expect.Contains(model, "NameAllowed = guards.GetValueOrDefault(\"name\");");

@@ -15,9 +15,9 @@ public static class DesktopFormXaml
         if (guard is null)
             return Control(form, project, table, column, textKey);
         // a guarded column is a control only for a person who may change it (the API's guards answer); everyone else sees it disabled and why
-        return $"            <StackPanel IsEnabled=\"{{x:Bind ViewModel.{column.Name}Allowed, Mode=OneWay}}\">\n"
+        return $"            <ContentControl HorizontalContentAlignment=\"Stretch\" IsEnabled=\"{{x:Bind ViewModel.{column.Name}Allowed, Mode=OneWay}}\">\n"
             + Control(form, project, table, column, textKey)
-            + "            </StackPanel>\n"
+            + "            </ContentControl>\n"
             + $"            <TextBlock Text=\"{System.Security.SecurityElement.Escape(guard.Note)}\" TextWrapping=\"Wrap\" FontStyle=\"Italic\" Visibility=\"{{x:Bind ViewModel.{column.Name}NoteVisibility, Mode=OneWay}}\" />\n";
     }
 

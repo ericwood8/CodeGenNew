@@ -220,6 +220,7 @@ public static class DefaultAssetSeeder
         "TS_Screens_v1.tt", "TS_Screens_v1.tt.config",
         "WinUI3_Screens_v1.tt", "WinUI3_Screens_v1.tt.config",
         "WinUI3_DashboardPage_v1.tt", "WinUI3_DashboardPage_v1.tt.config",
+        "WinUI3_Gates_v1.tt", "WinUI3_Gates_v1.tt.config",
         "WinUI3_GridColumns_v1.tt", "WinUI3_GridColumns_v1.tt.config",
         "CS_Repo_v1.tt", "CS_Repo_v1.tt.config",
         "CS_SearchQuery_v1.tt", "CS_SearchQuery_v1.tt.config",

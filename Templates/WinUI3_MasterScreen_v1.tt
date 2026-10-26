@@ -759,7 +759,26 @@ public partial class <#= table #>ListViewModel : ViewModelBase
         ErrorMessage = null;
         try
         {
+<#
+            if (GatePlan.HasRules(Project, Model))
+            {
+#>
+            int? newId = await _repo.CloneAsync(id);
+            if (newId is { } copyId && await <#= table #>Gates.AfterCloneAsync(_context, copyId) is { } refusal)
+            {
+                ErrorMessage = refusal;
+                return null;
+            }
+            return newId;
+<#
+            }
+            else
+            {
+#>
             return await _repo.CloneAsync(id);
+<#
+            }
+#>
         }
         catch (Exception ex)
         {

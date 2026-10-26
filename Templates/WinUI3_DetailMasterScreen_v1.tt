@@ -139,7 +139,7 @@
 <#
             }
         foreach (var c in page.Columns)
-            Write(DesktopFormXaml.Field(form, Project, Model, c, textKey));
+            Write(DesktopFormXaml.Field(form, Project, Model, c, textKey, withGuards: true));
             if (tabbed)
             {
 #>
@@ -813,6 +813,9 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
             }
         }
 #>
+<#
+        Write(DesktopFormCode.GuardProperties(form));
+#>
 
     public <#= table #>DetailMasterViewModel(<#= contextType #> context, <#= table #>? editing)
     {
@@ -896,6 +899,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 <#
             }
         }
+        Write(DesktopFormCode.GuardContextLoadLines(form, "_context"));
         foreach (var child in children)
         {
 #>
@@ -1199,6 +1203,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         }
 #>
 <#
+        Write(DesktopFormCode.GateCheckLines(Project, Model, "_context"));
         if (isNameActive)
         {
             // NameActiveRepo refuses a name that another active row has: AddAsync answers false and UpdateAsync null

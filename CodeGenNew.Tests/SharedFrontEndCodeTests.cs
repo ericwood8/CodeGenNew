@@ -113,7 +113,7 @@ public class SharedFrontEndCodeTests
             StringAssert.Contains(load, "var guards = await _api.Customer.GetGuardsAsync();");
             StringAssert.Contains(load, "CreditLimitAllowed = guards.GetValueOrDefault(\"creditLimit\");");
             string xaml = DesktopFormXaml.Field(form, Project(("ApiAuth", "true"), ("GuardedColumns", "Customer.CreditLimit; by Employee.IsManager")), customer, customer.Columns.First(c => c.Name == "CreditLimit"), textKey: false, withGuards: true);
-            StringAssert.Contains(xaml, "<StackPanel IsEnabled=\"{x:Bind ViewModel.CreditLimitAllowed, Mode=OneWay}\">");
+            StringAssert.Contains(xaml, "<ContentControl HorizontalContentAlignment=\"Stretch\" IsEnabled=\"{x:Bind ViewModel.CreditLimitAllowed, Mode=OneWay}\">");
 
             var plain = FormModel.For(customer, Project());
             Assert.AreEqual("", DesktopFormCode.GuardProperties(plain));
