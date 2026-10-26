@@ -28,7 +28,7 @@ public partial class ProjectSettings
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode", "MaxGridColumns",
         "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "TypeAheadRows", "TypeAheadParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "ApiAnnotations", "NonNegativeColumns", "NotFutureDateColumns", "DatePairs", "NoDatePairs", "PlainTextColumns", "EmailColumns", "UrlColumns", "MoneyColumns", "NotMoneyColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "DesktopTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "RowApprovals", "ApproverTable", "WriteRoles", "TableWriteRoles", "ReadRoles", "TableReadRoles", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "KeyColumns", "SingleRowTables", "ListingName", "ListingFolder", "ListingPattern",
-        "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputUno", "OutputRust", "OutputPython", "OutputApiTests", "OutputBlazorTests", "OutputWinUI3Tests", "OutputUnoTests", "RustCrateName", "RustPort", "RustTests", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
+        "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputUno", "OutputRust", "OutputPython", "OutputApiTests", "OutputBlazorTests", "OutputWinUI3Tests", "OutputUnoTests", "RustCrateName", "RustPort", "RustTests", "PythonTests", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildUno", "BuildPython", "BuildRust", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestUno", "TestPython", "TestRust"
     ];
 
@@ -235,6 +235,9 @@ public partial class ProjectSettings
     /// <summary> <c>RustTests=true</c>: the plan also writes the integration tests of the crate in <c>tests/api</c> (RS_Test, RS_TestBodies, RS_TestJunction, and with a dashboard, ApiCsv or a gate or guard rule RS_TestDashboard, RS_TestCsv and RS_TestGates) and the helper they share (the Rust Tests essentials group); <c>cargo test</c> runs them. </summary>
     public bool RustTests => Flag("RustTests");
 
+    /// <summary> <c>PythonTests=true</c>: the plan also writes the pytest tests of the Python API in <c>tests</c> (PY_TestApprovals, for a project with RowApprovals) and their fixtures, and the Python requirements list pytest and httpx. </summary>
+    public bool PythonTests => Flag("PythonTests");
+
     /// <summary> <c>ApiValidation=true</c>: the plan also writes a FluentValidation validator per table (CS_Validator), and the create and update endpoints run them (a 400 with the messages). </summary>
     public bool ApiValidation => Flag("ApiValidation");
 
@@ -322,7 +325,9 @@ public partial class ProjectSettings
                 if (Dashboard) yield return "RS_TestDashboard";
                 if (ApiCsv) yield return "RS_TestCsv";
                 if (ApiAuth && (ChangeGates is not null || GuardedColumns is not null)) yield return "RS_TestGates";
+                if (ApiAuth && RowApprovals.Length > 0) yield return "RS_TestApprovals";
             }
+            if (PythonTests && ApiAuth && RowApprovals.Length > 0) yield return "PY_TestApprovals";
             if (ProjectDocs) { yield return "MD_DataDictionary"; yield return "MD_Erd"; }
             if (ApiAnnotations) yield return "CS_Validation";
             if (ApiValidation) { yield return "CS_Validator"; yield return "RS_Validate"; yield return "PY_Validate"; }

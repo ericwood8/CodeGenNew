@@ -38,6 +38,8 @@
             modules.Add("csv_routes");
         if (RustTestBodies.HasGateTests(Database, Project))
             modules.Add("gate_routes");
+        if (RustApprovalTests.Applies(Database, Project))
+            modules.Add("approval_routes");
         foreach (string module in modules.Order(StringComparer.Ordinal))
             Line($"mod {module};");
         Line();

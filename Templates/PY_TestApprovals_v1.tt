@@ -1,0 +1,28 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_TestApprovals_v1.tt
+    // Generates: tests/conftest.py and tests/test_approvals.py   (whole-database; the output folder is the Python API's folder)
+    // pytest tests of the routes PY_Approvals writes for RowApprovals. conftest.py opens the application over a scratch database: for SQLite a temporary copy of the file (DATABASE_FILE, else the file
+    // the project names; the original is never written), for PostgreSQL and MySQL the URL in <PROJECT>_TEST_CONNECTION (a scratch copy of the database; the password only from PGPASSWORD or MYSQL_PWD).
+    // With none of these the tests are skipped with the reason. test_approvals.py adds the people of the user table (a requester and two approvers, with ApproverTable also a person approved for another
+    // table only) and a row of the first RowApprovals table with plain SQL before each test and removes them after it, signs in as each person by replacing require_user, and plays the cases: a person
+    // the user table does not know, a row that is not there, a request and a second one while it waits, a person who may not decide, the list of waiting requests, withdrawal by the requester only, the
+    // four eyes, a decision written once, the history of every cycle and the two hooks. The words are ApprovalWords, as in the other stacks' tests.
+    // Written only for a project with PythonTests=true, ApiAuth and RowApprovals when the user table and the table can be filled from the schema (a column that cannot be NULL needs an example value).
+    // Run them with pytest from the API's folder (requirements.txt lists pytest and httpx with PythonTests=true).
+    // Full notes: Docs/TemplateNotes/API_Approvals_v1.md
+    // ==========================================================================================
+    if (Project.PythonTests && Project.ApiAuth && Project.RowApprovals.Length > 0)
+    {
+        var plan = ApprovalPlan.Resolve(Database, Project);
+        if (plan.Problems.Count == 0 && plan.Tables.Count > 0 && ApprovalTestSeed.For(plan, Database, Project, out _) is { } seed)
+        {
+            Write("@@@FILE tests/conftest.py@@@\n" + PythonApprovalTests.Conftest(Project, Database.Dialect));
+            Write("@@@FILE tests/test_approvals.py@@@\n" + PythonApprovalTests.Tests(plan, seed, Project));
+        }
+    }
+#>

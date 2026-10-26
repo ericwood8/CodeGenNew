@@ -119,6 +119,7 @@ impl Drop for Scratch {
 #[derive(Clone)]
 pub struct Client {
     router: Router,
+    pool: Pool,
     token: Option<String>,
     _scratch: Arc<Scratch>,
 }
@@ -142,7 +143,7 @@ impl Client {
         }
 #>
         let (pool, scratch) = scratch_pool().await?;
-        let <#= auth ? "mut " : "" #>client = Client { router: app(pool, None), token: None, _scratch: Arc::new(scratch) };
+        let <#= auth ? "mut " : "" #>client = Client { router: app(pool.clone(), None), pool, token: None, _scratch: Arc::new(scratch) };
 <#
         if (auth)
         {
@@ -180,25 +181,44 @@ impl Client {
     pub fn anonymous(&self) -> Client {
         Client { token: None, ..self.clone() }
     }
+
+    /// The connection pool of the scratch database, for a test that adds or removes rows with SQL.
+    pub fn pool(&self) -> Pool {
+        self.pool.clone()
+    }
 <#
         if (auth)
         {
 #>
 
+    /// Starts the application over a scratch database without signing in (a user table has no administrator to sign in as); None (after saying why) when there is none to use.
+    /// Its requests need a token: as_person.
+    pub async fn start_signed_out() -> Option<Client> {
+        dotenvy::dotenv().ok();
+        settings();
+        let (pool, scratch) = scratch_pool().await?;
+        Some(Client { router: app(pool.clone(), None), pool, token: None, _scratch: Arc::new(scratch) })
+    }
+
     /// The same application and database for someone who signed in with this role (a token made with the key of the run; no user needs to exist). The token names no owner.
     pub fn in_role(&self, role: &str) -> Client {
-        self.token_for(role, None)
+        self.token_for("role-test", role, None)
     }
 
     /// The same, for someone who signed in with this role and may act for this owner.
     pub fn in_owner(&self, role: &str, owner: i64) -> Client {
-        self.token_for(role, Some(owner))
+        self.token_for("role-test", role, Some(owner))
     }
 
-    fn token_for(&self, role: &str, owner: Option<i64>) -> Client {
+    /// The same, for the person of the user table with this name (a token made with the key of the run, in an ordinary role).
+    pub fn as_person(&self, name: &str) -> Client {
+        self.token_for(name, "Member", None)
+    }
+
+    fn token_for(&self, name: &str, role: &str, owner: Option<i64>) -> Client {
         let (key, _) = settings();
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
-        let mut claims = serde_json::json!({ "sub": "role-test", "name": "role-test", "iss": ISSUER, "aud": AUDIENCE, "iat": now, "nbf": now, "exp": now + 1800, ROLE_CLAIM: role });
+        let mut claims = serde_json::json!({ "sub": name, "name": name, "iss": ISSUER, "aud": AUDIENCE, "iat": now, "nbf": now, "exp": now + 1800, ROLE_CLAIM: role });
         if let Some(owner) = owner {
             claims[OWNER_CLAIM] = serde_json::json!(owner.to_string());
         }

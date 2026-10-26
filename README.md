@@ -139,6 +139,7 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `PY` | `PY_Junction` | `app/routes/table_junction.py` for a many-to-many junction table - junction routes of `API_Junction` (list with `isSelected`, link, unlink) for the Python API, so the junction screens of every UI stack work against it. |
 | `PY` | `PY_Csv` | `app/routes/csv_files.py` - `GET /api/table/export.csv` and `POST /api/table/import` for every table (`ApiCsv=true`); the import is all or nothing. |
 | `PY` | `PY_Gates` | `app/gates.py` - checks of `ChangeGates` and `GuardedColumns` (409 `change-not-allowed`, 403 `column-not-yours`, stamps, the clone reset) that the routes call, and `GET /api/table/guards` (`ApiAuth=true`). |
+| `PY` | `PY_TestApprovals` | `tests/conftest.py` and `tests/test_approvals.py` - pytest tests of the approval routes (`PythonTests=true` with `RowApprovals`) over a scratch database: the same cases as the Rust tests and the two hooks.
 | `PY` | `PY_UserDirectory` | `app/users.py` - people who sign in, read from `UserTable` of project, and `python -m app.users set-password` (`ApiAuth=true` with `UserTable`). |
 | `RS` | `RS_Struct` | `src/models/table.rs` - Rust struct of a table (serde and sqlx), with JSON names other stacks send; for the Rust stack (PostgreSQL, MySQL, SQLite). |
 | `RS` | `RS_Repo` | `src/repos/table.rs` - table's fixed SQL for DB that was read and sqlx functions: get, insert, update, delete, clone, and search with filters, fixed sort list and paging; with `ApiCsv=true` also `insert_all`, that adds all the rows of CSV import in one transaction. |
@@ -154,6 +155,7 @@ Entities, repositories, the HTTP APIs and the Rust and Python servers, plus the 
 | `RS` | `RS_TestCsv` | `tests/api/csv_routes.rs` - tests of the CSV export and import of every table (`RustTests=true` with `ApiCsv=true`): the header, an import, a bad row that adds none, a formula text, and the administrator-only routes.
 | `RS` | `RS_TestDashboard` | `tests/api/dashboard_routes.rs` - tests of `GET /api/dashboard` against the plan's widgets and strips (`RustTests=true` with a dashboard).
 | `RS` | `RS_TestGates` | `tests/api/gate_routes.rs` - tests of the guards route, a guarded column and the 409 of a change gate, with the condition set through the parent's API (`RustTests=true` with `ChangeGates` or `GuardedColumns`).
+| `RS` | `RS_TestApprovals` | `tests/api/approval_routes.rs` - tests of the approval routes (`RustTests=true` with `RowApprovals`): the people and a row added with SQL, a stranger, a second request, a person who may not decide, withdrawal, the four eyes and the history.
 | `RS` | `RS_TestJunction` | `tests/api/table_junction.rs` - tests of the junction list, link and unlink routes of a many-to-many table (`RustTests=true`).
 | `RS` | `RS_UserDirectory` | `src/users.rs` - people who sign in, read from `UserTable` of project, and `set-password` command (`ApiAuth=true` with `UserTable`). |
 
