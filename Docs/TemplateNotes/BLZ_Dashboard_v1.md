@@ -4,7 +4,7 @@ The Blazor dashboard, written only for a project with `Dashboard=true`: `Service
 
 - Same widgets, same words and same layout as the React and Angular pages: cards, bar lists, a sparkline with "Show the numbers", a wide Latest list. No chart package.
 - Money widgets (`isMoney`) show the project's currency with thousands separators and two decimals; the symbol is `$` for USD, else the code.
-- No strip above each grid: `DashboardStrip` does not apply to Blazor.
+- With `DashboardStrip=true` it also writes `Components/DashboardStrip.razor`: the cards of one table, read from `GET /api/dashboard?table=`, which `BLZ_Page` (and its OData variant) puts above the heading of every table page. The component knows the tables that have cards from the dashboard plan and asks only for those; a table with none, a failed call, or a role that may not read the table shows nothing.
 - The API must allow the app's origin (`DevPort`, default 5190).
 - **Checked:** generated for the SQL Server sample, built, and viewed in the browser against the running API: the cards, bars, sparkline and Latest list showed the same numbers as the React page.
 - With `Auth=true` the page asks for a signed-in person (`@attribute [Authorize]`); the API leaves out the widgets of tables the role may not read (`ReadRoles`, `TableReadRoles`), so the page draws only what comes back.

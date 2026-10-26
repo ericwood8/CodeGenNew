@@ -228,7 +228,7 @@
             L($"@page \"/{route}\"");
         L($"@using {ns}.Models");
         L($"@using {ns}.Services");
-        if (usesMoneyBox || aheadParents.Count > 0 || Project.ApiAnnotations || childBoxesNeedComponents)
+        if (usesMoneyBox || aheadParents.Count > 0 || Project.ApiAnnotations || childBoxesNeedComponents || Project.DashboardStrip)
             L($"@using {ns}.Components");
         if (Project.Auth)
             L(readRoles.Count > 0 ? $"@attribute [Authorize(Roles = \"{string.Join(",", readRoles)}\")]" : "@attribute [Authorize]");
@@ -247,6 +247,8 @@
         string heading = SingleRowPlan.Heading(title, oneRow);
         L($"<PageTitle>{heading}</PageTitle>");
         L();
+        if (Project.DashboardStrip)
+            L($"<DashboardStrip Table=\"{Model.TableName}\" />");   // BLZ_Dashboard: shows nothing for a table with no cards
         L($"<h1>{heading}</h1>");
         if (!oneRow) L(Gate("", "<button type=\"button\" @onclick=\"Add\">Add New</button>"));
         // the OData page has the filter row under the headers in place of the search boxes

@@ -34,6 +34,11 @@ public static class DashboardWire
     /// <summary> The card kinds as a TypeScript array literal: <c>['count', 'childCount', ...]</c>. </summary>
     public static string CardKindsTypeScript => "[" + string.Join(", ", CardKinds.Select(k => $"'{k}'")) + "]";
 
+    /// <summary> The method of the C# clients (Blazor and Uno) that reads the answer: every widget, or with a table the cards of that table's strip. </summary>
+    public const string ClientGetCSharp =
+        "public async Task<DashboardResult> GetAsync(string? table = null) =>\n" +
+        "        await (await http.GetAsync(table is null ? \"/api/dashboard\" : \"/api/dashboard?table=\" + Uri.EscapeDataString(table))).ReadAsync<DashboardResult>();";
+
     /// <summary> The C# classes of the contract. The server writes them in the repository namespace and the Blazor client in its own; the widget is <c>partial</c> so the client can add what only a page needs. </summary>
     public static string CSharp()
     {

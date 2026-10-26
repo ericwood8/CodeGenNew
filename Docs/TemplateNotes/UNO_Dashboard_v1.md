@@ -4,4 +4,6 @@
 
 `UNO_Screens` adds the "Dashboard" entry as the first screen, passes the page a `GoTo(tag)` so a widget's title (a link to the widget's table) selects that screen's menu entry, and holds the client in `ApiClients.Dashboard`. With `Auth=true` the call carries the token and the API leaves out the widgets of tables the role may not read.
 
-Limits: there is no strip of cards above each list page (`DashboardStrip` is for the WinUI 3 stack); money shows in the current culture's currency format, as on WinUI 3. See `UNO_Screens_v1.md`.
+With `DashboardStrip=true` it also writes `Views/DashboardStrip.cs`, the cards of one table above its list page (`UNO_Screens` wraps the page in `WithStrip`), read from `GET /api/dashboard?table=`; a table with no cards, or whose role may not read it, shows nothing.
+
+Limits: money shows in the current culture's currency format, as on WinUI 3. See `UNO_Screens_v1.md`.

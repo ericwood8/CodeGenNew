@@ -7,11 +7,11 @@
 <#
     // ==========================================================================================
     // UNO_Dashboard_v1.tt
-    // Generates: Services/DashboardClient.cs, Views/DashboardWidgetViews.cs and Views/DashboardPage.cs
+    // Generates: Services/DashboardClient.cs, Views/DashboardWidgetViews.cs, Views/DashboardPage.cs and, with DashboardStrip=true, Views/DashboardStrip.cs
     // The dashboard page of the Uno app, built in code from what GET /api/dashboard returns (API_Dashboard), so one file draws every kind of widget: cards, bar lists, a sparkline and a list
     // of recent rows, with no chart package. Every chart has its numbers beside it as text. The drawing is WinUI3_DashboardPage's; the data comes through DashboardClient (the same contract
-    // as BLZ_Dashboard's) instead of a context. UNO_Screens adds the menu entry, makes the dashboard the first screen and holds the client. There is no strip above each list page (DashboardStrip)
-    // on Uno. With Auth=true the page asks for a signed-in person; the API leaves out the widgets of tables the role may not read.
+    // as BLZ_Dashboard's) instead of a context. UNO_Screens adds the menu entry, makes the dashboard the first screen and holds the client. UNO_Screens puts the strip above each list page of a table that has cards
+    // (DashboardStrip); the API answers GET /api/dashboard?table=. With Auth=true the page asks for a signed-in person; the API leaves out the widgets of tables the role may not read.
     // Full notes: Docs/TemplateNotes/UNO_Dashboard_v1.md
     // ==========================================================================================
     string viewNamespace = Project.ViewNamespace ?? (Project.ProjectName is not null ? UnoNames.Namespace(Project) + ".Views" : "MyApp.Views");
@@ -26,7 +26,7 @@ namespace <#= servicesNamespace #>;
 <#= DashboardWire.CSharp() #>
 public class DashboardClient(HttpClient http)
 {
-    public async Task<DashboardResult> GetAsync() => await (await http.GetAsync("/api/dashboard")).ReadAsync<DashboardResult>();
+    <#= DashboardWire.ClientGetCSharp #>
 }
 @@@FILE <#= viewsFolder #>/DashboardWidgetViews.cs@@@
 <#= DesktopDashboardCode.WidgetViews(viewNamespace, servicesNamespace, "UNO_Screens", "the dashboard") #>@@@FILE <#= viewsFolder #>/DashboardPage.cs@@@
@@ -98,3 +98,12 @@ public sealed class DashboardPage : Page
         }
     }
 }
+<#
+    if (Project.DashboardStrip)
+    {
+#>
+@@@FILE <#= viewsFolder #>/DashboardStrip.cs@@@
+<#= DesktopDashboardCode.StripFile(viewNamespace, $"using {servicesNamespace};\n", "", "    private readonly DashboardClient _client;\n", "DashboardClient client, string table", "        _client = client;\n",
+        "            var result = await _client.GetAsync(_table);\n") #><#
+    }
+#>

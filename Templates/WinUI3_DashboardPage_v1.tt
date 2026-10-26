@@ -107,44 +107,7 @@ public sealed class DashboardPage : Page
     {
 #>
 @@@FILE <#= viewsFolder #>/DashboardStrip.cs@@@
-using System;
-using System.Threading.Tasks;
-using <#= contextNamespace #>;
-using <#= repositoryNamespace #>;
-using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-<#= usingLines #>
-namespace <#= viewNamespace #>;
-
-// The two or three cards of one table, above its list page. A failure shows nothing: the list below is what the person came for.
-public sealed class DashboardStrip : UserControl
-{
-    private readonly string _table;
-    private readonly StackPanel _cards = new() { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new Thickness(16, 8, 16, 0) };
-
-    public DashboardStrip(string table)
-    {
-        _table = table;
-        Content = _cards;
-        Loaded += async (_, _) => await LoadAsync();
-    }
-
-    private async Task LoadAsync()
-    {
-        try
-        {
-            using var context = new <#= contextType #>();
-            var result = await DashboardData.LoadAsync(context, _table);
-            _cards.Children.Clear();
-            foreach (var widget in result.Widgets)
-                _cards.Children.Add(DashboardWidgetViews.Build(widget, null));
-        }
-        catch (Exception)
-        {
-            _cards.Children.Clear();
-        }
-    }
-}
-<#
+<#= DesktopDashboardCode.StripFile(viewNamespace, $"using {contextNamespace};\nusing {repositoryNamespace};\n", usingLines, "", "string table", "",
+        $"            using var context = new {contextType}();\n            var result = await DashboardData.LoadAsync(context, _table);\n") #><#
     }
 #>

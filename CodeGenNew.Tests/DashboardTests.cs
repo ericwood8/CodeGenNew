@@ -41,7 +41,7 @@ public class DashboardTests
         "INSERT INTO Promotion VALUES (1, 'Now', '2000-01-01', '2999-01-01'), (2, 'Past', '2000-01-01', '2001-01-01'), (3, 'Later', '2999-01-01', NULL)"
     ];
 
-    private static string CreateDatabase()
+    internal static string CreateDatabase()
     {
         string path = Path.Combine(Path.GetTempPath(), "codegen_dashboard_" + Guid.NewGuid().ToString("N") + ".db");
         using var connection = Open(path);
@@ -61,7 +61,7 @@ public class DashboardTests
         return connection;
     }
 
-    private static async Task<(ISchemaProvider Provider, DatabaseModel Database)> ReadAsync(string path)
+    internal static async Task<(ISchemaProvider Provider, DatabaseModel Database)> ReadAsync(string path)
     {
         var request = new ConnectionRequest { Provider = DatabaseProvider.Sqlite, ServerName = "", DatabaseName = path };
         var provider = SchemaProviderFactory.Create(request, Path.Combine(Repo.Root, "SpecialLogicColumns.config"));
@@ -95,7 +95,7 @@ public class DashboardTests
         return result;
     }
 
-    private static void Delete(string path)
+    internal static void Delete(string path)
     {
         if (File.Exists(path))
             File.Delete(path);

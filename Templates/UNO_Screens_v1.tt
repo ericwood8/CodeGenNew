@@ -25,6 +25,8 @@
     var odataScreens = ODataPlan.UnoScreenTables(Database, Project);   // the tables served as OData that have an Uno screen: each also gets an OData page (UNO_ODataPage)
     var odataClients = Project.OData ? ODataPlan.For(Database, Project).Tables.Where(t => UnoNames.HasODataClient(t, Project)).ToList() : new List<TableModel>();
     bool dashboard = Project.Dashboard;   // the dashboard is the first screen (UNO_Dashboard writes the page and its client)
+    // with DashboardStrip=true each table that has cards shows them above its list page (UNO_Dashboard writes the strip)
+    var stripTables = Project.DashboardStrip ? DashboardPlan.Build(Database, Project).StripTables.Where(name => screens.Any(t => t.TableName.EqualsIgnoreCase(name))).ToHashSet(StringComparer.OrdinalIgnoreCase) : new HashSet<string>();
     // the menu in order (the dashboard, the screens, the OData pages) and the tag each entry is selected by
     var menu = ScreenMenu.For(Project, screens, odataScreens, JunctionPlan.Tables(Database, Project))
         .Select(m => (Tag: m.Kind switch { ScreenMenuKind.Dashboard => "Dashboard", ScreenMenuKind.Screen => m.Table!.TableName, ScreenMenuKind.Junction => m.Table!.TableName + "Links", _ => m.Table!.TableName + "OData" }, m.Label, m.Roles))
@@ -34,9 +36,12 @@
 
     var o = new StringBuilder();
     void L(string s = "") => o.Append(s).Append('\n');
+    string Strip(TableModel t, string page) => stripTables.Contains(t.TableName) ? $"WithStrip(\"{t.TableName}\", {page})" : page;
 
     L("@@@FILE MainPage.Screens.cs@@@");
     L($"using {viewNamespace};");
+    if (stripTables.Count > 0)
+        L("using Microsoft.UI.Xaml;");
     L("using Microsoft.UI.Xaml.Controls;");
     L();
     L($"namespace {UnoNames.Namespace(Project)};");
@@ -90,6 +95,21 @@
         L("    }");
         L();
     }
+    if (stripTables.Count > 0)
+    {
+        L("    // A table's strip of cards above its list page.");
+        L("    private UIElement WithStrip(string table, UIElement page)");
+        L("    {");
+        L("        var host = new Grid();");
+        L("        host.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });");
+        L("        host.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });");
+        L("        host.Children.Add(new DashboardStrip(_api.Dashboard, table));");
+        L("        Grid.SetRow((FrameworkElement)page, 1);");
+        L("        host.Children.Add(page);");
+        L("        return host;");
+        L("    }");
+        L();
+    }
     L("    private void ShowPage(string tag)");
     L("    {");
     L("        MainContent.Content = tag switch");
@@ -100,8 +120,8 @@
         L(SingleRowPlan.Applies(t, Project, "Uno")
             ? $"            \"{t.TableName}\" => new {t.TableName}Page(_api),"   // the table's one row as a form (UNO_SingleRowScreen)
             : Project.ODataReplacesScreens && odataScreens.Any(o => o.TableName == t.TableName)
-                ? $"            \"{t.TableName}\" => new {t.TableName}ODataListPage(_api),"   // ODataScreens=Replace: the OData page takes the REST page's place
-                : $"            \"{t.TableName}\" => new {t.TableName}ListPage(_api),");
+                ? $"            \"{t.TableName}\" => {Strip(t, $"new {t.TableName}ODataListPage(_api)")},"   // ODataScreens=Replace: the OData page takes the REST page's place
+                : $"            \"{t.TableName}\" => {Strip(t, $"new {t.TableName}ListPage(_api)")},");
     if (!Project.ODataReplacesScreens)
         foreach (var t in odataScreens)
             L($"            \"{t.TableName}OData\" => new {t.TableName}ODataListPage(_api),");

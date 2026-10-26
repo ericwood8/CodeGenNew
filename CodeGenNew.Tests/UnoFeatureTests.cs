@@ -168,7 +168,7 @@ public class UnoFeatureTests
         {
             foreach (string expected in new[] { "Shop.Uno/Services/DashboardClient.cs", "Shop.Uno/Views/DashboardPage.cs", "Shop.Uno/Views/DashboardWidgetViews.cs" })
                 CollectionAssert.Contains(files, expected);
-            Expect.Contains(read("Shop.Uno/Services/DashboardClient.cs"), "GetAsync(\"/api/dashboard\")");
+            Expect.Contains(read("Shop.Uno/Services/DashboardClient.cs"), DashboardWire.ClientGetCSharp);
             string screens = read("Shop.Uno/MainPage.Screens.cs");
             Expect.Contains(screens, "private const string FirstScreen = \"Dashboard\";");
             Expect.Contains(screens, "\"Dashboard\" => new DashboardPage(_api.Dashboard, GoTo),");

@@ -11,6 +11,49 @@ public static class DesktopDashboardCode
         .Replace("§SW§", DashboardWire.SparkWidth.ToString())
         .Replace("§SH2§", (DashboardWire.SparkHeight - 2).ToString()).Replace("§SH4§", (DashboardWire.SparkHeight - 4).ToString()).Replace("§SH§", DashboardWire.SparkHeight.ToString()) + "\n";
 
+    /// <summary> The text of <c>DashboardStrip.cs</c>: the cards of one table above its list page. WinUI3 reads them from <c>DashboardData</c> through a context of its own, Uno from the dashboard client;
+    /// <paramref name="dataUsings"/> and <paramref name="extraUsings"/> are whole <c>using</c> lines, <paramref name="loadLines"/> the statements that set <c>result</c>. </summary>
+    public static string StripFile(string viewNamespace, string dataUsings, string extraUsings, string clientField, string constructorArguments, string constructorBody, string loadLines) => StripTemplate
+        .Replace("§VIEW§", viewNamespace).Replace("§USINGS§", dataUsings).Replace("§EXTRA§", extraUsings).Replace("§FIELD§", clientField)
+        .Replace("§ARGS§", constructorArguments).Replace("§INIT§", constructorBody).Replace("§LOAD§", loadLines) + "\n";
+
+    private const string StripTemplate = """
+using System;
+using System.Threading.Tasks;
+§USINGS§using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+§EXTRA§
+namespace §VIEW§;
+
+// The two or three cards of one table, above its list page. A failure shows nothing: the list below is what the person came for.
+public sealed class DashboardStrip : UserControl
+{
+§FIELD§    private readonly string _table;
+    private readonly StackPanel _cards = new() { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new Thickness(16, 8, 16, 0) };
+
+    public DashboardStrip(§ARGS§)
+    {
+§INIT§        _table = table;
+        Content = _cards;
+        Loaded += async (_, _) => await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+§LOAD§            _cards.Children.Clear();
+            foreach (var widget in result.Widgets)
+                _cards.Children.Add(DashboardWidgetViews.Build(widget, null));
+        }
+        catch (Exception)
+        {
+            _cards.Children.Clear();
+        }
+    }
+}
+""";
+
     private const string Template = """
 using System;
 using System.Collections.Generic;

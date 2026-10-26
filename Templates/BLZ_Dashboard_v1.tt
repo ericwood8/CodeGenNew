@@ -6,10 +6,11 @@
 <#
     // ==========================================================================================
     // BLZ_Dashboard_v1.tt
-    // Generates: Services/DashboardClient.cs, Components/DashboardWidgetView.razor and Pages/Dashboard.razor   (the paths are written by the template; point the output folder at the Blazor app's folder)
+    // Generates: Services/DashboardClient.cs, Components/DashboardWidgetView.razor, Pages/Dashboard.razor and, with DashboardStrip=true, Components/DashboardStrip.razor   (the paths are written by the template; point the output folder at the Blazor app's folder)
     // The dashboard page of a Blazor app, drawn from what GET /api/dashboard returns (API_Dashboard): cards, bar lists, a sparkline and a list of recent rows, all written by the template, so no chart
     // package is added. Every chart has the same numbers beside it as text. Money widgets (isMoney) show the project's currency. BLZ_Screens adds the menu entry, registers DashboardClient and makes
-    // the dashboard the first screen. There is no strip above each grid on Blazor. With Auth=true the page asks for a signed-in person; the API leaves out the widgets of tables the role may not read.
+    // the dashboard the first screen. With DashboardStrip=true BLZ_Page puts the strip above the heading of each table page; the strip asks
+    // only for the tables that have cards (GET /api/dashboard?table=). With Auth=true the page asks for a signed-in person; the API leaves out the widgets of tables the role may not read.
     // Full notes: Docs/TemplateNotes/BLZ_Dashboard_v1.md
     // ==========================================================================================
 
@@ -29,7 +30,7 @@ public partial class DashboardWidgetData
 
 public class DashboardClient(HttpClient http)
 {
-    public async Task<DashboardResult> GetAsync() => await (await http.GetAsync("/api/dashboard")).ReadAsync<DashboardResult>();
+    <#= DashboardWire.ClientGetCSharp #>
 }
 @@@FILE Components/DashboardWidgetView.razor@@@
 @using System.Globalization
@@ -230,3 +231,51 @@ public class DashboardClient(HttpClient http)
         }
     }
 }
+<#
+    if (Project.DashboardStrip)
+    {
+        var stripTables = DashboardPlan.Build(Database, Project).StripTables;
+#>
+@@@FILE Components/DashboardStrip.razor@@@
+@using <#= ns #>.Services
+@inject DashboardClient Client
+
+@* The two or three cards of one table, above its page. A failure shows nothing: the page below is what the person came for. *@
+@if (widgets.Count > 0)
+{
+    <style>
+<#= DashboardWire.Css("        ", true, ".dash-panel-wide").Replace("@media", "@@media") #>    </style>
+    <div class="dash-grid">
+        @foreach (var widget in widgets)
+        {
+            <DashboardWidgetView Widget="widget" />
+        }
+    </div>
+}
+
+@code {
+    private static readonly HashSet<string> StripTables = new(StringComparer.OrdinalIgnoreCase) { <#= string.Join(", ", stripTables.Select(t => "\"" + t + "\"")) #> };
+
+    private List<DashboardWidgetData> widgets = [];
+
+    [Parameter, EditorRequired]
+    public string Table { get; set; } = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        widgets = [];
+        if (!StripTables.Contains(Table))
+            return;
+        try
+        {
+            widgets = (await Client.GetAsync(Table)).Widgets;
+        }
+        catch (Exception)
+        {
+            widgets = [];
+        }
+    }
+}
+<#
+    }
+#>
