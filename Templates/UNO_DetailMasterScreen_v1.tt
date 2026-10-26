@@ -55,9 +55,9 @@
     {
         Error($"UNO_DetailMasterScreen writes no dialog for [{Model.SchemaName}].[{Model.TableName}]: {reason}");
     }
-    else if (keyColumn is null || keyType is null || isNameActive)
+    else if (keyColumn is null || keyType is null)
     {
-        Error($"UNO_DetailMasterScreen needs a plain table with a single int, uniqueidentifier or text primary key, but [{Model.SchemaName}].[{Model.TableName}] is not one.");
+        Error($"UNO_DetailMasterScreen needs a table with a single int, uniqueidentifier or text primary key, but [{Model.SchemaName}].[{Model.TableName}] is not one.");
     }
     else if (!Model.HasAtLeastOneChildForeignKey)
     {
@@ -1022,6 +1022,18 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
             else
                 await _api.<#= UnoNames.ClientProperty(table) #>.UpdateAsync(entity.<#= keyProp #>, entity);
         }
+<#
+        if (isNameActive)
+        {
+#>
+        catch (ApiException ex) when (ex.Status == <#= HttpStatus.Conflict #>)
+        {
+            ErrorMessage = "A <#= title.ToLowerInvariant() #> with this name already exists.";
+            return false;
+        }
+<#
+        }
+#>
         catch (ApiException ex)
         {
             ErrorMessage = ex.Explain("saving");

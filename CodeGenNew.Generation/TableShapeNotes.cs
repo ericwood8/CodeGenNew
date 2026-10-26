@@ -25,6 +25,17 @@ public static class TableShapeNotes
             notes.Add($"{table.TableName}: holds one row; if the application keeps only one, list it in SingleRowTables to get a form instead of a list.");
         var screens = database.ScreenTables(project, uiStacks);
         var screenNames = screens.Select(s => s.TableName).ToHashSet(StringComparer.Ordinal);
+        foreach (var table in database.EntityTables.Where(t => t.HasNameActiveApi(project)).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
+        {
+            if (!screenNames.Contains(table.TableName))
+            {
+                notes.Add($"{table.TableName}: has a Name and an IsActive column, so it gets a screen only when the Screens setting lists it.");
+                continue;
+            }
+            string[] withoutODataPage = [.. uiStacks.Where(s => s.Equals("Blazor", StringComparison.OrdinalIgnoreCase) || s.Equals("Uno", StringComparison.OrdinalIgnoreCase))];
+            if (ODataPlan.Serves(table, project) && withoutODataPage.Length > 0)
+                notes.Add($"{table.TableName}: has a Name and an IsActive column, so {string.Join(" and ", withoutODataPage)} write only its REST screen, not an OData page.");
+        }
         foreach (var master in screens.Where(t => DatabaseModel.IsDetailMaster(t, project)))
             foreach (var grid in ChildGrid.ForWeb(master, project).Where(g => !screenNames.Contains(g.Table)).DistinctBy(g => g.Table))
                 notes.Add($"{grid.Table}: a child of {master.TableName}, no screen.");

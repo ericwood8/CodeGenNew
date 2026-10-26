@@ -26,7 +26,7 @@ public sealed class BlazorTestPlan
             .Where(g => DatabaseModel.IsDetailMaster(model, project) && g.KeyColumn is not null && g.KeyType is not null && !g.IsNameActive)
             .ToList();
         Children = childGrids.Where(g => !g.IsEditable).ToList();
-        Editable = childGrids.Where(g => g.IsEditable).ToList();
+        Editable = Form.IsNameActive ? [] : childGrids.Where(g => g.IsEditable).ToList();   // a name / active page shows its child tables read-only
 
         SortName = Chosen.Initial.FirstOrDefault(c => c.Sortable)?.Name;
 

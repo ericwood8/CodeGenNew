@@ -17,7 +17,7 @@
     // ==========================================================================================
 
     var selection = ODataPlan.For(Database, Project);
-    var tables = selection.Tables.Where(t => BlazorNames.HasClient(t, Project)).ToList();
+    var tables = selection.Tables.Where(t => BlazorNames.HasODataClient(t, Project)).ToList();
     if (tables.Count == 0)
         Error("BLZ_ODataClient found no table served as OData: set OData=true (and ODataTables if only some tables are served).");
     // the tables a header may sort through (a foreign key sorts by its parent's display column): not a table whose rows belong to a person, which no navigation leads into

@@ -1,0 +1,17 @@
+CREATE TABLE Department (
+    DepartmentId INTEGER PRIMARY KEY AUTOINCREMENT,
+    Name VARCHAR(40) NOT NULL,
+    IsActive BOOLEAN NOT NULL,
+    Code VARCHAR(10) NOT NULL,
+    Budget DECIMAL(10,2) NOT NULL,
+    Note VARCHAR(50) NULL
+);
+
+CREATE TABLE Employee (
+    EmployeeId INTEGER PRIMARY KEY AUTOINCREMENT,
+    DepartmentId INTEGER NOT NULL REFERENCES Department (DepartmentId),
+    FullName VARCHAR(40) NOT NULL,
+    Email VARCHAR(80) NOT NULL,
+    HiredOn DATETIME NOT NULL,
+    Note VARCHAR(50) NULL
+);

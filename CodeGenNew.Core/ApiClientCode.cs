@@ -44,10 +44,11 @@ public static class ApiClientCode
 
     /// <summary> The client class of the table (<c>&lt;Type&gt;Client</c>) with the lookup row record: GetAll, GetLookup (with a search or keys for a type-ahead), Get, Create, Update, Delete, Clone (a table
     /// <see cref="CloneShape"/> allows), GetGuards (a table with guarded columns) and GetPage (search, paging and sort). The table must have a client (<see cref="BlazorNames.Refusal"/> is null). </summary>
-    public static string Client(TableModel table, ProjectSettings project, string modelNamespace, string clientNamespace, bool childRows = false)
+    public static string Client(TableModel table, ProjectSettings project, string modelNamespace, string clientNamespace, bool childRows = false, bool pagedHere = false)
     {
         string type = BlazorNames.TypeName(table.TableName);
         var key = KeyType.Of(table)!;
+        bool nameActive = table.IsNameActiveTable;   // its API (NameActiveCrudApi) has no search, no paging, no clone and no child rows
         string keyType = key.CSharp;   // int, long, Guid or string
         // a text key can hold characters a route treats as its own (a space, a slash, a question mark): it is escaped into the path
         string id = key.Kind == KeyKind.Text ? "Uri.EscapeDataString(id)" : "id";
@@ -68,6 +69,12 @@ public static class ApiClientCode
         L();
         L($"    public async Task<List<{type}>> GetAllAsync() => await (await http.GetAsync(Url)).ReadAsync<List<{type}>>();");
         L();
+        if (nameActive)
+        {
+            L("    // The rows whose IsActive is true. A name / active table's API has no search and no paging: GetAllAsync reads the whole list.");
+            L($"    public async Task<List<{type}>> GetActiveAsync() => await (await http.GetAsync($\"{{Url}}/active\")).ReadAsync<List<{type}>>();");
+            L();
+        }
         L("    // With a search only the first few rows whose text contains it, with ids only the rows with those keys (a type-ahead for a parent with too many rows for a drop-down).");
         L($"    public async Task<List<{BlazorNames.LookupType(table.TableName)}>> GetLookupAsync(string? search = null, IEnumerable<{keyType}>? ids = null, int? take = null)");
         L("    {");
@@ -83,7 +90,7 @@ public static class ApiClientCode
         L($"    public async Task<{type}> CreateAsync({type} row) => await (await http.PostAsJsonAsync(Url, row)).ReadAsync<{type}>();");
         L();
         L($"    public async Task UpdateAsync({keyType} id, {type} row) => await (await http.PutAsJsonAsync($\"{{Url}}/{{{id}}}\", row)).EnsureSuccessAsync();");
-        if (childRows)
+        if (childRows && !nameActive)
         {
             L();
             L("    // The row with the rows of its editable child tables (EditableChildren), saved in one request: each key of children is the name of a list in the body (departmentTeams), each value the rows of that child.");
@@ -101,17 +108,24 @@ public static class ApiClientCode
         }
         L();
         L($"    public async Task DeleteAsync({keyType} id) => await (await http.DeleteAsync($\"{{Url}}/{{{id}}}\")).EnsureSuccessAsync();");
-        if (CloneShape.CanClone(table, project))
+        if (!nameActive && CloneShape.CanClone(table, project))
         {
             L();
             L("    // A copy of the row, made by the API; the copy comes back.");
             L($"    public async Task<{type}> CloneAsync({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{{id}}}/clone\", null)).ReadAsync<{type}>();");
         }
-        if (GatePlan.GuardsOf(project, table).Count > 0)
+        if (!nameActive && GatePlan.GuardsOf(project, table).Count > 0)
         {
             L();
             L("    // Which guarded columns the signed-in person may change (the form shows the others as text), by the column's JSON name.");
             L("    public async Task<Dictionary<string, bool>> GetGuardsAsync() => await (await http.GetAsync($\"{Url}/guards\")).ReadAsync<Dictionary<string, bool>>();");
+        }
+        if (nameActive)
+        {
+            if (pagedHere)
+                NameActivePage(o, table, type);
+            L("}");
+            return o.ToString();
         }
         L();
         L("    // The filters are the search boxes of the screen, by the names the API's search endpoint reads; a blank filter is left out. sortBy is a column name.");
@@ -130,5 +144,54 @@ public static class ApiClientCode
         L("    }");
         L("}");
         return o.ToString();
+    }
+
+    /// <summary> The paged read of a name / active table, whose API has no search and no paging: the whole list is read and narrowed, sorted and cut into pages in the client, so a screen that pages
+    /// every table the same way (the Uno list) needs no case of its own. A filter named after a search box keeps the rows whose text contains the value, a key filter the rows with that key, and
+    /// <c>isActive</c> set to <c>true</c> the active rows. Switches over the columns, not reflection, so a trimmed app keeps working. </summary>
+    private static void NameActivePage(StringBuilder o, TableModel table, string type)
+    {
+        void L(string s = "") => o.Append(s).Append('\n');
+        var filterColumns = table.SearchableColumns.Concat(table.SearchKeyColumns).Distinct().ToList();
+        var sortColumns = table.Columns.Where(SearchSort.IsSortable).ToList();
+        string Quote(string s) => "\"" + s + "\"";
+        L();
+        L("    // This table's API has no search and no paging: the list is read whole and narrowed, sorted and cut into pages here. A filter named after a search box keeps the rows whose text contains the value,");
+        L("    // a key filter the rows with that key, and isActive set to true the active rows. sortBy is a column name.");
+        L($"    public async Task<PagedResult<{type}>> GetPageAsync(int page, int pageSize, IReadOnlyDictionary<string, string?>? filters = null, string? sortBy = null, bool descending = false)");
+        L("    {");
+        L("        var rows = (await GetAllAsync()).AsEnumerable();");
+        L("        foreach (var (name, value) in filters ?? new Dictionary<string, string?>())");
+        L("        {");
+        L("            if (string.IsNullOrWhiteSpace(value))");
+        L("                continue;");
+        L("            string wanted = value.Trim();");
+        L("            rows = name.ToLowerInvariant() switch");
+        L("            {");
+        L("                \"isactive\" => wanted == \"true\" ? rows.Where(r => r.IsActive) : rows,");
+        foreach (var c in filterColumns)
+        {
+            string test = c.IsStringColumn
+                ? $"(r.{c.CSharpName()} ?? \"\").Contains(wanted, StringComparison.OrdinalIgnoreCase)"
+                : $"Convert.ToString(r.{c.CSharpName()}, System.Globalization.CultureInfo.InvariantCulture) == wanted";
+            L($"                {Quote(c.Name.ToLowerInvariant())} => rows.Where(r => {test}),");
+        }
+        L("                _ => rows");
+        L("            };");
+        L("        }");
+        L("        if (sortBy is not null)");
+        L("        {");
+        L("            object? Key(" + type + " r) => sortBy switch");
+        L("            {");
+        foreach (var c in sortColumns)
+            L($"                {Quote(c.Name)} => r.{c.CSharpName()},");
+        L("                _ => null");
+        L("            };");
+        L("            rows = descending ? rows.OrderByDescending(Key) : rows.OrderBy(Key);");
+        L("        }");
+        L("        var all = rows.ToList();");
+        L("        int pages = (all.Count + pageSize - 1) / pageSize;");
+        L($"        return new PagedResult<{type}> {{ Items = all.Skip((page - 1) * pageSize).Take(pageSize).ToList(), Page = page, PageSize = pageSize, TotalCount = all.Count, TotalPages = pages }};");
+        L("    }");
     }
 }

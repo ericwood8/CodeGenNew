@@ -19,6 +19,9 @@ public static class UnoNames
     /// <summary> Whether the table gets a model and a client: the same rule as the Blazor stack. </summary>
     public static bool HasClient(TableModel table, ProjectSettings project) => Refusal(table, project) is null;
 
+    /// <summary> Whether the table also gets a client over its OData entity set (not a name / active table). </summary>
+    public static bool HasODataClient(TableModel table, ProjectSettings project) => BlazorNames.HasODataClient(table, project);
+
     /// <summary> The reason a table gets no client, or null. </summary>
     public static string? Refusal(TableModel table, ProjectSettings project) => BlazorNames.Refusal(table, project, "Uno");
 }

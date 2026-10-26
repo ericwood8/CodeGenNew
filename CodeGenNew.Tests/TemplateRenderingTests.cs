@@ -344,11 +344,13 @@ public class TemplateRenderingTests
     }
 
     [TestMethod]
-    public async Task WinUI3_DetailScreen_refuses_a_name_active_table()
+    public async Task WinUI3_DetailScreen_tells_a_duplicate_name_of_a_name_active_table_in_words()
     {
-        string message = await Refusal("WinUI3_DetailScreen_v1.tt", Sample.DepartmentTeam());
+        string viewModel = await Render("WinUI3_DetailScreen_v1.tt", Sample.DepartmentTeam());
 
-        StringAssert.Contains(message, "NameActiveRepo");
+        Expect.Contains(viewModel, "if (!await _repo.AddAsync(entity))");
+        Expect.Contains(viewModel, "else if (await _repo.UpdateAsync(entity.DepartmentTeamId, entity) is null)");
+        Expect.Contains(viewModel, "with this name already exists.");
     }
 
     [TestMethod]
@@ -402,11 +404,13 @@ public class TemplateRenderingTests
     // ------------------------------------------------------------------ WinUI3_MasterScreen
 
     [TestMethod]
-    public async Task WinUI3_MasterScreen_refuses_a_name_active_table()
+    public async Task WinUI3_MasterScreen_pages_a_name_active_table_with_an_Active_only_box_and_no_Clone()
     {
-        string message = await Refusal("WinUI3_MasterScreen_v1.tt", Sample.DepartmentTeam());
+        string page = await Render("WinUI3_MasterScreen_v1.tt", Sample.DepartmentTeam());
 
-        StringAssert.Contains(message, "NameActiveRepo");
+        Expect.Contains(page, "<CheckBox Content=\"Active only\" IsChecked=\"{x:Bind ViewModel.ActiveOnly, Mode=TwoWay}\" />");
+        Expect.Contains(page, "activeOnly: ActiveOnly, ");
+        Expect.DoesNotContain(page, "OnCloneClick");
     }
 
     [TestMethod]

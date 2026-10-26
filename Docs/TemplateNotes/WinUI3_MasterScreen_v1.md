@@ -25,9 +25,9 @@ only way to keep the number of columns generic (it depends on the table) while s
 x:Bind. If you have Community Toolkit's DataGrid or WinUI's TreeView/ListView with grid-style headers
 already, feel free to replace this with that.
 
-Requires a primary key that is a single, non-composite INT column and refuses a "name/active" table
-(a NOT NULL text Name plus a NOT NULL bit IsActive) - same restrictions and reasons as
-WinUI3_DetailScreen.tt, since its repository (NameActiveRepo) has no GetAll for this page to call.
+Requires a primary key that is a single, non-composite INT column. A "name/active" table (a NOT NULL text Name plus a NOT NULL bit IsActive) gets the page too:
+its repository (NameActiveRepo) has no search routine, so CS_Repo writes a SearchAsync that reads the whole list and narrows, sorts and pages it in memory, the search bar
+gains an Active only check box, and there is no Clone button. A foreign key column sorts by its key, not by the parent's name. Only a table the Screens setting lists gets a screen.
 
 What it does NOT do: sorting, or opening from a NavigationView/Frame - add the Page to your own
 navigation the way you would any other.

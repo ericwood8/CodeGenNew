@@ -58,20 +58,21 @@ public static partial class BlazorNames
     /// <summary> The key the browser keeps the signed-in session under: <c>acme.auth</c>, the same name the React app uses. </summary>
     public static string SessionKey(ProjectSettings project) => (project.ProjectName ?? "MyApp").ToLowerInvariant() + ".auth";
 
-    /// <summary> Whether the table gets a model and a client: the API has CRUD for it, its single key is an int, a guid or text (the routes take <c>{id:int}</c>, <c>{id:guid}</c> or <c>{id}</c>) and it is not a name / active table. </summary>
+    /// <summary> Whether the table gets a model and a client: the API has CRUD for it (a name / active table's own API too) and its single key is an int, a guid or text (the routes take <c>{id:int}</c>, <c>{id:guid}</c> or <c>{id}</c>). </summary>
     public static bool HasClient(TableModel table, ProjectSettings project) => Refusal(table, project) is null;
+
+    /// <summary> Whether the table also gets a client over its OData entity set: it has a client and is not a name / active table (the OData pages are the plain tables'). </summary>
+    public static bool HasODataClient(TableModel table, ProjectSettings project) => HasClient(table, project) && !table.IsNameActiveTable;
 
     /// <summary> The reason a table gets no client, or null. <paramref name="stack"/> is the name the message gives the app (the Uno stack shares this rule). </summary>
     public static string? Refusal(TableModel table, ProjectSettings project, string stack = "Blazor")
     {
-        if (!table.HasCrudApiOfAnyKey(project))
+        if (!table.HasCrudApiOfAnyKey(project) && !table.HasNameActiveApi(project))
             return $"[{table.SchemaName}].[{table.TableName}] has no API of its own (an enum, a lookup table or a table with no entity), so there is nothing for a {stack} client to call.";
         var key = table.PrimaryKeyColumns.Count == 1 ? table.PrimaryKeyColumns[0] : null;
         if (key is null || KeyType.Of(key) is null)
             return $"the routes take the id as {{id:int}}, {{id:guid}} or {{id}} (text), but [{table.SchemaName}].[{table.TableName}] has "
                 + (key is not null ? $"a {key.SqlTypeDeclaration} primary key." : table.PrimaryKeyColumns.Count == 0 ? "no primary key." : "a composite primary key.");
-        if (table.IsNameActiveTable)
-            return $"[{table.SchemaName}].[{table.TableName}] has a Name and an IsActive column, so its real API is hand-maintained and has no plain getAll(); write its client by hand.";
         return null;
     }
 

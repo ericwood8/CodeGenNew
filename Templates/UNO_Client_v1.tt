@@ -11,7 +11,8 @@
     // UNO_Client_v1.tt
     // Generates: Services/<Table>Client.cs   (the path is written by the template; point the output folder at the Uno app's folder)
     // The class the Uno screens read and write a table through, over the app's HttpClient: GetAll, GetLookup, Get, Create, Update, Delete, GetPage (search, paging, sort) and, for a
-    // cloneable table, Clone. The calls are the Blazor client's (BLZ_Client): the same API, the same JSON. A failed call throws ApiException with the HTTP status (Services/ApiSupport.cs,
+    // cloneable table, Clone. The calls are the Blazor client's (BLZ_Client): the same API, the same JSON. A table with a Name and an IsActive column has an API with no search and no paging, so its
+    // GetPage reads the whole list and narrows, sorts and pages it in the client. A failed call throws ApiException with the HTTP status (Services/ApiSupport.cs,
     // the Support essentials group). ApiClients (UNO_Screens) holds one client per table over one HttpClient, whose BaseAddress is the API.
     // Full notes: Docs/TemplateNotes/UNO_Client_v1.md
     // ==========================================================================================
@@ -23,6 +24,6 @@
     else
     {
         string type = BlazorNames.TypeName(Model.TableName);
-        Write($"@@@FILE Services/{type}Client.cs@@@\n" + ApiClientCode.Client(Model, Project, UnoNames.ModelsNamespace(Project), UnoNames.ServicesNamespace(Project)));
+        Write($"@@@FILE Services/{type}Client.cs@@@\n" + ApiClientCode.Client(Model, Project, UnoNames.ModelsNamespace(Project), UnoNames.ServicesNamespace(Project), pagedHere: true));
     }
 #>

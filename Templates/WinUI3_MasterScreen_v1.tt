@@ -37,6 +37,8 @@
     // A page listing the table's rows: sortable headers, search bar, paging, Add New and Edit / Clone / Delete per row, resolving foreign keys to the
     // parent's display column. A plain Grid of TextBlocks (WinUI3 has no built-in DataGrid) with the same widths as the header. Opens <Table>DetailDialog
     // (WinUI3_DetailScreen) or <Table>DetailMasterDialog (WinUI3_DetailMasterScreen) for Add and Edit.
+    // A table with a NOT NULL Name and a NOT NULL IsActive column reads through its repository's SearchAsync, which pages the whole list in memory (CS_Repo); its search bar has an Active only check box
+    // besides the text boxes, and it has no Clone button.
     // Full notes: Docs/TemplateNotes/WinUI3_MasterScreen_v1.md
     // ==========================================================================================
 
@@ -50,10 +52,6 @@
     {
         Error($"WinUI3_MasterScreen needs a table with a single int, uniqueidentifier or text primary key (CS_Repo's GenericRepo<T, TKey> takes it as the id), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
-    }
-    else if (isNameActive)
-    {
-        Error($"WinUI3_MasterScreen is for plain tables. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo (no GetAll); write this screen by hand.");
     }
     else
     {
@@ -70,7 +68,7 @@
         var searchFields = DesktopGridCode.SearchBoxes(form);
         // a drop-down of the parent's rows per whole-number foreign key: an exact match on the key (the first entry, "All", is no filter)
         var searchKeys = DesktopGridCode.KeyFilters(form);
-        bool canSearch = searchFields.Count > 0 || searchKeys.Count > 0;
+        bool canSearch = searchFields.Count > 0 || searchKeys.Count > 0 || isNameActive;   // a name / active table's search bar also has the Active only check box
         int errorRow = canSearch ? 3 : 2;
         int gridRow = canSearch ? 4 : 3;
 
@@ -162,6 +160,12 @@
                           SelectedItem="{x:Bind ViewModel.<#= k.Prop #>, Mode=TwoWay}" SelectionChanged="OnKeyFilterChanged" />
 <#
                 }
+            }
+            if (isNameActive)
+            {
+#>
+                <CheckBox Content="Active only" IsChecked="{x:Bind ViewModel.ActiveOnly, Mode=TwoWay}" />
+<#
             }
 #>
                 <Button Content="Search" Click="OnSearchClick" />
@@ -567,6 +571,15 @@ public partial class <#= table #>ListViewModel : ViewModelBase
     private string _<#= f.Field #> = "";
 <#
         }
+        if (isNameActive)
+        {
+#>
+
+    /// <summary> Only the rows whose IsActive is true. </summary>
+    [ObservableProperty]
+    private bool _activeOnly;
+<#
+        }
         foreach (var k in searchKeys)
         {
             if (k.Parent.TypeAhead)
@@ -707,6 +720,8 @@ public partial class <#= table #>ListViewModel : ViewModelBase
             + string.Concat(searchKeys.Select(k => k.Convert is null
                 ? $"{CSharpIdentifier(k.ParamName)}: ({k.Type}?){k.Prop}?.Id, "
                 : $"{CSharpIdentifier(k.ParamName)}: {k.Prop}?.Id is null ? null : Convert.{k.Convert}({k.Prop}.Id), "));   // a whole-number key is boxed as the parent's own type: convert it to this column's
+        if (isNameActive)
+            filterArgs += "activeOnly: ActiveOnly, ";
         foreach (var k in searchKeys.Where(k => !k.Parent.TypeAhead))
         {
 #>

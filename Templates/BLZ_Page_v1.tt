@@ -18,6 +18,8 @@
     // with no input (binary) is left off the form; the form is one panel, not tabs.
     // BLZ_ODataPage is this template run with Variant=OData (its config says Base=BLZ_Page_v1.tt): the same page over the table's OData client (BLZ_ODataClient) instead of the REST one, with several sorts
     // (Shift-click adds a column) and a filter row under the headers; the REST page is not touched, unless ODataScreens=Replace gives its route to the OData page.
+    // A table with a NOT NULL Name and a NOT NULL IsActive column (its API is the NameActiveCrudApi: the whole list, no search, no paging) gets a page that reads the whole list and narrows it with a name box and an
+    // Active only check box; it has no sort, no Columns list, no Clone and no OData page, and a duplicate name (409) is told in words. Only a table the Screens setting lists gets a page.
     // With Auth=true every page asks for a signed-in person (and, for a table with ReadRoles, one of its roles); with WriteRoles the buttons that change rows show only to the roles that may.
     // A Columns button above the grid shows or hides each column of the table (ChosenGridColumns in Core; the helpers are Services/GridColumns.cs, BLZ_GridColumns): the choice is kept in the browser, and an OData page asks only for the shown columns.
     // Full notes: Docs/TemplateNotes/BLZ_Page_v1.md
@@ -46,11 +48,11 @@
         return attributes;
     }
     bool odata = Variant == "OData";
-    bool oneRow = !odata && SingleRowPlan.Applies(Model, Project, "Blazor");   // the table's one row is the page: a form, with no list, no paging, no child grids and no Delete
+    bool oneRow = !odata && !Model.IsNameActiveTable && SingleRowPlan.Applies(Model, Project, "Blazor");   // the table's one row is the page: a form, with no list, no paging, no child grids and no Delete
 
-    if (odata && !ODataPlan.Serves(Model, Project))
+    if (odata && (!ODataPlan.Serves(Model, Project) || Model.IsNameActiveTable))
     {
-        // the OData page is written for the tables the project serves as OData and for no other; a plan runs this template for every table, so it says nothing for the rest
+        // the OData page is written for the tables the project serves as OData and for no other (a name / active table has the REST page only); a plan runs this template for every table, so it says nothing for the rest
     }
     else if (BlazorNames.Refusal(Model, Project) is { } reason)
     {
@@ -83,13 +85,16 @@
         var aheadColumns = form.Columns.Where(c => form.ParentOf(c) is { } p && Ahead(p)).ToList();
 
         bool canClone = form.CanClone && !oneRow;
+        // a Name and an IsActive column: the whole list is read (the API has no search and no paging), narrowed by a name box and an Active only check box on the page; no sort, no Columns list, no Clone
+        bool nameActive = form.IsNameActive;
+        string reload = oneRow || nameActive ? "LoadAsync()" : "LoadAsync(pageNumber)";
 
         bool usesMoneyBox = shown.Any(form.IsMoneyInput);
 
         string pageClass = odata ? BlazorNames.ODataPageName(Model.TableName) : type + "Page";
         string route = odata && !Project.ODataReplacesScreens ? AngularNames.ODataRoute(Model.TableName) : ScreenNames.Route(Model.TableName);
         // ODataScreens=Replace: the OData page has this REST page's route, so this one is not routable (two pages at one address would be ambiguous)
-        bool replaced = !odata && Project.ODataReplacesScreens && ODataPlan.Serves(Model, Project);
+        bool replaced = !odata && !nameActive && Project.ODataReplacesScreens && ODataPlan.Serves(Model, Project);
         string clientType = odata ? BlazorNames.ODataClientName(Model.TableName) : type + "Client";
         string ExplainCall = odata ? "ExplainOData" : "Explain";   // the OData calls also carry the API's own words for a conflict
         // The Columns list: the grid starts with the columns GridColumns picks and offers every column of the form
@@ -99,8 +104,8 @@
         // the parent columns of the OData filter row that are type-aheads: the key is held as text in the column's ColumnFilter.Value
         var filterAheads = (filterFields ?? []).OfType<ODataFilterField>().Where(f => f.Kind == ODataFilterKind.Parent && Ahead(f.Parent!)).ToList();
         string FilterKey(ODataFilterField f) => "Filter" + Ident(f.Name) + "Key";
-        var sortable = columnList.Where(c => c.Sortable).Select(c => c.Column).ToList();
-        string Shown(ColumnModel c, string markup) => $"@if (Shown(\"{c.Name}\")) {{ {markup} }}";   // markup that is drawn only while its column is chosen
+        var sortable = nameActive ? new List<ColumnModel>() : columnList.Where(c => c.Sortable).Select(c => c.Column).ToList();
+        string Shown(ColumnModel c, string markup) => nameActive ? markup : $"@if (Shown(\"{c.Name}\")) {{ {markup} }}";   // markup that is drawn only while its column is chosen (a name / active page shows every column)
 
         // Auth=true: the page asks for a signed-in person (and, with ReadRoles, one of the roles); with WriteRoles only the roles that may write see Add New, Edit, Clone and Delete
         IReadOnlyList<string> readRoles = Project.Auth ? WriteRolePlan.ReadFor(Project, Model) : new List<string>();
@@ -114,7 +119,7 @@
         // The child must have a client of its own: a plain table with a usable key, not a name / active table (whose API has no plain list).
         // the project's DetailMasterTables, when it lists any, says which tables show their child tables
         var children = ChildGrid.ForWeb(Model, Project)
-            .Where(g => !oneRow && DatabaseModel.IsDetailMaster(Model, Project) && g.KeyColumn is not null && g.KeyType is not null && !g.IsNameActive)
+            .Where(g => !oneRow && DatabaseModel.IsDetailMaster(Model, Project) && g.KeyColumn is not null && g.KeyType is not null && !g.IsNameActive && !(nameActive && g.IsEditable))
             .Select(g =>
             {
                 string childType = BlazorNames.TypeName(g.Table);
@@ -245,7 +250,16 @@
         L($"<h1>{heading}</h1>");
         if (!oneRow) L(Gate("", "<button type=\"button\" @onclick=\"Add\">Add New</button>"));
         // the OData page has the filter row under the headers in place of the search boxes
-        if ((searchFields.Count > 0 || searchKeys.Count > 0) && !odata && !oneRow)
+        if (nameActive)
+        {
+            L();
+            L("<div class=\"search\">");
+            L("    <input type=\"text\" placeholder=\"Search by Name\" aria-label=\"Search by Name\" @bind=\"searchText\" @bind:event=\"oninput\" />");
+            L("    <label class=\"active-only\"><input type=\"checkbox\" @bind=\"activeOnly\" /> Active only</label>");
+            L("    <button type=\"button\" @onclick=\"ClearSearch\">Clear</button>");
+            L("</div>");
+        }
+        if ((searchFields.Count > 0 || searchKeys.Count > 0) && !odata && !oneRow && !nameActive)
         {
             L();
             L("<div class=\"search\">");
@@ -259,7 +273,7 @@
             L("    <button type=\"button\" @onclick=\"ClearSearchAsync\">Clear</button>");
             L("</div>");
         }
-        if (!oneRow)
+        if (!oneRow && !nameActive)
         {
         L();
         L("<details class=\"column-picker\">");
@@ -347,7 +361,7 @@
         }
         L("    </thead>");
         L("    <tbody>");
-        L("        @foreach (var item in items)");
+        L(nameActive ? "        @foreach (var item in VisibleRows)" : "        @foreach (var item in items)");
         L("        {");
         L("            <tr>");
         foreach (var column in columnList)
@@ -369,6 +383,8 @@
         L("    </tbody>");
         L("</table>");
         L();
+        if (!nameActive)
+        {
         L("<div class=\"paging\">");
         L("    <button type=\"button\" disabled=\"@(pageNumber <= 1)\" @onclick=\"() => LoadAsync(pageNumber - 1)\">Previous</button>");
         L("    <span>Page @pageNumber of @totalPages</span>");
@@ -383,7 +399,8 @@
         L("        }");
         L("    </select>");
         L("</label>");
-        L("@if (loaded && items.Count == 0)");
+        }
+        L(nameActive ? "@if (loaded && VisibleRows.Count == 0)" : "@if (loaded && items.Count == 0)");
         L("{");
         L("    <p class=\"no-rows\">Nothing found.</p>");
         L("}");
@@ -470,7 +487,7 @@
             }
             else
                 input = $"<input id=\"{id}\" @bind=\"{bind}\"{required} />";
-            if (form.GuardOf(c) is { } guard)
+            if (!nameActive && form.GuardOf(c) is { } guard)
             {
                 // a guarded column is a control only for a person who may change it (the guards answer); everyone else sees its value as text and why
                 string shown2 = c.IsBooleanColumn ? $"@({bind} == true ? \"Yes\" : \"No\")" : $"@{bind}";
@@ -583,12 +600,21 @@
         L("}");
         L();
         L("@code {");
-        if (!oneRow)
+        if (!oneRow && !nameActive)
         {
         L($"    private int PageSize = {pageSize};");
         L("    private static readonly int[] PageSizeChoices = [10, 20, 50, 100];");
         L("    private bool loaded;   // true once a page has arrived, so \"Nothing found.\" is not shown while waiting");
         L("    private List<§T> items = [];");
+        }
+        if (nameActive)
+        {
+        L("    private bool loaded;   // true once the list has arrived, so \"Nothing found.\" is not shown while waiting");
+        L("    private List<§T> items = [];");
+        L("    private string searchText = \"\";");
+        L("    private bool activeOnly;");
+        L("    // The whole list is here: the name box and the Active only check box narrow it without another call.");
+        L("    private List<§T> VisibleRows => items.Where(item => (!activeOnly || item.IsActive) && (item.Name ?? \"\").Contains(searchText.Trim(), StringComparison.CurrentCultureIgnoreCase)).ToList();");
         }
         foreach (var p in parents)
             L($"    private List<{BlazorNames.ItemType(p)}> {BlazorNames.LookupField(p)} = [];");
@@ -607,9 +633,9 @@
             L("    private §T? stored;   // the row as it was when it opened; a field is checked only when it differs from it");
         L("    private bool isNew;");
         L("    private string? message;");
-        if (form.Guards.Count > 0)
+        if (form.Guards.Count > 0 && !nameActive)
             L("    private Dictionary<string, bool> guards = new();   // which guarded columns the signed-in person may change (GET guards)");
-        if (!oneRow)
+        if (!oneRow && !nameActive)
         {
         L("    private int pageNumber = 1;");
         L("    private int totalPages = 1;");
@@ -623,12 +649,12 @@
             L("    private List<string> applied = [];   // the conditions the last Search asked for, kept while paging");
             L("    private ColumnFilter Typed(string name) => typed.TryGetValue(name, out var filter) ? filter : typed[name] = new ColumnFilter();");
         }
-        else if (!oneRow)
+        else if (!oneRow && !nameActive)
         {
             L("    private string? sortBy;");
             L("    private bool descending;");
         }
-        if (!oneRow)
+        if (!oneRow && !nameActive)
         {
         L("    // the columns the Columns list offers (the grid asks for the shown ones and the key; a row is read whole when it is opened) and the ones the grid starts with");
         L("    private static readonly GridColumn[] AllColumns =");
@@ -655,7 +681,7 @@
         L("    // Opened from another page's grid (?edit=<id>&back=<that page>): open this row, and go back to that page when the form is saved or cancelled.");
         L("    [Parameter, SupplyParameterFromQuery(Name = \"edit\")] public string? EditId { get; set; }");
         L("    [Parameter, SupplyParameterFromQuery(Name = \"back\")] public string? Back { get; set; }");
-        if (!odata && !oneRow)
+        if (!odata && !oneRow && !nameActive)
         {
             foreach (var f in searchFields)
                 L($"    private string? {f.Field};");
@@ -669,9 +695,9 @@
             L($"        try {{ {BlazorNames.LookupField(p)} = await {BlazorNames.LookupField(p)}Client.{BlazorNames.LoadCall(p)}(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
         foreach (var l in childLookups.Where(l => !l.TypeAhead))   // a parent with too many rows is asked for the names of the keys the child rows show (Know...Async)
             L($"        try {{ {l.Field} = await {l.Field}Client.{l.Load}(); }} catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ }}");
-        if (form.Guards.Count > 0)
+        if (form.Guards.Count > 0 && !nameActive)
             L("        try { guards = await Client.GetGuardsAsync(); } catch (Exception ex) when (ex is ApiException or HttpRequestException) { }");
-        if (!oneRow)
+        if (!oneRow && !nameActive)
             L("        chosen = await GridColumns.LoadAsync(Js, ColumnsKey, AllColumns.Select(c => c.Name).ToList(), InitialColumns);");
         if (odata)
             L("        sorts = await SavedSorts.LoadAsync(Js, SortsKey, SortableColumns.Where(Shown).ToList());");
@@ -686,7 +712,7 @@
         L($"            catch (Exception ex) when (ex is ApiException or HttpRequestException or FormatException) {{ message = \"This {title.ToLowerInvariant()} no longer exists!\"; }}");
         L("        }");
         L("    }");
-        if (!odata && !oneRow)
+        if (!odata && !oneRow && !nameActive)
         {
             L();
             if (searchFields.Count > 0 || searchKeys.Count > 0)
@@ -720,6 +746,21 @@
             L($"        catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ message = \"Failed to load {title.ToLowerInvariant()}.\"; }}");
             L("    }");
         }
+        else if (nameActive)
+        {
+            L("    private async Task LoadAsync()");
+            L("    {");
+            L("        try");
+            L("        {");
+            L("            items = await Client.GetAllAsync();");
+            if (aheadParents.Count > 0)
+                L("            await KnowNamesAsync(items);");
+            L("            loaded = true;");
+            L("            message = null;");
+            L("        }");
+            L($"        catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ message = \"Failed to load {title.ToLowerInvariant().Pluralize()}.\"; }}");
+            L("    }");
+        }
         else
         {
         L("    private async Task LoadAsync(int target = 1)");
@@ -749,6 +790,15 @@
         }
         if (oneRow)
         {
+        }
+        else if (nameActive)
+        {
+            L();
+            L("    private void ClearSearch()");
+            L("    {");
+            L("        searchText = \"\";");
+            L("        activeOnly = false;");
+            L("    }");
         }
         else if (odata)
         {
@@ -833,7 +883,7 @@
             L();
             L("    private string Arrow(string column) => sortBy != column ? \"\" : descending ? \"\\u25BC\" : \"\\u25B2\";");
         }
-        if (!oneRow)
+        if (!oneRow && !nameActive)
         {
         L();
         L("    // Showing or hiding a column: the choice is kept, and a sort" + (odata ? " or a filter" : "") + " on a column that is no longer shown is dropped.");
@@ -1138,16 +1188,21 @@
             L("            else await Client.UpdateAsync(row.§K, row);");
         }
         L("            row = null;");
-        L(oneRow ? "            await LoadAsync();" : "            await LoadAsync(pageNumber);");
+        L($"            await {reload};");
         L("            if (Back is not null) Navigation.NavigateTo(Back);");
         L("        }");
         // a typed key can already be taken: the API answers 409
         if (textKey)
             L($"        catch (ApiException ex) when (ex.Status == {HttpStatus.Conflict}) {{ message = \"A {title.ToLowerInvariant()} with this {Labels.Column(keyColumn.Name).ToLowerInvariant()} already exists!\"; }}");
+        // a name / active table answers 409 when another active row has the name
+        else if (nameActive)
+            L($"        catch (ApiException ex) when (ex.Status == {HttpStatus.Conflict}) {{ message = \"A {title.ToLowerInvariant()} with this name already exists!\"; }}");
         L("        catch (ApiException ex) { message = ex." + ExplainCall + "(\"saving\"); }");
         L("        catch (HttpRequestException) { message = \"Problem while saving!\"; }");
         L("    }");
         if (!oneRow)
+        {
+        if (!nameActive)
         {
         L();
         L("    private async Task ChangePageSizeAsync(ChangeEventArgs args)");
@@ -1158,6 +1213,7 @@
         L("            await LoadAsync(1);");
         L("        }");
         L("    }");
+        }
         L();
         L("    private async Task DeleteAsync(§T item)");
         L("    {");
@@ -1165,12 +1221,12 @@
         L("        try");
         L("        {");
         L("            await Client.DeleteAsync(item.§K);");
-        L("            await LoadAsync(pageNumber);");
+        L($"            await {reload};");
         L("        }");
         L("        catch (ApiException ex)");
         L("        {");
         L("            message = ex." + ExplainCall + "(\"deleting\");");
-        L($"            if (ex.Status == {HttpStatus.NotFound}) await LoadAsync(pageNumber);");
+        L($"            if (ex.Status == {HttpStatus.NotFound}) await {reload};");
         L("        }");
         L("        catch (HttpRequestException) { message = \"Problem while deleting!\"; }");
         L("    }");

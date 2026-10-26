@@ -41,6 +41,8 @@
     // The Uno Platform twin of WinUI3_MasterScreen: the same page (sortable headers, search bar, paging, Add New and Edit / Clone / Delete per row, foreign keys
     // shown as the parent's display column), reading through the generated API clients (UNO_Client) instead of an EF context. Opens <Table>DetailDialog
     // (UNO_DetailScreen) or <Table>DetailMasterDialog (UNO_DetailMasterScreen) for Add and Edit.
+    // A table with a NOT NULL Name and a NOT NULL IsActive column reads through its client's GetPage, which pages the whole list in the client (its API has no search and no paging); its search bar
+    // has an Active only check box besides the text boxes, and it has no Clone button and no OData page.
     // UNO_ODataPage is this template run with Variant=OData (its config says Base=UNO_MasterScreen_v1.tt): the same page, named <Table>ODataListPage, reading its rows from the table's OData client
     // (UNO_ODataClient: $filter for the search boxes, $orderby for the sort, $top / $skip / $count for the page) and no parent drop-down filters. Add, Edit, Clone and Delete go through the REST client.
     // Full notes: Docs/TemplateNotes/UNO_MasterScreen_v1.md
@@ -53,17 +55,17 @@
     var keyType = form.KeyType;   // how the key travels: its C# type (int, long, Guid or string) is the type of the row id and of the Edit / Delete buttons' Tag
     bool odata = Variant == "OData";
 
-    if (odata && !ODataPlan.Serves(Model, Project))
+    if (odata && (!ODataPlan.Serves(Model, Project) || isNameActive))
     {
-        // the OData page is written for the tables the project serves as OData and for no other; a plan runs this template for every table, so it says nothing for the rest
+        // the OData page is written for the tables the project serves as OData and for no other (a name / active table has the REST page only); a plan runs this template for every table, so it says nothing for the rest
     }
     else if (UnoNames.Refusal(Model, Project) is { } reason)
     {
         Error($"UNO_MasterScreen writes no page for [{Model.SchemaName}].[{Model.TableName}]: {reason}");
     }
-    else if (keyColumn is null || keyType is null || isNameActive)
+    else if (keyColumn is null || keyType is null)
     {
-        Error($"UNO_MasterScreen needs a plain table with a single int, uniqueidentifier or text primary key, but [{Model.SchemaName}].[{Model.TableName}] is not one.");
+        Error($"UNO_MasterScreen needs a table with a single int, uniqueidentifier or text primary key, but [{Model.SchemaName}].[{Model.TableName}] is not one.");
     }
     else
     {
@@ -88,7 +90,7 @@
         var searchFields = DesktopGridCode.SearchBoxes(form);
         // a drop-down of the parent's rows per whole-number foreign key: an exact match on the key (the first entry, "All", is no filter)
         var searchKeys = DesktopGridCode.KeyFilters(form).Where(_ => !odata).ToList();
-        bool canSearch = searchFields.Count > 0 || searchKeys.Count > 0;
+        bool canSearch = searchFields.Count > 0 || searchKeys.Count > 0 || isNameActive;   // a name / active table's search bar also has the Active only check box
         int errorRow = canSearch ? 3 : 2;
         int gridRow = canSearch ? 4 : 3;
 
@@ -180,6 +182,12 @@
                           SelectedItem="{x:Bind ViewModel.<#= k.Prop #>, Mode=TwoWay}" SelectionChanged="OnKeyFilterChanged" />
 <#
                 }
+            }
+            if (isNameActive)
+            {
+#>
+                <CheckBox Content="Active only" IsChecked="{x:Bind ViewModel.ActiveOnly, Mode=TwoWay}" />
+<#
             }
 #>
                 <Button Content="Search" Click="OnSearchClick" />
@@ -597,6 +605,15 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
     private string _<#= f.Field #> = "";
 <#
         }
+        if (isNameActive)
+        {
+#>
+
+    /// <summary> Only the rows whose IsActive is true. </summary>
+    [ObservableProperty]
+    private bool _activeOnly;
+<#
+        }
         foreach (var k in searchKeys)
         {
             if (k.Parent.TypeAhead)
@@ -790,6 +807,12 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
         {
 #>
             ["<#= k.ParamName #>"] = <#= k.Prop #>?.Id?.ToString(),
+<#
+        }
+        if (isNameActive)
+        {
+#>
+            ["isActive"] = ActiveOnly ? "true" : null,
 <#
         }
 #>

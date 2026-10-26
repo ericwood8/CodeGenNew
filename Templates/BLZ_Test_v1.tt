@@ -331,10 +331,50 @@
             return t.ToString();
         }
 
+        // a name / active page reads the whole list: a name box and an Active only check box narrow it, a duplicate name (409) is told in words, and Delete asks first
+        string NameActiveTests() => $$"""
+
+    [TestMethod]
+    public void Narrows_the_list_with_the_name_box_and_Clear_brings_it_back()
+    {
+        var page = OpenWithRow();
+        int before = Api.Requests.Count;
+        page.Find("[aria-label=\"Search by Name\"]").Input("zz9-no-such-name");
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "Nothing found."));
+        Assert.HasCount(before, Api.Requests, "the list is narrowed on the page, without another call");
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Clear").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "{{row!.Marker}}"));
+    }
+
+    [TestMethod]
+    public void Says_a_name_already_exists_when_the_API_answers_a_conflict_to_a_Save()
+    {
+        var page = OpenWithRow();
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Edit").Click();
+        page.WaitForAssertion(() => Assert.IsTrue(page.FindAll("[role=dialog] input").Any(i => i.GetAttribute("value") == "{{row!.Marker}}")));
+        Api.FailWrite(HttpMethod.Put, "/{{keyText}}", System.Net.HttpStatusCode.Conflict);
+        page.Find("[role=dialog] button[type=submit]").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Find("[role=dialog] [role=alert]").TextContent, "with this name already exists!"));
+    }
+
+    [TestMethod]
+    public void Deletes_a_row_only_after_the_person_confirms_and_says_when_it_is_in_use()
+    {
+        var page = OpenWithRow();
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Delete").Click();
+        Assert.IsFalse(Api.Requests.Any(r => r.Method == HttpMethod.Delete), "no confirmation, no delete");
+        JSInterop.Setup<bool>("confirm", _ => true).SetResult(true);
+        Api.FailWrite(HttpMethod.Delete, "/{{keyText}}", System.Net.HttpStatusCode.BadRequest);
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Delete").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Find("p.error").TextContent, "It cannot be deleted because it is in use!"));
+    }
+
+""";
+
         void Tests(bool odata)
         {
             string pageType = odata ? BlazorNames.ODataPageName(Model.TableName) : type + "Page";
-            if (!odata && SingleRowPlan.Applies(Model, Project, "Blazor"))
+            if (!odata && !form.IsNameActive && SingleRowPlan.Applies(Model, Project, "Blazor"))
             {
                 // the page is a form: the heading, the blank form of an empty table and the form of the one row
                 o.Append($"\n[TestClass]\npublic class {type}PageTests : PageTestContext\n{{\n");
@@ -354,8 +394,9 @@
                 return;
             }
             string route = "/" + (odata && !Project.ODataReplacesScreens ? AngularNames.ODataRoute(Model.TableName) : ScreenNames.Route(Model.TableName));
-            string listPath = odata ? set : "/search";
-            string listAnswer = odata ? "FakeApi.ODataPage(Row, 1)" : "FakeApi.Page(Row, 1)";
+            string listPath = odata ? set : form.IsNameActive ? apiRoute : "/search";
+            string listAnswer = odata ? "FakeApi.ODataPage(Row, 1)" : form.IsNameActive ? "\"[\" + Row + \"]\"" : "FakeApi.Page(Row, 1)";
+            string emptyAnswer = odata ? "FakeApi.ODataPage(\"\", 0)" : form.IsNameActive ? "\"[]\"" : "FakeApi.Page(\"\", 0)";
             string keyPath = (odata ? set : apiRoute) + "/" + keyText;
             o.Append($"\n[TestClass]\npublic class {type}{(odata ? "ODataPage" : "Page")}Tests : PageTestContext\n{{\n");
             if (row is not null)
@@ -364,7 +405,7 @@
             if (row is not null)
                 o.Append($"        Api.Answer(\"{listPath}\", list ?? {listAnswer});\n" + (odata ? $"        Api.Answer(\"{keyPath}\", Row);\n" : "") + signIn);
             else
-                o.Append($"        Api.Answer(\"{listPath}\", {(odata ? "FakeApi.ODataPage(\"\", 0)" : "FakeApi.Page(\"\", 0)")});\n" + signIn);
+                o.Append($"        Api.Answer(\"{listPath}\", {emptyAnswer});\n" + signIn);
             o.Append($"        return Render<{pageType}>();\n    }}\n\n");
             if (row is not null)
                 o.Append($"    private IRenderedComponent<{pageType}> OpenWithRow()\n    {{\n        var page = Open();\n        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, \"{row.Marker}\"));\n        return page;\n    }}\n\n");
@@ -384,7 +425,7 @@
                 o.Append($"        Services.GetRequiredService<NavigationManager>().NavigateTo(\"{route}?edit={keyText}\");\n");
                 o.Append($"        Api.Answer(\"{keyPath}\", Row);\n");
                 o.Append("        var page = Open();\n        page.WaitForAssertion(() => StringAssert.Contains(page.Find(\"[role=dialog]\").TextContent, \"Edit " + title + "\"));\n    }\n");
-                o.Append(GridTests(odata));
+                o.Append(form.IsNameActive ? NameActiveTests() : GridTests(odata));
                 foreach (var child in children)
                 {
                     bool served = odata && ODataPlan.ServesByName(child.Table, Project);
@@ -442,7 +483,7 @@
         }
 
         Tests(false);
-        if (ODataPlan.Serves(Model, Project))
+        if (ODataPlan.Serves(Model, Project) && !Model.IsNameActiveTable)
             Tests(true);
         Write("@@@FILE " + type + "PageTests.cs@@@\n" + o);
     }

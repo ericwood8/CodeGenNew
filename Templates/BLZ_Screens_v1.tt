@@ -22,8 +22,8 @@
         Error($"The Screens setting lists '{name}', which is not a table of the database with a single-column primary key.");
     if (screens.Count == 0)
         Error("BLZ_Screens found no table to list: no table has an API and a search endpoint, and the project's Screens setting is empty.");
-    var clients = Database.CrudApiTables(Project).Where(t => BlazorNames.HasClient(t, Project)).ToList();
-    var odataClients = Project.OData ? ODataPlan.For(Database, Project).Tables.Where(t => BlazorNames.HasClient(t, Project)).ToList() : new List<TableModel>();
+    var clients = Database.AspNetApiTables(Project).Where(t => BlazorNames.HasClient(t, Project)).ToList();
+    var odataClients = Project.OData ? ODataPlan.For(Database, Project).Tables.Where(t => BlazorNames.HasODataClient(t, Project)).ToList() : new List<TableModel>();
 
     // the screens in menu order: the dashboard, the REST screens, the OData ones that do not take a REST screen's place, then a page for each junction table (BlazorMenu is the one list)
     var entries = BlazorMenu.Entries(Database, Project);

@@ -5,3 +5,5 @@
 A call that does not succeed throws `ApiException` with the HTTP status (`Services/ApiSupport.cs`, the `Support` essentials group); `Explain(action)` gives the sentence a page shows. `BLZ_Screens` registers every client with `AddApiClients()`. The key parameter follows the key (`KeyType.CSharp`: `int`, `long`, `Guid` or `string`); a text key is escaped into the path with `Uri.EscapeDataString`. Same table rules as `BLZ_Model`. See `BLZ_Screens_v1.md` for the whole stack.
 
 With `ApiAuth=true` and a `GuardedColumns` rule that names this table the client also has `GetGuardsAsync()` (`GET <route>/guards`, the guarded columns the signed-in person may change, by JSON name); the page reads it (see `BLZ_Page_v1.md`).
+
+A name / active table (a `Name` and an `IsActive` column) gets a client with `GetAllAsync`, `GetActiveAsync`, `GetLookupAsync`, `GetAsync`, `CreateAsync`, `UpdateAsync` and `DeleteAsync`: its API has no search, no paging, no clone and no child rows, so those calls are left out.

@@ -52,10 +52,6 @@
         Error($"WinUI3_DetailMasterScreen needs a table with a single int, uniqueidentifier or text primary key (CS_Repo's GenericRepo<T, TKey> takes it as the id), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
     }
-    else if (isNameActive)
-    {
-        Error($"WinUI3_DetailMasterScreen is for plain tables. [{Model.SchemaName}].[{Model.TableName}] has a Name and an IsActive column, so its repository is a NameActiveRepo; write this screen by hand.");
-    }
     else if (!Model.HasAtLeastOneChildForeignKey)
     {
         Error($"WinUI3_DetailMasterScreen needs at least one other table with a foreign key pointing back at [{Model.SchemaName}].[{Model.TableName}]; none was found - use WinUI3_DetailScreen instead.");
@@ -1008,11 +1004,39 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 <#
         }
 #>
+<#
+        if (isNameActive)
+        {
+            // NameActiveRepo refuses a name that another active row has: AddAsync answers false and UpdateAsync null
+#>
+        if (_editing is null)
+        {
+            if (!await _repo.AddAsync(entity))
+            {
+                ErrorMessage = "A <#= title.ToLowerInvariant() #> with this name already exists.";
+                return false;
+            }
+        }
+        else if (await _repo.UpdateAsync(entity.<#= keyProp #>, entity) is null)
+        {
+            await _context.Entry(entity).ReloadAsync();   // the refused values are not kept in the tracked row
+            ErrorMessage = "A <#= title.ToLowerInvariant() #> with this name already exists.";
+            return false;
+        }
+        return true;
+<#
+        }
+        else
+        {
+#>
         if (_editing is null)
             await _repo.AddAsync(entity);
         else
             await _repo.UpdateAsync(entity.<#= keyProp #>, entity);
         return true;
+<#
+        }
+#>
     }
 }
 <#

@@ -127,16 +127,19 @@ public class TemplateConfigTests
     }
 
     [TestMethod]
-    public void The_shipped_configs_that_assume_a_plain_getAll_style_backend_refuse_name_active_tables()
+    public void The_shipped_configs_refuse_a_name_active_table_only_where_the_screen_cannot_handle_it()
     {
-        // the ASP.NET API and the Angular templates handle a name/active table (NameActiveCrudApi, NameActiveCrudScreen)
+        // the ASP.NET API and every UI stack's screens handle a name/active table (NameActiveCrudApi, NameActiveCrudScreen, the list through GetAll)
         Assert.IsFalse(TemplateConfig.Load(Repo.Template("TS_Service_v1.tt.config")).RequiresNotNameActiveTable);
         Assert.IsFalse(TemplateConfig.Load(Repo.Template("TS_Component_v1.tt.config")).RequiresNotNameActiveTable);
         Assert.IsFalse(TemplateConfig.Load(Repo.Template("TS_DetailMasterComponent_v1.tt.config")).RequiresNotNameActiveTable);
         Assert.IsFalse(TemplateConfig.Load(Repo.Template("API_Crud_v1.tt.config")).RequiresNotNameActiveTable);
-        Assert.IsTrue(TemplateConfig.Load(Repo.Template("WinUI3_MasterScreen_v1.tt.config")).RequiresNotNameActiveTable);
-        Assert.IsTrue(TemplateConfig.Load(Repo.Template("WinUI3_DetailScreen_v1.tt.config")).RequiresNotNameActiveTable);
-        Assert.IsTrue(TemplateConfig.Load(Repo.Template("WinUI3_DetailMasterScreen_v1.tt.config")).RequiresNotNameActiveTable);
+        foreach (string stem in new[] { "WinUI3_MasterScreen", "WinUI3_DetailScreen", "WinUI3_DetailMasterScreen", "UNO_MasterScreen", "UNO_DetailScreen", "UNO_DetailMasterScreen",
+            "UNO_Client", "UNO_Model", "BLZ_Client", "BLZ_Model", "BLZ_Page", "BLZ_Test" })
+            Assert.IsFalse(TemplateConfig.Load(Repo.Template(stem + "_v1.tt.config")).RequiresNotNameActiveTable, stem);
+        // a single row of a name/active table, and the OData pages, stay with the plain tables
+        foreach (string stem in new[] { "WinUI3_SingleRowScreen", "UNO_SingleRowScreen", "UNO_ODataPage", "BLZ_ODataPage" })
+            Assert.IsTrue(TemplateConfig.Load(Repo.Template(stem + "_v1.tt.config")).RequiresNotNameActiveTable, stem);
         // TS_Model has no API dependency at all (it's just the interface shape); junction/child-grid
         // templates go through their own dedicated endpoints, not a plain getAll() -- neither is restricted.
         Assert.IsFalse(TemplateConfig.Load(Repo.Template("TS_Model_v1.tt.config")).RequiresNotNameActiveTable);

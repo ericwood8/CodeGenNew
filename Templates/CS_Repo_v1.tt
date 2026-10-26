@@ -143,7 +143,49 @@
                 .Append("string? sortColumn = null").Append("bool sortDescending = false")
                 // one optional exact match per whole-number foreign key, after the older parameters so an existing call still lines up
                 .Concat(searchKeys.Select(k => $"{k.CSharpBase()}? {CSharpIdentifier(LowerFirst(k.Name))} = null")).ToList();
-            if (ef)
+            if (nameActive)
+            {
+                // A table with a Name and an IsActive column has no search routine and no SearchQuery class: its rows are few, so the list is read whole and narrowed, sorted and cut into pages here
+                // (the Active only box of its screen is activeOnly). The sort of a foreign key column is by its key, not by the parent's name.
+                signatureParams.Add("bool activeOnly = false");
+                var body = new List<string>
+                {
+                    $"    public async Task<(List<{entity}> Items, int TotalCount)> SearchAsync({string.Join(", ", signatureParams)})",
+                    "    {",
+                    "        var rows = (await GetAll()).AsEnumerable();"
+                };
+                foreach (var c in searchableColumns)
+                {
+                    string parameter = CSharpIdentifier(LowerFirst(c.Name));
+                    body.Add($"        if (!string.IsNullOrWhiteSpace({parameter}))");
+                    body.Add($"            rows = rows.Where(t => (t.{c.CSharpName()} ?? \"\").Contains({parameter}.Trim(), StringComparison.OrdinalIgnoreCase));");
+                }
+                foreach (var k in searchKeys)
+                {
+                    string parameter = CSharpIdentifier(LowerFirst(k.Name));
+                    body.Add($"        if ({parameter} is not null)");
+                    body.Add($"            rows = rows.Where(t => t.{k.CSharpName()} == {parameter});");
+                }
+                body.Add("        if (activeOnly)");
+                body.Add("            rows = rows.Where(t => t.IsActive);");
+                body.Add("        if (sortColumn is not null)");
+                body.Add("        {");
+                body.Add($"            object? Key({entity} t) => sortColumn switch");
+                body.Add("            {");
+                foreach (var c in Model.Columns.Where(SearchSort.IsSortable))
+                    body.Add($"                \"{c.Name}\" => t.{c.CSharpName()},");
+                body.Add("                _ => null");
+                body.Add("            };");
+                body.Add("            rows = sortDescending ? rows.OrderByDescending(Key) : rows.OrderBy(Key);");
+                body.Add("        }");
+                body.Add("        var all = rows.ToList();");
+                body.Add("        int size = Math.Clamp(pageSize, 1, 1000);");
+                body.Add("        var items = all.Skip((Math.Clamp(pageNumber, 1, int.MaxValue / size) - 1) * size).Take(size).ToList();");
+                body.Add("        return (items, all.Count);");
+                body.Add("    }");
+                methods.Add(body.ToArray());
+            }
+            else if (ef)
             {
                 string filterArguments = string.Concat(filters.Select(f => ", " + f.ParamName).Concat(searchKeys.Select(k => ", " + CSharpIdentifier(LowerFirst(k.Name)))));
                 string queryClass = Model.TableName + "SearchQuery";
