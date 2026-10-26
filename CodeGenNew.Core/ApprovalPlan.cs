@@ -13,9 +13,12 @@ public static class ApprovalStatus
 public sealed record ApprovalTable(TableModel Table, ColumnModel Key, TableModel Side, ColumnModel SideKey, ColumnModel Link, ColumnModel Status, ColumnModel Reason, ColumnModel RequestedBy, ColumnModel RequestedOn,
     ColumnModel DecidedBy, ColumnModel DecidedOn, ColumnModel DecisionNote, ColumnModel Revision);
 
+/// <summary> <c>ApproverTable=Approver:EmployeeId,TableName</c>: the rows that say who may decide. <c>Person</c> holds the user table's key; <c>ForTable</c>, when named, holds the <c>RowApprovals</c> table the person may decide (blank: every table). </summary>
+public sealed record ApproverPlan(TableModel Table, ColumnModel Person, ColumnModel? ForTable, ColumnModel UserKey);
+
 /// <summary> <c>RowApprovals=TimeSheet,Expense</c>: for each table a <c>&lt;Table&gt;Approval</c> side table, one row per request cycle (Pending, Approved, Rejected, Withdrawn). The requester is the signed-in person,
-/// matched to the user table by name; the approver is an administrator or a person whose user-table role flag is set, never the requester. </summary>
-public sealed record ApprovalPlan(IReadOnlyList<ApprovalTable> Tables, UserTablePlan? User, IReadOnlyList<string> Problems)
+/// matched to the user table by name; the approver is an administrator or a person whose user-table role flag is set (or, with <c>ApproverTable</c>, a person with a row in that table), never the requester. </summary>
+public sealed record ApprovalPlan(IReadOnlyList<ApprovalTable> Tables, UserTablePlan? User, IReadOnlyList<string> Problems, ApproverPlan? Approvers = null)
 {
     public const string SuffixOfSide = "Approval";
 
@@ -32,8 +35,9 @@ public sealed record ApprovalPlan(IReadOnlyList<ApprovalTable> Tables, UserTable
         var (user, userProblem) = UserTable.Resolve(database, project);
         if (user is null)
             return new ApprovalPlan(tables, null, [userProblem ?? "RowApprovals needs UserTable: the requester and the approver are people of the user table."]);
-        if (user.Role is null || !user.RoleIsFlag)
-            problems.Add("RowApprovals needs UserRoleColumn to be a yes/no column: a person whose flag is set (or an administrator) approves.");
+        var approvers = project.ApproverTable is null ? null : ResolveApprovers(database, project, user, problems);
+        if (project.ApproverTable is null && (user.Role is null || !user.RoleIsFlag))
+            problems.Add("RowApprovals needs UserRoleColumn to be a yes/no column (a person whose flag is set, or an administrator, approves) or an ApproverTable.");
 
         var apiTables = database.AspNetApiTables(project);
         foreach (string name in project.RowApprovals)
@@ -89,7 +93,46 @@ public sealed record ApprovalPlan(IReadOnlyList<ApprovalTable> Tables, UserTable
             else
                 tables.Add(plan);
         }
-        return new ApprovalPlan(tables, user, problems);
+        return new ApprovalPlan(tables, user, problems, approvers);
+    }
+
+    private static ApproverPlan? ResolveApprovers(DatabaseModel database, ProjectSettings project, UserTablePlan user, List<string> problems)
+    {
+        string setting = project.ApproverTable!;
+        int colon = setting.IndexOf(':');
+        string[] columns = colon < 0 ? [] : setting[(colon + 1)..].Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (colon < 0 || columns.Length is < 1 or > 2)
+        {
+            problems.Add($"ApproverTable={setting} is not Table:PersonColumn[,TableNameColumn].");
+            return null;
+        }
+        string name = setting[..colon].Trim();
+        var table = database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(name));
+        if (table is null)
+        {
+            problems.Add($"ApproverTable: {name} is not a table of the database.");
+            return null;
+        }
+        var person = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(columns[0]));
+        var forTable = columns.Length == 2 ? table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(columns[1])) : null;
+        if (person is null || !person.IsIntegerColumn)
+        {
+            problems.Add($"ApproverTable: {table.TableName} needs a whole-number column {columns[0]} that holds the person's key in {user.Table.TableName}.");
+            return null;
+        }
+        if (columns.Length == 2 && (forTable is null || !forTable.IsStringColumn))
+        {
+            problems.Add($"ApproverTable: {table.TableName} needs a text column {columns[1]} that names the table a person may decide.");
+            return null;
+        }
+        if (user.Table.PrimaryKeyColumns.Count != 1 || !user.Table.PrimaryKeyColumns[0].IsIntegerColumn)
+        {
+            problems.Add($"ApproverTable needs {user.Table.TableName} to have a single whole-number key.");
+            return null;
+        }
+        if (WriteRolePlan.For(project, table).Count == 0)
+            problems.Add($"ApproverTable: set TableWriteRoles={table.TableName}:{project.AuthAdminRole} (or WriteRoles) so that only trusted people change who may approve.");
+        return new ApproverPlan(table, person, forTable, user.Table.PrimaryKeyColumns[0]);
     }
 
     /// <summary> The create script of a side table for the given database, so the project starts from the columns the plan expects. </summary>

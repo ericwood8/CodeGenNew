@@ -47,7 +47,7 @@ public static class DesktopApprovalsCode
         o.Append($"namespace {servicesNamespace};\n\n");
         if (includeCaller)
             o.Append(CallerClass());
-        o.Append(Fill(ServiceHead, ("§CTX", contextType), ("§U", user.Table.TableName), ("§UN", user.UserName.CSharpName()), ("§UF", user.Role!.CSharpName()),
+        o.Append(Fill(ServiceHead, ("§CTX", contextType), ("§U", user.Table.TableName), ("§UN", user.UserName.CSharpName()), ("§MAYDECIDE", ApprovalWriter.MayDecideMethod(plan)), ("§KEYTYPE", user.Table.PrimaryKeyColumns[0].CSharpBase()), ("§UK", user.Table.PrimaryKeyColumns[0].CSharpName()), ("§UF", plan.Approvers is null ? $"u.{user.Role!.CSharpName()} == true" : "false"),
             ("§UA", user.Admin is { } admin ? $"u.{admin.CSharpName()} == true" : "false"), ("§W_UNKNOWN", ApprovalWords.RequesterUnknown), ("§W_NOTAPPROVER", ApprovalWords.NotApprover)));
         foreach (var t in plan.Tables)
             o.Append(PerTable(t, contextType));
@@ -362,22 +362,24 @@ public static class ApprovalHooks
     public static Func<ApprovalEvent, Task>? OnDecided { get; set; }
 }
 
-/// <summary> The person at the keyboard as the user table knows them: <c>MayDecide</c> is an administrator or a person whose role flag is set. </summary>
-public sealed record ApprovalPerson(string Name, bool MayDecide);
+/// <summary> The person at the keyboard as the user table knows them: <c>MayDecide</c> is an administrator or a person whose role flag is set; <c>Key</c> is their key in the user table. </summary>
+public sealed record ApprovalPerson(string Name, bool MayDecide, §KEYTYPE Key);
 
 public static class ApprovalPeople
 {
     public static async Task<ApprovalPerson> RequireAsync(§CTX context)
     {
         string? name = DesktopCaller.Name;
-        var row = string.IsNullOrEmpty(name) ? null : await context.Set<§U>().AsNoTracking().Where(u => u.§UN == name).Select(u => new { Name = u.§UN, Flag = u.§UF == true, Admin = §UA }).FirstOrDefaultAsync();
-        return row is null ? throw new ApprovalRefused(403, "§W_UNKNOWN") : new ApprovalPerson(row.Name!, row.Flag || row.Admin);
+        var row = string.IsNullOrEmpty(name) ? null : await context.Set<§U>().AsNoTracking().Where(u => u.§UN == name).Select(u => new { Name = u.§UN, Key = u.§UK, Flag = §UF, Admin = §UA }).FirstOrDefaultAsync();
+        return row is null ? throw new ApprovalRefused(403, "§W_UNKNOWN") : new ApprovalPerson(row.Name!, row.Flag || row.Admin, row.Key);
     }
 
-    public static async Task<ApprovalPerson> RequireApproverAsync(§CTX context)
+§MAYDECIDE
+
+    public static async Task<ApprovalPerson> RequireApproverAsync(§CTX context, string table)
     {
         var person = await RequireAsync(context);
-        return person.MayDecide ? person : throw new ApprovalRefused(403, "§W_NOTAPPROVER");
+        return await MayDecideAsync(context, person, table) ? person : throw new ApprovalRefused(403, "§W_NOTAPPROVER");
     }
 }
 
@@ -419,7 +421,7 @@ public static class §TApprovals
 
     public static async Task DecideAsync(§CTX context, §KT id, bool approve, string? note)
     {
-        var person = await ApprovalPeople.RequireApproverAsync(context);
+        var person = await ApprovalPeople.RequireApproverAsync(context, "§T");
         var latest = await LatestAsync(context, id);
         if (latest is null || latest.§ST != §PENDING)
             throw new ApprovalRefused(409, "§W_NOTHING");
@@ -458,7 +460,7 @@ public static class §TApprovals
 
     public static async Task<List<ApprovalView>> ToApproveAsync(§CTX context)
     {
-        var person = await ApprovalPeople.RequireApproverAsync(context);
+        var person = await ApprovalPeople.RequireApproverAsync(context, "§T");
         var waiting = await context.Set<§A>().AsNoTracking().Where(a => a.§ST == §PENDING && a.§RB != person.Name).OrderBy(a => a.§RO).ToListAsync();
         return waiting.Select(View).ToList();
     }

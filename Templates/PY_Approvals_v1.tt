@@ -6,7 +6,7 @@
 <#
     // ==========================================================================================
     // PY_Approvals_v1.tt
-    // Generates: app/routes/approvals.py   (whole-database; the path is written by the template)
+    // Generates: app/routes/approvals.py and the model of each side table, app/models/<table>Approval.py   (whole-database; the paths are written by the template)
     // The Python counterpart of API_Approvals: for each table of RowApprovals the routes request, approve, reject and withdraw, GET toapprove and GET {id}/approvals over the <Table>Approval side table,
     // with the same sentences, problem types and status codes as the ASP.NET API (ApprovalWords and ApprovalWriter in Core). A decision is one guarded UPDATE of the Pending row; the requester and the
     // approver are people of the user table, and an approver is never the requester. hooks.validate (no side effects) and hooks.on_decided (in the decision's transaction) are the project's own rules.
@@ -21,5 +21,9 @@
     else if (plan.Tables.Count > 0)
     {
         Write("@@@FILE app/routes/approvals.py@@@\n" + PythonApprovalWriter.File(plan, Project));
+        foreach (var approval in plan.Tables)
+        {
+            Write("\n" + PythonModelFile.Text(approval.Side, Project));
+        }
     }
 #>

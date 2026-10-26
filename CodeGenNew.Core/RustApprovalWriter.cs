@@ -26,14 +26,40 @@ public static class RustApprovalWriter
             _ = side;
         }
 
-        string personColumns = user.Admin is { } adminColumn ? $"{Q(user.UserName)}, {Q(user.Role!)}, {Q(adminColumn)}" : $"{Q(user.UserName)}, {Q(user.Role!)}";
-        string personSql = $"SELECT {personColumns} FROM {Tbl(user.Table)} WHERE {Q(user.UserName)} = {P(1)}";
-        string personType = user.Admin is not null ? "(String, Option<bool>, Option<bool>)" : "(String, Option<bool>)";
-        string personMap = user.Admin is not null
-            ? "|(name, flag, admin)| Person { name, may_decide: flag.unwrap_or(false) || admin.unwrap_or(false) || user.is_admin() }"
-            : "|(name, flag)| Person { name, may_decide: flag.unwrap_or(false) || user.is_admin() }";
+        string userKeyType = RustTable.Of(user.Table, project).Key.BaseType;
+        var approvers = plan.Approvers;
+        var columns = new List<string> { Q(user.UserName), Q(user.Table.PrimaryKeyColumns[0]) };
+        var types = new List<string> { "String", userKeyType };
+        var names = new List<string> { "name", "key" };
+        var parts = new List<string>();
+        if (approvers is null)
+        {
+            columns.Add(Q(user.Role!));
+            types.Add("Option<bool>");
+            names.Add("flag");
+            parts.Add("flag.unwrap_or(false)");
+        }
+        if (user.Admin is { } adminColumn)
+        {
+            columns.Add(Q(adminColumn));
+            types.Add("Option<bool>");
+            names.Add("admin");
+            parts.Add("admin.unwrap_or(false)");
+        }
+        parts.Add("user.is_admin()");
+        string personSql = $"SELECT {string.Join(", ", columns)} FROM {Tbl(user.Table)} WHERE {Q(user.UserName)} = {P(1)}";
+        string personType = "(" + string.Join(", ", types) + ")";
+        string personMap = $"|({string.Join(", ", names)})| Person {{ name, key, may_decide: {string.Join(" || ", parts)} }}";
+        string mayDecide = MayDecideFlag;
+        if (approvers is not null)
+        {
+            string forTable = approvers.ForTable is { } named ? $" AND ({Q(named)} IS NULL OR {Q(named)} = '' OR {Q(named)} = {P(2)})" : "";
+            string bindTable = approvers.ForTable is null ? "" : ".bind(table)";
+            string countSql = $"SELECT COUNT(*) FROM {Tbl(approvers.Table)} WHERE {Q(approvers.Person)} = {P(1)}{forTable}";
+            mayDecide = MayDecideRows.Replace("§SQL_APPROVER", RustTable.Raw(countSql)).Replace("§BIND_TABLE", bindTable).Replace("§TABLE_ARG", approvers.ForTable is null ? "_table" : "table");
+        }
 
-        o.Append(Fill(Head, ("§IMPORTS", imports.ToString().TrimEnd('\n')), ("§PERSON_SQL", RustTable.Raw(personSql)), ("§PERSON_TYPE", personType), ("§PERSON_MAP", personMap),
+        o.Append(Fill(Head, ("§IMPORTS", imports.ToString().TrimEnd('\n')), ("§PERSON_SQL", RustTable.Raw(personSql)), ("§PERSON_TYPE", personType), ("§PERSON_MAP", personMap), ("§KEY_TYPE", userKeyType), ("§MAYDECIDE", mayDecide),
             ("§T_UNKNOWN", ApprovalWriter.RequesterUnknownType), ("§T_NOTAPPROVER", ApprovalWriter.NotApproverType), ("§T_FOUREYES", ApprovalWriter.FourEyesType),
             ("§T_STATE", ApprovalWriter.WrongStateType), ("§T_REFUSED", ApprovalWriter.RefusedType),
             ("§W_UNKNOWN", Str(ApprovalWords.RequesterUnknown)), ("§W_NOTAPPROVER", Str(ApprovalWords.NotApprover)), ("§W_NOTREQUESTER", Str(ApprovalWords.NotRequester)),
@@ -97,6 +123,23 @@ public static class RustApprovalWriter
             text = text.Replace(token, value);
         return text;
     }
+
+    private const string MayDecideFlag = """"
+async fn may_decide(_pool: &Pool, person: &Person, _table: &str) -> ApiResult<bool> {
+    Ok(person.may_decide)
+}
+"""";
+
+    private const string MayDecideRows = """"
+/// An administrator, or a person with a row in the approvers table for this table.
+async fn may_decide(pool: &Pool, person: &Person, §TABLE_ARG: &str) -> ApiResult<bool> {
+    if person.may_decide {
+        return Ok(true);
+    }
+    let (rows,): (i64,) = sqlx::query_as(§SQL_APPROVER).bind(person.key)§BIND_TABLE.fetch_one(pool).await?;
+    Ok(rows > 0)
+}
+"""";
 
     private const string Head = """"
 // The row approvals (RowApprovals): for each table a request, an approval or rejection by someone else, a withdrawal, the requests waiting for the signed-in approver and the history of a row, over the
@@ -207,9 +250,10 @@ async fn decided_hook(tx: &mut sqlx::Transaction<'static, Db>, event: &ApprovalE
     }
 }
 
-/// The signed-in person as the user table knows them: may_decide is an administrator or a person whose role flag is set.
+/// The signed-in person as the user table knows them: may_decide is an administrator or a person whose role flag is set; key is their key in the user table.
 struct Person {
     name: String,
+    key: §KEY_TYPE,
     may_decide: bool,
 }
 
@@ -225,9 +269,11 @@ async fn require_person(pool: &Pool, user: &CurrentUser) -> ApiResult<Person> {
     find_person(pool, user).await?.ok_or(ApiError::Problem(403, PROBLEM_UNKNOWN, "Not allowed", Some(§W_UNKNOWN)))
 }
 
-async fn require_approver(pool: &Pool, user: &CurrentUser) -> ApiResult<Person> {
+§MAYDECIDE
+
+async fn require_approver(pool: &Pool, user: &CurrentUser, table: &str) -> ApiResult<Person> {
     let person = require_person(pool, user).await?;
-    if person.may_decide {
+    if may_decide(pool, &person, table).await? {
         Ok(person)
     } else {
         Err(ApiError::Problem(403, PROBLEM_NOT_APPROVER, "Not allowed", Some(§W_NOTAPPROVER)))
@@ -291,7 +337,7 @@ async fn request_§M(State(pool): State<Pool>, Extension(user): Extension<Curren
 }
 
 async fn decide_§M(pool: &Pool, user: &CurrentUser, id: §KT, body: Option<Json<ApprovalNote>>, approve: bool) -> ApiResult<Json<ApprovalView>> {
-    let person = require_approver(pool, user).await?;
+    let person = require_approver(pool, user, §TABLE).await?;
     let Some(current) = latest_§M(pool, id).await?.filter(|c| c.§ST == PENDING) else {
         return Err(wrong_state(§W_NOTHING));
     };
@@ -341,7 +387,7 @@ async fn withdraw_§M(State(pool): State<Pool>, Extension(user): Extension<Curre
 }
 
 async fn to_approve_§M(State(pool): State<Pool>, Extension(user): Extension<CurrentUser>) -> ApiResult<Json<Vec<ApprovalView>>> {
-    let person = require_approver(&pool, &user).await?;
+    let person = require_approver(&pool, &user, §TABLE).await?;
     let waiting = sqlx::query_as::<_, §S>(§SQL_WAITING).bind(PENDING).bind(&person.name).fetch_all(&pool).await?;
     Ok(Json(waiting.into_iter().map(view_§M).collect()))
 }

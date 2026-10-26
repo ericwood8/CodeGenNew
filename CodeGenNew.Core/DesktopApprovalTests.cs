@@ -20,11 +20,14 @@ public static class DesktopApprovalTests
         var table = plan.Tables[0];
         string Person(string login, bool manager)
         {
-            var overrides = new Dictionary<string, string> { [user.UserName.Name] = ApiSampleValues.Json(login), [user.Role!.Name] = manager ? "true" : "false" };
+            var overrides = new Dictionary<string, string> { [user.UserName.Name] = ApiSampleValues.Json(login) };
+            if (plan.Approvers is null)
+                overrides[user.Role!.Name] = manager ? "true" : "false";
             if (user.Admin is { } admin)
                 overrides[admin.Name] = "false";
             return SampleJson(user.Table, project, overrides);
         }
+        var (approverConstants, approverRows, approverTests) = ApproverParts(plan, project, table.Table.TableName);
         var o = new StringBuilder();
         foreach (string u in usings)
             o.Append($"using {u};\n");
@@ -40,7 +43,7 @@ public class ApprovalServiceTests
     private const string Bob = """{{Person("bob", true)}}""";
     private const string Cy = """{{Person("cy", true)}}""";
     private const string RowJson = """{{SampleJson(table.Table, project)}}""";
-
+{{approverConstants}}
     private static T Make<T>(string json) => System.Text.Json.JsonSerializer.Deserialize<T>(json, TestJson.Options)!;
 
     private static async Task<(TestDb Db, ApprovalService Service)> OpenAsync(string? caller)
@@ -51,7 +54,7 @@ public class ApprovalServiceTests
         db.Context.Add(Make<{{user.Table.TableName}}>(Cy));
         db.Context.Add(Make<{{table.Table.TableName}}>(RowJson));
         await db.Context.SaveChangesAsync();
-        db.Context.ChangeTracker.Clear();
+{{approverRows}}        db.Context.ChangeTracker.Clear();
         DesktopCaller.Name = caller;
         return (db, new ApprovalService(db.Context));
     }
@@ -178,9 +181,57 @@ public class ApprovalServiceTests
         }
         Assert.AreEqual("reject", seen);
     }
-}
+{{approverTests}}}
 """");
         return o.ToString();
+    }
+
+    /// <summary> With <c>ApproverTable</c>: the rows that make Bob and Cy approvers (their keys are 2 and 3), a person with a row for another table, and the test that such a row does not let them decide. </summary>
+    private static (string Constants, string Rows, string Tests) ApproverParts(ApprovalPlan plan, ProjectSettings project, string tableName)
+    {
+        if (plan.Approvers is not { } approvers)
+            return ("", "", "");
+        var user = plan.User!;
+        string Row(int person, string? forTable)
+        {
+            var overrides = new Dictionary<string, string> { [approvers.Person.Name] = person.ToString() };
+            if (approvers.ForTable is { } required)
+                overrides[required.Name] = forTable is null ? "null" : ApiSampleValues.Json(forTable);
+            string json = SampleJson(approvers.Table, project, overrides);
+            // an optional column is left out of the sample, so the table's name is added here
+            if (approvers.ForTable is { } named && forTable is not null && !json.Contains($"\"{JsonNames.Camel(named.Name)}\":"))
+                json = json[..^2] + ", " + ApiSampleValues.Json(JsonNames.Camel(named.Name)) + ": " + ApiSampleValues.Json(forTable) + " }";
+            return json;
+        }
+        string approver = approvers.Table.TableName;
+        string constants = $"    private const string BobApprover = \"\"\"{Row(2, tableName)}\"\"\";\n    private const string CyApprover = \"\"\"{Row(3, null)}\"\"\";\n";
+        var rows = new StringBuilder($"        db.Context.Add(Make<{approver}>(BobApprover));\n        db.Context.Add(Make<{approver}>(CyApprover));\n");
+        var tests = new StringBuilder();
+        if (approvers.ForTable is not null)
+        {
+            var dee = new Dictionary<string, string> { [user.UserName.Name] = ApiSampleValues.Json("dee") };
+            if (user.Admin is { } admin)
+                dee[admin.Name] = "false";
+            constants += $"    private const string Dee = \"\"\"{SampleJson(user.Table, project, dee)}\"\"\";\n    private const string DeeApprover = \"\"\"{Row(4, "Elsewhere")}\"\"\";\n";
+            rows.Append($"        db.Context.Add(Make<{user.Table.TableName}>(Dee));\n        await db.Context.SaveChangesAsync();\n        db.Context.Add(Make<{approver}>(DeeApprover));\n");
+            tests.Append($$"""
+
+    [TestMethod]
+    public async Task A_row_for_another_table_does_not_let_a_person_decide_this_one()
+    {
+        var (db, service) = await OpenAsync("ann");
+        await using var scope = db;
+        await service.RequestAsync("{{tableName}}", 1, null);
+        DesktopCaller.Name = "dee";
+        Assert.AreEqual("{{ApprovalWords.NotApprover}}", (await RefusedAsync(() => service.DecideAsync("{{tableName}}", 1, true, null))).Message);
+        DesktopCaller.Name = "cy";
+        await service.DecideAsync("{{tableName}}", 1, true, null);
+    }
+
+""");
+        }
+        rows.Append("        await db.Context.SaveChangesAsync();\n");
+        return (constants, rows.ToString(), tests.ToString());
     }
 
     public static string Uno(ApprovalScreenTable table, string testNamespace, IEnumerable<string> usings)

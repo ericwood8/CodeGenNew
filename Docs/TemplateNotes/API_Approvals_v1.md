@@ -1,6 +1,6 @@
 # API_Approvals_v1
 
-`Apis/Approvals.cs`: the approval of single rows, for the tables of `RowApprovals=TimeSheet,Expense`. Whole-database, written only when the project names a table. Needs `ApiAuth=true`, `UserTable` and `UserRoleColumn` as a yes/no column. The ASP.NET API, the same routes in the Python and Rust APIs (below), and an approvals page in every front end.
+`Apis/Approvals.cs`: the approval of single rows, for the tables of `RowApprovals=TimeSheet,Expense`. Whole-database, written only when the project names a table. Needs `ApiAuth=true`, `UserTable` and either `UserRoleColumn` as a yes/no column or an `ApproverTable`. The ASP.NET API, the same routes in the Python and Rust APIs (below), and an approvals page in every front end.
 
 ## The side table
 
@@ -9,10 +9,16 @@ Each table needs a `<Table>Approval` table, one row per request cycle. `SP_Appro
 ## Routes (all need a token)
 
 - `POST <route>/{id}/request` with `{ "reason": "..." }`: a new cycle, `Revision` one more than the last. 409 while a request is already waiting. The requester must be a person of the user table (403 `approval-requester-unknown` otherwise).
-- `POST <route>/{id}/approve` and `reject` with `{ "note": "..." }`: only an administrator or a person whose role flag is set (403 `approval-not-approver`), never the person who made the request (403 `approval-four-eyes`). The decision is one guarded UPDATE of the Pending row inside a transaction; a second decision of the same request is a 409 `approval-wrong-state`.
+- `POST <route>/{id}/approve` and `reject` with `{ "note": "..." }`: only an administrator, a person whose role flag is set or, with `ApproverTable`, a person it names for the table (403 `approval-not-approver`), never the person who made the request (403 `approval-four-eyes`). The decision is one guarded UPDATE of the Pending row inside a transaction; a second decision of the same request is a 409 `approval-wrong-state`.
 - `POST <route>/{id}/withdraw`: only the requester, only while Pending.
 - `GET <route>/toapprove`: the requests waiting for a decision, without the caller's own; approvers only.
 - `GET <route>/{id}/approvals`: the history of a row, newest first.
+
+## Who may approve
+
+By default an approver is an administrator or a person whose user-table role flag is set, the same for every table. `ApproverTable=Approver:EmployeeId,TableName` moves that into rows: the table, the column that holds the person (a whole-number column with the user table's key), and optionally a text column naming the `RowApprovals` table the person may decide (empty there: every table). An administrator always may. With the setting the role flag no longer decides, so `UserRoleColumn` may be left out. `ApprovalPlan.Resolve` checks the table and its columns, and refuses a run in which anyone signed in could change the approver table, since that would let a person make themselves an approver: name it in `TableWriteRoles` (`Approver:Administrator`). The approver table is an ordinary table with the usual list and edit screens in every front end.
+
+The one lookup is `ApprovalWriter.MayDecideMethod` (C#, used by the API and the WinUI3 rules); the Python and Rust APIs write the same query for their own database layer. A refused person gets the same 403 `approval-not-approver` and sentence on `approve`, `reject` and `toapprove`. No front end decides from the role flag: each page shows the Approve and Reject buttons only on the requests the API lists, and shows the API's sentence when `toapprove` is refused, so the pages need no change.
 
 ## The project's own rules
 
@@ -34,7 +40,7 @@ Every front end gets one **Approvals** page and a menu entry, written when the p
 
 `PY_Approvals` writes `app/routes/approvals.py` and `RS_Approvals` writes `src/routes/approvals.rs`: the same routes, status codes, problem types and sentences as the ASP.NET API (`ApprovalWords` and `ApprovalWriter` in Core). Both read the user table for the requester and the approver, decide with one guarded UPDATE of the Pending row, and answer the same JSON (`id`, `rowId`, `revision`, `status`, `reason`, `requestedBy`, `requestedOn`, `decidedBy`, `decidedOn`, `decisionNote`).
 
-- **Python:** `PY_Mod` lists the approvals router before the tables' routers (their `/{id}` would read `toapprove` as a key). The hooks are `hooks.validate(event)` (no side effects; a sentence refuses) and `hooks.on_decided(event)`; the event carries the session, so what `on_decided` changes is committed with the decision.
+- **Python:** `PY_Approvals` also writes the SQLAlchemy model of each side table (`app/models/<table>Approval.py`, the text `PY_Model` writes for any table, from `PythonModelFile`), since the side table has no CRUD API and so no model of its own. `PY_Mod` lists the approvals router before the tables' routers (their `/{id}` would read `toapprove` as a key). The hooks are `hooks.validate(event)` (no side effects; a sentence refuses) and `hooks.on_decided(event)`; the event carries the session, so what `on_decided` changes is committed with the decision.
 - **Rust:** axum prefers the fixed path `toapprove` to a table's `/{id}`. The side table has no model of its own (it has no CRUD API), so `approvals.rs` reads it into a struct written there. The hooks are `HOOKS.write().unwrap().validate = Some(f)` (a sync function returning a fixed sentence) and `on_decided` (an async function that receives the transaction, so its changes commit with the decision). The Rust stack reads PostgreSQL, MySQL and SQLite only.
 - **The gate clause `approval`:** `PY_Gates` and `RS_Gates` check it the same way (`row_approved_<table>`).
 - The Python and Rust APIs have no generated tests for approvals yet; the routes were checked with a scratch harness over SQLite (a stranger, a second request, a non-approver, the four eyes, withdrawal, deciding twice, the history, the gate holding until the latest request is approved, and the hooks), the same cases as the ASP.NET API.

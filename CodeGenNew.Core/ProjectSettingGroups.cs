@@ -29,7 +29,7 @@ public static class ProjectSettingGroups
         new("Tests", "This tab has the generated test projects: the API integration tests, the Blazor page tests and the Rust crate tests.",
             ["ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "DesktopTests", "RustTests"]),
         new("Sign-in", "This tab has the API sign-in, the owned tables and claim names, and the user table the people sign in against.",
-            ["ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "RowApprovals"]),
+            ["ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "RowApprovals", "ApproverTable"]),
         new("Roles", "This tab has the roles that may read and the roles that may write, for every table and for single tables.",
             ["ReadRoles", "TableReadRoles", "WriteRoles", "TableWriteRoles"]),
         new("Dashboard", "This tab has Dashboard, Dashboard Strip, Dashboard Measures and No Dashboard Tables.",

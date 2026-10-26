@@ -24,6 +24,7 @@ public class PythonRustApprovalsTests
         string routes = read("routes/__init__.py");
         Assert.IsTrue(routes.IndexOf("approvals.router", StringComparison.Ordinal) is var at and >= 0 && at < routes.IndexOf("time_sheet.router", StringComparison.Ordinal), routes);
         Assert.IsFalse(files.Any(f => f.EndsWith("routes/time_sheet_approval.py")), "the side table has no routes of its own");
+        Expect.Contains(read("models/time_sheet_approval.py"), "class TimeSheetApproval(Base):");
     }
 
     [TestMethod]

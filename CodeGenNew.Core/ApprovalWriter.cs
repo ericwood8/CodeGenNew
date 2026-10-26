@@ -17,12 +17,13 @@ public static class ApprovalWriter
     {
         var user = plan.User!;
         string adminTest = user.Admin is { } admin ? $"u.{admin.CSharpName()} == true" : "false";
+        string flagTest = plan.Approvers is null ? $"u.{user.Role!.CSharpName()} == true" : "false";
         var o = new StringBuilder();
         foreach (string u in usings)
             o.Append($"using {u};\n");
         o.Append("using System.Security.Claims;\nusing Microsoft.EntityFrameworkCore;\n\n");
         o.Append(Fill(Shared, ("§CTX", contextType), ("§U", user.Table.TableName), ("§UN", user.UserName.CSharpName()),
-            ("§UF", user.Role!.CSharpName()), ("§UA", adminTest), ("§PENDING", ApprovalStatus.Pending.ToString()), ("§APPROVED", ApprovalStatus.Approved.ToString()),
+            ("§MAYDECIDE", MayDecideMethod(plan)), ("§KEYTYPE", user.Table.PrimaryKeyColumns[0].CSharpBase()), ("§UK", user.Table.PrimaryKeyColumns[0].CSharpName()), ("§UF", flagTest), ("§UA", adminTest), ("§PENDING", ApprovalStatus.Pending.ToString()), ("§APPROVED", ApprovalStatus.Approved.ToString()),
             ("§REJECTED", ApprovalStatus.Rejected.ToString()), ("§WITHDRAWN", ApprovalStatus.Withdrawn.ToString()),
             ("§W_UNKNOWN", ApprovalWords.RequesterUnknown), ("§W_NOTAPPROVER", ApprovalWords.NotApprover), ("§W_NOTREQUESTER", ApprovalWords.NotRequester), ("§W_FOUREYES", ApprovalWords.FourEyes), ("§W_ALREADY", ApprovalWords.AlreadyWaiting), ("§W_MEANWHILE", ApprovalWords.DecidedMeanwhile), ("§W_JUSTNOW", ApprovalWords.DecidedJustNow), ("§W_NOTHING", ApprovalWords.NothingWaiting), ("§T_UNKNOWN", RequesterUnknownType), ("§T_NOTAPPROVER", NotApproverType), ("§T_FOUREYES", FourEyesType), ("§T_STATE", WrongStateType), ("§T_REFUSED", RefusedType)));
         foreach (var table in plan.Tables)
@@ -32,6 +33,19 @@ public static class ApprovalWriter
             o.Append($"        {table.Table.TableName}Approvals.Map(app);\n");
         o.Append("    }\n}\n");
         return o.ToString();
+    }
+
+    /// <summary> The C# method <c>ApprovalPeople.MayDecideAsync(context, person, table)</c>, the one place that says who may decide a table (§CTX is the context type, filled by the caller): an administrator or a person with the role flag,
+    /// or, with <c>ApproverTable</c>, a person with a row there for the table (or for every table). </summary>
+    public static string MayDecideMethod(ApprovalPlan plan)
+    {
+        if (plan.Approvers is not { } approvers)
+            return MayDecideFlag;
+        string person = approvers.Person.CSharpName();
+        string check = approvers.ForTable is { } forTable
+            ? $"a => a.{person} == person.Key && (a.{forTable.CSharpName()} == null || a.{forTable.CSharpName()} == \"\" || a.{forTable.CSharpName()} == table)"
+            : $"a => a.{person} == person.Key";
+        return Fill(MayDecideRows, ("§AP", approvers.Table.TableName), ("§APCHECK", check));
     }
 
     private static string Now(ColumnModel column) => column.SqlType == System.Data.SqlDbType.DateTimeOffset ? "DateTimeOffset.Now" : "DateTime.Now";
@@ -56,6 +70,16 @@ public static class ApprovalWriter
         return text;
     }
 
+    private const string MayDecideFlag = """
+    public static Task<bool> MayDecideAsync(§CTX context, ApprovalPerson person, string table) => Task.FromResult(person.MayDecide);
+""";
+
+    private const string MayDecideRows = """
+    /// <summary> An administrator, or a person with a row in §AP for this table. </summary>
+    public static async Task<bool> MayDecideAsync(§CTX context, ApprovalPerson person, string table) =>
+        person.MayDecide || await context.Set<§AP>().AsNoTracking().AnyAsync(§APCHECK);
+""";
+
     private const string Shared = """
 /// <summary> What a caller sends with a request or a decision. </summary>
 public sealed record ApprovalNote(string? Reason, string? Note);
@@ -74,8 +98,8 @@ public static class ApprovalHooks
     public static Func<ApprovalEvent, Task>? OnDecided { get; set; }
 }
 
-/// <summary> The signed-in person as the user table knows them: <c>MayDecide</c> is an administrator or a person whose role flag is set. </summary>
-public sealed record ApprovalPerson(string Name, bool MayDecide);
+/// <summary> The signed-in person as the user table knows them: <c>MayDecide</c> is an administrator or a person whose role flag is set; <c>Key</c> is their key in the user table. </summary>
+public sealed record ApprovalPerson(string Name, bool MayDecide, §KEYTYPE Key);
 
 public static class ApprovalPeople
 {
@@ -84,10 +108,11 @@ public static class ApprovalPeople
         string? name = caller.FindFirstValue(AuthNames.NameClaim);
         if (string.IsNullOrEmpty(name))
             return null;
-        var row = await context.Set<§U>().AsNoTracking().Where(u => u.§UN == name).Select(u => new { Name = u.§UN, Flag = u.§UF == true, Admin = §UA }).FirstOrDefaultAsync();
-        return row is null ? null : new ApprovalPerson(row.Name!, row.Flag || row.Admin || caller.IsInRole(AuthNames.AdminRole));
+        var row = await context.Set<§U>().AsNoTracking().Where(u => u.§UN == name).Select(u => new { Name = u.§UN, Key = u.§UK, Flag = §UF, Admin = §UA }).FirstOrDefaultAsync();
+        return row is null ? null : new ApprovalPerson(row.Name!, row.Flag || row.Admin || caller.IsInRole(AuthNames.AdminRole), row.Key);
     }
-}
+
+§MAYDECIDE}
 
 public static class ApprovalProblems
 {
@@ -139,7 +164,7 @@ public static class §TApprovals
         var person = await ApprovalPeople.FindAsync(context, caller);
         if (person is null)
             return ApprovalProblems.RequesterUnknown();
-        if (!person.MayDecide)
+        if (!await ApprovalPeople.MayDecideAsync(context, person, "§T"))
             return ApprovalProblems.NotApprover();
         var latest = await LatestAsync(context, id);
         if (latest is null || latest.§ST != §PENDING)
@@ -187,7 +212,7 @@ public static class §TApprovals
         var person = await ApprovalPeople.FindAsync(context, caller);
         if (person is null)
             return ApprovalProblems.RequesterUnknown();
-        if (!person.MayDecide)
+        if (!await ApprovalPeople.MayDecideAsync(context, person, "§T"))
             return ApprovalProblems.NotApprover();
         var waiting = await context.Set<§A>().AsNoTracking().Where(a => a.§ST == §PENDING && a.§RB != person.Name).OrderBy(a => a.§RO).ToListAsync();
         return Results.Ok(waiting.Select(View));

@@ -12,7 +12,7 @@ public class RowApprovalsTests
 {
     private const string Side = "CREATE TABLE TimeSheetApproval (TimeSheetApprovalId INTEGER PRIMARY KEY, TimeSheetId INTEGER NOT NULL REFERENCES TimeSheet (TimeSheetId), ApprovalStatusId INTEGER NOT NULL, Reason VARCHAR(500) NULL, RequestedBy VARCHAR(50) NOT NULL, RequestedOn DATETIME NOT NULL, DecidedBy VARCHAR(50) NULL, DecidedOn DATETIME NULL, DecisionNote VARCHAR(500) NULL, Revision INTEGER NOT NULL)";
 
-    private static string CreateDatabase(bool withSide)
+    private static string CreateDatabase(bool withSide, bool withApprover)
     {
         string path = Path.Combine(Path.GetTempPath(), "codegen_apr_" + Guid.NewGuid().ToString("N") + ".db");
         using var connection = new SqliteConnection($"Data Source={path}");
@@ -24,6 +24,8 @@ public class RowApprovalsTests
         };
         if (withSide)
             statements.Add(Side);
+        if (withApprover)
+            statements.Add("CREATE TABLE Approver (ApproverId INTEGER PRIMARY KEY, EmployeeId INTEGER NOT NULL REFERENCES Employee (EmployeeId), TableName VARCHAR(50) NULL)");
         foreach (string statement in statements)
         {
             using var command = connection.CreateCommand();
@@ -33,9 +35,9 @@ public class RowApprovalsTests
         return path;
     }
 
-    internal static async Task<(bool Success, List<string> Errors, Func<string, string> Read, List<string> Files)> GenerateAsync(bool withSide, string gates = "", string stacks = "Api", Dictionary<string, string>? extra = null)
+    internal static async Task<(bool Success, List<string> Errors, Func<string, string> Read, List<string> Files)> GenerateAsync(bool withSide, string gates = "", string stacks = "Api", Dictionary<string, string>? extra = null, bool withApprover = false)
     {
-        string database = CreateDatabase(withSide);
+        string database = CreateDatabase(withSide, withApprover);
         string output = Path.Combine(Path.GetTempPath(), "codegen_apr_out_" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -91,7 +93,7 @@ public class RowApprovalsTests
         Expect.Contains(approvals, "app.MapGet(\"/api/timesheets/toapprove\", ToApproveAsync)");
         Expect.Contains(approvals, "string.Equals(latest.RequestedBy, person.Name, StringComparison.OrdinalIgnoreCase)");
         Expect.Contains(approvals, "a.ApprovalStatusId == 1)");
-        Expect.Contains(approvals, "Where(u => u.Login == name).Select(u => new { Name = u.Login, Flag = u.IsManager == true, Admin = u.IsAdministrator == true })");
+        Expect.Contains(approvals, "Where(u => u.Login == name).Select(u => new { Name = u.Login, Key = u.EmployeeId, Flag = u.IsManager == true, Admin = u.IsAdministrator == true })");
         Expect.Contains(read("Apis/ApiRegistration.cs"), "ApprovalsApi.Register(app);");
         Assert.IsFalse(files.Any(f => f.EndsWith("TimeSheetApprovalApi.cs")), "the side table has no CRUD API of its own");
         Assert.IsTrue(files.Any(f => f.EndsWith("TimeSheetApi.cs")));
