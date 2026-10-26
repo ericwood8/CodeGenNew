@@ -36,6 +36,7 @@
     bool dashboard = Project.Dashboard;
     var stripTables = Project.DashboardStrip ? DashboardPlan.Build(Database, Project).StripTables.Where(name => screens.Any(t => t.TableName.EqualsIgnoreCase(name))).ToHashSet(StringComparer.OrdinalIgnoreCase) : new HashSet<string>();
 
+    var junctions = JunctionPlan.Tables(Database, Project);   // a page for each many-to-many junction table, after the screens
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
 
@@ -60,6 +61,8 @@
         Line("        NavView.MenuItems.Add(new NavigationViewItem { Content = \"Dashboard\", Tag = \"Dashboard\" });");
     foreach (var t in screens)
         Line($"        NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{ScreenNames.Label(t.TableName)}\", Tag = \"{t.TableName}\" }});");
+    foreach (var t in junctions)
+        Line($"        NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{JunctionPlan.Label(t.TableName)}\", Tag = \"{t.TableName}Links\" }});");
     Line("    }");
     Line();
     if (dashboard)
@@ -100,6 +103,8 @@
             : stripTables.Contains(t.TableName)
                 ? $"            \"{t.TableName}\" => WithStrip(\"{t.TableName}\", new {t.TableName}ListPage(_context)),"
                 : $"            \"{t.TableName}\" => new {t.TableName}ListPage(_context),");
+    foreach (var t in junctions)
+        Line($"            \"{t.TableName}Links\" => new {DesktopJunctionPage.PageName(t.TableName)}(_context),");
     Line("            _ => MainContent.Content");
     Line("        };");
     Line("    }");

@@ -169,5 +169,58 @@
     var o = new StringBuilder();
     o.Append($"@@@FILE {componentsFolder}/{cls}.tsx@@@\n").Append(ts);
     o.Append($"@@@FILE {componentsFolder}/__tests__/{cls}.test.tsx@@@\n").Append(test);
+
+    // The page the menu opens (JunctionPlan in Core): a drop-down of the anchor's rows and the shuttle for the row picked.
+    if (JunctionPlan.HasPage(Model, Project))
+    {
+        string pagesFolder = Project.PagesFolder;
+        string page = JunctionPlan.ReactPage(Model.TableName);
+        string anchorLabel = Labels.Words(BaseName(junction.AnchorRole));
+        var pg = new StringBuilder();
+        void P(string s = "") => pg.Append(s).Append('\n');
+        P("import { useEffect, useState } from 'react';");
+        P($"import {{ request }} from '../{apiFolder}/client';");
+        P($"import {{ {cls} }} from '../{componentsFolder}/{cls}';");
+        P();
+        P($"type Anchor = {{ id: {anchorTs}; name: string }};");
+        P();
+        P($"export function {page}() {{");
+        P("  const [anchors, setAnchors] = useState<Anchor[]>([]);");
+        P("  const [anchorId, setAnchorId] = useState('');");
+        P("  const [error, setError] = useState<string | null>(null);");
+        P();
+        P("  useEffect(() => {");
+        P($"    request<Anchor[]>('{JunctionPlan.AnchorLookupRoute(Model)}').then(setAnchors).catch(() => setError('Failed to load the {anchorLabel.ToLowerInvariant().Pluralize()}.'));");
+        P("  }, []);");
+        P();
+        P("  return (");
+        P("    <div className=\"rail\">");
+        P($"      <h1>{JunctionPlan.Heading(Model)}</h1>");
+        P($"      <label>{anchorLabel} <select aria-label=\"{anchorLabel}\" value={{anchorId}} onChange={{(event) => setAnchorId(event.target.value)}}>");
+        P($"        <option value=\"\">Choose a {anchorLabel.ToLowerInvariant()}</option>");
+        P("        {anchors.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}");
+        P("      </select></label>");
+        P("      {error && <p role=\"alert\">{error}</p>}");
+        P($"      {{anchorId !== '' && <{cls} key={{anchorId}} anchorId={{{(anchorTs == "string" ? "anchorId" : "Number(anchorId)")}}} />}}");
+        P("    </div>");
+        P("  );");
+        P("}");
+        var pgTest = new StringBuilder();
+        void Q(string s = "") => pgTest.Append(s).Append('\n');
+        Q("import { render, screen } from '@testing-library/react';");
+        Q("import { describe, expect, it } from 'vitest';");
+        Q($"import {{ {page} }} from '../{page}';");
+        Q();
+        Q($"describe('{page}', () => {{");
+        Q("  it('asks for an anchor row before it shows the lists', async () => {");
+        Q($"    render(<{page} />);");
+        Q($"    expect(await screen.findByText('{JunctionPlan.Heading(Model)}')).toBeInTheDocument();");
+        Q($"    expect(screen.getByRole('combobox', {{ name: '{anchorLabel}' }})).toBeInTheDocument();");
+        Q($"    expect(screen.queryByText('Available')).not.toBeInTheDocument();");
+        Q("  });");
+        Q("});");
+        o.Append($"@@@FILE {pagesFolder}/{page}.tsx@@@\n").Append(pg);
+        o.Append($"@@@FILE {pagesFolder}/__tests__/{page}.test.tsx@@@\n").Append(pgTest);
+    }
     Write(o.ToString());
 #>

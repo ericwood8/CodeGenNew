@@ -72,7 +72,7 @@
     H("</div>");
 
     // ================= ts
-    T("import { ChangeDetectionStrategy, Component, Input, OnInit } from '@angular/core';");
+    T("import { ChangeDetectionStrategy, Component, Input, OnChanges, OnInit, SimpleChanges } from '@angular/core';");
     T("import { HttpClient } from '@angular/common/http';");
     T("import { CommonModule } from '@angular/common';");
     T("import { FormsModule } from '@angular/forms';");
@@ -92,7 +92,7 @@
     T($"  templateUrl: './{stem}-junction.component.html',");
     T($"  styleUrl: './{stem}-junction.component.css'");
     T("})");
-    T($"export class {cls} implements OnInit {{");
+    T($"export class {cls} implements OnInit, OnChanges {{");
     T($"  @Input({{ required: true }}) anchorId!: {anchorTs};");
     T();
     T($"  available: {baseName}JunctionItem[] = [];");
@@ -106,6 +106,13 @@
     T();
     T("  ngOnInit(): void {");
     T("    this.load();");
+    T("  }");
+    T();
+    T("  // another anchor row: the lists are read again");
+    T("  ngOnChanges(changes: SimpleChanges): void {");
+    T("    if (changes['anchorId'] && !changes['anchorId'].firstChange) {");
+    T("      this.load();");
+    T("    }");
     T("  }");
     T();
     T("  private load(): void {");
@@ -175,5 +182,70 @@
     o.Append($"@@@FILE {componentsFolder}/{stem}-junction/{stem}-junction.component.html@@@\n").Append(Project.AdaptAngularHtml(html.ToString()));
     o.Append($"@@@FILE {componentsFolder}/{stem}-junction/{stem}-junction.component.spec.ts@@@\n").Append(Project.AdaptAngularSpec(spec.ToString()));
     o.Append($"@@@FILE {componentsFolder}/{stem}-junction/{stem}-junction.component.ts@@@\n").Append(ts);
+
+    // The screen the menu opens (JunctionPlan in Core): a drop-down of the anchor's rows and the shuttle for the row picked.
+    if (JunctionPlan.HasPage(Model, Project))
+    {
+        string linksClass = JunctionPlan.AngularClass(Model.TableName);
+        string linksStem = JunctionPlan.AngularStem(Model.TableName);
+        string anchorLabel = Labels.Words(BaseName(junction.AnchorRole));
+        string anchorTsType = anchorTs;
+        var lh = new StringBuilder();
+        void LH(string s = "") => lh.Append(s).Append('\n');
+        LH("<div class=\"main\">");
+        LH($"  <h1>{JunctionPlan.Heading(Model)}</h1>");
+        LH($"  <label>{anchorLabel}");
+        LH($"    <select class=\"form-control\" aria-label=\"{anchorLabel}\" (change)=\"pick($any($event.target).selectedIndex)\">");
+        LH($"      <option value=\"\">Choose a {anchorLabel.ToLowerInvariant()}</option>");
+        LH("      <option *ngFor=\"let a of anchors\" [value]=\"a.id\">{{ a.name }}</option>");
+        LH("    </select>");
+        LH("  </label>");
+        LH("  <p *ngIf=\"error\" role=\"alert\">{{ error }}</p>");
+        LH($"  <app-{stem}-junction *ngIf=\"anchorId !== null\" [anchorId]=\"anchorId\"></app-{stem}-junction>");
+        LH("</div>");
+        var lt = new StringBuilder();
+        void LT(string s = "") => lt.Append(s).Append('\n');
+        LT("import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';");
+        LT("import { HttpClient } from '@angular/common/http';");
+        LT("import { CommonModule } from '@angular/common';");
+        LT($"import {{ {cls} }} from '../{stem}-junction/{stem}-junction.component';");
+        LT();
+        LT("@Component({");
+        LT($"  selector: 'app-{linksStem}',");
+        if (Project.AngularStandaloneFlag) LT("  standalone: true,");
+        LT($"  changeDetection: ChangeDetectionStrategy.{Project.AngularEagerStrategy}, // plain properties change inside subscribe callbacks: keep eager checking when OnPush is the default (Angular 22)");
+        LT($"  imports: [ CommonModule, {cls} ],");
+        LT($"  templateUrl: './{linksStem}.component.html'");
+        LT("})");
+        LT($"export class {linksClass} implements OnInit {{");
+        LT($"  anchors: {{ id: {anchorTsType}; name: string }}[] = [];");
+        LT($"  anchorId: {anchorTsType} | null = null;");
+        LT("  error: string | null = null;");
+        LT();
+        LT("  constructor(private http: HttpClient) { }");
+        LT();
+        LT("  ngOnInit(): void {");
+        LT($"    this.http.get<{{ id: {anchorTsType}; name: string }}[]>('{JunctionPlan.AnchorLookupRoute(Model).TrimStart('/')}').subscribe({{");
+        LT("      next: (rows) => { this.anchors = rows; },");
+        LT($"      error: () => {{ this.error = 'Failed to load the {anchorLabel.ToLowerInvariant().Pluralize()}.'; }}");
+        LT("    });");
+        LT("  }");
+        LT();
+        LT("  // index 0 is the \"Choose\" entry");
+        LT("  pick(index: number): void {");
+        LT("    this.anchorId = index > 0 ? this.anchors[index - 1].id : null;");
+        LT("  }");
+        LT("}");
+        var ls = new StringBuilder();
+        ls.Append("import { ComponentFixture, TestBed } from '@angular/core/testing';\nimport { provideHttpClient } from '@angular/common/http';\nimport { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';\n\n");
+        ls.Append($"import {{ {linksClass} }} from './{linksStem}.component';\n\n");
+        ls.Append($"describe('{linksClass}', () => {{\n  let fixture: ComponentFixture<{linksClass}>;\n\n");
+        ls.Append($"  beforeEach(async () => {{\n    await TestBed.configureTestingModule({{\n      imports: [{linksClass}],\n      providers: [provideHttpClient(), provideHttpClientTesting()]\n    }})\n    .compileComponents();\n\n");
+        ls.Append($"    fixture = TestBed.createComponent({linksClass});\n    fixture.detectChanges();\n  }});\n\n");
+        ls.Append($"  it('asks for an anchor row before it shows the lists', () => {{\n    const http = TestBed.inject(HttpTestingController);\n    http.expectOne('{JunctionPlan.AnchorLookupRoute(Model).TrimStart('/')}').flush([{{ id: {(anchorTs == "string" ? "'a'" : "1")}, name: 'First' }}]);\n    fixture.detectChanges();\n    const text = fixture.nativeElement.textContent as string;\n    expect(text).toContain('{JunctionPlan.Heading(Model)}');\n    expect(text).toContain('First');\n    expect(text).not.toContain('Available');\n  }});\n}});\n");
+        o.Append($"@@@FILE {componentsFolder}/{linksStem}/{linksStem}.component.html@@@\n").Append(Project.AdaptAngularHtml(lh.ToString()));
+        o.Append($"@@@FILE {componentsFolder}/{linksStem}/{linksStem}.component.spec.ts@@@\n").Append(Project.AdaptAngularSpec(ls.ToString()));
+        o.Append($"@@@FILE {componentsFolder}/{linksStem}/{linksStem}.component.ts@@@\n").Append(lt);
+    }
     Write(o.ToString());
 #>

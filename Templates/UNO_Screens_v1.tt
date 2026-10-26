@@ -26,8 +26,8 @@
     var odataClients = Project.OData ? ODataPlan.For(Database, Project).Tables.Where(t => UnoNames.HasODataClient(t, Project)).ToList() : new List<TableModel>();
     bool dashboard = Project.Dashboard;   // the dashboard is the first screen (UNO_Dashboard writes the page and its client)
     // the menu in order (the dashboard, the screens, the OData pages) and the tag each entry is selected by
-    var menu = ScreenMenu.For(Project, screens, odataScreens)
-        .Select(m => (Tag: m.Kind switch { ScreenMenuKind.Dashboard => "Dashboard", ScreenMenuKind.Screen => m.Table!.TableName, _ => m.Table!.TableName + "OData" }, m.Label, m.Roles))
+    var menu = ScreenMenu.For(Project, screens, odataScreens, JunctionPlan.Tables(Database, Project))
+        .Select(m => (Tag: m.Kind switch { ScreenMenuKind.Dashboard => "Dashboard", ScreenMenuKind.Screen => m.Table!.TableName, ScreenMenuKind.Junction => m.Table!.TableName + "Links", _ => m.Table!.TableName + "OData" }, m.Label, m.Roles))
         .ToList();
     foreach (string table in screens.Select(t => t.TableName).Where(n => !clients.Any(c => c.TableName.EqualsIgnoreCase(n))))
         Error($"UNO_Screens lists {table}, which has no API client (see UNO_Client): a screen needs the table's own CRUD API.");
@@ -105,6 +105,8 @@
     if (!Project.ODataReplacesScreens)
         foreach (var t in odataScreens)
             L($"            \"{t.TableName}OData\" => new {t.TableName}ODataListPage(_api),");
+    foreach (var t in JunctionPlan.Tables(Database, Project))
+        L($"            \"{t.TableName}Links\" => new {DesktopJunctionPage.PageName(t.TableName)}(_api),");
     L("            _ => MainContent.Content");
     L("        };");
     L("    }");

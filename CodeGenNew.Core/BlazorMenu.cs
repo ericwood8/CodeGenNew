@@ -11,16 +11,15 @@ public static class BlazorMenu
     {
         var screens = database.ScreenTables(project, "Blazor");
         var odataScreens = ODataPlan.BlazorScreenTables(database, project);
-        var entries = ScreenMenu.For(project, screens, odataScreens)
+        var entries = ScreenMenu.For(project, screens, odataScreens, JunctionPlan.Tables(database, project))
             .Select(m => new BlazorMenuEntry(m.Kind switch
             {
                 ScreenMenuKind.Dashboard => "dashboard",
                 ScreenMenuKind.Screen => ScreenNames.Route(m.Table!.TableName),
+                ScreenMenuKind.Junction => JunctionPlan.Route(m.Table!.TableName),
                 _ => AngularNames.ODataRoute(m.Table!.TableName)
             }, m.Label, m.Roles))
             .ToList();
-        foreach (var t in database.Tables.Where(t => BlazorNames.HasJunctionPage(t, project)).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
-            entries.Add(new BlazorMenuEntry(BlazorNames.JunctionRoute(t.TableName), BlazorNames.JunctionLabel(t.TableName), project.Auth ? WriteRolePlan.ReadFor(project, t) : []));
         return entries;
     }
 }

@@ -290,3 +290,18 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
         return false;
     }
 }
+<#
+    // The page the menu opens: a drop-down of the anchor's rows and an Edit links button that opens the editor on the row picked (JunctionPlan and DesktopJunctionPage in Core).
+    if (JunctionPlan.HasPage(Model, Project))
+    {
+        string linksAnchor = stem + "LinksAnchor";
+        string anchorClient = UnoNames.ClientProperty(anchorRole);
+        string read = $"        return (await _api.{anchorClient}.GetLookupAsync()).Select(r => new {linksAnchor}(r.Id, r.Name)).ToList();";
+        string open =
+            $"            var dialog = new {stem}JunctionEditor(_api, anchor.Id) {{ XamlRoot = XamlRoot }};\n"
+            + "            await dialog.ShowAsync();";
+        Write("@@@FILE " + viewsFolder + "/" + DesktopJunctionPage.PageName(stem) + ".xaml@@@\n" + DesktopJunctionPage.Xaml(Model, viewNamespace) + "\n");
+        Write("@@@FILE " + viewsFolder + "/" + DesktopJunctionPage.PageName(stem) + ".xaml.cs@@@\n"
+            + DesktopJunctionPage.CodeBehind(Model, viewNamespace, [viewModelNamespace, servicesNamespace, "System.Linq", .. usings], "private readonly ApiClients _api;", "ApiClients api", "_api = api;", read, open, "Exception ex) when (ex is ApiException or HttpRequestException") + "\n");
+    }
+#>

@@ -283,3 +283,24 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
         }
     }
 }
+<#
+    // The page the menu opens: a drop-down of the anchor's rows and an Edit links button that opens the editor on the row picked (JunctionPlan and DesktopJunctionPage in Core).
+    if (JunctionPlan.HasPage(Model, Project))
+    {
+        string anchorKey = junction.AnchorForeignKey.ReferencedColumns[0];
+        string anchorText = junction.AnchorForeignKey.ReferencedDisplayColumns.Count > 0 ? junction.AnchorForeignKey.ReferencedDisplayColumns[0] : anchorKey;
+        string linksAnchor = stem + "LinksAnchor";
+        string read =
+            "        return await ViewModelBase.InTurnAsync(async () =>\n"
+            + $"            (await _context.Set<{anchorRole}>().AsNoTracking().OrderBy(r => r.{anchorText}).Select(r => new {{ Id = r.{anchorKey}, Text = r.{anchorText} }}).ToListAsync())\n"
+            + $"                .Select(r => new {linksAnchor}(r.Id, r.Text?.ToString() ?? \"\")).ToList());";
+        string open =
+            $"            var viewModel = new {stem}JunctionEditorViewModel(_context, anchor.Id);\n"
+            + "            await ViewModelBase.InTurnAsync(async () => { await viewModel.LoadAsync(); return 0; });\n"
+            + $"            var dialog = new {stem}JunctionEditor(viewModel) {{ XamlRoot = XamlRoot }};\n"
+            + "            await dialog.ShowAsync();";
+        Write("@@@FILE " + viewsFolder + "/" + DesktopJunctionPage.PageName(stem) + ".xaml@@@\n" + DesktopJunctionPage.Xaml(Model, viewNamespace) + "\n");
+        Write("@@@FILE " + viewsFolder + "/" + DesktopJunctionPage.PageName(stem) + ".xaml.cs@@@\n"
+            + DesktopJunctionPage.CodeBehind(Model, viewNamespace, [viewModelNamespace, contextNamespace, "Microsoft.EntityFrameworkCore", .. usings], "private readonly " + contextType + " _context;", contextType + " context", "_context = context;", read, open, "Exception ex") + "\n");
+    }
+#>
