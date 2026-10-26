@@ -83,4 +83,19 @@ public class DashboardStripTests
         Expect.Contains(uno, "foreach (var widget in result.Widgets)");
         Assert.AreEqual(winui3.Split("foreach").Last(), uno.Split("foreach").Last());
     }
+
+    [TestMethod]
+    public async Task React_writes_a_Vitest_test_beside_the_dashboard_page_its_widgets_and_the_strip()
+    {
+        var files = await Generate(strip: true, "React");
+
+        Expect.Contains(files["frontend/src/components/__tests__/DashboardWidgetView.test.tsx"], "it('gives a trend a labelled line and the numbers as text'");
+        Expect.Contains(files["frontend/src/components/__tests__/DashboardWidgetView.test.tsx"], "import type { DashboardWidgetData } from '../../api/dashboardApi';");
+        Expect.Contains(files["frontend/src/pages/__tests__/DashboardPage.test.tsx"], "Failed to load the dashboard.");
+        Expect.Contains(files["frontend/src/components/__tests__/DashboardStrip.test.tsx"], "expect(get).toHaveBeenCalledWith('Customer');");
+
+        var noStrip = await Generate(strip: false, "React");
+        Assert.IsTrue(noStrip.ContainsKey("frontend/src/pages/__tests__/DashboardPage.test.tsx"));
+        Assert.IsFalse(noStrip.ContainsKey("frontend/src/components/__tests__/DashboardStrip.test.tsx"), "no strip, no strip test");
+    }
 }

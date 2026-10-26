@@ -16,10 +16,10 @@
 
     // ==========================================================================================
     // TSX_Dashboard_v1.tt
-    // Generates: api/dashboardApi.ts, components/DashboardWidgetView.tsx, components/dashboard.css, pages/DashboardPage.tsx and, with DashboardStrip=true, components/DashboardStrip.tsx
+    // Generates: api/dashboardApi.ts, components/DashboardWidgetView.tsx, components/dashboard.css, pages/DashboardPage.tsx and, with DashboardStrip=true, components/DashboardStrip.tsx, plus their tests under __tests__
     // The dashboard page of a React front end, drawn from what GET /api/dashboard returns (API_Dashboard): cards, bar lists, a sparkline and a list of recent rows, all written by the
     // template, so no chart package is added. Every chart has the same numbers beside it as text, and no meaning is carried by colour alone. TSX_Screens adds the menu entry and, for the
-    // strip, wraps each table's page.
+    // strip, wraps each table's page. Each file has a Vitest test beside it (__tests__): the widget kinds, the page (cards first, empty, failure, Refresh) and the strip.
     // Full notes: Docs/TemplateNotes/TSX_Dashboard_v1.md
     // ==========================================================================================
 
@@ -169,6 +169,156 @@ export function DashboardPage() {
     </div>
   );
 }
+@@@FILE <#= componentsFolder #>/__tests__/DashboardWidgetView.test.tsx@@@
+import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { describe, expect, it } from 'vitest';
+import { DashboardWidgetView, isCard } from '../DashboardWidgetView';
+import type { DashboardWidgetData } from '../../<#= apiFolder #>/dashboardApi';
+
+const widget = (changes: Partial<DashboardWidgetData>): DashboardWidgetData =>
+  ({ id: 'w1', kind: 'count', title: 'Customers', table: 'Customer', route: 'customers', isMoney: false, points: [], rows: [], ...changes });
+
+const show = (w: DashboardWidgetData) => render(<MemoryRouter><DashboardWidgetView widget={w} /></MemoryRouter>);
+
+const money = new Intl.NumberFormat(undefined, { style: 'currency', currency: '<#= Project.CurrencyCode #>' });
+
+describe('DashboardWidgetView', () => {
+  it('shows a card as its title, linked to the table page, with its numbers', () => {
+    show(widget({ points: [{ label: 'Rows', value: 42 }] }));
+    expect(screen.getByRole('link', { name: 'Customers' })).toHaveAttribute('href', '/customers');
+    expect(screen.getByText('Rows')).toBeInTheDocument();
+    expect(screen.getByText('42')).toBeInTheDocument();
+  });
+
+  it('shows the title as plain text when the widget has no page', () => {
+    show(widget({ route: '', points: [{ label: 'Rows', value: 1 }] }));
+    expect(screen.getByRole('heading', { name: 'Customers' })).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('formats a money card with the project currency', () => {
+    show(widget({ kind: 'money', isMoney: true, points: [{ label: 'Total', value: 1234.5 }] }));
+    expect(screen.getByText(money.format(1234.5))).toBeInTheDocument();
+  });
+
+  it('draws a ranking as a list with every number beside its bar', () => {
+    show(widget({ kind: 'topBy', title: 'Top customers', points: [{ label: 'Acme', value: 30 }, { label: 'Zenith', value: 10 }] }));
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.getByText('Acme')).toBeInTheDocument();
+    expect(screen.getByText('30')).toBeInTheDocument();
+    expect(screen.getByText('10')).toBeInTheDocument();
+  });
+
+  it('says there is no data for a ranking or a trend without points', () => {
+    show(widget({ kind: 'breakdown', title: 'By status' }));
+    expect(screen.getByText('No data.')).toBeInTheDocument();
+  });
+
+  it('gives a trend a labelled line and the numbers as text', () => {
+    show(widget({ kind: 'trend', title: 'Sales by month', points: [{ label: '2026-01', value: 5 }, { label: '2026-02', value: 8 }] }));
+    expect(screen.getByRole('img', { name: /Sales by month/ })).toBeInTheDocument();
+    expect(screen.getByText('Show the numbers')).toBeInTheDocument();
+    expect(screen.getByText('2026-02')).toBeInTheDocument();
+    expect(screen.getByText('8')).toBeInTheDocument();
+  });
+
+  it('lists the recent rows, or says there are none', () => {
+    const { unmount } = show(widget({ kind: 'recent', title: 'Latest', rows: [{ label: 'INV-1', detail: '2026-02-03' }] }));
+    expect(screen.getByText('INV-1')).toBeInTheDocument();
+    expect(screen.getByText('2026-02-03')).toBeInTheDocument();
+    unmount();
+    show(widget({ kind: 'recent', title: 'Latest' }));
+    expect(screen.getByText('No rows.')).toBeInTheDocument();
+  });
+
+  it('counts the number kinds as cards and the lists and charts as panels', () => {
+    expect(isCard(widget({ kind: 'count' }))).toBe(true);
+    expect(isCard(widget({ kind: 'status' }))).toBe(true);
+    expect(isCard(widget({ kind: 'topBy' }))).toBe(false);
+    expect(isCard(widget({ kind: 'trend' }))).toBe(false);
+    expect(isCard(widget({ kind: 'recent' }))).toBe(false);
+  });
+});
+@@@FILE <#= pagesFolder #>/__tests__/DashboardPage.test.tsx@@@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { dashboardApi } from '../../<#= apiFolder #>/dashboardApi';
+import type { DashboardWidgetData } from '../../<#= apiFolder #>/dashboardApi';
+import { DashboardPage } from '../DashboardPage';
+
+const widget = (changes: Partial<DashboardWidgetData>): DashboardWidgetData =>
+  ({ id: 'w1', kind: 'count', title: 'Customers', table: 'Customer', route: 'customers', isMoney: false, points: [{ label: 'Rows', value: 3 }], rows: [], ...changes });
+
+const open = () => render(<MemoryRouter><DashboardPage /></MemoryRouter>);
+
+describe('DashboardPage', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('shows the cards first and the lists and charts after them', async () => {
+    vi.spyOn(dashboardApi, 'get').mockResolvedValue({ widgets: [widget({ id: 'a', kind: 'topBy', title: 'Top customers' }), widget({ id: 'b', title: 'Customers' })] });
+    const { container } = open();
+    expect(await screen.findByLabelText('Customers')).toBeInTheDocument();
+    const grids = container.querySelectorAll('.dash-grid');
+    expect(grids).toHaveLength(2);
+    expect(grids[0].querySelector('.dash-card')).not.toBeNull();
+    expect(grids[1].querySelector('.dash-panel')).not.toBeNull();
+  });
+
+  it('says so when the schema suggests nothing to show', async () => {
+    vi.spyOn(dashboardApi, 'get').mockResolvedValue({ widgets: [] });
+    open();
+    expect(await screen.findByText('The schema suggests nothing to show.')).toBeInTheDocument();
+  });
+
+  it('shows a sentence when the dashboard cannot be loaded', async () => {
+    vi.spyOn(dashboardApi, 'get').mockRejectedValue(new Error('down'));
+    open();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to load the dashboard.');
+  });
+
+  it('asks again when Refresh is pressed', async () => {
+    const get = vi.spyOn(dashboardApi, 'get').mockResolvedValue({ widgets: [widget({})] });
+    open();
+    await screen.findByLabelText('Customers');
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await vi.waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+  });
+});
+<#
+    if (strip)
+    {
+#>
+@@@FILE <#= componentsFolder #>/__tests__/DashboardStrip.test.tsx@@@
+import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { dashboardApi } from '../../<#= apiFolder #>/dashboardApi';
+import { DashboardStrip } from '../DashboardStrip';
+
+describe('DashboardStrip', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('asks for the cards of its table and shows them above the grid', async () => {
+    const get = vi.spyOn(dashboardApi, 'get').mockResolvedValue({
+      widgets: [{ id: 'a', kind: 'count', title: 'Customers', table: 'Customer', route: 'customers', isMoney: false, points: [{ label: 'Rows', value: 3 }], rows: [] }]
+    });
+    render(<MemoryRouter><DashboardStrip table="Customer" /></MemoryRouter>);
+    expect(await screen.findByLabelText('Customers')).toBeInTheDocument();
+    expect(get).toHaveBeenCalledWith('Customer');
+  });
+
+  it('shows nothing when the dashboard cannot be read', async () => {
+    const get = vi.spyOn(dashboardApi, 'get').mockRejectedValue(new Error('down'));
+    const { container } = render(<MemoryRouter><DashboardStrip table="Customer" /></MemoryRouter>);
+    await vi.waitFor(() => expect(get).toHaveBeenCalled());
+    expect(container).toBeEmptyDOMElement();
+  });
+});
+<#
+    }
+#>
 <#
     if (strip)
     {
