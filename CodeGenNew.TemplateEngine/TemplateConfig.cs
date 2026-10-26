@@ -361,6 +361,8 @@ public enum PlanTableSet
     ScreenForm,
     /// <summary> The screens whose dialog also shows child grids. </summary>
     ScreenDetailMaster,
+    /// <summary> Every screen's dialog, with or without child grids (the desktop stacks keep a dialog even for a one-row table). </summary>
+    ScreenDialog,
     /// <summary> The tables the project's <c>SeedTables</c> names (<see cref="CodeGenNew.Core.DatabaseModel.SeedTables"/>). </summary>
     Seed,
     /// <summary> The tables whose API takes an input type and answers a transfer class (<see cref="CodeGenNew.Core.DatabaseModel.DtoTables"/>). </summary>

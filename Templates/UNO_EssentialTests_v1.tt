@@ -1,0 +1,29 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // UNO_EssentialTests_v1.tt
+    // Generates: <ProjectName>.Uno.Tests.csproj, FakeApi.cs, TestJson.cs and PlatformShims.cs   (no table, no database: an essentials group; the output folder is the test project's own folder, OutputUnoTests)
+    // The plain net10.0 project the per-table UNO_Test classes live in. It compiles the app's own view models, models and API clients as linked files, so the tests run on any machine with the .NET SDK: no window, no WinUI, no device.
+    // FakeApi stands in for the API: it answers lists, lookups and guards with nothing, echoes a create, accepts an update and a delete and remembers every write. TestJson is the JSON the tests read rows with; PlatformShims stands in for the two platform types a view model touches (Visibility and the WinRT currency formatter).
+    // Writes nothing unless the project sets DesktopTests=true. Settings: DesktopTests, OutputUnoTests, OutputUno, Auth. Full notes: Docs/TemplateNotes/UNO_Test_v1.md
+    // ==========================================================================================
+    if (Project.DesktopTests)
+    {
+        string appNamespace = Project.AppNamespace;
+        string testNamespace = appNamespace + ".Tests";
+        string appFolder = Path.GetRelativePath(Project.OutputFolderOf("unotests"), Project.OutputFolderOf("uno"));
+        string servicesNamespace = UnoNames.ServicesNamespace(Project);
+#>
+@@@FILE <#= Project.ProjectName ?? "MyApp" #>.Uno.Tests.csproj@@@
+<#= DesktopTestCode.Csproj(DesktopTestStack.Uno, Project, appFolder, testNamespace) #>@@@FILE FakeApi.cs@@@
+<#= DesktopTestCode.FakeApi(testNamespace, servicesNamespace, Project.Auth) #>
+@@@FILE TestJson.cs@@@
+<#= DesktopTestCode.JsonSupport(testNamespace) #>
+@@@FILE PlatformShims.cs@@@
+<#= DesktopTestCode.PlatformShims #>
+<#
+    }
+#>

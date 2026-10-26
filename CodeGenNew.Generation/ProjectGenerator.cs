@@ -218,6 +218,10 @@ public static class ProjectGenerator
             scope.Add("ApiTests");
         if (scope.Contains("Blazor"))
             scope.Add("BlazorTests");
+        if (scope.Contains("WinUI3"))
+            scope.Add("WinUI3Tests");
+        if (scope.Contains("Uno"))
+            scope.Add("UnoTests");
 
         var kept = new List<ManifestEntry>();
         foreach (var old in manifest.Entries)

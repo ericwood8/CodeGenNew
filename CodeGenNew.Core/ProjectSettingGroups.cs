@@ -27,7 +27,7 @@ public static class ProjectSettingGroups
         new("API", "This tab has docs, HTTP, fakers, validation, CSV, OData, EF configurations, production profile, telemetry, project docs, folder, port, and DTOs.",
             ["ApiDocs", "ApiHttp", "ApiFakers", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ProjectDocs", "ApiFolder", "ApiPort", "Dtos"]),
         new("Tests", "This tab has the generated test projects: the API integration tests, the Blazor page tests and the Rust crate tests.",
-            ["ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "RustTests"]),
+            ["ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "DesktopTests", "RustTests"]),
         new("Sign-in", "This tab has the API sign-in, the owned tables and claim names, and the user table the people sign in against.",
             ["ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns"]),
         new("Roles", "This tab has the roles that may read and the roles that may write, for every table and for single tables.",
@@ -39,7 +39,7 @@ public static class ProjectSettingGroups
         new("Web", "This tab has the React and Angular folders, Angular version, toasts, sign-in, the container's API variable, the list protocol and dev port.",
             ["ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "DevPort"]),
         new("Output", "This tab has Stacks (which front ends and APIs are generated), plan-also, the output folders, and the Rust crate and port.",
-            ["Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputUno", "OutputRust", "OutputPython", "OutputApiTests", "OutputBlazorTests", "RustCrateName", "RustPort", "OutputSql"]),
+            ["Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputUno", "OutputRust", "OutputPython", "OutputApiTests", "OutputBlazorTests", "OutputWinUI3Tests", "OutputUnoTests", "RustCrateName", "RustPort", "OutputSql"]),
         new("Build", "This tab has the build and test commands.",
             ["BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildUno", "BuildPython", "BuildRust", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestUno", "TestPython", "TestRust"]),
     ];

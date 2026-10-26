@@ -41,6 +41,10 @@ public static partial class ProjectBuilder
             return $"dotnet test \"{Path.GetRelativePath(project.OutputFolderOf("api"), project.OutputFolderOf("apitests"))}\" -v q";
         if (step == "test" && stack.EqualsIgnoreCase("Blazor") && project.BlazorTests)
             return $"dotnet test \"{Path.GetRelativePath(project.OutputFolderOf("blazor"), project.OutputFolderOf("blazortests"))}\" -v q";
+        if (step == "test" && stack.EqualsIgnoreCase("WinUI3") && project.DesktopTests)
+            return $"dotnet test \"{Path.GetRelativePath(project.OutputFolderOf("winui3"), project.OutputFolderOf("winui3tests"))}\" -v q";
+        if (step == "test" && stack.EqualsIgnoreCase("Uno") && project.DesktopTests)
+            return $"dotnet test \"{Path.GetRelativePath(project.OutputFolderOf("uno"), project.OutputFolderOf("unotests"))}\" -v q";
         return DefaultCommand(stack, step);
     }
 

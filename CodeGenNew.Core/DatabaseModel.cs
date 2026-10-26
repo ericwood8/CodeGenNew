@@ -117,4 +117,12 @@ public sealed record EfProviderInfo(string UseMethod, string Package, string? Pa
         SqlDialect.Sqlite => new("UseSqlite", "Microsoft.EntityFrameworkCore.Sqlite", null, "A file database: the connection string is Data Source=<file>, so there is no password."),
         _ => new("UseSqlServer", "Microsoft.EntityFrameworkCore.SqlServer", null, null)
     };
+
+    /// <summary> The NuGet package of the provider and the version the generated desktop apps and their test projects use. </summary>
+    public static (string Package, string Version) PackageVersion(SqlDialect dialect) => (For(dialect).Package, dialect switch
+    {
+        SqlDialect.PostgreSql => "10.0.0",
+        SqlDialect.MySql => "10.0.9",
+        _ => "10.0.12"
+    });
 }

@@ -1,0 +1,30 @@
+<#@ template language="C#" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.IO" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // WinUI3_EssentialTests_v1.tt
+    // Generates: <ProjectName>.WinUI3.Tests.csproj, TestDb.cs, TestJson.cs and PlatformShims.cs   (no table, no database: an essentials group; the output folder is the test project's own folder, OutputWinUI3Tests)
+    // The plain net10.0 project the per-table WinUI3_Test classes live in. It compiles the app's own view models, entities, repositories and context as linked files, so the tests run on any machine with the .NET SDK: no window, no WinUI, no device.
+    // TestDb is the app's own context over an in-memory SQLite database (foreign keys unchecked, so a row can be saved without its parents). TestJson is the JSON the tests read rows with; PlatformShims stands in for the two platform types a view model touches (Visibility and the WinRT currency formatter).
+    // Writes nothing unless the project sets DesktopTests=true. Settings: DesktopTests, OutputWinUI3Tests, OutputWinUI3, DatabaseProvider. Full notes: Docs/TemplateNotes/WinUI3_Test_v1.md
+    // ==========================================================================================
+    if (Project.DesktopTests)
+    {
+        string appNamespace = Project.AppNamespace;
+        string testNamespace = appNamespace + ".Tests";
+        string appFolder = Path.GetRelativePath(Project.OutputFolderOf("winui3tests"), Project.OutputFolderOf("winui3"));
+        string contextNamespace = Project.ContextNamespace ?? appNamespace + ".Data";
+        string contextType = Project.ContextName ?? "MyAppContext";
+#>
+@@@FILE <#= Project.ProjectName ?? "MyApp" #>.WinUI3.Tests.csproj@@@
+<#= DesktopTestCode.Csproj(DesktopTestStack.WinUI3, Project, appFolder, testNamespace) #>@@@FILE TestDb.cs@@@
+<#= DesktopTestCode.TestDb(testNamespace, contextNamespace, contextType) #>
+@@@FILE TestJson.cs@@@
+<#= DesktopTestCode.JsonSupport(testNamespace) #>
+@@@FILE PlatformShims.cs@@@
+<#= DesktopTestCode.PlatformShims #>
+<#
+    }
+#>

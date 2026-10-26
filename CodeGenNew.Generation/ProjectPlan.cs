@@ -37,6 +37,7 @@ public static class ProjectPlan
             PlanTableSet.SingleRowScreen => Screens().Where(OwnPage).ToList(),
             PlanTableSet.ScreenDetailMaster => Screens().Where(t => DatabaseModel.IsDetailMaster(t, project) && !(OneRow(t) && !stacks.Any(SingleRowPlan.KeepsDialogs))).ToList(),
             PlanTableSet.ScreenForm => Screens().Where(t => OneRow(t) || !DatabaseModel.IsDetailMaster(t, project)).ToList(),
+            PlanTableSet.ScreenDialog => Screens().ToList(),
             PlanTableSet.Seed => database.SeedTables(project),
             PlanTableSet.Dto => database.DtoTables(project),
             PlanTableSet.Junction => database.Tables.Where(t => t.IsJunctionTable).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),

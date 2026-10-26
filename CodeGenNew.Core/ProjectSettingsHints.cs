@@ -7,7 +7,7 @@ public static class ProjectSettingsHints
     /// <summary> The settings that are true or false: the settings screen shows a check box for each. </summary>
     public static IReadOnlySet<string> BooleanKeys { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiTestContainers", "BlazorTests", "RustTests", "ApiAuth", "Dtos", "Dashboard", "DashboardStrip", "Auth"
+        "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiTestContainers", "BlazorTests", "DesktopTests", "RustTests", "ApiAuth", "Dtos", "Dashboard", "DashboardStrip", "Auth"
     };
 
     /// <summary> The caption of a setting with the words apart: "DashboardStrip" -> "Dashboard Strip". </summary>
@@ -50,6 +50,7 @@ public static class ProjectSettingsHints
         ["ApiProduction"] = "The API project also gets a production profile (Problem Details, health checks at /health/live and /health/ready, rate limiting, response compression, security headers) and a Dockerfile. Nothing beyond ASP.NET Core is referenced.",
         ["ApiTelemetry"] = "The API project also gets OpenTelemetry traces, metrics and logs (Telemetry.cs) and references the OpenTelemetry packages. Nothing is sent until OTEL_EXPORTER_OTLP_ENDPOINT names a collector (environment variable or appsettings.json).",
         ["BlazorTests"] = "The plan also writes a bUnit test class per Blazor page (BLZ_Test) and a test project (MSTest and bUnit) beside the Blazor app: the page shows a row the server returns, Edit opens the dialog, Save sends the row, and ?edit=<key> opens a row. The API is a stand-in, so no database is needed.",
+        ["DesktopTests"] = "The plan also writes a test class per WinUI 3 and Uno dialog and a test project (MSTest) beside each app: the real view model refuses a new row with nothing filled in, saves a row it opened with every value it had, and refuses each rule of the form (a shape, a date later than today, an end before its start, a number that is not whole). WinUI 3 runs over an in-memory SQLite database made from the generated context, Uno over a stand-in for the API; no window and no server are needed. Regenerate the WinUI3 or Uno stack.",
         ["RustTests"] = "The plan also writes integration tests into the Rust crate (tests/api): a file per table, per junction table, and for the dashboard, the CSV routes and the gates when the project has them, with the helper they share. They run the router in process, so `cargo test` needs no server. SQLite tests run over a copy of the database file; PostgreSQL and MySQL need <PROJECT>_TEST_CONNECTION (a URL of a scratch copy), or a test says why it did nothing and passes.",
         ["ApiTestContainers"] = "With ApiTests and a PostgreSQL, MySQL or SQL Server database, the test project starts a throwaway container of that database (Testcontainers; Docker must be running) when <ProjectName>_TEST_CONNECTION is not set, fills it from ApiTestSchema and tests over it. SQLite needs no container.",
         ["ApiTestSchema"] = "comma-separated SQL scripts a test container is filled from, relative to the API project's folder, applied in the order listed (a folder means every .sql file in it by name): the create script of the database, then the routines the plan wrote when AccessMode is not Ef",
@@ -77,6 +78,8 @@ public static class ProjectSettingsHints
         ["TableWriteRoles"] = "With ApiAuth: the write roles of single tables, separated by ; (Holiday:Administrator;LeaveType:Administrator,Manager), instead of WriteRoles; Table: alone lets any signed-in person write it. Blank = WriteRoles for every table",
         ["GuardedColumns"] ="With ApiAuth and UserTable: columns only some people may change, separated by |: Table.Column; by Employee.IsManager (a yes/no column of the user table; administrators may too); stampBy Column; stampOn Column (set to the person and the time). Anyone else may save the row if the value is unchanged. Blank = none. Regenerate the API and the screens",
         ["OutputBlazorTests"] ="folder of the Blazor test project under the output folder; blank = <ProjectName>.Blazor.Tests",
+        ["OutputWinUI3Tests"] = "folder of the WinUI 3 view-model test project under the output folder; blank = <ProjectName>.WinUI3.Tests",
+        ["OutputUnoTests"] = "folder of the Uno view-model test project under the output folder; blank = <ProjectName>.Uno.Tests",
         ["OutputApiTests"] ="folder of the API test project under the output folder; blank = <ProjectName>.Api.Tests",
         ["ApiHttp"] = "The plan also writes a .http request file per table (API_Http).",
         ["ProjectDocs"] = "The plan also writes a data dictionary page per table and the ER diagram (MD_DataDictionary, MD_Erd).",

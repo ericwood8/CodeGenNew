@@ -1,0 +1,25 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // WinUI3_Test_v1.tt
+    // Generates: <Table>DetailViewModelTests.cs, or <Table>DetailMasterViewModelTests.cs for a table with child tables   (the output folder is the WinUI3 test project, OutputWinUI3Tests; the WinUI3_EssentialTests group writes the project around it)
+    // MSTest tests of the view model the WinUI3 dialog is written with, over an in-memory SQLite database made from the generated context: a new row with nothing filled in is refused with the first required field's sentence, a row opened and saved
+    // unchanged is saved with every value it had, and each rule the form has (a shape, a date later than today, an end date before its start, a number that is not whole) refuses a spoiled value.
+    // What is checked is decided in Core (DesktopTestPlan), the same for both desktop stacks. Writes nothing unless the project sets DesktopTests=true.
+    // Full notes: Docs/TemplateNotes/WinUI3_Test_v1.md
+    // ==========================================================================================
+    var plan = Project.DesktopTests ? DesktopTestPlan.For(Model, Project, DesktopTestStack.WinUI3) : null;
+    if (plan is not null)
+    {
+        string appNamespace = Project.AppNamespace;
+        string contextNamespace = Project.ContextNamespace ?? appNamespace + ".Data";
+        string entityNamespace = Project.EntityNamespace ?? appNamespace + ".Entities";
+        var usings = new List<string> { Project.ViewModelNamespace ?? appNamespace + ".ViewModels", entityNamespace, contextNamespace };
+        Write("@@@FILE " + plan.ViewModel + "Tests.cs@@@\n" + DesktopTestCode.TestClass(DesktopTestStack.WinUI3, plan, appNamespace + ".Tests", usings));
+    }
+#>

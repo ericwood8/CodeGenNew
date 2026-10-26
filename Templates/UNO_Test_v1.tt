@@ -1,0 +1,23 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // UNO_Test_v1.tt
+    // Generates: <Table>DetailViewModelTests.cs, or <Table>DetailMasterViewModelTests.cs for a table with child tables   (the output folder is the Uno test project, OutputUnoTests; the UNO_EssentialTests group writes the project around it)
+    // MSTest tests of the view model the Uno dialog is written with, over a stand-in for the API: a new row with nothing filled in is refused with the first required field's sentence, a row opened and saved
+    // unchanged is saved with every value it had, and each rule the form has (a shape, a date later than today, an end date before its start, a number that is not whole) refuses a spoiled value, and the sentence the dialog shows when the API refuses a save or cannot be reached.
+    // What is checked is decided in Core (DesktopTestPlan), the same for both desktop stacks. Writes nothing unless the project sets DesktopTests=true.
+    // Full notes: Docs/TemplateNotes/UNO_Test_v1.md
+    // ==========================================================================================
+    var plan = Project.DesktopTests ? DesktopTestPlan.For(Model, Project, DesktopTestStack.Uno) : null;
+    if (plan is not null)
+    {
+        string appNamespace = Project.AppNamespace;
+        var usings = new List<string> { Project.ViewModelNamespace ?? appNamespace + ".ViewModels", UnoNames.ModelsNamespace(Project), UnoNames.ServicesNamespace(Project) };
+        Write("@@@FILE " + plan.ViewModel + "Tests.cs@@@\n" + DesktopTestCode.TestClass(DesktopTestStack.Uno, plan, appNamespace + ".Tests", usings));
+    }
+#>
