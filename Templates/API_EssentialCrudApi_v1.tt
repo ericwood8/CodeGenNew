@@ -26,6 +26,8 @@
     string auth(string when) => options.Auth ? when : "";
     // the BeforeSaveAsync and BeforeDeleteAsync hooks run with ApiAuth, and also when the project lists a TreeTables, SoftDeleteTables or EffectiveDatedTables table (their checks are hooks)
     string hooks(string when) => options.Hooks ? when : "";
+    // TenantTable: a create writes the caller's tenant into a tenant-owned row and an update keeps it (the context filter hides the other tenants' rows)
+    string tenants(string when) => options.Tenants ? when : "";
     // WriteRoles: the write routes refuse a role the table's WriteRoles does not list (RoleGate, written by the Jwt group)
     string roles(string indent) => options.Auth ? indent + ".RequireWriteRoles(WriteRoles)\n" : "";
     // ReadRoles: the list, one row, find by name and the active list refuse a role the table's ReadRoles does not list (the lookup stays open for the drop-downs of other screens)
@@ -353,6 +355,28 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 
     /// <summary> The column that holds the owner of a row (<c>c =&gt; c.EmployeeId</c>) for a table the project lists in OwnedTables: a caller reads and changes only the rows of the owners the <see cref="IOwnerScope"/> allows (403 for another owner's row). Null: the rows belong to no one. </summary>
     protected virtual Expression<Func<TEntity, int>>? Owner => null;
+
+    /// <summary> The column that holds the tenant of a row (<c>c =&gt; c.TenantId</c>) for a tenant-owned table (TenantTable). The context already hides every other tenant's rows; a create writes the caller's tenant here and an update keeps it, so a row never moves to another tenant. </summary>
+    protected virtual Expression<Func<TEntity, int>>? Tenant => null;
+
+    private Action<TEntity, int>? _setTenant;
+
+    /// <summary> Writes the caller's tenant into <paramref name="row"/>; a caller who works in no tenant (a platform administrator) is refused, since a tenant-owned table has no row for them. </summary>
+    private IResult? StampTenant(TEntity row)
+    {
+        if (Tenant is null)
+            return null;
+        if (Http.RequestServices.GetRequiredService<ITenantScope>().TenantId is not int tenant)
+            return Results.Problem(statusCode: <#= HttpStatus.Forbidden #>, type: "<#= TenantWords.NoTenantType #>", title: "No tenant", detail: "<#= TenantWords.NoTenant #>");
+        if (_setTenant is null)
+        {
+            var column = Tenant;
+            var value = Expression.Parameter(typeof(int));
+            _setTenant = Expression.Lambda<Action<TEntity, int>>(Expression.Assign(column.Body, value), column.Parameters[0], value).Compile();
+        }
+        _setTenant(row, tenant);
+        return null;
+    }
 
     /// <summary> True for a table whose rows belong to the owner of a parent row (a time sheet's detail rows) and have no owner column of their own: <see cref="ScopeThroughParent"/> and <see cref="ParentOwnerAsync"/> say how. </summary>
     protected virtual bool OwnedThroughParent => false;
@@ -786,7 +810,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 <#
     }
 #>
-<#= hooks("        if (await BeforeSaveAsync(context, newRow, true) is { } refusedSave)\n            return refusedSave;\n\n") #>        var repo = NewRepo(context);
+<#= tenants("        if (StampTenant(newRow) is { } noTenant)\n            return noTenant;\n") #><#= hooks("        if (await BeforeSaveAsync(context, newRow, true) is { } refusedSave)\n            return refusedSave;\n\n") #>        var repo = NewRepo(context);
         if (KeyOf(newRow) is string chosen)
         {
             // a text key is typed by the person: it cannot be empty and cannot be one that exists
@@ -878,7 +902,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
         var repo = NewRepo(context);
         if (!await repo.ExistsAsync(id))
             return Results.NotFound(); // 404 error if there is no row with that id
-<#= hooks("        if (await BeforeSaveAsync(context, updatedRow, false) is { } refusedSave)\n            return refusedSave;\n") #><#
+<#= tenants("        if (StampTenant(updatedRow) is { } noTenant)\n            return noTenant;\n") #><#= hooks("        if (await BeforeSaveAsync(context, updatedRow, false) is { } refusedSave)\n            return refusedSave;\n") #><#
     if (dtos && Project.ApiValidation)
     {
 #>
@@ -1062,6 +1086,28 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
     /// <summary> The signed-in caller. </summary>
     protected System.Security.Claims.ClaimsPrincipal Caller => _http!.HttpContext!.User;
 
+    /// <summary> The column that holds the tenant of a row (<c>c =&gt; c.TenantId</c>) for a tenant-owned table (TenantTable). The context already hides every other tenant's rows; a create writes the caller's tenant here and an update keeps it, so a row never moves to another tenant. </summary>
+    protected virtual Expression<Func<TEntity, int>>? Tenant => null;
+
+    private Action<TEntity, int>? _setTenant;
+
+    /// <summary> Writes the caller's tenant into <paramref name="row"/>; a caller who works in no tenant (a platform administrator) is refused, since a tenant-owned table has no row for them. </summary>
+    private IResult? StampTenant(TEntity row)
+    {
+        if (Tenant is null)
+            return null;
+        if (_http!.HttpContext!.RequestServices.GetRequiredService<ITenantScope>().TenantId is not int tenant)
+            return Results.Problem(statusCode: <#= HttpStatus.Forbidden #>, type: "<#= TenantWords.NoTenantType #>", title: "No tenant", detail: "<#= TenantWords.NoTenant #>");
+        if (_setTenant is null)
+        {
+            var column = Tenant;
+            var value = Expression.Parameter(typeof(int));
+            _setTenant = Expression.Lambda<Action<TEntity, int>>(Expression.Assign(column.Body, value), column.Parameters[0], value).Compile();
+        }
+        _setTenant(row, tenant);
+        return null;
+    }
+
     /// <summary> The roles that may create, change and delete rows (the project's WriteRoles and TableWriteRoles, the administrator role among them); empty: any signed-in person. </summary>
     protected virtual IReadOnlyList<string> WriteRoles => [];
 
@@ -1242,7 +1288,7 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
         if (string.IsNullOrWhiteSpace(newRow.Name))
             return Results.Problem(statusCode: <#= HttpStatus.BadRequest #>, type: "<#= ProblemTypes.NameRequired #>", title: "Name is required", detail: "The name cannot be empty.");
 
-<#= hooks("        if (await BeforeSaveAsync(context, newRow, true) is { } refusedSave)\n            return refusedSave;\n\n") #><#
+<#= tenants("        if (StampTenant(newRow) is { } noTenant)\n            return noTenant;\n") #><#= hooks("        if (await BeforeSaveAsync(context, newRow, true) is { } refusedSave)\n            return refusedSave;\n\n") #><#
     if (children)
     {
 #>
@@ -1278,7 +1324,7 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
         var repo = NewRepo(context);
         if (!await repo.ExistsAsync(id))
             return Results.NotFound();
-<#= hooks("        if (await BeforeSaveAsync(context, updatedRow, false) is { } refusedSave)\n            return refusedSave;\n") #><#
+<#= tenants("        if (StampTenant(updatedRow) is { } noTenant)\n            return noTenant;\n") #><#= hooks("        if (await BeforeSaveAsync(context, updatedRow, false) is { } refusedSave)\n            return refusedSave;\n") #><#
     if (children)
     {
 #>

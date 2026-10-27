@@ -1,0 +1,40 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string apiNamespace = "MyApp.ApiService.Apis";
+    string contextType = "MyAppContext";
+    string[] usings = { };   // namespaces the generated file must "using" (the context's)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    contextType = Project.ContextName ?? contextType;
+    apiNamespace = Project.ApiNamespace ?? apiNamespace;
+    usings = Project.Usings ?? usings;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // API_TestTenants_v1.tt
+    // Generates: <Table>ApiTests.cs for the tenant table and for each tenant-owned Name and IsActive table   (the test project; see OutputRoot in API_TestTenants_v1.tt.config)
+    // API_Test writes no class for a Name and IsActive table, but a multi-tenant API (TenantTable) needs one: it proves that another tenant cannot read, change, delete or list a row, that a new row belongs to the
+    // caller's tenant whatever the body says, and that a caller in no tenant sees nothing; for the tenant table itself that only the caller's tenant is shown, that it takes no create or delete and that only a platform
+    // administrator onboards a tenant. A tenant-owned table with an ordinary key gets the same tests inside its API_Test class. Writes nothing without TenantTable, ApiAuth and ApiTests.
+    // Full notes: Docs/TemplateNotes/API_Tenants_v1.md
+    // ==========================================================================================
+
+    if (Project.ApiTests && Project.ApiAuth && TenantPlan.IsEnabled(Project))
+    {
+        var sb = new StringBuilder();
+        foreach (var table in Database.Tables.Where(t => !t.HasCrudApiOfAnyKey(Project) && TenantTests.HasClass(t, Project)).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
+        {
+            sb.Append("@@@FILE " + table.TableName + "ApiTests.cs@@@\n");
+            sb.Append(TenantTests.ClassText(table, Project));
+        }
+        Write(sb.ToString());
+    }
+#>

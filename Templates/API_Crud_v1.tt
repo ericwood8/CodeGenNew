@@ -43,6 +43,8 @@
         Error(logProblem);
     else if ((TreePlan.Problem(Model, Project) ?? SoftDeletePlan.Problem(Model, Project) ?? EffectiveDatePlan.Problem(Model, Project)) is { } shapeProblem)
         Error(shapeProblem);
+    else if (plan.IsTenantTable && (plan.HasGates || UserTable.PlanOf(Model, Project) is not null || RowShapePlan.Has(Model, Project)))
+        Error($"{Model.TableName} is the TenantTable: it takes no create and no delete, so it cannot also have gates, a row shape or be the user table.");
     else if (RowShapePlan.Has(Model, Project) && UserTable.PlanOf(Model, Project) is not null)
         Error($"TreeTables, SoftDeleteTables and EffectiveDatedTables cannot name the user table ({Model.TableName}): its API already checks every save and delete.");
 
@@ -291,6 +293,26 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
             }
 #>
     }
+<#
+        }
+        if (plan.TenantColumn is not null)
+        {
+#>
+
+    // TenantTable: the context shows only the caller's tenant's rows; CrudApi writes the caller's tenant into <#= plan.TenantColumn.CSharpName() #> on create and update.
+    protected override Expression<Func<<#= entity #>, int>>? Tenant => c => c.<#= plan.TenantColumn.CSharpName() #>;
+<#
+        }
+        if (plan.IsTenantTable)
+        {
+#>
+
+    // TenantTable: the context shows only the caller's own tenant. A tenant is created by POST <#= ApiRequests.Route(Model) #>/onboard and is switched off with its active flag, never deleted.
+    protected override Task<IResult?> BeforeSaveAsync(<#= contextType #> context, <#= entity #> row, bool isNew) =>
+        Task.FromResult<IResult?>(isNew ? Results.Problem(statusCode: <#= HttpStatus.Forbidden #>, type: "<#= TenantWords.OnboardingType #>", title: "Tenants are onboarded", detail: "<#= TenantWords.CreateByOnboarding #>") : null);
+
+    protected override Task<IResult?> BeforeDeleteAsync(<#= contextType #> context, <#= keyCSharp #> id) =>
+        Task.FromResult<IResult?>(Results.Problem(statusCode: <#= HttpStatus.Forbidden #>, type: "<#= TenantWords.OnboardingType #>", title: "Tenants are not deleted", detail: "<#= TenantWords.NeverDeleted #>"));
 <#
         }
         if (plan.ReadOnly)

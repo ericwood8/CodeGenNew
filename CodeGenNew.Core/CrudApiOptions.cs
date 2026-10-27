@@ -16,6 +16,7 @@ public sealed class CrudApiOptions
         Validation = project.ApiValidation;
         Auth = project.ApiAuth;
         Hooks = project.ApiAuth || RowShapePlan.Any(project);
+        Tenants = project.ApiAuth && TenantPlan.IsEnabled(project);
         // EditableChildren: a form saves the rows of some child tables together with the parent (ChildRows); written only when the project lists a child
         Children = project.EditableChildren.Length > 0;
         // Dtos: a table's API can take an input type and answer an output type (CS_DtoInput, CS_Dto) instead of its entity; the entity-typed classes stay for a table that does not
@@ -43,6 +44,9 @@ public sealed class CrudApiOptions
 
     /// <summary> Whether the base classes call BeforeSaveAsync and BeforeDeleteAsync: with ApiAuth, and when the project lists a tree, soft-delete or effective-dated table. </summary>
     public bool Hooks { get; }
+
+    /// <summary> Whether the base classes can write the caller's tenant into a tenant-owned row (TenantTable with ApiAuth). </summary>
+    public bool Tenants { get; }
     public bool Children { get; }
     public bool Dtos { get; }
 

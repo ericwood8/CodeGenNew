@@ -23,6 +23,9 @@
         string variable = new string(projectName.ToUpperInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray()) + "_TEST_CONNECTION";
         bool sqlite = Project.DatabaseDialect == SqlDialect.Sqlite;
         bool containers = Project.ApiTestContainers && !sqlite;
+        // TenantTable: the tests work in the first tenant of the database; TenantTestSupport (Tenants.cs, API_Tenants) finds it
+        bool tenants = Project.ApiAuth && TenantPlan.IsEnabled(Project);
+        string apiNamespace = Project.ApiNamespace ?? projectName + ".Api.Apis";
         string containerPackage = Project.DatabaseDialect switch { SqlDialect.PostgreSql => "Testcontainers.PostgreSql", SqlDialect.MySql => "Testcontainers.MySql", _ => "Testcontainers.MsSql" };
         string containerType = Project.DatabaseDialect switch { SqlDialect.PostgreSql => "PostgreSqlContainer", SqlDialect.MySql => "MySqlContainer", _ => "MsSqlContainer" };
         string containerBuild = Project.DatabaseDialect switch
@@ -156,6 +159,17 @@ public static class ApiFixture
 #>
 
     public static HttpClient Client { get; private set; } = null!;
+<#
+        if (tenants)
+        {
+#>
+
+    /// <summary> The tenant the tests work in (TenantTable), and another one when the database has two. </summary>
+    public static int? TenantId { get; private set; }
+    public static int? OtherTenantId { get; private set; }
+<#
+        }
+#>
     public static bool HasDatabase { get; private set; }
 
     [AssemblyInitialize]
@@ -212,10 +226,29 @@ public static class ApiFixture
         Environment.SetEnvironmentVariable("Bootstrap__AdminPassword", password);
         _factory = new WebApplicationFactory<Program>();
         Client = _factory.CreateClient();
+<#
+            if (!tenants)
+            {
+#>
         var login = await Client.PostAsJsonAsync("/api/auth/login", new { userName = AdminUserName, password });
         login.EnsureSuccessStatusCode();
         string token = (await login.Content.ReadFromJsonAsync<JsonObject>())!["token"]!.GetValue<string>();
         Client.DefaultRequestHeaders.Authorization = new("Bearer", token);
+<#
+            }
+            if (tenants)
+            {
+#>
+        // TenantTable: the people who sign in are rows of the database, so the tests make their tokens with the key of the run instead of signing in
+        // TenantTable: the tests work in the first tenant of the database (an administrator of it); the second one is for the tests that prove a tenant cannot reach another's rows
+        var tenantIds = await <#= apiNamespace #>.TenantTestSupport.FirstTenantsAsync(_factory.Services, 2);
+        TenantId = tenantIds.Count > 0 ? tenantIds[0] : null;
+        OtherTenantId = tenantIds.Count > 1 ? tenantIds[1] : null;
+        Client.Dispose();
+        Client = TenantId is int tenant ? ClientInTenant(tenant, "<#= Project.AuthAdminRole #>") : PlatformClient();
+<#
+            }
+#>
         HasDatabase = true;
 <#
         }
@@ -275,7 +308,50 @@ public static class ApiFixture
         {
             Issuer = "<#= projectName #>.Api",
             Audience = "<#= projectName #>",
-            Subject = new System.Security.Claims.ClaimsIdentity([new("sub", "role-test"), new("name", "role-test"), new("<#= Project.AuthRoleClaim #>", role)]),
+            Subject = new System.Security.Claims.ClaimsIdentity([new("sub", "role-test"), new("name", "role-test"), new("<#= Project.AuthRoleClaim #>", role)<#= tenants ? ", .. (TenantId is int roleTenant ? new[] { new System.Security.Claims.Claim(\"tenant\", roleTenant.ToString()) } : new System.Security.Claims.Claim[0])" : "" #>]),
+            Expires = DateTime.UtcNow.AddMinutes(30),
+            SigningCredentials = new Microsoft.IdentityModel.Tokens.SigningCredentials(
+                new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(_jwtKey)), Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256)
+        });
+        var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new("Bearer", token);
+        return client;
+    }
+
+<#
+        }
+#>
+<#
+        if (tenants)
+        {
+#>
+    public static IServiceProvider Services => _factory!.Services;
+
+    /// <summary> A client whose token is an administrator's in no tenant (a platform administrator): it is shown no tenant-owned row and is the one that may onboard a tenant. </summary>
+    public static HttpClient PlatformClient()
+    {
+        string token = new Microsoft.IdentityModel.JsonWebTokens.JsonWebTokenHandler().CreateToken(new Microsoft.IdentityModel.Tokens.SecurityTokenDescriptor
+        {
+            Issuer = "<#= projectName #>.Api",
+            Audience = "<#= projectName #>",
+            Subject = new System.Security.Claims.ClaimsIdentity([new("sub", "platform-test"), new("name", "platform-test"), new("<#= Project.AuthRoleClaim #>", "<#= Project.AuthAdminRole #>")]),
+            Expires = DateTime.UtcNow.AddMinutes(30),
+            SigningCredentials = new Microsoft.IdentityModel.Tokens.SigningCredentials(
+                new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(_jwtKey)), Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256)
+        });
+        var client = _factory!.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new("Bearer", token);
+        return client;
+    }
+
+    /// <summary> A client whose token says it works in this tenant with this role (made with the signing key of the run), for the tests of TenantTable. </summary>
+    public static HttpClient ClientInTenant(int tenantId, string role)
+    {
+        string token = new Microsoft.IdentityModel.JsonWebTokens.JsonWebTokenHandler().CreateToken(new Microsoft.IdentityModel.Tokens.SecurityTokenDescriptor
+        {
+            Issuer = "<#= projectName #>.Api",
+            Audience = "<#= projectName #>",
+            Subject = new System.Security.Claims.ClaimsIdentity([new("sub", "tenant-test"), new("name", "tenant-test"), new("<#= Project.AuthRoleClaim #>", role), new("tenant", tenantId.ToString())]),
             Expires = DateTime.UtcNow.AddMinutes(30),
             SigningCredentials = new Microsoft.IdentityModel.Tokens.SigningCredentials(
                 new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(_jwtKey)), Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256)

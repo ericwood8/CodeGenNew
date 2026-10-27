@@ -17,7 +17,12 @@
     // Full notes: Docs/TemplateNotes/API_Test_v1.md
     // ==========================================================================================
 
-    if (!Model.HasCrudApiOfAnyKey(Project))
+    if (TenantTests.HasClass(Model, Project))
+    {
+        // the tenant table (no create, no delete, only the caller's tenant) and a tenant-owned Name and IsActive table have a test class of their own (TenantTests, Core)
+        Write(TenantTests.ClassText(Model, Project));
+    }
+    else if (!Model.HasCrudApiOfAnyKey(Project))
     {
         Error($"API_Test writes tests for the tables API_Crud writes an API for (a single int, uniqueidentifier or text key, not an enum or a name/active table), and [{Model.SchemaName}].[{Model.TableName}] is not one.");
     }
@@ -388,6 +393,8 @@ public class <#= singular #>ApiTests
         }
         // TreeTables, SoftDeleteTables and EffectiveDatedTables: the tests of the table's shape (RowShapeTests, Core)
         Write(RowShapeTests.Methods(plan, Model, Project));
+        // TenantTable: another tenant reaches none of the table's rows (TenantTests, Core)
+        Write(TenantTests.Methods(plan.KeyJson, Model, Project));
 #>
 }
 <#

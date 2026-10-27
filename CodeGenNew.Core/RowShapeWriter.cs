@@ -83,7 +83,11 @@ public static class RowShapeWriter
             string clearBy = soft.DeletedBy is null ? "" : $"\n                .SetProperty(x => x.{soft.DeletedBy.CSharpName()}, (string?)null)";
             string order = soft.DeletedOn is null ? ".OrderByDescending(x => x." + key.CSharpName() + ")" : $".OrderByDescending(x => x.{soft.DeletedOn.CSharpName()}).ThenByDescending(x => x.{key.CSharpName()})";
             string byLine = soft.DeletedBy is null ? "" : $"        string? by = caller?.Identity?.Name is {{ }} name ? (name.Length <= {(soft.DeletedBy.CharacterLength > 0 ? soft.DeletedBy.CharacterLength : 1000000)} ? name : name[..{(soft.DeletedBy.CharacterLength > 0 ? soft.DeletedBy.CharacterLength : 1000000)}]) : null;\n";
-            o.Append(Fill(Soft, Pairs("§FLAG", flag, "§SETON", setOn, "§SETBY", setBy, "§CLEARON", clearOn, "§CLEARBY", clearBy, "§ORDER", order, "§BYLINE", byLine, "§NOWLINE", soft.DeletedOn is null ? "" : "        var now = DateTime.Now;\n", "§W_NOTDELETED", RowShapeWords.NotDeleted)));
+            // IgnoreQueryFilters drops the tenant filter with the soft-delete one, so a tenant-owned table asks for its tenant again
+            var tenant = TenantPlan.OwnedBy(table, project);
+            string tenantWhere = tenant is null ? "" : $".Where(x => x.{tenant.Column.CSharpName()} == context.CurrentTenantId)";
+            string tenantAnd = tenant is null ? "" : $" && x.{tenant.Column.CSharpName()} == context.CurrentTenantId";
+            o.Append(Fill(Soft, Pairs("§TENANTWHERE", tenantWhere, "§TENANTAND", tenantAnd, "§FLAG", flag, "§SETON", setOn, "§SETBY", setBy, "§CLEARON", clearOn, "§CLEARBY", clearBy, "§ORDER", order, "§BYLINE", byLine, "§NOWLINE", soft.DeletedOn is null ? "" : "        var now = DateTime.Now;\n", "§W_NOTDELETED", RowShapeWords.NotDeleted)));
             delete.Append("        return await SoftDeleteAsync(context, id, caller);\n");
             maps.Append(Fill("        app.MapGet(\"§R/deleted\", DeletedAsync)§ADMIN;\n        app.MapPost(\"§R/{id}/restore\", RestoreAsync)§ADMIN;\n"));
         }
@@ -247,16 +251,16 @@ public sealed record TreeNode(long Id, long? ParentId, int Depth, bool HasChildr
 
     /// <summary> The rows that were soft deleted, the last deleted first. </summary>
     public static async Task<IResult> DeletedAsync(§CTX context) =>
-        Results.Ok(await context.Set<§T>().IgnoreQueryFilters().AsNoTracking().Where(x => x.§FLAG)§ORDER.Take(500).ToListAsync());
+        Results.Ok(await context.Set<§T>().IgnoreQueryFilters().AsNoTracking().Where(x => x.§FLAG)§TENANTWHERE§ORDER.Take(500).ToListAsync());
 
     /// <summary> A deleted row comes back; 404 when there is no such row, 409 when it is not deleted. </summary>
     public static async Task<IResult> RestoreAsync(§CTX context, §KT id)
     {
-        int changed = await context.Set<§T>().IgnoreQueryFilters().Where(x => x.§K == id && x.§FLAG)
+        int changed = await context.Set<§T>().IgnoreQueryFilters().Where(x => x.§K == id && x.§FLAG§TENANTAND)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(x => x.§FLAG, false)§CLEARON§CLEARBY);
         if (changed == 0)
-            return await context.Set<§T>().IgnoreQueryFilters().AnyAsync(x => x.§K == id) ? RowShapeProblems.NotDeleted("§W_NOTDELETED") : Results.NotFound();
+            return await context.Set<§T>().IgnoreQueryFilters().AnyAsync(x => x.§K == id§TENANTAND) ? RowShapeProblems.NotDeleted("§W_NOTDELETED") : Results.NotFound();
         return Results.Ok(await context.Set<§T>().AsNoTracking().FirstAsync(x => x.§K == id));
     }
 

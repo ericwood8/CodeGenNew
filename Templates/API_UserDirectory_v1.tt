@@ -33,6 +33,11 @@
     if (plan.Admin != null)
         roleExpression = "row.Admin == true ? AuthNames.AdminRole : (" + roleExpression + ")";
 
+    // TenantTable: nobody works in a tenant yet when they sign in, so the user table is read without its query filter (the tenant one); a soft-deleted person still cannot sign in
+    bool tenancy = Project.ApiAuth && TenantPlan.IsEnabled(Project);
+    string filters = tenancy ? ".IgnoreQueryFilters()" : "";
+    string notDeleted = tenancy && SoftDeletePlan.For(plan.Table, Project) is { } soft ? $".Where(u => !u.{soft.Flag.CSharpName()})" : "";
+
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
 
@@ -51,7 +56,7 @@
     Line("    public async Task<DirectoryUser?> FindAsync(string userName, CancellationToken cancellationToken = default)");
     Line("    {");
     Line("        string name = userName.Trim();");
-    Line($"        var row = await _context.Set<{entity}>().AsNoTracking()");
+    Line($"        var row = await _context.Set<{entity}>(){filters}.AsNoTracking(){notDeleted}");
     Line($"            .Where(u => u.{P(plan.UserName)} == name && u.{P(plan.PasswordHash)} != null && u.{P(plan.PasswordHash)} != \"\")");
     Line("            .Select(u => new");
     Line("            {");
@@ -70,7 +75,7 @@
     Line("    public async Task<bool> SetPasswordAsync(string userName, string password, CancellationToken cancellationToken = default)");
     Line("    {");
     Line("        string name = userName.Trim();");
-    Line($"        var row = await _context.Set<{entity}>().FirstOrDefaultAsync(u => u.{P(plan.UserName)} == name, cancellationToken);");
+    Line($"        var row = await _context.Set<{entity}>(){filters}{notDeleted}.FirstOrDefaultAsync(u => u.{P(plan.UserName)} == name, cancellationToken);");
     Line("        if (row is null)");
     Line("            return false;");
     Line($"        row.{P(plan.PasswordHash)} = PasswordService.Hash(password);");

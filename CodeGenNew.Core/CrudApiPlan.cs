@@ -88,6 +88,9 @@ public sealed class CrudApiPlan
         HasGates = GatePlan.HasRules(project, model);
 
         // TreeTables, SoftDeleteTables and EffectiveDatedTables (API_RowShapes): the table's checks run before a row is saved and before it is deleted.
+        // TenantTable: a tenant-owned table writes the caller's tenant into the row; the tenant table itself takes no create and no delete
+        TenantColumn = TenantPlan.OwnedBy(model, project)?.Column;
+        IsTenantTable = project.ApiAuth && TenantPlan.IsTenantTable(model, project);
         RowShapeSave = RowShapeWriter.HasSaveCheck(model, project);
         RowShapeDelete = RowShapeWriter.HasDeleteCheck(model, project);
 
@@ -161,6 +164,12 @@ public sealed class CrudApiPlan
     public bool HasGates { get; }
 
     /// <summary> Whether the API calls <c>&lt;Table&gt;Shape.CheckSaveAsync</c> before a save (a tree or an effective-dated table). </summary>
+    /// <summary> The column that holds the tenant of a row of a tenant-owned table (TenantTable), or null. </summary>
+    public ColumnModel? TenantColumn { get; }
+
+    /// <summary> Whether this is the table of tenants (TenantTable): no create, no delete, and only the caller's own tenant is visible. </summary>
+    public bool IsTenantTable { get; }
+
     public bool RowShapeSave { get; }
 
     /// <summary> Whether the API calls <c>&lt;Table&gt;Shape.CheckDeleteAsync</c> before a delete (a tree or a soft-delete table). </summary>

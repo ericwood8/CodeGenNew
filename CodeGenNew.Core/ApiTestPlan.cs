@@ -58,7 +58,7 @@ public sealed class ApiTestPlan
         // the parents a row of this table points at whose delete rule refuses the delete while a row uses them: the parent's own DELETE must answer 400, so a screen can say "in use"
         UsedParents = BodyColumns.Where(c => !c.IsPrimaryKey)
             .Select(c => (Column: c, Key: model.ForeignKeys.FirstOrDefault(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name && f.ReferencedColumns.Count == 1)))
-            .Where(x => x.Key is not null && x.Key.DeleteRule.RefusesInUse() && ParentRoute(x.Column, out string _).Length > 0 && !project.NoApiFor(x.Key.ReferencedTable, x.Key.ReferencedLookupShape))
+            .Where(x => x.Key is not null && !(project.ApiAuth && project.TenantTable is { } tenantName && tenantName.EqualsIgnoreCase(x.Key.ReferencedTable)) && x.Key.DeleteRule.RefusesInUse() && ParentRoute(x.Column, out string _).Length > 0 && !project.NoApiFor(x.Key.ReferencedTable, x.Key.ReferencedLookupShape))
             .Take(3).Select(x => new ApiTestUsedParent(x.Column, x.Key!, ParentRoute(x.Column, out string _))).ToList();
 
         // limits the validators enforce, for the 400 tests

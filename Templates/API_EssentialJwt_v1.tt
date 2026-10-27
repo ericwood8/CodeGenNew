@@ -34,16 +34,25 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
 /// <summary> The body of POST /api/auth/login. </summary>
-public record LoginRequest(string? UserName, string? Password);
+public record LoginRequest(string? UserName, string? Password, int? TenantId = null);
 
 /// <summary> Who signed in, as the front end shows it: the name, the role and the owner id (the person's employee id) when the user has one. </summary>
-public record AuthUser(string Name, string? Role, int? OwnerId);
+public record AuthUser(string Name, string? Role, int? OwnerId, int? TenantId = null);
 
 /// <summary> What POST /api/auth/login answers: the bearer token, when it stops being good and who it is for. </summary>
 public record LoginResponse(string Token, DateTime ExpiresUtc, AuthUser User);
 
 /// <summary> A person who can sign in. <see cref="PasswordHash"/> is what <see cref="PasswordService.Hash"/> made; <see cref="Role"/> and <see cref="OwnerId"/> go into the token. </summary>
 public record DirectoryUser(string UserName, string PasswordHash, string? Role, int? OwnerId);
+
+/// <summary> What a contributor adds to a sign-in: claims, a different role, the tenant the person works in (TenantTable), or a refusal that answers the request instead. </summary>
+public record LoginClaims(IReadOnlyList<Claim>? Claims = null, string? Role = null, int? TenantId = null, IResult? Refusal = null);
+
+/// <summary> Something that adds to the token of a person who just proved who they are (the tenant and the role in it, TenantTable). Register any number of them; the default registers none. </summary>
+public interface ILoginClaims
+{
+    Task<LoginClaims> ForAsync(DirectoryUser user, LoginRequest request, CancellationToken cancellationToken = default);
+}
 
 /// <summary> Where the people who can sign in are kept. Register your own (a user table) before AddGeneratedAuth; the default knows only the bootstrap administrator. </summary>
 public interface IUserDirectory
@@ -241,7 +250,18 @@ public static class AuthEndpoints
 
         throttle.Succeeded(key);
         var claims = new List<Claim> { new("sub", user.UserName), new(AuthNames.NameClaim, user.UserName) };
-        if (!string.IsNullOrEmpty(user.Role)) claims.Add(new Claim(AuthNames.RoleClaim, user.Role));
+        string? role = user.Role;
+        int? tenantId = null;
+        foreach (var contributor in http.RequestServices.GetServices<ILoginClaims>())
+        {
+            var extra = await contributor.ForAsync(user, request, http.RequestAborted);
+            if (extra.Refusal is not null)
+                return extra.Refusal;
+            if (extra.Claims is not null) claims.AddRange(extra.Claims);
+            role = extra.Role ?? role;
+            tenantId ??= extra.TenantId;
+        }
+        if (!string.IsNullOrEmpty(role)) claims.Add(new Claim(AuthNames.RoleClaim, role));
         if (user.OwnerId is int owner) claims.Add(new Claim(AuthNames.OwnerClaim, owner.ToString()));
 
         DateTime expires = DateTime.UtcNow.AddMinutes(jwt.ExpiresMinutes);
@@ -253,7 +273,7 @@ public static class AuthEndpoints
             Expires = expires,
             SigningCredentials = new SigningCredentials(AuthSetup.SigningKey(jwt), SecurityAlgorithms.HmacSha256)
         });
-        return Results.Ok(new LoginResponse(token, expires, new AuthUser(user.UserName, user.Role, user.OwnerId)));
+        return Results.Ok(new LoginResponse(token, expires, new AuthUser(user.UserName, role, user.OwnerId, tenantId)));
     }
 }
 @@@FILE Apis/OwnerScope.cs@@@

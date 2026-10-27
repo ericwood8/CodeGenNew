@@ -2,6 +2,7 @@
 <#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
 <#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
 <#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
 <#@ import namespace="System.Text" #>
 <#@ import namespace="CodeGenNew.Core" #>
 <#
@@ -44,8 +45,25 @@
     // PostgreSQL array, interval, range and geometric columns and MySQL spatial columns: the entity holds their text, and a converter per property says how the database stores it.
     var textColumns = contextTables.SelectMany(t => t.Columns.Where(c => TextConversion.Of(c) is not null).Select(c => (Table: t, Column: c))).ToList();
     var helpers = TextConversion.Helpers(textColumns.Select(x => x.Column));
-    // SoftDeleteTables: a flagged row is hidden from every read (a query filter on the entity); the table's API reads the flagged rows with IgnoreQueryFilters
-    var softTables = contextTables.Select(t => SoftDeletePlan.For(t, Project)).OfType<SoftDeleteTable>().ToList();
+    // One query filter per entity (EF allows one): SoftDeleteTables hides a flagged row from every read (the table's API reads the flagged rows with IgnoreQueryFilters), and TenantTable limits a tenant-owned table
+    // to the caller's tenant (CurrentTenantId below); the tenant table itself shows only the caller's own tenant.
+    var tenantOwned = TenantPlan.OwnedTables(Database, Project).ToDictionary(o => o.Table.TableName, o => o.Column, StringComparer.OrdinalIgnoreCase);
+    var tenantTable = Project.ApiAuth ? TenantPlan.TenantTableOf(Database, Project) : null;
+    var tenantKey = tenantTable is null ? null : TenantPlan.KeyOf(tenantTable);
+    bool tenancy = tenantKey is not null;
+    var filterLines = new List<string>();
+    foreach (var table in contextTables)
+    {
+        var conditions = new List<string>();
+        if (SoftDeletePlan.For(table, Project) is { } soft)
+            conditions.Add($"!e.{soft.Flag.CSharpName()}");
+        if (tenancy && tenantOwned.TryGetValue(table.TableName, out var tenantColumn))
+            conditions.Add($"e.{tenantColumn.CSharpName()} == CurrentTenantId");
+        else if (tenancy && table == tenantTable)
+            conditions.Add($"e.{tenantKey!.CSharpName()} == CurrentTenantId");
+        if (conditions.Count > 0)
+            filterLines.Add($"        modelBuilder.Entity<{table.TableName}>().HasQueryFilter(e => {string.Join(" && ", conditions)});");
+    }
     if (Database.Dialect == SqlDialect.Sqlite || textColumns.Count > 0)
         Line("using Microsoft.EntityFrameworkCore.Storage.ValueConversion;");
     foreach (string u in helpers.Usings)
@@ -73,6 +91,16 @@
     Line($"    public {contextType}(DbContextOptions<{contextType}> options) : base(options)");
     Line("    {");
     Line("    }");
+    if (tenancy)
+    {
+        Line();
+        Line("    private readonly ITenantScope? _tenant;");
+        Line();
+        Line($"    public {contextType}(DbContextOptions<{contextType}> options, ITenantScope tenant) : base(options) => _tenant = tenant;");
+        Line();
+        Line("    /// <summary> The tenant the caller works in (TenantTable); null for a caller in no tenant (a platform administrator) and for a context made without the scope, which then sees no tenant-owned row. </summary>");
+        Line("    public int? CurrentTenantId => _tenant?.TenantId;");
+    }
     if (Database.Dialect == SqlDialect.PostgreSql)
     {
         Line();
@@ -107,18 +135,18 @@
         Line("    protected override void OnModelCreating(ModelBuilder modelBuilder)");
         Line("    {");
         Line($"        modelBuilder.ApplyConfigurationsFromAssembly(typeof({contextType}).Assembly);");
-        foreach (var soft in softTables)
-            Line($"        modelBuilder.Entity<{soft.Table.TableName}>().HasQueryFilter(e => !e.{soft.Flag.CSharpName()});");
+        foreach (string filter in filterLines)
+            Line(filter);
         Line("        OnModelCreatingPartial(modelBuilder);");
         Line("    }");
         Line();
         Line("    partial void OnModelCreatingPartial(ModelBuilder modelBuilder);");
     }
-    else if (composite.Count > 0 || textColumns.Count > 0 || softTables.Count > 0)
+    else if (composite.Count > 0 || textColumns.Count > 0 || filterLines.Count > 0)
     {
         Line();
-        if (softTables.Count > 0)
-            Line("    // SoftDeleteTables: a row whose flag is set is hidden from every read; the API's deleted and restore routes ignore the filter.");
+        if (filterLines.Count > 0)
+            Line("    // SoftDeleteTables hides a flagged row and TenantTable limits a row to the caller's tenant, in every read; the API's deleted, restore and onboarding routes say IgnoreQueryFilters.");
         if (composite.Count > 0)
             Line("    // A composite primary key cannot be said with an attribute, so the key of each junction table is named here.");
         if (textColumns.Count > 0)
@@ -130,8 +158,8 @@
             Line($"        modelBuilder.Entity<{table.TableName}>().HasKey(e => new {{ {string.Join(", ", table.PrimaryKeyColumns.Select(c => "e." + (c.IsCSharpReservedWordName ? "@" : "") + c.Name))} }});");
         foreach (var (table, column) in textColumns)
             Line($"        modelBuilder.Entity<{table.TableName}>().Property(e => e.{(column.IsCSharpReservedWordName ? "@" : "")}{column.Name}).HasConversion({TextConversion.Of(column)!.Expression}){(TextConversion.Of(column)!.ColumnType is { } columnType ? $".HasColumnType({CSharpText.Quote(columnType)})" : "")};");
-        foreach (var soft in softTables)
-            Line($"        modelBuilder.Entity<{soft.Table.TableName}>().HasQueryFilter(e => !e.{soft.Flag.CSharpName()});");
+        foreach (string filter in filterLines)
+            Line(filter);
         Line("        OnModelCreatingPartial(modelBuilder);");
         Line("    }");
         Line();
@@ -169,6 +197,23 @@
     Line("        }");
     Line("    }");
     Line("}");
+    if (tenancy)
+    {
+        Line();
+        Line("/// <summary> The tenant the caller works in: the claim of their token (the sign-in puts it there). The context reads it to filter every tenant-owned table. Register your own to take the tenant from elsewhere (a host name). </summary>");
+        Line("public interface ITenantScope");
+        Line("{");
+        Line("    int? TenantId { get; }");
+        Line("}");
+        Line();
+        Line("/// <summary> The default scope: the <see cref=\"ClaimName\"/> claim of the signed-in caller. </summary>");
+        Line("public class ClaimsTenantScope(Microsoft.AspNetCore.Http.IHttpContextAccessor accessor) : ITenantScope");
+        Line("{");
+        Line("    public const string ClaimName = \"tenant\";");
+        Line();
+        Line("    public int? TenantId => int.TryParse(accessor.HttpContext?.User.FindFirst(ClaimName)?.Value, out int id) ? id : null;");
+        Line("}");
+    }
     if (textColumns.Count > 0)
     {
         Line();
