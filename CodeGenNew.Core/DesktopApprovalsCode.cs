@@ -18,8 +18,16 @@ public static class DesktopApprovalsCode
     {
         var o = new StringBuilder();
         o.Append($"namespace {servicesNamespace};\n\n");
-        o.Append(Fill(SupportText, ("§NONE", ApprovalWords.NoSuchRow)));
+        o.Append(Fill(SupportText, ("§NONE", ApprovalWords.NoSuchRow), ("§PANELSTATUS", ApprovalScreens.PanelStatusCSharp())));
         return o.ToString();
+    }
+
+    /// <summary> The lines of a dialog's or page's constructor that put <c>ApprovalPanel</c> in the element named <c>ApprovalHost</c> when a saved row (<paramref name="row"/> is not null) is shown,
+    /// and keep it in <c>_approval</c> so the owner can wait for <c>WhenIdle</c>. <paramref name="turn"/> is the argument that makes the panel's calls take turns with the owner's (empty for none). </summary>
+    public static string PanelLines(string indent, string row, string idProperty, string table, string source, string tables, string turn)
+    {
+        string args = $"{source}, {tables}.First(t => t.Table == \"{table}\"), {row}.{idProperty}" + (turn.Length > 0 ? ", " + turn : "");
+        return $"{indent}if ({row} is not null)\n{indent}{{\n{indent}    _approval = new ApprovalPanel({args});\n{indent}    ApprovalHost.Children.Add(_approval);\n{indent}}}\n";
     }
 
     public static string TablesArray(IReadOnlyList<ApprovalScreenTable> tables) =>
@@ -34,7 +42,8 @@ public static class DesktopApprovalsCode
             ("§ROWLABEL", ApprovalWords.RowLabel), ("§REASONLABEL", ApprovalWords.ReasonLabel), ("§NOTELABEL", ApprovalWords.NoteLabel), ("§REQUESTBUTTON", ApprovalWords.Request),
             ("§WITHDRAWBUTTON", ApprovalWords.Withdraw), ("§APPROVEBUTTON", ApprovalWords.Approve), ("§REJECTBUTTON", ApprovalWords.Reject), ("§HISTORYBUTTON", ApprovalWords.History),
             ("§REFRESH", ApprovalWords.Refresh), ("§NOHISTORY", ApprovalWords.NoHistory), ("§LOADFAILED", ApprovalWords.LoadFailed), ("§NEEDROW", ApprovalWords.NeedRow),
-            ("§REQUESTED", ApprovalWords.Requested), ("§WITHDRAWN", ApprovalWords.Withdrawn), ("§APPROVED", ApprovalWords.Approved), ("§REJECTED", ApprovalWords.Rejected));
+            ("§REQUESTED", ApprovalWords.Requested), ("§WITHDRAWN", ApprovalWords.Withdrawn), ("§APPROVED", ApprovalWords.Approved), ("§REJECTED", ApprovalWords.Rejected),
+            ("§PANELHEADING", ApprovalWords.PanelHeading), ("§PANELLOADFAILED", ApprovalWords.PanelLoadFailed), ("§PENDINGSTATUS", ApprovalWords.PendingStatus));
 
     /// <summary> The in-process rules of every approval table: <c>ApprovalService</c> and the hooks. </summary>
     public static string Service(ApprovalPlan plan, IReadOnlyList<ApprovalScreenTable> tables, string servicesNamespace, string contextType, string[] usings, bool includeCaller)
@@ -96,6 +105,9 @@ public class ApprovalView
     public string? DecidedBy { get; set; }
     public DateTime? DecidedOn { get; set; }
     public string? DecisionNote { get; set; }
+
+    /// <summary> The one line a panel shows for this request cycle. </summary>
+    public string PanelStatus => §PANELSTATUS;
 }
 
 /// <summary> A table that has approvals: the table, the words for it and the route under /api. </summary>
@@ -346,6 +358,83 @@ internal sealed class ApprovalSection : StackPanel
                 Text = $"Revision {h.Revision}: {h.Status}, requested by {h.RequestedBy} on {h.RequestedOn:g}" + (string.IsNullOrEmpty(h.Reason) ? "" : $" ({h.Reason})")
                     + (h.DecidedBy is null ? "" : $", decided by {h.DecidedBy} on {h.DecidedOn:g}") + (string.IsNullOrEmpty(h.DecisionNote) ? "" : $": {h.DecisionNote}")
             });
+    }
+}
+
+/// <summary> The approval of one saved row, on its edit form: the latest request, with Request while none waits and Withdraw while one does. The rules say who may do what. <c>turn</c> lets the
+/// caller make the panel's calls take turns with its own (the WinUI3 apps share one context between the dialog and the panel); <see cref="WhenIdle"/> is the last call, for a dialog that waits before it lets go of the context. </summary>
+public sealed class ApprovalPanel : StackPanel
+{
+    private readonly IApprovalsSource _source;
+    private readonly ApprovalTable _table;
+    private readonly int _id;
+    private readonly Func<Func<Task>, Task> _turn;
+    private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly StackPanel _requestRow = new() { Orientation = Orientation.Horizontal, Spacing = 8, Visibility = Visibility.Collapsed };
+    private readonly TextBox _reason = new() { Width = 280 };
+    private readonly Button _withdraw = new() { Content = "§WITHDRAWBUTTON", Visibility = Visibility.Collapsed };
+    private readonly TextBlock _message = new() { TextWrapping = TextWrapping.Wrap };
+
+    public Task WhenIdle { get; private set; } = Task.CompletedTask;
+
+    public ApprovalPanel(IApprovalsSource source, ApprovalTable table, int id, Func<Func<Task>, Task>? turn = null)
+    {
+        _source = source;
+        _table = table;
+        _id = id;
+        _turn = turn ?? (work => work());
+        Spacing = 8;
+        AutomationProperties.SetName(this, "§PANELHEADING");
+        AutomationProperties.SetName(_reason, "§REASONLABEL");
+
+        var request = new Button { Content = "§REQUESTBUTTON" };
+        request.Click += async (_, _) => await Track(ActAsync(() => _source.RequestAsync(_table.Table, _id, _reason.Text), "§REQUESTED"));
+        _withdraw.Click += async (_, _) => await Track(ActAsync(() => _source.WithdrawAsync(_table.Table, _id), "§WITHDRAWN"));
+        _requestRow.Children.Add(new TextBlock { Text = "§REASONLABEL", VerticalAlignment = VerticalAlignment.Center });
+        _requestRow.Children.Add(_reason);
+        _requestRow.Children.Add(request);
+
+        Children.Add(new TextBlock { Text = "§PANELHEADING", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+        Children.Add(_status);
+        Children.Add(_requestRow);
+        Children.Add(_withdraw);
+        Children.Add(_message);
+        Loaded += async (_, _) => await Track(RefreshAsync());
+    }
+
+    private Task Track(Task call) => WhenIdle = call;
+
+    private async Task RefreshAsync()
+    {
+        try
+        {
+            List<ApprovalView> cycles = [];
+            await _turn(async () => cycles = await _source.HistoryAsync(_table.Table, _id));
+            var latest = cycles.OrderByDescending(c => c.Revision).FirstOrDefault();
+            _status.Text = latest is null ? "§NOHISTORY" : latest.PanelStatus;
+            bool pending = latest?.Status == "§PENDINGSTATUS";
+            _requestRow.Visibility = pending ? Visibility.Collapsed : Visibility.Visible;
+            _withdraw.Visibility = pending ? Visibility.Visible : Visibility.Collapsed;
+        }
+        catch (Exception ex) when (ex is ApprovalRefused or System.Net.Http.HttpRequestException)
+        {
+            _message.Text = "§PANELLOADFAILED";
+        }
+    }
+
+    private async Task ActAsync(Func<Task> call, string done)
+    {
+        try
+        {
+            await _turn(call);
+            _message.Text = done;
+            _reason.Text = "";
+            await RefreshAsync();
+        }
+        catch (ApprovalRefused ex)
+        {
+            _message.Text = ex.Message;
+        }
     }
 }
 """;

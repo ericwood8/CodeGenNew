@@ -71,6 +71,7 @@
         string title = form.Title;
         string keyProp = keyColumn.Name;
         bool textKey = form.TypedKey;
+        string? approvalSegment = ApprovalScreens.PanelSegment(Model, Project);   // a table of RowApprovals: its saved row's dialog carries the approval panel (UNO_Approvals writes it)
 
         var shown = form.Columns;
 
@@ -165,13 +166,13 @@
         {
 #>
         </TabView>
-    </StackPanel>
+<#= approvalSegment is not null ? "        <StackPanel x:Name=\"ApprovalHost\" Spacing=\"8\" />\n" : "" #>    </StackPanel>
 <#
         }
         else
         {
 #>
-        </StackPanel>
+<#= approvalSegment is not null ? "        <StackPanel x:Name=\"ApprovalHost\" Spacing=\"8\" />\n" : "" #>        </StackPanel>
     </ScrollViewer>
     </StackPanel>
 <#
@@ -199,13 +200,13 @@ public sealed partial class <#= table #>DetailDialog : ContentDialog
 {
     public <#= table #>DetailViewModel ViewModel { get; }
     private System.Threading.Tasks.Task _loading = System.Threading.Tasks.Task.CompletedTask;
-
+<#= approvalSegment is not null ? "    private ApprovalPanel? _approval;\n" : "" #>
     /// <param name="editing"> The row being edited, or null to add a new one. </param>
     public <#= table #>DetailDialog(ApiClients api, <#= type #>? editing = null)
     {
         ViewModel = new <#= table #>DetailViewModel(api, editing);
         InitializeComponent();
-<#
+<#= approvalSegment is not null ? DesktopApprovalsCode.PanelLines("        ", "editing", keyProp, table, "api.Approvals", "ApprovalsClient.Tables", "") : "" #><#
         foreach (var c in currencyColumns)
         {
 #>
@@ -234,7 +235,7 @@ public sealed partial class <#= table #>DetailDialog : ContentDialog
     {
         var result = await ShowAsync();
         await _loading;
-        return result;
+<#= approvalSegment is not null ? "        if (_approval is not null)\n            await _approval.WhenIdle;\n" : "" #>        return result;
     }
 
 <#

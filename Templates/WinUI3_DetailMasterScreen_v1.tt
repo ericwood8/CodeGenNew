@@ -19,6 +19,7 @@
     string[] usings = { };
     string viewsFolder = "Views";
     string viewModelsFolder = "ViewModels";
+    string repositoryNamespace = "MyApp.Common.Repositories";   // where WinUI3_Approvals writes ApprovalService
     // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
     viewNamespace = Project.ViewNamespace ?? viewNamespace;
     viewModelNamespace = Project.ViewModelNamespace ?? viewModelNamespace;
@@ -27,6 +28,7 @@
     usings = Project.Usings ?? usings;
     viewsFolder = Project.ViewsFolder ?? viewsFolder;
     viewModelsFolder = Project.ViewModelsFolder ?? viewModelsFolder;
+    repositoryNamespace = Project.RepoNamespace ?? repositoryNamespace;
     // ==========================================================================================
 
     // ==========================================================================================
@@ -62,6 +64,7 @@
         string title = form.Title;
         string keyProp = keyColumn.Name;
         bool textKey = form.TypedKey;
+        string? approvalSegment = ApprovalScreens.PanelSegment(Model, Project);   // a table of RowApprovals: its saved row's dialog carries the approval panel (WinUI3_Approvals writes it)
 
         var shown = form.Columns;
 
@@ -155,7 +158,7 @@
 <#
         }
 #>
-
+<#= approvalSegment is not null ? "            <StackPanel x:Name=\"ApprovalHost\" Spacing=\"8\" />\n" : "" #>
 <#
         if (gridChildren.Count > 0)
         {
@@ -296,7 +299,7 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
     public <#= table #>DetailMasterViewModel ViewModel { get; }
     private System.Threading.Tasks.Task _loading = System.Threading.Tasks.Task.CompletedTask;
     private System.Threading.Tasks.TaskCompletionSource? _drillDown; // set while a child dialog opened from this one is showing
-
+<#= approvalSegment is not null ? "    private ApprovalPanel? _approval;\n" : "" #>
     /// <param name="editing"> The row being edited, or null to add a new one (child grids only load for an existing row). </param>
     public <#= table #>DetailMasterDialog(<#= contextType #> context, <#= table #>? editing = null)
     {
@@ -323,7 +326,7 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
 <#
         }
 #>
-<#
+<#= approvalSegment is not null ? DesktopApprovalsCode.PanelLines("        ", "editing", keyProp, table, $"new {repositoryNamespace}.ApprovalService(context)", $"{repositoryNamespace}.ApprovalService.Tables", "work => ViewModelBase.InTurnAsync(async () => { await work(); return 0; })") : "" #><#
         foreach (var child in editChildren)
         {
 #>
@@ -369,7 +372,7 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
     {
         var result = await ShowAsync();
         await _loading;
-        if (_drillDown is not null)
+<#= approvalSegment is not null ? "        if (_approval is not null)\n            await _approval.WhenIdle;\n" : "" #>        if (_drillDown is not null)
             await _drillDown.Task;
         return result;
     }

@@ -6,7 +6,8 @@
 <#
     // ==========================================================================================
     // BLZ_Approvals_v1.tt
-    // Generates: Services/ApprovalsClient.cs and Pages/Approvals.razor   (the paths are written by the template)
+    // Generates: Services/ApprovalsClient.cs, Pages/Approvals.razor and Components/ApprovalPanel.razor   (the paths are written by the template)
+    // ApprovalPanel is the same on a saved row's edit form: its latest request, Request while none waits and Withdraw while one does. BLZ_Page draws it for a table of RowApprovals.
     // The approvals page of a Blazor app, for the tables of RowApprovals (API_Approvals): for each table the requests waiting for the signed-in approver with a note and Approve / Reject, and a row's
     // request, withdrawal and history by its number. The API's own sentences are shown as they come. BLZ_Screens adds the menu entry and registers ApprovalsClient. The words are ApprovalWords in Core.
     // Full notes: Docs/TemplateNotes/API_Approvals_v1.md
@@ -36,6 +37,9 @@ public class ApprovalView
     public string? DecidedBy { get; set; }
     public DateTime? DecidedOn { get; set; }
     public string? DecisionNote { get; set; }
+
+    /// <summary> The one line a panel shows for this request cycle. </summary>
+    public string PanelStatus => <#= ApprovalScreens.PanelStatusCSharp() #>;
 }
 
 /// <summary> A table that has approvals: the table, the words for it and the route under /api. </summary>
@@ -271,4 +275,94 @@ public class ApprovalsClient(HttpClient http)
             state.Message = ex.Message;
         }
     }
+}
+@@@FILE Components/ApprovalPanel.razor@@@
+@using <#= ns #>.Services
+@inject ApprovalsClient Client
+
+<section class="approval-panel" aria-label="<#= ApprovalWords.PanelHeading #>">
+    <h3><#= ApprovalWords.PanelHeading #></h3>
+    @if (loaded)
+    {
+        <p>@(latest is null ? "<#= ApprovalWords.NoHistory #>" : latest.PanelStatus)</p>
+        @if (!pending)
+        {
+            <p>
+                <label><#= ApprovalWords.ReasonLabel #> <input @bind="reason" @bind:event="oninput" /></label>
+                <button type="button" @onclick="RequestAsync"><#= ApprovalWords.Request #></button>
+            </p>
+        }
+        else
+        {
+            <p><button type="button" @onclick="WithdrawAsync"><#= ApprovalWords.Withdraw #></button></p>
+        }
+    }
+    @if (message is not null)
+    {
+        <p class="@(failed ? "error" : "")" role="@(failed ? "alert" : "status")">@message</p>
+    }
+</section>
+
+@code {
+    /// <summary> The route under /api of the table whose row this is. </summary>
+    [Parameter, EditorRequired] public string Segment { get; set; } = "";
+
+    [Parameter, EditorRequired] public int Id { get; set; }
+
+    private ApprovalView? latest;
+    private bool loaded;
+    private int loadedFor;
+    private string reason = "";
+    private string? message;
+    private bool failed;
+
+    private bool pending => latest is { Status: "<#= ApprovalWords.PendingStatus #>" };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedFor == Id)
+            return;
+        loadedFor = Id;
+        loaded = false;
+        latest = null;
+        message = null;
+        reason = "";
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var cycles = await Client.HistoryAsync(Segment, Id);
+            latest = cycles.OrderByDescending(c => c.Revision).FirstOrDefault();
+            loaded = true;
+        }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException)
+        {
+            failed = true;
+            message = "<#= ApprovalWords.PanelLoadFailed #>";
+        }
+    }
+
+    private async Task ActAsync(Func<Task> call, string done)
+    {
+        try
+        {
+            await call();
+            failed = false;
+            message = done;
+            reason = "";
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            failed = true;
+            message = ex.Message;
+        }
+    }
+
+    private Task RequestAsync() => ActAsync(() => Client.RequestAsync(Segment, Id, reason), "<#= ApprovalWords.Requested #>");
+
+    private Task WithdrawAsync() => ActAsync(() => Client.WithdrawAsync(Segment, Id), "<#= ApprovalWords.Withdrawn #>");
 }

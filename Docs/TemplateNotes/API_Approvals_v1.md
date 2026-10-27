@@ -36,6 +36,16 @@ Every front end gets one **Approvals** page and a menu entry, written when the p
 - A gate with the clause `approval` works in WinUI3 too (`WinUI3_Gates`).
 - Tests: Vitest (React), the Angular spec, bUnit with `BlazorTests=true`, `ApprovalsClientTests` (Uno) and `ApprovalServiceTests` (WinUI3, over SQLite) with `DesktopTests=true`.
 
+### The panel on a row's edit form
+
+The form of a saved row of a `RowApprovals` table carries an **Approval** panel under its fields, so a person requests and withdraws from the row they are editing instead of finding its number on the Approvals page. It shows the latest request of the row in one line (`Approval status: Pending, requested by ann`; once decided, who decided and the note), a Reason box and Request approval while no request waits, and Withdraw while one does. A refusal shows the API's own sentence. Approve and Reject stay on the Approvals page, which lists what waits for the signed-in approver.
+
+- One small component per stack, written by that stack's approvals template: `ApprovalPanel.tsx` (React), `approval-panel.component` (Angular), `Components/ApprovalPanel.razor` (Blazor), and `ApprovalPanel` in `Views/ApprovalsPage.cs` (Uno and WinUI3, from the text `DesktopApprovalsCode.Page`). The page templates only place it: `TSX_Page`, `TSX_DetailMasterPage`, `TS_Component`, `TS_DetailMasterComponent`, `BLZ_Page`, and the detail and master-detail dialogs of both desktop apps. The OData variants share those templates.
+- A page template sees one table, so it decides from the settings (`ApprovalScreens.PanelSegment`: `ApiAuth`, `UserTable`, the table in `RowApprovals`, a whole-number key). A table without approvals gets no panel, and a new row has none until it is saved.
+- The sentence of the status line is `ApprovalWords.PanelStatus`; the web stacks write its TypeScript twin and the C# stacks its expression from Core (`PanelStatusTypeScript`, `PanelStatusCSharp`).
+- WinUI3 shares one context between the dialog and the panel, so the panel's calls take turns with the dialog's (`ViewModelBase.InTurnAsync`), and the dialog's `ShowAndWaitAsync` waits for the panel's last call before the caller reuses the context.
+- Not covered: the single-row desktop screen (`WinUI3_SingleRowScreen`, `UNO_SingleRowScreen`) has no panel; the panel's own desktop controls are compiled but not driven by a generated test.
+
 ## Python and Rust
 
 `PY_Approvals` writes `app/routes/approvals.py` and `RS_Approvals` writes `src/routes/approvals.rs`: the same routes, status codes, problem types and sentences as the ASP.NET API (`ApprovalWords` and `ApprovalWriter` in Core). Both read the user table for the requester and the approver, decide with one guarded UPDATE of the Pending row, and answer the same JSON (`id`, `rowId`, `revision`, `status`, `reason`, `requestedBy`, `requestedOn`, `decidedBy`, `decidedOn`, `decisionNote`).

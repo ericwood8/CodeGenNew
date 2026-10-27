@@ -15,9 +15,10 @@
 
     // ==========================================================================================
     // TSX_Approvals_v1.tt
-    // Generates: api/approvalsApi.ts, pages/ApprovalsPage.tsx, pages/approvals.css and pages/__tests__/ApprovalsPage.test.tsx
+    // Generates: api/approvalsApi.ts, pages/ApprovalsPage.tsx, pages/ApprovalPanel.tsx, pages/approvals.css and the tests of both pages in pages/__tests__
     // The approvals page of a React front end, for the tables of RowApprovals (API_Approvals): for each table the requests waiting for the signed-in approver with a note and Approve / Reject,
     // and a row's request, withdrawal and history by its number. The API's own sentences are shown as they come. TSX_Screens adds the menu entry. The words are ApprovalWords in Core.
+    // ApprovalPanel is the same on a saved row's edit form: its latest request, Request while none waits and Withdraw while one does. TSX_Page and TSX_DetailMasterPage draw it for a table of RowApprovals.
     // Full notes: Docs/TemplateNotes/API_Approvals_v1.md
     // ==========================================================================================
 
@@ -30,6 +31,7 @@
 import { request } from './client';
 
 <#= ApprovalScreens.TypeScript() #>
+<#= ApprovalScreens.PanelStatusTypeScript() #>
 // The tables that have approvals: the table, the words for it and the route under /api.
 export const approvalTables = [
 <# foreach (var t in tables) { #>
@@ -197,6 +199,122 @@ export function ApprovalsPage() {
     </div>
   );
 }
+@@@FILE <#= pagesFolder #>/ApprovalPanel.tsx@@@
+import { useCallback, useEffect, useState } from 'react';
+import { approvalsApi, panelStatus, problemText } from '../<#= apiFolder #>/approvalsApi';
+import type { ApprovalView } from '../<#= apiFolder #>/approvalsApi';
+import './approvals.css';
+
+// The approval of one saved row, on its edit form: the latest request, with Request while none waits and Withdraw while one does. The API says who may do what.
+export function ApprovalPanel({ segment, id }: { segment: string; id: number }) {
+  const [latest, setLatest] = useState<ApprovalView | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [reason, setReason] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const cycles = await approvalsApi.history(segment, id);
+      setLatest(cycles.reduce<ApprovalView | null>((best, c) => (best === null || c.revision > best.revision ? c : best), null));
+      setLoaded(true);
+    } catch {
+      setFailed(true);
+      setMessage('<#= ApprovalWords.PanelLoadFailed #>');
+    }
+  }, [segment, id]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const act = async (call: () => Promise<ApprovalView>, done: string) => {
+    try {
+      await call();
+      setFailed(false);
+      setMessage(done);
+      setReason('');
+      await load();
+    } catch (error) {
+      setFailed(true);
+      setMessage(problemText(error));
+    }
+  };
+
+  const pending = latest !== null && latest.status === '<#= ApprovalWords.PendingStatus #>';
+
+  return (
+    <section className="approval-panel" aria-label="<#= ApprovalWords.PanelHeading #>">
+      <h3><#= ApprovalWords.PanelHeading #></h3>
+      {loaded && <p>{latest === null ? '<#= ApprovalWords.NoHistory #>' : panelStatus(latest)}</p>}
+      {loaded && !pending && (
+        <p>
+          <label><#= ApprovalWords.ReasonLabel #> <input value={reason} onChange={(e) => setReason(e.target.value)} /></label>{' '}
+          <button type="button" onClick={() => act(() => approvalsApi.request(segment, id, reason), '<#= ApprovalWords.Requested #>')}><#= ApprovalWords.Request #></button>
+        </p>
+      )}
+      {loaded && pending && (
+        <p><button type="button" onClick={() => act(() => approvalsApi.withdraw(segment, id), '<#= ApprovalWords.Withdrawn #>')}><#= ApprovalWords.Withdraw #></button></p>
+      )}
+      {message && <p role={failed ? 'alert' : 'status'} className={failed ? 'approvals-error' : 'approvals-note'}>{message}</p>}
+    </section>
+  );
+}
+@@@FILE <#= pagesFolder #>/__tests__/ApprovalPanel.test.tsx@@@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { approvalsApi } from '../../<#= apiFolder #>/approvalsApi';
+import type { ApprovalView } from '../../<#= apiFolder #>/approvalsApi';
+import { ApprovalPanel } from '../ApprovalPanel';
+
+const view = (changes: Partial<ApprovalView>): ApprovalView =>
+  ({ id: 1, rowId: 7, revision: 1, status: 'Pending', reason: 'please', requestedBy: 'ann', requestedOn: '2026-01-02T00:00:00', decidedBy: null, decidedOn: null, decisionNote: null, ...changes });
+
+describe('ApprovalPanel', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('says so for a row that was never requested and offers the request', async () => {
+    vi.spyOn(approvalsApi, 'history').mockResolvedValue([]);
+    render(<ApprovalPanel segment="<#= first #>" id={7} />);
+    expect(await screen.findByText('<#= ApprovalWords.NoHistory #>')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '<#= ApprovalWords.Request #>' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '<#= ApprovalWords.Withdraw #>' })).toBeNull();
+  });
+
+  it('requests approval with the reason and shows the new status', async () => {
+    const history = vi.spyOn(approvalsApi, 'history').mockResolvedValueOnce([]).mockResolvedValue([view({})]);
+    const request = vi.spyOn(approvalsApi, 'request').mockResolvedValue(view({}));
+    render(<ApprovalPanel segment="<#= first #>" id={7} />);
+    fireEvent.change(await screen.findByLabelText(/<#= ApprovalWords.ReasonLabel #>/), { target: { value: 'please' } });
+    fireEvent.click(screen.getByRole('button', { name: '<#= ApprovalWords.Request #>' }));
+    await vi.waitFor(() => expect(request).toHaveBeenCalledWith('<#= first #>', 7, 'please'));
+    expect(await screen.findByText(/<#= ApprovalWords.PanelHeading #> status: Pending, requested by ann/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '<#= ApprovalWords.Withdraw #>' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '<#= ApprovalWords.Request #>' })).toBeNull();
+    expect(history).toHaveBeenCalledTimes(2);
+  });
+
+  it('withdraws a waiting request', async () => {
+    vi.spyOn(approvalsApi, 'history').mockResolvedValueOnce([view({})]).mockResolvedValue([view({ status: 'Withdrawn', decidedBy: 'ann' })]);
+    const withdraw = vi.spyOn(approvalsApi, 'withdraw').mockResolvedValue(view({ status: 'Withdrawn' }));
+    render(<ApprovalPanel segment="<#= first #>" id={7} />);
+    fireEvent.click(await screen.findByRole('button', { name: '<#= ApprovalWords.Withdraw #>' }));
+    await vi.waitFor(() => expect(withdraw).toHaveBeenCalledWith('<#= first #>', 7));
+    expect(await screen.findByText('<#= ApprovalWords.Withdrawn #>')).toBeTruthy();
+  });
+
+  it('shows the latest cycle of a decided row with its note', async () => {
+    vi.spyOn(approvalsApi, 'history').mockResolvedValue([view({ revision: 1, status: 'Rejected', decidedBy: 'bob' }), view({ id: 2, revision: 2, status: 'Approved', decidedBy: 'bob', decisionNote: 'fine' })]);
+    render(<ApprovalPanel segment="<#= first #>" id={7} />);
+    expect(await screen.findByText('<#= ApprovalWords.PanelHeading #> status: Approved, decided by bob: fine')).toBeTruthy();
+  });
+
+  it('shows the sentence of a refused request', async () => {
+    vi.spyOn(approvalsApi, 'history').mockResolvedValue([]);
+    vi.spyOn(approvalsApi, 'request').mockRejectedValue(new Error(JSON.stringify({ detail: '<#= ApprovalWords.AlreadyWaiting #>' })));
+    render(<ApprovalPanel segment="<#= first #>" id={7} />);
+    fireEvent.click(await screen.findByRole('button', { name: '<#= ApprovalWords.Request #>' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('<#= ApprovalWords.AlreadyWaiting #>');
+  });
+});
 @@@FILE <#= pagesFolder #>/__tests__/ApprovalsPage.test.tsx@@@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';

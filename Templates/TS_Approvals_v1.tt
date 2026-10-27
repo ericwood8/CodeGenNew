@@ -16,7 +16,8 @@
 
     // ==========================================================================================
     // TS_Approvals_v1.tt
-    // Generates: services/approvals.service.ts and the component approvals (ts, html, css, spec)
+    // Generates: services/approvals.service.ts, the component approvals and the component approval-panel (ts, html, css, spec each)
+    // The approval-panel component is the same on a saved row's edit form: its latest request, Request while none waits and Withdraw while one does. TS_Component and TS_DetailMasterComponent draw it for a table of RowApprovals.
     // The approvals screen of an Angular front end, for the tables of RowApprovals (API_Approvals): for each table the requests waiting for the signed-in approver with a note and Approve / Reject,
     // and a row's request, withdrawal and history by its number. The API's own sentences are shown as they come. TS_Screens adds the route and menu entry. The words are ApprovalWords in Core.
     // Full notes: Docs/TemplateNotes/API_Approvals_v1.md
@@ -76,6 +77,18 @@
   </table>
 </section>
 ");
+    string panelHtml = Html(
+@"<section class=""approval-panel"" aria-label=""" + ApprovalWords.PanelHeading + @""">
+  <h3>" + ApprovalWords.PanelHeading + @"</h3>
+  <p *ngIf=""loaded"">{{ latest === null ? '" + ApprovalWords.NoHistory + @"' : status(latest) }}</p>
+  <p *ngIf=""loaded && !pending"">
+    <label>" + ApprovalWords.ReasonLabel + @" <input [value]=""reason"" (input)=""reason = $any($event.target).value"" /></label>
+    <button type=""button"" (click)=""requestApproval()"">" + ApprovalWords.Request + @"</button>
+  </p>
+  <p *ngIf=""loaded && pending""><button type=""button"" (click)=""withdraw()"">" + ApprovalWords.Withdraw + @"</button></p>
+  <p *ngIf=""message"" [attr.role]=""failed ? 'alert' : 'status'"" [class.approvals-error]=""failed"">{{ message }}</p>
+</section>
+");
 #>
 @@@FILE <#= servicesFolder #>/approvals.service.ts@@@
 import { Injectable } from '@angular/core';
@@ -83,6 +96,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
 <#= ApprovalScreens.TypeScript() #>
+<#= ApprovalScreens.PanelStatusTypeScript() #>
 // The tables that have approvals: the table, the words for it and the route under /api.
 export const approvalTables = [
 <# foreach (var t in tables) { #>
@@ -248,6 +262,145 @@ table { border-collapse: collapse; margin: 8px 0; }
 th, td { border: 1px solid #888; padding: 4px 8px; text-align: left; }
 section { margin-bottom: 24px; }
 .approvals-error { color: #b00020; }
+@@@FILE <#= componentsFolder #>/approvals/approval-panel.component.ts@@@
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnChanges } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { Observable } from 'rxjs';
+import { ApprovalView, ApprovalsService, panelStatus, problemText } from '../../<#= servicesFolder #>/approvals.service';
+
+// The approval of one saved row, on its edit form: the latest request, with Request while none waits and Withdraw while one does. The API says who may do what.
+@Component({
+  selector: 'app-approval-panel',
+<#= detection #><#= standalone #>  imports: [CommonModule],
+  templateUrl: './approval-panel.component.html',
+  styleUrl: './approval-panel.component.css'
+})
+export class ApprovalPanelComponent implements OnChanges {
+  @Input() segment = '';
+  @Input() id = 0;
+  latest: ApprovalView | null = null;
+  loaded = false;
+  reason = '';
+  message: string | null = null;
+  failed = false;
+
+  constructor(private service: ApprovalsService, private changes: ChangeDetectorRef) { }
+
+  get pending(): boolean {
+    return this.latest !== null && this.latest.status === '<#= ApprovalWords.PendingStatus #>';
+  }
+
+  ngOnChanges(): void {
+    this.load();
+  }
+
+  status(latest: ApprovalView): string {
+    return panelStatus(latest);
+  }
+
+  requestApproval(): void {
+    this.act(this.service.request(this.segment, this.id, this.reason), '<#= ApprovalWords.Requested #>');
+  }
+
+  withdraw(): void {
+    this.act(this.service.withdraw(this.segment, this.id), '<#= ApprovalWords.Withdrawn #>');
+  }
+
+  private load(): void {
+    this.service.history(this.segment, this.id).subscribe({
+      next: (cycles) => {
+        this.latest = cycles.reduce<ApprovalView | null>((best, c) => (best === null || c.revision > best.revision ? c : best), null);
+        this.loaded = true;
+        this.changes.markForCheck();
+      },
+      error: () => { this.failed = true; this.message = '<#= ApprovalWords.PanelLoadFailed #>'; this.changes.markForCheck(); }
+    });
+  }
+
+  private act(call: Observable<ApprovalView>, done: string): void {
+    call.subscribe({
+      next: () => { this.failed = false; this.message = done; this.reason = ''; this.load(); },
+      error: (error) => { this.failed = true; this.message = problemText(error); this.changes.markForCheck(); }
+    });
+  }
+}
+@@@FILE <#= componentsFolder #>/approvals/approval-panel.component.html@@@
+<#= panelHtml #>@@@FILE <#= componentsFolder #>/approvals/approval-panel.component.css@@@
+:host { display: block; }
+.approvals-error { color: #b00020; }
+@@@FILE <#= componentsFolder #>/approvals/approval-panel.component.spec.ts@@@
+import { TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+
+import { ApprovalPanelComponent } from './approval-panel.component';
+
+const pending = { id: 1, rowId: 7, revision: 1, status: 'Pending', reason: 'please', requestedBy: 'ann', requestedOn: '2026-01-02T00:00:00', decidedBy: null, decidedOn: null, decisionNote: null };
+
+async function open() {
+  await TestBed.configureTestingModule({
+    imports: [ApprovalPanelComponent],
+    providers: [provideHttpClient(), provideHttpClientTesting()]
+  }).compileComponents();
+  const fixture = TestBed.createComponent(ApprovalPanelComponent);
+  fixture.componentRef.setInput('segment', '<#= first #>');
+  fixture.componentRef.setInput('id', 7);
+  fixture.detectChanges();
+  return { fixture, http: TestBed.inject(HttpTestingController), text: () => (fixture.nativeElement as HTMLElement).textContent ?? '' };
+}
+
+describe('ApprovalPanelComponent', () => {
+  it('says so for a row that was never requested and offers the request', async () => {
+    const { fixture, http, text } = await open();
+    http.expectOne('api/<#= first #>/7/approvals').flush([]);
+    fixture.detectChanges();
+    expect(text()).toContain('<#= ApprovalWords.NoHistory #>');
+    expect(text()).toContain('<#= ApprovalWords.Request #>');
+    expect(text()).not.toContain('<#= ApprovalWords.Withdraw #>');
+  });
+
+  it('requests approval with the reason and shows the new status', async () => {
+    const { fixture, http, text } = await open();
+    http.expectOne('api/<#= first #>/7/approvals').flush([]);
+    fixture.componentInstance.reason = 'please';
+    fixture.componentInstance.requestApproval();
+    const post = http.expectOne('api/<#= first #>/7/request');
+    expect(post.request.body).toEqual({ reason: 'please' });
+    post.flush(pending);
+    http.expectOne('api/<#= first #>/7/approvals').flush([pending]);
+    fixture.detectChanges();
+    expect(text()).toContain('<#= ApprovalWords.PanelHeading #> status: Pending, requested by ann');
+    expect(text()).toContain('<#= ApprovalWords.Withdraw #>');
+    expect(text()).not.toContain('<#= ApprovalWords.Request #>');
+  });
+
+  it('withdraws a waiting request', async () => {
+    const { fixture, http, text } = await open();
+    http.expectOne('api/<#= first #>/7/approvals').flush([pending]);
+    fixture.detectChanges();
+    fixture.componentInstance.withdraw();
+    http.expectOne('api/<#= first #>/7/withdraw').flush({ ...pending, status: 'Withdrawn' });
+    http.expectOne('api/<#= first #>/7/approvals').flush([{ ...pending, status: 'Withdrawn', decidedBy: 'ann' }]);
+    fixture.detectChanges();
+    expect(text()).toContain('<#= ApprovalWords.Withdrawn #>');
+  });
+
+  it('shows the latest cycle of a decided row with its note', async () => {
+    const { fixture, http, text } = await open();
+    http.expectOne('api/<#= first #>/7/approvals').flush([{ ...pending, status: 'Rejected', decidedBy: 'bob' }, { ...pending, id: 2, revision: 2, status: 'Approved', decidedBy: 'bob', decisionNote: 'fine' }]);
+    fixture.detectChanges();
+    expect(text()).toContain('<#= ApprovalWords.PanelHeading #> status: Approved, decided by bob: fine');
+  });
+
+  it('shows the sentence of a refused request', async () => {
+    const { fixture, http, text } = await open();
+    http.expectOne('api/<#= first #>/7/approvals').flush([]);
+    fixture.componentInstance.requestApproval();
+    http.expectOne('api/<#= first #>/7/request').flush({ detail: '<#= ApprovalWords.AlreadyWaiting #>' }, { status: <#= HttpStatus.Conflict #>, statusText: 'Conflict' });
+    fixture.detectChanges();
+    expect(text()).toContain('<#= ApprovalWords.AlreadyWaiting #>');
+  });
+});
 @@@FILE <#= componentsFolder #>/approvals/approvals.component.spec.ts@@@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';

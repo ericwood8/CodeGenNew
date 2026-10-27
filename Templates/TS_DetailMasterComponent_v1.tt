@@ -154,6 +154,7 @@
         bool tabbed = form.IsTabbed;
         // WriteRoles with the Angular sign-in: only the roles that may write see Add, Edit, Clone and Delete (the API refuses the others with a 403 anyway)
         IReadOnlyList<string> writeRoles = Project.Auth ? WriteRolePlan.For(Project, Model) : new List<string>();
+        string? approvalSegment = ApprovalScreens.PanelSegment(Model, Project);   // a table of RowApprovals: its saved row's form carries the approval panel (TS_Approvals writes it)
         string writeOnly = writeRoles.Count > 0 ? " *ngIf=\"canWrite\"" : "";
 
         var css = new StringBuilder();
@@ -504,6 +505,8 @@
         H("            <button type=\"submit\" class=\"btn\">Submit</button>");
         H("            <button type=\"button\" (click)=\"cancel()\" class=\"btn btn-outline\">Cancel</button>");
         H("        </form>");
+        if (approvalSegment is not null)
+            H($"        <app-approval-panel *ngIf=\"selectedRow.{keyProp}\" segment=\"{approvalSegment}\" [id]=\"selectedRow.{keyProp}\"></app-approval-panel>");
         H();
         if (gridChildren.Count > 0)
             H("        <!-- Child grids: TableModel.ChildForeignKeys, one per table, columns discovered at run time -->");
@@ -793,6 +796,7 @@
         T("import { CommonModule } from '@angular/common';");
         T("import { FormsModule } from '@angular/forms';");
         if (UsesCurrencyBox()) T("import { CurrencyInputDirective } from '../currency-input';");
+        if (approvalSegment is not null) T("import { ApprovalPanelComponent } from '../approvals/approval-panel.component';");
         if (!nameActive) T("import { MatPaginatorModule } from '@angular/material/paginator';");
         if (chooseColumns) T($"import {{ GridColumns{(columnList.Any(c => c.Cut) ? ", cutText" : "")} }} from '../../grid-columns';");
         T(odata && !nameActive ? "import { ColumnFilterField, ODataPagedScreen, saveSorts } from '../odata-screen';" : $"import {{ {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")} }} from '../crud-screen';");
@@ -802,7 +806,7 @@
         T($"  selector: 'app-{screenStem}',");
         if (Project.AngularStandaloneFlag) T("  standalone: true,");
         T($"  changeDetection: ChangeDetectionStrategy.{Project.AngularEagerStrategy}, // plain properties change inside subscribe callbacks: keep eager checking when OnPush is the default (Angular 22)");
-        T("  imports: [ CommonModule, FormsModule" + (UsesCurrencyBox() ? ", CurrencyInputDirective" : "") + (nameActive ? "" : ", MatPaginatorModule") + " ],");
+        T("  imports: [ CommonModule, FormsModule" + (UsesCurrencyBox() ? ", CurrencyInputDirective" : "") + (approvalSegment is not null ? ", ApprovalPanelComponent" : "") + (nameActive ? "" : ", MatPaginatorModule") + " ],");
         T($"  templateUrl: './{screenStem}.component.html',");
         T($"  styleUrl: './{screenStem}.component.css'");
         T("})");

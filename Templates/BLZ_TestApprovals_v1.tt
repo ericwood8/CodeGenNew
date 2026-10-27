@@ -19,6 +19,7 @@
 #>
 @@@FILE ApprovalsPageTests.cs@@@
 using Bunit;
+using <#= ns #>.Components;
 using <#= ns #>.Pages;
 
 namespace <#= ns #>.Tests;
@@ -81,6 +82,50 @@ public class ApprovalsPageTests : PageTestContext
         Assert.AreEqual("/api/<#= segment #>/7/request", post.Path);
         StringAssert.Contains(post.Body, "\"reason\":\"please\"");
         StringAssert.Contains(page.Markup, "Pending");
+    }
+
+    private IRenderedComponent<ApprovalPanel> RenderPanel() => Render<ApprovalPanel>(parameters => parameters.Add(p => p.Segment, "<#= segment #>").Add(p => p.Id, 7));
+
+    [TestMethod]
+    public void The_panel_says_so_for_a_row_that_was_never_requested_and_offers_the_request()
+    {
+        Api.Answer("/<#= segment #>/7/approvals", "[]");
+
+        var panel = RenderPanel();
+
+        StringAssert.Contains(panel.Markup, "<#= ApprovalWords.NoHistory #>");
+        Assert.IsTrue(panel.FindAll("button").Any(b => b.TextContent.Trim() == "<#= ApprovalWords.Request #>"));
+        Assert.IsFalse(panel.FindAll("button").Any(b => b.TextContent.Trim() == "<#= ApprovalWords.Withdraw #>"));
+    }
+
+    [TestMethod]
+    public void The_panel_requests_with_the_reason_and_then_offers_the_withdrawal()
+    {
+        Api.Answer("/<#= segment #>/7/approvals", "[]");
+        var panel = RenderPanel();
+        Api.Answer("/<#= segment #>/7/approvals", Waiting);
+
+        panel.Find("label input").Input("please");
+        panel.FindAll("button").First(b => b.TextContent.Trim() == "<#= ApprovalWords.Request #>").Click();
+
+        var post = Api.Requests.Single(r => r.Method == HttpMethod.Post);
+        Assert.AreEqual("/api/<#= segment #>/7/request", post.Path);
+        StringAssert.Contains(post.Body, "\"reason\":\"please\"");
+        StringAssert.Contains(panel.Markup, "<#= ApprovalWords.PanelHeading #> status: Pending, requested by ann");
+        Assert.IsTrue(panel.FindAll("button").Any(b => b.TextContent.Trim() == "<#= ApprovalWords.Withdraw #>"));
+        Assert.IsFalse(panel.FindAll("button").Any(b => b.TextContent.Trim() == "<#= ApprovalWords.Request #>"));
+    }
+
+    [TestMethod]
+    public void The_panel_withdraws_a_waiting_request()
+    {
+        Api.Answer("/<#= segment #>/7/approvals", Waiting);
+        var panel = RenderPanel();
+
+        panel.FindAll("button").First(b => b.TextContent.Trim() == "<#= ApprovalWords.Withdraw #>").Click();
+
+        Assert.AreEqual("/api/<#= segment #>/7/withdraw", Api.Requests.Single(r => r.Method == HttpMethod.Post).Path);
+        StringAssert.Contains(panel.Markup, "<#= ApprovalWords.Withdrawn #>");
     }
 }
 <#

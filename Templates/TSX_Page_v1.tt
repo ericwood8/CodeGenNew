@@ -64,6 +64,7 @@
         // WriteRoles with the sign-in: only the roles that may write see Add New, Edit, Clone and Delete (the API refuses the others with a 403 anyway)
         IReadOnlyList<string> writeRoles = Project.Auth ? WriteRolePlan.For(Project, Model) : new List<string>();
         bool gated = writeRoles.Count > 0;
+        string? approvalSegment = ApprovalScreens.PanelSegment(Model, Project);   // a table of RowApprovals: its saved row's form carries the approval panel (TSX_Approvals writes it)
         string Gate(string jsx) => gated ? "{canWrite && " + jsx + "}" : jsx;
         bool nameActive = form.IsNameActive;   // a Name and an IsActive column: the whole list is read, narrowed by a name box and an Active only check box on the page, with no paging or sort
         string problemCall = odata ? "problemText" : "problemDetail";   // reads the API's own words from a problem answer
@@ -125,6 +126,7 @@
         T($"import {{ {apiVar} }} from '../{apiFolder}/{apiFile}';");
         if (gated) T($"import {{ useAuth }} from '../{apiFolder}/auth';");
         T($"import {{ ApiError }} from '../{apiFolder}/client';");
+        if (approvalSegment is not null) T("import { ApprovalPanel } from './ApprovalPanel';");
         if (!nameActive && !oneRow) T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
         if (shown.Any(form.IsMoneyInput))
             T($"import {{ CurrencyInput }} from '../{componentsFolder}/CurrencyInput';");
@@ -968,6 +970,8 @@
         T(oneRow ? "              <button type=\"button\" onClick={cancel}>Reload</button>" : "              <button type=\"button\" onClick={cancel}>Cancel</button>");
         T("            </div>");
         T("          </form>");
+        if (approvalSegment is not null)
+            T($"          {{selectedRow.{keyProp} ? <ApprovalPanel segment=\"{approvalSegment}\" id={{selectedRow.{keyProp}}} /> : null}}");
         T(oneRow ? "        </section>" : "        </dialog>");
         T("      )}");
         T("    </div>");

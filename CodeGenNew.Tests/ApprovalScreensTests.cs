@@ -92,6 +92,97 @@ public class ApprovalScreensTests
         Assert.AreEqual(Body(uno.Read("Views/ApprovalsPage.cs")), Body(winui3.Read("Views/ApprovalsPage.cs")));
     }
 
+    private static readonly Dictionary<string, string> PlainForm = new() { ["DetailMasterTables"] = "NoSuchTable" };   // TimeSheet has the side table as a child, so it is a master-detail table unless the project lists others
+
+    [TestMethod]
+    [DataRow(false, "TimeSheetDetailMasterPage.tsx")]
+    [DataRow(true, "TimeSheetPage.tsx")]
+    public async Task React_draws_the_approval_panel_under_the_form_of_a_saved_row_of_an_approval_table(bool plain, string pageFile)
+    {
+        var (success, errors, read, files) = await RowApprovalsTests.GenerateAsync(withSide: true, stacks: "Api,React", extra: plain ? PlainForm : null);
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        string page = read("src/pages/" + pageFile);
+        Expect.Contains(page, "import { ApprovalPanel } from './ApprovalPanel';");
+        Expect.Contains(page, "{selectedRow.timeSheetId ? <ApprovalPanel segment=\"timesheets\" id={selectedRow.timeSheetId} /> : null}");
+        Expect.Contains(read("src/pages/ApprovalPanel.tsx"), "export function ApprovalPanel({ segment, id }");
+        Expect.Contains(read("src/pages/ApprovalPanel.tsx"), ApprovalWords.PendingStatus);
+        Expect.Contains(read("src/pages/__tests__/ApprovalPanel.test.tsx"), "approvalsApi, 'withdraw'");
+        Expect.Contains(read("src/api/approvalsApi.ts"), "export function panelStatus(latest: ApprovalView): string");
+        Assert.IsFalse(files.Any(f => f.EndsWith("TimeSheetApprovalPage.tsx", StringComparison.Ordinal)), "the side table has no screen");
+    }
+
+    [TestMethod]
+    [DataRow(false, "timesheet-detail-master/timesheet-detail-master")]
+    [DataRow(true, "timesheet/timesheet")]
+    public async Task Angular_draws_the_approval_panel_under_the_form_of_a_saved_row_of_an_approval_table(bool plain, string stem)
+    {
+        var (success, errors, read, _) = await RowApprovalsTests.GenerateAsync(withSide: true, stacks: "Api,Angular", extra: plain ? PlainForm : null);
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        Expect.Contains(read(stem + ".component.html"), "<app-approval-panel *ngIf=\"selectedRow.timeSheetId\" segment=\"timesheets\" [id]=\"selectedRow.timeSheetId\"></app-approval-panel>");
+        Expect.Contains(read(stem + ".component.ts"), "import { ApprovalPanelComponent } from '../approvals/approval-panel.component';");
+        Expect.Contains(read(stem + ".component.ts"), ", ApprovalPanelComponent");
+        Expect.Contains(read("approvals/approval-panel.component.ts"), "export class ApprovalPanelComponent");
+        Expect.Contains(read("approvals/approval-panel.component.spec.ts"), "api/timesheets/7/withdraw");
+        Expect.Contains(read("services/approvals.service.ts"), "export function panelStatus(latest: ApprovalView): string");
+    }
+
+    [TestMethod]
+    public async Task Blazor_draws_the_approval_panel_under_the_form_of_a_saved_row_of_an_approval_table()
+    {
+        var (success, errors, read, _) = await RowApprovalsTests.GenerateAsync(withSide: true, stacks: "Api,Blazor");
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        string page = read("Pages/TimeSheetPage.razor");
+        Expect.Contains(page, "<ApprovalPanel Segment=\"timesheets\" Id=\"row.TimeSheetId\" />");
+        Expect.Contains(page, "@using Shop.Blazor.Components");
+        Expect.Contains(read("Components/ApprovalPanel.razor"), "[Parameter, EditorRequired] public int Id { get; set; }");
+        Expect.Contains(read("Services/ApprovalsClient.cs"), "public string PanelStatus => $\"Approval status: {Status}, \"");
+    }
+
+    [TestMethod]
+    [DataRow(false, "TimeSheetDetailMasterDialog")]
+    [DataRow(true, "TimeSheetDetailDialog")]
+    public async Task Both_desktop_apps_put_the_approval_panel_in_the_dialog_of_a_saved_row_of_an_approval_table(bool plain, string dialog)
+    {
+        var uno = await RowApprovalsTests.GenerateAsync(withSide: true, stacks: "Api,Uno", extra: plain ? PlainForm : null);
+        var winui3 = await RowApprovalsTests.GenerateAsync(withSide: true, stacks: "Api,WinUI3", extra: plain ? PlainForm : null);
+
+        Assert.IsTrue(uno.Success && winui3.Success, string.Join(" | ", uno.Errors.Concat(winui3.Errors)));
+        Expect.Contains(uno.Read("Views/" + dialog + ".xaml"), "<StackPanel x:Name=\"ApprovalHost\" Spacing=\"8\" />");
+        Expect.Contains(uno.Read("Views/" + dialog + ".xaml.cs"), "_approval = new ApprovalPanel(api.Approvals, ApprovalsClient.Tables.First(t => t.Table == \"TimeSheet\"), editing.TimeSheetId);");
+        Expect.Contains(uno.Read("Views/" + dialog + ".xaml.cs"), "await _approval.WhenIdle;");
+        Expect.Contains(winui3.Read("Views/" + dialog + ".xaml"), "<StackPanel x:Name=\"ApprovalHost\" Spacing=\"8\" />");
+        string code = winui3.Read("Views/" + dialog + ".xaml.cs");
+        Expect.Contains(code, "new Shop.App.Repositories.ApprovalService(context)");
+        Expect.Contains(code, "editing.TimeSheetId, work => ViewModelBase.InTurnAsync(async () => { await work(); return 0; }));");
+        Expect.Contains(code, "await _approval.WhenIdle;");
+        Expect.Contains(winui3.Read("Views/ApprovalsPage.cs"), "public sealed class ApprovalPanel : StackPanel");
+    }
+
+    [TestMethod]
+    public async Task Without_RowApprovals_a_form_has_no_approval_panel()
+    {
+        var react = await RowApprovalsTests.GenerateAsync(withSide: true, stacks: "Api,React", extra: new() { ["RowApprovals"] = "" });
+        var winui3 = await RowApprovalsTests.GenerateAsync(withSide: true, stacks: "Api,WinUI3", extra: new() { ["RowApprovals"] = "" });
+
+        Expect.DoesNotContain(react.Read("src/pages/TimeSheetDetailMasterPage.tsx"), "ApprovalPanel");
+        Expect.DoesNotContain(winui3.Read("Views/TimeSheetDetailMasterDialog.xaml"), "ApprovalHost");
+        Expect.DoesNotContain(winui3.Read("Views/TimeSheetDetailMasterDialog.xaml.cs"), "_approval");
+    }
+
+    [TestMethod]
+    public void The_panel_status_is_the_same_sentence_in_C_and_TypeScript()
+    {
+        string sentence = ApprovalWords.PanelStatus("Approved", "ann", "bob", "fine");
+
+        Assert.AreEqual("Approval status: Approved, decided by bob: fine", sentence);
+        Assert.AreEqual("Approval status: Pending, requested by ann", ApprovalWords.PanelStatus("Pending", "ann", null, null));
+        Expect.Contains(ApprovalScreens.PanelStatusTypeScript(), "`Approval status: ${latest.status}, `");
+        Expect.Contains(ApprovalScreens.PanelStatusCSharp(), "$\"Approval status: {Status}, \"");
+    }
+
     [TestMethod]
     public async Task Without_RowApprovals_no_screen_is_written()
     {

@@ -116,6 +116,7 @@
         IReadOnlyList<string> readRoles = Project.Auth ? WriteRolePlan.ReadFor(Project, Model) : new List<string>();
         IReadOnlyList<string> writeRoles = Project.Auth ? WriteRolePlan.For(Project, Model) : new List<string>();
         bool gated = writeRoles.Count > 0;
+        string? approvalSegment = ApprovalScreens.PanelSegment(Model, Project);   // a table of RowApprovals: its saved row's form carries the approval panel (BLZ_Approvals writes it)
         string RolesExpression(IReadOnlyList<string> roles) => "[" + WriteRolePlan.Literal(roles) + "]";
         // a button that changes rows: wrapped so that only a role that may write sees it
         string Gate(string indent, string markup) => gated ? $"{indent}@if (CanWrite)\n{indent}{{\n{indent}    {markup.Trim()}\n{indent}}}" : indent + markup.Trim();
@@ -233,7 +234,7 @@
             L($"@page \"/{route}\"");
         L($"@using {ns}.Models");
         L($"@using {ns}.Services");
-        if (usesMoneyBox || aheadParents.Count > 0 || Project.ApiAnnotations || childBoxesNeedComponents || Project.DashboardStrip)
+        if (usesMoneyBox || aheadParents.Count > 0 || Project.ApiAnnotations || childBoxesNeedComponents || Project.DashboardStrip || approvalSegment is not null)
             L($"@using {ns}.Components");
         if (Project.Auth)
             L(readRoles.Count > 0 ? $"@attribute [Authorize(Roles = \"{string.Join(",", readRoles)}\")]" : "@attribute [Authorize]");
@@ -549,6 +550,13 @@
         L(oneRow ? "                <button type=\"button\" @onclick=\"Cancel\">Reload</button>" : "                <button type=\"button\" @onclick=\"Cancel\">Cancel</button>");
         L("            </div>");
         L("        </EditForm>");
+        if (approvalSegment is not null)
+        {
+            L("        @if (!isNew)");
+            L("        {");
+            L($"            <ApprovalPanel Segment=\"{approvalSegment}\" Id=\"row.§K\" />");
+            L("        }");
+        }
         if (readOnlyChildren.Count > 0)
         {
             L("        @if (!isNew)");

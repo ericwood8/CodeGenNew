@@ -36,8 +36,17 @@ public static class ApprovalWords
     public const string Approved = "The request was approved.";
     public const string Rejected = "The request was rejected.";
 
+    // the panel on a row's edit form
+    public const string PanelHeading = "Approval";
+    public const string PanelLoadFailed = "Failed to load the approval status.";
+    public const string PendingStatus = "Pending";
+
     public static string Heading(string tableLabel) => tableLabel + " approvals";
     public static string RowSummary(int row, string status) => $"Row {row}: {status}";
+
+    /// <summary> The one line a panel shows for the latest request of a row: its status and who asked or decided. </summary>
+    public static string PanelStatus(string status, string requestedBy, string? decidedBy, string? note) =>
+        $"{PanelHeading} status: {status}, " + (decidedBy is null ? $"requested by {requestedBy}" : $"decided by {decidedBy}") + (string.IsNullOrEmpty(note) ? "" : $": {note}");
 }
 
 /// <summary> One table that has approvals, as a screen lists it. </summary>
@@ -50,6 +59,28 @@ public static class ApprovalScreens
         ApprovalPlan.Resolve(database, project) is { Problems.Count: 0 } plan
             ? plan.Tables.Select(t => new ApprovalScreenTable(t.Table.TableName, Labels.Words(t.Table.TableName), ApiRequests.Route(t.Table), ApiRequests.Route(t.Table)["/api/".Length..])).ToList()
             : [];
+
+    /// <summary> The route segment under /api of a table whose edit form gets the approval panel, or null for a table without approvals. A page template sees one table, so this reads the settings,
+    /// as the approvals page's own plan does (a project whose plan has problems is refused by API_Approvals). </summary>
+    public static string? PanelSegment(TableModel table, ProjectSettings project) =>
+        project.ApiAuth && project.UserTable is not null && project.RowApprovals.Any(t => t.EqualsIgnoreCase(table.TableName)) && table.PrimaryKeyColumns is [{ IsIntegerColumn: true }]
+            ? ApiRequests.Route(table)["/api/".Length..]
+            : null;
+
+    /// <summary> The TypeScript twin of <see cref="ApprovalWords.PanelStatus"/>, for the panels of the web front ends. </summary>
+    public static string PanelStatusTypeScript()
+    {
+        return string.Join("\n", new[]
+        {
+            "export function panelStatus(latest: ApprovalView): string {",
+            "  return `" + ApprovalWords.PanelHeading + " status: ${latest.status}, ` + (latest.decidedBy ? `decided by ${latest.decidedBy}` : `requested by ${latest.requestedBy}`) + (latest.decisionNote ? `: ${latest.decisionNote}` : '');",
+            "}"
+        }) + "\n";
+    }
+
+    /// <summary> The C# twin of <see cref="ApprovalWords.PanelStatus"/> as the expression of a property of the generated <c>ApprovalView</c> (Blazor, Uno, WinUI3). </summary>
+    public static string PanelStatusCSharp() =>
+        "$\"" + ApprovalWords.PanelHeading + " status: {Status}, \" + (DecidedBy is null ? $\"requested by {RequestedBy}\" : $\"decided by {DecidedBy}\") + (string.IsNullOrEmpty(DecisionNote) ? \"\" : $\": {DecisionNote}\")";
 
     /// <summary> The TypeScript types of the approval wire shape (what the API answers). </summary>
     public static string TypeScript()
