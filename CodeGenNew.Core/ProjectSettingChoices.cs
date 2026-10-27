@@ -41,6 +41,7 @@ public static class ProjectSettingChoices
             ["ODataExpandDepth"] = (1, 5),
             ["QueueMaxRetries"] = (1, 100),
             ["QueueClaimMinutes"] = (1, 10080),
+            ["ArchiveBatchSize"] = (1, 1000000),
             ["AngularVersion"] = (1, 99),
             ["ApiPort"] = (1, HighestPort),
             ["DevPort"] = (1, HighestPort),

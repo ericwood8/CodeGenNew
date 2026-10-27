@@ -34,6 +34,8 @@ public static class ArchivePlan
     {
         var jobs = new List<ArchiveJob>();
         var problems = new List<string>();
+        if (project.ArchiveTables.Length > 0 && project.ArchiveRunTime is null)
+            problems.Add("ArchiveRunAt is not a time of day (use HH:mm in 24 hours, for example 02:00).");
         foreach (var (name, daysText, delete) in Entries(project))
         {
             string prefix = $"ArchiveTables: {name}";

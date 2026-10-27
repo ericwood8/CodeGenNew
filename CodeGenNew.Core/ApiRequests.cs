@@ -48,6 +48,10 @@ public static class ApiRequests
         return "{\n" + string.Join(",\n", lines) + "\n}";
     }
 
+    /// <summary> The body a producer posts to put a row in a work queue: the columns that cannot be NULL, without the queue's own. </summary>
+    public static string QueueBody(QueueTable queue, ProjectSettings project) =>
+        "{\n" + string.Join(",\n", queue.Payload.Select(c => "  " + ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + ApiSampleValues.Value(c, project))) + "\n}";
+
     /// <summary> Text as a JSON string, line breaks included. </summary>
     public static string JsonString(string text) => "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "").Replace("\n", "\\n") + "\"";
 

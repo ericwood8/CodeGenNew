@@ -1,6 +1,6 @@
 namespace CodeGenNew.Core;
 
-/// <summary> The Python (FastAPI) counterpart of <see cref="QueueWriter"/>: <c>app/routes/queue.py</c>, the <c>stats</c>, <c>failed</c>, <c>claim</c>, <c>{id}/complete</c>, <c>{id}/fail</c> and <c>{id}/retry</c> routes of every table
+/// <summary> The Python (FastAPI) counterpart of <see cref="QueueWriter"/>: <c>app/routes/queue.py</c>, the <c>stats</c>, <c>failed</c>, <c>claim</c>, <c>{id}/renew</c>, <c>{id}/complete</c>, <c>{id}/fail</c> and <c>{id}/retry</c> routes of every table
 /// in <c>QueueTables</c>, with the same sentences (<see cref="QueueWords"/>), problem type and status codes. The routes are written once; each table adds one <c>QueueSpec</c> that names its model and the attributes of its
 /// columns. Every change of status is one guarded UPDATE of the row in the status it expects. </summary>
 public static class PythonQueueWriter
@@ -167,6 +167,13 @@ def claim(session: Session, spec: QueueSpec, worker: str | None) -> Any | None:
     return None
 
 
+def renew(session: Session, spec: QueueSpec, key: int) -> Any:
+    """The worker that holds a claim says it is still working: the claim starts again, so it is not released after CLAIM_TIMEOUT."""
+    changed = session.execute(update(spec.row).where(spec.col("key") == key, spec.col("status") == CLAIMED).values({spec.claimed: datetime.now()})).rowcount
+    session.commit()
+    return answer(session, spec, key, changed, NOT_CLAIMED)
+
+
 def complete(session: Session, spec: QueueSpec, key: int) -> Any:
     changed = session.execute(update(spec.row).where(spec.col("key") == key, spec.col("status") == CLAIMED).values({spec.status: DONE, spec.processed: datetime.now()})).rowcount
     session.commit()
@@ -219,6 +226,10 @@ def add_routes(spec: QueueSpec) -> None:
     def claim_route(worker: str | None = None, session: Session = Depends(get_session)):
         row = claim(session, spec, worker)
         return Response(status_code=204) if row is None else row
+
+    @router.post(spec.route + "/{id}/renew", response_model=spec.schema, name=spec.table + "Renew"§DEPS)
+    def renew_route(id: int, session: Session = Depends(get_session)):
+        return renew(session, spec, id)
 
     @router.post(spec.route + "/{id}/complete", response_model=spec.schema, name=spec.table + "Complete"§DEPS)
     def complete_route(id: int, session: Session = Depends(get_session)):

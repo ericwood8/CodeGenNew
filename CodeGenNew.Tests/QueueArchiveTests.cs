@@ -206,6 +206,48 @@ public class QueueArchiveTests
     }
 
     [TestMethod]
+    public void The_batch_size_and_the_time_of_day_are_settings_and_the_defaults_are_1000_and_two_in_the_morning()
+    {
+        var plain = Project("", "ErrorLog:90");
+        var set = Project("", "ErrorLog:90", new() { ["ArchiveBatchSize"] = "250", ["ArchiveRunAt"] = "23:30" });
+        string Script(SqlDialect dialect, ProjectSettings project) => ArchiveScript.Text(Database(dialect, Log("ErrorLog", dialect)), project);
+
+        Assert.AreEqual(ProjectSettings.DefaultArchiveBatchSize, plain.ArchiveBatchSize);
+        Assert.AreEqual(new TimeOnly(2, 0), plain.ArchiveRunTime);
+        Assert.Contains("@BatchSize int = 1000", Script(SqlDialect.SqlServer, plain));
+        Assert.Contains("@active_start_time = 020000", Script(SqlDialect.SqlServer, plain));
+        Assert.Contains("@BatchSize int = 250", Script(SqlDialect.SqlServer, set));
+        Assert.Contains("@active_start_time = 233000", Script(SqlDialect.SqlServer, set));
+        Assert.Contains("p_batch integer DEFAULT 250", Script(SqlDialect.PostgreSql, set));
+        Assert.Contains("'30 23 * * *'", Script(SqlDialect.PostgreSql, set));
+        Assert.Contains("INTERVAL 23 HOUR + INTERVAL 30 MINUTE) DO CALL `ArchiveErrorLog`(90, 250)", Script(SqlDialect.MySql, set));
+        Assert.Contains("250 rows at a time", Script(SqlDialect.MySql, set));
+        Assert.IsNull(Project("", "ErrorLog:90", new() { ["ArchiveRunAt"] = "late" }).ArchiveRunTime);
+        Assert.Contains("ArchiveRunAt", ArchivePlan.Resolve(Database(SqlDialect.SqlServer, Log("ErrorLog"), Log("ErrorLogArchive", archivedOn: true, identity: false)), Project("", "ErrorLog:90", new() { ["ArchiveRunAt"] = "25:00" })).Problems.Single());
+    }
+
+    [TestMethod]
+    public void A_row_another_table_refers_to_stays_where_it_is_instead_of_failing_the_batch()
+    {
+        var child = new ChildForeignKeyModel
+        {
+            ConstraintName = "FK_Detail_ErrorLog", ReferencingSchema = "dbo", ReferencingTable = "ErrorDetail", ReferencingColumns = ["ErrorLogId"], ReferencedColumns = ["ErrorLogId"]
+        };
+        var withChild = Sample.Table("ErrorLog", Log("ErrorLog").Columns, childForeignKeys: [child]);
+        var project = Project("", "ErrorLog:90");
+        string sqlServer = ArchiveScript.Text(Database(SqlDialect.SqlServer, withChild), project);
+        string postgres = ArchiveScript.Text(Database(SqlDialect.PostgreSql, Sample.Table("ErrorLog", Log("ErrorLog", SqlDialect.PostgreSql).Columns, childForeignKeys: [child], dialect: SqlDialect.PostgreSql)), project);
+        string mysql = ArchiveScript.Text(Database(SqlDialect.MySql, Sample.Table("ErrorLog", Log("ErrorLog", SqlDialect.MySql).Columns, childForeignKeys: [child], dialect: SqlDialect.MySql)), project);
+        string sqlite = ArchiveScript.Text(Database(SqlDialect.Sqlite, Sample.Table("ErrorLog", Log("ErrorLog", SqlDialect.Sqlite).Columns, childForeignKeys: [child], dialect: SqlDialect.Sqlite)), project);
+
+        Assert.Contains("AND NOT EXISTS (SELECT 1 FROM [dbo].[ErrorDetail] AS [refs] WHERE [refs].[ErrorLogId] = [ErrorLog].[ErrorLogId])", sqlServer);
+        Assert.Contains("AND NOT EXISTS (SELECT 1 FROM \"dbo\".\"ErrorDetail\" AS \"refs\" WHERE \"refs\".\"ErrorLogId\" = \"ErrorLog\".\"ErrorLogId\")", postgres);
+        Assert.Contains("AND NOT EXISTS (SELECT 1 FROM `ErrorDetail` AS `refs` WHERE `refs`.`ErrorLogId` = `ErrorLog`.`ErrorLogId`)", mysql);
+        Assert.Contains("AND NOT EXISTS (SELECT 1 FROM \"ErrorDetail\" AS \"refs\"", sqlite);
+        Assert.DoesNotContain("NOT EXISTS", ArchiveScript.Text(Database(SqlDialect.SqlServer, Log("ErrorLog")), project), "a table nothing refers to has no check");
+    }
+
+    [TestMethod]
     public void Deleting_rows_writes_no_archive_table_and_no_insert()
     {
         string script = ArchiveScript.Text(Database(SqlDialect.PostgreSql, Log("ErrorLog", SqlDialect.PostgreSql)), Project("", "ErrorLog:30:delete"));
@@ -222,7 +264,7 @@ public class QueueArchiveTests
 
         Assert.IsTrue(success, string.Join(" | ", errors));
         string queue = read("Apis/Queue.cs");
-        foreach (string route in new[] { "/stats", "/failed", "/claim", "/{id}/complete", "/{id}/fail", "/{id}/retry" })
+        foreach (string route in new[] { "/stats", "/failed", "/claim", "/{id}/renew", "/{id}/complete", "/{id}/fail", "/{id}/retry" })
             Assert.Contains($"\"/api/jobqueues{route}\"", queue);
         Assert.Contains("public const int MaxRetries = 3;", queue);
         Assert.Contains("TimeSpan.FromMinutes(15)", queue);
@@ -232,6 +274,24 @@ public class QueueArchiveTests
         Assert.Contains("ReadOnly => true", read("Apis/JobQueueApi.cs"));
         Assert.Contains("Sql/ArchiveJobs.sql", string.Join("|", files.Select(f => f.Replace("sql/", "Sql/"))));
         Assert.Contains("POST {{host}}/api/jobqueues/claim", read("JobQueue.http"));
+        Assert.Contains("POST {{host}}/api/jobqueues/{{id}}/renew", read("JobQueue.http"));
+    }
+
+    [TestMethod]
+    public async Task A_producer_puts_a_row_in_the_queue_with_a_POST_that_sets_the_queues_own_columns()
+    {
+        var (success, errors, read, _) = await GenerateAsync("api");
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        string queue = read("Apis/Queue.cs");
+        Assert.Contains("app.MapPost(\"/api/jobqueues\", EnqueueAsync)", queue);
+        foreach (string line in new[] { "row.JobQueueId = default;", "row.Status = \"pending\";", "row.RetryCount = 0;", "row.CreatedOn = DateTime.Now;", "row.ClaimedOn = null;", "row.ProcessedOn = null;", "row.ClaimedBy = null;", "row.LastError = null;" })
+            Assert.Contains(line, queue);
+        Assert.Contains("catch (DbUpdateException)", queue);
+        string http = read("JobQueue.http");
+        Assert.Contains("### A producer puts a row in the queue", http);
+        Assert.Contains("\"jobType\"", http.Substring(http.IndexOf("A producer puts a row", StringComparison.Ordinal), 300));
+        Assert.DoesNotContain("\"status\"", http.Substring(http.IndexOf("A producer puts a row", StringComparison.Ordinal), 300), "the queue sets the status itself");
     }
 
     [TestMethod]
@@ -253,9 +313,11 @@ public class QueueArchiveTests
 
         Assert.IsTrue(success, string.Join(" | ", errors));
         string tests = read("JobQueueApiTests.cs");
-        foreach (string name in new[] { "The_stats_count_every_status", "A_claimed_row_is_completed_once", "Two_claims_never_return_the_same_row", "A_failed_row_counts_a_retry", "A_row_that_is_not_failed_cannot_be_retried", "to_every_queue_route" })
+        Assert.DoesNotContain("Inconclusive", tests, "every test puts its own row in the queue");
+        foreach (string name in new[] { "A_row_put_in_the_queue_is_pending", "A_renewed_claim_starts_again", "The_stats_count_every_status", "A_claimed_row_is_completed_once", "Two_claims_never_return_the_same_row", "A_failed_row_counts_a_retry", "A_row_that_is_not_failed_cannot_be_retried", "to_every_queue_route" })
             Assert.Contains(name, tests);
         Assert.Contains("No_route_changes_a_row_of_a_log_table", tests, "the table itself stays read only");
+        Assert.DoesNotContain("there is no POST", tests, "the queue table takes the enqueue POST");
     }
 
     [TestMethod]
@@ -304,13 +366,14 @@ public class QueueArchiveTests
 
         Assert.IsTrue(success, string.Join(" | ", errors));
         string queue = read("app/routes/queue.py");
-        foreach (string route in new[] { "/stats", "/failed", "/claim", "/{id}/complete", "/{id}/fail", "/{id}/retry" })
+        foreach (string route in new[] { "/stats", "/failed", "/claim", "/{id}/renew", "/{id}/complete", "/{id}/fail", "/{id}/retry" })
             Assert.Contains($"spec.route + \"{route}\"", queue);
         Assert.Contains("MAX_RETRIES = 3", queue);
         Assert.Contains("ordered_values", queue, "the retry count is written last");
         Assert.Contains(QueueWords.NotClaimed, queue);
         Assert.IsTrue(read("app/routes/__init__.py").IndexOf("queue", StringComparison.Ordinal) < read("app/routes/__init__.py").IndexOf("job_queue", StringComparison.Ordinal), "a table's /{id} would read stats as a key");
         Assert.Contains("def test_a_claim_takes_the_oldest_pending_rows_in_turn", read("tests/test_queue.py"));
+        Assert.Contains("def test_a_renewed_claim_is_not_released", read("tests/test_queue.py"));
         Assert.IsTrue(files.Any(f => f.EndsWith("tests/conftest.py")));
     }
 
@@ -321,13 +384,14 @@ public class QueueArchiveTests
 
         Assert.IsTrue(success, string.Join(" | ", errors));
         string queue = read("src/routes/queue.rs");
-        foreach (string route in new[] { "/stats", "/failed", "/claim", "/{id}/complete", "/{id}/fail", "/{id}/retry" })
+        foreach (string route in new[] { "/stats", "/failed", "/claim", "/{id}/renew", "/{id}/complete", "/{id}/fail", "/{id}/retry" })
             Assert.Contains($"\"/api/jobqueues{route}\"", queue);
         Assert.Contains("enum QueueError", queue, "ApiError has no problem form without sign-in");
         Assert.Contains("\"RetryCount\" = \"RetryCount\" + 1 WHERE", queue, "the retry count is the last assignment of the UPDATE");
         Assert.Contains(".merge(queue::router())", read("src/routes/mod.rs"));
         Assert.Contains("mod queue_routes;", read("tests/api/main.rs"));
         Assert.Contains("async fn a_claim_takes_the_oldest_pending_rows_in_turn", read("tests/api/queue_routes.rs"));
+        Assert.Contains("async fn a_renewed_claim_is_not_released", read("tests/api/queue_routes.rs"));
     }
 
     [TestMethod]
@@ -351,7 +415,7 @@ public class QueueArchiveTests
     [TestMethod]
     public void The_new_settings_are_on_a_tab_and_have_a_hint()
     {
-        foreach (string key in new[] { "QueueTables", "QueueMaxRetries", "QueueClaimMinutes", "ArchiveTables" })
+        foreach (string key in new[] { "QueueTables", "QueueMaxRetries", "QueueClaimMinutes", "ArchiveTables", "ArchiveBatchSize", "ArchiveRunAt" })
         {
             Assert.AreEqual("Table shapes", ProjectSettingGroups.TabOf(key));
             Assert.IsTrue(ProjectSettingsHints.All.ContainsKey(key), key);

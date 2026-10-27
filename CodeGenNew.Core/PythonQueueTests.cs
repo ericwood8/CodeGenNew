@@ -116,10 +116,23 @@ def test_a_failed_row_goes_back_to_pending_until_the_retries_are_used_and_retry_
     assert client.post(f"{ROUTE}/{K1}/fail").status_code == §CONFLICT, "a row that is not claimed cannot be failed"
 
 
-@pytest.mark.parametrize("action", ["complete", "fail", "retry"])
+@pytest.mark.parametrize("action", ["complete", "fail", "retry", "renew"])
 def test_a_row_that_is_not_there_is_not_found(api, action):
     client, _ = api
     assert client.post(f"{ROUTE}/{K3 + 500000}/{action}").status_code == §NOTFOUND
+
+
+def test_a_renewed_claim_is_not_released_and_only_a_claimed_row_can_be_renewed(api):
+    client, engine = api
+    assert client.post(ROUTE + "/claim").json()["§ID"] == K1
+    run(engine, [STALE])
+    renewed = client.post(f"{ROUTE}/{K1}/renew")
+    assert renewed.status_code == 200 and renewed.json()["§STATUS"] == "§CLAIMED"
+    assert client.post(ROUTE + "/claim").json()["§ID"] == K2, "the renewed claim stays with its worker"
+    assert client.post(f"{ROUTE}/{K1}/complete").status_code == 200
+    late = client.post(f"{ROUTE}/{K1}/renew")
+    assert late.status_code == §CONFLICT and late.json()["detail"] == NOT_CLAIMED, "a finished row has no claim to renew"
+    assert client.post(f"{ROUTE}/{K3}/renew").status_code == §CONFLICT, "a pending row has no claim to renew"
 
 
 def test_a_claim_nobody_completed_goes_back_to_pending(api):

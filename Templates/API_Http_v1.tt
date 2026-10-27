@@ -87,14 +87,23 @@
             L("POST {{host}}" + route + "/{{" + idVar + "}}/clone");
         }
         }
-        if (QueuePlan.For(Model, Project) is not null)
+        if (QueuePlan.For(Model, Project) is { } queue)
         {
+            L();
+            L("### A producer puts a row in the queue (pending, no retries, created now)");
+            L("POST {{host}}" + route);
+            L("Content-Type: application/json");
+            L();
+            L(ApiRequests.QueueBody(queue, Project));
             L();
             L("### How many rows are pending, claimed, done and failed, and the oldest pending one");
             L("GET {{host}}" + route + "/stats");
             L();
             L("### A worker takes the oldest pending row (204 when there is none)");
             L("POST {{host}}" + route + "/claim?worker=worker-1");
+            L();
+            L("### The worker is still busy with the row it claimed: the claim starts again");
+            L("POST {{host}}" + route + "/{{" + idVar + "}}/renew");
             L();
             L("### The worker finished the row it claimed");
             L("POST {{host}}" + route + "/{{" + idVar + "}}/complete");

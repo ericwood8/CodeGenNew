@@ -12,11 +12,17 @@ public static class QueueStatus
 }
 
 /// <summary> A work-queue table and the columns the routes use. <c>LastError</c> and <c>ClaimedBy</c> are optional; the others must exist. </summary>
-public sealed record QueueTable(TableModel Table, ColumnModel Key, ColumnModel Status, ColumnModel Retry, ColumnModel Created, ColumnModel Claimed, ColumnModel Processed, ColumnModel? ClaimedBy, ColumnModel? LastError);
+public sealed record QueueTable(TableModel Table, ColumnModel Key, ColumnModel Status, ColumnModel Retry, ColumnModel Created, ColumnModel Claimed, ColumnModel Processed, ColumnModel? ClaimedBy, ColumnModel? LastError)
+{
+    /// <summary> The columns a producer supplies when it puts a row in the queue: those that cannot be NULL, without the ones the queue itself sets (status, retries, the stamps, the worker, the error) and a key the database numbers. </summary>
+    public IReadOnlyList<ColumnModel> Payload => ApiSampleValues.BodyColumns(Table).Where(c => !IsManaged(c) && !(c.IsPrimaryKey && c.IsIdentity)).ToList();
+
+    private bool IsManaged(ColumnModel c) => new[] { Status, Retry, Created, Claimed, Processed, ClaimedBy, LastError }.Any(m => m is not null && m.Name.EqualsIgnoreCase(c.Name));
+}
 
 /// <summary> Which tables are work queues (<c>QueueTables=JobQueue,Mail:State:Attempts</c>: a table and optionally its status and retry columns, default Status and RetryCount). A queue row is pending, claimed, done or failed;
 /// a worker takes the oldest pending row with one guarded UPDATE, then completes it or fails it (one more retry, back to pending until <c>QueueMaxRetries</c>, then failed). A claim nobody completed is released after
-/// <c>QueueClaimMinutes</c>. The rows are not edited by hand, so a queue table is also a read-only list (<see cref="LogTablePlan"/>). </summary>
+/// <c>QueueClaimMinutes</c> unless its worker renews it. The rows are not edited by hand, so a queue table is also a read-only list (<see cref="LogTablePlan"/>). </summary>
 public static class QueuePlan
 {
     public const string DefaultStatus = "Status";

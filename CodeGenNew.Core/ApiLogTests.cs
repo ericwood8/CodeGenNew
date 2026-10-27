@@ -46,8 +46,11 @@ public static class ApiLogTests
         L("    {");
         L("        ApiFixture.RequireDatabase();");
         L("        var client = ApiFixture.Client;");
-        L("        using var created = await client.PostAsJsonAsync(Route, new JsonObject());");
-        L("        Assert.AreEqual(HttpStatusCode.MethodNotAllowed, created.StatusCode, \"there is no POST\");");
+        if (queue is null)
+        {
+            L("        using var created = await client.PostAsJsonAsync(Route, new JsonObject());");
+            L("        Assert.AreEqual(HttpStatusCode.MethodNotAllowed, created.StatusCode, \"there is no POST\");");
+        }
         L($"        using var updated = await client.PutAsJsonAsync($\"{{Route}}/{{{absent}}}\", new JsonObject());");
         L("        Assert.AreEqual(HttpStatusCode.MethodNotAllowed, updated.StatusCode, \"there is no PUT\");");
         L($"        using var removed = await client.DeleteAsync($\"{{Route}}/{{{absent}}}\");");
@@ -112,14 +115,28 @@ public static class ApiLogTests
             L("    }");
         }
         if (queue is not null)
-            QueueMethods(L, queue, project, absent);
+            QueueMethods(L, plan, queue, project, absent);
         L("}");
         return o.ToString();
     }
 
-    private static void QueueMethods(Action<string> L, QueueTable queue, ProjectSettings project, string absent)
+    private static void QueueMethods(Action<string> L, ApiTestPlan plan, QueueTable queue, ProjectSettings project, string absent)
     {
-        string id = JsonNames.Camel(queue.Key.Name), status = JsonNames.Camel(queue.Status.Name), retry = JsonNames.Camel(queue.Retry.Name);
+        string id = JsonNames.Camel(queue.Key.Name), status = JsonNames.Camel(queue.Status.Name), retry = JsonNames.Camel(queue.Retry.Name), claimed = JsonNames.Camel(queue.Claimed.Name);
+        string pending = QueueStatus.Pending, claimedStatus = QueueStatus.Claimed, done = QueueStatus.Done, failedStatus = QueueStatus.Failed;
+        L("");
+        L("    // every test puts its own row in the queue first, so a claim always finds one");
+        L("    private static async Task<JsonObject> EnqueueAsync()");
+        L("    {");
+        L("        var body = new JsonObject");
+        L("        {");
+        foreach (var c in queue.Payload)
+            L($"            [{ApiSampleValues.Json(JsonNames.Camel(c.Name))}] = {plan.Expression(c)},");
+        L("        };");
+        L("        using var response = await ApiFixture.Client.PostAsJsonAsync(Route, body);");
+        L("        Assert.AreEqual(HttpStatusCode.Created, response.StatusCode, await response.Content.ReadAsStringAsync());");
+        L("        return (await response.Content.ReadFromJsonAsync<JsonObject>())!;");
+        L("    }");
         L("");
         L("    private static async Task<JsonObject?> ClaimAsync()");
         L("    {");
@@ -128,6 +145,40 @@ public static class ApiLogTests
         L("            return null;");
         L("        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());");
         L("        return (await response.Content.ReadFromJsonAsync<JsonObject>())!;");
+        L("    }");
+        L("");
+        L("    // takes the oldest pending row and finishes it, so a test that leaves a row pending does not grow the queue");
+        L("    private static async Task SettleAsync()");
+        L("    {");
+        L("        var row = await ClaimAsync();");
+        L("        if (row is null)");
+        L("            return;");
+        L($"        using var completed = await ApiFixture.Client.PostAsync($\"{{Route}}/{{row[\"{id}\"]!.GetValue<long>()}}/complete\", null);");
+        L("        Assert.AreEqual(HttpStatusCode.OK, completed.StatusCode);");
+        L("    }");
+        L("");
+        L("    [TestMethod]");
+        L("    public async Task A_row_put_in_the_queue_is_pending_with_no_retries_whatever_the_producer_sent()");
+        L("    {");
+        L("        ApiFixture.RequireDatabase();");
+        L("        var row = await EnqueueAsync();");
+        L($"        Assert.AreEqual(\"{pending}\", row[\"{status}\"]!.GetValue<string>());");
+        L($"        Assert.AreEqual(0, row[\"{retry}\"]!.GetValue<int>());");
+        L($"        Assert.IsNull(row[\"{claimed}\"]);");
+        L("        var body = new JsonObject");
+        L("        {");
+        foreach (var c in queue.Payload)
+            L($"            [{ApiSampleValues.Json(JsonNames.Camel(c.Name))}] = {plan.Expression(c)},");
+        L($"            [\"{status}\"] = \"{done}\",");
+        L($"            [\"{retry}\"] = 7,");
+        L("        };");
+        L("        using var forced = await ApiFixture.Client.PostAsJsonAsync(Route, body);");
+        L("        Assert.AreEqual(HttpStatusCode.Created, forced.StatusCode, await forced.Content.ReadAsStringAsync());");
+        L("        var forcedRow = (await forced.Content.ReadFromJsonAsync<JsonObject>())!;");
+        L($"        Assert.AreEqual(\"{pending}\", forcedRow[\"{status}\"]!.GetValue<string>(), \"a producer cannot set the status\");");
+        L($"        Assert.AreEqual(0, forcedRow[\"{retry}\"]!.GetValue<int>(), \"a producer cannot set the retries\");");
+        L("        await SettleAsync();");
+        L("        await SettleAsync();");
         L("    }");
         L("");
         L("    [TestMethod]");
@@ -145,14 +196,14 @@ public static class ApiLogTests
         L("    public async Task A_claimed_row_is_completed_once()");
         L("    {");
         L("        ApiFixture.RequireDatabase();");
+        L("        await EnqueueAsync();");
         L("        var row = await ClaimAsync();");
-        L("        if (row is null)");
-        L("            Assert.Inconclusive(\"the queue has no pending row to claim\");");
-        L($"        Assert.AreEqual(\"{QueueStatus.Claimed}\", row![\"{status}\"]!.GetValue<string>());");
+        L("        Assert.IsNotNull(row, \"the row just put in the queue is pending\");");
+        L($"        Assert.AreEqual(\"{claimedStatus}\", row![\"{status}\"]!.GetValue<string>());");
         L($"        var key = row[\"{id}\"]!.GetValue<long>();");
         L("        using var completed = await ApiFixture.Client.PostAsync($\"{Route}/{key}/complete\", null);");
         L("        Assert.AreEqual(HttpStatusCode.OK, completed.StatusCode, await completed.Content.ReadAsStringAsync());");
-        L($"        Assert.AreEqual(\"{QueueStatus.Done}\", (await completed.Content.ReadFromJsonAsync<JsonObject>())![\"{status}\"]!.GetValue<string>());");
+        L($"        Assert.AreEqual(\"{done}\", (await completed.Content.ReadFromJsonAsync<JsonObject>())![\"{status}\"]!.GetValue<string>());");
         L("        using var again = await ApiFixture.Client.PostAsync($\"{Route}/{key}/complete\", null);");
         L("        Assert.AreEqual(HttpStatusCode.Conflict, again.StatusCode, \"only a claimed row can be completed\");");
         L("    }");
@@ -161,47 +212,71 @@ public static class ApiLogTests
         L("    public async Task Two_claims_never_return_the_same_row()");
         L("    {");
         L("        ApiFixture.RequireDatabase();");
+        L("        await EnqueueAsync();");
+        L("        await EnqueueAsync();");
         L("        var first = await ClaimAsync();");
         L("        var second = await ClaimAsync();");
-        L("        if (first is null || second is null)");
-        L("            Assert.Inconclusive(\"the queue has fewer than two pending rows\");");
+        L("        Assert.IsNotNull(first);");
+        L("        Assert.IsNotNull(second, \"two rows were put in the queue\");");
         L($"        Assert.AreNotEqual(first![\"{id}\"]!.GetValue<long>(), second![\"{id}\"]!.GetValue<long>());");
         L("        foreach (var row in new[] { first, second })");
         L("        {");
-        L($"            using var released = await ApiFixture.Client.PostAsync($\"{{Route}}/{{row[\"{id}\"]!.GetValue<long>()}}/complete\", null);");
+        L($"            using var released = await ApiFixture.Client.PostAsync($\"{{Route}}/{{row![\"{id}\"]!.GetValue<long>()}}/complete\", null);");
         L("            Assert.AreEqual(HttpStatusCode.OK, released.StatusCode);");
         L("        }");
+        L("    }");
+        L("");
+        L("    [TestMethod]");
+        L("    public async Task A_renewed_claim_starts_again_and_only_a_claimed_row_can_be_renewed()");
+        L("    {");
+        L("        ApiFixture.RequireDatabase();");
+        L("        await EnqueueAsync();");
+        L("        var row = await ClaimAsync();");
+        L("        Assert.IsNotNull(row);");
+        L($"        var key = row![\"{id}\"]!.GetValue<long>();");
+        L($"        var first = row[\"{claimed}\"]!.GetValue<DateTime>();");
+        L("        await Task.Delay(1100);");
+        L("        using var renewed = await ApiFixture.Client.PostAsync($\"{Route}/{key}/renew\", null);");
+        L("        Assert.AreEqual(HttpStatusCode.OK, renewed.StatusCode, await renewed.Content.ReadAsStringAsync());");
+        L("        var after = (await renewed.Content.ReadFromJsonAsync<JsonObject>())!;");
+        L($"        Assert.AreEqual(\"{claimedStatus}\", after[\"{status}\"]!.GetValue<string>());");
+        L($"        Assert.IsGreaterThan(first, after[\"{claimed}\"]!.GetValue<DateTime>(), \"the claim time moved on\");");
+        L("        using var completed = await ApiFixture.Client.PostAsync($\"{Route}/{key}/complete\", null);");
+        L("        Assert.AreEqual(HttpStatusCode.OK, completed.StatusCode);");
+        L("        using var late = await ApiFixture.Client.PostAsync($\"{Route}/{key}/renew\", null);");
+        L("        Assert.AreEqual(HttpStatusCode.Conflict, late.StatusCode, \"a finished row has no claim to renew\");");
         L("    }");
         L("");
         L("    [TestMethod]");
         L("    public async Task A_failed_row_counts_a_retry_and_goes_back_to_pending_until_the_retries_are_used()");
         L("    {");
         L("        ApiFixture.RequireDatabase();");
+        L("        await EnqueueAsync();");
         L("        var row = await ClaimAsync();");
-        L("        if (row is null)");
-        L("            Assert.Inconclusive(\"the queue has no pending row to claim\");");
+        L("        Assert.IsNotNull(row);");
         L($"        var key = row![\"{id}\"]!.GetValue<long>();");
         L($"        int before = row[\"{retry}\"]!.GetValue<int>();");
         L("        using var failed = await ApiFixture.Client.PostAsJsonAsync($\"{Route}/{key}/fail\", new JsonObject { [\"error\"] = \"a test failure\" });");
         L("        Assert.AreEqual(HttpStatusCode.OK, failed.StatusCode, await failed.Content.ReadAsStringAsync());");
         L("        var after = (await failed.Content.ReadFromJsonAsync<JsonObject>())!;");
         L($"        Assert.AreEqual(before + 1, after[\"{retry}\"]!.GetValue<int>());");
-        L($"        Assert.AreEqual(before + 1 >= {project.QueueMaxRetries} ? \"{QueueStatus.Failed}\" : \"{QueueStatus.Pending}\", after[\"{status}\"]!.GetValue<string>());");
-        L($"        if (after[\"{status}\"]!.GetValue<string>() == \"{QueueStatus.Failed}\")");
+        L($"        Assert.AreEqual(before + 1 >= {project.QueueMaxRetries} ? \"{failedStatus}\" : \"{pending}\", after[\"{status}\"]!.GetValue<string>());");
+        L($"        if (after[\"{status}\"]!.GetValue<string>() == \"{failedStatus}\")");
         L("        {");
         L("            using var retried = await ApiFixture.Client.PostAsync($\"{Route}/{key}/retry\", null);");
         L("            Assert.AreEqual(HttpStatusCode.OK, retried.StatusCode, await retried.Content.ReadAsStringAsync());");
-        L($"            Assert.AreEqual(\"{QueueStatus.Pending}\", (await retried.Content.ReadFromJsonAsync<JsonObject>())![\"{status}\"]!.GetValue<string>());");
+        L($"            Assert.AreEqual(\"{pending}\", (await retried.Content.ReadFromJsonAsync<JsonObject>())![\"{status}\"]!.GetValue<string>());");
         L("        }");
+        L("        await SettleAsync();");
         L("    }");
         L("");
         L("    [TestMethod]");
         L("    public async Task A_row_that_is_not_failed_cannot_be_retried()");
         L("    {");
         L("        ApiFixture.RequireDatabase();");
+        L("        await EnqueueAsync();");
         L("        var row = await ClaimAsync();");
-        L("        if (row is null)");
-        L("            Assert.Inconclusive(\"the queue has no pending row to claim\");");
+        L("        Assert.IsNotNull(row);");
         L($"        var key = row![\"{id}\"]!.GetValue<long>();");
         L("        using var retried = await ApiFixture.Client.PostAsync($\"{Route}/{key}/retry\", null);");
         L("        Assert.AreEqual(HttpStatusCode.Conflict, retried.StatusCode);");
@@ -213,6 +288,7 @@ public static class ApiLogTests
         L("    [DataRow(\"complete\")]");
         L("    [DataRow(\"fail\")]");
         L("    [DataRow(\"retry\")]");
+        L("    [DataRow(\"renew\")]");
         L("    public async Task A_row_that_is_not_there_answers_404_to_every_queue_route(string action)");
         L("    {");
         L("        ApiFixture.RequireDatabase();");
@@ -223,12 +299,14 @@ public static class ApiLogTests
         {
             L("");
             L("    [TestMethod]");
-            L("    public async Task Without_a_token_the_claim_answers_401()");
+            L("    public async Task Without_a_token_the_claim_and_the_enqueue_answer_401()");
             L("    {");
             L("        ApiFixture.RequireDatabase();");
             L("        using var anonymous = ApiFixture.Anonymous();");
             L("        using var response = await anonymous.PostAsync($\"{Route}/claim\", null);");
             L("        Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);");
+            L("        using var enqueue = await anonymous.PostAsJsonAsync(Route, new JsonObject());");
+            L("        Assert.AreEqual(HttpStatusCode.Unauthorized, enqueue.StatusCode);");
             L("    }");
         }
     }

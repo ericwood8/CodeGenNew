@@ -7,32 +7,50 @@ namespace CodeGenNew.Core;
 /// The scheduling part is commented out. Written for the project to review and run; the application never runs it. </summary>
 public static class ArchiveScript
 {
-    public const int BatchSize = 1000;
-
     public static string ProcedureName(ArchiveJob job) => "Archive" + job.Table.TableName;
+
+    /// <summary> A row that another table's foreign key refers to stays where it is: the delete would be refused and roll the whole batch back. It moves in a later run, once the rows that refer to it are gone.
+    /// A table that refers to itself is not covered. </summary>
+    private static string NotReferenced(DialectInfo di, ArchiveJob job)
+    {
+        var o = new StringBuilder();
+        string source = di.Quote(job.Table.DbTableName);
+        foreach (var fk in job.Table.ChildForeignKeys.Where(f => f.ReferencingColumns.Count > 0 && f.ReferencingColumns.Count == f.ReferencedColumns.Count
+            && !f.ReferencingTable.EqualsIgnoreCase(job.Table.TableName) && !f.ReferencingTable.EqualsIgnoreCase(job.ArchiveName)))
+        {
+            string match = string.Join(" AND ", fk.ReferencingColumns.Select((column, i) =>
+                $"{di.Quote(ReferencingAlias)}.{di.Quote(column)} = {source}.{di.Quote(job.Table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[i]))?.DbName ?? fk.ReferencedColumns[i])}"));
+            o.Append($" AND NOT EXISTS (SELECT 1 FROM {di.QuoteTable(fk.ReferencingSchema, fk.ReferencingDbTable)} AS {di.Quote(ReferencingAlias)} WHERE {match})");
+        }
+        return o.ToString();
+    }
+
+    private const string ReferencingAlias = "refs";
 
     public static string Text(DatabaseModel database, ProjectSettings project)
     {
         var resolution = ArchivePlan.Resolve(database, project);
         var o = new StringBuilder();
         foreach (var job in resolution.Jobs.OrderBy(j => j.Table.TableName, StringComparer.OrdinalIgnoreCase))
-            o.Append(For(database, job));
+            o.Append(For(database, job, project));
         return o.ToString();
     }
 
-    public static string For(DatabaseModel database, ArchiveJob job)
+    public static string For(DatabaseModel database, ArchiveJob job, ProjectSettings project)
     {
+        int batchSize = project.ArchiveBatchSize;
+        var runAt = project.ArchiveRunTime ?? TimeOnly.MinValue;
         var di = DialectInfo.For(database.Dialect);
         var o = new StringBuilder();
         void L(string text = "") => o.Append(text).Append('\n');
         string what = job.Delete ? $"deletes the rows of {job.Table.TableName}" : $"moves the rows of {job.Table.TableName} to {job.ArchiveName}";
         string finished = job.Queue is null ? "" : $", finished ones only ({job.Queue.Status.DbName} = '{QueueStatus.Done}')";
-        L($"-- {what} that are older than {job.Days} days by {job.Age.DbName}{finished}{(database.Dialect == SqlDialect.Sqlite ? "" : $", {BatchSize} rows at a time")}");
+        L($"-- {what} that are older than {job.Days} days by {job.Age.DbName}{finished}{(database.Dialect == SqlDialect.Sqlite ? "" : $", {batchSize} rows at a time")}");
         L("-- Review it, run it yourself and schedule it; the application never runs it.");
         string source = di.QuoteTable(job.Table.SchemaName, job.Table.DbTableName);
         string archive = di.QuoteTable(job.Table.SchemaName, job.ArchiveName);
         string age = di.Quote(job.Age.DbName);
-        string statusTest = job.Queue is null ? "" : $" AND {di.Quote(job.Queue.Status.DbName)} = '{QueueStatus.Done}'";
+        string statusTest = (job.Queue is null ? "" : $" AND {di.Quote(job.Queue.Status.DbName)} = '{QueueStatus.Done}'") + NotReferenced(di, job);
         var columns = job.Copied.Select(c => di.Quote(c.DbName)).ToList();
         string columnList = string.Join(", ", columns);
         string insertColumns = columnList + (job.Archive is null || job.ArchivedOn is not null ? ", " + di.Quote(ArchivePlan.ArchivedOnName) : "");
@@ -56,7 +74,7 @@ public static class ArchiveScript
         switch (database.Dialect)
         {
             case SqlDialect.SqlServer:
-                L($"CREATE OR ALTER PROCEDURE {di.QuoteTable(job.Table.SchemaName, ProcedureName(job))} @Days int = {job.Days}, @BatchSize int = {BatchSize}");
+                L($"CREATE OR ALTER PROCEDURE {di.QuoteTable(job.Table.SchemaName, ProcedureName(job))} @Days int = {job.Days}, @BatchSize int = {batchSize}");
                 L("AS");
                 L("BEGIN");
                 L("    SET NOCOUNT ON;");
@@ -83,13 +101,13 @@ public static class ArchiveScript
                 L("USE msdb;");
                 L($"EXEC dbo.sp_add_job @job_name = N'{ProcedureName(job)}';");
                 L($"EXEC dbo.sp_add_jobstep @job_name = N'{ProcedureName(job)}', @step_name = N'Run', @subsystem = N'TSQL', @database_name = N'{database.DatabaseName}', @command = N'EXEC {job.Table.SchemaName}.{ProcedureName(job)};';");
-                L($"EXEC dbo.sp_add_schedule @schedule_name = N'{ProcedureName(job)} daily', @freq_type = 4, @freq_interval = 1, @active_start_time = 020000;");
+                L($"EXEC dbo.sp_add_schedule @schedule_name = N'{ProcedureName(job)} daily', @freq_type = 4, @freq_interval = 1, @active_start_time = {runAt:HHmm}00;");
                 L($"EXEC dbo.sp_attach_schedule @job_name = N'{ProcedureName(job)}', @schedule_name = N'{ProcedureName(job)} daily';");
                 L($"EXEC dbo.sp_add_jobserver @job_name = N'{ProcedureName(job)}';");
                 L("*/");
                 break;
             case SqlDialect.PostgreSql:
-                L($"CREATE OR REPLACE PROCEDURE {di.QuoteTable(job.Table.SchemaName, ProcedureName(job))}(p_days integer DEFAULT {job.Days}, p_batch integer DEFAULT {BatchSize})");
+                L($"CREATE OR REPLACE PROCEDURE {di.QuoteTable(job.Table.SchemaName, ProcedureName(job))}(p_days integer DEFAULT {job.Days}, p_batch integer DEFAULT {batchSize})");
                 L("LANGUAGE plpgsql AS $$");
                 L("DECLARE");
                 L("    v_moved integer;");
@@ -114,7 +132,7 @@ public static class ArchiveScript
                 L("    END LOOP;");
                 L("END $$;");
                 L();
-                L($"-- Schedule it with pg_cron, for example: SELECT cron.schedule('{ProcedureName(job)}', '0 2 * * *', 'CALL {di.QuoteTable(job.Table.SchemaName, ProcedureName(job)).Replace("'", "''")}()');");
+                L($"-- Schedule it with pg_cron, for example: SELECT cron.schedule('{ProcedureName(job)}', '{runAt.Minute} {runAt.Hour} * * *', 'CALL {di.QuoteTable(job.Table.SchemaName, ProcedureName(job)).Replace("'", "''")}()');");
                 break;
             case SqlDialect.MySql:
                 L($"DROP PROCEDURE IF EXISTS {procedure};");
@@ -136,7 +154,7 @@ public static class ArchiveScript
                 L("DELIMITER ;");
                 L();
                 L("-- Schedule it with an event (the server needs SET GLOBAL event_scheduler = ON):");
-                L($"-- CREATE EVENT {di.Quote(ProcedureName(job) + "Daily")} ON SCHEDULE EVERY 1 DAY STARTS (CURRENT_DATE + INTERVAL 1 DAY + INTERVAL 2 HOUR) DO CALL {procedure}({job.Days}, {BatchSize});");
+                L($"-- CREATE EVENT {di.Quote(ProcedureName(job) + "Daily")} ON SCHEDULE EVERY 1 DAY STARTS (CURRENT_DATE + INTERVAL 1 DAY + INTERVAL {runAt.Hour} HOUR + INTERVAL {runAt.Minute} MINUTE) DO CALL {procedure}({job.Days}, {batchSize});");
                 break;
             default:
                 L("BEGIN;");

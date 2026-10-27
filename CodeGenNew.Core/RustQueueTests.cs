@@ -138,11 +138,30 @@ async fn a_failed_row_goes_back_to_pending_until_the_retries_are_used_and_retry_
 async fn a_row_that_is_not_there_is_not_found() {
     let Some(api) = seeded().await else { return };
     let mut statuses = Vec::new();
-    for action in ["complete", "fail", "retry"] {
+    for action in ["complete", "fail", "retry", "renew"] {
         statuses.push(api.post_empty(&format!("{ROUTE}/{}/{action}", K3 + 500000)).await.status);
     }
     clear(&api).await;
-    assert_eq!(statuses, [StatusCode::NOT_FOUND; 3]);
+    assert_eq!(statuses, [StatusCode::NOT_FOUND; 4]);
+}
+
+#[tokio::test]
+async fn a_renewed_claim_is_not_released_and_only_a_claimed_row_can_be_renewed() {
+    let Some(api) = seeded().await else { return };
+    let first = api.post_empty(&format!("{ROUTE}/claim")).await;
+    let _ = sqlx::query(STALE).execute(&api.pool()).await;
+    let renewed = api.post_empty(&format!("{ROUTE}/{K1}/renew")).await;
+    let next = api.post_empty(&format!("{ROUTE}/claim")).await;
+    let done = api.post_empty(&format!("{ROUTE}/{K1}/complete")).await;
+    let late = api.post_empty(&format!("{ROUTE}/{K1}/renew")).await;
+    let pending = api.post_empty(&format!("{ROUTE}/{K3}/renew")).await;
+    clear(&api).await;
+    assert_eq!(first.json()["§ID"], K1, "{}", first.body);
+    assert!(renewed.status == StatusCode::OK && renewed.json()["§STATUS"] == "§CLAIMED", "{}", renewed.body);
+    assert_eq!(next.json()["§ID"], K2, "the renewed claim stays with its worker: {}", next.body);
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    assert!(late.status == StatusCode::CONFLICT && late.json()["detail"] == NOT_CLAIMED, "a finished row has no claim to renew: {}", late.body);
+    assert_eq!(pending.status, StatusCode::CONFLICT, "a pending row has no claim to renew: {}", pending.body);
 }
 
 #[tokio::test]

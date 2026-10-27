@@ -2,7 +2,7 @@ using System.Text;
 
 namespace CodeGenNew.Core;
 
-/// <summary> The Rust (axum and sqlx) counterpart of <see cref="QueueWriter"/>: <c>src/routes/queue.rs</c>, the <c>stats</c>, <c>failed</c>, <c>claim</c>, <c>{id}/complete</c>, <c>{id}/fail</c> and <c>{id}/retry</c> routes of every
+/// <summary> The Rust (axum and sqlx) counterpart of <see cref="QueueWriter"/>: <c>src/routes/queue.rs</c>, the <c>stats</c>, <c>failed</c>, <c>claim</c>, <c>{id}/renew</c>, <c>{id}/complete</c>, <c>{id}/fail</c> and <c>{id}/retry</c> routes of every
 /// table in <c>QueueTables</c>, with the same sentences (<see cref="QueueWords"/>), problem type and status codes. The SQL is written for the project's database with <see cref="DialectInfo"/>; every change of status is one
 /// UPDATE of the row in the status it expects. The shared types are written once and each table adds its handlers. </summary>
 public static class RustQueueWriter
@@ -35,6 +35,7 @@ public static class RustQueueWriter
             string claim = q.ClaimedBy is null
                 ? $"UPDATE {table} SET {status} = {claimedLiteral}, {claimed} = {P(1)} WHERE {key} = {P(2)} AND {status} = {pending}"
                 : $"UPDATE {table} SET {status} = {claimedLiteral}, {claimed} = {P(1)}, {Q(q.ClaimedBy)} = {P(2)} WHERE {key} = {P(3)} AND {status} = {pending}";
+            string renew = $"UPDATE {table} SET {claimed} = {P(1)} WHERE {key} = {P(2)} AND {status} = {claimedLiteral}";
             string complete = $"UPDATE {table} SET {status} = {done}, {processed} = {P(1)} WHERE {key} = {P(2)} AND {status} = {claimedLiteral}";
             string exhausted = $"{retry} + 1 >= {max}";
             // the retry count is written last: MySQL reads a column that an earlier assignment of the same UPDATE already changed
@@ -55,7 +56,7 @@ public static class RustQueueWriter
                 ("§M", main.Module), ("§S", main.Struct), ("§ROUTE", main.Route), ("§KT", main.Key.BaseType), ("§CT", createdField.Type), ("§ON", createdField.IsOption ? "*on" : "Some(*on)"),
                 ("§NOWCLAIMED", RustTable.Now(main.FieldOf(q.Claimed))), ("§NOWPROCESSED", RustTable.Now(main.FieldOf(q.Processed))),
                 ("§SQL_RELEASE", RustTable.Raw(release)), ("§SQL_COUNTS", RustTable.Raw(counts)), ("§SQL_OLDEST", RustTable.Raw(oldest)), ("§SQL_NEXT", RustTable.Raw(next)), ("§SQL_CLAIM", RustTable.Raw(claim)),
-                ("§SQL_COMPLETE", RustTable.Raw(complete)), ("§SQL_FAILED_ROWS", RustTable.Raw(failedRows)), ("§SQL_FAIL", RustTable.Raw(fail)), ("§SQL_RETRY", RustTable.Raw(retrySql)),
+                ("§SQL_COMPLETE", RustTable.Raw(complete)), ("§SQL_RENEW", RustTable.Raw(renew)), ("§SQL_FAILED_ROWS", RustTable.Raw(failedRows)), ("§SQL_FAIL", RustTable.Raw(fail)), ("§SQL_RETRY", RustTable.Raw(retrySql)),
                 ("§ERRORLINE", errorLine), ("§ERRORBIND", errorBind), ("§CLAIMBY", claimBy),
                 ("§PENDING", QueueStatus.Pending), ("§CLAIMED", QueueStatus.Claimed), ("§DONE", QueueStatus.Done), ("§FAILED", QueueStatus.Failed)));
         }
@@ -188,6 +189,7 @@ fn router_§M() -> Router<Pool> {
         .route("§ROUTE/stats", get(stats_§M))
         .route("§ROUTE/failed", get(failed_§M))
         .route("§ROUTE/claim", post(claim_§M))
+        .route("§ROUTE/{id}/renew", post(renew_§M))
         .route("§ROUTE/{id}/complete", post(complete_§M))
         .route("§ROUTE/{id}/fail", post(fail_§M))
         .route("§ROUTE/{id}/retry", post(retry_§M))
@@ -238,6 +240,12 @@ async fn claim_§M(State(pool): State<Pool>, Query(query): Query<ClaimQuery>) ->
         }
     }
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// The worker that holds a claim says it is still working: the claim starts again, so it is not released after CLAIM_MINUTES.
+async fn renew_§M(State(pool): State<Pool>, Path(id): Path<§KT>) -> QueueResult<Json<§S>> {
+    let changed = sqlx::query(§SQL_RENEW).bind(§NOWCLAIMED).bind(id).execute(&pool).await?.rows_affected();
+    answer_§M(&pool, id, changed, NOT_CLAIMED).await
 }
 
 async fn complete_§M(State(pool): State<Pool>, Path(id): Path<§KT>) -> QueueResult<Json<§S>> {

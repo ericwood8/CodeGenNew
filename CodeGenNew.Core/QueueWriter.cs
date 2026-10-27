@@ -2,7 +2,7 @@ using System.Text;
 
 namespace CodeGenNew.Core;
 
-/// <summary> The C# of the work-queue routes (<c>QueueTables</c>): per table <c>stats</c>, <c>failed</c>, <c>claim</c> and <c>{id}/complete</c>, <c>{id}/fail</c>, <c>{id}/retry</c>. Every change of status is one guarded
+/// <summary> The C# of the work-queue routes (<c>QueueTables</c>): per table <c>stats</c>, <c>failed</c>, <c>claim</c>, <c>{id}/renew</c>, <c>{id}/complete</c>, <c>{id}/fail</c>, <c>{id}/retry</c> and the enqueue <c>POST</c> of the table. Every change of status is one guarded
 /// UPDATE of the row in the status it expects, so two workers never get the same row and a late answer never overwrites a newer one. The text uses <c>§</c> tokens so the code reads as code. </summary>
 public static class QueueWriter
 {
@@ -38,6 +38,7 @@ public static class QueueWriter
             "§PENDING", QueueStatus.Pending, "§CLAIMED", QueueStatus.Claimed, "§DONE", QueueStatus.Done, "§FAILED", QueueStatus.Failed,
             "§AUTH", project.ApiAuth ? ".RequireAuthorization()" : "",
             "§ATTEMPTS", QueueWords.ClaimAttempts.ToString(), "§FAILEDROWS", QueueWords.FailedRows.ToString(), "§W_NOTCLAIMED", QueueWords.NotClaimed, "§W_NOTFAILED", QueueWords.NotFailed,
+            "§W_NOTSAVED", QueueWords.NotSaved, "§SETSTATE", SetManaged(q),
             "§SETBY", q.ClaimedBy is null ? "" : $".SetProperty(x => x.{By}, by)",
             "§CLEARBY", q.ClaimedBy is null ? "" : $".SetProperty(x => x.{By}, (string?)null)",
             "§BYLINE", q.ClaimedBy is null ? "" : $"        string? by = QueueText.Fit(worker, {Length(q.ClaimedBy)});\n",
@@ -45,6 +46,24 @@ public static class QueueWriter
             "§ERRORLINE", q.LastError is null ? "" : $"        string? message = QueueText.Fit(body?.Error, {Length(q.LastError)});\n"
         ];
         return Fill(Table, values);
+    }
+
+    /// <summary> The assignments that make a posted entity a new pending row: the key is left to the database when it numbers it, and nothing a producer sent for the queue's own columns is kept. </summary>
+    private static string SetManaged(QueueTable q)
+    {
+        var o = new StringBuilder();
+        if (q.Key.IsIdentity)
+            o.Append($"        row.{q.Key.CSharpName()} = default;\n");
+        o.Append($"        row.{q.Status.CSharpName()} = \"{QueueStatus.Pending}\";\n");
+        o.Append($"        row.{q.Retry.CSharpName()} = 0;\n");
+        o.Append($"        row.{q.Created.CSharpName()} = DateTime.Now;\n");
+        o.Append($"        row.{q.Claimed.CSharpName()} = null;\n");
+        o.Append($"        row.{q.Processed.CSharpName()} = null;\n");
+        if (q.ClaimedBy is not null)
+            o.Append($"        row.{q.ClaimedBy.CSharpName()} = null;\n");
+        if (q.LastError is not null)
+            o.Append($"        row.{q.LastError.CSharpName()} = null;\n");
+        return o.ToString().TrimEnd('\n');
     }
 
     private static int Length(ColumnModel column) => column.CharacterLength > 0 ? column.CharacterLength : int.MaxValue;
@@ -132,6 +151,31 @@ public static class §TWork
         return Results.NoContent();
     }
 
+    /// <summary> A producer puts a row in the queue: pending, no retries, created now, whatever it sent for the queue's own columns dropped. </summary>
+    public static async Task<IResult> EnqueueAsync(§CTX context, §T row)
+    {
+§SETSTATE
+        context.Set<§T>().Add(row);
+        try
+        {
+            await context.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            return Results.Problem(statusCode: 400, title: "Bad request", detail: "§W_NOTSAVED");
+        }
+        return Results.Created($"§R/{row.§K}", row);
+    }
+
+    /// <summary> The worker that holds a claim says it is still working: the claim starts again, so it is not released after the claim time. </summary>
+    public static async Task<IResult> RenewAsync(§CTX context, §KT id)
+    {
+        var claimedOn = DateTime.Now;
+        int changed = await context.Set<§T>().Where(x => x.§K == id && x.§STATUS == "§CLAIMED")
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.§CL, claimedOn));
+        return await AnswerAsync(context, id, changed, "§W_NOTCLAIMED");
+    }
+
     public static async Task<IResult> CompleteAsync(§CTX context, §KT id)
     {
         var processedOn = DateTime.Now;
@@ -163,7 +207,9 @@ public static class §TWork
     {
         app.MapGet("§R/stats", StatsAsync)§AUTH;
         app.MapGet("§R/failed", FailedAsync)§AUTH;
+        app.MapPost("§R", EnqueueAsync)§AUTH;
         app.MapPost("§R/claim", ClaimAsync)§AUTH;
+        app.MapPost("§R/{id}/renew", RenewAsync)§AUTH;
         app.MapPost("§R/{id}/complete", CompleteAsync)§AUTH;
         app.MapPost("§R/{id}/fail", FailAsync)§AUTH;
         app.MapPost("§R/{id}/retry", RetryAsync)§AUTH;
