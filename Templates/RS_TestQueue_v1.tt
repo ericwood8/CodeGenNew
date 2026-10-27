@@ -1,0 +1,20 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestQueue_v1.tt
+    // Generates: tests/api/queue_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // Integration tests of the routes RS_Queue writes for QueueTables, run in process over a scratch database like RS_Test. Three pending rows with fixed keys, the oldest of the table, are added with plain
+    // SQL before each test and removed after it. The cases: the claim takes the oldest rows in turn, a row is completed once, a failed row goes back to pending until QueueMaxRetries and Retry puts it
+    // back, a row that is not there, and a claim nobody completed. The words are QueueWords, as in the other stacks' tests.
+    // Written only for a project with RustTests=true and a queue table the schema can fill (a column that cannot be NULL needs an example value).
+    // Needs Client.start and Client.pool of tests/api/test_support.rs (RS_EssentialTests); RS_TestBodies lists the module.
+    // Full notes: Docs/TemplateNotes/API_Queue_v1.md
+    // ==========================================================================================
+    if (RustQueueTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/api/queue_routes.rs@@@\n" + RustQueueTests.File(Database, Project));
+    }
+#>

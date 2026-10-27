@@ -65,6 +65,11 @@
         Line();
         Line("        ApprovalsApi.Register(app);");
     }
+    if (Database.Tables.Any(t => QueuePlan.For(t, Project) is not null))
+    {
+        Line();
+        Line("        QueueApi.Register(app);");
+    }
     if (Project.Dashboard)
     {
         Line();

@@ -35,6 +35,7 @@
     else
     {
         var form = FormModel.For(Model, Project);
+        var queue = QueuePlan.For(Model, Project);   // a work queue also shows the counts by status and a Retry button on a failed row
         string baseName = form.BaseName;
         string stem = form.Stem;
         string apiVar = ReactNames.ApiVar(Model.TableName);
@@ -63,6 +64,8 @@
         T("import { useEffect, useState } from 'react';");
         T($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
         T($"import {{ {apiVar} }} from '../{apiFolder}/{apiFile}';");
+        if (queue is not null)
+            T($"import type {{ QueueStats }} from '../{apiFolder}/{apiFile}';");
         T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
         T($"import {{ GridMenu, SortHeader, loadSort, nextSort, saveSort }} from '../{componentsFolder}/gridSort';");
         T($"import type {{ GridSort }} from '../{componentsFolder}/gridSort';");
@@ -98,6 +101,8 @@
         T("  const [pageSize, setPageSize] = useState(initialPageSize);");
         T("  const [loaded, setLoaded] = useState(false); // true once a page has arrived, so \"Nothing found.\" is not shown while waiting");
         T("  const [error, setError] = useState<string | null>(null);");
+        if (queue is not null)
+            T("  const [stats, setStats] = useState<QueueStats | null>(null);");
         T("  const [chosen, setChosen] = useState<string[]>(() => loadColumns(gridKey, columnNames, initialColumns)); // the columns shown; kept in the browser");
         T("  const show = (name: string) => chosen.includes(name);");
         T("  const [sort, setSort] = useState<GridSort | null>(() => loadSort(gridKey, sortableColumns.filter((name) => chosen.includes(name)))); // none: the API lists newest first");
@@ -114,8 +119,20 @@
         T($"    }}).catch(() => setError('Failed to load {Labels.Words(baseName).ToLowerInvariant().Pluralize()}.'));");
         T("  };");
         T();
+        if (queue is not null)
+        {
+            T($"  const loadStats = () => {{ {apiVar}.getQueueStats().then(setStats).catch(() => {{}}); }};");
+            T();
+            T("  // a failed row goes back to pending; the page and the counts are read again");
+            T($"  const retry = (id: {form.KeyType!.TypeScript}) => {{");
+            T($"    {apiVar}.retry(id).then(() => {{ load(page); loadStats(); }}).catch(() => setError('Failed to retry the {Labels.Words(baseName).ToLowerInvariant()}.'));");
+            T("  };");
+            T();
+        }
         T("  useEffect(() => {");
         T("    load();");
+        if (queue is not null)
+            T("    loadStats();");
         foreach (var p in cellParents)
             T($"    {ReactNames.ApiVar(p.Table)}.{p.LoadMethod}().then({ReactNames.SetList(ReactNames.ParentList(p))}).catch(() => {{}});");
         T("  }, []);");
@@ -188,6 +205,16 @@
         T("      <ColumnPicker columns={columnList} chosen={chosen} initial={initialColumns} onChange={chooseColumns} />");
         T();
         T("      {error && <p role=\"alert\">{error}</p>}");
+        if (queue is not null)
+        {
+            T();
+            T("      {stats && (");
+            T("        <p className=\"queue-summary\">");
+            T("          Pending: {stats.pending}, claimed: {stats.claimed}, done: {stats.done}, failed: {stats.failed}");
+            T("          {stats.oldestPendingOn && <> . Oldest pending: #{stats.oldestPendingId}, waiting since {stats.oldestPendingOn.substring(0, 16).replace('T', ' ')}</>}");
+            T("        </p>");
+            T("      )}");
+        }
         T();
         T("      <GridMenu sort={sort} onClear={clearSort}>");
         T("      <table>");
@@ -201,6 +228,8 @@
                 : $"<th>{column.Caption}</th>";
             T("            " + Shown(c, header));
         }
+        if (queue is not null)
+            T("            <th>Actions</th>");
         T("          </tr>");
         T("        </thead>");
         T("        <tbody>");
@@ -224,6 +253,8 @@
             else cell = column.Cut ? $"{{shortText({prop})}}" : $"{{{prop}}}";
             T("              " + Shown(c, $"<td>{cell}</td>"));
         }
+        if (queue is not null)
+            T($"              <td>{{{variable}.{JsonNames.Camel(queue.Status.Name)} === '{QueueStatus.Failed}' && <button type=\"button\" onClick={{() => retry({variable}.{keyProp}!)}}>Retry</button>}}</td>");
         T("            </tr>");
         T("          ))}");
         T("        </tbody>");
@@ -250,7 +281,7 @@
         var test = new StringBuilder();
         void S(string s = "") => test.Append(s).Append('\n');
 
-        S("import { fireEvent, render, screen } from '@testing-library/react';");
+        S("import { fireEvent, render, screen" + (queue is not null ? ", waitFor" : "") + " } from '@testing-library/react';");
         S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
         S($"import {{ {pageName} }} from '../{pageName}';");
         S($"import {{ {apiVar} }} from '../../{apiFolder}/{apiFile}';");
@@ -261,6 +292,8 @@
         S("  beforeEach(() => {");
         S("    localStorage.clear();");
         S($"    vi.spyOn({apiVar}, 'getPage').mockResolvedValue({{ items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 0 }});");
+        if (queue is not null)
+            S($"    vi.spyOn({apiVar}, 'getQueueStats').mockResolvedValue({{ pending: 2, claimed: 1, done: 5, failed: 1, oldestPendingId: 4, oldestPendingOn: '2026-10-26T08:12:00' }});");
         foreach (var p in cellParents.Where(p => !p.IsSelf))
             S($"    vi.spyOn({ReactNames.ApiVar(p.Table)}, '{p.LoadMethod}').mockResolvedValue([]);");
         S("  });");
@@ -300,9 +333,38 @@
         S("    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));");
         S($"    expect({apiVar}.getPage).toHaveBeenLastCalledWith(1, 20, expect.objectContaining({{ {dateFields[0].ParamName}: '' }}), null);");
         S("  });");
+        if (queue is not null)
+        {
+            string statusProp = JsonNames.Camel(queue.Status.Name);
+            string sampleRow = "{ " + string.Join(", ", Model.Columns.Select(c => c == queue.Key ? $"{keyProp}: 7" : c == queue.Status ? $"{statusProp}: '{QueueStatus.Failed}'" : $"{JsonNames.Camel(c.Name)}: {ApiSampleValues.Value(c, Project, Model.TableName)}")) + " }";
+            S();
+            S("  it('shows the counts by status and the oldest pending row', async () => {");
+            S($"    render(<{pageName} />);");
+            S("    expect(await screen.findByText(/Pending: 2, claimed: 1, done: 5, failed: 1/)).toBeInTheDocument();");
+            S("    expect(screen.getByText(/Oldest pending: #4/)).toBeInTheDocument();");
+            S("  });");
+            S();
+            S("  it('puts a failed row back to pending with Retry', async () => {");
+            S($"    vi.spyOn({apiVar}, 'getPage').mockResolvedValue({{ items: [{sampleRow}], page: 1, pageSize: 20, totalCount: 1, totalPages: 1 }});");
+            S($"    vi.spyOn({apiVar}, 'retry').mockResolvedValue({{}} as never);");
+            S($"    render(<{pageName} />);");
+            S("    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));");
+            S($"    expect({apiVar}.retry).toHaveBeenCalledWith(7);");
+            S($"    await waitFor(() => expect({apiVar}.getQueueStats).toHaveBeenCalledTimes(2)); // the page and the counts are read again");
+            S("  });");
+        }
         S("});");
 
         Write($"@@@FILE {pagesFolder}/{pageName}.tsx@@@\n" + ts);
-        Write($"@@@FILE {pagesFolder}/__tests__/{pageName}.test.tsx@@@\n" + test);
+        string testText = test.ToString();
+        if (queue is not null)
+        {
+            // the counts arrive after the page: every test waits for them too, so no state changes after it ends
+            const string counts = "    await screen.findByText(/Pending: 2/);\n";
+            testText = testText.Replace("    await screen.findByText('Nothing found.');\n", "    await screen.findByText('Nothing found.');\n" + counts)
+                .Replace("    expect(await screen.findByText('Nothing found.')).toBeInTheDocument();\n", "    expect(await screen.findByText('Nothing found.')).toBeInTheDocument();\n" + counts)
+                .Replace($"    expect(await screen.findByText('{title.Pluralize()}')).toBeInTheDocument();\n", $"    expect(await screen.findByText('{title.Pluralize()}')).toBeInTheDocument();\n" + counts);
+        }
+        Write($"@@@FILE {pagesFolder}/__tests__/{pageName}.test.tsx@@@\n" + testText);
     }
 #>

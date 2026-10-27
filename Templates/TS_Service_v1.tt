@@ -77,6 +77,19 @@
             L($"export type {baseName}PagedResult = PagedResult<{baseName}>;");
             L();
         }
+        var queue = QueuePlan.For(Model, Project);
+        if (queue is not null)
+        {
+            L("export interface QueueStats {");
+            L("    pending: number;");
+            L("    claimed: number;");
+            L("    done: number;");
+            L("    failed: number;");
+            L($"    oldestPendingId?: {keyTs} | null;");
+            L("    oldestPendingOn?: string | null;");
+            L("}");
+            L();
+        }
         L("@Injectable({");
         L("    providedIn: 'root',");
         L("})");
@@ -92,6 +105,18 @@
             // sortBy / sortDescending: the grid's chosen sort (a column name, "asc" or "desc"); left out of the request when there is none (the default order).
             L($"    getPage(pageNumber: number, pageSize: number{filterParams}, sortBy?: string, sortDescending?: boolean): Observable<{baseName}PagedResult> {{");
             L($"        return this.searchPage({{ pageNumber, pageSize, filters: {{ {string.Join(", ", filters.Select(f => f.ParamName))} }}, sortBy, sortDescending }});".Replace("{  }", "{}"));
+            L("    }");
+        }
+        if (queue is not null)
+        {
+            L();
+            L("    // a work queue: the counts by status with the oldest pending row, and a failed row put back to pending (QueueTables)");
+            L("    getQueueStats(): Observable<QueueStats> {");
+            L("        return this.http.get<QueueStats>(`${this.apiUrl}/stats`);");
+            L("    }");
+            L();
+            L($"    retry(id: {keyTs}): Observable<{baseName}> {{");
+            L($"        return this.http.post<{baseName}>(`${{this.apiUrl}}/${{id}}/retry`, null);");
             L("    }");
         }
         if (guarded)

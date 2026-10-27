@@ -24,7 +24,7 @@
     else if (LogTablePlan.For(Model, Project) is not null)
     {
         // a log table is only read: its tests do not add, change or remove rows (ApiLogTests, Core)
-        Write(ApiLogTests.Text(ApiTestPlan.For(Model, Project)!, Project));
+        Write(ApiLogTests.Text(ApiTestPlan.For(Model, Project)!, Project, QueuePlan.For(Model, Project)));
     }
     else
     {

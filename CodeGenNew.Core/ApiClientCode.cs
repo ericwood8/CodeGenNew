@@ -63,6 +63,13 @@ public static class ApiClientCode
         L("// One row of GET " + BlazorNames.ApiRoute(table.TableName) + "/lookup: the key, the text a person recognises the row by and whether the row is active (absent for a table with no IsActive column).");
         L($"public record {BlazorNames.LookupType(table.TableName)}({keyType} Id, string Name, bool? IsActive = null);");
         L();
+        var queue = nameActive ? null : QueuePlan.For(table, project);
+        if (queue is not null)
+        {
+            L("// GET " + BlazorNames.ApiRoute(table.TableName) + "/stats: the rows in each status and the oldest pending row (QueueTables).");
+            L($"public record {type}QueueStats(int Pending, int Claimed, int Done, int Failed, {keyType}? OldestPendingId, DateTime? OldestPendingOn);");
+            L();
+        }
         L($"public class {type}Client(HttpClient http)");
         L("{");
         L($"    private const string Url = \"{BlazorNames.ApiRoute(table.TableName)}\";");
@@ -113,6 +120,14 @@ public static class ApiClientCode
             L();
             L("    // A copy of the row, made by the API; the copy comes back.");
             L($"    public async Task<{type}> CloneAsync({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{{id}}}/clone\", null)).ReadAsync<{type}>();");
+        }
+        if (queue is not null)
+        {
+            L();
+            L("    // A work queue: the counts by status, and a failed row put back to pending; the row comes back.");
+            L($"    public async Task<{type}QueueStats> GetQueueStatsAsync() => await (await http.GetAsync($\"{{Url}}/stats\")).ReadAsync<{type}QueueStats>();");
+            L();
+            L($"    public async Task<{type}> RetryAsync({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{{id}}}/retry\", null)).ReadAsync<{type}>();");
         }
         if (!nameActive && GatePlan.GuardsOf(project, table).Count > 0)
         {

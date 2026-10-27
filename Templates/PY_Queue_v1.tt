@@ -1,0 +1,29 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_Queue_v1.tt
+    // Generates: app/routes/queue.py   (whole-database; the path is written by the template)
+    // The Python counterpart of API_Queue: for each table of QueueTables the routes GET stats, GET failed, POST claim (the oldest pending row, taken with one guarded UPDATE, 204 when there is none),
+    // POST {id}/complete, POST {id}/fail (one more retry, back to pending until QueueMaxRetries, then failed) and POST {id}/retry, with the same sentences, problem type and status codes as the
+    // ASP.NET API (QueueWords and QueueWriter in Core). A claim nobody completed is released after QueueClaimMinutes. With ApiAuth the routes need a signed-in caller.
+    // PY_Mod lists this router before the tables' routers (their /{id} would read stats as a key). The table's own routes still write rows; only the ASP.NET API makes a queue table read only.
+    // Full notes: Docs/TemplateNotes/API_Queue_v1.md
+    // ==========================================================================================
+    var tables = Database.Tables.Select(t => QueuePlan.For(t, Project)).OfType<QueueTable>()
+        .OrderBy(q => q.Table.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    var problems = Database.Tables.Select(t => QueuePlan.Problem(t, Project)).Where(p => p is not null).ToList();
+    problems.AddRange(QueuePlan.Entries(Project).Where(e => !Database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table)))
+        .Select(e => $"QueueTables: {e.Table} is not a table of the database."));
+    if (problems.Count > 0)
+    {
+        Error(string.Join(" | ", problems));
+    }
+    else if (tables.Count > 0)
+    {
+        Write("@@@FILE app/routes/queue.py@@@\n" + PythonQueueWriter.File(tables, Project));
+    }
+#>

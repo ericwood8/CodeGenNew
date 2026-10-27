@@ -79,6 +79,19 @@
             L("}");
             L();
         }
+        var queue = QueuePlan.For(Model, Project);
+        if (queue is not null)
+        {
+            L("export interface QueueStats {");
+            L("  pending: number;");
+            L("  claimed: number;");
+            L("  done: number;");
+            L("  failed: number;");
+            L($"  oldestPendingId?: {keyTs} | null;");
+            L("  oldestPendingOn?: string | null;");
+            L("}");
+            L();
+        }
         L($"export const {variable}Api = {{");
         L($"  getAll: () => request<{baseName}[]>(apiUrl),");
         L();
@@ -104,6 +117,14 @@
         {
             L();
             L($"  clone: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/{keyPath}/clone`, {{ method: 'POST' }}),");
+        }
+        if (queue is not null)
+        {
+            L();
+            L("  // a work queue: the counts by status with the oldest pending row, and a failed row put back to pending (QueueTables)");
+            L("  getQueueStats: () => request<QueueStats>(`${apiUrl}/stats`),");
+            L();
+            L($"  retry: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/{keyPath}/retry`, {{ method: 'POST' }}),");
         }
         if (GatePlan.GuardsOf(Project, Model).Count > 0)
         {

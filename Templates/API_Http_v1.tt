@@ -87,6 +87,30 @@
             L("POST {{host}}" + route + "/{{" + idVar + "}}/clone");
         }
         }
+        if (QueuePlan.For(Model, Project) is not null)
+        {
+            L();
+            L("### How many rows are pending, claimed, done and failed, and the oldest pending one");
+            L("GET {{host}}" + route + "/stats");
+            L();
+            L("### A worker takes the oldest pending row (204 when there is none)");
+            L("POST {{host}}" + route + "/claim?worker=worker-1");
+            L();
+            L("### The worker finished the row it claimed");
+            L("POST {{host}}" + route + "/{{" + idVar + "}}/complete");
+            L();
+            L("### The worker could not do it: one more retry, back to pending until the retries are used, then failed");
+            L("POST {{host}}" + route + "/{{" + idVar + "}}/fail");
+            L("Content-Type: application/json");
+            L();
+            L("{ \"error\": \"what went wrong\" }");
+            L();
+            L("### The failed rows");
+            L("GET {{host}}" + route + "/failed");
+            L();
+            L("### Put a failed row back to pending");
+            L("POST {{host}}" + route + "/{{" + idVar + "}}/retry");
+        }
         string text = o.ToString();
         if (Project.ApiAuth)
         {

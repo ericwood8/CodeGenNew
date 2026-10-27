@@ -5,7 +5,7 @@ namespace CodeGenNew.Core;
 /// <summary> The spec of the Angular screen of a log table (LogTables): it only lists rows, so it checks the first page, the date range the search sends, Clear, and that no button changes a row. </summary>
 public static class AngularLogSpec
 {
-    public static string Text(string cls, string screenStem, IReadOnlyList<SearchField> dates)
+    public static string Text(string cls, string screenStem, IReadOnlyList<SearchField> dates, QueueTable? queue = null, ProjectSettings? project = null)
     {
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
@@ -66,7 +66,40 @@ public static class AngularLogSpec
         L("    expect(labels).not.toContain('Delete');");
         L("    expect(page.querySelector('dialog')).toBeNull();");
         L("  });");
+        if (queue is not null)
+            QueueSpecs(L, queue, project!);
         L("});");
         return o.ToString();
+    }
+
+    private static void QueueSpecs(Action<string> L, QueueTable queue, ProjectSettings project)
+    {
+        string key = JsonNames.Camel(queue.Key.Name), status = JsonNames.Camel(queue.Status.Name);
+        string row = "{ " + string.Join(", ", queue.Table.Columns.Select(c => c == queue.Key ? $"{key}: 7" : c == queue.Status ? $"{status}: '{QueueStatus.Failed}'" : $"{JsonNames.Camel(c.Name)}: {ApiSampleValues.Value(c, project, queue.Table.TableName)}")) + " }";
+        string stats = "{ pending: 2, claimed: 1, done: 5, failed: 1, oldestPendingId: 4, oldestPendingOn: '2026-10-26T08:12:00' }";
+        L("");
+        L("  it('shows the counts by status and the oldest pending row', () => {");
+        L("    http.expectOne((r) => r.url.endsWith('/search')).flush(empty);");
+        L($"    http.expectOne((r) => r.url.endsWith('/stats')).flush({stats});");
+        L("    fixture.detectChanges();");
+        L("    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';");
+        L("    expect(text).toContain('Pending: 2, claimed: 1, done: 5, failed: 1');");
+        L("    expect(text).toContain('Oldest pending: #4');");
+        L("  });");
+        L("");
+        L("  it('puts a failed row back to pending with Retry', () => {");
+        L($"    const failed = {row};");
+        L("    http.expectOne((r) => r.url.endsWith('/search')).flush({ items: [failed], page: 1, pageSize: 20, totalCount: 1, totalPages: 1 });");
+        L($"    http.expectOne((r) => r.url.endsWith('/stats')).flush({stats});");
+        L("    fixture.detectChanges();");
+        L("    const retry = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button')).find((button) => (button.textContent ?? '').trim() === 'Retry');");
+        L("    expect(retry).toBeDefined();");
+        L("    retry!.click();");
+        L("    const request = http.expectOne((r) => r.url.endsWith('/7/retry'));");
+        L("    expect(request.request.method).toBe('POST');");
+        L("    request.flush(failed);");
+        L("    http.expectOne((r) => r.url.endsWith('/search')).flush(empty);");
+        L($"    http.expectOne((r) => r.url.endsWith('/stats')).flush({stats});");
+        L("  });");
     }
 }

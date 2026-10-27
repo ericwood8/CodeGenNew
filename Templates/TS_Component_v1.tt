@@ -112,6 +112,7 @@
         bool canClone = form.CanClone;
         // a table in LogTables is only read: a list with a date range and no Add New, Edit, Clone, Delete or form (the form's html is cut out below, the spec is replaced)
         bool readOnly = form.ReadOnly && !odata && !nameActive && !oneRow;
+        var queue = readOnly ? QueuePlan.For(Model, Project) : null;   // a work queue also shows the counts by status and a Retry button on a failed row
         string rowsExpression = nameActive ? "visibleRows" : "rows";
         var formPages = form.Pages;
         bool tabbed = form.IsTabbed;
@@ -135,6 +136,8 @@
         H("    <!-- Heading -->");
         H($"    <h1>{SingleRowPlan.Heading(title, oneRow)}</h1>");
         if (!oneRow && !readOnly) H($"    <button{writeOnly} (click)=\"add()\" class=\"btn\">Add New</button>");
+        if (queue is not null)
+            H($"    <p *ngIf=\"stats\" class=\"queue-summary\">Pending: {{{{ stats.pending }}}}, claimed: {{{{ stats.claimed }}}}, done: {{{{ stats.done }}}}, failed: {{{{ stats.failed }}}}<span *ngIf=\"stats.oldestPendingOn\"> . Oldest pending: #{{{{ stats.oldestPendingId }}}}, waiting since {{{{ stats.oldestPendingOn | date:'MM/dd/yyyy HH:mm' }}}}</span></p>");
         // The OData screen has the filter row under the headers (a control per column, Search and Clear in its last cell); only the one box of the Search list protocol stays above the grid.
         if (canSearch && (!odata || Project.ListSearchProtocol))
         {
@@ -214,7 +217,7 @@
             else
                 H($"                <th{If(c)}>{column.Caption}</th>");
         }
-        if (!readOnly) H("                <th>Actions</th>");
+        if (!readOnly || queue is not null) H("                <th>Actions</th>");
         H("            </tr>");
         string ChoiceOptions(IReadOnlyList<string> choices)
         {
@@ -280,6 +283,11 @@
                 H($"                    <button{writeOnly} (click)=\"clone({variable}.{keyProp}!)\" class=\"btn-action\">Clone</button>");
             H($"                    <button{writeOnly} (click)=\"delete({variable}.{keyProp}!)\" class=\"btn-action delete\">Delete</button>");
             H("                </td>");
+        }
+        else if (queue is not null)
+        {
+            string retryIf = (writeRoles.Count > 0 ? "canWrite && " : "") + $"{variable}.{JsonNames.Camel(queue.Status.Name)} === '{QueueStatus.Failed}'";
+            H($"                <td><button *ngIf=\"{retryIf}\" (click)=\"retry({variable}.{keyProp}!)\" class=\"btn-action\">Retry</button></td>");
         }
         H("            </tr>");
         H("        </tbody>");
@@ -658,7 +666,7 @@
         if (readOnly)
         {
             spec.Clear();
-            spec.Append(AngularLogSpec.Text(cls, screenStem, form.DateRange));
+            spec.Append(AngularLogSpec.Text(cls, screenStem, form.DateRange, queue, Project));
         }
 
         // ================= ts
@@ -667,7 +675,7 @@
         string keyGeneric = keyType.Kind == KeyKind.Int ? "" : ", " + keyType.TypeScript;
         T("import { ChangeDetectionStrategy, Component, inject } from '@angular/core';");
         T($"import {{ {baseName} }} from '../../{modelsFolder}/{stem}';");
-        T($"import {{ {serviceClass} }} from '../../{servicesFolder}/{serviceFile}';");
+        T($"import {{ {serviceClass}{(queue is not null ? ", QueueStats" : "")} }} from '../../{servicesFolder}/{serviceFile}';");
         if (writeRoles.Count > 0) T($"import {{ AuthService }} from '../../{servicesFolder}/auth.service';");
         if (parents.Any(p => p.UsesLookupEndpoint && !Ahead(p))) T($"import {{ Lookup }} from '../../{servicesFolder}/crud.service';");
         if (parents.Any(Ahead)) T($"import {{ LookupNames{(formAheads.Count + filterAheads.Count > 0 ? ", TypeAhead" : "")} }} from '../../{servicesFolder}/type-ahead';");
@@ -769,10 +777,29 @@
         T();
         {
             var parentsToLoad = parents.Where(p => !Ahead(p)).ToList();   // a drop-down over this table itself (a manager) is read through the screen's own service; a type-ahead reads nothing until it is used
-            if (parentsToLoad.Count > 0 || form.Guards.Count > 0)
+            if (queue is not null)
+            {
+                T("  stats: QueueStats | null = null; // the counts by status and the oldest pending row (GET stats)");
+                T();
+                T("  loadStats(): void {");
+                T("    this.service.getQueueStats().subscribe((data) => { this.stats = data; });");
+                T("  }");
+                T();
+                T("  // a failed row goes back to pending; the page and the counts are read again");
+                T($"  retry(id: {keyType.TypeScript}): void {{");
+                T("    this.service.retry(id).subscribe({");
+                T("      next: () => { this.load(); this.loadStats(); },");
+                T("      error: (error) => this.showError('retrying', error)");
+                T("    });");
+                T("  }");
+                T();
+            }
+            if (parentsToLoad.Count > 0 || form.Guards.Count > 0 || queue is not null)
             {
                 T("  protected override start(): void {");
                 T("    super.start();");
+                if (queue is not null)
+                    T("    this.loadStats();");
                 if (form.Guards.Count > 0)
                     T("    this.service.getGuards().subscribe((data) => { this.guards = data; });");
                 foreach (var p in parentsToLoad)

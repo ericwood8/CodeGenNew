@@ -39,6 +39,8 @@ public static class ProjectSettingChoices
             ["ODataMaxTop"] = (1, 10000),
             ["ODataPageSize"] = (1, 10000),
             ["ODataExpandDepth"] = (1, 5),
+            ["QueueMaxRetries"] = (1, 100),
+            ["QueueClaimMinutes"] = (1, 10080),
             ["AngularVersion"] = (1, 99),
             ["ApiPort"] = (1, HighestPort),
             ["DevPort"] = (1, HighestPort),

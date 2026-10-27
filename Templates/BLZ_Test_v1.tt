@@ -529,7 +529,7 @@
         }
 
         if (LogTablePlan.For(Model, Project) is not null)
-            o.Append(BlazorLogTests.Body(type, plan, title));   // a log table is only read: its tests do not add, change or delete a row
+            o.Append(BlazorLogTests.Body(type, plan, title, QueuePlan.For(Model, Project), Project));   // a log table is only read: its tests do not add, change or delete a row
         else
         {
             Tests(false);

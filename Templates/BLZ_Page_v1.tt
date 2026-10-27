@@ -95,6 +95,7 @@
         // a Name and an IsActive column: the whole list is read (the API has no search and no paging), narrowed by a name box and an Active only check box on the page; no sort, no Columns list, no Clone
         bool nameActive = form.IsNameActive;
         bool logOnly = form.ReadOnly && !odata && !oneRow && !nameActive;   // a table in LogTables: no Add New, Actions column or editor
+        var queue = logOnly ? QueuePlan.For(Model, Project) : null;   // a work queue also shows the counts by status and a Retry button on a failed row
         string reload = oneRow || nameActive ? "LoadAsync()" : "LoadAsync(pageNumber)";
 
         bool usesMoneyBox = shown.Any(form.IsMoneyInput);
@@ -260,6 +261,17 @@
             L($"<DashboardStrip Table=\"{Model.TableName}\" />");   // BLZ_Dashboard: shows nothing for a table with no cards
         L($"<h1>{heading}</h1>");
         if (!oneRow && !logOnly) L(Gate("", "<button type=\"button\" @onclick=\"Add\">Add New</button>"));
+        if (queue is not null)
+        {
+            L("@if (stats is not null)");
+            L("{");
+            L("    <p class=\"queue-summary\">Pending: @stats.Pending, claimed: @stats.Claimed, done: @stats.Done, failed: @stats.Failed</p>");
+            L("    @if (stats.OldestPendingOn is not null)");
+            L("    {");
+            L("        <p class=\"queue-oldest\">Oldest pending: #@stats.OldestPendingId, waiting since @stats.OldestPendingOn.Value.ToString(\"yyyy-MM-dd HH:mm\")</p>");
+            L("    }");
+            L("}");
+        }
         // the OData page has the filter row under the headers in place of the search boxes
         if (nameActive)
         {
@@ -322,7 +334,7 @@
             else
                 L("            " + Shown(c, $"<th>{caption}</th>"));
         }
-        if (!logOnly) L("            <th>Actions</th>");
+        if (!logOnly || queue is not null) L("            <th>Actions</th>");
         L("        </tr>");
         if (odata && filterFields!.Any(f => f is not null))
         {
@@ -393,6 +405,10 @@
             L(Gate("                    ", "<button type=\"button\" @onclick=\"() => CloneAsync(item)\">Clone</button>"));
         L(Gate("                    ", "<button type=\"button\" @onclick=\"() => DeleteAsync(item)\">Delete</button>"));
         L("                </td>");
+        }
+        else if (queue is not null)
+        {
+            L($"                <td>@if (item.{Prop(queue.Status)} == \"{QueueStatus.Failed}\") {{ <button type=\"button\" @onclick=\"() => RetryAsync(item)\">Retry</button> }}</td>");
         }
         L("            </tr>");
         L("        }");
@@ -733,6 +749,8 @@
         if (odata)
             L("        sorts = await SavedSorts.LoadAsync(Js, SortsKey, SortableColumns.Where(Shown).ToList());");
         L("        await LoadAsync();");
+        if (queue is not null)
+            L("        await LoadStatsAsync();");
         L(gated ? "        if (EditId is not null && CanWrite)" : "        if (EditId is not null)");
         L("        {");
         string openedRow = "Client.GetAsync(" + (keyColumn.CSharpBase() == "string" ? "EditId" : keyColumn.CSharpBase() + ".Parse(EditId)") + ")";
@@ -818,6 +836,29 @@
             L("        catch (FormatException ex) { message = ex.Message; }   // a number, date or guid in the filter row that is not one is never sent");
         L($"        catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ message = \"Failed to load {title.ToLowerInvariant().Pluralize()}.\"; }}");
         L("    }");
+        if (queue is not null)
+        {
+            L();
+            L($"    private {type}QueueStats? stats;   // the counts by status and the oldest pending row");
+            L();
+            L("    private async Task LoadStatsAsync()");
+            L("    {");
+            L("        try { stats = await Client.GetQueueStatsAsync(); }");
+            L("        catch (Exception ex) when (ex is ApiException or HttpRequestException) { }");
+            L("    }");
+            L();
+            L("    // a failed row goes back to pending; the page and the counts are read again");
+            L($"    private async Task RetryAsync({type} item)");
+            L("    {");
+            L("        try");
+            L("        {");
+            L($"            await Client.RetryAsync(item.{Prop(queue.Key)});");
+            L("            await LoadAsync(pageNumber);");
+            L("            await LoadStatsAsync();");
+            L("        }");
+            L($"        catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ message = \"Failed to retry the {Labels.Words(type).ToLowerInvariant()}.\"; }}");
+            L("    }");
+        }
         }
         if (oneRow)
         {

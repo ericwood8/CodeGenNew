@@ -1,0 +1,22 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_TestQueue_v1.tt
+    // Generates: tests/conftest.py and tests/test_queue.py   (whole-database; the output folder is the Python API's folder)
+    // pytest tests of the routes PY_Queue writes for QueueTables. conftest.py is the one PY_TestApprovals writes (the application over a scratch database: a temporary copy of the SQLite file, or the URL
+    // in <PROJECT>_TEST_CONNECTION for PostgreSQL and MySQL; with none the tests are skipped with the reason). test_queue.py adds three pending rows with fixed keys, the oldest of the table, before each test
+    // and removes them after it, and plays the cases: the claim takes the oldest rows in turn, a row is completed once, a failed row goes back to pending until QueueMaxRetries and Retry puts it back, a row
+    // that is not there, and a claim nobody completed. The words are QueueWords, as in the other stacks' tests.
+    // Written only for a project with PythonTests=true and a queue table the schema can fill (a column that cannot be NULL needs an example value); not for SQL Server.
+    // Run them with pytest from the API's folder (requirements.txt lists pytest and httpx with PythonTests=true).
+    // Full notes: Docs/TemplateNotes/API_Queue_v1.md
+    // ==========================================================================================
+    if (PythonQueueTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/conftest.py@@@\n" + PythonQueueTests.Conftest(Project, Database.Dialect));
+        Write("@@@FILE tests/test_queue.py@@@\n" + PythonQueueTests.File(Database, Project));
+    }
+#>

@@ -45,6 +45,9 @@
     if (Project.ApiAuth && (Project.ChangeGates is not null || Project.GuardedColumns is not null))
         routeModules.Add("gates");
     // the approval routes (RS_Approvals) are one route file for the whole database
+    // the queue routes (RS_Queue) too; axum prefers their fixed paths (stats, claim) to a table's /{id}
+    if (Database.Tables.Any(t => QueuePlan.For(t, Project) is not null))
+        routeModules.Add("queue");
     if (Project.ApiAuth && ApprovalPlan.Resolve(Database, Project).Tables.Count > 0)
         routeModules.Add("approvals");
     foreach (string m in routeModules)

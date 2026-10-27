@@ -40,6 +40,8 @@
             modules.Add("gate_routes");
         if (RustApprovalTests.Applies(Database, Project))
             modules.Add("approval_routes");
+        if (RustQueueTests.Applies(Database, Project))
+            modules.Add("queue_routes");
         foreach (string module in modules.Order(StringComparer.Ordinal))
             Line($"mod {module};");
         Line();

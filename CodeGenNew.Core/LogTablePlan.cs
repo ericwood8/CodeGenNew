@@ -24,7 +24,9 @@ public static class LogTablePlan
         {
             int colon = item.IndexOf(':');
             return colon < 0 ? (item.Trim(), (string?)null) : (item[..colon].Trim(), (string?)item[(colon + 1)..].Trim());
-        }).Where(e => e.Item1.Length > 0).ToList();
+        }).Concat(QueuePlan.Entries(project).Select(q => (q.Table, (string?)null)))
+        .Concat(ArchivePlan.ArchiveTableNames(project).Select(a => (a, (string?)null)))
+        .Where(e => e.Item1.Length > 0).DistinctBy(e => e.Item1, StringComparer.OrdinalIgnoreCase).ToList();
 
     public static bool IsListed(TableModel table, ProjectSettings project) => IsListed(table.TableName, project);
 

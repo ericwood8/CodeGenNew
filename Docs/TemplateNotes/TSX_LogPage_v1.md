@@ -2,7 +2,7 @@
 
 `LogTables=ErrorLog,UserSession:StartedOn` names the insert-only tables the application only reads: an error log, a session list, a data-change ledger. A table and, after a colon, the column it is ordered by (without one the plan picks the date-and-time column whose name says when something happened: `LoggedOn`, `OccurredOn`, `CreatedOn`, ...). The rule is `LogTablePlan` in Core; every layer asks it, so they agree.
 
-A log table is never guessed from its shape. A table that looks like one (a date and time column, nothing that edits it, a log-like name or a level and a message) is only mentioned in the run notes: "list it in LogTables".
+A table in `QueueTables` (a work queue, `API_Queue_v1.md`) and the `<Table>Archive` table of an `ArchiveTables` entry (`SP_ArchiveJob_v1.md`) are log tables too: the plan lists them without a `LogTables` line, ordered by their created or event stamp. A log table is never guessed from its shape. A table that looks like one (a date and time column, nothing that edits it, a log-like name or a level and a message) is only mentioned in the run notes: "list it in LogTables".
 
 ## What a log table gets
 

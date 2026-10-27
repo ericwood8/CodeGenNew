@@ -1,0 +1,23 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // SP_ArchiveJob_v1.tt
+    // Generates: ArchiveJobs.sql   (see OutputName in SP_ArchiveJob_v1.tt.config)
+    // For each table of ArchiveTables (ErrorLog:90, JobQueue:30:delete) the script that keeps it small, in the dialect of the source database: the <Table>Archive table when the database has none, then a
+    // procedure that moves the rows older than the days to keep to it (or deletes them) in batches of 1000, and the commented text that schedules it (SQL Server Agent job, pg_cron, MySQL event; SQLite has a
+    // plain script). A work queue gives up its finished rows only. An archive table the database has is shown as a read-only list. Review it, run it and schedule it yourself: codegen never applies it.
+    // Full notes: Docs/TemplateNotes/SP_ArchiveJob_v1.md
+    // ==========================================================================================
+    var resolution = ArchivePlan.Resolve(Database, Project);
+    if (resolution.Problems.Count > 0)
+    {
+        Error(string.Join(" | ", resolution.Problems));
+    }
+    else
+    {
+        Write(ArchiveScript.Text(Database, Project));
+    }
+#>
