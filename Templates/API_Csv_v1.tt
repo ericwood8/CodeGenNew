@@ -33,6 +33,9 @@
     string adminOnly = auth ? ".AdminOnly(adminOnly)" : "";
     string importOnly = auth ? ".AdminOnly(adminOnly || gated)" : "";
     string adminParameter = auth ? ", bool adminOnly, bool gated" : "";
+    // a table in LogTables is only read: its export takes the date range, lists newest first and stops at MaxRows; it has no import
+    bool anyLog = tables.Any(t => LogTablePlan.For(t, Project) is not null);
+    string repositoryNamespace = Project.RepoNamespace ?? "MyApp.Common.Repositories";
 
     string Columns(TableModel table)
     {
@@ -57,7 +60,9 @@ using FluentValidation;
 using System.Globalization;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
-
+<# if (anyLog) { #>
+using <#= repositoryNamespace #>;
+<# } #>
 namespace <#= apiNamespace #>;
 
 /// <summary> One column of a table's CSV: its property name, whether an import reads it, whether it must have a value, whether it can be NULL and its text length (0: none). </summary>
@@ -292,6 +297,13 @@ public static class CsvEndpoints
     foreach (var t in tables)
     {
         string entity = t.TableName;
+        if (LogTablePlan.For(t, Project) is not null)
+        {
+#>
+        MapLogTable<<#= entity #>, <#= contextType #>>(app, "<#= ApiRequests.Route(t) #>", "<#= t.TableName.Pluralize().ToLowerInvariant() #>", [<#= Columns(t) #>], (rows, from, to) => <#= entity #>SearchQuery.Filter(rows, from: from, to: to), rows => <#= entity #>SearchQuery.Sort(rows, null, false)<#= auth ? ", " + (OwnedTable.IsScoped(t, Project) ? "true" : "false") : "" #>);
+<#
+            continue;
+        }
 #>
         MapTable<<#= entity #>, <#= contextType #>>(app, "<#= ApiRequests.Route(t) #>", "<#= t.TableName.Pluralize().ToLowerInvariant() #>", [<#= Columns(t) #>]<#= auth ? ", " + (OwnedTable.IsScoped(t, Project) ? "true" : "false") + ", " + (GatePlan.HasRules(Project, t) ? "true" : "false") : "" #>);
 <#
@@ -364,4 +376,22 @@ public static class CsvEndpoints
             return Results.Ok(new { imported = import.Rows.Count });
         }).WithName("Import" + file + "Csv")<#= importOnly #>;
     }
+<#
+    if (anyLog)
+    {
+#>
+
+    /// <summary> The export of a log table: the rows of the date range (from and to, the first and last day), newest first, at most <see cref="CsvSupport.MaxRows"/>. A log has no import. </summary>
+    private static void MapLogTable<T, TContext>(WebApplication app, string route, string file, CsvColumn[] columns,
+        Func<IQueryable<T>, DateTime?, DateTime?, IQueryable<T>> inRange, Func<IQueryable<T>, IQueryable<T>> newestFirst<#= auth ? ", bool adminOnly" : "" #>) where T : class where TContext : DbContext
+    {
+        app.MapGet(route + "/export.csv", async (TContext context, DateTime? from, DateTime? to) =>
+        {
+            var rows = await newestFirst(inRange(context.Set<T>().AsNoTracking(), from, to)).Take(CsvSupport.MaxRows).ToListAsync();
+            return Results.File(Encoding.UTF8.GetBytes(CsvSupport.Export(rows, columns)), "text/csv; charset=utf-8", file + ".csv");
+        }).WithName("Export" + file + "Csv")<#= adminOnly #>;
+    }
+<#
+    }
+#>
 }

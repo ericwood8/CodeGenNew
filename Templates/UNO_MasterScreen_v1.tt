@@ -90,6 +90,7 @@
         var searchFields = DesktopGridCode.SearchBoxes(form);
         // a drop-down of the parent's rows per whole-number foreign key: an exact match on the key (the first entry, "All", is no filter)
         var searchKeys = DesktopGridCode.KeyFilters(form).Where(_ => !odata).ToList();
+        bool logOnly = form.ReadOnly && !isNameActive;   // a table in LogTables: a list with a first and a last day (the date boxes end searchFields) and no Add New, Edit, Clone or Delete
         bool canSearch = searchFields.Count > 0 || searchKeys.Count > 0 || isNameActive;   // a name / active table's search bar also has the Active only check box
         int errorRow = canSearch ? 3 : 2;
         int gridRow = canSearch ? 4 : 3;
@@ -145,7 +146,9 @@
         <Border Grid.Row="1" Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
                 BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4" Padding="8">
             <StackPanel Orientation="Horizontal" Spacing="8">
+<# if (!logOnly) { #>
                 <Button Content="Add New" Click="OnAddClick"<#= gated ? " Visibility=\"{x:Bind ViewModel.WriteVisibility}\"" : "" #> />
+<# } #>
                 <Button Content="Refresh" Click="OnRefreshClick" />
                 <Button Content="Columns" Click="OnColumnsClick" />
             </StackPanel>
@@ -222,11 +225,15 @@
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
+<# if (!logOnly) { #>
                                 <ColumnDefinition Width="<#= canClone ? "250" : "175" #>" />
+<# } #>
                             </Grid.ColumnDefinitions>
                             <!-- The header cells of the shown columns are built in code (BuildHeader), as the shown columns change. -->
                             <Grid x:Name="HeaderCells" Grid.Column="0" ColumnSpacing="8" />
+<# if (!logOnly) { #>
                             <TextBlock Grid.Column="1" Text="Actions" FontWeight="SemiBold" />
+<# } #>
                         </Grid>
                     </Border>
 
@@ -238,9 +245,12 @@
                                     <Grid ColumnSpacing="8">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
+<# if (!logOnly) { #>
                                             <ColumnDefinition Width="<#= canClone ? "250" : "175" #>" />
+<# } #>
                                         </Grid.ColumnDefinitions>
                                         <views:GridCells Grid.Column="0" Cells="{x:Bind VisibleCells}" />
+<# if (!logOnly) { #>
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
                                             <Button Content="Edit" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnEditClick"<#= gated ? " Visibility=\"{x:Bind WriteVisibility}\"" : "" #> />
 <#
@@ -253,6 +263,7 @@
 #>
                                             <Button Content="Delete" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnDeleteClick"<#= gated ? " Visibility=\"{x:Bind WriteVisibility}\"" : "" #> />
                                         </StackPanel>
+<# } #>
                                     </Grid>
                                 </Border>
                             </DataTemplate>

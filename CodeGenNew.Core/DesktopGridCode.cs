@@ -3,7 +3,7 @@ using System.Text;
 namespace CodeGenNew.Core;
 
 /// <summary> One search box of a desktop list page: the view-model field and property that hold what was typed, the name the API's search reads it by and the caption. </summary>
-public sealed record GridSearchBox(string Field, string Prop, string ParamName, string Label);
+public sealed record GridSearchBox(string Field, string Prop, string ParamName, string Label, bool IsDate = false);
 
 /// <summary> One drop-down filter of a desktop list page: the parent whose rows it lists, the C# type of the foreign key column and the <c>Convert</c> method that turns the boxed parent key into it
 /// (null when it needs none), and the names of the view-model field, property and choices list. </summary>
@@ -16,6 +16,7 @@ public static class DesktopGridCode
     /// <summary> One box per searchable column and per typed key, in column order. The API's search takes them by name, so the order only sets the boxes' layout. </summary>
     public static List<GridSearchBox> SearchBoxes(FormModel form) => form.Table.SearchableColumns.Concat(form.TextKeyBoxes).OrderBy(c => c.OrdinalPosition)
         .Select(c => new GridSearchBox(TemplateHelpers.LowerFirst(c.Name) + "Filter", c.Name + "Filter", TemplateHelpers.LowerFirst(c.Name), GridCaption.For(c, Labels.Column(c.Name))))
+        .Concat(form.DateRange.Select(d => new GridSearchBox(d.ParamName + "Filter", TemplateHelpers.UpperFirst(d.ParamName) + "Filter", d.ParamName, d.Label + " (yyyy-MM-dd)", true)))   // a log table's first and last day
         .ToList();
 
     /// <summary> A drop-down of the parent's rows per whole-number foreign key: an exact match on the key (the first entry, "All", is no filter). </summary>

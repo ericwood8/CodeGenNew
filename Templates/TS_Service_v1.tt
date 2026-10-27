@@ -53,6 +53,9 @@
         var filters = Project.ListSearchProtocol
             ? new[] { new { ParamName = "search", Name = "search" } }.ToList()
             : Model.SearchableColumns.Concat(Model.SearchKeyColumns.Where(c => c.IsStringColumn)).OrderBy(c => c.OrdinalPosition).Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
+        // a table in LogTables also takes the first and the last day of the rows to list
+        if (!Project.ListSearchProtocol && LogTablePlan.For(Model, Project) is not null)
+            filters.AddRange(new[] { new { ParamName = LogTable.FromParameter, Name = LogTable.FromParameter }, new { ParamName = LogTable.ToParameter, Name = LogTable.ToParameter } });
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');

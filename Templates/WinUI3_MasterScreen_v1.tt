@@ -68,6 +68,7 @@
         var searchFields = DesktopGridCode.SearchBoxes(form);
         // a drop-down of the parent's rows per whole-number foreign key: an exact match on the key (the first entry, "All", is no filter)
         var searchKeys = DesktopGridCode.KeyFilters(form);
+        bool logOnly = form.ReadOnly && !isNameActive;   // a table in LogTables: a list with a first and a last day (the date boxes end searchFields) and no Add New, Edit, Clone or Delete
         bool canSearch = searchFields.Count > 0 || searchKeys.Count > 0 || isNameActive;   // a name / active table's search bar also has the Active only check box
         int errorRow = canSearch ? 3 : 2;
         int gridRow = canSearch ? 4 : 3;
@@ -123,7 +124,9 @@
         <Border Grid.Row="1" Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
                 BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4" Padding="8">
             <StackPanel Orientation="Horizontal" Spacing="8">
+<# if (!logOnly) { #>
                 <Button Content="Add New" Click="OnAddClick" />
+<# } #>
                 <Button Content="Refresh" Click="OnRefreshClick" />
                 <Button Content="Columns" Click="OnColumnsClick" />
             </StackPanel>
@@ -200,11 +203,15 @@
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
+<# if (!logOnly) { #>
                                 <ColumnDefinition Width="<#= canClone ? "250" : "175" #>" />
+<# } #>
                             </Grid.ColumnDefinitions>
                             <!-- The header cells of the shown columns are built in code (BuildHeader), as the shown columns change. -->
                             <Grid x:Name="HeaderCells" Grid.Column="0" ColumnSpacing="8" />
+<# if (!logOnly) { #>
                             <TextBlock Grid.Column="1" Text="Actions" FontWeight="SemiBold" />
+<# } #>
                         </Grid>
                     </Border>
 
@@ -216,9 +223,12 @@
                                     <Grid ColumnSpacing="8">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
+<# if (!logOnly) { #>
                                             <ColumnDefinition Width="<#= canClone ? "250" : "175" #>" />
+<# } #>
                                         </Grid.ColumnDefinitions>
                                         <views:GridCells Grid.Column="0" Cells="{x:Bind VisibleCells}" />
+<# if (!logOnly) { #>
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
                                             <Button Content="Edit" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnEditClick" />
 <#
@@ -231,6 +241,7 @@
 #>
                                             <Button Content="Delete" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnDeleteClick" />
                                         </StackPanel>
+<# } #>
                                     </Grid>
                                 </Border>
                             </DataTemplate>
@@ -585,6 +596,11 @@ public partial class <#= table #>ListViewModel : ViewModelBase
 
     // The grid's sort: a column name (null = the default order) and the direction. It is remembered between runs (GridSortStore) until Clear sort.
     private const string GridKey = "<#= table #>";
+<# if (logOnly) { #>
+    // a day written as text (yyyy-MM-dd); anything else is no limit
+    private static DateTime? ParseDay(string? text) => DateTime.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, out var day) ? day : null;
+
+<# } #>
     private static readonly string[] SortableColumns = [<#= string.Join(", ", sortableShown.Select(c => "\"" + c.Name + "\"")) #>];
     private string? _sortColumn;
     private bool _sortDescending;
@@ -678,7 +694,9 @@ public partial class <#= table #>ListViewModel : ViewModelBase
 #>
 
 <#
-        string filterArgs = string.Concat(searchFields.Select(f => $"{CSharpIdentifier(f.ParamName)}: string.IsNullOrWhiteSpace({f.Prop}) ? null : {f.Prop}, "))
+        string filterArgs = string.Concat(searchFields.Select(f => f.IsDate
+                ? $"{CSharpIdentifier(f.ParamName)}: ParseDay({f.Prop}), "   // a day that is not written as one is no limit
+                : $"{CSharpIdentifier(f.ParamName)}: string.IsNullOrWhiteSpace({f.Prop}) ? null : {f.Prop}, "))
             + string.Concat(searchKeys.Select(k => k.Convert is null
                 ? $"{CSharpIdentifier(k.ParamName)}: ({k.Type}?){k.Prop}?.Id, "
                 : $"{CSharpIdentifier(k.ParamName)}: {k.Prop}?.Id is null ? null : Convert.{k.Convert}({k.Prop}.Id), "));   // a whole-number key is boxed as the parent's own type: convert it to this column's

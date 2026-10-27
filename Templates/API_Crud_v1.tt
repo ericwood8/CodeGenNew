@@ -29,6 +29,7 @@
     // A table with a NOT NULL Name and a NOT NULL IsActive column (its repository is a NameActiveRepo) gets a class on NameActiveCrudApi (the same file): the name is trimmed and checked, a second active row with
     // the same name is a 409 problem, and the list, the active list (GET <route>/active) and find by name are its routes. It names its repository and key only.
     // Needs a single int primary key (the routes are {id:int}); a table with no repository stops with an error.
+    // A table the project lists in LogTables (an insert-only ledger) gets ReadOnly => true: CrudApi then registers no create, update, delete or clone route, and the list is newest first by the log's timestamp.
     // Does not write the entity, its DbSet or the registration line (CS_Entity, CS_DbContext and API_Registration do), nor any business rule.
     // Full notes: Docs/TemplateNotes/API_Crud_v1.md
     // ==========================================================================================
@@ -38,6 +39,8 @@
     bool supported = plan.Supported;
     if (plan.Refusal is { } refusal)
         Error(refusal);
+    else if (LogTablePlan.Problem(Model, Project) is { } logProblem)
+        Error(logProblem);
 
     bool dtos = plan.UsesDtos;
     if (dtos)
@@ -284,6 +287,13 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
             }
 #>
     }
+<#
+        }
+        if (plan.ReadOnly)
+        {
+#>
+
+    protected override bool ReadOnly => true;
 <#
         }
         if (canClone)

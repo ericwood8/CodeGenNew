@@ -110,6 +110,8 @@
         bool UsesCurrencyBox() => shown.Any(form.IsMoneyInput);
         IReadOnlyList<ColumnModel> sortableColumns = nameActive ? [] : columnList.Where(c => c.Sortable).Select(c => c.Column).ToList();
         bool canClone = form.CanClone;
+        // a table in LogTables is only read: a list with a date range and no Add New, Edit, Clone, Delete or form (the form's html is cut out below, the spec is replaced)
+        bool readOnly = form.ReadOnly && !odata && !nameActive && !oneRow;
         string rowsExpression = nameActive ? "visibleRows" : "rows";
         var formPages = form.Pages;
         bool tabbed = form.IsTabbed;
@@ -132,7 +134,7 @@
         H("<div>");
         H("    <!-- Heading -->");
         H($"    <h1>{SingleRowPlan.Heading(title, oneRow)}</h1>");
-        if (!oneRow) H($"    <button{writeOnly} (click)=\"add()\" class=\"btn\">Add New</button>");
+        if (!oneRow && !readOnly) H($"    <button{writeOnly} (click)=\"add()\" class=\"btn\">Add New</button>");
         // The OData screen has the filter row under the headers (a control per column, Search and Clear in its last cell); only the one box of the Search list protocol stays above the grid.
         if (canSearch && (!odata || Project.ListSearchProtocol))
         {
@@ -140,7 +142,12 @@
             H("    <!-- Search -->");
             H("    <div class=\"form-group form-group-search dept\">");
             foreach (var f in searchFields)
-                H($"        <input type=\"text\" class=\"form-control\" placeholder=\"Search{(f.Label == "" ? "" : " by " + f.Label)}\" [(ngModel)]=\"filters.{f.ParamName}\"{(odata ? " (keyup.enter)=\"search()\"" : "")} />");
+            {
+                if (f.IsDate)
+                    H($"        <label>{f.Label} <input type=\"date\" class=\"form-control\" aria-label=\"{f.Label}\" [(ngModel)]=\"filters.{f.ParamName}\" (keyup.enter)=\"search()\" /></label>");
+                else
+                    H($"        <input type=\"text\" class=\"form-control\" placeholder=\"Search{(f.Label == "" ? "" : " by " + f.Label)}\" [(ngModel)]=\"filters.{f.ParamName}\"{(odata ? " (keyup.enter)=\"search()\"" : "")} />");
+            }
             foreach (var k in searchKeys)
             {
                 if (Ahead(k.Parent))
@@ -207,7 +214,7 @@
             else
                 H($"                <th{If(c)}>{column.Caption}</th>");
         }
-        H("                <th>Actions</th>");
+        if (!readOnly) H("                <th>Actions</th>");
         H("            </tr>");
         string ChoiceOptions(IReadOnlyList<string> choices)
         {
@@ -265,12 +272,15 @@
             else cell = column.Cut ? $"{{{{ cut({prop}) }}}}" : $"{{{{ {prop} }}}}";
             H($"                <td{If(c)}>{cell}</td>");
         }
-        H("                <td>");
-        H($"                    <button{writeOnly} (click)=\"{(odata && !nameActive ? "open" : "edit")}({variable})\" class=\"btn-action\">Edit</button>");
-        if (canClone)
-            H($"                    <button{writeOnly} (click)=\"clone({variable}.{keyProp}!)\" class=\"btn-action\">Clone</button>");
-        H($"                    <button{writeOnly} (click)=\"delete({variable}.{keyProp}!)\" class=\"btn-action delete\">Delete</button>");
-        H("                </td>");
+        if (!readOnly)
+        {
+            H("                <td>");
+            H($"                    <button{writeOnly} (click)=\"{(odata && !nameActive ? "open" : "edit")}({variable})\" class=\"btn-action\">Edit</button>");
+            if (canClone)
+                H($"                    <button{writeOnly} (click)=\"clone({variable}.{keyProp}!)\" class=\"btn-action\">Clone</button>");
+            H($"                    <button{writeOnly} (click)=\"delete({variable}.{keyProp}!)\" class=\"btn-action delete\">Delete</button>");
+            H("                </td>");
+        }
         H("            </tr>");
         H("        </tbody>");
         H("    </table>");
@@ -294,6 +304,7 @@
             H("    </mat-paginator>");
         }
         }
+        int formHtmlStart = html.Length;   // a read-only screen has no form: what is written from here to the end of the dialog is cut again below
         H();
         H("    <!-- Add/Edit Form -->");
         // The add/edit form is a modal <dialog> (native, no library): it opens over the page, wherever the grid is scrolled to, and Escape cancels it.
@@ -436,6 +447,8 @@
         if (approvalSegment is not null)
             H($"        <app-approval-panel *ngIf=\"selectedRow.{keyProp}\" segment=\"{approvalSegment}\" [id]=\"selectedRow.{keyProp}\"></app-approval-panel>");
         H(oneRow ? "    </section>" : "    </dialog>");
+        if (readOnly)
+            html.Length = formHtmlStart;
         H("</div>");
         H("</div>");
         H("</div>");
@@ -641,6 +654,12 @@
         spec.Append("  it('should create', () => {\n    expect(component).toBeTruthy();\n  });\n\n" + string.Join("\n", nameActive ? (odata ? odataListSpecs : listSpecs) : pagingSpecs) + (rowSpecs.Count > 0 ? "\n" + string.Join("\n", rowSpecs) : "") + (columnSpecs.Count > 0 ? "\n" + string.Join("\n", columnSpecs) : "") + "\n});\n");
         if (writeRoles.Count > 0 && !oneRow) spec.Append(WriteRoleSpec.For(Project, cls, writeRoles));
         if (testRow is not null && !oneRow) spec.Append(testRow.AngularOpenedFromAnotherPage(title, cls));
+
+        if (readOnly)
+        {
+            spec.Clear();
+            spec.Append(AngularLogSpec.Text(cls, screenStem, form.DateRange));
+        }
 
         // ================= ts
         // The screen is a short class on PagedCrudScreen (components/crud-screen.ts, written by TS_EssentialCrud): the rows, the open row, add / edit / submit / delete / clone / cancel, the way back to

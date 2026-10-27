@@ -75,6 +75,7 @@ Stored procedures and scripts, plus the documents that describe the schema.
 | `SP` | `SP_Clone` | Copies a row into a new one and returns the new key (a grid's "Clone" button). |
 | `SP` | `SP_Load` | Reads the table's **rows** and writes a re-runnable procedure that loads the same rows into another DB (seed data). |
 | `SP` | `SP_Search` | `Table_Search.sql` — one optional `LIKE '%...%'` parameter per string column (audit columns excluded), AND-ed together, for a list screen's search box. Refuses a table with no searchable columns. |
+| `SP` | `SP_LogIndex` | `Sql/LogIndexes.sql` — an index on the timestamp of each table in `LogTables` (descending where the database has it), unless one that starts with it exists; you run it, codegen never does. |
 | `SP` | `SP_Junction` | `Table_Junction.sql` — List/Link/Unlink for a many-to-many **junction table** (only offered when `TableModel.IsJunctionTable` is true). |
 | `SP` | `SP_KeySequence` | `KeySequence.sql` - whole-DB, SQL Server only: a key-sequence table and a `GetNextID` routine as an alternative to `IDENTITY`, for the tables the project lists in `KeySequenceTables` (their `SP_Insert` then asks the sequence for the key); each counter starts from the table's highest key. |
 | `SP` | `SP_ReplicationTriggers` | `Table_ReplicationTriggers.sql` - SQL Server only: insert, update and delete triggers that copy each change to the DBs named in `ReplicationTargets` (linked server, DB). A failing target rolls back the write: review it and try it on a copy. |
@@ -196,6 +197,7 @@ Angular, React, Blazor, Uno and WinUI3 code: models, services, screens and dashb
 | `TSX` | `TSX_Api` | `api/tableApi.ts` — React Service: plain object of `fetch`-based functions instead of an `HttpClient` class (reuses `TS_Model`'s own output for row type — no separate React model template exists). |
 | `TSX` | `TSX_Schema` | `schemas/table.ts` - zod schema of editable fields with same limits, and form type inferred from it. |
 | `TSX` | `TSX_Page` | `pages/TablePage.tsx` plus a colocated `pages/__tests__/TablePage.test.tsx` — React counterpart of `TS_Component`: one function component (grid + add/edit form) using `useState`/`useEffect` instead of a class. |
+| `TSX` | `TSX_LogPage` | `pages/TablePage.tsx` plus its test for a table in `LogTables`: a read-only list that opens on a date range (From, To) and the search boxes, newest first, with no Add New, Edit, Clone, Delete or form; `TSX_Page` writes nothing for such a table. |
 | `TSX` | `TSX_DetailMasterPage` | `pages/TableDetailMasterPage.tsx` plus its test — `TSX_Page`'s own grid + form plus one read-only grid per child table (only offered when there's at least one). |
 | `TSX` | `TSX_JunctionPage` | `components/TableJunction.tsx` plus its test — 2-`<select multiple>` shuttle-control component (an `anchorId` prop, not routed on its own) calling `API_Junction` (also junction-only). |
 | `UNO` | `UNO_Model`, `UNO_Client` | `Models/Table.cs` and `Services/TableClient.cs` - class a table's JSON becomes in Uno app and its `HttpClient` calls, Blazor client's. |

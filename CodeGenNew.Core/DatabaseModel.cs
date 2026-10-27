@@ -84,7 +84,8 @@ public class DatabaseModel
 
     /// <summary> The same rule for a table known by name and by whether it has child tables (a child grid's link knows the child only that way). </summary>
     public static bool IsDetailMaster(string tableName, bool hasChildTables, ProjectSettings project) =>
-        project.DetailMasterTables is { Length: > 0 } listed
+        !LogTablePlan.IsListed(tableName, project)   // a log table is a read-only list, never a master with an edit dialog
+        && project.DetailMasterTables is { Length: > 0 } listed
             ? listed.Contains(tableName, StringComparer.OrdinalIgnoreCase)
             : hasChildTables;
 

@@ -56,9 +56,15 @@
             string sort = search.Count > 0 ? "&sortBy=" + char.ToLowerInvariant(search[0].Name[0]) + search[0].Name[1..] + "&sortDir=asc" : "";
             L();
             L("### Search " + plural + ", a page at a time" + (search.Count > 0 ? " (each text box filters by part of the text)" : ""));
-            L("GET {{host}}" + route + "/search?" + filters + "pageNumber=1&pageSize=20" + sort);
+            // a log table also takes the first and last day of the rows to list
+            string range = LogTablePlan.For(Model, Project) is not null ? LogTable.FromParameter + "=2026-01-01&" + LogTable.ToParameter + "=2026-01-31&" : "";
+            L("GET {{host}}" + route + "/search?" + filters + range + "pageNumber=1&pageSize=20" + sort);
             L("Accept: application/json");
         }
+        // a log table is only read: no add, change, remove or copy
+        bool readOnly = LogTablePlan.For(Model, Project) is not null;
+        if (!readOnly)
+        {
         L();
         L("### Add a " + words.ToLowerInvariant());
         L("POST {{host}}" + route);
@@ -79,6 +85,7 @@
             L();
             L("### Copy a " + words.ToLowerInvariant() + " into a new row");
             L("POST {{host}}" + route + "/{{" + idVar + "}}/clone");
+        }
         }
         string text = o.ToString();
         if (Project.ApiAuth)

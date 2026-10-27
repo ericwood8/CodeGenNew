@@ -49,6 +49,8 @@ public sealed class FormModel
         TextKeyBoxes = table.SearchKeyColumns.Where(c => c.IsStringColumn && SearchKeys.All(k => k.Column != c)).ToList();
         SearchFields = table.SearchableColumns.Concat(TextKeyBoxes).OrderBy(c => c.OrdinalPosition)
             .Select(c => new SearchField(c, c.Name, TemplateHelpers.LowerFirst(c.Name), GridCaption.For(c, Labels.Field(c)))).ToList();
+        Log = LogTablePlan.For(table, project);
+        DateRange = Log is null ? [] : [new SearchField(Log.Timestamp, "From", LogTable.FromParameter, "From", true), new SearchField(Log.Timestamp, "To", LogTable.ToParameter, "To", true)];
         DateColumns = Columns.Where(c => TemplateHelpers.IsDate(c) && !c.IsSystemStampColumn && !IsGuardStamp(c)).ToList();
         NewRowTypeScript = NewRowMembers(table, TypedKey, KeyColumn, KeyType);
     }
@@ -135,7 +137,16 @@ public sealed class FormModel
     public IReadOnlyList<ColumnModel> TextKeyBoxes { get; }
 
     /// <summary> The search boxes of a web screen: one per searchable column, or the one box of the Search list protocol (<c>ListProtocol=Search</c>), where the server decides which columns it matches. </summary>
-    public IReadOnlyList<SearchField> WebSearchFields => _project.ListSearchProtocol ? [new SearchField(null, "search", "search", "")] : SearchFields;
+    public IReadOnlyList<SearchField> WebSearchFields => _project.ListSearchProtocol ? [new SearchField(null, "search", "search", "")] : [.. SearchFields, .. DateRange];
+
+    /// <summary> The table the project lists in LogTables (a read-only, newest-first list with a date range), or null. </summary>
+    public LogTable? Log { get; }
+
+    /// <summary> True for a log table: no Add, Edit, Clone or Delete and no form. </summary>
+    public bool ReadOnly => Log is not null;
+
+    /// <summary> A log table's first and last day boxes (empty for any other table): the search fields the API takes as <c>from</c> and <c>to</c>, last in <see cref="WebSearchFields"/>. </summary>
+    public IReadOnlyList<SearchField> DateRange { get; }
 
     /// <summary> One drop-down per whole-number foreign key the search can filter by (<see cref="TableModel.SearchKeyColumns"/>) whose parent the screen already reads for its form: picking a parent's row
     /// sends its key, an exact match. Empty with the Search list protocol (the one box is the whole search). </summary>
@@ -175,7 +186,9 @@ public sealed class FormModel
         columns.Select(ParentOf).OfType<FormParent>().DistinctBy(p => p.Table, StringComparer.OrdinalIgnoreCase).ToList();
 
     /// <summary> How the grid shows a column of this table (<see cref="GridCells.KindOf"/>). </summary>
-    public CellKind CellOf(ColumnModel column) => GridCells.KindOf(column, LookupOf(column) is not null);
+    public CellKind CellOf(ColumnModel column) =>
+        Log is not null && column.Name == Log.Timestamp.Name && LookupOf(column) is null ? CellKind.DateTime   // a log shows when a row was written down to the minute
+        : GridCells.KindOf(column, LookupOf(column) is not null);
 
     /// <summary> Long text is a multi-line box, except an email address, a phone number or a URL: those are one line, whatever their column length, so the browser can check them. </summary>
     public bool IsMultilineBox(ColumnModel column) => TemplateHelpers.IsMultiline(column) && column.InputType(_project, Table.TableName) == "text";
@@ -240,7 +253,7 @@ public sealed class FormModel
 /// <param name="Name"> The column's name. </param>
 /// <param name="ParamName"> The query parameter and filter field: the column name with a lower-case first letter. </param>
 /// <param name="Label"> The caption of the box. </param>
-public sealed record SearchField(ColumnModel? Column, string Name, string ParamName, string Label);
+public sealed record SearchField(ColumnModel? Column, string Name, string ParamName, string Label, bool IsDate = false);
 
 /// <summary> One key filter: the foreign key column, the parent whose rows the drop-down lists, the query parameter and filter field (the column name with a lower-case first letter) and the caption,
 /// the same words as the column's grid heading. </summary>

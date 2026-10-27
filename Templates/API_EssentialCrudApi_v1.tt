@@ -267,6 +267,9 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     /// <summary> True for a table that has a clone routine: <c>POST &lt;route&gt;/{id}/clone</c> copies a row and answers with the copy. </summary>
     protected virtual bool CanClone => false;
 
+    /// <summary> True for a table the project lists in LogTables: an insert-only ledger the API only reads, so no create, update, delete or clone route is registered. </summary>
+    protected virtual bool ReadOnly => false;
+
     /// <summary> Copies the row and returns the new key (the repository's <c>CloneAsync</c>); only called when <see cref="CanClone"/> is true. </summary>
     protected virtual Task<TKey> CloneAsync(TRepo repo, TKey id) => throw new NotSupportedException();
 
@@ -477,6 +480,34 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
         .ProducesProblem(<#= HttpStatus.NotFound #>)
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
 
+        // Create, update, delete and clone are left out of a table the project lists in LogTables (ReadOnly)
+        if (!ReadOnly)
+            RegisterWrites(app, singular, apiSubDir);
+
+        if (CanLookup)
+        {
+            // Lookup: the key and the display column of every row, or only the rows whose text contains search (at most take, 25 by default) or whose key is in ids; "lookup" is not a name, so it is never the find-by-name route's
+            app.MapGet(apiSubDir + "/lookup", ([FromServices] <#= contextType #> context, [FromQuery] string? search, [FromQuery] string? ids, [FromQuery] int? take) => LookupAsync(context, search, ids, take))
+            .WithName($"Get{plural}Lookup")
+            .WithOpenApi()
+            .Produces<IEnumerable<LookupItem<TKey>>>()
+            .ProducesProblem(<#= HttpStatus.InternalServerError #>);
+        }
+
+        if (CanFindByName)
+        {
+            // Find by name: a number in that place is an id (the int constraint wins), anything else is the start of a name; "search" is the search route's
+            app.MapGet(apiSubDir + "/{name}", ([FromServices] <#= contextType #> context, string name) => FindByNameRowsAsync(context, name))
+            .WithName($"Get{plural}ByName")
+            .WithOpenApi()
+<#= reads("            ") #>            .Produces<IEnumerable<<#= output #>>>()
+            .ProducesProblem(<#= HttpStatus.InternalServerError #>);
+        }
+    }
+
+    // Create new, update, delete and clone: the routes that change rows
+    private void RegisterWrites(WebApplication app, string singular, string apiSubDir)
+    {
         // Create new
 <#
     if (children)
@@ -528,26 +559,6 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
         .WithOpenApi()
 <#= roles("        ") #>        .ProducesProblem(<#= HttpStatus.NotFound #>)
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
-
-        if (CanLookup)
-        {
-            // Lookup: the key and the display column of every row, or only the rows whose text contains search (at most take, 25 by default) or whose key is in ids; "lookup" is not a name, so it is never the find-by-name route's
-            app.MapGet(apiSubDir + "/lookup", ([FromServices] <#= contextType #> context, [FromQuery] string? search, [FromQuery] string? ids, [FromQuery] int? take) => LookupAsync(context, search, ids, take))
-            .WithName($"Get{plural}Lookup")
-            .WithOpenApi()
-            .Produces<IEnumerable<LookupItem<TKey>>>()
-            .ProducesProblem(<#= HttpStatus.InternalServerError #>);
-        }
-
-        if (CanFindByName)
-        {
-            // Find by name: a number in that place is an id (the int constraint wins), anything else is the start of a name; "search" is the search route's
-            app.MapGet(apiSubDir + "/{name}", ([FromServices] <#= contextType #> context, string name) => FindByNameRowsAsync(context, name))
-            .WithName($"Get{plural}ByName")
-            .WithOpenApi()
-<#= reads("            ") #>            .Produces<IEnumerable<<#= output #>>>()
-            .ProducesProblem(<#= HttpStatus.InternalServerError #>);
-        }
 
         if (CanClone)
         {

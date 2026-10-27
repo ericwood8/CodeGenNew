@@ -23,6 +23,8 @@ public static class TableShapeNotes
             return notes;
         foreach (var table in database.Tables.Where(t => LooksSingleRow(t, project)).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
             notes.Add($"{table.TableName}: holds one row; if the application keeps only one, list it in SingleRowTables to get a form instead of a list.");
+        foreach (var table in database.Tables.Where(t => t.HasCrudApi(project) && !LogTablePlan.IsListed(t, project) && LogTablePlan.Looks(t)).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
+            notes.Add($"{table.TableName}: looks like a log (a date and time column, nothing that edits it); if the application only reads it, list it in LogTables to get a list that opens newest first with a date range and no Add, Edit or Delete.");
         var screens = database.ScreenTables(project, uiStacks);
         var screenNames = screens.Select(s => s.TableName).ToHashSet(StringComparer.Ordinal);
         foreach (var table in database.EntityTables.Where(t => t.HasNameActiveApi(project)).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))

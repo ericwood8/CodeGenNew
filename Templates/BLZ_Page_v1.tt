@@ -74,7 +74,9 @@
         bool textKey = form.TypedKey;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
         const int pageSize = BlazorTestPlan.PageSize;   // the tests of the page count pages by it
 
-        var searchFields = form.SearchFields.Select(f => (Column: f.Column!, f.ParamName, Field: "filter" + Ident(f.Name), f.Label)).ToList();
+        // a table in LogTables ends the search boxes with a first and a last day (the API's from and to) and is only read: no Add New, Actions column or editor
+        var searchFields = form.SearchFields.Concat(form.DateRange).Select(f => (Column: f.Column!, f.ParamName, Field: "filter" + Ident(f.Name), f.Label)).ToList();
+        bool IsDateField(string paramName) => form.DateRange.Any(d => d.ParamName == paramName);
         // a drop-down of the parent's rows per whole-number foreign key: an exact match on the key (the OData page has its own filter row)
         var searchKeys = (odata ? [] : form.SearchKeys).Select(k => (k.Parent, k.ParamName, Field: "filter" + Ident(k.Column.Name), k.Label)).ToList();
 
@@ -92,6 +94,7 @@
         bool canClone = form.CanClone && !oneRow;
         // a Name and an IsActive column: the whole list is read (the API has no search and no paging), narrowed by a name box and an Active only check box on the page; no sort, no Columns list, no Clone
         bool nameActive = form.IsNameActive;
+        bool logOnly = form.ReadOnly && !odata && !oneRow && !nameActive;   // a table in LogTables: no Add New, Actions column or editor
         string reload = oneRow || nameActive ? "LoadAsync()" : "LoadAsync(pageNumber)";
 
         bool usesMoneyBox = shown.Any(form.IsMoneyInput);
@@ -256,7 +259,7 @@
         if (Project.DashboardStrip)
             L($"<DashboardStrip Table=\"{Model.TableName}\" />");   // BLZ_Dashboard: shows nothing for a table with no cards
         L($"<h1>{heading}</h1>");
-        if (!oneRow) L(Gate("", "<button type=\"button\" @onclick=\"Add\">Add New</button>"));
+        if (!oneRow && !logOnly) L(Gate("", "<button type=\"button\" @onclick=\"Add\">Add New</button>"));
         // the OData page has the filter row under the headers in place of the search boxes
         if (nameActive)
         {
@@ -272,7 +275,9 @@
             L();
             L("<div class=\"search\">");
             foreach (var f in searchFields)
-                L($"    <input type=\"text\" placeholder=\"Search by {f.Label}\" aria-label=\"Search by {f.Label}\" @bind=\"{f.Field}\" @bind:event=\"oninput\" />");
+                L(IsDateField(f.ParamName)
+                    ? $"    <label>{f.Label} <input type=\"date\" aria-label=\"{f.Label}\" value=\"@{f.Field}\" @oninput='e => {f.Field} = e.Value?.ToString()' /></label>"
+                    : $"    <input type=\"text\" placeholder=\"Search by {f.Label}\" aria-label=\"Search by {f.Label}\" @bind=\"{f.Field}\" @bind:event=\"oninput\" />");
             foreach (var k in searchKeys.Where(k => Ahead(k.Parent)))
                 L($"    <TypeAhead TValue=\"{Cs(k.Parent)}\" Label=\"Filter by {k.Label}\" Placeholder=\"All {k.Label.Pluralize()}\" Name=\"@Name{k.Parent.BaseName}({k.Field}Key)\" Find=\"@Find{k.Parent.BaseName}\" OnPick=\"@Pick{k.Field}\" />");
             foreach (var k in searchKeys.Where(k => !Ahead(k.Parent)))
@@ -317,7 +322,7 @@
             else
                 L("            " + Shown(c, $"<th>{caption}</th>"));
         }
-        L("            <th>Actions</th>");
+        if (!logOnly) L("            <th>Actions</th>");
         L("        </tr>");
         if (odata && filterFields!.Any(f => f is not null))
         {
@@ -380,12 +385,15 @@
             string cell = column.Cut ? $"@GridColumns.Cut({prop})" : Cell(c, prop, lookup is not null ? $"Name{form.ParentOf(c)!.BaseName}({prop})" : null);
             L("                " + Shown(c, $"<td>{cell}</td>"));
         }
+        if (!logOnly)
+        {
         L("                <td>");
         L(Gate("                    ", odata ? "<button type=\"button\" @onclick=\"() => OpenAsync(item)\">Edit</button>" : "<button type=\"button\" @onclick=\"() => Edit(item)\">Edit</button>"));
         if (canClone)
             L(Gate("                    ", "<button type=\"button\" @onclick=\"() => CloneAsync(item)\">Clone</button>"));
         L(Gate("                    ", "<button type=\"button\" @onclick=\"() => DeleteAsync(item)\">Delete</button>"));
         L("                </td>");
+        }
         L("            </tr>");
         L("        }");
         L("    </tbody>");
@@ -413,6 +421,7 @@
         L("    <p class=\"no-rows\">Nothing found.</p>");
         L("}");
         }
+        int editorStart = o.Length;   // a read-only page has no editor: what is written from here to the end of its markup is cut again below
         L();
         L("@if (row is not null)");
         L("{");
@@ -618,6 +627,8 @@
         }
         L("    </div>");
         L("}");
+        if (logOnly)
+            o.Length = editorStart;
         L();
         L("@code {");
         if (!oneRow && !nameActive)

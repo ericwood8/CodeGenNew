@@ -143,6 +143,13 @@
                 .Append("string? sortColumn = null").Append("bool sortDescending = false")
                 // one optional exact match per whole-number foreign key, after the older parameters so an existing call still lines up
                 .Concat(searchKeys.Select(k => $"{k.CSharpBase()}? {CSharpIdentifier(LowerFirst(k.Name))} = null")).ToList();
+            // a table in LogTables (EF search) also takes the first and the last day of the rows to list, after everything else so an existing call still lines up
+            bool logRange = ef && !nameActive && LogTablePlan.For(Model, Project) is not null;
+            if (logRange)
+            {
+                signatureParams.Add($"DateTime? {LogTable.FromParameter} = null");
+                signatureParams.Add($"DateTime? {LogTable.ToParameter} = null");
+            }
             if (nameActive)
             {
                 // A table with a Name and an IsActive column has no search routine and no SearchQuery class: its rows are few, so the list is read whole and narrowed, sorted and cut into pages here
@@ -187,7 +194,8 @@
             }
             else if (ef)
             {
-                string filterArguments = string.Concat(filters.Select(f => ", " + f.ParamName).Concat(searchKeys.Select(k => ", " + CSharpIdentifier(LowerFirst(k.Name)))));
+                string filterArguments = string.Concat(filters.Select(f => ", " + f.ParamName).Concat(searchKeys.Select(k => ", " + CSharpIdentifier(LowerFirst(k.Name)))))
+                    + (logRange ? $", {LogTable.FromParameter}: {LogTable.FromParameter}, {LogTable.ToParameter}: {LogTable.ToParameter}" : "");
                 string queryClass = Model.TableName + "SearchQuery";
                 methods.Add(new[]
                 {

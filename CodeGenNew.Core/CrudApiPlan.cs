@@ -33,7 +33,10 @@ public sealed class CrudApiPlan
         // A table with a Name and an IsActive column: NameActiveRepo is its repository, NameActiveCrudApi its base (no clone, no search; CloneShape leaves it out).
         NameActive = model.IsNameActiveTable;
         // A table with a database-assigned int key and a clone routine gets POST <route>/{id}/clone (CloneShape; CS_Repo writes CloneAsync for the same tables).
-        CanClone = !NameActive && CloneShape.CanClone(model, project);
+        // a log table (LogTables) is only read: no create, update, delete or clone route
+        var log = NameActive ? null : LogTablePlan.For(model, project);
+        ReadOnly = log is not null;
+        CanClone = !NameActive && !ReadOnly && CloneShape.CanClone(model, project);
         CanFindByName = model.CanFindByName;
 
         KeyProperty = keyColumn?.Name ?? "";
@@ -65,7 +68,7 @@ public sealed class CrudApiPlan
         SearchTerms = ListSearch ? SearchBox.For(model, project, searchNavigations) : [];
 
         // the column GetAll sorts by: the first date that is always there and that no one sets
-        SortColumn = NameActive ? null : model.Columns
+        SortColumn = log is { Timestamp: { IsNullable: false } stamp } && stamp.SqlType != System.Data.SqlDbType.DateTimeOffset ? log.Timestamp : NameActive ? null : model.Columns
             .Where(c => IsDate(c) && !c.IsNullable && !c.IsComputed && !c.IsAuditColumn && !c.IsAuditDateColumn)
             .OrderBy(c => c.OrdinalPosition)
             .FirstOrDefault();
@@ -115,6 +118,9 @@ public sealed class CrudApiPlan
     public bool UsesDtos { get; }
     public bool NameActive { get; }
     public bool CanClone { get; }
+
+    /// <summary> True for a table listed in LogTables: the API class says so and the base registers no write route. </summary>
+    public bool ReadOnly { get; }
     public bool CanFindByName { get; }
     public string KeyProperty { get; } = "";
     public string KeyCSharp { get; } = "int";

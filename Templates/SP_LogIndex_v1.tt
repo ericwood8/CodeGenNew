@@ -1,0 +1,14 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // SP_LogIndex_v1.tt
+    // Generates: LogIndexes.sql   (see OutputName in SP_LogIndex_v1.tt.config)
+    // An index on the timestamp of every table in LogTables, in the dialect of the source database, so a date range and the newest-first page read the end of the index instead of scanning a table that
+    // only grows. A table that already has an index starting with its timestamp gets none. Review it and run it yourself: codegen never applies it.
+    // Full notes: Docs/TemplateNotes/API_Search_v1.md
+    // ==========================================================================================
+    Write(LogIndexScript.Text(Database, Project));
+#>

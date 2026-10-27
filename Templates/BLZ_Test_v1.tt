@@ -528,9 +528,14 @@
             o.Append("}\n");
         }
 
-        Tests(false);
-        if (ODataPlan.Serves(Model, Project) && !Model.IsNameActiveTable)
-            Tests(true);
+        if (LogTablePlan.For(Model, Project) is not null)
+            o.Append(BlazorLogTests.Body(type, plan, title));   // a log table is only read: its tests do not add, change or delete a row
+        else
+        {
+            Tests(false);
+            if (ODataPlan.Serves(Model, Project) && !Model.IsNameActiveTable)
+                Tests(true);
+        }
         Write("@@@FILE " + type + "PageTests.cs@@@\n" + o);
     }
 #>

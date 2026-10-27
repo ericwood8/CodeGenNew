@@ -38,7 +38,11 @@
     var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
     var keyColumn = form.KeyColumn;
     var keyType = form.KeyType;   // how the key travels: a number, or a string for a uniqueidentifier or a text key
-    if (Variant == "OData" && !ODataPlan.Serves(Model, Project))
+    if (LogTablePlan.IsListed(Model, Project))
+    {
+        // a log table is a read-only list: TSX_LogPage writes its page
+    }
+    else if (Variant == "OData" && !ODataPlan.Serves(Model, Project))
     {
         // the OData page is written for the tables the project serves as OData and for no other; a plan runs this template for every table, so it says nothing for the rest
     }

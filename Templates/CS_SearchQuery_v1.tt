@@ -21,7 +21,7 @@
     {
         string entity = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
         var navigations = EntityNavigations.Of(Model, fk => Project.NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape) ?? false);
-        var plan = SearchPlan.For(Model, navigations);
+        var plan = SearchPlan.For(Model, navigations, LogTablePlan.For(Model, Project));
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
@@ -38,7 +38,8 @@
 
         // the text filters first, then one optional exact match per whole-number foreign key
         var filterParameterList = plan.Filters.Select(f => $"string? {f.ParameterName} = null")
-            .Concat(plan.KeyFilters.Select(k => $"{k.Column.CSharpBase()}? {k.ParameterName} = null")).ToList();
+            .Concat(plan.KeyFilters.Select(k => $"{k.Column.CSharpBase()}? {k.ParameterName} = null"))
+            .Concat(plan.Range is { } range ? new[] { $"DateTime? {range.FromParameter} = null", $"DateTime? {range.ToParameter} = null" } : []).ToList();
         L($"    public static IQueryable<{entity}> Filter(IQueryable<{entity}> query{(filterParameterList.Count > 0 ? ", " + string.Join(", ", filterParameterList) : "")})");
         L("    {");
         foreach (var filter in plan.Filters)
@@ -69,6 +70,18 @@
             L($"        if ({name} is {{ }} {name}Value)");
             L($"            query = query.Where(t => t.{key.Column.CSharpName()} == {name}Value);");
         }
+        if (plan.Range is { } rangeFilter)
+        {
+            string stamp = "t." + rangeFilter.Column.CSharpName();
+            L("        // the first and the last day, both included");
+            L($"        if ({rangeFilter.FromParameter} is {{ }} {rangeFilter.FromParameter}Value)");
+            L($"            query = query.Where(t => {stamp} >= {rangeFilter.FromParameter}Value.Date);");
+            L($"        if ({rangeFilter.ToParameter} is {{ }} {rangeFilter.ToParameter}Value)");
+            L("        {");
+            L($"            var {rangeFilter.ToParameter}End = {rangeFilter.ToParameter}Value.Date.AddDays(1);");
+            L($"            query = query.Where(t => {stamp} < {rangeFilter.ToParameter}End);");
+            L("        }");
+        }
         L("        return query;");
         L("    }");
         L();
@@ -93,8 +106,10 @@
         var order = plan.DefaultOrder.Select(c => "t." + c.CSharpName()).ToList();
         L("        // the default order applies without a chosen sort and breaks ties after one");
         L("        return ordered is null");
-        L($"            ? query.OrderBy(t => {order[0]}){string.Concat(order.Skip(1).Select(p => $".ThenBy(t => {p})"))}");
-        L($"            : ordered{string.Concat(order.Select(p => $".ThenBy(t => {p})"))};");
+        string first = plan.DefaultDescending ? "OrderByDescending" : "OrderBy";
+        string then = plan.DefaultDescending ? "ThenByDescending" : "ThenBy";
+        L($"            ? query.{first}(t => {order[0]}){string.Concat(order.Skip(1).Select(p => $".{then}(t => {p})"))}");
+        L($"            : ordered{string.Concat(order.Select(p => $".{then}(t => {p})"))};");
         L("    }");
         L("}");
         Write(o.ToString());

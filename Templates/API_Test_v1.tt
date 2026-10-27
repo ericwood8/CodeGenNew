@@ -21,6 +21,11 @@
     {
         Error($"API_Test writes tests for the tables API_Crud writes an API for (a single int, uniqueidentifier or text key, not an enum or a name/active table), and [{Model.SchemaName}].[{Model.TableName}] is not one.");
     }
+    else if (LogTablePlan.For(Model, Project) is not null)
+    {
+        // a log table is only read: its tests do not add, change or remove rows (ApiLogTests, Core)
+        Write(ApiLogTests.Text(ApiTestPlan.For(Model, Project)!, Project));
+    }
     else
     {
         // what the class checks and with which values is ApiTestPlan's (Core); this template writes the text

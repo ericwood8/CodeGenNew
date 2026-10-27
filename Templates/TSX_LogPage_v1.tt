@@ -1,0 +1,308 @@
+<#@ template language="C#" #>
+<#@ parameter name="Model" type="CodeGenNew.Core.TableModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (folders).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string pagesFolder = Project.PagesFolder;
+    string componentsFolder = Project.ComponentsFolder;
+    string modelsFolder = Project.ModelsFolder;
+    string apiFolder = Project.ApiFolder;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // TSX_LogPage_v1.tt
+    // Generates: pages/<Table>Page.tsx plus its test file (the paths are written by the template; point the output folder at the React src folder)
+    // The page of a log table (the project's LogTables setting: an insert-only ledger such as an error log or a session list). The rows are read, never changed: no Add New, Edit, Clone or Delete, and no
+    // form. The page opens on a filter row (a From and a To date, then the search box of each text column and a drop-down per parent) and lists newest first; the person pages through it, sorts by a header
+    // and chooses the columns like any list. It never reads the table whole: every call is one page. TSX_Page writes nothing for such a table, and the page has the name TSX_Page would give it, so the
+    // menu and the routes need no change. The API side is CrudApi's ReadOnly and the search's from and to parameters (LogTablePlan in Core).
+    // Full notes: Docs/TemplateNotes/TSX_LogPage_v1.md
+    // ==========================================================================================
+
+    var log = LogTablePlan.For(Model, Project);
+    if (log is null)
+    {
+        if (LogTablePlan.Problem(Model, Project) is { } problem)
+            Error(problem);
+    }
+    else
+    {
+        var form = FormModel.For(Model, Project);
+        string baseName = form.BaseName;
+        string stem = form.Stem;
+        string apiVar = ReactNames.ApiVar(Model.TableName);
+        string apiFile = ReactNames.ApiFile(Model.TableName);
+        string pageName = ReactNames.PageName(Model, Project);
+        string variable = form.Variable;
+        string listName = variable.Pluralize();
+        string setList = ReactNames.SetList(listName);
+        string keyProp = JsonNames.Camel(form.KeyColumn!.Name);
+        string title = form.Title;
+        var textFields = form.WebSearchFields.Where(f => !f.IsDate).ToList();
+        var dateFields = form.WebSearchFields.Where(f => f.IsDate).ToList();
+        var keyFilters = form.SearchKeys.Where(k => !k.Parent.TypeAhead).ToList();
+        var chosen = ChosenGridColumns.For(form);
+        var columnList = chosen.Offered;
+        var sortableColumns = columnList.Where(c => c.Sortable).Select(c => c.Column).ToList();
+        string Shown(ColumnModel c, string jsx) => "{show('" + c.Name + "') && " + jsx + "}";
+        // the parents whose names a cell shows: a drop-down parent's rows are read once (a parent with too many rows shows its key)
+        var cellParents = columnList.Where(c => form.CellOf(c.Column) == CellKind.Lookup && form.ParentOf(c.Column) is { TypeAhead: false }).Select(c => form.ParentOf(c.Column)!)
+            .Concat(keyFilters.Select(k => k.Parent)).GroupBy(p => p.NameMethod).Select(g => g.First()).ToList();
+        string filterInit = string.Join(", ", textFields.Select(f => f.ParamName).Concat(keyFilters.Select(k => k.ParamName)).Concat(dateFields.Select(f => f.ParamName)).Select(n => $"{n}: ''"));
+
+        var ts = new StringBuilder();
+        void T(string s = "") => ts.Append(s).Append('\n');
+
+        T("import { useEffect, useState } from 'react';");
+        T($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
+        T($"import {{ {apiVar} }} from '../{apiFolder}/{apiFile}';");
+        T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
+        T($"import {{ GridMenu, SortHeader, loadSort, nextSort, saveSort }} from '../{componentsFolder}/gridSort';");
+        T($"import type {{ GridSort }} from '../{componentsFolder}/gridSort';");
+        T($"import {{ ColumnPicker, loadColumns, saveColumns{(columnList.Any(c => c.Cut) ? ", shortText" : "")} }} from '../{componentsFolder}/gridColumns';");
+        T($"import type {{ GridColumn }} from '../{componentsFolder}/gridColumns';");
+        foreach (var p in cellParents.Where(p => !p.IsSelf))
+        {
+            if (!p.UsesLookupEndpoint) T($"import type {{ {p.BaseName} }} from '../{modelsFolder}/{p.ModelFile}';");
+            T($"import {{ {ReactNames.ApiVar(p.Table)} }} from '../{apiFolder}/{ReactNames.ApiFile(p.Table)}';");
+        }
+        T();
+        if (cellParents.Any(p => p.UsesLookupEndpoint))
+        {
+            T("// one row of GET <route>/lookup: the key, the text to show and whether the row is active");
+            T("type Lookup<K extends number | string = number> = { id: K; name: string; isActive?: boolean | null };");
+            T();
+        }
+        T("const initialPageSize = 20;");
+        T("const pageSizeChoices = [10, 20, 50, 100]; // the page sizes the person can pick under the grid");
+        T($"const gridKey = '{stem}'; // the grid's saved sort and columns are kept in the browser under this key");
+        T($"const sortableColumns = [{string.Join(", ", sortableColumns.Select(c => "'" + c.Name + "'"))}]; // the columns whose header sorts the grid");
+        T($"const columnList: GridColumn[] = [{string.Join(", ", columnList.Select(c => $"{{ name: '{c.Name}', label: '{c.Label.Replace("\\", "\\\\").Replace("'", "\\'")}' }}"))}]; // the columns the Columns list offers");
+        T($"const initialColumns = [{string.Join(", ", columnList.Where(c => c.Initial).Select(c => "'" + c.Name + "'"))}]; // the columns the grid starts with");
+        T("const columnNames = columnList.map((column) => column.name);");
+        T();
+        T($"export function {pageName}() {{");
+        T($"  const [{listName}, {setList}] = useState<{baseName}[]>([]);");
+        foreach (var p in cellParents)
+            T($"  const [{ReactNames.ParentList(p)}, {ReactNames.SetList(ReactNames.ParentList(p))}] = useState<{p.ItemType}[]>([]);");
+        T($"  const [filters, setFilters] = useState({{ {filterInit} }});");
+        T("  const [page, setPage] = useState(1);");
+        T("  const [totalPages, setTotalPages] = useState(1);");
+        T("  const [pageSize, setPageSize] = useState(initialPageSize);");
+        T("  const [loaded, setLoaded] = useState(false); // true once a page has arrived, so \"Nothing found.\" is not shown while waiting");
+        T("  const [error, setError] = useState<string | null>(null);");
+        T("  const [chosen, setChosen] = useState<string[]>(() => loadColumns(gridKey, columnNames, initialColumns)); // the columns shown; kept in the browser");
+        T("  const show = (name: string) => chosen.includes(name);");
+        T("  const [sort, setSort] = useState<GridSort | null>(() => loadSort(gridKey, sortableColumns.filter((name) => chosen.includes(name)))); // none: the API lists newest first");
+        T();
+        T("  const load = (targetPage: number = 1, filterValues: typeof filters = filters, sortValue: GridSort | null = sort, sizeValue: number = pageSize) => {");
+        T($"    {apiVar}.getPage(targetPage, sizeValue, filterValues, sortValue).then((result) => {{");
+        T("      // rows were removed elsewhere: the page asked for is past the end, so show the last page there is");
+        T("      if (result.items.length === 0 && result.totalCount > 0 && targetPage > 1) { load(result.totalPages, filterValues, sortValue, sizeValue); return; }");
+        T($"      {setList}(result.items);");
+        T("      setPage(result.page);");
+        T("      setTotalPages(result.totalPages);");
+        T("      setLoaded(true);");
+        T("      setError(null);");
+        T($"    }}).catch(() => setError('Failed to load {Labels.Words(baseName).ToLowerInvariant().Pluralize()}.'));");
+        T("  };");
+        T();
+        T("  useEffect(() => {");
+        T("    load();");
+        foreach (var p in cellParents)
+            T($"    {ReactNames.ApiVar(p.Table)}.{p.LoadMethod}().then({ReactNames.SetList(ReactNames.ParentList(p))}).catch(() => {{}});");
+        T("  }, []);");
+        T();
+        T("  const search = () => load(1);");
+        T();
+        T("  const clearSearch = () => {");
+        T($"    const cleared = {{ {filterInit} }};");
+        T("    setFilters(cleared);");
+        T("    load(1, cleared);");
+        T("  };");
+        T();
+        T("  const sortBy = (column: string) => {");
+        T("    const next = nextSort(sort, column);");
+        T("    setSort(next);");
+        T("    saveSort(gridKey, next);");
+        T("    load(1, filters, next);");
+        T("  };");
+        T();
+        T("  const clearSort = () => {");
+        T("    setSort(null);");
+        T("    saveSort(gridKey, null);");
+        T("    load(1, filters, null);");
+        T("  };");
+        T();
+        T("  // Showing or hiding a column: the choice is kept, and a sort on a column that is no longer shown is dropped.");
+        T("  const chooseColumns = (next: string[]) => {");
+        T("    setChosen(next);");
+        T("    saveColumns(gridKey, next, initialColumns);");
+        T("    if (sort && !next.includes(sort.column)) clearSort();");
+        T("  };");
+        foreach (var p in cellParents)
+        {
+            T();
+            T($"  // the name to show in place of a {p.BaseName} id");
+            T($"  const {p.NameMethod} = (id?: {p.KeyTs}): string => {{");
+            T($"    return {ReactNames.ParentList(p)}.find((p) => p.{p.KeyJson} === id)?.{p.DisplayJson} ?? '';");
+            T("  };");
+        }
+        T();
+        T("  return (");
+        T("    <div className=\"rail\">");
+        T($"      <h1>{title.Pluralize()}</h1>");
+        T();
+        T("      <div>");
+        foreach (var f in dateFields)
+            T($"        <label>{f.Label} <input type=\"date\" aria-label=\"{f.Label}\" value={{filters.{f.ParamName}}} onChange={{(event) => setFilters({{ ...filters, {f.ParamName}: event.target.value }})}} onKeyUp={{(event) => {{ if (event.key === 'Enter') search(); }}}} /></label>");
+        foreach (var f in textFields)
+        {
+            T("        <input");
+            T("          type=\"text\"");
+            T($"          placeholder=\"Search by {f.Label}\"");
+            T($"          aria-label=\"Search by {f.Label}\"");
+            T($"          value={{filters.{f.ParamName}}}");
+            T($"          onChange={{(event) => setFilters({{ ...filters, {f.ParamName}: event.target.value }})}}");
+            T("          onKeyUp={(event) => { if (event.key === 'Enter') search(); }}");
+            T("        />");
+        }
+        foreach (var k in keyFilters)
+        {
+            T($"        <select aria-label=\"Filter by {k.Label}\" value={{filters.{k.ParamName}}} onChange={{(event) => {{ const next = {{ ...filters, {k.ParamName}: event.target.value }}; setFilters(next); load(1, next); }}}}>");
+            T($"          <option value=\"\">All {k.Label.Pluralize()}</option>");
+            T($"          {{{ReactNames.ParentList(k.Parent)}.map((p) => <option key={{p.{k.Parent.KeyJson}}} value={{p.{k.Parent.KeyJson}}}>{{p.{k.Parent.DisplayJson}}}</option>)}}");
+            T("        </select>");
+        }
+        T("        <button type=\"button\" onClick={search}>Search</button>");
+        T("        <button type=\"button\" onClick={clearSearch}>Clear</button>");
+        T("      </div>");
+        T();
+        T("      <ColumnPicker columns={columnList} chosen={chosen} initial={initialColumns} onChange={chooseColumns} />");
+        T();
+        T("      {error && <p role=\"alert\">{error}</p>}");
+        T();
+        T("      <GridMenu sort={sort} onClear={clearSort}>");
+        T("      <table>");
+        T("        <thead>");
+        T("          <tr>");
+        foreach (var column in columnList)
+        {
+            var c = column.Column;
+            string header = sortableColumns.Contains(c)
+                ? $"<SortHeader label=\"{column.Caption}\" column=\"{c.Name}\" sort={{sort}} onSort={{sortBy}} />"
+                : $"<th>{column.Caption}</th>";
+            T("            " + Shown(c, header));
+        }
+        T("          </tr>");
+        T("        </thead>");
+        T("        <tbody>");
+        T($"          {{{listName}.map(({variable}) => (");
+        T($"            <tr key={{{variable}.{keyProp}}}>");
+        foreach (var column in columnList)
+        {
+            var c = column.Column;
+            string prop = $"{variable}.{JsonNames.Camel(c.Name)}";
+            var cellKind = form.CellOf(c);
+            string q = c.IsNullable ? "?" : "";
+            string cell;
+            // A nullable column's value may be undefined: optional chaining keeps a strict build compiling.
+            if (cellKind == CellKind.Lookup && form.ParentOf(c)!.TypeAhead) cell = $"{{{prop}}}";
+            else if (cellKind == CellKind.Lookup) cell = $"{{{form.ParentOf(c)!.NameMethod}({prop})}}";
+            else if (cellKind == CellKind.Boolean) cell = $"{{{prop} ? 'Yes' : 'No'}}";
+            else if (cellKind == CellKind.Date) cell = $"{{{prop}{q}.substring(0, 10)}}";
+            else if (cellKind == CellKind.DateTime) cell = $"{{{prop}{q}.substring(0, 16).replace('T', ' ')}}";
+            else if (cellKind == CellKind.Money) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{q}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
+            else if (cellKind == CellKind.Decimal) cell = $"{{{prop}{q}.toFixed(2)}}";
+            else cell = column.Cut ? $"{{shortText({prop})}}" : $"{{{prop}}}";
+            T("              " + Shown(c, $"<td>{cell}</td>"));
+        }
+        T("            </tr>");
+        T("          ))}");
+        T("        </tbody>");
+        T("      </table>");
+        T("      </GridMenu>");
+        T();
+        T("      <PaginationBar");
+        T("        page={page}");
+        T("        totalPages={totalPages}");
+        T("        onPrevious={() => load(page - 1)}");
+        T("        onNext={() => load(page + 1)}");
+        T("      />");
+        T("      <label className=\"page-size\">");
+        T("        Rows per page");
+        T("        <select value={pageSize} onChange={(event) => { const size = Number(event.target.value); setPageSize(size); load(1, filters, sort, size); }}>");
+        T("          {pageSizeChoices.map((size) => <option key={size} value={size}>{size}</option>)}");
+        T("        </select>");
+        T("      </label>");
+        T($"      {{loaded && {listName}.length === 0 && <p className=\"no-rows\">Nothing found.</p>}}");
+        T("    </div>");
+        T("  );");
+        T("}");
+
+        var test = new StringBuilder();
+        void S(string s = "") => test.Append(s).Append('\n');
+
+        S("import { fireEvent, render, screen } from '@testing-library/react';");
+        S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
+        S($"import {{ {pageName} }} from '../{pageName}';");
+        S($"import {{ {apiVar} }} from '../../{apiFolder}/{apiFile}';");
+        foreach (var p in cellParents.Where(p => !p.IsSelf))
+            S($"import {{ {ReactNames.ApiVar(p.Table)} }} from '../../{apiFolder}/{ReactNames.ApiFile(p.Table)}';");
+        S();
+        S($"describe('{pageName}', () => {{");
+        S("  beforeEach(() => {");
+        S("    localStorage.clear();");
+        S($"    vi.spyOn({apiVar}, 'getPage').mockResolvedValue({{ items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 0 }});");
+        foreach (var p in cellParents.Where(p => !p.IsSelf))
+            S($"    vi.spyOn({ReactNames.ApiVar(p.Table)}, '{p.LoadMethod}').mockResolvedValue([]);");
+        S("  });");
+        S();
+        S("  afterEach(() => {");
+        S("    vi.restoreAllMocks();");
+        S("    localStorage.clear();");
+        S("  });");
+        S();
+        S("  it('is a list that cannot add, change or delete a row', async () => {");
+        S($"    render(<{pageName} />);");
+        S($"    expect(await screen.findByText('{title.Pluralize()}')).toBeInTheDocument();");
+        S("    expect(screen.queryByRole('button', { name: 'Add New' })).toBeNull();");
+        S("    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();");
+        S("    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();");
+        S("  });");
+        S();
+        S("  it('asks for the first page and says so when nothing is found', async () => {");
+        S($"    render(<{pageName} />);");
+        S("    expect(await screen.findByText('Nothing found.')).toBeInTheDocument();");
+        S($"    expect({apiVar}.getPage).toHaveBeenCalledWith(1, 20, expect.anything(), null);");
+        S("  });");
+        S();
+        S("  it('sends the first and the last day when the person searches', async () => {");
+        S($"    render(<{pageName} />);");
+        S("    await screen.findByText('Nothing found.');");
+        S($"    fireEvent.change(screen.getByLabelText('{dateFields[0].Label}'), {{ target: {{ value: '2026-10-01' }} }});");
+        S($"    fireEvent.change(screen.getByLabelText('{dateFields[1].Label}'), {{ target: {{ value: '2026-10-31' }} }});");
+        S("    fireEvent.click(screen.getByRole('button', { name: 'Search' }));");
+        S($"    expect({apiVar}.getPage).toHaveBeenLastCalledWith(1, 20, expect.objectContaining({{ {dateFields[0].ParamName}: '2026-10-01', {dateFields[1].ParamName}: '2026-10-31' }}), null);");
+        S("  });");
+        S();
+        S("  it('takes the dates away again on Clear', async () => {");
+        S($"    render(<{pageName} />);");
+        S("    await screen.findByText('Nothing found.');");
+        S($"    fireEvent.change(screen.getByLabelText('{dateFields[0].Label}'), {{ target: {{ value: '2026-10-01' }} }});");
+        S("    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));");
+        S($"    expect({apiVar}.getPage).toHaveBeenLastCalledWith(1, 20, expect.objectContaining({{ {dateFields[0].ParamName}: '' }}), null);");
+        S("  });");
+        S("});");
+
+        Write($"@@@FILE {pagesFolder}/{pageName}.tsx@@@\n" + ts);
+        Write($"@@@FILE {pagesFolder}/__tests__/{pageName}.test.tsx@@@\n" + test);
+    }
+#>

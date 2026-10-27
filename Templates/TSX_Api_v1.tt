@@ -55,6 +55,9 @@
         var filters = listSearch
             ? new[] { new { ParamName = "search", Name = "search" } }.ToList()
             : Model.SearchableColumns.Concat(Model.SearchKeyColumns).Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();   // the text boxes, then the key drop-downs (the page sends the key as text)
+        // a table in LogTables also takes the first and the last day of the rows to list (the page sends them as yyyy-MM-dd text)
+        if (!listSearch && LogTablePlan.For(Model, Project) is not null)
+            filters.AddRange(new[] { new { ParamName = LogTable.FromParameter, Name = LogTable.FromParameter }, new { ParamName = LogTable.ToParameter, Name = LogTable.ToParameter } });
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
