@@ -32,6 +32,9 @@ public sealed class ApiTestPlan
             _ => $"Uri.EscapeDataString(new string('~', {Math.Max(1, Math.Min(key.CharacterLength > 0 ? key.CharacterLength : 3, 12))}))"
         };
         BodyColumns = ApiSampleValues.BodyColumns(model);
+        // EffectiveDatedTables: a new row also sends its last day (the column may allow NULL, which would be an open period that overlaps every row made after it)
+        if (EffectiveDatePlan.For(model, project) is { } effective && !BodyColumns.Any(c => c.Name.EqualsIgnoreCase(effective.To.Name)))
+            BodyColumns = BodyColumns.Append(effective.To).OrderBy(c => c.OrdinalPosition).ToList();
 
         // the one column the update step changes: a free text column, else a bit column, else a whole number that has room to go up by one
         Changed = BodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0)
@@ -144,6 +147,14 @@ public sealed class ApiTestPlan
             var range = NumericClassifier.TypeRange(c.SqlType);
             long high = Math.Min(range.Max, 2_000_000_000);
             return $"ApiFixture.NewKey({Math.Max(1, high / 2).ToString(CultureInfo.InvariantCulture)}, {high.ToString(CultureInfo.InvariantCulture)})";
+        }
+        // EffectiveDatedTables: each new row is a one-day period of its own long before real data, so rows of different tests never overlap (the last day is the first day)
+        if (EffectiveDatePlan.For(_model, _project) is { } effective)
+        {
+            if (c.Name.EqualsIgnoreCase(effective.From.Name))
+                return "ApiFixture.NextDay()";
+            if (c.Name.EqualsIgnoreCase(effective.To.Name))
+                return "ApiFixture.SameDay()";
         }
         if (IsFreeText(c))
             return $"ApiFixture.Unique({ApiSampleValues.Json(ApiSampleValues.Text(c, _project, _model.TableName))}, {c.CharacterLength})";

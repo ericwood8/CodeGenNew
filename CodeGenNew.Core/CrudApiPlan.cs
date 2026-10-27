@@ -87,6 +87,10 @@ public sealed class CrudApiPlan
         // ChangeGates and GuardedColumns (API_Gates): the table's checks run before a row is saved.
         HasGates = GatePlan.HasRules(project, model);
 
+        // TreeTables, SoftDeleteTables and EffectiveDatedTables (API_RowShapes): the table's checks run before a row is saved and before it is deleted.
+        RowShapeSave = RowShapeWriter.HasSaveCheck(model, project);
+        RowShapeDelete = RowShapeWriter.HasDeleteCheck(model, project);
+
         // The user table (UserTable with ApiAuth): its API never sends or takes the password hash, lets only an administrator change the administrator and role columns, keeps a sign-in name unique
         // and keeps the last administrator (UserTable, API_UserDirectory).
         UserPlan = UserTable.PlanOf(model, project);
@@ -155,6 +159,12 @@ public sealed class CrudApiPlan
     public static string Now(ColumnModel c) => c.CSharpBase() == "DateTimeOffset" ? "DateTimeOffset.Now" : "LocalNow";
 
     public bool HasGates { get; }
+
+    /// <summary> Whether the API calls <c>&lt;Table&gt;Shape.CheckSaveAsync</c> before a save (a tree or an effective-dated table). </summary>
+    public bool RowShapeSave { get; }
+
+    /// <summary> Whether the API calls <c>&lt;Table&gt;Shape.CheckDeleteAsync</c> before a delete (a tree or a soft-delete table). </summary>
+    public bool RowShapeDelete { get; }
 
     public UserTablePlan? UserPlan { get; }
     public ColumnModel? UserAdmin { get; }

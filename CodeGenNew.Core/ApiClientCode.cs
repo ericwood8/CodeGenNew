@@ -70,6 +70,12 @@ public static class ApiClientCode
             L($"public record {type}QueueStats(int Pending, int Claimed, int Done, int Failed, {keyType}? OldestPendingId, DateTime? OldestPendingOn);");
             L();
         }
+        if (!nameActive && TreePlan.For(table, project) is not null)
+        {
+            L("// One row of GET " + BlazorNames.ApiRoute(table.TableName) + "/tree: the rows depth first, level 1 is a root (TreeTables).");
+            L($"public record {type}TreeNode(long Id, long? ParentId, int Depth, bool HasChildren, string Text);");
+            L();
+        }
         L($"public class {type}Client(HttpClient http)");
         L("{");
         L($"    private const string Url = \"{BlazorNames.ApiRoute(table.TableName)}\";");
@@ -128,6 +134,28 @@ public static class ApiClientCode
             L($"    public async Task<{type}QueueStats> GetQueueStatsAsync() => await (await http.GetAsync($\"{{Url}}/stats\")).ReadAsync<{type}QueueStats>();");
             L();
             L($"    public async Task<{type}> RetryAsync({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{{id}}}/retry\", null)).ReadAsync<{type}>();");
+        }
+        if (!nameActive && TreePlan.For(table, project) is not null)
+        {
+            L();
+            L("    // A tree (TreeTables): every row depth first with its level, and the children of a row handed to the row's parent so it can be deleted.");
+            L($"    public async Task<List<{type}TreeNode>> GetTreeAsync() => await (await http.GetAsync($\"{{Url}}/tree\")).ReadAsync<List<{type}TreeNode>>();");
+            L();
+            L($"    public async Task PromoteChildrenAsync({keyType} id) => (await http.PostAsync($\"{{Url}}/{{{id}}}/promote-children\", null)).EnsureSuccessStatusCode();");
+        }
+        if (!nameActive && SoftDeletePlan.For(table, project) is not null)
+        {
+            L();
+            L("    // Soft delete (SoftDeleteTables): the deleted rows, and a deleted row brought back (an administrator); the row comes back.");
+            L($"    public async Task<List<{type}>> GetDeletedAsync() => await (await http.GetAsync($\"{{Url}}/deleted\")).ReadAsync<List<{type}>>();");
+            L();
+            L($"    public async Task<{type}> RestoreAsync({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{{id}}}/restore\", null)).ReadAsync<{type}>();");
+        }
+        if (!nameActive && EffectiveDatePlan.For(table, project) is not null)
+        {
+            L();
+            L("    // Effective dating (EffectiveDatedTables): the rows in effect on a day (today when left out), by the date text the API reads (2026-10-27).");
+            L($"    public async Task<List<{type}>> GetCurrentAsync(string? on = null) => await (await http.GetAsync(on is null ? $\"{{Url}}/current\" : $\"{{Url}}/current?on={{Uri.EscapeDataString(on)}}\")).ReadAsync<List<{type}>>();");
         }
         if (!nameActive && GatePlan.GuardsOf(project, table).Count > 0)
         {

@@ -386,6 +386,8 @@ public class <#= singular #>ApiTests
     }
 <#
         }
+        // TreeTables, SoftDeleteTables and EffectiveDatedTables: the tests of the table's shape (RowShapeTests, Core)
+        Write(RowShapeTests.Methods(plan, Model, Project));
 #>
 }
 <#

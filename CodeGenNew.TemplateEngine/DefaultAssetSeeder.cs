@@ -208,6 +208,7 @@ public static class DefaultAssetSeeder
         "SP_LogIndex_v1.tt", "SP_LogIndex_v1.tt.config",
         "SP_ArchiveJob_v1.tt", "SP_ArchiveJob_v1.tt.config",
         "API_Queue_v1.tt", "API_Queue_v1.tt.config",
+        "API_RowShapes_v1.tt", "API_RowShapes_v1.tt.config",
         "PY_Queue_v1.tt", "PY_Queue_v1.tt.config",
         "RS_Queue_v1.tt", "RS_Queue_v1.tt.config",
         "RS_TestQueue_v1.tt", "RS_TestQueue_v1.tt.config",

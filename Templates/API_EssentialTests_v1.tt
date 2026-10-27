@@ -365,6 +365,22 @@ public static class ApiFixture
         return room > 0 ? text[..Math.Min(text.Length, room)] + " " + tail : tail;
     }
 
+<#
+    if (Project.EffectiveDatedTables.Length > 0)
+    {
+#>
+    private static long _day = Random.Shared.NextInt64(0, 30_000);
+    private static string _lastDay = "";
+
+    /// <summary> The first day of a one-day period in the 19th century, before the dates of real rows (and after the 1753 start of SQL Server's datetime), a new one on every call: rows made by different tests (EffectiveDatedTables) never overlap each other or an open period that began later. </summary>
+    public static string NextDay() => _lastDay = new DateTime(1800, 1, 1).AddDays(Interlocked.Add(ref _day, 2)).ToString("yyyy-MM-dd'T'00:00:00");
+
+    /// <summary> The last day of the period NextDay just began (the same day). </summary>
+    public static string SameDay() => _lastDay;
+
+<#
+    }
+#>
     /// <summary> A key for a table whose key the database does not number. </summary>
     public static long NewKey(long low, long high) => Random.Shared.NextInt64(low, high);
 

@@ -70,6 +70,11 @@
         Line();
         Line("        QueueApi.Register(app);");
     }
+    if (Database.Tables.Any(t => RowShapePlan.Has(t, Project)))
+    {
+        Line();
+        Line("        RowShapeApi.Register(app);");
+    }
     if (Project.Dashboard)
     {
         Line();

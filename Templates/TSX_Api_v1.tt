@@ -92,6 +92,17 @@
             L("}");
             L();
         }
+        if (TreePlan.For(Model, Project) is not null)
+        {
+            L("export interface TreeNode {");
+            L("  id: number;");
+            L("  parentId: number | null;");
+            L("  depth: number;");
+            L("  hasChildren: boolean;");
+            L("  text: string;");
+            L("}");
+            L();
+        }
         L($"export const {variable}Api = {{");
         L($"  getAll: () => request<{baseName}[]>(apiUrl),");
         L();
@@ -125,6 +136,28 @@
             L("  getQueueStats: () => request<QueueStats>(`${apiUrl}/stats`),");
             L();
             L($"  retry: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/{keyPath}/retry`, {{ method: 'POST' }}),");
+        }
+        if (TreePlan.For(Model, Project) is not null)
+        {
+            L();
+            L("  // a tree (TreeTables): every row depth first with its level, and the children of a row handed to the row's parent so it can be deleted");
+            L("  getTree: () => request<TreeNode[]>(`${apiUrl}/tree`),");
+            L();
+            L($"  promoteChildren: (id: {keyTs}) => request<{{ moved: number }}>(`${{apiUrl}}/{keyPath}/promote-children`, {{ method: 'POST' }}),");
+        }
+        if (SoftDeletePlan.For(Model, Project) is not null)
+        {
+            L();
+            L("  // soft delete (SoftDeleteTables): the deleted rows, and a deleted row brought back (an administrator)");
+            L($"  getDeleted: () => request<{baseName}[]>(`${{apiUrl}}/deleted`),");
+            L();
+            L($"  restore: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/{keyPath}/restore`, {{ method: 'POST' }}),");
+        }
+        if (EffectiveDatePlan.For(Model, Project) is not null)
+        {
+            L();
+            L("  // effective dating (EffectiveDatedTables): the rows in effect on a day (today when left out), narrowed by the group columns' JSON names");
+            L($"  getCurrent: (on?: string, groups: Record<string, string | number> = {{}}) => request<{baseName}[]>(`${{apiUrl}}/current?${{new URLSearchParams({{ ...(on ? {{ on }} : {{}}), ...Object.fromEntries(Object.entries(groups).map(([name, value]) => [name, String(value)])) }})}}`),");
         }
         if (GatePlan.GuardsOf(Project, Model).Count > 0)
         {

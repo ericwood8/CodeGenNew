@@ -77,6 +77,17 @@
             L($"export type {baseName}PagedResult = PagedResult<{baseName}>;");
             L();
         }
+        if (TreePlan.For(Model, Project) is not null)
+        {
+            L("export interface TreeNode {");
+            L("    id: number;");
+            L("    parentId: number | null;");
+            L("    depth: number;");
+            L("    hasChildren: boolean;");
+            L("    text: string;");
+            L("}");
+            L();
+        }
         var queue = QueuePlan.For(Model, Project);
         if (queue is not null)
         {
@@ -117,6 +128,39 @@
             L();
             L($"    retry(id: {keyTs}): Observable<{baseName}> {{");
             L($"        return this.http.post<{baseName}>(`${{this.apiUrl}}/${{id}}/retry`, null);");
+            L("    }");
+        }
+        if (TreePlan.For(Model, Project) is not null)
+        {
+            L();
+            L("    // a tree (TreeTables): every row depth first with its level, and the children of a row handed to the row's parent so it can be deleted");
+            L("    getTree(): Observable<TreeNode[]> {");
+            L("        return this.http.get<TreeNode[]>(`${this.apiUrl}/tree`);");
+            L("    }");
+            L();
+            L($"    promoteChildren(id: {keyTs}): Observable<{{ moved: number }}> {{");
+            L("        return this.http.post<{ moved: number }>(`${this.apiUrl}/${id}/promote-children`, null);");
+            L("    }");
+        }
+        if (SoftDeletePlan.For(Model, Project) is not null)
+        {
+            L();
+            L("    // soft delete (SoftDeleteTables): the deleted rows, and a deleted row brought back (an administrator)");
+            L($"    getDeleted(): Observable<{baseName}[]> {{");
+            L($"        return this.http.get<{baseName}[]>(`${{this.apiUrl}}/deleted`);");
+            L("    }");
+            L();
+            L($"    restore(id: {keyTs}): Observable<{baseName}> {{");
+            L($"        return this.http.post<{baseName}>(`${{this.apiUrl}}/${{id}}/restore`, null);");
+            L("    }");
+        }
+        if (EffectiveDatePlan.For(Model, Project) is not null)
+        {
+            L();
+            L("    // effective dating (EffectiveDatedTables): the rows in effect on a day (today when left out), narrowed by the group columns' JSON names");
+            L($"    getCurrent(on?: string, groups: Record<string, string | number> = {{}}): Observable<{baseName}[]> {{");
+            L("        const params = new URLSearchParams({ ...(on ? { on } : {}), ...Object.fromEntries(Object.entries(groups).map(([name, value]) => [name, String(value)])) });");
+            L($"        return this.http.get<{baseName}[]>(`${{this.apiUrl}}/current?${{params}}`);");
             L("    }");
         }
         if (guarded)

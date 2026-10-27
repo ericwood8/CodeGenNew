@@ -41,6 +41,10 @@
         Error(refusal);
     else if (LogTablePlan.Problem(Model, Project) is { } logProblem)
         Error(logProblem);
+    else if ((TreePlan.Problem(Model, Project) ?? SoftDeletePlan.Problem(Model, Project) ?? EffectiveDatePlan.Problem(Model, Project)) is { } shapeProblem)
+        Error(shapeProblem);
+    else if (RowShapePlan.Has(Model, Project) && UserTable.PlanOf(Model, Project) is not null)
+        Error($"TreeTables, SoftDeleteTables and EffectiveDatedTables cannot name the user table ({Model.TableName}): its API already checks every save and delete.");
 
     bool dtos = plan.UsesDtos;
     if (dtos)
@@ -382,8 +386,20 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
 #>
 
     // The project's ChangeGates and GuardedColumns for this table (API_Gates writes <#= entity #>Gates).
+<#
+            if (plan.RowShapeSave)
+            {
+#>
+    protected override async Task<IResult?> BeforeSaveAsync(<#= contextType #> context, <#= entity #> row, bool isNew) =>
+        await <#= entity #>Gates.CheckAsync(context, Caller, row, isNew) ?? await <#= entity #>Shape.CheckSaveAsync(context, row, isNew);
+<#
+            }
+            else
+            {
+#>
     protected override Task<IResult?> BeforeSaveAsync(<#= contextType #> context, <#= entity #> row, bool isNew) => <#= entity #>Gates.CheckAsync(context, Caller, row, isNew);
 <#
+            }
             if (canClone)
             {
 #>
@@ -392,6 +408,22 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
     protected override Task<IResult?> AfterCloneAsync(<#= contextType #> context, <#= keyCSharp #> newId) => <#= entity #>Gates.AfterCloneAsync(context, Caller, newId);
 <#
             }
+        }
+        if (plan.RowShapeSave && !hasGates)
+        {
+#>
+
+    // TreeTables or EffectiveDatedTables: a parent that makes a cycle, a level that is too deep or a period that overlaps is refused (API_RowShapes writes <#= entity #>Shape).
+    protected override Task<IResult?> BeforeSaveAsync(<#= contextType #> context, <#= entity #> row, bool isNew) => <#= entity #>Shape.CheckSaveAsync(context, row, isNew);
+<#
+        }
+        if (plan.RowShapeDelete)
+        {
+#>
+
+    // TreeTables or SoftDeleteTables: a row with children is not deleted, and a soft-delete table sets its flag instead of removing the row (API_RowShapes writes <#= entity #>Shape).
+    protected override Task<IResult?> BeforeDeleteAsync(<#= contextType #> context, <#= keyCSharp #> id) => <#= entity #>Shape.CheckDeleteAsync(context, id, <#= Project.ApiAuth ? "Caller" : "null" #>);
+<#
         }
 #>
 }

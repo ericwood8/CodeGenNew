@@ -1,0 +1,40 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string apiNamespace = "MyApp.ApiService.Apis";
+    string contextType = "MyAppContext";
+    string[] usings = { };   // namespaces the generated file must "using" (the context's)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    contextType = Project.ContextName ?? contextType;
+    apiNamespace = Project.ApiNamespace ?? apiNamespace;
+    usings = Project.Usings ?? usings;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // API_RowShapes_v1.tt
+    // Generates: RowShapes.cs   (see OutputName in API_RowShapes_v1.tt.config)
+    // The checks and routes of three table shapes. TreeTables (a table that refers to itself): a parent that is the row or one of its descendants is refused (400), a level past the limit is refused, a row with children is
+    // not deleted (409; POST {id}/promote-children hands them to the row's parent first) and GET tree answers the rows depth first. SoftDeleteTables: the delete sets the flag instead of removing the row (CS_DbContext hides
+    // flagged rows from every read), GET deleted lists them and POST {id}/restore brings one back. EffectiveDatedTables: a save whose period runs backwards or overlaps another row of its group is refused and
+    // GET current?on= answers the rows in effect. Each table's API (API_Crud) calls <Table>Shape.CheckSaveAsync and CheckDeleteAsync; this file maps the extra routes (RowShapeApi.Register).
+    // Full notes: Docs/TemplateNotes/API_RowShapes_v1.md
+    // ==========================================================================================
+
+    var problems = RowShapePlan.Problems(Database, Project);
+    if (problems.Count > 0)
+    {
+        Error(string.Join(" | ", problems));
+    }
+    else if (Database.Tables.Any(t => RowShapePlan.Has(t, Project)))
+    {
+        Write("namespace " + apiNamespace + ";\n\n");
+        Write(RowShapeWriter.File(Database, Project, contextType, usings));
+    }
+#>

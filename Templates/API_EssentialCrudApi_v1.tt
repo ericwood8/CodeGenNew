@@ -24,6 +24,8 @@
     string baseNameActiveEntity = options.BaseNameActiveEntity;
     string validation(string when) => options.Validation ? when : "";
     string auth(string when) => options.Auth ? when : "";
+    // the BeforeSaveAsync and BeforeDeleteAsync hooks run with ApiAuth, and also when the project lists a TreeTables, SoftDeleteTables or EffectiveDatedTables table (their checks are hooks)
+    string hooks(string when) => options.Hooks ? when : "";
     // WriteRoles: the write routes refuse a role the table's WriteRoles does not list (RoleGate, written by the Jwt group)
     string roles(string indent) => options.Auth ? indent + ".RequireWriteRoles(WriteRoles)\n" : "";
     // ReadRoles: the list, one row, find by name and the active list refuse a role the table's ReadRoles does not list (the lookup stays open for the drop-downs of other screens)
@@ -443,6 +445,19 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 <#
     }
 #>
+<#
+    if (!Project.ApiAuth && options.Hooks)
+    {
+#>
+
+    /// <summary> Runs after a create's or update's body is a row and before it is saved; a result refuses the save (the checks of TreeTables and EffectiveDatedTables). The default accepts. </summary>
+    protected virtual Task<IResult?> BeforeSaveAsync(<#= contextType #> context, TEntity row, bool isNew) => Task.FromResult<IResult?>(null);
+
+    /// <summary> Runs before a row is deleted; a result answers the request instead (a refusal, or the soft delete itself). The default accepts. </summary>
+    protected virtual Task<IResult?> BeforeDeleteAsync(<#= contextType #> context, TKey id) => Task.FromResult<IResult?>(null);
+<#
+    }
+#>
 
     public override void Register(WebApplication app)
     {
@@ -771,7 +786,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 <#
     }
 #>
-<#= auth("        if (await BeforeSaveAsync(context, newRow, true) is { } refusedSave)\n            return refusedSave;\n\n") #>        var repo = NewRepo(context);
+<#= hooks("        if (await BeforeSaveAsync(context, newRow, true) is { } refusedSave)\n            return refusedSave;\n\n") #>        var repo = NewRepo(context);
         if (KeyOf(newRow) is string chosen)
         {
             // a text key is typed by the person: it cannot be empty and cannot be one that exists
@@ -863,7 +878,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
         var repo = NewRepo(context);
         if (!await repo.ExistsAsync(id))
             return Results.NotFound(); // 404 error if there is no row with that id
-<#= auth("        if (await BeforeSaveAsync(context, updatedRow, false) is { } refusedSave)\n            return refusedSave;\n") #><#
+<#= hooks("        if (await BeforeSaveAsync(context, updatedRow, false) is { } refusedSave)\n            return refusedSave;\n") #><#
     if (dtos && Project.ApiValidation)
     {
 #>
@@ -901,7 +916,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 
     private async Task<IResult> DeleteAsync(<#= contextType #> context, TKey id)
     {
-<#= auth("        if (await RefuseOtherOwnersAsync(context, id) is { } refused)\n            return refused;\n        if (await BeforeDeleteAsync(context, id) is { } refusedDelete)\n            return refusedDelete;\n\n") #>        var successNum = await NewRepo(context).DeleteAsync(typeof(TEntity).Name, id);
+<#= auth("        if (await RefuseOtherOwnersAsync(context, id) is { } refused)\n            return refused;\n") #><#= hooks("        if (await BeforeDeleteAsync(context, id) is { } refusedDelete)\n            return refusedDelete;\n\n") #>        var successNum = await NewRepo(context).DeleteAsync(typeof(TEntity).Name, id);
         if (successNum == 0)
             return Results.Ok();
         else if (successNum == -1)
@@ -1061,6 +1076,19 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
 <#
     }
 #>
+<#
+    if (!Project.ApiAuth && options.Hooks)
+    {
+#>
+
+    /// <summary> Runs after a create's or update's body is a row and before it is saved; a result refuses the save (the checks of TreeTables and EffectiveDatedTables). The default accepts. </summary>
+    protected virtual Task<IResult?> BeforeSaveAsync(<#= contextType #> context, TEntity row, bool isNew) => Task.FromResult<IResult?>(null);
+
+    /// <summary> Runs before a row is deleted; a result answers the request instead (a refusal, or the soft delete itself). The default accepts. </summary>
+    protected virtual Task<IResult?> BeforeDeleteAsync(<#= contextType #> context, int id) => Task.FromResult<IResult?>(null);
+<#
+    }
+#>
 
     public override void Register(WebApplication app)
     {
@@ -1214,7 +1242,7 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
         if (string.IsNullOrWhiteSpace(newRow.Name))
             return Results.Problem(statusCode: <#= HttpStatus.BadRequest #>, type: "<#= ProblemTypes.NameRequired #>", title: "Name is required", detail: "The name cannot be empty.");
 
-<#= auth("        if (await BeforeSaveAsync(context, newRow, true) is { } refusedSave)\n            return refusedSave;\n\n") #><#
+<#= hooks("        if (await BeforeSaveAsync(context, newRow, true) is { } refusedSave)\n            return refusedSave;\n\n") #><#
     if (children)
     {
 #>
@@ -1250,7 +1278,7 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
         var repo = NewRepo(context);
         if (!await repo.ExistsAsync(id))
             return Results.NotFound();
-<#= auth("        if (await BeforeSaveAsync(context, updatedRow, false) is { } refusedSave)\n            return refusedSave;\n") #><#
+<#= hooks("        if (await BeforeSaveAsync(context, updatedRow, false) is { } refusedSave)\n            return refusedSave;\n") #><#
     if (children)
     {
 #>
@@ -1279,7 +1307,7 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
 
     private async Task<IResult> DeleteAsync(<#= contextType #> context, int id)
     {
-<#= auth("        if (await BeforeDeleteAsync(context, id) is { } refusedDelete)\n            return refusedDelete;\n\n") #>        int result = await NewRepo(context).DeleteAsync(typeof(TEntity).Name, id);
+<#= hooks("        if (await BeforeDeleteAsync(context, id) is { } refusedDelete)\n            return refusedDelete;\n\n") #>        int result = await NewRepo(context).DeleteAsync(typeof(TEntity).Name, id);
         return result switch
         {
             0 => Results.Ok(),

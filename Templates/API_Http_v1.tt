@@ -120,6 +120,30 @@
             L("### Put a failed row back to pending");
             L("POST {{host}}" + route + "/{{" + idVar + "}}/retry");
         }
+        if (TreePlan.For(Model, Project) is not null)
+        {
+            L();
+            L("### Every row depth first, with its level (a tree)");
+            L("GET {{host}}" + route + "/tree");
+            L();
+            L("### Hand the children of a row to its own parent, so the row can be deleted");
+            L("POST {{host}}" + route + "/{{" + idVar + "}}/promote-children");
+        }
+        if (SoftDeletePlan.For(Model, Project) is not null)
+        {
+            L();
+            L("### The rows that were deleted (an administrator)");
+            L("GET {{host}}" + route + "/deleted");
+            L();
+            L("### Bring a deleted row back (an administrator)");
+            L("POST {{host}}" + route + "/{{" + idVar + "}}/restore");
+        }
+        if (EffectiveDatePlan.For(Model, Project) is { } effective)
+        {
+            L();
+            L("### The rows in effect on a day (today when on is left out), narrowed by " + (effective.Groups.Count == 0 ? "nothing: the table has no group column" : string.Join(" and ", effective.Groups.Select(g => JsonNames.Camel(g.Name)))));
+            L("GET {{host}}" + route + "/current?on=2026-10-27" + string.Concat(effective.Groups.Select(g => "&" + JsonNames.Camel(g.Name) + "=1")));
+        }
         string text = o.ToString();
         if (Project.ApiAuth)
         {
