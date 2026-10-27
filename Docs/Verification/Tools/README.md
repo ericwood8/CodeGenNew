@@ -9,6 +9,8 @@ Small Python scripts for the steps that are repeated whenever a template or a Co
 | `compare_with_head.py` | Generates with the working tree's templates, puts the committed copy of every changed template back, generates again and lists the files that differ (`--diff` shows the lines). Run it with the scratch project to prove that a change moved only what it should. |
 | `ef_read_all.py` | Reads every table of a generated app (`--app Output/X.App`) through its generated DbContext in a throwaway console project (Entities, Data, Repositories only) and prints `FAIL <DbSet>: ...` per table that cannot be read, ending `tables ok=N fail=M`. Finds what a build cannot: a relationship EF cannot build, a NULL in a column EF made required, a missing column. SQL Server; read only. |
 
+| `pytest_standin/play.py` | Plays a generated `tests/test_queue.py` (or the module you name in the script) without installing pytest: `python pytest_standin/play.py <generated api folder>`. `pytest_standin/pytest.py` fakes only `fixture`, `skip` and `mark.parametrize`, so it runs the generated tests but proves nothing about pytest itself. Use real pytest when it is installed. |
+
 A typical check of a template change:
 
 ```bash
