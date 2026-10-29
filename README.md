@@ -46,6 +46,18 @@ CLI argument parsing is hand-rolled rather than pulling in a library, given the 
 | MySQL | app and CLI | `information_schema` | stored procedures (`DELIMITER $$`) | `CALL p(...)` | yes (call the procedures) |
 | SQLite | app and CLI (a file DB, opened read-only) | `sqlite_master`, the `pragma_*` functions and the `CREATE TABLE` text (for CHECK constraints) | nothing: SQLite has no routines (see `AccessMode`) | LINQ over the context (`CS_SearchQuery`) | yes (LINQ over the context) |
 
+### Hosted services
+
+A managed service that runs the same engine and speaks its protocol is read and generated for like the engine itself: pick SQL Server, PostgreSQL or MySQL as the database type and point the connection at the service.
+
+| Service | Treated as | Notes |
+|---|---|---|
+| Azure SQL Database, Azure SQL Managed Instance, Amazon RDS for SQL Server | SQL Server | Windows authentication is not available on these: use a SQL login (or Microsoft Entra on Azure) in the connection string. The database is the one named in the connection string (Azure SQL Database cannot switch databases with `USE`). Encryption is on by default in the SQL Server driver, so a service with a certificate the machine does not trust needs `TrustServerCertificate=True` or the right root certificate. |
+| Amazon Aurora PostgreSQL-Compatible Edition, Amazon RDS for PostgreSQL, Azure Database for PostgreSQL | PostgreSQL | These services usually require TLS: add `SSL Mode=Require` to the connection string. |
+| Amazon Aurora MySQL-Compatible Edition, Azure Database for MySQL | MySQL | These services usually require TLS: add `SslMode=Required` to the connection string. A service that has binary logging on may refuse `CREATE TRIGGER` and `CREATE PROCEDURE` from an account without the right privilege or the `log_bin_trust_function_creators` setting, which matters when you run the generated audit-trail and routine scripts (the tool itself never runs them). |
+
+These are expected to work because the schema read uses only the standard catalog views (`information_schema`, `pg_catalog`) and the generated code uses the ordinary PostgreSQL and MySQL drivers, but they are not part of the automated tests, which run against the engines themselves. Report anything that differs. Azure HorizonDB is not listed: it is a PostgreSQL-compatible service still in preview, and it has not been tried. SQLite has no hosted service to list: it is read from a file on disk, and a networked variant such as Turso or Cloudflare D1 is not a file the tool can open.
+
 ## API protocols
 
 | Protocol | Served by | What a client gets | Used by the generated screens | Switch |
