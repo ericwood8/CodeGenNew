@@ -69,6 +69,7 @@
         // a drop-down of the parent's rows per whole-number foreign key: an exact match on the key (the first entry, "All", is no filter)
         var searchKeys = DesktopGridCode.KeyFilters(form);
         bool logOnly = form.ReadOnly && !isNameActive;   // a table in LogTables: a list with a first and a last day (the date boxes end searchFields) and no Add New, Edit, Clone or Delete
+        var queue = logOnly ? QueuePlan.For(Model, Project) : null;   // a work queue also shows the counts by status and a Retry button on a failed row
         bool canSearch = searchFields.Count > 0 || searchKeys.Count > 0 || isNameActive;   // a name / active table's search bar also has the Active only check box
         int errorRow = canSearch ? 3 : 2;
         int gridRow = canSearch ? 4 : 3;
@@ -92,6 +93,7 @@
         var sortableShown = shown.Where(SearchSort.IsSortable).ToList();
         // A Clone button for the tables CloneShape allows (CS_Repo writes CloneAsync for the same ones).
         bool canClone = CloneShape.CanClone(Model, Project);
+        string actionWidth = logOnly ? (queue is null ? "90" : "170") : canClone ? "250" : "175";
 #>
 @@@FILE <#= viewsFolder #>/<#= table #>ListPage.xaml@@@
 <Page
@@ -129,6 +131,9 @@
 <# } #>
                 <Button Content="Refresh" Click="OnRefreshClick" />
                 <Button Content="Columns" Click="OnColumnsClick" />
+<# if (queue is not null) { #>
+                <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.QueueSummary, Mode=OneWay}" />
+<# } #>
             </StackPanel>
         </Border>
 <#
@@ -203,7 +208,7 @@
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="<#= logOnly ? "90" : canClone ? "250" : "175" #>" />
+                                <ColumnDefinition Width="<#= actionWidth #>" />
                             </Grid.ColumnDefinitions>
                             <!-- The header cells of the shown columns are built in code (BuildHeader), as the shown columns change. -->
                             <Grid x:Name="HeaderCells" Grid.Column="0" ColumnSpacing="8" />
@@ -219,7 +224,7 @@
                                     <Grid ColumnSpacing="8">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="<#= logOnly ? "90" : canClone ? "250" : "175" #>" />
+                                            <ColumnDefinition Width="<#= actionWidth #>" />
                                         </Grid.ColumnDefinitions>
                                         <views:GridCells Grid.Column="0" Cells="{x:Bind VisibleCells}" />
 <# if (!logOnly) { #>
@@ -238,6 +243,9 @@
 <# } else { #>
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
                                             <Button Content="View" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnViewClick" />
+<# if (queue is not null) { #>
+                                            <Button Content="Retry" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnRetryClick" Visibility="{x:Bind RetryVisibility}" />
+<# } #>
                                         </StackPanel>
 <# } #>
                                     </Grid>
@@ -394,6 +402,14 @@ public sealed partial class <#= table #>ListPage : Page
     }
 
 <# } else { #>
+<# if (queue is not null) { #>
+    // Retry puts a failed row back to pending; the page and the counts are read again.
+    private async void OnRetryClick(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.RetryAsync((<#= keyCs #>)((Button)sender).Tag);
+    }
+
+<# } #>
     // View opens the whole row, read-only: a long message that the grid cuts can be read here.
     private async void OnViewClick(object sender, RoutedEventArgs e)
     {
@@ -503,6 +519,10 @@ public class <#= table #>ListRow
     public List<string> Cells { get; init; } = [];
     /// <summary> The texts of the columns that are shown (what the grid draws). </summary>
     public List<string> VisibleCells { get; init; } = [];
+<# if (queue is not null) { #>
+    /// <summary> Whether the Retry button shows: only a failed row can be put back to pending. </summary>
+    public Visibility RetryVisibility { get; init; } = Visibility.Collapsed;
+<# } #>
 }
 
 <#
@@ -551,6 +571,17 @@ public partial class <#= table #>ListViewModel : ViewModelBase
     [ObservableProperty]
     private bool _hasLoaded;
 
+<#
+        if (queue is not null)
+        {
+#>
+    /// <summary> The counts by status and the oldest pending row, above the grid. </summary>
+    [ObservableProperty]
+    private string _queueSummary = "";
+
+<#
+        }
+#>
     public string PageLabel => !HasLoaded ? "" : TotalRows == 0 ? "Nothing found." : $"Page {PageNumber} of {TotalPages} ({TotalRows} rows)";
 <#
         foreach (var f in searchFields)
@@ -770,10 +801,36 @@ public partial class <#= table #>ListViewModel : ViewModelBase
             Write(DesktopGridCode.CellLines(form, Project, c, chosen.Offered.First(o => o.Column == c).Cut));
 #>
             ];
-            Rows.Add(new <#= table #>ListRow { Id = e.<#= keyProp #>, Cells = cells, VisibleCells = VisibleCells(cells) });
+            Rows.Add(new <#= table #>ListRow { Id = e.<#= keyProp #>, Cells = cells, VisibleCells = VisibleCells(cells)<#= queue is null ? "" : $", RetryVisibility = e.{queue.Status.CSharpName()} == \"{QueueStatus.Failed}\" ? Visibility.Visible : Visibility.Collapsed" #> });
         }
+<# if (queue is not null) { #>
+        await LoadStatsAsync();
+<# } #>
     }
 
+<# if (queue is not null) { #>
+    /// <summary> The counts by status and the oldest pending row. </summary>
+    private async Task LoadStatsAsync()
+    {
+        var byStatus = await _context.Set<<#= table #>>().AsNoTracking().GroupBy(x => x.<#= queue.Status.CSharpName() #>).Select(g => new { Status = g.Key, Count = g.Count() }).ToListAsync();
+        int Of(string status) => byStatus.Where(g => g.Status == status).Sum(g => g.Count);
+        var oldest = await _context.Set<<#= table #>>().AsNoTracking().Where(x => x.<#= queue.Status.CSharpName() #> == "<#= QueueStatus.Pending #>")
+            .OrderBy(x => x.<#= queue.Created.CSharpName() #>).ThenBy(x => x.<#= queue.Key.CSharpName() #>).Select(x => new { Id = x.<#= queue.Key.CSharpName() #>, On = x.<#= queue.Created.CSharpName() #> }).Take(1).ToListAsync();
+        QueueSummary = $"Pending: {Of("<#= QueueStatus.Pending #>")}, claimed: {Of("<#= QueueStatus.Claimed #>")}, done: {Of("<#= QueueStatus.Done #>")}, failed: {Of("<#= QueueStatus.Failed #>")}"
+            + (oldest.Count > 0 ? $". Oldest pending: #{oldest[0].Id}, waiting since {oldest[0].On:yyyy-MM-dd HH:mm}" : "");
+    }
+
+    /// <summary> A failed row goes back to pending (the same guarded UPDATE as the API's retry); the page and the counts are read again. </summary>
+    public async Task RetryAsync(<#= keyCs #> id)
+    {
+        ErrorMessage = null;
+        await _context.Set<<#= table #>>().Where(x => x.<#= queue.Key.CSharpName() #> == id && x.<#= queue.Status.CSharpName() #> == "<#= QueueStatus.Failed #>")
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.<#= queue.Status.CSharpName() #>, "<#= QueueStatus.Pending #>").SetProperty(x => x.<#= queue.Retry.CSharpName() #>, (<#= queue.Retry.CSharpBase() #>)0)
+                .SetProperty(x => x.<#= queue.Processed.CSharpName() #>, (<#= queue.Processed.CSharpBase() #>?)null).SetProperty(x => x.<#= queue.Claimed.CSharpName() #>, (<#= queue.Claimed.CSharpBase() #>?)null)<#= queue.ClaimedBy is null ? "" : $".SetProperty(x => x.{queue.ClaimedBy.CSharpName()}, (string?)null)" #>);
+        await LoadAsync();
+    }
+
+<# } #>
     public async Task DeleteAsync(<#= keyCs #> id)
     {
         ErrorMessage = null;

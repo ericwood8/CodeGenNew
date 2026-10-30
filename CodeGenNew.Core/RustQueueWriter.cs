@@ -51,17 +51,39 @@ public static class RustQueueWriter
             string errorBind = q.LastError is null ? "" : ".bind(message)";
             string claimBy = q.ClaimedBy is null ? "" : $".bind(fit(query.worker.clone(), {Length(q.ClaimedBy)}))";
 
+            // an enqueue fills the columns the queue itself sets: first a value the JSON can be read with, then the real one on the struct
+            var managed = new[] { q.Status, q.Retry, q.Created, q.Claimed, q.Processed, q.ClaimedBy, q.LastError }.Where(c => c is not null).Select(c => main.FieldOf(c!)).ToList();
+            string Placeholder(RustField f) => f.IsOption ? "serde_json::Value::Null" : f.BaseType switch
+            {
+                "String" => "serde_json::json!(\"\")",
+                "NaiveDateTime" => "serde_json::json!(\"2000-01-01T00:00:00\")",
+                "NaiveDate" => "serde_json::json!(\"2000-01-01\")",
+                _ => "serde_json::json!(0)"
+            };
+            var placeholders = new StringBuilder();
+            foreach (var f in managed)
+                placeholders.Append($"    object.insert(\"{f.Json}\".to_string(), {Placeholder(f)});\n");
+            string Option(RustField f, string value) => f.IsOption ? $"Some({value})" : value;
+            var assignments = new StringBuilder();
+            assignments.Append($"    row.{main.FieldOf(q.Status).Name} = {Option(main.FieldOf(q.Status), "\"" + QueueStatus.Pending + "\".to_string()")};\n");
+            assignments.Append($"    row.{main.FieldOf(q.Retry).Name} = {Option(main.FieldOf(q.Retry), "0")};\n");
+            assignments.Append($"    row.{main.FieldOf(q.Created).Name} = {RustTable.Now(main.FieldOf(q.Created))};\n");
+            foreach (var c in new[] { q.Claimed, q.Processed, q.ClaimedBy, q.LastError })
+                if (c is not null)
+                    assignments.Append($"    row.{main.FieldOf(c).Name} = {RustTable.DefaultValue(main.FieldOf(c))};\n");
+            string keyPlaceholder = q.Key.IsIdentity ? $"    object.entry(\"{main.Key.Json}\").or_insert(serde_json::json!(0));\n" : "";
+
             imports.Append($"use crate::models::{main.Module}::{main.Struct};\nuse crate::repos::{main.Module} as repo_{main.Module};\n");
             routes.Append(Fill(TableText,
-                ("§M", main.Module), ("§S", main.Struct), ("§ROUTE", main.Route), ("§KT", main.Key.BaseType), ("§CT", createdField.Type), ("§ON", createdField.IsOption ? "*on" : "Some(*on)"),
+                ("§KEYFIELD", main.Key.Name), ("§M", main.Module), ("§S", main.Struct), ("§ROUTE", main.Route), ("§KT", main.Key.BaseType), ("§CT", createdField.Type), ("§ON", createdField.IsOption ? "*on" : "Some(*on)"),
                 ("§NOWCLAIMED", RustTable.Now(main.FieldOf(q.Claimed))), ("§NOWPROCESSED", RustTable.Now(main.FieldOf(q.Processed))),
                 ("§SQL_RELEASE", RustTable.Raw(release)), ("§SQL_COUNTS", RustTable.Raw(counts)), ("§SQL_OLDEST", RustTable.Raw(oldest)), ("§SQL_NEXT", RustTable.Raw(next)), ("§SQL_CLAIM", RustTable.Raw(claim)),
                 ("§SQL_COMPLETE", RustTable.Raw(complete)), ("§SQL_RENEW", RustTable.Raw(renew)), ("§SQL_FAILED_ROWS", RustTable.Raw(failedRows)), ("§SQL_FAIL", RustTable.Raw(fail)), ("§SQL_RETRY", RustTable.Raw(retrySql)),
-                ("§ERRORLINE", errorLine), ("§ERRORBIND", errorBind), ("§CLAIMBY", claimBy),
+                ("§PLACEHOLDERS", placeholders.ToString() + keyPlaceholder), ("§ASSIGNMENTS", assignments.ToString()), ("§ERRORLINE", errorLine), ("§ERRORBIND", errorBind), ("§CLAIMBY", claimBy),
                 ("§PENDING", QueueStatus.Pending), ("§CLAIMED", QueueStatus.Claimed), ("§DONE", QueueStatus.Done), ("§FAILED", QueueStatus.Failed)));
         }
         var o = new StringBuilder();
-        o.Append(Fill(Head, ("§IMPORTS", imports.ToString().TrimEnd('\n')), ("§T_STATE", QueueWords.WrongStateType), ("§W_NOTCLAIMED", Str(QueueWords.NotClaimed)), ("§W_NOTFAILED", Str(QueueWords.NotFailed)),
+        o.Append(Fill(Head, ("§IMPORTS", imports.ToString().TrimEnd('\n')), ("§T_STATE", QueueWords.WrongStateType), ("§W_NOTCLAIMED", Str(QueueWords.NotClaimed)), ("§W_NOTFAILED", Str(QueueWords.NotFailed)), ("§W_NOTSAVED", Str(QueueWords.NotSaved)),
             ("§MIN", project.QueueClaimMinutes.ToString()), ("§ATTEMPTS", QueueWords.ClaimAttempts.ToString())));
         o.Append("\npub fn router() -> Router<Pool> {\n    Router::new()\n");
         foreach (var q in tables)
@@ -94,12 +116,13 @@ use axum::{
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 
-use crate::support::{ApiError, Pool};
+use crate::support::{ApiError, Pool, created};
 §IMPORTS
 
 const PROBLEM_WRONG_STATE: &str = "§T_STATE";
 const NOT_CLAIMED: &str = §W_NOTCLAIMED;
 const NOT_FAILED: &str = §W_NOTFAILED;
+const NOT_SAVED: &str = §W_NOTSAVED;
 
 const CLAIM_MINUTES: i64 = §MIN;
 const CLAIM_ATTEMPTS: usize = §ATTEMPTS;
@@ -186,6 +209,7 @@ struct Counts§S {
 
 fn router_§M() -> Router<Pool> {
     Router::new()
+        .route("§ROUTE", post(enqueue_§M))
         .route("§ROUTE/stats", get(stats_§M))
         .route("§ROUTE/failed", get(failed_§M))
         .route("§ROUTE/claim", post(claim_§M))
@@ -204,6 +228,16 @@ async fn release_stale_§M(pool: &Pool) -> Result<(), sqlx::Error> {
 async fn answer_§M(pool: &Pool, id: §KT, changed: u64, detail: &'static str) -> QueueResult<Json<§S>> {
     let row = repo_§M::get_by_id(pool, id).await?.ok_or(ApiError::NotFound)?;
     if changed == 1 { Ok(Json(row)) } else { Err(QueueError::WrongState(detail)) }
+}
+
+/// A producer puts a row in the queue: pending, no retries, created now, whatever it sent for the queue's own columns dropped.
+async fn enqueue_§M(State(pool): State<Pool>, body: Bytes) -> QueueResult<Response> {
+    let not_saved = || QueueError::Api(ApiError::BadRequest(NOT_SAVED.into()));
+    let mut value: serde_json::Value = if body.is_empty() { serde_json::json!({}) } else { serde_json::from_slice(&body).map_err(|_| not_saved())? };
+    let object = value.as_object_mut().ok_or_else(not_saved)?;
+§PLACEHOLDERS    let mut row: §S = serde_json::from_value(value).map_err(|_| not_saved())?;
+§ASSIGNMENTS    let row = repo_§M::insert(&pool, &row).await.map_err(|_| not_saved())?;
+    Ok(created(format!("§ROUTE/{}", row.§KEYFIELD), row))
 }
 
 async fn stats_§M(State(pool): State<Pool>) -> QueueResult<Json<Counts§S>> {

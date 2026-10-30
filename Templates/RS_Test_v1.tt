@@ -110,7 +110,14 @@ async fn a_log_table_is_read_and_never_written() {
     let absent = <#= absentKey #>;
     assert_eq!(api.get(&format!("{ROUTE}/{absent}")).await.status, StatusCode::NOT_FOUND);
 
+<#
+            if (QueuePlan.For(Model, Project) is null)
+            {
+#>
     assert_eq!(api.post(ROUTE, &json!({})).await.status, StatusCode::METHOD_NOT_ALLOWED, "no route adds a row");
+<#
+            }
+#>
     assert_eq!(api.put(&format!("{ROUTE}/{absent}"), &json!({})).await.status, StatusCode::METHOD_NOT_ALLOWED, "no route changes a row");
     assert_eq!(api.delete(&format!("{ROUTE}/{absent}")).await.status, StatusCode::METHOD_NOT_ALLOWED, "no route removes a row");
 }

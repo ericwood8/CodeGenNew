@@ -10,7 +10,7 @@
     // The Rust counterpart of API_Queue: for each table of QueueTables the routes GET stats, GET failed, POST claim (the oldest pending row, taken with one guarded UPDATE, 204 when there is none),
     // POST {id}/complete, POST {id}/fail (one more retry, back to pending until QueueMaxRetries, then failed) and POST {id}/retry, with the same sentences, problem type and status codes as the
     // ASP.NET API (QueueWords and QueueWriter in Core). A claim nobody completed is released after QueueClaimMinutes. RS_Mod merges the router; axum prefers the fixed paths to a table's /{id}.
-    // The table's own routes still write rows; only the ASP.NET API makes a queue table read only.
+    // The router also has the enqueue POST; the table's own routes are the read-only ones of a log table (RS_Routes).
     // Full notes: Docs/TemplateNotes/API_Queue_v1.md
     // ==========================================================================================
     var tables = Database.Tables.Select(t => QueuePlan.For(t, Project)).OfType<QueueTable>()

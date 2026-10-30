@@ -10,7 +10,7 @@
     // The Python counterpart of API_Queue: for each table of QueueTables the routes GET stats, GET failed, POST claim (the oldest pending row, taken with one guarded UPDATE, 204 when there is none),
     // POST {id}/complete, POST {id}/fail (one more retry, back to pending until QueueMaxRetries, then failed) and POST {id}/retry, with the same sentences, problem type and status codes as the
     // ASP.NET API (QueueWords and QueueWriter in Core). A claim nobody completed is released after QueueClaimMinutes. With ApiAuth the routes need a signed-in caller.
-    // PY_Mod lists this router before the tables' routers (their /{id} would read stats as a key). The table's own routes still write rows; only the ASP.NET API makes a queue table read only.
+    // PY_Mod lists this router before the tables' routers (their /{id} would read stats as a key). The router also has the enqueue POST; the table's own routes are the read-only ones of a log table (PY_Routes).
     // Full notes: Docs/TemplateNotes/API_Queue_v1.md
     // ==========================================================================================
     var tables = Database.Tables.Select(t => QueuePlan.For(t, Project)).OfType<QueueTable>()

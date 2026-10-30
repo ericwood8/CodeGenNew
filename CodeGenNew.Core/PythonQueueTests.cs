@@ -27,13 +27,26 @@ public static class PythonQueueTests
         string auth = project.ApiAuth ? "from app.auth import CurrentUser, require_user\n" : "";
         string signIn = project.ApiAuth ? "    app.dependency_overrides[require_user] = lambda: CurrentUser(name=\"zz_worker\", role=None, owner_id=None)\n" : "";
         string signOut = project.ApiAuth ? "    app.dependency_overrides.pop(require_user, None)\n" : "";
+        // what a producer sends: the columns that must have a value, and junk for the ones the queue sets itself
+        var payload = q.Payload.Select(c => $"{PythonNames.Str(JsonNames.Camel(c.Name))}: {ApiSampleValues.Value(c, project, q.Table.TableName)}");
+        var junk = new[] { (q.Status, "\"done\""), (q.Retry, "7"), (q.Claimed, "\"2001-01-01T00:00:00\""), (q.ClaimedBy, "\"someone\""), (q.LastError, "\"old\"") }
+            .Where(j => j.Item1 is not null).Select(j => $"{PythonNames.Str(JsonNames.Camel(j.Item1!.Name))}: {j.Item2}");
+        var di = DialectInfo.For(database.Dialect);
+        string deleteOne = $"DELETE FROM {di.QuoteTable(q.Table.SchemaName, q.Table.DbTableName)} WHERE {di.Quote(q.Key.DbName)} = ";
+        string required = q.Payload.Count == 0 ? "" : """"
+
+def test_a_row_without_a_value_the_table_needs_is_not_enqueued(api):
+    client, _ = api
+    refused = client.post(ROUTE, json={})
+    assert refused.status_code == 400, refused.text
+"""";
         string text = Text;
         foreach (var (token, value) in new (string, string)[]
         {
-            ("§AUTHIMPORT\n", auth), ("§SIGNIN", signIn), ("§SIGNOUT", signOut), ("§BYASSERT", by), ("§ERRORASSERT", error),
+            ("§AUTHIMPORT\n", auth), ("§REQUIRED", required), ("§PAYLOAD", PythonNames.Str("{" + string.Join(", ", payload) + "}")), ("§JUNK", PythonNames.Str("{" + string.Join(", ", junk) + "}")), ("§DELETEONE", PythonNames.Str(deleteOne)), ("§SIGNIN", signIn), ("§SIGNOUT", signOut), ("§BYASSERT", by), ("§ERRORASSERT", error),
             ("§SETUP", List(seed.Setup)), ("§CLEANUP", List(seed.Cleanup)), ("§STALESQL", PythonNames.Str(seed.StaleSql)), ("§ROUTE", PythonNames.Str(main.Route)),
             ("§K1", seed.Keys[0].ToString()), ("§K2", seed.Keys[1].ToString()), ("§K3", seed.Keys[2].ToString()), ("§MAX", project.QueueMaxRetries.ToString()),
-            ("§ID", Json(q.Key)), ("§STATUS", Json(q.Status)), ("§RETRY", Json(q.Retry)), ("§PROCESSED", Json(q.Processed)), ("§CLAIMEDON", Json(q.Claimed)),
+            ("§CREATEDON", Json(q.Created)), ("§ID", Json(q.Key)), ("§STATUS", Json(q.Status)), ("§RETRY", Json(q.Retry)), ("§PROCESSED", Json(q.Processed)), ("§CLAIMEDON", Json(q.Claimed)),
             ("§T_STATE", QueueWords.WrongStateType), ("§W_NOTCLAIMED", PythonNames.Str(QueueWords.NotClaimed)), ("§W_NOTFAILED", PythonNames.Str(QueueWords.NotFailed)),
             ("§PENDING", QueueStatus.Pending), ("§CLAIMED", QueueStatus.Claimed), ("§DONE", QueueStatus.Done), ("§FAILED", QueueStatus.Failed),
             ("§CONFLICT", HttpStatus.Conflict.ToString()), ("§NOTFOUND", HttpStatus.NotFound.ToString())
@@ -44,6 +57,8 @@ public static class PythonQueueTests
 
     private const string Text = """"
 """The work queue through the routes: the claim, complete, fail and retry, a row that is not there and a stale claim. Written by PY_TestQueue; regenerated with the tables."""
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -62,6 +77,9 @@ K1, K2, K3 = §K1, §K2, §K3
 MAX_RETRIES = §MAX
 NOT_CLAIMED = §W_NOTCLAIMED
 NOT_FAILED = §W_NOTFAILED
+PAYLOAD = json.loads(§PAYLOAD)
+JUNK = json.loads(§JUNK)
+DELETE_ONE = §DELETEONE
 
 
 @pytest.fixture
@@ -134,6 +152,22 @@ def test_a_renewed_claim_is_not_released_and_only_a_claimed_row_can_be_renewed(a
     assert late.status_code == §CONFLICT and late.json()["detail"] == NOT_CLAIMED, "a finished row has no claim to renew"
     assert client.post(f"{ROUTE}/{K3}/renew").status_code == §CONFLICT, "a pending row has no claim to renew"
 
+
+def test_an_enqueued_row_is_pending_and_the_queues_own_columns_are_not_the_producers(api):
+    client, engine = api
+    created = client.post(ROUTE, json={**PAYLOAD, **JUNK})
+    assert created.status_code == 201, created.text
+    row = created.json()
+    try:
+        assert created.headers["Location"].endswith(f"/{row['§ID']}")
+        assert row["§STATUS"] == "§PENDING" and row["§RETRY"] == 0
+        assert row["§CLAIMEDON"] is None and row["§PROCESSED"] is None
+        assert not row["§CREATEDON"].startswith("2001"), "the created stamp is the queue's"
+        stats = client.get(ROUTE + "/stats").json()
+        assert stats["pending"] >= 1
+    finally:
+        run(engine, [DELETE_ONE + str(row["§ID"])])
+§REQUIRED
 
 def test_a_claim_nobody_completed_goes_back_to_pending(api):
     client, engine = api

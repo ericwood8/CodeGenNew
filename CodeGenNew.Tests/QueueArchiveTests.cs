@@ -371,6 +371,10 @@ public class QueueArchiveTests
         Assert.Contains("MAX_RETRIES = 3", queue);
         Assert.Contains("ordered_values", queue, "the retry count is written last");
         Assert.Contains(QueueWords.NotClaimed, queue);
+        Assert.Contains("@router.post(spec.route, response_model=spec.schema, status_code=201", queue, "a producer puts a row in the queue");
+        Assert.Contains("names={\"status\": \"status\", \"retry\": \"retryCount\", \"created\": \"createdOn\"", queue);
+        Assert.DoesNotContain("@router.post", read("app/routes/job_queue.py"), "the table itself writes nothing");
+        Assert.Contains("def test_an_enqueued_row_is_pending", read("tests/test_queue.py"));
         Assert.IsTrue(read("app/routes/__init__.py").IndexOf("queue", StringComparison.Ordinal) < read("app/routes/__init__.py").IndexOf("job_queue", StringComparison.Ordinal), "a table's /{id} would read stats as a key");
         Assert.Contains("def test_a_claim_takes_the_oldest_pending_rows_in_turn", read("tests/test_queue.py"));
         Assert.Contains("def test_a_renewed_claim_is_not_released", read("tests/test_queue.py"));
@@ -387,11 +391,41 @@ public class QueueArchiveTests
         foreach (string route in new[] { "/stats", "/failed", "/claim", "/{id}/renew", "/{id}/complete", "/{id}/fail", "/{id}/retry" })
             Assert.Contains($"\"/api/jobqueues{route}\"", queue);
         Assert.Contains("enum QueueError", queue, "ApiError has no problem form without sign-in");
+        Assert.Contains(".route(\"/api/jobqueues\", post(enqueue_job_queue))", queue, "a producer puts a row in the queue");
+        Assert.Contains("object.insert(\"status\".to_string(), serde_json::json!(\"\"));", queue);
+        Assert.Contains("row.status = \"pending\".to_string();", queue);
+        Assert.DoesNotContain("async fn create", read("src/routes/job_queue.rs"), "the table itself writes nothing");
+        Assert.Contains("async fn an_enqueued_row_is_pending", read("tests/api/queue_routes.rs"));
+        Assert.DoesNotContain("METHOD_NOT_ALLOWED, \"no route adds a row\"", read("tests/api/job_queue.rs"), "a POST to a queue is the enqueue");
         Assert.Contains("\"RetryCount\" = \"RetryCount\" + 1 WHERE", queue, "the retry count is the last assignment of the UPDATE");
         Assert.Contains(".merge(queue::router())", read("src/routes/mod.rs"));
         Assert.Contains("mod queue_routes;", read("tests/api/main.rs"));
         Assert.Contains("async fn a_claim_takes_the_oldest_pending_rows_in_turn", read("tests/api/queue_routes.rs"));
         Assert.Contains("async fn a_renewed_claim_is_not_released", read("tests/api/queue_routes.rs"));
+    }
+
+    [TestMethod]
+    public async Task Uno_and_WinUI3_show_the_counts_and_a_Retry_button_on_a_failed_row()
+    {
+        var uno = await GenerateAsync("uno");
+        var winui3 = await GenerateAsync("winui3");
+
+        Assert.IsTrue(uno.Success && winui3.Success, string.Join(" | ", uno.Errors.Concat(winui3.Errors)));
+        foreach (var app in new[] { uno, winui3 })
+        {
+            string xaml = app.Read("Views/JobQueueListPage.xaml");
+            Assert.Contains("Text=\"{x:Bind ViewModel.QueueSummary, Mode=OneWay}\"", xaml);
+            Assert.Contains("Click=\"OnRetryClick\" Visibility=\"{x:Bind RetryVisibility}\"", xaml);
+            Assert.DoesNotContain("OnEditClick", xaml);
+            Assert.Contains("private async void OnRetryClick", app.Read("Views/JobQueueListPage.xaml.cs"));
+            string model = app.Read("ViewModels/JobQueueListViewModel.cs");
+            Assert.Contains("RetryVisibility = e.Status == \"failed\" ? Visibility.Visible : Visibility.Collapsed", model);
+            Assert.Contains("public async Task RetryAsync(int id)", model);
+            Assert.Contains("private async Task LoadStatsAsync()", model);
+            Assert.DoesNotContain("QueueSummary", app.Read("Views/ErrorLogListPage.xaml"), "only a queue has counts");
+        }
+        Assert.Contains("await Client.GetQueueStatsAsync()", uno.Read("ViewModels/JobQueueListViewModel.cs"));
+        Assert.Contains("ExecuteUpdateAsync", winui3.Read("ViewModels/JobQueueListViewModel.cs"));
     }
 
     [TestMethod]

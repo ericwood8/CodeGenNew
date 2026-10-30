@@ -17,19 +17,23 @@ public static class PythonQueueWriter
             imports.Add($"from app.schemas.{main.Module} import {main.Schema}");
             string by = q.ClaimedBy is null ? "None" : $"\"{Attr(q.ClaimedBy)}\"";
             string error = q.LastError is null ? "None" : $"\"{Attr(q.LastError)}\"";
+            // the JSON names of the columns the queue itself sets, so an enqueue overwrites whatever the producer sent for them
+            var managed = new List<(string Role, ColumnModel? Column)> { ("status", q.Status), ("retry", q.Retry), ("created", q.Created), ("claimed", q.Claimed), ("processed", q.Processed), ("claimed_by", q.ClaimedBy), ("last_error", q.LastError) };
+            string names = "{" + string.Join(", ", managed.Where(m => m.Column is not null).Select(m => $"\"{m.Role}\": \"{main.FieldOf(m.Column!).Json}\"")) + "}";
             specs.Append($"    QueueSpec(\n        table=\"{q.Table.TableName}\", route=\"{main.Route}\", row={main.Class}, schema={main.Schema},\n" +
                 $"        key=\"{Attr(q.Key)}\", status=\"{Attr(q.Status)}\", retry=\"{Attr(q.Retry)}\", created=\"{Attr(q.Created)}\", claimed=\"{Attr(q.Claimed)}\", processed=\"{Attr(q.Processed)}\",\n" +
-                $"        claimed_by={by}, by_length={Length(q.ClaimedBy)}, last_error={error}, error_length={Length(q.LastError)},\n    ),\n");
+                $"        claimed_by={by}, by_length={Length(q.ClaimedBy)}, last_error={error}, error_length={Length(q.LastError)},\n" +
+                $"        names={names},\n    ),\n");
         }
         string text = Template;
         foreach (var (token, value) in new (string, string)[]
         {
             ("§IMPORTS", string.Join("\n", imports)), ("§SPECS", specs.ToString().TrimEnd('\n')),
             ("§AUTHIMPORT\n", project.ApiAuth ? "from app.auth import require_user\n" : ""), ("§DEPS", project.ApiAuth ? ", dependencies=[Depends(require_user)]" : ""),
-            ("§T_STATE", QueueWords.WrongStateType), ("§W_NOTCLAIMED", PythonNames.Str(QueueWords.NotClaimed)), ("§W_NOTFAILED", PythonNames.Str(QueueWords.NotFailed)),
+            ("§T_STATE", QueueWords.WrongStateType), ("§W_NOTCLAIMED", PythonNames.Str(QueueWords.NotClaimed)), ("§W_NOTSAVED", PythonNames.Str(QueueWords.NotSaved)), ("§W_NOTFAILED", PythonNames.Str(QueueWords.NotFailed)),
             ("§MAX", project.QueueMaxRetries.ToString()), ("§MIN", project.QueueClaimMinutes.ToString()), ("§ATTEMPTS", QueueWords.ClaimAttempts.ToString()), ("§FAILEDROWS", QueueWords.FailedRows.ToString()),
             ("§PENDING", QueueStatus.Pending), ("§CLAIMED", QueueStatus.Claimed), ("§DONE", QueueStatus.Done), ("§FAILED", QueueStatus.Failed),
-            ("§CONFLICT", HttpStatus.Conflict.ToString()), ("§NOTFOUND", HttpStatus.NotFound.ToString())
+            ("§CONFLICT", HttpStatus.Conflict.ToString()), ("§BADREQUEST", HttpStatus.BadRequest.ToString()), ("§NOTFOUND", HttpStatus.NotFound.ToString())
         }.OrderByDescending(v => v.Item1.Length))
             text = text.Replace(token, value);
         return text;
@@ -44,9 +48,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel
+from fastapi import APIRouter, Body, Depends, Response
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import case, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 §AUTHIMPORT
@@ -57,6 +62,7 @@ from app.support import ApiError
 PROBLEM_WRONG_STATE = "§T_STATE"
 NOT_CLAIMED = §W_NOTCLAIMED
 NOT_FAILED = §W_NOTFAILED
+NOT_SAVED = §W_NOTSAVED
 
 PENDING, CLAIMED, DONE, FAILED = "§PENDING", "§CLAIMED", "§DONE", "§FAILED"
 MAX_RETRIES = §MAX
@@ -100,6 +106,7 @@ class QueueSpec:
     by_length: int
     last_error: str | None
     error_length: int
+    names: dict[str, str]
 
     def col(self, name: str) -> Any:
         return getattr(self.row, getattr(self, name))
@@ -134,6 +141,27 @@ def answer(session: Session, spec: QueueSpec, key: int, changed: int, detail: st
         raise ApiError(§NOTFOUND, "Not found.")
     if changed != 1:
         raise wrong_state(detail)
+    return row
+
+
+def enqueue(session: Session, spec: QueueSpec, body: dict[str, Any]) -> Any:
+    """A producer puts a row in the queue: pending, no retries, created now, whatever it sent for the queue's own columns dropped."""
+    values = dict(body)
+    managed = {"status": PENDING, "retry": 0, "created": datetime.now(), "claimed": None, "processed": None, "claimed_by": None, "last_error": None}
+    for role, value in managed.items():
+        if role in spec.names:
+            values[spec.names[role]] = value
+    try:
+        row = spec.row(**spec.schema.model_validate(values).columns())
+    except ValidationError:
+        raise ApiError(§BADREQUEST, "Bad request", detail=NOT_SAVED)
+    session.add(row)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise ApiError(§BADREQUEST, "Bad request", detail=NOT_SAVED)
+    session.refresh(row)
     return row
 
 
@@ -213,6 +241,12 @@ router = APIRouter()
 
 def add_routes(spec: QueueSpec) -> None:
     """The routes of one table. The fixed paths are registered before the paths with an id, and PY_Mod lists this router before the tables' routers (their /{id} would read stats as a key)."""
+
+    @router.post(spec.route, response_model=spec.schema, status_code=201, name=spec.table + "Enqueue"§DEPS)
+    def enqueue_route(response: Response, body: dict[str, Any] = Body(default_factory=dict), session: Session = Depends(get_session)):
+        row = enqueue(session, spec, body)
+        response.headers["Location"] = f"{spec.route}/{getattr(row, spec.key)}"
+        return row
 
     @router.get(spec.route + "/stats", response_model=QueueCounts, name=spec.table + "Stats"§DEPS)
     def stats_route(session: Session = Depends(get_session)):
