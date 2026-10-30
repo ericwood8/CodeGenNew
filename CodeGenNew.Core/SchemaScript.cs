@@ -77,7 +77,7 @@ public static partial class SchemaScript
 
         foreach (var table in tables)
             foreach (var check in table.CheckConstraints)
-                script.AppendLine($"ALTER TABLE {TableName(table, dialect)} ADD CONSTRAINT {Quote(check.Name, dialect)} {check.Definition};");
+                script.AppendLine($"ALTER TABLE {TableName(table, dialect)} ADD CONSTRAINT {Quote(check.Name, dialect)} {CheckDefinition(check.Definition, dialect)};");
 
         foreach (var view in InDependencyOrder(database.Views))
             AppendStatement(script, view.Definition, dialect, delimited: false);
@@ -131,6 +131,15 @@ public static partial class SchemaScript
     }
 
     private static bool Names(string text, string name) => Regex.IsMatch(text, @"(?<![\w])" + Regex.Escape(name) + @"(?![\w])", RegexOptions.IgnoreCase);
+
+    /// <summary> The check as a statement can hold it. MySQL reports the text of a check the way it shows a string, with each quote escaped (<c>\'open\'</c>) and a character set introducer
+    /// in front of each literal (<c>_cp850'open'</c>); neither is valid when the text is run as SQL, and the introducer names a character set the container may not have. </summary>
+    public static string CheckDefinition(string definition, SqlDialect dialect) => dialect == SqlDialect.MySql
+        ? CharacterSetIntroducer().Replace(definition.Replace("\\'", "'"), "")
+        : definition;
+
+    [GeneratedRegex("(?<![A-Za-z0-9_`])_[A-Za-z0-9]+(?=')")]
+    private static partial Regex CharacterSetIntroducer();
 
     /// <summary> The table as the script names it: schema and name, but for MySQL the name alone, since its schema is the database it was read from, which a container does not have. </summary>
     private static string TableName(TableModel table, SqlDialect dialect) => dialect == SqlDialect.MySql ? Quote(table.DatabaseTableName ?? table.TableName, dialect) : Quote(table.SchemaName, dialect) + "." + Quote(table.DatabaseTableName ?? table.TableName, dialect);

@@ -356,6 +356,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     /// <summary> The column that holds the owner of a row (<c>c =&gt; c.EmployeeId</c>) for a table the project lists in OwnedTables: a caller reads and changes only the rows of the owners the <see cref="IOwnerScope"/> allows (403 for another owner's row). Null: the rows belong to no one. </summary>
     protected virtual Expression<Func<TEntity, int>>? Owner => null;
 
+<# if (options.Tenants) { #>
     /// <summary> The column that holds the tenant of a row (<c>c =&gt; c.TenantId</c>) for a tenant-owned table (TenantTable). The context already hides every other tenant's rows; a create writes the caller's tenant here and an update keeps it, so a row never moves to another tenant. </summary>
     protected virtual Expression<Func<TEntity, int>>? Tenant => null;
 
@@ -377,6 +378,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
         _setTenant(row, tenant);
         return null;
     }
+<# } #>
 
     /// <summary> True for a table whose rows belong to the owner of a parent row (a time sheet's detail rows) and have no owner column of their own: <see cref="ScopeThroughParent"/> and <see cref="ParentOwnerAsync"/> say how. </summary>
     protected virtual bool OwnedThroughParent => false;
@@ -1086,6 +1088,7 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
     /// <summary> The signed-in caller. </summary>
     protected System.Security.Claims.ClaimsPrincipal Caller => _http!.HttpContext!.User;
 
+<# if (options.Tenants) { #>
     /// <summary> The column that holds the tenant of a row (<c>c =&gt; c.TenantId</c>) for a tenant-owned table (TenantTable). The context already hides every other tenant's rows; a create writes the caller's tenant here and an update keeps it, so a row never moves to another tenant. </summary>
     protected virtual Expression<Func<TEntity, int>>? Tenant => null;
 
@@ -1107,6 +1110,7 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
         _setTenant(row, tenant);
         return null;
     }
+<# } #>
 
     /// <summary> The roles that may create, change and delete rows (the project's WriteRoles and TableWriteRoles, the administrator role among them); empty: any signed-in person. </summary>
     protected virtual IReadOnlyList<string> WriteRoles => [];

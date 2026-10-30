@@ -35,7 +35,7 @@ public sealed class JunctionCall
     public string AnchorParameter(string valueExpression) => _dialect switch
     {
         SqlDialect.PostgreSql => $"new Npgsql.NpgsqlParameter(\"{_anchorParameter}\", {valueExpression})",
-        SqlDialect.MySql => $"new MySql.Data.MySqlClient.MySqlParameter(\"{_anchorParameter}\", {valueExpression})",
+        SqlDialect.MySql => $"new MySqlConnector.MySqlParameter(\"{_anchorParameter}\", {valueExpression})",
         _ => $"new Microsoft.Data.SqlClient.SqlParameter(\"{_anchorParameter}\", {valueExpression})"
     };
 

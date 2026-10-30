@@ -12,7 +12,7 @@ The part of a web API's Program.cs that used to be edited by hand for every tabl
     app.RegisterGeneratedApis();
 
 and never changes again:
-  - AddGeneratedDbContext registers the context with the provider CS_DbContext chose (UseNpgsql, UseMySQL, UseSqlServer),
+  - AddGeneratedDbContext registers the context with the provider CS_DbContext chose (UseNpgsql, UseMySql, UseSqlServer),
     reading ConnectionStrings:<connectionName> from the configuration;
   - RegisterGeneratedApis writes one `new <Table>Api<Table>().Register(app)` and one `<Table>SearchApi` line for every table
     API_Crud writes an API for (a single int key, no name/active shape, not an enum or other table the project says has no

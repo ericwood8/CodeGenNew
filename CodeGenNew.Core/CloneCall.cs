@@ -110,7 +110,7 @@ public static class CloneCall
 
     private static void AddMySql(List<string> o, TableModel m, ColumnModel key, List<ColumnModel> createUsers, List<ColumnModel> overrides)
     {
-        const string P = "MySql.Data.MySqlClient.MySqlParameter";
+        const string P = "MySqlConnector.MySqlParameter";
         // A MySQL procedure has no default parameter: every argument is passed, in the order SP_Clone declares them.
         var names = new List<string> { "@CopyFrom" + key.Name };
         var args = new List<string> { $"new {P}(\"@CopyFrom{key.Name}\", id)" };

@@ -257,6 +257,20 @@ public class MySqlTypeNotationTests
     }
 
     [TestMethod]
+    public async Task The_mysql_context_converts_a_bit_64_column_to_the_unsigned_number_the_driver_returns()
+    {
+        var wide = Sample.Column("Wide", SqlDbType.Decimal, precision: 20, scale: 0, nullable: true, ordinal: 4, bitWidth: 64);
+        var flags = Sample.Column("Flags", SqlDbType.BigInt, nullable: true, ordinal: 5, bitWidth: 8);
+        var result = await Repo.Cache.RunAsync(Repo.Template("CS_DbContext_v1.tt"), Database(wide, flags), Project());
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string cs = result.GeneratedText!.Replace("\r\n", "\n");
+
+        Expect.Contains(cs, "modelBuilder.Entity<Place>().Property(e => e.Wide).HasConversion(new ValueConverter<decimal, ulong>(v => (ulong)v, v => v));");
+        Expect.DoesNotContain(cs, "e.Flags");
+        Expect.Contains(cs, "using Microsoft.EntityFrameworkCore.Storage.ValueConversion;");
+    }
+
+    [TestMethod]
     public async Task With_configuration_classes_the_converter_is_in_the_table_s_configuration()
     {
         var table = Database(Shape("Spot", "point", 4326)).Tables[0];

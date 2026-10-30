@@ -100,7 +100,7 @@ public class CloneTests
         string cs = string.Join("\n", CloneCall.RepoMethod(Account(SqlDialect.MySql), "Account"));
 
         Expect.Contains(cs, "\"CALL `Account_Clone`(@CopyFromAccountId, @CreateUser0, @UniqueCode)\"");
-        Expect.Contains(cs, "new MySql.Data.MySqlClient.MySqlParameter(\"@CreateUser0\", createUser ?? \"\")");
+        Expect.Contains(cs, "new MySqlConnector.MySqlParameter(\"@CreateUser0\", createUser ?? \"\")");
         Expect.Contains(cs, "return rows.Single();");
     }
 

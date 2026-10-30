@@ -198,4 +198,13 @@ public class SchemaScriptTests
         Expect.Contains(own.GeneratedText!, "SchemaScripts = [\"db/create.sql\"];");
         Expect.Contains(plain.GeneratedText!, ".Where(seen.Add)");
     }
+
+    [TestMethod]
+    public void A_mysql_check_is_written_without_the_escaped_quotes_and_character_set_introducers_the_catalog_shows()
+    {
+        string shown = @"(`Status` in (_cp850\'pending\',_cp850\'done\'))";
+        Assert.AreEqual("(`Status` in ('pending','done'))", SchemaScript.CheckDefinition(shown, SqlDialect.MySql));
+        Assert.AreEqual("(`Name` like '_x%')", SchemaScript.CheckDefinition("(`Name` like '_x%')", SqlDialect.MySql));
+        Assert.AreEqual(shown, SchemaScript.CheckDefinition(shown, SqlDialect.PostgreSql));
+    }
 }

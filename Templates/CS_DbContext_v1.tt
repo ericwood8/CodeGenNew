@@ -172,10 +172,11 @@
     if (Database.Dialect == SqlDialect.MySql)
     {
         Line("        // The password is not in appsettings.json: it comes from the MYSQL_PWD environment variable (the one the mysql client reads too).");
-        Line("        var builder = new MySql.Data.MySqlClient.MySqlConnectionStringBuilder(connectionString);");
+        Line("        var builder = new MySqlConnector.MySqlConnectionStringBuilder(connectionString);");
         Line("        if (string.IsNullOrEmpty(builder.Password))");
         Line("            builder.Password = Environment.GetEnvironmentVariable(\"MYSQL_PWD\") ?? \"\";");
-        Line($"        options.{provider.UseMethod}(builder.ConnectionString);");
+        Line("        // A fixed server version, so the app does not open a connection while it builds the options; raise it if the SQL needs a newer feature.");
+        Line($"        options.{provider.UseMethod}(builder.ConnectionString, new MySqlServerVersion(new Version(8, 0, 0)));");
     }
     else
     {

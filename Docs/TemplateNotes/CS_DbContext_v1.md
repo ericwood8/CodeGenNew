@@ -12,7 +12,7 @@ The EF Core context for the whole database, written for the database the schema 
     partial method OnModelCreatingPartial that a hand-written part of the class can implement;
   - both constructors: the one dependency injection uses (a web API) and the parameterless one a desktop app uses, whose
     OnConfiguring reads the connection string from appsettings.json next to the exe;
-  - the provider call - UseSqlServer, UseNpgsql or UseMySQL - in ONE place, UseProvider, which the API registration
+  - the provider call - UseSqlServer, UseNpgsql or UseMySql - in ONE place, UseProvider, which the API registration
     (API_Registration) calls too, so changing database is a regenerate and not a hand edit;
   - for PostgreSQL, a converter for every array, interval, range and built-in shape column (OnModelCreating, or the table's configuration with EfConfigurations): the entity holds the
     text in PostgreSQL's own notation and the converter turns it into what Npgsql writes. The converters are a small internal PgText class written at the end of the same file

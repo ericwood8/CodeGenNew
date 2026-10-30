@@ -69,9 +69,9 @@ public class DatabaseTemplateTests
     {
         string cs = await Render("CS_DbContext_v1.tt", Database(SqlDialect.MySql));
 
-        Expect.Contains(cs, "new MySql.Data.MySqlClient.MySqlConnectionStringBuilder(connectionString)");
+        Expect.Contains(cs, "new MySqlConnector.MySqlConnectionStringBuilder(connectionString)");
         Expect.Contains(cs, "Environment.GetEnvironmentVariable(\"MYSQL_PWD\")");
-        Expect.Contains(cs, "options.UseMySQL(builder.ConnectionString);");
+        Expect.Contains(cs, "options.UseMySql(builder.ConnectionString, new MySqlServerVersion(new Version(8, 0, 0)));");
         Expect.DoesNotContain(cs, "ConfigureConventions");
     }
 

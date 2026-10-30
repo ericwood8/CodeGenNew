@@ -58,7 +58,7 @@ public class JunctionDialectTests
         string cs = await Api(SqlDialect.MySql);
 
         Expect.Contains(cs, "CALL `NameBaseGroupXref_List`(@AnchorNameBaseID)");
-        Expect.Contains(cs, "new MySql.Data.MySqlClient.MySqlParameter(\"@AnchorNameBaseID\", anchorId)");
+        Expect.Contains(cs, "new MySqlConnector.MySqlParameter(\"@AnchorNameBaseID\", anchorId)");
         Expect.Contains(cs, "CALL `NameBaseGroupXref_Unlink`({request.AnchorId}, {request.TargetId})");
         Expect.DoesNotContain(cs, "EXEC");
     }

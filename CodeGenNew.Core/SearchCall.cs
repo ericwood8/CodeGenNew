@@ -17,7 +17,7 @@ public sealed class SearchCall
     /// <param name="qualifyTypes"> Write the parameter class with its namespace (a repository file has no using for it). </param>
     public SearchCall(TableModel model, string entity, IEnumerable<string> filterNames, bool qualifyTypes = false)
     {
-        _prefix = qualifyTypes ? (model.Dialect == SqlDialect.PostgreSql ? "Npgsql." : model.Dialect == SqlDialect.MySql ? "MySql.Data.MySqlClient." : "Microsoft.Data.SqlClient.") : "";
+        _prefix = qualifyTypes ? (model.Dialect == SqlDialect.PostgreSql ? "Npgsql." : model.Dialect == SqlDialect.MySql ? "MySqlConnector." : "Microsoft.Data.SqlClient.") : "";
         _postgres = model.Dialect == SqlDialect.PostgreSql;
         _mysql = model.Dialect == SqlDialect.MySql;
         _schema = model.SchemaName;
@@ -27,7 +27,7 @@ public sealed class SearchCall
     }
 
     /// <summary> The parameter class's namespace, for a using line (Microsoft.Data.SqlClient or Npgsql). </summary>
-    public string ParameterNamespace => _postgres ? "Npgsql" : _mysql ? "MySql.Data.MySqlClient" : "Microsoft.Data.SqlClient";
+    public string ParameterNamespace => _postgres ? "Npgsql" : _mysql ? "MySqlConnector" : "Microsoft.Data.SqlClient";
     public string ParameterType => _postgres ? "NpgsqlParameter" : _mysql ? "MySqlParameter" : "SqlParameter";
 
     /// <summary> C# string literal CONTENT (quotes escaped) of the paged search statement. </summary>

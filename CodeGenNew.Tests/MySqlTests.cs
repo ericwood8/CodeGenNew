@@ -265,7 +265,7 @@ public class MySqlProcedureTests
 
         Assert.AreEqual("CALL `CustomerItem_Search`(@pTitle, @PageNumber, @PageSize, @SortColumn, @SortDescending)", call.SearchSql);
         Assert.AreEqual("CALL `CustomerItem_SearchCount`(@pTitle)", call.CountSql);
-        StringAssert.Contains(call.TextParameter("Title", "title"), "new MySql.Data.MySqlClient.MySqlParameter(\"@pTitle\"");
+        StringAssert.Contains(call.TextParameter("Title", "title"), "new MySqlConnector.MySqlParameter(\"@pTitle\"");
     }
 
     [TestMethod]

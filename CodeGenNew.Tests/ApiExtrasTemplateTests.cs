@@ -231,7 +231,7 @@ public class ApiExtrasTemplateTests
         {
             (SqlDialect.SqlServer, "SqlServer", "Microsoft.Data.SqlClient.SqlException database", "database.Number", new[] { "private const int UniqueConstraint = 2627;", "private const int ForeignKeyViolation = 547;", "private const int StringTruncated = 8152;", "private const int NullNotAllowed = 515;" }),
             (SqlDialect.PostgreSql, "PostgreSql", "Npgsql.PostgresException database", "database.SqlState", new[] { "private const string UniqueViolation = \"23505\";", "private const string ForeignKeyViolation = \"23503\";", "private const string StringDataRightTruncation = \"22001\";", "private const string NotNullViolation = \"23502\";" }),
-            (SqlDialect.MySql, "MySql", "MySql.Data.MySqlClient.MySqlException database", "database.Number", new[] { "private const int DuplicateEntry = 1062;", "private const int RowIsReferenced = 1451;", "private const int DataTooLong = 1406;", "private const int ColumnCannotBeNull = 1048;" }),
+            (SqlDialect.MySql, "MySql", "MySqlConnector.MySqlException database", "database.Number", new[] { "private const int DuplicateEntry = 1062;", "private const int RowIsReferenced = 1451;", "private const int DataTooLong = 1406;", "private const int ColumnCannotBeNull = 1048;" }),
             (SqlDialect.Sqlite, "Sqlite", "Microsoft.Data.Sqlite.SqliteException database", "database.SqliteExtendedErrorCode", new[] { "private const int UniqueConstraint = 2067;", "private const int ForeignKeyConstraint = 787;", "private const int NotNullConstraint = 1299;" })
         })
         {

@@ -66,6 +66,8 @@
             }
             else if (c.IsMoneyColumn)
                 columnType = c.SqlType == SqlDbType.Money ? "money" : "smallmoney";
+            else if (c.SqlType == SqlDbType.Decimal && TextConversion.Of(c) is { } bits)
+                chain.Add($".HasConversion({bits.Expression})");   // a MySQL BIT(64) column
             else if (c.SqlType == SqlDbType.Decimal)
             {
                 if (!(Model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration == "numeric"))

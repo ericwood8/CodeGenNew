@@ -23,7 +23,7 @@
     string providerPackage = dialect switch
     {
         SqlDialect.PostgreSql => "Npgsql.EntityFrameworkCore.PostgreSQL\" Version=\"10.0.0",
-        SqlDialect.MySql => "MySql.EntityFrameworkCore\" Version=\"10.0.9",
+        SqlDialect.MySql => "Microting.EntityFrameworkCore.MySql\" Version=\"10.0.14",
         SqlDialect.Sqlite => "Microsoft.EntityFrameworkCore.Sqlite\" Version=\"10.0.12",
         _ => "Microsoft.EntityFrameworkCore.SqlServer\" Version=\"10.0.12"
     };
@@ -64,7 +64,7 @@
         [
             "UniqueViolation => Constraint.Unique,", "ForeignKeyViolation => Constraint.ForeignKey,", "StringDataRightTruncation => Constraint.TooLong,", "NotNullViolation => Constraint.Required,"
         ]),
-        SqlDialect.MySql => ("MySql.Data.MySqlClient.MySqlException database", "database.Number",
+        SqlDialect.MySql => ("MySqlConnector.MySqlException database", "database.Number",
         [
             $"private const int DuplicateEntry = {ConstraintErrors.MySql.DuplicateEntry};",
             $"private const int RowIsReferenced = {ConstraintErrors.MySql.RowIsReferenced};",
