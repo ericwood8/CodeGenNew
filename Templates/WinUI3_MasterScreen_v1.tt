@@ -203,15 +203,11 @@
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-<# if (!logOnly) { #>
-                                <ColumnDefinition Width="<#= canClone ? "250" : "175" #>" />
-<# } #>
+                                <ColumnDefinition Width="<#= logOnly ? "90" : canClone ? "250" : "175" #>" />
                             </Grid.ColumnDefinitions>
                             <!-- The header cells of the shown columns are built in code (BuildHeader), as the shown columns change. -->
                             <Grid x:Name="HeaderCells" Grid.Column="0" ColumnSpacing="8" />
-<# if (!logOnly) { #>
                             <TextBlock Grid.Column="1" Text="Actions" FontWeight="SemiBold" />
-<# } #>
                         </Grid>
                     </Border>
 
@@ -223,9 +219,7 @@
                                     <Grid ColumnSpacing="8">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
-<# if (!logOnly) { #>
-                                            <ColumnDefinition Width="<#= canClone ? "250" : "175" #>" />
-<# } #>
+                                            <ColumnDefinition Width="<#= logOnly ? "90" : canClone ? "250" : "175" #>" />
                                         </Grid.ColumnDefinitions>
                                         <views:GridCells Grid.Column="0" Cells="{x:Bind VisibleCells}" />
 <# if (!logOnly) { #>
@@ -240,6 +234,10 @@
         }
 #>
                                             <Button Content="Delete" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnDeleteClick" />
+                                        </StackPanel>
+<# } else { #>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                                            <Button Content="View" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnViewClick" />
                                         </StackPanel>
 <# } #>
                                     </Grid>
@@ -328,6 +326,7 @@ public sealed partial class <#= table #>ListPage : Page
     private void ShowSortMarks() => BuildHeader();
 
 <#= DesktopGridColumns.PageMembers(table + "ListViewModel") #>
+<# if (!logOnly) { #>
     private async void OnAddClick(object sender, RoutedEventArgs e)
     {
         var dialog = new <#= editDialog #>(_context) { XamlRoot = XamlRoot };
@@ -335,8 +334,10 @@ public sealed partial class <#= table #>ListPage : Page
         await ViewModel.LoadAsync();
     }
 
+<# } #>
     private async void OnRefreshClick(object sender, RoutedEventArgs e) => await ViewModel.LoadAsync();
 
+<# if (!logOnly) { #>
     private async void OnEditClick(object sender, RoutedEventArgs e)
     {
         <#= keyCs #> id = (<#= keyCs #>)((Button)sender).Tag;
@@ -392,6 +393,24 @@ public sealed partial class <#= table #>ListPage : Page
         await ViewModel.DeleteAsync(id);
     }
 
+<# } else { #>
+    // View opens the whole row, read-only: a long message that the grid cuts can be read here.
+    private async void OnViewClick(object sender, RoutedEventArgs e)
+    {
+        <#= keyCs #> id = (<#= keyCs #>)((Button)sender).Tag;
+        var entity = await _context.Set<<#= table #>>().FindAsync(id);
+        if (entity is null)
+        {
+            await ViewModel.LoadAsync();
+            return;
+        }
+
+<#= DesktopRowView.ShowBody(Model, title) #>
+    }
+
+<#= DesktopRowView.ShowMethod #>
+
+<# } #>
     private async void OnPreviousClick(object sender, RoutedEventArgs e) => await ViewModel.PreviousPageAsync();
 
     private async void OnNextClick(object sender, RoutedEventArgs e) => await ViewModel.NextPageAsync();

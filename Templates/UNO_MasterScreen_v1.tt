@@ -55,7 +55,7 @@
     var keyType = form.KeyType;   // how the key travels: its C# type (int, long, Guid or string) is the type of the row id and of the Edit / Delete buttons' Tag
     bool odata = Variant == "OData";
 
-    if (odata && (!ODataPlan.Serves(Model, Project) || isNameActive))
+    if (odata && (!ODataPlan.HasPage(Model, Project) || isNameActive))
     {
         // the OData page is written for the tables the project serves as OData and for no other (a name / active table has the REST page only); a plan runs this template for every table, so it says nothing for the rest
     }
@@ -225,15 +225,11 @@
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
-<# if (!logOnly) { #>
-                                <ColumnDefinition Width="<#= canClone ? "250" : "175" #>" />
-<# } #>
+                                <ColumnDefinition Width="<#= logOnly ? "90" : canClone ? "250" : "175" #>" />
                             </Grid.ColumnDefinitions>
                             <!-- The header cells of the shown columns are built in code (BuildHeader), as the shown columns change. -->
                             <Grid x:Name="HeaderCells" Grid.Column="0" ColumnSpacing="8" />
-<# if (!logOnly) { #>
                             <TextBlock Grid.Column="1" Text="Actions" FontWeight="SemiBold" />
-<# } #>
                         </Grid>
                     </Border>
 
@@ -245,9 +241,7 @@
                                     <Grid ColumnSpacing="8">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
-<# if (!logOnly) { #>
-                                            <ColumnDefinition Width="<#= canClone ? "250" : "175" #>" />
-<# } #>
+                                            <ColumnDefinition Width="<#= logOnly ? "90" : canClone ? "250" : "175" #>" />
                                         </Grid.ColumnDefinitions>
                                         <views:GridCells Grid.Column="0" Cells="{x:Bind VisibleCells}" />
 <# if (!logOnly) { #>
@@ -262,6 +256,10 @@
         }
 #>
                                             <Button Content="Delete" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnDeleteClick"<#= gated ? " Visibility=\"{x:Bind WriteVisibility}\"" : "" #> />
+                                        </StackPanel>
+<# } else { #>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                                            <Button Content="View" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnViewClick" />
                                         </StackPanel>
 <# } #>
                                     </Grid>
@@ -351,6 +349,7 @@ public sealed partial class <#= stemName #>ListPage : Page
     private void ShowSortMarks() => BuildHeader();
 
 <#= DesktopGridColumns.PageMembers(stemName + "ListViewModel") #>
+<# if (!logOnly) { #>
     private async void OnAddClick(object sender, RoutedEventArgs e)
     {
         var dialog = new <#= editDialog #>(_api) { XamlRoot = XamlRoot };
@@ -358,8 +357,10 @@ public sealed partial class <#= stemName #>ListPage : Page
         await ViewModel.LoadAsync();
     }
 
+<# } #>
     private async void OnRefreshClick(object sender, RoutedEventArgs e) => await ViewModel.LoadAsync();
 
+<# if (!logOnly) { #>
     private async void OnEditClick(object sender, RoutedEventArgs e)
     {
         <#= keyCs #> id = (<#= keyCs #>)((Button)sender).Tag;
@@ -414,6 +415,24 @@ public sealed partial class <#= stemName #>ListPage : Page
         await ViewModel.DeleteAsync(id);
     }
 
+<# } else { #>
+    // View opens the whole row, read-only: a long message that the grid cuts can be read here.
+    private async void OnViewClick(object sender, RoutedEventArgs e)
+    {
+        <#= keyCs #> id = (<#= keyCs #>)((Button)sender).Tag;
+        var entity = await ViewModel.GetAsync(id);
+        if (entity is null)
+        {
+            await ViewModel.LoadAsync();
+            return;
+        }
+
+<#= DesktopRowView.ShowBody(Model, title) #>
+    }
+
+<#= DesktopRowView.ShowMethod #>
+
+<# } #>
     private async void OnPreviousClick(object sender, RoutedEventArgs e) => await ViewModel.PreviousPageAsync();
 
     private async void OnNextClick(object sender, RoutedEventArgs e) => await ViewModel.NextPageAsync();

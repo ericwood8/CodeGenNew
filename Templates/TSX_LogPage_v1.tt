@@ -22,7 +22,8 @@
     // The page of a log table (the project's LogTables setting: an insert-only ledger such as an error log or a session list). The rows are read, never changed: no Add New, Edit, Clone or Delete, and no
     // form. The page opens on a filter row (a From and a To date, then the search box of each text column and a drop-down per parent) and lists newest first; the person pages through it, sorts by a header
     // and chooses the columns like any list. It never reads the table whole: every call is one page. TSX_Page writes nothing for such a table, and the page has the name TSX_Page would give it, so the
-    // menu and the routes need no change. The API side is CrudApi's ReadOnly and the search's from and to parameters (LogTablePlan in Core).
+    // menu and the routes need no change. The API side is CrudApi's ReadOnly and the search's from and to parameters (LogTablePlan in Core). A View button on every row opens a read-only dialog with the
+    // whole row (the grid cuts a long text).
     // Full notes: Docs/TemplateNotes/TSX_LogPage_v1.md
     // ==========================================================================================
 
@@ -101,6 +102,7 @@
         T("  const [pageSize, setPageSize] = useState(initialPageSize);");
         T("  const [loaded, setLoaded] = useState(false); // true once a page has arrived, so \"Nothing found.\" is not shown while waiting");
         T("  const [error, setError] = useState<string | null>(null);");
+        T($"  const [viewing, setViewing] = useState<{baseName} | null>(null); // the row the View dialog shows");
         if (queue is not null)
             T("  const [stats, setStats] = useState<QueueStats | null>(null);");
         T("  const [chosen, setChosen] = useState<string[]>(() => loadColumns(gridKey, columnNames, initialColumns)); // the columns shown; kept in the browser");
@@ -228,33 +230,33 @@
                 : $"<th>{column.Caption}</th>";
             T("            " + Shown(c, header));
         }
-        if (queue is not null)
-            T("            <th>Actions</th>");
+        T("            <th>Actions</th>");
         T("          </tr>");
         T("        </thead>");
         T("        <tbody>");
         T($"          {{{listName}.map(({variable}) => (");
         T($"            <tr key={{{variable}.{keyProp}}}>");
-        foreach (var column in columnList)
+        // what a cell shows for a column of the row held in `row`; the dialog shows the whole text where the grid cuts it
+        string CellOf(ChosenColumn column, string row, bool cut)
         {
             var c = column.Column;
-            string prop = $"{variable}.{JsonNames.Camel(c.Name)}";
+            string prop = $"{row}.{JsonNames.Camel(c.Name)}";
             var cellKind = form.CellOf(c);
             string q = c.IsNullable ? "?" : "";
-            string cell;
             // A nullable column's value may be undefined: optional chaining keeps a strict build compiling.
-            if (cellKind == CellKind.Lookup && form.ParentOf(c)!.TypeAhead) cell = $"{{{prop}}}";
-            else if (cellKind == CellKind.Lookup) cell = $"{{{form.ParentOf(c)!.NameMethod}({prop})}}";
-            else if (cellKind == CellKind.Boolean) cell = $"{{{prop} ? 'Yes' : 'No'}}";
-            else if (cellKind == CellKind.Date) cell = $"{{{prop}{q}.substring(0, 10)}}";
-            else if (cellKind == CellKind.DateTime) cell = $"{{{prop}{q}.substring(0, 16).replace('T', ' ')}}";
-            else if (cellKind == CellKind.Money) { int d = NumericClassifier.CurrencyDigits(c); cell = $"{{{prop}{q}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
-            else if (cellKind == CellKind.Decimal) cell = $"{{{prop}{q}.toFixed(2)}}";
-            else cell = column.Cut ? $"{{shortText({prop})}}" : $"{{{prop}}}";
-            T("              " + Shown(c, $"<td>{cell}</td>"));
+            if (cellKind == CellKind.Lookup && form.ParentOf(c)!.TypeAhead) return $"{{{prop}}}";
+            if (cellKind == CellKind.Lookup) return $"{{{form.ParentOf(c)!.NameMethod}({prop})}}";
+            if (cellKind == CellKind.Boolean) return $"{{{prop} ? 'Yes' : 'No'}}";
+            if (cellKind == CellKind.Date) return $"{{{prop}{q}.substring(0, 10)}}";
+            if (cellKind == CellKind.DateTime) return $"{{{prop}{q}.substring(0, 16).replace('T', ' ')}}";
+            if (cellKind == CellKind.Money) { int d = NumericClassifier.CurrencyDigits(c); return $"{{{prop}{q}.toLocaleString(undefined, {{ style: 'currency', currency: '{Project.CurrencyCode}', minimumFractionDigits: {Math.Min(2, d)}, maximumFractionDigits: {d} }})}}"; }
+            if (cellKind == CellKind.Decimal) return $"{{{prop}{q}.toFixed(2)}}";
+            return cut && column.Cut ? $"{{shortText({prop})}}" : $"{{{prop}}}";
         }
-        if (queue is not null)
-            T($"              <td>{{{variable}.{JsonNames.Camel(queue.Status.Name)} === '{QueueStatus.Failed}' && <button type=\"button\" onClick={{() => retry({variable}.{keyProp}!)}}>Retry</button>}}</td>");
+        foreach (var column in columnList)
+            T("              " + Shown(column.Column, $"<td>{CellOf(column, variable, true)}</td>"));
+        string retryButton = queue is null ? "" : $"{{{variable}.{JsonNames.Camel(queue.Status.Name)} === '{QueueStatus.Failed}' && <button type=\"button\" onClick={{() => retry({variable}.{keyProp}!)}}>Retry</button>}}";
+        T($"              <td><button type=\"button\" onClick={{() => setViewing({variable})}}>View</button>{retryButton}</td>");
         T("            </tr>");
         T("          ))}");
         T("        </tbody>");
@@ -274,6 +276,23 @@
         T("        </select>");
         T("      </label>");
         T($"      {{loaded && {listName}.length === 0 && <p className=\"no-rows\">Nothing found.</p>}}");
+        T();
+        T("      {viewing && (");
+        T("        <dialog");
+        T("          ref={(el) => { if (el && !el.open) el.showModal(); }}");
+        T("          onCancel={(event) => { event.preventDefault(); setViewing(null); }}");
+        T("        >");
+        T($"          <h2>{title}</h2>");
+        T("          <dl>");
+        foreach (var column in columnList)
+        {
+            T($"            <dt>{column.Caption}</dt>");
+            T($"            <dd>{CellOf(column, "viewing", false)}</dd>");
+        }
+        T("          </dl>");
+        T("          <button type=\"button\" onClick={() => setViewing(null)}>Close</button>");
+        T("        </dialog>");
+        T("      )}");
         T("    </div>");
         T("  );");
         T("}");
@@ -281,7 +300,7 @@
         var test = new StringBuilder();
         void S(string s = "") => test.Append(s).Append('\n');
 
-        S("import { fireEvent, render, screen" + (queue is not null ? ", waitFor" : "") + " } from '@testing-library/react';");
+        S("import { fireEvent, render, screen, within" + (queue is not null ? ", waitFor" : "") + " } from '@testing-library/react';");
         S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
         S($"import {{ {pageName} }} from '../{pageName}';");
         S($"import {{ {apiVar} }} from '../../{apiFolder}/{apiFile}';");
@@ -291,6 +310,7 @@
         S($"describe('{pageName}', () => {{");
         S("  beforeEach(() => {");
         S("    localStorage.clear();");
+        S("    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); }; // jsdom has no showModal");
         S($"    vi.spyOn({apiVar}, 'getPage').mockResolvedValue({{ items: [], page: 1, pageSize: 20, totalCount: 0, totalPages: 0 }});");
         if (queue is not null)
             S($"    vi.spyOn({apiVar}, 'getQueueStats').mockResolvedValue({{ pending: 2, claimed: 1, done: 5, failed: 1, oldestPendingId: 4, oldestPendingOn: '2026-10-26T08:12:00' }});");
@@ -333,6 +353,23 @@
         S("    fireEvent.click(screen.getByRole('button', { name: 'Clear' }));");
         S($"    expect({apiVar}.getPage).toHaveBeenLastCalledWith(1, 20, expect.objectContaining({{ {dateFields[0].ParamName}: '' }}), null);");
         S("  });");
+        // a row to show: the long text of the first text column is what the grid cuts and the dialog must show whole
+        var longColumn = columnList.Select(c => c.Column).FirstOrDefault(c => c.IsStringColumn && c != queue?.Status && form.CellOf(c) == CellKind.Plain);
+        if (longColumn is not null)
+        {
+            string viewRow = "{ " + string.Join(", ", Model.Columns.Select(c => c == form.KeyColumn ? $"{keyProp}: 7" : c == longColumn ? $"{JsonNames.Camel(c.Name)}: 'Long message. '.repeat(30)" : $"{JsonNames.Camel(c.Name)}: {ApiSampleValues.Value(c, Project, Model.TableName)}")) + " }";
+            S();
+            S("  it('shows the whole row, read-only, in a dialog with View', async () => {");
+            S($"    vi.spyOn({apiVar}, 'getPage').mockResolvedValue({{ items: [{viewRow}], page: 1, pageSize: 20, totalCount: 1, totalPages: 1 }});");
+            S($"    render(<{pageName} />);");
+            S("    fireEvent.click(await screen.findByRole('button', { name: 'View' }));");
+            S("    const dialog = document.querySelector('dialog') as HTMLElement;");
+            S("    expect(within(dialog).getByText('Long message. '.repeat(30).trim())).toBeInTheDocument();");
+            S("    expect(within(dialog).queryByRole('textbox')).toBeNull();");
+            S("    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));");
+            S("    expect(document.querySelector('dialog')).toBeNull();");
+            S("  });");
+        }
         if (queue is not null)
         {
             string statusProp = JsonNames.Camel(queue.Status.Name);

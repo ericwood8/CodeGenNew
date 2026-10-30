@@ -186,7 +186,11 @@ public class LogTableTests
         Expect.Contains(page, "from: '', to: ''");
         Expect.DoesNotContain(page, "Add New");
         Expect.DoesNotContain(page, "Delete");
-        Expect.DoesNotContain(page, "<dialog");
+        Expect.DoesNotContain(page, ">Edit<");
+        Expect.Contains(page, "onClick={() => setViewing(errorLog)}>View</button>");
+        Expect.Contains(page, "{viewing && (");
+        Expect.Contains(page, "<dd>{viewing.message}</dd>");
+        Expect.DoesNotContain(page, "<form");
         Expect.Contains(page, "{show('LoggedOn') && <td>{errorLog.loggedOn.substring(0, 16).replace('T', ' ')}</td>}");
     }
 
@@ -200,8 +204,12 @@ public class LogTableTests
         Expect.Contains(html, "aria-label=\"From\" [(ngModel)]=\"filters.from\"");
         Expect.Contains(html, "aria-label=\"To\" [(ngModel)]=\"filters.to\"");
         Expect.DoesNotContain(html, "Add New");
-        Expect.DoesNotContain(html, "Actions");
-        Expect.DoesNotContain(html, "<dialog");
+        Expect.DoesNotContain(html, "Delete</button>");
+        Expect.DoesNotContain(html, "<form");
+        Expect.Contains(html, "(click)=\"view(errorLog)\" class=\"btn-action\">View</button>");
+        Expect.Contains(html, "<dialog #viewDialog class=\"form-container\"");
+        Expect.Contains(html, "(viewing)");
+        Expect.Contains(html, "<dd>{{ viewing.message }}</dd>");
         Expect.Contains(read("errorlog/errorlog.component.spec.ts"), "sends the first and the last day when the person searches");
         Expect.Contains(read("errorlog/errorlog.component.ts"), "override filters = { level: '', userName: '', source: '', from: '', to: '' };");
         Expect.Contains(read("customer/customer.component.html"), "Add New");
@@ -217,8 +225,10 @@ public class LogTableTests
         Expect.Contains(page, "aria-label=\"From\" value=\"@filterFrom\"");
         Expect.Contains(page, "[\"from\"] = filterFrom,");
         Expect.DoesNotContain(page, "Add New");
-        Expect.DoesNotContain(page, "role=\"dialog\"");
-        Expect.DoesNotContain(page, "<th>Actions</th>");
+        Expect.DoesNotContain(page, "<EditForm");
+        Expect.Contains(page, "@onclick=\"() => View(item)\">View</button>");
+        Expect.Contains(page, "@if (viewing is not null)");
+        Expect.Contains(page, "<dd>@viewing.Message</dd>");
         Expect.Contains(read("ErrorLogPageTests.cs"), "Has_no_button_that_adds_changes_or_deletes_a_row");
         Expect.Contains(read("Pages/CustomerPage.razor"), "Add New");
     }
@@ -235,9 +245,24 @@ public class LogTableTests
             Expect.Contains(xaml, "PlaceholderText=\"From (yyyy-MM-dd)\"");
             Expect.Contains(xaml, "PlaceholderText=\"To (yyyy-MM-dd)\"");
             Expect.DoesNotContain(xaml, "Content=\"Add New\"");
-            Expect.DoesNotContain(xaml, "Text=\"Actions\"");
+            Expect.Contains(xaml, "Click=\"OnViewClick\"");
+            Expect.DoesNotContain(xaml, "Content=\"Edit\"");
+            Expect.DoesNotContain(xaml, "Content=\"Delete\"");
             Expect.DoesNotContain(xaml, "OnEditClick");
         }
+        foreach (var app in new[] { uno, winui3 })
+        {
+            string code = app.Read("Views/ErrorLogListPage.xaml.cs");
+            Expect.Contains(code, "private async void OnViewClick(object sender, RoutedEventArgs e)");
+            Expect.Contains(code, "\"Message: \" + Show(entity.Message)");
+            Expect.DoesNotContain(code, "OnEditClick");
+            Expect.DoesNotContain(code, "OnAddClick");
+            Expect.DoesNotContain(code, "OnDeleteClick");
+            Assert.IsFalse(app.Files.Any(f => f.Contains("ErrorLogDetail", StringComparison.Ordinal)), "a log table has no edit dialog or view model of one");
+            Assert.IsTrue(app.Files.Any(f => f.Contains("CustomerDetail", StringComparison.Ordinal)));
+        }
+        Expect.Contains(uno.Read("Views/CustomerListPage.xaml.cs"), "OnEditClick");
+        Expect.DoesNotContain(uno.Read("Views/CustomerListPage.xaml.cs"), "OnViewClick");
         Expect.Contains(uno.Read("Views/CustomerListPage.xaml"), "Content=\"Add New\"");
         string model = winui3.Read("ViewModels/ErrorLogListViewModel.cs");
         Expect.Contains(model, "from: ParseDay(FromFilter), to: ParseDay(ToFilter), ");
@@ -249,15 +274,99 @@ public class LogTableTests
     }
 
     [TestMethod]
-    public async Task A_log_table_served_as_OData_or_with_the_one_box_list_protocol_is_refused_with_a_reason()
+    public async Task A_log_table_with_the_one_box_list_protocol_is_refused_with_a_reason()
     {
-        var odata = await GenerateAsync("Api", new() { ["OData"] = "true", ["ODataTables"] = "ErrorLog" });
         var search = await GenerateAsync("Api", new() { ["ListProtocol"] = "Search" });
 
-        Assert.IsFalse(odata.Success);
-        StringAssert.Contains(string.Join(" | ", odata.Errors), "is served as OData");
         Assert.IsFalse(search.Success);
         StringAssert.Contains(string.Join(" | ", search.Errors), "needs the Columns list protocol");
+    }
+
+    [TestMethod]
+    public async Task A_log_table_served_as_OData_is_only_read()
+    {
+        var odata = await GenerateAsync("Api", new() { ["OData"] = "true", ["ODataTables"] = "ErrorLog,Customer" });
+
+        Assert.IsTrue(odata.Success, string.Join(" | ", odata.Errors));
+        string file = odata.Read("OData.cs");
+        Expect.Contains(file, "MapSet<ErrorLog, int, ShopContext>(odata, lists, \"errorlogs\"");
+        var lines = file.Split('\n');
+        Assert.IsTrue(lines.Single(l => l.Contains("MapSet<ErrorLog,")).TrimEnd().EndsWith(", true);", StringComparison.Ordinal), "the log table is mapped read-only");
+        Assert.IsFalse(lines.Single(l => l.Contains("MapSet<Customer,")).TrimEnd().EndsWith(", true);", StringComparison.Ordinal), "an ordinary table keeps its writes");
+        Expect.Contains(file, "if (logOnly)");
+    }
+
+    [TestMethod]
+    public async Task The_Python_API_registers_only_reads_takes_the_date_range_and_lists_newest_first()
+    {
+        var (success, errors, read, files) = await GenerateAsync("Python");
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        string log = read("app/routes/error_log.py");
+        Expect.DoesNotContain(log, "@router.post");
+        Expect.DoesNotContain(log, "@router.put");
+        Expect.DoesNotContain(log, "@router.delete");
+        Expect.Contains(log, "range_from: date | None = Query(None, alias=\"from\"),");
+        Expect.Contains(log, "func.datetime(ErrorLog.logged_on) >= func.datetime(datetime.combine(range_from, time.min))");
+        Expect.Contains(log, "func.datetime(ErrorLog.logged_on) < func.datetime(datetime.combine(range_to + timedelta(days=1), time.min))");
+        Expect.Contains(log, "default_order = [ErrorLog.logged_on.desc(), ErrorLog.error_log_id.desc()]");
+        Expect.Contains(read("app/routes/customer.py"), "@router.post");
+        Expect.DoesNotContain(read("app/routes/customer.py"), "range_from");
+        string csv = read("app/routes/csv_files.py");
+        Expect.Contains(csv, "def register_log(spec: CsvTable)");
+        Expect.Contains(csv, "\"logged_on\"),");
+    }
+
+    [TestMethod]
+    public async Task The_Rust_API_registers_only_reads_takes_the_date_range_and_lists_newest_first()
+    {
+        var (success, errors, read, files) = await GenerateAsync("Rust", new() { ["RustTests"] = "true" });
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        string routes = read("src/routes/error_log.rs");
+        Expect.DoesNotContain(routes, "async fn create");
+        Expect.DoesNotContain(routes, "async fn update");
+        Expect.DoesNotContain(routes, "async fn delete");
+        Expect.Contains(routes, ".route(\"/api/errorlogs\", get(get_all))");
+        Expect.Contains(read("src/routes/customer.rs"), "async fn create");
+        string repo = read("src/repos/error_log.rs");
+        Expect.Contains(repo, "pub range_from: Option<NaiveDate>,");
+        Expect.Contains(repo, "\"LoggedOn\" >= ");
+        Expect.Contains(repo, "\"LoggedOn\" < ");
+        Expect.Contains(repo, "ORDER BY");
+        Expect.Contains(repo, "DESC");
+        Expect.DoesNotContain(read("src/repos/customer.rs"), "range_from");
+        string csv = read("src/routes/csv_files.rs");
+        Expect.DoesNotContain(csv, "import_error_log");
+        Expect.Contains(csv, "import_customer");
+        string test = read("tests/api/error_log.rs");
+        Expect.Contains(test, "StatusCode::METHOD_NOT_ALLOWED");
+    }
+
+    [TestMethod]
+    public void A_menu_run_of_the_log_page_lists_a_table_that_looks_like_a_log_for_that_run_only()
+    {
+        var log = Sample.Table("AuditEvent",
+        [
+            Sample.Column("AuditEventId", System.Data.SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("OccurredOn", System.Data.SqlDbType.DateTime, ordinal: 2),
+            Sample.Column("Level", System.Data.SqlDbType.NVarChar, characters: 10, ordinal: 3),
+            Sample.Column("Message", System.Data.SqlDbType.NVarChar, characters: 200, ordinal: 4)
+        ]);
+        var plain = Sample.Table("Customer",
+        [
+            Sample.Column("CustomerId", System.Data.SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+            Sample.Column("Name", System.Data.SqlDbType.NVarChar, characters: 50, ordinal: 2)
+        ]);
+        var project = ProjectSettings.FromValues(new Dictionary<string, string> { ["LogTables"] = "ErrorLog" });
+
+        CollectionAssert.AreEqual(new[] { "ErrorLog", "AuditEvent" }, LogTablePlan.ForMenuRun(project, "TSX_LogPage", log).LogTables);
+        CollectionAssert.AreEqual(new[] { "ErrorLog", "AuditEvent" }, LogTablePlan.ForMenuRun(project, "SP_LogIndex", log).LogTables);
+        Assert.IsNotNull(LogTablePlan.For(log, LogTablePlan.ForMenuRun(ProjectSettings.FromValues(new Dictionary<string, string> { ["AccessMode"] = "Ef" }), "TSX_LogPage", log)));
+        CollectionAssert.AreEqual(new[] { "ErrorLog" }, LogTablePlan.ForMenuRun(project, "TSX_Page", log).LogTables, "any other template runs as the project says");
+        CollectionAssert.AreEqual(new[] { "ErrorLog" }, LogTablePlan.ForMenuRun(project, "TSX_LogPage", plain).LogTables, "a table that does not look like a log is not listed on a guess");
+        CollectionAssert.AreEqual(new[] { "ErrorLog" }, project.LogTables, "the project itself is not changed");
+        Assert.AreEqual(1, LogTablePlan.ForMenuRun(ProjectSettings.FromValues(new Dictionary<string, string> { ["LogTables"] = "AuditEvent" }), "TSX_LogPage", log).LogTables.Length, "a listed table is not listed twice");
     }
 
     [TestMethod]

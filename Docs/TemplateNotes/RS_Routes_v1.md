@@ -34,3 +34,5 @@ With `ApiAuth=true` the Rust API signs people in like the ASP.NET one (`RS_Essen
 ## The lookup for a type-ahead
 
 `lookup` takes the query string (`Query<repo::LookupQuery>`: `search`, `ids`, `take`) and passes it to `repo::lookup`; see RS_Repo for what each does. Without any of them the list is whole, as before.
+
+A table in `LogTables` (an insert-only ledger, `LogTablePlan`) gets the reading routes only: a POST, PUT or DELETE answers 405 and there is no clone, and the repository's write functions are marked as unused. Its search takes `from` and `to` (the first and the last day, both included; a date that is not a date is a 400) and lists newest first when no sort is chosen, as the ASP.NET API does. See `TSX_LogPage_v1.md`.

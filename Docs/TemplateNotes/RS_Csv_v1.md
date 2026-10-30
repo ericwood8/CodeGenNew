@@ -6,3 +6,5 @@
 - **Authorisation:** with `ApiAuth` the routes of an owned table, and the import into a gated table, need the administrator role (403 `role-not-allowed` otherwise).
 - **Upload size:** the router raises the body limit to 32 MB (axum's default of 2 MB is too small for 10000 rows); the row limit is 10000.
 - **Limits:** a computed column that is not an identity, not nullable and not read has no value to deserialise, so such a table cannot be imported; the body is read as text. PostgreSQL, MySQL and SQLite only.
+
+A table in `LogTables` has an export that takes `from` and `to` on its timestamp, lists newest first and stops at the first 10000 rows, and no import route.

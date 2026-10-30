@@ -9,3 +9,5 @@
 - **Route order:** `PY_Mod` puts this router first, because a table's `/{id}` route would otherwise read `export.csv` as a key.
 
 Limits: the body is read as text (send `Content-Type: text/csv`); a multipart form upload is not read (that would need the `python-multipart` package). Written once per run; `InPlan=false`, so it is generated only for `ApiCsv=true` or when named in `PlanAlso`.
+
+A table in `LogTables` has an export that takes `from` and `to` on its timestamp, lists newest first and stops at the first 10000 rows, and no import route.

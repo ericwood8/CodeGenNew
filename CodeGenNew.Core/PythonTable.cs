@@ -62,7 +62,8 @@ public sealed class PythonTable
         foreach (var field in SchemaFields)
             fieldOf.TryAdd(field.Column, field);
 
-        var plan = SearchPlan.For(model, []);
+        var log = LogTablePlan.For(model, project);
+        var plan = SearchPlan.For(model, [], log);
         Filters = plan.Filters
             .Where(f => f.Column.CSharpBase() == "string" && fieldOf.ContainsKey(f.Column))
             .Select(f => new PythonFilter(fieldOf[f.Column], f.ParameterName)).ToList();
@@ -73,6 +74,7 @@ public sealed class PythonTable
         DefaultOrder = plan.DefaultOrder.Where(fieldOf.ContainsKey).Select(c => fieldOf[c]).ToList();
         if (DefaultOrder.Count == 0)
             DefaultOrder = [Key];
+        LogStamp = log is not null && fieldOf.TryGetValue(log.Timestamp, out var stamp) ? stamp : null;
 
         LookupName = model.DisplayColumns.Where(fieldOf.ContainsKey).Select(c => fieldOf[c]).FirstOrDefault();
         ActiveField = model.IsActiveColumn is { } activeColumn && fieldOf.TryGetValue(activeColumn, out var activeField) ? activeField : null;
@@ -145,8 +147,11 @@ public sealed class PythonTable
     public IReadOnlyList<PythonFilter> KeyFilters { get; }
     public IReadOnlyList<PythonSort> Sorts { get; }
 
-    /// <summary> The order that applies without a sort and follows a chosen one: the best display column, then the key. </summary>
+    /// <summary> The order that applies without a sort and follows a chosen one: the best display column, then the key (a log table: the timestamp, then the key, newest first). </summary>
     public IReadOnlyList<PythonField> DefaultOrder { get; private set; }
+
+    /// <summary> The timestamp field of a table in <c>LogTables</c> (an insert-only ledger the API only reads: no write routes, a date range, newest first); null for any other table. </summary>
+    public PythonField? LogStamp { get; }
 
     /// <summary> Null when the table gets no Clone button (<see cref="CloneShape.CanClone"/>); otherwise the value each copied attribute of the new row gets, as Python text, in column order. </summary>
     public IReadOnlyList<(PythonField Field, string Value)>? Clone { get; private set; }

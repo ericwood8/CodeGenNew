@@ -533,7 +533,7 @@
         else
         {
             Tests(false);
-            if (ODataPlan.Serves(Model, Project) && !Model.IsNameActiveTable)
+            if (ODataPlan.HasPage(Model, Project) && !Model.IsNameActiveTable)
                 Tests(true);
         }
         Write("@@@FILE " + type + "PageTests.cs@@@\n" + o);

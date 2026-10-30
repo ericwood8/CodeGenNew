@@ -28,6 +28,17 @@ public static class LogTablePlan
         .Concat(ArchivePlan.ArchiveTableNames(project).Select(a => (a, (string?)null)))
         .Where(e => e.Item1.Length > 0).DistinctBy(e => e.Item1, StringComparer.OrdinalIgnoreCase).ToList();
 
+    /// <summary> The templates whose run on one table from the right-click menu lists a table that looks like a log: the page of a log table and its index script. Everything else a log table gets (the read-only API,
+    /// the other stacks' screens) is decided by the project's LogTables setting, since making a table read-only is not something to do on a guess. </summary>
+    public static readonly string[] MenuTemplates = ["TSX_LogPage", "SP_LogIndex"];
+
+    /// <summary> The settings a single menu run of <paramref name="templateName"/> uses: the project's, with <paramref name="table"/> added to <c>LogTables</c> when the person chose one of the
+    /// <see cref="MenuTemplates"/> for a table that <see cref="Looks"/> like a log and is not listed. The project file is not changed. </summary>
+    public static ProjectSettings ForMenuRun(ProjectSettings project, string templateName, TableModel table) =>
+        MenuTemplates.Any(m => templateName.StartsWith(m, StringComparison.OrdinalIgnoreCase)) && !IsListed(table, project) && Looks(table)
+            ? project.WithOverrides([new("LogTables", string.Join(",", project.LogTables.Append(table.TableName)))])
+            : project;
+
     public static bool IsListed(TableModel table, ProjectSettings project) => IsListed(table.TableName, project);
 
     public static bool IsListed(string table, ProjectSettings project) => Entries(project).Any(e => e.Table.EqualsIgnoreCase(table));
@@ -47,8 +58,6 @@ public static class LogTablePlan
             return $"LogTables: {table.TableName} is read through the EF search, so the project needs AccessMode=Ef (a routines project keeps its own search).";
         if (project.ListSearchProtocol)
             return $"LogTables: {table.TableName} needs the Columns list protocol (its date range is two more query parameters); ListProtocol=Search has one box.";
-        if (project.OData && ODataPlan.Serves(table, project))
-            return $"LogTables: {table.TableName} is served as OData, whose routes also write rows; take it out of ODataTables.";
         return TimestampOf(table, project) is null
             ? $"LogTables: {table.TableName} has no date and time column to list newest first; name one (LogTables={table.TableName}:ColumnName)."
             : null;

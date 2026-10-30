@@ -34,27 +34,31 @@ public static class ODataPlan
     public static bool Serves(TableModel table, ProjectSettings project) =>
         project.OData && HasApi(table, project) && IsRequested(table, project) && RefusalOf(table, project) is null;
 
+    /// <summary> The table gets OData screens: it is served and is not a log table (a table in <c>LogTables</c> is read-only, so its screens are the ones with the date range over the REST search; its OData routes only read). </summary>
+    public static bool HasPage(TableModel table, ProjectSettings project) => Serves(table, project) && !LogTablePlan.IsListed(table, project);
+
     /// <summary> The tables that get an Angular OData screen: served and listed as a screen of the Angular stack (a master-detail table gets the OData form of the master-detail screen; a name/active table has none yet). </summary>
     public static List<TableModel> AngularScreenTables(DatabaseModel database, ProjectSettings project) =>
-        database.ScreenTables(project, "Angular").Where(t => Serves(t, project)).ToList();
+        database.ScreenTables(project, "Angular").Where(t => HasPage(t, project)).ToList();
 
     /// <summary> The tables that get a React OData page: served and listed as a screen of the React stack (a name/active table has the page of its own kind). </summary>
     public static List<TableModel> ReactScreenTables(DatabaseModel database, ProjectSettings project) =>
-        database.ScreenTables(project, "React").Where(t => Serves(t, project)).ToList();
+        database.ScreenTables(project, "React").Where(t => HasPage(t, project)).ToList();
 
     /// <summary> The tables that get a Blazor OData page: served, listed as a screen of the Blazor stack and given a client by <see cref="BlazorNames"/> (Blazor has no name/active or master-detail page). </summary>
     public static List<TableModel> BlazorScreenTables(DatabaseModel database, ProjectSettings project) =>
-        database.ScreenTables(project, "Blazor").Where(t => Serves(t, project) && BlazorNames.HasODataClient(t, project)).ToList();
+        database.ScreenTables(project, "Blazor").Where(t => HasPage(t, project) && BlazorNames.HasODataClient(t, project)).ToList();
 
     /// <summary> The tables that get an Uno OData page: served, listed as a screen of the Uno stack and given a client by <see cref="UnoNames"/>. </summary>
     public static List<TableModel> UnoScreenTables(DatabaseModel database, ProjectSettings project) =>
-        database.ScreenTables(project, "Uno").Where(t => Serves(t, project) && UnoNames.HasODataClient(t, project)).ToList();
+        database.ScreenTables(project, "Uno").Where(t => HasPage(t, project) && UnoNames.HasODataClient(t, project)).ToList();
 
     /// <summary> A table is probably served as OData, known from its name and the project's settings alone (the screen of another table cannot read its model): <c>OData=true</c>, the list names it or is blank, and none of
     /// the settings that refuse a table (the user table, <c>NoApiTables</c>, DTOs) names it. A table that only the model refuses (an owner column that is missing, editable child lists) is not known here. </summary>
     public static bool ServesByName(string table, ProjectSettings project) =>
         project.OData
         && (NamesAll(project) || project.ODataTables.Any(r => r.EqualsIgnoreCase(table)))
+        && !LogTablePlan.IsListed(table, project)
         && !(project.UserTable is { } user && user.EqualsIgnoreCase(table))
         && project.NoApi(table, new LookupShape(false, 0)) != true
         && !project.Dtos;

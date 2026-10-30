@@ -59,6 +59,10 @@
         Error($"WinUI3_DetailScreen needs a table with a single int, uniqueidentifier or text primary key (CS_Repo's GenericRepo<T, TKey> takes it as the id), but [{Model.SchemaName}].[{Model.TableName}] has "
               + (Model.PrimaryKeyColumns.Count == 0 ? "none." : Model.PrimaryKeyColumns.Count > 1 ? "a composite primary key." : $"a {keyColumn.SqlTypeDeclaration} primary key."));
     }
+    else if (form.ReadOnly && !isNameActive)
+    {
+        // a table in LogTables is only read: its list opens a read-only view of a row, so there is no dialog to edit one (DesktopRowView)
+    }
     else
     {
         string table = Model.TableName;

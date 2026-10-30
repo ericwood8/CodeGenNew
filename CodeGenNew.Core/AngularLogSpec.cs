@@ -5,7 +5,8 @@ namespace CodeGenNew.Core;
 /// <summary> The spec of the Angular screen of a log table (LogTables): it only lists rows, so it checks the first page, the date range the search sends, Clear, and that no button changes a row. </summary>
 public static class AngularLogSpec
 {
-    public static string Text(string cls, string screenStem, IReadOnlyList<SearchField> dates, QueueTable? queue = null, ProjectSettings? project = null)
+    /// <param name="viewRow"> A row (a TypeScript object literal) whose long text the View dialog must show whole, or null when the table has no text column to check. </param>
+    public static string Text(string cls, string screenStem, IReadOnlyList<SearchField> dates, QueueTable? queue = null, ProjectSettings? project = null, string? viewRow = null)
     {
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
@@ -66,6 +67,26 @@ public static class AngularLogSpec
         L("    expect(labels).not.toContain('Delete');");
         L("    expect(page.querySelector('dialog')).toBeNull();");
         L("  });");
+        if (viewRow is not null)
+        {
+            L();
+            L("  it('shows the whole row, read-only, in a dialog with View', () => {");
+            L("    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); }; // jsdom has no showModal");
+            L($"    http.expectOne((r) => r.url.endsWith('/search')).flush({{ items: [{viewRow}], page: 1, pageSize: 20, totalCount: 1, totalPages: 1 }});");
+            L("    fixture.detectChanges();");
+            L("    const page = fixture.nativeElement as HTMLElement;");
+            L("    const view = Array.from(page.querySelectorAll('button')).find((button) => (button.textContent ?? '').trim() === 'View');");
+            L("    expect(view).toBeDefined();");
+            L("    view!.click();");
+            L("    fixture.detectChanges();");
+            L("    const dialog = page.querySelector('dialog') as HTMLElement;");
+            L("    expect(dialog.textContent).toContain('Long message. '.repeat(30).trim());");
+            L("    expect(dialog.querySelector('input, textarea')).toBeNull();");
+            L("    (Array.from(dialog.querySelectorAll('button')).find((button) => (button.textContent ?? '').trim() === 'Close') as HTMLElement).click();");
+            L("    fixture.detectChanges();");
+            L("    expect(page.querySelector('dialog')).toBeNull();");
+            L("  });");
+        }
         if (queue is not null)
             QueueSpecs(L, queue, project!);
         L("});");

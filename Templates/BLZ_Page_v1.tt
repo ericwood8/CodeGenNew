@@ -55,7 +55,7 @@
     bool odata = Variant == "OData";
     bool oneRow = !odata && !Model.IsNameActiveTable && SingleRowPlan.Applies(Model, Project, "Blazor");   // the table's one row is the page: a form, with no list, no paging, no child grids and no Delete
 
-    if (odata && (!ODataPlan.Serves(Model, Project) || Model.IsNameActiveTable))
+    if (odata && (!ODataPlan.HasPage(Model, Project) || Model.IsNameActiveTable))
     {
         // the OData page is written for the tables the project serves as OData and for no other (a name / active table has the REST page only); a plan runs this template for every table, so it says nothing for the rest
     }
@@ -103,7 +103,7 @@
         string pageClass = odata ? BlazorNames.ODataPageName(Model.TableName) : type + "Page";
         string route = odata && !Project.ODataReplacesScreens ? AngularNames.ODataRoute(Model.TableName) : ScreenNames.Route(Model.TableName);
         // ODataScreens=Replace: the OData page has this REST page's route, so this one is not routable (two pages at one address would be ambiguous)
-        bool replaced = !odata && !nameActive && Project.ODataReplacesScreens && ODataPlan.Serves(Model, Project);
+        bool replaced = !odata && !nameActive && Project.ODataReplacesScreens && ODataPlan.HasPage(Model, Project);
         string clientType = odata ? BlazorNames.ODataClientName(Model.TableName) : type + "Client";
         string ExplainCall = odata ? "ExplainOData" : "Explain";   // the OData calls also carry the API's own words for a conflict
         // The Columns list: the grid starts with the columns GridColumns picks and offers every column of the form
@@ -334,7 +334,7 @@
             else
                 L("            " + Shown(c, $"<th>{caption}</th>"));
         }
-        if (!logOnly || queue is not null) L("            <th>Actions</th>");
+        L("            <th>Actions</th>");
         L("        </tr>");
         if (odata && filterFields!.Any(f => f is not null))
         {
@@ -406,9 +406,10 @@
         L(Gate("                    ", "<button type=\"button\" @onclick=\"() => DeleteAsync(item)\">Delete</button>"));
         L("                </td>");
         }
-        else if (queue is not null)
+        else
         {
-            L($"                <td>@if (item.{Prop(queue.Status)} == \"{QueueStatus.Failed}\") {{ <button type=\"button\" @onclick=\"() => RetryAsync(item)\">Retry</button> }}</td>");
+            string retryButton = queue is null ? "" : $"@if (item.{Prop(queue.Status)} == \"{QueueStatus.Failed}\") {{ <button type=\"button\" @onclick=\"() => RetryAsync(item)\">Retry</button> }}";
+            L($"                <td><button type=\"button\" @onclick=\"() => View(item)\">View</button>{retryButton}</td>");
         }
         L("            </tr>");
         L("        }");
@@ -644,7 +645,28 @@
         L("    </div>");
         L("}");
         if (logOnly)
+        {
             o.Length = editorStart;
+            // the whole row, read-only: a log table has no editor, and the grid cuts a long text
+            L();
+            L("@if (viewing is not null)");
+            L("{");
+            L("    <div class=\"editor\" role=\"dialog\" aria-label=\"§N details\">");
+            L("        <h2>§N</h2>");
+            L("        <dl>");
+            foreach (var column in columnList)
+            {
+                var c = column.Column;
+                string prop = $"viewing.{c.CSharpName()}";
+                var lookup = form.LookupOf(c);
+                L($"            <dt>{column.Caption}</dt>");
+                L($"            <dd>{Cell(c, prop, lookup is not null ? $"Name{form.ParentOf(c)!.BaseName}({prop})" : null)}</dd>");
+            }
+            L("        </dl>");
+            L("        <div class=\"actions\"><button type=\"button\" @onclick=\"CloseView\">Close</button></div>");
+            L("    </div>");
+            L("}");
+        }
         L();
         L("@code {");
         if (!oneRow && !nameActive)
@@ -653,6 +675,14 @@
         L("    private static readonly int[] PageSizeChoices = [10, 20, 50, 100];");
         L("    private bool loaded;   // true once a page has arrived, so \"Nothing found.\" is not shown while waiting");
         L("    private List<§T> items = [];");
+        if (logOnly)
+        {
+            L("    private §T? viewing;   // the row the View dialog shows");
+            L();
+            L("    private void View(§T item) => viewing = item;");
+            L();
+            L("    private void CloseView() => viewing = null;");
+        }
         }
         if (nameActive)
         {

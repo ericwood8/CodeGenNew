@@ -16,6 +16,7 @@
     // that does not convert (a number, a date, a yes / no, a missing required value, a text longer than its column) or that the table's validate refuses (ApiValidation=true) is reported by
     // its row number, and then nothing is saved; a 400 lists the problems. Identity and computed columns are not read. A text cell that starts with = + - or @ is exported with a leading
     // apostrophe, so a spreadsheet does not run it, and the apostrophe is dropped again on import. At most 10000 rows an import. The user table's password hash is never exported.
+    // A table in LogTables is only read (LogTablePlan): its export takes from and to (the first and the last day, both included) on the timestamp, lists newest first and stops at MAX_ROWS, and it has no import route.
     // PY_Mod puts this router before the tables' routers (a table's /{id} route would read export.csv as a key). For a project that sets ApiCsv=true. Full notes: Docs/TemplateNotes/PY_Csv_v1.md
     // ==========================================================================================
 
@@ -32,17 +33,17 @@
     Line("@@@FILE app/routes/csv_files.py@@@");
     Line("import csv");
     Line("import io");
-    Line("from datetime import date, datetime, time");
+    Line("from datetime import date, datetime, time, timedelta");
     Line("from decimal import Decimal, InvalidOperation");
     Line("from typing import NamedTuple");
     Line("from uuid import UUID");
     Line();
-    Line("from fastapi import APIRouter, Depends, Request, Response");
+    Line("from fastapi import APIRouter, Depends, Query, Request, Response");
     Line("from fastapi.concurrency import run_in_threadpool");
     Line("from fastapi.responses import JSONResponse");
     if (validate)
         Line("from pydantic import ValidationError");
-    Line("from sqlalchemy import select");
+    Line(tables.Any(t => t.LogStamp is not null && t.Model.Dialect == SqlDialect.Sqlite) ? "from sqlalchemy import func, select" : "from sqlalchemy import select");
     Line("from sqlalchemy.exc import IntegrityError");
     Line("from sqlalchemy.orm import Session");
     Line();
@@ -91,6 +92,7 @@
     Line("    validate: object");
     Line("    owned: bool");
     Line("    gated: bool");
+    Line("    log_stamp: str");
     Line();
     Line();
     Line("def column_list(*columns) -> list[Column]:");
@@ -114,7 +116,7 @@
         Line($"    CsvTable({Str(t.Route)}, {Str(t.Model.TableName.Pluralize().ToLowerInvariant())}, {t.Class}, {t.Schema}, {Str(t.Key.Name)}, column_list(");
         foreach (string cell in cells)
             Line($"        {cell},");
-        Line($"    ), {rules}, {Bool(owned)}, {Bool(gated)}),");
+        Line($"    ), {rules}, {Bool(owned)}, {Bool(gated)}, {Str(t.LogStamp?.Name ?? "")}),");
     }
     Line("]");
     Line();
@@ -255,6 +257,10 @@
     Line();
     Line();
     Line("def register(spec: CsvTable) -> None:");
+    Line("    if spec.log_stamp:");
+    Line("        register_log(spec)");
+    Line("        return");
+    Line();
     string exportOnly = auth ? "dependencies=[Depends(administrator_only)] if spec.owned else None" : "";
     string importOnly = auth ? "dependencies=[Depends(administrator_only)] if spec.owned or spec.gated else None" : "";
     Line($"    @router.get(spec.route + \"/export.csv\", name=\"Export \" + spec.file + \" Csv\"{(auth ? ", " + exportOnly : "")})");
@@ -267,6 +273,28 @@
     Line("    async def import_rows(request: Request, session: Session = Depends(get_session)):");
     Line("        text = (await request.body()).decode(\"utf-8-sig\", errors=\"replace\")");
     Line("        return await run_in_threadpool(import_text, session, spec, text)");
+    Line();
+    Line();
+    Line("def register_log(spec: CsvTable) -> None:");
+    Line("    \"\"\"The export of a log table: the first and the last day, newest first, at most MAX_ROWS rows; there is no import.\"\"\"");
+    Line($"    @router.get(spec.route + \"/export.csv\", name=\"Export \" + spec.file + \" Csv\"{(auth ? ", dependencies=[Depends(administrator_only)] if spec.owned else None" : "")})");
+    Line("    def export(");
+    Line("        session: Session = Depends(get_session),");
+    Line($"        range_from: date | None = Query(None, alias=\"{LogTable.FromParameter}\"),");
+    Line($"        range_to: date | None = Query(None, alias=\"{LogTable.ToParameter}\"),");
+    Line("    ):");
+    Line("        stamp = getattr(spec.model, spec.log_stamp)");
+    Line("        statement = select(spec.model)");
+    // SQLite keeps a date and time as text, and a value without a fraction sorts before the same value with one, so both sides go through datetime() there
+    bool sqliteLog = tables.Any(t => t.Model.Dialect == SqlDialect.Sqlite);
+    string Side(string expression) => sqliteLog ? $"func.datetime({expression})" : expression;
+    Line("        if range_from is not None:");
+    Line($"            statement = statement.where({Side("stamp")} >= {Side("datetime.combine(range_from, time.min)")})");
+    Line("        if range_to is not None:");
+    Line($"            statement = statement.where({Side("stamp")} < {Side("datetime.combine(range_to + timedelta(days=1), time.min)")})");
+    Line("        rows = session.scalars(statement.order_by(stamp.desc(), getattr(spec.model, spec.key).desc()).limit(MAX_ROWS)).all()");
+    Line("        headers = {\"Content-Disposition\": f'attachment; filename=\"{spec.file}.csv\"'}");
+    Line("        return Response(content=export_text(rows, spec.columns).encode(\"utf-8\"), media_type=\"text/csv; charset=utf-8\", headers=headers)");
     Line();
     Line();
     Line("for table in TABLES:");

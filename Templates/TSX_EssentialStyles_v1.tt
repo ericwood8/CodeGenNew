@@ -64,3 +64,7 @@ dialog form { margin-top: 0; max-width: none; }
 /* the fields stay a readable width; a table of child rows inside the form uses the whole dialog */
 dialog form > label, dialog form > input, dialog form > select, dialog form > textarea, dialog form [role='tabpanel'] { max-width: 640px; }
 dialog [role='alert'] { color: #c62828; font-weight: 600; }
+/* the read-only view of one row (a log table): a label and the whole value of each column */
+dialog dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 16px; }
+dialog dt { font-weight: 600; }
+dialog dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }

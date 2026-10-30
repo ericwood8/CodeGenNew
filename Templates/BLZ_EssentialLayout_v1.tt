@@ -106,6 +106,9 @@ main button { padding: 4px 12px; font: inherit; font-weight: 700; }
   border: 1px solid #8886; border-radius: 8px; background: Canvas; box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.45); }
 .editor .field { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
 .editor label { font-weight: 600; }
+.editor dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 16px; }
+.editor dt { font-weight: 600; }
+.editor dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .editor input[type='text'], .editor input[type='number'], .editor input[type='date'], .editor input:not([type]), .editor select, .editor textarea { width: 100%; box-sizing: border-box; padding: 6px 8px; font: inherit; }
 .editor textarea { min-height: 80px; resize: vertical; }
 .editor input[type='checkbox'] { align-self: flex-start; width: 18px; height: 18px; }

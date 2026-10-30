@@ -16,6 +16,7 @@
     // that cannot be NULL, text with a unique ending, a foreign key pointing at the first row of the parent's API. The bodies are written once for the database by RS_TestBodies, which also adds a
     // row to a parent that has none.
     // Writes nothing unless the project sets RustTests=true. The helpers come from the Tests essentials group (RS_EssentialTests).
+    // A table the project lists in LogTables (LogTablePlan) is only read: its test file checks the reads, the date range, a date that is not a date and the 405 of every write, since the API cannot add a row to it.
     // Full notes: Docs/TemplateNotes/RS_Test_v1.md
     // ==========================================================================================
     if (!Project.RustTests)
@@ -91,6 +92,56 @@
                 }
             }
         }
+        if (t.LogStamp is not null)
+        {
+#>
+@@@FILE tests/api/<#= t.Module #>.rs@@@
+use axum::http::StatusCode;
+use serde_json::json;
+
+use crate::test_support::*;
+
+const ROUTE: &str = "<#= route #>";
+
+#[tokio::test]
+async fn a_log_table_is_read_and_never_written() {
+    let Some(api) = Client::start().await else { return };
+    assert_eq!(api.get(ROUTE).await.status, StatusCode::OK);
+    let absent = <#= absentKey #>;
+    assert_eq!(api.get(&format!("{ROUTE}/{absent}")).await.status, StatusCode::NOT_FOUND);
+
+    assert_eq!(api.post(ROUTE, &json!({})).await.status, StatusCode::METHOD_NOT_ALLOWED, "no route adds a row");
+    assert_eq!(api.put(&format!("{ROUTE}/{absent}"), &json!({})).await.status, StatusCode::METHOD_NOT_ALLOWED, "no route changes a row");
+    assert_eq!(api.delete(&format!("{ROUTE}/{absent}")).await.status, StatusCode::METHOD_NOT_ALLOWED, "no route removes a row");
+}
+
+<#
+            if (search)
+            {
+#>
+
+#[tokio::test]
+async fn the_search_takes_a_first_and_a_last_day() {
+    let Some(api) = Client::start().await else { return };
+    let all = api.get(&format!("{ROUTE}/search?pageNumber=1&pageSize=5")).await;
+    assert_eq!(all.status, StatusCode::OK, "{}", all.body);
+
+    let later = api.get(&format!("{ROUTE}/search?{}=2999-01-01", "<#= LogTable.FromParameter #>")).await;
+    assert_eq!(later.status, StatusCode::OK, "{}", later.body);
+    assert_eq!(later.json()["totalCount"], 0, "nothing is logged after the year 2999");
+
+    let earlier = api.get(&format!("{ROUTE}/search?{}=1900-01-01", "<#= LogTable.ToParameter #>")).await;
+    assert_eq!(earlier.status, StatusCode::OK, "{}", earlier.body);
+    assert_eq!(earlier.json()["totalCount"], 0, "nothing is logged before the year 1900");
+
+    let bad = api.get(&format!("{ROUTE}/search?{}=not-a-date", "<#= LogTable.FromParameter #>")).await;
+    assert_eq!(bad.status, StatusCode::BAD_REQUEST, "{}", bad.body);
+}
+<#
+            }
+        }
+        else
+        {
 #>
 @@@FILE tests/api/<#= t.Module #>.rs@@@
 use axum::http::StatusCode;
@@ -462,6 +513,7 @@ async fn a_number_past_its_limit_is_refused() {
     assert_eq!(api.post(ROUTE, &body).await.status, StatusCode::BAD_REQUEST);
 }
 <#
+        }
         }
     }
 #>

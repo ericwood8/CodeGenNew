@@ -16,6 +16,8 @@
     // With ApiAuth=true (the Jwt group's app/auth.py) a table listed in OwnedTables shows and changes only the rows of the owners the caller may act for (403 for another owner's row, the same
     // rule as the ASP.NET API), a table that hangs off an owned table is scoped through its parent, and the user table (UserTable) never shows or takes its password hash (PythonTable leaves it out of
     // the schema), lets only an administrator change the administrator and role columns (403), keeps a sign-in name unique (409) and keeps the last administrator (422).
+    // A table the project lists in LogTables (an insert-only ledger, LogTablePlan) gets the reading routes only (a POST, PUT or DELETE answers 405, there is no clone), its search takes
+    // from and to (the first and the last day, both included) on the timestamp and lists newest first when no sort is chosen: the rules of the ASP.NET API.
     // Full notes: Docs/TemplateNotes/PY_Routes_v1.md
     // ==========================================================================================
 
@@ -27,6 +29,8 @@
     string keyType = kt.Python;
     bool textKey = kt.Kind == KeyKind.Text;
     bool guidKey = kt.Kind == KeyKind.Guid;
+    var logStamp = t.LogStamp;
+    bool log = logStamp is not null;
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
     string Str(string text) => PythonNames.Str(text);
@@ -62,6 +66,8 @@
     Line($"@@@FILE app/routes/{t.Module}.py@@@");
     var clonedDates = new[] { "datetime", "date" }.Where(w => t.Clone?.Any(c => c.Value.StartsWith(w + ".")) == true
         || t.StampedOnNew.Concat(t.StampedOnChange).Any(f => PythonTable.Now(f).StartsWith(w + "."))).ToList();
+    if (log && search)
+        clonedDates = ["date", "datetime", "time", "timedelta"];
     if (clonedDates.Count > 0)
         Line($"from datetime import {string.Join(", ", clonedDates)}");
     if (textKey)
@@ -83,9 +89,10 @@
         sqlalchemy.Add("cast");
         sqlalchemy.Add("String");
     }
-    Line(search ? "from fastapi import APIRouter, Depends, Query, Response" : "from fastapi import APIRouter, Depends, Response");
+    Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search ? ["Query"] : []).Concat(log ? [] : ["Response"])));
     Line($"from sqlalchemy import {string.Join(", ", sqlalchemy.OrderBy(s => s, StringComparer.Ordinal))}");
-    Line("from sqlalchemy.exc import IntegrityError");
+    if (!log)
+        Line("from sqlalchemy.exc import IntegrityError");
     Line("from sqlalchemy.orm import Session");
     Line();
     var authNames = new List<string>();
@@ -122,7 +129,7 @@
     if (t.CloneOverrides.Count > 0)
         support.Add("suggest_free");
     Line($"from app.support import {string.Join(", ", support.OrderBy(s => s, StringComparer.Ordinal))}");
-    if (validate)
+    if (validate && !log)
         Line($"from app.validation.{t.Module} import validate");
     Line();
     Line("router = APIRouter()");
@@ -287,6 +294,11 @@
             Line($"    {f.Field.Name}: str | None = Query(None, alias=\"{f.Query}\"),");
         foreach (var k in t.KeyFilters)
             Line($"    {k.Field.Name}: {k.Field.Annotation} | None = Query(None, alias=\"{k.Query}\"),");
+        if (log)
+        {
+            Line($"    range_from: date | None = Query(None, alias=\"{LogTable.FromParameter}\"),");
+            Line($"    range_to: date | None = Query(None, alias=\"{LogTable.ToParameter}\"),");
+        }
         Line("):");
         Line("    if page_number < 1:");
         Line($"        raise ApiError({HttpStatus.BadRequest}, \"pageNumber must be 1 or greater.\")");
@@ -303,8 +315,19 @@
             Line(k.Field.Annotation == "str" ? $"    if {k.Field.Name}:" : $"    if {k.Field.Name} is not None:");
             Line($"        statement = statement.where({t.Class}.{k.Field.Name} == {k.Field.Name})");
         }
+        if (log)
+        {
+            // SQLite keeps a date and time as text, and a value without a fraction sorts before the same value with one, so both sides go through datetime() there
+            bool sqlite = Model.Dialect == SqlDialect.Sqlite;
+            string Side(string expression) => sqlite ? $"func.datetime({expression})" : expression;
+            Line("    # the first and the last day, both included");
+            Line("    if range_from is not None:");
+            Line($"        statement = statement.where({Side($"{t.Class}.{logStamp!.Name}")} >= {Side("datetime.combine(range_from, time.min)")})");
+            Line("    if range_to is not None:");
+            Line($"        statement = statement.where({Side($"{t.Class}.{logStamp!.Name}")} < {Side("datetime.combine(range_to + timedelta(days=1), time.min)")})");
+        }
         Line("    total_count = session.scalar(select(func.count()).select_from(statement.subquery())) or 0");
-        Line($"    default_order = [{string.Join(", ", t.DefaultOrder.Select(f => $"{t.Class}.{f.Name}"))}]");
+        Line($"    default_order = [{string.Join(", ", t.DefaultOrder.Select(f => $"{t.Class}.{f.Name}" + (log ? ".desc()" : "")))}]");
         Line("    column = SORTS.get(sort_by.lower()) if sort_by and len(sort_by) <= 64 else None");
         Line("    if column is not None:");
         Line("        statement = statement.order_by(column.desc() if (sort_dir or \"\").lower() == \"desc\" else column.asc(), *default_order)");
@@ -325,6 +348,8 @@
     if (scoped)
         Line("    refuse_other_owners(session, user, row)");
     Line("    return row");
+    if (!log)   // a log table has no write routes
+    {
     Line();
     Line();
     Line($"@router.post(\"{t.Route}\", response_model={t.Schema}, status_code={HttpStatus.Created}{writeDepends})");
@@ -458,6 +483,7 @@
             Line($"    after_clone_{t.Module}(session, user, row)");
         Line($"    response.headers[\"Location\"] = f\"{t.Route}/{{row.{key}}}\"");
         Line("    return row");
+    }
     }
     Write(sb.ToString());
 #>

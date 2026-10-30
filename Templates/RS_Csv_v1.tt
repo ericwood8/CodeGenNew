@@ -36,25 +36,32 @@
         "f32" or "f64" or "Decimal" => "Float",
         _ => "Raw"
     };
+    // a table in LogTables is only read (LogTablePlan): its export takes from and to (the first and the last day, both included) on the timestamp, lists newest first and stops at MAX_ROWS, and it has no import
+    bool IsLog(RustTable t) => t.LogStamp is not null;
+    bool anyLog = tables.Any(t => IsLog(t) && t.Model.HasSearchApiOfAnyKey(Project));
+    bool anyImport = tables.Any(t => !IsLog(t));
     // the routes that need the caller: an owned table's two, a gated table's import
     bool NeedsUser(RustTable t) => auth && (OwnedTable.IsScoped(t.Model, Project) || GatePlan.HasRules(Project, t.Model));
 
     Line("@@@FILE src/routes/csv_files.rs@@@");
+    if (!anyImport)
+        Line("#![allow(dead_code, unused_imports)] // every table is a log table: there is no import, so the reading of a file is not used");
     Line("use axum::{");
     Line(auth ? "    Extension, Router," : "    Router,");
     Line("    body::Bytes,");
-    Line("    extract::{DefaultBodyLimit, State},");
+    Line(anyLog ? "    extract::{DefaultBodyLimit, Query, State}," : "    extract::{DefaultBodyLimit, State},");
     Line("    http::{StatusCode, header},");
     Line("    response::{IntoResponse, Response},");
-    Line("    routing::{get, post},");
+    Line(anyImport ? "    routing::{get, post}," : "    routing::get,");
     Line("};");
     if (auth)
         Line("use crate::auth::{CurrentUser, PROBLEM_ROLE_NOT_ALLOWED};");
     foreach (var t in tables)
     {
-        Line($"use crate::models::{t.Module}::{t.Struct};");
+        if (!IsLog(t))
+            Line($"use crate::models::{t.Module}::{t.Struct};");
         Line($"use crate::repos::{t.Module} as {t.Module}_repo;");
-        if (validate)
+        if (validate && !IsLog(t))
             Line($"use crate::validation::{t.Module}::validate as validate_{t.Module};");
     }
     Line(auth || validate ? "use crate::support::{ApiError, ApiResult, Pool};" : "use crate::support::{ApiResult, Pool};");
@@ -104,7 +111,8 @@
     foreach (var t in tables)
     {
         Line($"        .route(\"{t.Route}/export.csv\", get(export_{t.Module}))");
-        Line($"        .route(\"{t.Route}/import\", post(import_{t.Module}))");
+        if (!IsLog(t))
+            Line($"        .route(\"{t.Route}/import\", post(import_{t.Module}))");
     }
     Line("        .layer(DefaultBodyLimit::max(UPLOAD_LIMIT))");
     Line("}");
@@ -115,13 +123,19 @@
         bool owned = auth && OwnedTable.IsScoped(t.Model, Project);
         bool gated = auth && GatePlan.HasRules(Project, t.Model);
         string user = NeedsUser(t) ? ", Extension(user): Extension<CurrentUser>" : "";
-        Line($"async fn export_{t.Module}(State(pool): State<Pool>{(owned ? user : "")}) -> ApiResult<Response> {{");
+        bool log = IsLog(t);
+        Line($"async fn export_{t.Module}(State(pool): State<Pool>{(owned ? user : "")}{(log && t.Model.HasSearchApiOfAnyKey(Project) ? $", Query(query): Query<{t.Module}_repo::SearchQuery>" : "")}) -> ApiResult<Response> {{");
         if (owned)
             Line("    administrator_only(&user)?;");
-        Line($"    let rows = {t.Module}_repo::get_all(&pool).await?;");
+        if (log && t.Model.HasSearchApiOfAnyKey(Project))
+            Line($"    let (rows, _) = {t.Module}_repo::search(&pool, &query, 1, MAX_ROWS as i64{(owned ? $", &{t.Module}_repo::Scoped::All" : "")}).await?;");
+        else
+            Line($"    let rows = {t.Module}_repo::get_all(&pool).await?;");
         Line($"    Ok(export_text(\"{file}\", {t.Module.ToUpperInvariant()}_COLUMNS, &rows))");
         Line("}");
         Line();
+        if (log)
+            continue;
         Line($"async fn import_{t.Module}(State(pool): State<Pool>{user}, body: Bytes) -> ApiResult<Response> {{");
         if (owned || gated)
             Line("    administrator_only(&user)?;");

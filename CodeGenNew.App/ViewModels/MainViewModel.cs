@@ -230,7 +230,8 @@ public partial class MainViewModel : ObservableObject
             var model = await schemaProvider.BuildTableModelAsync(
                 table.SchemaName, table.TableName, template.Config.NeedsRowData, template.Config.NeedsReferencedDisplayColumns);
 
-            var result = await TemplateRunner.RunAsync(template.FilePath, model, project);
+            // a table that looks like a log is listed in LogTables for this run when the person chose the log page or its index script
+            var result = await TemplateRunner.RunAsync(template.FilePath, model, LogTablePlan.ForMenuRun(project, template.Name, model));
             if (!result.Success)
             {
                 StatusMessage = "Template generation failed: " + string.Join(" | ", result.Errors);

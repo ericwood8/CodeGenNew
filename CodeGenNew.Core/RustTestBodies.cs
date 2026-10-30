@@ -46,7 +46,7 @@ public static class RustTestBodies
     public static bool HasDashboardTests(ProjectSettings project) => project.RustTests && project.Dashboard;
 
     /// <summary> The tests of the CSV routes are written when the project has them (ApiCsv) and a table has an API. </summary>
-    public static bool HasCsvTests(DatabaseModel database, ProjectSettings project) => project.RustTests && project.ApiCsv && database.CrudApiTables(project).Count > 0;
+    public static bool HasCsvTests(DatabaseModel database, ProjectSettings project) => project.RustTests && project.ApiCsv && database.CrudApiTables(project).Any(t => RustTable.Of(t, project).LogStamp is null);
 
     /// <summary> The tests of the gates and guards are written when the project names a rule that fits the schema. </summary>
     public static bool HasGateTests(DatabaseModel database, ProjectSettings project)

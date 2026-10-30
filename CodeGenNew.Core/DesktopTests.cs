@@ -43,6 +43,8 @@ public sealed class DesktopTestPlan
         var form = FormModel.For(table, project);
         if (form.KeyColumn is null || form.KeyType is null || (stack == DesktopTestStack.Uno ? UnoNames.Refusal(table, project) : null) is not null)
             return null;
+        if (form.ReadOnly && !form.IsNameActive)
+            return null;   // a table in LogTables has no edit dialog, so there is no view model of one to test
         bool master = DatabaseModel.IsDetailMaster(table, project);
         var refusals = new List<DesktopRefusal>();
         string? required = null;

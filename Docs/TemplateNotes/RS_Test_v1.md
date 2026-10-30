@@ -40,3 +40,5 @@ With `ApiAuth=true` the helper puts a signing key and a bootstrap administrator 
 - A refused row (a `CHECK` the body breaks) is tested only where the validator has a limit.
 - A test that fails before its last line leaves the rows it added in the scratch database.
 - The tests of a gate that moves a column to a value of a foreign key need those parent rows to exist.
+
+A table in `LogTables` gets a test file of its own: the reads, the 405 of a POST, a PUT and a DELETE, and the first and the last day of the search (a day far in the future or the past finds nothing, a date that is not a date is a 400). The CSV test file leaves such a table out.

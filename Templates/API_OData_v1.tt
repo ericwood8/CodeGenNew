@@ -18,7 +18,7 @@
     // Generates: OData.cs   (whole-database; the path is written by the template)
     // The tables ODataPlan selects (OData=true, ODataTables) served as OData v4 under /odata, next to the REST routes, which stay: GET /odata/<set> takes $filter, $orderby, $top, $skip,
     // $count, $select and $expand straight from the URL and reads the context, not the repositories; GET /odata/<set>/{key} (and /odata/<set>(key)), POST, PUT, PATCH and DELETE
-    // write. The limits are ODataMaxTop, ODataPageSize and ODataExpandDepth; a bad query answers 400 problem details. A table whose REST routes enforce a rule these routes do not
+    // write, except for a table in LogTables (an insert-only ledger), which has the two reads only (a write answers 405). The limits are ODataMaxTop, ODataPageSize and ODataExpandDepth; a bad query answers 400 problem details. A table whose REST routes enforce a rule these routes do not
     // yet apply (owner scope, change gates, guarded columns, the user table, DTOs) is left out and named in a comment below. The generated API project needs the Microsoft.AspNetCore.OData
     // package (the Program essentials write the reference when OData=true). Program.cs calls AddGeneratedOData() and app.MapODataEndpoints(). Full notes: Docs/TemplateNotes/API_OData_v1.md
     // ==========================================================================================
@@ -323,7 +323,7 @@ public static partial class ODataEndpoints
         string set = ODataNames.SetName(t.TableName);
         string key = t.PrimaryKeyColumns[0].CSharpName();
 #>
-        MapSet<<#= t.TableName #>, <#= keyType.CSharp #>, <#= contextType #>>(odata, lists, "<#= set #>", "<#= key #>", "<#= keyType.RouteConstraint #>", <#= keyType.Kind == KeyKind.Text ? "true" : "false" #>, [<#= Names(ReadOnlyProperties(t)) #>], <#= ruleTables.Contains(t) ? "new " + t.TableName + "ODataRules()" : "new ODataRules<" + t.TableName + ", " + contextType + ">()" #>);
+        MapSet<<#= t.TableName #>, <#= keyType.CSharp #>, <#= contextType #>>(odata, lists, "<#= set #>", "<#= key #>", "<#= keyType.RouteConstraint #>", <#= keyType.Kind == KeyKind.Text ? "true" : "false" #>, [<#= Names(ReadOnlyProperties(t)) #>], <#= ruleTables.Contains(t) ? "new " + t.TableName + "ODataRules()" : "new ODataRules<" + t.TableName + ", " + contextType + ">()" #><#= LogTablePlan.IsListed(t, Project) ? ", true" : "" #>);
 <#
     }
 #>
@@ -332,7 +332,7 @@ public static partial class ODataEndpoints
         app.MapODataMetadata("<#= ODataNames.Prefix #>/$metadata", Model);
     }
 
-    private static void MapSet<T, TKey, TContext>(RouteGroupBuilder odata, RouteGroupBuilder lists, string set, string keyProperty, string constraint, bool quoted, string[] readOnly, ODataRules<T, TContext> rules)
+    private static void MapSet<T, TKey, TContext>(RouteGroupBuilder odata, RouteGroupBuilder lists, string set, string keyProperty, string constraint, bool quoted, string[] readOnly, ODataRules<T, TContext> rules, bool logOnly = false)
         where T : class where TKey : notnull where TContext : DbContext
     {
         string keyName = JsonNamingPolicy.CamelCase.ConvertName(keyProperty);
@@ -368,6 +368,9 @@ public static partial class ODataEndpoints
                 context.Entry(row).State = EntityState.Detached;
                 return Results.Ok(row);
             })<#= readGate #>;
+
+            if (logOnly)
+                continue;
 
             odata.MapPut(route, async (TContext context, HttpContext http, TKey id, T body) =>
             {
@@ -438,6 +441,9 @@ public static partial class ODataEndpoints
                 return await SaveAsync(context, () => Results.NoContent());
             })<#= roleGate #>;
         }
+
+        if (logOnly)
+            return;
 
         odata.MapPost("/" + set, async (TContext context, HttpContext http, T row) =>
         {

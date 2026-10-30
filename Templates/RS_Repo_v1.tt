@@ -43,11 +43,17 @@
     var activeColumn = t.ActiveField;
 
     Line($"@@@FILE src/repos/{t.Module}.rs@@@");
+    if (t.LogStamp is not null)
+        Line("#![allow(dead_code)] // a log table is only read: its write functions are written but nothing calls them");
     Line($"use crate::models::{t.Module}::{t.Struct};");
     bool lookup = t.LookupSql is not null;
     Line(search || scoped || lookup ? "use crate::support::{Db, Pool};" : "use crate::support::Pool;");
     if ((search && t.Filters.Count > 0) || lookup)
         Line("use crate::support::{escape_like, non_blank};");
+    var logStamp = search ? t.LogStamp : null;   // a table in LogTables: the search takes a first and a last day on the timestamp and lists newest first
+    bool logTime = logStamp is not null && logStamp.BaseType == "NaiveDateTime";
+    if (logStamp is not null)
+        Line(logTime ? "use chrono::{Days, NaiveDate, NaiveTime};" : "use chrono::{Days, NaiveDate};");
     if (search || lookup)
         Line("use serde::Deserialize;");
     if (keyType == "Uuid" || t.KeyFilters.Any(k => k.Type == "Uuid"))
@@ -327,6 +333,13 @@
             Line($"    #[serde(rename = \"{k.Query}\")]");
             Line($"    pub {k.Field}: Option<{k.Type}>,");
         }
+        if (logStamp is not null)
+        {
+            Line($"    #[serde(rename = \"{LogTable.FromParameter}\")]");
+            Line("    pub range_from: Option<NaiveDate>,");
+            Line($"    #[serde(rename = \"{LogTable.ToParameter}\")]");
+            Line("    pub range_to: Option<NaiveDate>,");
+        }
         Line("    #[serde(rename = \"pageNumber\")]");
         Line("    pub page_number: Option<i64>,");
         Line("    #[serde(rename = \"pageSize\")]");
@@ -367,7 +380,17 @@
             }
             Line("    }");
         }
-        if (t.Filters.Count == 0 && t.KeyFilters.Count == 0)
+        if (logStamp is not null)
+        {
+            Line("    // the first and the last day, both included");
+            Line("    if let Some(day) = query.range_from {");
+            Line($"        builder.push({RustTable.Raw(" AND " + t.LogColumn + " >= ")}).push_bind(day{(logTime ? ".and_time(NaiveTime::MIN)" : "")});");
+            Line("    }");
+            Line("    if let Some(day) = query.range_to {");
+            Line($"        builder.push({RustTable.Raw(" AND " + t.LogColumn + " < ")}).push_bind((day + Days::new(1)){(logTime ? ".and_time(NaiveTime::MIN)" : "")});");
+            Line("    }");
+        }
+        if (t.Filters.Count == 0 && t.KeyFilters.Count == 0 && logStamp is null)
             Line("    let _ = (builder, query);");
         Line("}");
         Line();

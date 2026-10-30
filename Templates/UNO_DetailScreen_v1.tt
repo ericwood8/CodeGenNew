@@ -64,6 +64,10 @@
     {
         Error($"UNO_DetailScreen needs a table with a single int, uniqueidentifier or text primary key, but [{Model.SchemaName}].[{Model.TableName}] is not one.");
     }
+    else if (form.ReadOnly && !isNameActive)
+    {
+        // a table in LogTables is only read: its list opens a read-only view of a row, so there is no dialog to edit one (DesktopRowView)
+    }
     else
     {
         string table = Model.TableName;

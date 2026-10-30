@@ -16,6 +16,8 @@
     // With ApiAuth=true (the Jwt group's src/auth.rs) a table listed in OwnedTables shows and changes only the rows of the owner the caller may act for (403 for another owner's row, the same rule as
     // the ASP.NET API), a table that hangs off an owned table is scoped through its parent, and the user table (UserTable) never shows or takes its password hash (the struct skips it in JSON, the
     // repository never writes it), lets only an administrator change the administrator and role columns (403), keeps a sign-in name unique (409) and keeps the last administrator (422).
+    // A table the project lists in LogTables (an insert-only ledger, LogTablePlan) gets the reading routes only (a POST, PUT or DELETE answers 405, there is no clone), its search takes
+    // from and to (the first and the last day, both included) on the timestamp and lists newest first when no sort is chosen: the rules of the ASP.NET API.
     // Full notes: Docs/TemplateNotes/RS_Routes_v1.md
     // ==========================================================================================
 
@@ -26,6 +28,7 @@
     var kind = KeyType.Of(Model)!.Kind;
     bool textKey = kind == KeyKind.Text;
     bool guidKey = kind == KeyKind.Guid;
+    bool log = t.LogStamp is not null;
     string idArg = textKey ? "&id" : "id";   // a text key is passed by reference
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
@@ -38,7 +41,7 @@
     // ReadRoles and WriteRoles: the routes refuse a role the table's rules do not list (the administrator role is always listed); the lookup stays open
     var readRoles = WriteRolePlan.ReadFor(Project, Model);
     var writeRoles = WriteRolePlan.For(Project, Model);
-    bool roles = readRoles.Count > 0 || writeRoles.Count > 0;
+    bool roles = readRoles.Count > 0 || (!log && writeRoles.Count > 0);
     string readLayer = readRoles.Count > 0 ? ".route_layer(middleware::from_fn(|request, next| check_roles(READ_ROLES, false, request, next)))" : "";
     string writeLayer = writeRoles.Count > 0 ? ".route_layer(middleware::from_fn(|request, next| check_roles(WRITE_ROLES, true, request, next)))" : "";
     RustField? FieldOf(ColumnModel? column) => column is null ? null : t.Fields.FirstOrDefault(f => f != t.HashField && f.Column.Name.EqualsIgnoreCase(column.Name));
@@ -64,9 +67,12 @@
     Line("use axum::{");
     Line(userArgument.Length > 0 ? "    Extension, Json, Router," : "    Json, Router,");
     Line(search || t.LookupSql is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
-    Line("    http::StatusCode,");
-    Line("    response::Response,");
-    Line(roles ? (t.Clone is not null ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (t.Clone is not null ? "    routing::{get, post}," : "    routing::get,"));
+    if (!log)
+    {
+        Line("    http::StatusCode,");
+        Line("    response::Response,");
+    }
+    Line(log ? "    routing::get," : roles ? (t.Clone is not null ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (t.Clone is not null ? "    routing::{get, post}," : "    routing::get,"));
     if (roles)
         Line("    middleware,");
     Line("};");
@@ -78,10 +84,10 @@
         Line("use crate::auth::{PROBLEM_COLUMN_NOT_YOURS, PROBLEM_DUPLICATE_VALUE, PROBLEM_LAST_ADMINISTRATOR};");
     Line($"use crate::models::{t.Module}::{t.Struct};");
     Line($"use crate::repos::{t.Module} as repo;");
-    Line(textKey ? "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created, path_segment};" : "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
-    if (validate)
+    Line(log ? "use crate::support::{ApiError, ApiResult, Pool};" : textKey ? "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created, path_segment};" : "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
+    if (validate && !log)
         Line($"use crate::validation::{t.Module}::validate;");
-    if (gated)
+    if (gated && !log)
         Line($"use crate::routes::gates::{{after_clone_{t.Module}, check_{t.Module}}};");
     if (search)
         Line("use serde::Serialize;");
@@ -90,7 +96,7 @@
     Line();
     if (readRoles.Count > 0)
         Line($"const READ_ROLES: &[&str] = &[{WriteRolePlan.Literal(readRoles)}];");
-    if (writeRoles.Count > 0)
+    if (writeRoles.Count > 0 && !log)
         Line($"const WRITE_ROLES: &[&str] = &[{WriteRolePlan.Literal(writeRoles)}];");
     if (roles)
         Line();
@@ -100,25 +106,27 @@
     {
         // a layer applies to every method of the route it is put on, so the reading and the writing methods are separate routes of the same path
         Line($"        .route(\"{t.Route}\", get(get_all){readLayer})");
-        Line($"        .route(\"{t.Route}\", MethodRouter::new().post(create){writeLayer})");
+        if (!log)
+            Line($"        .route(\"{t.Route}\", MethodRouter::new().post(create){writeLayer})");
         if (search)
             Line($"        .route(\"{t.Route}/search\", get(search){readLayer})");
         if (t.LookupSql is not null)
             Line($"        .route(\"{t.Route}/lookup\", get(lookup))");
         Line($"        .route(\"{t.Route}/{{id}}\", get(get_by_id){readLayer})");
-        Line($"        .route(\"{t.Route}/{{id}}\", MethodRouter::new().put(update).delete(delete){writeLayer})");
-        if (t.Clone is not null)
+        if (!log)
+            Line($"        .route(\"{t.Route}/{{id}}\", MethodRouter::new().put(update).delete(delete){writeLayer})");
+        if (t.Clone is not null && !log)
             Line($"        .route(\"{t.Route}/{{id}}/clone\", post(clone_row){writeLayer})");
     }
     else
     {
-        Line($"        .route(\"{t.Route}\", get(get_all).post(create))");
+        Line(log ? $"        .route(\"{t.Route}\", get(get_all))" : $"        .route(\"{t.Route}\", get(get_all).post(create))");
         if (search)
             Line($"        .route(\"{t.Route}/search\", get(search))");
         if (t.LookupSql is not null)
             Line($"        .route(\"{t.Route}/lookup\", get(lookup))");
-        Line($"        .route(\"{t.Route}/{{id}}\", get(get_by_id).put(update).delete(delete))");
-        if (t.Clone is not null)
+        Line(log ? $"        .route(\"{t.Route}/{{id}}\", get(get_by_id))" : $"        .route(\"{t.Route}/{{id}}\", get(get_by_id).put(update).delete(delete))");
+        if (t.Clone is not null && !log)
             Line($"        .route(\"{t.Route}/{{id}}/clone\", post(clone_row))");
     }
     Line("}");
@@ -252,6 +260,8 @@
         Line($"    repo::get_by_id(&pool, {idArg}).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");
     Line();
+    if (!log)   // a log table has no write routes
+    {
     Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
     if (validate)
     {
@@ -365,6 +375,7 @@
             Line($"    after_clone_{t.Module}(&pool, &user, &mut copy).await?;");
         Line($"    Ok(created(format!(\"{t.Route}/{{}}\", copy.{t.Key.Name}), copy))");
         Line("}");
+    }
     }
     if (search)
     {

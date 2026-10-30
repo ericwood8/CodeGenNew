@@ -201,8 +201,14 @@ public sealed class RustTable
     private static string BareType(RustField field) => field.IsOption && field.Type.StartsWith("Option<") ? field.Type["Option<".Length..^1] : field.Type;
     public IReadOnlyList<RustSort> Sorts { get; private set; } = [];
 
-    /// <summary> The order that applies without a sort and follows a chosen one: the best display column, then the key. </summary>
+    /// <summary> The order that applies without a sort and follows a chosen one: the best display column, then the key (a log table: the timestamp, then the key, newest first). </summary>
     public string DefaultOrder { get; private set; } = "";
+
+    /// <summary> The timestamp field of a table in <c>LogTables</c> (an insert-only ledger the API only reads: no write routes, a date range, newest first); null for any other table. </summary>
+    public RustField? LogStamp { get; private set; }
+
+    /// <summary> The timestamp column as the search statement names it: <c>t."LoggedOn"</c>. Empty for a table that is not a log. </summary>
+    public string LogColumn => LogStamp is null ? "" : "t." + _di.Quote(LogStamp.Column.DbName);
 
     /// <summary> The statement behind <c>GET &lt;route&gt;/lookup</c>, the list the drop-downs and the "name of" columns of other screens read: <c>id</c>, <c>name</c> (the display column as text, blank when null)
     /// and <c>is_active</c> (the IsActive flag, null when the table has none) of every row, ordered by name. Null when the table has no display column. </summary>
@@ -322,7 +328,9 @@ public sealed class RustTable
 
     private void BuildSearch(ProjectSettings project)
     {
-        var plan = SearchPlan.For(Model, []);
+        var log = LogTablePlan.For(Model, project);
+        var plan = SearchPlan.For(Model, [], log);
+        LogStamp = log is not null && _fieldOf.TryGetValue(log.Timestamp, out var stamp) ? stamp : null;
         string from = $"{Table} AS t";
         SearchItems = $"SELECT {SelectList} FROM {from} WHERE 1 = 1";
         SearchCount = $"SELECT COUNT(*) FROM {from} WHERE 1 = 1";
@@ -349,7 +357,7 @@ public sealed class RustTable
                 return new RustSort(e.Name.ToLowerInvariant(), expression);
             }).ToList();
 
-        DefaultOrder = string.Join(", ", plan.DefaultOrder.Select(c => "t." + _di.Quote(c.DbName)));
+        DefaultOrder = string.Join(", ", plan.DefaultOrder.Select(c => "t." + _di.Quote(c.DbName) + (log is null ? "" : " DESC")));
     }
 
     private void BuildLookup()

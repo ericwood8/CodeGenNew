@@ -67,6 +67,22 @@ public static class BlazorLogTests
         L("        CollectionAssert.DoesNotContain(labels, \"Delete\");");
         L("        Assert.IsEmpty(page.FindAll(\"[role=dialog]\"));");
         L("    }");
+        if (row is not null)
+        {
+            L();
+            L("    [TestMethod]");
+            L("    public void View_shows_the_row_read_only_in_a_dialog_and_Close_hides_it()");
+            L("    {");
+            L("        var page = Open();");
+            L("        page.WaitForAssertion(() => Assert.IsTrue(page.FindAll(\"button\").Any(b => b.TextContent.Trim() == \"View\")));");
+            L("        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"View\").Click();");
+            L("        var dialog = page.Find(\"[role=dialog]\");");
+            L($"        StringAssert.Contains(dialog.TextContent, \"{row.Marker}\");");
+            L("        Assert.IsEmpty(dialog.QuerySelectorAll(\"input, textarea, select\"));");
+            L("        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Close\").Click();");
+            L("        Assert.IsEmpty(page.FindAll(\"[role=dialog]\"));");
+            L("    }");
+        }
         L();
         L("    [TestMethod]");
         L("    public void Sends_the_first_and_the_last_day_when_it_searches_and_Clear_drops_them()");
