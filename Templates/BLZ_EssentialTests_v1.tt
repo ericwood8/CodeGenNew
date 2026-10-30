@@ -99,6 +99,8 @@ public class FakeApi : HttpMessageHandler
         string path = request.RequestUri!.AbsolutePath;
         string body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
         Requests.Add((request.Method, request.RequestUri.PathAndQuery, body));
+        if (request.Method == HttpMethod.Post && path.EndsWith("/auth/login", StringComparison.OrdinalIgnoreCase) && writeFailures.TryGetValue((HttpMethod.Post, "/auth/login"), out var refused))
+            return new HttpResponseMessage(refused);
         if (request.Method == HttpMethod.Post && path.EndsWith("/auth/login", StringComparison.OrdinalIgnoreCase))
             return Json("{ \"token\": \"abc\", \"expiresUtc\": \"2999-01-01T00:00:00Z\", \"user\": { \"name\": \"Pat\", \"role\": \"" + Role + "\", \"ownerId\": null } }");
         if (request.Method != HttpMethod.Get)
@@ -210,6 +212,116 @@ public class DashboardPageTests : PageTestContext
         Api.Fail("/api/dashboard", HttpStatusCode.InternalServerError);
         var page = Render<Dashboard>();
         page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "Failed to load the dashboard."));
+    }
+}
+<#
+    }
+    if (Project.BlazorTests && TenantPlan.HasSwitcher(Project))
+    {
+        string ns3 = BlazorNames.Namespace(Project);
+#>
+@@@FILE TenantSwitcherTests.cs@@@
+using Bunit;
+using Bunit.TestDoubles;
+using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
+using System.Net;
+using <#= ns3 #>.Components;
+using <#= ns3 #>.Pages;
+using <#= ns3 #>.Services;
+
+namespace <#= ns3 #>.Tests;
+
+[TestClass]
+public class TenantSwitcherTests : PageTestContext
+{
+    private const string Acme = """{ "id": 1, "text": "Acme", "role": "Administrator", "current": true }""";
+    private const string Globex = """{ "id": 2, "text": "Globex", "role": "Employee", "current": false }""";
+
+    [TestMethod]
+    public void Shows_the_name_of_the_only_tenant_without_a_choice()
+    {
+        Api.Answer("/api/auth/tenants", "[" + Acme + "]");
+        SignIn("Tester");
+        var page = Render<TenantSwitcher>();
+        page.WaitForAssertion(() => Assert.AreEqual("Acme", page.Find("span.tenant").TextContent));
+        Assert.IsEmpty(page.FindAll("select"));
+    }
+
+    [TestMethod]
+    public void Offers_a_drop_down_with_the_current_tenant_chosen_when_the_person_belongs_to_several()
+    {
+        Api.Answer("/api/auth/tenants", "[" + Acme + "," + Globex + "]");
+        SignIn("Tester");
+        var page = Render<TenantSwitcher>();
+        page.WaitForAssertion(() => Assert.HasCount(2, page.FindAll("select.tenant option")));
+        Assert.IsTrue(page.Find("option[value='1']").HasAttribute("selected"));
+        Assert.IsFalse(page.Find("option[value='2']").HasAttribute("selected"));
+    }
+
+    [TestMethod]
+    public void Asks_for_a_token_for_the_chosen_tenant_keeps_it_and_loads_the_app_again()
+    {
+        Api.Answer("/api/auth/tenants", "[" + Acme + "," + Globex + "]");
+        Api.AnswerWrite(HttpMethod.Post, "/auth/switch-tenant", """{ "token": "def", "expiresUtc": "2999-01-01T00:00:00Z", "user": { "name": "Pat", "role": "Employee", "ownerId": null, "tenantId": 2 } }""");
+        SignIn("Tester");
+        var page = Render<TenantSwitcher>();
+        page.WaitForAssertion(() => Assert.HasCount(2, page.FindAll("select.tenant option")));
+
+        page.Find("select.tenant").Change("2");
+
+        var session = Services.GetRequiredService<AuthSession>();
+        page.WaitForAssertion(() => Assert.AreEqual("def", session.Token));
+        Assert.AreEqual(2, session.User!.TenantId);
+        Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Post && r.Path.EndsWith("/auth/switch-tenant") && r.Body.Contains("\"tenantId\":2")));
+        Assert.IsTrue(((BunitNavigationManager)Services.GetRequiredService<NavigationManager>()).History.Any(h => h.Options.ForceLoad));
+    }
+
+    [TestMethod]
+    public void Shows_nothing_when_the_API_has_no_tenants_route()
+    {
+        Api.Fail("/api/auth/tenants", HttpStatusCode.NotFound);
+        SignIn("Tester");
+        var page = Render<TenantSwitcher>();
+        Assert.AreEqual("", page.Markup.Trim());
+    }
+}
+
+[TestClass]
+public class TenantSignInTests : PageTestContext
+{
+    private IRenderedComponent<Login> Fill(string? tenant)
+    {
+        var page = Render<Login>();
+        page.Find("#userName").Input("pat");
+        page.Find("#password").Input("secret");
+        if (tenant is not null)
+            page.Find("#tenant").Input(tenant);
+        page.Find("form").Submit();
+        return page;
+    }
+
+    [TestMethod]
+    public void Posts_the_tenant_that_is_typed_beside_the_name_and_password()
+    {
+        Fill("2");
+        Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Post && r.Path.EndsWith("/auth/login") && r.Body.Contains("\"tenantId\":2")));
+    }
+
+    [TestMethod]
+    public void Names_no_tenant_when_the_box_is_empty()
+    {
+        Fill(null);
+        var login = Api.Requests.Single(r => r.Path.EndsWith("/auth/login"));
+        Assert.IsFalse(login.Body.Contains("tenantId"));
+    }
+
+    [TestMethod]
+    public void Says_the_tenant_is_not_one_of_theirs_on_a_403()
+    {
+        Api.FailWrite(HttpMethod.Post, "/auth/login", HttpStatusCode.Forbidden);
+        var page = Fill("3");
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "<#= TenantWords.SignInRefused #>"));
     }
 }
 <#

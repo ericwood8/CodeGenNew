@@ -1,0 +1,17 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // SP_TenantIndex_v1.tt
+    // Generates: TenantIndexes.sql   (see OutputName in SP_TenantIndex_v1.tt.config)
+    // For a multi-tenant project (TenantTable): every unique index of a tenant-owned table that leaves the tenant column out (UNIQUE (Name) refuses the second tenant's equal name) is dropped and made
+    // again with the tenant column first, (TenantId, Name), in the dialect of the source database. The primary key and the tenant table are not touched. Writes nothing when no index needs the change.
+    // Review it, try it on a copy and run it yourself: codegen never applies it.
+    // Full notes: Docs/TemplateNotes/SP_TenantIndex_v1.md
+    // ==========================================================================================
+    string script = TenantIndexPlan.Script(Database, Project);
+    if (script.Length > 0)
+        Write(script);
+#>

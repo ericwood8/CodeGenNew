@@ -13,3 +13,6 @@ The statements are SQLAlchemy Core over the database's own table and column name
 `PY_Mod` lists the router. `ReadRoles` and `WriteRoles` rules of the junction table apply to the list and to link and unlink. Rows are not scoped by `OwnedTables`, as in `API_Junction`.
 
 Settings: none of its own. `Requires=PrimaryKey,JunctionTable`, `NeedsReferencedDisplayColumns=true`, `Stacks=Python`, `PlanTables=Junction`.
+
+
+**Tenants.** With `TenantTable` and `ApiAuth` the routes need the signed-in caller: the list answers 404 unless the anchor row is one the caller can see and shows only the target rows of the caller's tenant, and a link or unlink answers 404 unless both rows are visible. A table counts as tenant-owned by `TENANT_OWNED` in `tenancy.py`.

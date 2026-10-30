@@ -1,0 +1,22 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestTenants_v1.tt
+    // Generates: tests/api/tenant_support.rs and tests/api/tenant_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // tenant_support.rs finds the first two active tenants of the scratch database: the tokens of every test work in the first (an administrator of it), and the second is the tenant the isolation tests
+    // reach for. tenant_routes.rs plays the tenant table (a caller reads their own tenant and no other, only a platform administrator creates one, none is deleted, no token is a 401) and the
+    // tenant-owned tables with a Name and an IsActive column (RS_Test covers neither): the name is trimmed, may not be empty, may not repeat among the active rows of one tenant, and another tenant's row is not reached.
+    // The isolation cases of the other tenant-owned tables are part of their RS_Test module. tenant_routes.rs also plays the dashboard and the junction tables with a tenant-owned side in a tenant it makes
+    // (what the query filter does not reach; the approvals are in approval_routes.rs), and holds make_tenant and remove_tenant.
+    // Written only for a project with RustTests=true, ApiAuth=true and TenantTable. Needs Client of tests/api/test_support.rs (RS_EssentialTests); RS_TestBodies lists the modules.
+    // Full notes: Docs/TemplateNotes/API_Tenants_v1.md
+    // ==========================================================================================
+    if (RustTenantTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/api/tenant_support.rs@@@\n" + RustTenantTests.SupportFile(Database, Project));
+        Write("@@@FILE tests/api/tenant_routes.rs@@@\n" + RustTenantTests.RoutesFile(Database, Project));
+    }
+#>

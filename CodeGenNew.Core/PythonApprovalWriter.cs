@@ -26,17 +26,22 @@ public static class PythonApprovalWriter
             sqlImport = "literal, or_, select, update";
         }
         var specs = new StringBuilder();
+        bool tenanted = false;
         foreach (var t in plan.Tables)
         {
             var main = PythonTable.Of(t.Table, project);
+            var owned = TenantPlan.HasApiTenancy(project) ? TenantPlan.OwnedBy(t.Table, project) : null;
+            tenanted |= owned is not null;
             var side = PythonTable.Of(t.Side, project);
             imports.Add($"from app.models.{main.Module} import {main.Class}");
             imports.Add($"from app.models.{side.Module} import {side.Class}");
             specs.Append($"    ApprovalSpec(\n        table=\"{t.Table.TableName}\", route=\"{main.Route}\", row={main.Class}, row_key={main.Class}.{main.Key.Name}, side={side.Class},\n" +
                 $"        id=\"{Attr(t.Side, t.SideKey)}\", link=\"{Attr(t.Side, t.Link)}\", status=\"{Attr(t.Side, t.Status)}\", revision=\"{Attr(t.Side, t.Revision)}\", reason=\"{Attr(t.Side, t.Reason)}\",\n" +
                 $"        requested_by=\"{Attr(t.Side, t.RequestedBy)}\", requested_on=\"{Attr(t.Side, t.RequestedOn)}\", decided_by=\"{Attr(t.Side, t.DecidedBy)}\", decided_on=\"{Attr(t.Side, t.DecidedOn)}\",\n" +
-                $"        decision_note=\"{Attr(t.Side, t.DecisionNote)}\",\n    ),\n");
+                $"        decision_note=\"{Attr(t.Side, t.DecisionNote)}\",\n" + (owned is null ? "" : $"        tenant={main.Class}.{main.FieldOf(owned.Column).Name},\n") + "    ),\n");
         }
+        if (tenanted)
+            imports.Add("from app.routes.tenancy import only_tenant");
         string adminSelect = user.Admin is { } adminColumn ? $"{userTable.Class}.{Attr(user.Table, adminColumn)}" : "literal(False)";
         string text = Template;
         foreach (var (token, value) in new (string, string)[]
@@ -161,6 +166,7 @@ class ApprovalSpec:
     decided_by: str
     decided_on: str
     decision_note: str
+    tenant: Any = None
 
     def col(self, name: str) -> Any:
         return getattr(self.side, getattr(self, name))
@@ -220,6 +226,17 @@ def view(spec: ApprovalSpec, cycle: Any) -> ApprovalView:
         decidedBy=spec.get(cycle, "decided_by"), decidedOn=spec.get(cycle, "decided_on"), decisionNote=spec.get(cycle, "decision_note"))
 
 
+def visible(spec: ApprovalSpec, user: CurrentUser) -> Any:
+    """The keys of the rows the caller may reach: a tenant-owned table shows only the caller's tenant's rows (the side table has no tenant column of its own)."""
+    keys = select(spec.row_key)
+    return keys if spec.tenant is None else only_tenant(keys, spec.tenant, user)
+
+
+def require_row(session: Session, user: CurrentUser, spec: ApprovalSpec, row_id: int) -> None:
+    if spec.tenant is not None and session.scalar(visible(spec, user).where(spec.row_key == row_id)) is None:
+        raise ApiError(§NOTFOUND, "Not found.")
+
+
 def latest(session: Session, spec: ApprovalSpec, row_id: int) -> Any:
     return session.scalars(select(spec.side).where(spec.col("link") == row_id).order_by(spec.col("revision").desc())).first()
 
@@ -231,7 +248,7 @@ def validate(session: Session, spec: ApprovalSpec, row_id: int, action: str, per
 
 def request_approval(session: Session, user: CurrentUser, spec: ApprovalSpec, row_id: int, body: ApprovalNote | None) -> ApprovalView:
     person = require_person(session, user)
-    if session.scalar(select(spec.row_key).where(spec.row_key == row_id)) is None:
+    if session.scalar(visible(spec, user).where(spec.row_key == row_id)) is None:
         raise ApiError(§NOTFOUND, "Not found.")
     current = latest(session, spec, row_id)
     if current is not None and spec.get(current, "status") == PENDING:
@@ -250,6 +267,7 @@ def request_approval(session: Session, user: CurrentUser, spec: ApprovalSpec, ro
 
 def decide(session: Session, user: CurrentUser, spec: ApprovalSpec, row_id: int, body: ApprovalNote | None, approve: bool) -> ApprovalView:
     person = require_approver(session, user, spec)
+    require_row(session, user, spec, row_id)
     current = latest(session, spec, row_id)
     if current is None or spec.get(current, "status") != PENDING:
         raise wrong_state(§W_NOTHING)
@@ -273,6 +291,7 @@ def decide(session: Session, user: CurrentUser, spec: ApprovalSpec, row_id: int,
 
 def withdraw(session: Session, user: CurrentUser, spec: ApprovalSpec, row_id: int) -> ApprovalView:
     person = require_person(session, user)
+    require_row(session, user, spec, row_id)
     current = latest(session, spec, row_id)
     if current is None or spec.get(current, "status") != PENDING:
         raise wrong_state(§W_NOTHING)
@@ -292,11 +311,15 @@ def withdraw(session: Session, user: CurrentUser, spec: ApprovalSpec, row_id: in
 
 def to_approve(session: Session, user: CurrentUser, spec: ApprovalSpec) -> list[ApprovalView]:
     person = require_approver(session, user, spec)
-    waiting = session.scalars(select(spec.side).where(spec.col("status") == PENDING, spec.col("requested_by") != person.name).order_by(spec.col("requested_on"))).all()
+    query = select(spec.side).where(spec.col("status") == PENDING, spec.col("requested_by") != person.name)
+    if spec.tenant is not None:
+        query = query.where(spec.col("link").in_(visible(spec, user)))
+    waiting = session.scalars(query.order_by(spec.col("requested_on"))).all()
     return [view(spec, cycle) for cycle in waiting]
 
 
-def history(session: Session, spec: ApprovalSpec, row_id: int) -> list[ApprovalView]:
+def history(session: Session, user: CurrentUser, spec: ApprovalSpec, row_id: int) -> list[ApprovalView]:
+    require_row(session, user, spec, row_id)
     cycles = session.scalars(select(spec.side).where(spec.col("link") == row_id).order_by(spec.col("revision").desc())).all()
     return [view(spec, cycle) for cycle in cycles]
 
@@ -313,7 +336,7 @@ def add_routes(spec: ApprovalSpec) -> None:
 
     @router.get(spec.route + "/{id}/approvals", response_model=list[ApprovalView], name=spec.table + "Approvals")
     def history_route(id: int, session: Session = Depends(get_session), user: CurrentUser = Depends(require_user)):
-        return history(session, spec, id)
+        return history(session, user, spec, id)
 
     @router.post(spec.route + "/{id}/request", response_model=ApprovalView, name=spec.table + "Request")
     def request_route(id: int, body: ApprovalNote | None = None, session: Session = Depends(get_session), user: CurrentUser = Depends(require_user)):

@@ -33,22 +33,37 @@
     var ownerColumn = auth ? OwnedTable.OwnerColumn(Model, Project) : null;
     var ownerLink = auth ? OwnedTable.Through(Model, Project) : null;
     var userPlan = auth ? UserTable.PlanOf(Model, Project) : null;
+    // TenantTable (src/tenancy.rs): the filter of the tenant column (the key of the tenant table itself) joins the owner scope in the filtering functions
+    var tenantOwned = RustTenantWriter.Applies(Project) ? TenantPlan.OwnedBy(Model, Project) : null;
+    bool tenantTable = RustTenantWriter.Applies(Project) && TenantPlan.IsTenantTable(Model, Project);
+    bool tenanted = tenantOwned is not null || tenantTable;
     var qd = DialectInfo.For(Model.Dialect);
     RustField? FieldOf(ColumnModel? column) => column is null ? null : t.Fields.FirstOrDefault(f => f != t.HashField && f.Column.Name.EqualsIgnoreCase(column.Name));
     var ownerField = FieldOf(ownerColumn);
     var linkField = ownerLink is null ? null : t.Fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(ownerLink.ForeignKey));
     bool scoped = ownerField is not null || (ownerColumn is null && linkField is not null);
     var scopeField = ownerField ?? linkField;
+    // a table with a Name and an IsActive column (NameActivePlan): the list by name, the active list, find by name and the duplicate-name test
+    var nameActive = NameActivePlan.For(Model, Project);
+    bool filtered = scoped || tenanted || nameActive is not null;
+    string activeTest = nameActive is null ? "" : $"t.{qd.Quote(nameActive.Active.DbName)} = {qd.BooleanLiteral(true)}";
+    string nameColumn = nameActive is null ? "" : $"t.{qd.Quote(nameActive.Name.DbName)}";
+    string tenantColumn = tenantTable ? qd.Quote(t.Key.Column.DbName) : tenantOwned is null ? "" : qd.Quote(tenantOwned.Column.DbName);
+    string filterParameters = (scoped ? ", scope: &Scoped" : "") + (tenanted ? ", tenancy: &Tenancy" : "");
     var adminColumn = FieldOf(userPlan?.Admin);
     var activeColumn = t.ActiveField;
 
     Line($"@@@FILE src/repos/{t.Module}.rs@@@");
     if (t.LogStamp is not null)
         Line("#![allow(dead_code)] // a log table is only read: its write functions are written but nothing calls them");
+    else if (tenantTable)
+        Line("#![allow(dead_code)] // a tenant is never deleted: delete is written but nothing calls it");
     Line($"use crate::models::{t.Module}::{t.Struct};");
     bool lookup = t.LookupSql is not null;
-    Line(search || scoped || lookup ? "use crate::support::{Db, Pool};" : "use crate::support::Pool;");
-    if ((search && t.Filters.Count > 0) || lookup)
+    Line(search || filtered || lookup ? "use crate::support::{Db, Pool};" : "use crate::support::Pool;");
+    if (tenanted)
+        Line("use crate::tenancy::Tenancy;");
+    if ((search && t.Filters.Count > 0) || lookup || nameActive is not null)
         Line("use crate::support::{escape_like, non_blank};");
     var logStamp = search ? t.LogStamp : null;   // a table in LogTables: the search takes a first and a last day on the timestamp and lists newest first
     bool logTime = logStamp is not null && logStamp.BaseType == "NaiveDateTime";
@@ -58,11 +73,11 @@
         Line("use serde::Deserialize;");
     if (keyType == "Uuid" || t.KeyFilters.Any(k => k.Type == "Uuid"))
         Line("use uuid::Uuid;");
-    if (search || scoped || lookup)
+    if (search || filtered || lookup)
         Line("use sqlx::QueryBuilder;");
     Line();
-    if (scoped)
-        Line("#[allow(dead_code)] // a caller sees the rows of its owners only: get_all_scoped");
+    if (filtered)
+        Line("#[allow(dead_code)] // a caller sees the rows of its owners or its tenant only: get_all_scoped");
     Line($"const SELECT_ALL: &str = {RustTable.Raw(t.SelectAll)};");
     Line($"const SELECT_ONE: &str = {RustTable.Raw(t.SelectOne)};");
     Line($"const INSERT: &str = {RustTable.Raw(t.Insert)};");
@@ -77,7 +92,7 @@
     }
     if (lookup)
         Line($"const LOOKUP_BASE: &str = {RustTable.Raw(t.LookupBase)};");
-    if (scoped)
+    if (filtered)
         Line($"const SCOPED_BASE: &str = {RustTable.Raw($"SELECT {t.SelectList} FROM {t.Table} AS t WHERE 1 = 1")};");
     if (userPlan is not null)
     {
@@ -94,7 +109,7 @@
     }
     Line();
 
-    if (scoped)
+    if (filtered)
         Line("#[allow(dead_code)]");
     Line($"pub async fn get_all(pool: &Pool) -> Result<Vec<{t.Struct}>, sqlx::Error> {{");
     Line($"    sqlx::query_as::<_, {t.Struct}>(SELECT_ALL).fetch_all(pool).await");
@@ -187,12 +202,61 @@
         Line("    }");
         Line("}");
         Line();
-        Line($"pub async fn get_all_scoped(pool: &Pool, scope: &Scoped) -> Result<Vec<{t.Struct}>, sqlx::Error> {{");
-        Line("    let mut builder = QueryBuilder::<Db>::new(SCOPED_BASE);");
-        Line("    apply_scope(&mut builder, scope);");
-        Line($"    builder.push({RustTable.Raw($" ORDER BY t.{qd.Quote(t.Key.Column.DbName)}")});");
-        Line($"    builder.build_query_as::<{t.Struct}>().fetch_all(pool).await");
-        Line("}");
+    }
+    if (filtered)
+    {
+        Line();
+        if (nameActive is null)
+        {
+            Line($"pub async fn get_all_scoped(pool: &Pool{filterParameters}) -> Result<Vec<{t.Struct}>, sqlx::Error> {{");
+            Line("    let mut builder = QueryBuilder::<Db>::new(SCOPED_BASE);");
+            if (scoped)
+                Line("    apply_scope(&mut builder, scope);");
+            if (tenanted)
+                Line($"    tenancy.apply(&mut builder, {RustTable.Raw("t." + tenantColumn)});");
+            Line($"    builder.push({RustTable.Raw($" ORDER BY t.{qd.Quote(t.Key.Column.DbName)}")});");
+            Line($"    builder.build_query_as::<{t.Struct}>().fetch_all(pool).await");
+            Line("}");
+        }
+        else
+        {
+            Line("/// The rows by name: every row, or only the active ones" + (tenanted ? ", of the tenants the caller may see" : "") + ".");
+            Line($"pub async fn get_named(pool: &Pool, active_only: bool{(tenanted ? ", tenancy: &Tenancy" : "")}) -> Result<Vec<{t.Struct}>, sqlx::Error> {{");
+            Line("    let mut builder = QueryBuilder::<Db>::new(SCOPED_BASE);");
+            Line("    if active_only {");
+            Line($"        builder.push({RustTable.Raw(" AND " + activeTest)});");
+            Line("    }");
+            if (tenanted)
+                Line($"    tenancy.apply(&mut builder, {RustTable.Raw("t." + tenantColumn)});");
+            Line($"    builder.push({RustTable.Raw($" ORDER BY {nameColumn}")});");
+            Line($"    builder.build_query_as::<{t.Struct}>().fetch_all(pool).await");
+            Line("}");
+            Line();
+            Line("/// The active rows whose name contains the text, ignoring case.");
+            Line($"pub async fn find_by_name(pool: &Pool, text: &str{(tenanted ? ", tenancy: &Tenancy" : "")}) -> Result<Vec<{t.Struct}>, sqlx::Error> {{");
+            Line("    let mut builder = QueryBuilder::<Db>::new(SCOPED_BASE);");
+            Line($"    builder.push({RustTable.Raw(" AND " + activeTest)});");
+            var (containsBefore, containsAfter) = qd.ContainsParts(nameColumn);
+            Line($"    builder.push({RustTable.Raw(" AND " + containsBefore)}).push_bind(escape_like(text)).push({RustTable.Raw(containsAfter)});");
+            if (tenanted)
+                Line($"    tenancy.apply(&mut builder, {RustTable.Raw("t." + tenantColumn)});");
+            Line($"    builder.push({RustTable.Raw($" ORDER BY {nameColumn}")});");
+            Line($"    builder.build_query_as::<{t.Struct}>().fetch_all(pool).await");
+            Line("}");
+            Line();
+            Line("/// True when an active row other than `key` already has the name" + (tenantOwned is not null ? " (among the rows the tenancy shows)" : "") + ".");
+            Line($"pub async fn name_taken(pool: &Pool, name: &str, key: Option<{keyType}>{(tenantOwned is not null ? ", tenancy: &Tenancy" : "")}) -> Result<bool, sqlx::Error> {{");
+            Line($"    let mut builder = QueryBuilder::<Db>::new({RustTable.Raw($"SELECT COUNT(*) FROM {t.Table} AS t WHERE {nameColumn} = ")});");
+            Line("    builder.push_bind(name.to_string());");
+            Line($"    builder.push({RustTable.Raw(" AND " + activeTest)});");
+            Line("    if let Some(key) = key {");
+            Line($"        builder.push({RustTable.Raw($" AND t.{qd.Quote(t.Key.Column.DbName)} <> ")}).push_bind(key);");
+            Line("    }");
+            if (tenantOwned is not null)
+                Line($"    tenancy.apply(&mut builder, {RustTable.Raw("t." + tenantColumn)});");
+            Line("    Ok(builder.build_query_scalar::<i64>().fetch_one(pool).await? > 0)");
+            Line("}");
+        }
     }
     if (userPlan is not null)
     {
@@ -232,8 +296,10 @@
         Line("}");
         Line();
         string lookupKey = keyType == "Uuid" ? "uuid::Uuid" : keyType;
-        Line("pub async fn lookup(pool: &Pool, query: &LookupQuery) -> Result<Vec<LookupItem>, sqlx::Error> {");
+        Line(tenanted ? "pub async fn lookup(pool: &Pool, query: &LookupQuery, tenancy: &Tenancy) -> Result<Vec<LookupItem>, sqlx::Error> {" : "pub async fn lookup(pool: &Pool, query: &LookupQuery) -> Result<Vec<LookupItem>, sqlx::Error> {");
         Line("    let mut builder = QueryBuilder::<Db>::new(LOOKUP_BASE);");
+        if (tenanted)
+            Line($"    tenancy.apply(&mut builder, {RustTable.Raw(tenantColumn)});");
         Line("    let by_ids = non_blank(&query.ids).is_some();");
         Line("    let by_search = !by_ids && non_blank(&query.search).is_some();");
         Line("    if let Some(list) = non_blank(&query.ids) {");
@@ -395,17 +461,21 @@
         Line("}");
         Line();
         Line($"/// One page of rows and the total number of rows that match the filters.");
-        Line($"pub async fn search(pool: &Pool, query: &SearchQuery, page: i64, page_size: i64{(scoped ? ", scope: &Scoped" : "")}) -> Result<(Vec<{t.Struct}>, i64), sqlx::Error> {{");
+        Line($"pub async fn search(pool: &Pool, query: &SearchQuery, page: i64, page_size: i64{filterParameters}) -> Result<(Vec<{t.Struct}>, i64), sqlx::Error> {{");
         Line("    let mut count = QueryBuilder::<Db>::new(SEARCH_COUNT);");
         Line("    apply_filters(&mut count, query);");
         if (scoped)
             Line("    apply_scope(&mut count, scope);");
+        if (tenanted)
+            Line($"    tenancy.apply(&mut count, {RustTable.Raw("t." + tenantColumn)});");
         Line("    let total: i64 = count.build_query_scalar().fetch_one(pool).await?;");
         Line();
         Line("    let mut items = QueryBuilder::<Db>::new(SEARCH_ITEMS);");
         Line("    apply_filters(&mut items, query);");
         if (scoped)
             Line("    apply_scope(&mut items, scope);");
+        if (tenanted)
+            Line($"    tenancy.apply(&mut items, {RustTable.Raw("t." + tenantColumn)});");
         Line("    let descending = query.sort_dir.as_deref().is_some_and(|d| d.eq_ignore_ascii_case(\"desc\"));");
         Line("    match query.sort_by.as_deref().map(str::trim).filter(|n| n.len() <= 128).and_then(sort_expression) {");
         Line("        Some(expression) => items.push(format!(\" ORDER BY {expression}{}, {DEFAULT_ORDER}\", if descending { \" DESC\" } else { \"\" })),");

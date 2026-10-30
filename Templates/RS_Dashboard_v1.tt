@@ -14,7 +14,8 @@
     // Full notes: Docs/TemplateNotes/RS_Dashboard_v1.md
     // ==========================================================================================
 
-    var plan = DashboardPlan.Build(Database, Project);
+    var plan = DashboardPlan.BuildFor(Database, Project);
+    bool tenanted = TenantPlan.HasApiTenancy(Project);   // TenantTable: each statement reads the caller's tenant's rows only (the token in the statement is replaced before it runs)
     foreach (string problem in plan.Problems)
         Error(problem);
 
@@ -32,12 +33,13 @@
     void Line(string text = "") => sb.Append(text).Append('\n');
 
     Line("@@@FILE src/routes/dashboard.rs@@@");
-    Line(limited.Count > 0 ? "use axum::{Extension, Json, Router, extract::{Query, State}, routing::get};" : "use axum::{Json, Router, extract::{Query, State}, routing::get};");
+    bool withUser = limited.Count > 0 || tenanted;
+    Line(withUser ? "use axum::{Extension, Json, Router, extract::{Query, State}, routing::get};" : "use axum::{Json, Router, extract::{Query, State}, routing::get};");
     Line("use serde::{Deserialize, Serialize};");
     Line("use std::collections::HashMap;");
     Line("use std::sync::{LazyLock, Mutex};");
     Line("use std::time::{Duration, Instant};");
-    if (limited.Count > 0)
+    if (withUser)
         Line("use crate::auth::CurrentUser;");
     Line("use crate::support::{ApiResult, Pool};");
     Line();
@@ -113,6 +115,7 @@
     Line("    table: Option<String>,");
     Line("}");
     Line();
+    string loadCall = tenanted ? "load(&pool, query.table.as_deref(), user.tenant_id).await?" : "load(&pool, query.table.as_deref()).await?";
     if (limited.Count > 0)
     {
         Line("/// The roles that may read a table's rows (ReadRoles, TableReadRoles); a table not listed is open to every signed-in person.");
@@ -130,9 +133,15 @@
         Line();
         Line("async fn dashboard(State(pool): State<Pool>, Extension(user): Extension<CurrentUser>, Query(query): Query<DashboardQuery>) -> ApiResult<Json<DashboardResult>> {");
         Line("    // the answer is cached for every caller, so the copy sent loses the widgets this caller may not read");
-        Line("    let mut result = load(&pool, query.table.as_deref()).await?;");
+        Line($"    let mut result = {loadCall};");
         Line("    result.widgets.retain(|w| may_read(&user, &w.table));");
         Line("    Ok(Json(result))");
+        Line("}");
+    }
+    else if (tenanted)
+    {
+        Line("async fn dashboard(State(pool): State<Pool>, Extension(user): Extension<CurrentUser>, Query(query): Query<DashboardQuery>) -> ApiResult<Json<DashboardResult>> {");
+        Line($"    Ok(Json({loadCall}))");
         Line("}");
     }
     else
@@ -143,7 +152,7 @@
     }
     Line();
     Line("/// The dashboard page's widgets, or with a table the cards of that table's strip (empty for a table that has none). The answer is kept for a minute per table.");
-    Line("async fn load(pool: &Pool, table: Option<&str>) -> Result<DashboardResult, sqlx::Error> {");
+    Line(tenanted ? "async fn load(pool: &Pool, table: Option<&str>, tenant: Option<i32>) -> Result<DashboardResult, sqlx::Error> {" : "async fn load(pool: &Pool, table: Option<&str>) -> Result<DashboardResult, sqlx::Error> {");
     Line("    let chosen: Vec<&Definition> = DEFINITIONS");
     Line("        .iter()");
     Line("        .filter(|d| match table {");
@@ -156,7 +165,14 @@
     Line("        return Ok(DashboardResult { widgets: Vec::new() });");
     Line("    }");
     Line();
-    Line("    let key = table.map(|name| format!(\"table:{}\", name.to_ascii_lowercase())).unwrap_or_default();");
+    if (tenanted)
+    {
+        Line("    // a caller in no tenant is shown no row of a tenant-owned table (a comparison with NULL is never true)");
+        Line("    let tenant = tenant.map_or_else(|| \"NULL\".to_string(), |id| id.to_string());");
+        Line("    let key = format!(\"{tenant}|{}\", table.map(|name| format!(\"table:{}\", name.to_ascii_lowercase())).unwrap_or_default());");
+    }
+    else
+        Line("    let key = table.map(|name| format!(\"table:{}\", name.to_ascii_lowercase())).unwrap_or_default();");
     Line("    if let Some((expires, cached)) = CACHE.lock().unwrap().get(&key) {");
     Line("        if *expires > Instant::now() {");
     Line("            return Ok(cached.clone());");
@@ -165,10 +181,14 @@
     Line();
     Line("    let mut widgets = Vec::new();");
     Line("    for d in chosen {");
+    if (tenanted)
+        Line("        // the statement is a constant; the tenant is a whole number or NULL, never text from the request");
+        Line($"        let sql = d.sql.replace(\"{TenantPlan.DashboardToken}\", &tenant);");
+    string sqlArg = tenanted ? "sqlx::AssertSqlSafe(sql)" : "d.sql";
     Line("        let (points, rows) = if d.is_rows {");
-    Line("            (Vec::new(), sqlx::query_as::<_, DashboardRow>(d.sql).fetch_all(pool).await?)");
+    Line($"            (Vec::new(), sqlx::query_as::<_, DashboardRow>({sqlArg}).fetch_all(pool).await?)");
     Line("        } else {");
-    Line("            (sqlx::query_as::<_, DashboardPoint>(d.sql).fetch_all(pool).await?, Vec::new())");
+    Line($"            (sqlx::query_as::<_, DashboardPoint>({sqlArg}).fetch_all(pool).await?, Vec::new())");
     Line("        };");
     Line("        widgets.push(DashboardWidgetData {");
     Line("            id: d.id.to_string(),");

@@ -40,7 +40,7 @@
     var call = new JunctionCall(Model, entity, junction.AnchorColumn.Name);
     // With AccessMode=Ef there are no routines to call: the same three operations are LINQ over the context.
     bool ef = Project.AccessModeFor(Model.Dialect) == AccessMode.Ef;
-    var efJunction = ef ? new JunctionEf(Model) : null;
+    var efJunction = ef ? new JunctionEf(Model, Project) : null;
     void Emit(List<string> lines)
     {
         foreach (string line in lines)

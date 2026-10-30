@@ -8,3 +8,6 @@
 - The answer is kept for a minute per table (a dictionary and a lock in the module). `PY_Mod` lists `dashboard.router` with the tables' routers, so `main.py` includes it.
 - The aggregates are those of every row; a project with row-level rules must put this route behind the same policy as its tables.
 - **Checked:** the InvoiceSystemPython sample was run against the SQL Server InvoiceSystem: the 11 widgets equal the ASP.NET API's answer (same ids, order, titles, routes, points and rows), and the React dashboard page draws 4 cards and 7 panels from it. With three real sign-ins (`Docs/Verification/Test-PythonDashboard.py`, 17 checks on a SQLite API with `TableReadRoles=TimeSheet:Manager`) the administrator and the manager see the TimeSheet widgets and the employee does not, also when the answer comes from the cache, and the employee's strip of that table is empty.
+
+
+**Tenants.** With `TenantTable` and `ApiAuth` the statements and the cache work per tenant, as in `CS_Dashboard_v1.md`: `load(session, table, tenant)` replaces `{tenant}` in the statement with the caller's tenant key (`NULL` for a caller in no tenant).

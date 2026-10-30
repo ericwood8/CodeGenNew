@@ -27,7 +27,8 @@
     // by the caller is only compared with the fixed list.
     // Full notes: Docs/TemplateNotes/CS_Dashboard_v1.md
 
-    var plan = DashboardPlan.Build(Database, Project);
+    var plan = DashboardPlan.BuildFor(Database, Project);
+    bool tenanted = TenantPlan.HasApiTenancy(Project);   // TenantTable: each statement reads the caller's tenant's rows only (the token in the statement is replaced before it runs)
     foreach (string problem in plan.Problems)
         Error(problem);
 
@@ -76,6 +77,11 @@
     Line($"    public static async Task<DashboardResult> LoadAsync({contextType} context, string? table = null, bool useCache = false, CancellationToken cancellationToken = default)");
     Line("    {");
     Line("        string key = table is null ? \"\" : \"table:\" + table;");
+    if (tenanted)
+    {
+        Line("        string tenant = context.CurrentTenantId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? \"NULL\";");
+        Line("        key = tenant + \"|\" + key;");
+    }
     Line("        if (useCache && Cache.TryGetValue(key, out var cached) && cached.Expires > DateTime.UtcNow)");
     Line("            return cached.Result;");
     Line();
@@ -87,9 +93,10 @@
     Line("        {");
     Line("            var data = new DashboardWidgetData { Id = d.Id, Kind = d.Kind, Title = d.Title, Table = d.Table, Route = d.Route, IsMoney = d.IsMoney };");
     Line("            if (d.IsRows)");
-    Line("                data.Rows = await context.Database.SqlQueryRaw<DashboardRow>(d.Sql).ToListAsync(cancellationToken);");
+    string sqlText = tenanted ? $"d.Sql.Replace(\"{TenantPlan.DashboardToken}\", tenant)" : "d.Sql";
+    Line($"                data.Rows = await context.Database.SqlQueryRaw<DashboardRow>({sqlText}).ToListAsync(cancellationToken);");
     Line("            else");
-    Line("                data.Points = await context.Database.SqlQueryRaw<DashboardPoint>(d.Sql).ToListAsync(cancellationToken);");
+    Line($"                data.Points = await context.Database.SqlQueryRaw<DashboardPoint>({sqlText}).ToListAsync(cancellationToken);");
     Line("            result.Widgets.Add(data);");
     Line("        }");
     Line();

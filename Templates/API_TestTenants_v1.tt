@@ -23,7 +23,8 @@
     // Generates: <Table>ApiTests.cs for the tenant table and for each tenant-owned Name and IsActive table   (the test project; see OutputRoot in API_TestTenants_v1.tt.config)
     // API_Test writes no class for a Name and IsActive table, but a multi-tenant API (TenantTable) needs one: it proves that another tenant cannot read, change, delete or list a row, that a new row belongs to the
     // caller's tenant whatever the body says, and that a caller in no tenant sees nothing; for the tenant table itself that only the caller's tenant is shown, that it takes no create or delete and that only a platform
-    // administrator onboards a tenant. A tenant-owned table with an ordinary key gets the same tests inside its API_Test class. Writes nothing without TenantTable, ApiAuth and ApiTests.
+    // administrator onboards a tenant. A tenant-owned table with an ordinary key gets the same tests inside its API_Test class. TenantBypassApiTests.cs plays what the query filter does not reach (the
+    // dashboard, a junction table with a tenant-owned side, the row approvals, the host name), each in a tenant the test makes. Writes nothing without TenantTable, ApiAuth and ApiTests.
     // Full notes: Docs/TemplateNotes/API_Tenants_v1.md
     // ==========================================================================================
 
@@ -35,6 +36,8 @@
             sb.Append("@@@FILE " + table.TableName + "ApiTests.cs@@@\n");
             sb.Append(TenantTests.ClassText(table, Project));
         }
+        if (ApiTenantBypassTests.Applies(Database, Project))
+            sb.Append("@@@FILE TenantBypassApiTests.cs@@@\n" + ApiTenantBypassTests.ClassText(Database, Project));
         Write(sb.ToString());
     }
 #>

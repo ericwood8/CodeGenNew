@@ -8,3 +8,6 @@
 - **Caching:** with `useCache` the answer is kept for a minute per table (the web API passes true; the desktop page does not, so Refresh reads the database).
 - **Not done:** counts are `COUNT(*)`, not the catalogue estimate, so a table of many millions of rows makes its card slow; trends read the date column as it is, so an unindexed one scans the table.
 - **Checked** on the InvoiceSystem copies of all four databases: every statement was run by hand (`DashboardQueries.sql`) and through the generated API; the values agree (SQL Server's `money` keeps four decimals, the others two). The suite runs every statement on a SQLite file and compares the numbers with the rows added up by hand.
+
+
+**Tenants.** With `TenantTable` and `ApiAuth` the statements read a tenant-owned table through a derived table of the caller's tenant's rows, with `{tenant}` where the caller's tenant key goes (`NULL` for a caller in no tenant), and `LoadAsync` puts the key in before it runs the statement and keeps the answers per tenant (`DashboardPlan.BuildFor`, see `API_Tenants_v1.md`).

@@ -17,7 +17,7 @@ The `Auth` group of the Angular essentials: the sign-in of the generated app. It
 
 - **Config** (`app.config.ts`): `provideHttpClient(withInterceptors([authInterceptor]))`.
 - **Screens** (`app.routes.ts`, written by `TS_Screens`): a `login` route, and `canActivate: [authGuard]` on every generated route.
-- **Shell** (`app.ts`, `app.html`, `app.css`): the menu and the hamburger show only to a signed-in person; a top bar shows the user's name and a **Sign out** button.
+- **Shell** (`app.ts`, `app.html`, `app.css`): the menu and the hamburger show only to a signed-in person; a top bar shows the user's name and a **Sign out** button. With `TenantTable` and `TenantMembership` it also has `app-tenant-switcher`: the tenant's name, or a drop-down when the person belongs to several, which asks `POST api/auth/switch-tenant` for a token and loads the app again. It shows nothing when the API has no tenants route.
 
 Essentials are written once and kept, so a project whose Shell and Config exist already needs `--replace` for those two groups after turning `Auth` on. `app.routes.ts` is regenerated every time.
 
@@ -26,3 +26,5 @@ Essentials are written once and kept, so a project whose Shell and Config exist 
 `POST api/auth/login` with `{ userName, password }` answers `{ token, expiresUtc, user: { name, ... } }`, 401 for a wrong name or password, 429 for too many tries; every other `api/` route answers 401 without a valid bearer token. The generated ASP.NET API does this with `ApiAuth=true` (the `Jwt` group, `API_EssentialJwt_v1.md`: JWT bearer wiring, the login route and a fallback policy that asks for a token everywhere); the user table stays hand-written, and the project registers its `IUserDirectory`.
 
 `hasRole(roles)` says whether the signed-in role is one of the list (used by the screens for `WriteRoles` and `ReadRoles`).
+
+**Tenant box.** With `TenantTable` and `TenantMembership` the sign-in page has a Tenant box (the key of a tenant the person belongs to; empty means the first one). `AuthService.login(userName, password, tenantId?)` posts the `tenantId` only when one is typed, and a 403 says the person is not a member of that tenant or it is switched off (`TenantWords`).

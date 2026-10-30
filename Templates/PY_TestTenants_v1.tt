@@ -1,0 +1,24 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_TestTenants_v1.tt
+    // Generates: tests/conftest.py and tests/test_tenants.py   (whole-database; the output folder is the Python API's folder)
+    // pytest tests of a multi-tenant API (TenantTable). conftest.py is the one PY_TestApprovals writes (the application over a scratch database: a temporary copy of the SQLite file, or the URL in
+    // <PROJECT>_TEST_CONNECTION for PostgreSQL and MySQL; with none the tests are skipped with the reason). test_tenants.py replaces require_user to work as an administrator of one of the first two
+    // active tenants, and plays the tenant-owned tables (another tenant cannot read, change, delete or find a row, the tenant column is the caller's whatever the body says, a caller in no tenant sees
+    // nothing and cannot create), the tenant-owned tables with a Name and an IsActive column (the name is trimmed, may not be empty, may not repeat among the active rows of one tenant) and the tenant
+    // table (only the own tenant is shown, only a platform administrator creates one, none is deleted). The dashboard and the junction tables with a tenant-owned side are played in a tenant key no row
+    // belongs to (what the query filter does not reach; the approvals are in test_approvals.py). The words are TenantWords and NameActiveWords, as in the other stacks' tests.
+    // Written only for a project with PythonTests=true, ApiAuth=true and TenantTable; not for SQL Server.
+    // Run them with pytest from the API's folder (requirements.txt lists pytest and httpx with PythonTests=true).
+    // Full notes: Docs/TemplateNotes/API_Tenants_v1.md
+    // ==========================================================================================
+    if (PythonTenantTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/conftest.py@@@\n" + PythonTenantTests.Conftest(Project, Database.Dialect));
+        Write("@@@FILE tests/test_tenants.py@@@\n" + PythonTenantTests.File(Database, Project));
+    }
+#>

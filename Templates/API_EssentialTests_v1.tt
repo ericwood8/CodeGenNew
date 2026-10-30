@@ -345,13 +345,13 @@ public static class ApiFixture
     }
 
     /// <summary> A client whose token says it works in this tenant with this role (made with the signing key of the run), for the tests of TenantTable. </summary>
-    public static HttpClient ClientInTenant(int tenantId, string role)
+    public static HttpClient ClientInTenant(int tenantId, string role, string name = "tenant-test")
     {
         string token = new Microsoft.IdentityModel.JsonWebTokens.JsonWebTokenHandler().CreateToken(new Microsoft.IdentityModel.Tokens.SecurityTokenDescriptor
         {
             Issuer = "<#= projectName #>.Api",
             Audience = "<#= projectName #>",
-            Subject = new System.Security.Claims.ClaimsIdentity([new("sub", "tenant-test"), new("name", "tenant-test"), new("<#= Project.AuthRoleClaim #>", role), new("tenant", tenantId.ToString())]),
+            Subject = new System.Security.Claims.ClaimsIdentity([new("sub", name), new("name", name), new("<#= Project.AuthRoleClaim #>", role), new("tenant", tenantId.ToString())]),
             Expires = DateTime.UtcNow.AddMinutes(30),
             SigningCredentials = new Microsoft.IdentityModel.Tokens.SigningCredentials(
                 new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(_jwtKey)), Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256)

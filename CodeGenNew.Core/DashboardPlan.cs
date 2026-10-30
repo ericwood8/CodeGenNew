@@ -89,11 +89,16 @@ public sealed class DashboardPlan
     public static DashboardPlan Build(DatabaseModel database, ProjectSettings project) => Build(database, project, database.Dialect);
 
     /// <summary> The plan with its statements written for <paramref name="dialect"/>, for a document that lists them for every database. </summary>
-    public static DashboardPlan Build(DatabaseModel database, ProjectSettings project, SqlDialect dialect)
+    public static DashboardPlan Build(DatabaseModel database, ProjectSettings project, SqlDialect dialect, string? tenantToken = null)
     {
-        var builder = new Builder(database, project, DialectInfo.For(dialect));
+        var builder = new Builder(database, project, DialectInfo.For(dialect), tenantToken);
         return builder.Build();
     }
+
+    /// <summary> The plan for a multi-tenant API: every statement reads a tenant-owned table through a derived table that keeps only the rows of <see cref="TenantPlan.DashboardToken"/>, which the
+    /// API replaces with the caller's tenant (NULL for a caller in no tenant, who sees no row) before it runs the statement. Without a tenant API this is the plain plan. </summary>
+    public static DashboardPlan BuildFor(DatabaseModel database, ProjectSettings project) =>
+        Build(database, project, database.Dialect, TenantPlan.HasApiTenancy(project) ? TenantPlan.DashboardToken : null);
 
     /// <summary> Reads <c>Table.Column:aggregate</c> or <c>Table.Column:aggregate:DateColumn:month</c>; the bucket is day, month or year. </summary>
     public static DashboardMeasure? ParseMeasure(string text)
@@ -111,7 +116,7 @@ public sealed class DashboardPlan
         return bucket is null || parts[2].Length == 0 ? null : new DashboardMeasure(target[0], target[1], aggregate, parts[2], bucket);
     }
 
-    private sealed class Builder(DatabaseModel database, ProjectSettings project, DialectInfo di)
+    private sealed class Builder(DatabaseModel database, ProjectSettings project, DialectInfo di, string? tenantToken)
     {
         private readonly List<DashboardWidget> _candidates = [];
         private readonly List<string> _problems = [];
@@ -196,7 +201,37 @@ public sealed class DashboardPlan
         private string QValue => di.Quote("Value");
         private string QDetail => di.Quote("Detail");
 
-        private string T(TableModel table) => di.QuoteTable(table.SchemaName, table.DbTableName);
+        /// <summary> The table as a source of rows; with a tenant token a table of the caller's tenant (see <see cref="TenantFilter"/>) is a derived table of its rows, under <paramref name="alias"/> or its own name. </summary>
+        private string T(TableModel table, string? alias = null)
+        {
+            string name = di.QuoteTable(table.SchemaName, table.DbTableName);
+            if (TenantFilter(table) is not { } filter)
+                return alias is null ? name : name + " " + alias;
+            return $"(SELECT * FROM {name} WHERE {filter}) AS {alias ?? di.Quote(table.DbTableName)}";
+        }
+
+        /// <summary> The condition that keeps the caller's tenant's rows of a table, or null for a table every tenant shares: the tenant table by its key, a tenant-owned table by its tenant column and a table with no
+        /// tenant column of its own (a junction or a side table such as an approval cycle) by the rows of the parent it points at. </summary>
+        private string? TenantFilter(TableModel table, int depth = 0)
+        {
+            if (tenantToken is null || depth > 4)
+                return null;
+            if (TenantPlan.IsTenantTable(table, project))
+                return TenantPlan.KeyOf(table) is { } key ? $"{di.Quote(key.DbName)} = {tenantToken}" : null;
+            if (TenantPlan.OwnedBy(table, database, project) is { } owned)
+                return $"{di.Quote(owned.Column.DbName)} = {tenantToken}";
+            foreach (var fk in table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1 && !table.IsSelfReferencing(f)))
+            {
+                var parent = database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(fk.ReferencedTable));
+                var parentKey = parent?.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(fk.ReferencedColumns[0]));
+                var column = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(fk.ReferencingColumns[0]));
+                if (parent is null || parentKey is null || column is null || TenantFilter(parent, depth + 1) is not { } parentFilter)
+                    continue;
+                return $"{di.Quote(column.DbName)} IN (SELECT {di.Quote(parentKey.DbName)} FROM {di.QuoteTable(parent.SchemaName, parent.DbTableName)} WHERE {parentFilter})";
+            }
+            return null;
+        }
+
         private string C(ColumnModel column, string? alias = null) => (alias is null ? "" : alias + ".") + di.Quote(column.DbName);
         private static string Lit(string text) => "'" + text.Replace("'", "''") + "'";
         private static string Words(string table) => ScreenNames.Words(ScreenNames.BaseName(table));
@@ -295,7 +330,7 @@ public sealed class DashboardPlan
                     continue;
 
                 var fkColumn = table.Columns.First(c => c.Name.EqualsIgnoreCase(fk.ReferencingColumns[0]));
-                string topSql = $"SELECT COALESCE({C(display, "p")}, '(none)') AS {QLabel}, {Number("SUM(" + Amount(money, "t") + ")")} AS {QValue} FROM {T(table)} t INNER JOIN {T(parent)} p ON {C(key, "p")} = {C(fkColumn, "t")} "
+                string topSql = $"SELECT COALESCE({C(display, "p")}, '(none)') AS {QLabel}, {Number("SUM(" + Amount(money, "t") + ")")} AS {QValue} FROM {T(table, "t")} INNER JOIN {T(parent, "p")} ON {C(key, "p")} = {C(fkColumn, "t")} "
                     + $"GROUP BY {C(display, "p")} ORDER BY SUM({Amount(money, "t")}) DESC {di.Paging("0", TopRows.ToString())}";
                 Add(DashboardWidgetKind.TopBy, $"{title} by {Words(parent.TableName)}", table, fkColumn.Name,
                     $"{table.TableName} points at {parent.TableName}, so the money column can be added up per {Words(parent.TableName)} (the ten largest).", topSql, 55 + nameScore / 4 - Penalty(table), money: true);
@@ -325,7 +360,7 @@ public sealed class DashboardPlan
                     continue;
 
                 var fkColumn = table.Columns.First(c => c.Name.EqualsIgnoreCase(fk.ReferencingColumns[0]));
-                string sql = $"SELECT COALESCE({C(display, "p")}, '(none)') AS {QLabel}, {Number("COUNT(*)")} AS {QValue} FROM {T(table)} t INNER JOIN {T(parent)} p ON {C(key, "p")} = {C(fkColumn, "t")} "
+                string sql = $"SELECT COALESCE({C(display, "p")}, '(none)') AS {QLabel}, {Number("COUNT(*)")} AS {QValue} FROM {T(table, "t")} INNER JOIN {T(parent, "p")} ON {C(key, "p")} = {C(fkColumn, "t")} "
                     + $"GROUP BY {C(display, "p")} ORDER BY COUNT(*) DESC";
                 Add(DashboardWidgetKind.Breakdown, $"{Plural(table.TableName)} by {ColumnWords(fkColumn)}", table, fkColumn.Name,
                     $"{parent.TableName} is a lookup of {parent.LookupShape.RowCount} rows, so the rows can be counted per {Words(parent.TableName)}.", sql, 68 - Penalty(table));

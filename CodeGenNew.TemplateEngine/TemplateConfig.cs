@@ -345,6 +345,8 @@ public enum PlanTableSet
     Api,
     /// <summary> The tables with a plain CRUD API of any key type (<see cref="CodeGenNew.Core.DatabaseModel.CrudApiTables"/>): the <see cref="Api"/> tables and the guid and text key tables. </summary>
     CrudApi,
+    /// <summary> The tables the Python and Rust APIs serve: the <see cref="CrudApi"/> tables and the name/active tables (<see cref="CodeGenNew.Core.DatabaseModel.PythonRustApiTables"/>). </summary>
+    PythonRustApi,
     /// <summary> The tables the ASP.NET API serves: the <see cref="Api"/> tables and the name/active tables (<see cref="CodeGenNew.Core.DatabaseModel.AspNetApiTables"/>). </summary>
     AspNetApi,
     /// <summary> The tables that also get a search routine and endpoint (a lookup table does not). </summary>

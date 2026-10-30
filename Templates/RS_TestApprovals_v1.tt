@@ -9,7 +9,7 @@
     // Integration tests of the routes RS_Approvals writes for RowApprovals, run in process over a scratch database like RS_Test. Before each test the people of the user table (a requester and two
     // approvers, with ApproverTable also a person approved for another table only) and a row of the first RowApprovals table are added with plain SQL, and they are removed after it; the keys are fixed
     // numbers far above the usual ones. The cases: a person the user table does not know, a row that is not there, a request and a second one while it waits, a person who may not decide, the list of
-    // waiting requests, withdrawal by the requester only, the four eyes, a decision written once and the history of every cycle. The words are ApprovalWords, as in the other stacks' tests.
+    // waiting requests, withdrawal by the requester only, the four eyes, a decision written once and the history of every cycle; with TenantTable also that another tenant (made with tenant_routes.rs) cannot ask, decide, withdraw or read the cycles of the row. The words are ApprovalWords, as in the other stacks' tests.
     // Written only for a project with RustTests=true, ApiAuth and RowApprovals when the user table and the table can be filled from the schema (a column that cannot be NULL needs an example value).
     // Needs Client.start_signed_out, Client.as_person and Client.pool of tests/api/test_support.rs (RS_EssentialTests); an older copy of that file is refreshed by running essentials with the replace option.
     // Full notes: Docs/TemplateNotes/RS_Test_v1.md

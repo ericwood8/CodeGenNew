@@ -22,6 +22,7 @@
         string crate = Project.RustCrateName;
         bool auth = Project.ApiAuth;
         bool userTable = auth && Project.UserTable is not null;
+        bool tenants = TenantPlan.HasApiTenancy(Project);
         string Str(string text) => "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
 #>
 @@@FILE tests/api/test_support.rs@@@
@@ -82,6 +83,15 @@ const ISSUER: &str = "<#= projectName #>.Api";
 const AUDIENCE: &str = "<#= projectName #>";
 const ROLE_CLAIM: &str = <#= Str(Project.AuthRoleClaim) #>;
 const OWNER_CLAIM: &str = <#= Str(Project.AuthOwnerClaim) #>;
+<#
+        if (tenants)
+        {
+#>
+const TENANT_CLAIM: &str = "tenant";
+pub const ADMIN_ROLE: &str = <#= Str(Project.AuthAdminRole) #>;
+<#
+        }
+#>
 
 <#
         }
@@ -121,6 +131,18 @@ pub struct Client {
     router: Router,
     pool: Pool,
     token: Option<String>,
+<#
+        if (tenants)
+        {
+#>
+    /// The tenant the tokens of this client work in (None: no tenant, a platform administrator), and a second active tenant of the database for the isolation tests.
+    pub tenant: Option<i32>,
+    pub other_tenant: Option<i32>,
+    /// The host name the requests of this client name (None: none), for the tests of TenantHostColumn.
+    host: Option<String>,
+<#
+        }
+#>
     _scratch: Arc<Scratch>,
 }
 
@@ -143,9 +165,16 @@ impl Client {
         }
 #>
         let (pool, scratch) = scratch_pool().await?;
-        let <#= auth ? "mut " : "" #>client = Client { router: app(pool.clone(), None), pool, token: None, _scratch: Arc::new(scratch) };
+        let <#= auth && !tenants ? "mut " : "" #>client = Client { router: app(pool.clone(), None), pool, token: None, <#= tenants ? "tenant: None, other_tenant: None, host: None, " : "" #>_scratch: Arc::new(scratch) };
 <#
-        if (auth)
+        if (tenants)
+        {
+#>
+        // the people who sign in are rows of the database, so the tests work with a token of an administrator of the first tenant, made with the key of the run
+        let client = client.in_first_tenant().await;
+<#
+        }
+        else if (auth)
         {
 #>
         let (name, password) = match (std::env::var("<#= prefix #>_TEST_USER"), std::env::var("<#= prefix #>_TEST_PASSWORD")) {
@@ -197,7 +226,8 @@ impl Client {
         dotenvy::dotenv().ok();
         settings();
         let (pool, scratch) = scratch_pool().await?;
-        Some(Client { router: app(pool.clone(), None), pool, token: None, _scratch: Arc::new(scratch) })
+        let client = Client { router: app(pool.clone(), None), pool, token: None, <#= tenants ? "tenant: None, other_tenant: None, host: None, " : "" #>_scratch: Arc::new(scratch) };
+        Some(<#= tenants ? "client.in_first_tenant().await" : "client" #>)
     }
 
     /// The same application and database for someone who signed in with this role (a token made with the key of the run; no user needs to exist). The token names no owner.
@@ -215,10 +245,58 @@ impl Client {
         self.token_for(name, "Member", None)
     }
 
+<#
+        if (tenants)
+        {
+#>
+    /// The same application and database for an administrator (or another role) working in this tenant.
+    pub fn in_tenant(&self, tenant: i32, role: &str) -> Client {
+        Client { tenant: Some(tenant), ..self.clone() }.token_for("tenant-test", role, None)
+    }
+
+    /// The same, for the person of the user table with this name working in this tenant.
+    pub fn as_person_in(&self, name: &str, tenant: i32) -> Client {
+        Client { tenant: Some(tenant), ..self.clone() }.token_for(name, "Member", None)
+    }
+
+    /// The same client, its requests naming this host name.
+    pub fn on_host(&self, host: &str) -> Client {
+        Client { host: Some(host.to_string()), ..self.clone() }
+    }
+
+    /// The same for an administrator who works in no tenant (a platform administrator).
+    pub fn platform(&self) -> Client {
+        Client { tenant: None, ..self.clone() }.token_for("platform-test", ADMIN_ROLE, None)
+    }
+
+    /// Looks up the first two active tenants of the scratch database (tenant_support.rs): the tokens of this client then work in the first, as an administrator of it (a platform administrator when there is none).
+    async fn in_first_tenant(mut self) -> Client {
+        let tenants = crate::tenant_support::first_tenants(&self.pool).await;
+        self.tenant = tenants.first().copied();
+        self.other_tenant = tenants.get(1).copied();
+        match self.tenant {
+            Some(tenant) => self.in_tenant(tenant, ADMIN_ROLE),
+            None => self.platform(),
+        }
+    }
+
+<#
+        }
+#>
     fn token_for(&self, name: &str, role: &str, owner: Option<i64>) -> Client {
         let (key, _) = settings();
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
         let mut claims = serde_json::json!({ "sub": name, "name": name, "iss": ISSUER, "aud": AUDIENCE, "iat": now, "nbf": now, "exp": now + 1800, ROLE_CLAIM: role });
+<#
+        if (tenants)
+        {
+#>
+        if let Some(tenant) = self.tenant {
+            claims[TENANT_CLAIM] = serde_json::json!(tenant.to_string());
+        }
+<#
+        }
+#>
         if let Some(owner) = owner {
             claims[OWNER_CLAIM] = serde_json::json!(owner.to_string());
         }
@@ -243,6 +321,16 @@ impl Client {
         if let Some(token) = &self.token {
             request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
         }
+<#
+        if (tenants)
+        {
+#>
+        if let Some(host) = &self.host {
+            request = request.header(header::HOST, host.as_str());
+        }
+<#
+        }
+#>
         let mut request = match body {
             Some((content_type, text)) => request.header(header::CONTENT_TYPE, content_type).body(Body::from(text)),
             None => request.body(Body::empty()),

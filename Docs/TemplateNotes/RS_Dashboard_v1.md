@@ -8,3 +8,6 @@
 - The answer is kept for a minute per table. `RS_Mod` merges `dashboard::router()` with the tables' routers.
 - The aggregates are those of every row; a project with row-level rules must put this route behind the same policy as its tables.
 - **Checked:** the InvoiceSystemRust sample was run against its PostgreSQL copy: 11 widgets (the totals, counts and top lists agree with the tables), the strip answer for a table with none is empty, and the React dashboard page draws 4 cards and 7 panels.
+
+
+**Tenants.** With `TenantTable` and `ApiAuth` the statements and the cache work per tenant, as in `CS_Dashboard_v1.md`: `load(pool, table, tenant)` replaces `{tenant}` in the statement with the caller's tenant key (`NULL` for a caller in no tenant); the statement is built from a constant and a whole number, so it is marked safe for sqlx.

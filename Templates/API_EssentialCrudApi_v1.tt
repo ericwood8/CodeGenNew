@@ -120,8 +120,8 @@ public static class LookupFilter
     {
 #>
 
-/// <summary> The request body of a create or update that carries child lists: the raw JSON the lists are read from and the serializer options the API uses for every other body. </summary>
-public sealed record ChildBody(JsonElement Json, JsonSerializerOptions Options);
+/// <summary> The request body of a create or update that carries child lists: the raw JSON the lists are read from and the serializer options the API uses for every other body<#= options.Tenants ? ", and the caller's tenant (TenantTable) that a tenant-owned child row is stamped with" : "" #>. </summary>
+public sealed record ChildBody(JsonElement Json, JsonSerializerOptions Options<#= options.Tenants ? ", int? Tenant = null" : "" #>);
 
 /// <summary> A child list could not be applied (a row that is not one of the parent's); the answer is a 400 with the message. </summary>
 public sealed class ChildRowsException(string message) : Exception(message);
@@ -136,19 +136,30 @@ public abstract class ChildRows<TKey> where TKey : notnull
     public abstract string Name { get; }
 
     /// <summary> Makes the child table hold exactly the rows of <paramref name="rows"/> for the parent: a row with a key is changed, a row without one is added and the parent's other rows are removed. Saves nothing: the caller saves everything in one transaction. </summary>
-    public abstract Task ApplyAsync(DbContext context, TKey parentId, JsonElement rows, JsonSerializerOptions options);
+    public abstract Task ApplyAsync(DbContext context, TKey parentId, JsonElement rows, JsonSerializerOptions options<#= options.Tenants ? ", int? tenant = null" : "" #>);
 }
 
 /// <summary> <see cref="ChildRows{TKey}"/> for the child entity <typeparamref name="TChild"/>: its identity key and the property that links it to the parent (<c>c =&gt; c.DepartmentId</c>). </summary>
-public sealed class ChildRows<TKey, TChild>(string name, Expression<Func<TChild, int>> key, Expression<Func<TChild, TKey>> parent) : ChildRows<TKey>
+public sealed class ChildRows<TKey, TChild>(string name, Expression<Func<TChild, int>> key, Expression<Func<TChild, TKey>> parent<#= options.Tenants ? ", Expression<Func<TChild, int>>? tenantOf = null" : "" #>) : ChildRows<TKey>
     where TKey : notnull
     where TChild : class, new()
 {
     public override string Name => name;
 
-    public override async Task ApplyAsync(DbContext context, TKey parentId, JsonElement rows, JsonSerializerOptions options)
+    public override async Task ApplyAsync(DbContext context, TKey parentId, JsonElement rows, JsonSerializerOptions options<#= options.Tenants ? ", int? tenant = null" : "" #>)
     {
         var sent = rows.Deserialize<List<TChild>>(options) ?? [];
+<# if (options.Tenants) { #>
+        Action<TChild, int>? setTenant = null;
+        if (tenantOf is not null)
+        {
+            // a row of a tenant-owned child table belongs to the caller's tenant, whatever the body says
+            if (tenant is null)
+                throw new ChildRowsException("<#= TenantWords.NoTenant #>");
+            var tenantValue = Expression.Parameter(typeof(int));
+            setTenant = Expression.Lambda<Action<TChild, int>>(Expression.Assign(tenantOf.Body, tenantValue), tenantOf.Parameters[0], tenantValue).Compile();
+        }
+<# } #>
         var keyOf = key.Compile();
         var value = Expression.Parameter(typeof(TKey));
         var setParent = Expression.Lambda<Action<TChild, TKey>>(Expression.Assign(parent.Body, value), parent.Parameters[0], value).Compile();
@@ -160,6 +171,10 @@ public sealed class ChildRows<TKey, TChild>(string name, Expression<Func<TChild,
         foreach (var row in sent)
         {
             setParent(row, parentId);
+<# if (options.Tenants) { #>
+            if (setTenant is not null)
+                setTenant(row, tenant!.Value);
+<# } #>
             int id = keyOf(row);
             if (id == 0)
             {
@@ -205,7 +220,7 @@ public static class ChildRowsSupport
 <#
         }
 #>
-            return (row, new ChildBody(json, options), null);
+            return (row, new ChildBody(json, options<#= options.Tenants ? ", request.HttpContext.RequestServices.GetRequiredService<ITenantScope>().TenantId" : "" #>), null);
         }
         catch (JsonException error)
         {
@@ -220,7 +235,7 @@ public static class ChildRowsSupport
         {
             foreach (var list in lists)
                 if (body.Json.TryGetProperty(list.Name, out var rows) && rows.ValueKind == JsonValueKind.Array)
-                    await list.ApplyAsync(context, parentId, rows, body.Options);
+                    await list.ApplyAsync(context, parentId, rows, body.Options<#= options.Tenants ? ", body.Tenant" : "" #>);
             await context.SaveChangesAsync();
             return null;
         }
@@ -393,7 +408,8 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
     private Func<TEntity, int>? _ownerOf;
     private Action<TEntity, int>? _setOwner;
 
-    private HttpContext Http => _http!.HttpContext!;
+    /// <summary> The request being answered. </summary>
+    protected HttpContext Http => _http!.HttpContext!;
 
     private int OwnerOf(TEntity row) => (_ownerOf ??= Owner!.Compile())(row);
 
@@ -465,6 +481,11 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 
     /// <summary> Runs before a row is deleted; a result refuses the delete. The default accepts. </summary>
     protected virtual Task<IResult?> BeforeDeleteAsync(<#= contextType #> context, TKey id) => Task.FromResult<IResult?>(null);
+<# if (options.Tenants) { #>
+
+    /// <summary> Runs after a create saved the row (TenantTable: the tenant table attaches the person who created a tenant to it). The default does nothing. </summary>
+    protected virtual Task AfterCreateAsync(<#= contextType #> context, TEntity row) => Task.CompletedTask;
+<# } #>
 
     /// <summary> Runs after a row was cloned and before the copy is answered: the copy may be corrected here (a column no caller may set goes back to its start) or removed with a result that refuses it. The default accepts. </summary>
     protected virtual Task<IResult?> AfterCloneAsync(<#= contextType #> context, TKey newId) => Task.FromResult<IResult?>(null);
@@ -843,7 +864,7 @@ public abstract class CrudApi<TEntity, TRepo, TKey<#= dtos ? ", TInput, TOutput"
 <#
     }
 #>
-        return Results.Created($"/api{_route}/{KeyOf(newRow)}", <#= map("newRow") #>);
+<#= tenants("        await AfterCreateAsync(context, newRow);\n") #>        return Results.Created($"/api{_route}/{KeyOf(newRow)}", <#= map("newRow") #>);
     }
 
     private async Task<IResult> UpdateAsync(<#= contextType #> context, TKey id, <#= input #> updatedRow<#= validatorParameter #><#= children ? ", ChildBody? children = null" : "" #>)
@@ -1088,6 +1109,9 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
     /// <summary> The signed-in caller. </summary>
     protected System.Security.Claims.ClaimsPrincipal Caller => _http!.HttpContext!.User;
 
+    /// <summary> The request being answered. </summary>
+    protected HttpContext Http => _http!.HttpContext!;
+
 <# if (options.Tenants) { #>
     /// <summary> The column that holds the tenant of a row (<c>c =&gt; c.TenantId</c>) for a tenant-owned table (TenantTable). The context already hides every other tenant's rows; a create writes the caller's tenant here and an update keeps it, so a row never moves to another tenant. </summary>
     protected virtual Expression<Func<TEntity, int>>? Tenant => null;
@@ -1123,6 +1147,11 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
 
     /// <summary> Runs before a row is deleted; a result refuses the delete. The default accepts. </summary>
     protected virtual Task<IResult?> BeforeDeleteAsync(<#= contextType #> context, int id) => Task.FromResult<IResult?>(null);
+<# if (options.Tenants) { #>
+
+    /// <summary> Runs after a create saved the row (TenantTable: the tenant table attaches the person who created a tenant to it). The default does nothing. </summary>
+    protected virtual Task AfterCreateAsync(<#= contextType #> context, TEntity row) => Task.CompletedTask;
+<# } #>
 <#
     }
 #>
@@ -1315,7 +1344,7 @@ public abstract class NameActiveCrudApi<TEntity, TRepo> : BaseApi<TEntity>
 <#
     }
 #>
-        return Results.Created($"/api{_route}/{KeyOf(newRow)}", newRow);
+<#= tenants("        await AfterCreateAsync(context, newRow);\n") #>        return Results.Created($"/api{_route}/{KeyOf(newRow)}", newRow);
     }
 
     private async Task<IResult> UpdateAsync(<#= contextType #> context, int id, TEntity updatedRow<#= children ? ", ChildBody? children = null" : "" #>)

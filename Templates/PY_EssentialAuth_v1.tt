@@ -15,6 +15,8 @@
     string projectName = Project.ProjectName ?? "MyApp";
     string Str(string text) => PythonNames.Str(text);
     bool table = Project.UserTable is not null;
+    bool hosts = PythonTenantWriter.Applies(Project) && Project.TenantHostColumn is not null;   // TenantHostColumn: a token works only on its own tenant's host name
+    bool tenants = PythonTenantWriter.Applies(Project);   // TenantTable: the tenant is a claim of the token (app/routes/tenancy.py, PY_Tenants)
 #>
 @@@FILE app/auth.py@@@
 """Sign-in: POST /api/auth/login, the bearer check every other route needs, password hashing and the owner scope."""
@@ -26,7 +28,7 @@ import os
 import secrets
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass<#= tenants ? ", replace" : "" #>
 from datetime import datetime, timedelta, timezone
 from functools import cache
 
@@ -39,6 +41,9 @@ from app.support import ApiError
 
 ROLE_CLAIM = <#= Str(Project.AuthRoleClaim) #>
 OWNER_CLAIM = <#= Str(Project.AuthOwnerClaim) #>
+<# if (tenants) { #>
+TENANT_CLAIM = "tenant"
+<# } #>
 NAME_CLAIM = "name"
 ADMIN_ROLE = <#= Str(Project.AuthAdminRole) #>
 ISSUER = <#= Str(projectName + ".Api") #>
@@ -76,6 +81,9 @@ class CurrentUser:
     name: str
     role: str | None
     owner_id: int | None
+<# if (tenants) { #>
+    tenant_id: int | None = None
+<# } #>
 
     @property
     def is_admin(self) -> bool:
@@ -129,13 +137,17 @@ def _sign(signing_input: str) -> str:
     return _b64url(hmac.new(signing_key(), signing_input.encode(), hashlib.sha256).digest())
 
 
-def create_token(user: DirectoryUser, expires: datetime) -> str:
+def create_token(user: DirectoryUser, expires: datetime<#= tenants ? ", tenant_id: int | None = None" : "" #>) -> str:
     now = int(time.time())
     claims: dict = {"sub": user.user_name, NAME_CLAIM: user.user_name, "iss": ISSUER, "aud": AUDIENCE, "iat": now, "nbf": now, "exp": int(expires.timestamp())}
     if user.role:
         claims[ROLE_CLAIM] = user.role
     if user.owner_id is not None:
         claims[OWNER_CLAIM] = str(user.owner_id)
+<# if (tenants) { #>
+    if tenant_id is not None:
+        claims[TENANT_CLAIM] = str(tenant_id)
+<# } #>
     header = _b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
     payload = _b64url(json.dumps(claims, separators=(",", ":")).encode())
     return f"{header}.{payload}.{_sign(header + '.' + payload)}"
@@ -175,7 +187,22 @@ def require_user(request: Request) -> CurrentUser:
     except (TypeError, ValueError):
         owner = None
     role = claims.get(ROLE_CLAIM)
+<# if (tenants) { #>
+    try:
+        tenant = int(claims[TENANT_CLAIM]) if TENANT_CLAIM in claims else None
+    except (TypeError, ValueError):
+        tenant = None
+    if tenant is not None:
+        from app.routes.tenancy import <#= hosts ? "check_host, " : "" #>ensure_active
+
+        ensure_active(tenant)
+<# if (hosts) { #>
+        check_host(request, tenant)
+<# } #>
+    return CurrentUser(str(claims.get(NAME_CLAIM) or claims.get("sub") or ""), role if isinstance(role, str) else None, owner, tenant)
+<# } else { #>
     return CurrentUser(str(claims.get(NAME_CLAIM) or claims.get("sub") or ""), role if isinstance(role, str) else None, owner)
+<# } #>
 
 
 def visible_owners(user: CurrentUser) -> list[int] | None:
@@ -203,6 +230,9 @@ class LoginRequest(BaseModel):
 
     user_name: str | None = Field(None, alias="userName")
     password: str | None = None
+<# if (tenants) { #>
+    tenant_id: int | None = Field(None, alias="tenantId")
+<# } #>
 
 
 class _Throttle:
@@ -263,6 +293,16 @@ def find_user(session: Session, user_name: str) -> DirectoryUser | None:
 #>
 
 
+def session_response(user: DirectoryUser<#= tenants ? ", tenant_id: int | None = None" : "" #>) -> dict:
+    """What a sign-in (or a switch of tenant) answers: the token, when it ends and who is signed in."""
+    expires = datetime.now(timezone.utc) + timedelta(minutes=EXPIRES_MINUTES)
+    return {
+        "token": create_token(user, expires<#= tenants ? ", tenant_id" : "" #>),
+        "expiresUtc": expires.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+        "user": {"name": user.user_name, "role": user.role, "ownerId": user.owner_id<#= tenants ? ", \"tenantId\": tenant_id" : "" #>},
+    }
+
+
 auth_router = APIRouter()
 
 
@@ -281,10 +321,15 @@ def login(body: LoginRequest, request: Request, session: Session = Depends(get_s
         _throttle.failed(key)
         raise ApiError(<#= HttpStatus.Unauthorized #>, "Wrong user name or password", problem_type="<#= ProblemTypes.WrongCredentials #>")
 
+<# if (tenants) { #>
+    from app.routes.tenancy import login_tenant
+
+    tenant_id, tenant_role = login_tenant(session, user, body.tenant_id<#= hosts ? ", request.url.hostname" : "" #>)
+    if tenant_role:
+        user = replace(user, role=tenant_role)
     _throttle.succeeded(key)
-    expires = datetime.now(timezone.utc) + timedelta(minutes=EXPIRES_MINUTES)
-    return {
-        "token": create_token(user, expires),
-        "expiresUtc": expires.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
-        "user": {"name": user.user_name, "role": user.role, "ownerId": user.owner_id},
-    }
+    return session_response(user, tenant_id)
+<# } else { #>
+    _throttle.succeeded(key)
+    return session_response(user)
+<# } #>

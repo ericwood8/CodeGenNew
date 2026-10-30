@@ -19,6 +19,18 @@
     string componentsFolder = Project.ComponentsFolder;
     string storageKey = (Project.ProjectName ?? "app").ToLowerInvariant() + ".auth";
     bool controlFlow = Project.AngularControlFlow;
+    bool tenants = TenantPlan.HasSwitcher(Project);   // TenantTable and TenantMembership: the top bar shows the tenant and, for a person in several, a drop-down to switch
+    string switcherHtml = Project.AdaptAngularHtml(@"<span class=""tenant"" *ngIf=""choices.length === 1"">{{ choices[0].text }}</span>
+<select class=""tenant"" aria-label=""Tenant"" *ngIf=""choices.length > 1"" (change)=""choose($event)"">
+  <option *ngFor=""let choice of choices"" [value]=""choice.id"" [selected]=""choice.current"">{{ choice.text }}</option>
+</select>
+");
+    string tenantBox = tenants ? @"    <div class=""form-group"">
+      <label for=""tenant"">" + TenantWords.SignInLabel + @"</label>
+      <input id=""tenant"" name=""tenant"" type=""number"" min=""1"" inputmode=""numeric"" [(ngModel)]=""tenant"" aria-describedby=""tenantHint"">
+      <small id=""tenantHint"">" + TenantWords.SignInHint + @"</small>
+    </div>
+" : "";
     string loginHtml = Project.AdaptAngularHtml(@"<div class=""login-container"">
   <h1>Sign in</h1>
   <form (ngSubmit)=""signIn()"" #loginForm=""ngForm"">
@@ -30,7 +42,7 @@
       <label for=""password"">Password</label>
       <input id=""password"" name=""password"" type=""password"" [(ngModel)]=""password"" autocomplete=""current-password"" required>
     </div>
-    <p class=""error"" role=""alert"" *ngIf=""message"">{{ message }}</p>
+" + tenantBox + @"    <p class=""error"" role=""alert"" *ngIf=""message"">{{ message }}</p>
     <button type=""submit"" class=""btn"" [disabled]=""busy || !loginForm.form.valid"">Sign in</button>
   </form>
 </div>
@@ -51,6 +63,16 @@ export interface LoginResponse {
   expiresUtc?: string;
   user: AuthUser;
 }
+<# if (tenants) { #>
+
+/** One tenant of the signed-in person (GET api/auth/tenants): the name to show, the role in it and whether the token works in it now. */
+export interface TenantChoice {
+  id: number;
+  text: string;
+  role?: string;
+  current: boolean;
+}
+<# } #>
 @@@FILE src/app/<#= servicesFolder #>/auth.service.ts@@@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
@@ -95,14 +117,24 @@ export class AuthService {
     return !!role && roles.includes(role);
   }
 
+<# if (tenants) { #>
+  /** Signs in; with a tenant (the key of one the person belongs to) the token works in that tenant, else in the first one. */
+  login(userName: string, password: string, tenantId?: number | null): Observable<LoginResponse> {
+    const body = tenantId == null ? { userName, password } : { userName, password, tenantId };
+    return this.http.post<LoginResponse>('api/auth/login', body).pipe(
+<# } else { #>
   login(userName: string, password: string): Observable<LoginResponse> {
     return this.http.post<LoginResponse>('api/auth/login', { userName, password }).pipe(
-      tap((response) => {
-        this.session.set(response);
-        // sessionStorage: the sign-in ends when the tab closes
-        try { sessionStorage.setItem(storageKey, JSON.stringify(response)); } catch { /* storage unavailable: the sign-in lasts until the page is reloaded */ }
-      })
+<# } #>
+      tap((response) => this.keep(response))
     );
+  }
+
+  /** Keeps a session the API answered (a sign-in<#= tenants ? ", or a switch to another tenant" : "" #>) in memory and in the tab's sessionStorage. */
+  keep(response: LoginResponse): void {
+    this.session.set(response);
+    // sessionStorage: the sign-in ends when the tab closes
+    try { sessionStorage.setItem(storageKey, JSON.stringify(response)); } catch { /* storage unavailable: the sign-in lasts until the page is reloaded */ }
   }
 
   logout(): void {
@@ -171,13 +203,20 @@ export class LoginComponent {
 
   userName = '';
   password = '';
+<# if (tenants) { #>
+  tenant: number | null = null;
+<# } #>
   message = '';
   busy = false;
 
   signIn(): void {
     this.message = '';
     this.busy = true;
+<# if (tenants) { #>
+    this.auth.login(this.userName, this.password, this.tenant).subscribe({
+<# } else { #>
     this.auth.login(this.userName, this.password).subscribe({
+<# } #>
       next: () => {
         this.busy = false;
         this.router.navigate(['/']);
@@ -187,6 +226,9 @@ export class LoginComponent {
         this.password = '';
         if (error.status === <#= HttpStatus.TooManyRequests #>) { this.message = 'Too many tries. Wait a minute and try again.'; }
         else if (error.status === <#= HttpStatus.Unauthorized #>) { this.message = 'The user name or password is not right.'; }
+<# if (tenants) { #>
+        else if (error.status === <#= HttpStatus.Forbidden #>) { this.message = '<#= TenantWords.SignInRefused #>'; }
+<# } #>
         else { this.message = 'Could not sign in right now.'; }
       }
     });
@@ -421,13 +463,18 @@ describe('LoginComponent', () => {
 
   afterEach(() => http.verify());
 
-  const submit = (status: number) => {
+  const submit = (status: number<# if (tenants) { #>, tenant: number | null = null<# } #>) => {
     component.userName = 'pat';
     component.password = 'secret';
+<# if (tenants) { #>
+    component.tenant = tenant;
+<# } #>
     component.signIn();
     const request = http.expectOne('api/auth/login');
+    const body = request.request.body;
     if (status === <#= HttpStatus.Ok #>) { request.flush({ token: 'abc', user: { name: 'Pat' } }); }
     else { request.flush(null, { status, statusText: 'x' }); }
+    return body;
   };
 
   it('should create', () => {
@@ -456,4 +503,137 @@ describe('LoginComponent', () => {
     submit(<#= HttpStatus.InternalServerError #>);
     expect(component.message).toBe('Could not sign in right now.');
   });
+<# if (tenants) { #>
+
+  it('posts the tenant that is typed and nothing when the box is empty', () => {
+    expect(submit(<#= HttpStatus.Ok #>, 2)).toEqual({ userName: 'pat', password: 'secret', tenantId: 2 });
+    expect(submit(<#= HttpStatus.Ok #>)).toEqual({ userName: 'pat', password: 'secret' });
+  });
+
+  it('says the tenant is not one of theirs on a <#= HttpStatus.Forbidden #>', () => {
+    submit(<#= HttpStatus.Forbidden #>, 3);
+    expect(component.message).toBe('<#= TenantWords.SignInRefused #>');
+    expect(navigated).toEqual([]);
+  });
+<# } #>
 });
+<# if (tenants) { #>
+@@@FILE src/app/<#= componentsFolder #>/tenant-switcher/tenant-switcher.component.ts@@@
+import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+<# if (!controlFlow) { #>
+import { NgFor, NgIf } from '@angular/common';
+<# } #>
+import { LoginResponse, TenantChoice } from '../../<#= modelsFolder #>/auth';
+import { AuthService } from '../../<#= servicesFolder #>/auth.service';
+
+/** The tenant the person works in, as a name, or as a drop-down when they belong to several; choosing one asks the API for a token for it (POST api/auth/switch-tenant) and starts the app again so every screen reads the rows of the new tenant. Shows nothing when the API has no tenants route. */
+@Component({
+  selector: 'app-tenant-switcher',
+<# if (Project.AngularStandaloneFlag) { #>
+  standalone: true,
+<# } #>
+  changeDetection: ChangeDetectionStrategy.<#= Project.AngularEagerStrategy #>, // plain properties change inside subscribe callbacks
+  imports: [<#= controlFlow ? "" : "NgFor, NgIf" #>],
+  templateUrl: './tenant-switcher.component.html',
+  styles: ['.tenant { padding: 4px 8px; font-weight: 600; background: none; border: 1px solid #8886; border-radius: 4px; color: inherit; }']
+})
+export class TenantSwitcherComponent implements OnInit {
+  private readonly http = inject(HttpClient);
+  private readonly auth = inject(AuthService);
+
+  choices: TenantChoice[] = [];
+
+  ngOnInit(): void {
+    this.http.get<TenantChoice[]>('api/auth/tenants').subscribe({
+      next: (list) => { this.choices = list; },
+      error: () => { this.choices = []; }
+    });
+  }
+
+  choose(event: Event): void {
+    const tenantId = Number((event.target as HTMLSelectElement).value);
+    this.http.post<LoginResponse>('api/auth/switch-tenant', { tenantId }).subscribe({
+      next: (response) => {
+        this.auth.keep(response);
+        this.reload();
+      }
+    });
+  }
+
+  protected reload(): void {
+    window.location.assign('/');
+  }
+}
+@@@FILE src/app/<#= componentsFolder #>/tenant-switcher/tenant-switcher.component.html@@@
+<#= switcherHtml #>@@@FILE src/app/<#= componentsFolder #>/tenant-switcher/tenant-switcher.component.spec.ts@@@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { Router } from '@angular/router';
+import { AuthService } from '../../<#= servicesFolder #>/auth.service';
+import { TenantSwitcherComponent } from './tenant-switcher.component';
+
+const two = [{ id: 1, text: 'Acme', role: 'Administrator', current: true }, { id: 2, text: 'Globex', role: 'Employee', current: false }];
+
+describe('TenantSwitcherComponent', () => {
+  let fixture: ComponentFixture<TenantSwitcherComponent>;
+  let http: HttpTestingController;
+  let reloaded: number;
+
+  const open = (choices: unknown[] | null) => {
+    fixture.detectChanges();
+    const request = http.expectOne('api/auth/tenants');
+    if (choices) { request.flush(choices); } else { request.flush(null, { status: <#= HttpStatus.NotFound #>, statusText: 'Not Found' }); }
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  };
+
+  beforeEach(async () => {
+    sessionStorage.clear();
+    reloaded = 0;
+    await TestBed.configureTestingModule({
+      imports: [TenantSwitcherComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting(), { provide: Router, useValue: {} }]
+    }).compileComponents();
+    http = TestBed.inject(HttpTestingController);
+    fixture = TestBed.createComponent(TenantSwitcherComponent);
+    (fixture.componentInstance as unknown as { reload: () => void }).reload = () => { reloaded++; };
+  });
+
+  afterEach(() => http.verify());
+
+  it('shows the name of the only tenant the person belongs to, without a choice', () => {
+    const page = open([two[0]]);
+    expect(page.querySelector('span.tenant')?.textContent).toBe('Acme');
+    expect(page.querySelector('select')).toBeNull();
+  });
+
+  it('offers a drop-down with the current tenant chosen when the person belongs to several', () => {
+    const page = open(two);
+    const select = page.querySelector('select') as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['Acme', 'Globex']);
+    expect(select.options[0].selected).toBe(true);
+  });
+
+  it('asks for a token for the chosen tenant, keeps it and starts the app again', () => {
+    const page = open(two);
+    const select = page.querySelector('select') as HTMLSelectElement;
+    select.value = '2';
+    select.dispatchEvent(new Event('change'));
+
+    const request = http.expectOne('api/auth/switch-tenant');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ tenantId: 2 });
+    request.flush({ token: 'def', user: { name: 'Pat', tenantId: 2 } });
+
+    expect(TestBed.inject(AuthService).token).toBe('def');
+    expect(reloaded).toBe(1);
+  });
+
+  it('shows nothing when the API has no tenants route', () => {
+    const page = open(null);
+    expect(page.querySelector('.tenant')).toBeNull();
+  });
+});
+<# } #>

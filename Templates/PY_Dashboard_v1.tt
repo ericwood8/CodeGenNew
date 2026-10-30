@@ -15,7 +15,8 @@
     // Full notes: Docs/TemplateNotes/PY_Dashboard_v1.md
     // ==========================================================================================
 
-    var plan = DashboardPlan.Build(Database, Project);
+    var plan = DashboardPlan.BuildFor(Database, Project);
+    bool tenanted = PythonTenantWriter.Applies(Project);   // TenantTable: each statement reads the caller's tenant's rows only (the token in the statement is replaced before it runs)
     foreach (string problem in plan.Problems)
         Error(problem);
 
@@ -46,7 +47,7 @@
     Line("from sqlalchemy import text");
     Line("from sqlalchemy.orm import Session");
     Line();
-    if (limited.Count > 0)
+    if (limited.Count > 0 || tenanted)
         Line("from app.auth import CurrentUser, require_user");
     Line("from app.db import get_session");
     Line();
@@ -99,12 +100,18 @@
     Line();
     Line();
     Line("@router.get(\"/api/dashboard\")");
+    string loadCall = tenanted ? "load(session, table, user.tenant_id)" : "load(session, table)";
     if (limited.Count > 0)
     {
         Line("def dashboard(table: str | None = Query(None), session: Session = Depends(get_session), user: CurrentUser = Depends(require_user)):");
         Line("    # the answer is cached for every caller, so the copy sent loses the widgets this caller may not read");
-        Line("    widgets = [w for w in load(session, table) if may_read(user, w[\"table\"])]");
+        Line($"    widgets = [w for w in {loadCall} if may_read(user, w[\"table\"])]");
         Line("    return {\"widgets\": widgets}");
+    }
+    else if (tenanted)
+    {
+        Line("def dashboard(table: str | None = Query(None), session: Session = Depends(get_session), user: CurrentUser = Depends(require_user)):");
+        Line($"    return {{\"widgets\": {loadCall}}}");
     }
     else
     {
@@ -121,8 +128,10 @@
     Line("    return None if value is None else str(value)");
     Line();
     Line();
-    Line("def load(session: Session, table: str | None) -> list[dict[str, Any]]:");
-    Line("    \"\"\"The dashboard page's widgets, or with a table the cards of that table's strip (empty for a table that has none). The answer is kept for a minute per table.\"\"\"");
+    Line(tenanted ? "def load(session: Session, table: str | None, tenant: int | None) -> list[dict[str, Any]]:" : "def load(session: Session, table: str | None) -> list[dict[str, Any]]:");
+    Line(tenanted
+        ? "    \"\"\"The dashboard page's widgets, or with a table the cards of that table's strip (empty for a table that has none), from the rows of the caller's tenant (none for a caller in no tenant). The answer is kept for a minute per table and tenant.\"\"\""
+        : "    \"\"\"The dashboard page's widgets, or with a table the cards of that table's strip (empty for a table that has none). The answer is kept for a minute per table.\"\"\"");
     Line("    if table is None:");
     Line("        chosen = [d for d in DEFINITIONS if d.on_dashboard]");
     Line("    else:");
@@ -132,6 +141,11 @@
     Line("            return []");
     Line();
     Line("    key = \"\" if table is None else \"table:\" + table.lower()");
+    if (tenanted)
+    {
+        Line("    where = \"NULL\" if tenant is None else str(int(tenant))");
+        Line("    key = where + \"|\" + key");
+    }
     Line("    now = time.monotonic()");
     Line("    with _lock:");
     Line("        hit = _cache.get(key)");
@@ -140,7 +154,7 @@
     Line();
     Line("    widgets: list[dict[str, Any]] = []");
     Line("    for d in chosen:");
-    Line("        found = session.execute(text(d.sql)).all()");
+    Line(tenanted ? $"        found = session.execute(text(d.sql.replace(\"{TenantPlan.DashboardToken}\", where))).all()" : "        found = session.execute(text(d.sql)).all()");
     Line("        widgets.append(");
     Line("            {");
     Line("                \"id\": d.id,");

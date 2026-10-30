@@ -11,7 +11,7 @@
     // With none of these the tests are skipped with the reason. test_approvals.py adds the people of the user table (a requester and two approvers, with ApproverTable also a person approved for another
     // table only) and a row of the first RowApprovals table with plain SQL before each test and removes them after it, signs in as each person by replacing require_user, and plays the cases: a person
     // the user table does not know, a row that is not there, a request and a second one while it waits, a person who may not decide, the list of waiting requests, withdrawal by the requester only, the
-    // four eyes, a decision written once, the history of every cycle and the two hooks. The words are ApprovalWords, as in the other stacks' tests.
+    // four eyes, a decision written once, the history of every cycle and the two hooks; with TenantTable also that another tenant cannot ask, decide, withdraw or read the cycles of the row. The words are ApprovalWords, as in the other stacks' tests.
     // Written only for a project with PythonTests=true, ApiAuth and RowApprovals when the user table and the table can be filled from the schema (a column that cannot be NULL needs an example value).
     // Run them with pytest from the API's folder (requirements.txt lists pytest and httpx with PythonTests=true).
     // Full notes: Docs/TemplateNotes/API_Approvals_v1.md

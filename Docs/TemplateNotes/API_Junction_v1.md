@@ -30,3 +30,6 @@ itself has - generate that first.
 ```
 
 - **Access mode (EF Core instead of routines):** with `AccessMode=Ef` (always for SQLite) this template writes LINQ over the context instead of calls to the routines. See CS_SearchQuery_v1.md and Docs/Reference.md.
+
+
+**Tenants.** With `TenantTable` and `ApiAuth` (and `AccessMode=Ef`) the list answers 404 unless the anchor row is one the caller can see, and a link or unlink unless both rows are (the context shows only the caller's tenant's rows), so a link cannot join another tenant's rows (`JunctionEf`).

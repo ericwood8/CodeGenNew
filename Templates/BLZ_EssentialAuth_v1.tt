@@ -15,6 +15,7 @@
     // ==========================================================================================
     string ns = BlazorNames.Namespace(Project);
     string storageKey = BlazorNames.SessionKey(Project);
+    bool tenants = TenantPlan.HasSwitcher(Project);   // TenantTable and TenantMembership: the top bar shows the tenant and, for a person in several, a drop-down to switch
 #>
 @@@FILE Services/AuthSession.cs@@@
 using System.Net;
@@ -27,7 +28,7 @@ using Microsoft.JSInterop;
 namespace <#= ns #>.Services;
 
 /// <summary> Who is signed in: the name, the role and the owner id the API sent. </summary>
-public record SessionUser(string Name, string? Role, int? OwnerId);
+public record SessionUser(string Name, string? Role, int? OwnerId<#= tenants ? ", int? TenantId = null" : "" #>);
 
 /// <summary> What POST api/auth/login answers; also what is kept in sessionStorage. </summary>
 public record SessionData(string Token, DateTime? ExpiresUtc, SessionUser User);
@@ -76,14 +77,30 @@ public class AuthSession(IJSRuntime js)
         }
     }
 
+<# if (tenants) { #>
+    /// <summary> Signs in; with a tenant (the key of one the person belongs to) the token works in that tenant, else in the first one. A refused sign-in throws <see cref="LoginException"/>. </summary>
+    public async Task LoginAsync(HttpClient http, string userName, string password, int? tenantId = null)
+    {
+        await InitializeAsync();
+        var response = tenantId is { } tenant
+            ? await http.PostAsJsonAsync("/api/auth/login", new { userName, password, tenantId = tenant })
+            : await http.PostAsJsonAsync("/api/auth/login", new { userName, password });
+<# } else { #>
     /// <summary> Signs in; a refused sign-in throws <see cref="LoginException"/>. </summary>
     public async Task LoginAsync(HttpClient http, string userName, string password)
     {
         await InitializeAsync();
         var response = await http.PostAsJsonAsync("/api/auth/login", new { userName, password });
+<# } #>
         if (!response.IsSuccessStatusCode)
             throw new LoginException((int)response.StatusCode);
         var data = await response.Content.ReadFromJsonAsync<SessionData>(Web) ?? throw new LoginException((int)HttpStatusCode.InternalServerError);
+        await KeepAsync(data);
+    }
+
+    /// <summary> Keeps a session the API answered (a sign-in<#= tenants ? ", or a switch to another tenant" : "" #>) in memory and in the tab's sessionStorage, and tells the layout. </summary>
+    public async Task KeepAsync(SessionData data)
+    {
         Data = data;
         try { await js.InvokeVoidAsync("sessionStorage.setItem", StorageKey, JsonSerializer.Serialize(data, Web)); }
         catch (JSException) { }
@@ -173,6 +190,13 @@ public class AuthHandler : DelegatingHandler
         <label for="password">Password</label>
         <input id="password" type="password" autocomplete="current-password" required @bind="password" @bind:event="oninput" />
     </div>
+<# if (tenants) { #>
+    <div class="field">
+        <label for="tenant"><#= TenantWords.SignInLabel #></label>
+        <input id="tenant" type="number" min="1" inputmode="numeric" aria-describedby="tenantHint" @bind="tenant" @bind:event="oninput" />
+        <small id="tenantHint"><#= TenantWords.SignInHint #></small>
+    </div>
+<# } #>
     <div class="actions">
         <button type="submit" disabled="@busy">Sign in</button>
     </div>
@@ -181,6 +205,9 @@ public class AuthHandler : DelegatingHandler
 @code {
     private string userName = "";
     private string password = "";
+<# if (tenants) { #>
+    private int? tenant;
+<# } #>
     private string? message;
     private bool busy;
 
@@ -190,7 +217,11 @@ public class AuthHandler : DelegatingHandler
         message = null;
         try
         {
+<# if (tenants) { #>
+            await Session.LoginAsync(Http, userName.Trim(), password, tenant);
+<# } else { #>
             await Session.LoginAsync(Http, userName.Trim(), password);
+<# } #>
             Navigation.NavigateTo("/", replace: true);
         }
         catch (LoginException ex)
@@ -199,6 +230,9 @@ public class AuthHandler : DelegatingHandler
             {
                 <#= HttpStatus.Unauthorized #> => "The user name or password is not right.",
                 <#= HttpStatus.TooManyRequests #> => "Too many tries. Wait a minute and try again.",
+<# if (tenants) { #>
+                <#= HttpStatus.Forbidden #> => "<#= TenantWords.SignInRefused #>",
+<# } #>
                 _ => "Could not sign in right now."
             };
             password = "";
@@ -222,3 +256,54 @@ public class AuthHandler : DelegatingHandler
     // A person who is not signed in goes to the sign-in page; one who is signed in but may not read this page goes to the start page, which opens the first screen the role may read.
     protected override void OnInitialized() => Navigation.NavigateTo(Session.IsSignedIn ? "/" : "login", replace: true);
 }
+<# if (tenants) { #>
+@@@FILE Components/TenantSwitcher.razor@@@
+@using System.Net.Http.Json
+@using System.Text.Json
+@inject AuthSession Session
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+@* The tenant the person works in, as a name, or as a drop-down when they belong to several; choosing one asks the API for a token for it and loads the app again so every page reads the rows of the new tenant. Shows nothing when the API has no tenants route. *@
+@if (choices.Count == 1)
+{
+    <span class="tenant">@choices[0].Text</span>
+}
+else if (choices.Count > 1)
+{
+    <select class="tenant" aria-label="Tenant" @onchange="ChooseAsync">
+        @foreach (var choice in choices)
+        {
+            <option value="@choice.Id" selected="@choice.Current">@choice.Text</option>
+        }
+    </select>
+}
+
+@code {
+    private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
+
+    /// <summary> One tenant of the signed-in person (GET api/auth/tenants): the name to show, the role in it and whether the token works in it now. </summary>
+    private record TenantChoice(int Id, string Text, string? Role, bool Current);
+
+    private List<TenantChoice> choices = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { choices = await Http.GetFromJsonAsync<List<TenantChoice>>("/api/auth/tenants", Web) ?? []; }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException)
+        {
+            choices = [];
+        }
+    }
+
+    private async Task ChooseAsync(ChangeEventArgs e)
+    {
+        var response = await Http.PostAsJsonAsync("/api/auth/switch-tenant", new { tenantId = int.Parse((string)e.Value!) });
+        if (response.IsSuccessStatusCode && await response.Content.ReadFromJsonAsync<SessionData>(Web) is { } data)
+        {
+            await Session.KeepAsync(data);
+            Navigation.NavigateTo("/", forceLoad: true);
+        }
+    }
+}
+<# } #>

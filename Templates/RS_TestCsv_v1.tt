@@ -21,7 +21,7 @@
     if (RustTestBodies.HasCsvTests(Database, Project))
     {
         // a table in LogTables has no import and no way to add a row, so it has no CSV test
-        var tables = Database.CrudApiTables(Project).Where(t => RustTable.Of(t, Project).LogStamp is null).OrderBy(t => RustNames.Snake(t.TableName), StringComparer.Ordinal).ToList();
+        var tables = Database.CrudApiTables(Project).Where(t => !TenantPlan.NoApiCsv(t, Project) && RustTable.Of(t, Project).LogStamp is null).OrderBy(t => RustNames.Snake(t.TableName), StringComparer.Ordinal).ToList();
         bool auth = Project.ApiAuth;
         string Json(string text) => ApiSampleValues.Json(text);
         bool IsInt(RustField f) => f.BaseType is "i8" or "i16" or "i32" or "i64" or "u8" or "u16" or "u32" or "u64";

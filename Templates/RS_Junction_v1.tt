@@ -43,6 +43,11 @@
     string targetColumn = di.Quote(junction.TargetColumn.DbName);
     var createDate = junction.CreateDateColumn;
     var createUser = junction.CreateUserColumn;
+    bool tenanted = TenantPlan.HasApiTenancy(Project);   // TenantTable: the rows of a tenant-owned side (tenancy.rs) are the caller's tenant's only
+    var anchorFk = Model.JunctionForeignKeys[0];
+    string anchors = di.QuoteTable(anchorFk.ReferencedSchema, anchorFk.ReferencedDbTable);
+    string anchorKey = di.Quote(anchorFk.ReferencedDbColumns[0]);
+    string targetKey = di.Quote(targetKeyDb);
 
     var insertColumns = new List<string> { anchorColumn, targetColumn };
     var insertValues = new List<string> { di.Placeholder(1), di.Placeholder(2) };
@@ -66,16 +71,16 @@
 
     Line($"@@@FILE src/routes/{module}.rs@@@");
     Line("use axum::{");
-    Line("    Json, Router,");
+    Line(tenanted ? "    Extension, Json, Router," : "    Json, Router,");
     Line("    extract::{Path, State},");
     Line("    http::StatusCode,");
     Line("    routing::{get, post},");
     if (roles)
         Line("    middleware,");
     Line("};");
-    if (roles)
-        Line("use crate::auth::check_roles;");
-    Line("use crate::support::{ApiJson, ApiResult, Pool};");
+    if (roles || tenanted)
+        Line("use crate::auth::" + (tenanted && roles ? "{CurrentUser, check_roles}" : tenanted ? "CurrentUser" : "check_roles") + ";");
+    Line(tenanted ? "use crate::support::{ApiError, ApiJson, ApiResult, Pool};" : "use crate::support::{ApiJson, ApiResult, Pool};");
     Line("use serde::{Deserialize, Serialize};");
     Line("use sqlx::Row;");
     if (anchorType == "Uuid" || targetType == "Uuid")
@@ -86,7 +91,17 @@
     if (writeRoles.Count > 0)
         Line($"const WRITE_ROLES: &[&str] = &[{WriteRolePlan.Literal(writeRoles)}];");
     Line($"const LINKED: &str = {RustTable.Raw($"SELECT {targetColumn} FROM {links} WHERE {anchorColumn} = {di.Placeholder(1)}")};");
-    Line($"const TARGETS: &str = {RustTable.Raw($"SELECT {string.Join(", ", shown)} FROM {targets} ORDER BY {di.Quote(orderColumn)}, {di.Quote(targetKeyDb)}")};");
+    if (tenanted)
+    {
+        Line($"const TARGETS: &str = {RustTable.Raw($"SELECT {string.Join(", ", shown)} FROM {targets}")};");
+        Line($"const TARGETS_ORDER: &str = {RustTable.Raw($"ORDER BY {di.Quote(orderColumn)}, {di.Quote(targetKeyDb)}")};");
+        Line($"const ANCHOR_TABLE: &str = \"{anchorFk.ReferencedDbTable}\";");
+        Line($"const TARGET_TABLE: &str = \"{junction.TargetForeignKey.ReferencedDbTable}\";");
+        Line($"const ANCHOR_COUNT: &str = {RustTable.Raw($"SELECT COUNT(*) FROM {anchors} WHERE {anchorKey} = {di.Placeholder(1)}")};");
+        Line($"const TARGET_COUNT: &str = {RustTable.Raw($"SELECT COUNT(*) FROM {targets} WHERE {targetKey} = {di.Placeholder(1)}")};");
+    }
+    else
+        Line($"const TARGETS: &str = {RustTable.Raw($"SELECT {string.Join(", ", shown)} FROM {targets} ORDER BY {di.Quote(orderColumn)}, {di.Quote(targetKeyDb)}")};");
     Line($"const LINK_COUNT: &str = {RustTable.Raw($"SELECT COUNT(*) FROM {links} WHERE {anchorColumn} = {di.Placeholder(1)} AND {targetColumn} = {di.Placeholder(2)}")};");
     Line($"const LINK: &str = {RustTable.Raw($"INSERT INTO {links} ({string.Join(", ", insertColumns)}) VALUES ({string.Join(", ", insertValues)})")};");
     Line($"const UNLINK: &str = {RustTable.Raw($"DELETE FROM {links} WHERE {anchorColumn} = {di.Placeholder(1)} AND {targetColumn} = {di.Placeholder(2)}")};");
@@ -120,9 +135,43 @@
     Line($"    target_id: {targetType},");
     Line("}");
     Line();
-    Line($"async fn list_links(State(pool): State<Pool>, Path(anchor_id): Path<{anchorType}>) -> ApiResult<Json<Vec<JunctionItem>>> {{");
+    if (tenanted)
+    {
+        foreach (var (side, type, table) in new[] { ("anchor", anchorType, "ANCHOR"), ("target", targetType, "TARGET") })
+        {
+            Line($"/// Whether the caller can see this row of the {side} side of the junction: a tenant-owned table shows only the caller's tenant's rows.");
+            Line($"async fn sees_{side}(pool: &Pool, user: &CurrentUser, id: &{type}) -> ApiResult<bool> {{");
+            Line($"    let owned = crate::tenancy::owns({table}_TABLE);");
+            Line($"    let sql = if owned {{ format!(\"{{{table}_COUNT}} AND {{}} = {{}}\", crate::tenancy::TENANT_COLUMN, \"{di.Placeholder(2)}\") }} else {{ {table}_COUNT.to_string() }};");
+            Line("    // the text is built from constants and the tenant column name, never from the request");
+            Line("    let query = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql)).bind(id);");
+            Line("    let query = if owned { query.bind(user.tenant_id) } else { query };");
+            Line("    Ok(query.fetch_one(pool).await? > 0)");
+            Line("}");
+            Line();
+        }
+        Line("async fn require_sides(pool: &Pool, user: &CurrentUser, anchor: &" + anchorType + ", target: Option<&" + targetType + ">) -> ApiResult<()> {");
+        Line("    if !sees_anchor(pool, user, anchor).await? || (match target { Some(id) => !sees_target(pool, user, id).await?, None => false }) {");
+        Line("        return Err(ApiError::NotFound);");
+        Line("    }");
+        Line("    Ok(())");
+        Line("}");
+        Line();
+    }
+    Line($"async fn list_links(State(pool): State<Pool>, {(tenanted ? "Extension(user): Extension<CurrentUser>, " : "")}Path(anchor_id): Path<{anchorType}>) -> ApiResult<Json<Vec<JunctionItem>>> {{");
+    if (tenanted)
+        Line("    require_sides(&pool, &user, &anchor_id, None).await?;");
     Line($"    let linked: Vec<{targetType}> = sqlx::query_scalar(LINKED).bind(&anchor_id).fetch_all(&pool).await?;");
-    Line("    let rows = sqlx::query(TARGETS).fetch_all(&pool).await?;");
+    if (tenanted)
+    {
+        Line("    let owned = crate::tenancy::owns(TARGET_TABLE);");
+        Line($"    let sql = if owned {{ format!(\"{{TARGETS}} WHERE {{}} = {{}} {{TARGETS_ORDER}}\", crate::tenancy::TENANT_COLUMN, \"{di.Placeholder(1)}\") }} else {{ format!(\"{{TARGETS}} {{TARGETS_ORDER}}\") }};");
+        Line("    // the text is built from constants and the tenant column name, never from the request");
+        Line("    let query = sqlx::query(sqlx::AssertSqlSafe(sql));");
+        Line("    let rows = (if owned { query.bind(user.tenant_id) } else { query }).fetch_all(&pool).await?;");
+    }
+    else
+        Line("    let rows = sqlx::query(TARGETS).fetch_all(&pool).await?;");
     Line("    let mut items = Vec::with_capacity(rows.len());");
     Line("    for row in rows {");
     Line($"        let target_id: {targetType} = row.try_get({display.Count})?;");
@@ -137,7 +186,9 @@
     Line("}");
     Line();
     Line("/// Adds the link unless it exists.");
-    Line("async fn link(State(pool): State<Pool>, ApiJson(body): ApiJson<LinkRequest>) -> ApiResult<StatusCode> {");
+    Line(tenanted ? "async fn link(State(pool): State<Pool>, Extension(user): Extension<CurrentUser>, ApiJson(body): ApiJson<LinkRequest>) -> ApiResult<StatusCode> {" : "async fn link(State(pool): State<Pool>, ApiJson(body): ApiJson<LinkRequest>) -> ApiResult<StatusCode> {");
+    if (tenanted)
+        Line("    require_sides(&pool, &user, &body.anchor_id, Some(&body.target_id)).await?;");
     Line("    let existing: i64 = sqlx::query_scalar(LINK_COUNT).bind(&body.anchor_id).bind(&body.target_id).fetch_one(&pool).await?;");
     Line("    if existing == 0 {");
     Line("        sqlx::query(LINK).bind(&body.anchor_id).bind(&body.target_id).execute(&pool).await?;");
@@ -146,7 +197,9 @@
     Line("}");
     Line();
     Line("/// Removes the link when it exists.");
-    Line("async fn unlink(State(pool): State<Pool>, ApiJson(body): ApiJson<LinkRequest>) -> ApiResult<StatusCode> {");
+    Line(tenanted ? "async fn unlink(State(pool): State<Pool>, Extension(user): Extension<CurrentUser>, ApiJson(body): ApiJson<LinkRequest>) -> ApiResult<StatusCode> {" : "async fn unlink(State(pool): State<Pool>, ApiJson(body): ApiJson<LinkRequest>) -> ApiResult<StatusCode> {");
+    if (tenanted)
+        Line("    require_sides(&pool, &user, &body.anchor_id, Some(&body.target_id)).await?;");
     Line("    sqlx::query(UNLINK).bind(&body.anchor_id).bind(&body.target_id).execute(&pool).await?;");
     Line("    Ok(StatusCode::OK)");
     Line("}");

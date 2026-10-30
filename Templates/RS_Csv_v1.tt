@@ -20,7 +20,7 @@
     // For a project that sets ApiCsv=true. Full notes: Docs/TemplateNotes/RS_Csv_v1.md
     // ==========================================================================================
 
-    var tables = Database.CrudApiTables(Project).Select(t => RustTable.Of(t, Project)).OrderBy(t => t.Module, StringComparer.Ordinal).ToList();
+    var tables = Database.CrudApiTables(Project).Where(t => !TenantPlan.NoApiCsv(t, Project)).Select(t => RustTable.Of(t, Project)).OrderBy(t => t.Module, StringComparer.Ordinal).ToList();
     if (tables.Count == 0)
         Error("RS_Csv found no table to write routes for: none has an API of its own (a single int, uniqueidentifier or text key, not an enum or a name/active table).");
     bool validate = Project.ApiValidation;

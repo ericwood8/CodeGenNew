@@ -9,6 +9,7 @@
     // the generated pages assume (grid, search bar, paging, the edit form as a panel over the page). The pages use plain elements and these few class names.
     // With Auth=true the layout shows the menu and the hamburger only to a signed-in person, with the user name and Sign out on a top bar, and the style sheet has the sign-in page.
     // ==========================================================================================
+    bool tenants = TenantPlan.HasSwitcher(Project);   // the top bar also has the TenantSwitcher component of the Auth group
 #>
 @@@FILE Layout/MainLayout.razor@@@
 <# if (Project.Auth) { #>
@@ -27,6 +28,9 @@
             @if (Session.IsSignedIn)
             {
                 <button type="button" class="hamburger" aria-label="Toggle the menu" aria-expanded="@menuOpen" @onclick="() => menuOpen = !menuOpen">&#9776;</button>
+<# if (tenants) { #>
+                <TenantSwitcher />
+<# } #>
                 <span class="who">@Session.User!.Name</span>
                 <button type="button" @onclick="SignOutAsync">Sign out</button>
             }
@@ -119,6 +123,9 @@ main button { padding: 4px 12px; font: inherit; font-weight: 700; }
 /* The top bar of a signed-in person (the user name and Sign out) and the sign-in page. */
 .topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
 .topbar .who { font-weight: 600; }
+<# if (tenants) { #>
+.topbar .tenant { padding: 4px 8px; font-weight: 600; }
+<# } #>
 .login { max-width: 360px; }
 .login .field { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
 .login input { padding: 6px 8px; font: inherit; }

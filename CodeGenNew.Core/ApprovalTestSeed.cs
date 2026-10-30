@@ -6,7 +6,7 @@ namespace CodeGenNew.Core;
 /// <summary> The rows the generated approval tests of the Python and Rust APIs (PY_TestApprovals, RS_TestApprovals) put in a scratch copy of the database, and the statements that take them out again: the people of the
 /// user table (a requester and two approvers, with <c>ApproverTable</c> also a person approved for another table only), the approver rows, and one row of the first table of <c>RowApprovals</c>. The keys are fixed
 /// numbers far above the usual ones, so a second run first clears what the first left. </summary>
-public sealed record ApprovalTestSeed(ApprovalTable Table, IReadOnlyList<string> Setup, IReadOnlyList<string> Cleanup, long RowKey)
+public sealed record ApprovalTestSeed(ApprovalTable Table, IReadOnlyList<string> Setup, IReadOnlyList<string> Cleanup, long RowKey, string? TenantSql = null)
 {
     public const string Requester = "zz_ann";
     public const string Approver = "zz_bob";
@@ -128,6 +128,13 @@ public sealed record ApprovalTestSeed(ApprovalTable Table, IReadOnlyList<string>
         }
 
         var rowNamed = new Dictionary<string, string>();
+        // a tenant-owned row belongs to the first active tenant (the tenant the tests work in), whose key TenantSql finds
+        string? tenantSql = null;
+        if (TenantPlan.HasApiTenancy(project) && TenantPlan.OwnedBy(table.Table, project) is { } owned && TenantPlan.TenantTableOf(database, project) is { } tenantTable && TenantPlan.KeyOf(tenantTable) is { } tenantKey)
+        {
+            tenantSql = $"SELECT MIN({Q(tenantKey)}) FROM {Name(tenantTable)}" + (tenantTable.IsActiveColumn is { } flag ? $" WHERE {Q(flag)} = {Bool(true)}" : "");
+            rowNamed[owned.Column.Name] = $"({tenantSql})";
+        }
         foreach (var fk in table.Table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1 && f.ReferencedTable.EqualsIgnoreCase(user.Table.TableName)))
             rowNamed[fk.ReferencingColumns[0]] = FirstKey.ToString(CultureInfo.InvariantCulture);
         if (Insert(table.Table, rowNamed, FirstKey.ToString(CultureInfo.InvariantCulture), out reason) is not { } rowSql)
@@ -137,6 +144,6 @@ public sealed record ApprovalTestSeed(ApprovalTable Table, IReadOnlyList<string>
         cleanup.Insert(0, $"DELETE FROM {Name(table.Side)} WHERE {Q(table.Link)} = {FirstKey}");
         cleanup.Insert(1, $"DELETE FROM {Name(table.Table)} WHERE {Q(table.Key)} = {FirstKey}");
         cleanup.Add($"DELETE FROM {Name(user.Table)} WHERE {Q(userKey)} >= {FirstKey} AND {Q(userKey)} < {FirstKey + people.Count}");
-        return new ApprovalTestSeed(table, setup, cleanup, FirstKey);
+        return new ApprovalTestSeed(table, setup, cleanup, FirstKey, tenantSql);
     }
 }

@@ -38,6 +38,13 @@
     var ownerColumn = auth ? OwnedTable.OwnerColumn(Model, Project) : null;
     var ownerLink = auth ? OwnedTable.Through(Model, Project) : null;
     var userPlan = auth ? UserTable.PlanOf(Model, Project) : null;
+    // a table with a Name and an IsActive column (NameActivePlan): the list is by name, GET active and GET {name} are added, a name is trimmed, may not be empty and may not be that of another active row
+    var nameActive = NameActivePlan.For(Model, Project);
+    // TenantTable (RS_Tenants, src/tenancy.rs): a tenant-owned table shows and changes only the rows of the caller's tenant (another tenant's row is a 404) and stamps the caller's tenant on create and update;
+    // the tenant table shows the caller's own tenant (a platform administrator every one), only a platform administrator creates one and nobody deletes one
+    bool tenancy = RustTenantWriter.Applies(Project);
+    var tenantOwned = tenancy ? TenantPlan.OwnedBy(Model, Project) : null;
+    bool tenantTable = tenancy && TenantPlan.IsTenantTable(Model, Project);
     // ReadRoles and WriteRoles: the routes refuse a role the table's rules do not list (the administrator role is always listed); the lookup stays open
     var readRoles = WriteRolePlan.ReadFor(Project, Model);
     var writeRoles = WriteRolePlan.For(Project, Model);
@@ -46,6 +53,8 @@
     string writeLayer = writeRoles.Count > 0 ? ".route_layer(middleware::from_fn(|request, next| check_roles(WRITE_ROLES, true, request, next)))" : "";
     RustField? FieldOf(ColumnModel? column) => column is null ? null : t.Fields.FirstOrDefault(f => f != t.HashField && f.Column.Name.EqualsIgnoreCase(column.Name));
     var ownerField = FieldOf(ownerColumn);
+    var tenantField = FieldOf(tenantOwned?.Column);
+    bool tenanted = tenantField is not null || tenantTable;
     var linkField = ownerLink is null ? null : t.Fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(ownerLink.ForeignKey));
     bool scoped = ownerField is not null || (ownerColumn is null && linkField is not null);
     string parentModule = ownerLink is null ? "" : RustNames.Snake(ownerLink.ParentTable);
@@ -60,8 +69,14 @@
     string AdminTest(string row) => adminField is null ? "false" : (adminField.IsOption ? $"{row}.{adminField.Name} == Some(true)" : $"{row}.{adminField.Name}") + (activeField is null ? "" : $" && {row}.{activeField.Name}");
     string DefaultOf(RustField f) => f.BaseType == "bool" ? (f.IsOption ? "Some(false)" : "false") : f.IsOption ? "None" : "String::new()";
     string keyRef = textKey ? "&" : "";
-    string userArgument = auth && (scoped || userPlan is not null || gated) ? ", Extension(user): Extension<CurrentUser>" : "";
-    string userRead = scoped ? userArgument : "";   // the reading handlers need the caller only to scope the rows
+    string userArgument = auth && (scoped || userPlan is not null || gated || tenanted) ? ", Extension(user): Extension<CurrentUser>" : "";
+    string userRead = scoped || tenanted ? userArgument : "";   // the reading handlers need the caller only to scope the rows
+    // what a repository function that filters takes after the pool: the owner scope and the tenant
+    string tenancyArgument = tenantTable ? "&Tenancy::of_tenants(&user)" : "&Tenancy::of(&user)";
+    string filterArguments = (scoped ? ", &scope_of(&pool, &user).await?" : "") + (tenanted ? ", " + tenancyArgument : "");
+    string getById = nameActive is null ? "get_by_id" : "get_by_key";   // a name in that place is the start of a name, not a key
+    string namedTenancy = tenanted ? ", " + tenancyArgument : "";
+    string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{t.Key.Name}, &user)?;" : $"    refuse_other_tenant({row}.{tenantField!.Name}, &user)?;";
 
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
     Line("use axum::{");
@@ -78,6 +93,13 @@
     Line("};");
     if (roles)
         Line("use crate::auth::check_roles;");
+    if (tenanted)
+    {
+        var tenancyNames = tenantTable
+            ? new List<string> { "Tenancy", "attach_admin", "attach_creator", "never_deleted", "only_platform", "refuse_other_tenant_row", "require_person" }
+            : new List<string> { "Tenancy", "refuse_other_tenant", "require_tenant" };
+        Line("use crate::tenancy::{" + string.Join(", ", tenancyNames.OrderBy(n => n, StringComparer.Ordinal)) + "};");
+    }
     if (userArgument.Length > 0)
         Line("use crate::auth::" + (scoped ? "{CurrentUser, Scope, not_yours};" : t.Clone is not null && userPlan is not null ? "{CurrentUser, not_yours};" : "CurrentUser;"));
     if (userPlan is not null)
@@ -89,6 +111,8 @@
         Line($"use crate::validation::{t.Module}::validate;");
     if (gated && !log)
         Line($"use crate::routes::gates::{{after_clone_{t.Module}, check_{t.Module}}};");
+    if (tenantTable)
+        Line("use serde::Deserialize;");
     if (search)
         Line("use serde::Serialize;");
     if (guidKey)
@@ -108,11 +132,15 @@
         Line($"        .route(\"{t.Route}\", get(get_all){readLayer})");
         if (!log)
             Line($"        .route(\"{t.Route}\", MethodRouter::new().post(create){writeLayer})");
+        if (tenantTable)
+            Line($"        .route(\"{t.Route}/onboard\", axum::routing::post(onboard){writeLayer})");
         if (search)
             Line($"        .route(\"{t.Route}/search\", get(search){readLayer})");
         if (t.LookupSql is not null)
             Line($"        .route(\"{t.Route}/lookup\", get(lookup))");
-        Line($"        .route(\"{t.Route}/{{id}}\", get(get_by_id){readLayer})");
+        if (nameActive is not null)
+            Line($"        .route(\"{t.Route}/active\", get(get_all_active){readLayer})");
+        Line($"        .route(\"{t.Route}/{{id}}\", get({getById}){readLayer})");
         if (!log)
             Line($"        .route(\"{t.Route}/{{id}}\", MethodRouter::new().put(update).delete(delete){writeLayer})");
         if (t.Clone is not null && !log)
@@ -121,11 +149,15 @@
     else
     {
         Line(log ? $"        .route(\"{t.Route}\", get(get_all))" : $"        .route(\"{t.Route}\", get(get_all).post(create))");
+        if (tenantTable)
+            Line($"        .route(\"{t.Route}/onboard\", axum::routing::post(onboard))");
         if (search)
             Line($"        .route(\"{t.Route}/search\", get(search))");
         if (t.LookupSql is not null)
             Line($"        .route(\"{t.Route}/lookup\", get(lookup))");
-        Line(log ? $"        .route(\"{t.Route}/{{id}}\", get(get_by_id))" : $"        .route(\"{t.Route}/{{id}}\", get(get_by_id).put(update).delete(delete))");
+        if (nameActive is not null)
+            Line($"        .route(\"{t.Route}/active\", get(get_all_active))");
+        Line(log ? $"        .route(\"{t.Route}/{{id}}\", get({getById}))" : $"        .route(\"{t.Route}/{{id}}\", get({getById}).put(update).delete(delete))");
         if (t.Clone is not null && !log)
             Line($"        .route(\"{t.Route}/{{id}}/clone\", post(clone_row))");
     }
@@ -236,24 +268,64 @@
         Line();
     }
     Line($"async fn get_all(State(pool): State<Pool>{userRead}) -> ApiResult<Json<Vec<{t.Struct}>>> {{");
-    if (scoped)
-        Line("    Ok(Json(repo::get_all_scoped(&pool, &scope_of(&pool, &user).await?).await?))");
+    if (nameActive is not null)
+        Line($"    Ok(Json(repo::get_named(&pool, false{namedTenancy}).await?))");
+    else if (scoped || tenanted)
+        Line($"    Ok(Json(repo::get_all_scoped(&pool{filterArguments}).await?))");
     else
         Line("    Ok(Json(repo::get_all(&pool).await?))");
     Line("}");
     Line();
     if (t.LookupSql is not null)
     {
-        Line("async fn lookup(State(pool): State<Pool>, Query(query): Query<repo::LookupQuery>) -> ApiResult<Json<Vec<repo::LookupItem>>> {");
-        Line("    Ok(Json(repo::lookup(&pool, &query).await?))");
+        Line($"async fn lookup(State(pool): State<Pool>{(tenanted ? userArgument : "")}, Query(query): Query<repo::LookupQuery>) -> ApiResult<Json<Vec<repo::LookupItem>>> {{");
+        Line(tenanted ? $"    Ok(Json(repo::lookup(&pool, &query, {tenancyArgument}).await?))" : "    Ok(Json(repo::lookup(&pool, &query).await?))");
         Line("}");
         Line();
     }
+    if (nameActive is not null)
+    {
+        var nameCol = FieldOf(nameActive.Name)!;
+        var activeCol = FieldOf(nameActive.Active)!;
+        Line($"async fn get_all_active(State(pool): State<Pool>{userRead}) -> ApiResult<Json<Vec<{t.Struct}>>> {{");
+        Line($"    Ok(Json(repo::get_named(&pool, true{namedTenancy}).await?))");
+        Line("}");
+        Line();
+        Line($"/// A number in the place of the key is a row; anything else is the start of a name: the active rows whose name contains it.");
+        Line($"async fn get_by_key(State(pool): State<Pool>, Path(key): Path<String>{userRead}) -> ApiResult<Json<serde_json::Value>> {{");
+        Line($"    match key.parse::<{keyType}>() {{");
+        Line($"        Ok(id) => {{");
+        Line($"            let Json(row) = get_by_id(State(pool), Path(id){(userRead.Length > 0 ? ", Extension(user)" : "")}).await?;");
+        Line("            Ok(Json(serde_json::json!(row)))");
+        Line("        }");
+        Line($"        Err(_) => Ok(Json(serde_json::json!(repo::find_by_name(&pool, &key{namedTenancy}).await?))),");
+        Line("    }");
+        Line("}");
+        Line();
+        if (!log)
+        {
+            Line("/// The name rules: a name is trimmed, may not be empty and may not be that of another active row" + (tenantField is not null ? " of the caller's tenant" : "") + ".");
+            Line($"async fn check_name(pool: &Pool, row: &mut {t.Struct}, key: Option<{keyType}>{(tenantField is not null ? ", user: &CurrentUser" : "")}) -> ApiResult<()> {{");
+            Line($"    row.{nameCol.Name} = row.{nameCol.Name}.trim().to_string();");
+            Line($"    if row.{nameCol.Name}.is_empty() {{");
+            Line($"        return Err(ApiError::Rejected({HttpStatus.BadRequest}, \"{ProblemTypes.NameRequired}\", \"{NameActiveWords.RequiredTitle}\", \"{NameActiveWords.RequiredDetail}\".into()));");
+            Line("    }");
+            Line($"    if row.{activeCol.Name} && repo::name_taken(pool, &row.{nameCol.Name}, key{(tenantField is not null ? ", &Tenancy::of(user)" : "")}).await? {{");
+            Line($"        return Err(ApiError::Rejected({HttpStatus.Conflict}, \"{ProblemTypes.DuplicateName}\", \"{NameActiveWords.DuplicateTitle}\", format!(\"{NameActiveWords.DuplicateDetailFormat.Replace("{0}", "{}")}\", row.{nameCol.Name})));");
+            Line("    }");
+            Line("    Ok(())");
+            Line("}");
+            Line();
+        }
+    }
     Line($"async fn get_by_id(State(pool): State<Pool>, Path(id): Path<{keyType}>{userRead}) -> ApiResult<Json<{t.Struct}>> {{");
-    if (scoped)
+    if (scoped || tenanted)
     {
         Line($"    let row = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
-        Line("    allowed(&pool, &user, &row).await?;");
+        if (scoped)
+            Line("    allowed(&pool, &user, &row).await?;");
+        if (tenanted)
+            Line(TenantRefusal("row"));
         Line("    Ok(Json(row))");
     }
     else
@@ -262,7 +334,15 @@
     Line();
     if (!log)   // a log table has no write routes
     {
-    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    Line($"async fn create(State(pool): State<Pool>{userArgument}, ApiJson({(guidKey || ownerField is not null || userPlan is not null || gated || tenantField is not null || nameActive is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Response> {{");
+    if (tenantTable)
+    {
+        Line("    if !user.is_platform() {");
+        Line("        return Err(only_platform());");
+        Line("    }");
+    }
+    if (tenantField is not null)
+        Line($"    row.{tenantField.Name} = require_tenant(&user)?;");
     if (validate)
     {
         Line("    validate(&row, None)?;");
@@ -307,19 +387,56 @@
         Line($"        row.{t.Key.Name} = uuid::Uuid::new_v4();");
         Line("    }");
     }
+    if (nameActive is not null)
+        Line(tenantField is not null ? "    check_name(&pool, &mut row, None, &user).await?;" : "    check_name(&pool, &mut row, None).await?;");
     Line("    let row = repo::insert(&pool, &row).await?;");
+    if (tenantTable)
+        Line($"    attach_creator(&pool, &user, row.{t.Key.Name}).await?;");
     Line(textKey
         ? $"    Ok(created(format!(\"{t.Route}/{{}}\", path_segment(&row.{t.Key.Name})), row))"
         : $"    Ok(created(format!(\"{t.Route}/{{}}\", row.{t.Key.Name}), row))");
     Line("}");
     Line();
-    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
+    if (tenantTable)
+    {
+        // POST <tenants>/onboard: the tenant and, when the project has a membership table, the person who becomes its first administrator
+        Line("#[derive(Deserialize)]");
+        Line("struct OnboardRequest {");
+        Line($"    tenant: {t.Struct},");
+        Line("    #[serde(rename = \"adminId\", default)]");
+        Line("    admin_id: Option<i32>,");
+        Line("}");
+        Line();
+        Line($"async fn onboard(State(pool): State<Pool>{userArgument}, ApiJson(request): ApiJson<OnboardRequest>) -> ApiResult<Response> {{");
+        Line("    if !user.is_platform() {");
+        Line("        return Err(only_platform());");
+        Line("    }");
+        Line("    let mut row = request.tenant;");
+        if (validate)
+            Line("    validate(&row, None)?;");
+        if (nameActive is not null)
+            Line("    check_name(&pool, &mut row, None).await?;");
+        Line("    require_person(&pool, request.admin_id).await?;");
+        Line("    let row = repo::insert(&pool, &row).await?;");
+        Line($"    if let Err(error) = attach_admin(&pool, request.admin_id, row.{t.Key.Name}).await {{");
+        Line($"        let _ = repo::delete(&pool, row.{t.Key.Name}).await;");
+        Line("        return Err(error);");
+        Line("    }");
+        Line($"    Ok(created(format!(\"{t.Route}/{{}}\", row.{t.Key.Name}), row))");
+        Line("}");
+        Line();
+    }
+    Line($"async fn update(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}, ApiJson({(userPlan is not null || gated || tenantField is not null || nameActive is not null ? "mut " : "")}row): ApiJson<{t.Struct}>) -> ApiResult<Json<{t.Struct}>> {{");
     Line($"    if row.{t.Key.Name} != id {{");
     Line("        return Err(ApiError::BadRequest(\"The id in the URL and the id in the body differ.\".into()));");
     Line("    }");
-    if (scoped || userPlan is not null || validate || gated)
+    if (scoped || userPlan is not null || validate || gated || tenanted)
     {
         Line($"    let current = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
+        if (tenanted)
+            Line(TenantRefusal("current"));
+        if (tenantField is not null)
+            Line($"    row.{tenantField.Name} = current.{tenantField.Name}; // a row never moves to another tenant");
         if (scoped)
         {
             Line("    allowed(&pool, &user, &current).await?;");
@@ -333,15 +450,33 @@
         if (gated)
             Line($"    check_{t.Module}(&pool, &user, &mut row, Some(&current)).await?;");
     }
+    if (nameActive is not null)
+    {
+        Line($"    if repo::get_by_id(&pool, {idArg}).await?.is_none() {{");
+        Line("        return Err(ApiError::NotFound);");
+        Line("    }");
+        Line(tenantField is not null ? "    check_name(&pool, &mut row, Some(id), &user).await?;" : "    check_name(&pool, &mut row, Some(id)).await?;");
+    }
     Line($"    repo::update(&pool, {idArg}, &row).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");
     Line();
+    if (tenantTable)
+    {
+        // a tenant is switched off with its active flag, never deleted
+        Line($"async fn delete(State(_pool): State<Pool>, Path(_id): Path<{keyType}>) -> ApiResult<StatusCode> {{");
+        Line("    Err(never_deleted())");
+        Line("}");
+    }
+    else
+    {
     Line($"async fn delete(State(pool): State<Pool>, Path(id): Path<{keyType}>{userRead}) -> ApiResult<StatusCode> {{");
-    if (scoped || adminField is not null)
+    if (scoped || adminField is not null || tenanted)
     {
         Line($"    let current = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
         if (scoped)
             Line("    allowed(&pool, &user, &current).await?;");
+        if (tenanted)
+            Line(TenantRefusal("current"));
         if (adminField is not null)
         {
             Line($"    if is_administrator(&current) && !repo::other_administrators(&pool, {keyRef}current.{t.Key.Name}).await? {{");
@@ -354,14 +489,18 @@
     Line("        _ => Ok(StatusCode::OK),");
     Line("    }");
     Line("}");
-    if (t.Clone is not null)
+    }
+    if (t.Clone is not null && !tenantTable)
     {
         Line();
         Line($"async fn clone_row(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}) -> ApiResult<Response> {{");
-        if (scoped)
+        if (scoped || tenantField is not null)
         {
             Line($"    let source = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
-            Line("    allowed(&pool, &user, &source).await?;");
+            if (scoped)
+                Line("    allowed(&pool, &user, &source).await?;");
+            if (tenantField is not null)
+                Line(TenantRefusal("source"));
         }
         if (userPlan is not null)
         {
@@ -401,7 +540,7 @@
         Line("        return Err(ApiError::BadRequest(\"pageNumber must be 1 or greater.\".into()));");
         Line("    }");
         Line("    let page_size = query.page_size.unwrap_or(100).clamp(1, MAX_PAGE_SIZE);");
-        Line(scoped ? "    let (items, total_count) = repo::search(&pool, &query, page, page_size, &scope_of(&pool, &user).await?).await?;" : "    let (items, total_count) = repo::search(&pool, &query, page, page_size).await?;");
+        Line($"    let (items, total_count) = repo::search(&pool, &query, page, page_size{filterArguments}).await?;");
         Line("    let total_pages = if total_count == 0 { 0 } else { (total_count + page_size - 1) / page_size };");
         Line("    Ok(Json(SearchResult { items, page, page_size, total_count, total_pages }))");
         Line("}");

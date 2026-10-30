@@ -17,6 +17,7 @@
     string pagesFolder = Project.PagesFolder;
     string componentsFolder = Project.ComponentsFolder;
     string storageKey = (Project.ProjectName ?? "app").ToLowerInvariant() + ".auth";
+    bool tenants = TenantPlan.HasSwitcher(Project);   // TenantTable and TenantMembership: the top bar shows the tenant and, for a person in several, a drop-down to switch
 #>
 @@@FILE src/<#= apiFolder #>/auth.ts@@@
 import { useSyncExternalStore } from 'react';
@@ -86,11 +87,20 @@ export const hasRole = (roles: readonly string[]): boolean => {
   return !!role && roles.includes(role);
 };
 
+<# if (tenants) { #>
+/** Signs in; with a tenant (the key of one the person belongs to) the token works in that tenant, else in the first one. */
+export async function login(userName: string, password: string, tenantId?: number): Promise<LoginResponse> {
+<# } else { #>
 export async function login(userName: string, password: string): Promise<LoginResponse> {
+<# } #>
   const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+<# if (tenants) { #>
+    body: JSON.stringify(tenantId === undefined ? { userName, password } : { userName, password, tenantId }),
+<# } else { #>
     body: JSON.stringify({ userName, password }),
+<# } #>
   });
   if (!response.ok) throw new LoginError(response.status);
   const body = (await response.json()) as LoginResponse;
@@ -141,6 +151,15 @@ describe('auth', () => {
     expect(getToken()).toBe('abc');
     expect(JSON.parse(sessionStorage.getItem(storageKey) ?? 'null').token).toBe('abc');
   });
+<# if (tenants) { #>
+
+  it('signs in to a tenant: posts its key beside the name and password', async () => {
+    const fetched = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(answer), { status: <#= HttpStatus.Ok #> }));
+    await login('pat', 'secret', 2);
+
+    expect(fetched).toHaveBeenCalledWith('/api/auth/login', expect.objectContaining({ body: JSON.stringify({ userName: 'pat', password: 'secret', tenantId: 2 }) }));
+  });
+<# } #>
 
   it('stays signed out when the API refuses the sign-in', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: <#= HttpStatus.Unauthorized #> }));
@@ -198,6 +217,9 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [userName, setUserName] = useState('');
   const [password, setPassword] = useState('');
+<# if (tenants) { #>
+  const [tenant, setTenant] = useState('');
+<# } #>
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -206,12 +228,19 @@ export function LoginPage() {
     setMessage('');
     setBusy(true);
     try {
+<# if (tenants) { #>
+      await login(userName, password, tenant.trim() ? Number(tenant) : undefined);
+<# } else { #>
       await login(userName, password);
+<# } #>
       navigate('/', { replace: true });
     } catch (error) {
       setPassword('');
       if (error instanceof LoginError && error.status === <#= HttpStatus.TooManyRequests #>) setMessage('Too many tries. Wait a minute and try again.');
       else if (error instanceof LoginError && error.status === <#= HttpStatus.Unauthorized #>) setMessage('The user name or password is not right.');
+<# if (tenants) { #>
+      else if (error instanceof LoginError && error.status === <#= HttpStatus.Forbidden #>) setMessage('<#= TenantWords.SignInRefused #>');
+<# } #>
       else setMessage('Could not sign in right now.');
     } finally {
       setBusy(false);
@@ -230,6 +259,13 @@ export function LoginPage() {
           <label htmlFor="password">Password</label>
           <input id="password" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
         </div>
+<# if (tenants) { #>
+        <div className="form-group">
+          <label htmlFor="tenant"><#= TenantWords.SignInLabel #></label>
+          <input id="tenant" name="tenant" type="number" min="1" inputMode="numeric" value={tenant} onChange={(event) => setTenant(event.target.value)} aria-describedby="tenantHint" />
+          <small id="tenantHint"><#= TenantWords.SignInHint #></small>
+        </div>
+<# } #>
         {message && <p className="error" role="alert">{message}</p>}
         <button type="submit" disabled={busy || !userName || !password}>Sign in</button>
       </form>
@@ -243,7 +279,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoginPage } from '../LoginPage';
 import { setSession } from '../../<#= apiFolder #>/auth';
 
-const submit = async (status: number) => {
+const submit = async (status: number<# if (tenants) { #>, tenant = ''<# } #>) => {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(status === <#= HttpStatus.Ok #> ? JSON.stringify({ token: 'abc', user: { name: 'Pat' } }) : '', { status }));
   render(
     <MemoryRouter initialEntries={['/login']}>
@@ -255,6 +291,9 @@ const submit = async (status: number) => {
   );
   fireEvent.change(screen.getByLabelText('User name'), { target: { value: 'pat' } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } });
+<# if (tenants) { #>
+  if (tenant) fireEvent.change(screen.getByLabelText('<#= TenantWords.SignInLabel #>'), { target: { value: tenant } });
+<# } #>
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 };
 
@@ -289,6 +328,25 @@ describe('LoginPage', () => {
     await submit(<#= HttpStatus.InternalServerError #>);
     expect(await screen.findByText('Could not sign in right now.')).toBeInTheDocument();
   });
+<# if (tenants) { #>
+
+  it('signs in to the tenant that is typed', async () => {
+    await submit(<#= HttpStatus.Ok #>, '2');
+    expect(await screen.findByText('home')).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/auth/login', expect.objectContaining({ body: JSON.stringify({ userName: 'pat', password: 'secret', tenantId: 2 }) }));
+  });
+
+  it('names no tenant when the box is empty', async () => {
+    await submit(<#= HttpStatus.Ok #>);
+    expect(await screen.findByText('home')).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/auth/login', expect.objectContaining({ body: JSON.stringify({ userName: 'pat', password: 'secret' }) }));
+  });
+
+  it('says the tenant is not one of theirs on a <#= HttpStatus.Forbidden #>', async () => {
+    await submit(<#= HttpStatus.Forbidden #>, '3');
+    expect(await screen.findByText('<#= TenantWords.SignInRefused #>')).toBeInTheDocument();
+  });
+<# } #>
 });
 @@@FILE src/<#= componentsFolder #>/RequireAuth.tsx@@@
 import type { ReactNode } from 'react';
@@ -355,3 +413,107 @@ describe('RequireAuth', () => {
 .topbar .spacer { flex: 1; }
 .topbar .signout { padding: 4px 10px; background: none; border: 1px solid #8886; border-radius: 4px; color: inherit; cursor: pointer; }
 .topbar .signout:hover { background: #8883; }
+<# if (tenants) { #>
+.topbar .tenant { padding: 4px 8px; font-weight: 600; background: none; border: 1px solid #8886; border-radius: 4px; color: inherit; }
+<# } #>
+<# if (tenants) { #>
+@@@FILE src/<#= componentsFolder #>/TenantSwitcher.tsx@@@
+import { useEffect, useState } from 'react';
+import type { ChangeEvent } from 'react';
+import { getToken, setSession, useAuth } from '../<#= apiFolder #>/auth';
+import type { LoginResponse } from '../<#= apiFolder #>/auth';
+
+const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? '';
+
+/** One tenant of the signed-in person (GET api/auth/tenants): the name to show, the role in it and whether the token works in it now. */
+interface TenantChoice {
+  id: number;
+  text: string;
+  role?: string;
+  current: boolean;
+}
+
+/** The tenant the person works in, as a name, or as a drop-down when they belong to several; choosing one asks the API for a token for it (POST api/auth/switch-tenant), and the screens read their rows again. Shows nothing when the API has no tenants route. */
+export function TenantSwitcher() {
+  const { user } = useAuth();
+  const [choices, setChoices] = useState<TenantChoice[]>([]);
+  const tenantId = user?.['tenantId'];
+
+  useEffect(() => {
+    let live = true;
+    fetch(`${API_BASE_URL}/api/auth/tenants`, { headers: { Authorization: `Bearer ${getToken()}` } })
+      .then((response) => (response.ok ? (response.json() as Promise<TenantChoice[]>) : []))
+      .then((list) => { if (live) setChoices(list); })
+      .catch(() => { if (live) setChoices([]); });
+    return () => { live = false; };
+  }, [tenantId]);
+
+  const choose = async (event: ChangeEvent<HTMLSelectElement>) => {
+    const response = await fetch(`${API_BASE_URL}/api/auth/switch-tenant`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+      body: JSON.stringify({ tenantId: Number(event.target.value) }),
+    });
+    if (response.ok) setSession((await response.json()) as LoginResponse);
+  };
+
+  if (choices.length === 0) return null;
+  if (choices.length === 1) return <span className="tenant">{choices[0].text}</span>;
+  return (
+    <select className="tenant" aria-label="Tenant" value={choices.find((c) => c.current)?.id ?? ''} onChange={choose}>
+      {choices.map((c) => <option key={c.id} value={c.id}>{c.text}</option>)}
+    </select>
+  );
+}
+@@@FILE src/<#= componentsFolder #>/__tests__/TenantSwitcher.test.tsx@@@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TenantSwitcher } from '../TenantSwitcher';
+import { getToken, setSession } from '../../<#= apiFolder #>/auth';
+
+const two = [{ id: 1, text: 'Acme', role: 'Administrator', current: true }, { id: 2, text: 'Globex', role: 'Employee', current: false }];
+const json = (body: unknown, status = <#= HttpStatus.Ok #>) => new Response(JSON.stringify(body), { status });
+
+describe('TenantSwitcher', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    setSession({ token: 'abc', user: { name: 'Pat', tenantId: 1 } });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setSession(null);
+  });
+
+  it('shows the name of the only tenant the person belongs to, without a choice', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(json([two[0]]));
+    render(<TenantSwitcher />);
+    expect(await screen.findByText('Acme')).toBeInTheDocument();
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
+  it('offers a drop-down with the current tenant chosen when the person belongs to several', async () => {
+    const fetched = vi.spyOn(globalThis, 'fetch').mockResolvedValue(json(two));
+    render(<TenantSwitcher />);
+    expect(await screen.findByRole('combobox', { name: 'Tenant' })).toHaveValue('1');
+    expect(fetched).toHaveBeenCalledWith('/api/auth/tenants', { headers: { Authorization: 'Bearer abc' } });
+  });
+
+  it('asks for a token for the chosen tenant and keeps it', async () => {
+    const fetched = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(json(two)).mockResolvedValueOnce(json({ token: 'def', user: { name: 'Pat', tenantId: 2 } })).mockResolvedValue(json(two));
+    render(<TenantSwitcher />);
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Tenant' }), { target: { value: '2' } });
+
+    await waitFor(() => expect(getToken()).toBe('def'));
+    await waitFor(() => expect(fetched).toHaveBeenCalledTimes(3));
+    expect(fetched).toHaveBeenCalledWith('/api/auth/switch-tenant', expect.objectContaining({ method: 'POST', body: JSON.stringify({ tenantId: 2 }) }));
+  });
+
+  it('shows nothing when the API has no tenants route', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: <#= HttpStatus.NotFound #> }));
+    const { container } = render(<TenantSwitcher />);
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    expect(container).toBeEmptyDOMElement();
+  });
+});
+<# } #>

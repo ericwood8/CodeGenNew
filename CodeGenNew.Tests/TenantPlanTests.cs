@@ -10,7 +10,7 @@ namespace CodeGenNew.Tests;
 [TestClass]
 public class TenantPlanTests
 {
-    private static string CreateDatabase()
+    internal static string CreateDatabase(string[]? more = null)
     {
         string path = Path.Combine(Path.GetTempPath(), "codegen_tenants_" + Guid.NewGuid().ToString("N") + ".db");
         using var connection = new SqliteConnection($"Data Source={path}");
@@ -22,9 +22,10 @@ public class TenantPlanTests
             "CREATE TABLE EmployeeTenant (EmployeeTenantId INTEGER PRIMARY KEY AUTOINCREMENT, EmployeeId INTEGER NOT NULL REFERENCES Employee (EmployeeId), TenantId INTEGER NOT NULL REFERENCES Tenant (TenantId), Role VARCHAR(30) NULL)",
             "CREATE TABLE Organization (OrganizationId INTEGER PRIMARY KEY AUTOINCREMENT, TenantId INTEGER NOT NULL REFERENCES Tenant (TenantId), Name VARCHAR(80) NOT NULL, City VARCHAR(60) NULL, IsActive BOOLEAN NOT NULL DEFAULT 1)",
             "CREATE TABLE Project (ProjectId INTEGER PRIMARY KEY AUTOINCREMENT, TenantId INTEGER NOT NULL REFERENCES Tenant (TenantId), Name VARCHAR(80) NOT NULL, Description VARCHAR(200) NULL, Budget DECIMAL(12,2) NOT NULL DEFAULT 0, StartedOn DATE NULL, IsDeleted BIT NOT NULL DEFAULT 0)",
+            "CREATE TABLE ProjectTask (ProjectTaskId INTEGER PRIMARY KEY AUTOINCREMENT, ProjectId INTEGER NOT NULL REFERENCES Project (ProjectId), TenantId INTEGER NOT NULL REFERENCES Tenant (TenantId), Title VARCHAR(80) NOT NULL, Hours DECIMAL(6,2) NOT NULL DEFAULT 0, Notes VARCHAR(100) NULL)",
             "CREATE TABLE Country (CountryId INTEGER PRIMARY KEY AUTOINCREMENT, TenantId INTEGER NOT NULL REFERENCES Tenant (TenantId), Name VARCHAR(80) NOT NULL, Code VARCHAR(3) NOT NULL, Notes VARCHAR(100) NULL)"
         ];
-        foreach (string statement in statements)
+        foreach (string statement in statements.Concat(more ?? []))
         {
             using var command = connection.CreateCommand();
             command.CommandText = statement;
@@ -33,7 +34,7 @@ public class TenantPlanTests
         return path;
     }
 
-    private static Dictionary<string, string> Values(Dictionary<string, string>? extra = null)
+    internal static Dictionary<string, string> Values(Dictionary<string, string>? extra = null)
     {
         var values = new Dictionary<string, string>
         {
@@ -46,9 +47,9 @@ public class TenantPlanTests
         return values;
     }
 
-    private static async Task<(bool Success, List<string> Errors, Func<string, string> Read, List<string> Files)> GenerateAsync(Dictionary<string, string>? extra = null)
+    internal static async Task<(bool Success, List<string> Errors, Func<string, string> Read, List<string> Files)> GenerateAsync(Dictionary<string, string>? extra = null, string stack = "api", string[]? more = null)
     {
-        string database = CreateDatabase();
+        string database = CreateDatabase(more);
         string output = Path.Combine(Path.GetTempPath(), "codegen_tenants_out_" + Guid.NewGuid().ToString("N"));
         try
         {
@@ -56,7 +57,7 @@ public class TenantPlanTests
             var provider = SchemaProviderFactory.Create(request, Path.Combine(Repo.Root, "SpecialLogicColumns.config"));
             var report = await Repo.GenerateAsync(provider, new GenerateOptions
             {
-                Project = ProjectSettings.FromValues(Values(extra)), Stacks = ["api"], OutputDirectory = output, DatabaseName = database, Schema = "main", Essentials = true
+                Project = ProjectSettings.FromValues(Values(extra)), Stacks = [stack], OutputDirectory = output, DatabaseName = database, Schema = "main", Essentials = true
             });
             var files = Directory.GetFiles(output, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(output, f).Replace('\\', '/')).ToList();
             var contents = files.ToDictionary(f => f, f => File.ReadAllText(Path.Combine(output, f)).Replace("\r\n", "\n"));
@@ -93,7 +94,7 @@ public class TenantPlanTests
         var database = await ReadAsync();
         var project = ProjectSettings.FromValues(Values());
 
-        CollectionAssert.AreEqual(new[] { "EmployeeTenant", "Organization", "Project" }, TenantPlan.OwnedTables(database, project).Select(o => o.Table.TableName).ToArray(),
+        CollectionAssert.AreEqual(new[] { "EmployeeTenant", "Organization", "Project", "ProjectTask" }, TenantPlan.OwnedTables(database, project).Select(o => o.Table.TableName).ToArray(),
             "Country is left out by NoTenantTables, Employee has no tenant column and the tenant table is not owned by itself");
         Assert.IsNull(TenantPlan.OwnedBy(database.Tables.Single(t => t.TableName == "Tenant"), database, project));
         Assert.IsNull(TenantPlan.OwnedBy(database.Tables.Single(t => t.TableName == "Employee"), database, project));
@@ -150,7 +151,7 @@ public class TenantPlanTests
         Assert.Contains("public int? CurrentTenantId => _tenant?.TenantId;", context);
         Assert.Contains("modelBuilder.Entity<Organization>().HasQueryFilter(e => e.TenantId == CurrentTenantId);", context);
         Assert.Contains("modelBuilder.Entity<Project>().HasQueryFilter(e => !e.IsDeleted && e.TenantId == CurrentTenantId);", context, "one filter per entity: soft delete and tenant together");
-        Assert.Contains("modelBuilder.Entity<Tenant>().HasQueryFilter(e => e.TenantId == CurrentTenantId);", context, "the tenant table shows only the caller's own tenant");
+        Assert.Contains("modelBuilder.Entity<Tenant>().HasQueryFilter(e => (e.TenantId == CurrentTenantId || IsPlatform));", context, "the tenant table shows the caller's own tenant, and a platform administrator every tenant");
         Assert.DoesNotContain("Entity<Country>().HasQueryFilter", context, "a shared table has no filter");
         Assert.DoesNotContain("Entity<Employee>().HasQueryFilter", context);
         Assert.Contains("public class ClaimsTenantScope", context);
@@ -206,6 +207,167 @@ public class TenantPlanTests
     }
 
     [TestMethod]
+    public async Task Editable_child_rows_of_a_tenant_owned_table_are_stamped_with_the_callers_tenant()
+    {
+        var (success, errors, read, _) = await GenerateAsync(new() { ["EditableChildren"] = "Project.ProjectTask" });
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        Assert.Contains("new ChildRows<int, ProjectTask>(\"projectTasks\", c => c.ProjectTaskId, c => c.ProjectId, c => c.TenantId),", read("/ProjectApi.cs"));
+        string support = read("/CrudApi.cs");
+        Assert.Contains("setTenant(row, tenant!.Value);", support);
+        Assert.Contains("GetRequiredService<ITenantScope>().TenantId), null);", support);
+        Assert.Contains("await list.ApplyAsync(context, parentId, rows, body.Options, body.Tenant);", support);
+    }
+
+    [TestMethod]
+    public async Task A_platform_administrator_creates_tenants_and_a_token_of_a_switched_off_tenant_is_refused()
+    {
+        var (success, errors, read, _) = await GenerateAsync();
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        string tenantApi = read("/TenantApi.cs");
+        Assert.Contains("isNew && !Http.RequestServices.GetRequiredService<ITenantScope>().IsPlatform", tenantApi);
+        Assert.Contains("TenantCreator.AttachAsync(context, Http, row.TenantId)", tenantApi, "the creator becomes the first administrator");
+        string tenants = read("Apis/Tenants.cs");
+        Assert.Contains("public static class TenantCreator", tenants);
+        Assert.Contains("app.Use(TenantActiveCheck.InvokeAsync);", tenants);
+        Assert.Contains("type: \"/problems/tenant-inactive\"", tenants);
+        Assert.Contains("public static async Task DeactivateAsync(", tenants);
+        Assert.Contains("A_token_of_a_tenant_that_was_switched_off_is_refused", read("/TenantApiTests.cs"));
+    }
+
+    [TestMethod]
+    public async Task The_Python_API_filters_and_stamps_by_the_callers_tenant_and_signs_in_to_a_tenant()
+    {
+        var (success, errors, read, _) = await GenerateAsync(new() { ["Stacks"] = "python" }, "python");
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        string tenancy = read("app/routes/tenancy.py");
+        Assert.Contains("def only_tenant(statement, tenant_column, user: CurrentUser):", tenancy);
+        Assert.Contains("def login_tenant(session: Session, user: DirectoryUser, requested: int | None, host: str | None = None)", tenancy);
+        Assert.Contains("@router.post(\"/api/auth/switch-tenant\")", tenancy);
+        Assert.Contains("def ensure_active(tenant_id: int) -> None:", tenancy);
+        Assert.Contains("PROBLEM_INACTIVE = \"/problems/tenant-inactive\"", tenancy);
+        string auth = read("app/auth.py");
+        Assert.Contains("TENANT_CLAIM = \"tenant\"", auth);
+        Assert.Contains("tenant_id, tenant_role = login_tenant(session, user, body.tenant_id)", auth);
+        string project = read("app/routes/project.py");
+        Assert.Contains("statement = only_tenant(statement, Project.tenant_id, user)", project);
+        Assert.Contains("row.tenant_id = user.tenant_id   # a row never moves to another tenant", project);
+        Assert.Contains("refuse_other_tenant(row.tenant_id, user)", project);
+        Assert.Contains("from app.routes import tenancy", read("app/routes/__init__.py"));
+        Assert.DoesNotContain("tenancy", read("app/routes/employee.py"), "a table that is not tenant-owned is untouched");
+        string organization = read("app/routes/organization.py");
+        Assert.Contains("@router.get(\"/api/organizations/active\"", organization);
+        Assert.Contains("@router.get(\"/api/organizations/{id:int}\"", organization);
+        Assert.Contains("@router.get(\"/api/organizations/{name}\"", organization, "find by name comes after the routes with a key");
+        Assert.Contains("def check_name(session: Session, body: OrganizationSchema, key=None, user: CurrentUser = None) -> None:", organization);
+        Assert.Contains("raise ApiError(409, \"Duplicate name\", problem_type=\"/problems/duplicate-name\", detail=f\"An active row named '{body.name}' already exists.\")", organization);
+        Assert.Contains("statement = only_tenant(statement, Organization.tenant_id, user)", organization, "the duplicate rule compares within the caller's tenant");
+        string tenant = read("app/routes/tenant.py");
+        Assert.Contains("raise only_platform()", tenant);
+        Assert.Contains("raise never_deleted()", tenant);
+        Assert.Contains("attach_creator(session, user, row.tenant_id)", tenant);
+        Assert.DoesNotContain("project", read("app/routes/csv_files.py"), "a tenant-owned table has no CSV routes here");
+        Assert.Contains("employee", read("app/routes/csv_files.py"));
+    }
+
+    [TestMethod]
+    public async Task The_Python_tests_sign_in_to_a_tenant_and_play_the_isolation_of_its_tables()
+    {
+        var (success, errors, read, files) = await GenerateAsync(new() { ["Stacks"] = "python", ["PythonTests"] = "true" }, "python");
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        Assert.IsTrue(files.Any(f => f.EndsWith("tests/conftest.py")), "the shared conftest is written");
+        string tests = read("tests/test_tenants.py");
+        Assert.Contains("app.dependency_overrides[require_user] = lambda: CurrentUser(name=\"tenant-test\", role=ADMIN_ROLE, owner_id=None, tenant_id=who[\"tenant\"])", tests);
+        Assert.Contains("(\"/api/projects\", \"projectId\", \"tenantId\", project_body),", tests);
+        Assert.Contains("(\"/api/organizations\", \"organizationId\", \"name\", \"isActive\", 80, organization_body),", tests);
+        Assert.Contains("def test_another_tenant_cannot_read_change_delete_or_find_a_row(", tests);
+        Assert.Contains("assert created.json()[\"type\"] == \"/problems/tenant-required\"", tests);
+        Assert.Contains("assert duplicate.json()[\"detail\"] == f\"An active row named '{text}' already exists.\"", tests);
+        Assert.Contains("assert refused.json()[\"type\"] == \"/problems/tenant-onboarding\"", tests);
+        Assert.Contains("def test_a_token_of_a_tenant_that_was_switched_off_is_refused(call, tenants, application):", tests);
+        Assert.Contains("SWITCH_OFF_TENANT = \"UPDATE \\\"Tenant\\\" SET \\\"IsActive\\\" = 0 WHERE \\\"TenantId\\\" = \"", tests);
+        Assert.Contains("assert after.json()[\"type\"] == \"/problems/tenant-inactive\"", tests);
+
+        var (_, _, _, withoutTests) = await GenerateAsync(new() { ["Stacks"] = "python" }, "python");
+        Assert.IsFalse(withoutTests.Any(f => f.EndsWith("tests/test_tenants.py")));
+    }
+
+    [TestMethod]
+    public async Task The_Rust_tests_work_in_a_tenant_and_play_the_isolation_of_its_tables()
+    {
+        var (success, errors, read, files) = await GenerateAsync(new() { ["Stacks"] = "rust", ["RustTests"] = "true" }, "rust");
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        string support = read("tests/api/test_support.rs");
+        Assert.Contains("const TENANT_CLAIM: &str = \"tenant\";", support);
+        Assert.Contains("pub fn in_tenant(&self, tenant: i32, role: &str) -> Client {", support);
+        Assert.Contains("pub fn platform(&self) -> Client {", support);
+        Assert.Contains("crate::tenant_support::first_tenants(&self.pool).await", support);
+        Assert.DoesNotContain("_TEST_USER", support, "the people who sign in are rows of the database, so the tests make their tokens");
+        Assert.Contains("pub async fn first_tenants(pool: &Pool) -> Vec<i32> {", read("tests/api/tenant_support.rs"));
+        string main = read("tests/api/main.rs");
+        Assert.Contains("mod tenant_routes;", main);
+        Assert.Contains("mod tenant_support;", main);
+        string project = read("tests/api/project.rs");
+        Assert.Contains("async fn another_tenant_cannot_read_change_delete_or_find_a_row() {", project);
+        Assert.Contains("async fn a_new_row_belongs_to_the_callers_tenant_whatever_the_body_says() {", project);
+        Assert.Contains("assert_eq!(created.json()[\"type\"], \"/problems/tenant-required\");", project);
+        Assert.DoesNotContain("tenant", read("tests/api/employee.rs"), "a table that is not tenant-owned is untouched");
+        string routes = read("tests/api/tenant_routes.rs");
+        Assert.Contains("async fn a_tenant_is_created_by_a_platform_administrator_only_and_never_deleted() {", routes);
+        Assert.Contains("async fn organization_names_are_trimmed_and_unique_among_the_active_rows_of_a_tenant() {", routes);
+        Assert.Contains("\"/problems/duplicate-name\"", routes);
+        Assert.Contains("async fn a_token_of_a_tenant_that_was_switched_off_is_refused() {", routes);
+        Assert.Contains("::forget_tenant(tenant);", routes);
+        Assert.Contains("assert_eq!(after.json()[\"type\"], \"/problems/tenant-inactive\");", routes);
+        Assert.Contains("pub use tenancy::forget_tenant;", read("src/lib.rs"));
+
+        var (_, _, _, withoutTests) = await GenerateAsync(new() { ["Stacks"] = "rust" }, "rust");
+        Assert.IsFalse(withoutTests.Any(f => f.EndsWith("tests/api/tenant_routes.rs")));
+    }
+
+    [TestMethod]
+    public async Task The_Rust_API_filters_and_stamps_by_the_callers_tenant_and_signs_in_to_a_tenant()
+    {
+        var (success, errors, read, _) = await GenerateAsync(new() { ["Stacks"] = "rust" }, "rust");
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        string tenancy = read("src/tenancy.rs");
+        Assert.Contains("pub enum Tenancy {", tenancy);
+        Assert.Contains("pub async fn login_tenant(pool: &Pool, user: &DirectoryUser, requested: Option<i32>, _host: Option<&str>)", tenancy);
+        Assert.Contains(".route(\"/api/auth/switch-tenant\", post(switch_tenant))", tenancy);
+        Assert.Contains("pub async fn ensure_active(pool: &Pool, tenant: i32)", tenancy);
+        Assert.Contains("PROBLEM_INACTIVE: &str = \"/problems/tenant-inactive\"", tenancy);
+        string auth = read("src/auth.rs");
+        Assert.Contains("pub const TENANT_CLAIM: &str = \"tenant\";", auth);
+        Assert.Contains("crate::tenancy::login_tenant(&pool, &user, requested_tenant, None).await?", auth);
+        Assert.Contains("pub fn session_response(user: &DirectoryUser, tenant: Option<i32>)", auth);
+        string project = read("src/routes/project.rs");
+        Assert.Contains("repo::get_all_scoped(&pool, &Tenancy::of(&user))", project);
+        Assert.Contains("row.tenant_id = require_tenant(&user)?;", project);
+        Assert.Contains("row.tenant_id = current.tenant_id; // a row never moves to another tenant", project);
+        Assert.Contains("tenancy.apply(&mut builder, r#\"t.\"TenantId\"\"#);", read("src/repos/project.rs"));
+        Assert.Contains(".merge(crate::tenancy::router())", read("src/routes/mod.rs"));
+        Assert.Contains("from_fn_with_state(pool.clone(), auth::require_user)", read("src/lib.rs"));
+        Assert.DoesNotContain("tenancy", read("src/routes/employee.rs"), "a table that is not tenant-owned is untouched");
+        string organization = read("src/routes/organization.rs");
+        Assert.Contains(".route(\"/api/organizations/active\", get(get_all_active))", organization);
+        Assert.Contains("async fn get_by_key(State(pool): State<Pool>, Path(key): Path<String>", organization);
+        Assert.Contains("async fn check_name(pool: &Pool, row: &mut Organization, key: Option<i32>, user: &CurrentUser)", organization);
+        Assert.Contains("ApiError::Rejected(409, \"/problems/duplicate-name\", \"Duplicate name\"", organization);
+        Assert.Contains("pub async fn name_taken(pool: &Pool, name: &str, key: Option<i32>, tenancy: &Tenancy)", read("src/repos/organization.rs"));
+        string tenant = read("src/routes/tenant.rs");
+        Assert.Contains("return Err(only_platform());", tenant);
+        Assert.Contains("Err(never_deleted())", tenant);
+        Assert.Contains("attach_creator(&pool, &user, row.tenant_id).await?;", tenant);
+        Assert.DoesNotContain("project", read("src/routes/csv_files.rs"), "a tenant-owned table has no CSV routes here");
+        Assert.Contains("employee", read("src/routes/csv_files.rs"));
+    }
+
+    [TestMethod]
     public async Task The_tests_prove_one_tenant_cannot_reach_another_and_the_fixture_works_in_the_first_tenant()
     {
         var (success, errors, read, files) = await GenerateAsync();
@@ -219,7 +381,7 @@ public class TenantPlanTests
         Assert.Contains("Only_a_platform_administrator_onboards_a_tenant", read("/TenantApiTests.cs"));
         Assert.DoesNotContain("Another_tenant_cannot", read("CountryApiTests.cs"), "a shared table has no tenant tests");
         string fixture = read("ApiFixture.cs");
-        foreach (string text in new[] { "public static HttpClient ClientInTenant(int tenantId, string role)", "public static HttpClient PlatformClient()", "TenantTestSupport.FirstTenantsAsync" })
+        foreach (string text in new[] { "public static HttpClient ClientInTenant(int tenantId, string role, string name = \"tenant-test\")", "public static HttpClient PlatformClient()", "TenantTestSupport.FirstTenantsAsync" })
             Assert.Contains(text, fixture);
         Assert.DoesNotContain("/api/auth/login", fixture, "the people are rows of the database, so the tests make their tokens");
     }

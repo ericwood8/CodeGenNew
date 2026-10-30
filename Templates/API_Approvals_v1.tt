@@ -35,6 +35,6 @@
     else if (plan.Tables.Count > 0)
     {
         Write("namespace " + apiNamespace + ";\n\n");
-        Write(ApprovalWriter.File(plan, contextType, usings));
+        Write(ApprovalWriter.File(plan, contextType, usings, Project));
     }
 #>

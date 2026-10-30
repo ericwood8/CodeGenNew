@@ -40,6 +40,14 @@
     var ownerColumn = auth ? OwnedTable.OwnerColumn(Model, Project) : null;
     var ownerLink = auth ? OwnedTable.Through(Model, Project) : null;
     var userPlan = auth ? UserTable.PlanOf(Model, Project) : null;
+    // a table with a Name and an IsActive column (NameActivePlan): the list is by name, GET active and GET {name} are added, a name is trimmed, may not be empty and may not be that of another active row
+    var nameActive = NameActivePlan.For(Model, Project);
+    string idPath = nameActive is null ? "{id}" : "{id:int}";   // a name in that place is the start of a name, not a key
+    // TenantTable (PY_Tenants, app/routes/tenancy.py): a tenant-owned table shows and changes only the rows of the caller's tenant (another tenant's row is a 404) and stamps the caller's tenant on create and update;
+    // the tenant table shows the caller's own tenant (a platform administrator every one), only a platform administrator creates one and nobody deletes one
+    bool tenancy = PythonTenantWriter.Applies(Project);
+    var tenantOwned = tenancy ? TenantPlan.OwnedBy(Model, Project) : null;
+    bool tenantTable = tenancy && TenantPlan.IsTenantTable(Model, Project);
     // ReadRoles and WriteRoles: the routes refuse a role the table's rules do not list (the administrator role is always listed); the lookup stays open
     var readRoles = WriteRolePlan.ReadFor(Project, Model);
     var writeRoles = WriteRolePlan.For(Project, Model);
@@ -48,6 +56,8 @@
     string writeDepends = writeRoles.Count > 0 ? ", dependencies=[Depends(require_roles(WRITE_ROLES, True))]" : "";
     PythonField? FieldOf(ColumnModel? column) => column is null ? null : t.SchemaFields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(column.Name));
     var ownerField = FieldOf(ownerColumn);
+    var tenantField = FieldOf(tenantOwned?.Column);
+    bool tenanted = tenantField is not null || tenantTable;
     string ParentName(string name) => PythonNames.Ident(PythonNames.Snake(name));
     string parentClass = ownerLink is null ? "" : PythonNames.Pascal(ScreenNames.BaseName(ownerLink.ParentTable));
     string parentModule = ownerLink is null ? "" : PythonNames.Snake(ownerLink.ParentTable);
@@ -62,6 +72,14 @@
     var activeField = t.ActiveField;
     string AdminTest(string row) => adminField is null ? "False" : $"bool({row}.{adminField.Name})" + (activeField is null ? "" : $" and bool({row}.{activeField.Name})");
     string DefaultOf(PythonField f) => f.Annotation == "bool" ? "False" : f.IsNullable ? "None" : "\"\"";
+
+    // a name/active list is by name, any other by key
+    string OrderColumn = nameActive is null ? $"{t.Class}.{key}" : $"{t.Class}.{FieldOf(nameActive.Name)!.Name}";
+    // the statement limited to the caller's tenant, and the 404 for another tenant's row
+    string TenantFilter(string statement) => tenantTable
+        ? $"    {statement} = only_own_tenant({statement}, {t.Class}.{key}, user)"
+        : $"    {statement} = only_tenant({statement}, {t.Class}.{tenantField!.Name}, user)";
+    string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)" : $"    refuse_other_tenant({row}.{tenantField!.Name}, user)";
 
     Line($"@@@FILE app/routes/{t.Module}.py@@@");
     var clonedDates = new[] { "datetime", "date" }.Where(w => t.Clone?.Any(c => c.Value.StartsWith(w + ".")) == true
@@ -81,7 +99,7 @@
         Line();
     bool castsEnum = search && t.Filters.Any(f => f.Field.Column.DbCastType is not null);
     var sqlalchemy = new List<string> { "select" };
-    if (search || userPlan is not null)
+    if (search || userPlan is not null || nameActive is not null)
         sqlalchemy.Add("func");
     bool castsLookup = t.LookupName is { } castName && castName.Annotation != "str";
     if (castsEnum || castsLookup)
@@ -90,13 +108,15 @@
         sqlalchemy.Add("String");
     }
     Line("from fastapi import " + string.Join(", ", new[] { "APIRouter", "Depends" }.Concat(search ? ["Query"] : []).Concat(log ? [] : ["Response"])));
+    if (tenantTable)
+        Line("from pydantic import BaseModel, ConfigDict, Field");
     Line($"from sqlalchemy import {string.Join(", ", sqlalchemy.OrderBy(s => s, StringComparer.Ordinal))}");
     if (!log)
         Line("from sqlalchemy.exc import IntegrityError");
     Line("from sqlalchemy.orm import Session");
     Line();
     var authNames = new List<string>();
-    if (scoped || userPlan is not null || gated)
+    if (scoped || userPlan is not null || gated || tenanted)
         authNames.AddRange(new[] { "CurrentUser", "require_user" });
     if (scoped)
         authNames.AddRange(new[] { "not_yours", "visible_owners" });
@@ -112,6 +132,13 @@
         Line("from app.gates import " + string.Join(", ", gateNames.OrderBy(n => n, StringComparer.Ordinal)));
     }
     Line("from app.db import get_session");
+    if (tenanted)
+    {
+        var tenancyNames = tenantTable
+            ? new List<string> { "attach_admin", "attach_creator", "is_platform", "never_deleted", "only_own_tenant", "only_platform", "refuse_other_tenant_row" }
+            : new List<string> { "only_tenant", "refuse_other_tenant", "require_tenant" };
+        Line("from app.routes.tenancy import " + string.Join(", ", tenancyNames.OrderBy(n => n, StringComparer.Ordinal)));
+    }
     Line($"from app.models.{t.Module} import {t.Class}");
     if (ownerLink is not null)
         Line($"from app.models.{parentModule} import {parentClass}");
@@ -119,7 +146,7 @@
     var support = new List<string> { "ApiError" };
     if (search)
         support.Add("Page");
-    if (search || t.LookupName is not null)
+    if (search || t.LookupName is not null || nameActive is not null)
         support.Add("contains");
     if (t.LookupName is not null)
     {
@@ -140,7 +167,7 @@
     Line($"IN_USE = \"The database refused the row (a missing parent row, or a value that must be unique).\"");
     Line();
 
-    string userParameter = scoped || userPlan is not null || gated ? ", user: CurrentUser = Depends(require_user)" : "";
+    string userParameter = scoped || userPlan is not null || gated || tenanted ? ", user: CurrentUser = Depends(require_user)" : "";
     if (scoped)
     {
         // who owns a row: its own owner column, or the owner of the parent row it belongs to (a schema object has the same attribute names as the row)
@@ -213,6 +240,28 @@
         Line();
     }
 
+    if (nameActive is not null)
+    {
+        var nameCol = FieldOf(nameActive.Name)!;
+        var activeCol = FieldOf(nameActive.Active)!;
+        Line();
+        Line($"def check_name(session: Session, body: {t.Schema}, key=None{(tenanted ? ", user: CurrentUser = None" : "")}) -> None:");
+        Line("    \"\"\"The name rules: a name is trimmed, may not be empty and may not be that of another active row" + (tenantField is not null ? " of the caller's tenant" : "") + ".\"\"\"");
+        Line($"    body.{nameCol.Name} = body.{nameCol.Name}.strip()");
+        Line($"    if not body.{nameCol.Name}:");
+        Line($"        raise ApiError({HttpStatus.BadRequest}, {Str(NameActiveWords.RequiredTitle)}, problem_type=\"{ProblemTypes.NameRequired}\", detail={Str(NameActiveWords.RequiredDetail)})");
+        Line($"    if body.{activeCol.Name}:");
+        Line($"        statement = select(func.count()).select_from({t.Class}).where({t.Class}.{nameCol.Name} == body.{nameCol.Name}, {t.Class}.{activeCol.Name}.is_(True))");
+        Line("        if key is not None:");
+        Line($"            statement = statement.where({t.Class}.{key} != key)");
+        if (tenantField is not null)
+            Line($"        statement = only_tenant(statement, {t.Class}.{tenantField.Name}, user)");
+        Line("        if (session.scalar(statement) or 0) > 0:");
+        Line($"            raise ApiError({HttpStatus.Conflict}, {Str(NameActiveWords.DuplicateTitle)}, problem_type=\"{ProblemTypes.DuplicateName}\", detail=f{Str(NameActiveWords.DuplicateDetailFormat.Replace("{0}", "{body." + nameCol.Name + "}"))})");
+        Line();
+        Line();
+    }
+
     if (search)
     {
         Line("# The columns a grid may sort by, by the lower-case name it sends.");
@@ -227,14 +276,31 @@
     Line();
     Line($"@router.get(\"{t.Route}\", response_model=list[{t.Schema}]{readDepends})");
     Line($"def get_all(session: Session = Depends(get_session){userParameter}):");
-    if (scoped)
+    if (scoped || tenanted)
     {
-        Line($"    statement = only_owned(select({t.Class}), user)");
-        Line($"    return session.scalars(statement.order_by({t.Class}.{key})).all()");
+        Line($"    statement = select({t.Class})");
+        if (scoped)
+            Line("    statement = only_owned(statement, user)");
+        if (tenanted)
+            Line(TenantFilter("statement"));
+        Line($"    return session.scalars(statement.order_by({OrderColumn})).all()");
     }
     else
-        Line($"    return session.scalars(select({t.Class}).order_by({t.Class}.{key})).all()");
+        Line($"    return session.scalars(select({t.Class}).order_by({OrderColumn})).all()");
     Line();
+
+    if (nameActive is not null)
+    {
+        // before the route with the key in its path
+        Line();
+        Line($"@router.get(\"{t.Route}/active\", response_model=list[{t.Schema}]{readDepends})");
+        Line($"def get_all_active(session: Session = Depends(get_session){userParameter}):");
+        Line($"    statement = select({t.Class}).where({t.Class}.{FieldOf(nameActive.Active)!.Name}.is_(True))");
+        if (tenanted)
+            Line(TenantFilter("statement"));
+        Line($"    return session.scalars(statement.order_by({OrderColumn})).all()");
+        Line();
+    }
 
     if (guardHints.Count > 0)
     {
@@ -271,6 +337,8 @@
         Line($"        statement = statement.where(contains({nameColumn}, search.strip()))");
         if (scoped)
             Line("    statement = only_owned(statement, user)");
+        if (tenanted)
+            Line(TenantFilter("statement"));
         Line("    if not by_ids and (by_search or take is not None):");
         Line("        statement = statement.limit(lookup_take(take))");
         Line("    rows = session.execute(statement).all()");
@@ -304,6 +372,8 @@
         Line($"        raise ApiError({HttpStatus.BadRequest}, \"pageNumber must be 1 or greater.\")");
         Line("    page_size = max(1, min(page_size, MAX_PAGE_SIZE))");
         Line(scoped ? $"    statement = only_owned(select({t.Class}), user)" : $"    statement = select({t.Class})");
+    if (tenanted)
+        Line(TenantFilter("statement"));
         foreach (var f in t.Filters)
         {
             string column = f.Field.Column.DbCastType is not null ? $"cast({t.Class}.{f.Field.Name}, String)" : $"{t.Class}.{f.Field.Name}";
@@ -340,13 +410,15 @@
     }
 
     Line();
-    Line($"@router.get(\"{t.Route}/{{id}}\", response_model={t.Schema}{readDepends})");
+    Line($"@router.get(\"{t.Route}/{idPath}\", response_model={t.Schema}{readDepends})");
     Line($"def get_by_id(id: {keyType}, session: Session = Depends(get_session){userParameter}):");
     Line($"    row = session.get({t.Class}, id)");
     Line("    if row is None:");
     Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
     if (scoped)
         Line("    refuse_other_owners(session, user, row)");
+    if (tenanted)
+        Line(TenantRefusal("row"));
     Line("    return row");
     if (!log)   // a log table has no write routes
     {
@@ -354,6 +426,13 @@
     Line();
     Line($"@router.post(\"{t.Route}\", response_model={t.Schema}, status_code={HttpStatus.Created}{writeDepends})");
     Line($"def create(body: {t.Schema}, response: Response, session: Session = Depends(get_session){userParameter}):");
+    if (tenantTable)
+    {
+        Line("    if not is_platform(user):");
+        Line("        raise only_platform()");
+    }
+    if (tenantField is not null)
+        Line("    require_tenant(user)");
     if (validate)
         Line("    validate(body)");
     if (scoped)
@@ -381,7 +460,11 @@
         Line($"    if session.get({t.Class}, body.{key}) is not None:");
         Line($"        raise ApiError({HttpStatus.Conflict}, \"Duplicate key\")");
     }
+    if (nameActive is not null)
+        Line(tenanted ? "    check_name(session, body, None, user)" : "    check_name(session, body)");
     Line($"    row = {t.Class}(**body.columns())");
+    if (tenantField is not null)
+        Line($"    row.{tenantField.Name} = user.tenant_id");
     foreach (var f in t.StampedOnNew)
         Line($"    row.{f.Name} = {PythonTable.Now(f)}");
     if (guidKey)
@@ -397,19 +480,62 @@
     Line("        session.rollback()");
     Line($"        raise ApiError({HttpStatus.BadRequest}, IN_USE)");
     Line("    session.refresh(row)");
+    if (tenantTable)
+        Line($"    attach_creator(session, user, row.{key})");
     Line(textKey
         ? $"    response.headers[\"Location\"] = f\"{t.Route}/{{quote(row.{key}, safe='')}}\""
         : $"    response.headers[\"Location\"] = f\"{t.Route}/{{row.{key}}}\"");
     Line("    return row");
+    if (tenantTable)
+    {
+        // POST <tenants>/onboard: the tenant and, when the project has a membership table, the person who becomes its first administrator, saved together
+        Line();
+        Line();
+        Line("class OnboardRequest(BaseModel):");
+        Line("    model_config = ConfigDict(populate_by_name=True)");
+        Line();
+        Line($"    tenant: {t.Schema}");
+        Line("    admin_id: int | None = Field(None, alias=\"adminId\")");
+        Line();
+        Line();
+        Line($"@router.post(\"{t.Route}/onboard\", response_model={t.Schema}, status_code={HttpStatus.Created}{writeDepends})");
+        Line($"def onboard(request: OnboardRequest, response: Response, session: Session = Depends(get_session){userParameter}):");
+        Line("    if not is_platform(user):");
+        Line("        raise only_platform()");
+        Line("    body = request.tenant");
+        if (validate)
+            Line("    validate(body)");
+        if (nameActive is not null)
+            Line("    check_name(session, body, None, user)");
+        Line($"    row = {t.Class}(**body.columns())");
+        foreach (var f in t.StampedOnNew)
+            Line($"    row.{f.Name} = {PythonTable.Now(f)}");
+        Line("    session.add(row)");
+        Line("    try:");
+        Line("        session.flush()");
+        Line($"        attach_admin(session, request.admin_id, row.{key})");
+        Line("        session.commit()");
+        Line("    except IntegrityError:");
+        Line("        session.rollback()");
+        Line($"        raise ApiError({HttpStatus.BadRequest}, IN_USE)");
+        Line("    except ApiError:");
+        Line("        session.rollback()");
+        Line("        raise");
+        Line("    session.refresh(row)");
+        Line($"    response.headers[\"Location\"] = f\"{t.Route}/{{row.{key}}}\"");
+        Line("    return row");
+    }
     Line();
     Line();
-    Line($"@router.put(\"{t.Route}/{{id}}\", response_model={t.Schema}{writeDepends})");
+    Line($"@router.put(\"{t.Route}/{idPath}\", response_model={t.Schema}{writeDepends})");
     Line($"def update(id: {keyType}, body: {t.Schema}, session: Session = Depends(get_session){userParameter}):");
     Line($"    if body.{key} != id:");
     Line($"        raise ApiError({HttpStatus.BadRequest}, \"The id in the URL and the id in the body differ.\")");
     Line($"    row = session.get({t.Class}, id)");
     Line("    if row is None:");
     Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
+    if (tenanted)
+        Line(TenantRefusal("row"));
     if (scoped)
     {
         Line("    refuse_other_owners(session, user, row)");
@@ -424,8 +550,12 @@
         Line("    validate(body, row)  # a value the update leaves as it is stays unjudged");
     if (gated)
         Line($"    check_{t.Module}(session, user, body, row)");
+    if (nameActive is not null)
+        Line(tenanted ? "    check_name(session, body, id, user)" : "    check_name(session, body, id)");
     Line("    for name, value in body.changes().items():");
     Line("        setattr(row, name, value)");
+    if (tenantField is not null)
+        Line($"    row.{tenantField.Name} = user.tenant_id   # a row never moves to another tenant");
     foreach (var f in t.StampedOnChange)
         Line($"    row.{f.Name} = {PythonTable.Now(f)}");
     Line("    try:");
@@ -437,13 +567,17 @@
     Line("    return row");
     Line();
     Line();
-    Line($"@router.delete(\"{t.Route}/{{id}}\"{writeDepends})");
+    Line($"@router.delete(\"{t.Route}/{idPath}\"{writeDepends})");
     Line($"def delete(id: {keyType}, session: Session = Depends(get_session){userParameter}):");
+    if (tenantTable)
+        Line("    raise never_deleted()");
     Line($"    row = session.get({t.Class}, id)");
     Line("    if row is None:");
     Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
     if (scoped)
         Line("    refuse_other_owners(session, user, row)");
+    if (tenantField is not null)
+        Line(TenantRefusal("row"));
     if (adminField is not null)
         Line($"    if is_administrator(row) and not other_administrators(session, row.{t.Key.Name}):\n        raise last_administrator()");
     Line("    session.delete(row)");
@@ -454,7 +588,7 @@
     Line($"        raise ApiError({HttpStatus.BadRequest}, \"It cannot be deleted because it is in use.\")");
     Line($"    return Response(status_code={HttpStatus.Ok})");
 
-    if (t.Clone is { } cloned)
+    if (t.Clone is { } cloned && !tenantTable)
     {
         Line();
         Line();
@@ -466,6 +600,8 @@
         Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
         if (scoped)
             Line("    refuse_other_owners(session, user, source)");
+        if (tenantField is not null)
+            Line(TenantRefusal("source"));
         Line($"    row = {t.Class}(");
         foreach (var (field, value) in cloned)
             Line($"        {field.Name}={value},");
@@ -476,6 +612,8 @@
             foreach (var g in guarded)
                 Line($"        row.{g.Name} = {DefaultOf(g)}");
         }
+        if (tenantField is not null)
+            Line($"    row.{tenantField.Name} = user.tenant_id");
         Line("    session.add(row)");
         Line("    session.commit()");
         Line("    session.refresh(row)");
@@ -484,6 +622,19 @@
         Line($"    response.headers[\"Location\"] = f\"{t.Route}/{{row.{key}}}\"");
         Line("    return row");
     }
+    }
+    if (nameActive is not null)
+    {
+        // after the routes with a key (a number there is a key) and the fixed ones
+        Line();
+        Line();
+        Line($"@router.get(\"{t.Route}/{{name}}\", response_model=list[{t.Schema}]{readDepends})");
+        Line($"def find_by_name(name: str, session: Session = Depends(get_session){userParameter}):");
+        Line("    \"\"\"The active rows whose name contains the text.\"\"\"");
+        Line($"    statement = select({t.Class}).where(contains({t.Class}.{FieldOf(nameActive.Name)!.Name}, name), {t.Class}.{FieldOf(nameActive.Active)!.Name}.is_(True))");
+        if (tenanted)
+            Line(TenantFilter("statement"));
+        Line($"    return session.scalars(statement.order_by({OrderColumn})).all()");
     }
     Write(sb.ToString());
 #>

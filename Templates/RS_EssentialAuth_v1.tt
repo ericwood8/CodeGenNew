@@ -14,6 +14,8 @@
     // ==========================================================================================
     string projectName = Project.ProjectName ?? "MyApp";
     bool table = Project.UserTable is not null;
+    bool hosts = TenantPlan.HasApiTenancy(Project) && Project.TenantHostColumn is not null;   // TenantHostColumn: a token works only on its own tenant's host name
+    bool tenants = TenantPlan.HasApiTenancy(Project);   // TenantTable: the tenant is a claim of the token (src/tenancy.rs, RS_Tenants)
 #>
 @@@FILE src/auth.rs@@@
 // Sign-in: POST /api/auth/login, the bearer check every other route needs, password hashing and the owner scope. Written by RS_EssentialAuth; yours to change.
@@ -25,7 +27,7 @@ use std::time::{Duration, Instant};
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Request, State},
-    http::header,
+    http::<#= tenants ? "{HeaderMap, header}" : "header" #>,
     middleware::Next,
     response::Response,
     routing::post,
@@ -39,6 +41,9 @@ use crate::support::{ApiError, ApiJson, ApiResult, Pool};
 
 pub const ROLE_CLAIM: &str = "<#= Project.AuthRoleClaim #>";
 pub const OWNER_CLAIM: &str = "<#= Project.AuthOwnerClaim #>";
+<# if (tenants) { #>
+pub const TENANT_CLAIM: &str = "tenant";
+<# } #>
 pub const NAME_CLAIM: &str = "name";
 pub const ADMIN_ROLE: &str = "<#= Project.AuthAdminRole #>";
 const ISSUER: &str = "<#= projectName #>.Api";
@@ -79,6 +84,9 @@ pub struct CurrentUser {
     pub name: String,
     pub role: Option<String>,
     pub owner_id: Option<i64>,
+<# if (tenants) { #>
+    pub tenant_id: Option<i32>,
+<# } #>
 }
 
 /// Which owners' rows a caller may read and change in an owned table.
@@ -95,6 +103,13 @@ impl CurrentUser {
     pub fn is_admin(&self) -> bool {
         self.role.as_deref() == Some(ADMIN_ROLE)
     }
+<# if (tenants) { #>
+
+    /// A platform administrator: the administrator role, working in no tenant. They see and create tenants.
+    pub fn is_platform(&self) -> bool {
+        self.is_admin() && self.tenant_id.is_none()
+    }
+<# } #>
 
     pub fn scope(&self) -> Scope {
         if self.is_admin() {
@@ -174,7 +189,7 @@ fn now_seconds() -> i64 {
     chrono::Utc::now().timestamp()
 }
 
-fn create_token(user: &DirectoryUser, expires: i64) -> Result<String, String> {
+fn create_token(user: &DirectoryUser, expires: i64<#= tenants ? ", tenant: Option<i32>" : "" #>) -> Result<String, String> {
     let now = now_seconds();
     let mut claims = serde_json::json!({ "sub": user.user_name, NAME_CLAIM: user.user_name, "iss": ISSUER, "aud": AUDIENCE, "iat": now, "nbf": now, "exp": expires });
     if let Some(role) = user.role.as_deref().filter(|r| !r.is_empty()) {
@@ -183,6 +198,11 @@ fn create_token(user: &DirectoryUser, expires: i64) -> Result<String, String> {
     if let Some(owner) = user.owner_id {
         claims[OWNER_CLAIM] = serde_json::json!(owner.to_string());
     }
+<# if (tenants) { #>
+    if let Some(tenant) = tenant {
+        claims[TENANT_CLAIM] = serde_json::json!(tenant.to_string());
+    }
+<# } #>
     let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"HS256","typ":"JWT"}"#);
     let payload = URL_SAFE_NO_PAD.encode(claims.to_string());
     let signing_input = format!("{header}.{payload}");
@@ -214,7 +234,7 @@ fn read_token(token: &str) -> Option<serde_json::Value> {
 }
 
 /// The signed-in caller; a missing, bad or expired token is a 401. lib.rs puts this on every router but the sign-in.
-pub async fn require_user(mut request: Request, next: Next) -> Result<Response, ApiError> {
+pub async fn require_user(<#= tenants ? "State(pool): State<Pool>, " : "" #>mut request: Request, next: Next) -> Result<Response, ApiError> {
     let token = request
         .headers()
         .get(header::AUTHORIZATION)
@@ -227,7 +247,18 @@ pub async fn require_user(mut request: Request, next: Next) -> Result<Response, 
         name: claims[NAME_CLAIM].as_str().or_else(|| claims["sub"].as_str()).unwrap_or_default().to_string(),
         role: claims[ROLE_CLAIM].as_str().map(str::to_string),
         owner_id: claims[OWNER_CLAIM].as_str().and_then(|owner| owner.parse().ok()),
+<# if (tenants) { #>
+        tenant_id: claims[TENANT_CLAIM].as_str().and_then(|tenant| tenant.parse().ok()),
+<# } #>
     };
+<# if (tenants) { #>
+    if let Some(tenant) = user.tenant_id {
+        crate::tenancy::ensure_active(&pool, tenant).await?;
+<# if (hosts) { #>
+        crate::tenancy::check_host(&pool, request.headers(), tenant).await?;
+<# } #>
+    }
+<# } #>
     request.extensions_mut().insert(user);
     Ok(next.run(request).await)
 }
@@ -238,6 +269,10 @@ struct LoginRequest {
     user_name: Option<String>,
     #[serde(default)]
     password: Option<String>,
+<# if (tenants) { #>
+    #[serde(rename = "tenantId", default)]
+    tenant_id: Option<i32>,
+<# } #>
 }
 
 /// Counts wrong passwords per user name and address: after MAX_FAILURES in a minute the sign-in answers 429 until the minute is over.
@@ -309,9 +344,12 @@ pub fn router() -> Router<Pool> {
     Router::new().route("/api/auth/login", post(login))
 }
 
-async fn login(State(pool): State<Pool>, ConnectInfo(address): ConnectInfo<SocketAddr>, ApiJson(body): ApiJson<LoginRequest>) -> ApiResult<Json<serde_json::Value>> {
+async fn login(State(pool): State<Pool>, ConnectInfo(address): ConnectInfo<SocketAddr>, <#= tenants ? "headers: HeaderMap, " : "" #>ApiJson(body): ApiJson<LoginRequest>) -> ApiResult<Json<serde_json::Value>> {
     let name = body.user_name.as_deref().map(str::trim).unwrap_or_default().to_string();
     let password = body.password.unwrap_or_default();
+<# if (tenants) { #>
+    let requested_tenant = body.tenant_id;
+<# } #>
     if name.is_empty() || password.is_empty() {
         return Err(ApiError::Problem(<#= HttpStatus.BadRequest #>, PROBLEM_SIGN_IN_INCOMPLETE, "Sign-in needs a user name and a password", None));
     }
@@ -330,12 +368,28 @@ async fn login(State(pool): State<Pool>, ConnectInfo(address): ConnectInfo<Socke
         return Err(ApiError::Problem(<#= HttpStatus.Unauthorized #>, PROBLEM_WRONG_CREDENTIALS, "Wrong user name or password", None));
     };
 
+<# if (tenants) { #>
+    let mut user = user;
+    let (tenant, tenant_role) = crate::tenancy::login_tenant(&pool, &user, requested_tenant, <#= hosts ? "headers.get(header::HOST).and_then(|value| value.to_str().ok())" : "None" #>).await?;
+    if tenant_role.is_some() {
+        user.role = tenant_role;
+    }
     succeeded(&key);
+    session_response(&user, tenant)
+}
+<# } else { #>
+    succeeded(&key);
+    session_response(&user)
+}
+<# } #>
+
+/// What a sign-in (or a switch of tenant) answers: the token, when it ends and who is signed in.
+pub fn session_response(user: &DirectoryUser<#= tenants ? ", tenant: Option<i32>" : "" #>) -> ApiResult<Json<serde_json::Value>> {
     let expires = chrono::Utc::now() + chrono::Duration::minutes(EXPIRES_MINUTES);
-    let token = create_token(&user, expires.timestamp()).map_err(|message| ApiError::BadRequest(message))?;
+    let token = create_token(user, expires.timestamp()<#= tenants ? ", tenant" : "" #>).map_err(|message| ApiError::BadRequest(message))?;
     Ok(Json(serde_json::json!({
         "token": token,
         "expiresUtc": expires.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
-        "user": { "name": user.user_name, "role": user.role, "ownerId": user.owner_id },
+        "user": { "name": user.user_name, "role": user.role, "ownerId": user.owner_id<#= tenants ? ", \"tenantId\": tenant" : "" #> },
     })))
 }

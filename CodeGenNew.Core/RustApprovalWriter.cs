@@ -81,11 +81,14 @@ public static class RustApprovalWriter
             string keyType = main.Key.BaseType;
 
             string latestSql = $"SELECT {select} FROM {sideTable} WHERE {link} = {P(1)} ORDER BY {revision} DESC LIMIT 1";
-            string existsSql = $"SELECT {Q(t.Key)} FROM {Tbl(t.Table)} WHERE {Q(t.Key)} = {P(1)}";
+            // a tenant-owned row is reached only by a caller of its tenant (the side table has no tenant column of its own, so it is judged by the row it points at)
+            var owned = TenantPlan.HasApiTenancy(project) ? TenantPlan.OwnedBy(t.Table, project) : null;
+            string existsSql = $"SELECT {Q(t.Key)} FROM {Tbl(t.Table)} WHERE {Q(t.Key)} = {P(1)}" + (owned is null ? "" : $" AND {Q(owned.Column)} = {P(2)}");
             string insertSql = $"INSERT INTO {sideTable} ({link}, {status}, {Q(t.Reason)}, {requestedBy}, {requestedOn}, {revision}) VALUES ({P(1)}, {P(2)}, {P(3)}, {P(4)}, {P(5)}, {P(6)})";
             string decideSql = $"UPDATE {sideTable} SET {status} = {P(1)}, {Q(t.DecidedBy)} = {P(2)}, {Q(t.DecidedOn)} = {P(3)}, {Q(t.DecisionNote)} = {P(4)} WHERE {Q(t.SideKey)} = {P(5)} AND {status} = {P(6)}";
             string withdrawSql = $"UPDATE {sideTable} SET {status} = {P(1)}, {Q(t.DecidedBy)} = {P(2)}, {Q(t.DecidedOn)} = {P(3)} WHERE {Q(t.SideKey)} = {P(4)} AND {status} = {P(5)}";
-            string waitingSql = $"SELECT {select} FROM {sideTable} WHERE {status} = {P(1)} AND {requestedBy} <> {P(2)} ORDER BY {requestedOn}";
+            string waitingSql = $"SELECT {select} FROM {sideTable} WHERE {status} = {P(1)} AND {requestedBy} <> {P(2)}"
+                + (owned is null ? "" : $" AND {link} IN (SELECT {Q(t.Key)} FROM {Tbl(t.Table)} WHERE {Q(owned.Column)} = {P(3)})") + $" ORDER BY {requestedOn}";
             string historySql = $"SELECT {select} FROM {sideTable} WHERE {link} = {P(1)} ORDER BY {revision} DESC";
 
             // the side table has no model of its own (it has no CRUD API), so its row is read into a struct written here
@@ -99,6 +102,8 @@ public static class RustApprovalWriter
                 ("§ST", F(t.Status).Name), ("§RV", F(t.Revision).Name), ("§ID", F(t.SideKey).Name), ("§LINK", F(t.Link).Name), ("§RS", F(t.Reason).Name),
                 ("§RB", F(t.RequestedBy).Name), ("§RO", F(t.RequestedOn).Name), ("§DB", F(t.DecidedBy).Name), ("§DO", F(t.DecidedOn).Name), ("§DN", F(t.DecisionNote).Name),
                 ("§NOWOPT", nowOption), ("§NOW", now),
+                ("§BIND_TENANT", owned is null ? "" : ".bind(user.tenant_id)"), ("§ROWFN", owned is null ? "" : Fill(RowFunction, ("§M", main.Module), ("§KT", keyType), ("§SQL_EXISTS", RustTable.Raw(existsSql)))),
+                ("§REQUIRE_ROW_OWN", owned is null ? "" : $"    require_row_{main.Module}(&pool, &user, id).await?;\n"), ("§REQUIRE_ROW", owned is null ? "" : $"    require_row_{main.Module}(pool, user, id).await?;\n"),
                 ("§SQL_LATEST", RustTable.Raw(latestSql)), ("§SQL_EXISTS", RustTable.Raw(existsSql)), ("§SQL_INSERT", RustTable.Raw(insertSql)), ("§SQL_DECIDE", RustTable.Raw(decideSql)),
                 ("§SQL_WITHDRAW", RustTable.Raw(withdrawSql)), ("§SQL_WAITING", RustTable.Raw(waitingSql)), ("§SQL_HISTORY", RustTable.Raw(historySql)),
                 ("§W_NOTHING", Str(ApprovalWords.NothingWaiting)), ("§W_ALREADY", Str(ApprovalWords.AlreadyWaiting)), ("§W_FOUREYES", Str(ApprovalWords.FourEyes)),
@@ -285,6 +290,18 @@ fn wrong_state(detail: &'static str) -> ApiError {
 }
 """";
 
+    private const string RowFunction = """"
+
+/// A tenant-owned row is reached only by a caller of its tenant, for the side table has no tenant column of its own.
+async fn require_row_§M(pool: &Pool, user: &CurrentUser, id: §KT) -> ApiResult<()> {
+    let exists: Option<§KT> = sqlx::query_scalar(§SQL_EXISTS).bind(id).bind(user.tenant_id).fetch_optional(pool).await?;
+    if exists.is_none() {
+        return Err(ApiError::NotFound);
+    }
+    Ok(())
+}
+"""";
+
     private const string TableText = """"
 
 // ===== §TABLE =====
@@ -314,13 +331,14 @@ fn view_§M(cycle: §S) -> ApprovalView {
     }
 }
 
+§ROWFN
 async fn latest_§M(pool: &Pool, id: §KT) -> Result<Option<§S>, sqlx::Error> {
     sqlx::query_as::<_, §S>(§SQL_LATEST).bind(id).fetch_optional(pool).await
 }
 
 async fn request_§M(State(pool): State<Pool>, Extension(user): Extension<CurrentUser>, Path(id): Path<§KT>, body: Option<Json<ApprovalNote>>) -> ApiResult<Json<ApprovalView>> {
     let person = require_person(&pool, &user).await?;
-    let exists: Option<§KT> = sqlx::query_scalar(§SQL_EXISTS).bind(id).fetch_optional(&pool).await?;
+    let exists: Option<§KT> = sqlx::query_scalar(§SQL_EXISTS).bind(id)§BIND_TENANT.fetch_optional(&pool).await?;
     if exists.is_none() {
         return Err(ApiError::NotFound);
     }
@@ -338,7 +356,7 @@ async fn request_§M(State(pool): State<Pool>, Extension(user): Extension<Curren
 
 async fn decide_§M(pool: &Pool, user: &CurrentUser, id: §KT, body: Option<Json<ApprovalNote>>, approve: bool) -> ApiResult<Json<ApprovalView>> {
     let person = require_approver(pool, user, §TABLE).await?;
-    let Some(current) = latest_§M(pool, id).await?.filter(|c| c.§ST == PENDING) else {
+§REQUIRE_ROW    let Some(current) = latest_§M(pool, id).await?.filter(|c| c.§ST == PENDING) else {
         return Err(wrong_state(§W_NOTHING));
     };
     if current.§RB.eq_ignore_ascii_case(&person.name) {
@@ -371,7 +389,7 @@ async fn reject_§M(State(pool): State<Pool>, Extension(user): Extension<Current
 
 async fn withdraw_§M(State(pool): State<Pool>, Extension(user): Extension<CurrentUser>, Path(id): Path<§KT>) -> ApiResult<Json<ApprovalView>> {
     let person = require_person(&pool, &user).await?;
-    let Some(current) = latest_§M(&pool, id).await?.filter(|c| c.§ST == PENDING) else {
+§REQUIRE_ROW_OWN    let Some(current) = latest_§M(&pool, id).await?.filter(|c| c.§ST == PENDING) else {
         return Err(wrong_state(§W_NOTHING));
     };
     if !current.§RB.eq_ignore_ascii_case(&person.name) {
@@ -388,12 +406,12 @@ async fn withdraw_§M(State(pool): State<Pool>, Extension(user): Extension<Curre
 
 async fn to_approve_§M(State(pool): State<Pool>, Extension(user): Extension<CurrentUser>) -> ApiResult<Json<Vec<ApprovalView>>> {
     let person = require_approver(&pool, &user, §TABLE).await?;
-    let waiting = sqlx::query_as::<_, §S>(§SQL_WAITING).bind(PENDING).bind(&person.name).fetch_all(&pool).await?;
+    let waiting = sqlx::query_as::<_, §S>(§SQL_WAITING).bind(PENDING).bind(&person.name)§BIND_TENANT.fetch_all(&pool).await?;
     Ok(Json(waiting.into_iter().map(view_§M).collect()))
 }
 
-async fn history_§M(State(pool): State<Pool>, Path(id): Path<§KT>) -> ApiResult<Json<Vec<ApprovalView>>> {
-    let cycles = sqlx::query_as::<_, §S>(§SQL_HISTORY).bind(id).fetch_all(&pool).await?;
+async fn history_§M(State(pool): State<Pool>, Extension(user): Extension<CurrentUser>, Path(id): Path<§KT>) -> ApiResult<Json<Vec<ApprovalView>>> {
+§REQUIRE_ROW_OWN    let cycles = sqlx::query_as::<_, §S>(§SQL_HISTORY).bind(id).fetch_all(&pool).await?;
     Ok(Json(cycles.into_iter().map(view_§M).collect()))
 }
 """";

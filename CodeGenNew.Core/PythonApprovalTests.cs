@@ -33,6 +33,13 @@ public static class PythonApprovalTests
         string Cleanup() => string.Join(",\n", seed.Cleanup.Select(s => "    " + PythonNames.Str(s)));
         var o = new StringBuilder();
         o.Append(Fill(Head,
+            ("§TENANTELSE", seed.TenantSql is null ? "" : "ELSEWHERE = 2147483000\n"),
+            ("§TENANTSQL", seed.TenantSql is null ? "" : $"TENANT_SQL = {PythonNames.Str(seed.TenantSql)}\n"),
+            ("§TENANTLOOKUP", seed.TenantSql is null ? "" : "    with engine.connect() as connection:\n        tenant = connection.execute(text(TENANT_SQL)).scalar()\n    who[\"tenant\"] = tenant\n"),
+            ("§TENANTARG", seed.TenantSql is null ? "" : ", tenant_id=who[\"tenant\"]"),
+            ("§ELSEPARAM", seed.TenantSql is null ? "" : ", elsewhere=False"),
+            ("§ELSEBODY", seed.TenantSql is null ? "" : "        who[\"tenant\"] = ELSEWHERE if elsewhere else tenant\n"),
+            ("§TENANTIMPORT", seed.TenantSql is null ? "" : "from sqlalchemy import text\n"),
             ("§SETUP", Setup()), ("§CLEANUP", Cleanup()), ("§ROUTE", PythonNames.Str(main.Route)), ("§ROW", seed.RowKey.ToString()), ("§TABLE", PythonNames.Str(table.Table.TableName)),
             ("§ANN", ApprovalTestSeed.Requester), ("§BOB", ApprovalTestSeed.Approver), ("§CY", ApprovalTestSeed.AnyTableApprover)));
         o.Append(Fill(Cases,
@@ -40,6 +47,8 @@ public static class PythonApprovalTests
             ("§T_UNKNOWN", ApprovalWriter.RequesterUnknownType), ("§T_NOTAPPROVER", ApprovalWriter.NotApproverType), ("§T_FOUREYES", ApprovalWriter.FourEyesType), ("§T_REFUSED", ApprovalWriter.RefusedType),
             ("§W_NOTAPPROVER", PythonNames.Str(ApprovalWords.NotApprover)), ("§W_NOTREQUESTER", PythonNames.Str(ApprovalWords.NotRequester)), ("§W_FOUREYES", PythonNames.Str(ApprovalWords.FourEyes)),
             ("§W_ALREADY", PythonNames.Str(ApprovalWords.AlreadyWaiting)), ("§FORBIDDEN", HttpStatus.Forbidden.ToString()), ("§CONFLICT", HttpStatus.Conflict.ToString()), ("§NOTFOUND", HttpStatus.NotFound.ToString())));
+        if (seed.TenantSql is not null)
+            o.Append(Fill(TenantCase, ("§ANN", ApprovalTestSeed.Requester), ("§BOB", ApprovalTestSeed.Approver)));
         if (ApprovalTestSeed.HasOtherTablePerson(plan))
             o.Append(Fill(OtherTableCase, ("§CY", ApprovalTestSeed.AnyTableApprover), ("§DEE", ApprovalTestSeed.OtherTableApprover), ("§W_NOTAPPROVER", PythonNames.Str(ApprovalWords.NotApprover)), ("§FORBIDDEN", HttpStatus.Forbidden.ToString())));
         return o.ToString() + "\n";
@@ -104,7 +113,7 @@ def run(engine, statements):
 """The row approvals through the routes: who may ask and decide, the four eyes, withdrawal, the history and the hooks. Written by PY_TestApprovals; regenerated with the tables."""
 import pytest
 from fastapi.testclient import TestClient
-
+§TENANTIMPORT
 from app.auth import CurrentUser, require_user
 from app.routes import approvals
 
@@ -119,7 +128,7 @@ CLEANUP = [
 ROUTE = §ROUTE
 ROW = §ROW
 TABLE = §TABLE
-
+§TENANTELSE§TENANTSQL
 
 @pytest.fixture
 def call(application):
@@ -128,12 +137,12 @@ def call(application):
     run(engine, CLEANUP)
     run(engine, SETUP)
     who = {"name": ""}
-    app.dependency_overrides[require_user] = lambda: CurrentUser(name=who["name"], role=None, owner_id=None)
+§TENANTLOOKUP    app.dependency_overrides[require_user] = lambda: CurrentUser(name=who["name"], role=None, owner_id=None§TENANTARG)
     client = TestClient(app)
 
-    def make(person, method, path, **kw):
+    def make(person, method, path§ELSEPARAM, **kw):
         who["name"] = person
-        return client.request(method, ROUTE + path, **kw)
+§ELSEBODY        return client.request(method, ROUTE + path, **kw)
 
     yield make
     app.dependency_overrides.pop(require_user, None)
@@ -218,6 +227,22 @@ def test_a_hook_can_refuse_a_request_and_sees_a_decision(call):
     finally:
         approvals.hooks.on_decided = None
     assert seen == [("reject", "§BOB")]
+"""";
+
+    private const string TenantCase = """"
+
+
+def test_another_tenant_cannot_ask_decide_withdraw_or_read_the_approvals_of_a_row(call):
+    assert call("§ANN", "POST", f"/{ROW}/request", json={"reason": "please"}).status_code == 200
+    assert call("§ANN", "POST", f"/{ROW}/request", json={}, elsewhere=True).status_code == 404, "another tenant's row cannot be asked for"
+    assert call("§BOB", "POST", f"/{ROW}/approve", json={}, elsewhere=True).status_code != 200, "another tenant's cycle cannot be approved"
+    assert call("§ANN", "POST", f"/{ROW}/withdraw", elsewhere=True).status_code != 200, "another tenant's cycle cannot be withdrawn"
+    history = call("§ANN", "GET", f"/{ROW}/approvals", elsewhere=True)
+    assert history.status_code == 404 or history.json() == [], "another tenant is shown no history"
+    waiting = call("§BOB", "GET", "/toapprove", elsewhere=True)
+    assert waiting.status_code != 200 or ROW not in waiting_rows(waiting), "another tenant's waiting request is not listed"
+    assert ROW in waiting_rows(call("§BOB", "GET", "/toapprove")), "the tenant's own approver sees the request"
+    assert call("§BOB", "POST", f"/{ROW}/approve", json={"note": "fine"}).status_code == 200
 """";
 
     private const string OtherTableCase = """"

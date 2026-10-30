@@ -27,7 +27,7 @@ public static class ProjectSettingGroups
         new("API", "This tab has docs, HTTP, fakers, validation, CSV, OData, EF configurations, production profile, telemetry, project docs, folder, port, and DTOs.",
             ["ApiDocs", "ApiHttp", "ApiFakers", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ProjectDocs", "ApiFolder", "ApiPort", "Dtos"]),
         new("Table shapes", "This tab has the log tables, the work-queue tables with their retries and claim time, the tables a script archives or purges, the tree, soft-delete and effective-dated tables, and the tenants of a multi-tenant API.",
-            ["LogTables", "QueueTables", "QueueMaxRetries", "QueueClaimMinutes", "ArchiveTables", "ArchiveBatchSize", "ArchiveRunAt", "TreeTables", "SoftDeleteTables", "EffectiveDatedTables", "TenantTable", "TenantColumn", "NoTenantTables", "TenantMembership"]),
+            ["LogTables", "QueueTables", "QueueMaxRetries", "QueueClaimMinutes", "ArchiveTables", "ArchiveBatchSize", "ArchiveRunAt", "TreeTables", "SoftDeleteTables", "EffectiveDatedTables", "TenantTable", "TenantColumn", "NoTenantTables", "TenantMembership", "TenantHostColumn"]),
         new("Tests", "This tab has the generated test projects: the API integration tests, the Blazor page tests, the Rust crate tests and the Python API tests.",
             ["ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "DesktopTests", "RustTests", "PythonTests"]),
         new("Sign-in", "This tab has the API sign-in, the owned tables and claim names, and the user table the people sign in against.",

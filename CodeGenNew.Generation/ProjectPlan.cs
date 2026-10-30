@@ -30,6 +30,7 @@ public static class ProjectPlan
             PlanTableSet.Context => database.EntityTables.Where(t => project.NoRepository(t.TableName, t.LookupShape) != true).Concat(database.CompositeKeyTables).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),
             PlanTableSet.Api => database.ApiTables(project),
             PlanTableSet.CrudApi => database.CrudApiTables(project),
+            PlanTableSet.PythonRustApi => database.PythonRustApiTables(project),
             PlanTableSet.AspNetApi => database.AspNetApiTables(project),
             PlanTableSet.Search => database.SearchApiTables(project),
             PlanTableSet.AspNetSearch => database.AspNetSearchApiTables(project),

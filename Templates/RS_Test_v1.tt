@@ -152,7 +152,7 @@ async fn the_search_takes_a_first_and_a_last_day() {
 #>
 @@@FILE tests/api/<#= t.Module #>.rs@@@
 use axum::http::StatusCode;
-use serde_json::{<#= changed is not null || longText is not null || ranged is not null ? "Value, json" : "Value" #>};
+use serde_json::{<#= changed is not null || longText is not null || ranged is not null || RustTenantTests.HasMethods(Model, Project) ? "Value, json" : "Value" #>};
 
 use crate::test_bodies;
 use crate::test_support::*;
@@ -521,6 +521,8 @@ async fn a_number_past_its_limit_is_refused() {
 }
 <#
         }
+        if (RustTenantTests.HasMethods(Model, Project))
+            Write(RustTenantTests.Methods(Model, Project));
         }
     }
 #>

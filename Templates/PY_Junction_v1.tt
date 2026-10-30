@@ -41,6 +41,8 @@
 
     var createDate = junction.CreateDateColumn;
     var createUser = junction.CreateUserColumn;
+    bool tenanted = PythonTenantWriter.Applies(Project);   // TenantTable: the rows of a tenant-owned side (tenancy.py) are the caller's tenant's only
+    var anchorFk = Model.JunctionForeignKeys[0];
 
     var readRoles = WriteRolePlan.ReadFor(Project, Model);
     var writeRoles = WriteRolePlan.For(Project, Model);
@@ -62,9 +64,11 @@
     Line("from sqlalchemy.exc import IntegrityError");
     Line("from sqlalchemy.orm import Session");
     Line();
-    if (readRoles.Count > 0 || writeRoles.Count > 0)
-        Line("from app.auth import require_roles");
+    if (readRoles.Count > 0 || writeRoles.Count > 0 || tenanted)
+        Line("from app.auth import " + string.Join(", ", new[] { tenanted ? "CurrentUser" : null, readRoles.Count > 0 || writeRoles.Count > 0 ? "require_roles" : null, tenanted ? "require_user" : null }.OfType<string>()));
     Line("from app.db import get_session");
+    if (tenanted)
+        Line("from app.routes.tenancy import TENANT_COLUMN, TENANT_OWNED, only_tenant");
     Line("from app.support import ApiError");
     Line();
     Line("router = APIRouter()");
@@ -82,7 +86,15 @@
         linkColumns.Add(Str(createUser.DbName));
     Line($"LINKS = table({Str(Model.DbTableName)}, {string.Join(", ", linkColumns.Select(c => $"column({c})"))}{SchemaArgument(Model.SchemaName)})");
     var targetColumns = display.Select((d, i) => Str(displayDb[i])).Append(Str(targetKeyDb)).Distinct().ToList();
-    Line($"TARGETS = table({Str(junction.TargetForeignKey.ReferencedDbTable)}, {string.Join(", ", targetColumns.Select(c => $"column({c})"))}{SchemaArgument(junction.TargetForeignKey.ReferencedSchema)})");
+    Line($"TARGETS = table({Str(junction.TargetForeignKey.ReferencedDbTable)}, {string.Join(", ", targetColumns.Select(c => $"column({c})"))}{(tenanted ? ", column(TENANT_COLUMN)" : "")}{SchemaArgument(junction.TargetForeignKey.ReferencedSchema)})");
+    if (tenanted)
+    {
+        Line($"TARGET_TABLE = {Str(junction.TargetForeignKey.ReferencedDbTable)}");
+        Line($"TARGET_KEY = {Str(targetKeyDb)}");
+        Line($"ANCHORS = table({Str(anchorFk.ReferencedDbTable)}, column({Str(anchorFk.ReferencedDbColumns[0])}), column(TENANT_COLUMN){SchemaArgument(anchorFk.ReferencedSchema)})");
+        Line($"ANCHOR_TABLE = {Str(anchorFk.ReferencedDbTable)}");
+        Line($"ANCHOR_KEY = {Str(anchorFk.ReferencedDbColumns[0])}");
+    }
     Line();
     Line();
     Line($"class {stem}JunctionItem(BaseModel):");
@@ -107,11 +119,37 @@
     Line("    return None if value is None else str(value)");
     Line();
     Line();
+    if (tenanted)
+    {
+        Line("def sees(session: Session, user: CurrentUser, source, name: str, key: str, value) -> bool:");
+        Line("    \"\"\"Whether the caller can see this row of a side of the junction: a tenant-owned table shows only the caller's tenant's rows.\"\"\"");
+        Line("    query = select(source.c[key]).where(source.c[key] == value)");
+        Line("    if name in TENANT_OWNED:");
+        Line("        query = only_tenant(query, source.c[TENANT_COLUMN], user)");
+        Line("    return session.scalar(query) is not None");
+        Line();
+        Line();
+        Line("def require_sides(session: Session, user: CurrentUser, anchor_id, target_id=None) -> None:");
+        Line("    if not sees(session, user, ANCHORS, ANCHOR_TABLE, ANCHOR_KEY, anchor_id) or (target_id is not None and not sees(session, user, TARGETS, TARGET_TABLE, TARGET_KEY, target_id)):");
+        Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
+        Line();
+        Line();
+    }
     Line($"@router.get(\"{route}/junction/{{anchor_id}}\", response_model=list[{stem}JunctionItem]{readDepends})");
-    Line($"def list_links(anchor_id: {anchorKey.Python}, session: Session = Depends(get_session)):");
+    Line($"def list_links(anchor_id: {anchorKey.Python}, session: Session = Depends(get_session){(tenanted ? ", user: CurrentUser = Depends(require_user)" : "")}):");
+    if (tenanted)
+        Line("    require_sides(session, user, anchor_id)");
     Line("    linked = set(session.scalars(select(LINKS.c[" + Str(junction.TargetColumn.DbName) + "]).where(LINKS.c[" + Str(junction.AnchorColumn.DbName) + "] == anchor_id)).all())");
     var selected = display.Select((d, i) => $"TARGETS.c[{Str(displayDb[i])}]").Append($"TARGETS.c[{Str(targetKeyDb)}]");
-    Line($"    rows = session.execute(select({string.Join(", ", selected)}).order_by(TARGETS.c[{Str(orderColumn)}], TARGETS.c[{Str(targetKeyDb)}])).all()");
+    if (tenanted)
+    {
+        Line($"    statement = select({string.Join(", ", selected)})");
+        Line("    if TARGET_TABLE in TENANT_OWNED:");
+        Line("        statement = only_tenant(statement, TARGETS.c[TENANT_COLUMN], user)");
+        Line($"    rows = session.execute(statement.order_by(TARGETS.c[{Str(orderColumn)}], TARGETS.c[{Str(targetKeyDb)}])).all()");
+    }
+    else
+        Line($"    rows = session.execute(select({string.Join(", ", selected)}).order_by(TARGETS.c[{Str(orderColumn)}], TARGETS.c[{Str(targetKeyDb)}])).all()");
     Line("    return [");
     Line($"        {stem}JunctionItem(");
     for (int i = 0; i < display.Count; i++)
@@ -124,8 +162,10 @@
     Line();
     Line();
     Line($"@router.post(\"{route}/junction/link\"{writeDepends})");
-    Line($"def link(body: {stem}JunctionLinkRequest, session: Session = Depends(get_session)):");
+    Line($"def link(body: {stem}JunctionLinkRequest, session: Session = Depends(get_session){(tenanted ? ", user: CurrentUser = Depends(require_user)" : "")}):");
     Line("    \"\"\"Adds the link unless it exists.\"\"\"");
+    if (tenanted)
+        Line("    require_sides(session, user, body.anchor_id, body.target_id)");
     Line($"    same = (LINKS.c[{Str(junction.AnchorColumn.DbName)}] == body.anchor_id, LINKS.c[{Str(junction.TargetColumn.DbName)}] == body.target_id)");
     Line("    if (session.scalar(select(func.count()).select_from(LINKS).where(*same)) or 0) == 0:");
     Line("        values = {");
@@ -146,8 +186,10 @@
     Line();
     Line();
     Line($"@router.post(\"{route}/junction/unlink\"{writeDepends})");
-    Line($"def unlink(body: {stem}JunctionLinkRequest, session: Session = Depends(get_session)):");
+    Line($"def unlink(body: {stem}JunctionLinkRequest, session: Session = Depends(get_session){(tenanted ? ", user: CurrentUser = Depends(require_user)" : "")}):");
     Line("    \"\"\"Removes the link when it exists.\"\"\"");
+    if (tenanted)
+        Line("    require_sides(session, user, body.anchor_id, body.target_id)");
     Line($"    session.execute(delete(LINKS).where(LINKS.c[{Str(junction.AnchorColumn.DbName)}] == body.anchor_id, LINKS.c[{Str(junction.TargetColumn.DbName)}] == body.target_id))");
     Line("    session.commit()");
     Line($"    return Response(status_code={HttpStatus.Ok})");

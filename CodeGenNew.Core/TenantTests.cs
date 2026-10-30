@@ -179,11 +179,11 @@ public static class TenantTests
         L("        }");
         L("        using var platform = ApiFixture.PlatformClient();");
         L("        using var none = await platform.GetAsync($\"{Route}/{mine}\");");
-        L("        Assert.AreEqual(HttpStatusCode.NotFound, none.StatusCode, \"a caller in no tenant is shown no tenant\");");
+        L("        Assert.AreEqual(HttpStatusCode.OK, none.StatusCode, \"a platform administrator is shown every tenant\");");
         L("    }");
         L();
         L("    [TestMethod]");
-        L("    public async Task A_tenant_is_not_created_or_deleted_by_the_ordinary_routes()");
+        L("    public async Task A_tenant_is_created_by_a_platform_administrator_only_and_never_deleted()");
         L("    {");
         L("        ApiFixture.RequireDatabase();");
         L("        using var created = await ApiFixture.Client.PostAsJsonAsync(Route, await NewBodyAsync());");
@@ -194,6 +194,15 @@ public static class TenantTests
         L("            using var removed = await ApiFixture.Client.DeleteAsync($\"{Route}/{mine}\");");
         L("            Assert.AreEqual(HttpStatusCode.Forbidden, removed.StatusCode);");
         L("        }");
+        L("        using var platform = ApiFixture.PlatformClient();");
+        L("        using var made = await platform.PostAsJsonAsync(Route, await NewBodyAsync());");
+        L("        Assert.AreEqual(HttpStatusCode.Created, made.StatusCode, \"a platform administrator creates a tenant with the ordinary Add\" + await made.Content.ReadAsStringAsync());");
+        L($"        int key = (await made.Content.ReadFromJsonAsync<JsonObject>())![\"{id}\"]!.GetValue<int>();");
+        L("        using var seen = await platform.GetAsync($\"{Route}/{key}\");");
+        L("        Assert.AreEqual(HttpStatusCode.OK, seen.StatusCode);");
+        L("        using var cannotDelete = await platform.DeleteAsync($\"{Route}/{key}\");");
+        L("        Assert.AreEqual(HttpStatusCode.Forbidden, cannotDelete.StatusCode);");
+        L("        await " + (project.ApiNamespace ?? (project.ProjectName ?? "MyApp") + ".Api.Apis") + ".TenantTestSupport.RemoveAsync(ApiFixture.Services, key);");
         L("    }");
         L();
         L("    [TestMethod]");
@@ -216,6 +225,35 @@ public static class TenantTests
         L("    }");
         L();
         L("    [TestMethod]");
+        if (table.IsActiveColumn is not null)
+        {
+            L("    public async Task A_token_of_a_tenant_that_was_switched_off_is_refused()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L("        using var platform = ApiFixture.PlatformClient();");
+            L("        var body = await NewBodyAsync();");
+            L($"        body[\"{JsonNames.Camel(table.IsActiveColumn.Name)}\"] = true;");
+            L("        using var made = await platform.PostAsJsonAsync(Route, body);");
+            L("        Assert.AreEqual(HttpStatusCode.Created, made.StatusCode, await made.Content.ReadAsStringAsync());");
+            L($"        int key = (await made.Content.ReadFromJsonAsync<JsonObject>())![\"{id}\"]!.GetValue<int>();");
+            string apis = project.ApiNamespace ?? (project.ProjectName ?? "MyApp") + ".Api.Apis";
+            L("        try");
+            L("        {");
+            L("            using var worker = ApiFixture.ClientInTenant(key, \"Administrator\");");
+            L("            using var before = await worker.GetAsync($\"{Route}/{key}\");");
+            L("            Assert.AreEqual(HttpStatusCode.OK, before.StatusCode, await before.Content.ReadAsStringAsync());");
+            L($"            await {apis}.TenantTestSupport.DeactivateAsync(ApiFixture.Services, key);");
+            L("            using var after = await worker.GetAsync($\"{Route}/{key}\");");
+            L("            Assert.AreEqual(HttpStatusCode.Unauthorized, after.StatusCode, \"a token keeps no tenant that was switched off\");");
+            L("        }");
+            L("        finally");
+            L("        {");
+            L($"            await {apis}.TenantTestSupport.RemoveAsync(ApiFixture.Services, key);");
+            L("        }");
+            L("    }");
+            L();
+            L("    [TestMethod]");
+        }
         L("    public async Task Without_a_token_the_tenant_is_refused()");
         L("    {");
         L("        ApiFixture.RequireDatabase();");

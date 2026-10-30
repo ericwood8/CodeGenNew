@@ -10,10 +10,12 @@
     //                             Authorization: Bearer <token> with every call and signs the person out when the API answers 401);
     //   Views/LoginPage.xaml(.cs) the sign-in page, with the messages "The user name or password is not right.", "Too many tries. Wait a minute and try again." and "Could not sign in right now.".
     // MainPage.xaml(.cs) (the App group), MainPage.Screens.cs and Services/ApiClients.cs (UNO_Screens) are written for Auth=true to show the page until someone is signed in and to leave out
-    // the screens the role may not read. Full notes: Docs/TemplateNotes/UNO_EssentialAuth_v1.md
+    // the screens the role may not read. With TenantTable and TenantMembership the sign-in also has a Tenant box (the key of a tenant the person belongs to; empty: the first one) and the message
+    // of TenantWords.SignInRefused for a 403. Full notes: Docs/TemplateNotes/UNO_EssentialAuth_v1.md
     // ==========================================================================================
     string servicesNamespace = UnoNames.ServicesNamespace(Project);
     string viewNamespace = Project.ViewNamespace ?? Project.AppNamespace + ".Views";
+    bool tenants = TenantPlan.HasSignInBox(Project);   // TenantTable and TenantMembership: the sign-in has a box for the tenant to work in
 #>
 @@@FILE Services/AuthSession.cs@@@
 using System.Net;
@@ -22,8 +24,13 @@ using System.Text.Json;
 
 namespace <#= servicesNamespace #>;
 
-/// <summary> Who is signed in: the name, the role and the owner id the API sent. </summary>
-public record SessionUser(string Name, string? Role, int? OwnerId);
+/// <summary> Who is signed in: the name, the role and the owner id<#= tenants ? " and tenant" : "" #> the API sent. </summary>
+public record SessionUser(string Name, string? Role, int? OwnerId<#= tenants ? ", int? TenantId = null" : "" #>);
+<# if (tenants) { #>
+
+/// <summary> One tenant of the signed-in person (GET api/auth/tenants): the name to show, the role in it and whether the token works in it now. </summary>
+public record TenantChoice(int Id, string Text, string? Role, bool Current);
+<# } #>
 
 /// <summary> What POST api/auth/login answers. </summary>
 public record SessionData(string Token, DateTime? ExpiresUtc, SessionUser User);
@@ -46,16 +53,48 @@ public class AuthSession
     /// <summary> Raised when someone signs in or out, so the main page draws its menu again. It can be raised from a call's thread. </summary>
     public event Action? Changed;
 
+<# if (tenants) { #>
+    /// <summary> Signs in; with a tenant (the key of one the person belongs to) the token works in that tenant, else in the first one. A refused sign-in throws <see cref="LoginException"/>. </summary>
+    public async Task LoginAsync(HttpClient http, string userName, string password, int? tenantId = null)
+    {
+        var response = tenantId is { } tenant
+            ? await http.PostAsJsonAsync("/api/auth/login", new { userName, password, tenantId = tenant })
+            : await http.PostAsJsonAsync("/api/auth/login", new { userName, password });
+<# } else { #>
     /// <summary> Signs in; a refused sign-in throws <see cref="LoginException"/>. </summary>
     public async Task LoginAsync(HttpClient http, string userName, string password)
     {
         var response = await http.PostAsJsonAsync("/api/auth/login", new { userName, password });
+<# } #>
         if (!response.IsSuccessStatusCode)
             throw new LoginException((int)response.StatusCode);
         Data = await response.Content.ReadFromJsonAsync<SessionData>(Web) ?? throw new LoginException((int)HttpStatusCode.InternalServerError);
         Changed?.Invoke();
     }
 
+<# if (tenants) { #>
+    /// <summary> The tenants the signed-in person belongs to; none when the API has no tenants route. </summary>
+    public async Task<List<TenantChoice>> TenantsAsync(HttpClient http)
+    {
+        try { return await http.GetFromJsonAsync<List<TenantChoice>>("/api/auth/tenants", Web) ?? []; }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException)
+        {
+            return [];
+        }
+    }
+
+    /// <summary> Asks the API for a token that works in another tenant of the person and keeps it; the main page then draws its menu again. False when the API refuses. </summary>
+    public async Task<bool> SwitchTenantAsync(HttpClient http, int tenantId)
+    {
+        var response = await http.PostAsJsonAsync("/api/auth/switch-tenant", new { tenantId });
+        if (!response.IsSuccessStatusCode || await response.Content.ReadFromJsonAsync<SessionData>(Web) is not { } data)
+            return false;
+        Data = data;
+        Changed?.Invoke();
+        return true;
+    }
+
+<# } #>
     public void Logout()
     {
         Data = null;
@@ -100,6 +139,9 @@ public class AuthHandler : DelegatingHandler
             <InfoBar x:Name="Problem" Severity="Error" IsOpen="False" IsClosable="False" />
             <TextBox x:Name="UserNameBox" Header="User name" />
             <PasswordBox x:Name="PasswordBoxField" Header="Password" KeyDown="OnPasswordKeyDown" />
+<# if (tenants) { #>
+            <NumberBox x:Name="TenantBox" Header="<#= TenantWords.SignInLabel #>" Description="<#= TenantWords.SignInHint #>" Minimum="1" SpinButtonPlacementMode="Hidden" />
+<# } #>
             <Button x:Name="SignInButton" Content="Sign in" Style="{ThemeResource AccentButtonStyle}" Click="OnSignInClick" />
         </StackPanel>
     </Grid>
@@ -136,7 +178,11 @@ public sealed partial class LoginPage : UserControl
         Problem.IsOpen = false;
         try
         {
+<# if (tenants) { #>
+            await _session.LoginAsync(_http, UserNameBox.Text.Trim(), PasswordBoxField.Password, int.TryParse(TenantBox.Text.Trim(), out int tenant) ? tenant : null);
+<# } else { #>
             await _session.LoginAsync(_http, UserNameBox.Text.Trim(), PasswordBoxField.Password);
+<# } #>
         }
         catch (LoginException ex)
         {
@@ -144,6 +190,9 @@ public sealed partial class LoginPage : UserControl
             {
                 <#= HttpStatus.Unauthorized #> => "The user name or password is not right.",
                 <#= HttpStatus.TooManyRequests #> => "Too many tries. Wait a minute and try again.",
+<# if (tenants) { #>
+                <#= HttpStatus.Forbidden #> => "<#= TenantWords.SignInRefused #>",
+<# } #>
                 _ => "Could not sign in right now."
             });
         }

@@ -60,7 +60,7 @@
         if (tenancy && tenantOwned.TryGetValue(table.TableName, out var tenantColumn))
             conditions.Add($"e.{tenantColumn.CSharpName()} == CurrentTenantId");
         else if (tenancy && table == tenantTable)
-            conditions.Add($"e.{tenantKey!.CSharpName()} == CurrentTenantId");
+            conditions.Add($"(e.{tenantKey!.CSharpName()} == CurrentTenantId || IsPlatform)");
         if (conditions.Count > 0)
             filterLines.Add($"        modelBuilder.Entity<{table.TableName}>().HasQueryFilter(e => {string.Join(" && ", conditions)});");
     }
@@ -100,6 +100,9 @@
         Line();
         Line("    /// <summary> The tenant the caller works in (TenantTable); null for a caller in no tenant (a platform administrator) and for a context made without the scope, which then sees no tenant-owned row. </summary>");
         Line("    public int? CurrentTenantId => _tenant?.TenantId;");
+        Line();
+        Line("    /// <summary> Whether the caller is a platform administrator (the administrator role, working in no tenant): the tenant table shows them every tenant. </summary>");
+        Line("    public bool IsPlatform => _tenant?.IsPlatform ?? false;");
     }
     if (Database.Dialect == SqlDialect.PostgreSql)
     {
@@ -205,6 +208,9 @@
         Line("public interface ITenantScope");
         Line("{");
         Line("    int? TenantId { get; }");
+        Line();
+        Line("    /// <summary> A platform administrator: the administrator role, working in no tenant. They see and create tenants; every other table stays empty for them until they work in a tenant. </summary>");
+        Line("    bool IsPlatform => false;");
         Line("}");
         Line();
         Line("/// <summary> The default scope: the <see cref=\"ClaimName\"/> claim of the signed-in caller. </summary>");
@@ -213,6 +219,8 @@
         Line("    public const string ClaimName = \"tenant\";");
         Line();
         Line("    public int? TenantId => int.TryParse(accessor.HttpContext?.User.FindFirst(ClaimName)?.Value, out int id) ? id : null;");
+        Line();
+        Line("    public bool IsPlatform => TenantId is null && accessor.HttpContext?.User.IsInRole(AuthNames.AdminRole) == true;");
         Line("}");
     }
     if (textColumns.Count > 0)

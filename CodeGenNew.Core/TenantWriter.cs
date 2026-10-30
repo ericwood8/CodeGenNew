@@ -14,6 +14,8 @@ public static class TenantWriter
         var (userPlan, _) = UserTable.Resolve(database, project);
         var userOwned = userPlan is null ? null : TenantPlan.OwnedBy(userPlan.Table, project);
         var active = tenantTable.IsActiveColumn;
+        var host = TenantPlan.HostColumnOf(database, project);
+        string hostParam = host is null ? "" : ", Microsoft.AspNetCore.Http.IHttpContextAccessor http";
         var text = tenantTable.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsPrimaryKey && (c.Name.EqualsIgnoreCase("Name") || c.Name.EqualsIgnoreCase("Title")));
 
         string activeJoin = active is null ? "" : $".Where(t => t.{active.CSharpName()})";
@@ -24,7 +26,8 @@ public static class TenantWriter
             o.Append($"using {u};\n");
         o.Append("using System.Security.Claims;\nusing Microsoft.AspNetCore.Mvc;\nusing Microsoft.EntityFrameworkCore;\nusing Microsoft.IdentityModel.JsonWebTokens;\nusing Microsoft.IdentityModel.Tokens;\n\n");
         o.Append(Fill(Shared, ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§NOMEMBER_TEXT", TenantWords.NotMember), ("§ONBOARD_TYPE", TenantWords.OnboardingType), ("§ONLYPLATFORM", TenantWords.OnlyPlatform),
-            ("§NOTENANT_TYPE", TenantWords.NoTenantType), ("§NOTENANT_TEXT", TenantWords.NoTenant)));
+            ("§NOTENANT_TYPE", TenantWords.NoTenantType), ("§NOTENANT_TEXT", TenantWords.NoTenant),
+            ("§HOSTPROBLEM", host is null ? "" : Fill(HostProblem, ("§HOST_TYPE", TenantWords.HostType), ("§HOST_TEXT", TenantWords.Host)))));
 
         string register = "";
         var routes = new StringBuilder();
@@ -33,26 +36,45 @@ public static class TenantWriter
             string roleSelect = membership.Role is null ? "(string?)null" : $"m.{membership.Role.CSharpName()}";
             o.Append(Fill(Members, ("§CTX", contextType), ("§U", userPlan.Table.TableName), ("§UNAME", userPlan.UserName.CSharpName()), ("§UKEY", userPlan.Table.PrimaryKeyColumns[0].CSharpName()),
                 ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()), ("§MROLE", roleSelect),
-                ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVEJOIN", activeJoin), ("§TEXT", textExpression)));
+                ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVEJOIN", activeJoin), ("§TEXT", textExpression), ("§HOSTPARAM", hostParam),
+                ("§HOSTLINES", host is null ? "" : HostLoginLines)));
             register = "        services.AddScoped<ILoginClaims, TenantLoginClaims>();\n";
-            o.Append(Fill(Switch, ("§CTX", contextType), ("§ROLEPARAM", membership.Role is null ? "null" : "member.Role")));
+            o.Append(Fill(Switch, ("§CTX", contextType), ("§ROLEPARAM", membership.Role is null ? "null" : "member.Role"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines)));
             routes.Append("        app.MapGet(\"/api/auth/tenants\", TenantSwitching.ListAsync);\n        app.MapPost(\"/api/auth/switch-tenant\", TenantSwitching.SwitchAsync);\n");
         }
         else if (userOwned is not null && userPlan is not null)
         {
             string activeTest = active is null ? "" : $" && context.Set<§TT>().IgnoreQueryFilters().Any(t => t.§TKEY == u.§UTENANT && t.{active.CSharpName()})";
-            o.Append(Fill(OwnColumn, ("§CTX", contextType), ("§U", userPlan.Table.TableName), ("§UNAME", userPlan.UserName.CSharpName()), ("§UTENANT", userOwned.Column.CSharpName()),
+            o.Append(Fill(OwnColumn, ("§CTX", contextType), ("§U", userPlan.Table.TableName), ("§UNAME", userPlan.UserName.CSharpName()), ("§UTENANT", userOwned.Column.CSharpName()), ("§HOSTPARAM", hostParam),
+                ("§HOSTFIND", host is null ? "" : HostOwnFind), ("§HOSTCHECK", host is null ? "" : HostOwnCheck),
                 ("§ACTIVETEST", Fill(activeTest, ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§UTENANT", userOwned.Column.CSharpName())))));
             register = "        services.AddScoped<ILoginClaims, TenantLoginClaims>();\n";
         }
 
+        if (active is not null)
+        {
+            o.Append(Fill(ActiveCheck, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVE", active.CSharpName()), ("§INACTIVE_TYPE", TenantWords.InactiveType), ("§INACTIVE_TEXT", TenantWords.Inactive)));
+            routes.Append("        app.Use(TenantActiveCheck.InvokeAsync);\n");
+        }
+        if (host is not null)
+        {
+            o.Append(Fill(HostCheck, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§HOST", host.CSharpName()),
+                ("§HOSTTEST", host.IsNullable ? $"t.{host.CSharpName()} != null && t.{host.CSharpName()}.ToLower() == label" : $"t.{host.CSharpName()}.ToLower() == label"),
+                ("§HOST_TYPE", TenantWords.HostType), ("§HOST_TEXT", TenantWords.Host)));
+            routes.Append("        app.Use(TenantHost.InvokeAsync);\n");
+        }
         string onboardRoute = ApiRequests.Route(tenantTable);
         string adminLines = membership is null ? "" : Fill(OnboardAdmin, ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
             ("§MROLEASSIGN", membership.Role is null ? "" : $", {membership.Role.CSharpName()} = AuthNames.AdminRole"), ("§TKEY", tenantKey.CSharpName()));
+        if (membership is not null && userPlan is not null)
+            o.Append(Fill(Creator, ("§CTX", contextType), ("§U", userPlan.Table.TableName), ("§UNAME", userPlan.UserName.CSharpName()), ("§UKEY", userPlan.Table.PrimaryKeyColumns[0].CSharpName()),
+                ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
+                ("§MROLEASSIGN", membership.Role is null ? "" : $", {membership.Role.CSharpName()} = AuthNames.AdminRole")));
         o.Append(Fill(Onboard, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ADMINLINES", adminLines), ("§ADMINPARAM", membership is null ? "" : ", int? AdminId")));
         routes.Append($"        app.MapPost(\"{onboardRoute}/onboard\", TenantOnboarding.OnboardAsync);\n");
 
-        o.Append(Fill(Support, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVEWHERE", activeJoin)));
+        o.Append(Fill(Support, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVEWHERE", activeJoin),
+            ("§DEACTIVATE", active is null ? "" : Fill(Deactivate, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVE", active.CSharpName())))));
         o.Append(Fill(Setup, ("§REGISTER", register)));
         o.Append("/// <summary> Maps the tenant routes. Generated by API_Tenants. </summary>\npublic static class TenantRoutes\n{\n    public static void Register(WebApplication app)\n    {\n" + routes + "    }\n}\n");
         return o.ToString();
@@ -70,7 +92,7 @@ public static class TenantProblems
 {
     public static IResult NotMember() => Results.Problem(statusCode: 403, type: "§NOTMEMBER_TYPE", title: "Not a member", detail: "§NOMEMBER_TEXT");
     public static IResult OnlyPlatform() => Results.Problem(statusCode: 403, type: "§ONBOARD_TYPE", title: "Platform administrators only", detail: "§ONLYPLATFORM");
-    public static IResult NoTenant() => Results.Problem(statusCode: 403, type: "§NOTENANT_TYPE", title: "No tenant", detail: "§NOTENANT_TEXT");
+    public static IResult NoTenant() => Results.Problem(statusCode: 403, type: "§NOTENANT_TYPE", title: "No tenant", detail: "§NOTENANT_TEXT");§HOSTPROBLEM
 }
 
 """;
@@ -96,14 +118,15 @@ public static class TenantMemberships
 }
 
 /// <summary> Puts the tenant (and the role the person has in it) into the token at sign-in: the tenant the login asks for, else the person's first one. A person in no tenant (a platform administrator) signs in to none. </summary>
-public class TenantLoginClaims(§CTX context) : ILoginClaims
+public class TenantLoginClaims(§CTX context§HOSTPARAM) : ILoginClaims
 {
     public async Task<LoginClaims> ForAsync(DirectoryUser user, LoginRequest request, CancellationToken cancellationToken = default)
     {
         var members = await TenantMemberships.OfAsync(context, user.UserName, cancellationToken);
-        if (members.Count == 0)
-            return request.TenantId is null ? new LoginClaims() : new LoginClaims(Refusal: TenantProblems.NotMember());
-        var chosen = request.TenantId is { } wanted ? members.FirstOrDefault(m => m.TenantId == wanted) : members[0];
+        int? asked = request.TenantId;
+§HOSTLINES        if (members.Count == 0)
+            return asked is null ? new LoginClaims() : new LoginClaims(Refusal: TenantProblems.NotMember());
+        var chosen = asked is { } wanted ? members.FirstOrDefault(m => m.TenantId == wanted) : members[0];
         if (chosen is null)
             return new LoginClaims(Refusal: TenantProblems.NotMember());
         return new LoginClaims([new Claim(ClaimsTenantScope.ClaimName, chosen.TenantId.ToString())], chosen.Role, chosen.TenantId);
@@ -114,17 +137,86 @@ public class TenantLoginClaims(§CTX context) : ILoginClaims
 
     private const string OwnColumn = """
 /// <summary> Puts the tenant of the person (the tenant column of their own row) into the token at sign-in; a person of an inactive tenant cannot sign in. </summary>
-public class TenantLoginClaims(§CTX context) : ILoginClaims
+public class TenantLoginClaims(§CTX context§HOSTPARAM) : ILoginClaims
 {
     public async Task<LoginClaims> ForAsync(DirectoryUser user, LoginRequest request, CancellationToken cancellationToken = default)
     {
-        string name = user.UserName.Trim();
+§HOSTFIND        string name = user.UserName.Trim();
         var found = await context.Set<§U>().IgnoreQueryFilters().AsNoTracking().Where(u => u.§UNAME == name)
             .Select(u => new { Tenant = (int?)u.§UTENANT, Usable = true§ACTIVETEST })
             .FirstOrDefaultAsync(cancellationToken);
         if (found?.Tenant is not int tenant)
             return new LoginClaims();
-        return found.Usable ? new LoginClaims([new Claim(ClaimsTenantScope.ClaimName, tenant.ToString())], null, tenant) : new LoginClaims(Refusal: TenantProblems.NotMember());
+§HOSTCHECK        return found.Usable ? new LoginClaims([new Claim(ClaimsTenantScope.ClaimName, tenant.ToString())], null, tenant) : new LoginClaims(Refusal: TenantProblems.NotMember());
+    }
+}
+
+""";
+
+    private const string HostProblem = """
+
+    public static IResult OtherHost() => Results.Problem(statusCode: 403, type: "§HOST_TYPE", title: "Another tenant's address", detail: "§HOST_TEXT");
+""";
+
+    private const string HostLoginLines = """
+        if (await TenantHost.FindAsync(context, http.HttpContext, cancellationToken) is int host)
+        {
+            if (asked is not null && asked != host)
+                return new LoginClaims(Refusal: TenantProblems.OtherHost());
+            asked = host;
+        }
+""";
+
+    private const string HostOwnFind = """
+        int? host = await TenantHost.FindAsync(context, http.HttpContext, cancellationToken);
+""";
+
+    private const string HostOwnCheck = """
+        if (host is int onHost && onHost != tenant)
+            return new LoginClaims(Refusal: TenantProblems.OtherHost());
+""";
+
+    private const string HostSwitchLines = """
+        if (await TenantHost.FindAsync(context, http, http.RequestAborted) is int host && host != wanted)
+            return TenantProblems.OtherHost();
+""";
+
+    /// <summary> The tenant a host name belongs to (TenantHostColumn), and the check that a token works only on its own tenant's host. </summary>
+    private const string HostCheck = """
+/// <summary> The tenant a host name belongs to: the first label of the name (acme in acme.example.com) compared with the tenant table's host column. A host that names no tenant (localhost, an address) has none, and is not restricted. A name is remembered a minute. </summary>
+public static class TenantHost
+{
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (int? Tenant, DateTime At)> Known = new();
+
+    public static async Task<int?> FindAsync(§CTX context, HttpContext? http, CancellationToken cancellationToken)
+    {
+        string host = http?.Request.Host.Host ?? "";
+        int dot = host.IndexOf('.');
+        if (dot <= 0 || System.Net.IPAddress.TryParse(host, out _))
+            return null;
+        string label = host[..dot].ToLowerInvariant();
+        if (Known.TryGetValue(label, out var known) && DateTime.UtcNow - known.At < TimeSpan.FromMinutes(1))
+            return known.Tenant;
+        int? tenant = await context.Set<§TT>().IgnoreQueryFilters().AsNoTracking().Where(t => §HOSTTEST).Select(t => (int?)t.§TKEY).FirstOrDefaultAsync(cancellationToken);
+        if (Known.Count > 1000)
+            Known.Clear();
+        Known[label] = (tenant, DateTime.UtcNow);
+        return tenant;
+    }
+
+    /// <summary> Forgets what is known of a name, so the next call asks the database (the generated tests change a tenant's host name). </summary>
+    public static void Forget() => Known.Clear();
+
+    /// <summary> A token that works in one tenant is refused (403) on the host of another. A caller in no tenant (a platform administrator) is not restricted. </summary>
+    public static async Task InvokeAsync(HttpContext http, Func<Task> next)
+    {
+        if (int.TryParse(http.User.FindFirst(ClaimsTenantScope.ClaimName)?.Value, out int mine)
+            && await FindAsync(http.RequestServices.GetRequiredService<§CTX>(), http, http.RequestAborted) is int host && host != mine)
+        {
+            await Results.Problem(statusCode: 403, type: "§HOST_TYPE", title: "Another tenant's address", detail: "§HOST_TEXT").ExecuteAsync(http);
+            return;
+        }
+        await next();
     }
 }
 
@@ -153,7 +245,7 @@ public static class TenantSwitching
         var member = members.FirstOrDefault(m => m.TenantId == wanted);
         if (member is null)
             return TenantProblems.NotMember();
-
+§HOSTSWITCH
         string? role = §ROLEPARAM ?? http.User.FindFirstValue(AuthNames.RoleClaim);
         var claims = http.User.Claims.Where(c => c.Type != ClaimsTenantScope.ClaimName && c.Type != AuthNames.RoleClaim && c.Type is not ("exp" or "iat" or "nbf" or "iss" or "aud")).ToList();
         claims.Add(new Claim(ClaimsTenantScope.ClaimName, wanted.ToString()));
@@ -206,6 +298,66 @@ public static class TenantOnboarding
 
 """;
 
+    private const string ActiveCheck = """
+/// <summary> Answers 401 to a token whose tenant has been switched off since it was issued (the front ends sign the person out on a 401). The answer for a tenant is remembered for ten seconds, so a switch-off takes that long to reach a token already in use. </summary>
+public static class TenantActiveCheck
+{
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, (bool Active, DateTime At)> Known = new();
+
+    public static async Task InvokeAsync(HttpContext http, Func<Task> next)
+    {
+        if (int.TryParse(http.User.FindFirst(ClaimsTenantScope.ClaimName)?.Value, out int tenant) && !await IsActiveAsync(http, tenant))
+        {
+            await Results.Problem(statusCode: 401, type: "§INACTIVE_TYPE", title: "Tenant switched off", detail: "§INACTIVE_TEXT").ExecuteAsync(http);
+            return;
+        }
+        await next();
+    }
+
+    /// <summary> Forgets what is known of a tenant, so the next call asks the database (the generated tests switch a tenant off and expect the next call to be refused). </summary>
+    public static void Forget(int tenant) => Known.TryRemove(tenant, out _);
+
+    private static async Task<bool> IsActiveAsync(HttpContext http, int tenant)
+    {
+        if (Known.TryGetValue(tenant, out var known) && DateTime.UtcNow - known.At < TimeSpan.FromSeconds(10))
+            return known.Active;
+        var context = http.RequestServices.GetRequiredService<§CTX>();
+        bool active = await context.Set<§TT>().IgnoreQueryFilters().AsNoTracking().AnyAsync(t => t.§TKEY == tenant && t.§ACTIVE, http.RequestAborted);
+        Known[tenant] = (active, DateTime.UtcNow);
+        return active;
+    }
+}
+
+""";
+
+    private const string Deactivate = """
+    public static async Task DeactivateAsync(IServiceProvider services, int tenantId)
+    {
+        using var scope = services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<§CTX>();
+        await context.Set<§TT>().IgnoreQueryFilters().Where(t => t.§TKEY == tenantId).ExecuteUpdateAsync(s => s.SetProperty(t => t.§ACTIVE, false));
+        TenantActiveCheck.Forget(tenantId);
+    }
+
+""";
+
+    private const string Creator = """
+public static class TenantCreator
+{
+    /// <summary> Makes the person who created a tenant (a platform administrator who is a row of the user table) its first administrator; nothing happens for a caller who is not a row (the bootstrap administrator). </summary>
+    public static async Task AttachAsync(§CTX context, HttpContext http, int tenantId)
+    {
+        string name = (http.User.Identity?.Name ?? "").Trim();
+        var person = await context.Set<§U>().IgnoreQueryFilters().AsNoTracking().Where(u => u.§UNAME == name).Select(u => (int?)u.§UKEY).FirstOrDefaultAsync(http.RequestAborted);
+        if (person is null)
+            return;
+        context.Add(new §M { §MUSER = person.Value, §MTENANT = tenantId§MROLEASSIGN });
+        await context.SaveChangesAsync(http.RequestAborted);
+    }
+}
+
+""";
+
     private const string OnboardAdmin = """
             if (request.AdminId is { } admin)
             {
@@ -226,6 +378,14 @@ public static class TenantTestSupport
         return await context.Set<§TT>().IgnoreQueryFilters().AsNoTracking()§ACTIVEWHERE.OrderBy(t => t.§TKEY).Select(t => t.§TKEY).Take(take).ToListAsync();
     }
 
+    public static async Task RunAsync(IServiceProvider services, string sql)
+    {
+        using var scope = services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<§CTX>();
+        await context.Database.ExecuteSqlRawAsync(sql);
+    }
+
+§DEACTIVATE
     public static async Task RemoveAsync(IServiceProvider services, int tenantId)
     {
         using var scope = services.CreateScope();

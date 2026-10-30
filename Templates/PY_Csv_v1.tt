@@ -20,7 +20,7 @@
     // PY_Mod puts this router before the tables' routers (a table's /{id} route would read export.csv as a key). For a project that sets ApiCsv=true. Full notes: Docs/TemplateNotes/PY_Csv_v1.md
     // ==========================================================================================
 
-    var tables = Database.CrudApiTables(Project).Select(t => PythonTable.Of(t, Project)).OrderBy(t => t.Module, StringComparer.Ordinal).ToList();
+    var tables = Database.CrudApiTables(Project).Where(t => !TenantPlan.NoApiCsv(t, Project)).Select(t => PythonTable.Of(t, Project)).OrderBy(t => t.Module, StringComparer.Ordinal).ToList();
     if (tables.Count == 0)
         Error("PY_Csv found no table to write routes for: none has an API of its own (a single int, uniqueidentifier or text key, not an enum or a name/active table).");
     bool validate = Project.ApiValidation;

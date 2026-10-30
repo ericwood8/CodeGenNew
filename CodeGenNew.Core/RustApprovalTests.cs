@@ -19,7 +19,7 @@ public static class RustApprovalTests
         var seed = ApprovalTestSeed.For(plan, database, project, out _)!;
         string Str(string text) => "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
         string List(IReadOnlyList<string> statements) => string.Join("\n", statements.Select(s => "    " + RustTable.Raw(s) + ","));
-        string text = Text.Replace("§OTHERTABLE", ApprovalTestSeed.HasOtherTablePerson(plan) ? OtherTableCase : "");
+        string text = Text.Replace("§OTHERTABLE", (seed.TenantSql is not null ? TenantCase : "") + (ApprovalTestSeed.HasOtherTablePerson(plan) ? OtherTableCase : ""));
         foreach (var (token, value) in new (string, string)[]
         {
             ("§SETUP", List(seed.Setup)), ("§CLEANUP", List(seed.Cleanup)), ("§ROUTE", Str(RustTable.Of(seed.Table.Table, project).Route)), ("§ROW", seed.RowKey.ToString()),
@@ -159,6 +159,40 @@ async fn a_decision_is_written_once_and_the_history_shows_every_cycle() {
     assert_eq!(statuses, [json!("Approved"), json!("Withdrawn")]);
 }
 §OTHERTABLE
+"""";
+
+    private const string TenantCase = """"
+
+#[tokio::test]
+async fn another_tenant_cannot_ask_decide_withdraw_or_read_the_approvals_of_a_row() {
+    let Some(api) = seeded().await else { return };
+    if api.tenant.is_none() {
+        clear(&api).await;
+        return skip("the database needs an active tenant");
+    }
+    let (ann, bob) = (api.as_person("§ANN"), api.as_person("§BOB"));
+    let asked = ann.post(&format!("{ROUTE}/{ROW}/request"), &json!({ "reason": "please" })).await;
+    let other = crate::tenant_routes::make_tenant(&api).await;
+    let (rival_ann, rival_bob) = (api.as_person_in("§ANN", other), api.as_person_in("§BOB", other));
+    let request = rival_ann.post(&format!("{ROUTE}/{ROW}/request"), &json!({})).await;
+    let approve = rival_bob.post(&format!("{ROUTE}/{ROW}/approve"), &json!({})).await;
+    let withdraw = rival_ann.post_empty(&format!("{ROUTE}/{ROW}/withdraw")).await;
+    let history = rival_ann.get(&format!("{ROUTE}/{ROW}/approvals")).await;
+    let rival_waiting = rival_bob.get(&format!("{ROUTE}/toapprove")).await;
+    let own_waiting = bob.get(&format!("{ROUTE}/toapprove")).await;
+    let decided = bob.post(&format!("{ROUTE}/{ROW}/approve"), &json!({ "note": "fine" })).await;
+    clear(&api).await;
+    crate::tenant_routes::remove_tenant(&api, other).await;
+
+    assert_eq!(asked.status, StatusCode::OK, "{}", asked.body);
+    assert_eq!(request.status, StatusCode::NOT_FOUND, "another tenant's row cannot be asked for: {}", request.body);
+    assert_ne!(approve.status, StatusCode::OK, "another tenant's cycle cannot be approved: {}", approve.body);
+    assert_ne!(withdraw.status, StatusCode::OK, "another tenant's cycle cannot be withdrawn: {}", withdraw.body);
+    assert!(history.status == StatusCode::NOT_FOUND || history.json() == json!([]), "another tenant is shown no history: {}", history.body);
+    assert!(rival_waiting.status != StatusCode::OK || !waiting_rows(&rival_waiting).contains(&ROW), "another tenant's waiting request is not listed: {}", rival_waiting.body);
+    assert!(waiting_rows(&own_waiting).contains(&ROW), "the tenant's own approver sees the request: {}", own_waiting.body);
+    assert_eq!(decided.status, StatusCode::OK, "{}", decided.body);
+}
 """";
 
     private const string OtherTableCase = """"

@@ -12,7 +12,8 @@
     // ==========================================================================================
     bool controlFlow = Project.AngularControlFlow;
     bool auth = Project.Auth;
-    string imports = "RouterOutlet, RouterLink, RouterLinkActive" + (controlFlow ? "" : ", NgFor, NgIf");
+    bool tenants = TenantPlan.HasSwitcher(Project);   // the top bar also shows the TenantSwitcherComponent of the Auth group
+    string imports = "RouterOutlet, RouterLink, RouterLinkActive" + (controlFlow ? "" : ", NgFor, NgIf") + (tenants ? ", TenantSwitcherComponent" : "");
     string html = @"<div class=""app"" [class.menu-closed]=""!menuOpen"">
   <nav class=""rail"" *ngIf=""menuOpen"">
     <a *ngFor=""let screen of screens"" [routerLink]=""'/' + screen.path"" routerLinkActive=""active"">{{ screen.label }}</a>
@@ -34,7 +35,8 @@
     <div class=""topbar"" *ngIf=""auth.isLoggedIn()"">
       <button type=""button"" class=""hamburger"" aria-label=""Toggle the menu"" [attr.aria-expanded]=""menuOpen"" (click)=""toggleMenu()"">&#9776;</button>
       <span class=""spacer""></span>
-      <span class=""user"">{{ auth.user()?.name }}</span>
+      " + (tenants ? @"<app-tenant-switcher></app-tenant-switcher>
+      " : "") + @"<span class=""user"">{{ auth.user()?.name }}</span>
       <button type=""button"" class=""signout"" (click)=""auth.logout()"">Sign out</button>
     </div>
     <router-outlet />
@@ -73,6 +75,9 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { screens } from './app.routes';
 <# if (auth) { #>
 import { AuthService } from './<#= Project.ServicesFolder #>/auth.service';
+<# if (tenants) { #>
+import { TenantSwitcherComponent } from './<#= Project.ComponentsFolder #>/tenant-switcher/tenant-switcher.component';
+<# } #>
 <# } #>
 
 // The menu opens and closes with the hamburger button (like the WinUI3 pane); the choice is remembered in the browser.

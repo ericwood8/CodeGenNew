@@ -38,6 +38,16 @@ mod repos;
 mod routes;
 mod support;
 <#
+    if (auth && TenantPlan.HasApiTenancy(Project))
+    {
+#>
+mod tenancy;
+pub use tenancy::forget_tenant;
+<# if (Project.TenantHostColumn is not null) { #>
+pub use tenancy::forget_hosts;
+<# } #>
+<#
+    }
     if (userTable)
     {
 #>
@@ -70,7 +80,20 @@ pub fn app(pool: Pool, frontend: Option<PathBuf>) -> Router {
     {
 #>
     // The sign-in is open; every other route needs a bearer token.
+<#
+        if (TenantPlan.HasApiTenancy(Project))
+        {
+#>
+    let router = routes::router().route_layer(axum::middleware::from_fn_with_state(pool.clone(), auth::require_user)).merge(auth::router());
+<#
+        }
+        else
+        {
+#>
     let router = routes::router().route_layer(axum::middleware::from_fn(auth::require_user)).merge(auth::router());
+<#
+        }
+#>
 <#
     }
     else
@@ -270,6 +293,9 @@ pub enum ApiError {
 <#
     }
 #>
+    /// A refusal whose detail is written for this request (a Name and IsActive table's duplicate name): the problem-details form.
+    #[allow(dead_code)] // only a table with a Name and an IsActive column answers it
+    Rejected(u16, &'static str, &'static str, String),
     Database(sqlx::Error),
 }
 
@@ -330,6 +356,12 @@ impl IntoResponse for ApiError {
 <#
     }
 #>
+            ApiError::Rejected(status, kind, title, detail) => {
+                let body = serde_json::json!({ "type": kind, "title": title, "status": status, "detail": detail });
+                let mut response = (StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_REQUEST), Json(body)).into_response();
+                response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("application/problem+json"));
+                response
+            }
             ApiError::Database(error) => {
                 eprintln!("database error: {error}");
                 StatusCode::INTERNAL_SERVER_ERROR.into_response()

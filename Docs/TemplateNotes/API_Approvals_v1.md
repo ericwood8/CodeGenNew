@@ -62,3 +62,6 @@ A panel on each table's edit form (request and withdraw next to the row, its sta
 ## Checked
 
 `RowApprovalsTests` (the plan, the script, the generated routes, the gate clause) and, over a scratch SQLite copy, the generated routes called with real principals: a stranger refused, a second request refused while waiting, a non-approver refused, a requester who is also an approver refused (four eyes), withdraw, decide twice, the history, the gate holding until the latest request is approved, and both hooks.
+
+
+**Tenants.** With `TenantTable` and `ApiAuth` the request cycles of a tenant-owned row are the caller's tenant's only: the side table has no tenant column, so every read and update of it goes through the cycles whose row the context shows (`Cycles`). Another tenant's row cannot be requested, approved, rejected or withdrawn, and the list of requests waiting for the approver holds only the caller's tenant's. The Python and Rust APIs do the same by checking the row first (404). See `API_Tenants_v1.md`.

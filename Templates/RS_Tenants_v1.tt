@@ -1,0 +1,30 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Tenants_v1.tt
+    // Generates: src/tenancy.rs   (whole-database; the path is written by the template)
+    // The Rust counterpart of API_Tenants (shared-schema multi-tenancy, TenantTable): the tenant of a sign-in (from TenantMembership, or the tenant column of the user table), GET /api/auth/tenants and
+    // POST /api/auth/switch-tenant for a person in several tenants, the 401 for a token whose tenant was switched off, and the helpers the tables' routers call (RS_Routes, RS_Repo) so a caller reads and writes only the rows of
+    // their tenant, a platform administrator alone creates tenants, and a tenant is never deleted. The rules and sentences are TenantPlan and TenantWords in Core, the text is RustTenantWriter.
+    // Needs ApiAuth=true and TenantTable. Full notes: Docs/TemplateNotes/API_Tenants_v1.md
+    // ==========================================================================================
+    var problems = new List<string>();
+    if (!Project.ApiAuth)
+        problems.Add("TenantTable needs ApiAuth=true (the caller's tenant is a claim of the token).");
+    var tenantTable = TenantPlan.TenantTableOf(Database, Project);
+    if (tenantTable is null)
+        problems.Add($"TenantTable: {Project.TenantTable} is not a table of the database.");
+    else if (TenantPlan.KeyOf(tenantTable) is null)
+        problems.Add($"TenantTable: {Project.TenantTable} needs a single whole-number key.");
+    if (Project.TenantMembership is not null && (TenantPlan.MembershipOf(Database, Project) is null || Project.UserTable is null))
+        problems.Add("TenantMembership must name a table, its whole-number person column, its whole-number tenant column and optionally a text role column, and needs UserTable.");
+    if (problems.Count > 0)
+        Error(string.Join(" | ", problems));
+    else
+        Write("@@@FILE src/tenancy.rs@@@\n" + RustTenantWriter.File(Database, Project));
+#>
