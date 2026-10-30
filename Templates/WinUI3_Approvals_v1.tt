@@ -40,7 +40,7 @@
 #>
 @@@FILE Repositories/ApprovalSupport.cs@@@
 <#= DesktopApprovalsCode.Support(repositoryNamespace) #>@@@FILE Repositories/ApprovalService.cs@@@
-<#= DesktopApprovalsCode.Service(plan, tables, repositoryNamespace, contextType, usings, !DesktopApprovalsCode.GatesWriteCaller(Project)) #>@@@FILE <#= viewsFolder #>/ApprovalsPage.cs@@@
+<#= DesktopApprovalsCode.Service(plan, tables, repositoryNamespace, contextType, usings, !DesktopApprovalsCode.GatesWriteCaller(Project), Project) #>@@@FILE <#= viewsFolder #>/ApprovalsPage.cs@@@
 <#= DesktopApprovalsCode.Page(viewNamespace, repositoryNamespace) #>
 <#
     }

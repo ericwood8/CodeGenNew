@@ -410,6 +410,13 @@
             if (row is not null)
                 o.Append($"    private IRenderedComponent<{pageType}> OpenWithRow()\n    {{\n        var page = Open();\n        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, \"{row.Marker}\"));\n        return page;\n    }}\n\n");
             o.Append($"    [TestMethod]\n    public void Shows_the_heading()\n    {{\n        var page = Open();\n        StringAssert.Contains(page.Markup, \"<h1>{title.Pluralize()}</h1>\");\n    }}\n");
+            if (SoftDeletePlan.For(Model, Project) is not null)
+                o.Append("\n    [TestMethod]\n    public void Opens_the_deleted_rows_and_says_when_there_are_none()\n    {\n        var page = Open();\n        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Show deleted\").Click();\n"
+                    + $"        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, \"Nothing is deleted.\"));\n        Assert.IsTrue(Api.Requests.Any(r => r.Path.EndsWith(\"{apiRoute}/deleted\")));\n    }}\n");
+            if (EffectiveDatePlan.For(Model, Project) is not null)
+                o.Append("\n    [TestMethod]\n    public void Asks_for_the_rows_in_effect_on_the_day_the_person_picks()\n    {\n        var page = Open();\n        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Valid on...\").Click();\n"
+                    + "        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, \"Nothing is in effect on that day.\"));\n        page.Find(\"input[type=date]\").Change(\"2025-06-01\");\n"
+                    + $"        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Path.EndsWith(\"{apiRoute}/current?on=2025-06-01\"))));\n    }}\n");
             if (row is not null)
             {
                 o.Append($"\n    [TestMethod]\n    public void Shows_a_row_the_server_returns() => OpenWithRow();\n");

@@ -4,7 +4,7 @@
 <#
     // ==========================================================================================
     // TSX_EssentialSupport_v1.tt
-    // Generates: src/api/client.ts, src/components/PaginationBar.tsx, src/components/CurrencyInput.tsx and src/setupTests.ts   (no table, no database: an essentials group)
+    // Generates: src/api/client.ts, src/components/PaginationBar.tsx, src/components/RowShapeDialog.tsx, src/components/CurrencyInput.tsx and src/setupTests.ts   (no table, no database: an essentials group)
     // The small files the generated React pages and api modules import: the fetch helper with ApiError (with Auth=true it sends the token of the Auth group and signs the person out on a 401), the Previous / Next bar under every grid, the money box of a form (CurrencyInput), and the test setup that adds the
     // jest-dom matchers. The folders come from the project's ApiFolder and ComponentsFolder settings.
     // ==========================================================================================
@@ -78,6 +78,84 @@ export function PaginationBar({ page, totalPages, onPrevious, onNext }: {
       <span>Page {page} of {totalPages}</span>
       <button type="button" onClick={onNext} disabled={page >= totalPages}>Next</button>
     </div>
+  );
+}
+@@@FILE src/<#= componentsFolder #>/RowShapeDialog.tsx@@@
+import { useEffect, useState } from 'react';
+import { ApiError } from '../<#= apiFolder #>/client';
+
+export type ShapeColumn = { key: string; label: string; show?: (value: unknown) => string };
+
+const text = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) return value.substring(0, 16).replace('T', ' ');
+  return String(value);
+};
+
+const today = (): string => new Date().toLocaleDateString('en-CA');
+
+// The dialog of a table in SoftDeleteTables (the deleted rows, each with Restore) or in EffectiveDatedTables (the rows in effect on a day, which the person picks).
+export function RowShapeDialog<Row extends object>({ title, columns, idKey, load, restore, validOn, onClose, onChanged }: {
+  title: string;
+  columns: ShapeColumn[];
+  idKey: string;
+  load: (day: string) => Promise<Row[]>;
+  restore?: (row: Row) => Promise<unknown>;
+  validOn?: boolean;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [rows, setRows] = useState<Row[] | null>(null);
+  const [day, setDay] = useState(today);
+  const [error, setError] = useState<string | null>(null);
+  const [changed, setChanged] = useState(false);
+
+  useEffect(() => {
+    let current = true;
+    load(day).then((result) => { if (current) { setRows(result); setError(null); } }).catch(() => { if (current) setError('Failed to load the rows.'); });
+    return () => { current = false; };
+  }, [day, changed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const close = () => { if (changed) onChanged(); onClose(); };
+
+  const bringBack = async (row: Row) => {
+    try {
+      await restore!(row);
+      setChanged(true);
+    } catch (err) {
+      setError(err instanceof ApiError && err.status === <#= HttpStatus.Forbidden #> ? 'Only an administrator can restore a row.' : 'Problem while restoring!');
+    }
+  };
+
+  return (
+    <dialog ref={(el) => { if (el && !el.open) el.showModal(); }} onCancel={(event) => { event.preventDefault(); close(); }}>
+      <h2>{title}</h2>
+      {validOn && (
+        <label>Valid on <input type="date" value={day} onChange={(event) => { if (event.target.value) setDay(event.target.value); }} /></label>
+      )}
+      {error && <p role="alert">{error}</p>}
+      <table>
+        <thead>
+          <tr>
+            {columns.map((column) => <th key={column.key}>{column.label}</th>)}
+            {restore && <th>Actions</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {(rows ?? []).map((row) => (
+            <tr key={String((row as Record<string, unknown>)[idKey])}>
+              {columns.map((column) => <td key={column.key}>{(column.show ?? text)((row as Record<string, unknown>)[column.key])}</td>)}
+              {restore && <td><button type="button" onClick={() => void bringBack(row)}>Restore</button></td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows !== null && rows.length === 0 && <p className="no-rows">{validOn ? 'Nothing is in effect on that day.' : 'Nothing is deleted.'}</p>}
+      <div>
+        <button type="button" onClick={close}>Close</button>
+      </div>
+    </dialog>
   );
 }
 @@@FILE src/<#= componentsFolder #>/storedValues.ts@@@

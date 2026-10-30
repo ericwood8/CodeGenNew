@@ -111,8 +111,9 @@ public static class RustTenantWriter
         string members = di.QuoteTable(people.Membership.Table.SchemaName, people.Membership.Table.DbTableName), user = di.Quote(people.Membership.User.DbName), tenant = di.Quote(people.Membership.Tenant.DbName);
         string isMember = $"SELECT COUNT(*) FROM {members} WHERE {user} = {di.Placeholder(1)} AND {tenant} = {di.Placeholder(2)}";
         string attach = $"INSERT INTO {members} ({user}, {tenant}) VALUES ({di.Placeholder(1)}, {di.Placeholder(2)})";
-        string detach = $"DELETE FROM {members} WHERE {user} = {di.Placeholder(1)} AND {tenant} = {di.Placeholder(2)} AND NOT EXISTS (SELECT 1 FROM {members} AS other WHERE other.{user} = {di.Placeholder(3)} AND other.{tenant} <> {di.Placeholder(4)})";
-        return Fill(PeopleText, ("§IS_MEMBER_SQL", raw(isMember)), ("§ATTACH_PERSON_SQL", raw(attach)), ("§DETACH_PERSON_SQL", raw(detach)));
+        string detach = $"DELETE FROM {members} WHERE {user} = {di.Placeholder(1)} AND {tenant} = {di.Placeholder(2)} ";
+        string elsewhere = $"SELECT COUNT(*) FROM {members} WHERE {user} = {di.Placeholder(1)} AND {tenant} <> {di.Placeholder(2)}";
+        return Fill(PeopleText, ("§IS_MEMBER_SQL", raw(isMember)), ("§ATTACH_PERSON_SQL", raw(attach)), ("§DETACH_PERSON_SQL", raw(detach)), ("§ELSEWHERE_SQL", raw(elsewhere)));
     }
 
     private const string PeopleText = """"
@@ -120,6 +121,7 @@ public static class RustTenantWriter
 const IS_MEMBER: &str = §IS_MEMBER_SQL;
 const ATTACH_PERSON: &str = §ATTACH_PERSON_SQL;
 const DETACH_PERSON: &str = §DETACH_PERSON_SQL;
+const MEMBER_ELSEWHERE: &str = §ELSEWHERE_SQL;
 
 /// A person of another tenant is not found (a platform administrator reaches every person).
 pub async fn refuse_non_member(pool: &Pool, person_id: i32, user: &CurrentUser) -> ApiResult<()> {
@@ -140,12 +142,12 @@ pub async fn attach_person(pool: &Pool, person_id: i32, user: &CurrentUser) -> A
     Ok(())
 }
 
-/// A person removed inside a tenant leaves it; a person who belongs to another tenant too keeps that membership, so the foreign key refuses the removal.
-pub async fn detach_person(pool: &Pool, person_id: i32, user: &CurrentUser) -> ApiResult<()> {
-    if let Some(tenant) = user.tenant_id {
-        sqlx::query(DETACH_PERSON).bind(person_id).bind(tenant).bind(person_id).bind(tenant).execute(pool).await?;
-    }
-    Ok(())
+/// A person removed inside a tenant leaves it. True when the person belongs to another tenant too: they only leave this one and stay a row of the user table.
+pub async fn detach_person(pool: &Pool, person_id: i32, user: &CurrentUser) -> ApiResult<bool> {
+    let Some(tenant) = user.tenant_id else { return Ok(false) };
+    let elsewhere = sqlx::query_scalar::<_, i64>(MEMBER_ELSEWHERE).bind(person_id).bind(tenant).fetch_one(pool).await? > 0;
+    sqlx::query(DETACH_PERSON).bind(person_id).bind(tenant).execute(pool).await?;
+    Ok(elsewhere)
 }
 """";
 
@@ -159,8 +161,8 @@ pub async fn attach_person(_pool: &Pool, _person_id: i32, _user: &CurrentUser) -
     Ok(())
 }
 
-pub async fn detach_person(_pool: &Pool, _person_id: i32, _user: &CurrentUser) -> ApiResult<()> {
-    Ok(())
+pub async fn detach_person(_pool: &Pool, _person_id: i32, _user: &CurrentUser) -> ApiResult<bool> {
+    Ok(false)
 }
 """";
 

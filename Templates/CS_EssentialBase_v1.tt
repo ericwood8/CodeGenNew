@@ -117,7 +117,7 @@ public class GenericRepo<T, TKey> : IGenericRepo<T, TKey>, IDisposable where T :
     }
 
     /// <summary> 0 = deleted, -1 = row no longer exists, 1 = blocked by a foreign key elsewhere ("in use"). </summary>
-    public async Task<int> DeleteAsync(string deleteFromTable, TKey deleteId)
+    public virtual async Task<int> DeleteAsync(string deleteFromTable, TKey deleteId)
     {
         var rowToDelete = GetById(deleteId);
         if (rowToDelete is null)

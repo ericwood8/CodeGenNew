@@ -71,6 +71,9 @@
         // The Columns list: the grid starts with the columns GridColumns picks and offers every column of the form; a name / active list is short and has no such list.
         var chosen = ChosenGridColumns.For(form);
         bool chooseColumns = !form.IsNameActive;
+        // SoftDeleteTables and EffectiveDatedTables: a "Show deleted" dialog with Restore and a "Valid on" dialog (the list itself stays the paged grid)
+        bool softScreen = SoftDeletePlan.For(Model, Project) is not null;
+        bool validOnScreen = EffectiveDatePlan.For(Model, Project) is not null;
         var columnList = chooseColumns ? chosen.Offered : chosen.Initial;   // the columns the grid has a header and a cell for, in order; a hidden one is not drawn
         var odataFilters = odata && !form.IsNameActive ? columnList.Select(c => c.Filter).ToList() : null;   // the filter row's control of each of those columns (null: none)
         string If(ColumnModel c) => chooseColumns ? $" *ngIf=\"columns.has('{c.Name}')\"" : "";   // the attribute that draws a cell only while its column is chosen
@@ -172,6 +175,13 @@
         H("    <!-- Heading -->");
         H($"    <h1>{title.Pluralize()}</h1>");
         H($"    <button{writeOnly} (click)=\"add()\" class=\"btn\">Add New</button>");
+        if (softScreen) H("    <button type=\"button\" (click)=\"shapeView = 'deleted'\" class=\"btn\">Show deleted</button>");
+        if (validOnScreen) H("    <button type=\"button\" (click)=\"shapeView = 'validOn'\" class=\"btn\">Valid on...</button>");
+        if (softScreen || validOnScreen)
+        {
+            string restoreBinding = softScreen ? (validOnScreen ? "shapeView === 'deleted' ? shapeRestore : undefined" : "shapeRestore") : "undefined";
+            H($"    <app-row-shape-dialog *ngIf=\"shapeView\" [title]=\"shapeView === 'deleted' ? 'Deleted {title}' : '{title} valid on a day'\" [columns]=\"shapeColumns\" idKey=\"{keyProp}\" [load]=\"shapeLoad\" [restore]=\"{restoreBinding}\" [validOn]=\"shapeView === 'validOn'\" (closed)=\"shapeView = null\" (changed)=\"load()\"></app-row-shape-dialog>");
+        }
         // The OData screen has the filter row under the headers (a control per column, Search and Clear in its last cell); only the one box of the Search list protocol stays above the grid.
         if (canSearch && (!odata || Project.ListSearchProtocol))
         {
@@ -798,6 +808,8 @@
         if (UsesCurrencyBox()) T("import { CurrencyInputDirective } from '../currency-input';");
         if (approvalSegment is not null) T("import { ApprovalPanelComponent } from '../approvals/approval-panel.component';");
         if (!nameActive) T("import { MatPaginatorModule } from '@angular/material/paginator';");
+        if (softScreen || validOnScreen) T("import { RowShapeDialogComponent, ShapeColumn } from '../row-shape-dialog';");
+        if (odata && (softScreen || validOnScreen)) T($"import {{ {AngularNames.ServiceClass(Model.TableName)} }} from '../../{servicesFolder}/{AngularNames.ServiceFile(Model.TableName)}';");   // the REST service: the OData one has no deleted rows, restore or rows valid on a day
         if (chooseColumns) T($"import {{ GridColumns{(columnList.Any(c => c.Cut) ? ", cutText" : "")} }} from '../../grid-columns';");
         T(odata && !nameActive ? "import { ColumnFilterField, ODataPagedScreen, saveSorts } from '../odata-screen';" : $"import {{ {(nameActive ? "NameActiveCrudScreen" : "PagedCrudScreen")} }} from '../crud-screen';");
         if (gridChildren.Any(ch => ch.KeyJson is not null)) T($"import {{ apiMessage }} from '../../{servicesFolder}/api-error';");
@@ -806,7 +818,7 @@
         T($"  selector: 'app-{screenStem}',");
         if (Project.AngularStandaloneFlag) T("  standalone: true,");
         T($"  changeDetection: ChangeDetectionStrategy.{Project.AngularEagerStrategy}, // plain properties change inside subscribe callbacks: keep eager checking when OnPush is the default (Angular 22)");
-        T("  imports: [ CommonModule, FormsModule" + (UsesCurrencyBox() ? ", CurrencyInputDirective" : "") + (approvalSegment is not null ? ", ApprovalPanelComponent" : "") + (nameActive ? "" : ", MatPaginatorModule") + " ],");
+        T("  imports: [ CommonModule, FormsModule" + (UsesCurrencyBox() ? ", CurrencyInputDirective" : "") + (approvalSegment is not null ? ", ApprovalPanelComponent" : "") + (softScreen || validOnScreen ? ", RowShapeDialogComponent" : "") + (nameActive ? "" : ", MatPaginatorModule") + " ],");
         T($"  templateUrl: './{screenStem}.component.html',");
         T($"  styleUrl: './{screenStem}.component.css'");
         T("})");
@@ -819,6 +831,23 @@
         }
         T($"  protected readonly noun = '{Labels.Words(baseName).ToLowerInvariant()}';");
         T($"  protected readonly idKey = '{keyProp}';");
+        if (softScreen || validOnScreen)
+        {
+            T("  shapeView: 'deleted' | 'validOn' | null = null; // the dialog of the deleted rows, or of the rows valid on a day");
+            if (odata) T($"  private readonly shapeService = inject({AngularNames.ServiceClass(Model.TableName)});");
+            T("  readonly shapeColumns: ShapeColumn[] = [");
+            T(string.Join(",\n", columnList.Select(c =>
+            {
+                string show = form.CellOf(c.Column) == CellKind.Date ? ", show: (value) => String(value ?? '').substring(0, 10)"
+                    : form.CellOf(c.Column) == CellKind.Lookup ? $", show: (value) => this.{form.ParentOf(c.Column)!.NameMethod}(value as {form.ParentOf(c.Column)!.KeyTs})" : "";
+                return $"    {{ key: '{c.Property}', label: '{c.Label.Replace("\\", "\\\\").Replace("'", "\\'")}'{show} }}";
+            })));
+            T("  ];");
+            string shapeSvc = odata ? "shapeService" : "service";
+            string loadBody = softScreen && validOnScreen ? $"this.shapeView === 'deleted' ? this.{shapeSvc}.getDeleted() : this.{shapeSvc}.getCurrent(day)" : softScreen ? $"this.{shapeSvc}.getDeleted()" : $"this.{shapeSvc}.getCurrent(day)";
+            T($"  readonly shapeLoad = ({(validOnScreen ? "day: string" : "")}) => {loadBody};");
+            if (softScreen) T($"  readonly shapeRestore = (row: {baseName}) => this.{shapeSvc}.restore(row.{keyProp}!);");
+        }
         if (keyType.Kind != KeyKind.Int) T($"  protected override readonly emptyKey: {keyType.TypeScript} = {emptyKey};");
         if (textKey) T("  protected override readonly keyChosen = true; // the person types the key of a new row: it is sent as typed");
         T($"  protected readonly gridKey = '{gridKey}'; // the grid's saved sort is kept in the browser under this key (see grid-sort.ts)");
@@ -1239,6 +1268,23 @@
             if (editableChildren.Any(ch => EditableChild.UsesCards(ch.Link)))
                 o.Append(".child-card { border: 1px solid #8886; border-radius: 6px; padding: 4px 12px 12px; margin-bottom: 12px; }\n.child-card-head { display: flex; justify-content: space-between; align-items: center; }\n.child-card-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0 12px; }\n.child-field { display: flex; flex-direction: column; }\n.child-field-wide { grid-column: 1 / -1; }\n");
         o.Append($"@@@FILE {componentsFolder}/{screenStem}/{screenStem}.component.html@@@\n").Append(Project.AdaptAngularHtml(html.ToString()));
+        if (softScreen || validOnScreen)
+        {
+            // a describe of its own: the one above may be followed by others with their own set-up
+            string route = $"api/{stem.Pluralize()}";
+            spec.Append($"\ndescribe('{cls} row shapes', () => {{\n  let component: {cls};\n  let fixture: ComponentFixture<{cls}>;\n\n");
+            spec.Append($"  beforeEach(async () => {{\n{(writeRoles.Count > 0 ? WriteRoleSpec.SignIn(Project, writeRoles) : "")}    await TestBed.configureTestingModule({{\n      imports: [{cls}],\n      providers: [provideHttpClient(), provideHttpClientTesting(), provideNoopAnimations(), provideRouter([])]\n    }})\n    .compileComponents();\n\n");
+            spec.Append($"    HTMLDialogElement.prototype.showModal = function () {{ this.setAttribute('open', ''); }};\n    fixture = TestBed.createComponent({cls});\n    component = fixture.componentInstance;\n    fixture.detectChanges();\n  }});\n\n" + (writeRoles.Count > 0 ? "  afterEach(() => sessionStorage.clear());\n\n" : ""));
+            if (softScreen)
+                spec.Append("  it('opens the deleted rows and says when there are none', () => {\n    const http = TestBed.inject(HttpTestingController);\n    component.shapeView = 'deleted';\n    fixture.detectChanges();\n"
+                    + $"    http.expectOne('{route}/deleted').flush([]);\n    fixture.detectChanges();\n    expect(fixture.nativeElement.textContent).toContain('Nothing is deleted.');\n  }});\n");
+            if (validOnScreen)
+                spec.Append((softScreen ? "\n" : "") + "  it('asks for the rows in effect on the day the person picks', () => {\n    const http = TestBed.inject(HttpTestingController);\n    component.shapeView = 'validOn';\n    fixture.detectChanges();\n"
+                    + $"    http.expectOne((r) => r.urlWithParams.startsWith('{route}/current?on=')).flush([]);\n    fixture.detectChanges();\n    expect(fixture.nativeElement.textContent).toContain('Nothing is in effect on that day.');\n"
+                    + "    const box = fixture.nativeElement.querySelector('input[type=date]') as HTMLInputElement;\n    box.value = '2025-06-01';\n    box.dispatchEvent(new Event('input'));\n"
+                    + $"    http.expectOne('{route}/current?on=2025-06-01').flush([]);\n  }});\n");
+            spec.Append("});\n");
+        }
         o.Append($"@@@FILE {componentsFolder}/{screenStem}/{screenStem}.component.spec.ts@@@\n").Append(Project.AdaptAngularSpec(spec.ToString()));
         o.Append($"@@@FILE {componentsFolder}/{screenStem}/{screenStem}.component.ts@@@\n").Append(ts);
         Write(o.ToString());

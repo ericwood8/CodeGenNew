@@ -39,6 +39,11 @@
     Line();
     Line($"Statements are written for {DialectInfo.For(Database.Dialect).Name}. Each one is fixed text with no parameter and returns a label and a number (the recent list returns a label and a date).");
     Line();
+    if (TenantPlan.IsEnabled(Project))
+    {
+        Line("The statements read every tenant's rows, as a database administrator sees them. The dashboard of the app reads the rows of the signed-in tenant only.");
+        Line();
+    }
     Line("## On the dashboard");
     Line();
     if (plan.Widgets.Count == 0)

@@ -895,6 +895,116 @@ export abstract class SingleRowCrudScreen<T, K extends number | string = number>
     this.load();
   }
 }
+@@@FILE src/app/<#= componentsFolder #>/row-shape-dialog.ts@@@
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, EventEmitter, Input, OnInit, Output, ViewChild, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+export interface ShapeColumn {
+  key: string;
+  label: string;
+  show?: (value: unknown) => string;
+}
+
+const text = (value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) return value.substring(0, 16).replace('T', ' ');
+  return String(value);
+};
+
+/**
+ * The dialog of a table in SoftDeleteTables (the deleted rows, each with Restore) or in EffectiveDatedTables (the rows in effect on a day, which the person picks):
+ * <app-row-shape-dialog title="Deleted Customer" [columns]="shapeColumns" idKey="customerId" [load]="shapeLoad" [restore]="shapeRestore" (closed)="..." (changed)="..."></app-row-shape-dialog>
+ */
+@Component({
+<#= Project.AngularStandaloneFlag ? "  standalone: true," : "  // no standalone flag: every component is standalone from Angular 19" #>
+  selector: 'app-row-shape-dialog',
+  changeDetection: ChangeDetectionStrategy.<#= Project.AngularEagerStrategy #>,
+  imports: [CommonModule, FormsModule],
+  template: `
+    <dialog #box class="form-container" (cancel)="$event.preventDefault(); close()">
+      <h2>{{ title }}</h2>
+      <label *ngIf="validOn">Valid on <input type="date" [ngModel]="day" (ngModelChange)="pick($event)" /></label>
+      <p *ngIf="error" role="alert">{{ error }}</p>
+      <table>
+        <thead>
+          <tr>
+            <th *ngFor="let column of columns">{{ column.label }}</th>
+            <th *ngIf="restore">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of rows">
+            <td *ngFor="let column of columns">{{ cell(row, column) }}</td>
+            <td *ngIf="restore"><button type="button" class="btn" (click)="bringBack(row)">Restore</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <p *ngIf="rows && rows.length === 0" class="no-rows">{{ validOn ? 'Nothing is in effect on that day.' : 'Nothing is deleted.' }}</p>
+      <div><button type="button" class="btn" (click)="close()">Close</button></div>
+    </dialog>
+  `
+})
+export class RowShapeDialogComponent implements OnInit {
+  @Input() title = '';
+  @Input() columns: ShapeColumn[] = [];
+  @Input() idKey = '';
+  @Input() load!: (day: string) => Observable<object[]>;
+  @Input() restore?: (row: never) => Observable<unknown>;
+  @Input() validOn = false;
+  @Output() closed = new EventEmitter<void>();
+  @Output() changed = new EventEmitter<void>();
+
+  rows: Record<string, unknown>[] | null = null;
+  day = new Date().toLocaleDateString('en-CA');
+  error: string | null = null;
+  private didChange = false;
+  private readonly view = inject(ChangeDetectorRef);
+
+  // the dialog is only in the page while it is wanted: open it as soon as it is rendered
+  @ViewChild('box') set box(element: ElementRef<HTMLDialogElement> | undefined) {
+    if (element && !element.nativeElement.open) element.nativeElement.showModal();
+  }
+
+  ngOnInit(): void {
+    this.read();
+  }
+
+  pick(value: string): void {
+    if (!value) return;
+    this.day = value;
+    this.read();
+  }
+
+  cell(row: Record<string, unknown>, column: ShapeColumn): string {
+    return (column.show ?? text)(row[column.key]);
+  }
+
+  bringBack(row: Record<string, unknown>): void {
+    this.restore!(row as never).subscribe({
+      next: () => { this.didChange = true; this.read(); },
+      error: (error: unknown) => {
+        this.error = error instanceof HttpErrorResponse && error.status === <#= HttpStatus.Forbidden #> ? 'Only an administrator can restore a row.' : 'Problem while restoring!';
+        this.view.markForCheck();
+      }
+    });
+  }
+
+  close(): void {
+    if (this.didChange) this.changed.emit();
+    this.closed.emit();
+  }
+
+  private read(): void {
+    this.load(this.day).subscribe({
+      next: (rows) => { this.rows = rows as Record<string, unknown>[]; this.error = null; this.view.markForCheck(); },
+      error: () => { this.error = 'Failed to load the rows.'; this.view.markForCheck(); }
+    });
+  }
+}
 @@@FILE src/app/<#= componentsFolder #>/currency-input.ts@@@
 import { Directive, ElementRef, HostListener, Input, forwardRef, inject } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';

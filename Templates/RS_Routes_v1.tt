@@ -59,6 +59,13 @@
     bool tenanted = tenantField is not null || tenantTable || people;
     var linkField = ownerLink is null ? null : t.Fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(ownerLink.ForeignKey));
     bool scoped = ownerField is not null || (ownerColumn is null && linkField is not null);
+    // TreeTables: the checks and routes of a tree (not for a table that is scoped to an owner or a tenant, whose rows the tree routes would have to limit)
+    var treePlan = !scoped && !tenanted && !log ? TreePlan.For(Model, Project) : null;
+    // EffectiveDatedTables: the period check on create and update and GET current (not for a table limited to an owner or a tenant)
+    var effPlan = !scoped && !tenanted && !log ? EffectiveDatePlan.For(Model, Project) : null;
+    var effNames = effPlan is null ? null : new RustEffectiveWriter.Names(t.Struct, t.FieldOf(effPlan.Key).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.Key.DbName), keyType, t.FieldOf(effPlan.From).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.From.DbName),
+        t.FieldOf(effPlan.To).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.To.DbName), t.FieldOf(effPlan.To).IsOption, t.FieldOf(effPlan.From).BaseType,
+        effPlan.Groups.Select(g => new RustEffectiveWriter.Group(t.FieldOf(g).Name, t.FieldOf(g).Json, DialectInfo.For(Model.Dialect).Quote(g.DbName), t.FieldOf(g).BaseType, t.FieldOf(g).IsOption)).ToList(), t.Table, t.SelectList);
     string parentModule = ownerLink is null ? "" : RustNames.Snake(ownerLink.ParentTable);
     string parentOwner = ownerLink is null ? "" : RustNames.Ident(RustNames.Snake(ownerLink.ParentOwner));
     string parentKey = ownerLink is null ? "" : RustNames.Ident(RustNames.Snake(ownerLink.ParentKey));
@@ -71,6 +78,11 @@
     string AdminTest(string row) => adminField is null ? "false" : (adminField.IsOption ? $"{row}.{adminField.Name} == Some(true)" : $"{row}.{adminField.Name}") + (activeField is null ? "" : $" && {row}.{activeField.Name}");
     string DefaultOf(RustField f) => f.BaseType == "bool" ? (f.IsOption ? "Some(false)" : "false") : f.IsOption ? "None" : "String::new()";
     string keyRef = textKey ? "&" : "";
+    // SoftDeleteTables: the repository hides flagged rows and flags instead of removing; GET deleted and POST {id}/restore (administrator only) are written for a table not limited to an owner or a tenant
+    bool soft = t.SoftFlag is not null && !log;
+    bool softRoutes = soft && !scoped && !tenanted;
+    bool softAdmin = softRoutes && auth;
+    bool softByUser = soft && auth && t.SoftBy is not null;
     string userArgument = auth && (scoped || userPlan is not null || gated || tenanted) ? ", Extension(user): Extension<CurrentUser>" : "";
     string userRead = scoped || tenanted ? userArgument : "";   // the reading handlers need the caller only to scope the rows
     // what a repository function that filters takes after the pool: the owner scope and the tenant
@@ -84,18 +96,22 @@
 
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
     Line("use axum::{");
-    Line(userArgument.Length > 0 ? "    Extension, Json, Router," : "    Json, Router,");
-    Line(search || t.LookupSql is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
+    Line(userArgument.Length > 0 || softByUser ? "    Extension, Json, Router," : "    Json, Router,");
+    Line(search || t.LookupSql is not null || effNames is not null ? "    extract::{Path, Query, State}," : "    extract::{Path, State},");
     if (!log)
     {
         Line("    http::StatusCode,");
         Line("    response::Response,");
     }
-    Line(log ? "    routing::get," : roles ? (t.Clone is not null ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (t.Clone is not null ? "    routing::{get, post}," : "    routing::get,"));
-    if (roles)
+    bool usesPost = t.Clone is not null || treePlan is not null || softRoutes;
+    bool usesDb = treePlan is not null || effNames is not null;
+    Line(log ? "    routing::get," : roles ? (usesPost ? "    routing::{MethodRouter, get, post}," : "    routing::{MethodRouter, get},") : (usesPost ? "    routing::{get, post}," : "    routing::get,"));
+    if (roles || softAdmin)
         Line("    middleware,");
     Line("};");
-    if (roles)
+    if (softAdmin)
+        Line("use crate::auth::{ADMIN_ROLE, check_roles};");
+    else if (roles)
         Line("use crate::auth::check_roles;");
     if (tenanted)
     {
@@ -107,11 +123,13 @@
     }
     if (userArgument.Length > 0)
         Line("use crate::auth::" + (scoped ? "{CurrentUser, Scope, not_yours};" : t.Clone is not null && userPlan is not null ? "{CurrentUser, not_yours};" : "CurrentUser;"));
+    if (softByUser && userArgument.Length == 0)
+        Line("use crate::auth::CurrentUser;");
     if (userPlan is not null)
         Line("use crate::auth::{PROBLEM_COLUMN_NOT_YOURS, PROBLEM_DUPLICATE_VALUE, PROBLEM_LAST_ADMINISTRATOR};");
     Line($"use crate::models::{t.Module}::{t.Struct};");
     Line($"use crate::repos::{t.Module} as repo;");
-    Line(log ? "use crate::support::{ApiError, ApiResult, Pool};" : textKey ? "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created, path_segment};" : "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
+    Line(log ? "use crate::support::{ApiError, ApiResult, Pool};" : textKey ? "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created, path_segment};" : usesDb ? "use crate::support::{ApiError, ApiJson, ApiResult, Db, Pool, created};" : "use crate::support::{ApiError, ApiJson, ApiResult, Pool, created};");
     if (validate && !log)
         Line($"use crate::validation::{t.Module}::validate;");
     if (gated && !log)
@@ -127,7 +145,9 @@
         Line($"const READ_ROLES: &[&str] = &[{WriteRolePlan.Literal(readRoles)}];");
     if (writeRoles.Count > 0 && !log)
         Line($"const WRITE_ROLES: &[&str] = &[{WriteRolePlan.Literal(writeRoles)}];");
-    if (roles)
+    if (softAdmin)
+        Line("const SOFT_ADMIN_ROLES: &[&str] = &[ADMIN_ROLE];");
+    if (roles || softAdmin)
         Line();
     Line("pub fn router() -> Router<Pool> {");
     Line("    Router::new()");
@@ -166,8 +186,41 @@
         if (t.Clone is not null && !log)
             Line($"        .route(\"{t.Route}/{{id}}/clone\", post(clone_row))");
     }
+    if (treePlan is not null)
+        sb.Append(RustTreeWriter.RouteLines(t.Route, readLayer, writeLayer, roles));
+    if (effNames is not null)
+        sb.Append(RustEffectiveWriter.RouteLine(t.Route, readLayer));
+    if (softRoutes)
+    {
+        string adminLayer = softAdmin ? ".route_layer(middleware::from_fn(|request, next| check_roles(SOFT_ADMIN_ROLES, true, request, next)))" : "";
+        Line($"        .route(\"{t.Route}/deleted\", get(deleted_rows){adminLayer})");
+        Line($"        .route(\"{t.Route}/{{id}}/restore\", post(restore){adminLayer})");
+    }
     Line("}");
     Line();
+    if (effNames is not null)
+        Line(RustEffectiveWriter.Code(effNames, t.LiveAnd()));
+    if (softRoutes)
+    {
+        Line("/// The rows that were soft deleted, the last deleted first.");
+        Line($"async fn deleted_rows(State(pool): State<Pool>) -> ApiResult<Json<Vec<{t.Struct}>>> {{");
+        Line("    Ok(Json(repo::deleted(&pool).await?))");
+        Line("}");
+        Line();
+        Line("/// A deleted row comes back; 404 when there is no such row, 409 when it is not deleted.");
+        Line($"async fn restore(State(pool): State<Pool>, Path(id): Path<{keyType}>) -> ApiResult<Json<{t.Struct}>> {{");
+        Line("    if repo::restore(&pool, id).await? == 0 {");
+        Line("        if repo::exists_any(&pool, id).await? {");
+        Line($"            return Err(ApiError::Rejected({HttpStatus.Conflict}, \"{RowShapeWords.NotDeletedType}\", \"Not deleted\", \"{RowShapeWords.NotDeleted}\".into()));");
+        Line("        }");
+        Line("        return Err(ApiError::NotFound);");
+        Line("    }");
+        Line("    Ok(Json(repo::get_by_id(&pool, id).await?.ok_or(ApiError::NotFound)?))");
+        Line("}");
+        Line();
+    }
+    if (treePlan is not null)
+        Line(RustTreeWriter.Code(treePlan, DialectInfo.For(Model.Dialect), keyType, treePlan.Text is not null, t.LiveAnd(), t.LiveWhere()));
     if (scoped)
     {
         // who owns a row: its own owner column, or the owner of the parent row it belongs to
@@ -394,6 +447,10 @@
     }
     if (nameActive is not null)
         Line(tenantField is not null ? "    check_name(&pool, &mut row, None, &user).await?;" : "    check_name(&pool, &mut row, None).await?;");
+    if (treePlan is not null)
+        Line($"    check_tree(&pool, None, row.{t.FieldOf(treePlan.Parent).Name}).await?;");
+    if (effNames is not null)
+        Line("    check_effective(&pool, None, &row).await?;");
     Line("    let row = repo::insert(&pool, &row).await?;");
     if (tenantTable)
         Line($"    attach_creator(&pool, &user, row.{t.Key.Name}).await?;");
@@ -473,6 +530,10 @@
         Line("    }");
         Line(tenantField is not null ? "    check_name(&pool, &mut row, Some(id), &user).await?;" : "    check_name(&pool, &mut row, Some(id)).await?;");
     }
+    if (treePlan is not null)
+        Line($"    check_tree(&pool, Some(id), row.{t.FieldOf(treePlan.Parent).Name}).await?;");
+    if (effNames is not null)
+        Line("    check_effective(&pool, Some(id), &row).await?;");
     Line($"    repo::update(&pool, {idArg}, &row).await?.map(Json).ok_or(ApiError::NotFound)");
     Line("}");
     Line();
@@ -485,7 +546,7 @@
     }
     else
     {
-    Line($"async fn delete(State(pool): State<Pool>, Path(id): Path<{keyType}>{userRead}) -> ApiResult<StatusCode> {{");
+    Line($"async fn delete(State(pool): State<Pool>, Path(id): Path<{keyType}>{(userRead.Length == 0 && softByUser ? ", Extension(user): Extension<CurrentUser>" : userRead)}) -> ApiResult<StatusCode> {{");
     if (scoped || adminField is not null || tenanted)
     {
         Line($"    let current = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
@@ -501,8 +562,21 @@
         }
     }
     if (people)
-        Line($"    detach_person(&pool, {keyRef}current.{t.Key.Name}, &user).await?;");
-    Line($"    match repo::delete(&pool, {idArg}).await? {{");
+    {
+        Line($"    if detach_person(&pool, {keyRef}current.{t.Key.Name}, &user).await? {{");
+        Line("        return Ok(StatusCode::OK);");
+        Line("    }");
+    }
+    if (treePlan is not null)
+        Line("    refuse_children(&pool, id).await?;");
+    if (soft && softByUser)
+    {
+        int byLength = t.SoftBy!.Column.CharacterLength;
+        Line(byLength > 0 ? $"    let by: String = user.name.chars().take({byLength}).collect();" : "    let by = user.name.clone();");
+        Line($"    match repo::soft_delete(&pool, {idArg}, Some(by.as_str())).await? {{");
+    }
+    else
+        Line(soft ? (t.SoftBy is not null ? $"    match repo::soft_delete(&pool, {idArg}, None).await? {{" : $"    match repo::soft_delete(&pool, {idArg}).await? {{") : $"    match repo::delete(&pool, {idArg}).await? {{");
     Line("        0 => Err(ApiError::NotFound),");
     Line("        _ => Ok(StatusCode::OK),");
     Line("    }");

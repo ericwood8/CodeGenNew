@@ -17,6 +17,12 @@ public static class RowShapeWords
     public const string Overlap = "Another row of the same kind is in effect during that period.";
     public const string NotDeleted = "Only a deleted row can be restored.";
 
+    /// <summary> Why a table has no soft delete and no periods: a log table is only appended to, and a single-row table keeps its one row. Null for any other table. </summary>
+    public static string? NeverChanged(TableModel table, ProjectSettings project) =>
+        LogTablePlan.For(table, project) is not null ? "is in LogTables (a log is only appended to)"
+        : project.SingleRowTables.Any(t => t.Split(':')[0].Trim().EqualsIgnoreCase(table.TableName)) ? "is in SingleRowTables (it keeps its one row)"
+        : null;
+
     public static string TooDeep(int maxDepth) => $"The tree can be {maxDepth} levels deep at most.";
 }
 
@@ -119,6 +125,11 @@ public static class SoftDeletePlan
         problem = null;
         var entry = Entries(project).First(e => e.Table.EqualsIgnoreCase(table.TableName));
         string prefix = $"SoftDeleteTables: {table.TableName}";
+        if (RowShapeWords.NeverChanged(table, project) is { } never)
+        {
+            problem = $"{prefix} {never}, so no row is ever deleted.";
+            return null;
+        }
         if (table.PrimaryKeyColumns is not [{ IsIntegerColumn: true } key])
         {
             problem = $"{prefix} needs a single whole-number key.";
@@ -168,6 +179,11 @@ public static class EffectiveDatePlan
         problem = null;
         var entry = Entries(project).First(e => e.Table.EqualsIgnoreCase(table.TableName));
         string prefix = $"EffectiveDatedTables: {table.TableName}";
+        if (RowShapeWords.NeverChanged(table, project) is { } never)
+        {
+            problem = $"{prefix} {never}, so it has no periods to keep apart.";
+            return null;
+        }
         if (table.PrimaryKeyColumns is not [{ IsIntegerColumn: true } key])
         {
             problem = $"{prefix} needs a single whole-number key.";

@@ -28,6 +28,7 @@ public class TenantBypassTests
         Expect.Contains(data, "key = tenant + \"|\" + key;");
         Expect.Contains(data, "SqlQueryRaw<DashboardPoint>(d.Sql.Replace(\"{tenant}\", tenant))");
         Expect.Contains(data, "FROM (SELECT * FROM \\\"ProjectApproval\\\" WHERE \\\"ProjectId\\\" IN (SELECT \\\"ProjectId\\\" FROM \\\"Project\\\" WHERE \\\"TenantId\\\" = {tenant})) AS \\\"ProjectApproval\\\"");
+        Expect.Contains(data, "(SELECT * FROM \\\"Employee\\\" WHERE \\\"EmployeeId\\\" IN (SELECT \\\"EmployeeId\\\" FROM \\\"EmployeeTenant\\\" WHERE \\\"TenantId\\\" = {tenant})) AS \\\"Employee\\\"");
 
         var (_, _, plainRead, _) = await TenantPlanTests.GenerateAsync(new() { ["Dashboard"] = "true", ["TenantTable"] = "", ["TenantMembership"] = "", ["NoTenantTables"] = "" }, "api", More);
         Expect.DoesNotContain(plainRead("DashboardData.cs"), "{tenant}");
@@ -82,6 +83,12 @@ public class TenantBypassTests
         Expect.Contains(rust, "async fn require_row_project(pool: &Pool, user: &CurrentUser, id: i32) -> ApiResult<()> {");
         Expect.Contains(rust, "AND \"ProjectId\" IN (SELECT \"ProjectId\" FROM \"Project\" WHERE \"TenantId\" = ?)");
         Expect.Contains(rust, ".bind(user.tenant_id)");
+
+        var (_, _, win, _) = await Generate(new(approvals) { ["Stacks"] = "winui3", ["UserTable"] = "Employee", ["UserNameColumn"] = "Login" }, "winui3");
+        string desktop = win("Repositories/ApprovalService.cs");
+        Expect.Contains(desktop, "private static IQueryable<ProjectApproval> Cycles(ShopContext context) => context.Set<ProjectApproval>().Where(a => context.Set<Project>().Any(r => r.ProjectId == a.ProjectId));");
+        Expect.Contains(desktop, "Cycles(context).AsNoTracking().Where(a => a.ProjectId == id)");
+        Expect.Contains(desktop, "await Cycles(context).AsNoTracking().Where(a => a.ApprovalStatusId == 1");
 
         var (_, _, plain, _) = await TenantPlanTests.GenerateAsync(new(approvals) { ["TenantTable"] = "", ["TenantMembership"] = "", ["NoTenantTables"] = "" }, "api", More);
         Expect.DoesNotContain(plain("Apis/Approvals.cs"), "Cycles(");

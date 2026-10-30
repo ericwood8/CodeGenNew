@@ -106,6 +106,29 @@ public class TenantPlanTests
     }
 
     [TestMethod]
+    public async Task A_filtered_unique_index_is_made_per_tenant_with_its_row_condition_and_included_columns()
+    {
+        var database = await ReadAsync();
+        var project = ProjectSettings.FromValues(Values());
+        int at = database.Tables.FindIndex(t => t.TableName == "Project");
+        var old = database.Tables[at];
+        database.Tables[at] = Sample.Table(old.TableName, old.Columns, foreignKeys: old.ForeignKeys, indexes: [.. old.Indexes], dialect: SqlDialect.Sqlite,
+            partialIndexes:
+            [
+                new PartialIndexModel("UX_Project_Live", true, ["Name"], ["Budget"], "IsActive = 1"),
+                new PartialIndexModel("UX_Project_Tenant", true, ["TenantId", "Name"], [], "IsActive = 1"),
+                new PartialIndexModel("IX_Project_Plain", false, ["Name"], [], "IsActive = 1")
+            ]);
+
+        string script = TenantIndexPlan.Script(database, project);
+
+        Expect.Contains(script, "-- Project: UX_Project_Live on (Name) becomes (TenantId, Name)");
+        Expect.Contains(script, "CREATE UNIQUE INDEX \"UX_Project_TenantId_Name\" ON \"Project\" (\"TenantId\", \"Name\") INCLUDE (\"Budget\") WHERE IsActive = 1;");
+        Expect.DoesNotContain(script, "UX_Project_Tenant on");
+        Expect.DoesNotContain(script, "IX_Project_Plain");
+    }
+
+    [TestMethod]
     public async Task A_setting_that_cannot_be_served_is_named_with_the_reason()
     {
         var database = await ReadAsync();

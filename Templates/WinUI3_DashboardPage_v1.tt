@@ -34,11 +34,15 @@
     // ==========================================================================================
 
     bool strip = Project.DashboardStrip;
+    // With a sign-in and read roles a widget of a table the signed-in role may not read is left out, as the API leaves it out of the dashboard it sends.
+    var limited = TenantPlan.HasDesktopRoles(Project) ? Database.Tables.Select(t => (t.TableName, Roles: WriteRolePlan.ReadFor(Project, t))).Where(t => t.Roles.Count > 0).ToList() : [];
+    string rules = string.Concat(limited.Select(t => $"        [\"{t.TableName}\"] = [{WriteRolePlan.Literal(t.Roles)}],\n"));
     string usingLines = string.Concat(usings.Select(u => $"using {u};\n"));
 #>
 @@@FILE <#= viewsFolder #>/DashboardWidgetViews.cs@@@
 <#= DesktopDashboardCode.WidgetViews(viewNamespace, repositoryNamespace, "WinUI3_Screens", "DashboardData") #>@@@FILE <#= viewsFolder #>/DashboardPage.cs@@@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using <#= contextNamespace #>;
 using <#= repositoryNamespace #>;
@@ -47,6 +51,23 @@ using Microsoft.UI.Xaml.Controls;
 <#= usingLines #>
 namespace <#= viewNamespace #>;
 
+<#
+    if (limited.Count > 0)
+    {
+#>
+// The read roles of the tables; a widget of a table not listed is open to every signed-in person.
+internal static class DashboardRoles
+{
+    private static readonly Dictionary<string, string[]> Rules = new(StringComparer.OrdinalIgnoreCase)
+    {
+<#= rules #>    };
+
+    public static bool Allows(string table) => !Rules.TryGetValue(table, out var roles) || DesktopSession.HasRole(roles);
+}
+
+<#
+    }
+#>
 // The dashboard: cards first, then the lists and charts, each a widget of DashboardData. Refresh reads the database again.
 public sealed class DashboardPage : Page
 {
@@ -80,6 +101,9 @@ public sealed class DashboardPage : Page
         {
             using var context = new <#= contextType #>();
             var result = await DashboardData.LoadAsync(context);
+<# if (limited.Count > 0) { #>
+            result.Widgets.RemoveAll(w => !DashboardRoles.Allows(w.Table));
+<# } #>
             _cards.Children.Clear();
             foreach (var widget in result.Widgets.Where(DashboardWidgetViews.IsCard))
                 _cards.Children.Add(DashboardWidgetViews.Build(widget, _navigate));
@@ -108,6 +132,7 @@ public sealed class DashboardPage : Page
 #>
 @@@FILE <#= viewsFolder #>/DashboardStrip.cs@@@
 <#= DesktopDashboardCode.StripFile(viewNamespace, $"using {contextNamespace};\nusing {repositoryNamespace};\n", usingLines, "", "string table", "",
-        $"            using var context = new {contextType}();\n            var result = await DashboardData.LoadAsync(context, _table);\n") #><#
+        $"            using var context = new {contextType}();\n            var result = await DashboardData.LoadAsync(context, _table);\n"
+        + (limited.Count > 0 ? "            result.Widgets.RemoveAll(w => !DashboardRoles.Allows(w.Table));\n" : "")) #><#
     }
 #>

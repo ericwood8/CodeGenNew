@@ -104,11 +104,13 @@ def attach_person(session: Session, person_id, user: CurrentUser) -> None:
     session.commit()
 
 
-def detach_person(session: Session, person_id, user: CurrentUser) -> None:
-    """A person removed inside a tenant leaves it, in the transaction that removes them (a person of another tenant too is refused by the foreign key)."""
+def detach_person(session: Session, person_id, user: CurrentUser) -> bool:
+    """A person removed inside a tenant leaves it, in the transaction that removes them. True when the person belongs to another tenant too: they only leave this one and stay a row of the user table."""
     if user.tenant_id is None:
-        return
+        return False
+    elsewhere = session.scalar(select(members.c[MEMBER_USER]).where(members.c[MEMBER_USER] == person_id, members.c[MEMBER_TENANT] != user.tenant_id).limit(1)) is not None
     session.execute(members.delete().where(members.c[MEMBER_USER] == person_id, members.c[MEMBER_TENANT] == user.tenant_id))
+    return elsewhere
 """";
 
     private const string PeoplePassThrough = """"
@@ -127,8 +129,8 @@ def attach_person(session: Session, person_id, user: CurrentUser) -> None:
     return None
 
 
-def detach_person(session: Session, person_id, user: CurrentUser) -> None:
-    return None
+def detach_person(session: Session, person_id, user: CurrentUser) -> bool:
+    return False
 """";
 
     private const string NewPersonText = """"

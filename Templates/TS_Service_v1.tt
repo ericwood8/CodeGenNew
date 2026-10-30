@@ -68,7 +68,7 @@
         L("import { Injectable } from '@angular/core';");
         L("import { HttpClient } from '@angular/common/http';");
         bool guarded = GatePlan.GuardsOf(Project, Model).Count > 0;
-        if (!Model.IsNameActiveTable || guarded) L("import { Observable } from 'rxjs';");
+        if (!Model.IsNameActiveTable || guarded || SoftDeletePlan.For(Model, Project) is not null || EffectiveDatePlan.For(Model, Project) is not null) L("import { Observable } from 'rxjs';");
         L($"import {{ {baseName} }} from '../{modelsFolder}/{stem}';");
         L(nameActive ? $"import {{ {serviceBase} }} from './crud.service';" : $"import {{ {serviceBase}, PagedResult }} from './crud.service';");
         L();

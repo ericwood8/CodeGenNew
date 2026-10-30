@@ -113,6 +113,119 @@ public class StoredValueValidator : ComponentBase, IDisposable
         _messages?.Clear();
     }
 }
+@@@FILE Components/RowShapeDialog.razor@@@
+@typeparam TRow
+@using <#= ns #>.Services
+
+@* The dialog of a table in SoftDeleteTables (the deleted rows, each with Restore) or in EffectiveDatedTables (the rows in effect on a day, which the person picks). *@
+<div class="editor" role="dialog" aria-label="@Title">
+    <h2>@Title</h2>
+    @if (ValidOn)
+    {
+        <label>Valid on <input type="date" aria-label="Valid on" value="@day" @onchange="PickAsync" /></label>
+    }
+    @if (message is not null)
+    {
+        <p class="error" role="alert">@message</p>
+    }
+    <table>
+        <thead>
+            <tr>
+                @foreach (var column in Columns)
+                {
+                    <th>@column.Label</th>
+                }
+                @if (Restore is not null)
+                {
+                    <th>Actions</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in rows)
+            {
+                <tr>
+                    @foreach (var column in Columns)
+                    {
+                        <td>@column.Show(item)</td>
+                    }
+                    @if (Restore is not null)
+                    {
+                        <td><button type="button" @onclick="() => BringBackAsync(item)">Restore</button></td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+    @if (loaded && rows.Count == 0)
+    {
+        <p class="no-rows">@(ValidOn ? "Nothing is in effect on that day." : "Nothing is deleted.")</p>
+    }
+    <div class="actions"><button type="button" @onclick="CloseAsync">Close</button></div>
+</div>
+
+@code {
+    public sealed record Column(string Label, Func<TRow, string> Show);
+
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter, EditorRequired] public IReadOnlyList<Column> Columns { get; set; } = [];
+    [Parameter, EditorRequired] public Func<string, Task<List<TRow>>> Load { get; set; } = _ => Task.FromResult(new List<TRow>());
+    [Parameter] public Func<TRow, Task>? Restore { get; set; }
+    [Parameter] public bool ValidOn { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private List<TRow> rows = [];
+    private string day = DateTime.Today.ToString("yyyy-MM-dd");
+    private string? message;
+    private bool loaded;
+    private bool changed;
+
+    protected override async Task OnInitializedAsync() => await ReadAsync();
+
+    private async Task PickAsync(ChangeEventArgs e)
+    {
+        if (e.Value?.ToString() is not { Length: > 0 } value)
+            return;
+        day = value;
+        await ReadAsync();
+    }
+
+    private async Task ReadAsync()
+    {
+        try
+        {
+            rows = await Load(day);
+            message = null;
+        }
+        catch (ApiException)
+        {
+            message = "Failed to load the rows.";
+        }
+        loaded = true;
+    }
+
+    private async Task BringBackAsync(TRow item)
+    {
+        try
+        {
+            await Restore!(item);
+            changed = true;
+            await ReadAsync();
+        }
+        catch (ApiException error)
+        {
+            message = error.Status == <#= HttpStatus.Forbidden #> ? "Only an administrator can restore a row." : "Problem while restoring!";
+        }
+    }
+
+    private async Task CloseAsync()
+    {
+        if (changed)
+            await OnChanged.InvokeAsync();
+        await OnClose.InvokeAsync();
+    }
+}
 @@@FILE Components/TypeAheadOption.cs@@@
 namespace <#= ns #>.Components;
 

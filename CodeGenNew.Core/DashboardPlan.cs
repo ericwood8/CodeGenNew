@@ -210,7 +210,7 @@ public sealed class DashboardPlan
             return $"(SELECT * FROM {name} WHERE {filter}) AS {alias ?? di.Quote(table.DbTableName)}";
         }
 
-        /// <summary> The condition that keeps the caller's tenant's rows of a table, or null for a table every tenant shares: the tenant table by its key, a tenant-owned table by its tenant column and a table with no
+        /// <summary> The condition that keeps the caller's tenant's rows of a table, or null for a table every tenant shares: the tenant table by its key, a tenant-owned table by its tenant column, the user table by the membership rows of the tenant (see <see cref="TenantPlan.PeopleOf"/>) and a table with no
         /// tenant column of its own (a junction or a side table such as an approval cycle) by the rows of the parent it points at. </summary>
         private string? TenantFilter(TableModel table, int depth = 0)
         {
@@ -220,6 +220,8 @@ public sealed class DashboardPlan
                 return TenantPlan.KeyOf(table) is { } key ? $"{di.Quote(key.DbName)} = {tenantToken}" : null;
             if (TenantPlan.OwnedBy(table, database, project) is { } owned)
                 return $"{di.Quote(owned.Column.DbName)} = {tenantToken}";
+            if (TenantPlan.PeopleOf(database, project) is { } people && people.User.Table == table)
+                return $"{di.Quote(people.Key.DbName)} IN (SELECT {di.Quote(people.Membership.User.DbName)} FROM {di.QuoteTable(people.Membership.Table.SchemaName, people.Membership.Table.DbTableName)} WHERE {di.Quote(people.Membership.Tenant.DbName)} = {tenantToken})";
             foreach (var fk in table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1 && !table.IsSelfReferencing(f)))
             {
                 var parent = database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(fk.ReferencedTable));

@@ -126,7 +126,7 @@ public class NameActiveRepo<T> : INameActiveRepo<T>, IDisposable where T : <#= b
     }
 
     /// <summary> 0 = deleted, -1 = row no longer exists, 1 = blocked by a foreign key elsewhere ("in use"). </summary>
-    public async Task<int> DeleteAsync(string deleteFromTable, int deleteId)
+    public virtual async Task<int> DeleteAsync(string deleteFromTable, int deleteId)
     {
         var rowToDelete = await GetByIdAsync(deleteId);
         if (rowToDelete is null)

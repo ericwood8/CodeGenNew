@@ -158,7 +158,9 @@ public class DesktopSignInTests
         Expect.Contains(context, "modelBuilder.Entity<Employee>().HasQueryFilter(e => (IsPlatform || Set<EmployeeTenant>().Any(m => m.EmployeeId == e.EmployeeId && m.TenantId == CurrentTenantId)));");
         Expect.Contains(context, "ChangeTracker.Entries<Employee>().Where(e => e.State == EntityState.Added)");
         Expect.Contains(context, "Set<EmployeeTenant>().Add(new EmployeeTenant { EmployeeId = person.EmployeeId, TenantId = CurrentTenantId!.Value });");
-        Expect.Contains(context, "RemoveRange(await LeavingMembers().ToListAsync(cancellationToken));");
+        Expect.Contains(context, "var leavers = leaving.Count > 0 ? await LeavingMembers(leaving).ToListAsync(cancellationToken) : [];");
+        Expect.Contains(context, "KeepSharedPeople(await OtherMemberships(leaving).ToListAsync(cancellationToken));");
+        Expect.Contains(context, "entry.State = EntityState.Unchanged;");
 
         var (_, _, readPython, _) = await TenantPlanTests.GenerateAsync(new() { ["Stacks"] = "python" }, "python");
         Expect.Contains(readPython("app/routes/employee.py"), "statement = only_members(statement, Employee.employee_id, user)");
@@ -166,7 +168,7 @@ public class DesktopSignInTests
         Expect.Contains(readPython("app/routes/tenancy.py"), "def only_members(statement, key_column, user: CurrentUser):");
         var (_, _, readRust, _) = await TenantPlanTests.GenerateAsync(new() { ["Stacks"] = "rust" }, "rust");
         Expect.Contains(readRust("src/routes/employee.rs"), "Tenancy::of_members(&user)");
-        Expect.Contains(readRust("src/tenancy.rs"), "pub async fn detach_person(pool: &Pool, person_id: i32, user: &CurrentUser) -> ApiResult<()> {");
+        Expect.Contains(readRust("src/tenancy.rs"), "pub async fn detach_person(pool: &Pool, person_id: i32, user: &CurrentUser) -> ApiResult<bool> {");
 
         var (_, _, readOwn, _) = await TenantPlanTests.GenerateAsync(new() { ["TenantMembership"] = "" });
         Expect.DoesNotContain(readOwn("Data/ShopContext.cs"), "AddedPeople");
@@ -211,6 +213,23 @@ public class DesktopSignInTests
 
         var (_, _, readNoSignIn, _) = await TenantPlanTests.GenerateAsync(Winui(new(roles) { ["UserTable"] = "" }), "winui3");
         Expect.DoesNotContain(readNoSignIn("MainWindow.Screens.cs"), "DesktopSession");
+    }
+
+    [TestMethod]
+    public async Task The_dashboard_leaves_out_the_widgets_of_tables_the_signed_in_role_may_not_read()
+    {
+        var values = new Dictionary<string, string> { ["Dashboard"] = "true", ["DashboardStrip"] = "true", ["TableReadRoles"] = "Country:Administrator" };
+        var (success, errors, read, _) = await TenantPlanTests.GenerateAsync(Winui(values), "winui3");
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        string page = read("Views/DashboardPage.cs");
+        Expect.Contains(page, "[\"Country\"] = [\"Administrator\"],");
+        Expect.Contains(page, "DesktopSession.HasRole(roles)");
+        Expect.Contains(page, "result.Widgets.RemoveAll(w => !DashboardRoles.Allows(w.Table));");
+        Expect.Contains(read("Views/DashboardStrip.cs"), "result.Widgets.RemoveAll(w => !DashboardRoles.Allows(w.Table));");
+
+        var (_, _, readPlain, _) = await TenantPlanTests.GenerateAsync(Winui(new() { ["Dashboard"] = "true", ["DashboardStrip"] = "true" }), "winui3");
+        Expect.DoesNotContain(readPlain("Views/DashboardPage.cs"), "DashboardRoles");
     }
 
     [TestMethod]

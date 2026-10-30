@@ -99,6 +99,9 @@
         string reload = oneRow || nameActive ? "LoadAsync()" : "LoadAsync(pageNumber)";
 
         bool usesMoneyBox = shown.Any(form.IsMoneyInput);
+        // SoftDeleteTables and EffectiveDatedTables: a "Show deleted" dialog with Restore and a "Valid on" dialog (the list itself stays the paged grid)
+        bool softScreen = !oneRow && !logOnly && SoftDeletePlan.For(Model, Project) is not null;
+        bool validOnScreen = !oneRow && !logOnly && EffectiveDatePlan.For(Model, Project) is not null;
 
         string pageClass = odata ? BlazorNames.ODataPageName(Model.TableName) : type + "Page";
         string route = odata && !Project.ODataReplacesScreens ? AngularNames.ODataRoute(Model.TableName) : ScreenNames.Route(Model.TableName);
@@ -238,11 +241,13 @@
             L($"@page \"/{route}\"");
         L($"@using {ns}.Models");
         L($"@using {ns}.Services");
-        if (usesMoneyBox || aheadParents.Count > 0 || Project.ApiAnnotations || childBoxesNeedComponents || Project.DashboardStrip || approvalSegment is not null)
+        if (usesMoneyBox || aheadParents.Count > 0 || Project.ApiAnnotations || childBoxesNeedComponents || Project.DashboardStrip || approvalSegment is not null || softScreen || validOnScreen)
             L($"@using {ns}.Components");
         if (Project.Auth)
             L(readRoles.Count > 0 ? $"@attribute [Authorize(Roles = \"{string.Join(",", readRoles)}\")]" : "@attribute [Authorize]");
         L($"@inject {clientType} Client");
+        if (odata && (softScreen || validOnScreen))
+            L($"@inject {type}Client ShapeClient");   // the REST client: the OData one has no deleted rows, restore or rows valid on a day
         if (gated || children.Any(ch => ch.WriteGate is not null))
             L("@inject AuthSession Session");
         foreach (var p in parents)
@@ -261,6 +266,16 @@
             L($"<DashboardStrip Table=\"{Model.TableName}\" />");   // BLZ_Dashboard: shows nothing for a table with no cards
         L($"<h1>{heading}</h1>");
         if (!oneRow && !logOnly) L(Gate("", "<button type=\"button\" @onclick=\"Add\">Add New</button>"));
+        if (softScreen) L("<button type=\"button\" @onclick=\"ShowDeleted\">Show deleted</button>");
+        if (validOnScreen) L("<button type=\"button\" @onclick=\"ShowValidOn\">Valid on...</button>");
+        if (softScreen || validOnScreen)
+        {
+            L();
+            L("@if (shapeView is not null)");
+            L("{");
+            L($"    <RowShapeDialog TRow=\"§T\" Title=\"@(shapeView == ShapeDeleted ? \"Deleted §N\" : \"§N valid on a day\")\" Columns=\"ShapeColumns\" Load=\"LoadShapeAsync\"{(softScreen ? (validOnScreen ? " Restore=\"@(shapeView == ShapeDeleted ? RestoreRowAsync : (Func<§T, Task>?)null)\"" : " Restore=\"RestoreRowAsync\"") : "")} ValidOn=\"@(shapeView == ShapeValidOn)\" OnClose=\"CloseShape\" OnChanged=\"ShapeChangedAsync\" />");
+            L("}");
+        }
         if (queue is not null)
         {
             L("@if (stats is not null)");
@@ -692,6 +707,40 @@
         L("    private bool activeOnly;");
         L("    // The whole list is here: the name box and the Active only check box narrow it without another call.");
         L("    private List<§T> VisibleRows => items.Where(item => (!activeOnly || item.IsActive) && (item.Name ?? \"\").Contains(searchText.Trim(), StringComparison.CurrentCultureIgnoreCase)).ToList();");
+        }
+        if (softScreen || validOnScreen)
+        {
+            L();
+            L("    // SoftDeleteTables and EffectiveDatedTables: the dialog of the deleted rows, or of the rows valid on a day");
+            L("    private const string ShapeDeleted = \"deleted\", ShapeValidOn = \"validOn\";");
+            L("    private string? shapeView;");
+            L();
+            L("    private IReadOnlyList<RowShapeDialog<§T>.Column> ShapeColumns => [");
+            L(string.Join(",\n", columnList.Select(column =>
+            {
+                var c = column.Column;
+                var lookup = form.LookupOf(c);
+                string cell = column.Cut ? $"@GridColumns.Cut(item.{c.CSharpName()})" : Cell(c, $"item.{c.CSharpName()}", lookup is not null ? $"Name{form.ParentOf(c)!.BaseName}(item.{c.CSharpName()})" : null);
+                return $"        new(\"{column.Caption.Replace("\\", "\\\\").Replace("\"", "\\\"")}\", item => $\"{{{cell[1..]}}}\")";
+            })));
+            L("    ];");
+            L();
+            L("    private void ShowDeleted() => shapeView = ShapeDeleted;");
+            L();
+            L("    private void ShowValidOn() => shapeView = ShapeValidOn;");
+            L();
+            L("    private void CloseShape() => shapeView = null;");
+            L();
+            string shapeClient = odata ? "ShapeClient" : "Client";
+            string shapeLoad = softScreen && validOnScreen ? $"shapeView == ShapeDeleted ? {shapeClient}.GetDeletedAsync() : {shapeClient}.GetCurrentAsync(day)" : softScreen ? $"{shapeClient}.GetDeletedAsync()" : $"{shapeClient}.GetCurrentAsync(day)";
+            L($"    private Task<List<§T>> LoadShapeAsync(string day) => {shapeLoad};");
+            if (softScreen)
+            {
+                L();
+                L($"    private async Task RestoreRowAsync(§T row) => await {shapeClient}.RestoreAsync(row.§K);");
+            }
+            L();
+            L(nameActive ? "    private Task ShapeChangedAsync() => LoadAsync();" : "    private Task ShapeChangedAsync() => LoadAsync(pageNumber);");
         }
         foreach (var p in parents)
             L($"    private List<{BlazorNames.ItemType(p)}> {BlazorNames.LookupField(p)} = [];");

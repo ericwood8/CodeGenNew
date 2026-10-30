@@ -91,15 +91,16 @@ public sealed class RustTable
         string returning = Returning ? $" RETURNING {SelectList}" : "";
         string key = _di.Quote(Key.Column.DbName);
 
-        SelectAll = $"SELECT {SelectList} FROM {Table} ORDER BY {key}";
-        SelectOne = $"SELECT {SelectList} FROM {Table} WHERE {key} = {_di.Placeholder(1)}";
+        BuildSoftDelete(model, project, fieldOf, key);
+        SelectAll = $"SELECT {SelectList} FROM {Table}{LiveWhere()} ORDER BY {key}";
+        SelectOne = $"SELECT {SelectList} FROM {Table} WHERE {key} = {_di.Placeholder(1)}{LiveAnd()}";
         Insert = $"INSERT INTO {Table} ({columns}) VALUES ({values}){returning}";
 
         // an UPDATE sets every written column except the key, then finds the row by the key (last, so the positional placeholders of MySQL and SQLite follow the bind order)
         Updated = Written.Where(f => !f.Column.IsPrimaryKey && !StampedOnNew.Contains(f) && !StampedOnChange.Contains(f)).ToList();
         string sets = string.Join(", ", Updated.Select((f, i) => $"{_di.Quote(f.Column.DbName)} = {Parameter(f, i + 1)}")
             .Concat(StampedOnChange.Select(f => $"{_di.Quote(f.Column.DbName)} = {_di.CurrentTimestamp}")));
-        Update = $"UPDATE {Table} SET {sets} WHERE {key} = {_di.Placeholder(Updated.Count + 1)}{returning}";
+        Update = $"UPDATE {Table} SET {sets} WHERE {key} = {_di.Placeholder(Updated.Count + 1)}{LiveAnd()}{returning}";
         Delete = $"DELETE FROM {Table} WHERE {key} = {_di.Placeholder(1)}";
 
         BuildSearch(project);
@@ -108,6 +109,24 @@ public sealed class RustTable
     }
 
     public static RustTable Of(TableModel model, ProjectSettings project) => new(model, project);
+
+    private void BuildSoftDelete(TableModel model, ProjectSettings project, Dictionary<ColumnModel, RustField> fieldOf, string key)
+    {
+        if (SoftDeletePlan.For(model, project) is not { } soft || !fieldOf.TryGetValue(soft.Flag, out var flag))
+            return;
+        SoftFlag = flag;
+        SoftOn = soft.DeletedOn is not null && fieldOf.TryGetValue(soft.DeletedOn, out var on) ? on : null;
+        SoftBy = soft.DeletedBy is not null && fieldOf.TryGetValue(soft.DeletedBy, out var by) ? by : null;
+        string flagName = _di.Quote(flag.Column.DbName);
+        string setOn = SoftOn is null ? "" : $", {_di.Quote(SoftOn.Column.DbName)} = {_di.CurrentTimestamp}";
+        string setBy = SoftBy is null ? "" : $", {_di.Quote(SoftBy.Column.DbName)} = {_di.Placeholder(1)}";
+        string clear = (SoftOn is null ? "" : $", {_di.Quote(SoftOn.Column.DbName)} = NULL") + (SoftBy is null ? "" : $", {_di.Quote(SoftBy.Column.DbName)} = NULL");
+        SoftDeleteSql = $"UPDATE {Table} SET {flagName} = {_di.BooleanLiteral(true)}{setOn}{setBy} WHERE {key} = {_di.Placeholder(SoftBy is null ? 1 : 2)} AND {flagName} = {_di.BooleanLiteral(false)}";
+        SoftRestoreSql = $"UPDATE {Table} SET {flagName} = {_di.BooleanLiteral(false)}{clear} WHERE {key} = {_di.Placeholder(1)} AND {flagName} = {_di.BooleanLiteral(true)}";
+        string order = SoftOn is null ? $"{key} DESC" : $"{_di.Quote(SoftOn.Column.DbName)} DESC, {key} DESC";
+        SoftDeletedSql = $"SELECT {SelectList} FROM {Table} WHERE {flagName} = {_di.BooleanLiteral(true)} ORDER BY {order} LIMIT 500";
+        SoftExistsSql = $"SELECT COUNT(*) FROM {Table} WHERE {key} = {_di.Placeholder(1)}";
+    }
 
     /// <summary> The field of the column. </summary>
     public RustField FieldOf(ColumnModel column) => Fields.First(f => f.Column.Name.EqualsIgnoreCase(column.Name));
@@ -184,6 +203,31 @@ public sealed class RustTable
     public bool IsStamped(RustField field) => StampedOnNew.Contains(field) || StampedOnChange.Contains(field);
 
     public string SelectAll { get; private set; } = "";
+
+    /// <summary> The flag column of a table in <c>SoftDeleteTables</c> (the plan's own columns, as fields); null for any other table. </summary>
+    public RustField? SoftFlag { get; private set; }
+
+    /// <summary> The optional stamp columns of a soft-delete table: when and by whom. </summary>
+    public RustField? SoftOn { get; private set; }
+
+    public RustField? SoftBy { get; private set; }
+
+    /// <summary> The statements of a soft-delete table: flag a row (<c>UPDATE ... WHERE key AND not flagged</c>; a second bind is the caller's name when there is a <see cref="SoftBy"/>), bring one back, list the flagged rows and
+    /// count the rows with a key whatever their flag. </summary>
+    public string SoftDeleteSql { get; private set; } = "";
+
+    public string SoftRestoreSql { get; private set; } = "";
+
+    public string SoftDeletedSql { get; private set; } = "";
+
+    public string SoftExistsSql { get; private set; } = "";
+
+    /// <summary> <c> AND flag = false</c> (with the alias in front of the column when one is given), or nothing for a table without soft delete. </summary>
+    public string LiveAnd(string? alias = null) => SoftFlag is null ? "" : " AND " + LiveTest(alias);
+
+    public string LiveWhere(string? alias = null) => SoftFlag is null ? "" : " WHERE " + LiveTest(alias);
+
+    private string LiveTest(string? alias) => (alias is null ? "" : alias + ".") + _di.Quote(SoftFlag!.Column.DbName) + " = " + _di.BooleanLiteral(false);
     public string SelectOne { get; private set; } = "";
     public string Insert { get; private set; } = "";
     public string Update { get; private set; } = "";
@@ -332,8 +376,8 @@ public sealed class RustTable
         var plan = SearchPlan.For(Model, [], log);
         LogStamp = log is not null && _fieldOf.TryGetValue(log.Timestamp, out var stamp) ? stamp : null;
         string from = $"{Table} AS t";
-        SearchItems = $"SELECT {SelectList} FROM {from} WHERE 1 = 1";
-        SearchCount = $"SELECT COUNT(*) FROM {from} WHERE 1 = 1";
+        SearchItems = $"SELECT {SelectList} FROM {from} WHERE 1 = 1{LiveAnd("t")}";
+        SearchCount = $"SELECT COUNT(*) FROM {from} WHERE 1 = 1{LiveAnd("t")}";
 
         string TextOf(ColumnModel c) => "t." + _di.Quote(c.DbName) + (_di.Dialect == SqlDialect.PostgreSql && c.DbCastType is not null ? "::text" : "");
 
@@ -374,8 +418,8 @@ public sealed class RustTable
             name = $"COALESCE({name}, '')";
         string flag = ActiveField is null ? "NULL" : _di.Quote(ActiveField.Column.DbName);
         string select = $"SELECT {_di.Quote(Key.Column.DbName)} AS id, {name} AS name, {flag} AS is_active FROM {Table}";
-        LookupSql = $"{select} ORDER BY {name}";
-        LookupBase = $"{select} WHERE 1 = 1";
+        LookupSql = $"{select}{LiveWhere()} ORDER BY {name}";
+        LookupBase = $"{select} WHERE 1 = 1{LiveAnd()}";
         LookupOrder = name;
         LookupKey = _di.Quote(Key.Column.DbName);
         (LookupBefore, LookupAfter) = _di.ContainsParts(name);

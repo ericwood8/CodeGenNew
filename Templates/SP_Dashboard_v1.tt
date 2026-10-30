@@ -19,6 +19,8 @@
 
     sb.Append("@@@FILE DashboardQueries.sql@@@\n");
     Line(Rem + " Dashboard queries for " + Database.DatabaseName + " (" + DialectInfo.For(Database.Dialect).Name + "). Each statement is fixed text and returns Label and Value, or Label and Detail for a recent list.");
+    if (TenantPlan.IsEnabled(Project))
+        Line(Rem + " The statements read every tenant's rows, as a database administrator sees them. The dashboard of the app reads the rows of the signed-in tenant only.");
     foreach (var w in plan.Widgets)
     {
         Line();

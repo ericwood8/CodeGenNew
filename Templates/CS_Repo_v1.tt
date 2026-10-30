@@ -263,6 +263,56 @@
             }
         }
 
+        // SoftDeleteTables and EffectiveDatedTables (AccessMode=Ef): the delete flags the row, and the screens list the deleted rows, bring one back and list the rows in effect on a day
+        if (ef && SoftDeletePlan.For(Model, Project) is { } soft)
+        {
+            string flag = soft.Flag.CSharpName(), key = soft.Key.CSharpName();
+            string setOn = soft.DeletedOn is null ? "" : $"\n                .SetProperty(x => x.{soft.DeletedOn.CSharpName()}, now)";
+            string clear = (soft.DeletedOn is null ? "" : $"\n                .SetProperty(x => x.{soft.DeletedOn.CSharpName()}, ({soft.DeletedOn.CSharpBase()}?)null)")
+                + (soft.DeletedBy is null ? "" : $"\n                .SetProperty(x => x.{soft.DeletedBy.CSharpName()}, (string?)null)");
+            string order = soft.DeletedOn is null ? $".OrderByDescending(x => x.{key})" : $".OrderByDescending(x => x.{soft.DeletedOn.CSharpName()}).ThenByDescending(x => x.{key})";
+            // IgnoreQueryFilters drops the tenant filter with the soft-delete one, so a tenant-owned table asks for its tenant again
+            var tenant = TenantPlan.OwnedBy(Model, Project);
+            string tenantWhere = tenant is null ? "" : $".Where(x => x.{tenant.Column.CSharpName()} == _context.CurrentTenantId)";
+            string tenantAnd = tenant is null ? "" : $" && x.{tenant.Column.CSharpName()} == _context.CurrentTenantId";
+            methods.Add(new[]
+            {
+                "    /// <summary> SoftDeleteTables: the row is flagged (and stamped) instead of removed. 0 = deleted, -1 = no such row (a flagged row is hidden by the context's filter).</summary>",
+                $"    public override async Task<int> DeleteAsync(string deleteFromTable, {keyCSharp} deleteId)",
+                "    {",
+                soft.DeletedOn is null ? "" : "        var now = DateTime.Now;",
+                $"        int changed = await _context.Set<{entity}>().Where(x => x.{key} == deleteId)",
+                $"            .ExecuteUpdateAsync(s => s\n                .SetProperty(x => x.{flag}, true){setOn});",
+                "        return changed == 0 ? -1 : 0;",
+                "    }"
+            }.Where(l => l.Length > 0).ToArray());
+            methods.Add(new[]
+            {
+                "    /// <summary> The rows that were soft deleted, the last deleted first. </summary>",
+                $"    public async Task<List<{entity}>> GetDeletedAsync() =>",
+                $"        await _context.Set<{entity}>().IgnoreQueryFilters().AsNoTracking().Where(x => x.{flag}){tenantWhere}{order}.Take(500).ToListAsync();"
+            });
+            methods.Add(new[]
+            {
+                "    /// <summary> Brings a deleted row back; false when there is no such deleted row. </summary>",
+                $"    public async Task<bool> RestoreAsync({keyCSharp} id) =>",
+                $"        await _context.Set<{entity}>().IgnoreQueryFilters().Where(x => x.{key} == id && x.{flag}{tenantAnd})",
+                $"            .ExecuteUpdateAsync(s => s\n                .SetProperty(x => x.{flag}, false){clear}) > 0;"
+            });
+        }
+        if (ef && EffectiveDatePlan.For(Model, Project) is { } effective)
+        {
+            string from = effective.From.CSharpName(), to = effective.To.CSharpName(), key = effective.Key.CSharpName();
+            string dateType = effective.From.CSharpBase();
+            string test = effective.To.IsNullable ? $"x.{from} <= day && (x.{to} == null || x.{to} >= day)" : $"x.{from} <= day && x.{to} >= day";
+            methods.Add(new[]
+            {
+                "    /// <summary> The rows in effect on a day, the newest period first. </summary>",
+                $"    public async Task<List<{entity}>> GetCurrentAsync({dateType} day) =>",
+                $"        await _dbSet.AsNoTracking().Where(x => {test}).OrderByDescending(x => x.{from}).ThenBy(x => x.{key}).Take(500).ToListAsync();"
+            });
+        }
+
         L($"namespace {repositoryNamespace};");
         L();
         if (usings.Length > 0)

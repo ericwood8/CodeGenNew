@@ -114,6 +114,25 @@ public static class RowShapeTests
             }
         }
 
+        if (tree is not null && soft is not null)
+        {
+            string treeParent = JsonNames.Camel(tree.Parent.Name);
+            L();
+            L("    [TestMethod]");
+            L("    public async Task A_row_under_a_deleted_parent_is_not_listed_in_the_tree_as_a_root()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L("        var top = await MakeAsync();");
+            L($"        var child = await MakeAsync(b => b[\"{treeParent}\"] = top[\"{id}\"]!.GetValue<long>());");
+            L($"        long topKey = top[\"{id}\"]!.GetValue<long>(), childKey = child[\"{id}\"]!.GetValue<long>();");
+            L("        using (await ApiFixture.Client.DeleteAsync($\"{Route}/{childKey}\")) { }");
+            L("        using (await ApiFixture.Client.DeleteAsync($\"{Route}/{topKey}\")) { }");
+            L("        using var restored = await ApiFixture.Client.PostAsync($\"{Route}/{childKey}/restore\", null);");
+            L("        Assert.AreEqual(HttpStatusCode.OK, restored.StatusCode, await restored.Content.ReadAsStringAsync());");
+            L("        var nodes = (await ApiFixture.Client.GetFromJsonAsync<JsonArray>($\"{Route}/tree\"))!;");
+            L("        Assert.IsFalse(nodes.Any(n => n![\"id\"]!.GetValue<long>() == childKey), \"the child of a deleted row is not shown as a root\");");
+            L("    }");
+        }
         if (soft is not null)
         {
             L();

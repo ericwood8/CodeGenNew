@@ -20,4 +20,6 @@ With `TenantTable` the context filters every tenant-owned table by `DesktopTenan
 
 With `ReadRoles`, `TableReadRoles`, `WriteRoles` or `TableWriteRoles` the screens follow the role of the signed-in person (`DesktopSession.User`, set when someone signs in or switches tenant, so a membership role counts). The menu lists only the screens the role may read (the junction pages by the read roles of the junction table), and Add New, Edit, Clone and Delete, the single-row Save and a junction page's Edit links show only to the roles that may write the table, the same rule the Uno screens use. A role that may read nothing sees an empty window. The roles only change what the screens show: the app reads the database with its own login, so the API is where they are enforced.
 
-Limits: the person is not kept between runs (no token on disk); the approvals page and the dashboard are not limited by the roles; the password of a person is set with the API's `set-password` command, not in this app.
+The dashboard page and the strips of the tables leave out the widgets of tables the role may not read (`DashboardRoles`), as the API leaves them out of the dashboard it sends. The approvals page is open to every signed-in person, as the menu of the other stacks is; what a person may decide there is the approver rule of `RowApprovals`, and the page lists only the signed-in tenant's requests.
+
+Limits: the person is not kept between runs (no token on disk); the password of a person is set with the API's `set-password` command, not in this app.

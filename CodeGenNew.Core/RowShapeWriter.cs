@@ -214,7 +214,7 @@ public sealed record TreeNode(long Id, long? ParentId, int Depth, bool HasChildr
         return Results.Ok(new { moved });
     }
 
-    /// <summary> Every row depth first (children after their parent, by name), with its level; a row whose parent is not there is a root. </summary>
+    /// <summary> Every row depth first (children after their parent, by name), with its level. Only a row with no parent is a root: a row whose parent is hidden (soft deleted) is left out with the rest of that branch. </summary>
     public static async Task<IResult> TreeAsync(§CTX context)
     {
         var rows = await context.Set<§T>().AsNoTracking().Select(x => new { Id = x.§K, Parent = x.§P§TEXTSELECT }).ToListAsync();
@@ -231,7 +231,7 @@ public sealed record TreeNode(long Id, long? ParentId, int Depth, bool HasChildr
             foreach (var r in children)
                 Walk(r.Id, id, depth + 1, §TEXTVALUE);
         }
-        foreach (var r in rows.Where(r => r.Parent is not { } p || !known.Contains(p)).OrderBy(r => §TEXTVALUE, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Id))
+        foreach (var r in rows.Where(r => r.Parent is null).OrderBy(r => §TEXTVALUE, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Id))
             Walk(r.Id, null, 1, §TEXTVALUE);
         return Results.Ok(result);
     }

@@ -148,11 +148,21 @@
                 Line("    private List<" + person + "> AddedPeople() =>");
                 Line("        CurrentTenantId is null ? [] : ChangeTracker.Entries<" + person + ">().Where(e => e.State == EntityState.Added).Select(e => e.Entity).ToList();");
                 Line();
-                Line("    // A person removed inside a tenant leaves it: the tenant's membership row goes in the same save (a person who belongs to another tenant too is refused by the foreign key).");
-                Line("    private IQueryable<" + member + "> LeavingMembers()");
+                Line("    // A person removed inside a tenant leaves it: the tenant's membership row goes in the same save. A person who belongs to another tenant too stays a row of the user table.");
+                Line("    private List<int> LeavingPeople() =>");
+                Line("        CurrentTenantId is null ? [] : ChangeTracker.Entries<" + person + ">().Where(e => e.State == EntityState.Deleted).Select(e => e.Entity." + people.Key.CSharpName() + ").ToList();");
+                Line();
+                Line("    private IQueryable<" + member + "> LeavingMembers(List<int> leaving) =>");
+                Line("        Set<" + member + ">().IgnoreQueryFilters().Where(m => leaving.Contains(m." + people.Membership.User.CSharpName() + ") && m." + people.Membership.Tenant.CSharpName() + " == CurrentTenantId);");
+                Line();
+                Line("    private IQueryable<" + member + "> OtherMemberships(List<int> leaving) =>");
+                Line("        Set<" + member + ">().IgnoreQueryFilters().Where(m => leaving.Contains(m." + people.Membership.User.CSharpName() + ") && m." + people.Membership.Tenant.CSharpName() + " != CurrentTenantId);");
+                Line();
+                Line("    private void KeepSharedPeople(List<" + member + "> others)");
                 Line("    {");
-                Line("        var leaving = CurrentTenantId is null ? [] : ChangeTracker.Entries<" + person + ">().Where(e => e.State == EntityState.Deleted).Select(e => e.Entity." + people.Key.CSharpName() + ").ToList();");
-                Line("        return Set<" + member + ">().IgnoreQueryFilters().Where(m => leaving.Contains(m." + people.Membership.User.CSharpName() + ") && m." + people.Membership.Tenant.CSharpName() + " == CurrentTenantId);");
+                Line("        foreach (var entry in ChangeTracker.Entries<" + person + ">().Where(e => e.State == EntityState.Deleted).ToList())");
+                Line("            if (others.Any(m => m." + people.Membership.User.CSharpName() + " == entry.Entity." + people.Key.CSharpName() + "))");
+                Line("                entry.State = EntityState.Unchanged;");
                 Line("    }");
                 Line();
                 Line("    private bool AttachPeople(List<" + person + "> people)");
@@ -203,7 +213,11 @@
                 Line("        StampTenant();");
             if (people is not null)
             {
-                Line("        RemoveRange(LeavingMembers().ToList());");
+                Line("        var leaving = LeavingPeople();");
+                Line("        var leavers = leaving.Count > 0 ? LeavingMembers(leaving).ToList() : [];");
+                Line("        if (leaving.Count > 0)");
+                Line("            KeepSharedPeople(OtherMemberships(leaving).ToList());");
+                Line("        RemoveRange(leavers);");
                 Line("        var people = AddedPeople();");
             }
             if (creators)
@@ -223,7 +237,11 @@
                 Line("        StampTenant();");
             if (people is not null)
             {
-                Line("        RemoveRange(await LeavingMembers().ToListAsync(cancellationToken));");
+                Line("        var leaving = LeavingPeople();");
+                Line("        var leavers = leaving.Count > 0 ? await LeavingMembers(leaving).ToListAsync(cancellationToken) : [];");
+                Line("        if (leaving.Count > 0)");
+                Line("            KeepSharedPeople(await OtherMemberships(leaving).ToListAsync(cancellationToken));");
+                Line("        RemoveRange(leavers);");
                 Line("        var people = AddedPeople();");
             }
             if (creators)

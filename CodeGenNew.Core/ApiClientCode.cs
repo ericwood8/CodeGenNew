@@ -143,7 +143,7 @@ public static class ApiClientCode
             L();
             L($"    public async Task PromoteChildrenAsync({keyType} id) => (await http.PostAsync($\"{{Url}}/{{{id}}}/promote-children\", null)).EnsureSuccessStatusCode();");
         }
-        if (!nameActive && SoftDeletePlan.For(table, project) is not null)
+        if (SoftDeletePlan.For(table, project) is not null)
         {
             L();
             L("    // Soft delete (SoftDeleteTables): the deleted rows, and a deleted row brought back (an administrator); the row comes back.");
@@ -151,7 +151,7 @@ public static class ApiClientCode
             L();
             L($"    public async Task<{type}> RestoreAsync({keyType} id) => await (await http.PostAsync($\"{{Url}}/{{{id}}}/restore\", null)).ReadAsync<{type}>();");
         }
-        if (!nameActive && EffectiveDatePlan.For(table, project) is not null)
+        if (EffectiveDatePlan.For(table, project) is not null)
         {
             L();
             L("    // Effective dating (EffectiveDatedTables): the rows in effect on a day (today when left out), by the date text the API reads (2026-10-27).");

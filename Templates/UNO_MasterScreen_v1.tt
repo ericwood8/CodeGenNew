@@ -115,6 +115,12 @@
         var sortableShown = shown.Where(SearchSort.IsSortable).ToList();
         // A Clone button for the tables CloneShape allows (CS_Repo writes CloneAsync for the same ones).
         bool canClone = CloneShape.CanClone(Model, Project);
+        // SoftDeleteTables and EffectiveDatedTables: a "Show deleted" switch (the grid lists the deleted rows, each with Restore) and a "Valid on" day (the grid lists the rows in effect on it)
+        var softPlan = logOnly ? null : SoftDeletePlan.For(Model, Project);
+        var effectivePlan = logOnly ? null : EffectiveDatePlan.For(Model, Project);
+        bool softScreen = softPlan is not null;
+        bool validOnScreen = effectivePlan is not null;
+        bool shapeScreen = softScreen || validOnScreen;
         string actionWidth = logOnly ? (queue is null ? "90" : "170") : canClone ? "250" : "175";
 #>
 @@@FILE <#= viewsFolder #>/<#= stemName #>ListPage.xaml@@@
@@ -153,6 +159,13 @@
 <# } #>
                 <Button Content="Refresh" Click="OnRefreshClick" />
                 <Button Content="Columns" Click="OnColumnsClick" />
+<# if (softScreen) { #>
+                <ToggleButton Content="Show deleted" IsChecked="{x:Bind ViewModel.ShowDeleted, Mode=TwoWay}" Click="OnShapeViewClick" />
+<# } #>
+<# if (validOnScreen) { #>
+                <CheckBox Content="Valid on" IsChecked="{x:Bind ViewModel.ValidOnActive, Mode=TwoWay}" Click="OnShapeViewClick" />
+                <CalendarDatePicker AutomationProperties.Name="Valid on" Date="{x:Bind ViewModel.ValidOnDay, Mode=TwoWay}" DateChanged="OnValidOnChanged" />
+<# } #>
 <# if (queue is not null) { #>
                 <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.QueueSummary, Mode=OneWay}" />
 <# } #>
@@ -250,7 +263,12 @@
                                         </Grid.ColumnDefinitions>
                                         <views:GridCells Grid.Column="0" Cells="{x:Bind VisibleCells}" />
 <# if (!logOnly) { #>
-                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+<# if (softScreen) { #>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Visibility="{x:Bind RestoreVisibility}">
+                                            <Button Content="Restore" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnRestoreClick" />
+                                        </StackPanel>
+<# } #>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4"<#= softScreen ? " Visibility=\"{x:Bind NormalVisibility}\"" : "" #>>
                                             <Button Content="Edit" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind Id}" Click="OnEditClick"<#= gated ? " Visibility=\"{x:Bind WriteVisibility}\"" : "" #> />
 <#
         if (canClone)
@@ -329,6 +347,29 @@ public sealed partial class <#= stemName #>ListPage : Page
         };
     }
 
+<# if (shapeScreen) { #>
+    // "Show deleted" and "Valid on" change what the grid lists: the rows are read again.
+    private async void OnShapeViewClick(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.LoadAsync();
+    }
+
+<# } #>
+<# if (validOnScreen) { #>
+    private async void OnValidOnChanged(CalendarDatePicker sender, CalendarDatePickerDateChangedEventArgs args)
+    {
+        if (ViewModel.ValidOnActive)
+            await ViewModel.LoadAsync();
+    }
+
+<# } #>
+<# if (softScreen) { #>
+    private async void OnRestoreClick(object sender, RoutedEventArgs e)
+    {
+        await ViewModel.RestoreAsync((<#= keyCs #>)((Button)sender).Tag);
+    }
+
+<# } #>
     // The database sorts (SearchAsync); the sort is kept when paging or searching, and a change goes back to page 1.
     private async void OnSortHeaderClick(object sender, RoutedEventArgs e)
     {
@@ -551,6 +592,14 @@ public class <#= stemName #>ListRow
     public Visibility WriteVisibility { get; init; }
 <#
         }
+        if (softScreen)
+        {
+#>
+    /// <summary> Edit, Clone and Delete show for a live row; Restore shows, in their place, while the grid lists the deleted rows. </summary>
+    public Visibility NormalVisibility { get; init; } = Visibility.Visible;
+    public Visibility RestoreVisibility { get; init; } = Visibility.Collapsed;
+<#
+        }
 #>
 }
 
@@ -597,6 +646,26 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
     [ObservableProperty]
     private int _totalPages = 1;
 
+<# if (shapeScreen) { #>
+<# if (softScreen) { #>
+    /// <summary> The grid lists the rows that were soft deleted (SoftDeleteTables) instead of the table's rows; each has Restore. </summary>
+    [ObservableProperty]
+    private bool _showDeleted;
+
+<# } #>
+<# if (validOnScreen) { #>
+    /// <summary> The grid lists the rows in effect on <see cref="ValidOnDay"/> (EffectiveDatedTables). </summary>
+    [ObservableProperty]
+    private bool _validOnActive;
+
+    [ObservableProperty]
+    private DateTimeOffset? _validOnDay = DateTimeOffset.Now;
+
+<# } #>
+    /// <summary> One list of up to 500 rows, not the pages of the search: the deleted rows, or the rows valid on the day. </summary>
+    public bool ShapeView => <#= softScreen && validOnScreen ? "ShowDeleted || ValidOnActive" : softScreen ? "ShowDeleted" : "ValidOnActive" #>;
+
+<# } #>
     public bool CanGoPrevious => PageNumber > 1;
     public bool CanGoNext => PageNumber < TotalPages;
     [NotifyPropertyChangedFor(nameof(PageLabel))]
@@ -843,10 +912,19 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
         }
 #>
         };
+<# if (shapeScreen) { #>
+        var result = ShapeView ? null : <#= pageCall #>;
+        var rows = result?.Items ?? await ShapeRowsAsync();
+        int totalCount = result?.TotalCount ?? rows.Count;
+        if (ShapeView)
+            PageNumber = 1;
+        TotalPages = totalCount == 0 ? 0 : ShapeView ? 1 : (int)Math.Ceiling(totalCount / (double)PageSize);
+<# } else { #>
         var result = <#= pageCall #>;
         var rows = result.Items;
         int totalCount = result.TotalCount;
         TotalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)PageSize);
+<# } #>
         if (rows.Count == 0 && totalCount > 0 && PageNumber > TotalPages)
         {
             // the last row of the last page was deleted: show the last page there is
@@ -881,7 +959,7 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
             Write(DesktopGridCode.CellLines(form, Project, c, chosen.Offered.First(o => o.Column == c).Cut));
 #>
             ];
-            Rows.Add(new <#= stemName #>ListRow { Id = e.<#= keyProp #>, Cells = cells, VisibleCells = VisibleCells(cells)<#= gated ? ", WriteVisibility = WriteVisibility" : "" #><#= queue is null ? "" : $", RetryVisibility = e.{queue.Status.CSharpName()} == \"{QueueStatus.Failed}\" ? Visibility.Visible : Visibility.Collapsed" #> });
+            Rows.Add(new <#= stemName #>ListRow { Id = e.<#= keyProp #>, Cells = cells, VisibleCells = VisibleCells(cells)<#= softScreen ? ", NormalVisibility = ShowDeleted ? Visibility.Collapsed : Visibility.Visible, RestoreVisibility = ShowDeleted && " + (gated ? "_api.Session.HasRole([\"" + Project.AuthAdminRole + "\"])" : "true") + " ? Visibility.Visible : Visibility.Collapsed" : "" #><#= gated ? ", WriteVisibility = WriteVisibility" : "" #><#= queue is null ? "" : $", RetryVisibility = e.{queue.Status.CSharpName()} == \"{QueueStatus.Failed}\" ? Visibility.Visible : Visibility.Collapsed" #> });
         }
 <# if (queue is not null) { #>
         await LoadStatsAsync();
@@ -949,6 +1027,34 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
         }
     }
 
+<# if (shapeScreen) { #>
+    private async Task<List<<#= type #>>> ShapeRowsAsync() =>
+        <#= softScreen && validOnScreen ? "ShowDeleted ? await Client.GetDeletedAsync() : await Client.GetCurrentAsync((ValidOnDay ?? DateTimeOffset.Now).ToString(\"yyyy-MM-dd\"))" : softScreen ? "await Client.GetDeletedAsync()" : "await Client.GetCurrentAsync((ValidOnDay ?? DateTimeOffset.Now).ToString(\"yyyy-MM-dd\"))" #>;
+
+<# } #>
+<# if (softScreen) { #>
+    /// <summary> Brings a deleted row back and reads the list again. </summary>
+    public async Task RestoreAsync(<#= keyCs #> id)
+    {
+        ErrorMessage = null;
+        try
+        {
+            await Client.RestoreAsync(id);
+        }
+        catch (ApiException ex)
+        {
+            ErrorMessage = ex.Explain("restoring");
+            return;
+        }
+        catch (HttpRequestException)
+        {
+            ErrorMessage = "The server could not be reached.";
+            return;
+        }
+        await LoadAsync();
+    }
+
+<# } #>
     public async Task DeleteAsync(<#= keyCs #> id)
     {
         ErrorMessage = null;

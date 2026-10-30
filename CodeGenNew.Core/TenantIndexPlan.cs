@@ -2,8 +2,9 @@ using System.Text;
 
 namespace CodeGenNew.Core;
 
-/// <summary> A unique index of a tenant-owned table that does not name the tenant column, so two tenants cannot hold the same value: <c>UNIQUE (Name)</c> refuses the second tenant's equal name. </summary>
-public sealed record TenantIndexFix(TableModel Table, IndexModel Index, string NewName, IReadOnlyList<string> NewColumns);
+/// <summary> A unique index of a tenant-owned table that does not name the tenant column, so two tenants cannot hold the same value: <c>UNIQUE (Name)</c> refuses the second tenant's equal name. A filtered
+/// (SQL Server) or partial (PostgreSQL) index keeps its included columns and its row condition. </summary>
+public sealed record TenantIndexFix(TableModel Table, IndexModel Index, string NewName, IReadOnlyList<string> NewColumns, IReadOnlyList<string>? Included = null, string? Filter = null);
 
 /// <summary> The script that makes such an index per tenant, <c>(TenantId, Name)</c> (SP_TenantIndex). Nothing is applied: the script is reviewed and run by the person who owns the database. </summary>
 public static class TenantIndexPlan
@@ -20,12 +21,20 @@ public static class TenantIndexPlan
         {
             string tenant = owned.Column.DbName;
             var key = owned.Table.PrimaryKeyColumns.Select(c => c.DbName).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            foreach (var index in owned.Table.Indexes.Where(i => i.IsUnique).OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase))
+            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var indexes = owned.Table.Indexes.Select(i => (Index: i, Partial: (PartialIndexModel?)null))
+                .Concat(owned.Table.PartialIndexes.Select(p => (Index: new IndexModel(p.Name, p.IsUnique, p.Columns), Partial: (PartialIndexModel?)p)));
+            foreach (var (index, partial) in indexes.Where(i => i.Index.IsUnique).OrderBy(i => i.Index.Name, StringComparer.OrdinalIgnoreCase))
             {
-                if (index.Columns.Any(c => c.EqualsIgnoreCase(tenant)) || (key.Count > 0 && key.SetEquals(index.Columns)))
+                if (index.Columns.Any(c => c.EqualsIgnoreCase(tenant)) || (partial is null && key.Count > 0 && key.SetEquals(index.Columns)))
                     continue;
                 string name = $"UX_{owned.Table.DbTableName}_{tenant}_{string.Join("_", index.Columns)}";
-                fixes.Add(new TenantIndexFix(owned.Table, index, name.Length > MaxNameLength ? name[..MaxNameLength] : name, [tenant, .. index.Columns]));
+                if (name.Length > MaxNameLength)
+                    name = name[..MaxNameLength];
+                string unique = name;
+                for (int n = 2; !used.Add(unique); n++)
+                    unique = name + "_" + n;
+                fixes.Add(new TenantIndexFix(owned.Table, index, unique, [tenant, .. index.Columns], partial?.IncludedColumns, partial is { Filter: { Length: > 0 } filter } ? filter : null));
             }
         }
         return fixes;
@@ -44,7 +53,8 @@ public static class TenantIndexPlan
         foreach (var fix in fixes)
         {
             string table = di.QuoteTable(fix.Table.SchemaName, fix.Table.DbTableName);
-            string created = $"CREATE UNIQUE INDEX {di.Quote(fix.NewName)} ON {table} ({string.Join(", ", fix.NewColumns.Select(di.Quote))});";
+            string included = fix.Included is { Count: > 0 } ? $" INCLUDE ({string.Join(", ", fix.Included.Select(di.Quote))})" : "";
+            string created = $"CREATE UNIQUE INDEX {di.Quote(fix.NewName)} ON {table} ({string.Join(", ", fix.NewColumns.Select(di.Quote))}){included}{(fix.Filter is null ? "" : " WHERE " + fix.Filter)};";
             o.Append($"\n-- {fix.Table.TableName}: {fix.Index.Name} on ({string.Join(", ", fix.Index.Columns)}) becomes ({string.Join(", ", fix.NewColumns)})\n");
             o.Append(Drop(database.Dialect, di, fix, table));
             o.Append(created).Append('\n');

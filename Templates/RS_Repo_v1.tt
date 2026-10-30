@@ -84,7 +84,16 @@
     Line($"const SELECT_ONE: &str = {RustTable.Raw(t.SelectOne)};");
     Line($"const INSERT: &str = {RustTable.Raw(t.Insert)};");
     Line($"const UPDATE: &str = {RustTable.Raw(t.Update)};");
+    if (t.SoftFlag is not null)
+        Line("#[allow(dead_code)] // the delete route flags the row (soft_delete) instead");
     Line($"const DELETE: &str = {RustTable.Raw(t.Delete)};");
+    if (t.SoftFlag is not null)
+    {
+        Line($"const SOFT_DELETE: &str = {RustTable.Raw(t.SoftDeleteSql)};");
+        Line($"const SOFT_RESTORE: &str = {RustTable.Raw(t.SoftRestoreSql)};");
+        Line($"const SOFT_DELETED: &str = {RustTable.Raw(t.SoftDeletedSql)};");
+        Line($"const SOFT_EXISTS: &str = {RustTable.Raw(t.SoftExistsSql)};");
+    }
     if (t.Clone is { } clone)
     {
         Line($"const CLONE: &str = {RustTable.Raw(clone.Sql)};");
@@ -95,7 +104,7 @@
     if (lookup)
         Line($"const LOOKUP_BASE: &str = {RustTable.Raw(t.LookupBase)};");
     if (filtered)
-        Line($"const SCOPED_BASE: &str = {RustTable.Raw($"SELECT {t.SelectList} FROM {t.Table} AS t WHERE 1 = 1")};");
+        Line($"const SCOPED_BASE: &str = {RustTable.Raw($"SELECT {t.SelectList} FROM {t.Table} AS t WHERE 1 = 1{t.LiveAnd("t")}")};");
     if (userPlan is not null)
     {
         string loginColumn = qd.Quote(userPlan.UserName.DbName);
@@ -158,9 +167,34 @@
         Line($"    sqlx::query_as::<_, {t.Struct}>(UPDATE){Binds(t.Updated)}.bind(id).fetch_optional(pool).await");
     Line("}");
     Line();
+    if (t.SoftFlag is not null)
+        Line("#[allow(dead_code)] // the delete route flags the row (soft_delete) instead");
     Line($"pub async fn delete(pool: &Pool, id: {keyArg}) -> Result<u64, sqlx::Error> {{");
     Line("    Ok(sqlx::query(DELETE).bind(id).execute(pool).await?.rows_affected())");
     Line("}");
+    if (t.SoftFlag is not null)
+    {
+        Line();
+        Line("/// Flags a row as deleted (and stamps who and when); 0 when there is no such row or it is flagged already.");
+        Line(t.SoftBy is null ? $"pub async fn soft_delete(pool: &Pool, id: {keyArg}) -> Result<u64, sqlx::Error> {{" : $"pub async fn soft_delete(pool: &Pool, id: {keyArg}, by: Option<&str>) -> Result<u64, sqlx::Error> {{");
+        Line(t.SoftBy is null ? "    Ok(sqlx::query(SOFT_DELETE).bind(id).execute(pool).await?.rows_affected())" : "    Ok(sqlx::query(SOFT_DELETE).bind(by).bind(id).execute(pool).await?.rows_affected())");
+        Line("}");
+        Line();
+        Line("/// The flagged rows, the last deleted first.");
+        Line($"pub async fn deleted(pool: &Pool) -> Result<Vec<{t.Struct}>, sqlx::Error> {{");
+        Line($"    sqlx::query_as::<_, {t.Struct}>(SOFT_DELETED).fetch_all(pool).await");
+        Line("}");
+        Line();
+        Line("/// Brings a flagged row back; 0 when there is no such row or it is not flagged.");
+        Line($"pub async fn restore(pool: &Pool, id: {keyArg}) -> Result<u64, sqlx::Error> {{");
+        Line("    Ok(sqlx::query(SOFT_RESTORE).bind(id).execute(pool).await?.rows_affected())");
+        Line("}");
+        Line();
+        Line("/// Whether a row with the key exists, flagged or not.");
+        Line($"pub async fn exists_any(pool: &Pool, id: {keyArg}) -> Result<bool, sqlx::Error> {{");
+        Line("    Ok(sqlx::query_scalar::<_, i64>(SOFT_EXISTS).bind(id).fetch_one(pool).await? > 0)");
+        Line("}");
+    }
     if (scoped)
     {
         Line();

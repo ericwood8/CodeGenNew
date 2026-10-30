@@ -182,8 +182,10 @@
     Line("    let mut widgets = Vec::new();");
     Line("    for d in chosen {");
     if (tenanted)
+    {
         Line("        // the statement is a constant; the tenant is a whole number or NULL, never text from the request");
         Line($"        let sql = d.sql.replace(\"{TenantPlan.DashboardToken}\", &tenant);");
+    }
     string sqlArg = tenanted ? "sqlx::AssertSqlSafe(sql)" : "d.sql";
     Line("        let (points, rows) = if d.is_rows {");
     Line($"            (Vec::new(), sqlx::query_as::<_, DashboardRow>({sqlArg}).fetch_all(pool).await?)");

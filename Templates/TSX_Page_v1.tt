@@ -121,6 +121,11 @@
         var ts = new StringBuilder();
         void T(string s = "") => ts.Append(s).Append('\n');
 
+        // SoftDeleteTables and EffectiveDatedTables: a "Show deleted" dialog with Restore and a "Valid on" dialog (the list itself stays the paged grid)
+        string shapeApi = ReactNames.ApiVar(Model.TableName);   // the REST api module: the OData one has no deleted rows, restore or rows valid on a day
+        bool softScreen = !oneRow && SoftDeletePlan.For(Model, Project) is not null;
+        bool validOnScreen = !oneRow && EffectiveDatePlan.For(Model, Project) is not null;
+
         // ================= imports
         T("import { useEffect, useRef, useState } from 'react';");
         T("import type { FormEvent } from 'react';");
@@ -132,6 +137,8 @@
         T($"import {{ ApiError }} from '../{apiFolder}/client';");
         if (approvalSegment is not null) T("import { ApprovalPanel } from './ApprovalPanel';");
         if (!nameActive && !oneRow) T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
+        if (softScreen || validOnScreen) T($"import {{ RowShapeDialog }} from '../{componentsFolder}/RowShapeDialog';");
+        if (odata && (softScreen || validOnScreen)) T($"import {{ {shapeApi} }} from '../{apiFolder}/{ReactNames.ApiFile(Model.TableName)}';");   // the OData page reads the deleted rows and the rows valid on a day from the REST api
         if (shown.Any(form.IsMoneyInput))
             T($"import {{ CurrencyInput }} from '../{componentsFolder}/CurrencyInput';");
         if (nameActive)
@@ -226,6 +233,7 @@
                 T($"  const [{ReactNames.ParentList(p)}, {ReactNames.SetList(ReactNames.ParentList(p))}] = useState<{p.ItemType}[]>([]);");
         }
         T($"  const [selectedRow, setSelectedRow] = useState<{baseName} | null>(null);");
+        if (softScreen || validOnScreen) T("  const [shapeView, setShapeView] = useState<'deleted' | 'validOn' | null>(null); // the dialog of the deleted rows, or of the rows valid on a day");
         T("  const storedValues = useRef<StoredValues | null>(null); // what the form showed when the row opened: a field still showing that is not checked again; {} on a new row, where every field is");
         if (form.Guards.Count > 0) T("  const [guards, setGuards] = useState<Record<string, boolean>>({}); // which guarded columns the signed-in person may change (GET guards)");
         // a typed key is set on a new row too, so the key can no longer say whether the row is new: `adding` does
@@ -586,6 +594,8 @@
         T("    <div className=\"rail\">");
         T($"      <h1>{SingleRowPlan.Heading(title, oneRow)}</h1>");
         if (!oneRow) T("      " + Gate("<button type=\"button\" onClick={add}>Add New</button>"));
+        if (softScreen) T("      <button type=\"button\" onClick={() => setShapeView('deleted')}>Show deleted</button>");
+        if (validOnScreen) T("      <button type=\"button\" onClick={() => setShapeView('validOn')}>Valid on...</button>");
         if (nameActive)
         {
             T();
@@ -746,6 +756,26 @@
         }
         T();
         // The add/edit form is a modal <dialog> (native, no library): it opens over the page, wherever the grid is scrolled to, and Escape cancels it.
+        if (softScreen || validOnScreen)
+        {
+            string shapeColumns = "[" + string.Join(", ", columnList.Select(c =>
+            {
+                string key = JsonNames.Camel(c.Column.Name);
+                string show = form.CellOf(c.Column) == CellKind.Date ? ", show: (value: unknown) => String(value ?? '').substring(0, 10)" : form.CellOf(c.Column) == CellKind.Lookup ? $", show: (value: unknown) => {form.ParentOf(c.Column)!.NameMethod}(value as {form.ParentOf(c.Column)!.KeyTs})" : "";
+                return $"{{ key: '{key}', label: '{c.Caption.Replace("'", "\\'")}'{show} }}";
+            })) + "]";
+            T($"      {{shapeView === null ? null : <RowShapeDialog");
+            T($"        title={{shapeView === 'deleted' ? 'Deleted {title}' : '{title} valid on a day'}}");
+            T($"        columns={{{shapeColumns}}}");
+            T($"        idKey=\"{keyProp}\"");
+            T($"        load={{({(validOnScreen ? "day" : "")}) => {(softScreen && validOnScreen ? $"shapeView === 'deleted' ? {shapeApi}.getDeleted() : {shapeApi}.getCurrent(day)" : softScreen ? $"{shapeApi}.getDeleted()" : $"{shapeApi}.getCurrent(day)")}}}");
+            if (softScreen) T($"        restore={{shapeView === 'deleted' ? (row) => {shapeApi}.restore(row.{keyProp}!) : undefined}}");
+            if (validOnScreen) T("        validOn={shapeView === 'validOn'}");
+            T("        onClose={() => setShapeView(null)}");
+            T("        onChanged={() => load(page)}");
+            T("      />}");
+            T();
+        }
         T("      {selectedRow && (");
         if (oneRow)
             T("        <section>");
@@ -993,11 +1023,17 @@
         var ticked = chooseColumns ? columnList.FirstOrDefault(c => !c.Initial && Own(c)) : null;
         var sortedColumn = chooseColumns && initialCountOk ? columnList.FirstOrDefault(c => c.Initial && c.Sortable && Own(c)) : null;
         bool columnTests = cleared is not null || ticked is not null || sortedColumn is not null;
+        if (validOnScreen)
+            S(textKey ? "import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';" : "import { fireEvent, render, screen, waitFor } from '@testing-library/react';");
+        else if (softScreen)
+            S(textKey ? "import { fireEvent, render, screen, within } from '@testing-library/react';" : "import { fireEvent, render, screen } from '@testing-library/react';");
+        else
         S(textKey || odata || nameActive || form.Guards.Count > 0 || columnTests || (!nameActive && GridTestRow.For(form, chosen) is not null) ? (textKey ? "import { fireEvent, render, screen, within } from '@testing-library/react';" : "import { fireEvent, render, screen } from '@testing-library/react';") : "import { render, screen } from '@testing-library/react';");
         S("import { MemoryRouter } from 'react-router-dom';");
         S("import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';");
         S($"import {{ {pageName} }} from '../{pageName}';");
         S($"import {{ {apiVar} }} from '../../{apiFolder}/{apiFile}';");
+        if (odata && (softScreen || validOnScreen)) S($"import {{ {shapeApi} }} from '../../{apiFolder}/{ReactNames.ApiFile(Model.TableName)}';");
         if (gated) S($"import {{ setSession }} from '../../{apiFolder}/auth';");
         foreach (var p in parents.Where(p => !p.IsSelf))
             S($"import {{ {ReactNames.ApiVar(p.Table)} }} from '../../{apiFolder}/{ReactNames.ApiFile(p.Table)}';");
@@ -1018,6 +1054,30 @@
         S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
         S($"    expect(await screen.findByText('{title.Pluralize()}')).toBeInTheDocument();");
         S("  });");
+        if (softScreen)
+        {
+            S();
+            S("  it('opens the deleted rows and says when there are none', async () => {");
+            S("    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };");
+            S($"    vi.spyOn({shapeApi}, 'getDeleted').mockResolvedValue([]);");
+            S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
+            S("    fireEvent.click(await screen.findByText('Show deleted'));");
+            S("    expect(await screen.findByText('Nothing is deleted.')).toBeInTheDocument();");
+            S("  });");
+        }
+        if (validOnScreen)
+        {
+            S();
+            S("  it('asks for the rows in effect on the day the person picks', async () => {");
+            S("    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };");
+            S($"    const current = vi.spyOn({shapeApi}, 'getCurrent').mockResolvedValue([]);");
+            S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
+            S("    fireEvent.click(await screen.findByText('Valid on...'));");
+            S("    expect(await screen.findByText('Nothing is in effect on that day.')).toBeInTheDocument();");
+            S("    fireEvent.change(screen.getByLabelText('Valid on'), { target: { value: '2025-06-01' } });");
+            S("    await waitFor(() => expect(current).toHaveBeenLastCalledWith('2025-06-01'));");
+            S("  });");
+        }
         var testRow = nameActive ? null : GridTestRow.For(form, chosen);
         if (testRow is not null)
         {
@@ -1093,7 +1153,9 @@
         {
             S();
             S("  it('narrows the list by name and by active', async () => {");
-            S($"    vi.spyOn({apiVar}, 'getAll').mockResolvedValue([{{ {keyProp}: 1, name: 'Alpha', isActive: true }}, {{ {keyProp}: 2, name: 'Alphabet', isActive: false }}, {{ {keyProp}: 3, name: 'Beta', isActive: true }}] as never);");
+            // the other required columns hold their blank values, so a cell that reads a date or an amount has something to show
+            string FilledRow(int key, string name, bool active) => "{ " + string.Join(", ", form.NewRowTypeScript.Where(m => !m.StartsWith(keyProp + ":") && !m.StartsWith("name:") && !m.StartsWith("isActive:")).Prepend($"{keyProp}: {key}, name: '{name}', isActive: {(active ? "true" : "false")}")) + " }";
+            S($"    vi.spyOn({apiVar}, 'getAll').mockResolvedValue([{FilledRow(1, "Alpha", true)}, {FilledRow(2, "Alphabet", false)}, {FilledRow(3, "Beta", true)}] as never);");
             S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
             S("    expect(await screen.findByText('Beta')).toBeInTheDocument();");
             S("    fireEvent.change(screen.getByLabelText('Search by Name'), { target: { value: 'alpha' } });");
