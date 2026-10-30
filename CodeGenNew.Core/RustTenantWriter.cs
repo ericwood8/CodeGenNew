@@ -28,7 +28,10 @@ public static class RustTenantWriter
         string tenants = Table(tenantTable);
         var ownedTables = TenantPlan.OwnedTables(database, project);
         var o = new StringBuilder();
-        o.Append(Fill(Shared, ("§NOTENANT_TYPE", TenantWords.NoTenantType), ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§ONBOARD_TYPE", TenantWords.OnboardingType), ("§INACTIVE_TYPE", TenantWords.InactiveType),
+        var people = TenantPlan.PeopleOf(database, project);
+        string membersOf = people is null ? "\"\"" : Raw($"SELECT {Q(people.Membership.User)} FROM {Table(people.Membership.Table)} WHERE {Q(people.Membership.Tenant)} = ");
+        string ofMembers = people is null ? "let _ = user;\n        Tenancy::Any" : "if user.is_platform() { Tenancy::Any } else { user.tenant_id.map_or(Tenancy::Nothing, Tenancy::Members) }";
+        o.Append(Fill(Shared, ("§MEMBERS_OF_SQL", membersOf), ("§OF_MEMBERS", ofMembers), ("§NOTENANT_TYPE", TenantWords.NoTenantType), ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§ONBOARD_TYPE", TenantWords.OnboardingType), ("§INACTIVE_TYPE", TenantWords.InactiveType),
             ("§NOTENANT_TEXT", TenantWords.NoTenant), ("§NOMEMBER_TEXT", TenantWords.NotMember), ("§ONLYPLATFORM", TenantWords.OnlyPlatform), ("§NEVERDELETED", TenantWords.NeverDeleted),
             ("§CREATEBYONBOARDING", TenantWords.CreateByOnboarding)));
         if (ownedTables.Count > 0)
@@ -68,17 +71,155 @@ public static class RustTenantWriter
             o.Append(Fill(Members, ("§PERSON_SQL", Raw(personExists)), ("§ADMIN_SQL", Raw(attachAdmin)), ("§HOSTARG", hostArg), ("§HEADERSNAME", host is null ? "_headers" : "headers"),
                 ("§HOSTLOGIN", host is null ? "" : HostLoginLines + "\n"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines + "\n"), ("§MEMBERS_SQL", Raw(select)), ("§ATTACH_SQL", Raw(insert)), ("§ROWTYPE", "(i32, " + textType + (membership.Role is null ? "" : ", Option<String>") + ")"),
                 ("§TEXTCONVERSION", textConversion), ("§ROLECONVERSION", membership.Role is null ? "None" : "row.2"), ("§ROLEBIND", membership.Role is null ? "" : ".bind(ADMIN_ROLE)")));
+            o.Append(NewPerson(userPlan, project, membership, null, di, Raw));
+            o.Append(People(people, di, Raw));
         }
         else if (userOwned is not null && userPlan is not null)
         {
             string find = $"SELECT u.{Q(userOwned.Column)} FROM {Table(userPlan.Table)} AS u WHERE u.{Q(userPlan.UserName)} = {di.Placeholder(1)}";
             string activeCount = $"SELECT COUNT(*) FROM {tenants} WHERE {Q(key)} = {di.Placeholder(1)}" + (active is null ? "" : $" AND {Q(active)} = {di.BooleanLiteral(true)}");
             o.Append(Fill(OwnColumn, ("§HOSTARG", hostArg), ("§HOSTCHECK", host is null ? "" : HostOwnCheck + "\n"), ("§OWN_SQL", Raw(find)), ("§OWNACTIVE_SQL", Raw(activeCount)), ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§NOMEMBER_TEXT", TenantWords.NotMember)));
+            o.Append(NewPerson(userPlan, project, null, userOwned, di, Raw));
         }
         else
-            o.Append(None);
+            o.Append(None).Append(NoPerson);
         return o.ToString();
     }
+
+    /// <summary> <c>check_new_admin</c> and <c>attach_new_admin</c>: the first administrator of an onboarded tenant as a new person, saved with the tenant through the user table's own repository, the password hashed the way <c>set-password</c> does. </summary>
+    private static string NewPerson(UserTablePlan? userPlan, ProjectSettings project, TenantMembership? membership, TenantOwned? userOwned, DialectInfo di, Func<string, string> raw)
+    {
+        if (userPlan is null)
+            return NoPerson;
+        var table = RustTable.Of(userPlan.Table, project);
+        string users = di.QuoteTable(userPlan.Table.SchemaName, userPlan.Table.DbTableName);
+        string nameTaken = $"SELECT COUNT(*) FROM {users} WHERE {di.Quote(userPlan.UserName.DbName)} = {di.Placeholder(1)}";
+        string setHash = $"UPDATE {users} SET {di.Quote(userPlan.PasswordHash.DbName)} = {di.Placeholder(1)} WHERE {di.Quote(userPlan.Table.PrimaryKeyColumns.First().DbName)} = {di.Placeholder(2)}";
+        string tenantLink = userOwned is null ? "" : $"    person.{table.FieldOf(userOwned.Column).Name} = tenant_id;\n";
+        string adminFlag = membership?.Role is null && userPlan.Admin is { } flag ? $"    person.{table.FieldOf(flag).Name} = true;\n" : "";
+        string both = membership is null ? "" : "    if admin_id.is_some() {\n        return Err(bad_person(\"Send adminId (a person who exists) or admin (a new person), not both.\"));\n    }\n";
+        string tie = membership is null ? "" : "    saved = saved && sqlx::query(ATTACH_ADMIN).bind(key).bind(tenant_id)" + (membership.Role is null ? "" : ".bind(ADMIN_ROLE)") + ".execute(pool).await.is_ok();\n";
+        return Fill(NewPersonText, ("§MODULE", table.Module), ("§STRUCT", table.Struct), ("§NAME_SQL", raw(nameTaken)), ("§HASH_SQL", raw(setHash)), ("§NAMEFIELD", table.FieldOf(userPlan.UserName).Name),
+            ("§KEYFIELD", table.Key.Name), ("§TENANTLINK", tenantLink), ("§ADMINFLAG", adminFlag), ("§BOTH", both), ("§TIE", tie));
+    }
+
+    /// <summary> <c>refuse_non_member</c>, <c>attach_person</c> and <c>detach_person</c>: a person added inside a tenant belongs to it, one removed leaves it, and a person of another tenant is not found. </summary>
+    private static string People(TenantPeople? people, DialectInfo di, Func<string, string> raw)
+    {
+        if (people is null)
+            return PeoplePassThrough;
+        string members = di.QuoteTable(people.Membership.Table.SchemaName, people.Membership.Table.DbTableName), user = di.Quote(people.Membership.User.DbName), tenant = di.Quote(people.Membership.Tenant.DbName);
+        string isMember = $"SELECT COUNT(*) FROM {members} WHERE {user} = {di.Placeholder(1)} AND {tenant} = {di.Placeholder(2)}";
+        string attach = $"INSERT INTO {members} ({user}, {tenant}) VALUES ({di.Placeholder(1)}, {di.Placeholder(2)})";
+        string detach = $"DELETE FROM {members} WHERE {user} = {di.Placeholder(1)} AND {tenant} = {di.Placeholder(2)} AND NOT EXISTS (SELECT 1 FROM {members} AS other WHERE other.{user} = {di.Placeholder(3)} AND other.{tenant} <> {di.Placeholder(4)})";
+        return Fill(PeopleText, ("§IS_MEMBER_SQL", raw(isMember)), ("§ATTACH_PERSON_SQL", raw(attach)), ("§DETACH_PERSON_SQL", raw(detach)));
+    }
+
+    private const string PeopleText = """"
+
+const IS_MEMBER: &str = §IS_MEMBER_SQL;
+const ATTACH_PERSON: &str = §ATTACH_PERSON_SQL;
+const DETACH_PERSON: &str = §DETACH_PERSON_SQL;
+
+/// A person of another tenant is not found (a platform administrator reaches every person).
+pub async fn refuse_non_member(pool: &Pool, person_id: i32, user: &CurrentUser) -> ApiResult<()> {
+    if user.is_platform() {
+        return Ok(());
+    }
+    match user.tenant_id {
+        Some(tenant) if sqlx::query_scalar::<_, i64>(IS_MEMBER).bind(person_id).bind(tenant).fetch_one(pool).await? > 0 => Ok(()),
+        _ => Err(ApiError::NotFound),
+    }
+}
+
+/// A person added inside a tenant belongs to it.
+pub async fn attach_person(pool: &Pool, person_id: i32, user: &CurrentUser) -> ApiResult<()> {
+    if let Some(tenant) = user.tenant_id {
+        sqlx::query(ATTACH_PERSON).bind(person_id).bind(tenant).execute(pool).await?;
+    }
+    Ok(())
+}
+
+/// A person removed inside a tenant leaves it; a person who belongs to another tenant too keeps that membership, so the foreign key refuses the removal.
+pub async fn detach_person(pool: &Pool, person_id: i32, user: &CurrentUser) -> ApiResult<()> {
+    if let Some(tenant) = user.tenant_id {
+        sqlx::query(DETACH_PERSON).bind(person_id).bind(tenant).bind(person_id).bind(tenant).execute(pool).await?;
+    }
+    Ok(())
+}
+"""";
+
+    private const string PeoplePassThrough = """"
+
+pub async fn refuse_non_member(_pool: &Pool, _person_id: i32, _user: &CurrentUser) -> ApiResult<()> {
+    Ok(())
+}
+
+pub async fn attach_person(_pool: &Pool, _person_id: i32, _user: &CurrentUser) -> ApiResult<()> {
+    Ok(())
+}
+
+pub async fn detach_person(_pool: &Pool, _person_id: i32, _user: &CurrentUser) -> ApiResult<()> {
+    Ok(())
+}
+"""";
+
+    private const string NewPersonText = """"
+
+pub type Person = crate::models::§MODULE::§STRUCT;
+
+const NAME_TAKEN: &str = §NAME_SQL;
+const SET_HASH: &str = §HASH_SQL;
+
+fn bad_person(text: &str) -> ApiError {
+    ApiError::BadRequest(text.into())
+}
+
+/// Refuses a first administrator as a new person that cannot be saved (a short password, a user name someone has, or both ways of naming the person), before the tenant is saved.
+pub async fn check_new_admin(pool: &Pool, admin_id: Option<i32>, admin: Option<&Person>, password: Option<&str>) -> ApiResult<()> {
+    let Some(person) = admin else { return Ok(()) };
+§BOTH    if password.map_or(0, |text| text.chars().count()) < crate::users::MINIMUM_PASSWORD_LENGTH {
+        return Err(bad_person(&format!("The first administrator needs a password of at least {} characters.", crate::users::MINIMUM_PASSWORD_LENGTH)));
+    }
+    let name = person.§NAMEFIELD.trim();
+    if name.is_empty() || sqlx::query_scalar::<_, i64>(NAME_TAKEN).bind(name).fetch_one(pool).await? > 0 {
+        return Err(bad_person("The first administrator needs a user name that no one has; send adminId for a person who exists."));
+    }
+    Ok(())
+}
+
+/// Saves the first administrator as a new person and ties them to the tenant that was just onboarded; when a step fails the person is removed again and the caller removes the tenant.
+pub async fn attach_new_admin(pool: &Pool, tenant_id: i32, admin: Option<Person>, password: Option<String>) -> ApiResult<()> {
+    let (Some(mut person), Some(password)) = (admin, password) else { return Ok(()) };
+    person.§NAMEFIELD = person.§NAMEFIELD.trim().to_string();
+§TENANTLINK§ADMINFLAG    let saved_row = crate::repos::§MODULE::insert(pool, &person).await.map_err(|_| bad_person("The first administrator could not be saved (a value is missing or wrong)."))?;
+    let key = saved_row.§KEYFIELD;
+    let hash = tokio::task::spawn_blocking(move || crate::auth::hash_password(&password)).await.map_err(|_| bad_person("The password could not be hashed."))?;
+    let mut saved = sqlx::query(SET_HASH).bind(hash).bind(key).execute(pool).await.is_ok();
+§TIE    if !saved {
+        let _ = crate::repos::§MODULE::delete(pool, key).await;
+        return Err(bad_person("The first administrator could not be saved."));
+    }
+    Ok(())
+}
+"""";
+
+    private const string NoPerson = """"
+
+pub type Person = serde_json::Value;
+
+/// The tenant settings name no way to tie a new person to a tenant, so an onboarding that carries one is refused.
+pub async fn check_new_admin(_pool: &Pool, _admin_id: Option<i32>, admin: Option<&Person>, _password: Option<&str>) -> ApiResult<()> {
+    match admin {
+        Some(_) => Err(ApiError::BadRequest("The tenant settings name no way to tie a new person to a tenant.".into())),
+        None => Ok(()),
+    }
+}
+
+pub async fn attach_new_admin(_pool: &Pool, _tenant_id: i32, _admin: Option<Person>, _password: Option<String>) -> ApiResult<()> {
+    Ok(())
+}
+"""";
 
     private static string Fill(string text, params (string Token, string Value)[] values)
     {
@@ -154,9 +295,13 @@ pub enum Tenancy {
     Any,
     /// Only the rows of this tenant.
     Only(i32),
+    /// Only the people who belong to this tenant (the user table, by its membership rows).
+    Members(i32),
     /// A caller in no tenant: no row.
     Nothing,
 }
+
+const PEOPLE_OF_TENANT: &str = §MEMBERS_OF_SQL;
 
 impl Tenancy {
     /// The caller's own tenant.
@@ -169,6 +314,11 @@ impl Tenancy {
         if user.is_platform() { Tenancy::Any } else { Tenancy::of(user) }
     }
 
+    /// The people of the user table: the members of the caller's tenant, or everyone for a platform administrator.
+    pub fn of_members(user: &CurrentUser) -> Tenancy {
+        §OF_MEMBERS
+    }
+
     /// Adds the condition to a query that already has a WHERE clause; `column` is the quoted column of the tenant.
     pub fn apply(&self, builder: &mut QueryBuilder<Db>, column: &str) {
         match self {
@@ -178,6 +328,9 @@ impl Tenancy {
             }
             Tenancy::Only(tenant) => {
                 builder.push(" AND ").push(column).push(" = ").push_bind(*tenant);
+            }
+            Tenancy::Members(tenant) => {
+                builder.push(" AND ").push(column).push(" IN (").push(PEOPLE_OF_TENANT).push_bind(*tenant).push(")");
             }
         }
     }

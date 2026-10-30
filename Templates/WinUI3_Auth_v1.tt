@@ -1,0 +1,47 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string viewNamespace = "MyApp.Desktop.Views";
+    string repositoryNamespace = "MyApp.Common.Repositories";
+    string contextType = "MyAppContext";
+    string[] usings = { };   // namespaces the generated files must "using" (the context's)
+    string viewsFolder = "Views";   // under the WinUI3 project root (where -o points)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    viewNamespace = Project.ViewNamespace ?? viewNamespace;
+    repositoryNamespace = Project.RepoNamespace ?? repositoryNamespace;
+    contextType = Project.ContextName ?? contextType;
+    usings = Project.Usings ?? usings;
+    viewsFolder = Project.ViewsFolder ?? viewsFolder;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // WinUI3_Auth_v1.tt
+    // Generates: Repositories/DesktopSignIn.cs, <ViewsFolder>/LoginView.xaml and <ViewsFolder>/LoginView.xaml.cs   (the paths are written by the template)
+    // The sign-in of the WinUI3 app, for a project with Auth=true, the WinUI3 stack and a UserTable (ApiAuth). The app reads the database itself, so DesktopSignIn checks the password against the user
+    // table with the hash the API writes (set-password) and answers the person, with the tenant they work in when TenantTable is set (the tenant box of LoginView, and a switcher in the window for
+    // TenantMembership). DesktopTenantScope is the ITenantScope the context reads. The window is WinUI3_EssentialMainWindow, which shows LoginView until someone signs in.
+    // A check in the client: the API is where the rules are enforced. Full notes: Docs/TemplateNotes/WinUI3_Auth_v1.md
+    // ==========================================================================================
+    var (plan, problem) = UserTable.Resolve(Database, Project);
+    if (problem != null)
+        Error(problem);
+    else if (plan != null)
+    {
+        bool tenants = TenantPlan.HasDesktopTenants(Project) && TenantPlan.TenantTableOf(Database, Project) is not null
+            && (TenantPlan.MembershipOf(Database, Project) is not null || TenantPlan.OwnedBy(plan.Table, Project) is not null);
+#>
+@@@FILE Repositories/DesktopSignIn.cs@@@
+<#= DesktopSignInCode.Session(Database, Project, contextType, usings, repositoryNamespace) #>@@@FILE <#= viewsFolder #>/LoginView.xaml@@@
+<#= DesktopSignInCode.LoginXaml(viewNamespace, tenants) #>
+@@@FILE <#= viewsFolder #>/LoginView.xaml.cs@@@
+<#= DesktopSignInCode.LoginCode(viewNamespace, repositoryNamespace, contextType, tenants) #>
+<#
+    }
+#>

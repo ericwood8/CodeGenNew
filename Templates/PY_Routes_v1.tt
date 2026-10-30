@@ -57,7 +57,9 @@
     PythonField? FieldOf(ColumnModel? column) => column is null ? null : t.SchemaFields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(column.Name));
     var ownerField = FieldOf(ownerColumn);
     var tenantField = FieldOf(tenantOwned?.Column);
-    bool tenanted = tenantField is not null || tenantTable;
+    // the people of the user table belong to a tenant by their membership rows (TenantMembership): a tenant shows only its own members and a person added inside a tenant becomes one (tenancy.py decides what applies)
+    bool people = tenancy && userPlan is not null && Project.TenantMembership is not null && tenantField is null;
+    bool tenanted = tenantField is not null || tenantTable || people;
     string ParentName(string name) => PythonNames.Ident(PythonNames.Snake(name));
     string parentClass = ownerLink is null ? "" : PythonNames.Pascal(ScreenNames.BaseName(ownerLink.ParentTable));
     string parentModule = ownerLink is null ? "" : PythonNames.Snake(ownerLink.ParentTable);
@@ -78,8 +80,11 @@
     // the statement limited to the caller's tenant, and the 404 for another tenant's row
     string TenantFilter(string statement) => tenantTable
         ? $"    {statement} = only_own_tenant({statement}, {t.Class}.{key}, user)"
+        : people ? $"    {statement} = only_members({statement}, {t.Class}.{key}, user)"
         : $"    {statement} = only_tenant({statement}, {t.Class}.{tenantField!.Name}, user)";
-    string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)" : $"    refuse_other_tenant({row}.{tenantField!.Name}, user)";
+    string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)"
+        : people ? $"    refuse_non_member(session, {row}.{key}, user)"
+        : $"    refuse_other_tenant({row}.{tenantField!.Name}, user)";
 
     Line($"@@@FILE app/routes/{t.Module}.py@@@");
     var clonedDates = new[] { "datetime", "date" }.Where(w => t.Clone?.Any(c => c.Value.StartsWith(w + ".")) == true
@@ -88,6 +93,8 @@
         clonedDates = ["date", "datetime", "time", "timedelta"];
     if (clonedDates.Count > 0)
         Line($"from datetime import {string.Join(", ", clonedDates)}");
+    if (tenantTable)
+        Line("from typing import Any");
     if (textKey)
         Line("from urllib.parse import quote");
     bool uuidFilter = search && t.KeyFilters.Any(k => k.Field.Annotation == "UUID");
@@ -95,7 +102,7 @@
         Line("from uuid import UUID, uuid4");
     else if (uuidFilter)
         Line("from uuid import UUID");
-    if (clonedDates.Count > 0 || textKey || guidKey || uuidFilter)
+    if (clonedDates.Count > 0 || tenantTable || textKey || guidKey || uuidFilter)
         Line();
     bool castsEnum = search && t.Filters.Any(f => f.Field.Column.DbCastType is not null);
     var sqlalchemy = new List<string> { "select" };
@@ -136,6 +143,7 @@
     {
         var tenancyNames = tenantTable
             ? new List<string> { "attach_admin", "attach_creator", "is_platform", "never_deleted", "only_own_tenant", "only_platform", "refuse_other_tenant_row" }
+            : people ? new List<string> { "attach_person", "detach_person", "only_members", "refuse_non_member" }
             : new List<string> { "only_tenant", "refuse_other_tenant", "require_tenant" };
         Line("from app.routes.tenancy import " + string.Join(", ", tenancyNames.OrderBy(n => n, StringComparer.Ordinal)));
     }
@@ -473,6 +481,8 @@
         Line($"    if row.{key} == UUID(int=0):");
         Line($"        row.{key} = uuid4()");
     }
+    if (t.HashField is { IsNullable: false } newHash)
+        Line($"    row.{newHash.Name} = \"\"   # a person with no password cannot sign in; set-password writes the hash");
     Line("    session.add(row)");
     Line("    try:");
     Line("        session.commit()");
@@ -482,6 +492,8 @@
     Line("    session.refresh(row)");
     if (tenantTable)
         Line($"    attach_creator(session, user, row.{key})");
+    if (people)
+        Line($"    attach_person(session, row.{key}, user)");
     Line(textKey
         ? $"    response.headers[\"Location\"] = f\"{t.Route}/{{quote(row.{key}, safe='')}}\""
         : $"    response.headers[\"Location\"] = f\"{t.Route}/{{row.{key}}}\"");
@@ -496,6 +508,8 @@
         Line();
         Line($"    tenant: {t.Schema}");
         Line("    admin_id: int | None = Field(None, alias=\"adminId\")");
+        Line("    admin: dict[str, Any] | None = None");
+        Line("    admin_password: str | None = Field(None, alias=\"adminPassword\")");
         Line();
         Line();
         Line($"@router.post(\"{t.Route}/onboard\", response_model={t.Schema}, status_code={HttpStatus.Created}{writeDepends})");
@@ -513,7 +527,7 @@
         Line("    session.add(row)");
         Line("    try:");
         Line("        session.flush()");
-        Line($"        attach_admin(session, request.admin_id, row.{key})");
+        Line($"        attach_admin(session, request.admin_id, row.{key}, request.admin, request.admin_password)");
         Line("        session.commit()");
         Line("    except IntegrityError:");
         Line("        session.rollback()");
@@ -576,10 +590,12 @@
     Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
     if (scoped)
         Line("    refuse_other_owners(session, user, row)");
-    if (tenantField is not null)
+    if (tenantField is not null || people)
         Line(TenantRefusal("row"));
     if (adminField is not null)
         Line($"    if is_administrator(row) and not other_administrators(session, row.{t.Key.Name}):\n        raise last_administrator()");
+    if (people)
+        Line($"    detach_person(session, row.{key}, user)");
     Line("    session.delete(row)");
     Line("    try:");
     Line("        session.commit()");
@@ -600,7 +616,7 @@
         Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
         if (scoped)
             Line("    refuse_other_owners(session, user, source)");
-        if (tenantField is not null)
+        if (tenantField is not null || people)
             Line(TenantRefusal("source"));
         Line($"    row = {t.Class}(");
         foreach (var (field, value) in cloned)
@@ -617,6 +633,8 @@
         Line("    session.add(row)");
         Line("    session.commit()");
         Line("    session.refresh(row)");
+        if (people)
+            Line($"    attach_person(session, row.{key}, user)");
         if (gated)
             Line($"    after_clone_{t.Module}(session, user, row)");
         Line($"    response.headers[\"Location\"] = f\"{t.Route}/{{row.{key}}}\"");

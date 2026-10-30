@@ -52,12 +52,13 @@
         string table = Model.TableName;
         string title = form.Title;
         string keyProp = keyColumn.Name;
+        var writeRoles = WriteRolePlan.ForDesktop(Project, Model);
 
         if (!Model.HasReferencedDisplayColumns && form.Parents.Count > 0)
             Error("WinUI3_SingleRowScreen needs the foreign-keyed tables' display columns for its drop-downs; its .tt.config must say NeedsReferencedDisplayColumns=true.");
 #>
 @@@FILE <#= viewsFolder #>/<#= table #>Page.xaml@@@
-<#= DesktopSingleRowPage.Xaml(form, Project, Model, viewNamespace, withGuards: true, loadErrorBar: false, gatedSave: false) #>@@@FILE <#= viewsFolder #>/<#= table #>Page.xaml.cs@@@
+<#= DesktopSingleRowPage.Xaml(form, Project, Model, viewNamespace, withGuards: true, loadErrorBar: false, gatedSave: writeRoles.Count > 0) #>@@@FILE <#= viewsFolder #>/<#= table #>Page.xaml.cs@@@
 using <#= viewModelNamespace #>;
 using <#= contextNamespace #>;
 using Microsoft.EntityFrameworkCore;
@@ -81,6 +82,11 @@ public sealed partial class <#= table #>Page : Page
 
     /// <summary> The form's view model, made again for the row each time it is read; null until the first read has finished. </summary>
     public <#= table #>DetailViewModel? ViewModel { get; private set; }
+<# if (writeRoles.Count > 0) { #>
+
+    /// <summary> Save shows only to the roles that may write this table (WriteRoles). </summary>
+    public Visibility WriteVisibility => DesktopSession.HasRole([<#= WriteRolePlan.Literal(writeRoles) #>]) ? Visibility.Visible : Visibility.Collapsed;
+<# } #>
 
     public <#= table #>Page(<#= contextType #> context)
     {

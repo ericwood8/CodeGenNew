@@ -29,6 +29,21 @@ public static class PythonTenantTests
         if (TenantTestPlan.ActiveKey(database, project) is { } active)
             o.Append(Fill(SwitchedOff, ("§SWITCHOFF", PythonNames.Str(TenantTestPlan.SwitchOffSql(database, project, ""))), ("§ACTIVE", PythonNames.Str(active)), ("§INACTIVE_TYPE", TenantWords.InactiveType)));
         o.Append(Fill(OnboardCase, ("§ONBOARD_TYPE", TenantWords.OnboardingType)));
+        if (TenantTestPlan.NewAdmin(database, project))
+        {
+            var userTable = UserTable.Resolve(database, project).Plan!.Table;
+            string members = TenantTestPlan.RemoveMembersSql(database, project, "");
+            o.Append(Fill(PersonCase, ("§PERSONBODY", BodyFunction("person_body", userTable, project)), ("§LOGINKEY", PythonNames.Str(TenantTestPlan.LoginKey(database, project))),
+                ("§REMOVEPERSON", PythonNames.Str(TenantTestPlan.RemovePersonSql(database, project, ""))),
+                ("§REMOVEMEMBERSCONST", members.Length == 0 ? "" : $"REMOVE_MEMBERS = {PythonNames.Str(members)}\n"),
+                ("§REMOVEMEMBERSITEM", members.Length == 0 ? "" : "REMOVE_MEMBERS + str(key), ")));
+            if (TenantPlan.PeopleOf(database, project) is { } people && people.User.Table.HasPythonRustApi(project))
+                o.Append(Fill(PeopleCase, ("§USERROUTE", PythonNames.Str(RustTestBodies.Route(people.User.Table.TableName))), ("§USERKEY", PythonNames.Str(JsonNames.Camel(people.Key.Name))),
+                    ("§REMOVEMEMBERSITEM", members.Length == 0 ? "" : "REMOVE_MEMBERS + str(tenant_a), ")));
+            if (TenantBypassPlan.HostColumn(database, project) is { } hostColumn)
+                o.Append(Fill(HostLoginCase, ("§SLUG", PythonNames.Str(JsonNames.Camel(hostColumn.Name))), ("§ACTIVELINE", TenantTestPlan.ActiveKey(database, project) is { } flag2 ? $"    own_body[{PythonNames.Str(flag2)}] = True\n    other_body[{PythonNames.Str(flag2)}] = True\n" : ""),
+                    ("§REMOVEMEMBERSITEM", members.Length == 0 ? "" : "REMOVE_MEMBERS + str(own_key), ")));
+        }
         if (TenantBypassPlan.HostColumn(database, project) is { } host)
             o.Append(Fill(HostCase, ("§SLUG", PythonNames.Str(JsonNames.Camel(host.Name))), ("§ACTIVELINE", TenantTestPlan.ActiveKey(database, project) is { } flag ? $"    body[{PythonNames.Str(flag)}] = True\n" : ""),
                 ("§HOST_TYPE", TenantWords.HostType)));
@@ -243,6 +258,115 @@ def test_only_a_platform_administrator_onboards_a_tenant(call, tenants, applicat
     onboarded = call(None, "POST", f"{TENANTS}/onboard", json={"tenant": tenant_body(call, mine)})
     assert onboarded.status_code == 201, onboarded.text
     run(engine, [REMOVE_TENANT + str(onboarded.json()[TENANT_KEY])])
+"""";
+
+    private const string PersonCase = """"
+
+
+PERSON_LOGIN = §LOGINKEY
+PERSON_PASSWORD = "Onboard-1234-password"
+REMOVE_PERSON = §REMOVEPERSON
+§REMOVEMEMBERSCONST
+
+§PERSONBODY
+
+
+def test_a_platform_administrator_onboards_a_tenant_with_a_new_first_administrator_who_signs_in(call, tenants, application):
+    app, engine = application
+    mine = tenants[0]
+    person = person_body(call, mine)
+    if person is None:
+        return
+    login = person[PERSON_LOGIN]
+    route = f"{TENANTS}/onboard"
+    weak = call(None, "POST", route, json={"tenant": tenant_body(call, mine), "admin": person, "adminPassword": "short"})
+    assert weak.status_code == 400, weak.text
+    onboarded = call(None, "POST", route, json={"tenant": tenant_body(call, mine), "admin": person, "adminPassword": PERSON_PASSWORD})
+    assert onboarded.status_code == 201, onboarded.text
+    key = onboarded.json()[TENANT_KEY]
+    try:
+        taken = call(None, "POST", route, json={"tenant": tenant_body(call, mine), "admin": person, "adminPassword": PERSON_PASSWORD})
+        assert taken.status_code == 400, taken.text
+        app.dependency_overrides.pop(require_user, None)
+        worker = TestClient(app)
+        assert worker.post("/api/auth/login", json={"userName": login, "password": "not-the-password"}).status_code == 401
+        signed = worker.post("/api/auth/login", json={"userName": login, "password": PERSON_PASSWORD})
+        assert signed.status_code == 200, signed.text
+    finally:
+        run(engine, [§REMOVEMEMBERSITEMREMOVE_PERSON + "'" + login + "'", REMOVE_TENANT + str(key)])
+"""";
+
+    private const string PeopleCase = """"
+
+
+USER_ROUTE = §USERROUTE
+USER_KEY = §USERKEY
+
+
+def test_a_person_added_inside_a_tenant_belongs_to_it_and_another_tenant_does_not_see_them(call, tenants, application):
+    _, engine = application
+    mine = tenants[0]
+    person = person_body(call, mine)
+    if person is None:
+        return
+    login = person[PERSON_LOGIN]
+    person.pop(USER_KEY, None)
+    route = f"{TENANTS}/onboard"
+    first = call(None, "POST", route, json={"tenant": tenant_body(call, mine)})
+    second = call(None, "POST", route, json={"tenant": tenant_body(call, mine)})
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    tenant_a, tenant_b = first.json()[TENANT_KEY], second.json()[TENANT_KEY]
+    try:
+        created = call(tenant_a, "POST", USER_ROUTE, json=person)
+        assert created.status_code == 201, created.text
+        person_id = created.json()[USER_KEY]
+        assert call(tenant_a, "GET", f"{USER_ROUTE}/{person_id}").status_code == 200, "the person belongs to the tenant they were added in"
+        assert call(tenant_b, "GET", f"{USER_ROUTE}/{person_id}").status_code == 404, "another tenant does not see the person"
+        assert call(None, "GET", f"{USER_ROUTE}/{person_id}").status_code == 200, "a platform administrator sees every person"
+    finally:
+        run(engine, [§REMOVEMEMBERSITEMREMOVE_PERSON + "'" + login + "'", REMOVE_TENANT + str(tenant_a), REMOVE_TENANT + str(tenant_b)])
+"""";
+
+    private const string HostLoginCase = """"
+
+
+def test_a_sign_in_on_the_host_of_a_tenant_works_in_that_tenant_and_not_in_another(call, tenants, application):
+    from app.routes.tenancy import forget_hosts
+
+    app, engine = application
+    mine = tenants[0]
+    person = person_body(call, mine)
+    if person is None:
+        return
+    login = person[PERSON_LOGIN]
+    own, other = "o" + uuid.uuid4().hex[:10], "p" + uuid.uuid4().hex[:10]
+    own_body, other_body = tenant_body(call, mine), tenant_body(call, mine)
+    own_body[§SLUG], other_body[§SLUG] = own, other
+§ACTIVELINE    route = f"{TENANTS}/onboard"
+    first = call(None, "POST", route, json={"tenant": own_body, "admin": person, "adminPassword": PERSON_PASSWORD})
+    assert first.status_code == 201, first.text
+    own_key = first.json()[TENANT_KEY]
+    second = call(None, "POST", route, json={"tenant": other_body})
+    assert second.status_code == 201, second.text
+    other_key = second.json()[TENANT_KEY]
+    try:
+        forget_hosts()
+        app.dependency_overrides.pop(require_user, None)
+        worker = TestClient(app)
+
+        def sign_in(host, tenant=None):
+            body = {"userName": login, "password": PERSON_PASSWORD}
+            if tenant is not None:
+                body["tenantId"] = tenant
+            return worker.post("/api/auth/login", json=body, headers={"Host": host})
+
+        assert sign_in(f"{own}.example.test").status_code == 200
+        assert sign_in(f"{other}.example.test").status_code == 403, "a person who is not a member is refused on another tenant's host"
+        assert sign_in(f"{own}.example.test", other_key).status_code == 403, "a sign-in naming another tenant than the host is refused"
+        assert sign_in("localhost").status_code == 200, "localhost names no tenant"
+    finally:
+        run(engine, [§REMOVEMEMBERSITEMREMOVE_PERSON + "'" + login + "'", REMOVE_TENANT + str(own_key), REMOVE_TENANT + str(other_key)])
 """";
 
     private const string HostCase = """"

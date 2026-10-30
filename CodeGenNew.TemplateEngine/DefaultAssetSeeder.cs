@@ -229,6 +229,7 @@ public static class DefaultAssetSeeder
         "BLZ_Approvals_v1.tt", "BLZ_Approvals_v1.tt.config",
         "UNO_Approvals_v1.tt", "UNO_Approvals_v1.tt.config",
         "WinUI3_Approvals_v1.tt", "WinUI3_Approvals_v1.tt.config",
+        "WinUI3_Auth_v1.tt", "WinUI3_Auth_v1.tt.config",
         "WinUI3_TestApprovals_v1.tt", "WinUI3_TestApprovals_v1.tt.config",
         "UNO_TestApprovals_v1.tt", "UNO_TestApprovals_v1.tt.config",
         "BLZ_TestApprovals_v1.tt", "BLZ_TestApprovals_v1.tt.config",

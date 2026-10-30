@@ -39,8 +39,10 @@ public static class DesktopJunctionPage
 
     /// <summary> The code-behind. <paramref name="members"/> are the page's fields and constructor parameters (the context, or the clients), <paramref name="readAnchors"/> the statements that return a
     /// <c>List&lt;&lt;Table&gt;LinksAnchor&gt;</c>, <paramref name="openEditor"/> the statements that show the editor for <c>anchor.Id</c>, and <paramref name="failure"/> the exception filter the reads are guarded with. </summary>
-    public static string CodeBehind(TableModel junctionTable, string viewNamespace, IEnumerable<string> usings, string field, string constructorParameter, string assignment, string readAnchors, string openEditor, string failure)
+    public static string CodeBehind(TableModel junctionTable, string viewNamespace, IEnumerable<string> usings, string field, string constructorParameter, string assignment, string readAnchors, string openEditor, string failure,
+        string? mayWrite = null)
     {
+        string hideEdit = mayWrite is null ? "" : $"\n        EditButton.Visibility = {mayWrite} ? Visibility.Visible : Visibility.Collapsed;";
         var junction = junctionTable.Junction!;
         string page = PageName(junctionTable.TableName);
         string anchorType = junction.AnchorCs;
@@ -63,7 +65,7 @@ public sealed partial class {{page}} : Page
     public {{page}}({{constructorParameter}})
     {
         {{assignment}}
-        InitializeComponent();
+        InitializeComponent();{{hideEdit}}
         Loaded += async (_, _) => await LoadAnchorsAsync();
     }
 

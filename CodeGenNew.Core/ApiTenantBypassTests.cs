@@ -210,7 +210,10 @@ public static class ApiTenantBypassTests
             L($"            using var rivalRequester = ApiFixture.ClientInTenant(other, \"{admin}\", \"{ApprovalTestSeed.Requester}\");");
             L($"            using var rivalApprover = ApiFixture.ClientInTenant(other, \"{admin}\", \"{ApprovalTestSeed.Approver}\");");
             L("            using var request = await rivalRequester.PostAsJsonAsync(route + \"/request\", new { reason = \"please\" });");
-            L("            Assert.AreEqual(HttpStatusCode.NotFound, request.StatusCode, \"another tenant's row cannot be asked for\");");
+            if (TenantPlan.PeopleOf(database, project) is not null)
+                L("            Assert.IsTrue(request.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden, \"another tenant's row cannot be asked for (a person of the first tenant is no person of this one)\");");
+            else
+                L("            Assert.AreEqual(HttpStatusCode.NotFound, request.StatusCode, \"another tenant's row cannot be asked for\");");
             L("            using var approve = await rivalApprover.PostAsJsonAsync(route + \"/approve\", new { note = \"fine\" });");
             L("            Assert.AreNotEqual(HttpStatusCode.OK, approve.StatusCode, \"another tenant's cycle cannot be approved\");");
             L("            using var withdraw = await rivalRequester.PostAsync(route + \"/withdraw\", null);");

@@ -175,7 +175,8 @@ public class TenantBypassTests
         Assert.IsTrue(pySuccess, string.Join(" | ", pyErrors));
         string route = pyRead("app/routes/tenant.py");
         Expect.Contains(route, "@router.post(\"/api/tenants/onboard\", response_model=TenantSchema, status_code=201)");
-        Expect.Contains(route, "attach_admin(session, request.admin_id, row.tenant_id)");
+        Expect.Contains(route, "attach_admin(session, request.admin_id, row.tenant_id, request.admin, request.admin_password)");
+        Expect.Contains(route, "admin_password: str | None = Field(None, alias=\"adminPassword\")");
         string tenancy = pyRead("app/routes/tenancy.py");
         Expect.Contains(tenancy, "def host_tenant(host: str | None) -> int | None:");
         Expect.Contains(tenancy, "def login_tenant(session: Session, user: DirectoryUser, requested: int | None, host: str | None = None)");
@@ -183,8 +184,13 @@ public class TenantBypassTests
         string auth = pyRead("app/auth.py");
         Expect.Contains(auth, "check_host(request, tenant)");
         Expect.Contains(auth, "login_tenant(session, user, body.tenant_id, request.url.hostname)");
+        Expect.Contains(tenancy, "def new_person(session: Session, admin: dict[str, Any], password: str | None, tenant_id: int) -> None:");
+        Expect.Contains(tenancy, "person.password_hash = hash_password(password)");
+        Expect.Contains(tenancy, "Send adminId (a person who exists) or admin (a new person), not both.");
         string pyTests = pyRead("tests/test_tenants.py");
         Expect.Contains(pyTests, "def test_only_a_platform_administrator_onboards_a_tenant(");
+        Expect.Contains(pyTests, "def test_a_platform_administrator_onboards_a_tenant_with_a_new_first_administrator_who_signs_in(");
+        Expect.Contains(pyTests, "def test_a_sign_in_on_the_host_of_a_tenant_works_in_that_tenant_and_not_in_another(");
         Expect.Contains(pyTests, "def test_a_token_is_refused_on_the_host_of_another_tenant_and_not_restricted_on_a_host_that_names_none(");
 
         var (rsSuccess, rsErrors, rsRead, _) = await Generate(new(host) { ["Stacks"] = "rust", ["RustTests"] = "true" }, "rust");
@@ -192,12 +198,18 @@ public class TenantBypassTests
         string rsRoute = rsRead("src/routes/tenant.rs");
         Expect.Contains(rsRoute, ".route(\"/api/tenants/onboard\", axum::routing::post(onboard))");
         Expect.Contains(rsRoute, "require_person(&pool, request.admin_id).await?;");
+        Expect.Contains(rsRoute, "check_new_admin(&pool, request.admin_id, request.admin.as_ref(), request.admin_password.as_deref()).await?;");
+        Expect.Contains(rsRoute, "Ok(()) => attach_new_admin(&pool, row.tenant_id, request.admin, request.admin_password).await,");
         string rsTenancy = rsRead("src/tenancy.rs");
         Expect.Contains(rsTenancy, "pub async fn host_tenant(pool: &Pool, host: Option<&str>) -> ApiResult<Option<i32>> {");
         Expect.Contains(rsTenancy, "pub async fn check_host(pool: &Pool, headers: &HeaderMap, tenant: i32) -> ApiResult<()> {");
         Expect.Contains(rsRead("src/auth.rs"), "crate::tenancy::check_host(&pool, request.headers(), tenant).await?;");
+        Expect.Contains(rsTenancy, "pub async fn check_new_admin(pool: &Pool, admin_id: Option<i32>, admin: Option<&Person>, password: Option<&str>) -> ApiResult<()> {");
+        Expect.Contains(rsTenancy, "crate::auth::hash_password(&password)");
         string rsTests = rsRead("tests/api/tenant_routes.rs");
         Expect.Contains(rsTests, "async fn only_a_platform_administrator_onboards_a_tenant() {");
+        Expect.Contains(rsTests, "async fn a_platform_administrator_onboards_a_tenant_with_a_new_first_administrator_who_signs_in() {");
+        Expect.Contains(rsTests, "async fn a_sign_in_on_the_host_of_a_tenant_works_in_that_tenant_and_not_in_another() {");
         Expect.Contains(rsTests, "api.on_host(&host).get(TENANTS).await");
 
         var (_, _, plainPython, _) = await Generate(new() { ["Stacks"] = "python", ["PythonTests"] = "true" }, "python");

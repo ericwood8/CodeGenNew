@@ -124,7 +124,7 @@ public static class TenantTests
         project.ApiAuth && TenantPlan.IsEnabled(project) && (TenantPlan.IsTenantTable(table, project) || (table.IsNameActiveTable && TenantPlan.OwnedBy(table, project) is not null));
 
     /// <summary> The expression of the value a new row's body holds for a column. </summary>
-    private static string Value(TableModel table, ColumnModel c, ProjectSettings project) =>
+    internal static string Value(TableModel table, ColumnModel c, ProjectSettings project) =>
         c.IsStringColumn && !c.IsPrimaryKey ? $"ApiFixture.Unique({ApiSampleValues.Json(ApiSampleValues.Text(c, project, table.TableName))}, {c.CharacterLength})" : ApiSampleValues.Value(c, project, table.TableName);
 
     /// <summary> The whole test class of the tenant table (it takes no create and no delete, shows only the caller's tenant and is onboarded by a platform administrator) or of a tenant-owned Name and IsActive table. </summary>

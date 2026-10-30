@@ -24,6 +24,9 @@ public static class TenantWords
 /// <summary> The membership table: which people belong to which tenant, optionally with a role per tenant. </summary>
 public sealed record TenantMembership(TableModel Table, ColumnModel User, ColumnModel Tenant, ColumnModel? Role);
 
+/// <summary> The user table whose people belong to tenants by the membership table; <c>Key</c> is the person's whole-number key. </summary>
+public sealed record TenantPeople(UserTablePlan User, TenantMembership Membership, ColumnModel Key);
+
 /// <summary> A table whose rows belong to one tenant: <c>Column</c> is its NOT NULL whole-number tenant column. </summary>
 public sealed record TenantOwned(TableModel Table, ColumnModel Column);
 
@@ -49,6 +52,42 @@ public static class TenantPlan
     /// <summary> Whether the sign-in page of a web front end has a box for the tenant to sign in to: the login takes a <c>tenantId</c> from a person who belongs to several tenants (a membership table is named). </summary>
     public static bool HasSignInBox(ProjectSettings project) => HasSwitcher(project);
 
+    /// <summary> The people of the user table who belong to a tenant by a membership row: <c>TenantMembership</c> with a <c>UserTable</c>. A tenant then shows only its own members; a platform administrator shows all. Null when the project
+    /// has no such pair, or the membership row could not be made for a person added inside a tenant (a column other than the key, the person and the tenant is required), or the people are tenant-owned by their own row already. </summary>
+    public static TenantPeople? PeopleOf(DatabaseModel database, ProjectSettings project)
+    {
+        if (!project.ApiAuth || TenantTableOf(database, project) is null || MembershipOf(database, project) is not { } membership)
+            return null;
+        if (UserTable.Resolve(database, project).Plan is not { } plan || plan.Table == membership.Table || OwnedBy(plan.Table, project) is not null || plan.Table.PrimaryKeyColumns is not [{ IsInt32Column: true } key])
+            return null;
+        bool otherwiseRequired = membership.Table.Columns.Any(c => !c.IsPrimaryKey && !c.IsIdentity && c != membership.User && c != membership.Tenant && !c.IsNullable);
+        return otherwiseRequired ? null : new TenantPeople(plan, membership, key);
+    }
+
+    /// <summary> Whether the onboarding body can carry the first administrator as a new person (<c>admin</c> and <c>adminPassword</c>): there is a user table, and a person can be tied to the new tenant, by a membership
+    /// row or by the tenant column of their own row. </summary>
+    public static bool OnboardsNewAdmin(DatabaseModel database, ProjectSettings project) =>
+        UserTable.Resolve(database, project).Plan is { } plan && (MembershipOf(database, project) is not null || OwnedBy(plan.Table, project) is not null);
+
+    /// <summary> Whether the WinUI3 app signs in: <c>Auth</c> with the WinUI3 stack and a user table of the sign-in (<c>ApiAuth</c>). The app reads the database itself, so it checks the password against the user table
+    /// and gives the context its tenant scope. </summary>
+    public static bool HasDesktopSignIn(ProjectSettings project) =>
+        project.Auth && project.ApiAuth && project.UserTable is not null && project.Stacks.Any(s => s.EqualsIgnoreCase("WinUI3"));
+
+    /// <summary> Whether the WinUI3 screens apply the read and write roles: the app signs in, so the role of the person is known. Only the screens ask; the app reads the database with its own login. </summary>
+    public static bool HasDesktopRoles(ProjectSettings project) =>
+        HasDesktopSignIn(project) && (project.ReadRoles.Length > 0 || project.WriteRoles.Length > 0 || project.TableReadRoles is not null || project.TableWriteRoles is not null);
+
+    /// <summary> Whether the WinUI3 sign-in works in a tenant: the sign-in takes the tenant to work in and the window shows it. </summary>
+    public static bool HasDesktopTenants(ProjectSettings project) => HasDesktopSignIn(project) && project.TenantTable is not null;
+
+    /// <summary> Whether the WinUI3 window offers a switcher: the person can belong to several tenants (a membership table is named). </summary>
+    public static bool HasDesktopSwitcher(ProjectSettings project) => HasDesktopTenants(project) && project.TenantMembership is not null;
+
+    /// <summary> Whether the WinUI3 app signs in, so the person is known to the guards and approvals (<c>DesktopCaller.Name</c>). </summary>
+    public static bool DesktopSetsCaller(ProjectSettings project) =>
+        DesktopApprovalsCode.GatesWriteCaller(project) || (project.ApiAuth && project.RowApprovals.Length > 0);
+
     /// <summary> Whether the Python and Rust APIs write their tenant code: <c>TenantTable</c> with sign-in. The EF-only rule of the ASP.NET API does not apply: their routers filter by hand. </summary>
     public static bool HasApiTenancy(ProjectSettings project) => project.ApiAuth && project.TenantTable is not null;
 
@@ -56,6 +95,13 @@ public static class TenantPlan
     public static bool NoApiCsv(TableModel table, ProjectSettings project) => HasApiTenancy(project) && OwnedBy(table, project) is not null;
 
     public static bool IsTenantTable(TableModel table, ProjectSettings project) => project.TenantTable is { } name && table.TableName.EqualsIgnoreCase(name);
+
+    /// <summary> The C# that names a tenant for a person, over a row <c>t</c> of the tenant table: its Name or Title column, else the key as text. </summary>
+    public static string TextExpression(TableModel tenantTable, ColumnModel tenantKey)
+    {
+        var text = tenantTable.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsPrimaryKey && (c.Name.EqualsIgnoreCase("Name") || c.Name.EqualsIgnoreCase("Title")));
+        return text is null ? $"t.{tenantKey.CSharpName()}.ToString()" : text.IsNullable ? $"t.{text.CSharpName()} ?? \"\"" : $"t.{text.CSharpName()}";
+    }
 
     public static ColumnModel? KeyOf(TableModel tenantTable) => tenantTable.PrimaryKeyColumns is [{ IsInt32Column: true } key] ? key : null;
 

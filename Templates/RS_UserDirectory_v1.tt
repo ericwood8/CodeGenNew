@@ -57,7 +57,7 @@
     Line($"const FIND: &str = {RawSql(find)};");
     Line($"const SET_PASSWORD: &str = {RawSql(setPassword)};");
     Line("const PASSWORD_VARIABLE: &str = \"NEW_PASSWORD\";");
-    Line("const MINIMUM_PASSWORD_LENGTH: usize = 8;");
+    Line("pub const MINIMUM_PASSWORD_LENGTH: usize = 8;");
     Line();
     Line("pub async fn find_user(pool: &Pool, user_name: &str) -> Result<Option<DirectoryUser>, sqlx::Error> {");
     Line("    let Some(row) = sqlx::query(FIND).bind(user_name.trim()).fetch_optional(pool).await? else {");

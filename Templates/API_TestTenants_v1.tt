@@ -36,6 +36,8 @@
             sb.Append("@@@FILE " + table.TableName + "ApiTests.cs@@@\n");
             sb.Append(TenantTests.ClassText(table, Project));
         }
+        if (ApiTenantOnboardTests.Applies(Database, Project))
+            sb.Append("@@@FILE TenantOnboardApiTests.cs@@@\n" + ApiTenantOnboardTests.ClassText(Database, Project));
         if (ApiTenantBypassTests.Applies(Database, Project))
             sb.Append("@@@FILE TenantBypassApiTests.cs@@@\n" + ApiTenantBypassTests.ClassText(Database, Project));
         Write(sb.ToString());

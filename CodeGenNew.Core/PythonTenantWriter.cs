@@ -42,22 +42,123 @@ public static class PythonTenantWriter
             o.Append(Fill(Members, ("§HOSTLOGIN", host is null ? "" : HostLoginLines + "\n"), ("§TEXT", textExpression), ("§ROLE", membership.Role is null ? "null()" : "members.c[MEMBER_ROLE]"), ("§ACTIVEWHERE", active is null ? "" : ".where(tenants.c[TENANT_ACTIVE].is_(True))"),
                 ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§NOMEMBER_TEXT", Str(TenantWords.NotMember))));
             o.Append(Fill(Attach, ("§ROLEVALUE", membership.Role is null ? "" : ", MEMBER_ROLE: ADMIN_ROLE")));
+            o.Append(NewPerson(userPlan, project, membership, null));
+            o.Append(TenantPlan.PeopleOf(database, project) is null ? PeoplePassThrough : PeopleScoped);
             o.Append(Fill(Routes, ("§CURRENT", "user.tenant_id"), ("§REQUESTPARAM", host is null ? "" : ", request: Request"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines + "\n")));
         }
         else if (userOwned is not null && userPlan is not null)
         {
             o.Append(Fill(OwnColumn, ("§HOSTLOGIN", host is null ? "" : HostOwnLogin + "\n"), ("§HOSTCHECK", host is null ? "" : HostOwnCheck + "\n"), ("§ACTIVEWHERE", active is null ? "" : ", tenants.c[TENANT_ACTIVE].is_(True)"), ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§NOMEMBER_TEXT", Str(TenantWords.NotMember))));
             o.Append("\n\ndef attach_creator(session: Session, user: CurrentUser, tenant_id: int) -> None:\n    \"\"\"The people belong to a tenant by their own row, so a new tenant has no first administrator to attach.\"\"\"\n");
-            o.Append("\n\ndef attach_admin(session: Session, person_id: int | None, tenant_id: int) -> None:\n    \"\"\"The people belong to a tenant by their own row, so an onboarded tenant has no first administrator to attach.\"\"\"\n");
+            o.Append("\n\ndef attach_admin(session: Session, person_id: int | None, tenant_id: int, admin: dict[str, Any] | None = None, password: str | None = None) -> None:\n    \"\"\"The people belong to a tenant by their own row, so an onboarded tenant has no person to attach by key; a new first administrator is saved with the tenant.\"\"\"\n    if admin is not None:\n        new_person(session, admin, password, tenant_id)\n");
+            o.Append(NewPerson(userPlan, project, null, userOwned));
         }
         else
         {
             o.Append("\n\ndef login_tenant(session: Session, user: DirectoryUser, requested: int | None, host: str | None = None) -> tuple[int | None, str | None]:\n    \"\"\"The sign-in works in no tenant: no membership table is named and the people are not tenant-owned.\"\"\"\n    return None, None\n");
-            o.Append("\n\ndef attach_admin(session: Session, person_id: int | None, tenant_id: int) -> None:\n    \"\"\"No membership table is named, so an onboarded tenant has no first administrator to attach.\"\"\"\n");
+            o.Append("\n\ndef attach_admin(session: Session, person_id: int | None, tenant_id: int, admin: dict[str, Any] | None = None, password: str | None = None) -> None:\n    \"\"\"No membership table is named, so an onboarded tenant has no first administrator to attach.\"\"\"\n    if admin is not None:\n        raise ApiError(400, \"Bad request\", detail=\"The tenant settings name no way to tie a new person to a tenant.\")\n");
             o.Append("\n\ndef attach_creator(session: Session, user: CurrentUser, tenant_id: int) -> None:\n    \"\"\"No membership table is named, so a new tenant has no first administrator to attach.\"\"\"\n");
         }
         return o.ToString();
     }
+
+    /// <summary> <c>new_person</c>: the first administrator of an onboarded tenant as a new person, saved with the tenant (the user table's own model and schema, the password hashed the way <c>set-password</c> does). </summary>
+    private static string NewPerson(UserTablePlan? userPlan, ProjectSettings project, TenantMembership? membership, TenantOwned? userOwned)
+    {
+        if (userPlan is null)
+            return "";
+        var table = PythonTable.Of(userPlan.Table, project);
+        string FieldOf(ColumnModel column) => table.Fields.First(f => f.Column == column).Name;
+        string tenantLink = userOwned is null ? "" : $"    person.{FieldOf(userOwned.Column)} = tenant_id\n";
+        string adminFlag = membership?.Role is null && userPlan.Admin is { } flag ? $"    person.{FieldOf(flag)} = True\n" : "";
+        string memberLine = membership is null ? "" : $"    session.execute(members.insert().values({{MEMBER_USER: person.{table.Key.Name}, MEMBER_TENANT: tenant_id{(membership.Role is null ? "" : ", MEMBER_ROLE: ADMIN_ROLE")}}}))\n";
+        return Fill(NewPersonText, ("§MODULE", table.Module), ("§CLASS", table.Class), ("§SCHEMA", table.Schema), ("§NAMEFIELD", FieldOf(userPlan.UserName)), ("§HASHFIELD", table.HashField!.Name),
+            ("§TENANTLINK", tenantLink), ("§ADMINFLAG", adminFlag), ("§MEMBERLINE", memberLine));
+    }
+
+    private const string PeopleScoped = """"
+
+
+def only_members(statement, key_column, user: CurrentUser):
+    """The people of the caller's tenant (every person for a platform administrator); a caller in no tenant sees none."""
+    if is_platform(user):
+        return statement
+    if user.tenant_id is None:
+        return statement.where(false())
+    return statement.where(key_column.in_(select(members.c[MEMBER_USER]).where(members.c[MEMBER_TENANT] == user.tenant_id)))
+
+
+def refuse_non_member(session: Session, person_id, user: CurrentUser) -> None:
+    """A person of another tenant is not found."""
+    if is_platform(user):
+        return
+    if user.tenant_id is None or session.scalar(select(members.c[MEMBER_USER]).where(members.c[MEMBER_USER] == person_id, members.c[MEMBER_TENANT] == user.tenant_id)) is None:
+        raise ApiError(404, "Not found.")
+
+
+def attach_person(session: Session, person_id, user: CurrentUser) -> None:
+    """A person added inside a tenant belongs to it."""
+    if user.tenant_id is None:
+        return
+    session.execute(members.insert().values({MEMBER_USER: person_id, MEMBER_TENANT: user.tenant_id}))
+    session.commit()
+
+
+def detach_person(session: Session, person_id, user: CurrentUser) -> None:
+    """A person removed inside a tenant leaves it, in the transaction that removes them (a person of another tenant too is refused by the foreign key)."""
+    if user.tenant_id is None:
+        return
+    session.execute(members.delete().where(members.c[MEMBER_USER] == person_id, members.c[MEMBER_TENANT] == user.tenant_id))
+"""";
+
+    private const string PeoplePassThrough = """"
+
+
+def only_members(statement, key_column, user: CurrentUser):
+    """The membership rows cannot be made for a person added inside a tenant, so the people are shown to every tenant."""
+    return statement
+
+
+def refuse_non_member(session: Session, person_id, user: CurrentUser) -> None:
+    return None
+
+
+def attach_person(session: Session, person_id, user: CurrentUser) -> None:
+    return None
+
+
+def detach_person(session: Session, person_id, user: CurrentUser) -> None:
+    return None
+"""";
+
+    private const string NewPersonText = """"
+
+
+def new_person(session: Session, admin: dict[str, Any], password: str | None, tenant_id: int) -> None:
+    """Saves the first administrator as a new person, in the transaction that made the tenant: a short password, a missing value or a user name that someone has is a 400 and the tenant is not saved."""
+    from pydantic import ValidationError
+
+    from app.auth import hash_password
+    from app.models.§MODULE import §CLASS
+    from app.schemas.§MODULE import §SCHEMA
+    from app.users import MINIMUM_PASSWORD_LENGTH
+
+    if len(password or "") < MINIMUM_PASSWORD_LENGTH:
+        raise ApiError(400, "Password too short", detail=f"The first administrator needs a password of at least {MINIMUM_PASSWORD_LENGTH} characters.")
+    try:
+        body = §SCHEMA.model_validate(admin)
+    except ValidationError:
+        raise ApiError(400, "Bad request", detail="The first administrator is missing a value or has one that is wrong.")
+    name = (body.§NAMEFIELD or "").strip()
+    if not name or session.scalar(select(users.c[USER_KEY]).where(users.c[USER_NAME] == name)) is not None:
+        raise ApiError(400, "User name", detail="The first administrator needs a user name that no one has; send adminId for a person who exists.")
+    person = §CLASS(**body.columns())
+    person.§NAMEFIELD = name
+    person.§HASHFIELD = hash_password(password)
+§TENANTLINK§ADMINFLAG    session.add(person)
+    session.flush()
+§MEMBERLINE
+"""";
 
     private static string Tables(TableModel tenantTable, ColumnModel key, ColumnModel? active, ColumnModel? text, ColumnModel? host, TenantMembership? membership, UserTablePlan? userPlan, TenantOwned? userOwned)
     {
@@ -112,7 +213,7 @@ The same rules and sentences as the ASP.NET API (API_Tenants). Generated by PY_T
 §HOSTIMPORTimport threading
 import time
 from datetime import datetime, timedelta, timezone
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from fastapi import APIRouter, Depends§REQUESTIMPORT
 from pydantic import BaseModel, ConfigDict, Field
@@ -289,8 +390,13 @@ def attach_creator(session: Session, user: CurrentUser, tenant_id: int) -> None:
         session.rollback()
 
 
-def attach_admin(session: Session, person_id: int | None, tenant_id: int) -> None:
-    """Makes the person the first administrator of a tenant, in the transaction that made it; a person the user table does not know is a 400 and the tenant is not saved."""
+def attach_admin(session: Session, person_id: int | None, tenant_id: int, admin: dict[str, Any] | None = None, password: str | None = None) -> None:
+    """Makes a person the first administrator of a tenant, in the transaction that made it: the person who exists (person_id) or a new one (admin and password), not both. A person the user table does not know is a 400 and the tenant is not saved."""
+    if admin is not None:
+        if person_id is not None:
+            raise ApiError(400, "One first administrator", detail="Send adminId (a person who exists) or admin (a new person), not both.")
+        new_person(session, admin, password, tenant_id)
+        return
     if person_id is None:
         return
     if session.scalar(select(users.c[USER_KEY]).where(users.c[USER_KEY] == person_id)) is None:

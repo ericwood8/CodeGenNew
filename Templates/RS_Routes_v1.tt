@@ -54,7 +54,9 @@
     RustField? FieldOf(ColumnModel? column) => column is null ? null : t.Fields.FirstOrDefault(f => f != t.HashField && f.Column.Name.EqualsIgnoreCase(column.Name));
     var ownerField = FieldOf(ownerColumn);
     var tenantField = FieldOf(tenantOwned?.Column);
-    bool tenanted = tenantField is not null || tenantTable;
+    // the people of the user table belong to a tenant by their membership rows (TenantMembership): a tenant shows only its own members and a person added inside a tenant becomes one
+    bool people = tenancy && userPlan is not null && Project.TenantMembership is not null && tenantField is null;
+    bool tenanted = tenantField is not null || tenantTable || people;
     var linkField = ownerLink is null ? null : t.Fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(ownerLink.ForeignKey));
     bool scoped = ownerField is not null || (ownerColumn is null && linkField is not null);
     string parentModule = ownerLink is null ? "" : RustNames.Snake(ownerLink.ParentTable);
@@ -72,11 +74,13 @@
     string userArgument = auth && (scoped || userPlan is not null || gated || tenanted) ? ", Extension(user): Extension<CurrentUser>" : "";
     string userRead = scoped || tenanted ? userArgument : "";   // the reading handlers need the caller only to scope the rows
     // what a repository function that filters takes after the pool: the owner scope and the tenant
-    string tenancyArgument = tenantTable ? "&Tenancy::of_tenants(&user)" : "&Tenancy::of(&user)";
+    string tenancyArgument = tenantTable ? "&Tenancy::of_tenants(&user)" : people ? "&Tenancy::of_members(&user)" : "&Tenancy::of(&user)";
     string filterArguments = (scoped ? ", &scope_of(&pool, &user).await?" : "") + (tenanted ? ", " + tenancyArgument : "");
     string getById = nameActive is null ? "get_by_id" : "get_by_key";   // a name in that place is the start of a name, not a key
     string namedTenancy = tenanted ? ", " + tenancyArgument : "";
-    string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{t.Key.Name}, &user)?;" : $"    refuse_other_tenant({row}.{tenantField!.Name}, &user)?;";
+    string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{t.Key.Name}, &user)?;"
+        : people ? $"    refuse_non_member(&pool, {row}.{t.Key.Name}, &user).await?;"
+        : $"    refuse_other_tenant({row}.{tenantField!.Name}, &user)?;";
 
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
     Line("use axum::{");
@@ -96,7 +100,8 @@
     if (tenanted)
     {
         var tenancyNames = tenantTable
-            ? new List<string> { "Tenancy", "attach_admin", "attach_creator", "never_deleted", "only_platform", "refuse_other_tenant_row", "require_person" }
+            ? new List<string> { "Person", "Tenancy", "attach_admin", "attach_creator", "attach_new_admin", "check_new_admin", "never_deleted", "only_platform", "refuse_other_tenant_row", "require_person" }
+            : people ? new List<string> { "Tenancy", "attach_person", "detach_person", "refuse_non_member" }
             : new List<string> { "Tenancy", "refuse_other_tenant", "require_tenant" };
         Line("use crate::tenancy::{" + string.Join(", ", tenancyNames.OrderBy(n => n, StringComparer.Ordinal)) + "};");
     }
@@ -392,6 +397,8 @@
     Line("    let row = repo::insert(&pool, &row).await?;");
     if (tenantTable)
         Line($"    attach_creator(&pool, &user, row.{t.Key.Name}).await?;");
+    if (people)
+        Line($"    attach_person(&pool, row.{t.Key.Name}, &user).await?;");
     Line(textKey
         ? $"    Ok(created(format!(\"{t.Route}/{{}}\", path_segment(&row.{t.Key.Name})), row))"
         : $"    Ok(created(format!(\"{t.Route}/{{}}\", row.{t.Key.Name}), row))");
@@ -405,6 +412,10 @@
         Line($"    tenant: {t.Struct},");
         Line("    #[serde(rename = \"adminId\", default)]");
         Line("    admin_id: Option<i32>,");
+        Line("    #[serde(default)]");
+        Line("    admin: Option<Person>,");
+        Line("    #[serde(rename = \"adminPassword\", default)]");
+        Line("    admin_password: Option<String>,");
         Line("}");
         Line();
         Line($"async fn onboard(State(pool): State<Pool>{userArgument}, ApiJson(request): ApiJson<OnboardRequest>) -> ApiResult<Response> {{");
@@ -417,8 +428,13 @@
         if (nameActive is not null)
             Line("    check_name(&pool, &mut row, None).await?;");
         Line("    require_person(&pool, request.admin_id).await?;");
+        Line("    check_new_admin(&pool, request.admin_id, request.admin.as_ref(), request.admin_password.as_deref()).await?;");
         Line("    let row = repo::insert(&pool, &row).await?;");
-        Line($"    if let Err(error) = attach_admin(&pool, request.admin_id, row.{t.Key.Name}).await {{");
+        Line($"    let attached = match attach_admin(&pool, request.admin_id, row.{t.Key.Name}).await {{");
+        Line("        Ok(()) => attach_new_admin(&pool, row." + t.Key.Name + ", request.admin, request.admin_password).await,");
+        Line("        Err(error) => Err(error),");
+        Line("    };");
+        Line("    if let Err(error) = attached {");
         Line($"        let _ = repo::delete(&pool, row.{t.Key.Name}).await;");
         Line("        return Err(error);");
         Line("    }");
@@ -484,6 +500,8 @@
             Line("    }");
         }
     }
+    if (people)
+        Line($"    detach_person(&pool, {keyRef}current.{t.Key.Name}, &user).await?;");
     Line($"    match repo::delete(&pool, {idArg}).await? {{");
     Line("        0 => Err(ApiError::NotFound),");
     Line("        _ => Ok(StatusCode::OK),");
@@ -494,12 +512,12 @@
     {
         Line();
         Line($"async fn clone_row(State(pool): State<Pool>, Path(id): Path<{keyType}>{userArgument}) -> ApiResult<Response> {{");
-        if (scoped || tenantField is not null)
+        if (scoped || tenantField is not null || people)
         {
             Line($"    let source = repo::get_by_id(&pool, {idArg}).await?.ok_or(ApiError::NotFound)?;");
             if (scoped)
                 Line("    allowed(&pool, &user, &source).await?;");
-            if (tenantField is not null)
+            if (tenantField is not null || people)
                 Line(TenantRefusal("source"));
         }
         if (userPlan is not null)
@@ -512,6 +530,8 @@
         Line(gated ? "    let mut copy = repo::clone_row(&pool, id).await?.ok_or(ApiError::NotFound)?;" : "    let copy = repo::clone_row(&pool, id).await?.ok_or(ApiError::NotFound)?;");
         if (gated)
             Line($"    after_clone_{t.Module}(&pool, &user, &mut copy).await?;");
+        if (people)
+            Line($"    attach_person(&pool, copy.{t.Key.Name}, &user).await?;");
         Line($"    Ok(created(format!(\"{t.Route}/{{}}\", copy.{t.Key.Name}), copy))");
         Line("}");
     }

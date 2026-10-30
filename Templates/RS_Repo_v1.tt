@@ -36,7 +36,9 @@
     // TenantTable (src/tenancy.rs): the filter of the tenant column (the key of the tenant table itself) joins the owner scope in the filtering functions
     var tenantOwned = RustTenantWriter.Applies(Project) ? TenantPlan.OwnedBy(Model, Project) : null;
     bool tenantTable = RustTenantWriter.Applies(Project) && TenantPlan.IsTenantTable(Model, Project);
-    bool tenanted = tenantOwned is not null || tenantTable;
+    // the people of the user table belong to a tenant by their membership rows (TenantMembership): the filter is on the person's key
+    bool people = RustTenantWriter.Applies(Project) && userPlan is not null && Project.TenantMembership is not null && tenantOwned is null;
+    bool tenanted = tenantOwned is not null || tenantTable || people;
     var qd = DialectInfo.For(Model.Dialect);
     RustField? FieldOf(ColumnModel? column) => column is null ? null : t.Fields.FirstOrDefault(f => f != t.HashField && f.Column.Name.EqualsIgnoreCase(column.Name));
     var ownerField = FieldOf(ownerColumn);
@@ -48,7 +50,7 @@
     bool filtered = scoped || tenanted || nameActive is not null;
     string activeTest = nameActive is null ? "" : $"t.{qd.Quote(nameActive.Active.DbName)} = {qd.BooleanLiteral(true)}";
     string nameColumn = nameActive is null ? "" : $"t.{qd.Quote(nameActive.Name.DbName)}";
-    string tenantColumn = tenantTable ? qd.Quote(t.Key.Column.DbName) : tenantOwned is null ? "" : qd.Quote(tenantOwned.Column.DbName);
+    string tenantColumn = tenantTable || people ? qd.Quote(t.Key.Column.DbName) : tenantOwned is null ? "" : qd.Quote(tenantOwned.Column.DbName);
     string filterParameters = (scoped ? ", scope: &Scoped" : "") + (tenanted ? ", tenancy: &Tenancy" : "");
     var adminColumn = FieldOf(userPlan?.Admin);
     var activeColumn = t.ActiveField;

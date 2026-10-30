@@ -14,6 +14,9 @@ public static class WriteRolePlan
 
     public static IReadOnlyList<string> ReadFor(ProjectSettings project, TableModel table) => ReadFor(project, table.TableName);
 
+    /// <summary> The write roles the WinUI3 screens apply: those of the table when the app signs in, else none. </summary>
+    public static IReadOnlyList<string> ForDesktop(ProjectSettings project, TableModel table) => TenantPlan.HasDesktopSignIn(project) ? For(project, table) : [];
+
     /// <summary> The roles as the items of a C# or TypeScript array: <c>"Administrator", "Manager"</c>, or with single quotes for TypeScript. </summary>
     public static string Literal(IReadOnlyList<string> roles, char quote = '"') =>
         string.Join(", ", roles.Select(r => quote + r.Replace("\\", "\\\\").Replace(quote.ToString(), "\\" + quote) + quote));

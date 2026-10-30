@@ -46,6 +46,29 @@ public static class TenantTestPlan
         return $"DELETE FROM {di.QuoteTable(table.SchemaName, table.DbTableName)} WHERE {di.Quote(TenantKey(database, project).DbName)} = {key}";
     }
 
+    /// <summary> Whether the tests play the first administrator as a new person. </summary>
+    public static bool NewAdmin(DatabaseModel database, ProjectSettings project) => TenantPlan.OnboardsNewAdmin(database, project);
+
+    /// <summary> The SQL that removes the membership rows of a tenant, or empty when the project has no membership table. </summary>
+    public static string RemoveMembersSql(DatabaseModel database, ProjectSettings project, string key)
+    {
+        if (TenantPlan.MembershipOf(database, project) is not { } membership)
+            return "";
+        var di = DialectInfo.For(membership.Table.Dialect);
+        return $"DELETE FROM {di.QuoteTable(membership.Table.SchemaName, membership.Table.DbTableName)} WHERE {di.Quote(membership.Tenant.DbName)} = {key}";
+    }
+
+    /// <summary> The SQL that removes the person with a user name; <paramref name="name"/> is the placeholder or the text literal. </summary>
+    public static string RemovePersonSql(DatabaseModel database, ProjectSettings project, string name)
+    {
+        var plan = UserTable.Resolve(database, project).Plan!;
+        var di = DialectInfo.For(plan.Table.Dialect);
+        return $"DELETE FROM {di.QuoteTable(plan.Table.SchemaName, plan.Table.DbTableName)} WHERE {di.Quote(plan.UserName.DbName)} = {name}";
+    }
+
+    /// <summary> The JSON name of the user name column of the user table. </summary>
+    public static string LoginKey(DatabaseModel database, ProjectSettings project) => JsonNames.Camel(UserTable.Resolve(database, project).Plan!.UserName.Name);
+
     /// <summary> The SQL that switches a tenant off, as the person who runs the tenants would; empty when the tenant table has no active flag. </summary>
     public static string SwitchOffSql(DatabaseModel database, ProjectSettings project, string key)
     {

@@ -299,8 +299,10 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
             + "            await ViewModelBase.InTurnAsync(async () => { await viewModel.LoadAsync(); return 0; });\n"
             + $"            var dialog = new {stem}JunctionEditor(viewModel) {{ XamlRoot = XamlRoot }};\n"
             + "            await dialog.ShowAsync();";
+        var junctionWriteRoles = WriteRolePlan.ForDesktop(Project, Model);   // the Edit links button shows only to the roles that may write the junction table
         Write("@@@FILE " + viewsFolder + "/" + DesktopJunctionPage.PageName(stem) + ".xaml@@@\n" + DesktopJunctionPage.Xaml(Model, viewNamespace) + "\n");
         Write("@@@FILE " + viewsFolder + "/" + DesktopJunctionPage.PageName(stem) + ".xaml.cs@@@\n"
-            + DesktopJunctionPage.CodeBehind(Model, viewNamespace, [viewModelNamespace, contextNamespace, "Microsoft.EntityFrameworkCore", .. usings], "private readonly " + contextType + " _context;", contextType + " context", "_context = context;", read, open, "Exception ex") + "\n");
+            + DesktopJunctionPage.CodeBehind(Model, viewNamespace, [viewModelNamespace, contextNamespace, "Microsoft.EntityFrameworkCore", .. usings], "private readonly " + contextType + " _context;", contextType + " context", "_context = context;", read, open, "Exception ex",
+                junctionWriteRoles.Count == 0 ? null : "DesktopSession.HasRole([" + WriteRolePlan.Literal(junctionWriteRoles) + "])") + "\n");
     }
 #>

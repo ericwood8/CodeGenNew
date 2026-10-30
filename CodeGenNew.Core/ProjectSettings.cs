@@ -316,6 +316,7 @@ public partial class ProjectSettings
             if (ApiAuth && TenantTable is not null) { yield return "API_Tenants"; yield return "PY_Tenants"; yield return "RS_Tenants"; }
             if (ApiAuth && ApiTests && TenantTable is not null) yield return "API_TestTenants";
             if (TenantTable is not null) yield return "SP_TenantIndex";
+            if (TenantPlan.HasDesktopSignIn(this)) yield return "WinUI3_Auth";
             if (ApiAuth && UserTable is not null) { yield return "API_UserDirectory"; yield return "PY_UserDirectory"; yield return "RS_UserDirectory"; }
             if (ApiHttp) yield return "API_Http";
             if (ApiFakers) yield return "CS_Faker";

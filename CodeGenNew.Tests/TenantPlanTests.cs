@@ -153,8 +153,9 @@ public class TenantPlanTests
         Assert.Contains("modelBuilder.Entity<Project>().HasQueryFilter(e => !e.IsDeleted && e.TenantId == CurrentTenantId);", context, "one filter per entity: soft delete and tenant together");
         Assert.Contains("modelBuilder.Entity<Tenant>().HasQueryFilter(e => (e.TenantId == CurrentTenantId || IsPlatform));", context, "the tenant table shows the caller's own tenant, and a platform administrator every tenant");
         Assert.DoesNotContain("Entity<Country>().HasQueryFilter", context, "a shared table has no filter");
-        Assert.DoesNotContain("Entity<Employee>().HasQueryFilter", context);
-        Assert.Contains("public class ClaimsTenantScope", context);
+        Assert.Contains("Entity<Employee>().HasQueryFilter(e => (IsPlatform || Set<EmployeeTenant>()", context, "the people of the user table are the members of the tenant");
+        Assert.DoesNotContain("ClaimsTenantScope", context, "the API's scope lives in Tenants.cs, so the WinUI3 context compiles without ASP.NET types");
+        Assert.Contains("public class ClaimsTenantScope", read("Apis/Tenants.cs"));
         Assert.Contains("services.AddTenants();", read("Apis/ApiRegistration.cs"));
         Assert.Contains("TenantRoutes.Register(app);", read("Apis/ApiRegistration.cs"));
     }
@@ -256,7 +257,8 @@ public class TenantPlanTests
         Assert.Contains("row.tenant_id = user.tenant_id   # a row never moves to another tenant", project);
         Assert.Contains("refuse_other_tenant(row.tenant_id, user)", project);
         Assert.Contains("from app.routes import tenancy", read("app/routes/__init__.py"));
-        Assert.DoesNotContain("tenancy", read("app/routes/employee.py"), "a table that is not tenant-owned is untouched");
+        Assert.DoesNotContain("only_tenant", read("app/routes/employee.py"), "a table that is not tenant-owned has no tenant column to filter");
+        Assert.Contains("only_members(", read("app/routes/employee.py"));
         string organization = read("app/routes/organization.py");
         Assert.Contains("@router.get(\"/api/organizations/active\"", organization);
         Assert.Contains("@router.get(\"/api/organizations/{id:int}\"", organization);
@@ -352,7 +354,8 @@ public class TenantPlanTests
         Assert.Contains("tenancy.apply(&mut builder, r#\"t.\"TenantId\"\"#);", read("src/repos/project.rs"));
         Assert.Contains(".merge(crate::tenancy::router())", read("src/routes/mod.rs"));
         Assert.Contains("from_fn_with_state(pool.clone(), auth::require_user)", read("src/lib.rs"));
-        Assert.DoesNotContain("tenancy", read("src/routes/employee.rs"), "a table that is not tenant-owned is untouched");
+        Assert.DoesNotContain("Tenancy::of(&user)", read("src/routes/employee.rs"), "a table that is not tenant-owned has no tenant column to filter");
+        Assert.Contains("Tenancy::of_members(&user)", read("src/routes/employee.rs"));
         string organization = read("src/routes/organization.rs");
         Assert.Contains(".route(\"/api/organizations/active\", get(get_all_active))", organization);
         Assert.Contains("async fn get_by_key(State(pool): State<Pool>, Path(key): Path<String>", organization);

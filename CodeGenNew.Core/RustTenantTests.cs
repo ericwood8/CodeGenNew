@@ -38,6 +38,20 @@ public static class RustTenantTests
             o.Append(Fill(SwitchedOff, ("§SWITCHOFF", RustTable.Raw(TenantTestPlan.SwitchOffSql(database, project, di.Placeholder(1)))), ("§ACTIVE", Str(active)), ("§CRATE", project.RustCrateName),
                 ("§INACTIVE_TYPE", TenantWords.InactiveType)));
         o.Append(Fill(OnboardCase, ("§ONBOARD_TYPE", TenantWords.OnboardingType)));
+        if (TenantTestPlan.NewAdmin(database, project))
+        {
+            var userTable = UserTable.Resolve(database, project).Plan!.Table;
+            string members = TenantTestPlan.RemoveMembersSql(database, project, di.Placeholder(1));
+            o.Append(Fill(PersonCase, ("§PERSONBODY", BodyFunction("person_body", userTable, project, "")), ("§LOGINKEY", Str(TenantTestPlan.LoginKey(database, project))),
+                ("§REMOVEPERSON", RustTable.Raw(TenantTestPlan.RemovePersonSql(database, project, di.Placeholder(1)))),
+                ("§REMOVEMEMBERSCONST", members.Length == 0 ? "" : $"const REMOVE_MEMBERS: &str = {RustTable.Raw(members)};"),
+                ("§REMOVEMEMBERSRUN", members.Length == 0 ? "" : "    sqlx::query(REMOVE_MEMBERS).bind(tenant).execute(&api.pool()).await.expect(\"the memberships are removed\");\n")));
+            if (TenantPlan.PeopleOf(database, project) is { } people && people.User.Table.HasPythonRustApi(project))
+                o.Append(Fill(PeopleCase, ("§USERROUTE", Str(RustTestBodies.Route(people.User.Table.TableName))), ("§USERKEY", Str(JsonNames.Camel(people.Key.Name)))));
+            if (TenantBypassPlan.HostColumn(database, project) is { } hostColumn)
+                o.Append(Fill(HostLoginCase, ("§SLUG", Str(JsonNames.Camel(hostColumn.Name))), ("§ACTIVELINES", TenantTestPlan.ActiveKey(database, project) is { } flag2 ? $"    own_body[{Str(flag2)}] = json!(true);\n    other_body[{Str(flag2)}] = json!(true);\n" : ""),
+                    ("§CRATE", project.RustCrateName)));
+        }
         if (TenantBypassPlan.HostColumn(database, project) is { } host)
             o.Append(Fill(HostCase, ("§SLUG", Str(JsonNames.Camel(host.Name))), ("§ACTIVELINE", TenantTestPlan.ActiveKey(database, project) is { } activeName ? $"    body[{Str(activeName)}] = json!(true);\n" : ""),
                 ("§HOST_TYPE", TenantWords.HostType), ("§CRATE", project.RustCrateName)));
@@ -299,6 +313,122 @@ async fn only_a_platform_administrator_onboards_a_tenant() {
     let onboarded = api.platform().post(&format!("{TENANTS}/onboard"), &json!({ "tenant": tenant_body() })).await;
     assert_eq!(onboarded.status, StatusCode::CREATED, "{}", onboarded.body);
     remove_tenant(&api, onboarded.json()[TENANT_KEY].as_i64().unwrap_or(0) as i32).await;
+}
+"""";
+
+    private const string PersonCase = """"
+
+const PERSON_LOGIN: &str = §LOGINKEY;
+const PERSON_PASSWORD: &str = "Onboard-1234-password";
+const REMOVE_PERSON: &str = §REMOVEPERSON;
+§REMOVEMEMBERSCONST
+
+#[allow(dead_code)]
+§PERSONBODY
+
+async fn remove_person(api: &Client, tenant: i32, login: &str) {
+§REMOVEMEMBERSRUN    sqlx::query(REMOVE_PERSON).bind(login).execute(&api.pool()).await.expect("the person is removed");
+    remove_tenant(api, tenant).await;
+}
+
+#[tokio::test]
+async fn a_platform_administrator_onboards_a_tenant_with_a_new_first_administrator_who_signs_in() {
+    let Some(api) = Client::start().await else { return };
+    if api.tenant.is_none() {
+        return skip("the database needs an active tenant");
+    }
+    let person = person_body();
+    let login = person[PERSON_LOGIN].as_str().unwrap_or_default().to_string();
+    let route = format!("{TENANTS}/onboard");
+    let weak = api.platform().post(&route, &json!({ "tenant": tenant_body(), "admin": person, "adminPassword": "short" })).await;
+    assert_eq!(weak.status, StatusCode::BAD_REQUEST, "{}", weak.body);
+    let onboarded = api.platform().post(&route, &json!({ "tenant": tenant_body(), "admin": person, "adminPassword": PERSON_PASSWORD })).await;
+    assert_eq!(onboarded.status, StatusCode::CREATED, "{}", onboarded.body);
+    let tenant = onboarded.json()[TENANT_KEY].as_i64().unwrap_or(0) as i32;
+    let taken = api.platform().post(&route, &json!({ "tenant": tenant_body(), "admin": person, "adminPassword": PERSON_PASSWORD })).await;
+    let wrong = api.post("/api/auth/login", &json!({ "userName": login, "password": "not-the-password" })).await;
+    let signed = api.post("/api/auth/login", &json!({ "userName": login, "password": PERSON_PASSWORD })).await;
+    remove_person(&api, tenant, &login).await;
+    assert_eq!(taken.status, StatusCode::BAD_REQUEST, "a user name that someone has is refused: {}", taken.body);
+    assert_eq!(wrong.status, StatusCode::UNAUTHORIZED, "{}", wrong.body);
+    assert_eq!(signed.status, StatusCode::OK, "{}", signed.body);
+}
+"""";
+
+    private const string PeopleCase = """"
+
+const USER_ROUTE: &str = §USERROUTE;
+const USER_KEY: &str = §USERKEY;
+
+#[tokio::test]
+async fn a_person_added_inside_a_tenant_belongs_to_it_and_another_tenant_does_not_see_them() {
+    let Some(api) = Client::start().await else { return };
+    if api.tenant.is_none() {
+        return skip("the database needs an active tenant");
+    }
+    let mut person = person_body();
+    let login = person[PERSON_LOGIN].as_str().unwrap_or_default().to_string();
+    if let Some(fields) = person.as_object_mut() {
+        fields.remove(USER_KEY);
+    }
+    let tenant_a = make_tenant(&api).await;
+    let tenant_b = make_tenant(&api).await;
+    let created = api.in_tenant(tenant_a, ADMIN_ROLE).post(USER_ROUTE, &person).await;
+    let person_id = created.json()[USER_KEY].as_i64().unwrap_or(0);
+    let by_a = api.in_tenant(tenant_a, ADMIN_ROLE).get(&format!("{USER_ROUTE}/{person_id}")).await;
+    let by_b = api.in_tenant(tenant_b, ADMIN_ROLE).get(&format!("{USER_ROUTE}/{person_id}")).await;
+    let by_platform = api.platform().get(&format!("{USER_ROUTE}/{person_id}")).await;
+    remove_person(&api, tenant_a, &login).await;
+    remove_tenant(&api, tenant_b).await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.body);
+    assert_eq!(by_a.status, StatusCode::OK, "the person belongs to the tenant they were added in: {}", by_a.body);
+    assert_eq!(by_b.status, StatusCode::NOT_FOUND, "another tenant does not see the person: {}", by_b.body);
+    assert_eq!(by_platform.status, StatusCode::OK, "a platform administrator sees every person: {}", by_platform.body);
+}
+"""";
+
+    private const string HostLoginCase = """"
+
+#[tokio::test]
+async fn a_sign_in_on_the_host_of_a_tenant_works_in_that_tenant_and_not_in_another() {
+    let Some(api) = Client::start().await else { return };
+    if api.tenant.is_none() {
+        return skip("the database needs an active tenant");
+    }
+    let person = person_body();
+    let login = person[PERSON_LOGIN].as_str().unwrap_or_default().to_string();
+    let own = format!("o{}", &uuid::Uuid::new_v4().simple().to_string()[..10]);
+    let other = format!("p{}", &uuid::Uuid::new_v4().simple().to_string()[..10]);
+    let route = format!("{TENANTS}/onboard");
+    #[allow(unused_mut)]
+    let (mut own_body, mut other_body) = (tenant_body(), tenant_body());
+    own_body[§SLUG] = json!(own);
+    other_body[§SLUG] = json!(other);
+§ACTIVELINES    let first = api.platform().post(&route, &json!({ "tenant": own_body, "admin": person, "adminPassword": PERSON_PASSWORD })).await;
+    assert_eq!(first.status, StatusCode::CREATED, "{}", first.body);
+    let own_key = first.json()[TENANT_KEY].as_i64().unwrap_or(0) as i32;
+    let second = api.platform().post(&route, &json!({ "tenant": other_body })).await;
+    assert_eq!(second.status, StatusCode::CREATED, "{}", second.body);
+    let other_key = second.json()[TENANT_KEY].as_i64().unwrap_or(0) as i32;
+    §CRATE::forget_hosts();
+    let sign_in = |host: String, tenant: Option<i32>| {
+        let body = match tenant {
+            Some(tenant) => json!({ "userName": login, "password": PERSON_PASSWORD, "tenantId": tenant }),
+            None => json!({ "userName": login, "password": PERSON_PASSWORD }),
+        };
+        let client = api.on_host(&host);
+        async move { client.post("/api/auth/login", &body).await }
+    };
+    let on_own = sign_in(format!("{own}.example.test"), None).await;
+    let on_other = sign_in(format!("{other}.example.test"), None).await;
+    let naming_other = sign_in(format!("{own}.example.test"), Some(other_key)).await;
+    let plain = sign_in("localhost".into(), None).await;
+    remove_person(&api, own_key, &login).await;
+    remove_tenant(&api, other_key).await;
+    assert_eq!(on_own.status, StatusCode::OK, "{}", on_own.body);
+    assert_eq!(on_other.status, StatusCode::FORBIDDEN, "a person who is not a member is refused on another tenant's host: {}", on_other.body);
+    assert_eq!(naming_other.status, StatusCode::FORBIDDEN, "a sign-in naming another tenant than the host is refused: {}", naming_other.body);
+    assert_eq!(plain.status, StatusCode::OK, "localhost names no tenant: {}", plain.body);
 }
 """";
 

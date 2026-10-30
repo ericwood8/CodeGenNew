@@ -109,6 +109,20 @@ public sealed record ApprovalTestSeed(ApprovalTable Table, IReadOnlyList<string>
             setup.Add(sql);
         }
 
+        // the people of the user table belong to tenants by their membership rows: the test people work in the first active tenant, like the row
+        if (TenantPlan.HasApiTenancy(project) && TenantPlan.PeopleOf(database, project) is { } link && TenantPlan.TenantTableOf(database, project) is { } memberTenants && TenantPlan.KeyOf(memberTenants) is { } memberTenantKey)
+        {
+            string firstTenant = $"SELECT MIN({Q(memberTenantKey)}) FROM {Name(memberTenants)}" + (memberTenants.IsActiveColumn is { } activeFlag ? $" WHERE {Q(activeFlag)} = {Bool(true)}" : "");
+            foreach (var (_, key, _) in people)
+            {
+                var named = new Dictionary<string, string> { [link.Membership.User.Name] = key.ToString(CultureInfo.InvariantCulture), [link.Membership.Tenant.Name] = $"({firstTenant})" };
+                if (Insert(link.Membership.Table, named, key.ToString(CultureInfo.InvariantCulture), out reason) is not { } memberSql)
+                    return null;
+                setup.Add(memberSql);
+            }
+            cleanup.Add($"DELETE FROM {Name(link.Membership.Table)} WHERE {Q(link.Membership.User)} >= {FirstKey} AND {Q(link.Membership.User)} < {FirstKey + people.Count}");
+        }
+
         if (plan.Approvers is { } approvers)
         {
             var rows = new List<(long Person, string? Table)> { (FirstKey + 1, table.Table.TableName), (FirstKey + 2, null) };

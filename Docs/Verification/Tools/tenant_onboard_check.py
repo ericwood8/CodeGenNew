@@ -3,7 +3,7 @@
 python tenant_onboard_check.py <base url> <sqlite file>
 
 The API is a generated one (ASP.NET, Python or Rust) with the settings of tenant_bypass_check.py. The script signs in as the platform administrator pat and as ada (an administrator of tenant 1), whose
-test password hashes tenant_bypass_check.py writes into the copy (run that script first), then checks the refusals, the first administrator and an onboarding without one. It adds rows to the copy."""
+test password hashes tenant_bypass_check.py writes into the copy (run that script first), then checks the refusals, the first administrator as a person who exists and as a new person, and an onboarding without one. It adds rows to the copy."""
 import sqlite3
 import sys
 
@@ -42,5 +42,20 @@ rows = sqlite3.connect(db).execute("SELECT Role FROM EmployeeTenant WHERE Employ
 check("the first administrator is attached with the administrator role", rows == [("Administrator",)], rows)
 r = client.post("/api/tenants/onboard", headers=pat, json={"tenant": {**tenant, "name": "No Admin", "slug": "noadmin"}})
 check("a tenant can be onboarded without a first administrator", r.status_code == 201, (r.status_code, r.text))
+person = {"fullName": "New Admin", "login": "newadmin", "isManager": False, "isAdministrator": False}
+other = {**tenant, "name": "New Person Inc", "slug": "newperson"}
+r = client.post("/api/tenants/onboard", headers=pat, json={"tenant": other, "admin": person, "adminPassword": "short"})
+check("a short password for a new first administrator is a 400", r.status_code == 400, (r.status_code, r.text))
+r = client.post("/api/tenants/onboard", headers=pat, json={"tenant": other, "admin": {**person, "login": "ada"}, "adminPassword": "a-long-enough-password"})
+check("a user name someone has is a 400 and no tenant is saved", r.status_code == 400 and sqlite3.connect(db).execute("SELECT COUNT(*) FROM Tenant WHERE Slug = 'newperson'").fetchone()[0] == 0, (r.status_code, r.text))
+r = client.post("/api/tenants/onboard", headers=pat, json={"tenant": other, "admin": person, "adminPassword": "a-long-enough-password", "adminId": 1})
+check("adminId and admin together are a 400", r.status_code == 400, (r.status_code, r.text))
+r = client.post("/api/tenants/onboard", headers=pat, json={"tenant": other, "admin": person, "adminPassword": "a-long-enough-password"})
+check("a platform administrator onboards a tenant with a new first administrator", r.status_code == 201, (r.status_code, r.text))
+key = r.json().get("tenantId")
+rows = sqlite3.connect(db).execute("SELECT m.Role, e.PasswordHash FROM EmployeeTenant m JOIN Employee e ON e.EmployeeId = m.EmployeeId WHERE e.Login = 'newadmin' AND m.TenantId = ?", (key,)).fetchall()
+check("the new person is attached with the administrator role and a hashed password", len(rows) == 1 and rows[0][0] == "Administrator" and rows[0][1].startswith("pbkdf2-sha256$"), rows)
+r = client.post("/api/auth/login", json={"userName": "newadmin", "password": "a-long-enough-password"})
+check("the new first administrator signs in to the new tenant", r.status_code == 200 and r.json()["user"]["role"] == "Administrator", (r.status_code, r.text))
 print("\nFAILED: " + ", ".join(failures) if failures else "\nall passed")
 sys.exit(1 if failures else 0)

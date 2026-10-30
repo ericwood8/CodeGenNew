@@ -51,6 +51,11 @@
     var tenantTable = Project.ApiAuth ? TenantPlan.TenantTableOf(Database, Project) : null;
     var tenantKey = tenantTable is null ? null : TenantPlan.KeyOf(tenantTable);
     bool tenancy = tenantKey is not null;
+    var people = tenancy ? TenantPlan.PeopleOf(Database, Project) : null;   // the user table shows a tenant only its own members
+    // a tenant added in the WinUI3 app by a platform administrator makes them its first administrator, as the API does for a tenant created through its route
+    var creatorMember = tenancy && TenantPlan.HasDesktopSignIn(Project) && Project.TenantMembership is not null ? TenantPlan.MembershipOf(Database, Project) : null;
+    var creatorUser = creatorMember is null ? null : UserTable.Resolve(Database, Project).Item1;
+    bool creators = creatorMember is not null && creatorUser is not null;
     var filterLines = new List<string>();
     foreach (var table in contextTables)
     {
@@ -61,6 +66,8 @@
             conditions.Add($"e.{tenantColumn.CSharpName()} == CurrentTenantId");
         else if (tenancy && table == tenantTable)
             conditions.Add($"(e.{tenantKey!.CSharpName()} == CurrentTenantId || IsPlatform)");
+        else if (tenancy && people is not null && table == people.User.Table)
+            conditions.Add($"(IsPlatform || Set<{people.Membership.Table.TableName}>().Any(m => m.{people.Membership.User.CSharpName()} == e.{people.Key.CSharpName()} && m.{people.Membership.Tenant.CSharpName()} == CurrentTenantId))");
         if (conditions.Count > 0)
             filterLines.Add($"        modelBuilder.Entity<{table.TableName}>().HasQueryFilter(e => {string.Join(" && ", conditions)});");
     }
@@ -86,6 +93,8 @@
     Line();
     Line($"    public {contextType}()");
     Line("    {");
+    if (tenancy && TenantPlan.HasDesktopSignIn(Project))
+        Line("        _tenant = DesktopTenantScope.Current;");
     Line("    }");
     Line();
     Line($"    public {contextType}(DbContextOptions<{contextType}> options) : base(options)");
@@ -103,6 +112,131 @@
         Line();
         Line("    /// <summary> Whether the caller is a platform administrator (the administrator role, working in no tenant): the tenant table shows them every tenant. </summary>");
         Line("    public bool IsPlatform => _tenant?.IsPlatform ?? false;");
+        if (TenantPlan.HasDesktopSignIn(Project))
+        {
+            Line();
+            Line("    // The app reads the database itself, so the context does what the API does on a write: a new row gets the tenant the person works in, and an update never moves a row to another tenant.");
+            Line("    private static readonly Dictionary<Type, string> TenantColumns = new()");
+            Line("    {");
+            foreach (var (name, column) in tenantOwned.OrderBy(o => o.Key, StringComparer.OrdinalIgnoreCase))
+                Line($"        [typeof({name})] = \"{column.CSharpName().TrimStart('@')}\",");
+            Line("    };");
+            Line();
+            Line("    private void StampTenant()");
+            Line("    {");
+            Line("        if (CurrentTenantId is not int tenant)");
+            Line("            return;");
+            Line("        foreach (var entry in ChangeTracker.Entries())");
+            Line("        {");
+            Line("            if (!TenantColumns.TryGetValue(entry.Metadata.ClrType, out string? column))");
+            Line("                continue;");
+            Line("            if (entry.State == EntityState.Added)");
+            Line("                entry.Property(column).CurrentValue = tenant;");
+            Line("            else if (entry.State == EntityState.Modified)");
+            Line("                entry.Property(column).IsModified = false;");
+            Line("        }");
+            Line("    }");
+        }
+        bool desktop = TenantPlan.HasDesktopSignIn(Project);
+        if (desktop || people is not null)
+        {
+            Line();
+            if (people is not null)
+            {
+                string person = people.User.Table.TableName, member = people.Membership.Table.TableName;
+                Line("    // A person added inside a tenant belongs to it: the membership row is saved right after the person (the key is known then).");
+                Line("    private List<" + person + "> AddedPeople() =>");
+                Line("        CurrentTenantId is null ? [] : ChangeTracker.Entries<" + person + ">().Where(e => e.State == EntityState.Added).Select(e => e.Entity).ToList();");
+                Line();
+                Line("    // A person removed inside a tenant leaves it: the tenant's membership row goes in the same save (a person who belongs to another tenant too is refused by the foreign key).");
+                Line("    private IQueryable<" + member + "> LeavingMembers()");
+                Line("    {");
+                Line("        var leaving = CurrentTenantId is null ? [] : ChangeTracker.Entries<" + person + ">().Where(e => e.State == EntityState.Deleted).Select(e => e.Entity." + people.Key.CSharpName() + ").ToList();");
+                Line("        return Set<" + member + ">().IgnoreQueryFilters().Where(m => leaving.Contains(m." + people.Membership.User.CSharpName() + ") && m." + people.Membership.Tenant.CSharpName() + " == CurrentTenantId);");
+                Line("    }");
+                Line();
+                Line("    private bool AttachPeople(List<" + person + "> people)");
+                Line("    {");
+                Line("        foreach (var person in people)");
+                Line("            Set<" + member + ">().Add(new " + member + " { " + people.Membership.User.CSharpName() + " = person." + people.Key.CSharpName() + ", " + people.Membership.Tenant.CSharpName() + " = CurrentTenantId!.Value });");
+                Line("        return people.Count > 0;");
+                Line("    }");
+                Line();
+            }
+            if (creators)
+            {
+                string tenantType = tenantTable!.TableName, memberType = creatorMember!.Table.TableName, userType = creatorUser!.Table.TableName;
+                string roleAssign = creatorMember.Role is null ? "" : $", {creatorMember.Role.CSharpName()} = {CSharpText.Quote(Project.AuthAdminRole)}";
+                Line("    // A tenant added in the app by a platform administrator: they become its first administrator (the person is found by the user name they signed in with).");
+                Line("    private List<" + tenantType + "> AddedTenants() =>");
+                Line("        IsPlatform ? ChangeTracker.Entries<" + tenantType + ">().Where(e => e.State == EntityState.Added).Select(e => e.Entity).ToList() : [];");
+                Line();
+                Line("    private IQueryable<int?> CreatorKeys()");
+                Line("    {");
+                Line("        string name = ((_tenant as DesktopTenantScope)?.UserName ?? \"\").Trim();");
+                Line("        return Set<" + userType + ">().IgnoreQueryFilters().AsNoTracking().Where(u => name != \"\" && u." + creatorUser.UserName.CSharpName() + " == name).Select(u => (int?)u." + creatorUser.Table.PrimaryKeyColumns[0].CSharpName() + ");");
+                Line("    }");
+                Line();
+                Line("    private bool AttachCreators(List<" + tenantType + "> tenants, int? person)");
+                Line("    {");
+                Line("        if (person is null)");
+                Line("            return false;");
+                Line("        foreach (var tenant in tenants)");
+                Line("            Set<" + memberType + ">().Add(new " + memberType + " { " + creatorMember.User.CSharpName() + " = person.Value, " + creatorMember.Tenant.CSharpName() + " = tenant." + tenantKey!.CSharpName() + roleAssign + " });");
+                Line("        return tenants.Count > 0;");
+                Line("    }");
+                Line();
+            }
+            // the membership rows of the people and of the creators are added together and saved once, after the rows they point to
+            string Attached(bool asynchronous)
+            {
+                var calls = new List<string>();
+                if (people is not null)
+                    calls.Add("AttachPeople(people)");
+                if (creators)
+                    calls.Add(asynchronous ? "AttachCreators(tenants, tenants.Count > 0 ? await CreatorKeys().FirstOrDefaultAsync(cancellationToken) : null)" : "AttachCreators(tenants, tenants.Count > 0 ? CreatorKeys().FirstOrDefault() : null)");
+                return calls.Count == 1 ? calls[0] : "(" + string.Join(" | ", calls) + ")";
+            }
+            Line("    public override int SaveChanges(bool acceptAllChangesOnSuccess)");
+            Line("    {");
+            if (desktop)
+                Line("        StampTenant();");
+            if (people is not null)
+            {
+                Line("        RemoveRange(LeavingMembers().ToList());");
+                Line("        var people = AddedPeople();");
+            }
+            if (creators)
+                Line("        var tenants = AddedTenants();");
+            if (people is not null || creators)
+            {
+                Line("        int saved = base.SaveChanges(acceptAllChangesOnSuccess);");
+                Line("        return " + Attached(false) + " ? saved + base.SaveChanges(acceptAllChangesOnSuccess) : saved;");
+            }
+            else
+                Line("        return base.SaveChanges(acceptAllChangesOnSuccess);");
+            Line("    }");
+            Line();
+            Line("    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)");
+            Line("    {");
+            if (desktop)
+                Line("        StampTenant();");
+            if (people is not null)
+            {
+                Line("        RemoveRange(await LeavingMembers().ToListAsync(cancellationToken));");
+                Line("        var people = AddedPeople();");
+            }
+            if (creators)
+                Line("        var tenants = AddedTenants();");
+            if (people is not null || creators)
+            {
+                Line("        int saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);");
+                Line("        return " + Attached(true) + " ? saved + await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken) : saved;");
+            }
+            else
+                Line("        return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);");
+            Line("    }");
+        }
     }
     if (Database.Dialect == SqlDialect.PostgreSql)
     {
@@ -204,7 +338,7 @@
     if (tenancy)
     {
         Line();
-        Line("/// <summary> The tenant the caller works in: the claim of their token (the sign-in puts it there). The context reads it to filter every tenant-owned table. Register your own to take the tenant from elsewhere (a host name). </summary>");
+        Line("/// <summary> The tenant the caller works in: the claim of their token in the API, the tenant they signed in to in the WinUI3 app. The context reads it to filter every tenant-owned table. Register your own to take the tenant from elsewhere (a host name). </summary>");
         Line("public interface ITenantScope");
         Line("{");
         Line("    int? TenantId { get; }");
@@ -212,16 +346,29 @@
         Line("    /// <summary> A platform administrator: the administrator role, working in no tenant. They see and create tenants; every other table stays empty for them until they work in a tenant. </summary>");
         Line("    bool IsPlatform => false;");
         Line("}");
-        Line();
-        Line("/// <summary> The default scope: the <see cref=\"ClaimName\"/> claim of the signed-in caller. </summary>");
-        Line("public class ClaimsTenantScope(Microsoft.AspNetCore.Http.IHttpContextAccessor accessor) : ITenantScope");
-        Line("{");
-        Line("    public const string ClaimName = \"tenant\";");
-        Line();
-        Line("    public int? TenantId => int.TryParse(accessor.HttpContext?.User.FindFirst(ClaimName)?.Value, out int id) ? id : null;");
-        Line();
-        Line("    public bool IsPlatform => TenantId is null && accessor.HttpContext?.User.IsInRole(AuthNames.AdminRole) == true;");
-        Line("}");
+        if (TenantPlan.HasDesktopSignIn(Project))
+        {
+            Line();
+            Line("/// <summary> The tenant the person works in the WinUI3 app: one scope for the whole app, which the window sets when someone signs in or switches tenant, so every context the pages make (<c>new " + contextType + "()</c>) reads it. </summary>");
+            Line("public sealed class DesktopTenantScope : ITenantScope");
+            Line("{");
+            Line("    public static DesktopTenantScope Current { get; } = new();");
+            Line();
+            Line("    public int? TenantId { get; private set; }");
+            Line();
+            Line("    public bool IsPlatform { get; private set; }");
+            Line();
+            Line("    /// <summary> The user name the person signed in with. </summary>");
+            Line("    public string? UserName { get; private set; }");
+            Line();
+            Line("    public void Use(int? tenantId, bool isPlatform, string? userName = null)");
+            Line("    {");
+            Line("        TenantId = tenantId;");
+            Line("        IsPlatform = isPlatform;");
+            Line("        UserName = userName;");
+            Line("    }");
+            Line("}");
+        }
     }
     if (textColumns.Count > 0)
     {
