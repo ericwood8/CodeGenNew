@@ -107,6 +107,7 @@ export function MembersPage() {
   };
 
   const add = async () => {
+    setMessage('');
     try {
       await addMember(Number(chosen)<#= role ? ", newRole" : "" #>);
       setAdding(false);
@@ -121,6 +122,7 @@ export function MembersPage() {
 #>
 
   const saveRole = async (personId: number) => {
+    setMessage('');
     try {
       await changeMemberRole(personId, editRole);
       setEditing(null);

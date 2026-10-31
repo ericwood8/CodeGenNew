@@ -162,7 +162,7 @@ public class AuthHandler : DelegatingHandler
 <# } #>
 <# if (tenants) { #>
             <ComboBox x:Name="TenantBox" Header="<#= TenantWords.SignInLabel #>" DisplayMemberPath="Name" HorizontalAlignment="Stretch" />
-            <TextBlock Text="<#= TenantWords.SignInHint #>" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.7" TextWrapping="Wrap" />
+            <TextBlock x:Name="TenantHint" Text="<#= TenantWords.SignInHint #>" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.7" TextWrapping="Wrap" />
 <# } #>
             <Button x:Name="SignInButton" Content="Sign in" Style="{ThemeResource AccentButtonStyle}" Click="OnSignInClick" />
         </StackPanel>
@@ -222,6 +222,7 @@ public sealed partial class LoginPage : UserControl
         ConfirmBox.Visibility = Visibility.Visible;
 <# if (tenants) { #>
         TenantBox.Visibility = Visibility.Collapsed;
+        TenantHint.Visibility = Visibility.Collapsed;
 <# } #>
         SignInButton.Content = "<#= UserScreenWords.FirstPersonButton #>";
     }

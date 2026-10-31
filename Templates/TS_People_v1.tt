@@ -195,6 +195,7 @@ export class MembersComponent implements OnInit {
 
   add(): void {
     if (this.chosen === null) { return; }
+    this.message = '';
     this.people.addMember(this.chosen<#= role ? ", this.newRole" : "" #>).subscribe({
       next: () => { this.adding = false; this.load(); },
       error: (error) => { this.message = error.status === <#= HttpStatus.Conflict #> ? '<#= PeopleWords.MemberExistsDetail #>' : 'Problem while adding!'; }
@@ -208,6 +209,7 @@ export class MembersComponent implements OnInit {
   }
 
   saveRole(member: Member): void {
+    this.message = '';
     this.people.changeMemberRole(member.personId, this.editRole).subscribe({
       next: () => { this.editing = null; this.load(); },
       error: () => { this.message = 'Problem while saving!'; }
@@ -228,6 +230,8 @@ export class MembersComponent implements OnInit {
 .members table { border-collapse: collapse; }
 .members th, .members td { padding: 4px 12px; text-align: left; }
 .members .toolbar { margin-bottom: 8px; }
+.members form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 8px; }
+.members form label { font-weight: 600; }
 @@@FILE src/app/<#= componentsFolder #>/members/members.component.spec.ts@@@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';

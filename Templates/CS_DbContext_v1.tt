@@ -51,6 +51,8 @@
     var tenantTable = Project.ApiAuth ? TenantPlan.TenantTableOf(Database, Project) : null;
     var tenantKey = tenantTable is null ? null : TenantPlan.KeyOf(tenantTable);
     bool tenancy = tenantKey is not null;
+    if (tenancy && Project.AccessModeFor(Database.Dialect) != AccessMode.Ef)
+        Error("TenantTable needs AccessMode=Ef: the tenant is a query filter of the context, and a search that calls a routine cannot be composed with a filter (the screen of a filtered table would fail when it opens).");
     var people = tenancy ? TenantPlan.PeopleOf(Database, Project) : null;   // the user table shows a tenant only its own members
     // a tenant added in the WinUI3 app by a platform administrator makes them its first administrator, as the API does for a tenant created through its route
     var creatorMember = tenancy && TenantPlan.HasDesktopSignIn(Project) && Project.TenantMembership is not null ? TenantPlan.MembershipOf(Database, Project) : null;

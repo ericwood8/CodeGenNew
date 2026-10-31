@@ -171,6 +171,7 @@ public static class PeopleApi
 
     private async Task AddAsync()
     {
+        message = null;
         var response = await Http.PostAsJsonAsync("<#= PeopleWords.MembersPath #>", new { personId = chosen<#= role ? ", role = newRole" : "" #> });
         if (response.IsSuccessStatusCode)
         {
@@ -192,6 +193,7 @@ public static class PeopleApi
 
     private async Task SaveRoleAsync(Member member)
     {
+        message = null;
         var response = await Http.PutAsJsonAsync($"<#= PeopleWords.MembersPath #>/{member.PersonId}", new { role = editRole });
         if (response.IsSuccessStatusCode)
         {
