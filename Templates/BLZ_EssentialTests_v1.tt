@@ -336,3 +336,78 @@ public class TenantSignInTests : PageTestContext
 <#
     }
 #>
+<#
+    if (Project.BlazorTests && Project.Auth && Project.UserTable is not null)
+    {
+        string ns4 = BlazorNames.Namespace(Project);
+#>
+@@@FILE FirstPersonTests.cs@@@
+using Bunit;
+using Bunit.TestDoubles;
+using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
+using System.Net;
+using <#= ns4 #>.Pages;
+using <#= ns4 #>.Services;
+
+namespace <#= ns4 #>.Tests;
+
+[TestClass]
+public class FirstPersonSignInTests : PageTestContext
+{
+    private IRenderedComponent<Login> RenderFirst()
+    {
+        Api.Answer("<#= PeopleWords.FirstPersonPath #>", "{ \"open\": true }");
+        var page = Render<Login>();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "<#= UserScreenWords.FirstPersonTitle #>"));
+        return page;
+    }
+
+    private static void Fill(IRenderedComponent<Login> page, string password, string confirm)
+    {
+        page.Find("#userName").Input("owner");
+        page.Find("#password").Input(password);
+        page.Find("#confirm").Input(confirm);
+        page.Find("form").Submit();
+    }
+
+    [TestMethod]
+    public void Offers_to_create_the_first_administrator_when_the_user_table_is_empty()
+    {
+        var page = RenderFirst();
+        Assert.AreEqual(1, page.FindAll("#confirm").Count);
+        StringAssert.Contains(page.Markup, "<#= UserScreenWords.FirstPersonButton #>");
+    }
+
+    [TestMethod]
+    public void Offers_nothing_when_someone_is_there()
+    {
+        Api.Answer("<#= PeopleWords.FirstPersonPath #>", "{ \"open\": false }");
+        var page = Render<Login>();
+        page.WaitForAssertion(() => Assert.AreEqual(1, page.FindAll("#password").Count));
+        Assert.AreEqual(0, page.FindAll("#confirm").Count);
+    }
+
+    [TestMethod]
+    public void Refuses_a_short_password_and_two_different_passwords_without_calling_the_API()
+    {
+        var page = RenderFirst();
+        Fill(page, "short", "short");
+        StringAssert.Contains(page.Markup, "<#= UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength) #>");
+        Fill(page, "long-enough-1", "long-enough-2");
+        StringAssert.Contains(page.Markup, "<#= UserScreenWords.PasswordsDiffer #>");
+        Assert.IsFalse(Api.Requests.Any(r => r.Method == HttpMethod.Post));
+    }
+
+    [TestMethod]
+    public void Creates_the_first_administrator_and_signs_them_in()
+    {
+        var page = RenderFirst();
+        Fill(page, "long-enough-1", "long-enough-1");
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Post && r.Path.EndsWith("<#= PeopleWords.FirstPersonPath #>") && r.Body.Contains("\"userName\":\"owner\""))));
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Post && r.Path.EndsWith("/auth/login"))));
+    }
+}
+<#
+    }
+#>

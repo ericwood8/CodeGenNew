@@ -7,3 +7,7 @@ The settings are the ones in `API_UserDirectory_v1.md` (`UserTable`, `UserNameCo
 - **`find_user(session, name)`** reads the row with SQLAlchemy's lightweight `table()` (so a model of the user table is not needed) and answers the hash, the role and the owner id; a row with no name or no hash cannot sign in.
 - **`python -m app.users set-password <name>`** reads the new password from the environment variable `NEW_PASSWORD` (at least 8 characters, never on the command line), writes its hash and prints what it did. Exit code 0 done, 1 no such user, 2 usage.
 - The hash is `pbkdf2-sha256$600000$salt$hash`, the text the other stacks write and read.
+
+## The first person, a new password and the members of a tenant
+
+`app/people.py` (written with the user directory) has the same routes, answers and sentences as the ASP.NET API (`API_UserDirectory_v1.md`): `GET` and `POST /api/auth/first-person` (no sign-in), `PUT /api/auth/password` and, with a tenant table and a membership table, `GET /api/auth/members`, `GET /api/auth/members/candidates`, `POST`, `PUT` and `DELETE /api/auth/members`. The first person is written from the user table's required columns (`FirstPersonPlan`): the sign-in name, the password hash, the administrator flag, a true yes/no role column, and a value that fits for every other required column. A table that cannot be filled that way (a required foreign key) has no first person route. Python's app wiring includes the routers; regenerate the main file with `essentials --replace` for an existing project.

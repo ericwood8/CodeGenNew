@@ -38,6 +38,9 @@
     var stripTables = Project.DashboardStrip ? DashboardPlan.Build(Database, Project).StripTables.Where(name => screens.Any(t => t.TableName.EqualsIgnoreCase(name))).ToHashSet(StringComparer.OrdinalIgnoreCase) : new HashSet<string>();
 
     var junctions = JunctionPlan.Tables(Database, Project);   // a page for each many-to-many junction table, after the screens
+    // administrators manage who works in the current tenant on the members page, the last screen
+    bool members = DesktopMembersCode.Applies(Database, Project);
+    string membersLine = $"        if (DesktopSession.HasRole([{CSharpText.Quote(Project.AuthAdminRole)}]))\n            NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{MemberWords.Menu}\", Tag = \"Members\" }});";
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
 
@@ -77,6 +80,8 @@
         Line("            if (roles is null || DesktopSession.HasRole(roles))");
         Line("                NavView.MenuItems.Add(new NavigationViewItem { Content = label, Tag = tag });");
         Line("        }");
+        if (members)
+            Line(membersLine);
         Line("    }");
     }
     else
@@ -93,6 +98,8 @@
             Line($"        NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{JunctionPlan.Label(t.TableName)}\", Tag = \"{t.TableName}Links\" }});");
         if (approvals)
             Line($"        NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{ApprovalWords.Title}\", Tag = \"Approvals\" }});");
+        if (members)
+            Line(membersLine);
         Line("    }");
     }
     Line();
@@ -138,6 +145,8 @@
         Line($"            \"{t.TableName}Links\" => new {DesktopJunctionPage.PageName(t.TableName)}(_context),");
     if (approvals)
         Line("            \"Approvals\" => new ApprovalsPage(new ApprovalService(_context), ApprovalService.Tables),");
+    if (members)
+        Line($"            \"Members\" => new {DesktopMembersCode.PageName}(_context),");
     Line("            _ => MainContent.Content");
     Line("        };");
     Line("    }");

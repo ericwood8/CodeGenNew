@@ -556,6 +556,7 @@ import { PageEvent } from '@angular/material/paginator';
 import { GridSort, loadSort, nextSort, saveSort } from '../grid-sort';
 import { CrudService } from '../<#= servicesFolder #>/crud.service';
 import { apiMessage } from '../<#= servicesFolder #>/api-error';
+import { Observable, switchMap } from 'rxjs';
 import { Notifier } from '../<#= servicesFolder #>/notifier';
 
 /**
@@ -654,6 +655,11 @@ export abstract class CrudScreen<T, K extends number | string = number> implemen
 
   protected prepare(row: T, isNew: boolean): void { }
 
+  /** A call to make once the row is saved (the user table's Set password); null for none. */
+  protected followUp(row: T): Observable<unknown> | null {
+    return null;
+  }
+
   protected prepareEdit(copy: T): T {
     return copy;
   }
@@ -701,7 +707,9 @@ export abstract class CrudScreen<T, K extends number | string = number> implemen
     if (isNew && !this.keyChosen) {
       (row as Record<string, unknown>)[this.idKey] = this.emptyKey;
     }
-    const call = isNew ? this.service.create(row) : this.service.update(this.idOf(row)!, row);
+    const saved: Observable<unknown> = isNew ? this.service.create(row) : this.service.update(this.idOf(row)!, row);
+    const next = this.followUp(row);
+    const call = next ? saved.pipe(switchMap(() => next)) : saved;
     call.subscribe({
       // the form stays open when the API refuses, so what was typed is not lost
       next: () => { this.selectedRow = null; this.load(); this.goBack(); },

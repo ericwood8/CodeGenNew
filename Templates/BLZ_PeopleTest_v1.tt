@@ -1,0 +1,89 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_PeopleTest_v1.tt
+    // Generates: MembersTests.cs   (the template writes its own path with an @@@FILE marker; the file goes to the Blazor test project)
+    // The bUnit tests of the members page BLZ_People writes: it lists the people of the tenant, adds a person who is not yet a member, changes a role, and removes a member and says so when it is the person themself.
+    // Full notes: Docs/TemplateNotes/BLZ_People_v1.md
+    // ==========================================================================================
+    string ns = BlazorNames.Namespace(Project);
+    var people = PeoplePlan.For(Database, Project);
+    if (people is { HasMembers: true } && Project.Auth)
+    {
+        bool role = people.Membership!.Role is not null;
+#>
+@@@FILE MembersTests.cs@@@
+using Bunit;
+using System.Net;
+using <#= ns #>.Pages;
+
+namespace <#= ns #>.Tests;
+
+[TestClass]
+public class MembersTests : PageTestContext
+{
+    private const string Members = """[{ "personId": 1, "login": "ada", "person": "Ada Lovelace (ada)", "role": "Administrator" }, { "personId": 2, "login": "grace", "person": "Grace Hopper (grace)", "role": null }]""";
+    private const string Candidates = """[{ "id": 3, "name": "Alan Turing (alan)" }]""";
+
+    private IRenderedComponent<Members> RenderMembers()
+    {
+        SignIn("<#= Project.AuthAdminRole #>");
+        Api.Answer("<#= PeopleWords.MembersPath #>", Members).Answer("<#= PeopleWords.CandidatesPath #>", Candidates);
+        var page = Render<Members>();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "Ada Lovelace (ada)"));
+        return page;
+    }
+
+    [TestMethod]
+    public void Lists_the_people_of_the_tenant<#= role ? "_with_their_role" : "" #>()
+    {
+        var page = RenderMembers();
+        StringAssert.Contains(page.Markup, "Grace Hopper (grace)");
+<# if (role) { #>
+        StringAssert.Contains(page.Markup, "Administrator");
+<# } #>
+    }
+
+    [TestMethod]
+    public void Adds_a_person_who_is_not_yet_a_member()
+    {
+        var page = RenderMembers();
+        page.FindAll("button").First(b => b.TextContent.Trim() == "<#= MemberWords.AddButton #>").Click();
+        page.WaitForAssertion(() => Assert.AreEqual(1, page.FindAll("#memberPerson option").Count));
+<# if (role) { #>
+        page.Find("#memberRole").Input("Employee");
+<# } #>
+        page.Find("#addMember").Submit();
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Post && r.Path.EndsWith("<#= PeopleWords.MembersPath #>") && r.Body.Contains("\"personId\":3")<#= role ? " && r.Body.Contains(\"\\\"role\\\":\\\"Employee\\\"\")" : "" #>)));
+    }
+<# if (role) { #>
+
+    [TestMethod]
+    public void Changes_the_role_of_a_member()
+    {
+        var page = RenderMembers();
+        page.FindAll("button").Where(b => b.TextContent.Trim() == "Edit role").ElementAt(1).Click();
+        page.Find("input[aria-label='<#= MemberWords.RoleLabel #>']").Input("Auditor");
+        page.FindAll("button").First(b => b.TextContent.Trim() == "Save").Click();
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Put && r.Path.EndsWith("<#= PeopleWords.MembersPath #>/2") && r.Body.Contains("\"role\":\"Auditor\""))));
+    }
+<# } #>
+
+    [TestMethod]
+    public void Removes_a_member_and_says_so_when_it_is_the_person_themself()
+    {
+        var page = RenderMembers();
+        Api.FailWrite(HttpMethod.Delete, "<#= PeopleWords.MembersPath #>/1", HttpStatusCode.Forbidden);
+        page.FindAll("button").Where(b => b.TextContent.Trim() == "Remove").ElementAt(0).Click();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "<#= PeopleWords.MemberSelfDetail #>"));
+        page.FindAll("button").Where(b => b.TextContent.Trim() == "Remove").ElementAt(1).Click();
+        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Delete && r.Path.EndsWith("<#= PeopleWords.MembersPath #>/2"))));
+    }
+}
+<#
+    }
+#>

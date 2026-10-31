@@ -1,0 +1,221 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_People_v1.tt
+    // Generates: Services/PeopleApi.cs and Pages/Members.razor   (the template writes its own paths with @@@FILE markers)
+    // The people of a Blazor app that signs in (Auth=true, ApiAuth, a UserTable): PeopleApi.ChangePasswordAsync (PUT api/auth/password, the call of the Set password box of the user table's form) and, with a
+    // TenantMembership, the members page where an administrator says who works in the current tenant and in which role (GET, POST, PUT and DELETE api/auth/members). BlazorMenu puts the page in the menu for
+    // the administrator role. Full notes: Docs/TemplateNotes/BLZ_People_v1.md
+    // ==========================================================================================
+    string ns = BlazorNames.Namespace(Project);
+    var people = PeoplePlan.For(Database, Project);
+    if (people is not null && Project.Auth)
+    {
+        bool members = people.HasMembers;
+        bool role = members && people.Membership!.Role is not null;
+#>
+@@@FILE Services/PeopleApi.cs@@@
+using System.Net.Http.Json;
+
+namespace <#= ns #>.Services;
+
+/// <summary> The calls the people screens make: a new password for a person (an administrator sets anyone's, anyone else only their own)<#= members ? " and the members of the signed-in tenant" : "" #>. </summary>
+public static class PeopleApi
+{
+    public static async Task ChangePasswordAsync(HttpClient http, string userName, string password)
+    {
+        var response = await http.PutAsJsonAsync("<#= PeopleWords.PasswordPath #>", new { userName, password });
+        response.EnsureSuccessStatusCode();
+    }
+}
+<#
+        if (members)
+        {
+#>
+@@@FILE Pages/Members.razor@@@
+@page "/members"
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "<#= Project.AuthAdminRole #>")]
+@inject HttpClient Http
+
+<PageTitle><#= MemberWords.Title #></PageTitle>
+
+<h1><#= MemberWords.Title #></h1>
+<div class="toolbar">
+    <button type="button" @onclick="StartAddingAsync"><#= MemberWords.AddButton #></button>
+</div>
+@if (message is not null)
+{
+    <p class="error" role="alert">@message</p>
+}
+@if (adding)
+{
+    <form id="addMember" @onsubmit="AddAsync">
+        <label for="memberPerson"><#= MemberWords.PersonLabel #></label>
+        <select id="memberPerson" @bind="chosen">
+            @foreach (var candidate in candidates)
+            {
+                <option value="@candidate.Id">@candidate.Name</option>
+            }
+        </select>
+<# if (role) { #>
+        <label for="memberRole"><#= MemberWords.RoleLabel #></label>
+        <input id="memberRole" type="text" placeholder="<#= MemberWords.RoleHint #>" @bind="newRole" @bind:event="oninput" />
+<# } #>
+        <button type="submit">Add</button>
+        <button type="button" @onclick="() => adding = false">Cancel</button>
+    </form>
+}
+<table>
+    <thead>
+        <tr>
+            <th>Person</th>
+<# if (role) { #>
+            <th><#= MemberWords.RoleLabel #></th>
+<# } #>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var member in members)
+        {
+            <tr>
+                <td>@member.Person</td>
+<# if (role) { #>
+                <td>
+                    @if (editing == member.PersonId)
+                    {
+                        <input aria-label="<#= MemberWords.RoleLabel #>" type="text" @bind="editRole" @bind:event="oninput" />
+                    }
+                    else
+                    {
+                        @member.Role
+                    }
+                </td>
+<# } #>
+                <td>
+<# if (role) { #>
+                    @if (editing == member.PersonId)
+                    {
+                        <button type="button" @onclick="() => SaveRoleAsync(member)">Save</button>
+                    }
+                    else
+                    {
+                        <button type="button" @onclick="() => StartEditing(member)">Edit role</button>
+                    }
+<# } #>
+                    <button type="button" @onclick="() => RemoveAsync(member)">Remove</button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private record Member(int PersonId, string Login, string Person, string? Role);
+
+    private record Candidate(int Id, string Name);
+
+    private List<Member> members = [];
+    private List<Candidate> candidates = [];
+    private bool adding;
+    private int chosen;
+<# if (role) { #>
+    private string newRole = "";
+    private int? editing;
+    private string editRole = "";
+<# } #>
+    private string? message;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            members = await Http.GetFromJsonAsync<List<Member>>("<#= PeopleWords.MembersPath #>") ?? [];
+        }
+        catch (HttpRequestException)
+        {
+            message = "<#= PeopleWords.MembersAdminsOnlyDetail #>";
+        }
+    }
+
+    private async Task StartAddingAsync()
+    {
+        message = null;
+        try
+        {
+            candidates = await Http.GetFromJsonAsync<List<Candidate>>("<#= PeopleWords.CandidatesPath #>") ?? [];
+        }
+        catch (HttpRequestException)
+        {
+            message = "<#= PeopleWords.MembersAdminsOnlyDetail #>";
+            return;
+        }
+        if (candidates.Count == 0)
+        {
+            message = "<#= MemberWords.NobodyToAdd #>";
+            return;
+        }
+        chosen = candidates[0].Id;
+<# if (role) { #>
+        newRole = "";
+<# } #>
+        adding = true;
+    }
+
+    private async Task AddAsync()
+    {
+        var response = await Http.PostAsJsonAsync("<#= PeopleWords.MembersPath #>", new { personId = chosen<#= role ? ", role = newRole" : "" #> });
+        if (response.IsSuccessStatusCode)
+        {
+            adding = false;
+            await LoadAsync();
+        }
+        else
+        {
+            message = (int)response.StatusCode == <#= HttpStatus.Conflict #> ? "<#= PeopleWords.MemberExistsDetail #>" : "Problem while adding!";
+        }
+    }
+<# if (role) { #>
+
+    private void StartEditing(Member member)
+    {
+        editing = member.PersonId;
+        editRole = member.Role ?? "";
+    }
+
+    private async Task SaveRoleAsync(Member member)
+    {
+        var response = await Http.PutAsJsonAsync($"<#= PeopleWords.MembersPath #>/{member.PersonId}", new { role = editRole });
+        if (response.IsSuccessStatusCode)
+        {
+            editing = null;
+            await LoadAsync();
+        }
+        else
+        {
+            message = "Problem while saving!";
+        }
+    }
+<# } #>
+
+    private async Task RemoveAsync(Member member)
+    {
+        message = null;
+        var response = await Http.DeleteAsync($"<#= PeopleWords.MembersPath #>/{member.PersonId}");
+        if (response.IsSuccessStatusCode)
+            await LoadAsync();
+        else
+            message = (int)response.StatusCode == <#= HttpStatus.Forbidden #> ? "<#= PeopleWords.MemberSelfDetail #>" : "Problem while removing!";
+    }
+}
+<#
+        }
+    }
+#>

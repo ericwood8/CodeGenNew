@@ -1,0 +1,45 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // UNO_People_v1.tt
+    // Generates: Services/PeopleApi.cs, Views/MembersPage.xaml and Views/MembersPage.xaml.cs   (the template writes its own paths with @@@FILE markers)
+    // The people of an Uno app that signs in (Auth=true, ApiAuth, a UserTable): PeopleApi.ChangePasswordAsync (PUT api/auth/password, the call of the Set password box of the user table's form) and, with a
+    // TenantMembership, the members page where an administrator says who works in the current tenant and in which role (GET, POST, PUT and DELETE api/auth/members). UNO_Screens puts the page in the menu for
+    // the administrator role. Full notes: Docs/TemplateNotes/UNO_People_v1.md
+    // ==========================================================================================
+    string servicesNamespace = UnoNames.ServicesNamespace(Project);
+    string viewNamespace = Project.ViewNamespace ?? Project.AppNamespace + ".Views";
+    var people = PeoplePlan.For(Database, Project);
+    if (people is not null && Project.Auth)
+    {
+#>
+@@@FILE Services/PeopleApi.cs@@@
+using System.Net.Http.Json;
+
+namespace <#= servicesNamespace #>;
+
+/// <summary> The calls the people screens make: a new password for a person (an administrator sets anyone's, anyone else only their own). </summary>
+public static class PeopleApi
+{
+    public static async Task ChangePasswordAsync(HttpClient http, string userName, string password)
+    {
+        var response = await http.PutAsJsonAsync("<#= PeopleWords.PasswordPath #>", new { userName, password });
+        response.EnsureSuccessStatusCode();
+    }
+}
+<#
+        if (people.HasMembers)
+        {
+#>
+@@@FILE Views/MembersPage.xaml@@@
+<#= DesktopMembersCode.Xaml(viewNamespace, people.Membership!.Role is not null) #>
+@@@FILE Views/MembersPage.xaml.cs@@@
+<#= UnoMembersCode.Code(viewNamespace, servicesNamespace, people.Membership!.Role is not null) #>
+<#
+        }
+    }
+#>

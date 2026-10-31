@@ -135,7 +135,7 @@ public class TenantSwitcherTests
         Expect.Contains(angular, "[(ngModel)]=\"tenant\"");
         Expect.Contains(angular, "<option *ngFor=\"let choice of tenantChoices\" [ngValue]=\"choice.id\">{{ choice.name }}</option>");
         Expect.Contains(angular, "signInTenants(): Observable<SignInTenant[]> {");
-        Expect.Contains(angular, "this.auth.login(this.userName, this.password, this.tenant).subscribe({");
+        Expect.Contains(angular, "const signedIn = this.auth.login(this.userName, this.password, this.tenant);");
         Expect.Contains(angular, "this.message = '" + TenantWords.SignInRefused + "';");
         Expect.DoesNotContain(await Run("TS_EssentialAuth_v1.tt", plain), "tenantId");
 

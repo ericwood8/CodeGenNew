@@ -18,6 +18,7 @@
     string componentsFolder = Project.ComponentsFolder;
     string storageKey = (Project.ProjectName ?? "app").ToLowerInvariant() + ".auth";
     bool tenants = TenantPlan.HasSwitcher(Project);   // TenantTable and TenantMembership: the top bar shows the tenant and, for a person in several, a drop-down to switch
+    bool people = Project.UserTable is not null;   // the user table is empty at first: the sign-in offers to create the first administrator (GET and POST api/auth/first-person)
 #>
 @@@FILE src/<#= apiFolder #>/auth.ts@@@
 import { useSyncExternalStore } from 'react';
@@ -121,6 +122,29 @@ export async function signInTenants(): Promise<{ id: number; name: string }[]> {
 }
 
 <# } #>
+<# if (people) { #>
+/** Whether the user table is empty, so the sign-in offers to create the first administrator; false when the API cannot say. */
+export async function firstPersonOpen(): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE_URL}<#= PeopleWords.FirstPersonPath #>`);
+    const body: unknown = response.ok ? await response.json() : null;
+    return typeof body === 'object' && body !== null && (body as { open?: unknown }).open === true;
+  } catch {
+    return false;
+  }
+}
+
+/** Adds the first person, the administrator, while the user table is empty; the person then signs in as usual. Throws a LoginError with the status when the API refuses. */
+export async function createFirstPerson(userName: string, password: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}<#= PeopleWords.FirstPersonPath #>`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userName, password }),
+  });
+  if (!response.ok) throw new LoginError(response.status);
+}
+
+<# } #>
 export const logout = (): void => setSession(null);
 
 const subscribe = (listener: () => void) => {
@@ -219,10 +243,10 @@ describe('auth', () => {
   });
 });
 @@@FILE src/<#= pagesFolder #>/LoginPage.tsx@@@
-import { <# if (tenants) { #>useEffect, <# } #>useState } from 'react';
+import { <# if (tenants || people) { #>useEffect, <# } #>useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LoginError, <# if (tenants) { #>signInTenants, <# } #>useAuth } from '../<#= apiFolder #>/auth';
+import { <# if (people) { #>createFirstPerson, firstPersonOpen, <# } #>LoginError, <# if (tenants) { #>signInTenants, <# } #>useAuth } from '../<#= apiFolder #>/auth';
 import '../<#= componentsFolder #>/auth.css';
 
 export function LoginPage() {
@@ -230,6 +254,10 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [userName, setUserName] = useState('');
   const [password, setPassword] = useState('');
+<# if (people) { #>
+  const [first, setFirst] = useState(false);   // nobody is in the user table yet: this page creates the first administrator
+  const [confirm, setConfirm] = useState('');
+<# } #>
 <# if (tenants) { #>
   const [tenant, setTenant] = useState('');   // the key of the tenant picked in the drop-down; empty is the person's first tenant
   const [tenantChoices, setTenantChoices] = useState<{ id: number; name: string }[]>([]);
@@ -245,11 +273,31 @@ export function LoginPage() {
   }, []);
 
 <# } #>
+<# if (people) { #>
+  useEffect(() => {
+    let current = true;
+    void firstPersonOpen().then((open) => { if (current) setFirst(open); });
+    return () => { current = false; };
+  }, []);
+
+<# } #>
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMessage('');
+<# if (people) { #>
+    if (first) {
+      if (password.length < <#= UserScreenPlan.MinimumPasswordLength #>) { setMessage('<#= UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength) #>'); return; }
+      if (password !== confirm) { setMessage('<#= UserScreenWords.PasswordsDiffer #>'); return; }
+    }
+<# } #>
     setBusy(true);
     try {
+<# if (people) { #>
+      if (first) {
+        await createFirstPerson(userName, password);
+        setFirst(false);
+      }
+<# } #>
 <# if (tenants) { #>
       await login(userName, password, tenant ? Number(tenant) : undefined);
 <# } else { #>
@@ -258,6 +306,12 @@ export function LoginPage() {
       navigate('/', { replace: true });
     } catch (error) {
       setPassword('');
+<# if (people) { #>
+      setConfirm('');
+      if (error instanceof LoginError && error.status === <#= HttpStatus.Conflict #>) { setFirst(false); setMessage('<#= UserScreenWords.FirstPersonTaken #>'); }
+      else if (error instanceof LoginError && error.status === <#= HttpStatus.BadRequest #>) setMessage('<#= UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength) #>');
+      else
+<# } #>
       if (error instanceof LoginError && error.status === <#= HttpStatus.TooManyRequests #>) setMessage('Too many tries. Wait a minute and try again.');
       else if (error instanceof LoginError && error.status === <#= HttpStatus.Unauthorized #>) setMessage('The user name or password is not right.');
 <# if (tenants) { #>
@@ -271,7 +325,10 @@ export function LoginPage() {
 
   return (
     <div className="login-container">
-      <h1>Sign in</h1>
+      <h1><# if (people) { #>{first ? '<#= UserScreenWords.FirstPersonTitle #>' : 'Sign in'}<# } else { #>Sign in<# } #></h1>
+<# if (people) { #>
+      {first && <p className="hint"><#= UserScreenWords.FirstPersonHint #></p>}
+<# } #>
       <form onSubmit={signIn}>
         <div className="form-group">
           <label htmlFor="userName">User name</label>
@@ -279,10 +336,18 @@ export function LoginPage() {
         </div>
         <div className="form-group">
           <label htmlFor="password">Password</label>
-          <input id="password" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
+          <input id="password" name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="<# if (people) { #>{first ? 'new-password' : 'current-password'}<# } else { #>current-password<# } #>" required />
         </div>
+<# if (people) { #>
+        {first && (
+          <div className="form-group">
+            <label htmlFor="confirm"><#= UserScreenWords.ConfirmLabel #></label>
+            <input id="confirm" name="confirm" type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="new-password" required />
+          </div>
+        )}
+<# } #>
 <# if (tenants) { #>
-        <div className="form-group">
+        <div className="form-group"<# if (people) { #> style={{ display: first ? 'none' : undefined }}<# } #>>
           <label htmlFor="tenant"><#= TenantWords.SignInLabel #></label>
           <select id="tenant" name="tenant" value={tenant} onChange={(event) => setTenant(event.target.value)} aria-describedby="tenantHint">
             <option value=""></option>
@@ -292,7 +357,7 @@ export function LoginPage() {
         </div>
 <# } #>
         {message && <p className="error" role="alert">{message}</p>}
-        <button type="submit" disabled={busy || !userName || !password}>Sign in</button>
+        <button type="submit" disabled={busy || !userName || !password}><# if (people) { #>{first ? '<#= UserScreenWords.FirstPersonButton #>' : 'Sign in'}<# } else { #>Sign in<# } #></button>
       </form>
     </div>
   );
@@ -304,15 +369,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LoginPage } from '../LoginPage';
 import { setSession } from '../../<#= apiFolder #>/auth';
 
-const submit = async (status: number<# if (tenants) { #>, tenant = ''<# } #>) => {
+const answer = (status: number, firstOpen = false) => (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const url = String(input);
 <# if (tenants) { #>
-  const tenants = [{ id: 1, name: 'Acme' }, { id: 2, name: 'Globex' }, { id: 3, name: 'Initech' }];
-  vi.spyOn(globalThis, 'fetch').mockImplementation((input) => Promise.resolve(String(input).endsWith('<#= TenantWords.SignInListPath #>')
-    ? new Response(JSON.stringify(tenants), { status: <#= HttpStatus.Ok #> })
-    : new Response(status === <#= HttpStatus.Ok #> ? JSON.stringify({ token: 'abc', user: { name: 'Pat' } }) : '', { status })));
-<# } else { #>
-  vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(status === <#= HttpStatus.Ok #> ? JSON.stringify({ token: 'abc', user: { name: 'Pat' } }) : '', { status }));
+  if (url.endsWith('<#= TenantWords.SignInListPath #>')) return Promise.resolve(new Response(JSON.stringify([{ id: 1, name: 'Acme' }, { id: 2, name: 'Globex' }, { id: 3, name: 'Initech' }]), { status: <#= HttpStatus.Ok #> }));
 <# } #>
+<# if (people) { #>
+  if (url.endsWith('<#= PeopleWords.FirstPersonPath #>')) return Promise.resolve(init?.method === 'POST' ? new Response(null, { status: <#= HttpStatus.NoContent #> }) : new Response(JSON.stringify({ open: firstOpen }), { status: <#= HttpStatus.Ok #> }));
+<# } #>
+  return Promise.resolve(new Response(status === <#= HttpStatus.Ok #> ? JSON.stringify({ token: 'abc', user: { name: 'Pat' } }) : '', { status }));
+};
+
+const submit = async (status: number<# if (tenants) { #>, tenant = ''<# } #>) => {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(answer(status));
   render(
     <MemoryRouter initialEntries={['/login']}>
       <Routes>
@@ -361,6 +430,50 @@ describe('LoginPage', () => {
     await submit(<#= HttpStatus.InternalServerError #>);
     expect(await screen.findByText('Could not sign in right now.')).toBeInTheDocument();
   });
+<# if (people) { #>
+
+  const renderFirst = async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(answer(<#= HttpStatus.Ok #>, true));
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/" element={<p>home</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByText('<#= UserScreenWords.FirstPersonTitle #>');
+  };
+
+  it('offers to create the first administrator when the user table is empty', async () => {
+    await renderFirst();
+    expect(screen.getByLabelText('<#= UserScreenWords.ConfirmLabel #>')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '<#= UserScreenWords.FirstPersonButton #>' })).toBeInTheDocument();
+  });
+
+  it('refuses a short password and two different passwords without calling the API', async () => {
+    await renderFirst();
+    fireEvent.change(screen.getByLabelText('User name'), { target: { value: 'owner' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'short' } });
+    fireEvent.change(screen.getByLabelText('<#= UserScreenWords.ConfirmLabel #>'), { target: { value: 'short' } });
+    fireEvent.click(screen.getByRole('button', { name: '<#= UserScreenWords.FirstPersonButton #>' }));
+    expect(await screen.findByText('<#= UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength) #>')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'long-enough-1' } });
+    fireEvent.click(screen.getByRole('button', { name: '<#= UserScreenWords.FirstPersonButton #>' }));
+    expect(await screen.findByText('<#= UserScreenWords.PasswordsDiffer #>')).toBeInTheDocument();
+    expect(globalThis.fetch).not.toHaveBeenCalledWith('<#= PeopleWords.FirstPersonPath #>', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('creates the first administrator and signs them in', async () => {
+    await renderFirst();
+    fireEvent.change(screen.getByLabelText('User name'), { target: { value: 'owner' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'long-enough-1' } });
+    fireEvent.change(screen.getByLabelText('<#= UserScreenWords.ConfirmLabel #>'), { target: { value: 'long-enough-1' } });
+    fireEvent.click(screen.getByRole('button', { name: '<#= UserScreenWords.FirstPersonButton #>' }));
+    expect(await screen.findByText('home')).toBeInTheDocument();
+    expect(globalThis.fetch).toHaveBeenCalledWith('<#= PeopleWords.FirstPersonPath #>', expect.objectContaining({ method: 'POST', body: JSON.stringify({ userName: 'owner', password: 'long-enough-1' }) }));
+  });
+<# } #>
 <# if (tenants) { #>
 
   it('lists the tenants by name, with a blank first for the first tenant', async () => {

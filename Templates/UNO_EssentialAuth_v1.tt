@@ -16,6 +16,7 @@
     string servicesNamespace = UnoNames.ServicesNamespace(Project);
     string viewNamespace = Project.ViewNamespace ?? Project.AppNamespace + ".Views";
     bool tenants = TenantPlan.HasSignInBox(Project);   // TenantTable and TenantMembership: the sign-in has a box for the tenant to work in
+    bool people = Project.UserTable is not null;   // the user table is empty at first: the sign-in offers to create the first administrator (GET and POST api/auth/first-person)
 #>
 @@@FILE Services/AuthSession.cs@@@
 using System.Net;
@@ -149,10 +150,16 @@ public class AuthHandler : DelegatingHandler
 
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <StackPanel Width="320" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
-            <TextBlock Text="Sign in" Style="{ThemeResource TitleTextBlockStyle}" />
+            <TextBlock x:Name="TitleText" Text="Sign in" Style="{ThemeResource TitleTextBlockStyle}" />
+<# if (people) { #>
+            <TextBlock x:Name="FirstHint" Text="<#= UserScreenWords.FirstPersonHint #>" Visibility="Collapsed" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.7" TextWrapping="Wrap" />
+<# } #>
             <InfoBar x:Name="Problem" Severity="Error" IsOpen="False" IsClosable="False" />
             <TextBox x:Name="UserNameBox" Header="User name" />
             <PasswordBox x:Name="PasswordBoxField" Header="Password" KeyDown="OnPasswordKeyDown" />
+<# if (people) { #>
+            <PasswordBox x:Name="ConfirmBox" Header="<#= UserScreenWords.ConfirmLabel #>" Visibility="Collapsed" KeyDown="OnPasswordKeyDown" />
+<# } #>
 <# if (tenants) { #>
             <ComboBox x:Name="TenantBox" Header="<#= TenantWords.SignInLabel #>" DisplayMemberPath="Name" HorizontalAlignment="Stretch" />
             <TextBlock Text="<#= TenantWords.SignInHint #>" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.7" TextWrapping="Wrap" />
@@ -162,6 +169,7 @@ public class AuthHandler : DelegatingHandler
     </Grid>
 </UserControl>
 @@@FILE Views/LoginPage.xaml.cs@@@
+using System.Net.Http.Json;
 using <#= servicesNamespace #>;
 using Microsoft.UI.Xaml.Controls;
 
@@ -177,14 +185,47 @@ public sealed partial class LoginPage : UserControl
         _http = http;
         _session = session;
         InitializeComponent();
-<# if (tenants) { #>
+<# if (tenants || people) { #>
         Loaded += async (_, _) =>
         {
+<# if (tenants) { #>
             TenantBox.ItemsSource = await _session.SignInTenantsAsync(_http);
             TenantBox.SelectedIndex = 0;
+<# } #>
+<# if (people) { #>
+            await ShowFirstPersonOfferAsync();
+<# } #>
         };
 <# } #>
     }
+<# if (people) { #>
+
+    private bool _first;   // nobody is in the user table yet: this page creates the first administrator
+
+    private record FirstPersonState(bool Open);
+
+    // false when the API cannot say
+    private async Task ShowFirstPersonOfferAsync()
+    {
+        try
+        {
+            _first = (await _http.GetFromJsonAsync<FirstPersonState>("<#= PeopleWords.FirstPersonPath #>"))?.Open == true;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
+        {
+            _first = false;
+        }
+        if (!_first)
+            return;
+        TitleText.Text = "<#= UserScreenWords.FirstPersonTitle #>";
+        FirstHint.Visibility = Visibility.Visible;
+        ConfirmBox.Visibility = Visibility.Visible;
+<# if (tenants) { #>
+        TenantBox.Visibility = Visibility.Collapsed;
+<# } #>
+        SignInButton.Content = "<#= UserScreenWords.FirstPersonButton #>";
+    }
+<# } #>
 
     private async void OnSignInClick(object sender, RoutedEventArgs e) => await SignInAsync();
 
@@ -196,10 +237,32 @@ public sealed partial class LoginPage : UserControl
 
     private async Task SignInAsync()
     {
+<# if (people) { #>
+        if (_first && PasswordBoxField.Password.Length < <#= UserScreenPlan.MinimumPasswordLength #>)
+        {
+            Show("<#= UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength) #>");
+            return;
+        }
+        if (_first && PasswordBoxField.Password != ConfirmBox.Password)
+        {
+            Show("<#= UserScreenWords.PasswordsDiffer #>");
+            return;
+        }
+        bool creating = _first;
+<# } #>
         SignInButton.IsEnabled = false;
         Problem.IsOpen = false;
         try
         {
+<# if (people) { #>
+            if (_first)
+            {
+                var created = await _http.PostAsJsonAsync("<#= PeopleWords.FirstPersonPath #>", new { userName = UserNameBox.Text.Trim(), password = PasswordBoxField.Password });
+                if (!created.IsSuccessStatusCode)
+                    throw new LoginException((int)created.StatusCode);
+                _first = false;
+            }
+<# } #>
 <# if (tenants) { #>
             await _session.LoginAsync(_http, UserNameBox.Text.Trim(), PasswordBoxField.Password, (TenantBox.SelectedItem as SignInTenant)?.Id);
 <# } else { #>
@@ -210,6 +273,10 @@ public sealed partial class LoginPage : UserControl
         {
             Show(ex.Status switch
             {
+<# if (people) { #>
+                <#= HttpStatus.Conflict #> when creating => "<#= UserScreenWords.FirstPersonTaken #>",
+                <#= HttpStatus.BadRequest #> when creating => "<#= UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength) #>",
+<# } #>
                 <#= HttpStatus.Unauthorized #> => "The user name or password is not right.",
                 <#= HttpStatus.TooManyRequests #> => "Too many tries. Wait a minute and try again.",
 <# if (tenants) { #>
@@ -233,5 +300,8 @@ public sealed partial class LoginPage : UserControl
         Problem.Message = message;
         Problem.IsOpen = true;
         PasswordBoxField.Password = "";
+<# if (people) { #>
+        ConfirmBox.Password = "";
+<# } #>
     }
 }

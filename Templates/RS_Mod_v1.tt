@@ -61,6 +61,9 @@
     // TenantTable: GET /api/auth/tenants and POST /api/auth/switch-tenant (RS_Tenants, src/tenancy.rs)
     if (RustTenantWriter.Applies(Project) && TenantPlan.TenantTableOf(Database, Project) is not null)
         Line("        .merge(crate::tenancy::router())");
+    // UserTable: PUT /api/auth/password and the members of a tenant (RS_UserDirectory, src/people.rs)
+    if (Project.ApiAuth && Project.UserTable is not null)
+        Line("        .merge(crate::people::router())");
     Line("}");
     Write(sb.ToString());
 #>

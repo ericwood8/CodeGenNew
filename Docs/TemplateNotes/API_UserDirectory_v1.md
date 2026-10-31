@@ -28,6 +28,16 @@ NEW_PASSWORD='a long throwaway' dotnet run --project InvoiceSystem.Api -- set-pa
 - **Not done:** a person cannot change their own password through the API; lock-out after failures is the Jwt group's throttle, not a column.
 - **Other stacks:** the Python and Rust APIs have the same sign-in (`POST /api/auth/login`, the same token and password hash, `set-password`, the same guards on the user table, the owner scope): see `PY_UserDirectory_v1.md` and `RS_UserDirectory_v1.md`. One user table serves all three.
 
+## The first person and a new password
+
+`Apis/TableUserDirectory.cs` also maps (`app.MapUserEndpoints()` in `Program.cs`):
+
+- `GET /api/auth/first-person` (no sign-in) answers `{ "open": true }` while the user table has no rows, so a sign-in screen can offer to create the first administrator.
+- `POST /api/auth/first-person` (no sign-in) with `{ "userName": "...", "password": "..." }` adds that person while the table is empty: the sign-in name, the password hash (`PasswordService`), the administrator flag and a true yes/no role column, a value for every other required column, and with `TenantMembership` a membership of the first active tenant (not marked deleted) with the administrator role. 204 when added, 400 (`/problems/first-person-invalid`) for a blank name or a password under 8 characters, 409 (`/problems/first-person-taken`) when someone is there already. Whoever reaches an empty system first claims it. A table the first person cannot be built for (a required foreign key, the tenant as a column of the person's own row) has no such routes.
+- `PUT /api/auth/password` with `{ "userName": "...", "password": "..." }` writes a new hash: an administrator for anyone, anyone else only for their own name (403 `/problems/password-not-yours`). 204 when set, 400 (`/problems/password-invalid`) for a password under 8 characters, 404 for an unknown person. It needs a sign-in.
+
+`Docs/Verification/Tools/first_person_check.py` plays both against a running API.
+
 ## What the user table's own API does
 
 The generated CRUD API of the user table (`API_Crud`, the table named in `UserTable`) is guarded, so a signed-in caller cannot read or take credentials through it:
@@ -38,3 +48,15 @@ The generated CRUD API of the user table (`API_Crud`, the table named in `UserTa
 - **The last administrator** cannot lose the flag, be deactivated (an `IsActive` column) or be deleted: 422 (`/problems/last-administrator`). An administrator counts when the flag is true and, if the table has `IsActive`, the row is active.
 
 The checks are overrides of two hooks in the `CrudApi` and `NameActiveCrudApi` bases, `BeforeSaveAsync(context, row, isNew)` and `BeforeDeleteAsync(context, id)`, which any table's API can override to refuse a write; both exist only with `ApiAuth`, as does `Caller` (the signed-in user). Regenerate the bases with `essentials --replace` (the `crudapi` group) to get them.
+
+## The members of a tenant
+
+With `TenantTable` and a `TenantMembership` the same file maps, for an administrator who works in a tenant (the administrator role in a token that names a tenant; anyone else is 403 `/problems/role-not-allowed`, a token with no tenant 403 `/problems/tenant-required`):
+
+- `GET /api/auth/members` answers `[{ "personId": 1, "login": "ada", "person": "Ada Lovelace (ada)", "role": "Administrator" }]` for the people of the caller's tenant, by name. `person` is the user table's `Name`, `FullName` or `DisplayName` column with the sign-in name in brackets, else the sign-in name alone. `role` is the membership's role column (null for none).
+- `GET /api/auth/members/candidates` answers `[{ "id": 3, "name": "Alan Turing (alan)" }]` for the people who are not yet in the tenant.
+- `POST /api/auth/members` with `{ "personId": 3, "role": "Employee" }` adds a membership (204; 404 for an unknown person; 409 `/problems/member-exists` when the person is in the tenant already). An empty role keeps the person's own role.
+- `PUT /api/auth/members/{personId}` with `{ "role": "Auditor" }` changes the role (204; 404 for a person who is not a member). Only with a role column.
+- `DELETE /api/auth/members/{personId}` removes the membership (204; 404; 403 `/problems/member-self` for the caller's own). The person stays a row of the user table.
+
+The membership and user tables are read with the query filters off, since the tenant's own filter hides everyone who belongs elsewhere, and the caller's tenant is named in every query. All three APIs have them; `Docs/Verification/Tools/first_person_check.py` plays them against a running one.

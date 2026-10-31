@@ -145,7 +145,7 @@ public sealed class GridCells : Grid
 
     /// <summary> The members a list view model gains: the columns offered and the ones it starts with, the shown ones (chosen and kept), toggling and resetting, and the texts of the shown cells of a row.
     /// The view model has the constants <c>GridKey</c> and the fields <c>_sortColumn</c> and <c>_sortDescending</c>, and sets <c>_chosenColumns</c> in its constructor from <c>GridColumnStore.Load</c>. </summary>
-    public static string ViewModelMembers(ChosenGridColumns chosen)
+    public static string ViewModelMembers(ChosenGridColumns chosen, string? adminOnlyColumn = null, string? adminExpression = null)
     {
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
@@ -160,7 +160,12 @@ public sealed class GridCells : Grid
         L("    private static readonly string[] OfferedNames = [.. OfferedColumns.Select(c => c.Name)];");
         L("    private List<string> _chosenColumns = [.. InitialColumns];");
         L();
-        L("    public bool IsShown(string name) => _chosenColumns.Contains(name);");
+        if (adminOnlyColumn is null)
+            L("    public bool IsOffered(string name) => true;");
+        else
+            L($"    public bool IsOffered(string name) => name != {Quote(adminOnlyColumn)} || {adminExpression};");
+        L();
+        L("    public bool IsShown(string name) => IsOffered(name) && _chosenColumns.Contains(name);");
         L();
         L("    /// <summary> The last shown column cannot be hidden: a grid with no column shows nothing to open a row from. </summary>");
         L("    public bool IsLastColumn(string name) => _chosenColumns.Count == 1 && _chosenColumns[0] == name;");
@@ -233,7 +238,7 @@ public sealed class GridCells : Grid
     private void OnColumnsClick(object sender, RoutedEventArgs e)
     {
         var flyout = new MenuFlyout();
-        foreach (var column in {{viewModelType}}.OfferedColumns)
+        foreach (var column in {{viewModelType}}.OfferedColumns.Where(c => ViewModel.IsOffered(c.Name)))
         {
             var item = new ToggleMenuFlyoutItem { Text = column.Caption, IsChecked = ViewModel.IsShown(column.Name), IsEnabled = !ViewModel.IsLastColumn(column.Name) };
             item.Click += async (_, _) => await ChangeColumnsAsync(() => ViewModel.ToggleColumn(column.Name));

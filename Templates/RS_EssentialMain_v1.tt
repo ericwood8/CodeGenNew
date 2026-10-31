@@ -52,6 +52,7 @@ pub use tenancy::forget_hosts;
     {
 #>
 mod users;
+mod people;
 <#
     }
     if (Project.ApiValidation)

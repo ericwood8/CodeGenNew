@@ -208,8 +208,8 @@ public class DesktopSignInTests
         Expect.Contains(page, "Click=\"OnDeleteClick\" Visibility=\"{x:Bind WriteVisibility}\" />");
 
         var (_, _, readPlain, _) = await TenantPlanTests.GenerateAsync(Winui(), "winui3");
-        Expect.DoesNotContain(readPlain("MainWindow.Screens.cs"), "DesktopSession");
-        Expect.DoesNotContain(readPlain("Repositories/DesktopSignIn.cs"), "DesktopSession");
+        Expect.DoesNotContain(readPlain("MainWindow.Screens.cs"), "if (roles is null");
+        Expect.Contains(readPlain("Repositories/DesktopSignIn.cs"), "public static class DesktopSession");
         Expect.DoesNotContain(readPlain("Views/ProjectListPage.xaml"), "WriteVisibility");
         Expect.Contains(readPlain("MainWindow.xaml.cs"), "ShowFirstScreen();");
 

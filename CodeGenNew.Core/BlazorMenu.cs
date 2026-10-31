@@ -21,6 +21,9 @@ public static class BlazorMenu
                 _ => AngularNames.ODataRoute(m.Table!.TableName)
             }, m.Label, m.Roles))
             .ToList();
+        // administrators say who works in the tenant (BLZ_People)
+        if (project.Auth && PeoplePlan.For(database, project) is { HasMembers: true })
+            entries.Add(new BlazorMenuEntry("members", MemberWords.Menu, [project.AuthAdminRole]));
         return entries;
     }
 }

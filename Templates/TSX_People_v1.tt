@@ -1,0 +1,287 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TSX_People_v1.tt
+    // Generates: src/api/people.ts, src/pages/MembersPage.tsx and its test   (the template writes its own paths with @@@FILE markers)
+    // The people of a React app that signs in (Auth=true, ApiAuth, a UserTable): changePassword (PUT api/auth/password, the call of the Set password box of the user table's form) and, with a TenantMembership,
+    // the members page where an administrator says who works in the current tenant and in which role (GET, POST, PUT and DELETE api/auth/members). TSX_Screens puts the page in the menu for the administrator role.
+    // Full notes: Docs/TemplateNotes/TSX_People_v1.md
+    // ==========================================================================================
+    string apiFolder = Project.ApiFolder;
+    string pagesFolder = Project.PagesFolder;
+    var people = PeoplePlan.For(Database, Project);
+    if (people is not null && Project.Auth)
+    {
+        bool members = people.HasMembers;
+        bool role = members && people.Membership!.Role is not null;
+#>
+@@@FILE src/<#= apiFolder #>/people.ts@@@
+import { request } from './client';
+
+/** A new password for a person: an administrator sets anyone's, anyone else only their own. */
+export const changePassword = (userName: string, password: string): Promise<void> =>
+  request<void>('<#= PeopleWords.PasswordPath #>', { method: 'PUT', body: JSON.stringify({ userName, password }) });
+<#
+        if (members)
+        {
+#>
+
+/** One member of the signed-in tenant: the person's key, sign-in name, the text that names them and their role in the tenant. */
+export interface Member {
+  personId: number;
+  login: string;
+  person: string;
+  role?: string | null;
+}
+
+/** A person who is not yet a member of the tenant. */
+export interface MemberCandidate {
+  id: number;
+  name: string;
+}
+
+export const listMembers = (): Promise<Member[]> => request<Member[]>('<#= PeopleWords.MembersPath #>');
+
+export const listCandidates = (): Promise<MemberCandidate[]> => request<MemberCandidate[]>('<#= PeopleWords.CandidatesPath #>');
+
+export const addMember = (personId: number<#= role ? ", role: string" : "" #>): Promise<void> =>
+  request<void>('<#= PeopleWords.MembersPath #>', { method: 'POST', body: JSON.stringify({ personId<#= role ? ", role" : "" #> }) });
+<#
+            if (role)
+            {
+#>
+
+export const changeMemberRole = (personId: number, role: string): Promise<void> =>
+  request<void>(`<#= PeopleWords.MembersPath #>/${personId}`, { method: 'PUT', body: JSON.stringify({ role }) });
+<#
+            }
+#>
+
+export const removeMember = (personId: number): Promise<void> => request<void>(`<#= PeopleWords.MembersPath #>/${personId}`, { method: 'DELETE' });
+@@@FILE src/<#= pagesFolder #>/MembersPage.tsx@@@
+import { useEffect, useState } from 'react';
+import { ApiError } from '../<#= apiFolder #>/client';
+import { addMember, <#= role ? "changeMemberRole, " : "" #>listCandidates, listMembers, removeMember } from '../<#= apiFolder #>/people';
+import type { Member, MemberCandidate } from '../<#= apiFolder #>/people';
+
+export function MembersPage() {
+  const [members, setMembers] = useState<Member[]>([]);
+  const [candidates, setCandidates] = useState<MemberCandidate[]>([]);
+  const [adding, setAdding] = useState(false);
+  const [chosen, setChosen] = useState('');
+<#
+            if (role)
+            {
+#>
+  const [newRole, setNewRole] = useState('');
+  const [editing, setEditing] = useState<number | null>(null);
+  const [editRole, setEditRole] = useState('');
+<#
+            }
+#>
+  const [message, setMessage] = useState('');
+
+  const load = () => {
+    listMembers().then(setMembers).catch(() => setMessage('<#= PeopleWords.MembersAdminsOnlyDetail #>'));
+  };
+
+  useEffect(load, []);
+
+  const startAdding = async () => {
+    setMessage('');
+    const list = await listCandidates().catch(() => []);
+    if (list.length === 0) {
+      setMessage('<#= MemberWords.NobodyToAdd #>');
+      return;
+    }
+    setCandidates(list);
+    setChosen(String(list[0].id));
+<# if (role) { #>
+    setNewRole('');
+<# } #>
+    setAdding(true);
+  };
+
+  const add = async () => {
+    try {
+      await addMember(Number(chosen)<#= role ? ", newRole" : "" #>);
+      setAdding(false);
+      load();
+    } catch (error) {
+      setMessage(error instanceof ApiError && error.status === <#= HttpStatus.Conflict #> ? '<#= PeopleWords.MemberExistsDetail #>' : 'Problem while adding!');
+    }
+  };
+<#
+            if (role)
+            {
+#>
+
+  const saveRole = async (personId: number) => {
+    try {
+      await changeMemberRole(personId, editRole);
+      setEditing(null);
+      load();
+    } catch {
+      setMessage('Problem while saving!');
+    }
+  };
+<#
+            }
+#>
+
+  const remove = async (personId: number) => {
+    setMessage('');
+    try {
+      await removeMember(personId);
+      load();
+    } catch (error) {
+      setMessage(error instanceof ApiError && error.status === <#= HttpStatus.Forbidden #> ? '<#= PeopleWords.MemberSelfDetail #>' : 'Problem while removing!');
+    }
+  };
+
+  return (
+    <div>
+      <h1><#= MemberWords.Title #></h1>
+      <div className="toolbar">
+        <button type="button" onClick={() => void startAdding()}><#= MemberWords.AddButton #></button>
+      </div>
+      {message && <p className="error" role="alert">{message}</p>}
+      {adding && (
+        <form onSubmit={(event) => { event.preventDefault(); void add(); }}>
+          <label htmlFor="memberPerson"><#= MemberWords.PersonLabel #></label>
+          <select id="memberPerson" value={chosen} onChange={(event) => setChosen(event.target.value)}>
+            {candidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}</option>)}
+          </select>
+<# if (role) { #>
+          <label htmlFor="memberRole"><#= MemberWords.RoleLabel #></label>
+          <input id="memberRole" type="text" value={newRole} onChange={(event) => setNewRole(event.target.value)} placeholder="<#= MemberWords.RoleHint #>" />
+<# } #>
+          <button type="submit">Add</button>
+          <button type="button" onClick={() => setAdding(false)}>Cancel</button>
+        </form>
+      )}
+      <table>
+        <thead>
+          <tr>
+            <th>Person</th>
+<# if (role) { #>
+            <th><#= MemberWords.RoleLabel #></th>
+<# } #>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {members.map((member) => (
+            <tr key={member.personId}>
+              <td>{member.person}</td>
+<# if (role) { #>
+              <td>
+                {editing === member.personId
+                  ? <input aria-label="<#= MemberWords.RoleLabel #>" type="text" value={editRole} onChange={(event) => setEditRole(event.target.value)} />
+                  : member.role}
+              </td>
+<# } #>
+              <td>
+<# if (role) { #>
+                {editing === member.personId
+                  ? <button type="button" onClick={() => void saveRole(member.personId)}>Save</button>
+                  : <button type="button" onClick={() => { setEditing(member.personId); setEditRole(member.role ?? ''); }}>Edit role</button>}
+<# } #>
+                <button type="button" onClick={() => void remove(member.personId)}>Remove</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+@@@FILE src/<#= pagesFolder #>/__tests__/MembersPage.test.tsx@@@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MembersPage } from '../MembersPage';
+
+const members = [
+  { personId: 1, login: 'ada', person: 'Ada Lovelace (ada)', role: 'Administrator' },
+  { personId: 2, login: 'grace', person: 'Grace Hopper (grace)', role: null },
+];
+const candidates = [{ id: 3, name: 'Alan Turing (alan)' }];
+
+const answer = (calls: { url: string; method: string; body?: string }[]) => (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const url = String(input);
+  calls.push({ url, method: init?.method ?? 'GET', body: init?.body as string | undefined });
+  if (url.endsWith('<#= PeopleWords.CandidatesPath #>')) return Promise.resolve(new Response(JSON.stringify(candidates), { status: <#= HttpStatus.Ok #> }));
+  if (url.endsWith('<#= PeopleWords.MembersPath #>') && (init?.method ?? 'GET') === 'GET') return Promise.resolve(new Response(JSON.stringify(members), { status: <#= HttpStatus.Ok #> }));
+  return Promise.resolve(new Response(null, { status: <#= HttpStatus.NoContent #> }));
+};
+
+describe('MembersPage', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('lists the people of the tenant<#= role ? " with their role" : "" #>', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(answer([]));
+    render(<MembersPage />);
+    expect(await screen.findByText('Ada Lovelace (ada)')).toBeInTheDocument();
+    expect(screen.getByText('Grace Hopper (grace)')).toBeInTheDocument();
+<# if (role) { #>
+    expect(screen.getByText('Administrator')).toBeInTheDocument();
+<# } #>
+  });
+
+  it('adds a person who is not yet a member', async () => {
+    const calls: { url: string; method: string; body?: string }[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(answer(calls));
+    render(<MembersPage />);
+    await screen.findByText('Ada Lovelace (ada)');
+    fireEvent.click(screen.getByRole('button', { name: '<#= MemberWords.AddButton #>' }));
+    await screen.findByRole('option', { name: 'Alan Turing (alan)' });
+<# if (role) { #>
+    fireEvent.change(screen.getByLabelText('<#= MemberWords.RoleLabel #>'), { target: { value: 'Employee' } });
+<# } #>
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(calls.some((call) => call.method === 'POST' && call.body === JSON.stringify({ personId: 3<#= role ? ", role: 'Employee'" : "" #> }))).toBe(true));
+  });
+<#
+            if (role)
+            {
+#>
+
+  it('changes the role of a member', async () => {
+    const calls: { url: string; method: string; body?: string }[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(answer(calls));
+    render(<MembersPage />);
+    await screen.findByText('Ada Lovelace (ada)');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Edit role' })[1]);
+    fireEvent.change(screen.getByLabelText('<#= MemberWords.RoleLabel #>'), { target: { value: 'Auditor' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(calls.some((call) => call.method === 'PUT' && call.url.endsWith('/2') && call.body === JSON.stringify({ role: 'Auditor' }))).toBe(true));
+  });
+<#
+            }
+#>
+
+  it('removes a member and says so when it is the person themself', async () => {
+    const calls: { url: string; method: string; body?: string }[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => (init?.method === 'DELETE' && String(input).endsWith('/1')
+      ? Promise.resolve(new Response('', { status: <#= HttpStatus.Forbidden #> }))
+      : answer(calls)(input, init)));
+    render(<MembersPage />);
+    await screen.findByText('Ada Lovelace (ada)');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[0]);
+    expect(await screen.findByText('<#= PeopleWords.MemberSelfDetail #>')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[1]);
+    await waitFor(() => expect(calls.some((call) => call.method === 'DELETE' && call.url.endsWith('/2'))).toBe(true));
+  });
+});
+<#
+        }
+        else
+        {
+            // no membership table: only the password call
+        }
+    }
+#>

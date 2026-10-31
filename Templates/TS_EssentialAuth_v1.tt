@@ -20,12 +20,13 @@
     string storageKey = (Project.ProjectName ?? "app").ToLowerInvariant() + ".auth";
     bool controlFlow = Project.AngularControlFlow;
     bool tenants = TenantPlan.HasSwitcher(Project);   // TenantTable and TenantMembership: the top bar shows the tenant and, for a person in several, a drop-down to switch
+    bool people = Project.UserTable is not null;   // the user table is empty at first: the sign-in offers to create the first administrator (GET and POST api/auth/first-person)
     string switcherHtml = Project.AdaptAngularHtml(@"<span class=""tenant"" *ngIf=""choices.length === 1"">{{ choices[0].text }}</span>
 <select class=""tenant"" aria-label=""Tenant"" *ngIf=""choices.length > 1"" (change)=""choose($event)"">
   <option *ngFor=""let choice of choices"" [value]=""choice.id"" [selected]=""choice.current"">{{ choice.text }}</option>
 </select>
 ");
-    string tenantBox = tenants ? @"    <div class=""form-group"">
+    string tenantBox = tenants ? @"    <div class=""form-group""" + (people ? @" *ngIf=""!first""" : "") + @">
       <label for=""tenant"">" + TenantWords.SignInLabel + @"</label>
       <select id=""tenant"" name=""tenant"" [(ngModel)]=""tenant"" aria-describedby=""tenantHint"">
         <option [ngValue]=""null""></option>
@@ -34,9 +35,18 @@
       <small id=""tenantHint"">" + TenantWords.SignInHint + @"</small>
     </div>
 " : "";
+    string title = people ? "{{ first ? '" + UserScreenWords.FirstPersonTitle + "' : 'Sign in' }}" : "Sign in";
+    string button = people ? "{{ first ? '" + UserScreenWords.FirstPersonButton + "' : 'Sign in' }}" : "Sign in";
+    string hint = people ? @"  <p class=""hint"" *ngIf=""first"">" + UserScreenWords.FirstPersonHint + @"</p>
+" : "";
+    string confirmBox = people ? @"    <div class=""form-group"" *ngIf=""first"">
+      <label for=""confirm"">" + UserScreenWords.ConfirmLabel + @"</label>
+      <input id=""confirm"" name=""confirm"" type=""password"" [(ngModel)]=""confirm"" autocomplete=""new-password"">
+    </div>
+" : "";
     string loginHtml = Project.AdaptAngularHtml(@"<div class=""login-container"">
-  <h1>Sign in</h1>
-  <form (ngSubmit)=""signIn()"" #loginForm=""ngForm"">
+  <h1>" + title + @"</h1>
+" + hint + @"  <form (ngSubmit)=""signIn()"" #loginForm=""ngForm"">
     <div class=""form-group"">
       <label for=""userName"">User name</label>
       <input id=""userName"" name=""userName"" type=""text"" [(ngModel)]=""userName"" autocomplete=""username"" required autofocus>
@@ -45,8 +55,8 @@
       <label for=""password"">Password</label>
       <input id=""password"" name=""password"" type=""password"" [(ngModel)]=""password"" autocomplete=""current-password"" required>
     </div>
-" + tenantBox + @"    <p class=""error"" role=""alert"" *ngIf=""message"">{{ message }}</p>
-    <button type=""submit"" class=""btn"" [disabled]=""busy || !loginForm.form.valid"">Sign in</button>
+" + confirmBox + tenantBox + @"    <p class=""error"" role=""alert"" *ngIf=""message"">{{ message }}</p>
+    <button type=""submit"" class=""btn"" [disabled]=""busy || !loginForm.form.valid"">" + button + @"</button>
   </form>
 </div>
 ");
@@ -86,7 +96,7 @@ export interface TenantChoice {
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { Observable, catchError, of, tap } from 'rxjs';
+import { Observable, catchError, map, of, tap } from 'rxjs';
 import { AuthUser, LoginResponse<#= tenants ? ", SignInTenant" : "" #> } from '../<#= modelsFolder #>/auth';
 
 const storageKey = '<#= storageKey #>';
@@ -139,6 +149,18 @@ export class AuthService {
     );
   }
 
+<# if (people) { #>
+  /** Whether the user table is empty, so the sign-in offers to create the first administrator; false when the API cannot say. */
+  firstPersonOpen(): Observable<boolean> {
+    return this.http.get<{ open?: boolean }>('<#= PeopleWords.FirstPersonPath.TrimStart('/') #>').pipe(map((body) => body?.open === true), catchError(() => of(false)));
+  }
+
+  /** Adds the first person, the administrator, while the user table is empty; the person then signs in as usual. */
+  createFirstPerson(userName: string, password: string): Observable<void> {
+    return this.http.post<void>('<#= PeopleWords.FirstPersonPath.TrimStart('/') #>', { userName, password });
+  }
+
+<# } #>
 <# if (tenants) { #>
   /** The tenants a person can sign in to, for the drop-down of the sign-in page (no sign-in needed); an empty list when it cannot be read, so a person with one tenant can still sign in. */
   signInTenants(): Observable<SignInTenant[]> {
@@ -195,7 +217,10 @@ export const authGuard: CanActivateFn = () => {
   return auth.isLoggedIn() ? true : inject(Router).createUrlTree(['/login']);
 };
 @@@FILE src/app/<#= componentsFolder #>/login/login.component.ts@@@
-import { ChangeDetectionStrategy, Component, <# if (tenants) { #>OnInit, <# } #>inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, <# if (tenants || people) { #>OnInit, <# } #>inject } from '@angular/core';
+<# if (people) { #>
+import { switchMap } from 'rxjs';
+<# } #>
 <# if (!controlFlow) { #>
 import { <#= tenants ? "NgFor, " : "" #>NgIf } from '@angular/common';
 <# } #>
@@ -216,7 +241,7 @@ import { SignInTenant } from '../../<#= modelsFolder #>/auth';
   templateUrl: './login.component.html',
   styleUrl: './login.component.css'
 })
-export class LoginComponent<# if (tenants) { #> implements OnInit<# } #> {
+export class LoginComponent<# if (tenants || people) { #> implements OnInit<# } #> {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
 
@@ -228,20 +253,38 @@ export class LoginComponent<# if (tenants) { #> implements OnInit<# } #> {
 <# } #>
   message = '';
   busy = false;
-<# if (tenants) { #>
+<# if (people) { #>
+  first = false;   // nobody is in the user table yet: this page creates the first administrator
+  confirm = '';
+<# } #>
+<# if (tenants || people) { #>
 
   ngOnInit(): void {
+<# if (tenants) { #>
     this.auth.signInTenants().subscribe((list) => { this.tenantChoices = list; });
+<# } #>
+<# if (people) { #>
+    this.auth.firstPersonOpen().subscribe((open) => { this.first = open; });
+<# } #>
   }
 <# } #>
 
   signIn(): void {
     this.message = '';
+<# if (people) { #>
+    if (this.first && this.password.length < <#= UserScreenPlan.MinimumPasswordLength #>) { this.message = '<#= UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength) #>'; return; }
+    if (this.first && this.password !== this.confirm) { this.message = '<#= UserScreenWords.PasswordsDiffer #>'; return; }
+<# } #>
     this.busy = true;
 <# if (tenants) { #>
-    this.auth.login(this.userName, this.password, this.tenant).subscribe({
+    const signedIn = this.auth.login(this.userName, this.password, this.tenant);
 <# } else { #>
-    this.auth.login(this.userName, this.password).subscribe({
+    const signedIn = this.auth.login(this.userName, this.password);
+<# } #>
+<# if (people) { #>
+    (this.first ? this.auth.createFirstPerson(this.userName, this.password).pipe(switchMap(() => signedIn)) : signedIn).subscribe({
+<# } else { #>
+    signedIn.subscribe({
 <# } #>
       next: () => {
         this.busy = false;
@@ -250,6 +293,12 @@ export class LoginComponent<# if (tenants) { #> implements OnInit<# } #> {
       error: (error) => {
         this.busy = false;
         this.password = '';
+<# if (people) { #>
+        this.confirm = '';
+        if (this.first && error.status === <#= HttpStatus.Conflict #>) { this.first = false; this.message = '<#= UserScreenWords.FirstPersonTaken #>'; }
+        else if (this.first && error.status === <#= HttpStatus.BadRequest #>) { this.message = '<#= UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength) #>'; }
+        else
+<# } #>
         if (error.status === <#= HttpStatus.TooManyRequests #>) { this.message = 'Too many tries. Wait a minute and try again.'; }
         else if (error.status === <#= HttpStatus.Unauthorized #>) { this.message = 'The user name or password is not right.'; }
 <# if (tenants) { #>
@@ -489,6 +538,10 @@ describe('LoginComponent', () => {
     http.expectOne('<#= TenantWords.SignInListPath.TrimStart('/') #>').flush([{ id: 1, name: 'Acme' }, { id: 2, name: 'Globex' }, { id: 3, name: 'Initech' }]);
     fixture.detectChanges();
 <# } #>
+<# if (people) { #>
+    http.expectOne('<#= PeopleWords.FirstPersonPath.TrimStart('/') #>').flush({ open: false });
+    fixture.detectChanges();
+<# } #>
   });
 
   afterEach(() => http.verify());
@@ -533,6 +586,43 @@ describe('LoginComponent', () => {
     submit(<#= HttpStatus.InternalServerError #>);
     expect(component.message).toBe('Could not sign in right now.');
   });
+<# if (people) { #>
+
+  it('offers to create the first administrator when the user table is empty', () => {
+    component.first = true;
+    fixture.detectChanges();
+    const page = fixture.nativeElement as HTMLElement;
+    expect(page.querySelector('h1')?.textContent).toContain('<#= UserScreenWords.FirstPersonTitle #>');
+    expect(page.querySelector('#confirm')).not.toBeNull();
+    expect(page.querySelector('button[type=submit]')?.textContent).toContain('<#= UserScreenWords.FirstPersonButton #>');
+  });
+
+  it('refuses a short password and two different passwords without calling the API', () => {
+    component.first = true;
+    component.userName = 'owner';
+    component.password = 'short';
+    component.confirm = 'short';
+    component.signIn();
+    expect(component.message).toBe('<#= UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength) #>');
+    component.password = 'long-enough-1';
+    component.signIn();
+    expect(component.message).toBe('<#= UserScreenWords.PasswordsDiffer #>');
+    http.expectNone('<#= PeopleWords.FirstPersonPath.TrimStart('/') #>');
+  });
+
+  it('creates the first administrator and signs them in', () => {
+    component.first = true;
+    component.userName = 'owner';
+    component.password = 'long-enough-1';
+    component.confirm = 'long-enough-1';
+    component.signIn();
+    const created = http.expectOne('<#= PeopleWords.FirstPersonPath.TrimStart('/') #>');
+    expect(created.request.body).toEqual({ userName: 'owner', password: 'long-enough-1' });
+    created.flush(null, { status: <#= HttpStatus.NoContent #>, statusText: 'No Content' });
+    http.expectOne('api/auth/login').flush({ token: 'abc', user: { name: 'owner' } });
+    expect(navigated).toEqual([['/']]);
+  });
+<# } #>
 <# if (tenants) { #>
 
   it('lists the tenants by name, with a blank first for the first tenant', () => {

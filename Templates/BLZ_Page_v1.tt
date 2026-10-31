@@ -66,6 +66,7 @@
     else
     {
         var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
+        var userScreen = UserScreenPlan.ForWeb(Model, Project);   // the user table: a Set password box, the administrator flag for administrators only
         var keyColumn = form.KeyColumn!;
         string type = form.BaseName;
         string ns = BlazorNames.Namespace(Project);
@@ -248,8 +249,10 @@
         L($"@inject {clientType} Client");
         if (odata && (softScreen || validOnScreen))
             L($"@inject {type}Client ShapeClient");   // the REST client: the OData one has no deleted rows, restore or rows valid on a day
-        if (gated || children.Any(ch => ch.WriteGate is not null))
+        if (gated || children.Any(ch => ch.WriteGate is not null) || userScreen is not null)
             L("@inject AuthSession Session");
+        if (userScreen is not null)
+            L("@inject HttpClient Http");
         foreach (var p in parents)
             L($"@inject {p.BaseName}Client {BlazorNames.LookupField(p)}Client");
         foreach (var ch in children)
@@ -548,7 +551,16 @@
                 string note = ChoiceFormat.Html(guard.Note).Replace("@", "@@");
                 input = $"@if (guards.GetValueOrDefault(\"{guard.Json}\")) {{ {input} }} else {{ <span id=\"{id}\">{shown2}</span> <small class=\"guard-note\">{note}</small> }}";
             }
-            L($"            <div class=\"field\"><label for=\"{id}\">{label}{RequiredMark.Html(form.IsMarked(c))}</label>{input}</div>");
+            string fieldHtml = $"<div class=\"field\"><label for=\"{id}\">{label}{RequiredMark.Html(form.IsMarked(c))}</label>{input}</div>";
+            // the administrator flag is shown to administrators only
+            L(userScreen?.IsAdminOnly(c) == true ? $"            @if (IsAdmin) {{ {fieldHtml} }}" : $"            {fieldHtml}");
+        }
+        if (userScreen is not null)
+        {
+            L("            @if (CanSetPassword)");
+            L("            {");
+            L($"                <div class=\"field\"><label for=\"newPassword\">{UserScreenWords.SetPasswordLabel}</label><input id=\"newPassword\" type=\"password\" autocomplete=\"new-password\" @bind=\"newPassword\" @bind:event=\"oninput\" /><small>{UserScreenWords.SetPasswordHint}</small></div>");
+            L("            }");
         }
         foreach (var ch in editableChildren)
         {
@@ -796,6 +808,13 @@
         }
         if (gated)
             L($"    private bool CanWrite => Session.HasRole({RolesExpression(writeRoles)});   // WriteRoles: the roles that may add, change and delete rows");
+        if (userScreen is not null)
+        {
+            // the user table: a Set password box (an administrator sets anyone's, anyone else only their own) and the administrator flag for administrators only
+            L("    private string newPassword = \"\";");
+            L($"    private bool IsAdmin => Session.HasRole([{CSharpText.Quote(Project.AuthAdminRole)}]);");
+            L($"    private bool CanSetPassword => IsAdmin || (!isNew && row is not null && string.Equals(row.{userScreen.User.UserName.CSharpName()}, Session.User?.Name, StringComparison.OrdinalIgnoreCase));");
+        }
         if (odata && filterFields!.Any(f => f is not null))
         {
             L("    private static readonly ODataFilterField[] FilterFields =");
@@ -1206,6 +1225,7 @@
                 L("        stored = add ? null : item.Copy();");
             L("        isNew = add;");
             L("        message = null;");
+            if (userScreen is not null) L("        newPassword = \"\";");
             L("    }");
         }
         else
@@ -1219,6 +1239,7 @@
                 L("        stored = add ? null : item.Copy();");
             L("        isNew = add;");
             L("        message = null;");
+            if (userScreen is not null) L("        newPassword = \"\";");
             foreach (var ch in children)
             {
                 L($"        {ch.Var}Rows = [];");
@@ -1324,6 +1345,19 @@
         L("    private async Task SaveAsync()");
         L("    {");
         L("        if (row is null) return;");
+        if (userScreen is not null)
+        {
+            L($"        if (CanSetPassword && newPassword.Length > 0 && newPassword.Length < {UserScreenPlan.MinimumPasswordLength})");
+            L("        {");
+            L($"            message = \"{UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength)}\";");
+            L("            return;");
+            L("        }");
+            L("        if (CanSetPassword && newPassword.Length == 0 && isNew)");
+            L("        {");
+            L($"            message = \"{UserScreenWords.NewPersonNeedsPassword}\";");
+            L("            return;");
+            L("        }");
+        }
         L("        try");
         L("        {");
         if (editableChildren.Count > 0)
@@ -1338,6 +1372,8 @@
             L("            if (isNew) await Client.CreateAsync(row);");
             L("            else await Client.UpdateAsync(row.§K, row);");
         }
+        if (userScreen is not null)
+            L($"            if (CanSetPassword && newPassword.Length > 0) await PeopleApi.ChangePasswordAsync(Http, row.{userScreen.User.UserName.CSharpName()} ?? \"\", newPassword);");
         L("            row = null;");
         L($"            await {reload};");
         L("            if (Back is not null) Navigation.NavigateTo(Back);");

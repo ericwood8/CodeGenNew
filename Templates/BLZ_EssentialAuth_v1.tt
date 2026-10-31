@@ -16,6 +16,7 @@
     string ns = BlazorNames.Namespace(Project);
     string storageKey = BlazorNames.SessionKey(Project);
     bool tenants = TenantPlan.HasSwitcher(Project);   // TenantTable and TenantMembership: the top bar shows the tenant and, for a person in several, a drop-down to switch
+    bool people = Project.UserTable is not null;   // the user table is empty at first: the sign-in offers to create the first administrator (GET and POST api/auth/first-person)
 #>
 @@@FILE Services/AuthSession.cs@@@
 using System.Net;
@@ -176,7 +177,13 @@ public class AuthHandler : DelegatingHandler
 
 <PageTitle>Sign in</PageTitle>
 
-<h1>Sign in</h1>
+<h1><# if (people) { #>@(first ? "<#= UserScreenWords.FirstPersonTitle #>" : "Sign in")<# } else { #>Sign in<# } #></h1>
+<# if (people) { #>
+@if (first)
+{
+    <p class="hint"><#= UserScreenWords.FirstPersonHint #></p>
+}
+<# } #>
 <form class="login" @onsubmit="SignInAsync">
     @if (message is not null)
     {
@@ -188,10 +195,19 @@ public class AuthHandler : DelegatingHandler
     </div>
     <div class="field">
         <label for="password">Password</label>
-        <input id="password" type="password" autocomplete="current-password" required @bind="password" @bind:event="oninput" />
+        <input id="password" type="password" autocomplete="@(first ? "new-password" : "current-password")" required @bind="password" @bind:event="oninput" />
     </div>
+<# if (people) { #>
+    @if (first)
+    {
+        <div class="field">
+            <label for="confirm"><#= UserScreenWords.ConfirmLabel #></label>
+            <input id="confirm" type="password" autocomplete="new-password" required @bind="confirm" @bind:event="oninput" />
+        </div>
+    }
+<# } #>
 <# if (tenants) { #>
-    <div class="field">
+    <div class="field"<# if (people) { #> style="@(first ? "display: none" : null)"<# } #>>
         <label for="tenant"><#= TenantWords.SignInLabel #></label>
         <select id="tenant" aria-describedby="tenantHint" @bind="tenant">
             <option value=""></option>
@@ -204,7 +220,7 @@ public class AuthHandler : DelegatingHandler
     </div>
 <# } #>
     <div class="actions">
-        <button type="submit" disabled="@busy">Sign in</button>
+        <button type="submit" disabled="@busy"><# if (people) { #>@(first ? "<#= UserScreenWords.FirstPersonButton #>" : "Sign in")<# } else { #>Sign in<# } #></button>
     </div>
 </form>
 
@@ -221,25 +237,65 @@ public class AuthHandler : DelegatingHandler
 <# } #>
     private string? message;
     private bool busy;
-<# if (tenants) { #>
+<# if (people) { #>
+    private bool first;   // nobody is in the user table yet: this page creates the first administrator
+    private string confirm = "";
+<# } #>
+<# if (tenants || people) { #>
 
-    // an empty list when the names cannot be read, so a person with one tenant can still sign in
     protected override async Task OnInitializedAsync()
     {
+<# if (tenants) { #>
+        // an empty list when the names cannot be read, so a person with one tenant can still sign in
         try { tenantChoices = await Http.GetFromJsonAsync<List<TenantChoice>>("<#= TenantWords.SignInListPath #>") ?? []; }
         catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
         {
             tenantChoices = [];
         }
+<# } #>
+<# if (people) { #>
+        // false when the API cannot say
+        try { first = (await Http.GetFromJsonAsync<FirstPersonState>("<#= PeopleWords.FirstPersonPath #>"))?.Open == true; }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
+        {
+            first = false;
+        }
+<# } #>
     }
+<# } #>
+<# if (people) { #>
+
+    private record FirstPersonState(bool Open);
 <# } #>
 
     private async Task SignInAsync()
     {
+<# if (people) { #>
+        if (first && password.Length < <#= UserScreenPlan.MinimumPasswordLength #>)
+        {
+            message = "<#= UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength) #>";
+            return;
+        }
+        if (first && password != confirm)
+        {
+            message = "<#= UserScreenWords.PasswordsDiffer #>";
+            return;
+        }
+<# } #>
         busy = true;
         message = null;
+        bool creating = first;
         try
         {
+<# if (people) { #>
+            if (first)
+            {
+                var created = await Http.PostAsJsonAsync("<#= PeopleWords.FirstPersonPath #>", new { userName = userName.Trim(), password });
+                if (!created.IsSuccessStatusCode)
+                    throw new LoginException((int)created.StatusCode);
+                first = false;
+            }
+<# } #>
 <# if (tenants) { #>
             await Session.LoginAsync(Http, userName.Trim(), password, tenant);
 <# } else { #>
@@ -249,8 +305,17 @@ public class AuthHandler : DelegatingHandler
         }
         catch (LoginException ex)
         {
+<# if (people) { #>
+            confirm = "";
+            if (ex.Status == <#= HttpStatus.Conflict #>)
+                first = false;
+<# } #>
             message = ex.Status switch
             {
+<# if (people) { #>
+                <#= HttpStatus.Conflict #> when creating => "<#= UserScreenWords.FirstPersonTaken #>",
+                <#= HttpStatus.BadRequest #> when creating => "<#= UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength) #>",
+<# } #>
                 <#= HttpStatus.Unauthorized #> => "The user name or password is not right.",
                 <#= HttpStatus.TooManyRequests #> => "Too many tries. Wait a minute and try again.",
 <# if (tenants) { #>

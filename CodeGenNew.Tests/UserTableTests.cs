@@ -127,7 +127,9 @@ public class UserTableTests
         string alone = await RenderDirectory(Project(AllSettings.Where(s => s.Item1 != "UserRoleColumn"), ("UserAdminColumn", "IsAdministrator")), Employee(withAdmin: true));
         Expect.Contains(alone, "row.Admin == true ? AuthNames.AdminRole : (null)");
 
-        Expect.DoesNotContain(await RenderDirectory(Project(AllSettings), Employee()), "Admin");
+        string noFlag = await RenderDirectory(Project(AllSettings), Employee());
+        Expect.DoesNotContain(noFlag, "row.Admin");
+        Expect.DoesNotContain(noFlag, "Admin = u.");
     }
 
     private static TableModel UserTableNamed(string nameColumn, string hashColumn, string? adminColumn, params string[] more)

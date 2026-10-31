@@ -43,6 +43,8 @@
 
     Line($"namespace {apiNamespace};");
     Line();
+    Line("using System.Security.Claims;");
+    Line("using Microsoft.AspNetCore.Mvc;");
     Line("using Microsoft.EntityFrameworkCore;");
     Line();
     Line($"/// <summary> The <see cref=\"IUserDirectory\"/> of the sign-in: the people are the rows of {entity} ({P(plan.UserName)}, {P(plan.PasswordHash)}).");
@@ -127,6 +129,93 @@
     Line("        Environment.ExitCode = found ? 0 : 1;");
     Line("        return true;");
     Line("    }");
+    Line("}");
+
+    // the first person of an empty table and a person's new password, over HTTP (the screens of the web front ends call them)
+    string firstPerson = DesktopSignInCode.FirstPersonMethods(Database, Project, contextType, "PasswordService.Hash");
+    var people = PeoplePlan.For(Database, Project);
+    bool members = people is { HasMembers: true };
+    if (firstPerson.Length > 0)
+    {
+        Line();
+        Line("/// <summary> Adds the first person of an empty " + entity + " table, the administrator (and, with tenants, a member of the first active tenant). </summary>");
+        Line("public static class FirstPersonSetup");
+        Line("{");
+        sb.Append(firstPerson.TrimStart('\n').Replace("§CTX", contextType));
+        Line("}");
+    }
+    Line();
+    Line("/// <summary> The body of POST /api/auth/first-person: the sign-in name and password of the first administrator. </summary>");
+    Line("public record FirstPersonRequest(string UserName, string Password);");
+    Line();
+    Line("/// <summary> What GET /api/auth/first-person answers: whether the table is empty, so the sign-in offers to create the first administrator. </summary>");
+    Line("public record FirstPersonState(bool Open);");
+    Line();
+    Line("/// <summary> The body of PUT /api/auth/password: whose password and the new one. </summary>");
+    Line("public record PasswordChange(string UserName, string Password);");
+    if (members)
+    {
+        Line();
+        sb.Append(AspNetPeopleWriter.Records).Append('\n');
+    }
+    Line();
+    Line("/// <summary> GET and POST /api/auth/first-person (no sign-in: nobody can sign in yet) and PUT /api/auth/password (an administrator for anyone, anyone else only their own). </summary>");
+    Line("public static class UserEndpoints");
+    Line("{");
+    Line("    public static void MapUserEndpoints(this WebApplication app)");
+    Line("    {");
+    if (firstPerson.Length > 0)
+    {
+        Line("        app.MapGet(\"/api/auth/first-person\", async ([FromServices] " + contextType + " context, HttpContext http) =>");
+        Line("            Results.Ok(new FirstPersonState(await FirstPersonSetup.NoPeopleAsync(context, http.RequestAborted))))");
+        Line("        .AllowAnonymous()");
+        Line("        .WithName(\"FirstPersonState\")");
+        Line("        .Produces<FirstPersonState>();");
+        Line();
+        Line("        app.MapPost(\"/api/auth/first-person\", CreateFirstAsync)");
+        Line("        .AllowAnonymous()");
+        Line("        .WithName(\"CreateFirstPerson\")");
+        Line($"        .Produces({HttpStatus.NoContent})");
+        Line($"        .ProducesProblem({HttpStatus.BadRequest})");
+        Line($"        .ProducesProblem({HttpStatus.Conflict});");
+        Line();
+    }
+    Line("        app.MapPut(\"/api/auth/password\", SetPasswordAsync)");
+    Line("        .WithName(\"SetPassword\")");
+    Line($"        .Produces({HttpStatus.NoContent})");
+    Line($"        .ProducesProblem({HttpStatus.BadRequest})");
+    Line($"        .ProducesProblem({HttpStatus.Forbidden})");
+    Line($"        .ProducesProblem({HttpStatus.NotFound});");
+    if (members)
+    {
+        Line();
+        sb.Append(AspNetPeopleWriter.Mappings(people!));
+    }
+    Line("    }");
+    Line();
+    if (firstPerson.Length > 0)
+    {
+        Line("    private static async Task<IResult> CreateFirstAsync([FromBody] FirstPersonRequest request, [FromServices] " + contextType + " context, HttpContext http)");
+        Line("    {");
+        Line("        if (string.IsNullOrWhiteSpace(request.UserName) || request.Password is null || request.Password.Length < UserCommands.MinimumPasswordLength)");
+        Line($"            return Results.Problem(statusCode: {HttpStatus.BadRequest}, type: \"{ProblemTypes.FirstPersonInvalid}\", title: $\"The first person needs a user name and a password of at least {{UserCommands.MinimumPasswordLength}} characters\");");
+        Line("        if (!await FirstPersonSetup.CreateFirstAsync(context, request.UserName, request.Password, http.RequestAborted))");
+        Line($"            return Results.Problem(statusCode: {HttpStatus.Conflict}, type: \"{ProblemTypes.FirstPersonTaken}\", title: \"Someone has already been added\", detail: \"Sign in with that person.\");");
+        Line("        return Results.NoContent();");
+        Line("    }");
+        Line();
+    }
+    Line("    private static async Task<IResult> SetPasswordAsync([FromBody] PasswordChange request, ClaimsPrincipal user, [FromServices] TableUserDirectory directory, HttpContext http)");
+    Line("    {");
+    Line("        if (string.IsNullOrWhiteSpace(request.UserName) || request.Password is null || request.Password.Length < UserCommands.MinimumPasswordLength)");
+    Line($"            return Results.Problem(statusCode: {HttpStatus.BadRequest}, type: \"{ProblemTypes.PasswordInvalid}\", title: $\"The password needs a user name and at least {{UserCommands.MinimumPasswordLength}} characters\");");
+    Line("        bool own = string.Equals(user.FindFirstValue(AuthNames.NameClaim), request.UserName.Trim(), StringComparison.OrdinalIgnoreCase);");
+    Line("        if (!own && !user.IsInRole(AuthNames.AdminRole))");
+    Line($"            return Results.Problem(statusCode: {HttpStatus.Forbidden}, type: \"{ProblemTypes.PasswordNotYours}\", title: \"Not your password\", detail: \"Only an administrator sets another person's password.\");");
+    Line("        return await directory.SetPasswordAsync(request.UserName, request.Password, http.RequestAborted) ? Results.NoContent() : Results.NotFound();");
+    Line("    }");
+    if (members)
+        sb.Append(AspNetPeopleWriter.Handlers(people!, contextType));
     Line("}");
     Write(sb.ToString());
 #>

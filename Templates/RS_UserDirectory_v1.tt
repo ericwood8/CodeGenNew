@@ -115,5 +115,11 @@
     Line("        }");
     Line("    }");
     Line("}");
+    string people = RustPeopleWriter.File(Database, Project);   // src/people.rs: the first person, a new password and the members of a tenant over HTTP
+    if (people.Length > 0)
+    {
+        Line("@@@FILE src/people.rs@@@");
+        sb.Append(people);
+    }
     Write(sb.ToString());
 #>

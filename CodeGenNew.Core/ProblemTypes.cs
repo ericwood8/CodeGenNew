@@ -36,6 +36,12 @@ public static class ProblemTypes
     public const string SignInIncomplete = Prefix + "sign-in-incomplete";
     public const string TooManyAttempts = Prefix + "too-many-attempts";
     public const string WrongCredentials = Prefix + "wrong-credentials";
+    public const string FirstPersonTaken = Prefix + "first-person-taken";
+    public const string FirstPersonInvalid = Prefix + "first-person-invalid";
+    public const string PasswordNotYours = Prefix + "password-not-yours";
+    public const string PasswordInvalid = Prefix + "password-invalid";
+    public const string MemberExists = Prefix + "member-exists";
+    public const string MemberSelf = Prefix + "member-self";
 
     // anything else
     public const string Unexpected = Prefix + "unexpected";

@@ -357,6 +357,9 @@ from app.auth import auth_router, require_user, signing_key
 <# if (auth && TenantPlan.HasApiTenancy(Project)) { #>
 from app.routes.tenancy import public_router as tenancy_public_router
 <# } #>
+<# if (auth && Project.UserTable is not null) { #>
+from app.people import public_router as people_public_router, router as people_router
+<# } #>
 <#
     }
 #>
@@ -386,6 +389,10 @@ app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], a
 app.include_router(auth_router)
 <# if (TenantPlan.HasApiTenancy(Project)) { #>
 app.include_router(tenancy_public_router)
+<# } #>
+<# if (Project.UserTable is not null) { #>
+app.include_router(people_public_router)
+app.include_router(people_router)
 <# } #>
 for router in routes.routers:
     app.include_router(router, dependencies=[Depends(require_user)])

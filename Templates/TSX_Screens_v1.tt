@@ -63,6 +63,9 @@
         Line($"import {{ {PageName(t)} }} from './{pagesFolder}/{PageName(t)}';");
     foreach (var t in junctions)
         Line($"import {{ {JunctionPlan.ReactPage(t.TableName)} }} from './{pagesFolder}/{JunctionPlan.ReactPage(t.TableName)}';");
+    bool membersPage = Project.Auth && PeoplePlan.For(Database, Project) is { HasMembers: true };   // administrators say who works in the tenant (TSX_People)
+    if (membersPage)
+        Line($"import {{ MembersPage }} from './{pagesFolder}/MembersPage';");
     Line();
     // the OData pages are loaded when their route is first opened (a separate chunk each), so they do not add to the first download
     foreach (var t in odataScreens)
@@ -86,6 +89,11 @@
         Line($"  {{ path: 'approvals', label: '{ApprovalWords.Title}', element: <ApprovalsPage /> }},");
     foreach (var t in junctions)
         Line($"  {{ path: '{JunctionPlan.Route(t.TableName)}', label: '{JunctionPlan.Label(t.TableName)}', element: <{JunctionPlan.ReactPage(t.TableName)} />{JunctionRoles(t)} }},");
+    if (membersPage)
+    {
+        string adminRole = WriteRolePlan.Literal([Project.AuthAdminRole], (char)39);
+        Line($"  {{ path: 'members', label: '{MemberWords.Menu}', element: <MembersPage />, roles: [{adminRole}] }},");
+    }
     Line("];");
     Write(sb.ToString());
 #>

@@ -19,6 +19,7 @@
     bool switcher = TenantPlan.HasDesktopSwitcher(Project);
     bool caller = TenantPlan.DesktopSetsCaller(Project);
     bool roles = TenantPlan.HasDesktopRoles(Project);
+    bool session = TenantPlan.HasDesktopSignIn(Project);
 #>
 @@@FILE MainWindow.xaml@@@
 <Window
@@ -106,7 +107,7 @@ public sealed partial class MainWindow : Window
         SignInHost.Visibility = Visibility.Collapsed;
         UserText.Text = user.Name;
         NavView.Visibility = Visibility.Visible;
-<# if (roles) { #>
+<# if (session) { #>
         DesktopSession.User = user;
 <# } #>
         AddScreens();
@@ -138,7 +139,7 @@ public sealed partial class MainWindow : Window
     private void OnSignOutClick(object sender, RoutedEventArgs e)
     {
         _user = null;
-<# if (roles) { #>
+<# if (session) { #>
         DesktopSession.User = null;
 <# } #>
 <# if (caller) { #>
@@ -177,7 +178,7 @@ public sealed partial class MainWindow : Window
         if (await DesktopSignIn.SwitchAsync(context, _user, choice.Id) is not { } switched)
             return;
         _user = switched;
-<# if (roles) { #>
+<# if (session) { #>
         DesktopSession.User = switched;
 <# } #>
         UseContext();

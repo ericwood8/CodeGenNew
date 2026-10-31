@@ -1,0 +1,313 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TS_People_v1.tt
+    // Generates: <ServicesFolder>/people.service.ts, <ComponentsFolder>/members/members.component.ts, .html, .css and .spec.ts   (the template writes its own paths with @@@FILE markers)
+    // The people of an Angular app that signs in (Auth=true, ApiAuth, a UserTable): PeopleService.changePassword (PUT api/auth/password, the call of the Set password box of the user table's form) and, with a
+    // TenantMembership, the members screen where an administrator says who works in the current tenant and in which role (GET, POST, PUT and DELETE api/auth/members). TS_Screens puts the screen in the menu
+    // for the administrator role. Full notes: Docs/TemplateNotes/TS_People_v1.md
+    // ==========================================================================================
+    string servicesFolder = Project.ServicesFolder;
+    string componentsFolder = Project.ComponentsFolder;
+    bool controlFlow = Project.AngularControlFlow;
+    var people = PeoplePlan.For(Database, Project);
+    if (people is not null && Project.Auth)
+    {
+        bool members = people.HasMembers;
+        bool role = members && people.Membership!.Role is not null;
+#>
+@@@FILE src/app/<#= servicesFolder #>/people.service.ts@@@
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+<#
+        if (members)
+        {
+#>
+
+/** One member of the signed-in tenant: the person's key, sign-in name, the text that names them and their role in the tenant. */
+export interface Member {
+  personId: number;
+  login: string;
+  person: string;
+  role?: string | null;
+}
+
+/** A person who is not yet a member of the tenant. */
+export interface MemberCandidate {
+  id: number;
+  name: string;
+}
+<#
+        }
+#>
+
+@Injectable({ providedIn: 'root' })
+export class PeopleService {
+  private readonly http = inject(HttpClient);
+
+  /** A new password for a person: an administrator sets anyone's, anyone else only their own. */
+  changePassword(userName: string, password: string): Observable<void> {
+    return this.http.put<void>('<#= PeopleWords.PasswordPath.TrimStart('/') #>', { userName, password });
+  }
+<#
+        if (members)
+        {
+#>
+
+  listMembers(): Observable<Member[]> {
+    return this.http.get<Member[]>('<#= PeopleWords.MembersPath.TrimStart('/') #>');
+  }
+
+  listCandidates(): Observable<MemberCandidate[]> {
+    return this.http.get<MemberCandidate[]>('<#= PeopleWords.CandidatesPath.TrimStart('/') #>');
+  }
+
+  addMember(personId: number<#= role ? ", role: string" : "" #>): Observable<void> {
+    return this.http.post<void>('<#= PeopleWords.MembersPath.TrimStart('/') #>', { personId<#= role ? ", role" : "" #> });
+  }
+<#
+            if (role)
+            {
+#>
+
+  changeMemberRole(personId: number, role: string): Observable<void> {
+    return this.http.put<void>(`<#= PeopleWords.MembersPath.TrimStart('/') #>/${personId}`, { role });
+  }
+<#
+            }
+#>
+
+  removeMember(personId: number): Observable<void> {
+    return this.http.delete<void>(`<#= PeopleWords.MembersPath.TrimStart('/') #>/${personId}`);
+  }
+<#
+        }
+#>
+}
+<#
+        if (members)
+        {
+            string html = @"<div class=""members"">
+  <h1>" + MemberWords.Title + @"</h1>
+  <div class=""toolbar"">
+    <button type=""button"" class=""btn"" (click)=""startAdding()"">" + MemberWords.AddButton + @"</button>
+  </div>
+  <p class=""error"" role=""alert"" *ngIf=""message"">{{ message }}</p>
+  <form *ngIf=""adding"" (ngSubmit)=""add()"">
+    <label for=""memberPerson"">" + MemberWords.PersonLabel + @"</label>
+    <select id=""memberPerson"" name=""memberPerson"" [(ngModel)]=""chosen"">
+      <option *ngFor=""let candidate of candidates"" [ngValue]=""candidate.id"">{{ candidate.name }}</option>
+    </select>
+" + (role ? @"    <label for=""memberRole"">" + MemberWords.RoleLabel + @"</label>
+    <input id=""memberRole"" name=""memberRole"" type=""text"" [(ngModel)]=""newRole"" placeholder=""" + MemberWords.RoleHint + @""">
+" : "") + @"    <button type=""submit"" class=""btn"">Add</button>
+    <button type=""button"" class=""btn"" (click)=""adding = false"">Cancel</button>
+  </form>
+  <table>
+    <thead>
+      <tr>
+        <th>Person</th>
+" + (role ? @"        <th>" + MemberWords.RoleLabel + @"</th>
+" : "") + @"        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor=""let member of members"">
+        <td>{{ member.person }}</td>
+" + (role ? @"        <td>
+          <span *ngIf=""editing === member.personId""><input [attr.aria-label]=""'" + MemberWords.RoleLabel + @"'"" type=""text"" [(ngModel)]=""editRole"" name=""editRole""></span>
+          <span *ngIf=""editing !== member.personId"">{{ member.role }}</span>
+        </td>
+" : "") + @"        <td>
+" + (role ? @"          <button type=""button"" class=""btn"" *ngIf=""editing !== member.personId"" (click)=""startEditing(member)"">Edit role</button>
+          <button type=""button"" class=""btn"" *ngIf=""editing === member.personId"" (click)=""saveRole(member)"">Save</button>
+" : "") + @"          <button type=""button"" class=""btn"" (click)=""remove(member)"">Remove</button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+";
+#>
+@@@FILE src/app/<#= componentsFolder #>/members/members.component.ts@@@
+import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
+<# if (!controlFlow) { #>
+import { NgFor, NgIf } from '@angular/common';
+<# } #>
+import { FormsModule } from '@angular/forms';
+import { Member, MemberCandidate, PeopleService } from '../../<#= servicesFolder #>/people.service';
+
+@Component({
+  selector: 'app-members',
+<# if (Project.AngularStandaloneFlag) { #>
+  standalone: true,
+<# } #>
+  changeDetection: ChangeDetectionStrategy.<#= Project.AngularEagerStrategy #>, // plain properties change inside subscribe callbacks
+  imports: [FormsModule<#= controlFlow ? "" : ", NgFor, NgIf" #>],
+  templateUrl: './members.component.html',
+  styleUrl: './members.component.css'
+})
+export class MembersComponent implements OnInit {
+  private readonly people = inject(PeopleService);
+
+  members: Member[] = [];
+  candidates: MemberCandidate[] = [];
+  adding = false;
+  chosen: number | null = null;
+<# if (role) { #>
+  newRole = '';
+  editing: number | null = null;
+  editRole = '';
+<# } #>
+  message = '';
+
+  ngOnInit(): void {
+    this.load();
+  }
+
+  load(): void {
+    this.people.listMembers().subscribe({
+      next: (members) => { this.members = members; },
+      error: () => { this.message = '<#= PeopleWords.MembersAdminsOnlyDetail #>'; }
+    });
+  }
+
+  startAdding(): void {
+    this.message = '';
+    this.people.listCandidates().subscribe({
+      next: (list) => {
+        if (list.length === 0) { this.message = '<#= MemberWords.NobodyToAdd #>'; return; }
+        this.candidates = list;
+        this.chosen = list[0].id;
+<# if (role) { #>
+        this.newRole = '';
+<# } #>
+        this.adding = true;
+      },
+      error: () => { this.message = '<#= PeopleWords.MembersAdminsOnlyDetail #>'; }
+    });
+  }
+
+  add(): void {
+    if (this.chosen === null) { return; }
+    this.people.addMember(this.chosen<#= role ? ", this.newRole" : "" #>).subscribe({
+      next: () => { this.adding = false; this.load(); },
+      error: (error) => { this.message = error.status === <#= HttpStatus.Conflict #> ? '<#= PeopleWords.MemberExistsDetail #>' : 'Problem while adding!'; }
+    });
+  }
+<# if (role) { #>
+
+  startEditing(member: Member): void {
+    this.editing = member.personId;
+    this.editRole = member.role ?? '';
+  }
+
+  saveRole(member: Member): void {
+    this.people.changeMemberRole(member.personId, this.editRole).subscribe({
+      next: () => { this.editing = null; this.load(); },
+      error: () => { this.message = 'Problem while saving!'; }
+    });
+  }
+<# } #>
+
+  remove(member: Member): void {
+    this.message = '';
+    this.people.removeMember(member.personId).subscribe({
+      next: () => this.load(),
+      error: (error) => { this.message = error.status === <#= HttpStatus.Forbidden #> ? '<#= PeopleWords.MemberSelfDetail #>' : 'Problem while removing!'; }
+    });
+  }
+}
+@@@FILE src/app/<#= componentsFolder #>/members/members.component.html@@@
+<#= Project.AdaptAngularHtml(html) #>@@@FILE src/app/<#= componentsFolder #>/members/members.component.css@@@
+.members table { border-collapse: collapse; }
+.members th, .members td { padding: 4px 12px; text-align: left; }
+.members .toolbar { margin-bottom: 8px; }
+@@@FILE src/app/<#= componentsFolder #>/members/members.component.spec.ts@@@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { MembersComponent } from './members.component';
+
+describe('MembersComponent', () => {
+  let component: MembersComponent;
+  let fixture: ComponentFixture<MembersComponent>;
+  let http: HttpTestingController;
+  const members = [
+    { personId: 1, login: 'ada', person: 'Ada Lovelace (ada)', role: 'Administrator' },
+    { personId: 2, login: 'grace', person: 'Grace Hopper (grace)', role: null }
+  ];
+
+  const answerList = () => http.expectOne('<#= PeopleWords.MembersPath.TrimStart('/') #>').flush(members);
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [MembersComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()]
+    }).compileComponents();
+    http = TestBed.inject(HttpTestingController);
+    fixture = TestBed.createComponent(MembersComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    answerList();
+    fixture.detectChanges();
+  });
+
+  afterEach(() => http.verify());
+
+  it('lists the people of the tenant<#= role ? " with their role" : "" #>', () => {
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Ada Lovelace (ada)');
+    expect(text).toContain('Grace Hopper (grace)');
+<# if (role) { #>
+    expect(text).toContain('Administrator');
+<# } #>
+  });
+
+  it('adds a person who is not yet a member', () => {
+    component.startAdding();
+    http.expectOne('<#= PeopleWords.CandidatesPath.TrimStart('/') #>').flush([{ id: 3, name: 'Alan Turing (alan)' }]);
+    expect(component.adding).toBe(true);
+    expect(component.chosen).toBe(3);
+<# if (role) { #>
+    component.newRole = 'Employee';
+<# } #>
+    component.add();
+    const request = http.expectOne({ method: 'POST', url: '<#= PeopleWords.MembersPath.TrimStart('/') #>' });
+    expect(request.request.body).toEqual({ personId: 3<#= role ? ", role: 'Employee'" : "" #> });
+    request.flush(null, { status: <#= HttpStatus.NoContent #>, statusText: 'No Content' });
+    answerList();
+    expect(component.adding).toBe(false);
+  });
+<# if (role) { #>
+
+  it('changes the role of a member', () => {
+    component.startEditing(members[1]);
+    component.editRole = 'Auditor';
+    component.saveRole(members[1]);
+    const request = http.expectOne({ method: 'PUT', url: '<#= PeopleWords.MembersPath.TrimStart('/') #>/2' });
+    expect(request.request.body).toEqual({ role: 'Auditor' });
+    request.flush(null, { status: <#= HttpStatus.NoContent #>, statusText: 'No Content' });
+    answerList();
+    expect(component.editing).toBeNull();
+  });
+<# } #>
+
+  it('removes a member and says so when it is the person themself', () => {
+    component.remove(members[0]);
+    http.expectOne({ method: 'DELETE', url: '<#= PeopleWords.MembersPath.TrimStart('/') #>/1' }).flush(null, { status: <#= HttpStatus.Forbidden #>, statusText: 'Forbidden' });
+    expect(component.message).toBe('<#= PeopleWords.MemberSelfDetail #>');
+    component.remove(members[1]);
+    http.expectOne({ method: 'DELETE', url: '<#= PeopleWords.MembersPath.TrimStart('/') #>/2' }).flush(null, { status: <#= HttpStatus.NoContent #>, statusText: 'No Content' });
+    answerList();
+  });
+});
+<#
+        }
+    }
+#>

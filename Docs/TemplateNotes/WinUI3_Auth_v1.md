@@ -6,6 +6,12 @@ The sign-in of the WinUI3 app: `Repositories/DesktopSignIn.cs`, `Views/LoginView
 - **`LoginView`** is the sign-in the main window shows until someone signs in, with the sentences "The user name or password is not right.", "Too many tries. Wait a minute and try again." and "Could not sign in right now." (the same as the Uno sign-in page).
 - **`MainWindow`** (`WinUI3_EssentialMainWindow`, written for this project) shows `LoginView` first, then the menu of the screens, the person's name and Sign out in the pane footer. A signed-in person is `DesktopCaller.Name` for the guards and approvals when the project has them. Sign out forgets the person and shows the sign-in again.
 
+## The people
+
+- **The first administrator.** When the user table has no rows, `LoginView` turns into "Create the first administrator": a Confirm password box shows, the tenant drop-down hides and the button reads "Create and sign in". The user name goes into `UserNameColumn`, the password is hashed into `PasswordHashColumn`, `UserAdminColumn` is true, a yes/no `UserRoleColumn` is true (a text one gets the administrator role), and every other required column is given a value that fits (a text column the user name, a flag false, a number 0, a date now; `FirstPersonPlan`). With a membership table the person also joins the first active tenant that is not marked deleted, as its administrator. Whoever reaches an empty system first claims it; the offer is gone once a row exists, and `DesktopSignIn.CreateFirstAsync` answers false when someone was added first. A table with a required foreign key, or whose tenant is a column of the person's own row, has no offer.
+- **Set password.** The user table's detail dialog has a Set password box (`DesktopSignIn.Hash` writes the hash the API's `set-password` writes). The hash is never shown. Empty keeps the password; a new person needs one; fewer than 8 characters is refused. An administrator sets anyone's password; anyone else only their own. The administrator flag of the user table is shown on the form and in the list to administrators only, and only an administrator's save writes it. `DesktopSession` exists in every signed-in app for these checks.
+- **Members.** With a tenant and a membership table the menu has a Members entry for administrators (`WinUI3_Members_v1.md`).
+
 ## Tenants
 
 With `TenantTable` the context filters every tenant-owned table by `DesktopTenantScope.Current`, the one scope of the app. The window sets it when someone signs in or switches tenant; every context the pages make (`new <Context>()`, which the dashboard, the junction pages and the approvals use too) reads it. The scope is written into the context file next to `ITenantScope`; the API's `ClaimsTenantScope` is written into `Apis/Tenants.cs`, so the context file holds no ASP.NET type.
@@ -22,4 +28,4 @@ With `ReadRoles`, `TableReadRoles`, `WriteRoles` or `TableWriteRoles` the screen
 
 The dashboard page and the strips of the tables leave out the widgets of tables the role may not read (`DashboardRoles`), as the API leaves them out of the dashboard it sends. The approvals page is open to every signed-in person, as the menu of the other stacks is; what a person may decide there is the approver rule of `RowApprovals`, and the page lists only the signed-in tenant's requests.
 
-Limits: the person is not kept between runs (no token on disk); the password of a person is set with the API's `set-password` command, not in this app.
+Limits: the person is not kept between runs (no token on disk); the checks of the people's screen (who sees the administrator flag, who sets a password) are in the app, the database is not protected from another client.

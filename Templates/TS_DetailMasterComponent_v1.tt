@@ -36,6 +36,7 @@
     // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is limited to what the column can hold (a percentage to 0-100).
 
     var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
+    var userScreen = UserScreenPlan.ForWeb(Model, Project);   // the user table: a Set password box, the administrator flag for administrators only
     var keyColumn = form.KeyColumn;
     var keyType = form.KeyType;   // how the key travels: a number, or a string for a uniqueidentifier or a text key
     if (Variant == "OData" && !ODataPlan.Serves(Model, Project))
@@ -376,7 +377,7 @@
                 H("            </div>");
                 continue;
             }
-            H("            <div class=\"form-group\">");
+            H("            <div class=\"form-group\"" + (userScreen?.IsAdminOnly(c) == true ? " *ngIf=\"isAdmin\"" : "") + ">");   // the administrator flag is shown to administrators only
             H($"                <label for=\"{id}\">{Labels.Field(c)}{RequiredMark.Html(form.IsMarked(c))}</label>");
             // a guarded column is a control only for a person who may change it (the guards answer); everyone else sees its value as text and why
             var guard = form.GuardOf(c);
@@ -471,6 +472,14 @@
             H("            </div>");
         }
         if (tabbed) H("            </div>");
+        }
+        if (userScreen is not null)
+        {
+            H("            <div class=\"form-group\" *ngIf=\"canSetPassword\">");
+            H($"                <label for=\"newPassword\">{UserScreenWords.SetPasswordLabel}</label>");
+            H("                <input type=\"password\" id=\"newPassword\" name=\"newPassword\" [(ngModel)]=\"newPassword\" autocomplete=\"new-password\">");
+            H($"                <small>{UserScreenWords.SetPasswordHint}</small>");
+            H("            </div>");
         }
         foreach (var child in editableChildren)
         {
@@ -772,7 +781,12 @@
         if (gridChildren.Count > 0) T("import { GridSort, loadSort, nextSort, saveSort, sortRows } from '../../grid-sort';");
         T($"import {{ {baseName} }} from '../../{modelsFolder}/{stem}';");
         T($"import {{ {serviceClass} }} from '../../{servicesFolder}/{serviceFile}';");
-        if (writeRoles.Count > 0) T($"import {{ AuthService }} from '../../{servicesFolder}/auth.service';");
+        if (writeRoles.Count > 0 || userScreen is not null) T($"import {{ AuthService }} from '../../{servicesFolder}/auth.service';");
+        if (userScreen is not null)
+        {
+            T("import { Observable } from 'rxjs';");
+            T($"import {{ PeopleService }} from '../../{servicesFolder}/people.service';");
+        }
         if (parents.Any(p => p.UsesLookupEndpoint && !Ahead(p))) T($"import {{ Lookup }} from '../../{servicesFolder}/crud.service';");
         {
             // the helpers of type-ahead.ts this screen uses: the parents' name caches and boxes, the boxes of editable child rows and the names a child grid asks for by key
@@ -824,6 +838,11 @@
         T("})");
         T($"export class {cls} extends {(nameActive ? "NameActiveCrudScreen" : odata ? "ODataPagedScreen" : "PagedCrudScreen")}<{baseName}{keyGeneric}> {{");
         T($"  protected readonly service = inject({serviceClass});");
+        if (userScreen is not null)
+        {
+            T("  private readonly authSession = inject(AuthService);");
+            T("  private readonly peopleService = inject(PeopleService);");
+        }
         if (writeRoles.Count > 0)
         {
             T("  private readonly auth = inject(AuthService);");
@@ -1016,10 +1035,11 @@
             T("    return copy;");
             T("  }");
         }
-        if (tabbed || formAheads.Count > 0)
+        if (tabbed || formAheads.Count > 0 || userScreen is not null)
         {
             T();
             T("  protected override opened(): void {");
+            if (userScreen is not null) T("    this.newPassword = '';");
             if (tabbed) T("    this.activeTab = 0;");
             foreach (var c in formAheads)
                 T($"    this.{FormAhead(c)}.reset(); // show the name of the key the row has, not what was typed last");
@@ -1053,6 +1073,32 @@
             T($"    super.edit({variable});");
             foreach (var child in children)
                 T($"    this.load{child.Name}({variable}.{keyProp}!);");
+            T("  }");
+        }
+        if (userScreen is not null)
+        {
+            // the user table: a Set password box (an administrator sets anyone's, anyone else only their own) and the administrator flag for administrators only
+            string loginProp = JsonNames.Camel(userScreen.User.UserName.Name);
+            T();
+            T("  newPassword = '';");
+            T("  get isAdmin(): boolean { return this.authSession.user()?.role === " + CSharpText.Quote(Project.AuthAdminRole).Replace('"', (char)39) + "; }");
+            T($"  get canSetPassword(): boolean {{ return this.isAdmin || (!!this.selectedRow && !!this.selectedRow.{keyProp} && (this.selectedRow.{loginProp} ?? '').toLowerCase() === (this.authSession.user()?.name ?? '').toLowerCase()); }}");
+            T();
+            T($"  override submit(row: {baseName}): void {{");
+            T("    const isNew = this.adding || !this.idOf(row);");
+            T("    if (this.canSetPassword && this.newPassword && this.newPassword.length < " + UserScreenPlan.MinimumPasswordLength + ") {");
+            T($"      this.notifier.error('{UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength)}');");
+            T("      return;");
+            T("    }");
+            T("    if (this.canSetPassword && !this.newPassword && isNew) {");
+            T($"      this.notifier.error('{UserScreenWords.NewPersonNeedsPassword}');");
+            T("      return;");
+            T("    }");
+            T("    super.submit(row);");
+            T("  }");
+            T();
+            T($"  protected override followUp(row: {baseName}): Observable<unknown> | null {{");
+            T($"    return this.canSetPassword && this.newPassword ? this.peopleService.changePassword(row.{loginProp} ?? '', this.newPassword) : null;");
             T("  }");
         }
         foreach (var p in parents)

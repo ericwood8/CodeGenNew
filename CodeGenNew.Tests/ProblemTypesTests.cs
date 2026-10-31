@@ -37,7 +37,9 @@ public class ProblemTypesTests
     [TestMethod]
     public void Every_kind_of_problem_is_used_by_a_template()
     {
-        string templates = string.Concat(Directory.GetFiles(Repo.TemplatesDirectory, "API_*.tt").Select(File.ReadAllText));
+        // the API templates, and the writers in Core that write the text of an API template (the people routes)
+        string templates = string.Concat(Directory.GetFiles(Repo.TemplatesDirectory, "API_*.tt").Select(File.ReadAllText))
+            + string.Concat(Directory.GetFiles(Path.Combine(Repo.Root, "CodeGenNew.Core"), "*PeopleWriter.cs").Select(File.ReadAllText));
         foreach (var field in typeof(ProblemTypes).GetFields().Where(f => f.IsLiteral && f.Name != nameof(ProblemTypes.Prefix)))
             Expect.Contains(templates, "ProblemTypes." + field.Name);
     }

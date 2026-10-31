@@ -36,6 +36,7 @@
     // A decimal, float or real column that is not money (a percentage, a rate, a quantity, a weight) is limited to what the column can hold (a percentage to 0-100).
 
     var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
+    var userScreen = UserScreenPlan.ForWeb(Model, Project);   // the user table: a Set password box, the administrator flag for administrators only
     var keyColumn = form.KeyColumn;
     var keyType = form.KeyType;   // how the key travels: a number, or a string for a uniqueidentifier or a text key
     if (LogTablePlan.IsListed(Model, Project))
@@ -133,7 +134,8 @@
         T("import { useNavigate, useSearchParams } from 'react-router-dom';");
         T($"import type {{ {baseName} }} from '../{modelsFolder}/{stem}';");
         T($"import {{ {apiVar} }} from '../{apiFolder}/{apiFile}';");
-        if (gated) T($"import {{ useAuth }} from '../{apiFolder}/auth';");
+        if (gated || userScreen is not null) T($"import {{ useAuth }} from '../{apiFolder}/auth';");
+        if (userScreen is not null) T($"import {{ changePassword }} from '../{apiFolder}/people';");
         T($"import {{ ApiError }} from '../{apiFolder}/client';");
         if (approvalSegment is not null) T("import { ApprovalPanel } from './ApprovalPanel';");
         if (!nameActive && !oneRow) T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
@@ -282,6 +284,15 @@
             T("  const { hasRole } = useAuth();");
             T($"  const canWrite = hasRole([{WriteRolePlan.Literal(writeRoles, (char)39)}]); // WriteRoles: the roles that may add, change and delete rows");
         }
+        if (userScreen is not null)
+        {
+            // the user table: a Set password box (an administrator sets anyone's, anyone else only their own) and the administrator flag for administrators only
+            T("  const { user: signedIn } = useAuth();");
+            T($"  const isAdmin = signedIn?.['role'] === {CSharpText.Quote(Project.AuthAdminRole).Replace('"', (char)39)};");
+            T("  const [newPassword, setNewPassword] = useState('');");
+            string loginProp = JsonNames.Camel(userScreen.User.UserName.Name);
+            T($"  const canSetPassword = isAdmin || (selectedRow !== null && Boolean(selectedRow.{keyProp}) && (selectedRow.{loginProp} ?? '').toLowerCase() === String(signedIn?.name ?? '').toLowerCase());");
+        }
         T();
         // The sort (like the filters) is read from state by default; a change passes its new value explicitly because state is not updated yet.
         if (oneRow)
@@ -350,6 +361,17 @@
         T();
         T($"  const submit = async ({variable}: {baseName}): Promise<void> => {{");
         T("    setError(null);");
+        if (userScreen is not null)
+        {
+            T("    if (canSetPassword && newPassword && newPassword.length < " + UserScreenPlan.MinimumPasswordLength + ") {");
+            T($"      setError('{UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength)}');");
+            T("      return;");
+            T("    }");
+            T($"    if (canSetPassword && !newPassword && !{variable}.{keyProp}) {{");
+            T($"      setError('{UserScreenWords.NewPersonNeedsPassword}');");
+            T("      return;");
+            T("    }");
+        }
         T($"    try {{");
         if (textKey)
         {
@@ -367,6 +389,11 @@
             T($"        {variable}.{keyProp} = {emptyKey};");
             T($"        await {apiVar}.create({variable});");
             T("      }");
+        }
+        if (userScreen is not null)
+        {
+            string loginProp = JsonNames.Camel(userScreen.User.UserName.Name);
+            T($"      if (canSetPassword && newPassword) await changePassword(String({variable}.{loginProp} ?? ''), newPassword);");
         }
         T("      setSelectedRow(null);");
         T("      load(page);");
@@ -436,6 +463,7 @@
         // add(): every required property gets a starting value
         var adds = form.NewRowTypeScript;
         T("  const add = () => {");
+        if (userScreen is not null) T("    setNewPassword('');");
         if (tabbed) T("    setTab(0);");
         if (textKey) T("    setAdding(true);");
         T("    storedValues.current = {};");
@@ -443,6 +471,7 @@
         T("  };");
         T();
         T($"  const edit = ({variable}: {baseName}) => {{");
+        if (userScreen is not null) T("    setNewPassword('');");
         if (tabbed) T("    setTab(0);");
         if (textKey) T("    setAdding(false);");
         T($"    const row = {{ ...{variable} }};");
@@ -819,6 +848,12 @@
                 T("            )}");
                 continue;
             }
+            bool adminOnly = userScreen?.IsAdminOnly(c) == true;   // the administrator flag is shown to administrators only
+            if (adminOnly)
+            {
+                T("            {isAdmin && (");
+                T("              <>");
+            }
             T("            <label htmlFor=\"" + id + "\">" + Labels.Field(c) + RequiredMark.Jsx(form.IsMarked(c)) + "</label>");
             // a guarded column is a control only for a person who may change it (the guards answer); everyone else sees its value as text and why
             var guard = form.GuardOf(c);
@@ -995,8 +1030,23 @@
                 T("              </>");
                 T("            )}");
             }
+            if (adminOnly)
+            {
+                T("              </>");
+                T("            )}");
+            }
         }
         if (tabbed) T("            </div>");
+        }
+        if (userScreen is not null)
+        {
+            T("            {canSetPassword && (");
+            T("              <>");
+            T($"                <label htmlFor=\"newPassword\">{UserScreenWords.SetPasswordLabel}</label>");
+            T($"                <input id=\"newPassword\" type=\"password\" aria-label=\"{UserScreenWords.SetPasswordLabel}\" autoComplete=\"new-password\" value={{newPassword}} onChange={{(event) => setNewPassword(event.target.value)}} />");
+            T($"                <small>{UserScreenWords.SetPasswordHint}</small>");
+            T("              </>");
+            T("            )}");
         }
         T();
         T("            <div className=\"form-buttons\">");

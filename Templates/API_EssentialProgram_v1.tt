@@ -304,6 +304,12 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapAuthEndpoints();   // Auth.cs: POST /api/auth/login
 <#
+        if (Project.UserTable is not null)
+        {
+#>
+app.MapUserEndpoints();   // TableUserDirectory.cs (API_UserDirectory): the first person of an empty <#= Project.UserTable #> table and a person's new password
+<#
+        }
     }
 #>
 

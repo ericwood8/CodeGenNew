@@ -50,6 +50,7 @@
     // (NaN = blank), limited to what the column can hold (NumericClassifier.DecimalRange), and converted back on save.
 
     var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
+    var userScreen = UserScreenPlan.ForDesktop(Model, Project);   // the user table's screen: a Set password box, the administrator flag for administrators only
     var keyColumn = form.KeyColumn;
     bool isNameActive = form.IsNameActive;
 
@@ -150,7 +151,10 @@
 <#
             }
         foreach (var c in page.Columns)
-            Write(DesktopFormXaml.Field(form, Project, Model, c, textKey, withGuards: true));
+        {
+            string field = DesktopFormXaml.Field(form, Project, Model, c, textKey, withGuards: true);
+            Write(userScreen?.IsAdminOnly(c) == true ? UserScreenPlan.WithAttribute(field, "Visibility=\"{x:Bind ViewModel.AdminOnlyVisibility}\"") : field);
+        }
             if (tabbed)
             {
 #>
@@ -164,13 +168,13 @@
         {
 #>
         </TabView>
-<#= approvalSegment is not null ? "        <StackPanel x:Name=\"ApprovalHost\" Spacing=\"8\" />\n" : "" #>    </StackPanel>
+<#= userScreen is not null ? UserScreenPlan.PasswordFieldXaml() : "" #><#= approvalSegment is not null ? "        <StackPanel x:Name=\"ApprovalHost\" Spacing=\"8\" />\n" : "" #>    </StackPanel>
 <#
         }
         else
         {
 #>
-<#= approvalSegment is not null ? "        <StackPanel x:Name=\"ApprovalHost\" Spacing=\"8\" />\n" : "" #>        </StackPanel>
+<#= userScreen is not null ? UserScreenPlan.PasswordFieldXaml() : "" #><#= approvalSegment is not null ? "        <StackPanel x:Name=\"ApprovalHost\" Spacing=\"8\" />\n" : "" #>        </StackPanel>
     </ScrollViewer>
     </StackPanel>
 <#
@@ -441,6 +445,10 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
 <#
         Write(DesktopFormCode.GuardProperties(form));
 #>
+<#
+        if (userScreen is not null)
+            Write(userScreen.ViewModelMembers(Project));
+#>
 
     public <#= table #>DetailViewModel(<#= contextType #> context, <#= table #>? editing)
     {
@@ -552,7 +560,12 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
 
 <#
         foreach (var c in shown)
-            Write(DesktopFormCode.SaveLines(form, Project, c));
+        {
+            string saveLines = DesktopFormCode.SaveLines(form, Project, c);
+            Write(userScreen?.IsAdminOnly(c) == true ? UserScreenPlan.AdminOnlySaveLines(saveLines) : saveLines);
+        }
+        if (userScreen is not null)
+            Write(userScreen.PasswordSaveLines());
 #>
 
 <#

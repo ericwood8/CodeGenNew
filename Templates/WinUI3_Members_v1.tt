@@ -1,0 +1,38 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string viewNamespace = "MyApp.Desktop.Views";
+    string contextType = "MyAppContext";
+    string[] usings = { };   // namespaces the generated files must "using" (the context's)
+    string viewsFolder = "Views";   // under the WinUI3 project root (where -o points)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    viewNamespace = Project.ViewNamespace ?? viewNamespace;
+    contextType = Project.ContextName ?? contextType;
+    usings = Project.Usings ?? usings;
+    viewsFolder = Project.ViewsFolder ?? viewsFolder;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // WinUI3_Members_v1.tt
+    // Generates: <ViewsFolder>/MembersPage.xaml and <ViewsFolder>/MembersPage.xaml.cs   (the paths are written by the template)
+    // The members page of the WinUI3 app, for a project with the desktop sign-in, a TenantTable and a TenantMembership: the people of the current tenant with their role, Add member, Edit role and Remove.
+    // WinUI3_Screens puts it in the menu for administrators. Full notes: Docs/TemplateNotes/WinUI3_Members_v1.md
+    // ==========================================================================================
+    if (DesktopMembersCode.Applies(Database, Project))
+    {
+        var membership = TenantPlan.MembershipOf(Database, Project)!;
+#>
+@@@FILE <#= viewsFolder #>/MembersPage.xaml@@@
+<#= DesktopMembersCode.Xaml(viewNamespace, membership.Role is not null) #>
+@@@FILE <#= viewsFolder #>/MembersPage.xaml.cs@@@
+<#= DesktopMembersCode.Code(Database, Project, viewNamespace, contextType, usings) #>
+<#
+    }
+#>

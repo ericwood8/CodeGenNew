@@ -92,5 +92,11 @@
     Line();
     Line("if __name__ == \"__main__\":");
     Line("    sys.exit(main(sys.argv[1:]))");
+    string people = PythonPeopleWriter.File(Database, Project);   // app/people.py: the first person, a new password and the members of a tenant over HTTP
+    if (people.Length > 0)
+    {
+        Line("@@@FILE app/people.py@@@");
+        sb.Append(people);
+    }
     Write(sb.ToString());
 #>

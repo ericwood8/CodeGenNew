@@ -44,6 +44,7 @@
 
 
     var form = FormModel.For(Model, Project);   // what the screen is made of, decided in Core for every stack
+    var userScreen = UserScreenPlan.ForDesktop(Model, Project);   // the user table's list leaves out the administrator flag for anyone who is not an administrator
     var keyColumn = form.KeyColumn;
     bool isNameActive = form.IsNameActive;
 
@@ -749,7 +750,7 @@ public partial class <#= table #>ListViewModel : ViewModelBase
     public Visibility CreateVisibility => <#= writeGated ? "WriteVisibility == Visibility.Visible && " : "" #>DesktopTenantScope.Current.IsPlatform ? Visibility.Visible : Visibility.Collapsed;
 
 <# } #>
-<#= DesktopGridColumns.ViewModelMembers(chosen) #>
+<#= DesktopGridColumns.ViewModelMembers(chosen, userScreen?.AdminFlag?.Name, userScreen is null ? null : UserScreenPlan.IsAdministratorExpression(Project)) #>
     public <#= table #>ListViewModel(<#= contextType #> context)
     {
         _context = context;

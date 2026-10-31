@@ -28,3 +28,7 @@ Essentials are written once and kept, so a project whose Shell and Config exist 
 `hasRole(roles)` says whether the signed-in role is one of the list (used by the screens for `WriteRoles` and `ReadRoles`).
 
 **Tenant drop-down.** With `TenantTable` and `TenantMembership` the sign-in page has a Tenant drop-down (the person picks a tenant by name; `AuthService.signInTenants()` reads the list). The names come from `GET /api/auth/sign-in-tenants` (no sign-in needed: the tenants that are active and not marked deleted, by name); the first entry is blank and means the person's first tenant; when the list cannot be read the drop-down holds only the blank entry. `AuthService.login(userName, password, tenantId?)` posts the `tenantId` only when a tenant is picked, and a 403 says the person is not a member of that tenant or it is switched off (`TenantWords`).
+
+## The first administrator
+
+While the user table has no rows the sign-in turns into "Create the first administrator": a Confirm password box shows, the tenant drop-down hides and the button reads "Create and sign in". The page asks `GET /api/auth/first-person` when it opens (`{ "open": true }` while the table is empty; false when the API cannot say), refuses a password under 8 characters or two different ones before any call, then posts `{ userName, password }` to `POST /api/auth/first-person` and signs the person in as usual. A 409 says someone was added first and shows the plain sign-in. Whoever reaches an empty system first claims it. See `API_UserDirectory_v1.md` for the routes.

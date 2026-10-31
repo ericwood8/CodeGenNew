@@ -32,6 +32,10 @@
     var menu = ScreenMenu.For(Project, screens, odataScreens, JunctionPlan.Tables(Database, Project), ApprovalScreens.For(Database, Project).Count > 0)
         .Select(m => (Tag: m.Kind switch { ScreenMenuKind.Dashboard => "Dashboard", ScreenMenuKind.Approvals => "Approvals", ScreenMenuKind.Screen => m.Table!.TableName, ScreenMenuKind.Junction => m.Table!.TableName + "Links", _ => m.Table!.TableName + "OData" }, m.Label, m.Roles))
         .ToList();
+    // administrators say who works in the tenant on the members page, the last screen (UNO_People)
+    bool membersPage = Project.Auth && PeoplePlan.For(Database, Project) is { HasMembers: true };
+    if (membersPage)
+        menu.Add((Tag: "Members", Label: MemberWords.Menu, Roles: (IReadOnlyList<string>)new[] { Project.AuthAdminRole }));
     foreach (string table in screens.Select(t => t.TableName).Where(n => !clients.Any(c => c.TableName.EqualsIgnoreCase(n))))
         Error($"UNO_Screens lists {table}, which has no API client (see UNO_Client): a screen needs the table's own CRUD API.");
 
@@ -130,6 +134,8 @@
             L($"            \"{t.TableName}OData\" => new {t.TableName}ODataListPage(_api),");
     foreach (var t in JunctionPlan.Tables(Database, Project))
         L($"            \"{t.TableName}Links\" => new {DesktopJunctionPage.PageName(t.TableName)}(_api),");
+    if (membersPage)
+        L("            \"Members\" => new MembersPage(_api),");
     L("            _ => MainContent.Content");
     L("        };");
     L("    }");
@@ -144,6 +150,9 @@
         L("{");
         L("    /// <summary> The sign-in the screens ask which buttons the role may use. </summary>");
         L("    public AuthSession Session => session;");
+        L();
+        L("    /// <summary> The HttpClient of the app, for the calls that belong to no table (a person's new password, the members of the tenant). </summary>");
+        L("    public HttpClient Http => http;");
         L();
     }
     else
