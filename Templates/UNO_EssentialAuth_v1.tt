@@ -28,6 +28,9 @@ namespace <#= servicesNamespace #>;
 public record SessionUser(string Name, string? Role, int? OwnerId<#= tenants ? ", int? TenantId = null" : "" #>);
 <# if (tenants) { #>
 
+/// <summary> One entry of the sign-in's tenant drop-down (GET api/auth/sign-in-tenants, no sign-in needed): the key to sign in to (null: the person's first tenant) and the name to show. </summary>
+public record SignInTenant(int? Id, string Name);
+
 /// <summary> One tenant of the signed-in person (GET api/auth/tenants): the name to show, the role in it and whether the token works in it now. </summary>
 public record TenantChoice(int Id, string Text, string? Role, bool Current);
 <# } #>
@@ -73,6 +76,17 @@ public class AuthSession
     }
 
 <# if (tenants) { #>
+    /// <summary> The names for the sign-in's drop-down, after the blank entry that means the person's first tenant; only the blank entry when the API cannot be asked, so a person with one tenant can still sign in. </summary>
+    public async Task<List<SignInTenant>> SignInTenantsAsync(HttpClient http)
+    {
+        var list = new List<SignInTenant> { new(null, "") };
+        try { list.AddRange(await http.GetFromJsonAsync<List<SignInTenant>>("<#= TenantWords.SignInListPath #>", Web) ?? []); }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException)
+        {
+        }
+        return list;
+    }
+
     /// <summary> The tenants the signed-in person belongs to; none when the API has no tenants route. </summary>
     public async Task<List<TenantChoice>> TenantsAsync(HttpClient http)
     {
@@ -140,7 +154,8 @@ public class AuthHandler : DelegatingHandler
             <TextBox x:Name="UserNameBox" Header="User name" />
             <PasswordBox x:Name="PasswordBoxField" Header="Password" KeyDown="OnPasswordKeyDown" />
 <# if (tenants) { #>
-            <NumberBox x:Name="TenantBox" Header="<#= TenantWords.SignInLabel #>" Description="<#= TenantWords.SignInHint #>" Minimum="1" SpinButtonPlacementMode="Hidden" />
+            <ComboBox x:Name="TenantBox" Header="<#= TenantWords.SignInLabel #>" DisplayMemberPath="Name" HorizontalAlignment="Stretch" />
+            <TextBlock Text="<#= TenantWords.SignInHint #>" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.7" TextWrapping="Wrap" />
 <# } #>
             <Button x:Name="SignInButton" Content="Sign in" Style="{ThemeResource AccentButtonStyle}" Click="OnSignInClick" />
         </StackPanel>
@@ -162,6 +177,13 @@ public sealed partial class LoginPage : UserControl
         _http = http;
         _session = session;
         InitializeComponent();
+<# if (tenants) { #>
+        Loaded += async (_, _) =>
+        {
+            TenantBox.ItemsSource = await _session.SignInTenantsAsync(_http);
+            TenantBox.SelectedIndex = 0;
+        };
+<# } #>
     }
 
     private async void OnSignInClick(object sender, RoutedEventArgs e) => await SignInAsync();
@@ -179,7 +201,7 @@ public sealed partial class LoginPage : UserControl
         try
         {
 <# if (tenants) { #>
-            await _session.LoginAsync(_http, UserNameBox.Text.Trim(), PasswordBoxField.Password, int.TryParse(TenantBox.Text.Trim(), out int tenant) ? tenant : null);
+            await _session.LoginAsync(_http, UserNameBox.Text.Trim(), PasswordBoxField.Password, (TenantBox.SelectedItem as SignInTenant)?.Id);
 <# } else { #>
             await _session.LoginAsync(_http, UserNameBox.Text.Trim(), PasswordBoxField.Password);
 <# } #>

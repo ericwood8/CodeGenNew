@@ -108,6 +108,19 @@ export async function login(userName: string, password: string): Promise<LoginRe
   return body;
 }
 
+<# if (tenants) { #>
+/** The tenants a person can sign in to, for the drop-down of the sign-in page (no sign-in needed); an empty list when it cannot be read, so a person with one tenant can still sign in. */
+export async function signInTenants(): Promise<{ id: number; name: string }[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}<#= TenantWords.SignInListPath #>`);
+    const list: unknown = response.ok ? await response.json() : [];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+<# } #>
 export const logout = (): void => setSession(null);
 
 const subscribe = (listener: () => void) => {
@@ -206,10 +219,10 @@ describe('auth', () => {
   });
 });
 @@@FILE src/<#= pagesFolder #>/LoginPage.tsx@@@
-import { useState } from 'react';
+import { <# if (tenants) { #>useEffect, <# } #>useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LoginError, useAuth } from '../<#= apiFolder #>/auth';
+import { LoginError, <# if (tenants) { #>signInTenants, <# } #>useAuth } from '../<#= apiFolder #>/auth';
 import '../<#= componentsFolder #>/auth.css';
 
 export function LoginPage() {
@@ -218,18 +231,27 @@ export function LoginPage() {
   const [userName, setUserName] = useState('');
   const [password, setPassword] = useState('');
 <# if (tenants) { #>
-  const [tenant, setTenant] = useState('');
+  const [tenant, setTenant] = useState('');   // the key of the tenant picked in the drop-down; empty is the person's first tenant
+  const [tenantChoices, setTenantChoices] = useState<{ id: number; name: string }[]>([]);
 <# } #>
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
+<# if (tenants) { #>
+  useEffect(() => {
+    let current = true;
+    void signInTenants().then((list) => { if (current) setTenantChoices(list); });
+    return () => { current = false; };
+  }, []);
+
+<# } #>
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMessage('');
     setBusy(true);
     try {
 <# if (tenants) { #>
-      await login(userName, password, tenant.trim() ? Number(tenant) : undefined);
+      await login(userName, password, tenant ? Number(tenant) : undefined);
 <# } else { #>
       await login(userName, password);
 <# } #>
@@ -262,7 +284,10 @@ export function LoginPage() {
 <# if (tenants) { #>
         <div className="form-group">
           <label htmlFor="tenant"><#= TenantWords.SignInLabel #></label>
-          <input id="tenant" name="tenant" type="number" min="1" inputMode="numeric" value={tenant} onChange={(event) => setTenant(event.target.value)} aria-describedby="tenantHint" />
+          <select id="tenant" name="tenant" value={tenant} onChange={(event) => setTenant(event.target.value)} aria-describedby="tenantHint">
+            <option value=""></option>
+            {tenantChoices.map((choice) => <option key={choice.id} value={choice.id}>{choice.name}</option>)}
+          </select>
           <small id="tenantHint"><#= TenantWords.SignInHint #></small>
         </div>
 <# } #>
@@ -280,7 +305,14 @@ import { LoginPage } from '../LoginPage';
 import { setSession } from '../../<#= apiFolder #>/auth';
 
 const submit = async (status: number<# if (tenants) { #>, tenant = ''<# } #>) => {
+<# if (tenants) { #>
+  const tenants = [{ id: 1, name: 'Acme' }, { id: 2, name: 'Globex' }, { id: 3, name: 'Initech' }];
+  vi.spyOn(globalThis, 'fetch').mockImplementation((input) => Promise.resolve(String(input).endsWith('<#= TenantWords.SignInListPath #>')
+    ? new Response(JSON.stringify(tenants), { status: <#= HttpStatus.Ok #> })
+    : new Response(status === <#= HttpStatus.Ok #> ? JSON.stringify({ token: 'abc', user: { name: 'Pat' } }) : '', { status })));
+<# } else { #>
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(status === <#= HttpStatus.Ok #> ? JSON.stringify({ token: 'abc', user: { name: 'Pat' } }) : '', { status }));
+<# } #>
   render(
     <MemoryRouter initialEntries={['/login']}>
       <Routes>
@@ -292,6 +324,7 @@ const submit = async (status: number<# if (tenants) { #>, tenant = ''<# } #>) =>
   fireEvent.change(screen.getByLabelText('User name'), { target: { value: 'pat' } });
   fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } });
 <# if (tenants) { #>
+  await screen.findByRole('option', { name: 'Acme' });
   if (tenant) fireEvent.change(screen.getByLabelText('<#= TenantWords.SignInLabel #>'), { target: { value: tenant } });
 <# } #>
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
@@ -330,13 +363,19 @@ describe('LoginPage', () => {
   });
 <# if (tenants) { #>
 
-  it('signs in to the tenant that is typed', async () => {
+  it('lists the tenants by name, with a blank first for the first tenant', async () => {
+    await submit(<#= HttpStatus.Unauthorized #>);
+    const options = screen.getAllByRole('option').map((option) => option.textContent);
+    expect(options).toEqual(['', 'Acme', 'Globex', 'Initech']);
+  });
+
+  it('signs in to the tenant that is picked', async () => {
     await submit(<#= HttpStatus.Ok #>, '2');
     expect(await screen.findByText('home')).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/auth/login', expect.objectContaining({ body: JSON.stringify({ userName: 'pat', password: 'secret', tenantId: 2 }) }));
   });
 
-  it('names no tenant when the box is empty', async () => {
+  it('names no tenant when the blank entry is picked', async () => {
     await submit(<#= HttpStatus.Ok #>);
     expect(await screen.findByText('home')).toBeInTheDocument();
     expect(globalThis.fetch).toHaveBeenCalledWith('/api/auth/login', expect.objectContaining({ body: JSON.stringify({ userName: 'pat', password: 'secret' }) }));

@@ -83,8 +83,37 @@ public static class RustTenantWriter
         }
         else
             o.Append(None).Append(NoPerson);
+
+        // the sign-in screens pick the tenant by name: the tenants that can be signed in to (not switched off, not soft deleted), answered without a sign-in
+        if (membership is not null && userPlan is not null)
+        {
+            var soft = TenantPlan.DeletedFlagOf(tenantTable);
+            var conditions = new[] { active is null ? null : $"{Q(active)} = {di.BooleanLiteral(true)}", soft is null ? null : $"{Q(soft)} = {di.BooleanLiteral(false)}" }.OfType<string>().ToList();
+            string where = conditions.Count == 0 ? "" : " WHERE " + string.Join(" AND ", conditions);
+            string sql = text is null ? $"SELECT {Q(key)} FROM {tenants}{where} ORDER BY {Q(key)}" : $"SELECT {Q(key)}, {Q(text)} FROM {tenants}{where} ORDER BY {Q(text)}, {Q(key)}";
+            o.Append(Fill(SignInList, ("§SIGNIN_SQL", Raw(sql)), ("§ROWTYPE", text is null ? "(i32,)" : "(i32, Option<String>)"), ("§NAME", text is null ? "row.0.to_string()" : "row.1.unwrap_or_default()"), ("§PATH", TenantWords.SignInListPath)));
+        }
+        else
+            o.Append("\n/// No membership table is named, so the sign-in names no tenant and has no list of them.\npub fn public_router() -> Router<Pool> {\n    Router::new()\n}\n");
         return o.ToString();
     }
+
+    private const string SignInList = """"
+
+const SIGN_IN_TENANTS: &str = §SIGNIN_SQL;
+
+/// The names for the sign-in screen's drop-down: the tenants that are not switched off and not soft deleted, by name. Needs no sign-in.
+async fn sign_in_tenants(State(pool): State<Pool>) -> ApiResult<Json<serde_json::Value>> {
+    let rows = sqlx::query_as::<_, §ROWTYPE>(SIGN_IN_TENANTS).fetch_all(&pool).await?;
+    let choices: Vec<serde_json::Value> = rows.into_iter().map(|row| serde_json::json!({ "id": row.0, "name": §NAME })).collect();
+    Ok(Json(serde_json::json!(choices)))
+}
+
+/// The routes that need no sign-in, merged into the sign-in's own router.
+pub fn public_router() -> Router<Pool> {
+    Router::new().route("§PATH", get(sign_in_tenants))
+}
+"""";
 
     /// <summary> <c>check_new_admin</c> and <c>attach_new_admin</c>: the first administrator of an onboarded tenant as a new person, saved with the tenant through the user table's own repository, the password hashed the way <c>set-password</c> does. </summary>
     private static string NewPerson(UserTablePlan? userPlan, ProjectSettings project, TenantMembership? membership, TenantOwned? userOwned, DialectInfo di, Func<string, string> raw)

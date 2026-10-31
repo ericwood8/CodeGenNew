@@ -164,6 +164,29 @@ public class TenantPlanTests
     }
 
     [TestMethod]
+    public async Task Every_API_lists_the_tenants_a_person_can_sign_in_to_without_a_sign_in()
+    {
+        var (success, errors, read, _) = await GenerateAsync();
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        string tenants = read("Apis/Tenants.cs");
+        Assert.Contains("public static class TenantSignIn", tenants);
+        Assert.Contains("context.Set<Tenant>().IgnoreQueryFilters().AsNoTracking().Where(t => t.IsActive)", tenants, "a switched-off tenant is left out");
+        Assert.Contains("app.MapGet(\"" + TenantWords.SignInListPath + "\", TenantSignIn.ListAsync).AllowAnonymous();", tenants);
+
+        var (pythonSuccess, pythonErrors, python, _) = await GenerateAsync(stack: "python");
+        Assert.IsTrue(pythonSuccess, string.Join(" | ", pythonErrors));
+        string tenancy = python("app/routes/tenancy.py");
+        Assert.Contains("@public_router.get(\"" + TenantWords.SignInListPath + "\")", tenancy);
+        Assert.Contains(".where(tenants.c[TENANT_ACTIVE].is_(True))", tenancy);
+        Assert.Contains("app.include_router(tenancy_public_router)", python("app/main.py"));
+
+        var (rustSuccess, rustErrors, rust, _) = await GenerateAsync(stack: "rust");
+        Assert.IsTrue(rustSuccess, string.Join(" | ", rustErrors));
+        Assert.Contains(".route(\"" + TenantWords.SignInListPath + "\", get(sign_in_tenants))", rust("src/tenancy.rs"));
+        Assert.Contains(".merge(crate::tenancy::public_router())", rust("src/auth.rs"));
+    }
+
+    [TestMethod]
     public async Task The_context_filters_every_tenant_owned_table_by_the_tenant_in_the_token_and_soft_delete_shares_the_filter()
     {
         var (success, errors, read, _) = await GenerateAsync();

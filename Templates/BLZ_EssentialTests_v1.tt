@@ -292,24 +292,33 @@ public class TenantSignInTests : PageTestContext
 {
     private IRenderedComponent<Login> Fill(string? tenant)
     {
+        Api.Answer("<#= TenantWords.SignInListPath #>", "[{ \"id\": 1, \"name\": \"Acme\" }, { \"id\": 2, \"name\": \"Globex\" }, { \"id\": 3, \"name\": \"Initech\" }]");
         var page = Render<Login>();
+        page.WaitForAssertion(() => Assert.AreEqual(4, page.FindAll("#tenant option").Count));
         page.Find("#userName").Input("pat");
         page.Find("#password").Input("secret");
         if (tenant is not null)
-            page.Find("#tenant").Input(tenant);
+            page.Find("#tenant").Change(tenant);
         page.Find("form").Submit();
         return page;
     }
 
     [TestMethod]
-    public void Posts_the_tenant_that_is_typed_beside_the_name_and_password()
+    public void Lists_the_tenants_by_name_with_a_blank_first_for_the_first_tenant()
+    {
+        var page = Fill(null);
+        CollectionAssert.AreEqual(new[] { "", "Acme", "Globex", "Initech" }, page.FindAll("#tenant option").Select(o => o.TextContent.Trim()).ToArray());
+    }
+
+    [TestMethod]
+    public void Posts_the_tenant_that_is_picked_beside_the_name_and_password()
     {
         Fill("2");
         Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Post && r.Path.EndsWith("/auth/login") && r.Body.Contains("\"tenantId\":2")));
     }
 
     [TestMethod]
-    public void Names_no_tenant_when_the_box_is_empty()
+    public void Names_no_tenant_when_the_blank_entry_is_picked()
     {
         Fill(null);
         var login = Api.Requests.Single(r => r.Path.EndsWith("/auth/login"));

@@ -354,6 +354,9 @@ from app import routes
     {
 #>
 from app.auth import auth_router, require_user, signing_key
+<# if (auth && TenantPlan.HasApiTenancy(Project)) { #>
+from app.routes.tenancy import public_router as tenancy_public_router
+<# } #>
 <#
     }
 #>
@@ -381,6 +384,9 @@ app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], a
 #>
 # The sign-in is open; every other route needs a bearer token.
 app.include_router(auth_router)
+<# if (TenantPlan.HasApiTenancy(Project)) { #>
+app.include_router(tenancy_public_router)
+<# } #>
 for router in routes.routers:
     app.include_router(router, dependencies=[Depends(require_user)])
 <#

@@ -27,7 +27,10 @@
 ");
     string tenantBox = tenants ? @"    <div class=""form-group"">
       <label for=""tenant"">" + TenantWords.SignInLabel + @"</label>
-      <input id=""tenant"" name=""tenant"" type=""number"" min=""1"" inputmode=""numeric"" [(ngModel)]=""tenant"" aria-describedby=""tenantHint"">
+      <select id=""tenant"" name=""tenant"" [(ngModel)]=""tenant"" aria-describedby=""tenantHint"">
+        <option [ngValue]=""null""></option>
+        <option *ngFor=""let choice of tenantChoices"" [ngValue]=""choice.id"">{{ choice.name }}</option>
+      </select>
       <small id=""tenantHint"">" + TenantWords.SignInHint + @"</small>
     </div>
 " : "";
@@ -65,6 +68,12 @@ export interface LoginResponse {
 }
 <# if (tenants) { #>
 
+/** One tenant a person can sign in to (GET api/auth/sign-in-tenants, no sign-in needed): the key to send with the sign-in and the name to show. */
+export interface SignInTenant {
+  id: number;
+  name: string;
+}
+
 /** One tenant of the signed-in person (GET api/auth/tenants): the name to show, the role in it and whether the token works in it now. */
 export interface TenantChoice {
   id: number;
@@ -77,8 +86,8 @@ export interface TenantChoice {
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { Observable, tap } from 'rxjs';
-import { AuthUser, LoginResponse } from '../<#= modelsFolder #>/auth';
+import { Observable, catchError, of, tap } from 'rxjs';
+import { AuthUser, LoginResponse<#= tenants ? ", SignInTenant" : "" #> } from '../<#= modelsFolder #>/auth';
 
 const storageKey = '<#= storageKey #>';
 
@@ -130,6 +139,13 @@ export class AuthService {
     );
   }
 
+<# if (tenants) { #>
+  /** The tenants a person can sign in to, for the drop-down of the sign-in page (no sign-in needed); an empty list when it cannot be read, so a person with one tenant can still sign in. */
+  signInTenants(): Observable<SignInTenant[]> {
+    return this.http.get<SignInTenant[]>('<#= TenantWords.SignInListPath.TrimStart('/') #>').pipe(catchError(() => of([])));
+  }
+
+<# } #>
   /** Keeps a session the API answered (a sign-in<#= tenants ? ", or a switch to another tenant" : "" #>) in memory and in the tab's sessionStorage. */
   keep(response: LoginResponse): void {
     this.session.set(response);
@@ -179,13 +195,16 @@ export const authGuard: CanActivateFn = () => {
   return auth.isLoggedIn() ? true : inject(Router).createUrlTree(['/login']);
 };
 @@@FILE src/app/<#= componentsFolder #>/login/login.component.ts@@@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, <# if (tenants) { #>OnInit, <# } #>inject } from '@angular/core';
 <# if (!controlFlow) { #>
-import { NgIf } from '@angular/common';
+import { <#= tenants ? "NgFor, " : "" #>NgIf } from '@angular/common';
 <# } #>
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../<#= servicesFolder #>/auth.service';
+<# if (tenants) { #>
+import { SignInTenant } from '../../<#= modelsFolder #>/auth';
+<# } #>
 
 @Component({
   selector: 'app-login',
@@ -193,21 +212,28 @@ import { AuthService } from '../../<#= servicesFolder #>/auth.service';
   standalone: true,
 <# } #>
   changeDetection: ChangeDetectionStrategy.<#= Project.AngularEagerStrategy #>, // plain properties change inside subscribe callbacks
-  imports: [FormsModule<#= controlFlow ? "" : ", NgIf" #>],
+  imports: [FormsModule<#= controlFlow ? "" : (tenants ? ", NgFor, NgIf" : ", NgIf") #>],
   templateUrl: './login.component.html',
   styleUrl: './login.component.css'
 })
-export class LoginComponent {
+export class LoginComponent<# if (tenants) { #> implements OnInit<# } #> {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
 
   userName = '';
   password = '';
 <# if (tenants) { #>
-  tenant: number | null = null;
+  tenant: number | null = null;   // the key of the tenant picked in the drop-down; null (the blank entry) is the person's first tenant
+  tenantChoices: SignInTenant[] = [];
 <# } #>
   message = '';
   busy = false;
+<# if (tenants) { #>
+
+  ngOnInit(): void {
+    this.auth.signInTenants().subscribe((list) => { this.tenantChoices = list; });
+  }
+<# } #>
 
   signIn(): void {
     this.message = '';
@@ -459,6 +485,10 @@ describe('LoginComponent', () => {
     fixture = TestBed.createComponent(LoginComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
+<# if (tenants) { #>
+    http.expectOne('<#= TenantWords.SignInListPath.TrimStart('/') #>').flush([{ id: 1, name: 'Acme' }, { id: 2, name: 'Globex' }, { id: 3, name: 'Initech' }]);
+    fixture.detectChanges();
+<# } #>
   });
 
   afterEach(() => http.verify());
@@ -505,7 +535,12 @@ describe('LoginComponent', () => {
   });
 <# if (tenants) { #>
 
-  it('posts the tenant that is typed and nothing when the box is empty', () => {
+  it('lists the tenants by name, with a blank first for the first tenant', () => {
+    const options = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('select#tenant option')).map((option) => option.textContent?.trim());
+    expect(options).toEqual(['', 'Acme', 'Globex', 'Initech']);
+  });
+
+  it('posts the tenant that is picked and nothing when the blank entry is picked', () => {
     expect(submit(<#= HttpStatus.Ok #>, 2)).toEqual({ userName: 'pat', password: 'secret', tenantId: 2 });
     expect(submit(<#= HttpStatus.Ok #>)).toEqual({ userName: 'pat', password: 'secret' });
   });

@@ -123,7 +123,9 @@ public class TenantSwitcherTests
         Expect.Contains(react, "JSON.stringify(tenantId === undefined ? { userName, password } : { userName, password, tenantId })");
         Expect.Contains(react, "<label htmlFor=\"tenant\">" + TenantWords.SignInLabel + "</label>");
         Expect.Contains(react, "setMessage('" + TenantWords.SignInRefused + "')");
-        Expect.Contains(react, "signs in to the tenant that is typed");
+        Expect.Contains(react, "signs in to the tenant that is picked");
+        Expect.Contains(react, "<select id=\"tenant\" name=\"tenant\"");
+        Expect.Contains(react, "fetch(`${API_BASE_URL}" + TenantWords.SignInListPath + "`)");
         string reactPlain = await Run("TSX_EssentialAuth_v1.tt", plain);
         Expect.DoesNotContain(reactPlain, "tenantId");
         Expect.DoesNotContain(reactPlain, "htmlFor=\"tenant\"");
@@ -131,13 +133,16 @@ public class TenantSwitcherTests
         string angular = await Run("TS_EssentialAuth_v1.tt", Tenants);
         Expect.Contains(angular, "login(userName: string, password: string, tenantId?: number | null): Observable<LoginResponse> {");
         Expect.Contains(angular, "[(ngModel)]=\"tenant\"");
+        Expect.Contains(angular, "<option *ngFor=\"let choice of tenantChoices\" [ngValue]=\"choice.id\">{{ choice.name }}</option>");
+        Expect.Contains(angular, "signInTenants(): Observable<SignInTenant[]> {");
         Expect.Contains(angular, "this.auth.login(this.userName, this.password, this.tenant).subscribe({");
         Expect.Contains(angular, "this.message = '" + TenantWords.SignInRefused + "';");
         Expect.DoesNotContain(await Run("TS_EssentialAuth_v1.tt", plain), "tenantId");
 
         string blazor = await Run("BLZ_EssentialAuth_v1.tt", Tenants);
         Expect.Contains(blazor, "public async Task LoginAsync(HttpClient http, string userName, string password, int? tenantId = null)");
-        Expect.Contains(blazor, "<input id=\"tenant\" type=\"number\"");
+        Expect.Contains(blazor, "<select id=\"tenant\" aria-describedby=\"tenantHint\" @bind=\"tenant\">");
+        Expect.Contains(blazor, "GetFromJsonAsync<List<TenantChoice>>(\"" + TenantWords.SignInListPath + "\")");
         Expect.Contains(blazor, "await Session.LoginAsync(Http, userName.Trim(), password, tenant);");
         Expect.Contains(blazor, "403 => \"" + TenantWords.SignInRefused + "\"");
         Expect.Contains(await Run("BLZ_EssentialTests_v1.tt", Tenants), "public class TenantSignInTests : PageTestContext");
@@ -145,8 +150,9 @@ public class TenantSwitcherTests
 
         string uno = await Run("UNO_EssentialAuth_v1.tt", Tenants);
         Expect.Contains(uno, "public async Task LoginAsync(HttpClient http, string userName, string password, int? tenantId = null)");
-        Expect.Contains(uno, "<NumberBox x:Name=\"TenantBox\" Header=\"" + TenantWords.SignInLabel + "\"");
-        Expect.Contains(uno, "int.TryParse(TenantBox.Text.Trim(), out int tenant) ? tenant : null");
+        Expect.Contains(uno, "<ComboBox x:Name=\"TenantBox\" Header=\"" + TenantWords.SignInLabel + "\"");
+        Expect.Contains(uno, "(TenantBox.SelectedItem as SignInTenant)?.Id");
+        Expect.Contains(uno, "GetFromJsonAsync<List<SignInTenant>>(\"" + TenantWords.SignInListPath + "\"");
         Expect.DoesNotContain(await Run("UNO_EssentialAuth_v1.tt", plain), "TenantBox");
     }
 }

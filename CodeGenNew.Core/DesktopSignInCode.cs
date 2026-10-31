@@ -51,7 +51,8 @@ public static class DesktopSignInCode
                 ? Fill(Members, ("§CTX", contextType), ("§U", plan.Table.TableName), ("§UNAME", plan.UserName.CSharpName()),
                     ("§UKEY", plan.Table.PrimaryKeyColumns[0].CSharpName()), ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
                     ("§MROLE", membership.Role is null ? "(string?)null" : $"m.{membership.Role.CSharpName()}"), ("§TT", tenantTable!.TableName), ("§TKEY", tenantKey!.CSharpName()),
-                    ("§ACTIVEJOIN", activeJoin), ("§TEXT", TenantPlan.TextExpression(tenantTable!, tenantKey!)))
+                    ("§ACTIVEJOIN", activeJoin), ("§TEXT", TenantPlan.TextExpression(tenantTable!, tenantKey!)),
+                    ("§SOFTWHERE", TenantPlan.DeletedFlagOf(tenantTable!) is { } deleted ? $".Where(t => !t.{deleted.CSharpName()})" : ""))
                 : "";
             tenantLines = membership is not null ? SignInMember : SignInOwn;
             o.Append(Fill(Problems));
@@ -80,13 +81,16 @@ public static class DesktopSignInCode
         return text;
     }
 
-    public static string LoginXaml(string viewNamespace, bool tenants) =>
+    /// <summary> The sign-in view. <paramref name="dropdown"/>: the person picks the tenant by name (a membership table is named); a person whose tenant is a column of their own row has no choice to make. </summary>
+    public static string LoginXaml(string viewNamespace, bool dropdown) =>
         Fill(LoginXamlText, ("§NS", viewNamespace),
-            ("§TENANTBOX", tenants ? $"            <NumberBox x:Name=\"TenantBox\" Header=\"{TenantWords.SignInLabel}\" Description=\"{TenantWords.SignInHint}\" Minimum=\"1\" SpinButtonPlacementMode=\"Hidden\" />\n" : ""));
+            ("§TENANTBOX", dropdown ? $"            <ComboBox x:Name=\"TenantBox\" Header=\"{TenantWords.SignInLabel}\" DisplayMemberPath=\"Name\" HorizontalAlignment=\"Stretch\" />\n            <TextBlock Text=\"{TenantWords.SignInHint}\" Style=\"{{ThemeResource CaptionTextBlockStyle}}\" Opacity=\"0.7\" TextWrapping=\"Wrap\" />\n" : ""));
 
-    public static string LoginCode(string viewNamespace, string servicesNamespace, string contextType, bool tenants) =>
+    public static string LoginCode(string viewNamespace, string servicesNamespace, string contextType, bool tenants, bool dropdown) =>
         Fill(LoginCodeText, ("§NS", viewNamespace), ("§SERVICES", servicesNamespace), ("§CTX", contextType),
-            ("§TENANTARG", tenants ? ", double.IsNaN(TenantBox.Value) ? null : (int)TenantBox.Value" : ""),
+            ("§TENANTARG", dropdown ? ", (TenantBox.SelectedItem as SignInTenant)?.Id" : ""),
+            ("§TENANTLOAD", dropdown ? Fill(TenantLoad, ("§CTX", contextType)) : ""),
+            ("§LOADED", dropdown ? "\n        Loaded += async (_, _) => await LoadTenantsAsync();" : ""),
             ("§NOTMEMBER", tenants ? $"                SignInProblem.NotMember => \"{TenantWords.SignInRefused}\",\n" : ""),
             ("§TOOMANY", DesktopSignInWords.TooManyTries), ("§WRONG", DesktopSignInWords.WrongPassword), ("§UNAVAILABLE", DesktopSignInWords.Unavailable));
 
@@ -112,6 +116,9 @@ public static class DesktopSession
     private const string Choice = """
 /// <summary> A tenant the person belongs to: the name to show and the role they have in it (null: their own role stays). </summary>
 public sealed record TenantChoice(int Id, string Text, string? Role);
+
+/// <summary> One entry of the sign-in's tenant drop-down: the key to sign in to (null: the person's first tenant) and the name to show. </summary>
+public sealed record SignInTenant(int? Id, string Name);
 
 """;
 
@@ -214,6 +221,16 @@ public static class DesktopSignIn
 
     private const string Members = """
 
+    /// <summary> The names for the sign-in's drop-down: the tenants that are not switched off and not marked deleted, by name, after the blank entry that means the person's first tenant. The query filters are ignored: at sign-in there is no tenant yet. </summary>
+    public static async Task<List<SignInTenant>> SignInTenantsAsync(§CTX context, CancellationToken cancellationToken = default)
+    {
+        var rows = await context.Set<§TT>().IgnoreQueryFilters().AsNoTracking()§ACTIVEJOIN§SOFTWHERE
+            .Select(t => new { Id = t.§TKEY, Text = §TEXT }).ToListAsync(cancellationToken);
+        var list = rows.OrderBy(x => x.Text, StringComparer.CurrentCultureIgnoreCase).ThenBy(x => x.Id).Select(x => new SignInTenant(x.Id, x.Text)).ToList();
+        list.Insert(0, new SignInTenant(null, ""));
+        return list;
+    }
+
     /// <summary> The active tenants the person belongs to, by tenant id. The query filters are ignored: at sign-in there is no tenant yet. </summary>
     public static async Task<List<TenantChoice>> TenantsAsync(§CTX context, string userName, CancellationToken cancellationToken = default)
     {
@@ -274,6 +291,24 @@ public static class DesktopSignIn
 
 """;
 
+    private const string TenantLoad = """
+
+    // the names are read when the view is shown; when they cannot be read the drop-down holds only the blank entry, so a person with one tenant can still sign in
+    private async Task LoadTenantsAsync()
+    {
+        try
+        {
+            using var context = new §CTX();
+            TenantBox.ItemsSource = await DesktopSignIn.SignInTenantsAsync(context);
+        }
+        catch (Exception ex) when (ex is System.Data.Common.DbException or InvalidOperationException)
+        {
+            TenantBox.ItemsSource = new List<SignInTenant> { new(null, "") };
+        }
+        TenantBox.SelectedIndex = 0;
+    }
+""";
+
     private const string LoginXamlText = """
 <UserControl
     x:Class="§NS.LoginView"
@@ -307,9 +342,9 @@ public sealed partial class LoginView : UserControl
     public LoginView(Action<SignedInUser> signedIn)
     {
         _signedIn = signedIn;
-        InitializeComponent();
+        InitializeComponent();§LOADED
     }
-
+§TENANTLOAD
     private async void OnSignInClick(object sender, RoutedEventArgs e) => await SignInAsync();
 
     private async void OnPasswordKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)

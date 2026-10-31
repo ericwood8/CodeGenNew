@@ -341,7 +341,7 @@ async fn find_user(_pool: &Pool, name: &str) -> Result<Option<DirectoryUser>, sq
 #>
 
 pub fn router() -> Router<Pool> {
-    Router::new().route("/api/auth/login", post(login))
+    Router::new().route("/api/auth/login", post(login))<#= tenants ? ".merge(crate::tenancy::public_router())" : "" #>
 }
 
 async fn login(State(pool): State<Pool>, ConnectInfo(address): ConnectInfo<SocketAddr>, <#= tenants ? "headers: HeaderMap, " : "" #>ApiJson(body): ApiJson<LoginRequest>) -> ApiResult<Json<serde_json::Value>> {

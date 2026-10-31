@@ -53,10 +53,12 @@ public class DesktopSignInTests
 
         string login = read("Views/LoginView.xaml");
         Expect.Contains(login, "x:Class=\"Shop.App.Views.LoginView\"");
-        Expect.Contains(login, "<NumberBox x:Name=\"TenantBox\" Header=\"Tenant\"");
+        Expect.Contains(login, "<ComboBox x:Name=\"TenantBox\" Header=\"Tenant\" DisplayMemberPath=\"Name\"");
         Expect.Contains(login, "<PasswordBox x:Name=\"PasswordBoxField\"");
         string code = read("Views/LoginView.xaml.cs");
-        Expect.Contains(code, "await DesktopSignIn.SignInAsync(context, UserNameBox.Text, PasswordBoxField.Password, double.IsNaN(TenantBox.Value) ? null : (int)TenantBox.Value);");
+        Expect.Contains(code, "await DesktopSignIn.SignInAsync(context, UserNameBox.Text, PasswordBoxField.Password, (TenantBox.SelectedItem as SignInTenant)?.Id);");
+        Expect.Contains(code, "TenantBox.ItemsSource = await DesktopSignIn.SignInTenantsAsync(context);");
+        Expect.Contains(signIn, "public static async Task<List<SignInTenant>> SignInTenantsAsync(ShopContext context");
         Expect.Contains(code, "SignInProblem.NotMember => \"You are not a member of that tenant, or it is switched off.\"");
         Expect.Contains(code, "\"The user name or password is not right.\"");
         Assert.IsTrue(files.Any(f => f.EndsWith("Repositories/DesktopSignIn.cs")));

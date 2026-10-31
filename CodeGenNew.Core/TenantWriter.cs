@@ -39,6 +39,10 @@ public static class TenantWriter
             register = "        services.AddScoped<ILoginClaims, TenantLoginClaims>();\n";
             o.Append(Fill(Switch, ("§CTX", contextType), ("§ROLEPARAM", membership.Role is null ? "null" : "member.Role"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines)));
             routes.Append("        app.MapGet(\"/api/auth/tenants\", TenantSwitching.ListAsync);\n        app.MapPost(\"/api/auth/switch-tenant\", TenantSwitching.SwitchAsync);\n");
+            // the sign-in screens pick the tenant by name: the tenants that can be signed in to (not switched off, not soft deleted), answered without a sign-in
+            string softWhere = TenantPlan.DeletedFlagOf(tenantTable) is { } soft ? $".Where(t => !t.{soft.CSharpName()})" : "";
+            o.Append(Fill(SignInList, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVEJOIN", activeJoin), ("§SOFTWHERE", softWhere), ("§TEXT", textExpression)));
+            routes.Append($"        app.MapGet(\"{TenantWords.SignInListPath}\", TenantSignIn.ListAsync).AllowAnonymous();\n");
         }
         else if (userOwned is not null && userPlan is not null)
         {
@@ -229,6 +233,23 @@ public static class TenantHost
             return;
         }
         await next();
+    }
+}
+
+""";
+
+    private const string SignInList = """
+/// <summary> One tenant a person can sign in to: the id to send with the sign-in and the name to show. </summary>
+public sealed record SignInTenant(int Id, string Name);
+
+public static class TenantSignIn
+{
+    /// <summary> The names for the sign-in screen's drop-down, by name. Needs no sign-in; the filters of the context are off, so the tenant table's own filter (the caller's tenant) does not hide the others. </summary>
+    public static async Task<IResult> ListAsync(§CTX context, CancellationToken cancellationToken)
+    {
+        var rows = await context.Set<§TT>().IgnoreQueryFilters().AsNoTracking()§ACTIVEJOIN§SOFTWHERE
+            .Select(t => new { Id = t.§TKEY, Text = §TEXT }).ToListAsync(cancellationToken);
+        return Results.Ok(rows.OrderBy(x => x.Text, StringComparer.CurrentCultureIgnoreCase).ThenBy(x => x.Id).Select(x => new SignInTenant(x.Id, x.Text)).ToList());
     }
 }
 

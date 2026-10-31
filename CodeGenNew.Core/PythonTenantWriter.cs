@@ -21,10 +21,11 @@ public static class PythonTenantWriter
         var host = TenantPlan.HostColumnOf(database, project);
         var text = tenantTable.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsPrimaryKey && (c.Name.EqualsIgnoreCase("Name") || c.Name.EqualsIgnoreCase("Title")));
         string Str(string value) => PythonNames.Str(value);
+        var soft = TenantPlan.DeletedFlagOf(tenantTable);   // the sign-in drop-down leaves out a soft-deleted tenant
 
         var o = new StringBuilder();
         o.Append(Shared.Replace("§HOSTIMPORT", host is null ? "" : "import ipaddress\n").Replace("§REQUESTIMPORT", host is null ? "" : ", Request").Replace("§FUNC", host is null ? "" : "func, "));
-        o.Append(Tables(tenantTable, key, active, text, host, membership, userPlan, userOwned));
+        o.Append(Tables(tenantTable, key, active, text, host, membership, userPlan, soft, userOwned));
         if (host is not null)
             o.Append(Fill(HostLookup, ("§HOST_TYPE", TenantWords.HostType), ("§HOST_TEXT", TenantWords.Host)));
         var ownedTables = TenantPlan.OwnedTables(database, project);
@@ -44,7 +45,8 @@ public static class PythonTenantWriter
             o.Append(Fill(Attach, ("§ROLEVALUE", membership.Role is null ? "" : ", MEMBER_ROLE: ADMIN_ROLE")));
             o.Append(NewPerson(userPlan, project, membership, null));
             o.Append(TenantPlan.PeopleOf(database, project) is null ? PeoplePassThrough : PeopleScoped);
-            o.Append(Fill(Routes, ("§CURRENT", "user.tenant_id"), ("§REQUESTPARAM", host is null ? "" : ", request: Request"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines + "\n")));
+            string signInWhere = string.Join(", ", new[] { active is null ? null : "tenants.c[TENANT_ACTIVE].is_(True)", soft is null ? null : "tenants.c[TENANT_DELETED].is_(False)" }.OfType<string>());
+            o.Append(Fill(Routes, ("§SIGNINPATH", TenantWords.SignInListPath), ("§TEXT", textExpression), ("§SIGNINWHERE", signInWhere.Length == 0 ? "" : $".where({signInWhere})"), ("§CURRENT", "user.tenant_id"), ("§REQUESTPARAM", host is null ? "" : ", request: Request"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines + "\n")));
         }
         else if (userOwned is not null && userPlan is not null)
         {
@@ -162,7 +164,7 @@ def new_person(session: Session, admin: dict[str, Any], password: str | None, te
 §MEMBERLINE
 """";
 
-    private static string Tables(TableModel tenantTable, ColumnModel key, ColumnModel? active, ColumnModel? text, ColumnModel? host, TenantMembership? membership, UserTablePlan? userPlan, TenantOwned? userOwned)
+    private static string Tables(TableModel tenantTable, ColumnModel key, ColumnModel? active, ColumnModel? text, ColumnModel? host, TenantMembership? membership, UserTablePlan? userPlan, ColumnModel? soft, TenantOwned? userOwned)
     {
         string Str(string value) => PythonNames.Str(value);
         var o = new StringBuilder("\n");
@@ -173,7 +175,9 @@ def new_person(session: Session, admin: dict[str, Any], password: str | None, te
             o.Append($"TENANT_ACTIVE = {Str(active.DbName)}\n");
         if (host is not null)
             o.Append($"TENANT_HOST = {Str(host.DbName)}\n");
-        o.Append("tenants = " + LightTable(tenantTable, new[] { key, text, active, host }) + "\n");
+        if (soft is not null)
+            o.Append($"TENANT_DELETED = {Str(soft.DbName)}\n");
+        o.Append("tenants = " + LightTable(tenantTable, new[] { key, text, active, host, soft }) + "\n");
         if (userPlan is not null && (membership is not null || userOwned is not null))
         {
             var userColumns = new List<ColumnModel?> { userPlan.UserName, userPlan.Table.PrimaryKeyColumns.First() };
@@ -233,6 +237,8 @@ PROBLEM_ONBOARDING = "§ONBOARD_TYPE"
 PROBLEM_INACTIVE = "§INACTIVE_TYPE"
 ACTIVE_SECONDS = 10
 router = APIRouter()
+# the routes that need no sign-in (the app includes this router beside the sign-in's own)
+public_router = APIRouter()
 
 
 def is_platform(user: CurrentUser) -> bool:
@@ -360,6 +366,13 @@ class SwitchRequest(BaseModel):
 """";
 
     private const string Routes = """"
+
+
+@public_router.get("§SIGNINPATH")
+def sign_in_tenants(session: Session = Depends(get_session)):
+    """The names for the sign-in screen's drop-down: the tenants that are not switched off and not soft deleted, by name. Needs no sign-in."""
+    statement = select(tenants.c[TENANT_KEY], §TEXT)§SIGNINWHERE.order_by(§TEXT, tenants.c[TENANT_KEY])
+    return [{"id": int(row[0]), "name": "" if row[1] is None else str(row[1])} for row in session.execute(statement).all()]
 
 
 @router.get("/api/auth/tenants")

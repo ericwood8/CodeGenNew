@@ -193,7 +193,13 @@ public class AuthHandler : DelegatingHandler
 <# if (tenants) { #>
     <div class="field">
         <label for="tenant"><#= TenantWords.SignInLabel #></label>
-        <input id="tenant" type="number" min="1" inputmode="numeric" aria-describedby="tenantHint" @bind="tenant" @bind:event="oninput" />
+        <select id="tenant" aria-describedby="tenantHint" @bind="tenant">
+            <option value=""></option>
+            @foreach (var choice in tenantChoices)
+            {
+                <option value="@choice.Id">@choice.Name</option>
+            }
+        </select>
         <small id="tenantHint"><#= TenantWords.SignInHint #></small>
     </div>
 <# } #>
@@ -206,10 +212,27 @@ public class AuthHandler : DelegatingHandler
     private string userName = "";
     private string password = "";
 <# if (tenants) { #>
-    private int? tenant;
+    private int? tenant;   // the key of the tenant picked in the drop-down; null (the blank entry) is the person's first tenant
+
+    /// <summary> One tenant a person can sign in to (GET /api/auth/sign-in-tenants, no sign-in needed): the key to send and the name to show. </summary>
+    private record TenantChoice(int Id, string Name);
+
+    private List<TenantChoice> tenantChoices = [];
 <# } #>
     private string? message;
     private bool busy;
+<# if (tenants) { #>
+
+    // an empty list when the names cannot be read, so a person with one tenant can still sign in
+    protected override async Task OnInitializedAsync()
+    {
+        try { tenantChoices = await Http.GetFromJsonAsync<List<TenantChoice>>("<#= TenantWords.SignInListPath #>") ?? []; }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
+        {
+            tenantChoices = [];
+        }
+    }
+<# } #>
 
     private async Task SignInAsync()
     {

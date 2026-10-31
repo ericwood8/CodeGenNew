@@ -39,9 +39,9 @@
 #>
 @@@FILE Repositories/DesktopSignIn.cs@@@
 <#= DesktopSignInCode.Session(Database, Project, contextType, usings, repositoryNamespace) #>@@@FILE <#= viewsFolder #>/LoginView.xaml@@@
-<#= DesktopSignInCode.LoginXaml(viewNamespace, tenants) #>
+<#= DesktopSignInCode.LoginXaml(viewNamespace, TenantPlan.HasDesktopSwitcher(Project) && tenants) #>
 @@@FILE <#= viewsFolder #>/LoginView.xaml.cs@@@
-<#= DesktopSignInCode.LoginCode(viewNamespace, repositoryNamespace, contextType, tenants) #>
+<#= DesktopSignInCode.LoginCode(viewNamespace, repositoryNamespace, contextType, tenants, TenantPlan.HasDesktopSwitcher(Project) && tenants) #>
 <#
     }
 #>

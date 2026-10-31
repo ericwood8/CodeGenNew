@@ -16,7 +16,9 @@ public static class TenantWords
     public const string HostType = ProblemTypes.Prefix + "tenant-host";
     public const string Host = "This address belongs to another tenant than the one you are signed in to.";
     public const string SignInLabel = "Tenant";
-    public const string SignInHint = "Leave empty to work in your first tenant.";
+    public const string SignInHint = "Leave blank to work in your first tenant.";
+    /// <summary> The route that lists the tenants a person can sign in to, for the drop-down of the sign-in screen (no sign-in needed). </summary>
+    public const string SignInListPath = "/api/auth/sign-in-tenants";
     public const string SignInRefused = "You are not a member of that tenant, or it is switched off.";
     public const string OnlyPlatform = "Only a platform administrator (an administrator who is not working in a tenant) onboards tenants.";
 }
@@ -102,6 +104,11 @@ public static class TenantPlan
         var text = tenantTable.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsPrimaryKey && (c.Name.EqualsIgnoreCase("Name") || c.Name.EqualsIgnoreCase("Title")));
         return text is null ? $"t.{tenantKey.CSharpName()}.ToString()" : text.IsNullable ? $"t.{text.CSharpName()} ?? \"\"" : $"t.{text.CSharpName()}";
     }
+
+    /// <summary> The yes / no column that marks a tenant as deleted, or null. The tenant table cannot be listed in <c>SoftDeleteTables</c> (it takes no delete), so the flag is found by its convention: the schema's soft-delete pair, else a NOT NULL yes / no column named IsDeleted. The sign-in list leaves such a tenant out. </summary>
+    public static ColumnModel? DeletedFlagOf(TableModel tenantTable) =>
+        tenantTable.IsDeletedColumn is { IsBooleanColumn: true, IsNullable: false } pair ? pair
+        : tenantTable.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(SoftDeletePlan.DefaultFlag) && c.IsBooleanColumn && !c.IsNullable);
 
     public static ColumnModel? KeyOf(TableModel tenantTable) => tenantTable.PrimaryKeyColumns is [{ IsInt32Column: true } key] ? key : null;
 
