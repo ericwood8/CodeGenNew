@@ -1,0 +1,131 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_Subscription_v1.tt
+    // Generates: Pages/Subscription.razor   (the template writes its own path with an @@@FILE marker)
+    // The subscription page of a Blazor app that signs in (Auth=true, ApiAuth, SubscriptionTable with TenantTable): the plan, the status, the period end and, for each plan limit, what the plan allows and what the
+    // tenant has (GET api/subscription). BlazorMenu puts the page in the menu for the administrator role. A save refused with 402 shows the API's sentence (ApiSupport reads the problem detail).
+    // Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
+    // ==========================================================================================
+    if (SubscriptionPlan.HasPage(Database, Project))
+    {
+#>
+@@@FILE Pages/Subscription.razor@@@
+@page "/subscription"
+@using System.Net.Http.Json
+@attribute [Authorize(Roles = "<#= Project.AuthAdminRole #>")]
+@inject HttpClient Http
+
+<PageTitle><#= SubscriptionScreenWords.Title #></PageTitle>
+
+<h1><#= SubscriptionScreenWords.Title #></h1>
+@if (message is not null)
+{
+    <p class="error" role="alert">@message</p>
+}
+@if (info is not null && !info.HasSubscription)
+{
+    <p><#= SubscriptionScreenWords.NoSubscription #></p>
+}
+@if (info is not null && info.HasSubscription)
+{
+    <dl>
+        <dt><#= SubscriptionScreenWords.PlanLabel #></dt>
+        <dd>@info.PlanName</dd>
+        @if (info.PlanPrice is { } price)
+        {
+            <dt><#= SubscriptionScreenWords.PriceLabel #></dt>
+            <dd>@PriceText(price, info.PlanPeriod)</dd>
+        }
+        <dt><#= SubscriptionScreenWords.StatusLabel #></dt>
+        <dd>@info.Status</dd>
+        @if (info.PeriodEnd is { } end)
+        {
+            <dt><#= SubscriptionScreenWords.PeriodEndLabel #></dt>
+            <dd>@end.ToString("d")</dd>
+        }
+    </dl>
+    <p role="status">@(info.Writable ? "<#= SubscriptionScreenWords.Active #>" : "<#= SubscriptionScreenWords.PausedPrefix #>" + info.Reason)</p>
+}
+@if (info is not null && info.Limits.Count > 0)
+{
+    <h2><#= SubscriptionScreenWords.LimitsHeading #></h2>
+    <table>
+        <thead>
+            <tr>
+                <th><#= SubscriptionScreenWords.LimitColumn #></th>
+                <th><#= SubscriptionScreenWords.AllowedColumn #></th>
+                <th><#= SubscriptionScreenWords.InUseColumn #></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var limit in info.Limits)
+            {
+                <tr>
+                    <td>@limit.Key</td>
+                    <td>@(limit.Allowed is { } allowed ? allowed.ToString() : "<#= SubscriptionScreenWords.Unlimited #>")</td>
+                    <td>@limit.Used</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+@if (info is not null && info.Plans.Count > 0)
+{
+    <h2><#= SubscriptionScreenWords.PlansHeading #></h2>
+    <table aria-label="<#= SubscriptionScreenWords.PlansHeading #>">
+        <thead>
+            <tr>
+                <th><#= SubscriptionScreenWords.PlanColumn #></th>
+                <th><#= SubscriptionScreenWords.PriceColumn #></th>
+                <th><#= SubscriptionScreenWords.AllowsColumn #></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var plan in info.Plans)
+            {
+                <tr>
+                    <td>@(plan.Current ? plan.Name + " <#= SubscriptionScreenWords.CurrentMark #>" : plan.Name)</td>
+                    <td>@PriceText(plan.Price, plan.Period)</td>
+                    <td>@string.Join(", ", plan.Limits.Select(l => l.Key + ": " + (l.Allowed is { } most ? most.ToString() : "<#= SubscriptionScreenWords.Unlimited #>")))</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private record Limit(string Key, long? Allowed, int Used);
+
+    private record PlanLimit(string Key, long? Allowed);
+
+    private record Plan(int PlanId, string Name, decimal? Price, string? Period, bool Current, List<PlanLimit> Limits);
+
+    private record SubscriptionInfo(bool HasSubscription, int? PlanId, string? PlanName, decimal? PlanPrice, string? PlanPeriod, string? Status, DateTime? PeriodEnd, string? GatewayId, bool Writable, string? Reason, List<Limit> Limits, List<Plan> Plans);
+
+    /// <summary> A price as the page shows it: two decimals and, when the plan has one, its billing period. </summary>
+    private static string PriceText(decimal? price, string? period) =>
+        price is { } amount ? amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + (string.IsNullOrEmpty(period) ? "" : " / " + period) : "";
+
+    private SubscriptionInfo? info;
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            info = await Http.GetFromJsonAsync<SubscriptionInfo>("<#= SubscriptionScreenWords.Path #>");
+        }
+        catch (HttpRequestException)
+        {
+            message = "<#= SubscriptionScreenWords.LoadFailed #>";
+        }
+    }
+}
+<#
+    }
+#>

@@ -1,0 +1,39 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string apiNamespace = "MyApp.ApiService.Apis";
+    string contextType = "MyAppContext";
+    string[] usings = { };   // namespaces the generated file must "using" (the context's)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    contextType = Project.ContextName ?? contextType;
+    apiNamespace = Project.ApiNamespace ?? apiNamespace;
+    usings = Project.Usings ?? usings;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // API_Subscriptions_v1.tt
+    // Generates: Subscriptions.cs   (see OutputName in API_Subscriptions_v1.tt.config)
+    // Plans, subscriptions and entitlements for a SaaS API (SubscriptionTable, with TenantTable and ApiAuth): a check that pauses a tenant's writes (402) while its subscription is not trialing or active, plan
+    // limits on creates (PlanLimitTable, PlanLimits: 402 when the tenant already has what its plan allows), GET /api/subscription for the tenant's administrator, PUT /api/subscription/{tenantId} for a platform
+    // administrator, and SubscriptionGateway.ApplyAsync for the owner's payment-gateway webhook handler. Only ids and statuses are held; no card data.
+    // Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
+    // ==========================================================================================
+
+    var problems = SubscriptionPlan.Problems(Database, Project);
+    if (problems.Count > 0)
+    {
+        Error(string.Join(" | ", problems));
+    }
+    else if (SubscriptionPlan.IsEnabled(Project))
+    {
+        Write("namespace " + apiNamespace + ";" + "\n\n");
+        Write(SubscriptionWriter.File(Database, Project, contextType, usings));
+    }
+#>

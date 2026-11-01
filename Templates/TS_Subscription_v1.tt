@@ -1,0 +1,257 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TS_Subscription_v1.tt
+    // Generates: <ServicesFolder>/subscription.service.ts and <ComponentsFolder>/subscription/subscription.component.ts, .html, .css and .spec.ts   (the template writes its own paths with @@@FILE markers)
+    // The subscription screen of an Angular app that signs in (Auth=true, ApiAuth, SubscriptionTable with TenantTable): the plan, the status, the period end and, for each plan limit, what the plan allows and what the
+    // tenant has (GET api/subscription). TS_Screens puts the screen in the menu for the administrator role. A save refused with 402 shows the API's sentence through the screens' own notifier (apiMessage).
+    // Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
+    // ==========================================================================================
+    string servicesFolder = Project.ServicesFolder;
+    string componentsFolder = Project.ComponentsFolder;
+    bool controlFlow = Project.AngularControlFlow;
+    if (SubscriptionPlan.HasPage(Database, Project))
+    {
+        string html = @"<div class=""subscription"">
+  <h1>" + SubscriptionScreenWords.Title + @"</h1>
+  <p class=""error"" role=""alert"" *ngIf=""message"">{{ message }}</p>
+  <p *ngIf=""info && !info.hasSubscription"">" + SubscriptionScreenWords.NoSubscription + @"</p>
+  <dl *ngIf=""info && info.hasSubscription"">
+    <dt>" + SubscriptionScreenWords.PlanLabel + @"</dt>
+    <dd>{{ info.planName }}</dd>
+    <ng-container *ngIf=""info.planPrice !== null"">
+      <dt>" + SubscriptionScreenWords.PriceLabel + @"</dt>
+      <dd>{{ priceText(info.planPrice, info.planPeriod) }}</dd>
+    </ng-container>
+    <dt>" + SubscriptionScreenWords.StatusLabel + @"</dt>
+    <dd>{{ info.status }}</dd>
+    <ng-container *ngIf=""info.periodEnd"">
+      <dt>" + SubscriptionScreenWords.PeriodEndLabel + @"</dt>
+      <dd>{{ info.periodEnd | date: 'mediumDate' }}</dd>
+    </ng-container>
+  </dl>
+  <p role=""status"" *ngIf=""info && info.hasSubscription"">{{ status }}</p>
+  <ng-container *ngIf=""info && info.limits.length > 0"">
+    <h2>" + SubscriptionScreenWords.LimitsHeading + @"</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>" + SubscriptionScreenWords.LimitColumn + @"</th>
+          <th>" + SubscriptionScreenWords.AllowedColumn + @"</th>
+          <th>" + SubscriptionScreenWords.InUseColumn + @"</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor=""let limit of info.limits"">
+          <td>{{ limit.key }}</td>
+          <td>{{ limit.allowed === null ? '" + SubscriptionScreenWords.Unlimited + @"' : limit.allowed }}</td>
+          <td>{{ limit.used }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </ng-container>
+  <ng-container *ngIf=""info && info.plans.length > 0"">
+    <h2>" + SubscriptionScreenWords.PlansHeading + @"</h2>
+    <table aria-label=""" + SubscriptionScreenWords.PlansHeading + @""">
+      <thead>
+        <tr>
+          <th>" + SubscriptionScreenWords.PlanColumn + @"</th>
+          <th>" + SubscriptionScreenWords.PriceColumn + @"</th>
+          <th>" + SubscriptionScreenWords.AllowsColumn + @"</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor=""let plan of info.plans"">
+          <td>{{ plan.current ? plan.name + ' " + SubscriptionScreenWords.CurrentMark + @"' : plan.name }}</td>
+          <td>{{ priceText(plan.price, plan.period) }}</td>
+          <td>{{ allows(plan) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </ng-container>
+</div>
+";
+#>
+@@@FILE src/app/<#= servicesFolder #>/subscription.service.ts@@@
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+
+/** What the plan allows for one limit and what the tenant has; allowed is null when it is unlimited. */
+export interface LimitInfo {
+  key: string;
+  allowed: number | null;
+  used: number;
+}
+
+/** A plan the tenant could choose: its price and billing period when the plan table has them, and what it allows of each limit. */
+export interface PlanInfo {
+  planId: number;
+  name: string;
+  price: number | null;
+  period: string | null;
+  current: boolean;
+  limits: { key: string; allowed: number | null }[];
+}
+
+/** The subscription of the signed-in tenant: its plan, status, period end and limits, and every plan. */
+export interface SubscriptionInfo {
+  hasSubscription: boolean;
+  planId: number | null;
+  planName: string | null;
+  planPrice: number | null;
+  planPeriod: string | null;
+  status: string | null;
+  periodEnd: string | null;
+  gatewayId: string | null;
+  writable: boolean;
+  reason: string | null;
+  limits: LimitInfo[];
+  plans: PlanInfo[];
+}
+
+@Injectable({ providedIn: 'root' })
+export class SubscriptionService {
+  private readonly http = inject(HttpClient);
+
+  get(): Observable<SubscriptionInfo> {
+    return this.http.get<SubscriptionInfo>('<#= SubscriptionScreenWords.Path.TrimStart('/') #>');
+  }
+}
+@@@FILE src/app/<#= componentsFolder #>/subscription/subscription.component.ts@@@
+import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
+import { DatePipe<#= controlFlow ? "" : ", NgFor, NgIf" #> } from '@angular/common';
+import { PlanInfo, SubscriptionInfo, SubscriptionService } from '../../<#= servicesFolder #>/subscription.service';
+
+@Component({
+  selector: 'app-subscription',
+<# if (Project.AngularStandaloneFlag) { #>
+  standalone: true,
+<# } #>
+  changeDetection: ChangeDetectionStrategy.<#= Project.AngularEagerStrategy #>, // plain properties change inside subscribe callbacks
+  imports: [DatePipe<#= controlFlow ? "" : ", NgFor, NgIf" #>],
+  templateUrl: './subscription.component.html',
+  styleUrl: './subscription.component.css'
+})
+export class SubscriptionComponent implements OnInit {
+  private readonly subscription = inject(SubscriptionService);
+
+  info: SubscriptionInfo | null = null;
+  message = '';
+
+  /** Whether changes are allowed, or why they are paused. */
+  get status(): string {
+    return this.info?.writable ? '<#= SubscriptionScreenWords.Active #>' : '<#= SubscriptionScreenWords.PausedPrefix #>' + (this.info?.reason ?? '');
+  }
+
+  /** A price as the page shows it: two decimals and, when the plan has one, its billing period. */
+  priceText(price: number | null, period: string | null): string {
+    return price === null ? '' : price.toFixed(2) + (period ? ' / ' + period : '');
+  }
+
+  /** What a plan allows of each limit, as one line. */
+  allows(plan: PlanInfo): string {
+    return plan.limits.map((limit) => limit.key + ': ' + (limit.allowed === null ? '<#= SubscriptionScreenWords.Unlimited #>' : limit.allowed)).join(', ');
+  }
+
+  ngOnInit(): void {
+    this.subscription.get().subscribe({
+      next: (info) => { this.info = info; },
+      error: () => { this.message = '<#= SubscriptionScreenWords.LoadFailed #>'; }
+    });
+  }
+}
+@@@FILE src/app/<#= componentsFolder #>/subscription/subscription.component.html@@@
+<#= Project.AdaptAngularHtml(html) #>@@@FILE src/app/<#= componentsFolder #>/subscription/subscription.component.css@@@
+.subscription table { border-collapse: collapse; }
+.subscription th, .subscription td { padding: 4px 12px; text-align: left; }
+.subscription dt { font-weight: 600; }
+@@@FILE src/app/<#= componentsFolder #>/subscription/subscription.component.spec.ts@@@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { SubscriptionComponent } from './subscription.component';
+
+describe('SubscriptionComponent', () => {
+  let component: SubscriptionComponent;
+  let fixture: ComponentFixture<SubscriptionComponent>;
+  let http: HttpTestingController;
+  const info = {
+    hasSubscription: true, planId: 2, planName: 'Pro', planPrice: 29, planPeriod: 'month', status: 'active', periodEnd: null, gatewayId: null, writable: true, reason: null,
+    limits: [{ key: 'projects', allowed: 10, used: 2 }, { key: 'seats', allowed: null, used: 3 }],
+    plans: [
+      { planId: 1, name: 'Free', price: 0, period: 'month', current: false, limits: [{ key: 'projects', allowed: 2 }, { key: 'seats', allowed: 1 }] },
+      { planId: 2, name: 'Pro', price: 29, period: 'month', current: true, limits: [{ key: 'projects', allowed: 10 }, { key: 'seats', allowed: null }] }
+    ]
+  };
+
+  const create = () => {
+    http = TestBed.inject(HttpTestingController);
+    fixture = TestBed.createComponent(SubscriptionComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  };
+
+  const text = () => (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [SubscriptionComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()]
+    }).compileComponents();
+  });
+
+  afterEach(() => http.verify());
+
+  it('shows the plan, the status and each limit with what is in use', () => {
+    create();
+    http.expectOne('<#= SubscriptionScreenWords.Path.TrimStart('/') #>').flush(info);
+    fixture.detectChanges();
+    expect(text()).toContain('Pro');
+    expect(text()).toContain('active');
+    expect(text()).toContain('<#= SubscriptionScreenWords.Active #>');
+    expect(text()).toContain('projects');
+    expect(text()).toContain('10');
+    expect(text()).toContain('<#= SubscriptionScreenWords.Unlimited #>');
+  });
+
+  it('shows the price of the plan and lists every plan with what it allows', () => {
+    create();
+    http.expectOne('<#= SubscriptionScreenWords.Path.TrimStart('/') #>').flush(info);
+    fixture.detectChanges();
+    expect(text()).toContain('29.00 / month');
+    expect(text()).toContain('Pro <#= SubscriptionScreenWords.CurrentMark #>');
+    expect(text()).toContain('Free');
+    expect(text()).toContain('projects: 2, seats: 1');
+    expect(text()).toContain('projects: 10, seats: <#= SubscriptionScreenWords.Unlimited #>');
+  });
+
+  it('says why changes are paused', () => {
+    create();
+    http.expectOne('<#= SubscriptionScreenWords.Path.TrimStart('/') #>').flush({ ...info, status: 'cancelled', writable: false, reason: 'The subscription of this tenant is cancelled.' });
+    fixture.detectChanges();
+    expect(text()).toContain('<#= SubscriptionScreenWords.PausedPrefix #>');
+    expect(text()).toContain('is cancelled');
+  });
+
+  it('says so when the tenant has no subscription', () => {
+    create();
+    http.expectOne('<#= SubscriptionScreenWords.Path.TrimStart('/') #>').flush({ ...info, hasSubscription: false, planName: null, status: null, limits: [], plans: [] });
+    fixture.detectChanges();
+    expect(text()).toContain('<#= SubscriptionScreenWords.NoSubscription #>');
+  });
+
+  it('explains when the screen is refused', () => {
+    create();
+    http.expectOne('<#= SubscriptionScreenWords.Path.TrimStart('/') #>').flush(null, { status: <#= HttpStatus.Forbidden #>, statusText: 'Forbidden' });
+    fixture.detectChanges();
+    expect(component.message).toBe('<#= SubscriptionScreenWords.LoadFailed #>');
+  });
+});
+<#
+    }
+#>

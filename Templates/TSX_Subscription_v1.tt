@@ -1,0 +1,212 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TSX_Subscription_v1.tt
+    // Generates: src/api/subscription.ts, src/pages/SubscriptionPage.tsx and its test   (the template writes its own paths with @@@FILE markers)
+    // The subscription page of a React app that signs in (Auth=true, ApiAuth, SubscriptionTable with TenantTable): the plan, the status, the period end and, for each plan limit, what the plan allows and what the
+    // tenant has (GET /api/subscription). TSX_Screens puts the page in the menu for the administrator role. A save refused with 402 (the subscription is paused, or a plan limit is reached) shows the API's sentence in the form (TSX_Page).
+    // Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
+    // ==========================================================================================
+    string apiFolder = Project.ApiFolder;
+    string pagesFolder = Project.PagesFolder;
+    if (SubscriptionPlan.HasPage(Database, Project))
+    {
+#>
+@@@FILE src/<#= apiFolder #>/subscription.ts@@@
+import { request } from './client';
+
+/** What the plan allows for one limit and what the tenant has; allowed is null when it is unlimited. */
+export interface LimitInfo {
+  key: string;
+  allowed: number | null;
+  used: number;
+}
+
+/** A plan the tenant could choose: its price and billing period when the plan table has them, and what it allows of each limit. */
+export interface PlanInfo {
+  planId: number;
+  name: string;
+  price: number | null;
+  period: string | null;
+  current: boolean;
+  limits: { key: string; allowed: number | null }[];
+}
+
+/** The subscription of the signed-in tenant: its plan, status, period end and limits, and every plan. */
+export interface SubscriptionInfo {
+  hasSubscription: boolean;
+  planId: number | null;
+  planName: string | null;
+  planPrice: number | null;
+  planPeriod: string | null;
+  status: string | null;
+  periodEnd: string | null;
+  gatewayId: string | null;
+  writable: boolean;
+  reason: string | null;
+  limits: LimitInfo[];
+  plans: PlanInfo[];
+}
+
+export const getSubscription = (): Promise<SubscriptionInfo> => request<SubscriptionInfo>('<#= SubscriptionScreenWords.Path #>');
+@@@FILE src/<#= pagesFolder #>/SubscriptionPage.tsx@@@
+import { useEffect, useState } from 'react';
+import { getSubscription } from '../<#= apiFolder #>/subscription';
+import type { SubscriptionInfo } from '../<#= apiFolder #>/subscription';
+
+/** A price as the page shows it: two decimals and, when the plan has one, its billing period. */
+const priceText = (price: number | null, period: string | null) =>
+  price === null ? '' : price.toFixed(2) + (period ? ' / ' + period : '');
+
+export function SubscriptionPage() {
+  const [info, setInfo] = useState<SubscriptionInfo | null>(null);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    getSubscription().then(setInfo).catch(() => setMessage('<#= SubscriptionScreenWords.LoadFailed #>'));
+  }, []);
+
+  return (
+    <div>
+      <h1><#= SubscriptionScreenWords.Title #></h1>
+      {message && <p className="error" role="alert">{message}</p>}
+      {info && !info.hasSubscription && <p><#= SubscriptionScreenWords.NoSubscription #></p>}
+      {info && info.hasSubscription && (
+        <>
+          <dl>
+            <dt><#= SubscriptionScreenWords.PlanLabel #></dt>
+            <dd>{info.planName}</dd>
+            {info.planPrice !== null && (
+              <>
+                <dt><#= SubscriptionScreenWords.PriceLabel #></dt>
+                <dd>{priceText(info.planPrice, info.planPeriod)}</dd>
+              </>
+            )}
+            <dt><#= SubscriptionScreenWords.StatusLabel #></dt>
+            <dd>{info.status}</dd>
+            {info.periodEnd && (
+              <>
+                <dt><#= SubscriptionScreenWords.PeriodEndLabel #></dt>
+                <dd>{new Date(info.periodEnd).toLocaleDateString()}</dd>
+              </>
+            )}
+          </dl>
+          <p role="status">{info.writable ? '<#= SubscriptionScreenWords.Active #>' : '<#= SubscriptionScreenWords.PausedPrefix #>' + (info.reason ?? '')}</p>
+        </>
+      )}
+      {info && info.limits.length > 0 && (
+        <>
+          <h2><#= SubscriptionScreenWords.LimitsHeading #></h2>
+          <table>
+            <thead>
+              <tr>
+                <th><#= SubscriptionScreenWords.LimitColumn #></th>
+                <th><#= SubscriptionScreenWords.AllowedColumn #></th>
+                <th><#= SubscriptionScreenWords.InUseColumn #></th>
+              </tr>
+            </thead>
+            <tbody>
+              {info.limits.map((limit) => (
+                <tr key={limit.key}>
+                  <td>{limit.key}</td>
+                  <td>{limit.allowed === null ? '<#= SubscriptionScreenWords.Unlimited #>' : limit.allowed}</td>
+                  <td>{limit.used}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      {info && info.plans.length > 0 && (
+        <>
+          <h2><#= SubscriptionScreenWords.PlansHeading #></h2>
+          <table aria-label="<#= SubscriptionScreenWords.PlansHeading #>">
+            <thead>
+              <tr>
+                <th><#= SubscriptionScreenWords.PlanColumn #></th>
+                <th><#= SubscriptionScreenWords.PriceColumn #></th>
+                <th><#= SubscriptionScreenWords.AllowsColumn #></th>
+              </tr>
+            </thead>
+            <tbody>
+              {info.plans.map((plan) => (
+                <tr key={plan.planId}>
+                  <td>{plan.current ? plan.name + ' <#= SubscriptionScreenWords.CurrentMark #>' : plan.name}</td>
+                  <td>{priceText(plan.price, plan.period)}</td>
+                  <td>{plan.limits.map((limit) => limit.key + ': ' + (limit.allowed === null ? '<#= SubscriptionScreenWords.Unlimited #>' : limit.allowed)).join(', ')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </div>
+  );
+}
+@@@FILE src/<#= pagesFolder #>/__tests__/SubscriptionPage.test.tsx@@@
+import { render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SubscriptionPage } from '../SubscriptionPage';
+
+const info = {
+  hasSubscription: true, planId: 2, planName: 'Pro', planPrice: 29, planPeriod: 'month', status: 'active', periodEnd: null, gatewayId: null, writable: true, reason: null,
+  limits: [{ key: 'projects', allowed: 10, used: 2 }, { key: 'seats', allowed: null, used: 3 }],
+  plans: [
+    { planId: 1, name: 'Free', price: 0, period: 'month', current: false, limits: [{ key: 'projects', allowed: 2 }, { key: 'seats', allowed: 1 }] },
+    { planId: 2, name: 'Pro', price: 29, period: 'month', current: true, limits: [{ key: 'projects', allowed: 10 }, { key: 'seats', allowed: null }] },
+  ],
+};
+
+const answer = (body: unknown, status = <#= HttpStatus.Ok #>) => () => Promise.resolve(new Response(JSON.stringify(body), { status }));
+
+describe('SubscriptionPage', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('shows the plan, the status and each limit with what is in use', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(answer(info));
+    render(<SubscriptionPage />);
+    expect(await screen.findByText('Pro')).toBeInTheDocument();
+    expect(screen.getByText('active')).toBeInTheDocument();
+    expect(screen.getByText('<#= SubscriptionScreenWords.Active #>')).toBeInTheDocument();
+    expect(screen.getByText('projects')).toBeInTheDocument();
+    expect(screen.getByText('10')).toBeInTheDocument();
+    expect(screen.getByText('<#= SubscriptionScreenWords.Unlimited #>')).toBeInTheDocument();
+  });
+
+  it('shows the price of the plan and lists every plan with what it allows', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(answer(info));
+    render(<SubscriptionPage />);
+    expect((await screen.findAllByText(/^29\.00 \/ month$/)).length).toBe(2);
+    const plans = screen.getByRole('table', { name: '<#= SubscriptionScreenWords.PlansHeading #>' });
+    expect(within(plans).getByText('Free')).toBeInTheDocument();
+    expect(within(plans).getByText('Pro <#= SubscriptionScreenWords.CurrentMark #>')).toBeInTheDocument();
+    expect(within(plans).getByText('projects: 2, seats: 1')).toBeInTheDocument();
+    expect(within(plans).getByText('projects: 10, seats: <#= SubscriptionScreenWords.Unlimited #>')).toBeInTheDocument();
+  });
+
+  it('says why changes are paused', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(answer({ ...info, status: 'cancelled', writable: false, reason: 'The subscription of this tenant is cancelled.' }));
+    render(<SubscriptionPage />);
+    expect(await screen.findByText(/Changes are paused\./)).toBeInTheDocument();
+    expect(screen.getByText(/is cancelled/)).toBeInTheDocument();
+  });
+
+  it('says so when the tenant has no subscription', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(answer({ ...info, hasSubscription: false, planName: null, status: null, writable: true, limits: [], plans: [] }));
+    render(<SubscriptionPage />);
+    expect(await screen.findByText('<#= SubscriptionScreenWords.NoSubscription #>')).toBeInTheDocument();
+  });
+
+  it('explains when the page is refused', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(answer({}, <#= HttpStatus.Forbidden #>));
+    render(<SubscriptionPage />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('<#= SubscriptionScreenWords.LoadFailed #>');
+  });
+});
+<#
+    }
+#>

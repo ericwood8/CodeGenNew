@@ -49,6 +49,9 @@
     // the tenant routes (PY_Tenants) are one more router
     if (PythonTenantWriter.Applies(Project) && TenantPlan.TenantTableOf(Database, Project) is not null)
         modules.Insert(0, "tenancy");
+    // the subscription routes (PY_Subscriptions) are one more router
+    if (PythonSubscriptionWriter.Applies(Project) && TenantPlan.TenantTableOf(Database, Project) is not null)
+        modules.Insert(0, "subscriptions");
     // and the queue routes (PY_Queue): /api/<table>/stats and /claim would be read as a key and refused
     if (Database.Tables.Any(t => QueuePlan.For(t, Project) is not null))
         modules.Insert(0, "queue");

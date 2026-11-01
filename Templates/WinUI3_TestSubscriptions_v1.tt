@@ -1,0 +1,25 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // WinUI3_TestSubscriptions_v1.tt
+    // Generates: SubscriptionGuardTests.cs   (the output folder is the WinUI3 test project, OutputWinUI3Tests; the WinUI3_EssentialTests group writes the project around it)
+    // MSTest tests of SubscriptionGuard, the plan check the WinUI3 app runs in process (WinUI3_Subscription), over an in-memory SQLite database made from the generated context with a tenant, a plan, its
+    // limit and a subscription: a paused subscription refuses a change, a new row past a plan limit is refused until the limit is raised, a trial ends at its period end, a tenant with no subscription and a
+    // caller in no tenant. Writes nothing unless the project sets DesktopTests=true and the app has the subscription check.
+    // Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
+    // ==========================================================================================
+    if (DesktopSubscriptionTests.Applies(Database, Project))
+    {
+        string appNamespace = Project.AppNamespace;
+        var usings = new List<string>
+        {
+            Project.EntityNamespace ?? appNamespace + ".Entities", Project.ContextNamespace ?? appNamespace + ".Data", Project.RepoNamespace ?? appNamespace + ".Repositories"
+        };
+        Write("@@@FILE SubscriptionGuardTests.cs@@@\n" + DesktopSubscriptionTests.File(Database, Project, appNamespace + ".Tests", usings, Project.ContextName ?? "MyAppContext"));
+    }
+#>

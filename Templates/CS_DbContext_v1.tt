@@ -395,5 +395,10 @@
         Line();
         Line(helpers.Source.ReplaceLineEndings("\n"));
     }
-    Write(sb.ToString());
+    // a table named like a type the project imports (Attribute) gets a file of global using aliases; a template that writes two files marks both
+    string aliases = EntityNameClashes.File(Database, Project.EntityNamespace ?? "MyApp.Common.Entities");
+    if (aliases.Length > 0)
+        Write("@@@FILE " + contextType + ".cs@@@\n" + sb + "@@@FILE EntityAliases.cs@@@\n" + aliases);
+    else
+        Write(sb.ToString());
 #>

@@ -398,17 +398,17 @@ public class TemplateCatalogTests
 
         var groups = offered.GroupBy(t => t.SubmenuGroup).ToDictionary(g => g.Key!, g => g.Count());
         Assert.AreEqual(22, groups["SP"]);
-        Assert.AreEqual(24, groups["API"]);
+        Assert.AreEqual(26, groups["API"]);
         Assert.AreEqual(27, groups["CS"]);
-        Assert.AreEqual(24, groups["TS"]);
-        Assert.AreEqual(20, groups["WinUI3"]);
+        Assert.AreEqual(25, groups["TS"]);
+        Assert.AreEqual(22, groups["WinUI3"]);
         Assert.AreEqual(2, groups["FS"]);
         Assert.AreEqual(5, groups["MD"]);
-        Assert.AreEqual(23, groups["TSX"]);
+        Assert.AreEqual(24, groups["TSX"]);
         Assert.AreEqual(1, groups["PROTO"]);
-        Assert.AreEqual(27, groups["RS"]);
-        Assert.AreEqual(23, groups["BLZ"]);
-        Assert.AreEqual(19, groups["PY"]);
+        Assert.AreEqual(29, groups["RS"]);
+        Assert.AreEqual(25, groups["BLZ"]);
+        Assert.AreEqual(21, groups["PY"]);
         Assert.IsTrue(offered.All(t => !t.IsSuperseded));
     }
 }

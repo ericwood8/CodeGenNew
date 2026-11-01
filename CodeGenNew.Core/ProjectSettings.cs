@@ -27,7 +27,7 @@ public partial class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode", "MaxGridColumns",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "TypeAheadRows", "TypeAheadParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "ApiAnnotations", "NonNegativeColumns", "NotFutureDateColumns", "DatePairs", "NoDatePairs", "PlainTextColumns", "EmailColumns", "UrlColumns", "MoneyColumns", "NotMoneyColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "DesktopTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "RowApprovals", "ApproverTable", "LogTables", "QueueTables", "QueueMaxRetries", "QueueClaimMinutes", "ArchiveTables", "ArchiveBatchSize", "ArchiveRunAt", "TreeTables", "SoftDeleteTables", "EffectiveDatedTables", "TenantTable", "TenantColumn", "NoTenantTables", "TenantMembership", "TenantHostColumn", "WriteRoles", "TableWriteRoles", "ReadRoles", "TableReadRoles", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "KeyColumns", "SingleRowTables", "ListingName", "ListingFolder", "ListingPattern",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "TypeAheadRows", "TypeAheadParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "ApiAnnotations", "NonNegativeColumns", "NotFutureDateColumns", "DatePairs", "NoDatePairs", "PlainTextColumns", "EmailColumns", "UrlColumns", "MoneyColumns", "NotMoneyColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "DesktopTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "RowApprovals", "ApproverTable", "LogTables", "QueueTables", "QueueMaxRetries", "QueueClaimMinutes", "ArchiveTables", "ArchiveBatchSize", "ArchiveRunAt", "TreeTables", "SoftDeleteTables", "EffectiveDatedTables", "TenantTable", "TenantColumn", "NoTenantTables", "TenantMembership", "TenantHostColumn", "SubscriptionTable", "PlanTable", "PlanLimitTable", "PlanLimits", "SubscriptionActiveStatuses", "SubscriptionRequired", "SubscriptionWebhookSecret", "WriteRoles", "TableWriteRoles", "ReadRoles", "TableReadRoles", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "KeyColumns", "SingleRowTables", "ListingName", "ListingFolder", "ListingPattern",
         "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputUno", "OutputRust", "OutputPython", "OutputApiTests", "OutputBlazorTests", "OutputWinUI3Tests", "OutputUnoTests", "RustCrateName", "RustPort", "RustTests", "PythonTests", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildUno", "BuildPython", "BuildRust", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestUno", "TestPython", "TestRust"
     ];
@@ -314,8 +314,14 @@ public partial class ProjectSettings
             if (ArchiveTables.Length > 0) yield return "SP_ArchiveJob";
             if (RowShapePlan.Any(this)) yield return "API_RowShapes";
             if (ApiAuth && TenantTable is not null) { yield return "API_Tenants"; yield return "PY_Tenants"; yield return "RS_Tenants"; }
+            if (ApiAuth && TenantTable is not null && SubscriptionTable is not null) yield return "PY_Subscriptions";
+            if (ApiAuth && TenantTable is not null && SubscriptionTable is not null) yield return "RS_Subscriptions";
             if (ApiAuth && ApiTests && TenantTable is not null) yield return "API_TestTenants";
             if (TenantTable is not null) yield return "SP_TenantIndex";
+            if (ApiAuth && SubscriptionTable is not null && TenantTable is not null) yield return "API_Subscriptions";
+            if (ApiAuth && ApiTests && SubscriptionTable is not null && TenantTable is not null) yield return "API_TestSubscriptions";
+            if (Auth && ApiAuth && SubscriptionTable is not null && TenantTable is not null) { yield return "TSX_Subscription"; yield return "TS_Subscription"; yield return "BLZ_Subscription"; if (BlazorTests) yield return "BLZ_SubscriptionTest"; yield return "UNO_Subscription"; }
+            if (TenantPlan.HasDesktopTenants(this) && SubscriptionTable is not null) yield return "WinUI3_Subscription";
             if (TenantPlan.HasDesktopSignIn(this)) yield return "WinUI3_Auth";
             if (TenantPlan.HasDesktopSwitcher(this)) yield return "WinUI3_Members";
             if (Auth && ApiAuth && UserTable is not null) { yield return "TSX_People"; yield return "TS_People"; yield return "BLZ_People"; if (BlazorTests) yield return "BLZ_PeopleTest"; yield return "UNO_People"; }
@@ -327,6 +333,7 @@ public partial class ProjectSettings
             if (ApiTests && ApiTestContainers && ApiTestSchema.Length == 0 && DatabaseDialect != SqlDialect.Sqlite) yield return "SP_CreateSchema";
             if (BlazorTests) { yield return "BLZ_TestApprovals"; yield return "BLZ_Test"; yield return "BLZ_JunctionTest"; yield return "BLZ_TestMenu"; }
             if (DesktopTests) { yield return "WinUI3_Test"; yield return "UNO_Test"; yield return "WinUI3_TestApprovals"; yield return "UNO_TestApprovals"; }
+            if (DesktopTests && TenantPlan.HasDesktopTenants(this) && SubscriptionTable is not null) yield return "WinUI3_TestSubscriptions";
             if (RustTests)
             {
                 yield return "RS_Test";
@@ -338,10 +345,12 @@ public partial class ProjectSettings
                 if (ApiAuth && RowApprovals.Length > 0) yield return "RS_TestApprovals";
                 if (QueueTables.Length > 0) yield return "RS_TestQueue";
                 if (ApiAuth && TenantTable is not null) yield return "RS_TestTenants";
+                if (ApiAuth && TenantTable is not null && SubscriptionTable is not null) yield return "RS_TestSubscriptions";
             }
             if (PythonTests && ApiAuth && RowApprovals.Length > 0) yield return "PY_TestApprovals";
             if (PythonTests && QueueTables.Length > 0) yield return "PY_TestQueue";
             if (PythonTests && ApiAuth && TenantTable is not null) yield return "PY_TestTenants";
+            if (PythonTests && ApiAuth && TenantTable is not null && SubscriptionTable is not null) yield return "PY_TestSubscriptions";
             if (ProjectDocs) { yield return "MD_DataDictionary"; yield return "MD_Erd"; }
             if (ApiAnnotations) yield return "CS_Validation";
             if (ApiValidation) { yield return "CS_Validator"; yield return "RS_Validate"; yield return "PY_Validate"; }
@@ -605,6 +614,28 @@ public partial class ProjectSettings
 
     /// <summary> The junction that lets one person work in several tenants (<c>TenantMembership=UserTenant:UserId:TenantId:Role</c>: the table, its person column, its tenant column and optionally a text role column). </summary>
     public string? TenantMembership => Explicit("TenantMembership") is { } text && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null;
+
+    /// <summary> The table of subscriptions (<c>SubscriptionTable=Subscription:PlanId:Status:PeriodEnd:GatewayId</c>: a tenant-owned table and optionally its plan, status, period end and gateway id columns). See <see cref="SubscriptionPlan"/>. </summary>
+    public string? SubscriptionTable => Explicit("SubscriptionTable") is { } text && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null;
+
+    /// <summary> The name of the environment variable (or configuration key) that holds the shared secret of the payment gateway's webhook (<c>SubscriptionWebhookSecret=GATEWAY_WEBHOOK_SECRET</c>). With a gateway column on the subscription table the
+    /// APIs then serve <c>POST /api/subscription/webhook</c>. The secret itself is never part of the project. </summary>
+    public string? SubscriptionWebhookSecret => Explicit("SubscriptionWebhookSecret") is { } text && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null;
+
+    /// <summary> The table of plans (<c>PlanTable=Plan</c>), which the subscription's plan column points at. </summary>
+    public string? PlanTable => Explicit("PlanTable") is { } text && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null;
+
+    /// <summary> The table that says what each plan allows (<c>PlanLimitTable=PlanLimit:PlanId:LimitKey:LimitValue</c>: a row per plan and limit name). </summary>
+    public string? PlanLimitTable => Explicit("PlanLimitTable") is { } text && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null;
+
+    /// <summary> The tables whose new rows are counted against a limit (<c>PlanLimits=Project:projects,EmployeeTenant:seats</c>: a table and the limit's name in the plan limit table). </summary>
+    public string[] PlanLimits => Items("PlanLimits");
+
+    /// <summary> The statuses in which a tenant may write (<c>SubscriptionActiveStatuses=trialing,active</c>, the default); null when the setting is not given. </summary>
+    public string[]? SubscriptionActiveStatusesOrNull => Items("SubscriptionActiveStatuses") is { Length: > 0 } statuses ? statuses : null;
+
+    /// <summary> Whether a tenant with no subscription row is refused writes (<c>SubscriptionRequired=true</c>); otherwise it is on no plan and is not limited. </summary>
+    public bool SubscriptionRequired => Flag("SubscriptionRequired");
 
     public const int DefaultArchiveBatchSize = 1000;
     public const string DefaultArchiveRunAt = "02:00";
@@ -924,7 +955,12 @@ public partial class ProjectSettings
         : IsEnumTable(table, shape);
 
     /// <summary> No API / TypeScript model or screen for this table. Null: no project, use the template's own list. </summary>
-    public bool? NoApi(string table, LookupShape shape) => IsApprovalSide(table) ? true : Resolve("NoApiTables", table, shape);
+    public bool? NoApi(string table, LookupShape shape) => IsApprovalSide(table) || IsSubscriptionManaged(table) ? true : Resolve("NoApiTables", table, shape);
+
+    /// <summary> The plan, plan limit and subscription tables (<c>PlanTable</c>, <c>PlanLimitTable</c>, <c>SubscriptionTable</c>): they get no ordinary API, since a list and edit screen would let a tenant's administrator change a plan, a limit or
+    /// their own subscription. The subscription routes (<see cref="SubscriptionPlan"/>) are the only way to read or change them. </summary>
+    public bool IsSubscriptionManaged(string table) => SubscriptionTable is not null
+        && new[] { SubscriptionTable, PlanTable, PlanLimitTable }.Any(s => s is not null && s.Split(':', 2)[0].Trim().EqualsIgnoreCase(table));
 
     /// <summary> The side table of a RowApprovals table: only the approval routes write it, so it never gets an API of its own (that would let a caller skip the four eyes). </summary>
     public bool IsApprovalSide(string table) => RowApprovals.Any(t => ApprovalPlan.SideName(t).EqualsIgnoreCase(table));

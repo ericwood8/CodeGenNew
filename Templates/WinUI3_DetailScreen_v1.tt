@@ -582,6 +582,7 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
         }
 #>
 <#
+        Write(DesktopSubscriptionCode.CheckLines(Project, Model, "_context"));
         Write(DesktopFormCode.GateCheckLines(Project, Model, "_context"));
         if (isNameActive)
         {

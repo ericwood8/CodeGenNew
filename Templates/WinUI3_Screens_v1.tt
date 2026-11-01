@@ -41,6 +41,9 @@
     // administrators manage who works in the current tenant on the members page, the last screen
     bool members = DesktopMembersCode.Applies(Database, Project);
     string membersLine = $"        if (DesktopSession.HasRole([{CSharpText.Quote(Project.AuthAdminRole)}]))\n            NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{MemberWords.Menu}\", Tag = \"Members\" }});";
+    // administrators see the plan, the status and the limits of their tenant on the subscription page (WinUI3_Subscription)
+    bool subscription = DesktopSubscriptionCode.Applies(Database, Project);
+    string subscriptionLine = $"        if (DesktopSession.HasRole([{CSharpText.Quote(Project.AuthAdminRole)}]))\n            NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{SubscriptionScreenWords.Menu}\", Tag = \"Subscription\" }});";
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
 
@@ -82,6 +85,8 @@
         Line("        }");
         if (members)
             Line(membersLine);
+        if (subscription)
+            Line(subscriptionLine);
         Line("    }");
     }
     else
@@ -100,6 +105,8 @@
             Line($"        NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{ApprovalWords.Title}\", Tag = \"Approvals\" }});");
         if (members)
             Line(membersLine);
+        if (subscription)
+            Line(subscriptionLine);
         Line("    }");
     }
     Line();
@@ -147,6 +154,8 @@
         Line("            \"Approvals\" => new ApprovalsPage(new ApprovalService(_context), ApprovalService.Tables),");
     if (members)
         Line($"            \"Members\" => new {DesktopMembersCode.PageName}(_context),");
+    if (subscription)
+        Line("            \"Subscription\" => new SubscriptionPage(_context),");
     Line("            _ => MainContent.Content");
     Line("        };");
     Line("    }");

@@ -42,7 +42,10 @@ public static class DesktopMembersCode
         string personText = nameColumn is null
             ? $"(t.{user.UserName.CSharpName()} ?? \"\")"
             : $"({(nameColumn.IsNullable ? $"t.{nameColumn.CSharpName()} ?? \"\"" : $"t.{nameColumn.CSharpName()}")}) + \" (\" + t.{user.UserName.CSharpName()} + \")\"";
-        return Fill(CodeText, ("§NS", viewNamespace), ("§CTX", contextType), ("§USINGS", string.Concat(usings.Select(u => $"using {u};\n"))),
+        string seatKey = SubscriptionPlan.LimitedTables(database, project).FirstOrDefault(l => l.IsMembership)?.LimitKey ?? "";
+        bool seats = DesktopSubscriptionCode.Applies(database, project) && seatKey.Length > 0;   // the plan limits the people of a tenant: the Add member dialog checks it
+        return Fill(CodeText, ("§NS", viewNamespace), ("§CTX", contextType), ("§USINGS", string.Concat(usings.Select(u => $"using {u};\n")) + (seats ? $"using {project.RepoNamespace ?? "MyApp.Common.Repositories"};\n" : "")),
+            ("§SEATCHECK", seats ? Fill(SeatCheckText, ("§SEATKEY", CSharpText.Quote(seatKey))) : ""),
             ("§U", user.Table.TableName), ("§UKEY", userKey.CSharpName()), ("§ULOGIN", user.UserName.CSharpName()), ("§PERSONTEXT", personText),
             ("§MROLEVALUE", membership.Role is null ? "(string?)null" : $"m.{membership.Role.CSharpName()}"),
             ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
@@ -61,6 +64,16 @@ public static class DesktopMembersCode
             text = text.Replace(token, value);
         return text;
     }
+
+    // the plan limits the people of a tenant (a limit on the membership table): a paused subscription or a full plan refuses the dialog before it opens
+    private const string SeatCheckText = """
+
+        if (await SubscriptionGuard.RefusalAsync(_context, §SEATKEY, true) is { } paused)
+        {
+            Show(paused);
+            return;
+        }
+""";
 
     private const string RoleColumnXaml = "<TextBlock Grid.Column=\"1\" Text=\"Role\" FontWeight=\"SemiBold\" />";
 
@@ -195,7 +208,7 @@ public sealed partial class MembersPage : Page
     private async void OnAddClick(object sender, RoutedEventArgs e)
     {
         if (_context.CurrentTenantId is not int tenant)
-            return;
+            return;§SEATCHECK
         List<MemberCandidate> candidates;
         try
         {

@@ -1,0 +1,75 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_SubscriptionTest_v1.tt
+    // Generates: SubscriptionTests.cs   (the template writes its own path with an @@@FILE marker; the file goes to the Blazor test project)
+    // The bUnit tests of the subscription page BLZ_Subscription writes: the plan, the status and each limit with what is in use, why changes are paused, and a tenant with no subscription.
+    // Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
+    // ==========================================================================================
+    string ns = BlazorNames.Namespace(Project);
+    if (SubscriptionPlan.HasPage(Database, Project))
+    {
+#>
+@@@FILE SubscriptionTests.cs@@@
+using Bunit;
+using <#= ns #>.Pages;
+
+namespace <#= ns #>.Tests;
+
+[TestClass]
+public class SubscriptionTests : PageTestContext
+{
+    private const string Info = """{ "hasSubscription": true, "planId": 2, "planName": "Pro", "planPrice": 29, "planPeriod": "month", "status": "active", "periodEnd": null, "gatewayId": null, "writable": true, "reason": null, "limits": [{ "key": "projects", "allowed": 10, "used": 2 }, { "key": "seats", "allowed": null, "used": 3 }], "plans": [{ "planId": 1, "name": "Free", "price": 0, "period": "month", "current": false, "limits": [{ "key": "projects", "allowed": 2 }, { "key": "seats", "allowed": 1 }] }, { "planId": 2, "name": "Pro", "price": 29, "period": "month", "current": true, "limits": [{ "key": "projects", "allowed": 10 }, { "key": "seats", "allowed": null }] }] }""";
+
+    private IRenderedComponent<Subscription> RenderSubscription(string json)
+    {
+        SignIn("<#= Project.AuthAdminRole #>");
+        Api.Answer("<#= SubscriptionScreenWords.Path #>", json);
+        return Render<Subscription>();
+    }
+
+    [TestMethod]
+    public void Shows_the_plan_the_status_and_each_limit_with_what_is_in_use()
+    {
+        var page = RenderSubscription(Info);
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "Pro"));
+        StringAssert.Contains(page.Markup, "active");
+        StringAssert.Contains(page.Markup, "<#= SubscriptionScreenWords.Active #>");
+        StringAssert.Contains(page.Markup, "projects");
+        StringAssert.Contains(page.Markup, "10");
+        StringAssert.Contains(page.Markup, "<#= SubscriptionScreenWords.Unlimited #>");
+    }
+
+    [TestMethod]
+    public void Shows_the_price_of_the_plan_and_lists_every_plan_with_what_it_allows()
+    {
+        var page = RenderSubscription(Info);
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "29.00 / month"));
+        StringAssert.Contains(page.Markup, "Pro <#= SubscriptionScreenWords.CurrentMark #>");
+        StringAssert.Contains(page.Markup, "Free");
+        StringAssert.Contains(page.Markup, "projects: 2, seats: 1");
+        StringAssert.Contains(page.Markup, "projects: 10, seats: <#= SubscriptionScreenWords.Unlimited #>");
+    }
+
+    [TestMethod]
+    public void Says_why_changes_are_paused()
+    {
+        var page = RenderSubscription(Info.Replace("\"writable\": true", "\"writable\": false").Replace("\"reason\": null", "\"reason\": \"The subscription of this tenant is cancelled.\""));
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "<#= SubscriptionScreenWords.PausedPrefix #>"));
+        StringAssert.Contains(page.Markup, "is cancelled");
+    }
+
+    [TestMethod]
+    public void Says_so_when_the_tenant_has_no_subscription()
+    {
+        var page = RenderSubscription("""{ "hasSubscription": false, "planId": null, "planName": null, "planPrice": null, "planPeriod": null, "status": null, "periodEnd": null, "gatewayId": null, "writable": true, "reason": null, "limits": [], "plans": [] }""");
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "<#= SubscriptionScreenWords.NoSubscription #>"));
+    }
+}
+<#
+    }
+#>

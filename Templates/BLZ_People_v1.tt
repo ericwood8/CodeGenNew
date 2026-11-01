@@ -180,6 +180,11 @@ public static class PeopleApi
         }
         else
         {
+<# if (SubscriptionPlan.IsEnabled(Project)) { #>
+            if ((int)response.StatusCode == <#= HttpStatus.PaymentRequired #>)
+                message = await ApiSupport.ProblemDetailAsync(response) ?? "<#= SubscriptionPlan.PausedFallback #>";
+            else
+<# } #>
             message = (int)response.StatusCode == <#= HttpStatus.Conflict #> ? "<#= PeopleWords.MemberExistsDetail #>" : "Problem while adding!";
         }
     }

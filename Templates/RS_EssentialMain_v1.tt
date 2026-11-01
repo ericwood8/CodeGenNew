@@ -43,6 +43,10 @@ mod support;
 #>
 mod tenancy;
 pub use tenancy::forget_tenant;
+<# if (SubscriptionPlan.IsEnabled(Project)) { #>
+mod subscriptions;
+pub use subscriptions::forget_state;
+<# } #>
 <# if (Project.TenantHostColumn is not null) { #>
 pub use tenancy::forget_hosts;
 <# } #>
@@ -87,6 +91,12 @@ pub fn app(pool: Pool, frontend: Option<PathBuf>) -> Router {
 #>
     let router = routes::router().route_layer(axum::middleware::from_fn_with_state(pool.clone(), auth::require_user)).merge(auth::router());
 <#
+            if (SubscriptionPlan.IsEnabled(Project) && Project.SubscriptionWebhookSecret is not null)
+            {
+#>
+    let router = router.merge(subscriptions::public_router());   // the payment gateway's webhook: signed, not signed in
+<#
+            }
         }
         else
         {

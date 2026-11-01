@@ -131,6 +131,8 @@ pub struct Client {
     router: Router,
     pool: Pool,
     token: Option<String>,
+    /// Headers every request of this client carries besides the token (see with_header).
+    headers: Vec<(String, String)>,
 <#
         if (tenants)
         {
@@ -165,7 +167,7 @@ impl Client {
         }
 #>
         let (pool, scratch) = scratch_pool().await?;
-        let <#= auth && !tenants ? "mut " : "" #>client = Client { router: app(pool.clone(), None), pool, token: None, <#= tenants ? "tenant: None, other_tenant: None, host: None, " : "" #>_scratch: Arc::new(scratch) };
+        let <#= auth && !tenants ? "mut " : "" #>client = Client { router: app(pool.clone(), None), pool, token: None, headers: Vec::new(), <#= tenants ? "tenant: None, other_tenant: None, host: None, " : "" #>_scratch: Arc::new(scratch) };
 <#
         if (tenants)
         {
@@ -226,7 +228,7 @@ impl Client {
         dotenvy::dotenv().ok();
         settings();
         let (pool, scratch) = scratch_pool().await?;
-        let client = Client { router: app(pool.clone(), None), pool, token: None, <#= tenants ? "tenant: None, other_tenant: None, host: None, " : "" #>_scratch: Arc::new(scratch) };
+        let client = Client { router: app(pool.clone(), None), pool, token: None, headers: Vec::new(), <#= tenants ? "tenant: None, other_tenant: None, host: None, " : "" #>_scratch: Arc::new(scratch) };
         Some(<#= tenants ? "client.in_first_tenant().await" : "client" #>)
     }
 
@@ -249,6 +251,13 @@ impl Client {
         if (tenants)
         {
 #>
+    /// The same client, its requests carrying one more header.
+    pub fn with_header(&self, name: &str, value: &str) -> Client {
+        let mut headers = self.headers.clone();
+        headers.push((name.to_string(), value.to_string()));
+        Client { headers, ..self.clone() }
+    }
+
     /// The same application and database for an administrator (or another role) working in this tenant.
     pub fn in_tenant(&self, tenant: i32, role: &str) -> Client {
         Client { tenant: Some(tenant), ..self.clone() }.token_for("tenant-test", role, None)
@@ -320,6 +329,9 @@ impl Client {
         let mut request = Request::builder().method(method).uri(path);
         if let Some(token) = &self.token {
             request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
+        }
+        for (name, value) in &self.headers {
+            request = request.header(name.as_str(), value.as_str());
         }
 <#
         if (tenants)

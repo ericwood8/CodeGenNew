@@ -126,7 +126,7 @@ public static class RustTenantTests
     }
 
     /// <summary> A function that makes the body of a request that adds a row; with <c>async</c> it takes the client to find a row of each parent. </summary>
-    private static string BodyFunction(string name, TableModel table, ProjectSettings project, string client)
+    internal static string BodyFunction(string name, TableModel table, ProjectSettings project, string client)
     {
         var members = TenantTestPlan.Body(table, project);
         var parents = members.Where(m => m.Kind == TenantTestPlan.BodyKind.Parent).ToList();

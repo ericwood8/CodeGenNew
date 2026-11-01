@@ -89,6 +89,11 @@
         Line();
         Line("        TenantRoutes.Register(app);");
     }
+    if (SubscriptionPlan.IsEnabled(Project) && Project.ApiAuth && TenantPlan.IsEnabled(Project))
+    {
+        Line();
+        Line("        SubscriptionRoutes.Register(app);");
+    }
     if (Database.Tables.Any(t => RowShapePlan.Has(t, Project)))
     {
         Line();

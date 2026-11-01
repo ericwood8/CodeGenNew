@@ -89,6 +89,7 @@
         string keyInLink = form.TextKey ? $"encodeURIComponent(selectedRow?.{JsonNames.Camel(keyColumn.Name)} ?? '')" : $"selectedRow?.{JsonNames.Camel(keyColumn.Name)}";
         string title = form.Title;
         bool hasName = form.HasName; // just for showError's message wording below
+        bool planned = SubscriptionPlan.PausesWrites(Model, Project);   // a write can be answered 402 (subscription paused, plan limit reached): the form shows the API's sentence
         const int pageSize = 20;
         // The same paging and search bar as TSX_Page: one text box per searchable column (Model.SearchableColumns), paged by the API's /search endpoint.
         // The Search list protocol (ListProtocol=Search) has one search box for the whole table; the server decides which columns it matches.
@@ -232,6 +233,19 @@
             T($"import {{ {ReactNames.ApiVar(p.Table)} }} from '../{apiFolder}/{ReactNames.ApiFile(p.Table)}';");
         }
         T();
+        if (planned)
+        {
+            T("// the sentence of a 402 answer: the subscription is paused, or the plan allows no more rows of this kind");
+            T("const planDetail = (error: unknown): string => {");
+            T("  try {");
+            T("    const body = JSON.parse((error as Error).message) as { detail?: unknown };");
+            T($"    return typeof body.detail === 'string' ? body.detail : '{SubscriptionPlan.PausedFallback}';");
+            T("  } catch {");
+            T($"    return '{SubscriptionPlan.PausedFallback}';");
+            T("  }");
+            T("};");
+            T();
+        }
         if (parents.Any(p => p.UsesLookupEndpoint && !Ahead(p)))
         {
             T("// one row of GET <route>/lookup: the key, the text to show and whether the row is active");
@@ -838,6 +852,7 @@
         T("  const showError = (action: string, err: unknown) => {");
         T($"    if (err instanceof ApiError && err.status === {HttpStatus.BadRequest}) {{ setError({(hasName ? "'Name is bad or has special characters!'" : "'Some of the values are not acceptable!'")}); }}");
         T($"    else if (err instanceof ApiError && err.status === {HttpStatus.NotFound}) {{ setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'); load(page); }}");
+        if (planned) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.PaymentRequired}) {{ setError(planDetail(err)); }}");
         // a typed key can already be taken: the API answers 409
         if (textKey) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.Conflict}) {{ setError('A {Labels.Words(baseName).ToLowerInvariant()} with this {Labels.Column(keyColumn.Name).ToLowerInvariant()} already exists!'); }}");
         if ((odata || nameActive) && !textKey) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.Conflict}) {{ setError({problemCall}(err) ?? 'A row with this value already exists!'); }}");

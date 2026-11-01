@@ -1,0 +1,19 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Subscriptions_v1.tt
+    // Generates: src/subscriptions.rs   (whole-database; the path is written by the template)
+    // The Rust counterpart of API_Subscriptions (plans, subscriptions and entitlements, SubscriptionTable): the check that pauses a tenant's writes while its subscription is not active (require_user calls it), the plan
+    // limits on creates and on adding members, GET /api/subscription for the tenant's administrator and PUT /api/subscription/{tenant_id} for a platform administrator. The rules and sentences are SubscriptionPlan and
+    // SubscriptionWords in Core, the text is RustSubscriptionWriter. Needs ApiAuth=true and TenantTable. Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
+    // ==========================================================================================
+    var problems = SubscriptionPlan.Problems(Database, Project);
+    if (problems.Count > 0)
+        Error(string.Join(" | ", problems));
+    else if (RustSubscriptionWriter.Applies(Project))
+        Write("@@@FILE src/subscriptions.rs@@@\n" + RustSubscriptionWriter.File(Database, Project));
+#>

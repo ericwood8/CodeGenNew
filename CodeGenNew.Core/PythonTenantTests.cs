@@ -112,7 +112,7 @@ public static class PythonTenantTests
     }
 
     /// <summary> A function that makes the body of a request that adds a row, or None when a parent has no row to point at. </summary>
-    private static string BodyFunction(string name, TableModel table, ProjectSettings project)
+    internal static string BodyFunction(string name, TableModel table, ProjectSettings project)
     {
         var members = TenantTestPlan.Body(table, project);
         var o = new StringBuilder();

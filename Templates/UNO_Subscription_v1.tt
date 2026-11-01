@@ -1,0 +1,25 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // UNO_Subscription_v1.tt
+    // Generates: Views/SubscriptionPage.xaml and Views/SubscriptionPage.xaml.cs   (the template writes its own paths with @@@FILE markers)
+    // The subscription page of an Uno app that signs in (Auth=true, ApiAuth, SubscriptionTable with TenantTable): the plan, the status, the period end and, for each plan limit, what the plan allows and what the
+    // tenant has (GET api/subscription). UNO_Screens puts the page in the menu for the administrator role. A save refused with 402 shows the API's sentence (ApiSupport reads the problem detail).
+    // Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
+    // ==========================================================================================
+    string servicesNamespace = UnoNames.ServicesNamespace(Project);
+    string viewNamespace = Project.ViewNamespace ?? Project.AppNamespace + ".Views";
+    if (SubscriptionPlan.HasPage(Database, Project))
+    {
+#>
+@@@FILE Views/SubscriptionPage.xaml@@@
+<#= UnoSubscriptionCode.Xaml(viewNamespace) #>
+@@@FILE Views/SubscriptionPage.xaml.cs@@@
+<#= UnoSubscriptionCode.Code(viewNamespace, servicesNamespace) #>
+<#
+    }
+#>

@@ -8,6 +8,7 @@ public static class HttpStatus
     public const int NoContent = 204;
     public const int BadRequest = 400;
     public const int Unauthorized = 401;
+    public const int PaymentRequired = 402;
     public const int Forbidden = 403;
     public const int NotFound = 404;
     public const int Conflict = 409;
@@ -23,6 +24,7 @@ public static class HttpStatus
         NoContent => "StatusCodes.Status204NoContent",
         BadRequest => "StatusCodes.Status400BadRequest",
         Unauthorized => "StatusCodes.Status401Unauthorized",
+        PaymentRequired => "StatusCodes.Status402PaymentRequired",
         Forbidden => "StatusCodes.Status403Forbidden",
         NotFound => "StatusCodes.Status404NotFound",
         Conflict => "StatusCodes.Status409Conflict",

@@ -269,6 +269,9 @@ public sealed class TestDb : IAsyncDisposable
 
     public {{contextType}} Context { get; }
 
+    /// <summary> The open connection, for a test that needs a second context over the same database (one that works in a tenant). </summary>
+    public SqliteConnection Connection => _connection;
+
     public static async Task<TestDb> CreateAsync()
     {
         var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");

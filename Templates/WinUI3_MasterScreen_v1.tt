@@ -941,7 +941,7 @@ public partial class <#= table #>ListViewModel : ViewModelBase
     public async Task RestoreAsync(<#= keyCs #> id)
     {
         ErrorMessage = null;
-        if (!await _repo.RestoreAsync(id))
+<#= DesktopSubscriptionCode.WriteLines(Project, Model, "_context", "ErrorMessage", "return;") #>        if (!await _repo.RestoreAsync(id))
             ErrorMessage = "This row is not deleted any more.";
         await LoadAsync();
     }
@@ -950,7 +950,7 @@ public partial class <#= table #>ListViewModel : ViewModelBase
     public async Task DeleteAsync(<#= keyCs #> id)
     {
         ErrorMessage = null;
-        int result = await _repo.DeleteAsync("<#= table #>", id);
+<#= DesktopSubscriptionCode.WriteLines(Project, Model, "_context", "ErrorMessage", "return;") #>        int result = await _repo.DeleteAsync("<#= table #>", id);
         if (result == 0)
             await LoadAsync();
         else if (result == -1)
@@ -967,7 +967,7 @@ public partial class <#= table #>ListViewModel : ViewModelBase
     public async Task<int?> CloneAsync(int id)
     {
         ErrorMessage = null;
-        try
+<#= DesktopSubscriptionCode.WriteLines(Project, Model, "_context", "ErrorMessage", "return null;", "true") #>        try
         {
 <#
             if (GatePlan.HasRules(Project, Model))

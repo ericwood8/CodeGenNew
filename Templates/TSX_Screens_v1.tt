@@ -66,6 +66,9 @@
     bool membersPage = Project.Auth && PeoplePlan.For(Database, Project) is { HasMembers: true };   // administrators say who works in the tenant (TSX_People)
     if (membersPage)
         Line($"import {{ MembersPage }} from './{pagesFolder}/MembersPage';");
+    bool subscriptionPage = SubscriptionPlan.HasPage(Database, Project);   // the administrator sees the plan, the status and the limits (TSX_Subscription)
+    if (subscriptionPage)
+        Line($"import {{ SubscriptionPage }} from './{pagesFolder}/SubscriptionPage';");
     Line();
     // the OData pages are loaded when their route is first opened (a separate chunk each), so they do not add to the first download
     foreach (var t in odataScreens)
@@ -93,6 +96,11 @@
     {
         string adminRole = WriteRolePlan.Literal([Project.AuthAdminRole], (char)39);
         Line($"  {{ path: 'members', label: '{MemberWords.Menu}', element: <MembersPage />, roles: [{adminRole}] }},");
+    }
+    if (subscriptionPage)
+    {
+        string adminRole = WriteRolePlan.Literal([Project.AuthAdminRole], (char)39);
+        Line($"  {{ path: 'subscription', label: '{SubscriptionScreenWords.Menu}', element: <SubscriptionPage />, roles: [{adminRole}] }},");
     }
     Line("];");
     Write(sb.ToString());

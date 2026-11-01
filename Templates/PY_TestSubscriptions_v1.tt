@@ -1,0 +1,18 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_TestSubscriptions_v1.tt
+    // Generates: tests/test_subscriptions.py   (whole-database; the output folder is the Python API's folder)
+    // pytest tests of the plans, subscriptions and limits of the Python API (SubscriptionTable). They sign in with real tokens, because the check that pauses a tenant's writes lives in require_user (the tenant tests
+    // replace it); they make a tenant through the API and a plan of their own with SQL, and take both out again: writes pause while the subscription is not active and reads go on, a tenant with no subscription, a
+    // create past a plan limit is refused until the limit is raised, a trial ends at its period end, only a platform administrator changes a subscription, and the administrator sees it while a member does not.
+    // Needs tests/conftest.py and tests/test_tenants.py of PY_TestTenants (imports tenant_body from it). Written only for a project with PythonTests=true, ApiAuth=true, TenantTable and SubscriptionTable; not for SQL Server.
+    // Run them with pytest from the API's folder.
+    // Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
+    // ==========================================================================================
+    if (PythonSubscriptionTests.Applies(Database, Project))
+        Write("@@@FILE tests/test_subscriptions.py@@@\n" + PythonSubscriptionTests.File(Database, Project));
+#>

@@ -36,6 +36,10 @@
     bool membersPage = Project.Auth && PeoplePlan.For(Database, Project) is { HasMembers: true };
     if (membersPage)
         menu.Add((Tag: "Members", Label: MemberWords.Menu, Roles: (IReadOnlyList<string>)new[] { Project.AuthAdminRole }));
+    // administrators see the plan, the status and the limits of their tenant (UNO_Subscription)
+    bool subscriptionPage = SubscriptionPlan.HasPage(Database, Project);
+    if (subscriptionPage)
+        menu.Add((Tag: "Subscription", Label: SubscriptionScreenWords.Menu, Roles: (IReadOnlyList<string>)new[] { Project.AuthAdminRole }));
     foreach (string table in screens.Select(t => t.TableName).Where(n => !clients.Any(c => c.TableName.EqualsIgnoreCase(n))))
         Error($"UNO_Screens lists {table}, which has no API client (see UNO_Client): a screen needs the table's own CRUD API.");
 
@@ -136,6 +140,8 @@
         L($"            \"{t.TableName}Links\" => new {DesktopJunctionPage.PageName(t.TableName)}(_api),");
     if (membersPage)
         L("            \"Members\" => new MembersPage(_api),");
+    if (subscriptionPage)
+        L("            \"Subscription\" => new SubscriptionPage(_api),");
     L("            _ => MainContent.Content");
     L("        };");
     L("    }");

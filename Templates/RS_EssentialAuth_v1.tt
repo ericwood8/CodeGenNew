@@ -254,6 +254,9 @@ pub async fn require_user(<#= tenants ? "State(pool): State<Pool>, " : "" #>mut 
 <# if (tenants) { #>
     if let Some(tenant) = user.tenant_id {
         crate::tenancy::ensure_active(&pool, tenant).await?;
+<# if (SubscriptionPlan.IsEnabled(Project)) { #>
+        crate::subscriptions::check_write(&pool, request.method(), request.uri().path(), tenant).await?;
+<# } #>
 <# if (hosts) { #>
         crate::tenancy::check_host(&pool, request.headers(), tenant).await?;
 <# } #>

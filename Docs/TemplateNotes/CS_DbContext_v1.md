@@ -26,3 +26,5 @@ The class is partial (a context inside a WinUI 3 project is reachable from WinRT
 The NuGet package the provider needs is named in the class comment. Hand-written parts (extra DbSets for views, OnModelCreating)
 go in another part of the partial class, so regenerating never loses them.
 ```
+
+A table whose entity has the name of a type the generated projects import by default (`Attribute` against `System.Attribute`, `Action`, `Type`, `Task` and so on) would make that bare name ambiguous in every generated file (CS0104). The template then also writes `EntityAliases.cs` beside the context, a file of `global using Attribute = <EntityNamespace>.Attribute;` lines (`EntityNameClashes` in Core), and the alias wins over the imported type.

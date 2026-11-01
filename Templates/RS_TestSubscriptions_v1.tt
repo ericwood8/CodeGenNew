@@ -1,0 +1,18 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestSubscriptions_v1.tt
+    // Generates: tests/api/subscription_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // Tests of the plans, subscriptions and limits of the Rust API (SubscriptionTable). Each test makes a tenant (make_tenant of RS_TestTenants) and a plan of its own with SQL, and takes both out again: writes
+    // pause while the subscription is not active and reads go on, a tenant with no subscription, a create past a plan limit is refused until the limit is raised, a trial ends at its period end, only a platform
+    // administrator changes a subscription, and the administrator sees it while a member does not.
+    // Written only for a project with RustTests=true, ApiAuth=true, TenantTable and SubscriptionTable; not for SQL Server. Needs Client of tests/api/test_support.rs (RS_EssentialTests) and tests/api/tenant_routes.rs
+    // (RS_TestTenants); RS_TestBodies lists the modules.
+    // Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
+    // ==========================================================================================
+    if (RustSubscriptionTests.Applies(Database, Project))
+        Write("@@@FILE tests/api/subscription_routes.rs@@@\n" + RustSubscriptionTests.File(Database, Project));
+#>

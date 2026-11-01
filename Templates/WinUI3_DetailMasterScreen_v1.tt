@@ -464,7 +464,7 @@ public sealed partial class <#= table #>DetailMasterDialog : ContentDialog
             button.Content = "Confirm?";
             return;
         }
-        try
+<#= DesktopSubscriptionCode.ChildLines(Project, child, "_context", "ViewModel.ErrorMessage", "button.Content = \"Delete\"; return;") #>        try
         {
             _context.Remove(entity);
             await _context.SaveChangesAsync();
@@ -1217,6 +1217,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         }
 #>
 <#
+        Write(DesktopSubscriptionCode.CheckLines(Project, Model, "_context"));
         Write(DesktopFormCode.GateCheckLines(Project, Model, "_context"));
         if (isNameActive)
         {
@@ -1245,6 +1246,8 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 <#
             if (editChildren.Count > 0)
             {
+                foreach (var child in editChildren)
+                    Write(DesktopSubscriptionCode.ChildLines(Project, child, "_context", "ErrorMessage", "return false;", $"{child.Var}Edit.Any(l => l.RowKey == default)", $"{child.Var}Edit.Count(l => l.RowKey == default)"));
 #>
         // the row and its editable rows are one unit of work
         await using var transaction = await _context.Database.BeginTransactionAsync();

@@ -24,6 +24,9 @@ public class ApiException(int status, string message) : Exception(message)
     {
         <#= HttpStatus.BadRequest #> => action == "deleting" ? "It cannot be deleted because it is in use!" : "Some of the values are not acceptable!",
         <#= HttpStatus.NotFound #> => "It no longer exists!",
+<# if (SubscriptionPlan.IsEnabled(Project)) { #>
+        <#= HttpStatus.PaymentRequired #> => Message,   // the subscription is paused or the plan allows no more: the API's own sentence
+<# } #>
         _ => $"Problem while {action}!"
     };
 }
@@ -39,10 +42,31 @@ public class PagedResult<T>
 
 public static class ApiSupport
 {
-    public static Task EnsureSuccessAsync(this HttpResponseMessage response) =>
-        response.IsSuccessStatusCode
-            ? Task.CompletedTask
-            : throw new ApiException((int)response.StatusCode, $"{(int)response.StatusCode} {response.ReasonPhrase}");
+    public static async Task EnsureSuccessAsync(this HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode)
+            return;
+        string message = $"{(int)response.StatusCode} {response.ReasonPhrase}";
+<# if (SubscriptionPlan.IsEnabled(Project)) { #>
+        if ((int)response.StatusCode == <#= HttpStatus.PaymentRequired #>)
+            message = await ProblemDetailAsync(response) ?? "<#= SubscriptionPlan.PausedFallback #>";
+<# } #>
+        throw new ApiException((int)response.StatusCode, message);
+    }
+
+    /// <summary> The detail of a problem-details answer (the API's own sentence), or null when the answer is not one. </summary>
+    public static async Task<string?> ProblemDetailAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            return document.RootElement.TryGetProperty("detail", out var detail) && detail.ValueKind == System.Text.Json.JsonValueKind.String ? detail.GetString() : null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
 
     public static async Task<T> ReadAsync<T>(this HttpResponseMessage response)
     {

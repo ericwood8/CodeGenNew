@@ -113,6 +113,13 @@ export function MembersPage() {
       setAdding(false);
       load();
     } catch (error) {
+<# if (SubscriptionPlan.IsEnabled(Project)) { #>
+      if (error instanceof ApiError && error.status === <#= HttpStatus.PaymentRequired #>) {
+        // the plan allows no more seats, or the subscription is paused: the API says which
+        try { setMessage((JSON.parse(error.message) as { detail?: string }).detail ?? '<#= SubscriptionPlan.PausedFallback #>'); } catch { setMessage('<#= SubscriptionPlan.PausedFallback #>'); }
+        return;
+      }
+<# } #>
       setMessage(error instanceof ApiError && error.status === <#= HttpStatus.Conflict #> ? '<#= PeopleWords.MemberExistsDetail #>' : 'Problem while adding!');
     }
   };

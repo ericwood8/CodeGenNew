@@ -1,0 +1,44 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string viewNamespace = "MyApp.Desktop.Views";
+    string repositoryNamespace = "MyApp.Common.Repositories";
+    string contextType = "MyAppContext";
+    string[] usings = { };   // namespaces the generated files must "using" (the context's)
+    string viewsFolder = "Views";   // under the WinUI3 project root (where -o points)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    viewNamespace = Project.ViewNamespace ?? viewNamespace;
+    repositoryNamespace = Project.RepoNamespace ?? repositoryNamespace;
+    contextType = Project.ContextName ?? contextType;
+    usings = Project.Usings ?? usings;
+    viewsFolder = Project.ViewsFolder ?? viewsFolder;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // WinUI3_Subscription_v1.tt
+    // Generates: Repositories/SubscriptionGuard.cs, <ViewsFolder>/SubscriptionPage.xaml and <ViewsFolder>/SubscriptionPage.xaml.cs   (the paths are written by the template)
+    // Plans and subscriptions in the WinUI3 app, for a project with the desktop sign-in, a TenantTable and a SubscriptionTable. The app reads the database itself and never meets the API's check, so the guard is the same rule
+    // written for its context: a paused subscription refuses a save and a new row past a plan limit is refused (the detail dialogs call SubscriptionGuard.RefusalAsync before they save), and the subscription page shows the
+    // plan, the status and the limits. WinUI3_Screens puts the page in the menu for administrators. Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
+    // ==========================================================================================
+    if (DesktopSubscriptionCode.Applies(Database, Project))
+    {
+#>
+@@@FILE Repositories/SubscriptionGuard.cs@@@
+namespace <#= repositoryNamespace #>;
+
+<#= DesktopSubscriptionCode.GuardFile(Database, Project, contextType, usings) #>
+@@@FILE <#= viewsFolder #>/SubscriptionPage.xaml@@@
+<#= DesktopSubscriptionCode.Xaml(viewNamespace, repositoryNamespace) #>
+@@@FILE <#= viewsFolder #>/SubscriptionPage.xaml.cs@@@
+<#= DesktopSubscriptionCode.Code(viewNamespace, repositoryNamespace, contextType, usings) #>
+<#
+    }
+#>

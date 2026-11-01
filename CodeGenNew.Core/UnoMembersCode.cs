@@ -4,7 +4,7 @@ namespace CodeGenNew.Core;
 /// <c>/api/auth/members</c> instead of the database. The page is in the menu for administrators. </summary>
 public static class UnoMembersCode
 {
-    public static string Code(string viewNamespace, string servicesNamespace, bool hasRole) => Fill(CodeText, ("§NS", viewNamespace), ("§SERVICES", servicesNamespace),
+    public static string Code(string viewNamespace, string servicesNamespace, bool hasRole, bool plans = false) => Fill(CodeText, ("§PLANCHECK", plans ? Fill(PlanCheckText, ("§FALLBACK", SubscriptionPlan.PausedFallback)) : ""), ("§NS", viewNamespace), ("§SERVICES", servicesNamespace),
         ("§ROLEEDIT", hasRole ? Fill(RoleEditText, RoleTokens) : ""), ("§ROLEBODY", hasRole ? ", role = newRole" : ""), ("§ROLEBOX", hasRole ? Fill(RoleBoxText, RoleTokens) : ""), ("§ROLEPANEL", hasRole ? ", roleBox" : ""),
         ("§ROLEREAD", hasRole ? "\n        string newRole = roleBox.Text.Trim();" : ""),
         ("§MEMBERSPATH", PeopleWords.MembersPath), ("§CANDIDATESPATH", PeopleWords.CandidatesPath), ("§NOBODY", MemberWords.NobodyToAdd), ("§ADMINS", PeopleWords.MembersAdminsOnlyDetail),
@@ -22,6 +22,16 @@ public static class UnoMembersCode
             text = text.Replace(token, value);
         return text;
     }
+
+    // a 402: the subscription is paused or the plan allows no more seats; the API says which
+    private const string PlanCheckText = """
+
+            if ((int)response.StatusCode == 402)
+            {
+                Show(await ApiSupport.ProblemDetailAsync(response) ?? "§FALLBACK");
+                return;
+            }
+""";
 
     private const string RoleBoxText = "\n        var roleBox = new TextBox { Header = \"§ROLELABEL\", PlaceholderText = \"§ROLEHINT\" };";
 
@@ -155,7 +165,7 @@ public sealed partial class MembersPage : Page
             {
                 Show("§EXISTS");
                 return;
-            }
+            }§PLANCHECK
             response.EnsureSuccessStatusCode();
         }
         catch (HttpRequestException ex)
