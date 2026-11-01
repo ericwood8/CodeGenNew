@@ -10,16 +10,21 @@ public static class DesktopSubscriptionCode
     public static bool Applies(DatabaseModel database, ProjectSettings project) =>
         TenantPlan.HasDesktopTenants(project) && SubscriptionPlan.IsEnabled(project) && SubscriptionPlan.Problems(database, project).Count == 0;
 
-    /// <summary> The lines of <c>SaveAsync</c> that run the subscription check before a row is saved (eight spaces in): a paused subscription, or a new row past the plan's limit, is the dialog's error. Empty when the table is not
-    /// tenant-owned or the app has no subscription check. </summary>
+    /// <summary> The lines of <c>SaveAsync</c> that run the subscription check before a row is saved (eight spaces in): a paused subscription, or a new row past the plan's limit, is the dialog's error (any table: the API pauses every write of a tenant, so the app does too). Empty when the app has no
+    /// subscription check. </summary>
     public static string CheckLines(ProjectSettings project, TableModel table, string context) =>
         WriteLines(project, table, context, "ErrorMessage", "return false;", "_editing is null");
 
     /// <summary> The same check for a change other than a save (a delete, a restore, a clone, the rows of a grid): <paramref name="error"/> is the property that takes the sentence, <paramref name="exit"/> the statement that
     /// leaves the method, <paramref name="isNew"/> the expression that says rows are added (the plan's limit is checked then; "false" checks only that the subscription is active) and <paramref name="adding"/> how many.
-    /// Empty when the table is not tenant-owned or the app has no subscription check. </summary>
+    /// Empty when the app has no subscription check. </summary>
     public static string WriteLines(ProjectSettings project, TableModel table, string context, string error, string exit, string isNew = "false", string adding = "1", int indent = 8) =>
-        Lines(project, SubscriptionPlan.PausesWrites(table, project), table.TableName, context, error, exit, isNew, adding, indent);
+        Lines(project, SubscriptionPlan.IsEnabled(project), table.TableName, context, error, exit, isNew, adding, indent);
+
+    /// <summary> The pause check alone, for a screen that writes through its own context and is not about one tenant-owned table (a junction editor, an approval button): a paused subscription is <paramref name="error"/>.
+    /// Empty when the app has no subscription check. </summary>
+    public static string AnyWriteLines(ProjectSettings project, string context, string error, string exit, int indent = 8) =>
+        Lines(project, SubscriptionPlan.IsEnabled(project), "", context, error, exit, "false", "1", indent);
 
     /// <summary> The same for the rows of a child grid: the child table is checked, not the row the dialog is about. </summary>
     public static string ChildLines(ProjectSettings project, DesktopChild child, string context, string error, string exit, string isNew = "false", string adding = "1", int indent = 8) =>
@@ -71,9 +76,13 @@ public static class DesktopSubscriptionCode
             ("§PERIODSELECT", subscription.PlanPeriod is null ? "(string?)null" : $"p.{subscription.PlanPeriod.CSharpName()}"),
             ("§LIMITT", limit?.Table.TableName ?? ""), ("§LPLAN", limit?.Plan.CSharpName() ?? ""), ("§LKEY", limit?.Key.CSharpName() ?? ""), ("§LVALUE", limit?.Value.CSharpName() ?? ""),
             ("§KEYS", string.Join(", ", limited.Select(l => CSharpText.Quote(l.LimitKey)))), ("§COUNTCASES", countCases),
-            ("§PLANVALUES", limit is null ? PlanValuesNone : PlanValuesOf)
+            ("§PLANVALUES", limit is null ? PlanValuesNone : PlanValuesOf),
+            ("§CANCHOOSE", project.SubscriptionPlanChoice ? "true" : "false"),
+            ("§NOTENANT_TEXT", CSharpText.Escape(SubscriptionScreenWords.NoTenant)), ("§UNKNOWNPLAN_TEXT", CSharpText.Escape(SubscriptionWords.UnknownPlan)), ("§TOOSMALL_TEXT", CSharpText.Escape(SubscriptionWords.PlanTooSmallText))
         ];
-        o.Append(Fill(limit is null ? GuardNoLimits : GuardText, names));
+        string startInit = subscription.PeriodStart is null ? "" : $", {subscription.PeriodStart.CSharpName()} = " + (subscription.PeriodStart.CSharpBase() == "DateTimeOffset" ? "DateTimeOffset.UtcNow" : "DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)");
+        string choose = project.SubscriptionPlanChoice ? Fill(Fill(ChooseText, ("§TOOSMALL", limit is null ? "" : TooSmallText), ("§STARTINIT", startInit)), names) : "";
+        o.Append(Fill(limit is null ? GuardNoLimits : GuardText, names.Concat([("§CHOOSE", choose)]).ToArray()));
         return o.ToString();
     }
 
@@ -118,12 +127,41 @@ public sealed record DesktopSubscription(bool Exists, int? PlanId, string? PlanN
 
 """;
 
+    private const string ChooseText = """
+
+    /// <summary> The administrator moves the tenant to a plan of the list (SubscriptionPlanChoice=true), at once and with no payment step. Answers the sentence that refuses, or null when the plan was changed. </summary>
+    public static async Task<string?> ChooseAsync(§CTX context, int planId)
+    {
+        if (context.CurrentTenantId is not int tenant)
+            return "§NOTENANT_TEXT";
+        if (!await context.Set<§P>().AsNoTracking().AnyAsync(p => p.§PKEY == planId))
+            return "§UNKNOWNPLAN_TEXT";
+§TOOSMALL        var row = await context.Set<§S>().Where(s => s.§STENANT == tenant).OrderByDescending(s => s.§SKEY).FirstOrDefaultAsync();
+        if (row is null)
+            context.Add(new §S { §STENANT = tenant, §SPLAN = planId, §SSTATUS = ActiveStatuses.Contains("active") ? "active" : ActiveStatuses[0]§STARTINIT });
+        else
+            row.§SPLAN = planId;
+        await context.SaveChangesAsync();
+        return null;
+    }
+""";
+
+    private const string TooSmallText = """
+        foreach (string key in Keys)
+        {
+            int used = await UsedAsync(context, tenant, key);
+            if (await AllowedAsync(context, planId, key) is { } most && used > most)
+                return string.Format("§TOOSMALL_TEXT", key, most, used);
+        }
+""";
+
     private const string GuardText = """
 // The check of the API (Apis/Subscriptions.cs) written for the app's own context, which reads the database itself. The context filters the tenant's rows, so the counts and the subscription are the signed-in tenant's.
 public static class SubscriptionGuard
 {
     public static readonly string[] ActiveStatuses = { §STATUSES };
     public const bool Required = §REQUIRED;
+    public const bool CanChoose = §CANCHOOSE;
     public static readonly string[] Keys = { §KEYS };
 
     /// <summary> The sentence that refuses a save, or null when it may go ahead: the subscription of the tenant is paused, or <paramref name="adding"/> new rows would pass the plan's limit named <paramref name="limitKey"/>. </summary>
@@ -187,7 +225,7 @@ public static class SubscriptionGuard
     {
 §COUNTCASES        _ => Task.FromResult(0)
     };
-}
+§CHOOSE}
 
 """;
 
@@ -197,6 +235,7 @@ public static class SubscriptionGuard
 {
     public static readonly string[] ActiveStatuses = { §STATUSES };
     public const bool Required = §REQUIRED;
+    public const bool CanChoose = §CANCHOOSE;
 
     /// <summary> The sentence that refuses a save, or null when it may go ahead: the subscription of the tenant is paused. </summary>
     public static async Task<string?> RefusalAsync(§CTX context, string? limitKey, bool isNew, int adding = 1)
@@ -238,7 +277,7 @@ public static class SubscriptionGuard
             return (false, string.Format("§TRIAL_TEXT", ends.ToString("yyyy-MM-dd")));
         return (true, null);
     }
-}
+§CHOOSE}
 
 """;
 
@@ -297,8 +336,23 @@ public sealed partial class SubscriptionPage : Page
             Limits.Add(limit);
         LimitsHeading.Visibility = Limits.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         foreach (var plan in info.Plans)
+        {
+            plan.CanChoose = SubscriptionGuard.CanChoose && !plan.Current;
             Plans.Add(plan);
+        }
         PlansHeading.Visibility = Plans.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // Choose moves the tenant to the plan of the row; a refusal shows its sentence.
+    private async void OnChooseClick(object sender, RoutedEventArgs e)
+    {
+        if (await SubscriptionGuard.ChooseAsync(_context, (int)((Button)sender).Tag) is { } refused)
+        {
+            Problem.Message = refused;
+            Problem.IsOpen = true;
+            return;
+        }
+        await LoadAsync();
     }
 }
 """;

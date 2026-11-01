@@ -62,6 +62,7 @@
           <th>" + SubscriptionScreenWords.PlanColumn + @"</th>
           <th>" + SubscriptionScreenWords.PriceColumn + @"</th>
           <th>" + SubscriptionScreenWords.AllowsColumn + @"</th>
+          <th *ngIf=""info.canChoose"">" + SubscriptionScreenWords.ChooseColumn + @"</th>
         </tr>
       </thead>
       <tbody>
@@ -69,6 +70,7 @@
           <td>{{ plan.current ? plan.name + ' " + SubscriptionScreenWords.CurrentMark + @"' : plan.name }}</td>
           <td>{{ priceText(plan.price, plan.period) }}</td>
           <td>{{ allows(plan) }}</td>
+          <td *ngIf=""info.canChoose""><button type=""button"" *ngIf=""!plan.current"" (click)=""choose(plan)"" [attr.aria-label]=""'" + SubscriptionScreenWords.ChooseButton + @" ' + plan.name"">" + SubscriptionScreenWords.ChooseButton + @"</button></td>
         </tr>
       </tbody>
     </table>
@@ -112,6 +114,8 @@ export interface SubscriptionInfo {
   reason: string | null;
   limits: LimitInfo[];
   plans: PlanInfo[];
+  /** Whether the administrator may choose a plan from the list (SubscriptionPlanChoice). */
+  canChoose: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -120,6 +124,11 @@ export class SubscriptionService {
 
   get(): Observable<SubscriptionInfo> {
     return this.http.get<SubscriptionInfo>('<#= SubscriptionScreenWords.Path.TrimStart('/') #>');
+  }
+
+  /** Moves the tenant to a plan of the list; the answer is the subscription as it is now. */
+  choose(planId: number): Observable<SubscriptionInfo> {
+    return this.http.put<SubscriptionInfo>('<#= SubscriptionScreenWords.Path.TrimStart('/') #>/plan', { planId });
   }
 }
 @@@FILE src/app/<#= componentsFolder #>/subscription/subscription.component.ts@@@
@@ -158,6 +167,15 @@ export class SubscriptionComponent implements OnInit {
     return plan.limits.map((limit) => limit.key + ': ' + (limit.allowed === null ? '<#= SubscriptionScreenWords.Unlimited #>' : limit.allowed)).join(', ');
   }
 
+  /** Moves the tenant to the plan; a refusal shows the API's sentence. */
+  choose(plan: PlanInfo): void {
+    this.message = '';
+    this.subscription.choose(plan.planId).subscribe({
+      next: (info) => { this.info = info; },
+      error: (error: { error?: { detail?: unknown } }) => { this.message = typeof error.error?.detail === 'string' ? error.error.detail : '<#= SubscriptionScreenWords.ChooseFailed #>'; }
+    });
+  }
+
   ngOnInit(): void {
     this.subscription.get().subscribe({
       next: (info) => { this.info = info; },
@@ -182,7 +200,7 @@ describe('SubscriptionComponent', () => {
   let http: HttpTestingController;
   const info = {
     hasSubscription: true, planId: 2, planName: 'Pro', planPrice: 29, planPeriod: 'month', status: 'active', periodEnd: null, gatewayId: null, writable: true, reason: null,
-    limits: [{ key: 'projects', allowed: 10, used: 2 }, { key: 'seats', allowed: null, used: 3 }],
+    limits: [{ key: 'projects', allowed: 10, used: 2 }, { key: 'seats', allowed: null, used: 3 }], canChoose: false,
     plans: [
       { planId: 1, name: 'Free', price: 0, period: 'month', current: false, limits: [{ key: 'projects', allowed: 2 }, { key: 'seats', allowed: 1 }] },
       { planId: 2, name: 'Pro', price: 29, period: 'month', current: true, limits: [{ key: 'projects', allowed: 10 }, { key: 'seats', allowed: null }] }
@@ -228,6 +246,31 @@ describe('SubscriptionComponent', () => {
     expect(text()).toContain('Free');
     expect(text()).toContain('projects: 2, seats: 1');
     expect(text()).toContain('projects: 10, seats: <#= SubscriptionScreenWords.Unlimited #>');
+  });
+
+  it('offers a button for every plan but the tenant\'s own when the administrator may choose, and shows the plan chosen', () => {
+    create();
+    http.expectOne('<#= SubscriptionScreenWords.Path.TrimStart('/') #>').flush({ ...info, canChoose: true });
+    fixture.detectChanges();
+    const buttons = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'));
+    expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['<#= SubscriptionScreenWords.ChooseButton #> Free']);
+    buttons[0].click();
+    const put = http.expectOne('<#= SubscriptionScreenWords.Path.TrimStart('/') #>/plan');
+    expect(put.request.method).toBe('PUT');
+    expect(put.request.body).toEqual({ planId: 1 });
+    put.flush({ ...info, planId: 1, planName: 'Free', canChoose: true, plans: info.plans.map((plan) => ({ ...plan, current: plan.planId === 1 })) });
+    fixture.detectChanges();
+    expect(text()).toContain('Free <#= SubscriptionScreenWords.CurrentMark #>');
+  });
+
+  it('shows the sentence when the plan is refused', () => {
+    create();
+    http.expectOne('<#= SubscriptionScreenWords.Path.TrimStart('/') #>').flush({ ...info, canChoose: true });
+    fixture.detectChanges();
+    (fixture.nativeElement as HTMLElement).querySelector('button')!.click();
+    http.expectOne('<#= SubscriptionScreenWords.Path.TrimStart('/') #>/plan').flush({ detail: 'The plan allows 0 for projects, so it cannot move to that plan until it has less.' }, { status: <#= HttpStatus.Conflict #>, statusText: 'Conflict' });
+    fixture.detectChanges();
+    expect(component.message).toContain('cannot move to that plan');
   });
 
   it('says why changes are paused', () => {

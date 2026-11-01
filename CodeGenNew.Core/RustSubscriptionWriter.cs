@@ -115,7 +115,23 @@ public static class RustSubscriptionWriter
             gatewayUpdate = Fill(GatewayUpdate, ("§UPDATE_GATEWAY_SQL", Raw($"UPDATE {Table(subscription.Table)} SET {Q(subscription.Gateway)} = {di.Placeholder(1)} WHERE {Q(subscription.Key)} = {di.Placeholder(2)}")));
         if (subscription.PeriodEnd is not null)
             o.Append(EndHelper);
+        string choose = project.SubscriptionPlanChoice
+            ? Fill(ChoosePlan, ("§ADMIN_TEXT", Str(SubscriptionWords.OnlyAdministrator).Trim('"')), ("§NEEDSPLAN_TEXT", Str(SubscriptionWords.NeedsPlan).Trim('"')), ("§UNKNOWNPLAN_TEXT", Str(SubscriptionWords.UnknownPlan).Trim('"')),
+                ("§TOOSMALL_TEXT", Str(SubscriptionWords.PlanTooSmallText).Trim('"')), ("§TOOSMALL_TYPE", SubscriptionWords.PlanTooSmallType), ("§UPDATE_PLAN_SQL", Raw(updatePlanSql)), ("§INSERT_SQL", Raw(insertSql)))
+            : "";
+        string renew = "";
+        if (subscription.PeriodEnd is not null)
+        {
+            string renewStamp = tenantTable.Dialect == SqlDialect.PostgreSql ? $"CAST({di.Placeholder(1)} AS TIMESTAMP)" : di.Placeholder(1);
+            string renewStart = subscription.PeriodStart is null ? ""
+                : $"    sqlx::query({Raw($"UPDATE {Table(subscription.Table)} SET {Q(subscription.PeriodStart)} = {renewStamp} WHERE {Q(subscription.Key)} = {di.Placeholder(2)}")}).bind(stamp(start)).bind(key).execute(&pool).await?;\n";
+            renew = Fill(RenewPeriod, ("§PLATFORM_TEXT", Str(SubscriptionWords.OnlyPlatform).Trim('"')), ("§RENEWDAYS_TEXT", Str(SubscriptionWords.RenewDays).Trim('"')), ("§NOSUBSCRIPTION_TEXT", Str(SubscriptionWords.NoSubscriptionToRenew).Trim('"')),
+                ("§DAYS", project.SubscriptionPeriodDays.ToString()), ("§RENEWSTART", renewStart),
+                ("§UPDATE_END_SQL", Raw($"UPDATE {Table(subscription.Table)} SET {Q(subscription.PeriodEnd)} = {renewStamp} WHERE {Q(subscription.Key)} = {di.Placeholder(2)}")));
+        }
         o.Append(Fill(Body, ("§INSERT_SQL", Raw(insertSql)), ("§UPDATE_PLAN_SQL", Raw(updatePlanSql)), ("§UPDATE_STATUS_SQL", Raw(updateStatusSql)), ("§ENDUPDATE", endUpdate), ("§GATEWAYUPDATE", gatewayUpdate),
+            ("§CHOOSE", choose), ("§RENEW", renew), ("§CANCHOOSE", project.SubscriptionPlanChoice ? "true" : "false"), ("§CHOOSEROUTE", project.SubscriptionPlanChoice ? ".route(\"/api/subscription/plan\", put(choose_plan))" : ""),
+            ("§RENEWROUTE", subscription.PeriodEnd is null ? "" : ".route(\"/api/subscription/{tenant_id}/renew\", axum::routing::post(renew_subscription))"),
             ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType), ("§PLATFORM_TEXT", Str(SubscriptionWords.OnlyPlatform).Trim('"')), ("§ADMIN_TEXT", Str(SubscriptionWords.OnlyAdministrator).Trim('"')),
             ("§NEEDS_TEXT", Str(SubscriptionWords.NeedsPlanAndStatus).Trim('"')), ("§UNKNOWNPLAN_TEXT", Str(SubscriptionWords.UnknownPlan).Trim('"')), ("§UNKNOWNTENANT_TEXT", Str(SubscriptionWords.UnknownTenant).Trim('"')),
             ("§WEBHOOKROUTE", SubscriptionPlan.HasWebhook(database, project) ? $".route(\"{SubscriptionWords.WebhookPath}\", axum::routing::post(webhook))" : "")));
@@ -391,12 +407,12 @@ async fn view(pool: &Pool, tenant: i32) -> ApiResult<serde_json::Value> {
     }
     Ok(serde_json::json!({
         "hasSubscription": state.exists, "planId": state.plan, "planName": name, "planPrice": price, "planPeriod": period, "status": state.status, "periodEnd": state.end,
-        "gatewayId": state.gateway, "writable": state.writable, "reason": state.why, "limits": limits, "plans": plans,
+        "gatewayId": state.gateway, "writable": state.writable, "reason": state.why, "limits": limits, "plans": plans, "canChoose": §CANCHOOSE,
     }))
 }
 
 pub fn router() -> Router<Pool> {
-    Router::new().route("/api/subscription", get(get_subscription)).route("/api/subscription/{tenant_id}", put(put_subscription))
+    Router::new().route("/api/subscription", get(get_subscription)).route("/api/subscription/{tenant_id}", put(put_subscription))§CHOOSEROUTE§RENEWROUTE
 }
 
 /// The routes that need no sign-in: the payment gateway's webhook, when the project names a secret for it.
@@ -460,6 +476,85 @@ async fn put_subscription(State(pool): State<Pool>, Extension(user): Extension<C
         }
     };
 §ENDUPDATE§GATEWAYUPDATE    forget_state(tenant_id);
+    Ok(Json(view(&pool, tenant_id).await?))
+}
+§CHOOSE§RENEW
+"""";
+
+    private const string ChoosePlan = """"
+
+/// The body of PUT /api/subscription/plan: the plan the tenant moves to.
+#[derive(Deserialize)]
+struct PlanChoice {
+    #[serde(rename = "planId", default)]
+    plan_id: Option<i32>,
+}
+
+/// The tenant's administrator moves the tenant to a plan of the list (SubscriptionPlanChoice=true): at once, with no payment step. A plan that allows less than the tenant already has of a limit is refused (409).
+async fn choose_plan(State(pool): State<Pool>, Extension(user): Extension<CurrentUser>, ApiJson(body): ApiJson<PlanChoice>) -> ApiResult<Json<serde_json::Value>> {
+    if !user.is_admin() {
+        return Err(ApiError::Problem(403, "about:blank", "Administrators only", Some("§ADMIN_TEXT")));
+    }
+    let tenant = crate::tenancy::require_tenant(&user)?;
+    let Some(plan) = body.plan_id else {
+        return Err(ApiError::BadRequest("§NEEDSPLAN_TEXT".into()));
+    };
+    if sqlx::query_scalar::<_, i64>(PLAN_EXISTS_SQL).bind(plan).fetch_one(&pool).await? == 0 {
+        return Err(ApiError::BadRequest("§UNKNOWNPLAN_TEXT".into()));
+    }
+    for key in LIMIT_KEYS {
+        let have = used(&pool, tenant, key).await?;
+        if let Some(most) = allowed(&pool, plan, key).await? {
+            if have > most {
+                let text = "§TOOSMALL_TEXT".replace("{0}", key).replace("{1}", &most.to_string()).replace("{2}", &have.to_string());
+                return Err(ApiError::Problem(409, "§TOOSMALL_TYPE", "Plan too small", Some(leak(&text))));
+            }
+        }
+    }
+    match sqlx::query_scalar::<_, i32>(EXISTS_SQL).bind(tenant).fetch_optional(&pool).await? {
+        Some(key) => {
+            sqlx::query(§UPDATE_PLAN_SQL).bind(plan).bind(key).execute(&pool).await?;
+        }
+        None => {
+            let status = if ACTIVE_STATUSES.contains(&"active") { "active" } else { ACTIVE_STATUSES[0] };
+            sqlx::query(§INSERT_SQL).bind(tenant).bind(plan).bind(status.to_string()).execute(&pool).await.map_err(|_| ApiError::BadRequest("The subscription could not be saved (a value is too long or missing).".into()))?;
+        }
+    }
+    forget_state(tenant);
+    Ok(Json(view(&pool, tenant).await?))
+}
+"""";
+
+    private const string RenewPeriod = """"
+
+/// The body of POST /api/subscription/{tenant_id}/renew: the days to add (blank: the project's period).
+#[derive(Deserialize)]
+struct RenewRequest {
+    #[serde(default)]
+    days: Option<i32>,
+}
+
+/// A platform administrator renews a tenant's period: the new period starts when the old one ends (or now, when it already ended) and lasts the given days (default §DAYS). The status is not changed.
+async fn renew_subscription(State(pool): State<Pool>, Extension(user): Extension<CurrentUser>, Path(tenant_id): Path<i32>, ApiJson(body): ApiJson<RenewRequest>) -> ApiResult<Json<serde_json::Value>> {
+    if !user.is_platform() {
+        return Err(ApiError::Problem(403, PROBLEM_PLATFORM, "Platform administrators only", Some("§PLATFORM_TEXT")));
+    }
+    let days = body.days.unwrap_or(§DAYS);
+    if !(1..=3660).contains(&days) {
+        return Err(ApiError::BadRequest("§RENEWDAYS_TEXT".into()));
+    }
+    let Some(key) = sqlx::query_scalar::<_, i32>(EXISTS_SQL).bind(tenant_id).fetch_optional(&pool).await? else {
+        return Err(ApiError::Problem(404, "about:blank", "Not found", Some("§NOSUBSCRIPTION_TEXT")));
+    };
+    let state = read_state(&pool, tenant_id).await?;
+    let now = chrono::Utc::now().naive_utc();
+    let start = match state.end {
+        Some(end) if end > now => end,
+        _ => now,
+    };
+    let stamp = |moment: chrono::NaiveDateTime| moment.format("%Y-%m-%d %H:%M:%S%.f").to_string();
+    sqlx::query(§UPDATE_END_SQL).bind(stamp(start + chrono::Duration::days(days as i64))).bind(key).execute(&pool).await?;
+§RENEWSTART    forget_state(tenant_id);
     Ok(Json(view(&pool, tenant_id).await?))
 }
 """";

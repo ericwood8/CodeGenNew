@@ -46,6 +46,16 @@ public static class RustSubscriptionTests
             if (subscription.PeriodEnd is not null && trialing)
                 o.Append(Fill(TrialCase, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType)));
         }
+        if (subscription.PeriodEnd is not null)
+            o.Append(RenewCase);
+        if (project.SubscriptionPlanChoice)
+        {
+            string tooSmall = write is null || sql.LimitKey is not { } limitKey ? ""
+                : "    run(&api, &" + List(sql.SetLimit(limitKey, 5)) + ").await;\n    let made = inside.post(WRITE, &write_body()).await;\n    assert_eq!(made.status, StatusCode::CREATED, \"{}\", made.body);\n"
+                + "    run(&api, &" + List(sql.SetLimit(limitKey, 0)) + ").await;\n    let refused = inside.put(\"/api/subscription/plan\", &json!({ \"planId\": PLAN })).await;\n"
+                + "    assert_eq!(refused.status, StatusCode::CONFLICT, \"{}\", refused.body);\n    assert_eq!(refused.json()[\"type\"], \"" + SubscriptionWords.PlanTooSmallType + "\");\n    run(&api, &" + List(sql.SetLimit(limitKey, 1)) + ").await;\n";
+            o.Append(Fill(ChooseCase, ("§TOOSMALL", tooSmall)));
+        }
         o.Append(Fill(RouteCases, ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType)));
         o.Append(Fill(PlansCase, ("§PRICELINE", subscription.PlanPrice is null ? "" : "    assert_eq!(info[\"planPrice\"], mine[\"price\"], \"the view shows the price of the tenant's plan\");\n"),
             ("§LIMITCOUNT", SubscriptionPlan.LimitedTables(database, project).Count.ToString())));
@@ -160,6 +170,46 @@ async fn a_create_past_the_plan_limit_is_refused_until_the_limit_is_raised() {
     run(&api, &§TWO).await;
     let third = inside.post(WRITE, &write_body()).await;
     assert_eq!(third.status, StatusCode::CREATED, "{}", third.body);
+    finish(&api, tenant).await;
+}
+"""";
+
+    private const string RenewCase = """"
+
+#[tokio::test]
+async fn a_renewal_adds_a_period_that_starts_when_the_old_one_ends() {
+    let Some(api) = Client::start().await else { return };
+    let tenant = start(&api).await;
+    set(&api, tenant, json!({ "planId": PLAN, "status": "active", "periodEnd": (chrono::Utc::now() + chrono::Duration::days(5)).to_rfc3339() })).await;
+    let inside = api.in_tenant(tenant, ADMIN_ROLE);
+    let refused = inside.post(&format!("/api/subscription/{tenant}/renew"), &json!({ "days": 10 })).await;
+    assert_eq!(refused.status, StatusCode::FORBIDDEN, "{}", refused.body);
+    let platform = api.platform();
+    let renewed = platform.post(&format!("/api/subscription/{tenant}/renew"), &json!({ "days": 10 })).await;
+    assert_eq!(renewed.status, StatusCode::OK, "{}", renewed.body);
+    let text = renewed.json()["periodEnd"].as_str().expect("the view has the period end").to_string();
+    let end = chrono::NaiveDateTime::parse_from_str(&text, "%Y-%m-%dT%H:%M:%S%.f").expect("the period end is a date and time");
+    let wanted = (chrono::Utc::now() + chrono::Duration::days(15)).naive_utc();
+    assert!((end - wanted).num_seconds().abs() < 300, "{text}");
+    assert_eq!(platform.post(&format!("/api/subscription/{tenant}/renew"), &json!({ "days": 0 })).await.status, StatusCode::BAD_REQUEST);
+    assert_eq!(platform.post("/api/subscription/2147483000/renew", &json!({ "days": 1 })).await.status, StatusCode::NOT_FOUND);
+    finish(&api, tenant).await;
+}
+"""";
+
+    private const string ChooseCase = """"
+
+#[tokio::test]
+async fn an_administrator_chooses_a_plan_unless_it_allows_less_than_the_tenant_has() {
+    let Some(api) = Client::start().await else { return };
+    let tenant = start(&api).await;
+    set(&api, tenant, json!({ "planId": PLAN, "status": "active" })).await;
+    let inside = api.in_tenant(tenant, ADMIN_ROLE);
+    assert_eq!(inside.get("/api/subscription").await.json()["canChoose"], json!(true));
+    assert_eq!(inside.put("/api/subscription/plan", &json!({ "planId": 2147483000_i64 })).await.status, StatusCode::BAD_REQUEST);
+§TOOSMALL    let chosen = inside.put("/api/subscription/plan", &json!({ "planId": PLAN })).await;
+    assert_eq!(chosen.status, StatusCode::OK, "{}", chosen.body);
+    assert_eq!(chosen.json()["planId"], json!(PLAN));
     finish(&api, tenant).await;
 }
 """";

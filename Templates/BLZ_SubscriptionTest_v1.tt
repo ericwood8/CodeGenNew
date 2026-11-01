@@ -23,7 +23,7 @@ namespace <#= ns #>.Tests;
 [TestClass]
 public class SubscriptionTests : PageTestContext
 {
-    private const string Info = """{ "hasSubscription": true, "planId": 2, "planName": "Pro", "planPrice": 29, "planPeriod": "month", "status": "active", "periodEnd": null, "gatewayId": null, "writable": true, "reason": null, "limits": [{ "key": "projects", "allowed": 10, "used": 2 }, { "key": "seats", "allowed": null, "used": 3 }], "plans": [{ "planId": 1, "name": "Free", "price": 0, "period": "month", "current": false, "limits": [{ "key": "projects", "allowed": 2 }, { "key": "seats", "allowed": 1 }] }, { "planId": 2, "name": "Pro", "price": 29, "period": "month", "current": true, "limits": [{ "key": "projects", "allowed": 10 }, { "key": "seats", "allowed": null }] }] }""";
+    private const string Info = """{ "hasSubscription": true, "planId": 2, "planName": "Pro", "planPrice": 29, "planPeriod": "month", "status": "active", "periodEnd": null, "gatewayId": null, "writable": true, "reason": null, "limits": [{ "key": "projects", "allowed": 10, "used": 2 }, { "key": "seats", "allowed": null, "used": 3 }], "plans": [{ "planId": 1, "name": "Free", "price": 0, "period": "month", "current": false, "limits": [{ "key": "projects", "allowed": 2 }, { "key": "seats", "allowed": 1 }] }, { "planId": 2, "name": "Pro", "price": 29, "period": "month", "current": true, "limits": [{ "key": "projects", "allowed": 10 }, { "key": "seats", "allowed": null }] }], "canChoose": false }""";
 
     private IRenderedComponent<Subscription> RenderSubscription(string json)
     {
@@ -53,6 +53,29 @@ public class SubscriptionTests : PageTestContext
         StringAssert.Contains(page.Markup, "Free");
         StringAssert.Contains(page.Markup, "projects: 2, seats: 1");
         StringAssert.Contains(page.Markup, "projects: 10, seats: <#= SubscriptionScreenWords.Unlimited #>");
+    }
+
+    [TestMethod]
+    public void Offers_a_button_for_every_plan_but_the_tenants_own_when_the_administrator_may_choose_and_shows_the_plan_chosen()
+    {
+        var chosen = Info.Replace("\"canChoose\": false", "\"canChoose\": true").Replace("\"planName\": \"Pro\"", "\"planName\": \"Free\"").Replace("\"current\": false", "\"current\": TEMP").Replace("\"current\": true", "\"current\": false").Replace("TEMP", "true");
+        Api.AnswerWrite(HttpMethod.Put, "<#= SubscriptionScreenWords.Path #>/plan", chosen);
+        var page = RenderSubscription(Info.Replace("\"canChoose\": false", "\"canChoose\": true"));
+        page.WaitForAssertion(() => Assert.AreEqual(1, page.FindAll("button[aria-label]").Count));
+        Assert.AreEqual("<#= SubscriptionScreenWords.ChooseButton #> Free", page.Find("button[aria-label]").GetAttribute("aria-label"));
+        page.Find("button[aria-label]").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "Free <#= SubscriptionScreenWords.CurrentMark #>"));
+        Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Put && r.Path.EndsWith("<#= SubscriptionScreenWords.Path #>/plan") && r.Body.Contains("\"planId\":1")));
+    }
+
+    [TestMethod]
+    public void Shows_a_sentence_when_the_plan_is_refused()
+    {
+        Api.FailWrite(HttpMethod.Put, "<#= SubscriptionScreenWords.Path #>/plan", System.Net.HttpStatusCode.Conflict);
+        var page = RenderSubscription(Info.Replace("\"canChoose\": false", "\"canChoose\": true"));
+        page.WaitForAssertion(() => Assert.AreEqual(1, page.FindAll("button[aria-label]").Count));
+        page.Find("button[aria-label]").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "<#= SubscriptionScreenWords.ChooseFailed #>"));
     }
 
     [TestMethod]

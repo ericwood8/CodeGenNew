@@ -921,7 +921,7 @@ public partial class <#= table #>ListViewModel : ViewModelBase
     public async Task RetryAsync(<#= keyCs #> id)
     {
         ErrorMessage = null;
-        await _context.Set<<#= table #>>().Where(x => x.<#= queue.Key.CSharpName() #> == id && x.<#= queue.Status.CSharpName() #> == "<#= QueueStatus.Failed #>")
+<#= DesktopSubscriptionCode.WriteLines(Project, Model, "_context", "ErrorMessage", "return;") #>        await _context.Set<<#= table #>>().Where(x => x.<#= queue.Key.CSharpName() #> == id && x.<#= queue.Status.CSharpName() #> == "<#= QueueStatus.Failed #>")
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.<#= queue.Status.CSharpName() #>, "<#= QueueStatus.Pending #>").SetProperty(x => x.<#= queue.Retry.CSharpName() #>, (<#= queue.Retry.CSharpBase() #>)0)
                 .SetProperty(x => x.<#= queue.Processed.CSharpName() #>, (<#= queue.Processed.CSharpBase() #>?)null).SetProperty(x => x.<#= queue.Claimed.CSharpName() #>, (<#= queue.Claimed.CSharpBase() #>?)null)<#= queue.ClaimedBy is null ? "" : $".SetProperty(x => x.{queue.ClaimedBy.CSharpName()}, (string?)null)" #>);
         await LoadAsync();

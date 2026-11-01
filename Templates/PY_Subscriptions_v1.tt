@@ -14,6 +14,8 @@
     var problems = SubscriptionPlan.Problems(Database, Project);
     if (problems.Count > 0)
         Error(string.Join(" | ", problems));
+    else if (PythonSubscriptionWriter.Applies(Project) && SubscriptionPlan.LookupProblem(Database, Project, "Python") is { } lookupProblem)
+        Error(lookupProblem);
     else if (PythonSubscriptionWriter.Applies(Project))
         Write("@@@FILE app/routes/subscriptions.py@@@\n" + PythonSubscriptionWriter.File(Database, Project));
 #>

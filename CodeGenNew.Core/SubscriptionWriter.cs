@@ -38,6 +38,27 @@ public static class SubscriptionWriter
             ("§PERIODSELECT", subscription.PlanPeriod is null ? "(string?)null" : $"p.{subscription.PlanPeriod.CSharpName()}")
         ];
 
+        var lookup = subscription.Lookup;
+        (string, string)[] lookupNames = lookup is null ? [] :
+        [
+            ("§LKT", lookup.Table.TableName), ("§LKK", lookup.Key.CSharpName()), ("§LKN", lookup.Name.CSharpName()), ("§UNKNOWNSTATUS_TEXT", CSharpText.Escape(SubscriptionWords.UnknownStatus))
+        ];
+        string statusRead = lookup is null ? "s.§SSTATUS" : "context.Set<§LKT>().IgnoreQueryFilters().Where(l => l.§LKK == s.§SSTATUS).Select(l => l.§LKN).FirstOrDefault() ?? \"\"";
+        string statusHelper = lookup is null ? "" : StatusHelper;
+        // a write of a status: the text is the row's own, or the key of the look-up row of that name (a name that is not in the table is a 400)
+        string statusPrep = lookup is null ? "" : "        int? statusId = null;\n        if (!string.IsNullOrWhiteSpace(request.Status))\n        {\n            statusId = await SubscriptionState.StatusIdAsync(context, request.Status, cancellationToken);\n            if (statusId is null)\n                return Results.Problem(statusCode: 400, title: \"Bad request\", detail: \"§UNKNOWNSTATUS_TEXT\");\n        }\n";
+        string statusNew = lookup is null ? "request.Status.Trim()" : "statusId!.Value";
+        string chooseStatusPrep = lookup is null ? "" : "            int? initialId = await SubscriptionState.StatusIdAsync(context, SubscriptionState.ActiveStatuses.FirstOrDefault(s => s == \"active\") ?? SubscriptionState.ActiveStatuses[0], cancellationToken);\n            if (initialId is null)\n                return Results.Problem(statusCode: 400, title: \"Bad request\", detail: \"§UNKNOWNSTATUS_TEXT\");\n";
+        string chooseStatusNew = lookup is null ? "SubscriptionState.ActiveStatuses.FirstOrDefault(s => s == \"active\") ?? SubscriptionState.ActiveStatuses[0]" : "initialId.Value";
+        string gatewayStatusPrep = lookup is null ? "" : "        int? statusId = await SubscriptionState.StatusIdAsync(context, status, default);\n        if (statusId is null)\n            return false;\n";
+        string gatewayStatusNew = lookup is null ? "status.Trim()" : "statusId.Value";
+        string unknownStatus = CSharpText.Escape(SubscriptionWords.UnknownStatus);
+        statusPrep = statusPrep.Replace("§UNKNOWNSTATUS_TEXT", unknownStatus);
+        chooseStatusPrep = chooseStatusPrep.Replace("§UNKNOWNSTATUS_TEXT", unknownStatus);
+
+        names = names.Concat(lookupNames).Concat([("§STATUSREAD", statusRead), ("§STATUSHELPER", statusHelper), ("§STATUSPREP", statusPrep), ("§STATUSNEW", statusNew), ("§CHOOSESTATUSPREP", chooseStatusPrep),
+            ("§CHOOSESTATUSNEW", chooseStatusNew), ("§GATEWAYSTATUSPREP", gatewayStatusPrep), ("§GATEWAYSTATUSNEW", gatewayStatusNew)]).ToArray();
+
         string endSelect = subscription.PeriodEnd is null ? "(DateTime?)null" : $"s.{subscription.PeriodEnd.CSharpName()}";
         string gatewaySelect = gateway is null ? "(string?)null" : $"s.{gateway.CSharpName()}";
         o.Append(Fill(State, names.Concat([("§ENDSELECT", endSelect), ("§GATEWAYSELECT", gatewaySelect)]).ToArray()));
@@ -59,15 +80,29 @@ public static class SubscriptionWriter
 
         o.Append(Fill(Check, names));
 
-        string period = subscription.PeriodEnd is null ? "" : $"        if (request.PeriodEnd is {{ }} end)\n            row.{subscription.PeriodEnd.CSharpName()} = end;\n";
+        string period = subscription.PeriodEnd is null ? "" : $"        if (request.PeriodEnd is {{ }} end)\n            row.{subscription.PeriodEnd.CSharpName()} = {Stamp(subscription.PeriodEnd, "end")};\n";
         string gatewayLine = gateway is null ? "" : $"        if (request.GatewayId is {{ }} gatewayId)\n            row.{gateway.CSharpName()} = gatewayId.Trim();\n";
-        string startInit = subscription.PeriodStart is null ? "" : $", {subscription.PeriodStart.CSharpName()} = DateTime.UtcNow";
+        string startInit = subscription.PeriodStart is null ? "" : $", {subscription.PeriodStart.CSharpName()} = {Stamp(subscription.PeriodStart, "DateTime.UtcNow")}";
         string planLimits = limit is null ? PlanLimitsNone
             : Fill(PlanLimitsOf, ("§LIMITT", limit.Table.TableName), ("§LKEY", limit.Key.CSharpName()), ("§LPLAN", limit.Plan.CSharpName()), ("§LVALUE", limit.Value.CSharpName()));
-        o.Append(Fill(Api, names.Concat([("§PERIOD", period), ("§GATEWAYLINE", gatewayLine), ("§STARTINIT", startInit), ("§PLANLIMITS", planLimits)]).ToArray()));
+        string choose = project.SubscriptionPlanChoice
+            ? Fill(Choose, names.Concat([("§NEEDSPLAN_TEXT", CSharpText.Escape(SubscriptionWords.NeedsPlan)), ("§TOOSMALL_TYPE", SubscriptionWords.PlanTooSmallType), ("§TOOSMALL_TEXT", CSharpText.Escape(SubscriptionWords.PlanTooSmallText)), ("§STARTINIT", startInit)]).ToArray())
+            : "";
+        string renew = "";
+        if (subscription.PeriodEnd is { } periodEnd)
+        {
+            bool offset = periodEnd.CSharpBase() == "DateTimeOffset";
+            string endOfRow = offset ? (periodEnd.IsNullable ? $"row.{periodEnd.CSharpName()}?.UtcDateTime" : $"row.{periodEnd.CSharpName()}.UtcDateTime") : $"row.{periodEnd.CSharpName()}";
+            string renewSet = $"        row.{periodEnd.CSharpName()} = {Stamp(periodEnd, "start.AddDays(days)")};\n"
+                + (subscription.PeriodStart is { } periodStart ? $"        row.{periodStart.CSharpName()} = {Stamp(periodStart, "start")};\n" : "");
+            renew = Fill(Renew, names.Concat([("§DAYS", project.SubscriptionPeriodDays.ToString()), ("§RENEWDAYS_TEXT", CSharpText.Escape(SubscriptionWords.RenewDays)),
+                ("§NOSUBSCRIPTION_TEXT", CSharpText.Escape(SubscriptionWords.NoSubscriptionToRenew)), ("§ENDOFROW", endOfRow), ("§RENEWSET", renewSet)]).ToArray());
+        }
+        o.Append(Fill(Api, names.Concat([("§PERIOD", period), ("§GATEWAYLINE", gatewayLine), ("§STARTINIT", startInit), ("§PLANLIMITS", planLimits), ("§CHOOSE", choose), ("§RENEW", renew),
+            ("§CANCHOOSE", project.SubscriptionPlanChoice ? "true" : "false")]).ToArray()));
 
         if (gateway is not null)
-            o.Append(Fill(Gateway, names.Concat([("§SGATEWAY", gateway.CSharpName()), ("§PERIODSET", subscription.PeriodEnd is null ? "" : $"        if (periodEnd is {{ }} end)\n            row.{subscription.PeriodEnd.CSharpName()} = end;\n")]).ToArray()));
+            o.Append(Fill(Gateway, names.Concat([("§SGATEWAY", gateway.CSharpName()), ("§PERIODSET", subscription.PeriodEnd is null ? "" : $"        if (periodEnd is {{ }} end)\n            row.{subscription.PeriodEnd.CSharpName()} = {Stamp(subscription.PeriodEnd, "end")};\n")]).ToArray()));
 
         bool webhook = SubscriptionPlan.HasWebhook(database, project);
         if (webhook)
@@ -86,11 +121,18 @@ public static class SubscriptionWriter
         o.Append("        app.Use(SubscriptionCheck.InvokeAsync);\n");
         o.Append("        app.MapGet(\"/api/subscription\", SubscriptionEndpoints.GetAsync);\n");
         o.Append("        app.MapPut(\"/api/subscription/{tenantId:int}\", SubscriptionEndpoints.PutAsync);\n");
+        if (project.SubscriptionPlanChoice)
+            o.Append("        app.MapPut(\"/api/subscription/plan\", SubscriptionEndpoints.ChooseAsync);\n");
+        if (subscription.PeriodEnd is not null)
+            o.Append("        app.MapPost(\"/api/subscription/{tenantId:int}/renew\", SubscriptionEndpoints.RenewAsync);\n");
         if (webhook)
             o.Append($"        app.MapPost(\"{SubscriptionWords.WebhookPath}\", SubscriptionWebhook.PostAsync).AllowAnonymous();\n");
         o.Append("    }\n}\n");
         return o.ToString();
     }
+
+    /// <summary> The C# that stores a UTC moment in a period column: Npgsql refuses a UTC DateTime for a timestamp without time zone, so a DateTime column gets the value with no kind; a DateTimeOffset column takes it as it is. </summary>
+    private static string Stamp(ColumnModel column, string value) => column.CSharpBase() == "DateTimeOffset" ? value : $"SubscriptionState.Stored({value})";
 
     private static string Fill(string text, params (string Token, string Value)[] values)
     {
@@ -127,7 +169,7 @@ public static class SubscriptionState
         if (!fresh && Known.TryGetValue(tenant, out var known) && DateTime.UtcNow - known.At < TimeSpan.FromSeconds(10))
             return known.Value;
         var row = await context.Set<§S>().IgnoreQueryFilters().AsNoTracking().Where(s => s.§STENANT == tenant).OrderByDescending(s => s.§SKEY)
-            .Select(s => new { Plan = (int?)s.§SPLAN, Status = s.§SSTATUS, End = §ENDSELECT, Gateway = §GATEWAYSELECT }).FirstOrDefaultAsync(cancellationToken);
+            .Select(s => new { Plan = (int?)s.§SPLAN, Status = §STATUSREAD, End = §ENDSELECT, Gateway = §GATEWAYSELECT }).FirstOrDefaultAsync(cancellationToken);
         var snapshot = row is null
             ? new SubscriptionSnapshot(false, null, null, null, null, !Required, Required ? string.Format("§NONE_TEXT") : null)
             : Evaluate(row.Plan, row.Status, row.End, row.Gateway, DateTime.UtcNow);
@@ -146,6 +188,9 @@ public static class SubscriptionState
     }
 
     public static void Forget(int tenant) => Known.TryRemove(tenant, out _);
+§STATUSHELPER
+    /// <summary> A UTC moment as a column with no time zone holds it (PostgreSQL refuses a value of kind UTC there). </summary>
+    public static DateTime Stored(DateTime value) => DateTime.SpecifyKind(value.Kind == DateTimeKind.Local ? value.ToUniversalTime() : value, DateTimeKind.Unspecified);
 }
 
 """;
@@ -184,6 +229,19 @@ public static class SubscriptionLimits
         int used = await UsedAsync(context, tenant, key, cancellationToken);
         return used >= allowed ? Results.Problem(statusCode: 402, type: "§LIMIT_TYPE", title: "Plan limit reached", detail: string.Format("§LIMIT_TEXT", key, allowed, used)) : null;
     }
+
+    /// <summary> The problem to answer when an import of this many rows would take the tenant past the limit of the table; null when the import may go ahead. Every row counts, not the import as one create. </summary>
+    public static async Task<IResult?> ImportRefusalAsync(HttpContext http, int rows)
+    {
+        if (!int.TryParse(http.User.FindFirst(ClaimsTenantScope.ClaimName)?.Value, out int tenant) || KeyOf(http.Request.Path.Value ?? "") is not { } key)
+            return null;
+        var context = http.RequestServices.GetRequiredService<§CTX>();
+        var state = await SubscriptionState.OfAsync(context, tenant, http.RequestAborted);
+        if (state.PlanId is not { } plan || await AllowedAsync(context, plan, key, http.RequestAborted) is not { } allowed)
+            return null;
+        int used = await UsedAsync(context, tenant, key, http.RequestAborted);
+        return used + rows > allowed ? Results.Problem(statusCode: 402, type: "§LIMIT_TYPE", title: "Plan limit reached", detail: string.Format("§LIMIT_TEXT", key, allowed, used)) : null;
+    }
 }
 
 """;
@@ -198,6 +256,10 @@ public static class SubscriptionLimits
     public static Task<int> UsedAsync(§CTX context, int tenant, string key, CancellationToken cancellationToken) => Task.FromResult(0);
 
     public static Task<IResult?> RefusalAsync(§CTX context, int tenant, SubscriptionSnapshot state, string path, CancellationToken cancellationToken) => Task.FromResult<IResult?>(null);
+
+    public static string? KeyOf(string path) => null;
+
+    public static Task<IResult?> ImportRefusalAsync(HttpContext http, int rows) => Task.FromResult<IResult?>(null);
 }
 
 """;
@@ -220,13 +282,28 @@ public static class SubscriptionCheck
             await Results.Problem(statusCode: 402, type: "§INACTIVE_TYPE", title: "Subscription not active", detail: state.Why).ExecuteAsync(http);
             return;
         }
-        if (HttpMethods.IsPost(http.Request.Method) && await SubscriptionLimits.RefusalAsync(context, tenant, state, http.Request.Path.Value ?? "", http.RequestAborted) is { } refusal)
+        if (HttpMethods.IsPost(http.Request.Method) && SubscriptionLimits.KeyOf(http.Request.Path.Value ?? "") is not null)
         {
-            await refusal.ExecuteAsync(http);
+            // one create of a limited table at a time per tenant, so two requests cannot both pass the count (one process; several instances need a database rule)
+            var gate = Gates.GetOrAdd(tenant, _ => new SemaphoreSlim(1, 1));
+            await gate.WaitAsync(http.RequestAborted);
+            try
+            {
+                if (await SubscriptionLimits.RefusalAsync(context, tenant, state, http.Request.Path.Value ?? "", http.RequestAborted) is { } refusal)
+                    await refusal.ExecuteAsync(http);
+                else
+                    await next();
+            }
+            finally
+            {
+                gate.Release();
+            }
             return;
         }
         await next();
     }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, SemaphoreSlim> Gates = new();
 
     private static bool IsWrite(string method) => HttpMethods.IsPost(method) || HttpMethods.IsPut(method) || HttpMethods.IsPatch(method) || HttpMethods.IsDelete(method);
 
@@ -245,7 +322,13 @@ public sealed record PlanLimitInfo(string Key, long? Allowed);
 /// <summary> A plan the tenant could choose: its price and billing period when the plan table has them, and what it allows. </summary>
 public sealed record PlanInfo(int PlanId, string Name, decimal? Price, string? Period, bool Current, List<PlanLimitInfo> Limits);
 
-public sealed record SubscriptionInfo(bool HasSubscription, int? PlanId, string? PlanName, decimal? PlanPrice, string? PlanPeriod, string? Status, DateTime? PeriodEnd, string? GatewayId, bool Writable, string? Reason, List<LimitInfo> Limits, List<PlanInfo> Plans);
+public sealed record SubscriptionInfo(bool HasSubscription, int? PlanId, string? PlanName, decimal? PlanPrice, string? PlanPeriod, string? Status, DateTime? PeriodEnd, string? GatewayId, bool Writable, string? Reason, List<LimitInfo> Limits, List<PlanInfo> Plans, bool CanChoose);
+
+/// <summary> The body of PUT /api/subscription/plan: the plan the tenant moves to. </summary>
+public sealed record PlanChoice(int? PlanId);
+
+/// <summary> The body of POST /api/subscription/{tenantId}/renew: the days to add (blank: the project's period). </summary>
+public sealed record RenewRequest(int? Days);
 
 /// <summary> The body of PUT /api/subscription/{tenantId}: what to change. A tenant with no subscription needs a plan and a status. PeriodEnd and GatewayId are ignored when the table has no such column. </summary>
 public sealed record SubscriptionChange(int? PlanId, string? Status, DateTime? PeriodEnd, string? GatewayId);
@@ -270,7 +353,7 @@ public static class SubscriptionEndpoints
         var limits = new List<LimitInfo>();
         foreach (string key in SubscriptionLimits.Keys)
             limits.Add(new LimitInfo(key, state.PlanId is { } planId ? await SubscriptionLimits.AllowedAsync(context, planId, key, cancellationToken) : null, await SubscriptionLimits.UsedAsync(context, tenant, key, cancellationToken)));
-        return new SubscriptionInfo(state.Exists, state.PlanId, current?.Name, current?.Price, current?.Period, state.Status, state.PeriodEnd, state.GatewayId, state.Writable, state.Why, limits, plans);
+        return new SubscriptionInfo(state.Exists, state.PlanId, current?.Name, current?.Price, current?.Period, state.Status, state.PeriodEnd, state.GatewayId, state.Writable, state.Why, limits, plans, §CANCHOOSE);
     }
 
     /// <summary> Every plan, cheapest first (a plan with no price last), with what it allows of each limit; <paramref name="current"/> marks the tenant's own. </summary>
@@ -291,12 +374,12 @@ public static class SubscriptionEndpoints
             return Results.Problem(statusCode: 404, title: "Not found", detail: "§UNKNOWNTENANT_TEXT");
         if (request.PlanId is { } wanted && !await context.Set<§P>().IgnoreQueryFilters().AnyAsync(p => p.§PKEY == wanted, cancellationToken))
             return Results.Problem(statusCode: 400, title: "Bad request", detail: "§UNKNOWNPLAN_TEXT");
-        var row = await context.Set<§S>().IgnoreQueryFilters().Where(s => s.§STENANT == tenantId).OrderByDescending(s => s.§SKEY).FirstOrDefaultAsync(cancellationToken);
+§STATUSPREP        var row = await context.Set<§S>().IgnoreQueryFilters().Where(s => s.§STENANT == tenantId).OrderByDescending(s => s.§SKEY).FirstOrDefaultAsync(cancellationToken);
         if (row is null)
         {
             if (request.PlanId is not { } plan || string.IsNullOrWhiteSpace(request.Status))
                 return Results.Problem(statusCode: 400, title: "Bad request", detail: "§NEEDS_TEXT");
-            row = new §S { §STENANT = tenantId, §SPLAN = plan, §SSTATUS = request.Status.Trim()§STARTINIT };
+            row = new §S { §STENANT = tenantId, §SPLAN = plan, §SSTATUS = §STATUSNEW§STARTINIT };
             context.Add(row);
         }
         else
@@ -304,7 +387,7 @@ public static class SubscriptionEndpoints
             if (request.PlanId is { } plan)
                 row.§SPLAN = plan;
             if (!string.IsNullOrWhiteSpace(request.Status))
-                row.§SSTATUS = request.Status.Trim();
+                row.§SSTATUS = §STATUSNEW;
         }
 §PERIOD§GATEWAYLINE        try
         {
@@ -317,8 +400,85 @@ public static class SubscriptionEndpoints
         SubscriptionState.Forget(tenantId);
         return Results.Ok(await ViewAsync(context, tenantId, cancellationToken));
     }
-}
+§CHOOSE§RENEW}
 
+""";
+
+    private const string Choose = """
+
+    /// <summary> The tenant's administrator moves the tenant to a plan of the list (SubscriptionPlanChoice=true): at once, with no payment step. A plan that allows less than the tenant already has of a limit is refused (409). </summary>
+    public static async Task<IResult> ChooseAsync([FromBody] PlanChoice request, §CTX context, HttpContext http, ITenantScope scope)
+    {
+        if (!http.User.IsInRole(AuthNames.AdminRole))
+            return Results.Problem(statusCode: 403, title: "Administrators only", detail: "§ADMIN_TEXT");
+        if (scope.TenantId is not { } tenant)
+            return TenantProblems.NoTenant();
+        var cancellationToken = http.RequestAborted;
+        if (request.PlanId is not { } wanted)
+            return Results.Problem(statusCode: 400, title: "Bad request", detail: "§NEEDSPLAN_TEXT");
+        if (!await context.Set<§P>().IgnoreQueryFilters().AnyAsync(p => p.§PKEY == wanted, cancellationToken))
+            return Results.Problem(statusCode: 400, title: "Bad request", detail: "§UNKNOWNPLAN_TEXT");
+        foreach (string key in SubscriptionLimits.Keys)
+        {
+            long? allowed = await SubscriptionLimits.AllowedAsync(context, wanted, key, cancellationToken);
+            int used = await SubscriptionLimits.UsedAsync(context, tenant, key, cancellationToken);
+            if (allowed is { } most && used > most)
+                return Results.Problem(statusCode: 409, type: "§TOOSMALL_TYPE", title: "Plan too small", detail: string.Format("§TOOSMALL_TEXT", key, most, used));
+        }
+        var row = await context.Set<§S>().IgnoreQueryFilters().Where(s => s.§STENANT == tenant).OrderByDescending(s => s.§SKEY).FirstOrDefaultAsync(cancellationToken);
+        if (row is null)
+        {
+§CHOOSESTATUSPREP            row = new §S { §STENANT = tenant, §SPLAN = wanted, §SSTATUS = §CHOOSESTATUSNEW§STARTINIT };
+            context.Add(row);
+        }
+        else
+            row.§SPLAN = wanted;
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException)
+        {
+            return Results.Problem(statusCode: 400, title: "Bad request", detail: "The subscription could not be saved (a value is too long or missing).");
+        }
+        SubscriptionState.Forget(tenant);
+        return Results.Ok(await ViewAsync(context, tenant, cancellationToken));
+    }
+
+""";
+
+    private const string Renew = """
+
+    /// <summary> A platform administrator renews a tenant's period: the new period starts when the old one ends (or now, when it already ended) and lasts the given days (default §DAYS). The status is not changed. </summary>
+    public static async Task<IResult> RenewAsync(int tenantId, [FromBody] RenewRequest? request, §CTX context, HttpContext http, ITenantScope scope)
+    {
+        if (!http.User.IsInRole(AuthNames.AdminRole) || scope.TenantId is not null)
+            return Results.Problem(statusCode: 403, type: "§PLATFORM_TYPE", title: "Platform administrators only", detail: "§PLATFORM_TEXT");
+        var cancellationToken = http.RequestAborted;
+        int days = request?.Days ?? §DAYS;
+        if (days is < 1 or > 3660)
+            return Results.Problem(statusCode: 400, title: "Bad request", detail: "§RENEWDAYS_TEXT");
+        var row = await context.Set<§S>().IgnoreQueryFilters().Where(s => s.§STENANT == tenantId).OrderByDescending(s => s.§SKEY).FirstOrDefaultAsync(cancellationToken);
+        if (row is null)
+            return Results.Problem(statusCode: 404, title: "Not found", detail: "§NOSUBSCRIPTION_TEXT");
+        DateTime now = DateTime.UtcNow;
+        DateTime? end = §ENDOFROW;
+        DateTime start = end is { } ends && ends > now ? ends : now;
+§RENEWSET        await context.SaveChangesAsync(cancellationToken);
+        SubscriptionState.Forget(tenantId);
+        return Results.Ok(await ViewAsync(context, tenantId, cancellationToken));
+    }
+
+""";
+
+    private const string StatusHelper = """
+
+    /// <summary> The key of the look-up row that holds the status (compared without regard to case), or null when no row has that name. </summary>
+    public static async Task<int?> StatusIdAsync(§CTX context, string status, CancellationToken cancellationToken)
+    {
+        string wanted = status.Trim().ToLower();
+        return await context.Set<§LKT>().IgnoreQueryFilters().AsNoTracking().Where(l => l.§LKN.ToLower() == wanted).Select(l => (int?)l.§LKK).FirstOrDefaultAsync(cancellationToken);
+    }
 """;
 
     private const string Gateway = """
@@ -332,7 +492,7 @@ public static class SubscriptionGateway
         var row = await context.Set<§S>().IgnoreQueryFilters().Where(s => s.§SGATEWAY == gatewayId).FirstOrDefaultAsync();
         if (row is null)
             return false;
-        row.§SSTATUS = status.Trim();
+§GATEWAYSTATUSPREP        row.§SSTATUS = §GATEWAYSTATUSNEW;
 §PERIODSET        await context.SaveChangesAsync();
         SubscriptionState.Forget(row.§STENANT);
         return true;

@@ -50,17 +50,32 @@ export interface SubscriptionInfo {
   reason: string | null;
   limits: LimitInfo[];
   plans: PlanInfo[];
+  /** Whether the administrator may choose a plan from the list (SubscriptionPlanChoice). */
+  canChoose: boolean;
 }
 
 export const getSubscription = (): Promise<SubscriptionInfo> => request<SubscriptionInfo>('<#= SubscriptionScreenWords.Path #>');
+
+/** Moves the tenant to a plan of the list; the answer is the subscription as it is now. */
+export const choosePlan = (planId: number): Promise<SubscriptionInfo> => request<SubscriptionInfo>('<#= SubscriptionScreenWords.Path #>/plan', { method: 'PUT', body: JSON.stringify({ planId }) });
 @@@FILE src/<#= pagesFolder #>/SubscriptionPage.tsx@@@
 import { useEffect, useState } from 'react';
-import { getSubscription } from '../<#= apiFolder #>/subscription';
+import { choosePlan, getSubscription } from '../<#= apiFolder #>/subscription';
 import type { SubscriptionInfo } from '../<#= apiFolder #>/subscription';
 
 /** A price as the page shows it: two decimals and, when the plan has one, its billing period. */
 const priceText = (price: number | null, period: string | null) =>
   price === null ? '' : price.toFixed(2) + (period ? ' / ' + period : '');
+
+/** The sentence of a refused change: the API answers a problem with a detail. */
+const detailOf = (error: unknown): string => {
+  try {
+    const body = JSON.parse((error as Error).message) as { detail?: unknown };
+    return typeof body.detail === 'string' ? body.detail : '<#= SubscriptionScreenWords.ChooseFailed #>';
+  } catch {
+    return '<#= SubscriptionScreenWords.ChooseFailed #>';
+  }
+};
 
 export function SubscriptionPage() {
   const [info, setInfo] = useState<SubscriptionInfo | null>(null);
@@ -69,6 +84,11 @@ export function SubscriptionPage() {
   useEffect(() => {
     getSubscription().then(setInfo).catch(() => setMessage('<#= SubscriptionScreenWords.LoadFailed #>'));
   }, []);
+
+  const choose = (planId: number) => {
+    setMessage('');
+    choosePlan(planId).then(setInfo).catch((error: unknown) => setMessage(detailOf(error)));
+  };
 
   return (
     <div>
@@ -130,6 +150,7 @@ export function SubscriptionPage() {
                 <th><#= SubscriptionScreenWords.PlanColumn #></th>
                 <th><#= SubscriptionScreenWords.PriceColumn #></th>
                 <th><#= SubscriptionScreenWords.AllowsColumn #></th>
+                {info.canChoose && <th><#= SubscriptionScreenWords.ChooseColumn #></th>}
               </tr>
             </thead>
             <tbody>
@@ -138,6 +159,9 @@ export function SubscriptionPage() {
                   <td>{plan.current ? plan.name + ' <#= SubscriptionScreenWords.CurrentMark #>' : plan.name}</td>
                   <td>{priceText(plan.price, plan.period)}</td>
                   <td>{plan.limits.map((limit) => limit.key + ': ' + (limit.allowed === null ? '<#= SubscriptionScreenWords.Unlimited #>' : limit.allowed)).join(', ')}</td>
+                  {info.canChoose && (
+                    <td>{!plan.current && <button type="button" onClick={() => choose(plan.planId)} aria-label={'<#= SubscriptionScreenWords.ChooseButton #> ' + plan.name}><#= SubscriptionScreenWords.ChooseButton #></button>}</td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -148,13 +172,13 @@ export function SubscriptionPage() {
   );
 }
 @@@FILE src/<#= pagesFolder #>/__tests__/SubscriptionPage.test.tsx@@@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SubscriptionPage } from '../SubscriptionPage';
 
 const info = {
   hasSubscription: true, planId: 2, planName: 'Pro', planPrice: 29, planPeriod: 'month', status: 'active', periodEnd: null, gatewayId: null, writable: true, reason: null,
-  limits: [{ key: 'projects', allowed: 10, used: 2 }, { key: 'seats', allowed: null, used: 3 }],
+  limits: [{ key: 'projects', allowed: 10, used: 2 }, { key: 'seats', allowed: null, used: 3 }], canChoose: false,
   plans: [
     { planId: 1, name: 'Free', price: 0, period: 'month', current: false, limits: [{ key: 'projects', allowed: 2 }, { key: 'seats', allowed: 1 }] },
     { planId: 2, name: 'Pro', price: 29, period: 'month', current: true, limits: [{ key: 'projects', allowed: 10 }, { key: 'seats', allowed: null }] },
@@ -186,6 +210,26 @@ describe('SubscriptionPage', () => {
     expect(within(plans).getByText('Pro <#= SubscriptionScreenWords.CurrentMark #>')).toBeInTheDocument();
     expect(within(plans).getByText('projects: 2, seats: 1')).toBeInTheDocument();
     expect(within(plans).getByText('projects: 10, seats: <#= SubscriptionScreenWords.Unlimited #>')).toBeInTheDocument();
+  });
+
+  it('offers a button for every plan but the tenant\'s own when the administrator may choose, and shows the plan chosen', async () => {
+    const chosen = { ...info, planId: 1, planName: 'Free', plans: info.plans.map((plan) => ({ ...plan, current: plan.planId === 1 })) };
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((_, init) => answer(init?.method === 'PUT' ? chosen : { ...info, canChoose: true })());
+    render(<SubscriptionPage />);
+    const button = await screen.findByRole('button', { name: '<#= SubscriptionScreenWords.ChooseButton #> Free' });
+    expect(screen.queryByRole('button', { name: '<#= SubscriptionScreenWords.ChooseButton #> Pro' })).toBeNull();
+    fireEvent.click(button);
+    expect(await within(screen.getByRole('table', { name: '<#= SubscriptionScreenWords.PlansHeading #>' })).findByText('Free <#= SubscriptionScreenWords.CurrentMark #>')).toBeInTheDocument();
+    const put = spy.mock.calls.find(([, init]) => init?.method === 'PUT');
+    expect(String(put?.[0])).toContain('<#= SubscriptionScreenWords.Path #>/plan');
+    expect(JSON.parse(String(put?.[1]?.body))).toEqual({ planId: 1 });
+  });
+
+  it('shows the sentence when the plan is refused', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_, init) => init?.method === 'PUT' ? answer({ title: 'Plan too small', detail: 'The plan allows 0 for projects and this tenant already has 2, so it cannot move to that plan until it has less.' }, <#= HttpStatus.Conflict #>)() : answer({ ...info, canChoose: true })());
+    render(<SubscriptionPage />);
+    fireEvent.click(await screen.findByRole('button', { name: '<#= SubscriptionScreenWords.ChooseButton #> Free' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/cannot move to that plan/);
   });
 
   it('says why changes are paused', async () => {

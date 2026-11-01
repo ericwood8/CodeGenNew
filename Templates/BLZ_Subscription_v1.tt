@@ -17,6 +17,7 @@
 @@@FILE Pages/Subscription.razor@@@
 @page "/subscription"
 @using System.Net.Http.Json
+@using <#= BlazorNames.Namespace(Project) #>.Services
 @attribute [Authorize(Roles = "<#= Project.AuthAdminRole #>")]
 @inject HttpClient Http
 
@@ -83,6 +84,10 @@
                 <th><#= SubscriptionScreenWords.PlanColumn #></th>
                 <th><#= SubscriptionScreenWords.PriceColumn #></th>
                 <th><#= SubscriptionScreenWords.AllowsColumn #></th>
+                @if (info.CanChoose)
+                {
+                    <th><#= SubscriptionScreenWords.ChooseColumn #></th>
+                }
             </tr>
         </thead>
         <tbody>
@@ -92,6 +97,15 @@
                     <td>@(plan.Current ? plan.Name + " <#= SubscriptionScreenWords.CurrentMark #>" : plan.Name)</td>
                     <td>@PriceText(plan.Price, plan.Period)</td>
                     <td>@string.Join(", ", plan.Limits.Select(l => l.Key + ": " + (l.Allowed is { } most ? most.ToString() : "<#= SubscriptionScreenWords.Unlimited #>")))</td>
+                    @if (info.CanChoose)
+                    {
+                        <td>
+                            @if (!plan.Current)
+                            {
+                                <button type="button" aria-label="<#= SubscriptionScreenWords.ChooseButton #> @plan.Name" @onclick="() => ChooseAsync(plan)"><#= SubscriptionScreenWords.ChooseButton #></button>
+                            }
+                        </td>
+                    }
                 </tr>
             }
         </tbody>
@@ -105,7 +119,7 @@
 
     private record Plan(int PlanId, string Name, decimal? Price, string? Period, bool Current, List<PlanLimit> Limits);
 
-    private record SubscriptionInfo(bool HasSubscription, int? PlanId, string? PlanName, decimal? PlanPrice, string? PlanPeriod, string? Status, DateTime? PeriodEnd, string? GatewayId, bool Writable, string? Reason, List<Limit> Limits, List<Plan> Plans);
+    private record SubscriptionInfo(bool HasSubscription, int? PlanId, string? PlanName, decimal? PlanPrice, string? PlanPeriod, string? Status, DateTime? PeriodEnd, string? GatewayId, bool Writable, string? Reason, List<Limit> Limits, List<Plan> Plans, bool CanChoose);
 
     /// <summary> A price as the page shows it: two decimals and, when the plan has one, its billing period. </summary>
     private static string PriceText(decimal? price, string? period) =>
@@ -113,6 +127,17 @@
 
     private SubscriptionInfo? info;
     private string? message;
+
+    /// <summary> Moves the tenant to the plan; a refusal shows the API's sentence. </summary>
+    private async Task ChooseAsync(Plan plan)
+    {
+        message = null;
+        var response = await Http.PutAsJsonAsync("<#= SubscriptionScreenWords.Path #>/plan", new { planId = plan.PlanId });
+        if (response.IsSuccessStatusCode)
+            info = await response.Content.ReadFromJsonAsync<SubscriptionInfo>();
+        else
+            message = await ApiSupport.ProblemDetailAsync(response) ?? "<#= SubscriptionScreenWords.ChooseFailed #>";
+    }
 
     protected override async Task OnInitializedAsync()
     {

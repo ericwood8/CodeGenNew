@@ -7,7 +7,7 @@ public static class UnoSubscriptionCode
     /// <summary> The page; <paramref name="rowNamespace"/> is where <c>LimitRow</c> is (the view namespace in the Uno app, the repository namespace in the WinUI3 app, whose guard file holds it). </summary>
     public static string Xaml(string viewNamespace, string? rowNamespace = null) => Fill(XamlText, ("§ROWNS", rowNamespace ?? viewNamespace), ("§NS", viewNamespace), ("§TITLE", SubscriptionScreenWords.Title), ("§LIMITS", SubscriptionScreenWords.LimitsHeading),
         ("§LIMITCOLUMN", SubscriptionScreenWords.LimitColumn), ("§ALLOWEDCOLUMN", SubscriptionScreenWords.AllowedColumn), ("§INUSECOLUMN", SubscriptionScreenWords.InUseColumn),
-        ("§PLANSHEADING", SubscriptionScreenWords.PlansHeading), ("§PLANCOLUMN", SubscriptionScreenWords.PlanColumn), ("§PRICECOLUMN", SubscriptionScreenWords.PriceColumn), ("§ALLOWSCOLUMN", SubscriptionScreenWords.AllowsColumn));
+        ("§PLANSHEADING", SubscriptionScreenWords.PlansHeading), ("§PLANCOLUMN", SubscriptionScreenWords.PlanColumn), ("§PRICECOLUMN", SubscriptionScreenWords.PriceColumn), ("§ALLOWSCOLUMN", SubscriptionScreenWords.AllowsColumn), ("§CHOOSEBUTTON", SubscriptionScreenWords.ChooseButton));
 
     /// <summary> The row of the plans list and the classes it is read into (the Uno page reads them from the API; the WinUI3 guard file holds the same classes). </summary>
     public static string PlanRowClasses => Fill(PlanRowText, ("§UNLIMITED", SubscriptionScreenWords.Unlimited), ("§CURRENT", SubscriptionScreenWords.CurrentMark));
@@ -16,7 +16,7 @@ public static class UnoSubscriptionCode
         ("§PLANLABEL", SubscriptionScreenWords.PlanLabel), ("§STATUSLABEL", SubscriptionScreenWords.StatusLabel), ("§PERIODLABEL", SubscriptionScreenWords.PeriodEndLabel),
         ("§NOSUBSCRIPTION", SubscriptionScreenWords.NoSubscription), ("§LOADFAILED", SubscriptionScreenWords.LoadFailed), ("§PAUSED", SubscriptionScreenWords.PausedPrefix),
         ("§ACTIVE", SubscriptionScreenWords.Active), ("§UNLIMITED", SubscriptionScreenWords.Unlimited), ("§PRICELABEL", SubscriptionScreenWords.PriceLabel),
-        ("§PLANROWS", PlanRowClasses));
+        ("§PLANROWS", PlanRowClasses), ("§CHOOSEFAILED", SubscriptionScreenWords.ChooseFailed));
 
     public const string PlanRowText = """
 /// <summary> What a plan allows of one limit (null when it is unlimited). </summary>
@@ -34,6 +34,8 @@ public sealed class PlanRow
     public decimal? Price { get; set; }
     public string? Period { get; set; }
     public bool Current { get; set; }
+    /// <summary> Whether the Choose button shows: the administrator may choose a plan and this is not the tenant's own. </summary>
+    public bool CanChoose { get; set; }
     public List<PlanLimitValue> Limits { get; set; } = [];
 
     public string NameText => Current ? Name + " §CURRENT" : Name;
@@ -130,6 +132,7 @@ public static class PriceTexts
                             <ColumnDefinition Width="200" />
                             <ColumnDefinition Width="140" />
                             <ColumnDefinition Width="320" />
+                            <ColumnDefinition Width="100" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="§PLANCOLUMN" FontWeight="SemiBold" />
                         <TextBlock Grid.Column="1" Text="§PRICECOLUMN" FontWeight="SemiBold" />
@@ -144,10 +147,12 @@ public static class PriceTexts
                             <ColumnDefinition Width="200" />
                             <ColumnDefinition Width="140" />
                             <ColumnDefinition Width="320" />
+                            <ColumnDefinition Width="100" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="{x:Bind NameText}" />
                         <TextBlock Grid.Column="1" Text="{x:Bind PriceText}" />
                         <TextBlock Grid.Column="2" Text="{x:Bind AllowsText}" TextWrapping="Wrap" />
+                        <Button Grid.Column="3" Content="§CHOOSEBUTTON" Tag="{x:Bind PlanId}" Click="OnChooseClick" Visibility="{x:Bind CanChoose}" />
                     </Grid>
                 </DataTemplate>
             </ListView.ItemTemplate>
@@ -188,6 +193,7 @@ public sealed class SubscriptionInfo
     public string? Reason { get; set; }
     public List<LimitRow> Limits { get; set; } = [];
     public List<PlanRow> Plans { get; set; } = [];
+    public bool CanChoose { get; set; }
 }
 
 §PLANROWS
@@ -234,7 +240,10 @@ public sealed partial class SubscriptionPage : Page
                 Limits.Add(limit);
             LimitsHeading.Visibility = Limits.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             foreach (var plan in info?.Plans ?? [])
+            {
+                plan.CanChoose = info!.CanChoose && !plan.Current;
                 Plans.Add(plan);
+            }
             PlansHeading.Visibility = Plans.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
         catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
@@ -242,6 +251,19 @@ public sealed partial class SubscriptionPage : Page
             Problem.Message = "§LOADFAILED";
             Problem.IsOpen = true;
         }
+    }
+
+    // Choose moves the tenant to the plan of the row; a refusal shows the API's sentence.
+    private async void OnChooseClick(object sender, RoutedEventArgs e)
+    {
+        var response = await _api.Http.PutAsJsonAsync("§PATH/plan", new { planId = (int)((Button)sender).Tag });
+        if (response.IsSuccessStatusCode)
+        {
+            await LoadAsync();
+            return;
+        }
+        Problem.Message = await ApiSupport.ProblemDetailAsync(response) ?? "§CHOOSEFAILED";
+        Problem.IsOpen = true;
     }
 }
 """;

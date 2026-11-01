@@ -8,6 +8,7 @@ public static class SubscriptionWords
     public const string OnlyPlatformType = ProblemTypes.Prefix + "subscription-platform";
     public const string WebhookSignatureType = ProblemTypes.Prefix + "subscription-webhook-signature";
     public const string WebhookExpiredType = ProblemTypes.Prefix + "subscription-webhook-expired";
+    public const string PlanTooSmallType = ProblemTypes.Prefix + "plan-too-small";
 
     /// <summary> The header the gateway's webhook carries its signature in: <c>t=&lt;unix seconds&gt;,v1=&lt;hex&gt;</c>, where the hex is the HMAC-SHA256 of <c>{t}.{body}</c> with the shared secret. </summary>
     public const string WebhookHeader = "X-Gateway-Signature";
@@ -31,6 +32,13 @@ public static class SubscriptionWords
     public const string NeedsPlanAndStatus = "A tenant that has no subscription needs a planId and a status.";
     public const string UnknownPlan = "That plan does not exist.";
     public const string UnknownTenant = "That tenant does not exist.";
+    public const string NeedsPlan = "The body needs a planId.";
+    public const string UnknownStatus = "That status is not in the look-up table of statuses.";
+    public const string NoSubscriptionToRenew = "That tenant has no subscription to renew.";
+    public const string NoPeriodToRenew = "The subscription table has no period end to renew.";
+    public const string RenewDays = "The days to add must be a whole number from 1 to 3660.";
+    /// <summary> {0} is the limit's name, {1} what the chosen plan allows and {2} what the tenant has. </summary>
+    public const string PlanTooSmallText = "The plan allows {1} for {0} and this tenant already has {2}, so it cannot move to that plan until it has less.";
 }
 
 /// <summary> The words of the subscription page that the web and desktop front ends show, the same in each. </summary>
@@ -53,6 +61,9 @@ public static class SubscriptionScreenWords
     public const string PriceColumn = "Price";
     public const string AllowsColumn = "Allows";
     public const string CurrentMark = "(current)";
+    public const string ChooseColumn = "Choose";
+    public const string ChooseButton = "Choose";
+    public const string ChooseFailed = "The plan could not be changed.";
     public const string NoSubscription = "This tenant has no subscription.";
     public const string LoadFailed = "Only an administrator who works in a tenant sees its subscription.";
     public const string NoTenant = "Switch to a tenant to see its subscription.";
@@ -62,7 +73,10 @@ public static class SubscriptionScreenWords
 
 /// <summary> The subscription table: one row per tenant (the newest row counts) with the plan it is on and its status. <c>PeriodStart</c> is stamped when the row is made; <c>PeriodEnd</c> ends a trial. </summary>
 public sealed record SubscriptionModel(TableModel Table, ColumnModel Key, ColumnModel Tenant, ColumnModel Plan, ColumnModel Status, ColumnModel? PeriodStart, ColumnModel? PeriodEnd, ColumnModel? Gateway,
-    TableModel PlanTable, ColumnModel PlanKey, ColumnModel? PlanName, ColumnModel? PlanPrice, ColumnModel? PlanPeriod);
+    TableModel PlanTable, ColumnModel PlanKey, ColumnModel? PlanName, ColumnModel? PlanPrice, ColumnModel? PlanPeriod, StatusLookup? Lookup = null);
+
+/// <summary> A status held in a look-up table: the subscription's status column is a whole-number foreign key to <c>Table</c>, whose <c>Name</c> column holds the words (trialing, active, past_due, cancelled). </summary>
+public sealed record StatusLookup(TableModel Table, ColumnModel Key, ColumnModel Name);
 
 /// <summary> The plan limit table: a row per plan and limit name, with the most the plan allows (NULL or no row means unlimited). </summary>
 public sealed record PlanLimitModel(TableModel Table, ColumnModel Plan, ColumnModel Key, ColumnModel Value);
@@ -125,6 +139,11 @@ public static class SubscriptionPlan
     /// <summary> The columns of the plan table that hold its price and its billing period, found by name; the view shows them beside the plan. </summary>
     private static readonly string[] PriceNames = ["Price", "MonthlyPrice", "PriceMonthly", "Amount"];
     private static readonly string[] PeriodNames = ["BillingPeriod", "BillingInterval", "Period", "Interval"];
+    private static readonly string[] StatusNameColumns = ["Name", "Title", "Description", "Code"];
+
+    /// <summary> Why a stack that reads the status as text cannot serve a project whose status is held in a look-up table, or null when it can: only the ASP.NET API reads and writes the look-up table. </summary>
+    public static string? LookupProblem(DatabaseModel database, ProjectSettings project, string stack) =>
+        SubscriptionOf(database, project)?.Lookup is { } lookup ? $"{stack}: the subscription status is held in the look-up table {lookup.Table.TableName}, which only the ASP.NET API reads and writes. Hold the status as text, or leave {stack} out." : null;
 
     /// <summary> The subscription table, or null when it is not named or cannot be used (see <see cref="Problems"/>). </summary>
     public static SubscriptionModel? SubscriptionOf(DatabaseModel database, ProjectSettings project) => Resolve(database, project, out _);
@@ -169,10 +188,15 @@ public static class SubscriptionPlan
             problem = $"{prefix}: {plan.Name} must be a foreign key to {planTable.TableName}, which needs a single whole-number key.";
             return null;
         }
-        var status = Pick(table, parts, 2, "Status");
-        if (status is not { IsStringColumn: true, IsNullable: false } || status.IsLongTextColumn)
+        var status = Pick(table, parts, 2, "Status", "StatusId", "SubscriptionStatusId");
+        StatusLookup? lookup = null;
+        if (status is { IsInt32Column: true, IsNullable: false } && table.ForeignKeys.FirstOrDefault(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0].EqualsIgnoreCase(status.Name)) is { } statusKey
+            && TableOf(database, statusKey.ReferencedTable) is { PrimaryKeyColumns: [{ IsInt32Column: true } lookupKey] } lookupTable
+            && lookupTable.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsPrimaryKey && !c.IsLongTextColumn && StatusNameColumns.Contains(c.Name, StringComparer.OrdinalIgnoreCase)) is { } lookupName)
+            lookup = new StatusLookup(lookupTable, lookupKey, lookupName);
+        else if (status is not { IsStringColumn: true, IsNullable: false } || status.IsLongTextColumn)
         {
-            problem = $"{prefix} needs a NOT NULL text status column ({(Named(parts, 2) ? parts[2] : "Status")}) holding trialing, active, past_due or cancelled.";
+            problem = $"{prefix} needs a NOT NULL text status column ({(Named(parts, 2) ? parts[2] : "Status")}) holding trialing, active, past_due or cancelled, or a NOT NULL whole-number foreign key to a look-up table with a Name column.";
             return null;
         }
         var end = Pick(table, parts, 3, "CurrentPeriodEnd", "PeriodEnd", "TrialEndsOn", "EndsOn");
@@ -210,7 +234,7 @@ public static class SubscriptionPlan
         var name = planTable.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsPrimaryKey && (c.Name.EqualsIgnoreCase("Name") || c.Name.EqualsIgnoreCase("Title")));
         var price = planTable.Columns.FirstOrDefault(c => (c.IsNumericColumn || c.IsIntegerColumn) && !c.IsPrimaryKey && PriceNames.Contains(c.Name, StringComparer.OrdinalIgnoreCase));
         var billing = planTable.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsLongTextColumn && PeriodNames.Contains(c.Name, StringComparer.OrdinalIgnoreCase));
-        return new SubscriptionModel(table, key, owned.Column, plan, status, start, end, gateway, planTable, planKey, name, price, billing);
+        return new SubscriptionModel(table, key, owned.Column, plan, status!, start, end, gateway, planTable, planKey, name, price, billing, lookup);
     }
 
     /// <summary> The plan limit table, or null when it is not named or cannot be used. </summary>

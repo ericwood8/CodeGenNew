@@ -88,7 +88,7 @@ public class SubscriptionGuardTests
         await using var platform = In(db, null);
         Assert.IsNull(await SubscriptionGuard.RefusalAsync(platform, null, true));
     }
-
+{{ChooseTests(project, limited)}}
     [TestMethod]
     public async Task {{(project.SubscriptionRequired ? "A_tenant_with_no_subscription_is_refused_when_a_subscription_is_required" : "A_tenant_with_no_subscription_is_on_no_plan_and_may_change_rows")}}()
     {
@@ -112,6 +112,34 @@ public class SubscriptionGuardTests
 {{TrialTest(subscription, trialing)}}{{LimitTests(limit, limited, project)}}}
 """");
         return o.ToString();
+    }
+
+    /// <summary> The test of <c>SubscriptionGuard.ChooseAsync</c> (with <c>SubscriptionPlanChoice=true</c>): an unknown plan and a caller in no tenant are refused, a plan that allows less than the tenant has is refused, and a plan is chosen. </summary>
+    private static string ChooseTests(ProjectSettings project, LimitedTable? limited)
+    {
+        if (!project.SubscriptionPlanChoice)
+            return "";
+        string tooSmall = limited is null ? "" : $$"""
+        await using var full = await OpenAsync("active", 1);
+        await AddRowsAsync(full, 2);
+        await using var over = In(full, 1);
+        Assert.AreEqual(string.Format("{{CSharpText.Escape(SubscriptionWords.PlanTooSmallText)}}", {{CSharpText.Quote(limited.LimitKey)}}, 1, 2), await SubscriptionGuard.ChooseAsync(over, 1), "the plan allows one and the tenant has two");
+
+""";
+        return $$"""
+
+    [TestMethod]
+    public async Task A_tenant_chooses_a_plan_of_the_list_unless_it_is_unknown_or_allows_less_than_the_tenant_has()
+    {
+        await using var db = await OpenAsync("active");
+        await using var context = In(db, 1);
+        Assert.AreEqual("{{CSharpText.Escape(SubscriptionWords.UnknownPlan)}}", await SubscriptionGuard.ChooseAsync(context, 99999));
+        await using var none = In(db, null);
+        Assert.AreEqual("{{CSharpText.Escape(SubscriptionScreenWords.NoTenant)}}", await SubscriptionGuard.ChooseAsync(none, 1));
+{{tooSmall}}        Assert.IsNull(await SubscriptionGuard.ChooseAsync(context, 1));
+    }
+
+""";
     }
 
     private static string LimitRow(PlanLimitModel? limit, LimitedTable? limited, ProjectSettings project)

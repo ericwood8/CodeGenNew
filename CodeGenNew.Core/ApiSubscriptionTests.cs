@@ -151,6 +151,27 @@ public static class ApiSubscriptionTests
                 L("            await RemoveAsync(tenant, plan);");
                 L("        }");
                 L("    }");
+                L();
+                L("    [TestMethod]");
+                L("    public async Task Two_creates_at_the_same_moment_cannot_both_pass_the_plan_limit()");
+                L("    {");
+                L("        ApiFixture.RequireDatabase();");
+                L("        int tenant = await MakeTenantAsync();");
+                L("        int plan = await MakePlanAsync();");
+                L("        try");
+                L("        {");
+                L($"            await {apis}.SubscriptionTestSupport.SetLimitAsync(ApiFixture.Services, plan, {key}, 1);");
+                L("            await SetAsync(tenant, new { planId = plan, status = \"active\" });");
+                L($"            using var client = ApiFixture.ClientInTenant(tenant, \"{admin}\");");
+                L($"            var answers = await Task.WhenAll(Enumerable.Range(0, 4).Select(async _ => (await client.PostAsJsonAsync(WriteRoute, await {write!.Table.TableName}ApiTests.NewBodyAsync())).StatusCode));");
+                L("            Assert.AreEqual(1, answers.Count(a => a == HttpStatusCode.Created), string.Join(\", \", answers));");
+                L("            Assert.AreEqual(3, answers.Count(a => a == HttpStatusCode.PaymentRequired), string.Join(\", \", answers));");
+                L("        }");
+                L("        finally");
+                L("        {");
+                L("            await RemoveAsync(tenant, plan);");
+                L("        }");
+                L("    }");
             }
             if (subscription.PeriodEnd is not null && trialing)
             {
@@ -203,6 +224,77 @@ public static class ApiSubscriptionTests
         L("            await RemoveAsync(tenant, plan);");
         L("        }");
         L("    }");
+        if (subscription.PeriodEnd is not null)
+        {
+            L();
+            L("    [TestMethod]");
+            L("    public async Task A_renewal_adds_a_period_that_starts_when_the_old_one_ends()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L("        int tenant = await MakeTenantAsync();");
+            L("        int plan = await MakePlanAsync();");
+            L("        try");
+            L("        {");
+            L("            await SetAsync(tenant, new { planId = plan, status = \"active\", periodEnd = DateTime.UtcNow.AddDays(5) });");
+            L($"            using var inside = ApiFixture.ClientInTenant(tenant, \"{admin}\");");
+            L("            using var refused = await inside.PostAsJsonAsync($\"/api/subscription/{tenant}/renew\", new { days = 10 });");
+            L("            Assert.AreEqual(HttpStatusCode.Forbidden, refused.StatusCode, \"a tenant's administrator cannot renew their own period\");");
+            L("            using var platform = ApiFixture.PlatformClient();");
+            L("            using var renewed = await platform.PostAsJsonAsync($\"/api/subscription/{tenant}/renew\", new { days = 10 });");
+            L("            Assert.AreEqual(HttpStatusCode.OK, renewed.StatusCode, await renewed.Content.ReadAsStringAsync());");
+            L("            var end = (await renewed.Content.ReadFromJsonAsync<JsonObject>())![\"periodEnd\"]!.GetValue<DateTime>();");
+            L("            Assert.IsTrue(Math.Abs((end - DateTime.UtcNow.AddDays(15)).TotalMinutes) < 5, \"the new period starts at the old end (in 5 days) and lasts 10 days, but ends \" + end);");
+            L("            using var none = await platform.PostAsJsonAsync($\"/api/subscription/{tenant}/renew\", new { days = 0 });");
+            L("            Assert.AreEqual(HttpStatusCode.BadRequest, none.StatusCode);");
+            L("            using var nobody = await platform.PostAsJsonAsync($\"/api/subscription/{int.MaxValue}/renew\", new { days = 1 });");
+            L("            Assert.AreEqual(HttpStatusCode.NotFound, nobody.StatusCode);");
+            L("        }");
+            L("        finally");
+            L("        {");
+            L("            await RemoveAsync(tenant, plan);");
+            L("        }");
+            L("    }");
+        }
+        if (project.SubscriptionPlanChoice)
+        {
+            L();
+            L("    [TestMethod]");
+            L("    public async Task An_administrator_chooses_a_plan_from_the_list_unless_it_allows_less_than_the_tenant_has()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L("        int tenant = await MakeTenantAsync();");
+            L("        int plan = await MakePlanAsync();");
+            L("        int other = await MakePlanAsync();");
+            L("        try");
+            L("        {");
+            L("            await SetAsync(tenant, new { planId = plan, status = \"active\" });");
+            L($"            using var client = ApiFixture.ClientInTenant(tenant, \"{admin}\");");
+            L("            using var shown = await client.GetAsync(\"/api/subscription\");");
+            L("            Assert.IsTrue((await shown.Content.ReadFromJsonAsync<JsonObject>())![\"canChoose\"]!.GetValue<bool>());");
+            L("            using var unknown = await client.PutAsJsonAsync(\"/api/subscription/plan\", new { planId = int.MaxValue });");
+            L("            Assert.AreEqual(HttpStatusCode.BadRequest, unknown.StatusCode);");
+            if (limited is not null)
+            {
+                string key = CSharpText.Quote(limited.LimitKey);
+                L($"            await {apis}.SubscriptionTestSupport.SetLimitAsync(ApiFixture.Services, plan, {key}, 5);");
+                L($"            await {apis}.SubscriptionTestSupport.SetLimitAsync(ApiFixture.Services, other, {key}, 0);");
+                L($"            using var made = await client.PostAsJsonAsync(WriteRoute, await {write!.Table.TableName}ApiTests.NewBodyAsync());");
+                L("            Assert.AreEqual(HttpStatusCode.Created, made.StatusCode, await made.Content.ReadAsStringAsync());");
+                L("            using var tooSmall = await client.PutAsJsonAsync(\"/api/subscription/plan\", new { planId = other });");
+                L("            Assert.AreEqual(HttpStatusCode.Conflict, tooSmall.StatusCode, await tooSmall.Content.ReadAsStringAsync());");
+                L($"            await {apis}.SubscriptionTestSupport.SetLimitAsync(ApiFixture.Services, other, {key}, 1);");
+            }
+            L("            using var chosen = await client.PutAsJsonAsync(\"/api/subscription/plan\", new { planId = other });");
+            L("            Assert.AreEqual(HttpStatusCode.OK, chosen.StatusCode, await chosen.Content.ReadAsStringAsync());");
+            L("            Assert.AreEqual(other, (await chosen.Content.ReadFromJsonAsync<JsonObject>())![\"planId\"]!.GetValue<int>());");
+            L("        }");
+            L("        finally");
+            L("        {");
+            L($"            await {apis}.SubscriptionTestSupport.RemovePlanAsync(ApiFixture.Services, other, tenant);");
+            L("            await RemoveAsync(tenant, plan);");
+            L("        }");
+            L("    }");
+        }
         L();
         L("    [TestMethod]");
         L("    public async Task The_administrator_sees_the_subscription_and_a_member_does_not()");

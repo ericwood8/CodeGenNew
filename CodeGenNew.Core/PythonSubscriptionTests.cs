@@ -43,6 +43,16 @@ public static class PythonSubscriptionTests
             if (subscription.PeriodEnd is not null && trialing)
                 o.Append(Fill(TrialCase, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType)));
         }
+        if (subscription.PeriodEnd is not null)
+            o.Append(RenewCase);
+        if (project.SubscriptionPlanChoice)
+        {
+            string tooSmall = write is null || sql.LimitKey is not { } limitKey ? ""
+                : "    run(engine, " + List(sql.SetLimit(limitKey, 5)) + ")\n    made = api(tenant, \"POST\", WRITE, json=write_body(api, tenant))\n    assert made.status_code == 201, made.text\n"
+                + "    run(engine, " + List(sql.SetLimit(limitKey, 0)) + ")\n    refused = api(tenant, \"PUT\", \"/api/subscription/plan\", json={\"planId\": PLAN})\n    assert refused.status_code == 409, refused.text\n"
+                + "    assert refused.json()[\"type\"] == \"" + SubscriptionWords.PlanTooSmallType + "\"\n    run(engine, " + List(sql.SetLimit(limitKey, 1)) + ")\n";
+            o.Append(Fill(ChooseCase, ("§TOOSMALL", tooSmall)));
+        }
         o.Append(Fill(RouteCases, ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType)));
         o.Append(Fill(PlansCase, ("§PRICELINE", subscription.PlanPrice is null ? "" : "    assert info[\"planPrice\"] == mine[\"price\"], \"the view shows the price of the tenant's plan\"\n"),
             ("§LIMITCOUNT", SubscriptionPlan.LimitedTables(database, project).Count.ToString())));
@@ -170,6 +180,38 @@ def test_a_create_past_the_plan_limit_is_refused_until_the_limit_is_raised(world
     run(engine, §TWO)
     third = api(tenant, "POST", WRITE, json=write_body(api, tenant))
     assert third.status_code == 201, third.text
+"""";
+
+    private const string RenewCase = """"
+
+
+def test_a_renewal_adds_a_period_that_starts_when_the_old_one_ends(world, tenant):
+    api, _ = world
+    set_subscription(api, tenant, planId=PLAN, status="active", periodEnd=(datetime.now(timezone.utc) + timedelta(days=5)).isoformat())
+    refused = api(tenant, "POST", f"/api/subscription/{tenant}/renew", json={"days": 10})
+    assert refused.status_code == 403, refused.text
+    renewed = api(None, "POST", f"/api/subscription/{tenant}/renew", json={"days": 10})
+    assert renewed.status_code == 200, renewed.text
+    end = datetime.fromisoformat(renewed.json()["periodEnd"].replace("Z", "+00:00"))
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    assert abs((end - (datetime.now(timezone.utc) + timedelta(days=15))).total_seconds()) < 300, end
+    assert api(None, "POST", f"/api/subscription/{tenant}/renew", json={"days": 0}).status_code == 400
+    assert api(None, "POST", "/api/subscription/2147483647/renew", json={"days": 1}).status_code == 404
+"""";
+
+    private const string ChooseCase = """"
+
+
+def test_an_administrator_chooses_a_plan_unless_it_allows_less_than_the_tenant_has(world, tenant):
+    api, engine = world
+    set_subscription(api, tenant, planId=PLAN, status="active")
+    shown = api(tenant, "GET", "/api/subscription")
+    assert shown.json()["canChoose"] is True
+    assert api(tenant, "PUT", "/api/subscription/plan", json={"planId": 2147483647}).status_code == 400
+§TOOSMALL    chosen = api(tenant, "PUT", "/api/subscription/plan", json={"planId": PLAN})
+    assert chosen.status_code == 200, chosen.text
+    assert chosen.json()["planId"] == PLAN
 """";
 
     private const string TrialCase = """"

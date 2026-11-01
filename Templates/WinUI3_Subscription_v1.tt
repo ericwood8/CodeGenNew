@@ -28,7 +28,9 @@
     // written for its context: a paused subscription refuses a save and a new row past a plan limit is refused (the detail dialogs call SubscriptionGuard.RefusalAsync before they save), and the subscription page shows the
     // plan, the status and the limits. WinUI3_Screens puts the page in the menu for administrators. Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
     // ==========================================================================================
-    if (DesktopSubscriptionCode.Applies(Database, Project))
+    if (DesktopSubscriptionCode.Applies(Database, Project) && SubscriptionPlan.LookupProblem(Database, Project, "WinUI3") is { } lookupProblem)
+        Error(lookupProblem);
+    else if (DesktopSubscriptionCode.Applies(Database, Project))
     {
 #>
 @@@FILE Repositories/SubscriptionGuard.cs@@@

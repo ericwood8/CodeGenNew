@@ -35,6 +35,8 @@
     string adminParameter = auth ? ", bool adminOnly, bool gated" : "";
     // a table in LogTables is only read: its export takes the date range, lists newest first and stops at MaxRows; it has no import
     bool anyLog = tables.Any(t => LogTablePlan.For(t, Project) is not null);
+    // an import into a table with a plan limit counts every row of the file against the limit (SubscriptionLimits.ImportRefusalAsync, API_Subscriptions)
+    bool counted = SubscriptionPlan.IsEnabled(Project) && SubscriptionPlan.LimitedTables(Database, Project).Count > 0;
     string repositoryNamespace = Project.RepoNamespace ?? "MyApp.Common.Repositories";
 
     string Columns(TableModel table)
@@ -362,6 +364,15 @@ public static class CsvEndpoints
 #>
             if (import.Errors.Count > 0)
                 return Results.BadRequest(new { imported = 0, errors = import.Errors });
+<#
+    if (counted)
+    {
+#>
+            if (await SubscriptionLimits.ImportRefusalAsync(request.HttpContext, import.Rows.Count) is { } refusal)
+                return refusal;
+<#
+    }
+#>
 
             context.Set<T>().AddRange(import.Rows);
             try

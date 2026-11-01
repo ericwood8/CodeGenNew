@@ -19,7 +19,7 @@ public static class PythonSubscriptionWriter
         string Str(string value) => PythonNames.Str(value);
 
         var o = new StringBuilder();
-        o.Append(Fill(Head, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType), ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType)));
+        o.Append(Fill(Head, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType), ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType), ("§TOOSMALL_TYPE", SubscriptionWords.PlanTooSmallType)));
         o.Append($"\nACTIVE_STATUSES = ({string.Join(", ", SubscriptionPlan.ActiveStatuses(project).Select(s => Str(s.ToLowerInvariant())))},)\n");
         o.Append($"REQUIRED = {(project.SubscriptionRequired ? "True" : "False")}\n");
         o.Append($"S_KEY = {Str(subscription.Key.DbName)}\nS_TENANT = {Str(subscription.Tenant.DbName)}\nS_PLAN = {Str(subscription.Plan.DbName)}\nS_STATUS = {Str(subscription.Status.DbName)}\n");
@@ -74,7 +74,18 @@ public static class PythonSubscriptionWriter
             o.Append($"    ({Str(l.CreatePath.ToLowerInvariant())}, {Str(l.LimitKey)}, {(l.IsMembership ? "True" : "False")}),\n");
         o.Append(")\n");
 
-        o.Append(Fill(Body, ("§INACTIVE_TEXT", Str(SubscriptionWords.InactiveText)), ("§TRIAL_TEXT", Str(SubscriptionWords.TrialEndedText)), ("§NONE_TEXT", Str(SubscriptionWords.NoSubscriptionText)),
+        string choose = project.SubscriptionPlanChoice
+            ? Fill(ChoosePlan, ("§ADMIN_TEXT", Str(SubscriptionWords.OnlyAdministrator)), ("§NEEDSPLAN_TEXT", Str(SubscriptionWords.NeedsPlan)), ("§UNKNOWNPLAN_TEXT", Str(SubscriptionWords.UnknownPlan)),
+                ("§TOOSMALL_TEXT", Str(SubscriptionWords.PlanTooSmallText)), ("§STARTVALUE", subscription.PeriodStart is null ? "" : ", S_START: datetime.now(timezone.utc).replace(tzinfo=None)"))
+            : "";
+        string renew = subscription.PeriodEnd is null ? ""
+            : Fill(RenewPeriod, ("§PLATFORM_TEXT", Str(SubscriptionWords.OnlyPlatform)), ("§RENEWDAYS_TEXT", Str(SubscriptionWords.RenewDays)), ("§NOSUBSCRIPTION_TEXT", Str(SubscriptionWords.NoSubscriptionToRenew)),
+                ("§DAYS", project.SubscriptionPeriodDays.ToString()), ("§RENEWSTART", subscription.PeriodStart is null ? "" : "    values[S_START] = start\n"));
+        if (choose.Length > 0)
+            choose = "\n" + choose + "\n";
+        if (renew.Length > 0)
+            renew = "\n" + renew + "\n";
+        o.Append(Fill(Body, ("§CHOOSE", choose), ("§RENEW", renew), ("§CANCHOOSE", project.SubscriptionPlanChoice ? "True" : "False"), ("§TOOSMALL_TYPE", SubscriptionWords.PlanTooSmallType), ("§INACTIVE_TEXT", Str(SubscriptionWords.InactiveText)), ("§TRIAL_TEXT", Str(SubscriptionWords.TrialEndedText)), ("§NONE_TEXT", Str(SubscriptionWords.NoSubscriptionText)),
             ("§LIMIT_TEXT", Str(SubscriptionWords.LimitText)), ("§PLATFORM_TEXT", Str(SubscriptionWords.OnlyPlatform)), ("§ADMIN_TEXT", Str(SubscriptionWords.OnlyAdministrator)),
             ("§NEEDS_TEXT", Str(SubscriptionWords.NeedsPlanAndStatus)), ("§UNKNOWNPLAN_TEXT", Str(SubscriptionWords.UnknownPlan)), ("§UNKNOWNTENANT_TEXT", Str(SubscriptionWords.UnknownTenant)),
             ("§ENDREAD", subscription.PeriodEnd is null ? "null()" : "subscriptions.c[S_END]"), ("§GATEWAYREAD", subscription.Gateway is null ? "null()" : "subscriptions.c[S_GATEWAY]"),
@@ -126,7 +137,7 @@ import json
 import os
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
@@ -143,6 +154,7 @@ from app.support import ApiError
 PROBLEM_INACTIVE = "§INACTIVE_TYPE"
 PROBLEM_LIMIT = "§LIMIT_TYPE"
 PROBLEM_PLATFORM = "§PLATFORM_TYPE"
+PROBLEM_TOOSMALL = "§TOOSMALL_TYPE"
 STATE_SECONDS = 10
 router = APIRouter()
 public_router = APIRouter()   # the routes that need no sign-in: the payment gateway's webhook, when the project names a secret for it
@@ -289,7 +301,7 @@ def view(session: Session, tenant: int) -> dict[str, Any]:
     current = next((plan for plan in listed if plan["current"]), None)
     return {"hasSubscription": state["exists"], "planId": state["plan"], "planName": None if current is None else current["name"], "planPrice": None if current is None else current["price"],
             "planPeriod": None if current is None else current["period"], "status": state["status"], "periodEnd": state["end"], "gatewayId": state["gateway"], "writable": state["writable"],
-            "reason": state["why"], "limits": limits_of(session, tenant, state["plan"]), "plans": listed}
+            "reason": state["why"], "limits": limits_of(session, tenant, state["plan"]), "plans": listed, "canChoose": §CANCHOOSE}
 
 
 @router.get("/api/subscription")
@@ -302,6 +314,7 @@ def get_subscription(session: Session = Depends(get_session), user: CurrentUser 
     return view(session, user.tenant_id)
 
 
+§CHOOSE
 class SubscriptionChange(BaseModel):
     """The body of PUT /api/subscription/{tenant_id}: what to change. A tenant with no subscription needs a planId and a status."""
     planId: int | None = None
@@ -336,6 +349,78 @@ def put_subscription(tenant_id: int, body: SubscriptionChange, session: Session 
     except IntegrityError:
         session.rollback()
         raise ApiError(400, "Bad request", detail="The subscription could not be saved (a value is too long or missing).")
+    forget_state(tenant_id)
+    return view(session, tenant_id)
+§RENEW
+"""";
+
+    private const string ChoosePlan = """"
+
+
+class PlanChoice(BaseModel):
+    """The body of PUT /api/subscription/plan: the plan the tenant moves to."""
+    planId: int | None = None
+
+
+@router.put("/api/subscription/plan")
+def choose_plan(body: PlanChoice, session: Session = Depends(get_session), user: CurrentUser = Depends(require_user)):
+    """The tenant's administrator moves the tenant to a plan of the list (SubscriptionPlanChoice=true): at once, with no payment step. A plan that allows less than the tenant already has of a limit is refused (409)."""
+    if not user.is_admin:
+        raise ApiError(403, "Administrators only", detail=§ADMIN_TEXT)
+    if user.tenant_id is None:
+        raise no_tenant()
+    tenant = user.tenant_id
+    if body.planId is None:
+        raise ApiError(400, "Bad request", detail=§NEEDSPLAN_TEXT)
+    if session.scalar(select(plans.c[P_KEY]).where(plans.c[P_KEY] == body.planId).limit(1)) is None:
+        raise ApiError(400, "Bad request", detail=§UNKNOWNPLAN_TEXT)
+    for key in LIMITS:
+        most = allowed(session, body.planId, key)
+        have = used(session, tenant, key)
+        if most is not None and have > most:
+            raise ApiError(409, "Plan too small", problem_type=PROBLEM_TOOSMALL, detail=§TOOSMALL_TEXT.format(key, most, have))
+    existing = session.scalar(select(subscriptions.c[S_KEY]).where(subscriptions.c[S_TENANT] == tenant).order_by(subscriptions.c[S_KEY].desc()).limit(1))
+    try:
+        if existing is None:
+            status = "active" if "active" in ACTIVE_STATUSES else ACTIVE_STATUSES[0]
+            session.execute(subscriptions.insert().values({S_TENANT: tenant, S_PLAN: body.planId, S_STATUS: status§STARTVALUE}))
+        else:
+            session.execute(subscriptions.update().where(subscriptions.c[S_KEY] == existing).values({S_PLAN: body.planId}))
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise ApiError(400, "Bad request", detail="The subscription could not be saved (a value is too long or missing).")
+    forget_state(tenant)
+    return view(session, tenant)
+"""";
+
+    private const string RenewPeriod = """"
+
+
+class RenewRequest(BaseModel):
+    """The body of POST /api/subscription/{tenant_id}/renew: the days to add (blank: the project's period)."""
+    days: int | None = None
+
+
+@router.post("/api/subscription/{tenant_id}/renew")
+def renew_subscription(tenant_id: int, body: RenewRequest | None = None, session: Session = Depends(get_session), user: CurrentUser = Depends(require_user)):
+    """A platform administrator renews a tenant's period: the new period starts when the old one ends (or now, when it already ended) and lasts the given days (default §DAYS). The status is not changed."""
+    if not is_platform(user):
+        raise ApiError(403, "Platform administrators only", problem_type=PROBLEM_PLATFORM, detail=§PLATFORM_TEXT)
+    days = §DAYS if body is None or body.days is None else body.days
+    if days < 1 or days > 3660:
+        raise ApiError(400, "Bad request", detail=§RENEWDAYS_TEXT)
+    row = session.execute(select(subscriptions.c[S_KEY], subscriptions.c[S_END]).where(subscriptions.c[S_TENANT] == tenant_id).order_by(subscriptions.c[S_KEY].desc()).limit(1)).first()
+    if row is None:
+        raise ApiError(404, "Not found", detail=§NOSUBSCRIPTION_TEXT)
+    now = _now()
+    end = row[1]
+    if end is not None and end.tzinfo is not None:
+        end = end.astimezone(timezone.utc).replace(tzinfo=None)
+    start = end if end is not None and end > now else now
+    values: dict[str, Any] = {S_END: start + timedelta(days=days)}
+§RENEWSTART    session.execute(subscriptions.update().where(subscriptions.c[S_KEY] == row[0]).values(values))
+    session.commit()
     forget_state(tenant_id)
     return view(session, tenant_id)
 """";

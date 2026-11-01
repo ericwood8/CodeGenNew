@@ -14,6 +14,7 @@
     string viewModelNamespace = "MyApp.Desktop.ViewModels";
     string contextType = "MyAppContext";
     string contextNamespace = "MyApp.Common.Data";
+    string repositoryNamespace = "MyApp.Common.Repositories";   // where WinUI3_Subscription writes SubscriptionGuard
     // Namespaces the generated files must "using" beyond the ones every file needs (Microsoft.UI.Xaml.*,
     // Microsoft.EntityFrameworkCore, System.Collections.ObjectModel, CommunityToolkit.Mvvm.ComponentModel).
     string[] usings = { };
@@ -25,6 +26,7 @@
     viewModelNamespace = Project.ViewModelNamespace ?? viewModelNamespace;
     contextType = Project.ContextName ?? contextType;
     contextNamespace = Project.ContextNamespace ?? contextNamespace;
+    repositoryNamespace = Project.RepoNamespace ?? repositoryNamespace;
     usings = Project.Usings ?? usings;
     viewsFolder = Project.ViewsFolder ?? viewsFolder;
     viewModelsFolder = Project.ViewModelsFolder ?? viewModelsFolder;
@@ -61,6 +63,8 @@
             Write(((char)10).ToString());
         }
     }
+    // with plans and subscriptions a paused subscription refuses a link and an unlink, and the sentence shows above the lists
+    string pausedLines = DesktopSubscriptionCode.AnyWriteLines(Project, "_context", "ErrorMessage", "return;", 8);
     var displayColumns = junction.DisplayColumns;
     // the display columns are nullable strings: one column falls back to "", several are joined by an interpolated string (a null shows as nothing)
     string DisplayExpr(string prefix) => displayColumns.Count == 1
@@ -79,6 +83,8 @@
     <!-- Two side-by-side lists with <</</>/>> buttons (a "shuttle control" / "transfer list"): move rows
          between them to edit which <#= targetRole #> rows are linked to this <#= anchorRole #> row. Each
          click commits immediately via <#= stem #>_Link/<#= stem #>_Unlink, so there is no separate Save. -->
+    <StackPanel Spacing="8">
+    <TextBlock Text="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" />
     <Grid ColumnSpacing="12" MinWidth="640">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
@@ -126,6 +132,7 @@
             </Border>
         </StackPanel>
     </Grid>
+    </StackPanel>
 </ContentDialog>
 @@@FILE <#= viewsFolder #>/<#= stem #>JunctionEditor.xaml.cs@@@
 using System.Linq;
@@ -174,6 +181,9 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
 using <#= contextNamespace #>;
+<# if (pausedLines.Length > 0) { #>
+using <#= repositoryNamespace #>;
+<# } #>
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.EntityFrameworkCore;
 <#
@@ -214,6 +224,10 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
     public ObservableCollection<<#= Model.TableName #>JunctionListItem> Available { get; } = [];
     public ObservableCollection<<#= Model.TableName #>JunctionListItem> Selected { get; } = [];
 
+    /// <summary> The sentence of a refused change (a paused subscription); null when the last change went through. </summary>
+    [ObservableProperty]
+    private string? _errorMessage;
+
     public <#= stem #>JunctionEditorViewModel(<#= contextType #> context, <#= anchorType #> anchorId)
     {
         _context = context;
@@ -245,7 +259,8 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
 
     public async Task LinkAsync(IReadOnlyList<<#= Model.TableName #>JunctionListItem> items)
     {
-        foreach (var item in items)
+        ErrorMessage = null;
+<#= pausedLines #>        foreach (var item in items)
         {
 <#
     if (ef)
@@ -265,7 +280,8 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
 
     public async Task UnlinkAsync(IReadOnlyList<<#= Model.TableName #>JunctionListItem> items)
     {
-        foreach (var item in items)
+        ErrorMessage = null;
+<#= pausedLines #>        foreach (var item in items)
         {
 <#
     if (ef)

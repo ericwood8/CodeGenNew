@@ -97,6 +97,20 @@ sql("DELETE FROM PlanLimit WHERE PlanId = 1 AND LimitKey = 'projects'")
 fourth = client.post("/api/projects", headers=grace, json={**project, "name": "Scratch four"})
 check("a plan with no row for a limit is unlimited", fourth.status_code == 201, (fourth.status_code, fourth.text))
 
+if os.environ.get("CHECK_IMPORT_ROWS"):
+    # the ASP.NET API only: the Python and Rust APIs write no CSV routes for a tenant-owned table
+    sql("INSERT INTO PlanLimit (PlanId, LimitKey, LimitValue) VALUES (1, 'projects', 5)")
+    have = connection.execute("SELECT COUNT(*) FROM Project WHERE TenantId = 2").fetchone()[0]
+    csv_head = "TenantId,Name,Budget\r\n"
+    rows_over = "".join(f"2,Imported {i},1\r\n" for i in range(5 - have + 1))
+    over = client.post("/api/projects/import", headers={**grace, "Content-Type": "text/csv"}, content=csv_head + rows_over)
+    check("an import with more rows than the plan has room for is a 402 plan-limit", over.status_code == 402 and over.json()["type"].endswith("plan-limit"), (over.status_code, over.text))
+    check("and nothing was imported", connection.execute("SELECT COUNT(*) FROM Project WHERE TenantId = 2").fetchone()[0] == have)
+    rows_fit = "".join(f"2,Imported {i},1\r\n" for i in range(5 - have))
+    fit = client.post("/api/projects/import", headers={**grace, "Content-Type": "text/csv"}, content=csv_head + rows_fit)
+    check("an import that fits the plan is imported whole", fit.status_code == 200 and fit.json()["imported"] == 5 - have, (fit.status_code, fit.text))
+    sql("DELETE FROM PlanLimit WHERE PlanId = 1 AND LimitKey = 'projects'")
+
 check("a tenant's administrator cannot change their own subscription", client.put("/api/subscription/2", headers=grace, json={"planId": 2, "status": "active"}).status_code == 403)
 changed = client.put("/api/subscription/2", headers=pat, json={"status": "cancelled"})
 check("a platform administrator cancels it", changed.status_code == 200 and changed.json()["status"] == "cancelled" and not changed.json()["writable"], (changed.status_code, changed.text))

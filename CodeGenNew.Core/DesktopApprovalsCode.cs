@@ -64,9 +64,14 @@ public static class DesktopApprovalsCode
         string Dispatch(string call) => string.Join("\n", plan.Tables.Select(t => $"            \"{t.Table.TableName}\" => {t.Table.TableName}Approvals.{call},"));
         o.Append("    public Task<List<ApprovalView>> ToApproveAsync(string table) => table switch\n    {\n" + Dispatch("ToApproveAsync(context)") + "\n        _ => throw new ArgumentException(table)\n    };\n\n");
         o.Append("    public Task<List<ApprovalView>> HistoryAsync(string table, int id) => table switch\n    {\n" + Dispatch("HistoryAsync(context, id)") + "\n        _ => throw new ArgumentException(table)\n    };\n\n");
-        o.Append("    public Task RequestAsync(string table, int id, string? reason) => table switch\n    {\n" + Dispatch("RequestAsync(context, id, reason)") + "\n        _ => throw new ArgumentException(table)\n    };\n\n");
-        o.Append("    public Task DecideAsync(string table, int id, bool approve, string? note) => table switch\n    {\n" + Dispatch("DecideAsync(context, id, approve, note)") + "\n        _ => throw new ArgumentException(table)\n    };\n\n");
-        o.Append("    public Task WithdrawAsync(string table, int id) => table switch\n    {\n" + Dispatch("WithdrawAsync(context, id)") + "\n        _ => throw new ArgumentException(table)\n    };\n}\n");
+        // with plans and subscriptions a paused subscription refuses a request, a decision and a withdrawal in the words of the API
+        bool paused = project is not null && TenantPlan.HasDesktopTenants(project) && SubscriptionPlan.IsEnabled(project);
+        string Change(string signature, string call) => paused
+            ? "    public async Task " + signature + "\n    {\n        if (await SubscriptionGuard.RefusalAsync(context, null, false) is { } paused)\n            throw new ApprovalRefused(402, paused);\n        await (table switch\n        {\n" + Dispatch(call) + "\n            _ => throw new ArgumentException(table)\n        });\n    }\n\n"
+            : "    public Task " + signature + " => table switch\n    {\n" + Dispatch(call) + "\n        _ => throw new ArgumentException(table)\n    };\n\n";
+        o.Append(Change("RequestAsync(string table, int id, string? reason)", "RequestAsync(context, id, reason)"));
+        o.Append(Change("DecideAsync(string table, int id, bool approve, string? note)", "DecideAsync(context, id, approve, note)"));
+        o.Append(Change("WithdrawAsync(string table, int id)", "WithdrawAsync(context, id)").TrimEnd('\n') + "\n}\n");
         return o.ToString();
     }
 

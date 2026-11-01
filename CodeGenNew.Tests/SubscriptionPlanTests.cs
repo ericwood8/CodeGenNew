@@ -168,14 +168,92 @@ public class SubscriptionPlanTests
         Expect.Contains(code, "\"seats\" => context.Set<EmployeeTenant>().IgnoreQueryFilters().AsNoTracking().CountAsync(r => r.TenantId == tenant, cancellationToken)");
         Expect.Contains(code, "statusCode: 402");
         Expect.Contains(code, "public static class SubscriptionGateway");
-        Expect.Contains(code, "row.CurrentPeriodEnd = end;");
-        Expect.Contains(code, "row = new Subscription { TenantId = tenantId, PlanId = plan, Status = request.Status.Trim(), CurrentPeriodStart = DateTime.UtcNow };");
+        Expect.Contains(code, "row.CurrentPeriodEnd = SubscriptionState.Stored(end);");
+        Expect.Contains(code, "row = new Subscription { TenantId = tenantId, PlanId = plan, Status = request.Status.Trim(), CurrentPeriodStart = SubscriptionState.Stored(DateTime.UtcNow) };");
         Expect.Contains(read("Apis/ApiRegistration.cs"), "SubscriptionRoutes.Register(app);");
         foreach (string table in new[] { "Plan", "PlanLimit", "Subscription" })
             Assert.IsFalse(files.Any(f => f.EndsWith($"Apis/{table}Api.cs")), table + " has an ordinary API");
         Expect.Contains(read("SubscriptionApiTests.cs"), "public class SubscriptionApiTests");
         Expect.Contains(read("SubscriptionApiTests.cs"), "A_create_past_the_plan_limit_is_refused_until_the_limit_is_raised");
         Expect.Contains(read("SubscriptionApiTests.cs"), "A_trial_ends_at_its_period_end");
+    }
+
+    [TestMethod]
+    public async Task An_import_counts_every_row_against_the_plan_limit()
+    {
+        var (success, errors, read, _) = await TenantPlanTests.GenerateAsync(Values(new Dictionary<string, string> { ["ApiCsv"] = "true" }), more: PlanTables);
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        Expect.Contains(read("Apis/Subscriptions.cs"), "public static async Task<IResult?> ImportRefusalAsync(HttpContext http, int rows)");
+        Expect.Contains(read("Apis/Subscriptions.cs"), "return used + rows > allowed ?");
+        Expect.Contains(read("Apis/Csv.cs"), "SubscriptionLimits.ImportRefusalAsync(request.HttpContext, import.Rows.Count)");
+    }
+
+    [TestMethod]
+    public async Task A_renewal_route_is_always_written_and_the_plan_choice_only_when_the_setting_is_on()
+    {
+        var off = await TenantPlanTests.GenerateAsync(Values(), more: PlanTables);
+        Assert.IsTrue(off.Success, string.Join(" | ", off.Errors));
+        string without = off.Read("Apis/Subscriptions.cs");
+        Expect.Contains(without, "app.MapPost(\"/api/subscription/{tenantId:int}/renew\", SubscriptionEndpoints.RenewAsync);");
+        Expect.Contains(without, "int days = request?.Days ?? 30;");
+        Expect.DoesNotContain(without, "ChooseAsync");
+        Expect.Contains(without, "List<PlanInfo> Plans, bool CanChoose)");
+
+        var on = await TenantPlanTests.GenerateAsync(Values(new Dictionary<string, string> { ["SubscriptionPlanChoice"] = "true", ["SubscriptionPeriodDays"] = "14" }), more: PlanTables);
+        Assert.IsTrue(on.Success, string.Join(" | ", on.Errors));
+        string with = on.Read("Apis/Subscriptions.cs");
+        Expect.Contains(with, "app.MapPut(\"/api/subscription/plan\", SubscriptionEndpoints.ChooseAsync);");
+        Expect.Contains(with, "int days = request?.Days ?? 14;");
+        Expect.Contains(with, "return Results.Problem(statusCode: 409");
+        Expect.Contains(on.Read("SubscriptionApiTests.cs"), "An_administrator_chooses_a_plan_from_the_list_unless_it_allows_less_than_the_tenant_has");
+        Expect.Contains(on.Read("SubscriptionApiTests.cs"), "A_renewal_adds_a_period_that_starts_when_the_old_one_ends");
+
+        var python = await TenantPlanTests.GenerateAsync(WithSignIn(new() { ["SubscriptionPlanChoice"] = "true" }), stack: "python", more: PlanTables);
+        Assert.IsTrue(python.Success, string.Join(" | ", python.Errors));
+        Expect.Contains(python.Read("subscriptions.py"), "@router.put(\"/api/subscription/plan\")");
+        Expect.Contains(python.Read("subscriptions.py"), "@router.post(\"/api/subscription/{tenant_id}/renew\")");
+        Assert.IsTrue(python.Read("subscriptions.py").IndexOf("/api/subscription/plan", StringComparison.Ordinal) < python.Read("subscriptions.py").IndexOf("@router.put(\"/api/subscription/{tenant_id}\")", StringComparison.Ordinal), "the plan route comes before the one that reads a tenant key");
+
+        var rust = await TenantPlanTests.GenerateAsync(WithSignIn(new() { ["SubscriptionPlanChoice"] = "true" }), stack: "rust", more: PlanTables);
+        Assert.IsTrue(rust.Success, string.Join(" | ", rust.Errors));
+        Expect.Contains(rust.Read("subscriptions.rs"), ".route(\"/api/subscription/plan\", put(choose_plan))");
+        Expect.Contains(rust.Read("subscriptions.rs"), "axum::routing::post(renew_subscription)");
+    }
+
+    [TestMethod]
+    public async Task A_status_held_in_a_look_up_table_is_read_and_written_by_the_aspnet_api_and_refused_by_the_other_stacks()
+    {
+        string[] more =
+        [
+            PlanTables[0], PlanTables[1],
+            "CREATE TABLE SubscriptionStatus (SubscriptionStatusId INTEGER PRIMARY KEY, Name VARCHAR(20) NOT NULL)",
+            "CREATE TABLE Subscription (SubscriptionId INTEGER PRIMARY KEY AUTOINCREMENT, TenantId INTEGER NOT NULL REFERENCES Tenant (TenantId), PlanId INTEGER NOT NULL REFERENCES Plan (PlanId), StatusId INTEGER NOT NULL REFERENCES SubscriptionStatus (SubscriptionStatusId), CurrentPeriodStart DATETIME NULL, CurrentPeriodEnd DATETIME NULL, GatewaySubscriptionId VARCHAR(80) NULL)"
+        ];
+        var api = await TenantPlanTests.GenerateAsync(Values(), more: more);
+        Assert.IsTrue(api.Success, string.Join(" | ", api.Errors));
+        string code = api.Read("Apis/Subscriptions.cs");
+        Expect.Contains(code, "Status = context.Set<SubscriptionStatus>().IgnoreQueryFilters().Where(l => l.SubscriptionStatusId == s.StatusId).Select(l => l.Name).FirstOrDefault() ?? \"\"");
+        Expect.Contains(code, "public static async Task<int?> StatusIdAsync(");
+        Expect.Contains(code, "row = new Subscription { TenantId = tenantId, PlanId = plan, StatusId = statusId!.Value");
+        Expect.Contains(code, "row.StatusId = statusId!.Value;");
+        Expect.Contains(code, "That status is not in the look-up table of statuses.");
+
+        foreach (string stack in new[] { "python", "rust" })
+        {
+            var other = await TenantPlanTests.GenerateAsync(WithSignIn(), stack: stack, more: more);
+            Assert.IsFalse(other.Success, stack + " served a look-up status");
+            StringAssert.Contains(string.Join(" | ", other.Errors), "look-up table SubscriptionStatus");
+        }
+    }
+
+    [TestMethod]
+    public async Task An_import_is_not_counted_without_a_plan_limit()
+    {
+        var (success, errors, read, _) = await TenantPlanTests.GenerateAsync(Values(new Dictionary<string, string> { ["ApiCsv"] = "true", ["PlanLimits"] = "" }), more: PlanTables);
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        Assert.IsFalse(read("Apis/Csv.cs").Contains("ImportRefusalAsync"));
     }
 
     [TestMethod]
@@ -432,6 +510,29 @@ public class SubscriptionPlanTests
         Expect.Contains(read("SubscriptionGuard.cs"), "public static async Task<List<PlanRow>> PlansAsync(");
         Expect.Contains(read("SubscriptionGuard.cs"), "int adding = 1");
         Expect.Contains(read("SubscriptionPage.xaml"), "x:DataType=\"rows:PlanRow\"");
+    }
+
+    [TestMethod]
+    public async Task The_winui3_app_checks_a_junction_editor_the_approval_service_and_a_table_with_no_tenant()
+    {
+        string[] more =
+        [
+            .. PlanTables,
+            "CREATE TABLE Tag (TagId INTEGER PRIMARY KEY AUTOINCREMENT, Name VARCHAR(40) NOT NULL)",
+            "CREATE TABLE ProjectTag (ProjectId INTEGER NOT NULL REFERENCES Project (ProjectId), TagId INTEGER NOT NULL REFERENCES Tag (TagId), PRIMARY KEY (ProjectId, TagId))",
+            "CREATE TABLE ProjectApproval (ProjectApprovalId INTEGER PRIMARY KEY, ProjectId INTEGER NOT NULL REFERENCES Project (ProjectId), ApprovalStatusId INTEGER NOT NULL, Reason VARCHAR(500) NULL, RequestedBy VARCHAR(50) NOT NULL, RequestedOn DATETIME NOT NULL, DecidedBy VARCHAR(50) NULL, DecidedOn DATETIME NULL, DecisionNote VARCHAR(500) NULL, Revision INTEGER NOT NULL)"
+        ];
+        var (success, errors, read, _) = await TenantPlanTests.GenerateAsync(WithSignIn(new() { ["Stacks"] = "winui3", ["RowApprovals"] = "Project" }), stack: "winui3", more: more);
+
+        Assert.IsTrue(success, string.Join(" | ", errors));
+        string junction = read("ProjectTagJunctionEditorViewModel.cs");
+        Expect.Contains(junction, "if (await SubscriptionGuard.RefusalAsync(_context, null, false) is { } paused)");
+        Expect.Contains(junction, "ErrorMessage = paused;");
+        Expect.Contains(read("ProjectTagJunctionEditor.xaml"), "ViewModel.ErrorMessage");
+        string service = read("ApprovalService.cs");
+        Expect.Contains(service, "throw new ApprovalRefused(402, paused);");
+        Expect.Contains(service, "public async Task DecideAsync(string table, int id, bool approve, string? note)");
+        Expect.Contains(read("CountryDetailViewModel.cs"), "SubscriptionGuard.RefusalAsync(_context, null, _editing is null)");
     }
 
     [TestMethod]
