@@ -17,7 +17,7 @@ public sealed class SearchCall
     /// <param name="qualifyTypes"> Write the parameter class with its namespace (a repository file has no using for it). </param>
     public SearchCall(TableModel model, string entity, IEnumerable<string> filterNames, bool qualifyTypes = false)
     {
-        _prefix = qualifyTypes ? (model.Dialect == SqlDialect.PostgreSql ? "Npgsql." : model.Dialect == SqlDialect.MySql ? "MySqlConnector." : "Microsoft.Data.SqlClient.") : "";
+        _prefix = qualifyTypes ? DialectInfo.For(model.Dialect).DriverPrefix : "";
         _postgres = model.Dialect == SqlDialect.PostgreSql;
         _mysql = model.Dialect == SqlDialect.MySql;
         _schema = model.SchemaName;

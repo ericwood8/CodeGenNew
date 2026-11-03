@@ -1,0 +1,13 @@
+# tenants with a membership table and the sign-in drop-down
+@schema=tenants_signin
+@stack=api,python,rust
+ApiAuth=true
+TenantTable=Tenant
+TenantMembership=EmployeeTenant:EmployeeId:TenantId:Role
+UserTable=Employee
+UserNameColumn=Login
+UserRoleColumn=IsManager
+UserAdminColumn=IsAdministrator
+ApiTests=true
+PythonTests=true
+RustTests=true

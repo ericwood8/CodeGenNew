@@ -61,7 +61,7 @@
         Line();
         Line("use serde_json::{Value, json};");
         Line();
-        Line("use crate::test_support::{Client, new_code, new_key, parent_key, unique};");
+        Line("use crate::test_support::{Client, new_code, new_day, new_key, parent_key, unique};");
         Line();
         Line("/// A body, once the parent rows it needs are found or added; None (after saying why) when they cannot be.");
         Line("pub type Body<'a> = Pin<Box<dyn Future<Output = Option<Value>> + 'a>>;");
@@ -86,6 +86,14 @@
                     long high = Math.Min(range.Max, 2_000_000_000);
                     return $"new_key({Math.Max(1, high / 2).ToString(CultureInfo.InvariantCulture)}, {high.ToString(CultureInfo.InvariantCulture)})";
                 }
+                if (TableShapes.For(table, Project).Effective is { } effective && (c.Name.EqualsIgnoreCase(effective.From.Name) || c.Name.EqualsIgnoreCase(effective.To.Name)))
+                {
+                    // each new row is a one-day period of its own, so rows of different tests never overlap
+                    string day = "day_" + RustNames.Snake(effective.From.Name);
+                    if (!lets.Contains($"let {day} = new_day({(sample.Contains('T') ? "true" : "false")});"))
+                        lets.Add($"let {day} = new_day({(sample.Contains('T') ? "true" : "false")});");
+                    return $"{day}.clone()";
+                }
                 if (RustTestBodies.IsFreeText(table, c, Project))
                     return $"unique({Json(ApiSampleValues.Text(c, Project, table.TableName))}, {Math.Max(c.CharacterLength, 0)})";
                 if (RustTestBodies.ParentKey(table, c, Project) is { } fk)
@@ -97,7 +105,10 @@
                 }
                 return sample;
             }
-            var members = ApiSampleValues.BodyColumns(table).Where(c => c != t.HashField?.Column).Select(c => (Name: Json(JsonNames.Camel(c.Name)), Value: Expression(c))).ToList();
+            var bodyColumns = ApiSampleValues.BodyColumns(table).ToList();
+            if (TableShapes.For(table, Project).Effective is { } period && !bodyColumns.Any(c => c.Name.EqualsIgnoreCase(period.To.Name)))
+                bodyColumns = bodyColumns.Append(period.To).OrderBy(c => c.OrdinalPosition).ToList();   // an open end would overlap the periods of the other tests
+            var members = bodyColumns.Where(c => c != t.HashField?.Column).Select(c => (Name: Json(JsonNames.Camel(c.Name)), Value: Expression(c))).ToList();
 
             Line();
             Line($"/// A body that adds a row to {t.Route}.");

@@ -481,6 +481,17 @@ pub fn unique(text: &str, max_length: usize) -> String {
     if room > 0 { format!("{} {tail}", text.chars().take(room).collect::<String>()) } else { tail }
 }
 
+/// The first day of a one-day period long before real data, a new one on every call, so rows of different tests (EffectiveDatedTables) never overlap. The same text is the last day of that period.
+#[allow(dead_code)]
+pub fn new_day(with_time: bool) -> String {
+    static BASE: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    static STEP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let base = *BASE.get_or_init(|| (uuid::Uuid::new_v4().as_u128() % 3000) as u64 * 2);
+    let n = base + STEP.fetch_add(2, std::sync::atomic::Ordering::Relaxed) + 2;
+    let (year, month, day) = (1800 + n / 336, (n / 28) % 12 + 1, n % 28 + 1);
+    if with_time { format!("{year:04}-{month:02}-{day:02}T00:00:00") } else { format!("{year:04}-{month:02}-{day:02}") }
+}
+
 /// A key for a table whose key the database does not number.
 pub fn new_key(low: i64, high: i64) -> i64 {
     low + (uuid::Uuid::new_v4().as_u128() % (high - low).max(1) as u128) as i64

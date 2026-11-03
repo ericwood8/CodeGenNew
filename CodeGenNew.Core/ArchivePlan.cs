@@ -20,11 +20,7 @@ public static class ArchivePlan
     public static string ArchiveName(string table) => table + Suffix;
 
     public static IReadOnlyList<(string Table, string Days, bool Delete)> Entries(ProjectSettings project) =>
-        project.ArchiveTables.Select(item =>
-        {
-            string[] parts = item.Split(':', StringSplitOptions.TrimEntries);
-            return (parts[0], parts.Length > 1 ? parts[1] : "", parts.Length > 2 && parts[2].EqualsIgnoreCase("delete"));
-        }).Where(e => e.Item1.Length > 0).ToList();
+        SettingParts.Items(project.ArchiveTables).Select(p => (p[0], p.Length > 1 ? p[1] : "", p.Length > 2 && p[2].EqualsIgnoreCase("delete"))).ToList();
 
     /// <summary> The archive tables the project's entries imply, so each can be shown as a read-only list. </summary>
     public static IEnumerable<string> ArchiveTableNames(ProjectSettings project) =>

@@ -56,7 +56,7 @@ public static class ArchiveScript
         string insertColumns = columnList + (job.Archive is null || job.ArchivedOn is not null ? ", " + di.Quote(ArchivePlan.ArchivedOnName) : "");
         string key = string.Join(", ", job.Table.PrimaryKeyColumns.Select(c => di.Quote(c.DbName)));
         string procedure = di.Quote(ProcedureName(job));
-        string stamp = database.Dialect switch { SqlDialect.SqlServer => "datetime2", SqlDialect.MySql => "datetime", _ => "timestamp" };
+        string stamp = DialectInfo.For(database.Dialect).DateTimeType;
         bool withArchivedOn = job.Archive is null || job.ArchivedOn is not null;
 
         if (!job.Delete && job.Archive is null)

@@ -146,7 +146,7 @@ public sealed record ApprovalPlan(IReadOnlyList<ApprovalTable> Tables, UserTable
             SqlDialect.Sqlite => $"\"{side}Id\" INTEGER PRIMARY KEY AUTOINCREMENT",
             _ => $"[{side}Id] int IDENTITY(1,1) NOT NULL PRIMARY KEY"
         };
-        string Quote(string name) => dialect switch { SqlDialect.PostgreSql or SqlDialect.Sqlite => $"\"{name}\"", SqlDialect.MySql => $"`{name}`", _ => $"[{name}]" };
+        string Quote(string name) => DialectInfo.For(dialect).Quote(name);
         string Int = dialect == SqlDialect.Sqlite ? "INTEGER" : "int";
         string Text(int n) => dialect switch { SqlDialect.PostgreSql => $"varchar({n})", SqlDialect.MySql => $"varchar({n})", SqlDialect.Sqlite => $"VARCHAR({n})", _ => $"varchar({n})" };
         string When = dialect switch { SqlDialect.PostgreSql => "timestamp", SqlDialect.MySql => "datetime", SqlDialect.Sqlite => "DATETIME", _ => "datetime2" };

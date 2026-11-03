@@ -39,7 +39,7 @@ public sealed record ApprovalTestSeed(ApprovalTable Table, IReadOnlyList<string>
 
         string Name(TableModel t) => di.QuoteTable(t.SchemaName, t.DbTableName);
         string Q(ColumnModel c) => di.Quote(c.DbName);
-        string Bool(bool value) => database.Dialect == SqlDialect.PostgreSql ? (value ? "true" : "false") : value ? "1" : "0";
+        string Bool(bool value) => DialectInfo.For(database.Dialect).BooleanText(value);
         string? Literal(ColumnModel c, TableModel t)
         {
             string json = c.ValidExample(project, t.TableName);

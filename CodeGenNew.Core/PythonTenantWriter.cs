@@ -202,7 +202,7 @@ def new_person(session: Session, admin: dict[str, Any], password: str | None, te
     /// <summary> <c>table("Name", column("A"), column("B"), schema="s")</c> for the given columns (null and repeated ones are left out); the schema is named only when it is not the database's default one. </summary>
     public static string LightTable(TableModel table, IEnumerable<ColumnModel?> columns)
     {
-        bool schemaNamed = table.Dialect is SqlDialect.SqlServer or SqlDialect.PostgreSql && !table.SchemaName.EqualsIgnoreCase(table.Dialect == SqlDialect.SqlServer ? "dbo" : "public");
+        bool schemaNamed = DialectInfo.For(table.Dialect).NamesSchema(table.SchemaName);
         var names = columns.OfType<ColumnModel>().Select(c => c.DbName).Distinct().ToList();
         return $"table({PythonNames.Str(table.DbTableName)}, {string.Join(", ", names.Select(n => $"column({PythonNames.Str(n)})"))}" + (schemaNamed ? $", schema={PythonNames.Str(table.SchemaName)}" : "") + ")";
     }

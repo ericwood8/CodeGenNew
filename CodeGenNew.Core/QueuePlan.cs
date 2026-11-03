@@ -33,11 +33,7 @@ public static class QueuePlan
     private static readonly string[] ErrorNames = ["LastError", "ErrorMessage", "Error", "Failure"];
 
     public static IReadOnlyList<(string Table, string Status, string Retry)> Entries(ProjectSettings project) =>
-        project.QueueTables.Select(item =>
-        {
-            string[] parts = item.Split(':', StringSplitOptions.TrimEntries);
-            return (parts[0], parts.Length > 1 && parts[1].Length > 0 ? parts[1] : DefaultStatus, parts.Length > 2 && parts[2].Length > 0 ? parts[2] : DefaultRetry);
-        }).Where(e => e.Item1.Length > 0).ToList();
+        SettingParts.Items(project.QueueTables).Select(p => (p[0], SettingParts.At(p, 1) ?? DefaultStatus, SettingParts.At(p, 2) ?? DefaultRetry)).ToList();
 
     public static bool IsListed(string table, ProjectSettings project) => Entries(project).Any(e => e.Table.EqualsIgnoreCase(table));
 

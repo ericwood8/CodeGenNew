@@ -76,7 +76,7 @@ public sealed class RustTable
         Navigations = EntityNavigations.Of(model, fk => project.NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape) ?? false)
             .Where(n => fieldOf.ContainsKey(n.Column))
             .Select(n => new RustNavigation(RustNames.Ident(RustNames.Snake(n.Role)), JsonNames.Camel(n.Role))).ToList();
-        Returning = model.Dialect != SqlDialect.MySql;
+        Returning = DialectInfo.For(model.Dialect).SupportsReturning;
         Table = _di.QuoteTable(model.SchemaName, model.DbTableName);
         SelectList = string.Join(", ", fields.Select(f => f.Select));
 

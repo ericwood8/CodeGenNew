@@ -118,7 +118,7 @@ public static class PythonSubscriptionWriter
 
     private static string Schema(TableModel table)
     {
-        bool schemaNamed = table.Dialect is SqlDialect.SqlServer or SqlDialect.PostgreSql && !table.SchemaName.EqualsIgnoreCase(table.Dialect == SqlDialect.SqlServer ? "dbo" : "public");
+        bool schemaNamed = DialectInfo.For(table.Dialect).NamesSchema(table.SchemaName);
         return schemaNamed ? $", schema={PythonNames.Str(table.SchemaName)}" : "";
     }
 

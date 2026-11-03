@@ -35,11 +35,7 @@ public sealed record TreeTable(TableModel Table, ColumnModel Key, ColumnModel Pa
 public static class TreePlan
 {
     public static IReadOnlyList<(string Table, string? Parent, string? MaxDepth)> Entries(ProjectSettings project) =>
-        project.TreeTables.Select(item =>
-        {
-            string[] parts = item.Split(':', StringSplitOptions.TrimEntries);
-            return (parts[0], parts.Length > 1 && parts[1].Length > 0 ? parts[1] : null, parts.Length > 2 && parts[2].Length > 0 ? parts[2] : null);
-        }).Where(e => e.Item1.Length > 0).ToList();
+        SettingParts.Items(project.TreeTables).Select(p => (p[0], SettingParts.At(p, 1), SettingParts.At(p, 2))).ToList();
 
     public static bool IsListed(string table, ProjectSettings project) => Entries(project).Any(e => e.Table.EqualsIgnoreCase(table));
 
@@ -102,11 +98,7 @@ public static class SoftDeletePlan
     public const string DefaultFlag = "IsDeleted";
 
     public static IReadOnlyList<(string Table, string Flag)> Entries(ProjectSettings project) =>
-        project.SoftDeleteTables.Select(item =>
-        {
-            string[] parts = item.Split(':', StringSplitOptions.TrimEntries);
-            return (parts[0], parts.Length > 1 && parts[1].Length > 0 ? parts[1] : DefaultFlag);
-        }).Where(e => e.Item1.Length > 0).ToList();
+        SettingParts.Items(project.SoftDeleteTables).Select(p => (p[0], SettingParts.At(p, 1) ?? DefaultFlag)).ToList();
 
     public static bool IsListed(string table, ProjectSettings project) => Entries(project).Any(e => e.Table.EqualsIgnoreCase(table));
 
@@ -156,11 +148,7 @@ public sealed record EffectiveTable(TableModel Table, ColumnModel Key, ColumnMod
 public static class EffectiveDatePlan
 {
     public static IReadOnlyList<(string Table, string? From, string? To, string? Groups)> Entries(ProjectSettings project) =>
-        project.EffectiveDatedTables.Select(item =>
-        {
-            string[] parts = item.Split(':', StringSplitOptions.TrimEntries);
-            return (parts[0], parts.Length > 1 && parts[1].Length > 0 ? parts[1] : null, parts.Length > 2 && parts[2].Length > 0 ? parts[2] : null, parts.Length > 3 && parts[3].Length > 0 ? parts[3] : null);
-        }).Where(e => e.Item1.Length > 0).ToList();
+        SettingParts.Items(project.EffectiveDatedTables).Select(p => (p[0], SettingParts.At(p, 1), SettingParts.At(p, 2), SettingParts.At(p, 3))).ToList();
 
     public static bool IsListed(string table, ProjectSettings project) => Entries(project).Any(e => e.Table.EqualsIgnoreCase(table));
 

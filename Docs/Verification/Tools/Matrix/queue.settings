@@ -1,0 +1,7 @@
+# a work queue
+@schema=queue_archive
+@stack=api,python,rust
+QueueTables=JobQueue
+ApiTests=true
+PythonTests=true
+RustTests=true

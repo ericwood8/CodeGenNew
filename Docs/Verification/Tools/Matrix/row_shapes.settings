@@ -1,0 +1,9 @@
+# a tree, soft deleted tables and an effective dated table
+@schema=row_shapes
+@stack=api,python,rust
+TreeTables=Category:ParentCategoryId:3
+SoftDeleteTables=Category,Customer
+EffectiveDatedTables=Price:ValidFrom:ValidTo
+ApiTests=true
+PythonTests=true
+RustTests=true

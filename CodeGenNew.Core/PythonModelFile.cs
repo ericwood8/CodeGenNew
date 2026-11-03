@@ -14,7 +14,7 @@ public static class PythonModelFile
         string Str(string text) => PythonNames.Str(text);
 
         bool schemaNamed = model.Dialect is SqlDialect.SqlServer or SqlDialect.PostgreSql
-            && !model.SchemaName.EqualsIgnoreCase(model.Dialect == SqlDialect.SqlServer ? "dbo" : "public");
+            && !model.SchemaName.EqualsIgnoreCase(DialectInfo.For(model.Dialect).DefaultSchema);
 
         var saTypes = t.Fields.Select(f => System.Text.RegularExpressions.Regex.Match(f.SqlAlchemyType, "^[A-Za-z]+").Value).Where(n => n is not ("PgEnum" or "PgText" or "MySqlSpatial" or "MySqlBit" or "YEAR")).Distinct().OrderBy(n => n, StringComparer.Ordinal).ToList();
         bool anyServerGenerated = t.Fields.Any(f => f.ReadOnly);

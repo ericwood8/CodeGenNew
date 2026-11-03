@@ -109,7 +109,7 @@ public static class RustSubscriptionWriter
         string endUpdate = "", gatewayUpdate = "";
         if (subscription.PeriodEnd is not null)
         {
-            string stamp = tenantTable.Dialect == SqlDialect.PostgreSql ? $"CAST({di.Placeholder(1)} AS TIMESTAMP)" : di.Placeholder(1);
+            string stamp = di.TimestampPlaceholder(1);
             endUpdate = FillAll(EndUpdate, ("§UPDATE_END_SQL", Raw($"UPDATE {Table(subscription.Table)} SET {Q(subscription.PeriodEnd)} = {stamp} WHERE {Q(subscription.Key)} = {di.Placeholder(2)}")));
         }
         if (subscription.Gateway is not null)
@@ -123,7 +123,7 @@ public static class RustSubscriptionWriter
         string renew = "";
         if (subscription.PeriodEnd is not null)
         {
-            string renewStamp = tenantTable.Dialect == SqlDialect.PostgreSql ? $"CAST({di.Placeholder(1)} AS TIMESTAMP)" : di.Placeholder(1);
+            string renewStamp = di.TimestampPlaceholder(1);
             string renewStart = subscription.PeriodStart is null ? ""
                 : $"    sqlx::query({Raw($"UPDATE {Table(subscription.Table)} SET {Q(subscription.PeriodStart)} = {renewStamp} WHERE {Q(subscription.Key)} = {di.Placeholder(2)}")}).bind(stamp(start)).bind(key).execute(&pool).await?;\n";
             renew = FillAll(RenewPeriod, ("§PLATFORM_TEXT", Str(SubscriptionWords.OnlyPlatform).Trim('"')), ("§RENEWDAYS_TEXT", Str(SubscriptionWords.RenewDays).Trim('"')), ("§NOSUBSCRIPTION_TEXT", Str(SubscriptionWords.NoSubscriptionToRenew).Trim('"')),
@@ -142,7 +142,7 @@ public static class RustSubscriptionWriter
             string webhookEnd = "";
             if (subscription.PeriodEnd is not null)
             {
-                string stamp = tenantTable.Dialect == SqlDialect.PostgreSql ? $"CAST({di.Placeholder(1)} AS TIMESTAMP)" : di.Placeholder(1);
+                string stamp = di.TimestampPlaceholder(1);
                 webhookEnd = Fill(WebhookEnd, ("§WEBHOOK_END_SQL", Raw($"UPDATE {Table(subscription.Table)} SET {Q(subscription.PeriodEnd)} = {stamp} WHERE {Q(subscription.Key)} = {di.Placeholder(2)}")));
             }
             o.Append(FillAll(Webhook, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§HEADER", SubscriptionWords.WebhookHeader), ("§TOLERANCE", SubscriptionWords.WebhookToleranceSeconds.ToString()),

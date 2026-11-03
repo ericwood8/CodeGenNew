@@ -1,0 +1,17 @@
+# plans, subscriptions and plan limits: python matrix_check.py Subs --settings-file Matrix/subscriptions.settings
+@schema=subscriptions
+@stack=api,python,rust
+ApiAuth=true
+TenantTable=Tenant
+TenantMembership=EmployeeTenant:EmployeeId:TenantId:Role
+UserTable=Employee
+UserNameColumn=Login
+UserRoleColumn=IsManager
+UserAdminColumn=IsAdministrator
+SubscriptionTable=Subscription
+PlanTable=Plan
+PlanLimitTable=PlanLimit
+PlanLimits=Project:projects,EmployeeTenant:seats
+ApiTests=true
+PythonTests=true
+RustTests=true

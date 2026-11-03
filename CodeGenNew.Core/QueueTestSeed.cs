@@ -43,7 +43,7 @@ public sealed record QueueTestSeed(QueueShape Queue, IReadOnlyList<string> Setup
                     value = json switch
                     {
                         "null" => null,
-                        "true" or "false" => database.Dialect == SqlDialect.PostgreSql ? json : json == "true" ? "1" : "0",
+                        "true" or "false" => DialectInfo.For(database.Dialect).BooleanText(json == "true"),
                         _ when json.StartsWith('"') => "'" + JsonSerializer.Deserialize<string>(json)!.Replace("'", "''") + "'",
                         _ => json
                     };

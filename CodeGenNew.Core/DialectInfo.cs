@@ -158,6 +158,27 @@ public sealed class DialectInfo
     /// <summary> A boolean as a literal: <c>1</c> or <c>0</c> where there is no boolean type (SQL Server, MySQL, SQLite), <c>TRUE</c> or <c>FALSE</c> for PostgreSQL. </summary>
     public string BooleanLiteral(bool value) => Dialect == SqlDialect.PostgreSql ? (value ? "TRUE" : "FALSE") : (value ? "1" : "0");
 
+    /// <summary> A boolean in lower case as JSON and PostgreSQL write it (<c>true</c>), or <c>1</c> and <c>0</c> where there is no boolean type. </summary>
+    public string BooleanText(bool value) => Dialect == SqlDialect.PostgreSql ? (value ? "true" : "false") : (value ? "1" : "0");
+
+    /// <summary> The schema a table is in when the project does not name one: <c>dbo</c> for SQL Server, <c>public</c> otherwise. </summary>
+    public string DefaultSchema => Dialect == SqlDialect.SqlServer ? "dbo" : "public";
+
+    /// <summary> True when the database has schemas and the table's is not the default one, so generated code must name it. </summary>
+    public bool NamesSchema(string schema) => HasSchemas && !schema.EqualsIgnoreCase(DefaultSchema);
+
+    /// <summary> A positional placeholder that holds a date and time: PostgreSQL will not take the driver's text for a <c>timestamp</c> without a cast. </summary>
+    public string TimestampPlaceholder(int index) => Dialect == SqlDialect.PostgreSql ? $"CAST({Placeholder(index)} AS TIMESTAMP)" : Placeholder(index);
+
+    /// <summary> False for MySQL: an INSERT cannot return the row it wrote, so the key is read back with a second statement. </summary>
+    public bool SupportsReturning => Dialect != SqlDialect.MySql;
+
+    /// <summary> The namespace prefix of the ADO.NET driver's classes (<c>Npgsql.</c>), for generated code that names a driver type. </summary>
+    public string DriverPrefix => Dialect switch { SqlDialect.PostgreSql => "Npgsql.", SqlDialect.MySql => "MySqlConnector.", _ => "Microsoft.Data.SqlClient." };
+
+    /// <summary> The column type of a date and time without a zone: <c>datetime2</c>, <c>datetime</c> or <c>timestamp</c>. </summary>
+    public string DateTimeType => Dialect switch { SqlDialect.SqlServer => "datetime2", SqlDialect.MySql => "datetime", _ => "timestamp" };
+
     /// <summary> The current time as the database knows it. </summary>
     public string CurrentTimestamp => Dialect switch
     {
