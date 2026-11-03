@@ -27,7 +27,7 @@
     // Full notes: Docs/TemplateNotes/TSX_LogPage_v1.md
     // ==========================================================================================
 
-    var log = LogTablePlan.For(Model, Project);
+    var log = TableShapes.For(Model, Project).Log;
     if (log is null)
     {
         if (LogTablePlan.Problem(Model, Project) is { } problem)
@@ -36,7 +36,7 @@
     else
     {
         var form = FormModel.For(Model, Project);
-        var queue = QueuePlan.For(Model, Project);   // a work queue also shows the counts by status and a Retry button on a failed row
+        var queue = TableShapes.For(Model, Project).Queue;   // a work queue also shows the counts by status and a Retry button on a failed row
         string baseName = form.BaseName;
         string stem = form.Stem;
         string apiVar = ReactNames.ApiVar(Model.TableName);
@@ -118,7 +118,7 @@
         T("      setTotalPages(result.totalPages);");
         T("      setLoaded(true);");
         T("      setError(null);");
-        T($"    }}).catch(() => setError('Failed to load {Labels.Words(baseName).ToLowerInvariant().Pluralize()}.'));");
+        T($"    }}).catch(() => setError('Failed to load {form.PluralWords}.'));");
         T("  };");
         T();
         if (queue is not null)
@@ -127,7 +127,7 @@
             T();
             T("  // a failed row goes back to pending; the page and the counts are read again");
             T($"  const retry = (id: {form.KeyType!.TypeScript}) => {{");
-            T($"    {apiVar}.retry(id).then(() => {{ load(page); loadStats(); }}).catch(() => setError('Failed to retry the {Labels.Words(baseName).ToLowerInvariant()}.'));");
+            T($"    {apiVar}.retry(id).then(() => {{ load(page); loadStats(); }}).catch(() => setError('Failed to retry the {form.Words}.'));");
             T("  };");
             T();
         }
@@ -357,7 +357,7 @@
         var longColumn = columnList.Select(c => c.Column).FirstOrDefault(c => c.IsStringColumn && c != queue?.Status && form.CellOf(c) == CellKind.Plain);
         if (longColumn is not null)
         {
-            string viewRow = "{ " + string.Join(", ", Model.Columns.Select(c => c == form.KeyColumn ? $"{keyProp}: 7" : c == longColumn ? $"{JsonNames.Camel(c.Name)}: 'Long message. '.repeat(30)" : $"{JsonNames.Camel(c.Name)}: {ApiSampleValues.Value(c, Project, Model.TableName)}")) + " }";
+            string viewRow = "{ " + string.Join(", ", Model.Columns.Select(c => c == form.KeyColumn ? $"{keyProp}: 7" : c == longColumn ? $"{JsonNames.Camel(c.Name)}: 'Long message. '.repeat(30)" : $"{JsonNames.Camel(c.Name)}: {c.ValidExample(Project, Model.TableName)}")) + " }";
             S();
             S("  it('shows the whole row, read-only, in a dialog with View', async () => {");
             S($"    vi.spyOn({apiVar}, 'getPage').mockResolvedValue({{ items: [{viewRow}], page: 1, pageSize: 20, totalCount: 1, totalPages: 1 }});");
@@ -373,7 +373,7 @@
         if (queue is not null)
         {
             string statusProp = JsonNames.Camel(queue.Status.Name);
-            string sampleRow = "{ " + string.Join(", ", Model.Columns.Select(c => c == queue.Key ? $"{keyProp}: 7" : c == queue.Status ? $"{statusProp}: '{QueueStatus.Failed}'" : $"{JsonNames.Camel(c.Name)}: {ApiSampleValues.Value(c, Project, Model.TableName)}")) + " }";
+            string sampleRow = "{ " + string.Join(", ", Model.Columns.Select(c => c == queue.Key ? $"{keyProp}: 7" : c == queue.Status ? $"{statusProp}: '{QueueStatus.Failed}'" : $"{JsonNames.Camel(c.Name)}: {c.ValidExample(Project, Model.TableName)}")) + " }";
             S();
             S("  it('shows the counts by status and the oldest pending row', async () => {");
             S($"    render(<{pageName} />);");

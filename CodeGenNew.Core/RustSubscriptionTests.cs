@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -29,22 +30,22 @@ public static class RustSubscriptionTests
         string clearRows = sql.ClearRows is null ? "" : $"    sqlx::query(CLEAR_ROWS).bind(tenant).execute(&api.pool()).await.expect(\"the rows are removed\");\n";
 
         var o = new StringBuilder();
-        o.Append(Fill(Head, ("§CRATE", project.RustCrateName), ("§PLAN", sql.PlanKey.ToString()), ("§ADDPLAN", Raw(sql.AddPlan)),
+        o.Append(FillAll(Head, ("§CRATE", project.RustCrateName), ("§PLAN", sql.PlanKey.ToString()), ("§ADDPLAN", Raw(sql.AddPlan)),
             ("§REMOVEPLAN_COUNT", sql.RemovePlan.Count.ToString()), ("§REMOVEPLAN", List(sql.RemovePlan)), ("§CLEARSUBSCRIPTION", Raw(sql.ClearSubscription)),
             ("§CLEARROWSCONST", sql.ClearRows is null ? "" : $"const CLEAR_ROWS: &str = {Raw(sql.ClearRows)};\n"), ("§CLEARROWS", clearRows),
             ("§WRITECONST", write is null ? "" : $"const WRITE: &str = {Str(RustTestBodies.Route(write.TableName))};\n")));
         if (write is not null)
         {
             o.Append("\n#[allow(dead_code)]\n").Append(RustTenantTests.BodyFunction("write_body", write, project, "")).Append('\n');
-            o.Append(Fill(WriteCases, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType),
+            o.Append(FillAll(WriteCases, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType),
                 ("§NOSUBSCRIPTION", project.SubscriptionRequired
                     ? $"    assert_eq!(refused.status, StatusCode::PAYMENT_REQUIRED, \"{{}}\", refused.body);\n    assert_eq!(refused.json()[\"type\"], \"{SubscriptionWords.InactiveType}\");\n"
                     : "    assert_eq!(refused.status, StatusCode::CREATED, \"{}\", refused.body);\n"),
                 ("§NOSUBSCRIPTION_NAME", project.SubscriptionRequired ? "cannot_write_when_a_subscription_is_required" : "is_on_no_plan_and_may_write")));
             if (sql.LimitKey is { } key)
-                o.Append(Fill(LimitCase, ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§KEY", Str(key)), ("§ONE", List(sql.SetLimit(key, 1))), ("§TWO", List(sql.SetLimit(key, 2)))));
+                o.Append(FillAll(LimitCase, ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§KEY", Str(key)), ("§ONE", List(sql.SetLimit(key, 1))), ("§TWO", List(sql.SetLimit(key, 2)))));
             if (subscription.PeriodEnd is not null && trialing)
-                o.Append(Fill(TrialCase, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType)));
+                o.Append(FillAll(TrialCase, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType)));
         }
         if (subscription.PeriodEnd is not null)
             o.Append(RenewCase);
@@ -54,25 +55,18 @@ public static class RustSubscriptionTests
                 : "    run(&api, &" + List(sql.SetLimit(limitKey, 5)) + ").await;\n    let made = inside.post(WRITE, &write_body()).await;\n    assert_eq!(made.status, StatusCode::CREATED, \"{}\", made.body);\n"
                 + "    run(&api, &" + List(sql.SetLimit(limitKey, 0)) + ").await;\n    let refused = inside.put(\"/api/subscription/plan\", &json!({ \"planId\": PLAN })).await;\n"
                 + "    assert_eq!(refused.status, StatusCode::CONFLICT, \"{}\", refused.body);\n    assert_eq!(refused.json()[\"type\"], \"" + SubscriptionWords.PlanTooSmallType + "\");\n    run(&api, &" + List(sql.SetLimit(limitKey, 1)) + ").await;\n";
-            o.Append(Fill(ChooseCase, ("§TOOSMALL", tooSmall)));
+            o.Append(FillAll(ChooseCase, ("§TOOSMALL", tooSmall)));
         }
-        o.Append(Fill(RouteCases, ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType)));
-        o.Append(Fill(PlansCase, ("§PRICELINE", subscription.PlanPrice is null ? "" : "    assert_eq!(info[\"planPrice\"], mine[\"price\"], \"the view shows the price of the tenant's plan\");\n"),
+        o.Append(FillAll(RouteCases, ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType)));
+        o.Append(FillAll(PlansCase, ("§PRICELINE", subscription.PlanPrice is null ? "" : "    assert_eq!(info[\"planPrice\"], mine[\"price\"], \"the view shows the price of the tenant's plan\");\n"),
             ("§LIMITCOUNT", SubscriptionPlan.LimitedTables(database, project).Count.ToString())));
         if (SubscriptionPlan.HasWebhook(database, project))
         {
-            o.Append(Fill(WebhookCase, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§WEBHOOKPATH", SubscriptionWords.WebhookPath), ("§HEADER", SubscriptionWords.WebhookHeader),
+            o.Append(FillAll(WebhookCase, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§WEBHOOKPATH", SubscriptionWords.WebhookPath), ("§HEADER", SubscriptionWords.WebhookHeader),
                 ("§EXPIRED_TYPE", SubscriptionWords.WebhookExpiredType),
                 ("§PAUSEDLINES", write is null ? "" : "    let paused = inside.post(WRITE, &write_body()).await;\n    assert_eq!(paused.status, StatusCode::PAYMENT_REQUIRED, \"{}\", paused.body);\n    assert_eq!(paused.json()[\"type\"], \"" + SubscriptionWords.InactiveType + "\");\n")));
         }
         return o.ToString().TrimEnd('\n') + "\n";
-    }
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
     }
 
     private const string Head = """"

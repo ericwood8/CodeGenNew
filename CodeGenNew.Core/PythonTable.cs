@@ -62,7 +62,7 @@ public sealed class PythonTable
         foreach (var field in SchemaFields)
             fieldOf.TryAdd(field.Column, field);
 
-        var log = LogTablePlan.For(model, project);
+        var log = TableShapes.For(model, project).Log;
         var plan = SearchPlan.For(model, [], log);
         Filters = plan.Filters
             .Where(f => f.Column.CSharpBase() == "string" && fieldOf.ContainsKey(f.Column))

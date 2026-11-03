@@ -19,7 +19,7 @@ public static class ApiSampleValues
             TextShape.Email => "someone@example.com",
             TextShape.Phone => "555-0100",
             TextShape.Url => "https://example.com",
-            _ => "Sample " + Labels.Words(column.Name).ToLowerInvariant()
+            _ => "Sample " + column.Words
         };
 
     /// <summary> Whether the column's value has a fixed format (an email address, phone number or web address), so a test must not add a unique ending to it. </summary>

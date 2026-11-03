@@ -7,10 +7,10 @@ namespace CodeGenNew.Core;
 public static class RowShapeWriter
 {
     /// <summary> Whether the table's API has to call <c>CheckSaveAsync</c>. </summary>
-    public static bool HasSaveCheck(TableModel table, ProjectSettings project) => TreePlan.For(table, project) is not null || EffectiveDatePlan.For(table, project) is not null;
+    public static bool HasSaveCheck(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tree is not null || TableShapes.For(table, project).Effective is not null;
 
     /// <summary> Whether the table's API has to call <c>CheckDeleteAsync</c>. </summary>
-    public static bool HasDeleteCheck(TableModel table, ProjectSettings project) => TreePlan.For(table, project) is not null || SoftDeletePlan.For(table, project) is not null;
+    public static bool HasDeleteCheck(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tree is not null || TableShapes.For(table, project).SoftDelete is not null;
 
     public static string File(DatabaseModel database, ProjectSettings project, string contextType, string[] usings)
     {
@@ -32,9 +32,9 @@ public static class RowShapeWriter
 
     private static string PerTable(TableModel table, ProjectSettings project, string contextType)
     {
-        var tree = TreePlan.For(table, project);
-        var soft = SoftDeletePlan.For(table, project);
-        var effective = EffectiveDatePlan.For(table, project);
+        var tree = TableShapes.For(table, project).Tree;
+        var soft = TableShapes.For(table, project).SoftDelete;
+        var effective = TableShapes.For(table, project).Effective;
         var key = table.PrimaryKeyColumns[0];
         string keyType = key.CSharpBase();
         string route = ApiRequests.Route(table);
@@ -52,9 +52,7 @@ public static class RowShapeWriter
                 ("§CTX", contextType), ("§T", table.TableName), ("§KT", keyType), ("§K", key.CSharpName()), ("§R", route), ("§AUTH", auth), ("§ADMIN", admin)
             };
             values.AddRange(extra);
-            foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-                text = text.Replace(token, value);
-            return text;
+            return TemplateText.FillAll(text, [.. values]);
         }
 
         o.Append(Fill("/// <summary> The row-shape checks and routes of §T (" + string.Join(", ", new[] { tree is null ? null : "TreeTables", soft is null ? null : "SoftDeleteTables", effective is null ? null : "EffectiveDatedTables" }.OfType<string>())
@@ -84,7 +82,7 @@ public static class RowShapeWriter
             string order = soft.DeletedOn is null ? ".OrderByDescending(x => x." + key.CSharpName() + ")" : $".OrderByDescending(x => x.{soft.DeletedOn.CSharpName()}).ThenByDescending(x => x.{key.CSharpName()})";
             string byLine = soft.DeletedBy is null ? "" : $"        string? by = caller?.Identity?.Name is {{ }} name ? (name.Length <= {(soft.DeletedBy.CharacterLength > 0 ? soft.DeletedBy.CharacterLength : 1000000)} ? name : name[..{(soft.DeletedBy.CharacterLength > 0 ? soft.DeletedBy.CharacterLength : 1000000)}]) : null;\n";
             // IgnoreQueryFilters drops the tenant filter with the soft-delete one, so a tenant-owned table asks for its tenant again
-            var tenant = TenantPlan.OwnedBy(table, project);
+            var tenant = TableShapes.For(table, project).Tenant;
             string tenantWhere = tenant is null ? "" : $".Where(x => x.{tenant.Column.CSharpName()} == context.CurrentTenantId)";
             string tenantAnd = tenant is null ? "" : $" && x.{tenant.Column.CSharpName()} == context.CurrentTenantId";
             o.Append(Fill(Soft, Pairs("§TENANTWHERE", tenantWhere, "§TENANTAND", tenantAnd, "§FLAG", flag, "§SETON", setOn, "§SETBY", setBy, "§CLEARON", clearOn, "§CLEARBY", clearBy, "§ORDER", order, "§BYLINE", byLine, "§NOWLINE", soft.DeletedOn is null ? "" : "        var now = DateTime.Now;\n", "§W_NOTDELETED", RowShapeWords.NotDeleted)));

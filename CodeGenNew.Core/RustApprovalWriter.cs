@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -59,7 +60,7 @@ public static class RustApprovalWriter
             mayDecide = MayDecideRows.Replace("§SQL_APPROVER", RustTable.Raw(countSql)).Replace("§BIND_TABLE", bindTable).Replace("§TABLE_ARG", approvers.ForTable is null ? "_table" : "table");
         }
 
-        o.Append(Fill(Head, ("§IMPORTS", imports.ToString().TrimEnd('\n')), ("§PERSON_SQL", RustTable.Raw(personSql)), ("§PERSON_TYPE", personType), ("§PERSON_MAP", personMap), ("§KEY_TYPE", userKeyType), ("§MAYDECIDE", mayDecide),
+        o.Append(FillAll(Head, ("§IMPORTS", imports.ToString().TrimEnd('\n')), ("§PERSON_SQL", RustTable.Raw(personSql)), ("§PERSON_TYPE", personType), ("§PERSON_MAP", personMap), ("§KEY_TYPE", userKeyType), ("§MAYDECIDE", mayDecide),
             ("§T_UNKNOWN", ApprovalWriter.RequesterUnknownType), ("§T_NOTAPPROVER", ApprovalWriter.NotApproverType), ("§T_FOUREYES", ApprovalWriter.FourEyesType),
             ("§T_STATE", ApprovalWriter.WrongStateType), ("§T_REFUSED", ApprovalWriter.RefusedType),
             ("§W_UNKNOWN", Str(ApprovalWords.RequesterUnknown)), ("§W_NOTAPPROVER", Str(ApprovalWords.NotApprover)), ("§W_NOTREQUESTER", Str(ApprovalWords.NotRequester)),
@@ -82,7 +83,7 @@ public static class RustApprovalWriter
 
             string latestSql = $"SELECT {select} FROM {sideTable} WHERE {link} = {P(1)} ORDER BY {revision} DESC LIMIT 1";
             // a tenant-owned row is reached only by a caller of its tenant (the side table has no tenant column of its own, so it is judged by the row it points at)
-            var owned = TenantPlan.HasApiTenancy(project) ? TenantPlan.OwnedBy(t.Table, project) : null;
+            var owned = TenantPlan.HasApiTenancy(project) ? TableShapes.For(t.Table, project).Tenant : null;
             string existsSql = $"SELECT {Q(t.Key)} FROM {Tbl(t.Table)} WHERE {Q(t.Key)} = {P(1)}" + (owned is null ? "" : $" AND {Q(owned.Column)} = {P(2)}");
             string insertSql = $"INSERT INTO {sideTable} ({link}, {status}, {Q(t.Reason)}, {requestedBy}, {requestedOn}, {revision}) VALUES ({P(1)}, {P(2)}, {P(3)}, {P(4)}, {P(5)}, {P(6)})";
             string decideSql = $"UPDATE {sideTable} SET {status} = {P(1)}, {Q(t.DecidedBy)} = {P(2)}, {Q(t.DecidedOn)} = {P(3)}, {Q(t.DecisionNote)} = {P(4)} WHERE {Q(t.SideKey)} = {P(5)} AND {status} = {P(6)}";
@@ -97,12 +98,12 @@ public static class RustApprovalWriter
                 row.Append($"    #[sqlx(rename = \"{f.Column.DbName}\")]\n    {f.Name}: {f.Type},\n");
             row.Append("}\n");
             routes.Append(row);
-            routes.Append(Fill(TableText,
+            routes.Append(FillAll(TableText,
                 ("§M", main.Module), ("§S", side.Struct), ("§TABLE", Str(t.Table.TableName)), ("§ROUTE", main.Route), ("§KT", keyType),
                 ("§ST", F(t.Status).Name), ("§RV", F(t.Revision).Name), ("§ID", F(t.SideKey).Name), ("§LINK", F(t.Link).Name), ("§RS", F(t.Reason).Name),
                 ("§RB", F(t.RequestedBy).Name), ("§RO", F(t.RequestedOn).Name), ("§DB", F(t.DecidedBy).Name), ("§DO", F(t.DecidedOn).Name), ("§DN", F(t.DecisionNote).Name),
                 ("§NOWOPT", nowOption), ("§NOW", now),
-                ("§BIND_TENANT", owned is null ? "" : ".bind(user.tenant_id)"), ("§ROWFN", owned is null ? "" : Fill(RowFunction, ("§M", main.Module), ("§KT", keyType), ("§SQL_EXISTS", RustTable.Raw(existsSql)))),
+                ("§BIND_TENANT", owned is null ? "" : ".bind(user.tenant_id)"), ("§ROWFN", owned is null ? "" : FillAll(RowFunction, ("§M", main.Module), ("§KT", keyType), ("§SQL_EXISTS", RustTable.Raw(existsSql)))),
                 ("§REQUIRE_ROW_OWN", owned is null ? "" : $"    require_row_{main.Module}(&pool, &user, id).await?;\n"), ("§REQUIRE_ROW", owned is null ? "" : $"    require_row_{main.Module}(pool, user, id).await?;\n"),
                 ("§SQL_LATEST", RustTable.Raw(latestSql)), ("§SQL_EXISTS", RustTable.Raw(existsSql)), ("§SQL_INSERT", RustTable.Raw(insertSql)), ("§SQL_DECIDE", RustTable.Raw(decideSql)),
                 ("§SQL_WITHDRAW", RustTable.Raw(withdrawSql)), ("§SQL_WAITING", RustTable.Raw(waitingSql)), ("§SQL_HISTORY", RustTable.Raw(historySql)),
@@ -120,13 +121,6 @@ public static class RustApprovalWriter
         o.Append("}\n");
         o.Append(routes);
         return o.ToString();
-    }
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
     }
 
     private const string MayDecideFlag = """"

@@ -34,7 +34,7 @@
     string importOnly = auth ? ".AdminOnly(adminOnly || gated)" : "";
     string adminParameter = auth ? ", bool adminOnly, bool gated" : "";
     // a table in LogTables is only read: its export takes the date range, lists newest first and stops at MaxRows; it has no import
-    bool anyLog = tables.Any(t => LogTablePlan.For(t, Project) is not null);
+    bool anyLog = tables.Any(t => TableShapes.For(t, Project).Log is not null);
     // an import into a table with a plan limit counts every row of the file against the limit (SubscriptionLimits.ImportRefusalAsync, API_Subscriptions)
     bool counted = SubscriptionPlan.IsEnabled(Project) && SubscriptionPlan.LimitedTables(Database, Project).Count > 0;
     string repositoryNamespace = Project.RepoNamespace ?? "MyApp.Common.Repositories";
@@ -299,7 +299,7 @@ public static class CsvEndpoints
     foreach (var t in tables)
     {
         string entity = t.TableName;
-        if (LogTablePlan.For(t, Project) is not null)
+        if (TableShapes.For(t, Project).Log is not null)
         {
 #>
         MapLogTable<<#= entity #>, <#= contextType #>>(app, "<#= ApiRequests.Route(t) #>", "<#= t.TableName.Pluralize().ToLowerInvariant() #>", [<#= Columns(t) #>], (rows, from, to) => <#= entity #>SearchQuery.Filter(rows, from: from, to: to), rows => <#= entity #>SearchQuery.Sort(rows, null, false)<#= auth ? ", " + (OwnedTable.IsScoped(t, Project) ? "true" : "false") : "" #>);

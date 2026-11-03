@@ -278,8 +278,8 @@ public static class DesktopEditRows
             L("        Spacing = 6;");
             L($"        Children.Add(new TextBlock {{ Text = \"{child.Title.Replace("\"", "'")}\", Style = (Style)Application.Current.Resources[\"BodyStrongTextBlockStyle\"] }});");
             L("        Children.Add(new ScrollViewer { Content = _lines, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollMode = ScrollMode.Enabled, VerticalScrollMode = ScrollMode.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled });");
-            L($"        var add = new Button {{ Content = \"Add {Labels.Words(grid.BaseName).Replace("\"", "'")}\", HorizontalAlignment = HorizontalAlignment.Left }};");
-            L($"        AutomationProperties.SetName(add, \"Add {Labels.Words(grid.BaseName).Replace("\"", "'")}\");");
+            L($"        var add = new Button {{ Content = \"Add {grid.Words.Replace("\"", "'")}\", HorizontalAlignment = HorizontalAlignment.Left }};");
+            L($"        AutomationProperties.SetName(add, \"Add {grid.Words.Replace("\"", "'")}\");");
             L($"        add.Click += (_, _) => _rows.Add(new {row}());");
             L("        Children.Add(add);");
             L("        _rows.CollectionChanged += (_, _) => Refresh();");
@@ -306,7 +306,7 @@ public static class DesktopEditRows
             foreach (var c in columns)
                 Cell1(o, grid, c, project, option);
             L($"            var remove = new Button {{ Content = \"Remove\", Width = 80 }};");
-            L($"            AutomationProperties.SetName(remove, \"Remove {Labels.Words(grid.BaseName).Replace("\"", "'")}\");");
+            L($"            AutomationProperties.SetName(remove, \"Remove {grid.Words.Replace("\"", "'")}\");");
             L("            remove.Click += (_, _) => _rows.Remove(row);");
             L("            line.Children.Add(remove);");
             L("            _lines.Children.Add(line);");

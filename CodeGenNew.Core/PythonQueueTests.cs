@@ -10,7 +10,7 @@ public static class PythonQueueTests
         project.PythonTests && database.Dialect != SqlDialect.SqlServer && Seeds(database, project).Count > 0;
 
     public static IReadOnlyList<QueueTestSeed> Seeds(DatabaseModel database, ProjectSettings project) =>
-        database.Tables.Select(t => QueuePlan.For(t, project)).OfType<QueueTable>().OrderBy(q => q.Table.TableName, StringComparer.OrdinalIgnoreCase)
+        database.Tables.Select(t => TableShapes.For(t, project).Queue).OfType<QueueShape>().OrderBy(q => q.Table.TableName, StringComparer.OrdinalIgnoreCase)
             .Select(q => QueueTestSeed.For(q, database, project, out _)).OfType<QueueTestSeed>().ToList();
 
     public static string Conftest(ProjectSettings project, SqlDialect dialect) => PythonApprovalTests.Conftest(project, dialect);
@@ -28,7 +28,7 @@ public static class PythonQueueTests
         string signIn = project.ApiAuth ? "    app.dependency_overrides[require_user] = lambda: CurrentUser(name=\"zz_worker\", role=None, owner_id=None)\n" : "";
         string signOut = project.ApiAuth ? "    app.dependency_overrides.pop(require_user, None)\n" : "";
         // what a producer sends: the columns that must have a value, and junk for the ones the queue sets itself
-        var payload = q.Payload.Select(c => $"{PythonNames.Str(JsonNames.Camel(c.Name))}: {ApiSampleValues.Value(c, project, q.Table.TableName)}");
+        var payload = q.Payload.Select(c => $"{PythonNames.Str(JsonNames.Camel(c.Name))}: {c.ValidExample(project, q.Table.TableName)}");
         var junk = new[] { (q.Status, "\"done\""), (q.Retry, "7"), (q.Claimed, "\"2001-01-01T00:00:00\""), (q.ClaimedBy, "\"someone\""), (q.LastError, "\"old\"") }
             .Where(j => j.Item1 is not null).Select(j => $"{PythonNames.Str(JsonNames.Camel(j.Item1!.Name))}: {j.Item2}");
         var di = DialectInfo.For(database.Dialect);
@@ -41,7 +41,7 @@ def test_a_row_without_a_value_the_table_needs_is_not_enqueued(api):
     assert refused.status_code == 400, refused.text
 """";
         string text = Text;
-        foreach (var (token, value) in new (string, string)[]
+        text = TemplateText.FillAll(text, new (string, string)[]
         {
             ("§AUTHIMPORT\n", auth), ("§REQUIRED", required), ("§PAYLOAD", PythonNames.Str("{" + string.Join(", ", payload) + "}")), ("§JUNK", PythonNames.Str("{" + string.Join(", ", junk) + "}")), ("§DELETEONE", PythonNames.Str(deleteOne)), ("§SIGNIN", signIn), ("§SIGNOUT", signOut), ("§BYASSERT", by), ("§ERRORASSERT", error),
             ("§SETUP", List(seed.Setup)), ("§CLEANUP", List(seed.Cleanup)), ("§STALESQL", PythonNames.Str(seed.StaleSql)), ("§ROUTE", PythonNames.Str(main.Route)),
@@ -50,8 +50,7 @@ def test_a_row_without_a_value_the_table_needs_is_not_enqueued(api):
             ("§T_STATE", QueueWords.WrongStateType), ("§W_NOTCLAIMED", PythonNames.Str(QueueWords.NotClaimed)), ("§W_NOTFAILED", PythonNames.Str(QueueWords.NotFailed)),
             ("§PENDING", QueueStatus.Pending), ("§CLAIMED", QueueStatus.Claimed), ("§DONE", QueueStatus.Done), ("§FAILED", QueueStatus.Failed),
             ("§CONFLICT", HttpStatus.Conflict.ToString()), ("§NOTFOUND", HttpStatus.NotFound.ToString())
-        }.OrderByDescending(v => v.Item1.Length))
-            text = text.Replace(token, value);
+        });
         return text + "\n";
     }
 

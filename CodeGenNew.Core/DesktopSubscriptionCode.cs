@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -81,24 +82,17 @@ public static class DesktopSubscriptionCode
             ("§NOTENANT_TEXT", CSharpText.Escape(SubscriptionScreenWords.NoTenant)), ("§UNKNOWNPLAN_TEXT", CSharpText.Escape(SubscriptionWords.UnknownPlan)), ("§TOOSMALL_TEXT", CSharpText.Escape(SubscriptionWords.PlanTooSmallText))
         ];
         string startInit = subscription.PeriodStart is null ? "" : $", {subscription.PeriodStart.CSharpName()} = " + (subscription.PeriodStart.CSharpBase() == "DateTimeOffset" ? "DateTimeOffset.UtcNow" : "DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)");
-        string choose = project.SubscriptionPlanChoice ? Fill(Fill(ChooseText, ("§TOOSMALL", limit is null ? "" : TooSmallText), ("§STARTINIT", startInit)), names) : "";
-        o.Append(Fill(limit is null ? GuardNoLimits : GuardText, names.Concat([("§CHOOSE", choose)]).ToArray()));
+        string choose = project.SubscriptionPlanChoice ? FillAll(FillAll(ChooseText, ("§TOOSMALL", limit is null ? "" : TooSmallText), ("§STARTINIT", startInit)), names) : "";
+        o.Append(FillAll(limit is null ? GuardNoLimits : GuardText, names.Concat([("§CHOOSE", choose)]).ToArray()));
         return o.ToString();
     }
 
     public static string Xaml(string viewNamespace, string repositoryNamespace) => UnoSubscriptionCode.Xaml(viewNamespace, repositoryNamespace);
 
-    public static string Code(string viewNamespace, string repositoryNamespace, string contextType, string[] usings) => Fill(PageText, ("§NS", viewNamespace), ("§REPO", repositoryNamespace), ("§CTX", contextType), ("§USINGS", string.Concat(usings.Select(u => $"using {u};\n"))),
+    public static string Code(string viewNamespace, string repositoryNamespace, string contextType, string[] usings) => FillAll(PageText, ("§NS", viewNamespace), ("§REPO", repositoryNamespace), ("§CTX", contextType), ("§USINGS", string.Concat(usings.Select(u => $"using {u};\n"))),
         ("§PLANLABEL", SubscriptionScreenWords.PlanLabel), ("§STATUSLABEL", SubscriptionScreenWords.StatusLabel), ("§PERIODLABEL", SubscriptionScreenWords.PeriodEndLabel),
         ("§NOSUBSCRIPTION", SubscriptionScreenWords.NoSubscription), ("§NOTENANT", SubscriptionScreenWords.NoTenant), ("§PAUSED", SubscriptionScreenWords.PausedPrefix),
         ("§ACTIVE", SubscriptionScreenWords.Active), ("§UNLIMITED", SubscriptionScreenWords.Unlimited), ("§PRICELABEL", SubscriptionScreenWords.PriceLabel));
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
-    }
 
     private const string GuardCommon = """
 /// <summary> One plan limit: what the plan allows (null when it is unlimited) and what the tenant has. </summary>
@@ -363,6 +357,6 @@ public sealed partial class SubscriptionPage : Page
         string guard = Guard(database, project, contextType, usings);
         // the records come after the usings of the guard text
         int classAt = guard.IndexOf("// The check of the API", StringComparison.Ordinal);
-        return guard[..classAt] + Fill(GuardCommon, ("§UNLIMITED", SubscriptionScreenWords.Unlimited)) + UnoSubscriptionCode.PlanRowClasses + "\n" + guard[classAt..];
+        return guard[..classAt] + FillAll(GuardCommon, ("§UNLIMITED", SubscriptionScreenWords.Unlimited)) + UnoSubscriptionCode.PlanRowClasses + "\n" + guard[classAt..];
     }
 }

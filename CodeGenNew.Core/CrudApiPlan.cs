@@ -34,7 +34,7 @@ public sealed class CrudApiPlan
         NameActive = model.IsNameActiveTable;
         // A table with a database-assigned int key and a clone routine gets POST <route>/{id}/clone (CloneShape; CS_Repo writes CloneAsync for the same tables).
         // a log table (LogTables) is only read: no create, update, delete or clone route
-        var log = NameActive ? null : LogTablePlan.For(model, project);
+        var log = NameActive ? null : TableShapes.For(model, project).Log;
         ReadOnly = log is not null;
         CanClone = !NameActive && !ReadOnly && CloneShape.CanClone(model, project);
         CanFindByName = model.CanFindByName;
@@ -89,7 +89,7 @@ public sealed class CrudApiPlan
 
         // TreeTables, SoftDeleteTables and EffectiveDatedTables (API_RowShapes): the table's checks run before a row is saved and before it is deleted.
         // TenantTable: a tenant-owned table writes the caller's tenant into the row; the tenant table itself takes no create and no delete
-        TenantColumn = TenantPlan.OwnedBy(model, project)?.Column;
+        TenantColumn = TableShapes.For(model, project).Tenant?.Column;
         IsTenantTable = project.ApiAuth && TenantPlan.IsTenantTable(model, project);
         RowShapeSave = RowShapeWriter.HasSaveCheck(model, project);
         RowShapeDelete = RowShapeWriter.HasDeleteCheck(model, project);

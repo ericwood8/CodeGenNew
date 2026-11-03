@@ -8,7 +8,7 @@ public static class RustQueueTests
     public static bool Applies(DatabaseModel database, ProjectSettings project) => project.RustTests && Seeds(database, project).Count > 0;
 
     public static IReadOnlyList<QueueTestSeed> Seeds(DatabaseModel database, ProjectSettings project) =>
-        database.Tables.Select(t => QueuePlan.For(t, project)).OfType<QueueTable>().OrderBy(q => q.Table.TableName, StringComparer.OrdinalIgnoreCase)
+        database.Tables.Select(t => TableShapes.For(t, project).Queue).OfType<QueueShape>().OrderBy(q => q.Table.TableName, StringComparer.OrdinalIgnoreCase)
             .Select(q => QueueTestSeed.For(q, database, project, out _)).OfType<QueueTestSeed>().ToList();
 
     public static string File(DatabaseModel database, ProjectSettings project)
@@ -21,7 +21,7 @@ public static class RustQueueTests
         string by = q.ClaimedBy is null ? "" : $"    assert!(first.json()[\"{Json(q.ClaimedBy)}\"] == \"w1\" && second.json()[\"{Json(q.ClaimedBy)}\"] == \"w2\", \"{{}}\", first.body);\n";
         string error = q.LastError is null ? "" : $"        assert_eq!(failed.json()[\"{Json(q.LastError)}\"], \"boom\");\n";
         // what a producer sends: the columns that must have a value, and junk for the ones the queue sets itself
-        var payload = q.Payload.Select(c => $"{Str(Json(c))}: {ApiSampleValues.Value(c, project, q.Table.TableName)}");
+        var payload = q.Payload.Select(c => $"{Str(Json(c))}: {c.ValidExample(project, q.Table.TableName)}");
         var junk = new[] { (q.Status, "\"done\""), (q.Retry, "7"), (q.Claimed, "\"2001-01-01T00:00:00\""), (q.ClaimedBy, "\"someone\""), (q.LastError, "\"old\"") }
             .Where(j => j.Item1 is not null).Select(j => $"{Str(Json(j.Item1!))}: {j.Item2}");
         var di = DialectInfo.For(database.Dialect);
@@ -37,7 +37,7 @@ async fn a_row_without_a_value_the_table_needs_is_not_enqueued() {
 }
 """";
         string text = Text;
-        foreach (var (token, value) in new (string, string)[]
+        text = TemplateText.FillAll(text, new (string, string)[]
         {
             ("§REQUIRED", required), ("§PAYLOAD", "{ " + string.Join(", ", payload) + " }"), ("§JUNK", "{ " + string.Join(", ", junk) + " }"), ("§DELETEONE", Str(deleteOne)), ("§CREATEDON", Json(q.Created)), ("§BYASSERT", by), ("§ERRORASSERT", error),
             ("§SETUP", List(seed.Setup)), ("§CLEANUP", List(seed.Cleanup)), ("§STALESQL", RustTable.Raw(seed.StaleSql)), ("§ROUTE", Str(RustTable.Of(q.Table, project).Route)),
@@ -45,8 +45,7 @@ async fn a_row_without_a_value_the_table_needs_is_not_enqueued() {
             ("§ID", Json(q.Key)), ("§STATUS", Json(q.Status)), ("§RETRY", Json(q.Retry)), ("§PROCESSED", Json(q.Processed)), ("§CLAIMEDON", Json(q.Claimed)),
             ("§T_STATE", QueueWords.WrongStateType), ("§W_NOTCLAIMED", Str(QueueWords.NotClaimed)), ("§W_NOTFAILED", Str(QueueWords.NotFailed)),
             ("§PENDING", QueueStatus.Pending), ("§CLAIMED", QueueStatus.Claimed), ("§DONE", QueueStatus.Done), ("§FAILED", QueueStatus.Failed)
-        }.OrderByDescending(v => v.Item1.Length))
-            text = text.Replace(token, value);
+        });
         return text + "\n";
     }
 

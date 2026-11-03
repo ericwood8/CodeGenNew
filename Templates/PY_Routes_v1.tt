@@ -41,12 +41,12 @@
     var ownerLink = auth ? OwnedTable.Through(Model, Project) : null;
     var userPlan = auth ? UserTable.PlanOf(Model, Project) : null;
     // a table with a Name and an IsActive column (NameActivePlan): the list is by name, GET active and GET {name} are added, a name is trimmed, may not be empty and may not be that of another active row
-    var nameActive = NameActivePlan.For(Model, Project);
+    var nameActive = TableShapes.For(Model, Project).NameActive;
     string idPath = nameActive is null ? "{id}" : "{id:int}";   // a name in that place is the start of a name, not a key
     // TenantTable (PY_Tenants, app/routes/tenancy.py): a tenant-owned table shows and changes only the rows of the caller's tenant (another tenant's row is a 404) and stamps the caller's tenant on create and update;
     // the tenant table shows the caller's own tenant (a platform administrator every one), only a platform administrator creates one and nobody deletes one
     bool tenancy = PythonTenantWriter.Applies(Project);
-    var tenantOwned = tenancy ? TenantPlan.OwnedBy(Model, Project) : null;
+    var tenantOwned = tenancy ? TableShapes.For(Model, Project).Tenant : null;
     bool tenantTable = tenancy && TenantPlan.IsTenantTable(Model, Project);
     // ReadRoles and WriteRoles: the routes refuse a role the table's rules do not list (the administrator role is always listed); the lookup stays open
     var readRoles = WriteRolePlan.ReadFor(Project, Model);
@@ -82,17 +82,17 @@
         ? $"    {statement} = only_own_tenant({statement}, {t.Class}.{key}, user)"
         : people ? $"    {statement} = only_members({statement}, {t.Class}.{key}, user)"
         : $"    {statement} = only_tenant({statement}, {t.Class}.{tenantField!.Name}, user)";
-    var treePlan = TreePlan.For(Model, Project);
+    var treePlan = TableShapes.For(Model, Project).Tree;
     var treeNames = treePlan is null ? null : new PythonTreeWriter.Names(t.Class, key, FieldOf(treePlan.Parent)!.Name, FieldOf(treePlan.Text)?.Name, tenanted ? TenantFilter("statement") : "");
     // SoftDeleteTables: a flagged row is hidden from every read of the table, the delete flags it, GET deleted lists the flagged rows and POST {id}/restore brings one back
-    var softPlan = log || tenantTable ? null : SoftDeletePlan.For(Model, Project);
+    var softPlan = log || tenantTable ? null : TableShapes.For(Model, Project).SoftDelete;
     var softFlag = FieldOf(softPlan?.Flag);
     var softOn = FieldOf(softPlan?.DeletedOn);
     var softBy = FieldOf(softPlan?.DeletedBy);
     var softNames = softPlan is null || softFlag is null ? null : new PythonSoftDeleteWriter.Names(t.Class, key, softFlag.Name, softOn?.Name, softBy?.Name, softPlan!.DeletedBy?.CharacterLength ?? 0, tenanted ? TenantFilter("statement") : "", t.Schema);
     bool softUser = softNames is not null && softBy is not null && auth;
     // EffectiveDatedTables: a period that runs backwards or overlaps another row of the same group is refused, and GET current answers the rows in effect on a day
-    var effPlan = log || tenantTable ? null : EffectiveDatePlan.For(Model, Project);
+    var effPlan = log || tenantTable ? null : TableShapes.For(Model, Project).Effective;
     var effFrom = FieldOf(effPlan?.From);
     var effTo = FieldOf(effPlan?.To);
     var effGroups = effPlan is null ? [] : effPlan.Groups.Select(g => FieldOf(g)).ToList();

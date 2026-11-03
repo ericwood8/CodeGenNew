@@ -161,8 +161,8 @@
 
         // SoftDeleteTables and EffectiveDatedTables: a "Show deleted" dialog with Restore and a "Valid on" dialog (the list itself stays the paged grid)
         string shapeApi = ReactNames.ApiVar(Model.TableName);   // the REST api module: the OData one has no deleted rows, restore or rows valid on a day
-        bool softScreen = SoftDeletePlan.For(Model, Project) is not null;
-        bool validOnScreen = EffectiveDatePlan.For(Model, Project) is not null;
+        bool softScreen = TableShapes.For(Model, Project).SoftDelete is not null;
+        bool validOnScreen = TableShapes.For(Model, Project).Effective is not null;
 
         // ================= imports
         T("import { useEffect, useRef, useState } from 'react';");
@@ -483,7 +483,7 @@
             T("      setTotalPages(result.totalPages);");
         }
         T("      setLoaded(true);");
-        T($"    }}).catch(() => setError('Failed to load {Labels.Words(baseName).ToLowerInvariant().Pluralize()}.'));");
+        T($"    }}).catch(() => setError('Failed to load {form.PluralWords}.'));");
         T("  };");
         if (nameActive)
         {
@@ -502,7 +502,7 @@
                     T($"    request<any[]>('{apiPrefix}/{ScreenNames.ApiRoute(lookup.ReferencedTable)}/lookup').then((items) => set{child.Name}Options((options) => ({{ ...options, {JsonNames.Camel(c.Name)}: items.map((i) => ({{ id: i['id'], name: String(i['name'] ?? '') }})) }}))).catch(() => {{}});");
         if (form.Guards.Count > 0) T($"    {apiVar}.getGuards().then(setGuards).catch(() => {{}});");
         T("    const openId = searchParams.get('edit');");
-        T($"    if (openId) {apiVar}.getById({(keyType.Kind == KeyKind.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'));");
+        T($"    if (openId) {apiVar}.getById({(keyType.Kind == KeyKind.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {form.Words} no longer exists!'));");
         T("  }, []);");
         T();
         // The child lists of EditableChildren go in the body of the save with the row; the API makes each child table match its list.
@@ -692,7 +692,7 @@
             T();
             T("  // The grid read only the columns it shows: the row is read whole before the form opens it.");
             T($"  const open = ({variable}: {baseName}) => {{");
-            T($"    {apiVar}.getById({variable}.{keyProp}!).then(edit).catch(() => setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'));");
+            T($"    {apiVar}.getById({variable}.{keyProp}!).then(edit).catch(() => setError('This {form.Words} no longer exists!'));");
             T("  };");
             T();
             T("  // Showing or hiding a column: the choice is kept, a sort or a filter on a column that is no longer shown is dropped, and the page is read again with the columns that are shown.");
@@ -851,10 +851,10 @@
         T();
         T("  const showError = (action: string, err: unknown) => {");
         T($"    if (err instanceof ApiError && err.status === {HttpStatus.BadRequest}) {{ setError({(hasName ? "'Name is bad or has special characters!'" : "'Some of the values are not acceptable!'")}); }}");
-        T($"    else if (err instanceof ApiError && err.status === {HttpStatus.NotFound}) {{ setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'); load(page); }}");
+        T($"    else if (err instanceof ApiError && err.status === {HttpStatus.NotFound}) {{ setError('This {form.Words} no longer exists!'); load(page); }}");
         if (planned) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.PaymentRequired}) {{ setError(planDetail(err)); }}");
         // a typed key can already be taken: the API answers 409
-        if (textKey) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.Conflict}) {{ setError('A {Labels.Words(baseName).ToLowerInvariant()} with this {Labels.Column(keyColumn.Name).ToLowerInvariant()} already exists!'); }}");
+        if (textKey) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.Conflict}) {{ setError('A {form.Words} with this {Labels.Column(keyColumn.Name).ToLowerInvariant()} already exists!'); }}");
         if ((odata || nameActive) && !textKey) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.Conflict}) {{ setError({problemCall}(err) ?? 'A row with this value already exists!'); }}");
         T("    else { setError('Problem while ' + action + '!'); }");
         T("  };");
@@ -1295,7 +1295,7 @@
                 T($"              {{{child.Variable}Rows.map((row, index) => (");
                 T("                <div key={index} style={{ border: '1px solid #8886', borderRadius: 6, padding: '4px 12px 12px', marginBottom: 12 }}>");
                 T("                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>");
-                T($"                    <strong>{Labels.Words(BaseName(child.Table))} {{index + 1}}</strong>");
+                T($"                    <strong>{child.Words} {{index + 1}}</strong>");
                 T($"                    <button type=\"button\" onClick={{() => remove{child.Name}(row)}}>Remove</button>");
                 T("                  </div>");
                 T("                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(11rem, 1fr))', gap: '0 12px' }}>");
@@ -1304,7 +1304,7 @@
                 T("                  </div>");
                 T("                </div>");
                 T("              ))}");
-                T($"              <button type=\"button\" onClick={{add{child.Name}}}>Add {Labels.Words(BaseName(child.Table))}</button>");
+                T($"              <button type=\"button\" onClick={{add{child.Name}}}>Add {child.Words}</button>");
                 T("            </fieldset>");
                 continue;
             }
@@ -1322,7 +1322,7 @@
             T("                  ))}");
             T("                </tbody>");
             T("              </table>");
-            T($"              <button type=\"button\" onClick={{add{child.Name}}}>Add {Labels.Words(BaseName(child.Table))}</button>");
+            T($"              <button type=\"button\" onClick={{add{child.Name}}}>Add {child.Words}</button>");
             T("            </fieldset>");
         }
         T();
@@ -1480,7 +1480,7 @@
             string sampleKey = ApiSampleValues.KeyText(keyColumn);
             string sampleRow = "{ " + string.Join(", ", adds.Select((a, i) => i == 0 ? $"{keyProp}: '{sampleKey}'" : a)) + " }";
             S();
-            S($"  it('lets the person type the key of a new {Labels.Words(baseName).ToLowerInvariant()}, does not let them change it afterwards, and shows the child grids only for a saved row', async () => {{");
+            S($"  it('lets the person type the key of a new {form.Words}, does not let them change it afterwards, and shows the child grids only for a saved row', async () => {{");
             S("    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };");
             S($"    vi.spyOn({apiVar}, '{(odata ? "queryPage" : "getPage")}').mockResolvedValue({{ items: [{sampleRow}], page: 1, pageSize: {pageSize}, totalCount: 1, totalPages: 1 }});");
             S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
@@ -1505,8 +1505,8 @@
             S("    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };");
             S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");
             S($"    fireEvent.click(await screen.findByText('Add New'));");
-            S($"    fireEvent.click(await screen.findByText('Add {Labels.Words(BaseName(child.Table))}'));");
-            S($"    fireEvent.click(screen.getByText('Add {Labels.Words(BaseName(child.Table))}'));");
+            S($"    fireEvent.click(await screen.findByText('Add {child.Words}'));");
+            S($"    fireEvent.click(screen.getByText('Add {child.Words}'));");
             S("    expect(screen.getAllByText('Remove')).toHaveLength(2);");
             S("    fireEvent.click(screen.getAllByText('Remove')[0]);");
             S("    expect(screen.getAllByText('Remove')).toHaveLength(1);");

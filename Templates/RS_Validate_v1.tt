@@ -34,7 +34,7 @@
         var rule = f.Column.RuleOf(Project, Model.TableName);
         if (rule is null)
             continue;
-        string label = Labels.Words(f.Column.Name);
+        string label = f.Column.CaseWords;
         string property = f.Column.Name;
         var lines = new List<string>();
         if (f.BaseType == "String")

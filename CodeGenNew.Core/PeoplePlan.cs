@@ -39,7 +39,7 @@ public sealed record PeoplePlan(UserTablePlan User, ColumnModel Key, ColumnModel
         var tenantTable = project.TenantTable is not null ? TenantPlan.TenantTableOf(database, project) : null;
         var tenantKey = tenantTable is null ? null : TenantPlan.KeyOf(tenantTable);
         var membership = tenantKey is null || !key.IsInt32Column ? null : TenantPlan.MembershipOf(database, project);
-        bool ownTenant = tenantKey is not null && membership is null && TenantPlan.OwnedBy(user.Table, project) is not null;
+        bool ownTenant = tenantKey is not null && membership is null && TableShapes.For(user.Table, project).Tenant is not null;
         var first = ownTenant ? null : FirstPersonPlan.For(user, project).Plan;
         return new PeoplePlan(user, key, nameColumn, first, membership, membership is null ? null : tenantTable, membership is null ? null : tenantKey);
     }

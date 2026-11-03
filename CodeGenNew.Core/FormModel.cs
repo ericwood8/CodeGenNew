@@ -49,7 +49,7 @@ public sealed class FormModel
         TextKeyBoxes = table.SearchKeyColumns.Where(c => c.IsStringColumn && SearchKeys.All(k => k.Column != c)).ToList();
         SearchFields = table.SearchableColumns.Concat(TextKeyBoxes).OrderBy(c => c.OrdinalPosition)
             .Select(c => new SearchField(c, c.Name, TemplateHelpers.LowerFirst(c.Name), GridCaption.For(c, Labels.Field(c)))).ToList();
-        Log = LogTablePlan.For(table, project);
+        Log = TableShapes.For(table, project).Log;
         DateRange = Log is null ? [] : [new SearchField(Log.Timestamp, "From", LogTable.FromParameter, "From", true), new SearchField(Log.Timestamp, "To", LogTable.ToParameter, "To", true)];
         DateColumns = Columns.Where(c => TemplateHelpers.IsDate(c) && !c.IsSystemStampColumn && !IsGuardStamp(c)).ToList();
         NewRowTypeScript = NewRowMembers(table, TypedKey, KeyColumn, KeyType);
@@ -100,6 +100,12 @@ public sealed class FormModel
 
     /// <summary> The title in lower case, for a sentence ("This time sheet no longer exists!"). </summary>
     public string Noun => Title.ToLowerInvariant();
+
+    /// <summary> The words of one row in lower case ("time sheet"), the same as <see cref="Noun"/>. </summary>
+    public string Words => Noun;
+
+    /// <summary> The words of several rows in lower case ("time sheets"). </summary>
+    public string PluralWords => Noun.Pluralize();
 
     /// <summary> The base name with a lower-case first letter: <c>timeSheet</c>. </summary>
     public string Variable { get; }

@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -61,7 +62,7 @@ public static class SubscriptionWriter
 
         string endSelect = subscription.PeriodEnd is null ? "(DateTime?)null" : $"s.{subscription.PeriodEnd.CSharpName()}";
         string gatewaySelect = gateway is null ? "(string?)null" : $"s.{gateway.CSharpName()}";
-        o.Append(Fill(State, names.Concat([("§ENDSELECT", endSelect), ("§GATEWAYSELECT", gatewaySelect)]).ToArray()));
+        o.Append(FillAll(State, names.Concat([("§ENDSELECT", endSelect), ("§GATEWAYSELECT", gatewaySelect)]).ToArray()));
 
         string keysArray = string.Join(", ", limited.Select(l => CSharpText.Quote(l.LimitKey)));
         string keyCases = string.Join("", limited.Select(l => l.IsMembership
@@ -73,20 +74,20 @@ public static class SubscriptionWriter
             return $"            {CSharpText.Quote(l.LimitKey)} => context.Set<{l.Table.TableName}>().IgnoreQueryFilters().AsNoTracking().CountAsync(r => r.{l.Tenant.CSharpName()} == tenant{deleted}, cancellationToken),\n";
         }));
         if (limit is null)
-            o.Append(Fill(NoLimits, names));
+            o.Append(FillAll(NoLimits, names));
         else
-            o.Append(Fill(Limits, names.Concat([("§LIMITT", limit.Table.TableName), ("§LPLAN", limit.Plan.CSharpName()), ("§LKEY", limit.Key.CSharpName()), ("§LVALUE", limit.Value.CSharpName()),
+            o.Append(FillAll(Limits, names.Concat([("§LIMITT", limit.Table.TableName), ("§LPLAN", limit.Plan.CSharpName()), ("§LKEY", limit.Key.CSharpName()), ("§LVALUE", limit.Value.CSharpName()),
                 ("§KEYS", keysArray), ("§KEYCASES", keyCases), ("§COUNTCASES", countCases)]).ToArray()));
 
-        o.Append(Fill(Check, names));
+        o.Append(FillAll(Check, names));
 
         string period = subscription.PeriodEnd is null ? "" : $"        if (request.PeriodEnd is {{ }} end)\n            row.{subscription.PeriodEnd.CSharpName()} = {Stamp(subscription.PeriodEnd, "end")};\n";
         string gatewayLine = gateway is null ? "" : $"        if (request.GatewayId is {{ }} gatewayId)\n            row.{gateway.CSharpName()} = gatewayId.Trim();\n";
         string startInit = subscription.PeriodStart is null ? "" : $", {subscription.PeriodStart.CSharpName()} = {Stamp(subscription.PeriodStart, "DateTime.UtcNow")}";
         string planLimits = limit is null ? PlanLimitsNone
-            : Fill(PlanLimitsOf, ("§LIMITT", limit.Table.TableName), ("§LKEY", limit.Key.CSharpName()), ("§LPLAN", limit.Plan.CSharpName()), ("§LVALUE", limit.Value.CSharpName()));
+            : FillAll(PlanLimitsOf, ("§LIMITT", limit.Table.TableName), ("§LKEY", limit.Key.CSharpName()), ("§LPLAN", limit.Plan.CSharpName()), ("§LVALUE", limit.Value.CSharpName()));
         string choose = project.SubscriptionPlanChoice
-            ? Fill(Choose, names.Concat([("§NEEDSPLAN_TEXT", CSharpText.Escape(SubscriptionWords.NeedsPlan)), ("§TOOSMALL_TYPE", SubscriptionWords.PlanTooSmallType), ("§TOOSMALL_TEXT", CSharpText.Escape(SubscriptionWords.PlanTooSmallText)), ("§STARTINIT", startInit)]).ToArray())
+            ? FillAll(Choose, names.Concat([("§NEEDSPLAN_TEXT", CSharpText.Escape(SubscriptionWords.NeedsPlan)), ("§TOOSMALL_TYPE", SubscriptionWords.PlanTooSmallType), ("§TOOSMALL_TEXT", CSharpText.Escape(SubscriptionWords.PlanTooSmallText)), ("§STARTINIT", startInit)]).ToArray())
             : "";
         string renew = "";
         if (subscription.PeriodEnd is { } periodEnd)
@@ -95,27 +96,27 @@ public static class SubscriptionWriter
             string endOfRow = offset ? (periodEnd.IsNullable ? $"row.{periodEnd.CSharpName()}?.UtcDateTime" : $"row.{periodEnd.CSharpName()}.UtcDateTime") : $"row.{periodEnd.CSharpName()}";
             string renewSet = $"        row.{periodEnd.CSharpName()} = {Stamp(periodEnd, "start.AddDays(days)")};\n"
                 + (subscription.PeriodStart is { } periodStart ? $"        row.{periodStart.CSharpName()} = {Stamp(periodStart, "start")};\n" : "");
-            renew = Fill(Renew, names.Concat([("§DAYS", project.SubscriptionPeriodDays.ToString()), ("§RENEWDAYS_TEXT", CSharpText.Escape(SubscriptionWords.RenewDays)),
+            renew = FillAll(Renew, names.Concat([("§DAYS", project.SubscriptionPeriodDays.ToString()), ("§RENEWDAYS_TEXT", CSharpText.Escape(SubscriptionWords.RenewDays)),
                 ("§NOSUBSCRIPTION_TEXT", CSharpText.Escape(SubscriptionWords.NoSubscriptionToRenew)), ("§ENDOFROW", endOfRow), ("§RENEWSET", renewSet)]).ToArray());
         }
-        o.Append(Fill(Api, names.Concat([("§PERIOD", period), ("§GATEWAYLINE", gatewayLine), ("§STARTINIT", startInit), ("§PLANLIMITS", planLimits), ("§CHOOSE", choose), ("§RENEW", renew),
+        o.Append(FillAll(Api, names.Concat([("§PERIOD", period), ("§GATEWAYLINE", gatewayLine), ("§STARTINIT", startInit), ("§PLANLIMITS", planLimits), ("§CHOOSE", choose), ("§RENEW", renew),
             ("§CANCHOOSE", project.SubscriptionPlanChoice ? "true" : "false")]).ToArray()));
 
         if (gateway is not null)
-            o.Append(Fill(Gateway, names.Concat([("§SGATEWAY", gateway.CSharpName()), ("§PERIODSET", subscription.PeriodEnd is null ? "" : $"        if (periodEnd is {{ }} end)\n            row.{subscription.PeriodEnd.CSharpName()} = {Stamp(subscription.PeriodEnd, "end")};\n")]).ToArray()));
+            o.Append(FillAll(Gateway, names.Concat([("§SGATEWAY", gateway.CSharpName()), ("§PERIODSET", subscription.PeriodEnd is null ? "" : $"        if (periodEnd is {{ }} end)\n            row.{subscription.PeriodEnd.CSharpName()} = {Stamp(subscription.PeriodEnd, "end")};\n")]).ToArray()));
 
         bool webhook = SubscriptionPlan.HasWebhook(database, project);
         if (webhook)
-            o.Append(Fill(Webhook, names.Concat([("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§HEADER", SubscriptionWords.WebhookHeader), ("§TOLERANCE", SubscriptionWords.WebhookToleranceSeconds.ToString()),
+            o.Append(FillAll(Webhook, names.Concat([("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§HEADER", SubscriptionWords.WebhookHeader), ("§TOLERANCE", SubscriptionWords.WebhookToleranceSeconds.ToString()),
                 ("§SIGNATURE_TYPE", SubscriptionWords.WebhookSignatureType), ("§EXPIRED_TYPE", SubscriptionWords.WebhookExpiredType), ("§SIGNATURE_TEXT", SubscriptionWords.WebhookSignatureText),
                 ("§EXPIRED_TEXT", SubscriptionWords.WebhookExpiredText), ("§UNCONFIGURED_TEXT", SubscriptionWords.WebhookUnconfiguredText), ("§BODY_TEXT", SubscriptionWords.WebhookBodyText),
                 ("§UNKNOWN_TEXT", SubscriptionWords.WebhookUnknownText)]).ToArray()));
 
-        string limitSupport = limit is null ? "" : Fill(SupportLimit, names.Concat([("§LIMITT", limit.Table.TableName), ("§LPLAN", limit.Plan.CSharpName()), ("§LKEY", limit.Key.CSharpName()), ("§LVALUE", limit.Value.CSharpName()),
+        string limitSupport = limit is null ? "" : FillAll(SupportLimit, names.Concat([("§LIMITT", limit.Table.TableName), ("§LPLAN", limit.Plan.CSharpName()), ("§LKEY", limit.Key.CSharpName()), ("§LVALUE", limit.Value.CSharpName()),
             ("§LBASE", limit.Value.CSharpBase()), ("§LTYPE", limit.Value.CSharp())]).ToArray());
-        string removeLimits = limit is null ? "" : Fill("        await context.Set<§LIMITT>().IgnoreQueryFilters().Where(l => l.§LPLAN == planId).ExecuteDeleteAsync();\n", names.Concat([("§LIMITT", limit.Table.TableName), ("§LPLAN", limit.Plan.CSharpName())]).ToArray());
+        string removeLimits = limit is null ? "" : FillAll("        await context.Set<§LIMITT>().IgnoreQueryFilters().Where(l => l.§LPLAN == planId).ExecuteDeleteAsync();\n", names.Concat([("§LIMITT", limit.Table.TableName), ("§LPLAN", limit.Plan.CSharpName())]).ToArray());
         string clearLines = string.Join("", cleared.Select(c => $"        await context.Set<{c.Table.TableName}>().IgnoreQueryFilters().Where(r => r.{c.Tenant.CSharpName()} == tenant).ExecuteDeleteAsync();\n"));
-        o.Append(Fill(Support, names.Concat([("§LIMITSUPPORT", limitSupport), ("§REMOVELIMITS", removeLimits), ("§CLEARLINES", clearLines)]).ToArray()));
+        o.Append(FillAll(Support, names.Concat([("§LIMITSUPPORT", limitSupport), ("§REMOVELIMITS", removeLimits), ("§CLEARLINES", clearLines)]).ToArray()));
 
         o.Append("/// <summary> Maps the subscription routes and the check that pauses a tenant's writes. Generated by API_Subscriptions. </summary>\npublic static class SubscriptionRoutes\n{\n    public static void Register(WebApplication app)\n    {\n");
         o.Append("        app.Use(SubscriptionCheck.InvokeAsync);\n");
@@ -133,13 +134,6 @@ public static class SubscriptionWriter
 
     /// <summary> The C# that stores a UTC moment in a period column: Npgsql refuses a UTC DateTime for a timestamp without time zone, so a DateTime column gets the value with no kind; a DateTimeOffset column takes it as it is. </summary>
     private static string Stamp(ColumnModel column, string value) => column.CSharpBase() == "DateTimeOffset" ? value : $"SubscriptionState.Stored({value})";
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
-    }
 
     private const string PlanLimitsNone = """
         var values = new[] { new { Plan = 0, Key = "", Value = (long?)null } }.Take(0).ToList();

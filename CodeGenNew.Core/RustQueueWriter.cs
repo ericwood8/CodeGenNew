@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -7,7 +8,7 @@ namespace CodeGenNew.Core;
 /// UPDATE of the row in the status it expects. The shared types are written once and each table adds its handlers. </summary>
 public static class RustQueueWriter
 {
-    public static string File(IReadOnlyList<QueueTable> tables, ProjectSettings project, SqlDialect dialect)
+    public static string File(IReadOnlyList<QueueShape> tables, ProjectSettings project, SqlDialect dialect)
     {
         var di = DialectInfo.For(dialect);
         string Str(string text) => "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
@@ -74,7 +75,7 @@ public static class RustQueueWriter
             string keyPlaceholder = q.Key.IsIdentity ? $"    object.entry(\"{main.Key.Json}\").or_insert(serde_json::json!(0));\n" : "";
 
             imports.Append($"use crate::models::{main.Module}::{main.Struct};\nuse crate::repos::{main.Module} as repo_{main.Module};\n");
-            routes.Append(Fill(TableText,
+            routes.Append(FillAll(TableText,
                 ("§KEYFIELD", main.Key.Name), ("§M", main.Module), ("§S", main.Struct), ("§ROUTE", main.Route), ("§KT", main.Key.BaseType), ("§CT", createdField.Type), ("§ON", createdField.IsOption ? "*on" : "Some(*on)"),
                 ("§NOWCLAIMED", RustTable.Now(main.FieldOf(q.Claimed))), ("§NOWPROCESSED", RustTable.Now(main.FieldOf(q.Processed))),
                 ("§SQL_RELEASE", RustTable.Raw(release)), ("§SQL_COUNTS", RustTable.Raw(counts)), ("§SQL_OLDEST", RustTable.Raw(oldest)), ("§SQL_NEXT", RustTable.Raw(next)), ("§SQL_CLAIM", RustTable.Raw(claim)),
@@ -83,7 +84,7 @@ public static class RustQueueWriter
                 ("§PENDING", QueueStatus.Pending), ("§CLAIMED", QueueStatus.Claimed), ("§DONE", QueueStatus.Done), ("§FAILED", QueueStatus.Failed)));
         }
         var o = new StringBuilder();
-        o.Append(Fill(Head, ("§IMPORTS", imports.ToString().TrimEnd('\n')), ("§T_STATE", QueueWords.WrongStateType), ("§W_NOTCLAIMED", Str(QueueWords.NotClaimed)), ("§W_NOTFAILED", Str(QueueWords.NotFailed)), ("§W_NOTSAVED", Str(QueueWords.NotSaved)),
+        o.Append(FillAll(Head, ("§IMPORTS", imports.ToString().TrimEnd('\n')), ("§T_STATE", QueueWords.WrongStateType), ("§W_NOTCLAIMED", Str(QueueWords.NotClaimed)), ("§W_NOTFAILED", Str(QueueWords.NotFailed)), ("§W_NOTSAVED", Str(QueueWords.NotSaved)),
             ("§MIN", project.QueueClaimMinutes.ToString()), ("§ATTEMPTS", QueueWords.ClaimAttempts.ToString())));
         o.Append("\npub fn router() -> Router<Pool> {\n    Router::new()\n");
         foreach (var q in tables)
@@ -94,13 +95,6 @@ public static class RustQueueWriter
     }
 
     private static string Length(ColumnModel column) => (column.CharacterLength > 0 ? column.CharacterLength : int.MaxValue).ToString();
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
-    }
 
     private const string Head = """"
 //! The work queues (QueueTables): a worker claims the oldest pending row, then completes or fails it; a failed row can be retried. The same routes, sentences and problem type as the ASP.NET API (API_Queue).

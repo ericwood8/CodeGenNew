@@ -5,13 +5,13 @@ namespace CodeGenNew.Core;
 
 /// <summary> The rows the generated queue tests of the Python and Rust APIs (PY_TestQueue, RS_TestQueue) put in a scratch copy of the database and the statements that take them out again: three pending rows with fixed
 /// keys far above the usual ones, created in the year 2000 so they are the oldest pending rows of the table whatever else it holds, and the statement that makes a claim stale. </summary>
-public sealed record QueueTestSeed(QueueTable Queue, IReadOnlyList<string> Setup, IReadOnlyList<string> Cleanup, IReadOnlyList<long> Keys, string StaleSql)
+public sealed record QueueTestSeed(QueueShape Queue, IReadOnlyList<string> Setup, IReadOnlyList<string> Cleanup, IReadOnlyList<long> Keys, string StaleSql)
 {
     private const long FirstKey = 90001;
     private const int Rows = 3;
 
     /// <summary> The seed, or null with the reason when it cannot be made from the schema (a required column that has no example value, a key that is not a whole number). </summary>
-    public static QueueTestSeed? For(QueueTable queue, DatabaseModel database, ProjectSettings project, out string reason)
+    public static QueueTestSeed? For(QueueShape queue, DatabaseModel database, ProjectSettings project, out string reason)
     {
         reason = "";
         var di = DialectInfo.For(database.Dialect);
@@ -39,7 +39,7 @@ public sealed record QueueTestSeed(QueueTable Queue, IReadOnlyList<string> Setup
                     continue;
                 else
                 {
-                    string json = ApiSampleValues.Value(c, project, table.TableName);
+                    string json = c.ValidExample(project, table.TableName);
                     value = json switch
                     {
                         "null" => null,

@@ -125,8 +125,8 @@
 
         // SoftDeleteTables and EffectiveDatedTables: a "Show deleted" dialog with Restore and a "Valid on" dialog (the list itself stays the paged grid)
         string shapeApi = ReactNames.ApiVar(Model.TableName);   // the REST api module: the OData one has no deleted rows, restore or rows valid on a day
-        bool softScreen = !oneRow && SoftDeletePlan.For(Model, Project) is not null;
-        bool validOnScreen = !oneRow && EffectiveDatePlan.For(Model, Project) is not null;
+        bool softScreen = !oneRow && TableShapes.For(Model, Project).SoftDelete is not null;
+        bool validOnScreen = !oneRow && TableShapes.For(Model, Project).Effective is not null;
 
         // ================= imports
         T("import { useEffect, useRef, useState } from 'react';");
@@ -316,7 +316,7 @@
             T($"    {apiVar}.getPage(1, 1, {{}}, null).then((result) => {{");
             T("      const first = result.items[0];");
             T("      if (first) edit(first); else add();");
-            T($"    }}).catch(() => setError('Failed to load {Labels.Words(baseName).ToLowerInvariant()}.'));");
+            T($"    }}).catch(() => setError('Failed to load {form.Words}.'));");
             T("  };");
         }
         else if (nameActive)
@@ -354,7 +354,7 @@
             T("      setTotalPages(result.totalPages);");
         }
         T("      setLoaded(true);");
-        T($"    }}).catch(() => setError('Failed to load {Labels.Words(baseName).ToLowerInvariant().Pluralize()}.'));");
+        T($"    }}).catch(() => setError('Failed to load {form.PluralWords}.'));");
         T("  };");
         }
         if (nameActive)
@@ -370,7 +370,7 @@
             T($"    {ReactNames.ApiVar(p.Table)}.{p.LoadMethod}().then({ReactNames.SetList(ReactNames.ParentList(p))}).catch(() => {{}});");
         if (form.Guards.Count > 0) T($"    {apiVar}.getGuards().then(setGuards).catch(() => {{}});");
         T("    const openId = searchParams.get('edit');");
-        T($"    if (openId) {apiVar}.getById({(keyType.Kind == KeyKind.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'));");
+        T($"    if (openId) {apiVar}.getById({(keyType.Kind == KeyKind.Int ? "Number(openId)" : "openId")}).then(edit).catch(() => setError('This {form.Words} no longer exists!'));");
         T("  }, []);");
         T();
         T($"  const submit = async ({variable}: {baseName}): Promise<void> => {{");
@@ -555,7 +555,7 @@
             T();
             T("  // The grid read only the columns it shows: the row is read whole before the form opens it.");
             T($"  const open = ({variable}: {baseName}) => {{");
-            T($"    {apiVar}.getById({variable}.{keyProp}!).then(edit).catch(() => setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'));");
+            T($"    {apiVar}.getById({variable}.{keyProp}!).then(edit).catch(() => setError('This {form.Words} no longer exists!'));");
             T("  };");
             T();
             T("  // Showing or hiding a column: the choice is kept, a sort or a filter on a column that is no longer shown is dropped, and the page is read again with the columns that are shown.");
@@ -626,10 +626,10 @@
         T();
         T("  const showError = (action: string, err: unknown) => {");
         T($"    if (err instanceof ApiError && err.status === {HttpStatus.BadRequest}) {{ setError({(hasName ? "'Name is bad or has special characters!'" : "'Some of the values are not acceptable!'")}); }}");
-        T($"    else if (err instanceof ApiError && err.status === {HttpStatus.NotFound}) {{ setError('This {Labels.Words(baseName).ToLowerInvariant()} no longer exists!'); load(page); }}");
+        T($"    else if (err instanceof ApiError && err.status === {HttpStatus.NotFound}) {{ setError('This {form.Words} no longer exists!'); load(page); }}");
         if (planned) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.PaymentRequired}) {{ setError(planDetail(err)); }}");
         // a typed key can already be taken: the API answers 409
-        if (textKey) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.Conflict}) {{ setError('A {Labels.Words(baseName).ToLowerInvariant()} with this {Labels.Column(keyColumn.Name).ToLowerInvariant()} already exists!'); }}");
+        if (textKey) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.Conflict}) {{ setError('A {form.Words} with this {Labels.Column(keyColumn.Name).ToLowerInvariant()} already exists!'); }}");
         if ((odata || nameActive) && !textKey) T($"    else if (err instanceof ApiError && err.status === {HttpStatus.Conflict}) {{ setError({problemCall}(err) ?? 'A row with this value already exists!'); }}");
         T("    else { setError('Problem while ' + action + '!'); }");
         T("  };");
@@ -1203,7 +1203,7 @@
             string sampleKey = form.TextKey ? $"'{ApiSampleValues.KeyText(keyColumn)}'" : "7";
             string sampleRow = "{ " + string.Join(", ", adds.Select((a, i) => i == 0 ? $"{keyProp}: {sampleKey}" : a)) + " }";
             S();
-            S($"  it('lets the person type the key of a new {Labels.Words(baseName).ToLowerInvariant()} and does not let them change it afterwards', async () => {{");
+            S($"  it('lets the person type the key of a new {form.Words} and does not let them change it afterwards', async () => {{");
             S("    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };");
             S($"    vi.spyOn({apiVar}, '{(odata ? "queryPage" : "getPage")}').mockResolvedValue({{ items: [{sampleRow}], page: 1, pageSize: {pageSize}, totalCount: 1, totalPages: 1 }});");
             S($"    render(<MemoryRouter><{pageName} /></MemoryRouter>);");

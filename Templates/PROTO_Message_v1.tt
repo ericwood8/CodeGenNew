@@ -21,7 +21,7 @@
         string plural = baseName.Pluralize();
         string projectName = Project.ProjectName ?? "MyApp";
         string package = Regex.Replace(projectName.ToLowerInvariant(), "[^a-z0-9]", "");
-        string FieldName(ColumnModel c) => Labels.Words(c.Name).ToLowerInvariant().Replace(' ', '_');
+        string FieldName(ColumnModel c) => c.Words.Replace(' ', '_');
 
         var columns = Model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
         bool usesTimestamp = columns.Any(c => c.Proto() == "google.protobuf.Timestamp");

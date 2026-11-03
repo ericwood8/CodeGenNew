@@ -108,6 +108,9 @@ public sealed partial class ChildGrid
     /// <summary> The table's name without an E_ or SY_ prefix. </summary>
     public string BaseName { get; }
 
+    /// <summary> The child table as words: "Time Sheet Detail". </summary>
+    public string Words => Labels.Words(BaseName);
+
     /// <summary> What tells this grid from another grid of the same child table; empty when the child references the parent once. </summary>
     public string Role { get; }
 

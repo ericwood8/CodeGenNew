@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -32,7 +33,7 @@ public static class RustEffectiveWriter
         }
         string today = n.DateType == "NaiveDateTime" ? "chrono::Local::now().date_naive().and_hms_opt(0, 0, 0).unwrap_or_default()" : "chrono::Local::now().date_naive()";
         string to = n.ToIsOption ? $"row.{n.ToField}" : $"Some(row.{n.ToField})";
-        return Fill(Text, ("§STRUCT", n.Struct), ("§KEYFIELD", n.KeyField), ("§KEYCOLUMN", n.KeyColumn), ("§KT", n.KeyType), ("§FROMFIELD", n.FromField), ("§FROMCOLUMN", n.FromColumn), ("§TOFIELD", n.ToField), ("§TOCOLUMN", n.ToColumn),
+        return FillAll(Text, ("§STRUCT", n.Struct), ("§KEYFIELD", n.KeyField), ("§KEYCOLUMN", n.KeyColumn), ("§KT", n.KeyType), ("§FROMFIELD", n.FromField), ("§FROMCOLUMN", n.FromColumn), ("§TOFIELD", n.ToField), ("§TOCOLUMN", n.ToColumn),
             ("§TOVALUE", to), ("§DATE", Qualify(n.DateType)), ("§TODAY", today), ("§TABLE", n.Table), ("§SELECT", n.SelectList), ("§LIVE", liveAnd), ("§CHECKGROUPS", checkGroups.ToString()), ("§QUERYFIELDS", queryFields.ToString()),
             ("§CURRENTGROUPS", currentGroups.ToString()), ("§RANGETYPE", RowShapeWords.EffectiveRangeType), ("§OVERLAPTYPE", RowShapeWords.EffectiveOverlapType),
             ("§W_RANGE", RowShapeWords.BackwardsRange), ("§W_OVERLAP", RowShapeWords.Overlap));
@@ -47,13 +48,6 @@ public static class RustEffectiveWriter
         "Decimal" => "rust_decimal::Decimal",
         _ => type
     };
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
-    }
 
     private const string Text = """"
 /// The period must not run backwards and must not overlap another row of the same group (both ends are inclusive; an empty end is open).

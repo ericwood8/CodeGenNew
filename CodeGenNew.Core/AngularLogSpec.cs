@@ -6,7 +6,7 @@ namespace CodeGenNew.Core;
 public static class AngularLogSpec
 {
     /// <param name="viewRow"> A row (a TypeScript object literal) whose long text the View dialog must show whole, or null when the table has no text column to check. </param>
-    public static string Text(string cls, string screenStem, IReadOnlyList<SearchField> dates, QueueTable? queue = null, ProjectSettings? project = null, string? viewRow = null)
+    public static string Text(string cls, string screenStem, IReadOnlyList<SearchField> dates, QueueShape? queue = null, ProjectSettings? project = null, string? viewRow = null)
     {
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
@@ -93,10 +93,10 @@ public static class AngularLogSpec
         return o.ToString();
     }
 
-    private static void QueueSpecs(Action<string> L, QueueTable queue, ProjectSettings project)
+    private static void QueueSpecs(Action<string> L, QueueShape queue, ProjectSettings project)
     {
         string key = JsonNames.Camel(queue.Key.Name), status = JsonNames.Camel(queue.Status.Name);
-        string row = "{ " + string.Join(", ", queue.Table.Columns.Select(c => c == queue.Key ? $"{key}: 7" : c == queue.Status ? $"{status}: '{QueueStatus.Failed}'" : $"{JsonNames.Camel(c.Name)}: {ApiSampleValues.Value(c, project, queue.Table.TableName)}")) + " }";
+        string row = "{ " + string.Join(", ", queue.Table.Columns.Select(c => c == queue.Key ? $"{key}: 7" : c == queue.Status ? $"{status}: '{QueueStatus.Failed}'" : $"{JsonNames.Camel(c.Name)}: {c.ValidExample(project, queue.Table.TableName)}")) + " }";
         string stats = "{ pending: 2, claimed: 1, done: 5, failed: 1, oldestPendingId: 4, oldestPendingOn: '2026-10-26T08:12:00' }";
         L("");
         L("  it('shows the counts by status and the oldest pending row', () => {");

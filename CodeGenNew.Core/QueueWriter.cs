@@ -8,7 +8,7 @@ public static class QueueWriter
 {
     public const string WrongStateType = QueueWords.WrongStateType;
 
-    public static string File(IReadOnlyList<QueueTable> tables, ProjectSettings project, string contextType, string[] usings)
+    public static string File(IReadOnlyList<QueueShape> tables, ProjectSettings project, string contextType, string[] usings)
     {
         var o = new StringBuilder();
         foreach (string u in usings)
@@ -24,7 +24,7 @@ public static class QueueWriter
         return o.ToString();
     }
 
-    private static string PerTable(QueueTable q, ProjectSettings project, string contextType)
+    private static string PerTable(QueueShape q, ProjectSettings project, string contextType)
     {
         string By = q.ClaimedBy is null ? "" : q.ClaimedBy.CSharpName();
         string stamp = q.Claimed.CSharpBase();
@@ -49,7 +49,7 @@ public static class QueueWriter
     }
 
     /// <summary> The assignments that make a posted entity a new pending row: the key is left to the database when it numbers it, and nothing a producer sent for the queue's own columns is kept. </summary>
-    private static string SetManaged(QueueTable q)
+    private static string SetManaged(QueueShape q)
     {
         var o = new StringBuilder();
         if (q.Key.IsIdentity)
@@ -73,10 +73,7 @@ public static class QueueWriter
         var tokens = new List<(string Token, string Value)>();
         for (int i = 0; i < pairs.Length; i += 2)
             tokens.Add((pairs[i], pairs[i + 1]));
-        // longest token first, so §CL is not read as the start of §CLAIMED
-        foreach (var (token, value) in tokens.OrderByDescending(t => t.Token.Length))
-            text = text.Replace(token, value);
-        return text;
+        return TemplateText.FillAll(text, [.. tokens]);
     }
 
     private const string Shared = """

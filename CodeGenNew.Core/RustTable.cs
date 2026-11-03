@@ -112,7 +112,7 @@ public sealed class RustTable
 
     private void BuildSoftDelete(TableModel model, ProjectSettings project, Dictionary<ColumnModel, RustField> fieldOf, string key)
     {
-        if (SoftDeletePlan.For(model, project) is not { } soft || !fieldOf.TryGetValue(soft.Flag, out var flag))
+        if (TableShapes.For(model, project).SoftDelete is not { } soft || !fieldOf.TryGetValue(soft.Flag, out var flag))
             return;
         SoftFlag = flag;
         SoftOn = soft.DeletedOn is not null && fieldOf.TryGetValue(soft.DeletedOn, out var on) ? on : null;
@@ -372,7 +372,7 @@ public sealed class RustTable
 
     private void BuildSearch(ProjectSettings project)
     {
-        var log = LogTablePlan.For(Model, project);
+        var log = TableShapes.For(Model, project).Log;
         var plan = SearchPlan.For(Model, [], log);
         LogStamp = log is not null && _fieldOf.TryGetValue(log.Timestamp, out var stamp) ? stamp : null;
         string from = $"{Table} AS t";

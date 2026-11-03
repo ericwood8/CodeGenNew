@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -18,11 +19,11 @@ public static class PythonApprovalTests
         string connection = ConnectionVariable(project);
         string open = dialect switch
         {
-            SqlDialect.Sqlite => Fill(SqliteOpen, ("§FILE", PythonNames.Str(project.DatabaseName ?? "")), ("§PREFIX", new string((project.ProjectName ?? "app").ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray()))),
+            SqlDialect.Sqlite => FillAll(SqliteOpen, ("§FILE", PythonNames.Str(project.DatabaseName ?? "")), ("§PREFIX", new string((project.ProjectName ?? "app").ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray()))),
             SqlDialect.SqlServer => "    pytest.skip(\"the approval tests run over SQLite, PostgreSQL or MySQL\")\n    folder = None",
-            _ => Fill(UrlOpen, ("§VARIABLE", connection))
+            _ => FillAll(UrlOpen, ("§VARIABLE", connection))
         };
-        return Fill(ConftestText, ("§OPEN", open), ("§CLEAN", dialect == SqlDialect.Sqlite ? "    engine.dispose()\n    shutil.rmtree(folder, ignore_errors=True)" : "    engine.dispose()")) + "\n";
+        return FillAll(ConftestText, ("§OPEN", open), ("§CLEAN", dialect == SqlDialect.Sqlite ? "    engine.dispose()\n    shutil.rmtree(folder, ignore_errors=True)" : "    engine.dispose()")) + "\n";
     }
 
     public static string Tests(ApprovalPlan plan, ApprovalTestSeed seed, ProjectSettings project)
@@ -32,7 +33,7 @@ public static class PythonApprovalTests
         string Setup() => string.Join(",\n", seed.Setup.Select(s => "    " + PythonNames.Str(s)));
         string Cleanup() => string.Join(",\n", seed.Cleanup.Select(s => "    " + PythonNames.Str(s)));
         var o = new StringBuilder();
-        o.Append(Fill(Head,
+        o.Append(FillAll(Head,
             ("§TENANTELSE", seed.TenantSql is null ? "" : "ELSEWHERE = 2147483000\n"),
             ("§TENANTSQL", seed.TenantSql is null ? "" : $"TENANT_SQL = {PythonNames.Str(seed.TenantSql)}\n"),
             ("§TENANTLOOKUP", seed.TenantSql is null ? "" : "    with engine.connect() as connection:\n        tenant = connection.execute(text(TENANT_SQL)).scalar()\n    who[\"tenant\"] = tenant\n"),
@@ -42,23 +43,16 @@ public static class PythonApprovalTests
             ("§TENANTIMPORT", seed.TenantSql is null ? "" : "from sqlalchemy import text\n"),
             ("§SETUP", Setup()), ("§CLEANUP", Cleanup()), ("§ROUTE", PythonNames.Str(main.Route)), ("§ROW", seed.RowKey.ToString()), ("§TABLE", PythonNames.Str(table.Table.TableName)),
             ("§ANN", ApprovalTestSeed.Requester), ("§BOB", ApprovalTestSeed.Approver), ("§CY", ApprovalTestSeed.AnyTableApprover)));
-        o.Append(Fill(Cases,
+        o.Append(FillAll(Cases,
             ("§ANN", ApprovalTestSeed.Requester), ("§BOB", ApprovalTestSeed.Approver), ("§CY", ApprovalTestSeed.AnyTableApprover),
             ("§T_UNKNOWN", ApprovalWriter.RequesterUnknownType), ("§T_NOTAPPROVER", ApprovalWriter.NotApproverType), ("§T_FOUREYES", ApprovalWriter.FourEyesType), ("§T_REFUSED", ApprovalWriter.RefusedType),
             ("§W_NOTAPPROVER", PythonNames.Str(ApprovalWords.NotApprover)), ("§W_NOTREQUESTER", PythonNames.Str(ApprovalWords.NotRequester)), ("§W_FOUREYES", PythonNames.Str(ApprovalWords.FourEyes)),
             ("§W_ALREADY", PythonNames.Str(ApprovalWords.AlreadyWaiting)), ("§FORBIDDEN", HttpStatus.Forbidden.ToString()), ("§CONFLICT", HttpStatus.Conflict.ToString()), ("§NOTFOUND", HttpStatus.NotFound.ToString())));
         if (seed.TenantSql is not null)
-            o.Append(Fill(TenantCase, ("§ANN", ApprovalTestSeed.Requester), ("§BOB", ApprovalTestSeed.Approver)));
+            o.Append(FillAll(TenantCase, ("§ANN", ApprovalTestSeed.Requester), ("§BOB", ApprovalTestSeed.Approver)));
         if (ApprovalTestSeed.HasOtherTablePerson(plan))
-            o.Append(Fill(OtherTableCase, ("§CY", ApprovalTestSeed.AnyTableApprover), ("§DEE", ApprovalTestSeed.OtherTableApprover), ("§W_NOTAPPROVER", PythonNames.Str(ApprovalWords.NotApprover)), ("§FORBIDDEN", HttpStatus.Forbidden.ToString())));
+            o.Append(FillAll(OtherTableCase, ("§CY", ApprovalTestSeed.AnyTableApprover), ("§DEE", ApprovalTestSeed.OtherTableApprover), ("§W_NOTAPPROVER", PythonNames.Str(ApprovalWords.NotApprover)), ("§FORBIDDEN", HttpStatus.Forbidden.ToString())));
         return o.ToString() + "\n";
-    }
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
     }
 
     private const string ConftestText = """"

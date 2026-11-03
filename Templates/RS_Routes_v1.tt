@@ -39,11 +39,11 @@
     var ownerLink = auth ? OwnedTable.Through(Model, Project) : null;
     var userPlan = auth ? UserTable.PlanOf(Model, Project) : null;
     // a table with a Name and an IsActive column (NameActivePlan): the list is by name, GET active and GET {name} are added, a name is trimmed, may not be empty and may not be that of another active row
-    var nameActive = NameActivePlan.For(Model, Project);
+    var nameActive = TableShapes.For(Model, Project).NameActive;
     // TenantTable (RS_Tenants, src/tenancy.rs): a tenant-owned table shows and changes only the rows of the caller's tenant (another tenant's row is a 404) and stamps the caller's tenant on create and update;
     // the tenant table shows the caller's own tenant (a platform administrator every one), only a platform administrator creates one and nobody deletes one
     bool tenancy = RustTenantWriter.Applies(Project);
-    var tenantOwned = tenancy ? TenantPlan.OwnedBy(Model, Project) : null;
+    var tenantOwned = tenancy ? TableShapes.For(Model, Project).Tenant : null;
     bool tenantTable = tenancy && TenantPlan.IsTenantTable(Model, Project);
     // ReadRoles and WriteRoles: the routes refuse a role the table's rules do not list (the administrator role is always listed); the lookup stays open
     var readRoles = WriteRolePlan.ReadFor(Project, Model);
@@ -60,9 +60,9 @@
     var linkField = ownerLink is null ? null : t.Fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(ownerLink.ForeignKey));
     bool scoped = ownerField is not null || (ownerColumn is null && linkField is not null);
     // TreeTables: the checks and routes of a tree (not for a table that is scoped to an owner or a tenant, whose rows the tree routes would have to limit)
-    var treePlan = !scoped && !tenanted && !log ? TreePlan.For(Model, Project) : null;
+    var treePlan = !scoped && !tenanted && !log ? TableShapes.For(Model, Project).Tree : null;
     // EffectiveDatedTables: the period check on create and update and GET current (not for a table limited to an owner or a tenant)
-    var effPlan = !scoped && !tenanted && !log ? EffectiveDatePlan.For(Model, Project) : null;
+    var effPlan = !scoped && !tenanted && !log ? TableShapes.For(Model, Project).Effective : null;
     var effNames = effPlan is null ? null : new RustEffectiveWriter.Names(t.Struct, t.FieldOf(effPlan.Key).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.Key.DbName), keyType, t.FieldOf(effPlan.From).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.From.DbName),
         t.FieldOf(effPlan.To).Name, DialectInfo.For(Model.Dialect).Quote(effPlan.To.DbName), t.FieldOf(effPlan.To).IsOption, t.FieldOf(effPlan.From).BaseType,
         effPlan.Groups.Select(g => new RustEffectiveWriter.Group(t.FieldOf(g).Name, t.FieldOf(g).Json, DialectInfo.For(Model.Dialect).Quote(g.DbName), t.FieldOf(g).BaseType, t.FieldOf(g).IsOption)).ToList(), t.Table, t.SelectList);

@@ -30,7 +30,11 @@ public sealed record TenantMembership(TableModel Table, ColumnModel User, Column
 public sealed record TenantPeople(UserTablePlan User, TenantMembership Membership, ColumnModel Key);
 
 /// <summary> A table whose rows belong to one tenant: <c>Column</c> is its NOT NULL whole-number tenant column. </summary>
-public sealed record TenantOwned(TableModel Table, ColumnModel Column);
+public sealed record TenantOwned(TableModel Table, ColumnModel Column)
+{
+    /// <summary> The name of the tenant table the tenant column points at. </summary>
+    public string TenantTable => Table.ForeignKeys.First(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0].EqualsIgnoreCase(Column.Name)).ReferencedTable;
+}
 
 /// <summary> Shared-schema multi-tenancy (<c>TenantTable=Tenant</c>): every table with a NOT NULL whole-number <c>TenantColumn</c> (default <c>TenantId</c>) that is a foreign key to the tenant table is tenant-owned, and the caller's tenant (a claim in the
 /// token) decides which rows they reach. The context filters every read, the API fills the tenant column on create and writes the caller's tenant on update (a row never moves to another tenant), and the tenant table itself shows only the caller's own tenant.

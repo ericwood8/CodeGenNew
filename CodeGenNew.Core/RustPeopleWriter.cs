@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -111,13 +112,6 @@ public static class RustPeopleWriter
         Add(router);
         Add($"\n/// The routes that need no sign-in, merged into the sign-in's own router.\npub fn public_router() -> Router<Pool> {{\n    Router::new()\n        .route(\"{PeopleWords.FirstPersonPath}\", {(plan.First is null ? "get(first_person_state)" : "get(first_person_state).post(create_first_person)")})\n}}");
         return o.ToString();
-    }
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
     }
 
     private const string Head = """"

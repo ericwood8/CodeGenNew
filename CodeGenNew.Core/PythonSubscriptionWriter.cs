@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -19,7 +20,7 @@ public static class PythonSubscriptionWriter
         string Str(string value) => PythonNames.Str(value);
 
         var o = new StringBuilder();
-        o.Append(Fill(Head, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType), ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType), ("§TOOSMALL_TYPE", SubscriptionWords.PlanTooSmallType)));
+        o.Append(FillAll(Head, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType), ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType), ("§TOOSMALL_TYPE", SubscriptionWords.PlanTooSmallType)));
         o.Append($"\nACTIVE_STATUSES = ({string.Join(", ", SubscriptionPlan.ActiveStatuses(project).Select(s => Str(s.ToLowerInvariant())))},)\n");
         o.Append($"REQUIRED = {(project.SubscriptionRequired ? "True" : "False")}\n");
         o.Append($"S_KEY = {Str(subscription.Key.DbName)}\nS_TENANT = {Str(subscription.Tenant.DbName)}\nS_PLAN = {Str(subscription.Plan.DbName)}\nS_STATUS = {Str(subscription.Status.DbName)}\n");
@@ -75,17 +76,17 @@ public static class PythonSubscriptionWriter
         o.Append(")\n");
 
         string choose = project.SubscriptionPlanChoice
-            ? Fill(ChoosePlan, ("§ADMIN_TEXT", Str(SubscriptionWords.OnlyAdministrator)), ("§NEEDSPLAN_TEXT", Str(SubscriptionWords.NeedsPlan)), ("§UNKNOWNPLAN_TEXT", Str(SubscriptionWords.UnknownPlan)),
+            ? FillAll(ChoosePlan, ("§ADMIN_TEXT", Str(SubscriptionWords.OnlyAdministrator)), ("§NEEDSPLAN_TEXT", Str(SubscriptionWords.NeedsPlan)), ("§UNKNOWNPLAN_TEXT", Str(SubscriptionWords.UnknownPlan)),
                 ("§TOOSMALL_TEXT", Str(SubscriptionWords.PlanTooSmallText)), ("§STARTVALUE", subscription.PeriodStart is null ? "" : ", S_START: datetime.now(timezone.utc).replace(tzinfo=None)"))
             : "";
         string renew = subscription.PeriodEnd is null ? ""
-            : Fill(RenewPeriod, ("§PLATFORM_TEXT", Str(SubscriptionWords.OnlyPlatform)), ("§RENEWDAYS_TEXT", Str(SubscriptionWords.RenewDays)), ("§NOSUBSCRIPTION_TEXT", Str(SubscriptionWords.NoSubscriptionToRenew)),
+            : FillAll(RenewPeriod, ("§PLATFORM_TEXT", Str(SubscriptionWords.OnlyPlatform)), ("§RENEWDAYS_TEXT", Str(SubscriptionWords.RenewDays)), ("§NOSUBSCRIPTION_TEXT", Str(SubscriptionWords.NoSubscriptionToRenew)),
                 ("§DAYS", project.SubscriptionPeriodDays.ToString()), ("§RENEWSTART", subscription.PeriodStart is null ? "" : "    values[S_START] = start\n"));
         if (choose.Length > 0)
             choose = "\n" + choose + "\n";
         if (renew.Length > 0)
             renew = "\n" + renew + "\n";
-        o.Append(Fill(Body, ("§CHOOSE", choose), ("§RENEW", renew), ("§CANCHOOSE", project.SubscriptionPlanChoice ? "True" : "False"), ("§TOOSMALL_TYPE", SubscriptionWords.PlanTooSmallType), ("§INACTIVE_TEXT", Str(SubscriptionWords.InactiveText)), ("§TRIAL_TEXT", Str(SubscriptionWords.TrialEndedText)), ("§NONE_TEXT", Str(SubscriptionWords.NoSubscriptionText)),
+        o.Append(FillAll(Body, ("§CHOOSE", choose), ("§RENEW", renew), ("§CANCHOOSE", project.SubscriptionPlanChoice ? "True" : "False"), ("§TOOSMALL_TYPE", SubscriptionWords.PlanTooSmallType), ("§INACTIVE_TEXT", Str(SubscriptionWords.InactiveText)), ("§TRIAL_TEXT", Str(SubscriptionWords.TrialEndedText)), ("§NONE_TEXT", Str(SubscriptionWords.NoSubscriptionText)),
             ("§LIMIT_TEXT", Str(SubscriptionWords.LimitText)), ("§PLATFORM_TEXT", Str(SubscriptionWords.OnlyPlatform)), ("§ADMIN_TEXT", Str(SubscriptionWords.OnlyAdministrator)),
             ("§NEEDS_TEXT", Str(SubscriptionWords.NeedsPlanAndStatus)), ("§UNKNOWNPLAN_TEXT", Str(SubscriptionWords.UnknownPlan)), ("§UNKNOWNTENANT_TEXT", Str(SubscriptionWords.UnknownTenant)),
             ("§ENDREAD", subscription.PeriodEnd is null ? "null()" : "subscriptions.c[S_END]"), ("§GATEWAYREAD", subscription.Gateway is null ? "null()" : "subscriptions.c[S_GATEWAY]"),
@@ -96,7 +97,7 @@ public static class PythonSubscriptionWriter
             ("§PRICEREAD", subscription.PlanPrice is null ? "null()" : "plans.c[P_PRICE]"), ("§PERIODREAD", subscription.PlanPeriod is null ? "null()" : "plans.c[P_PERIOD]"),
             ("§LIMITHELPERS", limit is null ? NoLimitHelpers : LimitHelpers)));
         if (SubscriptionPlan.HasWebhook(database, project))
-            o.Append(Fill(Webhook, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§HEADER", SubscriptionWords.WebhookHeader), ("§TOLERANCE", SubscriptionWords.WebhookToleranceSeconds.ToString()),
+            o.Append(FillAll(Webhook, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§HEADER", SubscriptionWords.WebhookHeader), ("§TOLERANCE", SubscriptionWords.WebhookToleranceSeconds.ToString()),
                 ("§SIGNATURE_TYPE", SubscriptionWords.WebhookSignatureType), ("§EXPIRED_TYPE", SubscriptionWords.WebhookExpiredType), ("§WEBHOOKPATH", SubscriptionWords.WebhookPath),
                 ("§SIGNATURE_TEXT", SubscriptionWords.WebhookSignatureText), ("§EXPIRED_TEXT", SubscriptionWords.WebhookExpiredText), ("§UNCONFIGURED_TEXT", SubscriptionWords.WebhookUnconfiguredText),
                 ("§BODY_TEXT", SubscriptionWords.WebhookBodyText), ("§UNKNOWN_TEXT", SubscriptionWords.WebhookUnknownText),
@@ -119,13 +120,6 @@ public static class PythonSubscriptionWriter
     {
         bool schemaNamed = table.Dialect is SqlDialect.SqlServer or SqlDialect.PostgreSql && !table.SchemaName.EqualsIgnoreCase(table.Dialect == SqlDialect.SqlServer ? "dbo" : "public");
         return schemaNamed ? $", schema={PythonNames.Str(table.SchemaName)}" : "";
-    }
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
     }
 
     private const string Head = """"

@@ -175,7 +175,7 @@
     {
         string pagesFolder = Project.PagesFolder;
         string page = JunctionPlan.ReactPage(Model.TableName);
-        string anchorLabel = Labels.Words(BaseName(junction.AnchorRole));
+        string anchorLabel = junction.AnchorWords;
         var pg = new StringBuilder();
         void P(string s = "") => pg.Append(s).Append('\n');
         P("import { useEffect, useState } from 'react';");

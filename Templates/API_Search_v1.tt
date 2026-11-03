@@ -47,7 +47,7 @@
     // With AccessMode=Ef the search is LINQ over the context (the CS_SearchQuery class of this table), not a call to the routines SP_Search writes.
     bool ef = Project.AccessModeFor(Model.Dialect) == AccessMode.Ef;
     // a table the project lists in LogTables also filters by a date range on its timestamp (from, to: the first and last day)
-    var log = LogTablePlan.For(Model, Project);
+    var log = TableShapes.For(Model, Project).Log;
     var efFilters = string.Concat(filters.Select(f => ", " + f.ParamName).Concat(searchKeys.Select(k => ", " + CSharpIdentifier(LowerFirst(k.Name)))))
         + (log is not null && ef ? ", " + LogTable.FromParameter + ", " + LogTable.ToParameter : "");
     // ApiAuth with OwnedTables: only the rows of the owners the caller may act for. The routines cannot take an owner, so the routine form answers 403 to a caller who is limited to some owners.

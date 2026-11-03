@@ -46,7 +46,7 @@
         string keyTs = keyType.TypeScript;
         string stem = baseName.ToLowerInvariant();
         string variable = LowerFirst(baseName);
-        string lowerWords = Labels.Words(baseName).ToLowerInvariant();
+        string lowerWords = Model.Words;
         // Pagination: getPage always exists, once SP_Search.tt/API_Search.tt do; pagination and searchability are separate concerns.
         // Search: filters is simply empty for a table with no searchable column.
         // The Search list protocol (ListProtocol=Search) has one search box for the whole table; the server decides which columns it matches.
@@ -54,7 +54,7 @@
             ? new[] { new { ParamName = "search", Name = "search" } }.ToList()
             : Model.SearchableColumns.Concat(Model.SearchKeyColumns.Where(c => c.IsStringColumn)).OrderBy(c => c.OrdinalPosition).Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
         // a table in LogTables also takes the first and the last day of the rows to list
-        if (!Project.ListSearchProtocol && LogTablePlan.For(Model, Project) is not null)
+        if (!Project.ListSearchProtocol && TableShapes.For(Model, Project).Log is not null)
             filters.AddRange(new[] { new { ParamName = LogTable.FromParameter, Name = LogTable.FromParameter }, new { ParamName = LogTable.ToParameter, Name = LogTable.ToParameter } });
 
         var o = new StringBuilder();
@@ -68,7 +68,7 @@
         L("import { Injectable } from '@angular/core';");
         L("import { HttpClient } from '@angular/common/http';");
         bool guarded = GatePlan.GuardsOf(Project, Model).Count > 0;
-        if (!Model.IsNameActiveTable || guarded || SoftDeletePlan.For(Model, Project) is not null || EffectiveDatePlan.For(Model, Project) is not null) L("import { Observable } from 'rxjs';");
+        if (!Model.IsNameActiveTable || guarded || TableShapes.For(Model, Project).SoftDelete is not null || TableShapes.For(Model, Project).Effective is not null) L("import { Observable } from 'rxjs';");
         L($"import {{ {baseName} }} from '../{modelsFolder}/{stem}';");
         L(nameActive ? $"import {{ {serviceBase} }} from './crud.service';" : $"import {{ {serviceBase}, PagedResult }} from './crud.service';");
         L();
@@ -77,7 +77,7 @@
             L($"export type {baseName}PagedResult = PagedResult<{baseName}>;");
             L();
         }
-        if (TreePlan.For(Model, Project) is not null)
+        if (TableShapes.For(Model, Project).Tree is not null)
         {
             L("export interface TreeNode {");
             L("    id: number;");
@@ -88,7 +88,7 @@
             L("}");
             L();
         }
-        var queue = QueuePlan.For(Model, Project);
+        var queue = TableShapes.For(Model, Project).Queue;
         if (queue is not null)
         {
             L("export interface QueueStats {");
@@ -130,7 +130,7 @@
             L($"        return this.http.post<{baseName}>(`${{this.apiUrl}}/${{id}}/retry`, null);");
             L("    }");
         }
-        if (TreePlan.For(Model, Project) is not null)
+        if (TableShapes.For(Model, Project).Tree is not null)
         {
             L();
             L("    // a tree (TreeTables): every row depth first with its level, and the children of a row handed to the row's parent so it can be deleted");
@@ -142,7 +142,7 @@
             L("        return this.http.post<{ moved: number }>(`${this.apiUrl}/${id}/promote-children`, null);");
             L("    }");
         }
-        if (SoftDeletePlan.For(Model, Project) is not null)
+        if (TableShapes.For(Model, Project).SoftDelete is not null)
         {
             L();
             L("    // soft delete (SoftDeleteTables): the deleted rows, and a deleted row brought back (an administrator)");
@@ -154,7 +154,7 @@
             L($"        return this.http.post<{baseName}>(`${{this.apiUrl}}/${{id}}/restore`, null);");
             L("    }");
         }
-        if (EffectiveDatePlan.For(Model, Project) is not null)
+        if (TableShapes.For(Model, Project).Effective is not null)
         {
             L();
             L("    // effective dating (EffectiveDatedTables): the rows in effect on a day (today when left out), narrowed by the group columns' JSON names");

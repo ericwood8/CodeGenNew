@@ -1,0 +1,101 @@
+using System.Runtime.CompilerServices;
+
+namespace CodeGenNew.Core;
+
+/// <summary> What one table is, for the project's settings: one shape object for each shape the table has (soft delete, queue, log, tree, effective dated, Name and IsActive, owned by a tenant, junction), asked of the
+/// planner that holds the rule. A table may have several at once. Each shape is worked out the first time it is asked for and kept; nothing is worked out for a shape nobody asks about. </summary>
+public sealed class TableShapes
+{
+    private readonly TableModel _table;
+    private readonly ProjectSettings _project;
+    private readonly DatabaseModel? _database;
+    private readonly Dictionary<Type, object?> _kept = [];
+
+    private TableShapes(TableModel table, ProjectSettings project, DatabaseModel? database)
+    {
+        _table = table;
+        _project = project;
+        _database = database;
+    }
+
+    /// <summary> The shapes of <paramref name="table"/> for the project's settings. The shapes that need another table (the membership of a tenant, an approval and its side table) need the <paramref name="database"/>; asking for one without it is an error. </summary>
+    public static TableShapes For(TableModel table, ProjectSettings project, DatabaseModel? database = null)
+    {
+        var byTable = Made.GetValue(project, _ => new ConditionalWeakTable<TableModel, TableShapes>());
+        if (byTable.TryGetValue(table, out var made) && (database is null || made._database is not null))
+            return made;
+        var shapes = new TableShapes(table, project, database);
+        byTable.Remove(table);
+        byTable.Add(table, shapes);
+        return shapes;
+    }
+
+    // one set of shapes per table and project object, so every writer that asks gets the answer the first one worked out
+    private static readonly ConditionalWeakTable<ProjectSettings, ConditionalWeakTable<TableModel, TableShapes>> Made = new();
+
+    /// <summary> The tenant column of the table and the tenant table it points at, or null when the project has no tenants or the table is not owned by one. </summary>
+    public TenantOwned? Tenant => Shape<TenantOwned>();
+
+    /// <summary> The table as a work queue, a soft deleted table, a tree, an effective dated table, a log or a table with a Name and an IsActive column; null when it is not. </summary>
+    public QueueShape? Queue => Shape<QueueShape>();
+    public SoftDeleteTable? SoftDelete => Shape<SoftDeleteTable>();
+    public TreeTable? Tree => Shape<TreeTable>();
+    public EffectiveTable? Effective => Shape<EffectiveTable>();
+    public LogTable? Log => Shape<LogTable>();
+    public NameActivePlan? NameActive => Shape<NameActivePlan>();
+
+    /// <summary> The table's shape of type <typeparamref name="T"/>, or null when the table does not have it. </summary>
+    public T? Shape<T>() where T : class
+    {
+        return (T?)ShapeOf(typeof(T));
+    }
+
+    private static readonly Type[] Known = [typeof(SoftDeleteTable), typeof(QueueShape), typeof(LogTable), typeof(TreeTable), typeof(EffectiveTable), typeof(NameActivePlan), typeof(TenantOwned), typeof(JunctionShape), typeof(UserTablePlan), typeof(OwnerLink), typeof(TenantTableShape)];
+    private static readonly Type[] NeedDatabase = [typeof(TenantMembership), typeof(ApprovalTable), typeof(ApprovalSide)];
+
+    /// <summary> Every shape the table has, in a fixed order; a table with none gives an empty list. </summary>
+    public IReadOnlyList<object> All => (_database is null ? Known : [.. Known, .. NeedDatabase]).Select(t => ShapeOf(t)).OfType<object>().ToList();
+
+    private object? ShapeOf(Type type)
+    {
+        if (!_kept.TryGetValue(type, out object? shape))
+        {
+            shape = Work(type);
+            _kept[type] = shape;
+        }
+        return shape;
+    }
+
+    /// <summary> True when the table has a shape of type <typeparamref name="T"/>. </summary>
+    public bool Has<T>() where T : class => Shape<T>() is not null;
+
+    private object? Work(Type shape)
+    {
+        if (shape == typeof(SoftDeleteTable)) return SoftDeletePlan.For(_table, _project);
+        if (shape == typeof(QueueShape)) return QueuePlan.For(_table, _project);
+        if (shape == typeof(LogTable)) return LogTablePlan.For(_table, _project);
+        if (shape == typeof(TreeTable)) return TreePlan.For(_table, _project);
+        if (shape == typeof(EffectiveTable)) return EffectiveDatePlan.For(_table, _project);
+        if (shape == typeof(NameActivePlan)) return NameActivePlan.For(_table, _project);
+        if (shape == typeof(TenantOwned)) return TenantPlan.OwnedBy(_table, _project);
+        if (shape == typeof(JunctionShape)) return _table.Junction;
+        if (shape == typeof(UserTablePlan)) return UserTable.ResolveTable(_table, _project).Plan;
+        if (shape == typeof(OwnerLink)) return OwnedTable.Through(_table, _project);
+        if (shape == typeof(TenantTableShape)) return TenantPlan.IsTenantTable(_table, _project) ? new TenantTableShape(_table) : null;
+        if (NeedDatabase.Contains(shape))
+        {
+            var database = _database ?? throw new InvalidOperationException($"{shape.Name} needs the database: make the shapes with TableShapes.For(table, project, database).");
+            if (shape == typeof(TenantMembership)) return TenantPlan.MembershipOf(database, _project) is { } membership && membership.Table.TableName.EqualsIgnoreCase(_table.TableName) ? membership : null;
+            var approvals = ApprovalPlan.Resolve(database, _project).Tables;
+            if (shape == typeof(ApprovalTable)) return approvals.FirstOrDefault(a => a.Table.TableName.EqualsIgnoreCase(_table.TableName));
+            return approvals.FirstOrDefault(a => a.Side.TableName.EqualsIgnoreCase(_table.TableName)) is { } approval ? new ApprovalSide(approval) : null;
+        }
+        throw new ArgumentException($"{shape.Name} is not a shape of a table.");
+    }
+}
+
+/// <summary> The table is the project's tenant table (<c>TenantTable</c>). </summary>
+public sealed record TenantTableShape(TableModel Table);
+
+/// <summary> The table is the side table that holds the request cycles of an approval table. </summary>
+public sealed record ApprovalSide(ApprovalTable Approval);

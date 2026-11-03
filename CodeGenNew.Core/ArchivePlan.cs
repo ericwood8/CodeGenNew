@@ -2,7 +2,7 @@ namespace CodeGenNew.Core;
 
 /// <summary> One table a script keeps small: the rows older than <c>Days</c> (by <c>Age</c>) move to the archive table, or are deleted. A work queue only gives up its finished rows. <c>Archive</c> is the table the database
 /// already has (null: the script creates it). <c>Copied</c> are the source columns the archive has, in the source's order. </summary>
-public sealed record ArchiveJob(TableModel Table, int Days, bool Delete, ColumnModel Age, QueueTable? Queue, TableModel? Archive, IReadOnlyList<ColumnModel> Copied, ColumnModel? ArchivedOn)
+public sealed record ArchiveJob(TableModel Table, int Days, bool Delete, ColumnModel Age, QueueShape? Queue, TableModel? Archive, IReadOnlyList<ColumnModel> Copied, ColumnModel? ArchivedOn)
 {
     public string ArchiveName => ArchivePlan.ArchiveName(Table.TableName);
 }
@@ -55,8 +55,8 @@ public static class ArchivePlan
                 problems.Add($"{prefix} needs a primary key, so each batch moves rows once.");
                 continue;
             }
-            var queue = QueuePlan.For(table, project);
-            var age = queue?.Processed ?? (LogTablePlan.IsListed(table, project) ? LogTablePlan.For(table, project)?.Timestamp : null) ?? LogTablePlan.Guess(table);
+            var queue = TableShapes.For(table, project).Queue;
+            var age = queue?.Processed ?? (LogTablePlan.IsListed(table, project) ? TableShapes.For(table, project).Log?.Timestamp : null) ?? LogTablePlan.Guess(table);
             if (age is null)
             {
                 problems.Add($"{prefix} has no date and time column to measure age by.");

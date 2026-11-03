@@ -34,6 +34,14 @@ public sealed class JunctionShape
     public string AnchorRole => AnchorForeignKey.ReferencedTable;
     public string TargetRole => TargetForeignKey.ReferencedTable;
 
+    /// <summary> The anchor and the target as words: "Sales Region". </summary>
+    public string AnchorWords => Labels.Words(ScreenNames.BaseName(AnchorRole));
+    public string TargetWords => Labels.Words(ScreenNames.BaseName(TargetRole));
+
+    /// <summary> The anchor and the target as lower case words for several rows: "sales regions". </summary>
+    public string AnchorPluralWords => AnchorWords.ToLowerInvariant().Pluralize();
+    public string TargetPluralWords => TargetWords.ToLowerInvariant().Pluralize();
+
     /// <summary> The columns of the target that name its rows in the two lists. </summary>
     public IReadOnlyList<string> DisplayColumns => TargetForeignKey.ReferencedDisplayColumns;
 

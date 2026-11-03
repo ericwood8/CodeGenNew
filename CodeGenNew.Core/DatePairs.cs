@@ -5,7 +5,7 @@ namespace CodeGenNew.Core;
 public sealed record DatePair(ColumnModel Start, ColumnModel End)
 {
     /// <summary> The sentence every stack answers with. </summary>
-    public string Message => RuleMessages.NotBefore(Labels.Words(End.Name), Labels.Words(Start.Name));
+    public string Message => RuleMessages.NotBefore(End.CaseWords, Start.CaseWords);
 }
 
 /// <summary> The pairs of a table: the start and end <c>SpecialLogicColumns.config</c> detects (<c>StartEndDate</c>, the pair SP_Insert and SP_Update already refuse in the routines), the pairs the project names in

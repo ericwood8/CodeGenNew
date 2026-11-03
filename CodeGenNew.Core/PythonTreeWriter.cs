@@ -37,9 +37,7 @@ public static class PythonTreeWriter
         if (tree is not null)
             values.Add(("§W_DEEP", RowShapeWords.TooDeep(tree.MaxDepth)));
         values.AddRange(more);
-        foreach (var (token, value) in values.OrderByDescending(v => v.Item1.Length))
-            text = text.Replace(token, value);
-        return text;
+        return TemplateText.FillAll(text, [.. values]);
     }
 
     private const string Check = """"

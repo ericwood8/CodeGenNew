@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -22,7 +23,7 @@ public static class PythonSubscriptionTests
         var write = sql.WriteTable;
 
         var o = new StringBuilder();
-        o.Append(Fill(Head, ("§ADMIN_IMPORT", ""), ("§PLAN", sql.PlanKey.ToString()), ("§ADDPLAN", Str(sql.AddPlan)), ("§REMOVEPLAN", List(sql.RemovePlan)),
+        o.Append(FillAll(Head, ("§ADMIN_IMPORT", ""), ("§PLAN", sql.PlanKey.ToString()), ("§ADDPLAN", Str(sql.AddPlan)), ("§REMOVEPLAN", List(sql.RemovePlan)),
             ("§CLEARSUBSCRIPTION", Str(sql.ClearSubscription)), ("§CLEARROWS", sql.ClearRows is null ? "None" : Str(sql.ClearRows)),
             ("§ACTIVELINE", TenantTestPlan.ActiveKey(database, project) is { } flag ? $"    body[{Str(flag)}] = True\n" : ""),
             ("§WRITE", write is null ? "None" : Str(RustTestBodies.Route(write.TableName))),
@@ -30,18 +31,18 @@ public static class PythonSubscriptionTests
         if (write is not null)
         {
             o.Append("\n\n").Append(PythonTenantTests.BodyFunction("write_body", write, project)).Append('\n');
-            o.Append(Fill(WriteCases, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType),
+            o.Append(FillAll(WriteCases, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType),
                 ("§NOSUBSCRIPTION", project.SubscriptionRequired
                     ? "    assert refused.status_code == 402, refused.text\n    assert refused.json()[\"type\"] == \"" + SubscriptionWords.InactiveType + "\"\n"
                     : "    assert refused.status_code == 201, refused.text\n"),
                 ("§NOSUBSCRIPTION_NAME", project.SubscriptionRequired ? "cannot_write_when_a_subscription_is_required" : "is_on_no_plan_and_may_write")));
             if (sql.LimitKey is { } key)
             {
-                o.Append(Fill(LimitCase, ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§KEY", Str(key)),
+                o.Append(FillAll(LimitCase, ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§KEY", Str(key)),
                     ("§ONE", List(sql.SetLimit(key, 1))), ("§TWO", List(sql.SetLimit(key, 2)))));
             }
             if (subscription.PeriodEnd is not null && trialing)
-                o.Append(Fill(TrialCase, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType)));
+                o.Append(FillAll(TrialCase, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType)));
         }
         if (subscription.PeriodEnd is not null)
             o.Append(RenewCase);
@@ -51,25 +52,18 @@ public static class PythonSubscriptionTests
                 : "    run(engine, " + List(sql.SetLimit(limitKey, 5)) + ")\n    made = api(tenant, \"POST\", WRITE, json=write_body(api, tenant))\n    assert made.status_code == 201, made.text\n"
                 + "    run(engine, " + List(sql.SetLimit(limitKey, 0)) + ")\n    refused = api(tenant, \"PUT\", \"/api/subscription/plan\", json={\"planId\": PLAN})\n    assert refused.status_code == 409, refused.text\n"
                 + "    assert refused.json()[\"type\"] == \"" + SubscriptionWords.PlanTooSmallType + "\"\n    run(engine, " + List(sql.SetLimit(limitKey, 1)) + ")\n";
-            o.Append(Fill(ChooseCase, ("§TOOSMALL", tooSmall)));
+            o.Append(FillAll(ChooseCase, ("§TOOSMALL", tooSmall)));
         }
-        o.Append(Fill(RouteCases, ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType)));
-        o.Append(Fill(PlansCase, ("§PRICELINE", subscription.PlanPrice is null ? "" : "    assert info[\"planPrice\"] == mine[\"price\"], \"the view shows the price of the tenant's plan\"\n"),
+        o.Append(FillAll(RouteCases, ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType)));
+        o.Append(FillAll(PlansCase, ("§PRICELINE", subscription.PlanPrice is null ? "" : "    assert info[\"planPrice\"] == mine[\"price\"], \"the view shows the price of the tenant's plan\"\n"),
             ("§LIMITCOUNT", SubscriptionPlan.LimitedTables(database, project).Count.ToString())));
         if (SubscriptionPlan.HasWebhook(database, project))
         {
-            o.Append(Fill(WebhookCase, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§WEBHOOKPATH", SubscriptionWords.WebhookPath), ("§HEADER", SubscriptionWords.WebhookHeader),
+            o.Append(FillAll(WebhookCase, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§WEBHOOKPATH", SubscriptionWords.WebhookPath), ("§HEADER", SubscriptionWords.WebhookHeader),
                 ("§EXPIRED_TYPE", SubscriptionWords.WebhookExpiredType), ("§INACTIVE_TYPE", SubscriptionWords.InactiveType),
                 ("§PAUSEDLINES", write is null ? "" : "    paused = api(tenant, \"POST\", WRITE, json=write_body(api, tenant))\n    assert paused.status_code == 402, paused.text\n    assert paused.json()[\"type\"] == \"" + SubscriptionWords.InactiveType + "\"\n")));
         }
         return o.ToString().TrimEnd('\n') + "\n";
-    }
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
     }
 
     private const string Head = """"

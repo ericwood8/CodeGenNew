@@ -73,7 +73,7 @@
             var lets = new List<string>();
             string Expression(ColumnModel c)
             {
-                string sample = ApiSampleValues.Value(c, Project, table.TableName);
+                string sample = c.ValidExample(Project, table.TableName);
                 if (c.IsPrimaryKey)
                 {
                     if (keyType.Kind == KeyKind.Guid)

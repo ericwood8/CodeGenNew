@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -22,7 +23,7 @@ public static class DesktopSignInCode
         var tenantTable = TenantPlan.HasDesktopTenants(project) ? TenantPlan.TenantTableOf(database, project) : null;
         var tenantKey = tenantTable is null ? null : TenantPlan.KeyOf(tenantTable);
         var membership = tenantKey is null ? null : TenantPlan.MembershipOf(database, project);
-        var userOwned = tenantKey is null ? null : TenantPlan.OwnedBy(plan.Table, project);
+        var userOwned = tenantKey is null ? null : TableShapes.For(plan.Table, project).Tenant;
         bool tenants = tenantKey is not null && (membership is not null || userOwned is not null);
         var active = tenantTable?.IsActiveColumn;
 
@@ -82,7 +83,7 @@ public static class DesktopSignInCode
         if (plan is null || FirstPersonPlan.For(plan, project).Plan is null)
             return false;
         bool ownTenant = TenantPlan.HasDesktopTenants(project) && TenantPlan.TenantTableOf(database, project) is not null
-            && TenantPlan.MembershipOf(database, project) is null && TenantPlan.OwnedBy(plan.Table, project) is not null;
+            && TenantPlan.MembershipOf(database, project) is null && TableShapes.For(plan.Table, project).Tenant is not null;
         return !ownTenant;
     }
 
@@ -96,7 +97,7 @@ public static class DesktopSignInCode
         var tenantTable = project.TenantTable is not null ? TenantPlan.TenantTableOf(database, project) : null;
         var tenantKey = tenantTable is null ? null : TenantPlan.KeyOf(tenantTable);
         var membership = tenantKey is null ? null : TenantPlan.MembershipOf(database, project);
-        if (tenantKey is not null && membership is null && TenantPlan.OwnedBy(plan.Table, project) is not null)
+        if (tenantKey is not null && membership is null && TableShapes.For(plan.Table, project).Tenant is not null)
             return "";
         string tenantPart = tenantTable is null || tenantKey is null || membership is null ? "" : Fill(FirstMember, ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()),
             ("§ACTIVEJOIN", ActiveWhere(tenantTable.IsActiveColumn)), ("§SOFTWHERE", TenantPlan.DeletedFlagOf(tenantTable) is { } deleted ? $".Where(t => !t.{deleted.CSharpName()})" : ""),
@@ -107,13 +108,6 @@ public static class DesktopSignInCode
     }
 
     private static string ActiveWhere(ColumnModel? active) => active is null ? "" : $".Where(t => t.{active.CSharpName()})";
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
-    }
 
     /// <summary> The sign-in view. <paramref name="dropdown"/>: the person picks the tenant by name (a membership table is named); a person whose tenant is a column of their own row has no choice to make. </summary>
     public static string LoginXaml(string viewNamespace, bool dropdown, bool first) =>

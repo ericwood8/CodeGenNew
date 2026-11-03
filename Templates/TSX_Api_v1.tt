@@ -56,7 +56,7 @@
             ? new[] { new { ParamName = "search", Name = "search" } }.ToList()
             : Model.SearchableColumns.Concat(Model.SearchKeyColumns).Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();   // the text boxes, then the key drop-downs (the page sends the key as text)
         // a table in LogTables also takes the first and the last day of the rows to list (the page sends them as yyyy-MM-dd text)
-        if (!listSearch && LogTablePlan.For(Model, Project) is not null)
+        if (!listSearch && TableShapes.For(Model, Project).Log is not null)
             filters.AddRange(new[] { new { ParamName = LogTable.FromParameter, Name = LogTable.FromParameter }, new { ParamName = LogTable.ToParameter, Name = LogTable.ToParameter } });
 
         var o = new StringBuilder();
@@ -79,7 +79,7 @@
             L("}");
             L();
         }
-        var queue = QueuePlan.For(Model, Project);
+        var queue = TableShapes.For(Model, Project).Queue;
         if (queue is not null)
         {
             L("export interface QueueStats {");
@@ -92,7 +92,7 @@
             L("}");
             L();
         }
-        if (TreePlan.For(Model, Project) is not null)
+        if (TableShapes.For(Model, Project).Tree is not null)
         {
             L("export interface TreeNode {");
             L("  id: number;");
@@ -137,7 +137,7 @@
             L();
             L($"  retry: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/{keyPath}/retry`, {{ method: 'POST' }}),");
         }
-        if (TreePlan.For(Model, Project) is not null)
+        if (TableShapes.For(Model, Project).Tree is not null)
         {
             L();
             L("  // a tree (TreeTables): every row depth first with its level, and the children of a row handed to the row's parent so it can be deleted");
@@ -145,7 +145,7 @@
             L();
             L($"  promoteChildren: (id: {keyTs}) => request<{{ moved: number }}>(`${{apiUrl}}/{keyPath}/promote-children`, {{ method: 'POST' }}),");
         }
-        if (SoftDeletePlan.For(Model, Project) is not null)
+        if (TableShapes.For(Model, Project).SoftDelete is not null)
         {
             L();
             L("  // soft delete (SoftDeleteTables): the deleted rows, and a deleted row brought back (an administrator)");
@@ -153,7 +153,7 @@
             L();
             L($"  restore: (id: {keyTs}) => request<{baseName}>(`${{apiUrl}}/{keyPath}/restore`, {{ method: 'POST' }}),");
         }
-        if (EffectiveDatePlan.For(Model, Project) is not null)
+        if (TableShapes.For(Model, Project).Effective is not null)
         {
             L();
             L("  // effective dating (EffectiveDatedTables): the rows in effect on a day (today when left out), narrowed by the group columns' JSON names");

@@ -92,7 +92,7 @@
         // a drop-down of the parent's rows per whole-number foreign key: an exact match on the key (the first entry, "All", is no filter)
         var searchKeys = DesktopGridCode.KeyFilters(form).Where(_ => !odata).ToList();
         bool logOnly = form.ReadOnly && !isNameActive;   // a table in LogTables: a list with a first and a last day (the date boxes end searchFields) and no Add New, Edit, Clone or Delete
-        var queue = logOnly ? QueuePlan.For(Model, Project) : null;   // a work queue also shows the counts by status and a Retry button on a failed row
+        var queue = logOnly ? TableShapes.For(Model, Project).Queue : null;   // a work queue also shows the counts by status and a Retry button on a failed row
         bool canSearch = searchFields.Count > 0 || searchKeys.Count > 0 || isNameActive;   // a name / active table's search bar also has the Active only check box
         int errorRow = canSearch ? 3 : 2;
         int gridRow = canSearch ? 4 : 3;
@@ -117,8 +117,8 @@
         // A Clone button for the tables CloneShape allows (CS_Repo writes CloneAsync for the same ones).
         bool canClone = CloneShape.CanClone(Model, Project);
         // SoftDeleteTables and EffectiveDatedTables: a "Show deleted" switch (the grid lists the deleted rows, each with Restore) and a "Valid on" day (the grid lists the rows in effect on it)
-        var softPlan = logOnly ? null : SoftDeletePlan.For(Model, Project);
-        var effectivePlan = logOnly ? null : EffectiveDatePlan.For(Model, Project);
+        var softPlan = logOnly ? null : TableShapes.For(Model, Project).SoftDelete;
+        var effectivePlan = logOnly ? null : TableShapes.For(Model, Project).Effective;
         bool softScreen = softPlan is not null;
         bool validOnScreen = effectivePlan is not null;
         bool shapeScreen = softScreen || validOnScreen;

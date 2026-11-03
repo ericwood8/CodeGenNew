@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -151,13 +152,6 @@ public static class RustSubscriptionWriter
                 ("§BODY_TEXT", SubscriptionWords.WebhookBodyText), ("§UNKNOWN_TEXT", SubscriptionWords.WebhookUnknownText)));
         }
         return o.ToString();
-    }
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
     }
 
     private const string Head = """"

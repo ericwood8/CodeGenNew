@@ -30,7 +30,7 @@
         var rule = f.Column.RuleOf(Project, Model.TableName);
         if (rule is null || f.ReadOnly)
             continue;
-        string label = Labels.Words(f.Column.Name);
+        string label = f.Column.CaseWords;
         string property = f.Column.Name;
         string value = $"row.{f.Name}";
         var body = new List<string>();

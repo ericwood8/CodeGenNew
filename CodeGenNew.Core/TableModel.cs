@@ -23,6 +23,12 @@ public class TableModel
 
     public required string QuotedName { get; init; }
 
+    /// <summary> The table's name as lower case words, without an E_ or SY_ prefix: "time sheet". </summary>
+    public string Words => ScreenNames.Words(ScreenNames.BaseName(TableName)).ToLowerInvariant();
+
+    /// <summary> The same words for several rows: "time sheets". </summary>
+    public string PluralWords => Words.Pluralize();
+
     /// <summary> Which database the table was read from; a template that writes SQL text branches on it (T-SQL vs PostgreSQL). </summary>
     public SqlDialect Dialect { get; init; } = SqlDialect.SqlServer;
     public bool IsReservedWordName { get; init; }

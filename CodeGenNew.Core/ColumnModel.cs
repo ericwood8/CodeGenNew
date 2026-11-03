@@ -144,6 +144,38 @@ public class ColumnModel
 
     private static readonly string[] LongTextNameEndings = ["Note", "Notes", "Comment", "Comments", "Remarks", "Memo"];
 
+    /// <summary> One example value of the column as JSON text that the column accepts (a choice from its CHECK list, a number inside its range, text cut to its length). </summary>
+    public string ValidExample(ProjectSettings project, string? table = null) => ApiSampleValues.Value(this, project, table);
+
+    /// <summary> How the column's value is converted to and from the text the database holds (PostgreSQL arrays and intervals, MySQL spatial and BIT(64)); null for a column stored as it is. </summary>
+    public TextConversion? Conversion
+    {
+        get
+        {
+            if (!_conversionKnown)
+            {
+                _conversion = PgText is { } pg ? new TextConversion($"{pg.Converter(IsNullable)}, PgText.Comparer", pg.Name)
+                    : MySqlSpatialType.FromName(DbSpatialType) is not null ? new TextConversion($"MySqlSpatial.Converter({DbSrid}), MySqlSpatial.Comparer", null)   // the provider maps the bytes as they are; naming the spatial type confuses its type mapping
+                    : DbBitWidth == 64 ? new TextConversion("new ValueConverter<decimal, ulong>(v => (ulong)v, v => v)", null)   // the driver reads BIT(64) as an unsigned 64-bit integer, which the entity holds as a decimal
+                    : null;
+                _conversionKnown = true;
+            }
+            return _conversion;
+        }
+    }
+
+    private TextConversion? _conversion;
+    private bool _conversionKnown;
+
+    /// <summary> The column's name as lower case words: "credit limit". </summary>
+    public string Words => Labels.Words(Name).ToLowerInvariant();
+
+    /// <summary> The column's name as words with its case kept: "Credit Limit". </summary>
+    public string CaseWords => Labels.Words(Name);
+
+    /// <summary> The same for a caption: a yes / no column drops its leading Is ("Taxable" for IsTaxable). </summary>
+    public string FlagWords => Labels.Words(Name, IsBooleanColumn);
+
     /// <summary> A text column that holds a credential, judged by its name (a name with Password in it, or one that ends in Salt, Secret, ApiKey or Token): the generated screens show it neither in the grid nor in the form,
     /// and a row that is edited keeps the value it was read with. Keep such a table out of the API with <c>NoApiTables</c> when its rows must not be read at all. </summary>
     public bool IsCredentialColumn =>

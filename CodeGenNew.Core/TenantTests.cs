@@ -6,12 +6,12 @@ namespace CodeGenNew.Core;
 /// for the tenant table itself that only the caller's tenant is visible, that it is not created or deleted by the ordinary routes, and that only a platform administrator onboards one. </summary>
 public static class TenantTests
 {
-    public static bool HasMethods(TableModel table, ProjectSettings project) => TenantPlan.OwnedBy(table, project) is not null;
+    public static bool HasMethods(TableModel table, ProjectSettings project) => TableShapes.For(table, project).Tenant is not null;
 
     /// <summary> The isolation tests, appended to the table's own test class. </summary>
     public static string Methods(string keyJson, TableModel table, ProjectSettings project)
     {
-        var owned = TenantPlan.OwnedBy(table, project);
+        var owned = TableShapes.For(table, project).Tenant;
         if (owned is null)
             return "";
         var o = new StringBuilder();
@@ -121,11 +121,11 @@ public static class TenantTests
 
     /// <summary> Whether the table gets a test class of its own here: the tenant table, and a tenant-owned Name and IsActive table (API_Test writes no tests for a name/active table). </summary>
     public static bool HasClass(TableModel table, ProjectSettings project) =>
-        project.ApiAuth && TenantPlan.IsEnabled(project) && (TenantPlan.IsTenantTable(table, project) || (table.IsNameActiveTable && TenantPlan.OwnedBy(table, project) is not null));
+        project.ApiAuth && TenantPlan.IsEnabled(project) && (TenantPlan.IsTenantTable(table, project) || (table.IsNameActiveTable && TableShapes.For(table, project).Tenant is not null));
 
     /// <summary> The expression of the value a new row's body holds for a column. </summary>
     internal static string Value(TableModel table, ColumnModel c, ProjectSettings project) =>
-        c.IsStringColumn && !c.IsPrimaryKey ? $"ApiFixture.Unique({ApiSampleValues.Json(ApiSampleValues.Text(c, project, table.TableName))}, {c.CharacterLength})" : ApiSampleValues.Value(c, project, table.TableName);
+        c.IsStringColumn && !c.IsPrimaryKey ? $"ApiFixture.Unique({ApiSampleValues.Json(ApiSampleValues.Text(c, project, table.TableName))}, {c.CharacterLength})" : c.ValidExample(project, table.TableName);
 
     /// <summary> The whole test class of the tenant table (it takes no create and no delete, shows only the caller's tenant and is onboarded by a platform administrator) or of a tenant-owned Name and IsActive table. </summary>
     public static string ClassText(TableModel table, ProjectSettings project)

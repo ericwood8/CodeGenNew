@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -12,7 +13,7 @@ public static class TenantWriter
         var tenantKey = TenantPlan.KeyOf(tenantTable)!;
         var membership = TenantPlan.MembershipOf(database, project);
         var (userPlan, _) = UserTable.Resolve(database, project);
-        var userOwned = userPlan is null ? null : TenantPlan.OwnedBy(userPlan.Table, project);
+        var userOwned = userPlan is null ? null : TableShapes.For(userPlan.Table, project).Tenant;
         var active = tenantTable.IsActiveColumn;
         var host = TenantPlan.HostColumnOf(database, project);
         string hostParam = host is null ? "" : ", Microsoft.AspNetCore.Http.IHttpContextAccessor http";
@@ -23,53 +24,53 @@ public static class TenantWriter
         foreach (string u in usings)
             o.Append($"using {u};\n");
         o.Append("using System.Security.Claims;\nusing Microsoft.AspNetCore.Mvc;\nusing Microsoft.EntityFrameworkCore;\nusing Microsoft.IdentityModel.JsonWebTokens;\nusing Microsoft.IdentityModel.Tokens;\n\n");
-        o.Append(Fill(Shared, ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§NOMEMBER_TEXT", TenantWords.NotMember), ("§ONBOARD_TYPE", TenantWords.OnboardingType), ("§ONLYPLATFORM", TenantWords.OnlyPlatform),
+        o.Append(FillAll(Shared, ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§NOMEMBER_TEXT", TenantWords.NotMember), ("§ONBOARD_TYPE", TenantWords.OnboardingType), ("§ONLYPLATFORM", TenantWords.OnlyPlatform),
             ("§NOTENANT_TYPE", TenantWords.NoTenantType), ("§NOTENANT_TEXT", TenantWords.NoTenant),
-            ("§HOSTPROBLEM", host is null ? "" : Fill(HostProblem, ("§HOST_TYPE", TenantWords.HostType), ("§HOST_TEXT", TenantWords.Host)))));
+            ("§HOSTPROBLEM", host is null ? "" : FillAll(HostProblem, ("§HOST_TYPE", TenantWords.HostType), ("§HOST_TEXT", TenantWords.Host)))));
 
         string register = "";
         var routes = new StringBuilder();
         if (membership is not null && userPlan is not null)
         {
             string roleSelect = membership.Role is null ? "(string?)null" : $"m.{membership.Role.CSharpName()}";
-            o.Append(Fill(Members, ("§CTX", contextType), ("§U", userPlan.Table.TableName), ("§UNAME", userPlan.UserName.CSharpName()), ("§UKEY", userPlan.Table.PrimaryKeyColumns[0].CSharpName()),
+            o.Append(FillAll(Members, ("§CTX", contextType), ("§U", userPlan.Table.TableName), ("§UNAME", userPlan.UserName.CSharpName()), ("§UKEY", userPlan.Table.PrimaryKeyColumns[0].CSharpName()),
                 ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()), ("§MROLE", roleSelect),
                 ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVEJOIN", activeJoin), ("§TEXT", textExpression), ("§HOSTPARAM", hostParam),
                 ("§HOSTLINES", host is null ? "" : HostLoginLines)));
             register = "        services.AddScoped<ILoginClaims, TenantLoginClaims>();\n";
-            o.Append(Fill(Switch, ("§CTX", contextType), ("§ROLEPARAM", membership.Role is null ? "null" : "member.Role"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines)));
+            o.Append(FillAll(Switch, ("§CTX", contextType), ("§ROLEPARAM", membership.Role is null ? "null" : "member.Role"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines)));
             routes.Append("        app.MapGet(\"/api/auth/tenants\", TenantSwitching.ListAsync);\n        app.MapPost(\"/api/auth/switch-tenant\", TenantSwitching.SwitchAsync);\n");
             // the sign-in screens pick the tenant by name: the tenants that can be signed in to (not switched off, not soft deleted), answered without a sign-in
             string softWhere = TenantPlan.DeletedFlagOf(tenantTable) is { } soft ? $".Where(t => !t.{soft.CSharpName()})" : "";
-            o.Append(Fill(SignInList, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVEJOIN", activeJoin), ("§SOFTWHERE", softWhere), ("§TEXT", textExpression)));
+            o.Append(FillAll(SignInList, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVEJOIN", activeJoin), ("§SOFTWHERE", softWhere), ("§TEXT", textExpression)));
             routes.Append($"        app.MapGet(\"{TenantWords.SignInListPath}\", TenantSignIn.ListAsync).AllowAnonymous();\n");
         }
         else if (userOwned is not null && userPlan is not null)
         {
             string activeTest = active is null ? "" : $" && context.Set<§TT>().IgnoreQueryFilters().Any(t => t.§TKEY == u.§UTENANT && t.{active.CSharpName()})";
-            o.Append(Fill(OwnColumn, ("§CTX", contextType), ("§U", userPlan.Table.TableName), ("§UNAME", userPlan.UserName.CSharpName()), ("§UTENANT", userOwned.Column.CSharpName()), ("§HOSTPARAM", hostParam),
+            o.Append(FillAll(OwnColumn, ("§CTX", contextType), ("§U", userPlan.Table.TableName), ("§UNAME", userPlan.UserName.CSharpName()), ("§UTENANT", userOwned.Column.CSharpName()), ("§HOSTPARAM", hostParam),
                 ("§HOSTFIND", host is null ? "" : HostOwnFind), ("§HOSTCHECK", host is null ? "" : HostOwnCheck),
-                ("§ACTIVETEST", Fill(activeTest, ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§UTENANT", userOwned.Column.CSharpName())))));
+                ("§ACTIVETEST", FillAll(activeTest, ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§UTENANT", userOwned.Column.CSharpName())))));
             register = "        services.AddScoped<ILoginClaims, TenantLoginClaims>();\n";
         }
 
         if (active is not null)
         {
-            o.Append(Fill(ActiveCheck, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVE", active.CSharpName()), ("§INACTIVE_TYPE", TenantWords.InactiveType), ("§INACTIVE_TEXT", TenantWords.Inactive)));
+            o.Append(FillAll(ActiveCheck, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVE", active.CSharpName()), ("§INACTIVE_TYPE", TenantWords.InactiveType), ("§INACTIVE_TEXT", TenantWords.Inactive)));
             routes.Append("        app.Use(TenantActiveCheck.InvokeAsync);\n");
         }
         if (host is not null)
         {
-            o.Append(Fill(HostCheck, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§HOST", host.CSharpName()),
+            o.Append(FillAll(HostCheck, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§HOST", host.CSharpName()),
                 ("§HOSTTEST", host.IsNullable ? $"t.{host.CSharpName()} != null && t.{host.CSharpName()}.ToLower() == label" : $"t.{host.CSharpName()}.ToLower() == label"),
                 ("§HOST_TYPE", TenantWords.HostType), ("§HOST_TEXT", TenantWords.Host)));
             routes.Append("        app.Use(TenantHost.InvokeAsync);\n");
         }
         string onboardRoute = ApiRequests.Route(tenantTable);
-        string adminLines = membership is null ? "" : Fill(OnboardAdmin, ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
+        string adminLines = membership is null ? "" : FillAll(OnboardAdmin, ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
             ("§MROLEASSIGN", membership.Role is null ? "" : $", {membership.Role.CSharpName()} = AuthNames.AdminRole"), ("§TKEY", tenantKey.CSharpName()));
         if (membership is not null && userPlan is not null)
-            o.Append(Fill(Creator, ("§CTX", contextType), ("§U", userPlan.Table.TableName), ("§UNAME", userPlan.UserName.CSharpName()), ("§UKEY", userPlan.Table.PrimaryKeyColumns[0].CSharpName()),
+            o.Append(FillAll(Creator, ("§CTX", contextType), ("§U", userPlan.Table.TableName), ("§UNAME", userPlan.UserName.CSharpName()), ("§UKEY", userPlan.Table.PrimaryKeyColumns[0].CSharpName()),
                 ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
                 ("§MROLEASSIGN", membership.Role is null ? "" : $", {membership.Role.CSharpName()} = AuthNames.AdminRole")));
         bool newPerson = TenantPlan.OnboardsNewAdmin(database, project);
@@ -79,28 +80,21 @@ public static class TenantWriter
         {
             string tenantLink = membership is not null ? "" : $"                person.{userOwned!.Column.CSharpName()} = tenant.{tenantKey.CSharpName()};\n";
             string adminFlag = membership?.Role is null && userPlan!.Admin is { } flag ? $"                person.{flag.CSharpName()} = true;\n" : "";
-            string memberLines = membership is null ? "" : Fill(NewAdminMember, ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
+            string memberLines = membership is null ? "" : FillAll(NewAdminMember, ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
                 ("§MROLEASSIGN", membership.Role is null ? "" : $", {membership.Role.CSharpName()} = AuthNames.AdminRole"), ("§TKEY", tenantKey.CSharpName()), ("§UKEY", userPlan!.Table.PrimaryKeyColumns[0].CSharpName()));
-            adminLines += Fill(NewAdmin, ("§UKEY", userPlan!.Table.PrimaryKeyColumns[0].CSharpName()), ("§UHASH", userPlan.PasswordHash.CSharpName()), ("§TENANTLINK", tenantLink), ("§ADMINFLAG", adminFlag), ("§MEMBERLINES", memberLines));
-            adminCheck = Fill(NewAdminCheck, ("§U", userPlan.Table.TableName), ("§UNAME", userPlan.UserName.CSharpName()), ("§ONBOARD_TYPE", TenantWords.OnboardingType), ("§BOTHCHECK", membership is null ? "" : BothAdmins), ("§PASSWORDMIN", "UserCommands.MinimumPasswordLength"));
+            adminLines += FillAll(NewAdmin, ("§UKEY", userPlan!.Table.PrimaryKeyColumns[0].CSharpName()), ("§UHASH", userPlan.PasswordHash.CSharpName()), ("§TENANTLINK", tenantLink), ("§ADMINFLAG", adminFlag), ("§MEMBERLINES", memberLines));
+            adminCheck = FillAll(NewAdminCheck, ("§U", userPlan.Table.TableName), ("§UNAME", userPlan.UserName.CSharpName()), ("§ONBOARD_TYPE", TenantWords.OnboardingType), ("§BOTHCHECK", membership is null ? "" : BothAdmins), ("§PASSWORDMIN", "UserCommands.MinimumPasswordLength"));
         }
-        o.Append(Fill(Onboard, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ADMINLINES", adminLines), ("§ADMINPARAM", adminParam), ("§ADMINCHECK", adminCheck)));
+        o.Append(FillAll(Onboard, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ADMINLINES", adminLines), ("§ADMINPARAM", adminParam), ("§ADMINCHECK", adminCheck)));
         routes.Append($"        app.MapPost(\"{onboardRoute}/onboard\", TenantOnboarding.OnboardAsync);\n");
 
-        string removeAdmin = !newPerson ? "" : Fill(RemoveWithAdmin, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§U", userPlan!.Table.TableName), ("§UNAME", userPlan.UserName.CSharpName()),
+        string removeAdmin = !newPerson ? "" : FillAll(RemoveWithAdmin, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§U", userPlan!.Table.TableName), ("§UNAME", userPlan.UserName.CSharpName()),
             ("§REMOVEMEMBERS", membership is null ? "" : $"        await context.Set<{membership.Table.TableName}>().IgnoreQueryFilters().Where(m => m.{membership.Tenant.CSharpName()} == tenantId).ExecuteDeleteAsync();\n"));
-        o.Append(Fill(Support, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVEWHERE", activeJoin), ("§REMOVEADMIN", removeAdmin),
-            ("§DEACTIVATE", active is null ? "" : Fill(Deactivate, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVE", active.CSharpName())))));
-        o.Append(Fill(Setup, ("§REGISTER", register)));
+        o.Append(FillAll(Support, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVEWHERE", activeJoin), ("§REMOVEADMIN", removeAdmin),
+            ("§DEACTIVATE", active is null ? "" : FillAll(Deactivate, ("§CTX", contextType), ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVE", active.CSharpName())))));
+        o.Append(FillAll(Setup, ("§REGISTER", register)));
         o.Append("/// <summary> Maps the tenant routes. Generated by API_Tenants. </summary>\npublic static class TenantRoutes\n{\n    public static void Register(WebApplication app)\n    {\n" + routes + "    }\n}\n");
         return o.ToString();
-    }
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
     }
 
     private const string Shared = """

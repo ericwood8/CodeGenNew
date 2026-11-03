@@ -27,7 +27,7 @@ public sealed record SubscriptionTestSql(long PlanKey, string AddPlan, IReadOnly
         string key = FirstKey.ToString(CultureInfo.InvariantCulture);
         string? Literal(ColumnModel c, TableModel t)
         {
-            string json = ApiSampleValues.Value(c, project, t.TableName);
+            string json = c.ValidExample(project, t.TableName);
             if (json == "null" || c.SqlType is System.Data.SqlDbType.Binary or System.Data.SqlDbType.VarBinary or System.Data.SqlDbType.Image)
                 return null;
             if (json is "true" or "false")

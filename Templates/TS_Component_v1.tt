@@ -74,8 +74,8 @@
         var chosen = ChosenGridColumns.For(form);
         bool chooseColumns = !form.IsNameActive && !oneRow;
         // SoftDeleteTables and EffectiveDatedTables: a "Show deleted" dialog with Restore and a "Valid on" dialog (the list itself stays the paged grid)
-        bool softScreen = !oneRow && SoftDeletePlan.For(Model, Project) is not null;
-        bool validOnScreen = !oneRow && EffectiveDatePlan.For(Model, Project) is not null;
+        bool softScreen = !oneRow && TableShapes.For(Model, Project).SoftDelete is not null;
+        bool validOnScreen = !oneRow && TableShapes.For(Model, Project).Effective is not null;
         var columnList = chooseColumns ? chosen.Offered : chosen.Initial;   // the columns the grid has a header and a cell for, in order; a hidden one is not drawn
         var odataFilters = odata && !form.IsNameActive ? columnList.Select(c => c.Filter).ToList() : null;   // the filter row's control of each of those columns (null: none)
         string If(ColumnModel c) => chooseColumns ? $" *ngIf=\"columns.has('{c.Name}')\"" : "";   // the attribute that draws a cell only while its column is chosen
@@ -130,7 +130,7 @@
             return cut && column.Cut ? $"{{{{ cut({prop}) }}}}" : $"{{{{ {prop} }}}}";
         }
         bool readOnly = form.ReadOnly && !odata && !nameActive && !oneRow;
-        var queue = readOnly ? QueuePlan.For(Model, Project) : null;   // a work queue also shows the counts by status and a Retry button on a failed row
+        var queue = readOnly ? TableShapes.For(Model, Project).Queue : null;   // a work queue also shows the counts by status and a Retry button on a failed row
         string rowsExpression = nameActive ? "visibleRows" : "rows";
         var formPages = form.Pages;
         bool tabbed = form.IsTabbed;
@@ -703,7 +703,7 @@
             spec.Clear();
             // a row to show: the long text of the first text column is what the grid cuts and the dialog must show whole
             var longColumn = columnList.Select(c => c.Column).FirstOrDefault(c => c.IsStringColumn && c != queue?.Status && form.CellOf(c) == CellKind.Plain);
-            string? viewRow = longColumn is null ? null : "{ " + string.Join(", ", Model.Columns.Select(c => c == form.KeyColumn ? $"{keyProp}: 7" : c == longColumn ? $"{JsonNames.Camel(c.Name)}: 'Long message. '.repeat(30).trim()" : $"{JsonNames.Camel(c.Name)}: {ApiSampleValues.Value(c, Project, Model.TableName)}")) + " }";
+            string? viewRow = longColumn is null ? null : "{ " + string.Join(", ", Model.Columns.Select(c => c == form.KeyColumn ? $"{keyProp}: 7" : c == longColumn ? $"{JsonNames.Camel(c.Name)}: 'Long message. '.repeat(30).trim()" : $"{JsonNames.Camel(c.Name)}: {c.ValidExample(Project, Model.TableName)}")) + " }";
             spec.Append(AngularLogSpec.Text(cls, screenStem, form.DateRange, queue, Project, viewRow));
         }
 
@@ -757,7 +757,7 @@
             T("  private readonly auth = inject(AuthService);");
             T($"  get canWrite(): boolean {{ return this.auth.hasRole([{WriteRolePlan.Literal(writeRoles, (char)39)}]); }} // WriteRoles: the roles that may add, change and delete rows");
         }
-        T($"  protected readonly noun = '{Labels.Words(baseName).ToLowerInvariant()}';");
+        T($"  protected readonly noun = '{form.Words}';");
         T($"  protected readonly idKey = '{keyProp}';");
         if (softScreen || validOnScreen)
         {

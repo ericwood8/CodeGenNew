@@ -33,7 +33,7 @@ public sealed class ApiTestPlan
         };
         BodyColumns = ApiSampleValues.BodyColumns(model);
         // EffectiveDatedTables: a new row also sends its last day (the column may allow NULL, which would be an open period that overlaps every row made after it)
-        if (EffectiveDatePlan.For(model, project) is { } effective && !BodyColumns.Any(c => c.Name.EqualsIgnoreCase(effective.To.Name)))
+        if (TableShapes.For(model, project).Effective is { } effective && !BodyColumns.Any(c => c.Name.EqualsIgnoreCase(effective.To.Name)))
             BodyColumns = BodyColumns.Append(effective.To).OrderBy(c => c.OrdinalPosition).ToList();
 
         // the one column the update step changes: a free text column, else a bit column, else a whole number that has room to go up by one
@@ -130,12 +130,12 @@ public sealed class ApiTestPlan
     private string ParentTable(ColumnModel c) => _model.ForeignKeys.First(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0] == c.Name).ReferencedTable;
 
     private bool HasRoomToGrow(ColumnModel c) => c.IsIntegerColumn && !c.IsPrimaryKey && ParentRoute(c, out string _).Length == 0
-        && (_project.RangeFor(c) is not { } range || range.Max > long.Parse(ApiSampleValues.Value(c, _project, _model.TableName), CultureInfo.InvariantCulture));
+        && (_project.RangeFor(c) is not { } range || range.Max > long.Parse(c.ValidExample(_project, _model.TableName), CultureInfo.InvariantCulture));
 
     /// <summary> The C# expression of the value a new row's body holds for <paramref name="c"/>. </summary>
     public string Expression(ColumnModel c)
     {
-        string sample = ApiSampleValues.Value(c, _project, _model.TableName);
+        string sample = c.ValidExample(_project, _model.TableName);
         if (c.IsPrimaryKey)
         {
             if (KeyType.Kind == KeyKind.Guid)
@@ -149,7 +149,7 @@ public sealed class ApiTestPlan
             return $"ApiFixture.NewKey({Math.Max(1, high / 2).ToString(CultureInfo.InvariantCulture)}, {high.ToString(CultureInfo.InvariantCulture)})";
         }
         // EffectiveDatedTables: each new row is a one-day period of its own long before real data, so rows of different tests never overlap (the last day is the first day)
-        if (EffectiveDatePlan.For(_model, _project) is { } effective)
+        if (TableShapes.For(_model, _project).Effective is { } effective)
         {
             if (c.Name.EqualsIgnoreCase(effective.From.Name))
                 return "ApiFixture.NextDay()";

@@ -21,7 +21,7 @@
     {
         string entity = (Model.IsCSharpReservedWordName ? "@" : "") + Model.TableName;
         var navigations = EntityNavigations.Of(Model, fk => Project.NoNavigation(fk.ReferencedTable, fk.ReferencedLookupShape) ?? false);
-        var plan = SearchPlan.For(Model, navigations, LogTablePlan.For(Model, Project));
+        var plan = SearchPlan.For(Model, navigations, TableShapes.For(Model, Project).Log);
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');

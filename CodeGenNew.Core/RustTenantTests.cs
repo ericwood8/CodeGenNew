@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -10,18 +11,18 @@ public static class RustTenantTests
     public static bool Applies(DatabaseModel database, ProjectSettings project) => TenantTestPlan.Applies(database, project, project.RustTests);
 
     /// <summary> Whether the tests of the project's table module get the isolation cases. </summary>
-    public static bool HasMethods(TableModel table, ProjectSettings project) => project.RustTests && TenantPlan.HasApiTenancy(project) && TenantPlan.OwnedBy(table, project) is not null;
+    public static bool HasMethods(TableModel table, ProjectSettings project) => project.RustTests && TenantPlan.HasApiTenancy(project) && TableShapes.For(table, project).Tenant is not null;
 
     public static string SupportFile(DatabaseModel database, ProjectSettings project) =>
-        Fill(SupportText, ("§CRATE", project.RustCrateName), ("§SQL", RustTable.Raw(TenantTestPlan.FirstTenantsSql(database, project)))) + "\n";
+        FillAll(SupportText, ("§CRATE", project.RustCrateName), ("§SQL", RustTable.Raw(TenantTestPlan.FirstTenantsSql(database, project)))) + "\n";
 
     /// <summary> The cases appended to the module of a tenant-owned table (it has <c>new_body</c> and <c>ROUTE</c>). </summary>
     public static string Methods(TableModel table, ProjectSettings project)
     {
-        var owned = TenantPlan.OwnedBy(table, project);
+        var owned = TableShapes.For(table, project).Tenant;
         if (owned is null)
             return "";
-        return Fill(MethodsText, ("§KEY", Str(JsonNames.Camel(table.PrimaryKeyColumns[0].Name))), ("§TENANT", Str(JsonNames.Camel(owned.Column.Name))), ("§NOTENANT_TYPE", TenantWords.NoTenantType));
+        return FillAll(MethodsText, ("§KEY", Str(JsonNames.Camel(table.PrimaryKeyColumns[0].Name))), ("§TENANT", Str(JsonNames.Camel(owned.Column.Name))), ("§NOTENANT_TYPE", TenantWords.NoTenantType));
     }
 
     public static string RoutesFile(DatabaseModel database, ProjectSettings project)
@@ -32,34 +33,34 @@ public static class RustTenantTests
         string delete = TenantTestPlan.RemoveSql(database, project, di.Placeholder(1));
         var o = new StringBuilder();
         string activeLine = TenantTestPlan.ActiveKey(database, project) is { } flag ? $"    body[{Str(flag)}] = json!(true);\n" : "";
-        o.Append(Fill(RoutesHead, ("§ROUTE", Str(RustTestBodies.Route(tenantTable.TableName))), ("§KEY", Str(tenantKey)), ("§BODY", BodyFunction("tenant_body", tenantTable, project, "")),
+        o.Append(FillAll(RoutesHead, ("§ROUTE", Str(RustTestBodies.Route(tenantTable.TableName))), ("§KEY", Str(tenantKey)), ("§BODY", BodyFunction("tenant_body", tenantTable, project, "")),
             ("§DELETE", RustTable.Raw(delete)), ("§ONBOARD_TYPE", TenantWords.OnboardingType), ("§ACTIVELINE", activeLine), ("§CRATE", project.RustCrateName)));
         if (TenantTestPlan.ActiveKey(database, project) is { } active)
-            o.Append(Fill(SwitchedOff, ("§SWITCHOFF", RustTable.Raw(TenantTestPlan.SwitchOffSql(database, project, di.Placeholder(1)))), ("§ACTIVE", Str(active)), ("§CRATE", project.RustCrateName),
+            o.Append(FillAll(SwitchedOff, ("§SWITCHOFF", RustTable.Raw(TenantTestPlan.SwitchOffSql(database, project, di.Placeholder(1)))), ("§ACTIVE", Str(active)), ("§CRATE", project.RustCrateName),
                 ("§INACTIVE_TYPE", TenantWords.InactiveType)));
-        o.Append(Fill(OnboardCase, ("§ONBOARD_TYPE", TenantWords.OnboardingType)));
+        o.Append(FillAll(OnboardCase, ("§ONBOARD_TYPE", TenantWords.OnboardingType)));
         if (TenantTestPlan.NewAdmin(database, project))
         {
             var userTable = UserTable.Resolve(database, project).Plan!.Table;
             string members = TenantTestPlan.RemoveMembersSql(database, project, di.Placeholder(1));
-            o.Append(Fill(PersonCase, ("§PERSONBODY", BodyFunction("person_body", userTable, project, "")), ("§LOGINKEY", Str(TenantTestPlan.LoginKey(database, project))),
+            o.Append(FillAll(PersonCase, ("§PERSONBODY", BodyFunction("person_body", userTable, project, "")), ("§LOGINKEY", Str(TenantTestPlan.LoginKey(database, project))),
                 ("§REMOVEPERSON", RustTable.Raw(TenantTestPlan.RemovePersonSql(database, project, di.Placeholder(1)))),
                 ("§REMOVEMEMBERSCONST", members.Length == 0 ? "" : $"const REMOVE_MEMBERS: &str = {RustTable.Raw(members)};"),
                 ("§REMOVEMEMBERSRUN", members.Length == 0 ? "" : "    sqlx::query(REMOVE_MEMBERS).bind(tenant).execute(&api.pool()).await.expect(\"the memberships are removed\");\n")));
             if (TenantPlan.PeopleOf(database, project) is { } people && people.User.Table.HasPythonRustApi(project))
-                o.Append(Fill(PeopleCase, ("§USERROUTE", Str(RustTestBodies.Route(people.User.Table.TableName))), ("§USERKEY", Str(JsonNames.Camel(people.Key.Name)))));
+                o.Append(FillAll(PeopleCase, ("§USERROUTE", Str(RustTestBodies.Route(people.User.Table.TableName))), ("§USERKEY", Str(JsonNames.Camel(people.Key.Name)))));
             if (TenantBypassPlan.HostColumn(database, project) is { } hostColumn)
-                o.Append(Fill(HostLoginCase, ("§SLUG", Str(JsonNames.Camel(hostColumn.Name))), ("§ACTIVELINES", TenantTestPlan.ActiveKey(database, project) is { } flag2 ? $"    own_body[{Str(flag2)}] = json!(true);\n    other_body[{Str(flag2)}] = json!(true);\n" : ""),
+                o.Append(FillAll(HostLoginCase, ("§SLUG", Str(JsonNames.Camel(hostColumn.Name))), ("§ACTIVELINES", TenantTestPlan.ActiveKey(database, project) is { } flag2 ? $"    own_body[{Str(flag2)}] = json!(true);\n    other_body[{Str(flag2)}] = json!(true);\n" : ""),
                     ("§CRATE", project.RustCrateName)));
         }
         if (TenantBypassPlan.HostColumn(database, project) is { } host)
-            o.Append(Fill(HostCase, ("§SLUG", Str(JsonNames.Camel(host.Name))), ("§ACTIVELINE", TenantTestPlan.ActiveKey(database, project) is { } activeName ? $"    body[{Str(activeName)}] = json!(true);\n" : ""),
+            o.Append(FillAll(HostCase, ("§SLUG", Str(JsonNames.Camel(host.Name))), ("§ACTIVELINE", TenantTestPlan.ActiveKey(database, project) is { } activeName ? $"    body[{Str(activeName)}] = json!(true);\n" : ""),
                 ("§HOST_TYPE", TenantWords.HostType), ("§CRATE", project.RustCrateName)));
         foreach (var named in TenantTestPlan.OwnedNamed(database, project))
         {
-            var plan = NameActivePlan.For(named.Table, project)!;
+            var plan = TableShapes.For(named.Table, project).NameActive!;
             string module = RustNames.Snake(named.Table.TableName);
-            o.Append(Fill(NamedText, ("§MODULE", module), ("§BODY", BodyFunction(module + "_body", named.Table, project, "api")), ("§ROUTE", Str(RustTestBodies.Route(named.Table.TableName))),
+            o.Append(FillAll(NamedText, ("§MODULE", module), ("§BODY", BodyFunction(module + "_body", named.Table, project, "api")), ("§ROUTE", Str(RustTestBodies.Route(named.Table.TableName))),
                 ("§KEY", Str(JsonNames.Camel(named.Table.PrimaryKeyColumns[0].Name))), ("§NAME", Str(JsonNames.Camel(plan.Name.Name))), ("§ACTIVE", Str(JsonNames.Camel(plan.Active.Name))),
                 ("§LENGTH", Math.Max(plan.Name.CharacterLength, 0).ToString()), ("§T_REQUIRED", ProblemTypes.NameRequired), ("§T_DUPLICATE", ProblemTypes.DuplicateName),
                 ("§DETAIL", Str(NameActiveWords.DuplicateDetailFormat)), ("§TENANT", Str(JsonNames.Camel(named.Column.Name)))));
@@ -90,7 +91,7 @@ public static class RustTenantTests
                 Body(d.Table);
             o.Append(NothingShown);
             foreach (var d in dashboard)
-                o.Append(Fill(DashboardCase, ("§MODULE", RustNames.Snake(d.Table.TableName)), ("§ROUTE", Str(RustTestBodies.Route(d.Table.TableName))), ("§KEY", Str(JsonNames.Camel(d.Table.PrimaryKeyColumns[0].Name))),
+                o.Append(FillAll(DashboardCase, ("§MODULE", RustNames.Snake(d.Table.TableName)), ("§ROUTE", Str(RustTestBodies.Route(d.Table.TableName))), ("§KEY", Str(JsonNames.Camel(d.Table.PrimaryKeyColumns[0].Name))),
                     ("§IDS", string.Join(", ", d.WidgetIds.Select(Str)))));
         }
         if (junctions.Count > 0)
@@ -115,7 +116,7 @@ public static class RustTenantTests
                 }
                 string lines = SideLines("anchor", j.Anchor, RustTestBodies.Route(j.Anchor.TableName), JsonNames.Camel(junction.AnchorForeignKey.ReferencedColumns[0]))
                     + SideLines("target", j.Target, RustTestBodies.Route(j.Target.TableName), JsonNames.Camel(junction.TargetForeignKey.ReferencedColumns[0]));
-                o.Append(Fill(JunctionCase, ("§NAME", RustNames.Snake(j.Junction.TableName) + (j.AnchorOwned ? "_another_tenant_cannot_list_link_or_unlink_what_it_does_not_see" : "_another_tenant_cannot_list_link_or_unlink_a_target_it_does_not_see")),
+                o.Append(FillAll(JunctionCase, ("§NAME", RustNames.Snake(j.Junction.TableName) + (j.AnchorOwned ? "_another_tenant_cannot_list_link_or_unlink_what_it_does_not_see" : "_another_tenant_cannot_list_link_or_unlink_a_target_it_does_not_see")),
                     ("§JUNCTION", Str(BlazorNames.ApiRoute(j.Junction.TableName))), ("§SIDES", lines.TrimEnd('\n')),
                     ("§LISTED", j.AnchorOwned
                         ? "    assert_eq!(listed.status, StatusCode::NOT_FOUND, \"another tenant is not shown the links of a row it does not see\");"
@@ -156,13 +157,6 @@ public static class RustTenantTests
     }
 
     private static string Str(string text) => "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
-    }
 
     private const string SupportText = """"
 // Which tenants the tests work in. Written by RS_TestTenants; regenerated with the tables.

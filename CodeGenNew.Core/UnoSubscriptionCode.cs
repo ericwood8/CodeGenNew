@@ -1,3 +1,5 @@
+using static CodeGenNew.Core.TemplateText;
+
 namespace CodeGenNew.Core;
 
 /// <summary> The subscription page of the Uno app (<c>SubscriptionTable</c> with the sign-in): the plan, the status, the period end and, for each plan limit, what the plan allows and what the tenant has, read from
@@ -5,14 +7,14 @@ namespace CodeGenNew.Core;
 public static class UnoSubscriptionCode
 {
     /// <summary> The page; <paramref name="rowNamespace"/> is where <c>LimitRow</c> is (the view namespace in the Uno app, the repository namespace in the WinUI3 app, whose guard file holds it). </summary>
-    public static string Xaml(string viewNamespace, string? rowNamespace = null) => Fill(XamlText, ("§ROWNS", rowNamespace ?? viewNamespace), ("§NS", viewNamespace), ("§TITLE", SubscriptionScreenWords.Title), ("§LIMITS", SubscriptionScreenWords.LimitsHeading),
+    public static string Xaml(string viewNamespace, string? rowNamespace = null) => FillAll(XamlText, ("§ROWNS", rowNamespace ?? viewNamespace), ("§NS", viewNamespace), ("§TITLE", SubscriptionScreenWords.Title), ("§LIMITS", SubscriptionScreenWords.LimitsHeading),
         ("§LIMITCOLUMN", SubscriptionScreenWords.LimitColumn), ("§ALLOWEDCOLUMN", SubscriptionScreenWords.AllowedColumn), ("§INUSECOLUMN", SubscriptionScreenWords.InUseColumn),
         ("§PLANSHEADING", SubscriptionScreenWords.PlansHeading), ("§PLANCOLUMN", SubscriptionScreenWords.PlanColumn), ("§PRICECOLUMN", SubscriptionScreenWords.PriceColumn), ("§ALLOWSCOLUMN", SubscriptionScreenWords.AllowsColumn), ("§CHOOSEBUTTON", SubscriptionScreenWords.ChooseButton));
 
     /// <summary> The row of the plans list and the classes it is read into (the Uno page reads them from the API; the WinUI3 guard file holds the same classes). </summary>
-    public static string PlanRowClasses => Fill(PlanRowText, ("§UNLIMITED", SubscriptionScreenWords.Unlimited), ("§CURRENT", SubscriptionScreenWords.CurrentMark));
+    public static string PlanRowClasses => FillAll(PlanRowText, ("§UNLIMITED", SubscriptionScreenWords.Unlimited), ("§CURRENT", SubscriptionScreenWords.CurrentMark));
 
-    public static string Code(string viewNamespace, string servicesNamespace) => Fill(CodeText, ("§NS", viewNamespace), ("§SERVICES", servicesNamespace), ("§PATH", SubscriptionScreenWords.Path),
+    public static string Code(string viewNamespace, string servicesNamespace) => FillAll(CodeText, ("§NS", viewNamespace), ("§SERVICES", servicesNamespace), ("§PATH", SubscriptionScreenWords.Path),
         ("§PLANLABEL", SubscriptionScreenWords.PlanLabel), ("§STATUSLABEL", SubscriptionScreenWords.StatusLabel), ("§PERIODLABEL", SubscriptionScreenWords.PeriodEndLabel),
         ("§NOSUBSCRIPTION", SubscriptionScreenWords.NoSubscription), ("§LOADFAILED", SubscriptionScreenWords.LoadFailed), ("§PAUSED", SubscriptionScreenWords.PausedPrefix),
         ("§ACTIVE", SubscriptionScreenWords.Active), ("§UNLIMITED", SubscriptionScreenWords.Unlimited), ("§PRICELABEL", SubscriptionScreenWords.PriceLabel),
@@ -50,13 +52,6 @@ public static class PriceTexts
         price is { } amount ? amount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + (string.IsNullOrEmpty(period) ? "" : " / " + period) : "";
 }
 """;
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
-    }
 
     private const string XamlText = """
 <Page

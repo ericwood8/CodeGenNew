@@ -73,8 +73,8 @@
         var chosen = ChosenGridColumns.For(form);
         bool chooseColumns = !form.IsNameActive;
         // SoftDeleteTables and EffectiveDatedTables: a "Show deleted" dialog with Restore and a "Valid on" dialog (the list itself stays the paged grid)
-        bool softScreen = SoftDeletePlan.For(Model, Project) is not null;
-        bool validOnScreen = EffectiveDatePlan.For(Model, Project) is not null;
+        bool softScreen = TableShapes.For(Model, Project).SoftDelete is not null;
+        bool validOnScreen = TableShapes.For(Model, Project).Effective is not null;
         var columnList = chooseColumns ? chosen.Offered : chosen.Initial;   // the columns the grid has a header and a cell for, in order; a hidden one is not drawn
         var odataFilters = odata && !form.IsNameActive ? columnList.Select(c => c.Filter).ToList() : null;   // the filter row's control of each of those columns (null: none)
         string If(ColumnModel c) => chooseColumns ? $" *ngIf=\"columns.has('{c.Name}')\"" : "";   // the attribute that draws a cell only while its column is chosen
@@ -493,7 +493,7 @@
                 // too many columns for one table: each row is a block of labelled fields that wrap, so no box is squeezed
                 H($"                <div class=\"child-card\" *ngFor=\"let row of {child.Variable}Rows\">");
                 H("                    <div class=\"child-card-head\">");
-                H($"                        <strong>{Labels.Words(BaseName(child.Table))}</strong>");
+                H($"                        <strong>{child.Words}</strong>");
                 H($"                        <button type=\"button\" class=\"btn-action delete\" (click)=\"remove{child.Name}(row)\">Remove</button>");
                 H("                    </div>");
                 H("                    <div class=\"child-card-fields\">");
@@ -501,7 +501,7 @@
                     H($"                        <label class=\"child-field{(IsMultiline(c) ? " child-field-wide" : "")}\"><span>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Html(child.IsMarked(c))}</span>{ChildInput(child, c)}</label>");
                 H("                    </div>");
                 H("                </div>");
-                H($"                <button type=\"button\" class=\"btn btn-outline\" (click)=\"add{child.Name}()\">Add {Labels.Words(BaseName(child.Table))}</button>");
+                H($"                <button type=\"button\" class=\"btn btn-outline\" (click)=\"add{child.Name}()\">Add {child.Words}</button>");
                 H("            </fieldset>");
                 continue;
             }
@@ -517,7 +517,7 @@
             H("                        </tr>");
             H("                    </tbody>");
             H("                </table>");
-            H($"                <button type=\"button\" class=\"btn btn-outline\" (click)=\"add{child.Name}()\">Add {Labels.Words(BaseName(child.Table))}</button>");
+            H($"                <button type=\"button\" class=\"btn btn-outline\" (click)=\"add{child.Name}()\">Add {child.Words}</button>");
             H("            </fieldset>");
         }
         H();
@@ -848,7 +848,7 @@
             T("  private readonly auth = inject(AuthService);");
             T($"  get canWrite(): boolean {{ return this.auth.hasRole([{WriteRolePlan.Literal(writeRoles, (char)39)}]); }} // WriteRoles: the roles that may add, change and delete rows");
         }
-        T($"  protected readonly noun = '{Labels.Words(baseName).ToLowerInvariant()}';");
+        T($"  protected readonly noun = '{form.Words}';");
         T($"  protected readonly idKey = '{keyProp}';");
         if (softScreen || validOnScreen)
         {

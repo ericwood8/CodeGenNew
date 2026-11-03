@@ -36,7 +36,7 @@
     // TenantTable: nobody works in a tenant yet when they sign in, so the user table is read without its query filter (the tenant one); a soft-deleted person still cannot sign in
     bool tenancy = Project.ApiAuth && TenantPlan.IsEnabled(Project);
     string filters = tenancy ? ".IgnoreQueryFilters()" : "";
-    string notDeleted = tenancy && SoftDeletePlan.For(plan.Table, Project) is { } soft ? $".Where(u => !u.{soft.Flag.CSharpName()})" : "";
+    string notDeleted = tenancy && TableShapes.For(plan.Table, Project).SoftDelete is { } soft ? $".Where(u => !u.{soft.Flag.CSharpName()})" : "";
 
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');

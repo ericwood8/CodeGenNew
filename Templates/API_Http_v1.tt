@@ -57,12 +57,12 @@
             L();
             L("### Search " + plural + ", a page at a time" + (search.Count > 0 ? " (each text box filters by part of the text)" : ""));
             // a log table also takes the first and last day of the rows to list
-            string range = LogTablePlan.For(Model, Project) is not null ? LogTable.FromParameter + "=2026-01-01&" + LogTable.ToParameter + "=2026-01-31&" : "";
+            string range = TableShapes.For(Model, Project).Log is not null ? LogTable.FromParameter + "=2026-01-01&" + LogTable.ToParameter + "=2026-01-31&" : "";
             L("GET {{host}}" + route + "/search?" + filters + range + "pageNumber=1&pageSize=20" + sort);
             L("Accept: application/json");
         }
         // a log table is only read: no add, change, remove or copy
-        bool readOnly = LogTablePlan.For(Model, Project) is not null;
+        bool readOnly = TableShapes.For(Model, Project).Log is not null;
         if (!readOnly)
         {
         L();
@@ -87,7 +87,7 @@
             L("POST {{host}}" + route + "/{{" + idVar + "}}/clone");
         }
         }
-        if (QueuePlan.For(Model, Project) is { } queue)
+        if (TableShapes.For(Model, Project).Queue is { } queue)
         {
             L();
             L("### A producer puts a row in the queue (pending, no retries, created now)");
@@ -120,7 +120,7 @@
             L("### Put a failed row back to pending");
             L("POST {{host}}" + route + "/{{" + idVar + "}}/retry");
         }
-        if (TreePlan.For(Model, Project) is not null)
+        if (TableShapes.For(Model, Project).Tree is not null)
         {
             L();
             L("### Every row depth first, with its level (a tree)");
@@ -129,7 +129,7 @@
             L("### Hand the children of a row to its own parent, so the row can be deleted");
             L("POST {{host}}" + route + "/{{" + idVar + "}}/promote-children");
         }
-        if (SoftDeletePlan.For(Model, Project) is not null)
+        if (TableShapes.For(Model, Project).SoftDelete is not null)
         {
             L();
             L("### The rows that were deleted (an administrator)");
@@ -138,7 +138,7 @@
             L("### Bring a deleted row back (an administrator)");
             L("POST {{host}}" + route + "/{{" + idVar + "}}/restore");
         }
-        if (EffectiveDatePlan.For(Model, Project) is { } effective)
+        if (TableShapes.For(Model, Project).Effective is { } effective)
         {
             L();
             L("### The rows in effect on a day (today when on is left out), narrowed by " + (effective.Groups.Count == 0 ? "nothing: the table has no group column" : string.Join(" and ", effective.Groups.Select(g => JsonNames.Camel(g.Name)))));

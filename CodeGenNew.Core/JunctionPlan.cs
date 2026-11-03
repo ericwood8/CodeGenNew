@@ -22,7 +22,7 @@ public static class JunctionPlan
 
     /// <summary> The heading of the page: the target's rows by the anchor's row ("Warehouses by Item"). </summary>
     public static string Heading(TableModel table) =>
-        Labels.Words(BlazorNames.TypeName(table.Junction!.TargetRole)).Pluralize() + " by " + Labels.Words(BlazorNames.TypeName(table.Junction!.AnchorRole));
+        table.Junction!.TargetWords.Pluralize() + " by " + table.Junction!.AnchorWords;
 
     /// <summary> The React page of a junction table: <c>ItemWarehouseLinksPage</c>. </summary>
     public static string ReactPage(string table) => ScreenNames.BaseName(table) + "LinksPage";

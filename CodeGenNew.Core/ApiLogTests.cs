@@ -6,7 +6,7 @@ namespace CodeGenNew.Core;
 /// takes the date range, that an empty range is an empty page, that a bad date is refused, and that the export takes the range. </summary>
 public static class ApiLogTests
 {
-    public static string Text(ApiTestPlan plan, ProjectSettings project, QueueTable? queue = null)
+    public static string Text(ApiTestPlan plan, ProjectSettings project, QueueShape? queue = null)
     {
         string route = plan.Route;
         string absent = plan.AbsentKey;
@@ -120,7 +120,7 @@ public static class ApiLogTests
         return o.ToString();
     }
 
-    private static void QueueMethods(Action<string> L, ApiTestPlan plan, QueueTable queue, ProjectSettings project, string absent)
+    private static void QueueMethods(Action<string> L, ApiTestPlan plan, QueueShape queue, ProjectSettings project, string absent)
     {
         string id = JsonNames.Camel(queue.Key.Name), status = JsonNames.Camel(queue.Status.Name), retry = JsonNames.Camel(queue.Retry.Name), claimed = JsonNames.Camel(queue.Claimed.Name);
         string pending = QueueStatus.Pending, claimedStatus = QueueStatus.Claimed, done = QueueStatus.Done, failedStatus = QueueStatus.Failed;

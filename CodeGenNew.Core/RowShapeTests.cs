@@ -8,9 +8,9 @@ public static class RowShapeTests
 {
     public static string Methods(ApiTestPlan plan, TableModel table, ProjectSettings project)
     {
-        var tree = TreePlan.For(table, project);
-        var soft = SoftDeletePlan.For(table, project);
-        var effective = EffectiveDatePlan.For(table, project);
+        var tree = TableShapes.For(table, project).Tree;
+        var soft = TableShapes.For(table, project).SoftDelete;
+        var effective = TableShapes.For(table, project).Effective;
         if (tree is null && soft is null && effective is null)
             return "";
         var o = new StringBuilder();

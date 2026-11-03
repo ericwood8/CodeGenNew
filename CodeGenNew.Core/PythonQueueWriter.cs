@@ -5,7 +5,7 @@ namespace CodeGenNew.Core;
 /// columns. Every change of status is one guarded UPDATE of the row in the status it expects. </summary>
 public static class PythonQueueWriter
 {
-    public static string File(IReadOnlyList<QueueTable> tables, ProjectSettings project)
+    public static string File(IReadOnlyList<QueueShape> tables, ProjectSettings project)
     {
         var imports = new SortedSet<string>(StringComparer.Ordinal);
         var specs = new System.Text.StringBuilder();
@@ -26,7 +26,7 @@ public static class PythonQueueWriter
                 $"        names={names},\n    ),\n");
         }
         string text = Template;
-        foreach (var (token, value) in new (string, string)[]
+        text = TemplateText.FillAll(text, new (string, string)[]
         {
             ("§IMPORTS", string.Join("\n", imports)), ("§SPECS", specs.ToString().TrimEnd('\n')),
             ("§AUTHIMPORT\n", project.ApiAuth ? "from app.auth import require_user\n" : ""), ("§DEPS", project.ApiAuth ? ", dependencies=[Depends(require_user)]" : ""),
@@ -34,8 +34,7 @@ public static class PythonQueueWriter
             ("§MAX", project.QueueMaxRetries.ToString()), ("§MIN", project.QueueClaimMinutes.ToString()), ("§ATTEMPTS", QueueWords.ClaimAttempts.ToString()), ("§FAILEDROWS", QueueWords.FailedRows.ToString()),
             ("§PENDING", QueueStatus.Pending), ("§CLAIMED", QueueStatus.Claimed), ("§DONE", QueueStatus.Done), ("§FAILED", QueueStatus.Failed),
             ("§CONFLICT", HttpStatus.Conflict.ToString()), ("§BADREQUEST", HttpStatus.BadRequest.ToString()), ("§NOTFOUND", HttpStatus.NotFound.ToString())
-        }.OrderByDescending(v => v.Item1.Length))
-            text = text.Replace(token, value);
+        });
         return text;
     }
 

@@ -144,7 +144,7 @@
                 // one optional exact match per whole-number foreign key, after the older parameters so an existing call still lines up
                 .Concat(searchKeys.Select(k => $"{k.CSharpBase()}? {CSharpIdentifier(LowerFirst(k.Name))} = null")).ToList();
             // a table in LogTables (EF search) also takes the first and the last day of the rows to list, after everything else so an existing call still lines up
-            bool logRange = ef && !nameActive && LogTablePlan.For(Model, Project) is not null;
+            bool logRange = ef && !nameActive && TableShapes.For(Model, Project).Log is not null;
             if (logRange)
             {
                 signatureParams.Add($"DateTime? {LogTable.FromParameter} = null");
@@ -264,7 +264,7 @@
         }
 
         // SoftDeleteTables and EffectiveDatedTables (AccessMode=Ef): the delete flags the row, and the screens list the deleted rows, bring one back and list the rows in effect on a day
-        if (ef && SoftDeletePlan.For(Model, Project) is { } soft)
+        if (ef && TableShapes.For(Model, Project).SoftDelete is { } soft)
         {
             string flag = soft.Flag.CSharpName(), key = soft.Key.CSharpName();
             string setOn = soft.DeletedOn is null ? "" : $"\n                .SetProperty(x => x.{soft.DeletedOn.CSharpName()}, now)";
@@ -272,7 +272,7 @@
                 + (soft.DeletedBy is null ? "" : $"\n                .SetProperty(x => x.{soft.DeletedBy.CSharpName()}, (string?)null)");
             string order = soft.DeletedOn is null ? $".OrderByDescending(x => x.{key})" : $".OrderByDescending(x => x.{soft.DeletedOn.CSharpName()}).ThenByDescending(x => x.{key})";
             // IgnoreQueryFilters drops the tenant filter with the soft-delete one, so a tenant-owned table asks for its tenant again
-            var tenant = TenantPlan.OwnedBy(Model, Project);
+            var tenant = TableShapes.For(Model, Project).Tenant;
             string tenantWhere = tenant is null ? "" : $".Where(x => x.{tenant.Column.CSharpName()} == _context.CurrentTenantId)";
             string tenantAnd = tenant is null ? "" : $" && x.{tenant.Column.CSharpName()} == _context.CurrentTenantId";
             methods.Add(new[]
@@ -300,7 +300,7 @@
                 $"            .ExecuteUpdateAsync(s => s\n                .SetProperty(x => x.{flag}, false){clear}) > 0;"
             });
         }
-        if (ef && EffectiveDatePlan.For(Model, Project) is { } effective)
+        if (ef && TableShapes.For(Model, Project).Effective is { } effective)
         {
             string from = effective.From.CSharpName(), to = effective.To.CSharpName(), key = effective.Key.CSharpName();
             string dateType = effective.From.CSharpBase();

@@ -94,7 +94,7 @@ public static class EntityCode
         {
             B();
             bool isBit = c.IsBooleanColumn;
-            string words = CSharpText.Escape(Labels.Words(c.Name, isBit));
+            string words = CSharpText.Escape(c.FlagWords);
             int chars = c.CharacterLength;
             bool isText = c.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
             bool multiline = isText && chars >= 100;

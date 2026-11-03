@@ -38,8 +38,8 @@
         ? $"{displayColumns[0]} ?? \"\""
         : "$\"" + string.Join(" ", displayColumns.Select(d => "{" + d + "}")) + "\"";
     string pageClass = stem + "JunctionPage";
-    string anchorLabel = Labels.Words(anchorBase);
-    string targetLabel = Labels.Words(BlazorNames.TypeName(targetRole));
+    string anchorLabel = junction.AnchorWords;
+    string targetLabel = junction.TargetWords;
 #>
 @@@FILE Services/<#= stem #>JunctionClient.cs@@@
 using System.Net.Http.Json;

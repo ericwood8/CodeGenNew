@@ -35,7 +35,7 @@
     else if (plan != null)
     {
         bool tenants = TenantPlan.HasDesktopTenants(Project) && TenantPlan.TenantTableOf(Database, Project) is not null
-            && (TenantPlan.MembershipOf(Database, Project) is not null || TenantPlan.OwnedBy(plan.Table, Project) is not null);
+            && (TenantPlan.MembershipOf(Database, Project) is not null || TableShapes.For(plan.Table, Project).Tenant is not null);
 #>
 @@@FILE Repositories/DesktopSignIn.cs@@@
 <#= DesktopSignInCode.Session(Database, Project, contextType, usings, repositoryNamespace) #>@@@FILE <#= viewsFolder #>/LoginView.xaml@@@

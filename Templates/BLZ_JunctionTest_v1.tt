@@ -33,8 +33,8 @@
             "Guid" => $"\\\"00000000-0000-0000-0000-00000000000{n}\\\"",
             _ => n.ToString()
         };
-        string anchorLabel = Labels.Words(BlazorNames.TypeName(junction.AnchorRole)).ToLowerInvariant().Pluralize();
-        string targetLabel = Labels.Words(BlazorNames.TypeName(junction.TargetRole)).ToLowerInvariant().Pluralize();
+        string anchorLabel = junction.AnchorPluralWords;
+        string targetLabel = junction.TargetPluralWords;
         string anchorValue = junction.AnchorCs switch { "string" => "K1", "Guid" => "00000000-0000-0000-0000-000000000001", _ => "1" };
         string display = junction.DisplayColumns.Count > 0 ? "\\\"" + JsonNames.Camel(junction.DisplayColumns[0]) + "\\\": \\\"{0}\\\", " : "";
         string first = junction.DisplayColumns.Count > 0 ? "Target one" : Key(junction.TargetCs, 1).Replace("\\\"", "");

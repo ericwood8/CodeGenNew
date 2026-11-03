@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -26,22 +27,22 @@ public static class PythonPeopleWriter
         if (members) tenantNames.Add("no_tenant");
         tenantNames.Sort(StringComparer.OrdinalIgnoreCase);
 
-        Add(Fill(Head, ("§TENANTIMPORT", members ? $"from app.routes.tenancy import {string.Join(", ", tenantNames)}\n" : ""),
+        Add(FillAll(Head, ("§TENANTIMPORT", members ? $"from app.routes.tenancy import {string.Join(", ", tenantNames)}\n" : ""),
             ("§ROLEIMPORT", members ? ", PROBLEM_ROLE_NOT_ALLOWED" : "")));
         o.Append($"\nPERSON_KEY = {Str(plan.Key.DbName)}\nPERSON_LOGIN = {Str(plan.User.UserName.DbName)}\n");
         if (plan.NameColumn is not null)
             o.Append($"PERSON_NAME = {Str(plan.NameColumn.DbName)}\n");
         o.Append("people = " + PythonTenantWriter.LightTable(plan.User.Table, plan.UserColumns) + "\n");
         Add(Models);
-        Add(Fill(Routes, ("§FIRSTPERSON_TYPE", ProblemTypes.FirstPersonInvalid), ("§TAKEN_TYPE", ProblemTypes.FirstPersonTaken), ("§PASSWORD_TYPE", ProblemTypes.PasswordInvalid), ("§NOTYOURS_TYPE", ProblemTypes.PasswordNotYours),
+        Add(FillAll(Routes, ("§FIRSTPERSON_TYPE", ProblemTypes.FirstPersonInvalid), ("§TAKEN_TYPE", ProblemTypes.FirstPersonTaken), ("§PASSWORD_TYPE", ProblemTypes.PasswordInvalid), ("§NOTYOURS_TYPE", ProblemTypes.PasswordNotYours),
             ("§FIRSTPERSON_TITLE", Str(PeopleWords.FirstPersonInvalidTitle)), ("§TAKEN_TITLE", Str(PeopleWords.FirstPersonTakenTitle)), ("§TAKEN_DETAIL", Str(PeopleWords.FirstPersonTakenDetail)),
             ("§PASSWORD_TITLE", Str(PeopleWords.PasswordInvalidTitle)), ("§NOTYOURS_TITLE", Str(PeopleWords.PasswordNotYoursTitle)), ("§NOTYOURS_DETAIL", Str(PeopleWords.PasswordNotYoursDetail)),
             ("§FIRSTPATH", PeopleWords.FirstPersonPath), ("§PASSWORDPATH", PeopleWords.PasswordPath)));
         if (plan.First is { } first)
         {
-            string tenantPart = !members ? "" : Fill(FirstMember, ("§ACTIVE", active is null ? "" : "tenants.c[TENANT_ACTIVE].is_(True), "), ("§DELETED", soft is null ? "" : "tenants.c[TENANT_DELETED].is_(False), "),
+            string tenantPart = !members ? "" : FillAll(FirstMember, ("§ACTIVE", active is null ? "" : "tenants.c[TENANT_ACTIVE].is_(True), "), ("§DELETED", soft is null ? "" : "tenants.c[TENANT_DELETED].is_(False), "),
                 ("§ROLEVALUE", membership!.Role is null ? "" : ", MEMBER_ROLE: ADMIN_ROLE"));
-            Add(Fill(FirstText, ("§VALUES", string.Join(", ", first.Values.Select(v => $"{Str(v.Column.DbName)}: {Value(v)}"))), ("§FIRSTMEMBER", tenantPart.Length == 0 ? "" : tenantPart + (char)10),("§LOGINVALUE", Value(first.Values[0])),
+            Add(FillAll(FirstText, ("§VALUES", string.Join(", ", first.Values.Select(v => $"{Str(v.Column.DbName)}: {Value(v)}"))), ("§FIRSTMEMBER", tenantPart.Length == 0 ? "" : tenantPart + (char)10),("§LOGINVALUE", Value(first.Values[0])),
                 ("§FIRSTPATH", PeopleWords.FirstPersonPath), ("§FIRSTPERSON_TITLE", Str(PeopleWords.FirstPersonInvalidTitle)), ("§FIRSTPERSON_TYPE", ProblemTypes.FirstPersonInvalid),
                 ("§TAKEN_TITLE", Str(PeopleWords.FirstPersonTakenTitle)), ("§TAKEN_TYPE", ProblemTypes.FirstPersonTaken), ("§TAKEN_DETAIL", Str(PeopleWords.FirstPersonTakenDetail))));
         }
@@ -52,7 +53,7 @@ public static class PythonPeopleWriter
             string nameRead = plan.NameColumn is null ? "None" : "row[3]";
             string nameReadCandidate = plan.NameColumn is null ? "None" : "row[2]";
             string membersText = Members + (membership!.Role is null ? "" : RoleRoute) + RemoveRoute;
-            Add(Fill(membersText, ("§NAMESELECT", nameSelect), ("§NAMEREAD2", nameReadCandidate), ("§NAMEREAD", nameRead), ("§TEXT", text), ("§ROLESELECT", membership.Role is null ? "null()" : "members.c[MEMBER_ROLE]"),
+            Add(FillAll(membersText, ("§NAMESELECT", nameSelect), ("§NAMEREAD2", nameReadCandidate), ("§NAMEREAD", nameRead), ("§TEXT", text), ("§ROLESELECT", membership.Role is null ? "null()" : "members.c[MEMBER_ROLE]"),
                 ("§ROLEKEY", membership.Role is null ? "" : "\"role\": row[2],"), ("§ROLEVALUE", membership.Role is null ? "" : ", MEMBER_ROLE: body.role or None"),
                 ("§ROLETYPE", membership.Role is null ? "" : "\n    role: str | None = None"), ("§EXISTS_TYPE", ProblemTypes.MemberExists), ("§SELF_TYPE", ProblemTypes.MemberSelf),
                 ("§ADMINS_TITLE", Str(PeopleWords.MembersAdminsOnlyTitle)), ("§ADMINS_DETAIL", Str(PeopleWords.MembersAdminsOnlyDetail)), ("§EXISTS_TITLE", Str(PeopleWords.MemberExistsTitle)),
@@ -72,13 +73,6 @@ public static class PythonPeopleWriter
         FirstPersonKind.Zero => "0",
         _ => "datetime.now()"
     };
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
-    }
 
     private const string Head = """"
 """The people routes: the first person of an empty user table (no sign-in), a person's new password and, with tenants, the members of the caller's tenant.

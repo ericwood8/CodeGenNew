@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -16,7 +17,7 @@ public static class RustTenantWriter
         var key = TenantPlan.KeyOf(tenantTable)!;
         var membership = TenantPlan.MembershipOf(database, project);
         var (userPlan, _) = UserTable.Resolve(database, project);
-        var userOwned = userPlan is null ? null : TenantPlan.OwnedBy(userPlan.Table, project);
+        var userOwned = userPlan is null ? null : TableShapes.For(userPlan.Table, project).Tenant;
         var active = tenantTable.IsActiveColumn;
         var host = TenantPlan.HostColumnOf(database, project);
         var text = tenantTable.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsPrimaryKey && (c.Name.EqualsIgnoreCase("Name") || c.Name.EqualsIgnoreCase("Title")));
@@ -31,7 +32,7 @@ public static class RustTenantWriter
         var people = TenantPlan.PeopleOf(database, project);
         string membersOf = people is null ? "\"\"" : Raw($"SELECT {Q(people.Membership.User)} FROM {Table(people.Membership.Table)} WHERE {Q(people.Membership.Tenant)} = ");
         string ofMembers = people is null ? "let _ = user;\n        Tenancy::Any" : "if user.is_platform() { Tenancy::Any } else { user.tenant_id.map_or(Tenancy::Nothing, Tenancy::Members) }";
-        o.Append(Fill(Shared, ("§MEMBERS_OF_SQL", membersOf), ("§OF_MEMBERS", ofMembers), ("§NOTENANT_TYPE", TenantWords.NoTenantType), ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§ONBOARD_TYPE", TenantWords.OnboardingType), ("§INACTIVE_TYPE", TenantWords.InactiveType),
+        o.Append(FillAll(Shared, ("§MEMBERS_OF_SQL", membersOf), ("§OF_MEMBERS", ofMembers), ("§NOTENANT_TYPE", TenantWords.NoTenantType), ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§ONBOARD_TYPE", TenantWords.OnboardingType), ("§INACTIVE_TYPE", TenantWords.InactiveType),
             ("§NOTENANT_TEXT", TenantWords.NoTenant), ("§NOMEMBER_TEXT", TenantWords.NotMember), ("§ONLYPLATFORM", TenantWords.OnlyPlatform), ("§NEVERDELETED", TenantWords.NeverDeleted),
             ("§CREATEBYONBOARDING", TenantWords.CreateByOnboarding)));
         if (ownedTables.Count > 0)
@@ -42,13 +43,13 @@ public static class RustTenantWriter
         }
 
         if (host is not null)
-            o.Append(Fill(HostLookup, ("§HOST_SQL", Raw($"SELECT {Q(key)} FROM {tenants} WHERE LOWER({Q(host)}) = {di.Placeholder(1)}")), ("§HOST_TYPE", TenantWords.HostType), ("§HOST_TEXT", TenantWords.Host)));
+            o.Append(FillAll(HostLookup, ("§HOST_SQL", Raw($"SELECT {Q(key)} FROM {tenants} WHERE LOWER({Q(host)}) = {di.Placeholder(1)}")), ("§HOST_TYPE", TenantWords.HostType), ("§HOST_TEXT", TenantWords.Host)));
         string hostArg = host is null ? "_host" : "host";
 
         if (active is null)
             o.Append("\n/// The tenant table has no active flag, so a token never outlives its tenant.\npub async fn ensure_active(_pool: &Pool, _tenant: i32) -> ApiResult<()> {\n    Ok(())\n}\n\n/// Nothing is remembered of a tenant.\npub fn forget_tenant(_tenant: i32) {}\n");
         else
-            o.Append(Fill(ActiveCheck, ("§ACTIVE_SQL", Raw($"SELECT COUNT(*) FROM {tenants} WHERE {Q(key)} = {di.Placeholder(1)} AND {Q(active)} = {di.BooleanLiteral(true)}")),
+            o.Append(FillAll(ActiveCheck, ("§ACTIVE_SQL", Raw($"SELECT COUNT(*) FROM {tenants} WHERE {Q(key)} = {di.Placeholder(1)} AND {Q(active)} = {di.BooleanLiteral(true)}")),
                 ("§INACTIVE_TEXT", TenantWords.Inactive)));
 
         if (membership is not null && userPlan is not null)
@@ -68,7 +69,7 @@ public static class RustTenantWriter
             string personExists = $"SELECT COUNT(*) FROM {users} WHERE {userKey} = {di.Placeholder(1)}";
             string attachAdmin = $"INSERT INTO {members} ({Q(membership.User)}, {Q(membership.Tenant)}" + (membership.Role is null ? "" : $", {Q(membership.Role)}") + ")"
                 + $" VALUES ({di.Placeholder(1)}, {di.Placeholder(2)}" + (membership.Role is null ? "" : $", {di.Placeholder(3)}") + ")";
-            o.Append(Fill(Members, ("§PERSON_SQL", Raw(personExists)), ("§ADMIN_SQL", Raw(attachAdmin)), ("§HOSTARG", hostArg), ("§HEADERSNAME", host is null ? "_headers" : "headers"),
+            o.Append(FillAll(Members, ("§PERSON_SQL", Raw(personExists)), ("§ADMIN_SQL", Raw(attachAdmin)), ("§HOSTARG", hostArg), ("§HEADERSNAME", host is null ? "_headers" : "headers"),
                 ("§HOSTLOGIN", host is null ? "" : HostLoginLines + "\n"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines + "\n"), ("§MEMBERS_SQL", Raw(select)), ("§ATTACH_SQL", Raw(insert)), ("§ROWTYPE", "(i32, " + textType + (membership.Role is null ? "" : ", Option<String>") + ")"),
                 ("§TEXTCONVERSION", textConversion), ("§ROLECONVERSION", membership.Role is null ? "None" : "row.2"), ("§ROLEBIND", membership.Role is null ? "" : ".bind(ADMIN_ROLE)")));
             o.Append(NewPerson(userPlan, project, membership, null, di, Raw));
@@ -78,7 +79,7 @@ public static class RustTenantWriter
         {
             string find = $"SELECT u.{Q(userOwned.Column)} FROM {Table(userPlan.Table)} AS u WHERE u.{Q(userPlan.UserName)} = {di.Placeholder(1)}";
             string activeCount = $"SELECT COUNT(*) FROM {tenants} WHERE {Q(key)} = {di.Placeholder(1)}" + (active is null ? "" : $" AND {Q(active)} = {di.BooleanLiteral(true)}");
-            o.Append(Fill(OwnColumn, ("§HOSTARG", hostArg), ("§HOSTCHECK", host is null ? "" : HostOwnCheck + "\n"), ("§OWN_SQL", Raw(find)), ("§OWNACTIVE_SQL", Raw(activeCount)), ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§NOMEMBER_TEXT", TenantWords.NotMember)));
+            o.Append(FillAll(OwnColumn, ("§HOSTARG", hostArg), ("§HOSTCHECK", host is null ? "" : HostOwnCheck + "\n"), ("§OWN_SQL", Raw(find)), ("§OWNACTIVE_SQL", Raw(activeCount)), ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§NOMEMBER_TEXT", TenantWords.NotMember)));
             o.Append(NewPerson(userPlan, project, null, userOwned, di, Raw));
         }
         else
@@ -91,7 +92,7 @@ public static class RustTenantWriter
             var conditions = new[] { active is null ? null : $"{Q(active)} = {di.BooleanLiteral(true)}", soft is null ? null : $"{Q(soft)} = {di.BooleanLiteral(false)}" }.OfType<string>().ToList();
             string where = conditions.Count == 0 ? "" : " WHERE " + string.Join(" AND ", conditions);
             string sql = text is null ? $"SELECT {Q(key)} FROM {tenants}{where} ORDER BY {Q(key)}" : $"SELECT {Q(key)}, {Q(text)} FROM {tenants}{where} ORDER BY {Q(text)}, {Q(key)}";
-            o.Append(Fill(SignInList, ("§SIGNIN_SQL", Raw(sql)), ("§ROWTYPE", text is null ? "(i32,)" : "(i32, Option<String>)"), ("§NAME", text is null ? "row.0.to_string()" : "row.1.unwrap_or_default()"), ("§PATH", TenantWords.SignInListPath)));
+            o.Append(FillAll(SignInList, ("§SIGNIN_SQL", Raw(sql)), ("§ROWTYPE", text is null ? "(i32,)" : "(i32, Option<String>)"), ("§NAME", text is null ? "row.0.to_string()" : "row.1.unwrap_or_default()"), ("§PATH", TenantWords.SignInListPath)));
         }
         else
             o.Append("\n/// No membership table is named, so the sign-in names no tenant and has no list of them.\npub fn public_router() -> Router<Pool> {\n    Router::new()\n}\n");
@@ -128,7 +129,7 @@ pub fn public_router() -> Router<Pool> {
         string adminFlag = membership?.Role is null && userPlan.Admin is { } flag ? $"    person.{table.FieldOf(flag).Name} = true;\n" : "";
         string both = membership is null ? "" : "    if admin_id.is_some() {\n        return Err(bad_person(\"Send adminId (a person who exists) or admin (a new person), not both.\"));\n    }\n";
         string tie = membership is null ? "" : "    saved = saved && sqlx::query(ATTACH_ADMIN).bind(key).bind(tenant_id)" + (membership.Role is null ? "" : ".bind(ADMIN_ROLE)") + ".execute(pool).await.is_ok();\n";
-        return Fill(NewPersonText, ("§MODULE", table.Module), ("§STRUCT", table.Struct), ("§NAME_SQL", raw(nameTaken)), ("§HASH_SQL", raw(setHash)), ("§NAMEFIELD", table.FieldOf(userPlan.UserName).Name),
+        return FillAll(NewPersonText, ("§MODULE", table.Module), ("§STRUCT", table.Struct), ("§NAME_SQL", raw(nameTaken)), ("§HASH_SQL", raw(setHash)), ("§NAMEFIELD", table.FieldOf(userPlan.UserName).Name),
             ("§KEYFIELD", table.Key.Name), ("§TENANTLINK", tenantLink), ("§ADMINFLAG", adminFlag), ("§BOTH", both), ("§TIE", tie));
     }
 
@@ -142,7 +143,7 @@ pub fn public_router() -> Router<Pool> {
         string attach = $"INSERT INTO {members} ({user}, {tenant}) VALUES ({di.Placeholder(1)}, {di.Placeholder(2)})";
         string detach = $"DELETE FROM {members} WHERE {user} = {di.Placeholder(1)} AND {tenant} = {di.Placeholder(2)} ";
         string elsewhere = $"SELECT COUNT(*) FROM {members} WHERE {user} = {di.Placeholder(1)} AND {tenant} <> {di.Placeholder(2)}";
-        return Fill(PeopleText, ("§IS_MEMBER_SQL", raw(isMember)), ("§ATTACH_PERSON_SQL", raw(attach)), ("§DETACH_PERSON_SQL", raw(detach)), ("§ELSEWHERE_SQL", raw(elsewhere)));
+        return FillAll(PeopleText, ("§IS_MEMBER_SQL", raw(isMember)), ("§ATTACH_PERSON_SQL", raw(attach)), ("§DETACH_PERSON_SQL", raw(detach)), ("§ELSEWHERE_SQL", raw(elsewhere)));
     }
 
     private const string PeopleText = """"
@@ -251,13 +252,6 @@ pub async fn attach_new_admin(_pool: &Pool, _tenant_id: i32, _admin: Option<Pers
     Ok(())
 }
 """";
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
-    }
 
     private const string Shared = """"
 // Tenants (TenantTable): the tenant of a sign-in, the tenants a person can switch between, and the helpers every router and repository calls so a caller reads and writes only the rows of the tenant in their token.

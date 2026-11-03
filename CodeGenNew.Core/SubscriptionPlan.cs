@@ -105,7 +105,7 @@ public static class SubscriptionPlan
 
     /// <summary> Whether a write to the table can be answered 402 (the subscription is not active, or a plan limit is reached): the project has a subscription table and the table is tenant-owned. The screens show the API's sentence
     /// for it instead of a general failure. </summary>
-    public static bool PausesWrites(TableModel table, ProjectSettings project) => IsEnabled(project) && TenantPlan.OwnedBy(table, project) is not null;
+    public static bool PausesWrites(TableModel table, ProjectSettings project) => IsEnabled(project) && TableShapes.For(table, project).Tenant is not null;
 
     /// <summary> Whether the APIs serve the gateway's webhook: a secret is named and the subscription table has a gateway id column to find the subscription by. </summary>
     public static bool HasWebhook(DatabaseModel database, ProjectSettings project) =>
@@ -307,7 +307,7 @@ public static class SubscriptionPlan
             problem = $"{prefix} needs the limit's name after a colon (PlanLimits=Project:projects).";
             return null;
         }
-        var soft = SoftDeletePlan.For(table, project)?.Flag;
+        var soft = TableShapes.For(table, project).SoftDelete?.Flag;
         if (TenantPlan.MembershipOf(database, project) is { } membership && membership.Table == table)
             return new LimitedTable(table, key, membership.Tenant, soft, MembersPath, true);
         if (TenantPlan.OwnedBy(table, database, project) is not { } owned)

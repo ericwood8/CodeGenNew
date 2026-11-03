@@ -1,11 +1,13 @@
+using static CodeGenNew.Core.TemplateText;
+
 namespace CodeGenNew.Core;
 
 /// <summary> The members page of the Uno app (<c>TenantMembership</c> with the sign-in): the same page as the WinUI3 one (<see cref="DesktopMembersCode"/>), reading and changing the memberships over the API routes
 /// <c>/api/auth/members</c> instead of the database. The page is in the menu for administrators. </summary>
 public static class UnoMembersCode
 {
-    public static string Code(string viewNamespace, string servicesNamespace, bool hasRole, bool plans = false) => Fill(CodeText, ("§PLANCHECK", plans ? Fill(PlanCheckText, ("§FALLBACK", SubscriptionPlan.PausedFallback)) : ""), ("§NS", viewNamespace), ("§SERVICES", servicesNamespace),
-        ("§ROLEEDIT", hasRole ? Fill(RoleEditText, RoleTokens) : ""), ("§ROLEBODY", hasRole ? ", role = newRole" : ""), ("§ROLEBOX", hasRole ? Fill(RoleBoxText, RoleTokens) : ""), ("§ROLEPANEL", hasRole ? ", roleBox" : ""),
+    public static string Code(string viewNamespace, string servicesNamespace, bool hasRole, bool plans = false) => FillAll(CodeText, ("§PLANCHECK", plans ? FillAll(PlanCheckText, ("§FALLBACK", SubscriptionPlan.PausedFallback)) : ""), ("§NS", viewNamespace), ("§SERVICES", servicesNamespace),
+        ("§ROLEEDIT", hasRole ? FillAll(RoleEditText, RoleTokens) : ""), ("§ROLEBODY", hasRole ? ", role = newRole" : ""), ("§ROLEBOX", hasRole ? FillAll(RoleBoxText, RoleTokens) : ""), ("§ROLEPANEL", hasRole ? ", roleBox" : ""),
         ("§ROLEREAD", hasRole ? "\n        string newRole = roleBox.Text.Trim();" : ""),
         ("§MEMBERSPATH", PeopleWords.MembersPath), ("§CANDIDATESPATH", PeopleWords.CandidatesPath), ("§NOBODY", MemberWords.NobodyToAdd), ("§ADMINS", PeopleWords.MembersAdminsOnlyDetail),
         ("§EXISTS", PeopleWords.MemberExistsDetail), ("§SELF", PeopleWords.MemberSelfDetail), ("§PERSONLABEL", MemberWords.PersonLabel), ("§ROLELABEL", MemberWords.RoleLabel), ("§ROLEHINT", MemberWords.RoleHint),
@@ -15,13 +17,6 @@ public static class UnoMembersCode
     [
         ("§ROLELABEL", MemberWords.RoleLabel), ("§ROLEHINT", MemberWords.RoleHint), ("§MEMBERSPATH", PeopleWords.MembersPath)
     ];
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
-    }
 
     // a 402: the subscription is paused or the plan allows no more seats; the API says which
     private const string PlanCheckText = """

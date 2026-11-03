@@ -42,7 +42,7 @@ public sealed record ApprovalTestSeed(ApprovalTable Table, IReadOnlyList<string>
         string Bool(bool value) => database.Dialect == SqlDialect.PostgreSql ? (value ? "true" : "false") : value ? "1" : "0";
         string? Literal(ColumnModel c, TableModel t)
         {
-            string json = ApiSampleValues.Value(c, project, t.TableName);
+            string json = c.ValidExample(project, t.TableName);
             if (json == "null" || c.SqlType is System.Data.SqlDbType.Binary or System.Data.SqlDbType.VarBinary or System.Data.SqlDbType.Image)
                 return null;
             if (json is "true" or "false")
@@ -144,7 +144,7 @@ public sealed record ApprovalTestSeed(ApprovalTable Table, IReadOnlyList<string>
         var rowNamed = new Dictionary<string, string>();
         // a tenant-owned row belongs to the first active tenant (the tenant the tests work in), whose key TenantSql finds
         string? tenantSql = null;
-        if (TenantPlan.HasApiTenancy(project) && TenantPlan.OwnedBy(table.Table, project) is { } owned && TenantPlan.TenantTableOf(database, project) is { } tenantTable && TenantPlan.KeyOf(tenantTable) is { } tenantKey)
+        if (TenantPlan.HasApiTenancy(project) && TableShapes.For(table.Table, project).Tenant is { } owned && TenantPlan.TenantTableOf(database, project) is { } tenantTable && TenantPlan.KeyOf(tenantTable) is { } tenantKey)
         {
             tenantSql = $"SELECT MIN({Q(tenantKey)}) FROM {Name(tenantTable)}" + (tenantTable.IsActiveColumn is { } flag ? $" WHERE {Q(flag)} = {Bool(true)}" : "");
             rowNamed[owned.Column.Name] = $"({tenantSql})";

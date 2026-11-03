@@ -34,7 +34,7 @@
     var ownerLink = auth ? OwnedTable.Through(Model, Project) : null;
     var userPlan = auth ? UserTable.PlanOf(Model, Project) : null;
     // TenantTable (src/tenancy.rs): the filter of the tenant column (the key of the tenant table itself) joins the owner scope in the filtering functions
-    var tenantOwned = RustTenantWriter.Applies(Project) ? TenantPlan.OwnedBy(Model, Project) : null;
+    var tenantOwned = RustTenantWriter.Applies(Project) ? TableShapes.For(Model, Project).Tenant : null;
     bool tenantTable = RustTenantWriter.Applies(Project) && TenantPlan.IsTenantTable(Model, Project);
     // the people of the user table belong to a tenant by their membership rows (TenantMembership): the filter is on the person's key
     bool people = RustTenantWriter.Applies(Project) && userPlan is not null && Project.TenantMembership is not null && tenantOwned is null;
@@ -46,7 +46,7 @@
     bool scoped = ownerField is not null || (ownerColumn is null && linkField is not null);
     var scopeField = ownerField ?? linkField;
     // a table with a Name and an IsActive column (NameActivePlan): the list by name, the active list, find by name and the duplicate-name test
-    var nameActive = NameActivePlan.For(Model, Project);
+    var nameActive = TableShapes.For(Model, Project).NameActive;
     bool filtered = scoped || tenanted || nameActive is not null;
     string activeTest = nameActive is null ? "" : $"t.{qd.Quote(nameActive.Active.DbName)} = {qd.BooleanLiteral(true)}";
     string nameColumn = nameActive is null ? "" : $"t.{qd.Quote(nameActive.Name.DbName)}";

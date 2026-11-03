@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -23,29 +24,29 @@ public static class PythonTenantTests
         var named = TenantTestPlan.OwnedNamed(database, project);
 
         var o = new StringBuilder();
-        o.Append(Fill(Head, ("§ADMIN", PythonNames.Str(project.AuthAdminRole)), ("§FIRST", PythonNames.Str(TenantTestPlan.FirstTenantsSql(database, project))),
+        o.Append(FillAll(Head, ("§ADMIN", PythonNames.Str(project.AuthAdminRole)), ("§FIRST", PythonNames.Str(TenantTestPlan.FirstTenantsSql(database, project))),
             ("§ROUTE", PythonNames.Str(RustTestBodies.Route(tenantTable.TableName))), ("§KEY", PythonNames.Str(JsonNames.Camel(key.Name))), ("§DELETE", PythonNames.Str(delete)),
             ("§TENANTBODY", BodyFunction("tenant_body", tenantTable, project)), ("§ONBOARD_TYPE", TenantWords.OnboardingType)));
         if (TenantTestPlan.ActiveKey(database, project) is { } active)
-            o.Append(Fill(SwitchedOff, ("§SWITCHOFF", PythonNames.Str(TenantTestPlan.SwitchOffSql(database, project, ""))), ("§ACTIVE", PythonNames.Str(active)), ("§INACTIVE_TYPE", TenantWords.InactiveType)));
-        o.Append(Fill(OnboardCase, ("§ONBOARD_TYPE", TenantWords.OnboardingType)));
+            o.Append(FillAll(SwitchedOff, ("§SWITCHOFF", PythonNames.Str(TenantTestPlan.SwitchOffSql(database, project, ""))), ("§ACTIVE", PythonNames.Str(active)), ("§INACTIVE_TYPE", TenantWords.InactiveType)));
+        o.Append(FillAll(OnboardCase, ("§ONBOARD_TYPE", TenantWords.OnboardingType)));
         if (TenantTestPlan.NewAdmin(database, project))
         {
             var userTable = UserTable.Resolve(database, project).Plan!.Table;
             string members = TenantTestPlan.RemoveMembersSql(database, project, "");
-            o.Append(Fill(PersonCase, ("§PERSONBODY", BodyFunction("person_body", userTable, project)), ("§LOGINKEY", PythonNames.Str(TenantTestPlan.LoginKey(database, project))),
+            o.Append(FillAll(PersonCase, ("§PERSONBODY", BodyFunction("person_body", userTable, project)), ("§LOGINKEY", PythonNames.Str(TenantTestPlan.LoginKey(database, project))),
                 ("§REMOVEPERSON", PythonNames.Str(TenantTestPlan.RemovePersonSql(database, project, ""))),
                 ("§REMOVEMEMBERSCONST", members.Length == 0 ? "" : $"REMOVE_MEMBERS = {PythonNames.Str(members)}\n"),
                 ("§REMOVEMEMBERSITEM", members.Length == 0 ? "" : "REMOVE_MEMBERS + str(key), ")));
             if (TenantPlan.PeopleOf(database, project) is { } people && people.User.Table.HasPythonRustApi(project))
-                o.Append(Fill(PeopleCase, ("§USERROUTE", PythonNames.Str(RustTestBodies.Route(people.User.Table.TableName))), ("§USERKEY", PythonNames.Str(JsonNames.Camel(people.Key.Name))),
+                o.Append(FillAll(PeopleCase, ("§USERROUTE", PythonNames.Str(RustTestBodies.Route(people.User.Table.TableName))), ("§USERKEY", PythonNames.Str(JsonNames.Camel(people.Key.Name))),
                     ("§REMOVEMEMBERSITEM", members.Length == 0 ? "" : "REMOVE_MEMBERS + str(tenant_a), ")));
             if (TenantBypassPlan.HostColumn(database, project) is { } hostColumn)
-                o.Append(Fill(HostLoginCase, ("§SLUG", PythonNames.Str(JsonNames.Camel(hostColumn.Name))), ("§ACTIVELINE", TenantTestPlan.ActiveKey(database, project) is { } flag2 ? $"    own_body[{PythonNames.Str(flag2)}] = True\n    other_body[{PythonNames.Str(flag2)}] = True\n" : ""),
+                o.Append(FillAll(HostLoginCase, ("§SLUG", PythonNames.Str(JsonNames.Camel(hostColumn.Name))), ("§ACTIVELINE", TenantTestPlan.ActiveKey(database, project) is { } flag2 ? $"    own_body[{PythonNames.Str(flag2)}] = True\n    other_body[{PythonNames.Str(flag2)}] = True\n" : ""),
                     ("§REMOVEMEMBERSITEM", members.Length == 0 ? "" : "REMOVE_MEMBERS + str(own_key), ")));
         }
         if (TenantBypassPlan.HostColumn(database, project) is { } host)
-            o.Append(Fill(HostCase, ("§SLUG", PythonNames.Str(JsonNames.Camel(host.Name))), ("§ACTIVELINE", TenantTestPlan.ActiveKey(database, project) is { } flag ? $"    body[{PythonNames.Str(flag)}] = True\n" : ""),
+            o.Append(FillAll(HostCase, ("§SLUG", PythonNames.Str(JsonNames.Camel(host.Name))), ("§ACTIVELINE", TenantTestPlan.ActiveKey(database, project) is { } flag ? $"    body[{PythonNames.Str(flag)}] = True\n" : ""),
                 ("§HOST_TYPE", TenantWords.HostType)));
         if (owned.Count > 0)
         {
@@ -55,7 +56,7 @@ public static class PythonTenantTests
             foreach (var t in owned)
                 o.Append($"    ({PythonNames.Str(RustTestBodies.Route(t.Table.TableName))}, {PythonNames.Str(JsonNames.Camel(t.Table.PrimaryKeyColumns[0].Name))}, {PythonNames.Str(JsonNames.Camel(t.Column.Name))}, {RustNames.Snake(t.Table.TableName)}_body),\n");
             o.Append("]\n");
-            o.Append(Fill(OwnedCases, ("§NOTENANT_TYPE", TenantWords.NoTenantType)));
+            o.Append(FillAll(OwnedCases, ("§NOTENANT_TYPE", TenantWords.NoTenantType)));
         }
         if (named.Count > 0)
         {
@@ -64,12 +65,12 @@ public static class PythonTenantTests
             o.Append("\n\n\nNAMED = [\n");
             foreach (var t in named)
             {
-                var plan = NameActivePlan.For(t.Table, project)!;
+                var plan = TableShapes.For(t.Table, project).NameActive!;
                 o.Append($"    ({PythonNames.Str(RustTestBodies.Route(t.Table.TableName))}, {PythonNames.Str(JsonNames.Camel(t.Table.PrimaryKeyColumns[0].Name))}, {PythonNames.Str(JsonNames.Camel(plan.Name.Name))}, "
                     + $"{PythonNames.Str(JsonNames.Camel(plan.Active.Name))}, {Math.Max(plan.Name.CharacterLength, 0)}, {RustNames.Snake(t.Table.TableName)}_body),\n");
             }
             o.Append("]\n");
-            o.Append(Fill(NamedCases, ("§T_REQUIRED", ProblemTypes.NameRequired), ("§T_DUPLICATE", ProblemTypes.DuplicateName),
+            o.Append(FillAll(NamedCases, ("§T_REQUIRED", ProblemTypes.NameRequired), ("§T_DUPLICATE", ProblemTypes.DuplicateName),
                 ("§DETAIL", NameActiveWords.DuplicateDetailFormat.Replace("{0}", "{text}"))));
         }
         o.Append(Bypass(database, project, [.. owned, .. named]));
@@ -140,13 +141,6 @@ public static class PythonTenantTests
 
     /// <summary> A JSON literal of the sample values as a Python one. </summary>
     private static string Literal(string json) => json switch { "true" => "True", "false" => "False", "null" => "None", _ => json };
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
-    }
 
     private const string Head = """"
 """The tenant table, the tenant-owned tables and their isolation through the routes. Written by PY_TestTenants; regenerated with the tables."""

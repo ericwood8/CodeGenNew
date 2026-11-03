@@ -44,13 +44,13 @@ public static class ApiRequests
     public static string Body(TableModel model, ProjectSettings project, bool update)
     {
         string id = "{{" + IdVariable(model) + "}}";
-        var lines = ApiSampleValues.BodyColumns(model).Select(c => "  " + ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + (update && c.IsPrimaryKey ? (c.IsIntegerColumn ? id : "\"" + id + "\"") : ApiSampleValues.Value(c, project)));
+        var lines = ApiSampleValues.BodyColumns(model).Select(c => "  " + ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + (update && c.IsPrimaryKey ? (c.IsIntegerColumn ? id : "\"" + id + "\"") : c.ValidExample(project)));
         return "{\n" + string.Join(",\n", lines) + "\n}";
     }
 
     /// <summary> The body a producer posts to put a row in a work queue: the columns that cannot be NULL, without the queue's own. </summary>
-    public static string QueueBody(QueueTable queue, ProjectSettings project) =>
-        "{\n" + string.Join(",\n", queue.Payload.Select(c => "  " + ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + ApiSampleValues.Value(c, project))) + "\n}";
+    public static string QueueBody(QueueShape queue, ProjectSettings project) =>
+        "{\n" + string.Join(",\n", queue.Payload.Select(c => "  " + ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + c.ValidExample(project))) + "\n}";
 
     /// <summary> Text as a JSON string, line breaks included. </summary>
     public static string JsonString(string text) => "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "").Replace("\n", "\\n") + "\"";

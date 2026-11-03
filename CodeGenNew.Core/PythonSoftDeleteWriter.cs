@@ -30,9 +30,7 @@ public static class PythonSoftDeleteWriter
             ("§TENANT", n.TenantFilter.Length == 0 ? "" : n.TenantFilter + "\n")
         };
         values.AddRange(more);
-        foreach (var (token, value) in values.OrderByDescending(v => v.Item1.Length))
-            text = text.Replace(token, value);
-        return text;
+        return TemplateText.FillAll(text, [.. values]);
     }
 
     private const string FilterText = """"

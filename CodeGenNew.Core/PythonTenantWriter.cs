@@ -1,3 +1,4 @@
+using static CodeGenNew.Core.TemplateText;
 using System.Text;
 
 namespace CodeGenNew.Core;
@@ -16,7 +17,7 @@ public static class PythonTenantWriter
         var key = TenantPlan.KeyOf(tenantTable)!;
         var membership = TenantPlan.MembershipOf(database, project);
         var (userPlan, _) = UserTable.Resolve(database, project);
-        var userOwned = userPlan is null ? null : TenantPlan.OwnedBy(userPlan.Table, project);
+        var userOwned = userPlan is null ? null : TableShapes.For(userPlan.Table, project).Tenant;
         var active = tenantTable.IsActiveColumn;
         var host = TenantPlan.HostColumnOf(database, project);
         var text = tenantTable.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsPrimaryKey && (c.Name.EqualsIgnoreCase("Name") || c.Name.EqualsIgnoreCase("Title")));
@@ -204,13 +205,6 @@ def new_person(session: Session, admin: dict[str, Any], password: str | None, te
         bool schemaNamed = table.Dialect is SqlDialect.SqlServer or SqlDialect.PostgreSql && !table.SchemaName.EqualsIgnoreCase(table.Dialect == SqlDialect.SqlServer ? "dbo" : "public");
         var names = columns.OfType<ColumnModel>().Select(c => c.DbName).Distinct().ToList();
         return $"table({PythonNames.Str(table.DbTableName)}, {string.Join(", ", names.Select(n => $"column({PythonNames.Str(n)})"))}" + (schemaNamed ? $", schema={PythonNames.Str(table.SchemaName)}" : "") + ")";
-    }
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
     }
 
     private static readonly string Shared = Fill(""""

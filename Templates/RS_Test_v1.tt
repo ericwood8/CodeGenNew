@@ -49,7 +49,7 @@
 
         // the one column the update step changes: a free text column, else a bit column, else a whole number that has room to go up by one
         bool HasRoomToGrow(ColumnModel c) => c.IsIntegerColumn && !c.IsPrimaryKey && ForeignKeyParentRoute(c, out string _).Length == 0
-            && (Project.RangeFor(c) is not { } range || range.Max > long.Parse(ApiSampleValues.Value(c, Project, Model.TableName), CultureInfo.InvariantCulture));
+            && (Project.RangeFor(c) is not { } range || range.Max > long.Parse(c.ValidExample(Project, Model.TableName), CultureInfo.InvariantCulture));
         var changed = bodyColumns.FirstOrDefault(c => IsFreeText(c) && c.CharacterLength > 0)
             ?? bodyColumns.FirstOrDefault(c => c.IsBooleanColumn && !c.IsPrimaryKey)
             ?? bodyColumns.FirstOrDefault(HasRoomToGrow);
@@ -111,7 +111,7 @@ async fn a_log_table_is_read_and_never_written() {
     assert_eq!(api.get(&format!("{ROUTE}/{absent}")).await.status, StatusCode::NOT_FOUND);
 
 <#
-            if (QueuePlan.For(Model, Project) is null)
+            if (TableShapes.For(Model, Project).Queue is null)
             {
 #>
     assert_eq!(api.post(ROUTE, &json!({})).await.status, StatusCode::METHOD_NOT_ALLOWED, "no route adds a row");

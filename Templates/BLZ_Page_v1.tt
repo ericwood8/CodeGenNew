@@ -96,13 +96,13 @@
         // a Name and an IsActive column: the whole list is read (the API has no search and no paging), narrowed by a name box and an Active only check box on the page; no sort, no Columns list, no Clone
         bool nameActive = form.IsNameActive;
         bool logOnly = form.ReadOnly && !odata && !oneRow && !nameActive;   // a table in LogTables: no Add New, Actions column or editor
-        var queue = logOnly ? QueuePlan.For(Model, Project) : null;   // a work queue also shows the counts by status and a Retry button on a failed row
+        var queue = logOnly ? TableShapes.For(Model, Project).Queue : null;   // a work queue also shows the counts by status and a Retry button on a failed row
         string reload = oneRow || nameActive ? "LoadAsync()" : "LoadAsync(pageNumber)";
 
         bool usesMoneyBox = shown.Any(form.IsMoneyInput);
         // SoftDeleteTables and EffectiveDatedTables: a "Show deleted" dialog with Restore and a "Valid on" dialog (the list itself stays the paged grid)
-        bool softScreen = !oneRow && !logOnly && SoftDeletePlan.For(Model, Project) is not null;
-        bool validOnScreen = !oneRow && !logOnly && EffectiveDatePlan.For(Model, Project) is not null;
+        bool softScreen = !oneRow && !logOnly && TableShapes.For(Model, Project).SoftDelete is not null;
+        bool validOnScreen = !oneRow && !logOnly && TableShapes.For(Model, Project).Effective is not null;
 
         string pageClass = odata ? BlazorNames.ODataPageName(Model.TableName) : type + "Page";
         string route = odata && !Project.ODataReplacesScreens ? AngularNames.ODataRoute(Model.TableName) : ScreenNames.Route(Model.TableName);
@@ -594,7 +594,7 @@
             L("                    </table>");
             L("                    </div>");
             L("                }");
-            L($"                <button type=\"button\" @onclick=\"Add{ch.Var}\">Add {Labels.Words(ch.Grid.BaseName)}</button>");
+            L($"                <button type=\"button\" @onclick=\"Add{ch.Var}\">Add {ch.Grid.Words}</button>");
             L("            </fieldset>");
         }
         L("            <ValidationSummary />");
@@ -954,7 +954,7 @@
             L("            await LoadAsync(pageNumber);");
             L("            await LoadStatsAsync();");
             L("        }");
-            L($"        catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ message = \"Failed to retry the {Labels.Words(type).ToLowerInvariant()}.\"; }}");
+            L($"        catch (Exception ex) when (ex is ApiException or HttpRequestException) {{ message = \"Failed to retry the {form.Words}.\"; }}");
             L("    }");
         }
         }

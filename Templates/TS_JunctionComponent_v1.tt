@@ -188,7 +188,7 @@
     {
         string linksClass = JunctionPlan.AngularClass(Model.TableName);
         string linksStem = JunctionPlan.AngularStem(Model.TableName);
-        string anchorLabel = Labels.Words(BaseName(junction.AnchorRole));
+        string anchorLabel = junction.AnchorWords;
         string anchorTsType = anchorTs;
         var lh = new StringBuilder();
         void LH(string s = "") => lh.Append(s).Append('\n');

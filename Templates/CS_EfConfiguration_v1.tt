@@ -66,7 +66,7 @@
             }
             else if (c.IsMoneyColumn)
                 columnType = c.SqlType == SqlDbType.Money ? "money" : "smallmoney";
-            else if (c.SqlType == SqlDbType.Decimal && TextConversion.Of(c) is { } bits)
+            else if (c.SqlType == SqlDbType.Decimal && c.Conversion is { } bits)
                 chain.Add($".HasConversion({bits.Expression})");   // a MySQL BIT(64) column
             else if (c.SqlType == SqlDbType.Decimal)
             {
@@ -78,7 +78,7 @@
                 if (Model.Dialect == SqlDialect.PostgreSql && c.SqlTypeDeclaration is "json" or "jsonb")
                     columnType = c.SqlTypeDeclaration;
                 // an array, interval, range, geometric or spatial column: the entity holds its text, and the converter says how the database stores it
-                if (TextConversion.Of(c) is { } conversion)
+                if (c.Conversion is { } conversion)
                 {
                     columnType = conversion.ColumnType ?? columnType;
                     chain.Add($".HasConversion({conversion.Expression})");

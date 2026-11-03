@@ -15,11 +15,11 @@ public static class TenantTestPlan
 
     /// <summary> The tenant-owned tables with a plain CRUD API, in name order. </summary>
     public static IReadOnlyList<TenantOwned> Owned(DatabaseModel database, ProjectSettings project) =>
-        [.. TenantPlan.OwnedTables(database, project).Where(o => NameActivePlan.For(o.Table, project) is null && o.Table.HasCrudApiOfAnyKey(project) && o.Table.PrimaryKeyColumns.Count == 1)];
+        [.. TenantPlan.OwnedTables(database, project).Where(o => TableShapes.For(o.Table, project).NameActive is null && o.Table.HasCrudApiOfAnyKey(project) && o.Table.PrimaryKeyColumns.Count == 1)];
 
     /// <summary> The tenant-owned tables with a Name and an IsActive column, in name order. </summary>
     public static IReadOnlyList<TenantOwned> OwnedNamed(DatabaseModel database, ProjectSettings project) =>
-        [.. TenantPlan.OwnedTables(database, project).Where(o => NameActivePlan.For(o.Table, project) is not null && o.Table.PrimaryKeyColumns.Count == 1)];
+        [.. TenantPlan.OwnedTables(database, project).Where(o => TableShapes.For(o.Table, project).NameActive is not null && o.Table.PrimaryKeyColumns.Count == 1)];
 
     /// <summary> The key of the tenant table, which the tests need as a whole number. </summary>
     public static ColumnModel TenantKey(DatabaseModel database, ProjectSettings project) => TenantPlan.KeyOf(TenantPlan.TenantTableOf(database, project)!)!;
@@ -85,7 +85,7 @@ public static class TenantTestPlan
         var members = new List<BodyMember>();
         foreach (var c in ApiSampleValues.BodyColumns(table))
         {
-            string json = JsonNames.Camel(c.Name), sample = ApiSampleValues.Value(c, project, table.TableName);
+            string json = JsonNames.Camel(c.Name), sample = c.ValidExample(project, table.TableName);
             if (RustTestBodies.IsFreeText(table, c, project))
                 members.Add(new BodyMember(json, BodyKind.Text, ApiSampleValues.Text(c, project, table.TableName), Math.Max(c.CharacterLength, 0), null, null));
             else if (RustTestBodies.ParentKey(table, c, project) is { } fk)

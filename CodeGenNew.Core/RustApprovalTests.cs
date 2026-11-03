@@ -20,14 +20,13 @@ public static class RustApprovalTests
         string Str(string text) => "\"" + text.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
         string List(IReadOnlyList<string> statements) => string.Join("\n", statements.Select(s => "    " + RustTable.Raw(s) + ","));
         string text = Text.Replace("§OTHERTABLE", (seed.TenantSql is not null ? TenantCase : "") + (ApprovalTestSeed.HasOtherTablePerson(plan) ? OtherTableCase : ""));
-        foreach (var (token, value) in new (string, string)[]
+        text = TemplateText.FillAll(text, new (string, string)[]
         {
             ("§SETUP", List(seed.Setup)), ("§CLEANUP", List(seed.Cleanup)), ("§ROUTE", Str(RustTable.Of(seed.Table.Table, project).Route)), ("§ROW", seed.RowKey.ToString()),
             ("§ANN", ApprovalTestSeed.Requester), ("§BOB", ApprovalTestSeed.Approver), ("§CY", ApprovalTestSeed.AnyTableApprover), ("§DEE", ApprovalTestSeed.OtherTableApprover),
             ("§T_UNKNOWN", ApprovalWriter.RequesterUnknownType), ("§T_NOTAPPROVER", ApprovalWriter.NotApproverType), ("§T_FOUREYES", ApprovalWriter.FourEyesType),
             ("§W_NOTAPPROVER", Str(ApprovalWords.NotApprover)), ("§W_NOTREQUESTER", Str(ApprovalWords.NotRequester)), ("§W_FOUREYES", Str(ApprovalWords.FourEyes)), ("§W_ALREADY", Str(ApprovalWords.AlreadyWaiting))
-        }.OrderByDescending(v => v.Item1.Length))
-            text = text.Replace(token, value);
+        });
         return text + "\n";
     }
 

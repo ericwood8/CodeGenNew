@@ -10,7 +10,7 @@ public static class ValidationAttributes
     public static IReadOnlyList<string> Of(ColumnModel column, ProjectSettings project, string table)
     {
         var attributes = new List<string>();
-        string words = CSharpText.Escape(Labels.Words(column.Name, column.IsBooleanColumn));
+        string words = CSharpText.Escape(column.FlagWords);
         int chars = column.CharacterLength;
         bool isText = column.SqlType is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
         var rule = column.RuleOf(project, table);

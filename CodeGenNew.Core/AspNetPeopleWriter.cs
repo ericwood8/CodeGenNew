@@ -1,3 +1,5 @@
+using static CodeGenNew.Core.TemplateText;
+
 namespace CodeGenNew.Core;
 
 /// <summary> The members routes of the ASP.NET API (<c>GET</c>, <c>POST</c>, <c>PUT</c> and <c>DELETE</c> under <c>/api/auth/members</c>): who works in the caller's tenant and in which role. Only an administrator
@@ -35,13 +37,6 @@ public record MemberBody(int? PersonId, string? Role);
             ("§EXISTS_TYPE", ProblemTypes.MemberExists), ("§EXISTS_TITLE", PeopleWords.MemberExistsTitle), ("§EXISTS_DETAIL", PeopleWords.MemberExistsDetail),
             ("§SELF_TYPE", ProblemTypes.MemberSelf), ("§SELF_TITLE", PeopleWords.MemberSelfTitle), ("§SELF_DETAIL", PeopleWords.MemberSelfDetail));
         return text.Replace("§NAMEVALUE", name);
-    }
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
     }
 
     private const string MappingText = """

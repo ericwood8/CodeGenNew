@@ -5,7 +5,7 @@ namespace CodeGenNew.Core;
 /// <summary> The bUnit tests of the Blazor page of a log table (LogTables): it lists rows, so they check the heading, a row, that no button adds, changes or deletes one, and that Search sends the first and last day. </summary>
 public static class BlazorLogTests
 {
-    public static string Body(string type, BlazorTestPlan plan, string title, QueueTable? queue = null, ProjectSettings? project = null)
+    public static string Body(string type, BlazorTestPlan plan, string title, QueueShape? queue = null, ProjectSettings? project = null)
     {
         var row = plan.Row;
         var o = new StringBuilder();
@@ -23,7 +23,7 @@ public static class BlazorLogTests
         if (queue is not null)
         {
             string key = JsonNames.Camel(queue.Key.Name), status = JsonNames.Camel(queue.Status.Name);
-            string failedRow = "{ " + string.Join(", ", queue.Table.Columns.Select(c => c == queue.Key ? $"\"{key}\": 7" : c == queue.Status ? $"\"{status}\": \"{QueueStatus.Failed}\"" : $"\"{JsonNames.Camel(c.Name)}\": {ApiSampleValues.Value(c, project!, queue.Table.TableName)}")) + " }";
+            string failedRow = "{ " + string.Join(", ", queue.Table.Columns.Select(c => c == queue.Key ? $"\"{key}\": 7" : c == queue.Status ? $"\"{status}\": \"{QueueStatus.Failed}\"" : $"\"{JsonNames.Camel(c.Name)}\": {c.ValidExample(project!, queue.Table.TableName)}")) + " }";
             L($"    private const string FailedRow = \"\"\"{failedRow}\"\"\";");
             L("    private const string Stats = \"\"\"{ \"pending\": 2, \"claimed\": 1, \"done\": 5, \"failed\": 1, \"oldestPendingId\": 4, \"oldestPendingOn\": \"2026-10-26T08:12:00\" }\"\"\";");
             L();

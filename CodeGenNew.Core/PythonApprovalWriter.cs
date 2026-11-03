@@ -30,7 +30,7 @@ public static class PythonApprovalWriter
         foreach (var t in plan.Tables)
         {
             var main = PythonTable.Of(t.Table, project);
-            var owned = TenantPlan.HasApiTenancy(project) ? TenantPlan.OwnedBy(t.Table, project) : null;
+            var owned = TenantPlan.HasApiTenancy(project) ? TableShapes.For(t.Table, project).Tenant : null;
             tenanted |= owned is not null;
             var side = PythonTable.Of(t.Side, project);
             imports.Add($"from app.models.{main.Module} import {main.Class}");
@@ -44,7 +44,7 @@ public static class PythonApprovalWriter
             imports.Add("from app.routes.tenancy import only_tenant");
         string adminSelect = user.Admin is { } adminColumn ? $"{userTable.Class}.{Attr(user.Table, adminColumn)}" : "literal(False)";
         string text = Template;
-        foreach (var (token, value) in new (string, string)[]
+        text = TemplateText.FillAll(text, new (string, string)[]
         {
             ("§IMPORTS", string.Join("\n", imports)), ("§SPECS", specs.ToString().TrimEnd('\n')),
             ("§USER", userTable.Class), ("§UNAME", Attr(user.Table, user.UserName)), ("§MAYDECIDE", mayDecide), ("§SQLIMPORT", sqlImport), ("§UKEY", Attr(user.Table, user.Table.PrimaryKeyColumns[0])), ("§UFLAG", plan.Approvers is null ? $"{userTable.Class}.{Attr(user.Table, user.Role!)}" : "literal(False)"), ("§UADMIN", adminSelect),
@@ -55,8 +55,7 @@ public static class PythonApprovalWriter
             ("§W_MEANWHILE", PythonNames.Str(ApprovalWords.DecidedMeanwhile)), ("§W_JUSTNOW", PythonNames.Str(ApprovalWords.DecidedJustNow)),
             ("§PENDING", ApprovalStatus.Pending.ToString()), ("§APPROVED", ApprovalStatus.Approved.ToString()), ("§REJECTED", ApprovalStatus.Rejected.ToString()), ("§WITHDRAWN", ApprovalStatus.Withdrawn.ToString()),
             ("§FORBIDDEN", HttpStatus.Forbidden.ToString()), ("§CONFLICT", HttpStatus.Conflict.ToString()), ("§NOTFOUND", HttpStatus.NotFound.ToString())
-        }.OrderByDescending(v => v.Item1.Length))
-            text = text.Replace(token, value);
+        });
         return text;
     }
 

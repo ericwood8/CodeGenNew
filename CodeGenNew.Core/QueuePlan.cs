@@ -12,7 +12,7 @@ public static class QueueStatus
 }
 
 /// <summary> A work-queue table and the columns the routes use. <c>LastError</c> and <c>ClaimedBy</c> are optional; the others must exist. </summary>
-public sealed record QueueTable(TableModel Table, ColumnModel Key, ColumnModel Status, ColumnModel Retry, ColumnModel Created, ColumnModel Claimed, ColumnModel Processed, ColumnModel? ClaimedBy, ColumnModel? LastError)
+public sealed record QueueShape(TableModel Table, ColumnModel Key, ColumnModel Status, ColumnModel Retry, ColumnModel Created, ColumnModel Claimed, ColumnModel Processed, ColumnModel? ClaimedBy, ColumnModel? LastError)
 {
     /// <summary> The columns a producer supplies when it puts a row in the queue: those that cannot be NULL, without the ones the queue itself sets (status, retries, the stamps, the worker, the error) and a key the database numbers. </summary>
     public IReadOnlyList<ColumnModel> Payload => ApiSampleValues.BodyColumns(Table).Where(c => !IsManaged(c) && !(c.IsPrimaryKey && c.IsIdentity)).ToList();
@@ -41,7 +41,7 @@ public static class QueuePlan
 
     public static bool IsListed(string table, ProjectSettings project) => Entries(project).Any(e => e.Table.EqualsIgnoreCase(table));
 
-    public static QueueTable? For(TableModel table, ProjectSettings project) => IsListed(table.TableName, project) && Resolve(table, project, out _) is { } queue ? queue : null;
+    public static QueueShape? For(TableModel table, ProjectSettings project) => IsListed(table.TableName, project) && Resolve(table, project, out _) is { } queue ? queue : null;
 
     /// <summary> Why a listed table cannot be a work queue, or null when it can (or is not listed). </summary>
     public static string? Problem(TableModel table, ProjectSettings project)
@@ -54,7 +54,7 @@ public static class QueuePlan
         return problem;
     }
 
-    private static QueueTable? Resolve(TableModel table, ProjectSettings project, out string? problem)
+    private static QueueShape? Resolve(TableModel table, ProjectSettings project, out string? problem)
     {
         problem = null;
         var entry = Entries(project).First(e => e.Table.EqualsIgnoreCase(table.TableName));
@@ -92,6 +92,6 @@ public static class QueuePlan
         }
         var claimedBy = table.Columns.FirstOrDefault(c => c.IsStringColumn && ClaimedByNames.Any(n => c.Name.EqualsIgnoreCase(n)));
         var lastError = table.Columns.FirstOrDefault(c => c.IsStringColumn && ErrorNames.Any(n => c.Name.EqualsIgnoreCase(n)));
-        return new QueueTable(table, key, status!, retry!, created!, claimed!, processed!, claimedBy, lastError);
+        return new QueueShape(table, key, status!, retry!, created!, claimed!, processed!, claimedBy, lastError);
     }
 }

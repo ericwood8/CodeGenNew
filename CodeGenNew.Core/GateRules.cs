@@ -91,7 +91,7 @@ public sealed record ColumnGuard(TableModel Table, ColumnModel Column, TableMode
     public string Description => $"only a person with {UserTable.TableName}.{By.Name} (or an administrator) changes it";
 
     /// <summary> The sentence of the 403 answer. </summary>
-    public string RefusalText => $"Only a person with {Labels.Words(By.Name)} set on {Labels.Words(UserTable.TableName)} (or an administrator) may change {Labels.Words(Column.Name)}.";
+    public string RefusalText => $"Only a person with {By.CaseWords} set on {Labels.Words(UserTable.TableName)} (or an administrator) may change {Column.CaseWords}.";
 
     /// <summary> The user table's column that holds the sign-in name the guard looks the caller up by. </summary>
     public ColumnModel UserNameColumn(ProjectSettings project) => CodeGenNew.Core.UserTable.ResolveTable(UserTable, project).Plan!.UserName;
@@ -541,7 +541,7 @@ public static class GateCode
     /// <summary> The column as a message says it: <c>Invoice Status</c> for <c>InvoiceStatusId</c> (a key reads as the thing it points at). </summary>
     public static string Words(ColumnModel column)
     {
-        string words = Labels.Words(column.Name);
+        string words = column.CaseWords;
         return words.EndsWith(" Id", StringComparison.Ordinal) && words.Length > 3 ? words[..^3] : words;
     }
 

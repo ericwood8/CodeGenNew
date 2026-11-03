@@ -1,3 +1,5 @@
+using static CodeGenNew.Core.TemplateText;
+
 namespace CodeGenNew.Core;
 
 /// <summary> The sentences of the members page, the screen where an administrator says which people work in the current tenant and in which role. </summary>
@@ -29,7 +31,7 @@ public static class DesktopMembersCode
     /// <summary> The columns of the user table that name a person for a list, in the order they are looked for. </summary>
     private static readonly string[] NameColumns = ["Name", "FullName", "DisplayName", "PersonName", "EmployeeName", "Title"];
 
-    public static string Xaml(string viewNamespace, bool hasRole) => Fill(XamlText, ("§NS", viewNamespace),
+    public static string Xaml(string viewNamespace, bool hasRole) => FillAll(XamlText, ("§NS", viewNamespace),
         ("§ROLECOLUMN", hasRole ? RoleColumnXaml : ""), ("§ROLECELL", hasRole ? RoleCellXaml : ""), ("§ACTIONCOLUMN", hasRole ? "2" : "1"), ("§ROLEBUTTON", hasRole ? "<Button Content=\"Edit role\" Tag=\"{x:Bind PersonId}\" Click=\"OnEditRoleClick\" />" : ""),
         ("§ROLEGRIDCOLUMN", hasRole ? "<ColumnDefinition Width=\"200\" />" : ""));
 
@@ -44,25 +46,18 @@ public static class DesktopMembersCode
             : $"({(nameColumn.IsNullable ? $"t.{nameColumn.CSharpName()} ?? \"\"" : $"t.{nameColumn.CSharpName()}")}) + \" (\" + t.{user.UserName.CSharpName()} + \")\"";
         string seatKey = SubscriptionPlan.LimitedTables(database, project).FirstOrDefault(l => l.IsMembership)?.LimitKey ?? "";
         bool seats = DesktopSubscriptionCode.Applies(database, project) && seatKey.Length > 0;   // the plan limits the people of a tenant: the Add member dialog checks it
-        return Fill(CodeText, ("§NS", viewNamespace), ("§CTX", contextType), ("§USINGS", string.Concat(usings.Select(u => $"using {u};\n")) + (seats ? $"using {project.RepoNamespace ?? "MyApp.Common.Repositories"};\n" : "")),
-            ("§SEATCHECK", seats ? Fill(SeatCheckText, ("§SEATKEY", CSharpText.Quote(seatKey))) : ""),
+        return FillAll(CodeText, ("§NS", viewNamespace), ("§CTX", contextType), ("§USINGS", string.Concat(usings.Select(u => $"using {u};\n")) + (seats ? $"using {project.RepoNamespace ?? "MyApp.Common.Repositories"};\n" : "")),
+            ("§SEATCHECK", seats ? FillAll(SeatCheckText, ("§SEATKEY", CSharpText.Quote(seatKey))) : ""),
             ("§U", user.Table.TableName), ("§UKEY", userKey.CSharpName()), ("§ULOGIN", user.UserName.CSharpName()), ("§PERSONTEXT", personText),
             ("§MROLEVALUE", membership.Role is null ? "(string?)null" : $"m.{membership.Role.CSharpName()}"),
             ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
-            ("§ROLEEDIT", membership.Role is null ? "" : Fill(RoleEditText, ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
+            ("§ROLEEDIT", membership.Role is null ? "" : FillAll(RoleEditText, ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
                 ("§MROLE", membership.Role.CSharpName()), ("§ROLELABEL", MemberWords.RoleLabel), ("§ROLEHINT", MemberWords.RoleHint))),
             ("§ROLEASSIGN", membership.Role is null ? "" : $", {membership.Role.CSharpName()} = role"),
             ("§ROLEREAD", membership.Role is null ? "" : "\n        string? role = string.IsNullOrWhiteSpace(roleBox.Text) ? null : roleBox.Text.Trim();"),
             ("§ROLEBOX", membership.Role is null ? "" : "\n        var roleBox = new TextBox { Header = \"" + MemberWords.RoleLabel + "\", PlaceholderText = \"" + MemberWords.RoleHint + "\" };"),
             ("§ROLEPANEL", membership.Role is null ? "" : ", roleBox"),
             ("§NOTENANT", MemberWords.NoTenant), ("§NOBODY", MemberWords.NobodyToAdd), ("§SELF", MemberWords.CannotRemoveSelf), ("§PERSONLABEL", MemberWords.PersonLabel));
-    }
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
     }
 
     // the plan limits the people of a tenant (a limit on the membership table): a paused subscription or a full plan refuses the dialog before it opens

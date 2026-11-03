@@ -13,7 +13,7 @@
     // The router also has the enqueue POST; the table's own routes are the read-only ones of a log table (RS_Routes).
     // Full notes: Docs/TemplateNotes/API_Queue_v1.md
     // ==========================================================================================
-    var tables = Database.Tables.Select(t => QueuePlan.For(t, Project)).OfType<QueueTable>()
+    var tables = Database.Tables.Select(t => TableShapes.For(t, Project).Queue).OfType<QueueShape>()
         .OrderBy(q => q.Table.TableName, StringComparer.OrdinalIgnoreCase).ToList();
     var problems = Database.Tables.Select(t => QueuePlan.Problem(t, Project)).Where(p => p is not null).ToList();
     problems.AddRange(QueuePlan.Entries(Project).Where(e => !Database.Tables.Any(t => t.TableName.EqualsIgnoreCase(e.Table)))

@@ -1,3 +1,5 @@
+using static CodeGenNew.Core.TemplateText;
+
 namespace CodeGenNew.Core;
 
 /// <summary> The Rust (axum, sqlx) counterpart of the tree part of <see cref="RowShapeWriter"/>: the checks and routes of a table listed in <c>TreeTables</c>, written into the table's own router (RS_Routes). </summary>
@@ -14,7 +16,7 @@ public static class RustTreeWriter
         string key = di.Quote(tree.Key.DbName), parent = di.Quote(tree.Parent.DbName);
         string text = tree.Text is null ? "''" : di.Quote(tree.Text.DbName);
         string one = di.Placeholder(1), two = di.Placeholder(2);
-        return Fill(Text,
+        return FillAll(Text,
             ("§PARENT_SQL", RustTable.Raw($"SELECT {parent} FROM {table} WHERE {key} = {one}{liveAnd}")),
             ("§COUNT_SQL", RustTable.Raw($"SELECT COUNT(*) FROM {table} WHERE {parent} = {one}{liveAnd}")),
             ("§PROMOTE_SQL", RustTable.Raw($"UPDATE {table} SET {parent} = {one} WHERE {parent} = {two}{liveAnd}")),
@@ -24,13 +26,6 @@ public static class RustTreeWriter
             ("§TEXTVALUE", hasText ? "text.unwrap_or_default()" : "{ let _ = text; id.to_string() }"),
             ("§CYCLE", RowShapeWords.TreeCycleType), ("§DEEP", RowShapeWords.TreeTooDeepType), ("§CHILDREN", RowShapeWords.TreeHasChildrenType),
             ("§W_OWN", RowShapeWords.OwnParent), ("§W_UNDER", RowShapeWords.UnderItself), ("§W_CHILDREN", RowShapeWords.HasChildren), ("§W_DEEP", RowShapeWords.TooDeep(tree.MaxDepth)));
-    }
-
-    private static string Fill(string text, params (string Token, string Value)[] values)
-    {
-        foreach (var (token, value) in values.OrderByDescending(v => v.Token.Length))
-            text = text.Replace(token, value);
-        return text;
     }
 
     private const string Text = """"

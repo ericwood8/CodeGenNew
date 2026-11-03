@@ -10,7 +10,7 @@ public static class DesktopJunctionPage
     public static string Xaml(TableModel junctionTable, string viewNamespace)
     {
         var junction = junctionTable.Junction!;
-        string anchor = Labels.Words(BlazorNames.TypeName(junction.AnchorRole));
+        string anchor = junction.AnchorWords;
         return $$"""
 <Page
     x:Class="{{viewNamespace}}.{{PageName(junctionTable.TableName)}}"
@@ -46,7 +46,7 @@ public static class DesktopJunctionPage
         var junction = junctionTable.Junction!;
         string page = PageName(junctionTable.TableName);
         string anchorType = junction.AnchorCs;
-        string anchor = Labels.Words(BlazorNames.TypeName(junction.AnchorRole)).ToLowerInvariant();
+        string anchor = junction.AnchorWords.ToLowerInvariant();
         string usingLines = string.Concat(usings.Select(u => $"using {u};\n"));
         return $$"""
 {{usingLines}}using Microsoft.UI.Xaml;

@@ -10,7 +10,7 @@ public static class DesktopApprovalTests
     public static string SampleJson(TableModel table, ProjectSettings project, IReadOnlyDictionary<string, string>? overrides = null)
     {
         var members = ApiSampleValues.BodyColumns(table).Where(c => !c.IsRowVersionColumn && !(c.IsPrimaryKey && c.IsIntegerColumn))
-            .Select(c => ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + (overrides is not null && overrides.TryGetValue(c.Name, out var v) ? v : ApiSampleValues.Value(c, project, table.TableName)));
+            .Select(c => ApiSampleValues.Json(JsonNames.Camel(c.Name)) + ": " + (overrides is not null && overrides.TryGetValue(c.Name, out var v) ? v : c.ValidExample(project, table.TableName)));
         return "{ " + string.Join(", ", members) + " }";
     }
 
