@@ -43,9 +43,9 @@
         Error(logProblem);
     else if ((TreePlan.Problem(Model, Project) ?? SoftDeletePlan.Problem(Model, Project) ?? EffectiveDatePlan.Problem(Model, Project)) is { } shapeProblem)
         Error(shapeProblem);
-    else if (plan.IsTenantTable && (plan.HasGates || UserTable.PlanOf(Model, Project) is not null || RowShapePlan.Has(Model, Project)))
+    else if (plan.IsTenantTable && (plan.HasGates || TableShapes.For(Model, Project).User is not null || RowShapePlan.Has(Model, Project)))
         Error($"{Model.TableName} is the TenantTable: it takes no create and no delete, so it cannot also have gates, a row shape or be the user table.");
-    else if (RowShapePlan.Has(Model, Project) && UserTable.PlanOf(Model, Project) is not null)
+    else if (RowShapePlan.Has(Model, Project) && TableShapes.For(Model, Project).User is not null)
         Error($"TreeTables, SoftDeleteTables and EffectiveDatedTables cannot name the user table ({Model.TableName}): its API already checks every save and delete.");
 
     bool dtos = plan.UsesDtos;

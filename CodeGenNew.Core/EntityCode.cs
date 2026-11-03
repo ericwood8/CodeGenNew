@@ -28,7 +28,7 @@ public static class EntityCode
         var navByColumn = navigations.ToDictionary(n => n.Column.Name, n => n, StringComparer.OrdinalIgnoreCase);
 
         // the user table's password hash is never written to an answer or read from a request body
-        string? hashColumn = UserTable.PlanOf(model, project)?.PasswordHash.Name;
+        string? hashColumn = TableShapes.For(model, project).User?.PasswordHash.Name;
 
         var body = new StringBuilder();
         void B(string s = "") => body.Append(s).Append('\n');

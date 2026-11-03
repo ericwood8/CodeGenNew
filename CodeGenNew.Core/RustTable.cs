@@ -66,7 +66,7 @@ public sealed class RustTable
         Skipped = skipped;
         Key = fields.First(f => f.Column.IsPrimaryKey);
         // the user table's password hash is read into the struct (the sign-in needs it) but is in no JSON, no INSERT, no UPDATE, no filter, no sort and no clone: only set-password writes it
-        string? hashName = UserTable.PlanOf(model, project)?.PasswordHash.Name;
+        string? hashName = TableShapes.For(model, project).User?.PasswordHash.Name;
         HashField = hashName is null ? null : fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(hashName));
         var fieldOf = new Dictionary<ColumnModel, RustField>();
         foreach (var field in fields.Where(f => f != HashField))

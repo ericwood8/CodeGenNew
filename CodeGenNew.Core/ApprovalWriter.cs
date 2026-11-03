@@ -23,7 +23,7 @@ public static class ApprovalWriter
         foreach (string u in usings)
             o.Append($"using {u};\n");
         o.Append("using System.Security.Claims;\nusing Microsoft.EntityFrameworkCore;\n\n");
-        o.Append(Fill(Shared, ("§CTX", contextType), ("§U", user.Table.TableName), ("§UN", user.UserName.CSharpName()),
+        o.Append(FillAll(Shared, ("§CTX", contextType), ("§U", user.Table.TableName), ("§UN", user.UserName.CSharpName()),
             ("§MAYDECIDE", MayDecideMethod(plan)), ("§KEYTYPE", user.Table.PrimaryKeyColumns[0].CSharpBase()), ("§UK", user.Table.PrimaryKeyColumns[0].CSharpName()), ("§UF", flagTest), ("§UA", adminTest), ("§PENDING", ApprovalStatus.Pending.ToString()), ("§APPROVED", ApprovalStatus.Approved.ToString()),
             ("§REJECTED", ApprovalStatus.Rejected.ToString()), ("§WITHDRAWN", ApprovalStatus.Withdrawn.ToString()),
             ("§W_UNKNOWN", ApprovalWords.RequesterUnknown), ("§W_NOTAPPROVER", ApprovalWords.NotApprover), ("§W_NOTREQUESTER", ApprovalWords.NotRequester), ("§W_FOUREYES", ApprovalWords.FourEyes), ("§W_ALREADY", ApprovalWords.AlreadyWaiting), ("§W_MEANWHILE", ApprovalWords.DecidedMeanwhile), ("§W_JUSTNOW", ApprovalWords.DecidedJustNow), ("§W_NOTHING", ApprovalWords.NothingWaiting), ("§T_UNKNOWN", RequesterUnknownType), ("§T_NOTAPPROVER", NotApproverType), ("§T_FOUREYES", FourEyesType), ("§T_STATE", WrongStateType), ("§T_REFUSED", RefusedType)));
@@ -54,7 +54,7 @@ public static class ApprovalWriter
     private static string PerTable(ApprovalTable t, string contextType, bool tenantOwned)
     {
         string keyType = t.Key.CSharpBase();
-        return Fill(Table,
+        return FillAll(Table,
             ("§CYCLES", tenantOwned ? CyclesOfVisibleRows : ""), ("§SIDE", tenantOwned ? "Cycles(context)" : "context.Set<§A>()"),
             ("§CTX", contextType), ("§T", t.Table.TableName), ("§A", t.Side.TableName), ("§R", ApiRequests.Route(t.Table)), ("§KT", keyType), ("§K", t.Key.CSharpName()),
             ("§L", t.Link.CSharpName()), ("§ST", t.Status.CSharpName()), ("§RV", t.Revision.CSharpName()), ("§ID", t.SideKey.CSharpName()), ("§RS", t.Reason.CSharpName()),

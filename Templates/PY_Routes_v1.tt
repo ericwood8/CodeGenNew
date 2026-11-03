@@ -37,9 +37,9 @@
 
     // ApiAuth: who owns a row, and what the user table guards
     bool auth = Project.ApiAuth;
-    var ownerColumn = auth ? OwnedTable.OwnerColumn(Model, Project) : null;
-    var ownerLink = auth ? OwnedTable.Through(Model, Project) : null;
-    var userPlan = auth ? UserTable.PlanOf(Model, Project) : null;
+    var ownerColumn = auth ? TableShapes.For(Model, Project).Owner : null;
+    var ownerLink = auth ? TableShapes.For(Model, Project).OwnerThrough : null;
+    var userPlan = auth ? TableShapes.For(Model, Project).User : null;
     // a table with a Name and an IsActive column (NameActivePlan): the list is by name, GET active and GET {name} are added, a name is trimmed, may not be empty and may not be that of another active row
     var nameActive = TableShapes.For(Model, Project).NameActive;
     string idPath = nameActive is null ? "{id}" : "{id:int}";   // a name in that place is the start of a name, not a key

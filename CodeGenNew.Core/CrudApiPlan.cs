@@ -53,10 +53,10 @@ public sealed class CrudApiPlan
         ReadRoles = WriteRolePlan.ReadFor(project, model);
 
         // ApiAuth with OwnedTables: a caller reaches only the rows of the owners the IOwnerScope allows (the owner column; a Name and IsActive table is never scoped)
-        OwnerColumn = !NameActive ? OwnedTable.OwnerColumn(model, project) : null;
+        OwnerColumn = !NameActive ? TableShapes.For(model, project).Owner : null;
         OwnerUnusable = !NameActive && OwnedTable.IsListedButUnusable(model, project);
         // a table with no owner column of its own, hanging off an owned table (the detail rows of a time sheet), belongs to the owner of its parent row
-        OwnerLink = !NameActive ? OwnedTable.Through(model, project) : null;
+        OwnerLink = !NameActive ? TableShapes.For(model, project).OwnerThrough : null;
 
         // EditableChildren: the child tables a form of this table saves in the same request (EditableChild, the one rule the Angular screen asks too)
         EditableChildren = EditableChild.Of(model, project);
@@ -96,7 +96,7 @@ public sealed class CrudApiPlan
 
         // The user table (UserTable with ApiAuth): its API never sends or takes the password hash, lets only an administrator change the administrator and role columns, keeps a sign-in name unique
         // and keeps the last administrator (UserTable, API_UserDirectory).
-        UserPlan = UserTable.PlanOf(model, project);
+        UserPlan = TableShapes.For(model, project).User;
         UserAdmin = UserPlan?.Admin;
         UserRole = UserPlan?.Role;
         UserGuarded = new[] { UserAdmin, UserRole }.Where(c => c is not null).Select(c => c!).ToList();

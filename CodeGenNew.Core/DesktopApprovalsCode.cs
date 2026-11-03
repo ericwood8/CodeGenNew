@@ -19,7 +19,7 @@ public static class DesktopApprovalsCode
     {
         var o = new StringBuilder();
         o.Append($"namespace {servicesNamespace};\n\n");
-        o.Append(Fill(SupportText, ("§NONE", ApprovalWords.NoSuchRow), ("§PANELSTATUS", ApprovalScreens.PanelStatusCSharp())));
+        o.Append(FillAll(SupportText, ("§NONE", ApprovalWords.NoSuchRow), ("§PANELSTATUS", ApprovalScreens.PanelStatusCSharp())));
         return o.ToString();
     }
 
@@ -35,10 +35,10 @@ public static class DesktopApprovalsCode
         string.Join(",\n", tables.Select(t => $"        new(\"{t.Table}\", \"{t.Label}\", \"{t.Segment}\")"));
 
     public static string Client(string servicesNamespace, IReadOnlyList<ApprovalScreenTable> tables) =>
-        Fill(ClientText, ("§NS", servicesNamespace), ("§TABLES", TablesArray(tables)));
+        FillAll(ClientText, ("§NS", servicesNamespace), ("§TABLES", TablesArray(tables)));
 
     public static string Page(string viewNamespace, string servicesNamespace) =>
-        Fill(PageText, ("§NS", viewNamespace), ("§SERVICES", servicesNamespace),
+        FillAll(PageText, ("§NS", viewNamespace), ("§SERVICES", servicesNamespace),
             ("§TITLE", ApprovalWords.Title), ("§WAITING", ApprovalWords.WaitingHeading), ("§NONEWAITING", ApprovalWords.NoneWaiting), ("§ROWHEADING", ApprovalWords.RowHeading),
             ("§ROWLABEL", ApprovalWords.RowLabel), ("§REASONLABEL", ApprovalWords.ReasonLabel), ("§NOTELABEL", ApprovalWords.NoteLabel), ("§REQUESTBUTTON", ApprovalWords.Request),
             ("§WITHDRAWBUTTON", ApprovalWords.Withdraw), ("§APPROVEBUTTON", ApprovalWords.Approve), ("§REJECTBUTTON", ApprovalWords.Reject), ("§HISTORYBUTTON", ApprovalWords.History),
@@ -57,7 +57,7 @@ public static class DesktopApprovalsCode
         o.Append($"namespace {servicesNamespace};\n\n");
         if (includeCaller)
             o.Append(CallerClass());
-        o.Append(Fill(ServiceHead, ("§CTX", contextType), ("§U", user.Table.TableName), ("§UN", user.UserName.CSharpName()), ("§MAYDECIDE", ApprovalWriter.MayDecideMethod(plan)), ("§KEYTYPE", user.Table.PrimaryKeyColumns[0].CSharpBase()), ("§UK", user.Table.PrimaryKeyColumns[0].CSharpName()), ("§UF", plan.Approvers is null ? $"u.{user.Role!.CSharpName()} == true" : "false"),
+        o.Append(FillAll(ServiceHead, ("§CTX", contextType), ("§U", user.Table.TableName), ("§UN", user.UserName.CSharpName()), ("§MAYDECIDE", ApprovalWriter.MayDecideMethod(plan)), ("§KEYTYPE", user.Table.PrimaryKeyColumns[0].CSharpBase()), ("§UK", user.Table.PrimaryKeyColumns[0].CSharpName()), ("§UF", plan.Approvers is null ? $"u.{user.Role!.CSharpName()} == true" : "false"),
             ("§UA", user.Admin is { } admin ? $"u.{admin.CSharpName()} == true" : "false"), ("§W_UNKNOWN", ApprovalWords.RequesterUnknown), ("§W_NOTAPPROVER", ApprovalWords.NotApprover)));
         foreach (var t in plan.Tables)
             o.Append(PerTable(t, contextType, project is not null && TenantPlan.HasApiTenancy(project) && TableShapes.For(t.Table, project).Tenant is not null));
@@ -79,7 +79,7 @@ public static class DesktopApprovalsCode
     private static string PerTable(ApprovalTable t, string contextType, bool tenantOwned)
     {
         string Now(ColumnModel c) => c.SqlType == System.Data.SqlDbType.DateTimeOffset ? "DateTimeOffset.Now" : "DateTime.Now";
-        return Fill(TableText,
+        return FillAll(TableText,
             ("§CYCLES", tenantOwned ? CyclesOfVisibleRows : ""), ("§SIDE", tenantOwned ? "Cycles(context)" : "context.Set<§A>()"),
             ("§CTX", contextType), ("§T", t.Table.TableName), ("§A", t.Side.TableName), ("§KT", t.Key.CSharpBase()), ("§K", t.Key.CSharpName()),
             ("§L", t.Link.CSharpName()), ("§ST", t.Status.CSharpName()), ("§RV", t.Revision.CSharpName()), ("§ID", t.SideKey.CSharpName()), ("§RS", t.Reason.CSharpName()),

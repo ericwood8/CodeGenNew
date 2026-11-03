@@ -55,7 +55,7 @@
         meaningful = Model.PrimaryKeyColumns.ToList();
     var display = columns.Where(c => c.IsDisplayColumn).OrderBy(c => c.DisplayRank).FirstOrDefault() ?? columns.FirstOrDefault(c => BaseType(c) == "string") ?? Model.PrimaryKeyColumns.FirstOrDefault() ?? columns[0];
     string className = Model.TableName + "Dto";
-    string? hashColumn = UserTable.PlanOf(Model, Project)?.PasswordHash.Name;
+    string? hashColumn = TableShapes.For(Model, Project).User?.PasswordHash.Name;
 
     var o = new StringBuilder();
     void L(string s = "") => o.Append(s).Append('\n');

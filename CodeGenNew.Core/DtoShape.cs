@@ -16,7 +16,7 @@ public static class DtoShape
     public static List<ColumnModel> InputColumns(TableModel table, ProjectSettings? project = null)
     {
         // the user table's password hash is set by the set-password command only
-        string? hash = project is null ? null : UserTable.PlanOf(table, project)?.PasswordHash.Name;
+        string? hash = project is null ? null : TableShapes.For(table, project).User?.PasswordHash.Name;
         return table.Columns.OrderBy(c => c.OrdinalPosition)
             .Where(c => hash is null || !c.Name.EqualsIgnoreCase(hash))
             .Where(c => !c.IsComputed && !c.IsRowVersionColumn

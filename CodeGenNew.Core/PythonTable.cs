@@ -49,7 +49,7 @@ public sealed class PythonTable
         Skipped = skipped;
         Key = fields.First(f => f.Column.IsPrimaryKey);
         // the user table's password hash is in the model (the sign-in reads it) and in no schema: no answer shows it and no body sets it
-        string? hashName = UserTable.PlanOf(model, project)?.PasswordHash.Name;
+        string? hashName = TableShapes.For(model, project).User?.PasswordHash.Name;
         HashField = hashName is null ? null : fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(hashName));
         SchemaFields = fields.Where(f => f != HashField).ToList();
         Written = SchemaFields.Where(f => !f.Column.IsIdentity && !f.Column.IsComputed).ToList();

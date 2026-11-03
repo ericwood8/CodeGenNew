@@ -19,7 +19,7 @@ public record MemberCandidate(int Id, string Name);
 public record MemberBody(int? PersonId, string? Role);
 """;
 
-    public static string Mappings(PeoplePlan plan) => Fill(MappingText, ("§ROLEMAP", plan.Membership!.Role is null ? "" : RoleMapping));
+    public static string Mappings(PeoplePlan plan) => FillAll(MappingText, ("§ROLEMAP", plan.Membership!.Role is null ? "" : RoleMapping));
 
     public static string Handlers(PeoplePlan plan, string contextType)
     {
@@ -30,7 +30,7 @@ public record MemberBody(int? PersonId, string? Role);
         string text = Fill(HandlersText, ("§CTX", contextType), ("§U", plan.User.Table.TableName), ("§UKEY", plan.Key.CSharpName()), ("§ULOGIN", plan.User.UserName.CSharpName()), ("§UNAME", nameNullable),
             ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
             ("§MROLEVALUE", membership.Role is null ? "(string?)null" : $"m.{roleProperty}"), ("§MROLEASSIGN", membership.Role is null ? "" : $", {roleProperty} = (body.Role ?? \"\").Trim() is {{ Length: > 0 }} role ? role : null"),
-            ("§ROLEHANDLER", membership.Role is null ? "" : Fill(RoleHandler, ("§CTX", contextType), ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()), ("§MROLE", roleProperty))),
+            ("§ROLEHANDLER", membership.Role is null ? "" : FillAll(RoleHandler, ("§CTX", contextType), ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()), ("§MROLE", roleProperty))),
             ("§FORBIDDEN", HttpStatus.Forbidden.ToString()), ("§CONFLICT", HttpStatus.Conflict.ToString()),
             ("§ADMINS_TYPE", ProblemTypes.RoleNotAllowed), ("§ADMINS_TITLE", PeopleWords.MembersAdminsOnlyTitle), ("§ADMINS_DETAIL", PeopleWords.MembersAdminsOnlyDetail),
             ("§NOTENANT_TYPE", TenantWords.NoTenantType), ("§NOTENANT_TEXT", TenantWords.NoTenant),

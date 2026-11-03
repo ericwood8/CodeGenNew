@@ -39,7 +39,7 @@ public static class DesktopSignInCode
             o.Append($"using {u};\n");
         o.Append($"using System.Security.Cryptography;\nusing Microsoft.EntityFrameworkCore;\n\nnamespace {ns};\n\n");
         string platform = $"\n{{\n    /// <summary> A platform administrator: the administrator role, working in no tenant. </summary>\n    public bool IsPlatform => TenantId is null && Role == {CSharpText.Quote(project.AuthAdminRole)};\n}}";
-        o.Append(Fill(User, ("§TENANTDOC", tenants ? ", the tenant they work in and their own role (a membership of the tenant may replace the role)" : ""),
+        o.Append(FillAll(User, ("§TENANTDOC", tenants ? ", the tenant they work in and their own role (a membership of the tenant may replace the role)" : ""),
             ("§TENANT", tenants ? ", int? TenantId, string? OwnRole" : ""), ("§BODY", tenants ? platform : ";")));
         o.Append(SessionText);
         string firstText = FirstPersonMethods(database, project, contextType);
@@ -47,26 +47,26 @@ public static class DesktopSignInCode
         if (tenants)
         {
             string activeJoin = active is null ? "" : $".Where(t => t.{active!.CSharpName()})";
-            o.Append(Fill(Choice));
+            o.Append(FillAll(Choice));
             string memberText = membership is not null
-                ? Fill(Members, ("§CTX", contextType), ("§U", plan.Table.TableName), ("§UNAME", plan.UserName.CSharpName()),
+                ? FillAll(Members, ("§CTX", contextType), ("§U", plan.Table.TableName), ("§UNAME", plan.UserName.CSharpName()),
                     ("§UKEY", plan.Table.PrimaryKeyColumns[0].CSharpName()), ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
                     ("§MROLE", membership.Role is null ? "(string?)null" : $"m.{membership.Role.CSharpName()}"), ("§TT", tenantTable!.TableName), ("§TKEY", tenantKey!.CSharpName()),
                     ("§ACTIVEJOIN", activeJoin), ("§TEXT", TenantPlan.TextExpression(tenantTable!, tenantKey!)),
                     ("§SOFTWHERE", TenantPlan.DeletedFlagOf(tenantTable!) is { } deleted ? $".Where(t => !t.{deleted.CSharpName()})" : ""))
                 : "";
             tenantLines = membership is not null ? SignInMember : SignInOwn;
-            o.Append(Fill(Problems));
+            o.Append(FillAll(Problems));
             o.Append(Fill(SignIn, ("§CTX", contextType), ("§U", plan.Table.TableName), ("§UNAME", plan.UserName.CSharpName()), ("§UHASH", plan.PasswordHash.CSharpName()),
                                 ("§UROLE", plan.Role == null ? "(string?)null" : "u." + plan.Role.CSharpName()), ("§UADMIN", plan.Admin == null ? "" : $"                Admin = u.{plan.Admin.CSharpName()},\n"),
                 ("§UOWNER", plan.Owner == null ? "(int?)null" : "u." + plan.Owner.CSharpName()), ("§ROLE", roleExpression), ("§OWNER", ownerExpression),
-                ("§TENANTLINES", tenantLines), ("§TENANTSELECT", userOwned is null || membership is not null ? "" : Fill(OwnSelect, ("§UTENANT", userOwned.Column.CSharpName()),
+                ("§TENANTLINES", tenantLines), ("§TENANTSELECT", userOwned is null || membership is not null ? "" : FillAll(OwnSelect, ("§UTENANT", userOwned.Column.CSharpName()),
                     ("§ACTIVETEST", active is null ? "" : $" && context.Set<{tenantTable!.TableName}>().IgnoreQueryFilters().Any(t => t.{tenantKey!.CSharpName()} == u.{userOwned.Column.CSharpName()} && t.{active.CSharpName()})"))),
                 ("§MEMBERS", memberText), ("§SWITCH", membership is null ? "" : SwitchText), ("§TENANTRESULT", ", tenant, ownRole"), ("§TENANTPARAM", ", int? tenantId = null"), ("§FIRST", firstText)));
         }
         else
         {
-            o.Append(Fill(Problems));
+            o.Append(FillAll(Problems));
             o.Append(Fill(SignIn, ("§CTX", contextType), ("§U", plan.Table.TableName), ("§UNAME", plan.UserName.CSharpName()), ("§UHASH", plan.PasswordHash.CSharpName()),
                 ("§UROLE", plan.Role == null ? "(string?)null" : "u." + plan.Role.CSharpName()), ("§UADMIN", plan.Admin == null ? "" : $"                Admin = u.{plan.Admin.CSharpName()},\n"),
                 ("§UOWNER", plan.Owner == null ? "(int?)null" : "u." + plan.Owner.CSharpName()), ("§ROLE", roleExpression), ("§OWNER", ownerExpression),
@@ -103,7 +103,7 @@ public static class DesktopSignInCode
             ("§ACTIVEJOIN", ActiveWhere(tenantTable.IsActiveColumn)), ("§SOFTWHERE", TenantPlan.DeletedFlagOf(tenantTable) is { } deleted ? $".Where(t => !t.{deleted.CSharpName()})" : ""),
             ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
             ("§MROLEASSIGN", membership.Role is null ? "" : $", {membership.Role.CSharpName()} = {CSharpText.Quote(project.AuthAdminRole)}"));
-        return Fill(FirstPerson, ("§CTX", contextType), ("§U", plan.Table.TableName), ("§INIT", first.Initializer("            ")), ("§UKEY", plan.Table.PrimaryKeyColumns[0].CSharpName()),
+        return FillAll(FirstPerson, ("§CTX", contextType), ("§U", plan.Table.TableName), ("§INIT", first.Initializer("            ")), ("§UKEY", plan.Table.PrimaryKeyColumns[0].CSharpName()),
             ("§FIRSTTENANT", tenantPart)).Replace("Hash(password)", hashCall + "(password)");
     }
 
@@ -111,15 +111,15 @@ public static class DesktopSignInCode
 
     /// <summary> The sign-in view. <paramref name="dropdown"/>: the person picks the tenant by name (a membership table is named); a person whose tenant is a column of their own row has no choice to make. </summary>
     public static string LoginXaml(string viewNamespace, bool dropdown, bool first) =>
-        Fill(LoginXamlText, ("§NS", viewNamespace), ("§FIRSTBOXES", first ? FirstXaml : ""), ("§CONFIRMBOX", first ? ConfirmXaml : ""),
+        FillAll(LoginXamlText, ("§NS", viewNamespace), ("§FIRSTBOXES", first ? FirstXaml : ""), ("§CONFIRMBOX", first ? ConfirmXaml : ""),
             ("§TENANTBOX", dropdown ? $"            <ComboBox x:Name=\"TenantBox\" Header=\"{TenantWords.SignInLabel}\" DisplayMemberPath=\"Name\" HorizontalAlignment=\"Stretch\" />\n            <TextBlock Text=\"{TenantWords.SignInHint}\" Style=\"{{ThemeResource CaptionTextBlockStyle}}\" Opacity=\"0.7\" TextWrapping=\"Wrap\" />\n" : ""));
 
     public static string LoginCode(string viewNamespace, string servicesNamespace, string contextType, bool tenants, bool dropdown, bool first) =>
-        Fill(LoginCodeText, ("§NS", viewNamespace), ("§SERVICES", servicesNamespace), ("§CTX", contextType),
-            ("§FIRSTLOAD", first ? Fill(FirstLoad, ("§CTX", contextType), ("§HIDETENANT", dropdown ? "\n        TenantBox.Visibility = Visibility.Collapsed;" : "")) : ""),
+        FillAll(LoginCodeText, ("§NS", viewNamespace), ("§SERVICES", servicesNamespace), ("§CTX", contextType),
+            ("§FIRSTLOAD", first ? FillAll(FirstLoad, ("§CTX", contextType), ("§HIDETENANT", dropdown ? "\n        TenantBox.Visibility = Visibility.Collapsed;" : "")) : ""),
             ("§FIRSTSAVE", first ? FirstSave : ""), ("§FIRSTFIELDS", first ? "\n    private bool _first;" : ""),
             ("§TENANTARG", dropdown ? ", (TenantBox.SelectedItem as SignInTenant)?.Id" : ""),
-            ("§TENANTLOAD", dropdown ? Fill(TenantLoad, ("§CTX", contextType)) : ""),
+            ("§TENANTLOAD", dropdown ? FillAll(TenantLoad, ("§CTX", contextType)) : ""),
             ("§LOADED", dropdown || first ? "\n        Loaded += async (_, _) =>\n        {" + (dropdown ? "\n            await LoadTenantsAsync();" : "") + (first ? "\n            await ShowFirstPersonOfferAsync();" : "") + "\n        };" : ""),
             ("§NOTMEMBER", tenants ? $"                SignInProblem.NotMember => \"{TenantWords.SignInRefused}\",\n" : ""),
             ("§TOOMANY", DesktopSignInWords.TooManyTries), ("§WRONG", DesktopSignInWords.WrongPassword), ("§UNAVAILABLE", DesktopSignInWords.Unavailable));

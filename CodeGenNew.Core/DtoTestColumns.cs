@@ -7,7 +7,7 @@ public sealed class DtoTestColumns
     private DtoTestColumns(TableModel model, ProjectSettings project)
     {
         All = model.Columns.OrderBy(c => c.OrdinalPosition).ToList();
-        HashColumn = UserTable.PlanOf(model, project)?.PasswordHash.Name;
+        HashColumn = TableShapes.For(model, project).User?.PasswordHash.Name;
         Checked = All.Where(c => !IsHash(c)).ToList();
         Meaningful = All.Where(c => !c.IsPrimaryKey && !c.IsIdentity && !c.IsComputed && !c.IsAuditColumn && !c.IsStampColumn && !IsHash(c)).ToList();
         Changed = Meaningful.FirstOrDefault();

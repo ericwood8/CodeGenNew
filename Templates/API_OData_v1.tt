@@ -114,8 +114,8 @@ public class ODataRules<T, TContext> where T : class where TContext : DbContext
     foreach (var t in ruleTables)
     {
         string entity = t.TableName;
-        var ownerColumn = ODataPlan.IsScoped(t, Project) ? OwnedTable.OwnerColumn(t, Project) : null;
-        var ownerLink = ODataPlan.IsScoped(t, Project) ? OwnedTable.Through(t, Project) : null;
+        var ownerColumn = ODataPlan.IsScoped(t, Project) ? TableShapes.For(t, Project).Owner : null;
+        var ownerLink = ODataPlan.IsScoped(t, Project) ? TableShapes.For(t, Project).OwnerThrough : null;
 #>
 public sealed class <#= entity #>ODataRules : ODataRules<<#= entity #>, <#= contextType #>>
 {

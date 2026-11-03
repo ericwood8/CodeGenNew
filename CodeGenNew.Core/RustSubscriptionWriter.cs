@@ -59,7 +59,7 @@ public static class RustSubscriptionWriter
         string tenantExistsSql = $"SELECT COUNT(*) FROM {Table(tenantTable)} WHERE {Q(tenantKey)} = {di.Placeholder(1)}";
 
         var o = new StringBuilder();
-        o.Append(Fill(Head, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType), ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType),
+        o.Append(FillAll(Head, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType), ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType),
             ("§ACTIVE_STATUSES", string.Join(", ", SubscriptionPlan.ActiveStatuses(project).Select(s => Str(s.ToLowerInvariant())))), ("§REQUIRED", project.SubscriptionRequired ? "true" : "false"),
             ("§ROWTYPE", "(" + string.Join(", ", rowTypes) + ",)"), ("§READ_SQL", Raw(readSql)), ("§EXISTS_SQL", Raw(existsSql)), ("§PLANNAME_SQL", Raw(planNameSql)), ("§PLANS_SQL", Raw(plansSql)), ("§PLANEXISTS_SQL", Raw(planExistsSql)),
             ("§TENANTEXISTS_SQL", Raw(tenantExistsSql)),
@@ -75,7 +75,7 @@ public static class RustSubscriptionWriter
             string allowedSql = $"SELECT {Q(limit.Value)} FROM {Table(limit.Table)} WHERE {Q(limit.Plan)} = {di.Placeholder(1)} AND {Q(limit.Key)} = {di.Placeholder(2)}";
             string valueType = IntType(limit.Value);
             string allLimitsSql = $"SELECT {Q(limit.Plan)}, {Q(limit.Key)}, {Q(limit.Value)} FROM {Table(limit.Table)}";
-            o.Append(Fill(LimitHelpers, ("§ALLOWED_SQL", Raw(allowedSql)), ("§ALL_LIMITS_SQL", Raw(allLimitsSql)), ("§VALUETYPE", valueType)));
+            o.Append(FillAll(LimitHelpers, ("§ALLOWED_SQL", Raw(allowedSql)), ("§ALL_LIMITS_SQL", Raw(allLimitsSql)), ("§VALUETYPE", valueType)));
             o.Append("\nasync fn used(pool: &Pool, tenant: i32, key: &str) -> ApiResult<i64> {\n    let sql = match key {\n");
             foreach (var l in limited)
             {
@@ -110,14 +110,14 @@ public static class RustSubscriptionWriter
         if (subscription.PeriodEnd is not null)
         {
             string stamp = tenantTable.Dialect == SqlDialect.PostgreSql ? $"CAST({di.Placeholder(1)} AS TIMESTAMP)" : di.Placeholder(1);
-            endUpdate = Fill(EndUpdate, ("§UPDATE_END_SQL", Raw($"UPDATE {Table(subscription.Table)} SET {Q(subscription.PeriodEnd)} = {stamp} WHERE {Q(subscription.Key)} = {di.Placeholder(2)}")));
+            endUpdate = FillAll(EndUpdate, ("§UPDATE_END_SQL", Raw($"UPDATE {Table(subscription.Table)} SET {Q(subscription.PeriodEnd)} = {stamp} WHERE {Q(subscription.Key)} = {di.Placeholder(2)}")));
         }
         if (subscription.Gateway is not null)
-            gatewayUpdate = Fill(GatewayUpdate, ("§UPDATE_GATEWAY_SQL", Raw($"UPDATE {Table(subscription.Table)} SET {Q(subscription.Gateway)} = {di.Placeholder(1)} WHERE {Q(subscription.Key)} = {di.Placeholder(2)}")));
+            gatewayUpdate = FillAll(GatewayUpdate, ("§UPDATE_GATEWAY_SQL", Raw($"UPDATE {Table(subscription.Table)} SET {Q(subscription.Gateway)} = {di.Placeholder(1)} WHERE {Q(subscription.Key)} = {di.Placeholder(2)}")));
         if (subscription.PeriodEnd is not null)
             o.Append(EndHelper);
         string choose = project.SubscriptionPlanChoice
-            ? Fill(ChoosePlan, ("§ADMIN_TEXT", Str(SubscriptionWords.OnlyAdministrator).Trim('"')), ("§NEEDSPLAN_TEXT", Str(SubscriptionWords.NeedsPlan).Trim('"')), ("§UNKNOWNPLAN_TEXT", Str(SubscriptionWords.UnknownPlan).Trim('"')),
+            ? FillAll(ChoosePlan, ("§ADMIN_TEXT", Str(SubscriptionWords.OnlyAdministrator).Trim('"')), ("§NEEDSPLAN_TEXT", Str(SubscriptionWords.NeedsPlan).Trim('"')), ("§UNKNOWNPLAN_TEXT", Str(SubscriptionWords.UnknownPlan).Trim('"')),
                 ("§TOOSMALL_TEXT", Str(SubscriptionWords.PlanTooSmallText).Trim('"')), ("§TOOSMALL_TYPE", SubscriptionWords.PlanTooSmallType), ("§UPDATE_PLAN_SQL", Raw(updatePlanSql)), ("§INSERT_SQL", Raw(insertSql)))
             : "";
         string renew = "";
@@ -126,11 +126,11 @@ public static class RustSubscriptionWriter
             string renewStamp = tenantTable.Dialect == SqlDialect.PostgreSql ? $"CAST({di.Placeholder(1)} AS TIMESTAMP)" : di.Placeholder(1);
             string renewStart = subscription.PeriodStart is null ? ""
                 : $"    sqlx::query({Raw($"UPDATE {Table(subscription.Table)} SET {Q(subscription.PeriodStart)} = {renewStamp} WHERE {Q(subscription.Key)} = {di.Placeholder(2)}")}).bind(stamp(start)).bind(key).execute(&pool).await?;\n";
-            renew = Fill(RenewPeriod, ("§PLATFORM_TEXT", Str(SubscriptionWords.OnlyPlatform).Trim('"')), ("§RENEWDAYS_TEXT", Str(SubscriptionWords.RenewDays).Trim('"')), ("§NOSUBSCRIPTION_TEXT", Str(SubscriptionWords.NoSubscriptionToRenew).Trim('"')),
+            renew = FillAll(RenewPeriod, ("§PLATFORM_TEXT", Str(SubscriptionWords.OnlyPlatform).Trim('"')), ("§RENEWDAYS_TEXT", Str(SubscriptionWords.RenewDays).Trim('"')), ("§NOSUBSCRIPTION_TEXT", Str(SubscriptionWords.NoSubscriptionToRenew).Trim('"')),
                 ("§DAYS", project.SubscriptionPeriodDays.ToString()), ("§RENEWSTART", renewStart),
                 ("§UPDATE_END_SQL", Raw($"UPDATE {Table(subscription.Table)} SET {Q(subscription.PeriodEnd)} = {renewStamp} WHERE {Q(subscription.Key)} = {di.Placeholder(2)}")));
         }
-        o.Append(Fill(Body, ("§INSERT_SQL", Raw(insertSql)), ("§UPDATE_PLAN_SQL", Raw(updatePlanSql)), ("§UPDATE_STATUS_SQL", Raw(updateStatusSql)), ("§ENDUPDATE", endUpdate), ("§GATEWAYUPDATE", gatewayUpdate),
+        o.Append(FillAll(Body, ("§INSERT_SQL", Raw(insertSql)), ("§UPDATE_PLAN_SQL", Raw(updatePlanSql)), ("§UPDATE_STATUS_SQL", Raw(updateStatusSql)), ("§ENDUPDATE", endUpdate), ("§GATEWAYUPDATE", gatewayUpdate),
             ("§CHOOSE", choose), ("§RENEW", renew), ("§CANCHOOSE", project.SubscriptionPlanChoice ? "true" : "false"), ("§CHOOSEROUTE", project.SubscriptionPlanChoice ? ".route(\"/api/subscription/plan\", put(choose_plan))" : ""),
             ("§RENEWROUTE", subscription.PeriodEnd is null ? "" : ".route(\"/api/subscription/{tenant_id}/renew\", axum::routing::post(renew_subscription))"),
             ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType), ("§PLATFORM_TEXT", Str(SubscriptionWords.OnlyPlatform).Trim('"')), ("§ADMIN_TEXT", Str(SubscriptionWords.OnlyAdministrator).Trim('"')),
@@ -145,7 +145,7 @@ public static class RustSubscriptionWriter
                 string stamp = tenantTable.Dialect == SqlDialect.PostgreSql ? $"CAST({di.Placeholder(1)} AS TIMESTAMP)" : di.Placeholder(1);
                 webhookEnd = Fill(WebhookEnd, ("§WEBHOOK_END_SQL", Raw($"UPDATE {Table(subscription.Table)} SET {Q(subscription.PeriodEnd)} = {stamp} WHERE {Q(subscription.Key)} = {di.Placeholder(2)}")));
             }
-            o.Append(Fill(Webhook, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§HEADER", SubscriptionWords.WebhookHeader), ("§TOLERANCE", SubscriptionWords.WebhookToleranceSeconds.ToString()),
+            o.Append(FillAll(Webhook, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§HEADER", SubscriptionWords.WebhookHeader), ("§TOLERANCE", SubscriptionWords.WebhookToleranceSeconds.ToString()),
                 ("§SIGNATURE_TYPE", SubscriptionWords.WebhookSignatureType), ("§EXPIRED_TYPE", SubscriptionWords.WebhookExpiredType), ("§FIND_SQL", Raw(findSql)),
                 ("§WEBHOOK_STATUS_SQL", Raw(updateStatusSql)), ("§WEBHOOKEND", webhookEnd),
                 ("§SIGNATURE_TEXT", SubscriptionWords.WebhookSignatureText), ("§EXPIRED_TEXT", SubscriptionWords.WebhookExpiredText), ("§UNCONFIGURED_TEXT", SubscriptionWords.WebhookUnconfiguredText),

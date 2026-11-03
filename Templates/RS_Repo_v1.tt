@@ -30,9 +30,9 @@
     string Binds(IEnumerable<RustField> fields) => string.Concat(fields.Select(f => $".bind(&row.{f.Name})"));
 
     bool auth = Project.ApiAuth;
-    var ownerColumn = auth ? OwnedTable.OwnerColumn(Model, Project) : null;
-    var ownerLink = auth ? OwnedTable.Through(Model, Project) : null;
-    var userPlan = auth ? UserTable.PlanOf(Model, Project) : null;
+    var ownerColumn = auth ? TableShapes.For(Model, Project).Owner : null;
+    var ownerLink = auth ? TableShapes.For(Model, Project).OwnerThrough : null;
+    var userPlan = auth ? TableShapes.For(Model, Project).User : null;
     // TenantTable (src/tenancy.rs): the filter of the tenant column (the key of the tenant table itself) joins the owner scope in the filtering functions
     var tenantOwned = RustTenantWriter.Applies(Project) ? TableShapes.For(Model, Project).Tenant : null;
     bool tenantTable = RustTenantWriter.Applies(Project) && TenantPlan.IsTenantTable(Model, Project);

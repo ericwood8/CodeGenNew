@@ -23,8 +23,8 @@ public static class RustPeopleWriter
 
         string countPeople = $"SELECT COUNT(*) FROM {users}";
         string setPassword = $"UPDATE {users} SET {Q(plan.User.PasswordHash)} = {di.Placeholder(1)} WHERE {Q(plan.User.UserName)} = {di.Placeholder(2)}";
-        Add(Fill(Head, ("§COUNT_SQL", Raw(countPeople)), ("§SETPASSWORD_SQL", Raw(setPassword)), ("§TENANTUSE", members ? "use crate::tenancy::no_tenant;\n" : "")));
-        Add(Fill(Routes, ("§FIRSTPATH", PeopleWords.FirstPersonPath), ("§PASSWORDPATH", PeopleWords.PasswordPath), ("§PASSWORD_TYPE", ProblemTypes.PasswordInvalid), ("§PASSWORD_TITLE", PeopleWords.PasswordInvalidTitle),
+        Add(FillAll(Head, ("§COUNT_SQL", Raw(countPeople)), ("§SETPASSWORD_SQL", Raw(setPassword)), ("§TENANTUSE", members ? "use crate::tenancy::no_tenant;\n" : "")));
+        Add(FillAll(Routes, ("§FIRSTPATH", PeopleWords.FirstPersonPath), ("§PASSWORDPATH", PeopleWords.PasswordPath), ("§PASSWORD_TYPE", ProblemTypes.PasswordInvalid), ("§PASSWORD_TITLE", PeopleWords.PasswordInvalidTitle),
             ("§NOTYOURS_TYPE", ProblemTypes.PasswordNotYours), ("§NOTYOURS_TITLE", PeopleWords.PasswordNotYoursTitle), ("§NOTYOURS_DETAIL", PeopleWords.PasswordNotYoursDetail)));
 
         if (plan.First is { } first)
@@ -68,10 +68,10 @@ public static class RustPeopleWriter
                 string findKey = $"SELECT {Q(plan.Key)} FROM {users} WHERE {Q(plan.User.UserName)} = {di.Placeholder(1)}";
                 string members_ = di.QuoteTable(membership!.Table.SchemaName, membership.Table.DbTableName);
                 string attach = $"INSERT INTO {members_} ({Q(membership.User)}, {Q(membership.Tenant)}" + (membership.Role is null ? "" : $", {Q(membership.Role)}") + $") VALUES ({di.Placeholder(1)}, {di.Placeholder(2)}" + (membership.Role is null ? "" : $", {di.Placeholder(3)}") + ")";
-                tenantPart = Fill(FirstMember, ("§FIRSTTENANT_SQL", Raw(firstTenant)), ("§FINDKEY_SQL", Raw(findKey)), ("§ATTACH_SQL", Raw(attach)), ("§ROLEBIND", membership.Role is null ? "" : ".bind(ADMIN_ROLE)"),
+                tenantPart = FillAll(FirstMember, ("§FIRSTTENANT_SQL", Raw(firstTenant)), ("§FINDKEY_SQL", Raw(findKey)), ("§ATTACH_SQL", Raw(attach)), ("§ROLEBIND", membership.Role is null ? "" : ".bind(ADMIN_ROLE)"),
                     ("§LOGINBIND", first.Values[0].Length is { } n ? $"name.chars().take({n}).collect::<String>()" : "name.clone()"));
             }
-            Add(Fill(FirstText, ("§INSERT_SQL", Raw(insert)), ("§BINDS", binds.ToString()), ("§FIRSTMEMBER", tenantPart), ("§FIRSTPATH", PeopleWords.FirstPersonPath),
+            Add(FillAll(FirstText, ("§INSERT_SQL", Raw(insert)), ("§BINDS", binds.ToString()), ("§FIRSTMEMBER", tenantPart), ("§FIRSTPATH", PeopleWords.FirstPersonPath),
                 ("§FIRSTPERSON_TYPE", ProblemTypes.FirstPersonInvalid), ("§FIRSTPERSON_TITLE", PeopleWords.FirstPersonInvalidTitle),
                 ("§TAKEN_TYPE", ProblemTypes.FirstPersonTaken), ("§TAKEN_TITLE", PeopleWords.FirstPersonTakenTitle), ("§TAKEN_DETAIL", PeopleWords.FirstPersonTakenDetail)));
         }
@@ -104,7 +104,7 @@ public static class RustPeopleWriter
                 ("§ROLEFIELD", membership.Role is null ? "" : ",\n    role: Option<String>"));
             Add(text.Replace("§ROLEJSON", membership.Role is null ? "" : ", \"role\": row_role"));
             if (membership.Role is not null)
-                Add(Fill(RoleText, ("§SETROLE_SQL", Raw(setRole))));
+                Add(FillAll(RoleText, ("§SETROLE_SQL", Raw(setRole))));
             router += $"\n        .route(\"{PeopleWords.MembersPath}\", get(list_members).post(add_member))\n        .route(\"{PeopleWords.CandidatesPath}\", get(list_candidates))";
             router += membership.Role is null ? $"\n        .route(\"{PeopleWords.MembersPath}/{{person_id}}\", delete(remove_member))" : $"\n        .route(\"{PeopleWords.MembersPath}/{{person_id}}\", put(change_role).delete(remove_member))";
         }

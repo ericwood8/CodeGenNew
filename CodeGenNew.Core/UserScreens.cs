@@ -29,11 +29,11 @@ public sealed record UserScreenPlan(UserTablePlan User)
 
     /// <summary> The plan for <paramref name="table"/> when the WinUI3 app signs in and the table is the user table; null otherwise. </summary>
     public static UserScreenPlan? ForDesktop(TableModel table, ProjectSettings project) =>
-        TenantPlan.HasDesktopSignIn(project) && UserTable.PlanOf(table, project) is { } plan ? new UserScreenPlan(plan) : null;
+        TenantPlan.HasDesktopSignIn(project) && TableShapes.For(table, project).User is { } plan ? new UserScreenPlan(plan) : null;
 
     /// <summary> The plan for <paramref name="table"/> when the web app signs in (<c>Auth</c>, <c>ApiAuth</c>) and the table is the user table; null otherwise. </summary>
     public static UserScreenPlan? ForWeb(TableModel table, ProjectSettings project) =>
-        project.Auth && project.ApiAuth && UserTable.PlanOf(table, project) is { } plan ? new UserScreenPlan(plan) : null;
+        project.Auth && project.ApiAuth && TableShapes.For(table, project).User is { } plan ? new UserScreenPlan(plan) : null;
 
     /// <summary> Whether <paramref name="column"/> of the screen's table is shown to administrators only. </summary>
     public bool IsAdminOnly(ColumnModel column) => AdminFlag is { } flag && flag.Name.EqualsIgnoreCase(column.Name);

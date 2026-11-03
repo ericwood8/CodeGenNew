@@ -44,13 +44,22 @@ public sealed class TableShapes
     public LogTable? Log => Shape<LogTable>();
     public NameActivePlan? NameActive => Shape<NameActivePlan>();
 
+    /// <summary> The plan of the table when it is the user table and the settings fit it. </summary>
+    public UserTablePlan? User => Shape<UserTablePlan>();
+
+    /// <summary> The column that says which person owns a row of the table, or null. </summary>
+    public ColumnModel? Owner => Shape<OwnerColumnShape>()?.Column;
+
+    /// <summary> The parent that says which person owns a row of the table (an owner through a link), or null. </summary>
+    public OwnerLink? OwnerThrough => Shape<OwnerLink>();
+
     /// <summary> The table's shape of type <typeparamref name="T"/>, or null when the table does not have it. </summary>
     public T? Shape<T>() where T : class
     {
         return (T?)ShapeOf(typeof(T));
     }
 
-    private static readonly Type[] Known = [typeof(SoftDeleteTable), typeof(QueueShape), typeof(LogTable), typeof(TreeTable), typeof(EffectiveTable), typeof(NameActivePlan), typeof(TenantOwned), typeof(JunctionShape), typeof(UserTablePlan), typeof(OwnerLink), typeof(TenantTableShape)];
+    private static readonly Type[] Known = [typeof(SoftDeleteTable), typeof(QueueShape), typeof(LogTable), typeof(TreeTable), typeof(EffectiveTable), typeof(NameActivePlan), typeof(TenantOwned), typeof(JunctionShape), typeof(UserTablePlan), typeof(OwnerLink), typeof(OwnerColumnShape), typeof(TenantTableShape)];
     private static readonly Type[] NeedDatabase = [typeof(TenantMembership), typeof(ApprovalTable), typeof(ApprovalSide)];
 
     /// <summary> Every shape the table has, in a fixed order; a table with none gives an empty list. </summary>
@@ -79,7 +88,8 @@ public sealed class TableShapes
         if (shape == typeof(NameActivePlan)) return NameActivePlan.For(_table, _project);
         if (shape == typeof(TenantOwned)) return TenantPlan.OwnedBy(_table, _project);
         if (shape == typeof(JunctionShape)) return _table.Junction;
-        if (shape == typeof(UserTablePlan)) return UserTable.ResolveTable(_table, _project).Plan;
+        if (shape == typeof(UserTablePlan)) return UserTable.PlanOf(_table, _project);
+        if (shape == typeof(OwnerColumnShape)) return OwnedTable.OwnerColumn(_table, _project) is { } owner ? new OwnerColumnShape(owner) : null;
         if (shape == typeof(OwnerLink)) return OwnedTable.Through(_table, _project);
         if (shape == typeof(TenantTableShape)) return TenantPlan.IsTenantTable(_table, _project) ? new TenantTableShape(_table) : null;
         if (NeedDatabase.Contains(shape))
@@ -99,3 +109,6 @@ public sealed record TenantTableShape(TableModel Table);
 
 /// <summary> The table is the side table that holds the request cycles of an approval table. </summary>
 public sealed record ApprovalSide(ApprovalTable Approval);
+
+/// <summary> The table is owned through a column of its own (<c>OwnedTables</c>). </summary>
+public sealed record OwnerColumnShape(ColumnModel Column);

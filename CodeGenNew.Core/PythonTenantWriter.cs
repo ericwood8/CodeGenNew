@@ -28,7 +28,7 @@ public static class PythonTenantWriter
         o.Append(Shared.Replace("§HOSTIMPORT", host is null ? "" : "import ipaddress\n").Replace("§REQUESTIMPORT", host is null ? "" : ", Request").Replace("§FUNC", host is null ? "" : "func, "));
         o.Append(Tables(tenantTable, key, active, text, host, membership, userPlan, soft, userOwned));
         if (host is not null)
-            o.Append(Fill(HostLookup, ("§HOST_TYPE", TenantWords.HostType), ("§HOST_TEXT", TenantWords.Host)));
+            o.Append(FillAll(HostLookup, ("§HOST_TYPE", TenantWords.HostType), ("§HOST_TEXT", TenantWords.Host)));
         var ownedTables = TenantPlan.OwnedTables(database, project);
         if (ownedTables.Count > 0)
             o.Append($"\nTENANT_COLUMN = {Str(ownedTables[0].Column.DbName)}\nTENANT_OWNED = frozenset({{{string.Join(", ", ownedTables.Select(t => Str(t.Table.DbTableName)))}}})\n");
@@ -37,21 +37,21 @@ public static class PythonTenantWriter
         if (active is null)
             o.Append("\n\ndef ensure_active(tenant_id: int) -> None:\n    \"\"\"The tenant table has no active flag, so a token never outlives its tenant.\"\"\"\n");
         else
-            o.Append(Fill(ActiveCheck, ("§INACTIVE_TEXT", TenantWords.Inactive)));
+            o.Append(FillAll(ActiveCheck, ("§INACTIVE_TEXT", TenantWords.Inactive)));
 
         if (membership is not null && userPlan is not null)
         {
-            o.Append(Fill(Members, ("§HOSTLOGIN", host is null ? "" : HostLoginLines + "\n"), ("§TEXT", textExpression), ("§ROLE", membership.Role is null ? "null()" : "members.c[MEMBER_ROLE]"), ("§ACTIVEWHERE", active is null ? "" : ".where(tenants.c[TENANT_ACTIVE].is_(True))"),
+            o.Append(FillAll(Members, ("§HOSTLOGIN", host is null ? "" : HostLoginLines + "\n"), ("§TEXT", textExpression), ("§ROLE", membership.Role is null ? "null()" : "members.c[MEMBER_ROLE]"), ("§ACTIVEWHERE", active is null ? "" : ".where(tenants.c[TENANT_ACTIVE].is_(True))"),
                 ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§NOMEMBER_TEXT", Str(TenantWords.NotMember))));
-            o.Append(Fill(Attach, ("§ROLEVALUE", membership.Role is null ? "" : ", MEMBER_ROLE: ADMIN_ROLE")));
+            o.Append(FillAll(Attach, ("§ROLEVALUE", membership.Role is null ? "" : ", MEMBER_ROLE: ADMIN_ROLE")));
             o.Append(NewPerson(userPlan, project, membership, null));
             o.Append(TenantPlan.PeopleOf(database, project) is null ? PeoplePassThrough : PeopleScoped);
             string signInWhere = string.Join(", ", new[] { active is null ? null : "tenants.c[TENANT_ACTIVE].is_(True)", soft is null ? null : "tenants.c[TENANT_DELETED].is_(False)" }.OfType<string>());
-            o.Append(Fill(Routes, ("§SIGNINPATH", TenantWords.SignInListPath), ("§TEXT", textExpression), ("§SIGNINWHERE", signInWhere.Length == 0 ? "" : $".where({signInWhere})"), ("§CURRENT", "user.tenant_id"), ("§REQUESTPARAM", host is null ? "" : ", request: Request"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines + "\n")));
+            o.Append(FillAll(Routes, ("§SIGNINPATH", TenantWords.SignInListPath), ("§TEXT", textExpression), ("§SIGNINWHERE", signInWhere.Length == 0 ? "" : $".where({signInWhere})"), ("§CURRENT", "user.tenant_id"), ("§REQUESTPARAM", host is null ? "" : ", request: Request"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines + "\n")));
         }
         else if (userOwned is not null && userPlan is not null)
         {
-            o.Append(Fill(OwnColumn, ("§HOSTLOGIN", host is null ? "" : HostOwnLogin + "\n"), ("§HOSTCHECK", host is null ? "" : HostOwnCheck + "\n"), ("§ACTIVEWHERE", active is null ? "" : ", tenants.c[TENANT_ACTIVE].is_(True)"), ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§NOMEMBER_TEXT", Str(TenantWords.NotMember))));
+            o.Append(FillAll(OwnColumn, ("§HOSTLOGIN", host is null ? "" : HostOwnLogin + "\n"), ("§HOSTCHECK", host is null ? "" : HostOwnCheck + "\n"), ("§ACTIVEWHERE", active is null ? "" : ", tenants.c[TENANT_ACTIVE].is_(True)"), ("§NOTMEMBER_TYPE", TenantWords.NotMemberType), ("§NOMEMBER_TEXT", Str(TenantWords.NotMember))));
             o.Append("\n\ndef attach_creator(session: Session, user: CurrentUser, tenant_id: int) -> None:\n    \"\"\"The people belong to a tenant by their own row, so a new tenant has no first administrator to attach.\"\"\"\n");
             o.Append("\n\ndef attach_admin(session: Session, person_id: int | None, tenant_id: int, admin: dict[str, Any] | None = None, password: str | None = None) -> None:\n    \"\"\"The people belong to a tenant by their own row, so an onboarded tenant has no person to attach by key; a new first administrator is saved with the tenant.\"\"\"\n    if admin is not None:\n        new_person(session, admin, password, tenant_id)\n");
             o.Append(NewPerson(userPlan, project, null, userOwned));
@@ -75,7 +75,7 @@ public static class PythonTenantWriter
         string tenantLink = userOwned is null ? "" : $"    person.{FieldOf(userOwned.Column)} = tenant_id\n";
         string adminFlag = membership?.Role is null && userPlan.Admin is { } flag ? $"    person.{FieldOf(flag)} = True\n" : "";
         string memberLine = membership is null ? "" : $"    session.execute(members.insert().values({{MEMBER_USER: person.{table.Key.Name}, MEMBER_TENANT: tenant_id{(membership.Role is null ? "" : ", MEMBER_ROLE: ADMIN_ROLE")}}}))\n";
-        return Fill(NewPersonText, ("§MODULE", table.Module), ("§CLASS", table.Class), ("§SCHEMA", table.Schema), ("§NAMEFIELD", FieldOf(userPlan.UserName)), ("§HASHFIELD", table.HashField!.Name),
+        return FillAll(NewPersonText, ("§MODULE", table.Module), ("§CLASS", table.Class), ("§SCHEMA", table.Schema), ("§NAMEFIELD", FieldOf(userPlan.UserName)), ("§HASHFIELD", table.HashField!.Name),
             ("§TENANTLINK", tenantLink), ("§ADMINFLAG", adminFlag), ("§MEMBERLINE", memberLine));
     }
 

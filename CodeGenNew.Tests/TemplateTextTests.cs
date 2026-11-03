@@ -24,4 +24,10 @@ public class TemplateTextTests
         var error = Assert.ThrowsExactly<InvalidOperationException>(() => TemplateText.FillAll("§A §B", ("§A", "a")));
         StringAssert.Contains(error.Message, "§B");
     }
+
+    [TestMethod]
+    public void A_token_that_ends_in_a_line_end_is_found_in_text_with_windows_line_ends()
+    {
+        Assert.AreEqual("import x\nnext", TemplateText.FillAll("§AUTH\r\nnext", ("§AUTH\n", "import x\n")));
+    }
 }

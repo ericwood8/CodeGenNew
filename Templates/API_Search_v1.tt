@@ -54,8 +54,8 @@
     // ReadRoles: the search refuses a role the table's ReadRoles does not list
     var readRoles = WriteRolePlan.ReadFor(Project, Model);
     string readGate = readRoles.Count > 0 ? "        .RequireReadRoles([" + WriteRolePlan.Literal(readRoles) + "])" + ((char)10) : "";
-    var ownerColumn = OwnedTable.OwnerColumn(Model, Project);
-    var ownerLink = OwnedTable.Through(Model, Project);
+    var ownerColumn = TableShapes.For(Model, Project).Owner;
+    var ownerLink = TableShapes.For(Model, Project).OwnerThrough;
     bool scoped = ownerColumn is not null || ownerLink is not null;
 #>
 namespace <#= apiNamespace #>;

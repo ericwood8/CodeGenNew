@@ -68,8 +68,8 @@
         bool scopedToPerson = OwnedTable.IsScoped(Model, Project);
 
         // OwnedTables: who owns a row is its own owner column or the owner of the parent row it belongs to; the tests sign in as an ordinary person with a token that names an owner
-        var ownerColumn = OwnedTable.OwnerColumn(Model, Project);
-        var ownerLink = OwnedTable.Through(Model, Project);
+        var ownerColumn = TableShapes.For(Model, Project).Owner;
+        var ownerLink = TableShapes.For(Model, Project).OwnerThrough;
         string? plainRole = scopedToPerson ? RustTestBodies.PlainRole(Project, readRoles, writeRoles) : null;
         bool ownerTests = Project.ApiAuth && plainRole is not null && (ownerColumn is not null || ownerLink is not null);
         string ownerJson = ownerColumn is not null ? JsonNames.Camel(ownerColumn.Name) : ownerLink is not null ? JsonNames.Camel(ownerLink.ParentOwner) : "";
