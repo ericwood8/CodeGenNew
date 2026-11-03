@@ -329,6 +329,9 @@ public sealed class RustTable
         _ => null
     };
 
+    /// <summary> True for a PostgreSQL column of a type that is not text (an enum and the like): it is read and compared as text. </summary>
+    private bool NeedsTextCast(ColumnModel column) => _di.Dialect == SqlDialect.PostgreSql && column.DbCastType is not null;
+
     private string SelectExpression(ColumnModel column)
     {
         string q = _di.Quote(column.DbName);
@@ -336,7 +339,7 @@ public sealed class RustTable
         {
             if (column.IsMoneyColumn)
                 return $"{q}::numeric AS {q}";
-            if (column.DbCastType is not null)
+            if (NeedsTextCast(column))
                 return $"{q}::text AS {q}";
         }
         if (_di.Dialect == SqlDialect.MySql)
@@ -379,7 +382,7 @@ public sealed class RustTable
         SearchItems = $"SELECT {SelectList} FROM {from} WHERE 1 = 1{LiveAnd("t")}";
         SearchCount = $"SELECT COUNT(*) FROM {from} WHERE 1 = 1{LiveAnd("t")}";
 
-        string TextOf(ColumnModel c) => "t." + _di.Quote(c.DbName) + (_di.Dialect == SqlDialect.PostgreSql && c.DbCastType is not null ? "::text" : "");
+        string TextOf(ColumnModel c) => "t." + _di.Quote(c.DbName) + (NeedsTextCast(c) ? "::text" : "");
 
         Filters = plan.Filters.Where(f => _fieldOf.ContainsKey(f.Column)).Select(f =>
         {
@@ -410,7 +413,7 @@ public sealed class RustTable
         if (display is null)
             return;
         string name = _di.Quote(display.DbName);
-        if (_di.Dialect == SqlDialect.PostgreSql && display.DbCastType is not null)
+        if (NeedsTextCast(display))
             name += "::text";
         else if (!display.IsStringColumn)
             name = _di.ToText(name);

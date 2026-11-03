@@ -57,7 +57,7 @@ public static class ApprovalScreens
 {
     public static IReadOnlyList<ApprovalScreenTable> For(DatabaseModel database, ProjectSettings project) =>
         ApprovalPlan.Resolve(database, project) is { Problems.Count: 0 } plan
-            ? plan.Tables.Select(t => new ApprovalScreenTable(t.Table.TableName, Labels.Words(t.Table.TableName), ApiRequests.Route(t.Table), ApiRequests.Route(t.Table)["/api/".Length..])).ToList()
+            ? plan.Tables.Select(t => new ApprovalScreenTable(t.Table.TableName, ScreenNames.Label(t.Table.TableName), ApiRequests.Route(t.Table), ApiRequests.Route(t.Table)["/api/".Length..])).ToList()
             : [];
 
     /// <summary> The route segment under /api of a table whose edit form gets the approval panel, or null for a table without approvals. A page template sees one table, so this reads the settings,

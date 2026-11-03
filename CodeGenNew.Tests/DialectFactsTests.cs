@@ -46,6 +46,8 @@ public class DialectFactsTests
         Assert.AreEqual("datetime2", DialectInfo.For(SqlDialect.SqlServer).DateTimeType);
         Assert.AreEqual("datetime", DialectInfo.For(SqlDialect.MySql).DateTimeType);
         Assert.AreEqual("timestamp", DialectInfo.For(SqlDialect.PostgreSql).DateTimeType);
+        Assert.IsFalse(DialectInfo.For(SqlDialect.SqlServer).RunsPythonTests);
+        Assert.IsTrue(DialectInfo.For(SqlDialect.MySql).RunsPythonTests);
         Assert.IsFalse(DialectInfo.For(SqlDialect.MySql).SupportsReturning);
         Assert.IsTrue(DialectInfo.For(SqlDialect.Sqlite).SupportsReturning);
     }

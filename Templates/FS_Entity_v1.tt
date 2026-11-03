@@ -37,7 +37,6 @@
         "event", "external", "include", "mixin", "parallel", "process", "protected", "pure", "sealed", "tailcall", "trait", "virtual", "params"
     };
     string Id(string name) => keywords.Contains(name) ? "``" + name + "``" : name;
-    string Words(string name) => Labels.Words(name);
     string Text(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
     // F# type, the Rop parser and the literal of a limit, by column type
@@ -65,7 +64,7 @@
     var problems = new List<string>();
     foreach (var c in columns)
     {
-        string label = Text(Words(c.Name));
+        string label = Text(c.CaseWords);
         string value = "row." + Field(c);
         var (fsType, _) = FsType(c);
         string Wrap(string condition) => c.IsNullable ? $"match {value} with Some v when {condition.Replace("{v}", "v")} -> \"{{MESSAGE}}\" | _ -> ()" : $"if {condition.Replace("{v}", value)} then \"{{MESSAGE}}\"";

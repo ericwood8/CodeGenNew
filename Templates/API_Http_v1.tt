@@ -29,7 +29,7 @@
         string plural = singular.Pluralize();
         string route = "/api/" + plural.ToLowerInvariant();
         var key = Model.PrimaryKeyColumns[0];
-        string words = Labels.Words(singular);
+        string words = Model.Words;
 
         // the request body: every column that cannot be NULL (and is not computed), by its JSON name; the key from the id variable for an update
         string Body(bool update) => ApiRequests.Body(Model, Project, update);
@@ -46,7 +46,7 @@
         L("GET {{host}}" + route);
         L("Accept: application/json");
         L();
-        L("### One " + words.ToLowerInvariant() + " by its id");
+        L("### One " + words +" by its id");
         L("GET {{host}}" + route + "/{{" + idVar + "}}");
         L("Accept: application/json");
         if (Model.HasSearchApiOfAnyKey(Project))
@@ -66,24 +66,24 @@
         if (!readOnly)
         {
         L();
-        L("### Add a " + words.ToLowerInvariant());
+        L("### Add a " + words);
         L("POST {{host}}" + route);
         L("Content-Type: application/json");
         L();
         L(Body(false));
         L();
-        L("### Change a " + words.ToLowerInvariant() + " (the key in the body must be the id)");
+        L("### Change a " + words +" (the key in the body must be the id)");
         L("PUT {{host}}" + route + "/{{" + idVar + "}}");
         L("Content-Type: application/json");
         L();
         L(Body(true));
         L();
-        L("### Remove a " + words.ToLowerInvariant() + " (400 when another row uses it)");
+        L("### Remove a " + words +" (400 when another row uses it)");
         L("DELETE {{host}}" + route + "/{{" + idVar + "}}");
         if (CloneShape.CanClone(Model, Project))
         {
             L();
-            L("### Copy a " + words.ToLowerInvariant() + " into a new row");
+            L("### Copy a " + words +" into a new row");
             L("POST {{host}}" + route + "/{{" + idVar + "}}/clone");
         }
         }

@@ -173,6 +173,9 @@ public sealed class DialectInfo
     /// <summary> False for MySQL: an INSERT cannot return the row it wrote, so the key is read back with a second statement. </summary>
     public bool SupportsReturning => Dialect != SqlDialect.MySql;
 
+    /// <summary> False for SQL Server: the generated Python tests seed and read their own database, and run over SQLite, PostgreSQL or MySQL only. </summary>
+    public bool RunsPythonTests => Dialect != SqlDialect.SqlServer;
+
     /// <summary> The namespace prefix of the ADO.NET driver's classes (<c>Npgsql.</c>), for generated code that names a driver type. </summary>
     public string DriverPrefix => Dialect switch { SqlDialect.PostgreSql => "Npgsql.", SqlDialect.MySql => "MySqlConnector.", _ => "Microsoft.Data.SqlClient." };
 

@@ -105,14 +105,14 @@ public class QueueArchiveTests
     [TestMethod]
     public void The_plan_finds_the_stamps_by_their_names_and_a_queue_is_also_a_read_only_list()
     {
-        var queue = QueuePlan.For(Queue(), Project())!;
+        var queue = TableShapes.For(Queue(), Project()).Queue!;
 
         Assert.AreEqual("CreatedOn", queue.Created.Name);
         Assert.AreEqual("ClaimedOn", queue.Claimed.Name);
         Assert.AreEqual("ProcessedOn", queue.Processed.Name);
         Assert.AreEqual("ClaimedBy", queue.ClaimedBy!.Name);
         Assert.AreEqual("LastError", queue.LastError!.Name);
-        Assert.IsNotNull(LogTablePlan.For(Queue(), Project()), "the rows are not edited by hand, so the list is read only");
+        Assert.IsNotNull(TableShapes.For(Queue(), Project()).Log, "the rows are not edited by hand, so the list is read only");
     }
 
     [TestMethod]
@@ -148,8 +148,8 @@ public class QueueArchiveTests
         var project = Project("", "ErrorLog:90");
         var archive = Log("ErrorLogArchive", archivedOn: true, identity: false);
 
-        Assert.AreEqual("LoggedOn", LogTablePlan.For(archive, project)!.Timestamp.Name);
-        Assert.IsNull(LogTablePlan.For(Log("ErrorLog"), project), "the table that is archived is still an ordinary table");
+        Assert.AreEqual("LoggedOn", TableShapes.For(archive, project).Log!.Timestamp.Name);
+        Assert.IsNull(TableShapes.For(Log("ErrorLog"), project).Log, "the table that is archived is still an ordinary table");
     }
 
     [TestMethod]

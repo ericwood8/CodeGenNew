@@ -11,7 +11,7 @@ public static class PythonTenantTests
 {
     /// <summary> Whether the tests are written: <c>PythonTests</c> over a tenant API and a database the shared conftest can open (not SQL Server). </summary>
     public static bool Applies(DatabaseModel database, ProjectSettings project) =>
-        database.Dialect != SqlDialect.SqlServer && TenantTestPlan.Applies(database, project, project.PythonTests);
+        DialectInfo.For(database.Dialect).RunsPythonTests && TenantTestPlan.Applies(database, project, project.PythonTests);
 
     public static string Conftest(ProjectSettings project, SqlDialect dialect) => PythonApprovalTests.Conftest(project, dialect);
 

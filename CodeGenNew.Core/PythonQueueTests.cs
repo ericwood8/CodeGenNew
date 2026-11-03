@@ -7,7 +7,7 @@ public static class PythonQueueTests
 {
     /// <summary> Whether the tests are written: <c>PythonTests</c>, a queue the plan accepts and a schema the seed can be made from, over a database the shared conftest can open (not SQL Server). </summary>
     public static bool Applies(DatabaseModel database, ProjectSettings project) =>
-        project.PythonTests && database.Dialect != SqlDialect.SqlServer && Seeds(database, project).Count > 0;
+        project.PythonTests && DialectInfo.For(database.Dialect).RunsPythonTests && Seeds(database, project).Count > 0;
 
     public static IReadOnlyList<QueueTestSeed> Seeds(DatabaseModel database, ProjectSettings project) =>
         database.Tables.Select(t => TableShapes.For(t, project).Queue).OfType<QueueShape>().OrderBy(q => q.Table.TableName, StringComparer.OrdinalIgnoreCase)

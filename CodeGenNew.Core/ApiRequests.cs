@@ -21,7 +21,7 @@ public static class ApiRequests
     {
         string route = Route(model);
         string plural = model.TableName.Pluralize();
-        string one = Labels.Words(model.TableName).ToLowerInvariant();
+        string one = model.Words;
         string a = "aeiou".Contains(one[0]) ? "an" : "a";
         string id = "{{" + IdVariable(model) + "}}";
         var requests = new List<ApiRequest> { new($"All {plural}", "GET", route, null), new($"One {one} by its id", "GET", route + "/" + id, null) };

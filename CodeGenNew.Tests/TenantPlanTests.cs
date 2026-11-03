@@ -96,8 +96,8 @@ public class TenantPlanTests
 
         CollectionAssert.AreEqual(new[] { "EmployeeTenant", "Organization", "Project", "ProjectTask" }, TenantPlan.OwnedTables(database, project).Select(o => o.Table.TableName).ToArray(),
             "Country is left out by NoTenantTables, Employee has no tenant column and the tenant table is not owned by itself");
-        Assert.IsNull(TenantPlan.OwnedBy(database.Tables.Single(t => t.TableName == "Tenant"), database, project));
-        Assert.IsNull(TenantPlan.OwnedBy(database.Tables.Single(t => t.TableName == "Employee"), database, project));
+        Assert.IsNull(TableShapes.For(database.Tables.Single(t => t.TableName == "Tenant"), project).Tenant);
+        Assert.IsNull(TableShapes.For(database.Tables.Single(t => t.TableName == "Employee"), project).Tenant);
         Assert.IsEmpty(TenantPlan.Problems(database, project));
         Assert.IsEmpty(TenantPlan.OwnedTables(database, ProjectSettings.FromValues(Values(new() { ["ApiAuth"] = "false" }))), "without sign-in there is no tenant claim");
         var membership = TenantPlan.MembershipOf(database, project)!;

@@ -34,7 +34,6 @@
     else
     {
         string Id(ColumnModel c) => c.CSharpName();
-        string Words(string name) => Labels.Words(name);
         // a number literal in the property's own type
         string Literal(ColumnModel c, double value) => c.SqlType switch
         {
@@ -56,7 +55,7 @@
                 continue;
 
             var parts = new List<string>();
-            string label = Words(c.Name);
+            string label = c.CaseWords;
             if (rule.Required)
                 parts.Add(".NotEmpty()");
             if (rule.MaxLength > 0)

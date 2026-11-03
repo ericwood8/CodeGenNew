@@ -109,16 +109,16 @@ public class RowShapePlanTests
         var project = Project(values);
         var category = database.Tables.Single(t => t.TableName == "Category");
 
-        var tree = TreePlan.For(category, project)!;
+        var tree = TableShapes.For(category, project).Tree!;
         Assert.AreEqual("ParentCategoryId", tree.Parent.Name, "the only foreign key to itself is the parent");
         Assert.AreEqual(0, tree.MaxDepth);
         Assert.AreEqual("Name", tree.Text!.Name);
-        var soft = SoftDeletePlan.For(category, project)!;
+        var soft = TableShapes.For(category, project).SoftDelete!;
         Assert.AreEqual("IsDeleted", soft.Flag.Name);
         Assert.AreEqual("DeletedOn", soft.DeletedOn!.Name);
         Assert.AreEqual("DeletedBy", soft.DeletedBy!.Name);
-        Assert.IsNull(SoftDeletePlan.For(database.Tables.Single(t => t.TableName == "Customer"), project)!.DeletedOn, "the stamps are optional");
-        var effective = EffectiveDatePlan.For(database.Tables.Single(t => t.TableName == "Price"), project)!;
+        Assert.IsNull(TableShapes.For(database.Tables.Single(t => t.TableName == "Customer"), project).SoftDelete!.DeletedOn, "the stamps are optional");
+        var effective = TableShapes.For(database.Tables.Single(t => t.TableName == "Price"), project).Effective!;
         CollectionAssert.AreEqual(new[] { "ItemId" }, effective.Groups.Select(g => g.Name).ToArray(), "the groups are the foreign keys unless named");
         Assert.IsEmpty(RowShapePlan.Problems(database, project));
     }
