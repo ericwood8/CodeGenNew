@@ -182,6 +182,15 @@ public sealed class DialectInfo
     /// <summary> The column type of a date and time without a zone: <c>datetime2</c>, <c>datetime</c> or <c>timestamp</c>. </summary>
     public string DateTimeType => Dialect switch { SqlDialect.SqlServer => "datetime2", SqlDialect.MySql => "datetime", _ => "timestamp" };
 
+    /// <summary> MySQL: well-known text to a spatial value in the column's reference system, longitude first (blank is NULL). MariaDB has no axis-order option and keeps the order it is given,
+    /// so its function takes the text and the system only. </summary>
+    public string SpatialFromText(string textExpression, int srid, bool mariaDb) => mariaDb
+        ? $"ST_GeomFromText(NULLIF({textExpression}, ''), {srid})"
+        : $"ST_GeomFromText(NULLIF({textExpression}, ''), {srid}, 'axis-order=long-lat')";
+
+    /// <summary> MySQL: a spatial column as well-known text, longitude first; MariaDB writes it that way already. </summary>
+    public string SpatialAsText(string columnExpression, bool mariaDb) => mariaDb ? $"ST_AsText({columnExpression})" : $"ST_AsText({columnExpression}, 'axis-order=long-lat')";
+
     /// <summary> The current time as the database knows it. </summary>
     public string CurrentTimestamp => Dialect switch
     {

@@ -333,7 +333,9 @@
         Line("        if (string.IsNullOrEmpty(builder.Password))");
         Line("            builder.Password = Environment.GetEnvironmentVariable(\"MYSQL_PWD\") ?? \"\";");
         Line("        // A fixed server version, so the app does not open a connection while it builds the options; raise it if the SQL needs a newer feature.");
-        Line($"        options.{provider.UseMethod}(builder.ConnectionString, new MySqlServerVersion(new Version(8, 0, 0)));");
+        Line(Database.UsesMariaDb(Project)
+            ? $"        options.{provider.UseMethod}(builder.ConnectionString, new MariaDbServerVersion(new Version({Database.MariaDbVersion.Major}, {Database.MariaDbVersion.Minor}, 0)));"
+            : $"        options.{provider.UseMethod}(builder.ConnectionString, new MySqlServerVersion(new Version(8, 0, 0)));");
     }
     else
     {

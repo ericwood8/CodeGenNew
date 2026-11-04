@@ -51,6 +51,13 @@ public class TableModel
     /// <summary> What the database says about the table (SQL Server <c>MS_Description</c>, PostgreSQL <c>COMMENT ON TABLE</c>, MySQL <c>COMMENT</c>); null when it says nothing. </summary>
     public string? Description { get; init; }
 
+    /// <summary> True for a MariaDB table created <c>WITH SYSTEM VERSIONING</c> (it keeps the old versions of its rows); the create script writes that back. </summary>
+    public bool IsSystemVersioned { get; init; }
+
+    /// <summary> The server's own version text (<c>SELECT VERSION()</c>) for the provider that tells MySQL from MariaDB by it; null otherwise. A template of one table has no <see cref="DatabaseModel"/>,
+    /// so this is how it learns the server (see <see cref="ProjectSettings.ForServer"/>). </summary>
+    public string? ServerVersion { get; init; }
+
     /// <summary> True when API_Crud writes an API for the table under these project settings: a single whole-number key, not a name/active table, not one the project says has no repository (an enum). </summary>
     public bool HasCrudApi(ProjectSettings project) =>
         PrimaryKeyShape == PrimaryKeyShape.SingleInt && !IsNameActiveTable && project.NoRepository(TableName, LookupShape) != true && !project.IsApprovalSide(TableName) && !project.IsSubscriptionManaged(TableName);

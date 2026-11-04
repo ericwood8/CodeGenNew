@@ -33,12 +33,14 @@ public sealed record RustClone(string Sql, IReadOnlyList<RustField> Overrides);
 public sealed class RustTable
 {
     private readonly DialectInfo _di;
+    private readonly bool _mariaDb;
     private readonly Dictionary<ColumnModel, RustField> _fieldOf;
 
     private RustTable(TableModel model, ProjectSettings project)
     {
         Model = model;
         _di = DialectInfo.For(model.Dialect);
+        _mariaDb = project.MariaDbSetting == true;
         Struct = RustNames.Pascal(model.TableName);
         Module = RustNames.Snake(model.TableName);
         Route = "/api/" + ScreenNames.BaseName(model.TableName).ToLowerInvariant().Pluralize();
@@ -345,7 +347,7 @@ public sealed class RustTable
         if (_di.Dialect == SqlDialect.MySql)
         {
             if (column.DbSpatialType is not null)
-                return $"ST_AsText({q}, 'axis-order=long-lat') AS {q}";
+                return $"{_di.SpatialAsText(q, _mariaDb)} AS {q}";
             if (column.DbBitWidth is { } bits)
                 return bits < 64 ? $"CAST({q} AS SIGNED) AS {q}" : $"CAST({q} AS DECIMAL(20,0)) AS {q}";
         }
@@ -361,7 +363,7 @@ public sealed class RustTable
     {
         string p = _di.Placeholder(index);
         if (_di.Dialect == SqlDialect.MySql && field.Column.DbSpatialType is not null)
-            return $"ST_GeomFromText(NULLIF({p}, ''), {field.Column.DbSrid}, 'axis-order=long-lat')";
+            return _di.SpatialFromText(p, field.Column.DbSrid, _mariaDb);
         if (_di.Dialect != SqlDialect.PostgreSql)
             return p;
         if (field.Column.IsMoneyColumn)

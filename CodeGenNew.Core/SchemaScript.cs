@@ -38,7 +38,7 @@ public static partial class SchemaScript
             if (table.PrimaryKeyColumns.Count > 0)
                 lines.Add($"    CONSTRAINT {Quote("PK_" + (table.DatabaseTableName ?? table.TableName), dialect)} PRIMARY KEY ({string.Join(", ", table.PrimaryKeyColumns.Select(c => Quote(c.DbName, dialect)))})");
             script.AppendLine(string.Join("," + Environment.NewLine, lines));
-            script.AppendLine(");");
+            script.AppendLine(table.IsSystemVersioned && dialect == SqlDialect.MySql ? ") WITH SYSTEM VERSIONING;" : ");");
         }
 
         var usedIndexNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

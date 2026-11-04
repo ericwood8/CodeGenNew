@@ -3,6 +3,7 @@
   python container_run.py mssql --host <server> --db <database> --trusted
   python container_run.py pg --host localhost --db <database> --user <login>        (password in PGPASSWORD)
   python container_run.py mysql --host 127.0.0.1:3306 --db <database> --user <login> (password in MYSQL_PWD)
+  against a MariaDB server use the mysql kind: the generator reads the server's version and writes a MariaDB test container (or set MySqlFlavour yourself)
   add --ef for AccessMode=Ef (SQLite-style routines are then not needed)
 
 Needs Docker and a built CLI. The database is only read. The password is read from the environment and passed to the CLI as an argument for the run, never written to a file.

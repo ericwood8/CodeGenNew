@@ -28,7 +28,8 @@ public static class DatabaseModelBuilder
             SchemaName = schemaName,
             Dialect = tables.Length > 0 ? tables[0].Dialect : SqlDialect.SqlServer,
             Tables = [.. tables],
-            Views = await provider.ListViewsAsync(schemaName, cancellationToken)
+            Views = await provider.ListViewsAsync(schemaName, cancellationToken),
+            ServerVersion = await provider.ReadServerVersionAsync(cancellationToken)
         };
     }
 }

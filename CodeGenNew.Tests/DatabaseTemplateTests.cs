@@ -76,6 +76,15 @@ public class DatabaseTemplateTests
     }
 
     [TestMethod]
+    public async Task The_mysql_context_names_the_mariadb_server_version_when_the_flavour_is_mariadb()
+    {
+        string cs = await Render("CS_DbContext_v1.tt", Database(SqlDialect.MySql), Project(("MySqlFlavour", "MariaDb")));
+
+        Expect.Contains(cs, "options.UseMySql(builder.ConnectionString, new MariaDbServerVersion(new Version(10, 6, 0)));");
+        Expect.DoesNotContain(cs, "MySqlServerVersion");
+    }
+
+    [TestMethod]
     public async Task The_context_takes_its_names_from_the_project()
     {
         string cs = await Render("CS_DbContext_v1.tt", Database(SqlDialect.SqlServer),

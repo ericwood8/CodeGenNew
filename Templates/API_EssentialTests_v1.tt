@@ -26,16 +26,19 @@
         // TenantTable: the tests work in the first tenant of the database; TenantTestSupport (Tenants.cs, API_Tenants) finds it
         bool tenants = Project.ApiAuth && TenantPlan.IsEnabled(Project);
         string apiNamespace = Project.ApiNamespace ?? projectName + ".Api.Apis";
-        string containerPackage = Project.DatabaseDialect switch { SqlDialect.PostgreSql => "Testcontainers.PostgreSql", SqlDialect.MySql => "Testcontainers.MySql", _ => "Testcontainers.MsSql" };
-        string containerType = Project.DatabaseDialect switch { SqlDialect.PostgreSql => "PostgreSqlContainer", SqlDialect.MySql => "MySqlContainer", _ => "MsSqlContainer" };
+        bool mariaDb = Project.DatabaseDialect == SqlDialect.MySql && Project.MariaDbSetting == true;   // the project says MariaDB; a template of one table has no server to ask
+        string containerPackage = Project.DatabaseDialect switch { SqlDialect.PostgreSql => "Testcontainers.PostgreSql", SqlDialect.MySql => mariaDb ? "Testcontainers.MariaDb" : "Testcontainers.MySql", _ => "Testcontainers.MsSql" };
+        string containerType = Project.DatabaseDialect switch { SqlDialect.PostgreSql => "PostgreSqlContainer", SqlDialect.MySql => mariaDb ? "MariaDbContainer" : "MySqlContainer", _ => "MsSqlContainer" };
         string containerBuild = Project.DatabaseDialect switch
         {
             SqlDialect.PostgreSql => "new PostgreSqlBuilder(\"postgres:17-alpine\").WithDatabase(\"codegen_test\").Build()",
             // no binary log (the option is written in two pieces), so a trigger in the create script can be made without the SUPER privilege
-            SqlDialect.MySql => "new MySqlBuilder(\"mysql:8.4\").WithDatabase(\"codegen_test\").WithCommand(\"-\" + \"-skip-log-bin\").Build()",
+            SqlDialect.MySql => mariaDb
+                ? "new MariaDbBuilder(\"mariadb:10.11\").WithDatabase(\"codegen_test\").WithCommand(\"-\" + \"-skip-log-bin\").Build()"
+                : "new MySqlBuilder(\"mysql:8.4\").WithDatabase(\"codegen_test\").WithCommand(\"-\" + \"-skip-log-bin\").Build()",
             _ => "new MsSqlBuilder(\"mcr.microsoft.com/mssql/server:2022-latest\").Build()"
         };
-        string containerNamespace = Project.DatabaseDialect switch { SqlDialect.PostgreSql => "PostgreSql", SqlDialect.MySql => "MySql", _ => "MsSql" };
+        string containerNamespace = Project.DatabaseDialect switch { SqlDialect.PostgreSql => "PostgreSql", SqlDialect.MySql => mariaDb ? "MariaDb" : "MySql", _ => "MsSql" };
         string[] schema = Project.ApiTestSchema;
         if (containers && schema.Length == 0)
         {

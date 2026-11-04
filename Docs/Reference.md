@@ -319,6 +319,7 @@ One `<name>.config` file per project: `key=value` lines, `#` comments, lists com
 | `OutputSql` | folder of the generated SQL; blank = <ProjectName>.App/sql |
 | `AppNamespace` | root namespace of the WinUI3 app; blank = &lt;ProjectName&gt;.App |
 | `DatabaseProvider` | SqlServer, PostgreSql, MySql or Sqlite (appsettings.json and the package reference); blank = SqlServer |
+| `MySqlFlavour` | Auto, MySql or MariaDb, for DatabaseProvider=MySql: MariaDb gives the context the MariaDB server version; blank or Auto = what the server says (SELECT VERSION()) |
 | `DatabaseServer` | server for appsettings.json; blank = localhost |
 | `DatabaseName` | database for appsettings.json (for SQLite the path of the database file); blank = the project name |
 | `DatabaseUser` | login for appsettings.json (never the password); blank = Windows authentication |

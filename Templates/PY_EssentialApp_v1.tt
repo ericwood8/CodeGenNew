@@ -13,6 +13,7 @@
     // Settings: DatabaseProvider, DatabaseServer, DatabaseName, DatabaseUser, ProjectTitle, Stacks.
     // ==========================================================================================
     var dialect = Project.DatabaseDialect;
+    bool mariaDb = Project.MariaDbSetting == true;
     string user = Project.DatabaseUser ?? "";
     string server = Project.DatabaseServer ?? "localhost";
     string portFlag = new string((char)45, 2) + "port";   // a template line may not hold two hyphens in a row (see TemplateDashTests)
@@ -88,10 +89,10 @@ class MySqlSpatial(TypeDecorator):
         self.srid = srid
 
     def bind_expression(self, bindvalue):
-        return func.ST_GeomFromText(func.nullif(bindvalue, ""), self.srid, "axis-order=long-lat")
+        return func.ST_GeomFromText(func.nullif(bindvalue, ""), self.srid<# if (!mariaDb) { #>, "axis-order=long-lat"<# } #>)
 
     def column_expression(self, column):
-        return func.ST_AsText(column, "axis-order=long-lat")
+        return func.ST_AsText(column<# if (!mariaDb) { #>, "axis-order=long-lat"<# } #>)
 
 
 class MySqlBit(TypeDecorator):

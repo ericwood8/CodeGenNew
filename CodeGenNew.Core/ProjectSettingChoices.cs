@@ -56,6 +56,7 @@ public static class ProjectSettingChoices
             [
                 NotSet("SQL Server"), new("SqlServer", "SQL Server"), new("PostgreSql", "PostgreSQL"), new("MySql", "MySQL"), new("Sqlite", "SQLite")
             ]),
+            ["MySqlFlavour"] = (SettingKind.Dropdown, [NotSet("Auto"), new("Auto", "Auto (ask the server)"), new("MySql", "MySQL"), new("MariaDb", "MariaDB")]),
             ["AccessMode"] = (SettingKind.Radio, [NotSet("Routines"), new("Routines", "Routines"), new("Ef", "Ef")]),
             ["NamingStyle"] = (SettingKind.Radio, [NotSet("as is"), new("AsIs", "As is"), new("Pascal", "Pascal")]),
             ["DbSetNames"] = (SettingKind.Radio, [NotSet("the table name"), new("Plural", "Plural")]),

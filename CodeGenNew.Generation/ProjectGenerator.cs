@@ -74,6 +74,7 @@ public static class ProjectGenerator
 
         progress?.Invoke("Reading the schema...");
         var database = await provider.BuildAsync(options.DatabaseName, options.Schema, cancellationToken);
+        project = project.ForServer(database.ServerVersion);
         progress?.Invoke($"Read {database.Tables.Count} tables of [{options.Schema}].");
 
         if (options.Stacks.Contains("Rust", StringComparer.OrdinalIgnoreCase) && database.Dialect == SqlDialect.SqlServer)

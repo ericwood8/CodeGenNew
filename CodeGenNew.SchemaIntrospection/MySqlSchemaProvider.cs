@@ -28,6 +28,30 @@ public class MySqlSchemaProvider : SchemaProviderBase
 
     protected override string Quote(string name) => "`" + name.Replace("`", "``") + "`";
 
+    private string? _serverVersion;
+
+    public override async Task<string?> ReadServerVersionAsync(CancellationToken cancellationToken = default)
+    {
+        await using var connection = (MySqlConnection)await OpenConnectionAsync(cancellationToken);
+        return await ServerVersionAsync(connection, cancellationToken);
+    }
+
+    protected override async Task<string?> ReadServerVersionAsync(DbConnection connection, CancellationToken cancellationToken) =>
+        await ServerVersionAsync((MySqlConnection)connection, cancellationToken);
+
+    // asked once per provider: the server does not change under one run
+    private async Task<string?> ServerVersionAsync(MySqlConnection connection, CancellationToken cancellationToken)
+    {
+        if (_serverVersion is not null)
+            return _serverVersion;
+        await using var command = new MySqlCommand("SELECT VERSION()", connection);
+        return _serverVersion = await command.ExecuteScalarAsync(cancellationToken) as string;
+    }
+
+    // MariaDB's catalog differs from MySQL's in a few places the reader must not trip over (a quoted column default, the text 'NULL' as a default)
+    private async Task<bool> IsMariaDbAsync(MySqlConnection connection, CancellationToken cancellationToken) =>
+        (await ServerVersionAsync(connection, cancellationToken))?.Contains("MariaDB", StringComparison.OrdinalIgnoreCase) == true;
+
     // =============== type vocabulary ===============
 
     /// <summary> A MySQL column type in the SQL Server vocabulary the generator classifies by, plus the MySQL spelling of the declaration (for procedure parameters).
@@ -73,6 +97,10 @@ public class MySqlSchemaProvider : SchemaProviderBase
             case "enum": { int longest = ParseEnumValues(columnType)?.Max(v => v.Length) ?? 255; return ("varchar", longest, 0, 0, $"varchar({longest})"); }
             case "set": { var members = ParseValueList(columnType, "set("); int longest = members is null ? 255 : Math.Max(1, members.Sum(v => v.Length) + members.Count - 1); return ("varchar", longest, 0, 0, $"varchar({longest})"); }
             case "json": return ("varchar", -1, 0, 0, "json");
+            // MariaDB's own types, read as text: a uuid is 36 characters, an inet4 up to 15 and an inet6 up to 39
+            case "uuid": return ("varchar", 36, 0, 0, "uuid");
+            case "inet4": return ("varchar", 15, 0, 0, "inet4");
+            case "inet6": return ("varchar", 39, 0, 0, "inet6");
             case "binary": case "varbinary": return ("varbinary", length, 0, 0, $"{t}({length})");
             case "tinyblob": case "blob": case "mediumblob": case "longblob": return ("varbinary", -1, 0, 0, t);
             default:
@@ -146,6 +174,43 @@ public class MySqlSchemaProvider : SchemaProviderBase
         return isString ? "'" + d.Replace("'", "''") + "'" : d;
     }
 
+    /// <summary> The default of a MariaDB column in the form <see cref="NormalizeDefault"/> reads. MariaDB writes a text default in quotes (<c>'open'</c>), an expression as a call (<c>current_timestamp()</c>,
+    /// with no DEFAULT_GENERATED in EXTRA) and the text <c>NULL</c> for a nullable column that has no default. </summary>
+    public static string? NormalizeMariaDbDefault(string? columnDefault, string extra, bool isString)
+    {
+        if (columnDefault is null || columnDefault.Trim().Equals("NULL", StringComparison.OrdinalIgnoreCase))
+            return null;
+        string d = columnDefault.Trim();
+        if (d.Length >= 2 && d[0] == '\'' && d[^1] == '\'')
+            return NormalizeDefault(d[1..^1].Replace("''", "'"), extra, isString);
+        if (d.Contains('(') && !extra.ContainsIgnoreCase("DEFAULT_GENERATED"))
+            return NormalizeDefault(d, extra + " DEFAULT_GENERATED", isString);
+        return NormalizeDefault(d, extra, isString);
+    }
+
+    /// <summary> The default of a MariaDB column as the create script and the generated code expect a MySQL one: no quotes round a text literal (the script adds them), and null for the text <c>NULL</c>. </summary>
+    public static string? MariaDbDefaultDefinition(string? columnDefault)
+    {
+        if (columnDefault is null || columnDefault.Trim().Equals("NULL", StringComparison.OrdinalIgnoreCase))
+            return null;
+        string d = columnDefault.Trim();
+        return d.Length >= 2 && d[0] == '\'' && d[^1] == '\'' ? d[1..^1].Replace("''", "'") : columnDefault;
+    }
+
+    /// <summary> True for a check that says nothing but <c>json_valid(`col`)</c>. </summary>
+    public static bool IsJsonValidCheck(string clause) =>
+        System.Text.RegularExpressions.Regex.IsMatch(clause.Trim(), @"^\(*\s*json_valid\(\s*`?[^`)\s]+`?\s*\)\s*\)*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary> The names of the columns a check constraint ties to JSON (<c>json_valid(`Body`)</c>): MariaDB has no JSON type, a JSON column is longtext with that check. </summary>
+    public static HashSet<string> JsonCheckedColumns(IEnumerable<string> checkClauses)
+    {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string clause in checkClauses)
+            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(clause, @"json_valid\(\s*`?([^`)\s]+)`?\s*\)", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                names.Add(m.Groups[1].Value);
+        return names;
+    }
+
     private static PrimaryKeyShape ClassifyPrimaryKeyShape(int pkColumnCount, string? pkDataType, string? pkColumnType) =>
         PrimaryKeyShapes.Classify(pkColumnCount, pkColumnCount == 1 ? MapType(pkDataType ?? "", pkColumnType ?? "", null, null, null).SqlTypeName : null);
 
@@ -161,7 +226,7 @@ public class MySqlSchemaProvider : SchemaProviderBase
                (SELECT c.COLUMN_TYPE FROM information_schema.STATISTICS s JOIN information_schema.COLUMNS c ON c.TABLE_SCHEMA = s.TABLE_SCHEMA AND c.TABLE_NAME = s.TABLE_NAME AND c.COLUMN_NAME = s.COLUMN_NAME
                  WHERE s.TABLE_SCHEMA = t.TABLE_SCHEMA AND s.TABLE_NAME = t.TABLE_NAME AND s.INDEX_NAME = 'PRIMARY' AND s.SEQ_IN_INDEX = 1) AS pk_column_type
         FROM information_schema.TABLES t
-        WHERE t.TABLE_TYPE = 'BASE TABLE' AND t.TABLE_SCHEMA = DATABASE()
+        WHERE t.TABLE_TYPE IN ('BASE TABLE', 'SYSTEM VERSIONED') AND t.TABLE_SCHEMA = DATABASE()
         ORDER BY t.TABLE_NAME;
         """;
 
@@ -169,7 +234,7 @@ public class MySqlSchemaProvider : SchemaProviderBase
         SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME, (c.EXTRA LIKE '%auto_increment%') AS is_identity, (c.COLUMN_KEY = 'PRI') AS is_primary_key,
                (c.EXTRA LIKE '%GENERATED%' AND c.EXTRA NOT LIKE '%DEFAULT_GENERATED%') AS is_computed, c.DATA_TYPE, (c.IS_NULLABLE = 'YES') AS is_nullable
         FROM information_schema.COLUMNS c
-        JOIN information_schema.TABLES t ON t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME AND t.TABLE_TYPE = 'BASE TABLE'
+        JOIN information_schema.TABLES t ON t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME AND t.TABLE_TYPE IN ('BASE TABLE', 'SYSTEM VERSIONED')
         WHERE c.TABLE_SCHEMA = DATABASE();
         """;
 
@@ -300,6 +365,14 @@ public class MySqlSchemaProvider : SchemaProviderBase
         WHERE tc.CONSTRAINT_TYPE = 'CHECK' AND tc.TABLE_SCHEMA = @schema AND tc.TABLE_NAME = @table
         """;
 
+    protected override async Task<bool> ReadIsSystemVersionedAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
+    {
+        await using var command = new MySqlCommand("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = @table AND TABLE_TYPE = 'SYSTEM VERSIONED'", (MySqlConnection)connection);
+        command.Parameters.AddWithValue("@schema", schemaName);
+        command.Parameters.AddWithValue("@table", tableName);
+        return Convert.ToInt64(await command.ExecuteScalarAsync(cancellationToken)) > 0;
+    }
+
     protected override async Task<string?> ReadTableDescriptionAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {
         await using var command = new MySqlCommand("SELECT TABLE_COMMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA = @schema AND TABLE_NAME = @table", (MySqlConnection)connection);
@@ -323,6 +396,7 @@ public class MySqlSchemaProvider : SchemaProviderBase
         columns = WithDescriptions(columns, descriptions);
         // the limits of the column's own type, which the generator's wider types (a signed tinyint is a smallint, a year a smallint, a bit(40) a bigint) would not keep
         var checks = columns.Select(c => (Column: c, Limit: TypeLimit(c))).Where(x => x.Limit is not null).Select(x => ((string?)x.Column.Name, $"(`{x.Column.Name}` between {x.Limit})")).ToList();
+        var clauses = new List<string>();
         try
         {
             await using var command = new MySqlCommand(CheckConstraintsQuery, (MySqlConnection)connection);
@@ -330,12 +404,16 @@ public class MySqlSchemaProvider : SchemaProviderBase
             command.Parameters.AddWithValue("@table", tableName);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
-                checks.Add((null, reader.GetString(0)));
+                clauses.Add(reader.GetString(0));
         }
         catch (MySqlException)
         {
             // a server without information_schema.CHECK_CONSTRAINTS: no checks to read
         }
+        // the json type (MariaDB: longtext) brings its own json_valid check back when the column is created again, so the check is not listed
+        checks.AddRange(clauses.Where(c => !IsJsonValidCheck(c)).Select(c => ((string?)null, c)));
+        var json = JsonCheckedColumns(clauses);
+        columns = columns.Select(c => json.Contains(c.Name) && c.SqlTypeName == "varchar" && c.MaxLength == -1 && c.DeclarationOverride is "longtext" or "text" ? c with { DeclarationOverride = "json" } : c).ToList();
         return WithChecks(columns, checks);
     }
 
@@ -354,6 +432,7 @@ public class MySqlSchemaProvider : SchemaProviderBase
     private async Task<List<RawColumn>> ReadRawColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken)
     {
         var results = new List<RawColumn>();
+        bool mariaDb = await IsMariaDbAsync((MySqlConnection)connection, cancellationToken);
         // SRS_ID (the spatial reference system of a column) exists from MySQL 8.0.3; a server without it has no such column to read
         await using var command = new MySqlCommand(ColumnsQuery, (MySqlConnection)connection);
         command.Parameters.AddWithValue("@schema", schemaName);
@@ -401,11 +480,11 @@ public class MySqlSchemaProvider : SchemaProviderBase
                 IdentitySeed: identity ? 1 : null,
                 IdentityIncrement: identity ? 1 : null,
                 ComputedDefinition: generated ? Text(10) ?? "" : null,
-                DefaultDefinition: columnDefault,
+                DefaultDefinition: mariaDb ? MariaDbDefaultDefinition(columnDefault) : columnDefault,
                 IsPrimaryKey: reader.GetBoolean(11),
                 IsInUniqueIndex: reader.GetBoolean(12),
                 DeclarationOverride: declaration,
-                DefaultForCSharp: NormalizeDefault(columnDefault, extra, isString),
+                DefaultForCSharp: mariaDb ? NormalizeMariaDbDefault(columnDefault, extra, isString) : NormalizeDefault(columnDefault, extra, isString),
                 Choices: ParseEnumValues(columnType),
                 SpatialType: MySqlSpatialType.FromDataType(dataType)?.Name,
                 Srid: (int?)Long(13) ?? 0,
@@ -551,7 +630,8 @@ public class MySqlSchemaProvider : SchemaProviderBase
             command.Parameters.AddWithValue("@table", tableName);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
-                checks.Add(new CheckConstraintModel(reader.GetString(0), "CHECK (" + reader.GetString(1) + ")"));
+                if (!IsJsonValidCheck(reader.GetString(1)))   // the json column type writes it again
+                    checks.Add(new CheckConstraintModel(reader.GetString(0), "CHECK (" + reader.GetString(1) + ")"));
         }
         catch (MySqlException)
         {

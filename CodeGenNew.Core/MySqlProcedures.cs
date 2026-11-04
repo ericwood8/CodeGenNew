@@ -29,11 +29,11 @@ public static partial class MySqlProcedures
     private static string Now(ColumnModel c) =>
         FractionDigits().Match(c.SqlTypeDeclaration) is { Success: true } digits && digits.Groups[1].Value != "0" ? $"NOW({digits.Groups[1].Value})" : "NOW()";
 
-    private static string Trimmed(ColumnModel c, string expression) => c.IsStringColumn ? Native(c, $"TRIM({expression})") : expression;
+    private static string Trimmed(ColumnModel c, string expression, ProjectSettings? project) => c.IsStringColumn ? Native(c, $"TRIM({expression})", project) : expression;
 
     /// <summary> The text of a parameter as a spatial column's own type: well-known text, longitude first, in the column's spatial reference system; blank is NULL. Any other column's text is as it is. </summary>
-    private static string Native(ColumnModel c, string expression) =>
-        c.DbSpatialType is null ? expression : $"ST_GeomFromText(NULLIF({expression}, ''), {c.DbSrid}, 'axis-order=long-lat')";
+    private static string Native(ColumnModel c, string expression, ProjectSettings? project) =>
+        c.DbSpatialType is null ? expression : DialectInfo.For(SqlDialect.MySql).SpatialFromText(expression, c.DbSrid, project?.MariaDbSetting == true);
 
     private static string Create(TableModel m, string suffix, IEnumerable<(string Name, string Type, string Mode)> parameters, string body)
     {
@@ -109,7 +109,7 @@ public static partial class MySqlProcedures
         var parameterColumns = insertable.Where(c => c != identity && !c.IsInsertStampColumn && c != m.ActiveColumn).ToList();
         var autoTouched = m.Columns.Where(c => c.IsInsertStampColumn).ToList();
 
-        var pairs = parameterColumns.Select(c => (Name: c.DbName, Value: Trimmed(c, P(c))))
+        var pairs = parameterColumns.Select(c => (Name: c.DbName, Value: Trimmed(c, P(c), project)))
             .Concat(autoTouched.Select(c => (Name: c.DbName, Value: Now(c)))).ToList();
         if (m.HasActiveInactivePair && m.ActiveColumn is { } active)
             pairs.Add((active.DbName, Flag(active, !active.IsInactive)));
@@ -145,11 +145,11 @@ public static partial class MySqlProcedures
         // NULL means "do not change this column" (as in SP_Update): SET col = COALESCE(param, col).
         var sets = new List<string>();
         foreach (var c in autoTouched) sets.Add($"{Col(c)} = {Now(c)}");
-        foreach (var c in setColumns) sets.Add($"{Col(c)} = COALESCE({Trimmed(c, P(c))}, {Col(c)})");
+        foreach (var c in setColumns) sets.Add($"{Col(c)} = COALESCE({Trimmed(c, P(c), project)}, {Col(c)})");
         if (m.HasActiveInactivePair && m.ActiveColumn is { } active)
         {
             bool negative = active.IsInactive;
-            string own = $"COALESCE({Trimmed(active, P(active))}, {Col(active)})";
+            string own = $"COALESCE({Trimmed(active, P(active), project)}, {Col(active)})";
             sets.Add(triggers.Count > 0
                 ? $"{Col(active)} = CASE WHEN {string.Join(" OR ", triggers.Select(c => $"{P(c)} IS NOT NULL"))} THEN {Flag(active, negative)} ELSE {own} END"
                 : $"{Col(active)} = {own}");
@@ -195,14 +195,14 @@ public static partial class MySqlProcedures
         {
             updatePairs.Add((c.DbName, c == active && triggers.Count > 0
                 ? $"CASE WHEN {string.Join(" OR ", triggers.Select(Supplied))} THEN {Flag(c, negative)} ELSE {P(c)} END"
-                : Native(c, P(c))));
+                : Native(c, P(c), project)));
         }
         foreach (var c in m.Columns.Where(c => !c.IsComputed && (c.IsModifiedDateColumn || c.IsLastChangedDateColumn)))
             updatePairs.Add((c.DbName, Now(c)));
 
         var insertPairs = parameterColumns
             .Where(c => c != identityKey && !c.IsInactiveReasonColumn && !c.IsAdminFlagColumn && !c.IsModifiedUserColumn && c != m.InactiveDateColumn && c != active)
-            .Select(c => (Name: c.DbName, Value: Native(c, P(c)))).ToList();
+            .Select(c => (Name: c.DbName, Value: Native(c, P(c), project))).ToList();
         foreach (var c in m.Columns.Where(c => !c.IsComputed && c.IsInsertStampColumn))
             insertPairs.Add((c.DbName, Now(c)));
         if (active is not null) insertPairs.Add((active.DbName, Flag(active, !negative)));
@@ -278,7 +278,7 @@ public static partial class MySqlProcedures
         {
             string source = $"{Q("src")}.{Col(c)}";
             if (c.IsPrimaryKey)
-                pairs.Add((c.DbName, IsGenerated(c) ? "v_new_key" : Trimmed(c, NewKey(c))));
+                pairs.Add((c.DbName, IsGenerated(c) ? "v_new_key" : Trimmed(c, NewKey(c), project)));
             else if (c.IsInsertStampColumn)
                 pairs.Add((c.DbName, Now(c)));
             else if (c.IsModifiedDateColumn || c.IsModifiedUserColumn || c.IsInactiveReasonColumn || c == inactiveDate || (m.HasSoftDelete && c == m.DeletedDateColumn))
@@ -288,9 +288,9 @@ public static partial class MySqlProcedures
             else if (c.IsAdminFlagColumn || (m.HasSoftDelete && c == m.IsDeletedColumn))
                 pairs.Add((c.DbName, Flag(c, false)));
             else if (c.IsCreateUserColumn)
-                pairs.Add((c.DbName, Trimmed(c, P(c))));
+                pairs.Add((c.DbName, Trimmed(c, P(c), project)));
             else if (overrides.Contains(c))
-                pairs.Add((c.DbName, $"COALESCE({Trimmed(c, P(c))}, {source})"));
+                pairs.Add((c.DbName, $"COALESCE({Trimmed(c, P(c), project)}, {source})"));
             else
                 pairs.Add((c.DbName, source));
         }

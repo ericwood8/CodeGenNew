@@ -28,7 +28,7 @@ public partial class ProjectSettings
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode", "MaxGridColumns",
         "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "TypeAheadRows", "TypeAheadParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "ApiAnnotations", "NonNegativeColumns", "NotFutureDateColumns", "DatePairs", "NoDatePairs", "PlainTextColumns", "EmailColumns", "UrlColumns", "MoneyColumns", "NotMoneyColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "DesktopTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "RowApprovals", "ApproverTable", "LogTables", "QueueTables", "QueueMaxRetries", "QueueClaimMinutes", "ArchiveTables", "ArchiveBatchSize", "ArchiveRunAt", "TreeTables", "SoftDeleteTables", "EffectiveDatedTables", "TenantTable", "TenantColumn", "NoTenantTables", "TenantMembership", "TenantHostColumn", "SubscriptionTable", "PlanTable", "PlanLimitTable", "PlanLimits", "SubscriptionActiveStatuses", "SubscriptionRequired", "SubscriptionWebhookSecret", "SubscriptionPlanChoice", "SubscriptionPeriodDays", "WriteRoles", "TableWriteRoles", "ReadRoles", "TableReadRoles", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "KeyColumns", "SingleRowTables", "ListingName", "ListingFolder", "ListingPattern",
-        "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputUno", "OutputRust", "OutputPython", "OutputApiTests", "OutputBlazorTests", "OutputWinUI3Tests", "OutputUnoTests", "RustCrateName", "RustPort", "RustTests", "PythonTests", "OutputSql", "AppNamespace", "DatabaseProvider", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
+        "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputUno", "OutputRust", "OutputPython", "OutputApiTests", "OutputBlazorTests", "OutputWinUI3Tests", "OutputUnoTests", "RustCrateName", "RustPort", "RustTests", "PythonTests", "OutputSql", "AppNamespace", "DatabaseProvider", "MySqlFlavour", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildUno", "BuildPython", "BuildRust", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestUno", "TestPython", "TestRust"
     ];
 
@@ -105,6 +105,13 @@ public partial class ProjectSettings
         }
         return new ProjectSettings(merged);
     }
+
+    /// <summary> The settings a run uses once it has read the server: when the project does not say <c>MySqlFlavour</c> and the server's version text names MariaDB, a copy with <c>MySqlFlavour=MariaDb</c>,
+    /// so every template (a one-table template, the essentials) sees what the server is. Not for saving back to the project file. </summary>
+    public ProjectSettings ForServer(string? serverVersion) =>
+        MariaDbSetting is null && serverVersion?.Contains("MariaDB", StringComparison.OrdinalIgnoreCase) == true
+            ? WithOverrides([new("MySqlFlavour", "MariaDb")])
+            : this;
 
     /// <summary> Serializes the explicit values back to file text, with a short header. </summary>
     public string ToFileText()
@@ -720,6 +727,15 @@ public partial class ProjectSettings
         "sqlite" => SqlDialect.Sqlite,
         _ => SqlDialect.SqlServer
     };
+    /// <summary> <c>MySqlFlavour</c>: <c>MariaDb</c> or <c>MySql</c> says which server is behind <c>DatabaseProvider=MySql</c>; null (blank or <c>Auto</c>) lets the schema reader's <c>SELECT VERSION()</c> decide
+    /// (<see cref="DatabaseModel.UsesMariaDb"/>). </summary>
+    public bool? MariaDbSetting => Explicit("MySqlFlavour")?.Trim().ToLowerInvariant() switch
+    {
+        "mariadb" => true,
+        "mysql" => false,
+        _ => null
+    };
+
     /// <summary> The crate (package) name of the Rust API: <c>RustCrateName</c>, or the project name in snake_case (<c>invoice_system</c>). </summary>
     public string RustCrateName => Explicit("RustCrateName") ?? RustNames.Crate(ProjectName ?? "my_app");
 

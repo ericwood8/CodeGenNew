@@ -139,6 +139,8 @@ public static class Program
             return ExitCodes.Failure;
         }
 
+        project = project.ForServer(database?.ServerVersion ?? model?.ServerVersion);
+
         // spCanDelete is a SQL Server stored procedure of the author's own tooling; PostgreSQL and MySQL have no such check.
         if (options.Provider == DatabaseProvider.SqlServer)
         {

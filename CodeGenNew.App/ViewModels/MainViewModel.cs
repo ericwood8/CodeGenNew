@@ -159,7 +159,7 @@ public partial class MainViewModel : ObservableObject
             var schemaProvider = SchemaProviderFactory.Create(_connectionRequest, _settings.SpecialLogicColumnsConfigPath, project.Naming, project.Acronyms, project.IgnoredColumns, project.MoneyColumns, project.NotMoneyColumns, project.KeyColumns);
             var database = await schemaProvider.BuildAsync(_connectionRequest.DatabaseName, schema);
 
-            var result = await TemplateRunner.RunAsync(template.FilePath, database, project);
+            var result = await TemplateRunner.RunAsync(template.FilePath, database, project.ForServer(database.ServerVersion));
             if (!result.Success)
             {
                 StatusMessage = "Template generation failed: " + string.Join(" | ", result.Errors);
@@ -231,7 +231,7 @@ public partial class MainViewModel : ObservableObject
                 table.SchemaName, table.TableName, template.Config.NeedsRowData, template.Config.NeedsReferencedDisplayColumns);
 
             // a table that looks like a log is listed in LogTables for this run when the person chose the log page or its index script
-            var result = await TemplateRunner.RunAsync(template.FilePath, model, LogTablePlan.ForMenuRun(project, template.Name, model));
+            var result = await TemplateRunner.RunAsync(template.FilePath, model, LogTablePlan.ForMenuRun(project.ForServer(model.ServerVersion), template.Name, model));
             if (!result.Success)
             {
                 StatusMessage = "Template generation failed: " + string.Join(" | ", result.Errors);

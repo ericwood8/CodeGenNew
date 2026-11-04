@@ -103,6 +103,19 @@ public class ApiTestsTemplateTests
     ]);
 
     [TestMethod]
+    public async Task A_MariaDB_project_starts_a_MariaDB_test_container()
+    {
+        var asked = await Repo.Cache.RunAsync(Repo.Template("API_EssentialTests_v1.tt"), Project(("ApiTests", "true"), ("ApiTestContainers", "true"), ("DatabaseProvider", "MySql"), ("MySqlFlavour", "MariaDb")));
+        Assert.IsTrue(asked.Success, string.Join(" | ", asked.Errors));
+        string text = asked.GeneratedText!.ReplaceLineEndings("\n");
+
+        Expect.Contains(text, "<PackageReference Include=\"Testcontainers.MariaDb\" Version=\"4.15.0\" />");
+        Expect.Contains(text, "new MariaDbBuilder(\"mariadb:10.11\").WithDatabase(\"codegen_test\")");
+        Expect.Contains(text, "using Testcontainers.MariaDb;");
+        Expect.Contains(text, "private static MariaDbContainer? _container;");
+    }
+
+    [TestMethod]
     [DataRow("PostgreSql", "Testcontainers.PostgreSql", "new PostgreSqlBuilder(\"postgres:17-alpine\").WithDatabase(\"codegen_test\").Build()", "PostgreSqlContainer")]
     [DataRow("MySql", "Testcontainers.MySql", "new MySqlBuilder(\"mysql:8.4\").WithDatabase(\"codegen_test\").WithCommand(\"-\" + \"-skip-log-bin\").Build()", "MySqlContainer")]
     [DataRow("SqlServer", "Testcontainers.MsSql", "new MsSqlBuilder(\"mcr.microsoft.com/mssql/server:2022-latest\").Build()", "MsSqlContainer")]

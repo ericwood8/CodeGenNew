@@ -241,6 +241,14 @@ pub async fn connect() -> Result<Pool, sqlx::Error> {
     {
 #>
 /// Connects to MySQL: DATABASE_URL when set, else MYSQL_HOST, MYSQL_TCP_PORT, MYSQL_USER and MYSQL_DATABASE (defaults below), and MYSQL_PWD, which is never written down.
+<#
+        if (Project.MariaDbSetting == true)
+        {
+#>
+/// MariaDB: sqlx reads it as MySQL. When the login is refused, check that the account uses an authentication plugin sqlx supports (mysql_native_password).
+<#
+        }
+#>
 pub async fn connect() -> Result<Pool, sqlx::Error> {
     use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
     let mut options: MySqlConnectOptions = match std::env::var("DATABASE_URL") {

@@ -15,6 +15,9 @@ public interface ISchemaProvider
 
     /// <summary> The views of a schema with their create statements; none for a provider that does not read them. </summary>
     Task<IReadOnlyList<ViewModel>> ListViewsAsync(string schemaName, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<ViewModel>>([]);
+
+    /// <summary> The server's version text, for the provider that tells MySQL from MariaDB by it; null for a provider that does not read it. </summary>
+    Task<string?> ReadServerVersionAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 }
 
 /// <summary> A column as one database's catalog describes it, already put in the vocabulary the rest of the generator
@@ -155,6 +158,10 @@ public abstract class SchemaProviderBase : ISchemaProvider
     protected abstract Task<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken);
     protected abstract string Quote(string name);
     /// <summary> What the database says about the table itself (its comment); null when nothing. A database without table comments need not override it. </summary>
+    protected virtual Task<string?> ReadServerVersionAsync(DbConnection connection, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
+
+    protected virtual Task<bool> ReadIsSystemVersionedAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken) => Task.FromResult(false);
+
     protected virtual Task<string?> ReadTableDescriptionAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken) => Task.FromResult<string?>(null);
 
     protected abstract Task<List<RawColumn>> ReadColumnsAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken);
@@ -169,6 +176,8 @@ public abstract class SchemaProviderBase : ISchemaProvider
 
     /// <summary> The views of a schema (the create script writes them back). </summary>
     public virtual Task<IReadOnlyList<ViewModel>> ListViewsAsync(string schemaName, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<ViewModel>>([]);
+
+    public virtual Task<string?> ReadServerVersionAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
 
     /// <summary> The table's filtered or partial indexes (the create script writes them back). </summary>
     protected virtual Task<List<PartialIndexModel>> ReadPartialIndexesAsync(DbConnection connection, string schemaName, string tableName, CancellationToken cancellationToken) => Task.FromResult(new List<PartialIndexModel>());
@@ -260,6 +269,8 @@ public abstract class SchemaProviderBase : ISchemaProvider
             DatabaseTableName = WhenDifferent(tableName, Named(tableName)),
             QuotedName = QuotedTable(schemaName, tableName),
             Description = await ReadTableDescriptionAsync(connection, schemaName, tableName, cancellationToken),
+            IsSystemVersioned = await ReadIsSystemVersionedAsync(connection, schemaName, tableName, cancellationToken),
+            ServerVersion = await ReadServerVersionAsync(connection, cancellationToken),
             Dialect = Dialect,
             IsReservedWordName = tableName.IsSqlReservedWord(),
             IsCSharpReservedWordName = Named(tableName).IsCSharpReservedWord(),

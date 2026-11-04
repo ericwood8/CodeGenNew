@@ -209,6 +209,22 @@ public class MySqlTypeNotationTests
     }
 
     [TestMethod]
+    public void On_MariaDB_the_routines_and_Rust_leave_out_the_axis_order_option()
+    {
+        var table = AsMySql(Place(Shape("Spot", "point", 4326)));
+        var project = ProjectSettings.FromValues(new Dictionary<string, string> { ["MySqlFlavour"] = "MariaDb" });
+
+        string insert = MySqlProcedures.Insert(table, project);
+        var rust = RustTable.Of(table, project);
+
+        Expect.Contains(insert, "ST_GeomFromText(NULLIF(TRIM(`pSpot`), ''), 4326)");
+        Expect.DoesNotContain(insert, "axis-order");
+        Expect.Contains(rust.SelectList, "ST_AsText(`Spot`) AS `Spot`");
+        Expect.Contains(rust.Insert, "ST_GeomFromText(NULLIF(?, ''), 4326)");
+        Expect.DoesNotContain(rust.Insert, "axis-order");
+    }
+
+    [TestMethod]
     public void Rust_reads_a_spatial_column_as_text_and_a_bit_column_as_a_number()
     {
         var table = AsMySql(Place(Shape("Spot", "point", 4326),

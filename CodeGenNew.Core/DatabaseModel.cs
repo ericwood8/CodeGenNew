@@ -9,6 +9,20 @@ public class DatabaseModel
     public SqlDialect Dialect { get; init; } = SqlDialect.SqlServer;
     public required List<TableModel> Tables { get; init; }
 
+    /// <summary> The server's own version text (<c>SELECT VERSION()</c>: <c>8.0.36</c>, <c>10.11.6-MariaDB-0ubuntu0.23.10.2</c>); null when the provider does not read it. </summary>
+    public string? ServerVersion { get; init; }
+
+    /// <summary> True when the server says it is MariaDB, which speaks the MySQL protocol under the same <see cref="SqlDialect.MySql"/>. </summary>
+    public bool ServerIsMariaDb => ServerVersion?.Contains("MariaDB", StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary> Whether the generated code treats the server as MariaDB: the project's <c>MySqlFlavour</c> when it names one, else what the server said. </summary>
+    public bool UsesMariaDb(ProjectSettings project) => Dialect == SqlDialect.MySql && (project.MariaDbSetting ?? ServerIsMariaDb);
+
+    /// <summary> The MariaDB version for <c>MariaDbServerVersion</c>: the major and minor numbers the server reported, else the oldest long-term-support release, 10.6. </summary>
+    public Version MariaDbVersion => ServerIsMariaDb && System.Text.RegularExpressions.Regex.Match(ServerVersion!, @"^(?:\d+\.\d+\.\d+-)?(\d+)\.(\d+)") is { Success: true } m
+        ? new Version(int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value), 0)
+        : new Version(10, 6, 0);
+
     /// <summary> The views of the schema (only the create script uses them). </summary>
     public IReadOnlyList<ViewModel> Views { get; init; } = [];
 
