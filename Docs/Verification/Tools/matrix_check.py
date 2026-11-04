@@ -38,7 +38,7 @@ def run(command, folder, timeout=900):
     except subprocess.TimeoutExpired:
         return False, ["timed out"]
     text = (result.stdout + "\n" + result.stderr).strip().splitlines()
-    errors = [line for line in text if " error " in line or "FAILED" in line or "Error" in line][:TAIL_LINES] or text[-TAIL_LINES:]
+    errors = [line for line in text if (" error " in line or "FAILED" in line or "Error" in line or line.lstrip().startswith(("Failed", "Failed!"))) and " warning " not in line][:TAIL_LINES] or text[-TAIL_LINES:]
     return result.returncode == 0, errors
 
 
@@ -55,11 +55,19 @@ def cell_api(out, name):
     return run(["dotnet", "build", str(out / f"{name}.Api"), "-v", "q"], out)
 
 
+def build_then_test(out, folder, tests, extra=()):
+    """dotnet build of the app, then dotnet test of its generated test project when it has one."""
+    ok, errors = run(["dotnet", "build", str(folder), "-v", "q", *extra], out)
+    if not ok or not any(tests.glob("*.csproj")):
+        return ok, errors
+    return run(["dotnet", "test", str(tests), "-v", "q", *extra], out)
+
+
 def cell_blazor(out, name):
     folder = out / f"{name}.Blazor"
     if not folder.exists():
         return "SKIP", ["not generated"]
-    return run(["dotnet", "build", str(folder), "-v", "q"], out) if tool("dotnet") else ("SKIP", ["dotnet is not on the PATH"])
+    return build_then_test(out, folder, out / f"{name}.Blazor.Tests") if tool("dotnet") else ("SKIP", ["dotnet is not on the PATH"])
 
 
 def cell_python(out, name):
@@ -89,15 +97,15 @@ def cell_rust(out, name):
     return run(["cargo", "test", "--quiet"], folder, timeout=1800)
 
 
-def cell_app(suffix, platform):
+def cell_app(suffix, platform, app_suffix=None):
+    """The desktop app (the WinUI3 one is the <name>.App folder) built, then its <name>.<suffix>.Tests project run."""
     def cell(out, name):
-        folders = sorted(out.glob(f"*.{suffix}"))
+        folders = sorted(out.glob(f"*.{app_suffix or suffix}"))
         if not folders:
             return "SKIP", ["not generated"]
         if sys.platform != "win32":
             return "SKIP", ["the app is built on Windows"]
-        command = ["dotnet", "build", str(folders[0]), "-v", "q"] + ([f"-p:Platform={platform}"] if platform else [])
-        return run(command, out)
+        return build_then_test(out, folders[0], out / f"{name}.{suffix}.Tests", [f"-p:Platform={platform}"] if platform else [])
     return cell
 
 
@@ -110,6 +118,10 @@ def cell_container(args, kind):
         command = [sys.executable, str(HERE / "container_run.py"), kind, "--host", args.host, "--db", args.db]
         if args.user:
             command += ["--user", args.user]
+        if args.trusted:
+            command.append("--trusted")
+        if args.ef:
+            command.append("--ef")
         ok, errors = run(command, HERE, timeout=1800)
         return ok, errors
     return cell
@@ -125,6 +137,10 @@ def cell_frontend(args):
         npm = shutil.which("npm")
         if npm is None:
             return "SKIP", ["npm is not on the PATH"]
+        runner = next((c for c in (HERE.parents[3].parent / "tools" / "run_frontend_tests.py", Path("C:/Github/tools/run_frontend_tests.py")) if c.exists()), None)
+        if runner is not None:
+            ok, errors = run([sys.executable, str(runner), str(folder)], out, timeout=1800)
+            return ok, errors
         ok, errors = run([npm, "install", "--no-audit", "--no-fund"], folder)
         return (ok, errors) if not ok else run([npm, "test", "--", "--run"], folder)
     return cell
@@ -142,6 +158,8 @@ def main():
     parser.add_argument("--host")
     parser.add_argument("--db")
     parser.add_argument("--user")
+    parser.add_argument("--trusted", action="store_true", help="SQL Server Windows authentication for the mssql container cell")
+    parser.add_argument("--ef", action="store_true", help="AccessMode=Ef for the container cell")
     args = parser.parse_args()
     if args.settings_file:
         for line in Path(args.settings_file).read_text(encoding="utf-8").splitlines():
@@ -152,6 +170,10 @@ def main():
                 args.stack = line.split("=", 1)[1]
             elif line and not line.startswith("#"):
                 args.set.append(line)
+
+    # Angular 21 and later run their tests on Vitest, which the generated project asks for by AngularVersion
+    if "angular" in {s.strip() for s in args.stack.split(",")} and not any(s.startswith("AngularVersion=") for s in args.set):
+        args.set.append("AngularVersion=22")
 
     out = generate(args)
     stacks = {s.strip() for s in args.stack.split(",")}
@@ -165,7 +187,7 @@ def main():
     if "rust" in stacks:
         cells.append(("rust", cell_rust))
     if "winui3" in stacks:
-        cells.append(("winui3", cell_app("WinUI3", "x64")))
+        cells.append(("winui3", cell_app("WinUI3", "x64", "App")))
     if "uno" in stacks:
         cells.append(("uno", cell_app("Uno", None)))
     for kind in args.container:

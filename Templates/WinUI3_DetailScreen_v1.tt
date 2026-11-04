@@ -524,7 +524,7 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
 <#
             }
 #>
-        foreach (var row in await _context.Set<<#= p.Table #>>().OrderBy(r => r.<#= p.DisplayName #>).ToListAsync())
+        foreach (var row in await _context.Set<<#= p.Table #>>().AsNoTracking().OrderBy(r => r.<#= p.DisplayName #>).ToListAsync())
             <#= WinUI3Names.OptionsProperty(p) #>.Add(new <#= WinUI3Names.LookupOptionClass(table, "Detail", p.KeyCs) #> { Id = row.<#= p.KeyName #>, Text = row.<#= p.DisplayName #>?.ToString() ?? "" });
 <#
             if (lookupColumnsForThisParent.Count > 0)

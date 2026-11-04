@@ -75,6 +75,7 @@ def main():
     problems = [line for line in lines if "container could not be made" in line]
     print(problems[0][:700] if problems else "no container problem")
     print("output:", work)
+    return 0 if any(line.startswith("Passed!") for line in lines) and not errors else 1
 
 
 if __name__ == "__main__":

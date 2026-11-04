@@ -360,7 +360,7 @@ public sealed class TestDb : IAsyncDisposable
             if (uno)
                 L(nothingWritten);
             else
-                L($"        Assert.AreEqual(0, await db.Context.Set<{plan.Entity}>().CountAsync());");
+                L($"        Assert.AreEqual(0, await db.Context.Set<{plan.Entity}>().IgnoreQueryFilters().CountAsync());");
             L("    }");
         }
 
@@ -380,7 +380,7 @@ public sealed class TestDb : IAsyncDisposable
         else
         {
             L("        db.Context.ChangeTracker.Clear();");
-            L($"        var saved = await db.Context.Set<{plan.Entity}>().SingleAsync();");
+            L($"        var saved = await db.Context.Set<{plan.Entity}>().IgnoreQueryFilters().SingleAsync();");
             L("        Assert.IsNull(TestJson.FirstDifference(TestJson.Write(saved), RowJson));");
         }
         L("    }");
