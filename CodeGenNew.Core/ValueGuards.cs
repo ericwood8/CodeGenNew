@@ -42,12 +42,7 @@ public sealed record ValueGuard(ColumnModel Column, ValueGuardKind Kind)
     // a date rule compares days: the same day is the same value as far as the rule goes
     private string SameAsStored(string parameter, SqlDialect dialect, bool textParameter)
     {
-        string column = dialect switch
-        {
-            SqlDialect.PostgreSql => "\"" + Column.DbName.Replace("\"", "\"\"") + "\"",
-            SqlDialect.MySql => "`" + Column.DbName.Replace("`", "``") + "`",
-            _ => "[" + Column.DbName.Replace("]", "]]") + "]"
-        };
+        string column = DialectInfo.For(dialect).Quote(Column.DbName);
         if (Kind == ValueGuardKind.NonNegative)
             return textParameter ? $"{column} = TRY_CAST({parameter} AS decimal(38, 10))" : $"{column} = {parameter}";
 

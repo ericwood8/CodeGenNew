@@ -45,7 +45,7 @@ public static class ArchiveScript
         void L(string text = "") => o.Append(text).Append('\n');
         string what = job.Delete ? $"deletes the rows of {job.Table.TableName}" : $"moves the rows of {job.Table.TableName} to {job.ArchiveName}";
         string finished = job.Queue is null ? "" : $", finished ones only ({job.Queue.Status.DbName} = '{QueueStatus.Done}')";
-        L($"-- {what} that are older than {job.Days} days by {job.Age.DbName}{finished}{(database.Dialect == SqlDialect.Sqlite ? "" : $", {batchSize} rows at a time")}");
+        L($"-- {what} that are older than {job.Days} days by {job.Age.DbName}{finished}{(di.SupportsRoutines ? $", {batchSize} rows at a time" : "")}");
         L("-- Review it, run it yourself and schedule it; the application never runs it.");
         string source = di.QuoteTable(job.Table.SchemaName, job.Table.DbTableName);
         string archive = di.QuoteTable(job.Table.SchemaName, job.ArchiveName);
@@ -64,11 +64,11 @@ public static class ArchiveScript
             var lines = job.Copied.Select(c => $"    {di.Quote(c.DbName)} {c.SqlTypeDeclaration} {(c.IsNullable ? "NULL" : "NOT NULL")}").ToList();
             lines.Add($"    {di.Quote(ArchivePlan.ArchivedOnName)} {stamp} NOT NULL");
             lines.Add($"    PRIMARY KEY ({key})");
-            string create = $"CREATE TABLE {(database.Dialect == SqlDialect.SqlServer ? "" : "IF NOT EXISTS ")}{archive} (\n{string.Join(",\n", lines)}\n);\n";
-            if (database.Dialect == SqlDialect.SqlServer)
-                L($"IF OBJECT_ID(N'{job.Table.SchemaName}.{job.ArchiveName}', N'U') IS NULL\n{create.TrimEnd('\n')}\nGO");
-            else
+            string create = $"CREATE TABLE {(di.SupportsCreateIfNotExists ? "IF NOT EXISTS " : "")}{archive} (\n{string.Join(",\n", lines)}\n);\n";
+            if (di.SupportsCreateIfNotExists)
                 o.Append(create);
+            else
+                L($"IF OBJECT_ID(N'{job.Table.SchemaName}.{job.ArchiveName}', N'U') IS NULL\n{create.TrimEnd('\n')}\nGO");
         }
 
         switch (database.Dialect)

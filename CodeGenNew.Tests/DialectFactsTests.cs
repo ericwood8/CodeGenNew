@@ -50,5 +50,9 @@ public class DialectFactsTests
         Assert.IsTrue(DialectInfo.For(SqlDialect.MySql).RunsPythonTests);
         Assert.IsFalse(DialectInfo.For(SqlDialect.MySql).SupportsReturning);
         Assert.IsTrue(DialectInfo.For(SqlDialect.Sqlite).SupportsReturning);
+        Assert.IsFalse(DialectInfo.For(SqlDialect.SqlServer).SupportsCreateIfNotExists);
+        Assert.IsTrue(DialectInfo.For(SqlDialect.PostgreSql).SupportsCreateIfNotExists);
+        Assert.IsTrue(DialectInfo.For(SqlDialect.SqlServer).RefusesKeyForIdentityColumn);
+        Assert.IsFalse(DialectInfo.For(SqlDialect.MySql).RefusesKeyForIdentityColumn);
     }
 }

@@ -144,12 +144,7 @@ public static partial class SchemaScript
     /// <summary> The table as the script names it: schema and name, but for MySQL the name alone, since its schema is the database it was read from, which a container does not have. </summary>
     private static string TableName(TableModel table, SqlDialect dialect) => dialect == SqlDialect.MySql ? Quote(table.DatabaseTableName ?? table.TableName, dialect) : Quote(table.SchemaName, dialect) + "." + Quote(table.DatabaseTableName ?? table.TableName, dialect);
 
-    private static string Quote(string name, SqlDialect dialect) => dialect switch
-    {
-        SqlDialect.SqlServer => "[" + name.Replace("]", "]]") + "]",
-        SqlDialect.PostgreSql => "\"" + name.Replace("\"", "\"\"") + "\"",
-        _ => "`" + name.Replace("`", "``") + "`"
-    };
+    private static string Quote(string name, SqlDialect dialect) => DialectInfo.For(dialect).Quote(name);
 
     private static string DeleteClause(ForeignKeyDeleteRule rule) => rule switch
     {

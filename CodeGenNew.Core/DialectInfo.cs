@@ -176,6 +176,12 @@ public sealed class DialectInfo
     /// <summary> False for SQL Server: the generated Python tests seed and read their own database, and run over SQLite, PostgreSQL or MySQL only. </summary>
     public bool RunsPythonTests => Dialect != SqlDialect.SqlServer;
 
+    /// <summary> False for SQL Server: <c>CREATE TABLE IF NOT EXISTS</c> is not accepted, so a script tests <c>OBJECT_ID</c> first. </summary>
+    public bool SupportsCreateIfNotExists => Dialect != SqlDialect.SqlServer;
+
+    /// <summary> True for SQL Server: a row with a value for an identity column is refused unless identity insert is switched on, so a copy that keeps the key cannot go into one. </summary>
+    public bool RefusesKeyForIdentityColumn => Dialect == SqlDialect.SqlServer;
+
     /// <summary> The namespace prefix of the ADO.NET driver's classes (<c>Npgsql.</c>), for generated code that names a driver type. </summary>
     public string DriverPrefix => Dialect switch { SqlDialect.PostgreSql => "Npgsql.", SqlDialect.MySql => "MySqlConnector.", _ => "Microsoft.Data.SqlClient." };
 

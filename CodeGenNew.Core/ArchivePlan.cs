@@ -65,7 +65,7 @@ public static class ArchivePlan
             if (archive is not null)
             {
                 var missing = copied.Where(c => !archive.Columns.Any(a => a.Name.EqualsIgnoreCase(c.Name))).Select(c => c.Name).ToList();
-                var identity = database.Dialect != SqlDialect.SqlServer ? new List<string>() : archive.Columns.Where(a => a.IsIdentity && copied.Any(c => c.Name.EqualsIgnoreCase(a.Name))).Select(a => a.Name).ToList();
+                var identity = !DialectInfo.For(database.Dialect).RefusesKeyForIdentityColumn ? new List<string>() : archive.Columns.Where(a => a.IsIdentity && copied.Any(c => c.Name.EqualsIgnoreCase(a.Name))).Select(a => a.Name).ToList();
                 if (missing.Count > 0 || identity.Count > 0)
                 {
                     problems.Add(missing.Count > 0
