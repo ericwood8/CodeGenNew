@@ -137,6 +137,7 @@
         T($"import {{ {apiVar} }} from '../{apiFolder}/{apiFile}';");
         if (gated || userScreen is not null) T($"import {{ useAuth }} from '../{apiFolder}/auth';");
         if (userScreen is not null) T($"import {{ changePassword }} from '../{apiFolder}/people';");
+        if (form.FeatureFlags.Count > 0) T($"import {{ useFeature }} from '../{apiFolder}/features';");   // FeatureFields: a field shows only while its flag is on
         T($"import {{ ApiError }} from '../{apiFolder}/client';");
         if (approvalSegment is not null) T("import { ApprovalPanel } from './ApprovalPanel';");
         if (!nameActive && !oneRow) T($"import {{ PaginationBar }} from '../{componentsFolder}/PaginationBar';");
@@ -307,6 +308,8 @@
             string loginProp = JsonNames.Camel(userScreen.User.UserName.Name);
             T($"  const canSetPassword = isAdmin || (selectedRow !== null && Boolean(selectedRow.{keyProp}) && (selectedRow.{loginProp} ?? '').toLowerCase() === String(signedIn?.name ?? '').toLowerCase());");
         }
+        foreach (string flag in form.FeatureFlags)
+            T($"  const featureFlag{form.FeatureIndex(flag)} = useFeature('{flag.Replace("\\", "\\\\").Replace("'", "\\'")}'); // FeatureFields: the fields this flag hides show only while it is on");
         T();
         // The sort (like the filters) is read from state by default; a change passes its new value explicitly because state is not updated yet.
         if (oneRow)
@@ -871,6 +874,12 @@
                 T("            {isAdmin && (");
                 T("              <>");
             }
+            string? fieldFlag = form.FeatureOf(c);   // FeatureFields: the field is in the form only while the flag is on
+            if (fieldFlag is not null)
+            {
+                T($"            {{featureFlag{form.FeatureIndex(fieldFlag)} && (");
+                T("              <>");
+            }
             T("            <label htmlFor=\"" + id + "\">" + Labels.Field(c) + RequiredMark.Jsx(form.IsMarked(c)) + "</label>");
             // a guarded column is a control only for a person who may change it (the guards answer); everyone else sees its value as text and why
             var guard = form.GuardOf(c);
@@ -1044,6 +1053,11 @@
                 T("            ) : (");
                 T("              <>");
                 T($"                <span id=\"{id}\">{{selectedRow.{prop}{(c.IsBooleanColumn ? " ? 'Yes' : 'No'" : "")}}}</span> <small style={{{{ marginLeft: 8 }}}}>{ChoiceFormat.Html(guard.Note)}</small>");
+                T("              </>");
+                T("            )}");
+            }
+            if (fieldFlag is not null)
+            {
                 T("              </>");
                 T("            )}");
             }

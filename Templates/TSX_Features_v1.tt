@@ -1,0 +1,174 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TSX_Features_v1.tt
+    // Generates: src/api/features.ts, src/pages/FeaturesPage.tsx and its test   (the template writes its own paths with @@@FILE markers)
+    // Feature flags in a React app that signs in (Auth=true, ApiAuth, FeatureTables with a tenant column on the override table): getFeatures reads every flag as the signed-in person sees it (the shell reads
+    // them once after sign-in and again on a switch of tenant, and hides the screens FeatureScreens names), and the page for the administrator of a tenant switches a flag for the tenant (PUT /api/features/{name}).
+    // Full notes: Docs/TemplateNotes/API_Features_v1.md
+    // ==========================================================================================
+    string apiFolder = Project.ApiFolder;
+    string pagesFolder = Project.PagesFolder;
+    if (FeatureScreens.Reads(Project))
+    {
+#>
+@@@FILE src/<#= apiFolder #>/features.ts@@@
+import { useSyncExternalStore } from 'react';
+import { request } from './client';
+
+/** Every flag by name, as the signed-in person sees it: the default, their tenant's plan, their tenant's override and their own override applied. */
+export type Features = Record<string, boolean>;
+
+let current: Features = {};
+const listeners = new Set<() => void>();
+
+const keep = (flags: Features): Features => {
+  current = flags;
+  listeners.forEach((listener) => listener());
+  return flags;
+};
+
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+};
+
+/** The flags the app holds now: the menu and the forms that hide a screen or a field read them, and a change made on the features page is seen at once. */
+export const useFeatureFlags = (): Features => useSyncExternalStore(subscribe, () => current);
+
+/** Whether the flag is on for the signed-in person; a name that is not a flag is off. */
+export const useFeature = (name: string): boolean => useFeatureFlags()[name] === true;
+
+/** Forgets the flags (nobody is signed in, or they cannot be read). */
+export const clearFeatures = (): void => { keep({}); };
+
+export const getFeatures = (): Promise<Features> => request<Features>('<#= FeatureScreenWords.Path #>').then(keep);
+
+/** Switches a flag for the person's tenant; null removes the tenant's override. The answer is every flag as it is now. */
+export const setFeature = (name: string, enabled: boolean | null): Promise<Features> =>
+  request<Features>('<#= FeatureScreenWords.Path #>/' + encodeURIComponent(name), { method: 'PUT', body: JSON.stringify({ enabled }) }).then(keep);
+<#
+    }
+    if (FeatureScreens.HasPage(Database, Project))
+    {
+#>
+@@@FILE src/<#= pagesFolder #>/FeaturesPage.tsx@@@
+import { useEffect, useState } from 'react';
+import { getFeatures, setFeature } from '../<#= apiFolder #>/features';
+import type { Features } from '../<#= apiFolder #>/features';
+
+/** The sentence of a refused change: the API answers a problem with a detail. */
+const detailOf = (error: unknown): string => {
+  try {
+    const body = JSON.parse((error as Error).message) as { detail?: unknown };
+    return typeof body.detail === 'string' ? body.detail : '<#= FeatureScreenWords.SaveFailed #>';
+  } catch {
+    return '<#= FeatureScreenWords.SaveFailed #>';
+  }
+};
+
+export function FeaturesPage() {
+  const [features, setFeatures] = useState<Features | null>(null);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    getFeatures().then(setFeatures).catch(() => setMessage('<#= FeatureScreenWords.LoadFailed #>'));
+  }, []);
+
+  const change = (name: string, enabled: boolean | null) => {
+    setMessage('');
+    setFeature(name, enabled).then(setFeatures).catch((error: unknown) => setMessage(detailOf(error)));
+  };
+
+  const names = features ? Object.keys(features).sort() : [];
+  return (
+    <div>
+      <h1><#= FeatureScreenWords.Title #></h1>
+      <p><#= FeatureScreenWords.Hint #></p>
+      {message && <p className="error" role="alert">{message}</p>}
+      {features && names.length === 0 && <p><#= FeatureScreenWords.NoFeatures #></p>}
+      {features && names.length > 0 && (
+        <table aria-label="<#= FeatureScreenWords.Title #>">
+          <thead>
+            <tr>
+              <th><#= FeatureScreenWords.FeatureColumn #></th>
+              <th><#= FeatureScreenWords.OnColumn #></th>
+              <th><#= FeatureScreenWords.ResetColumn #></th>
+            </tr>
+          </thead>
+          <tbody>
+            {names.map((name) => (
+              <tr key={name}>
+                <td>{name}</td>
+                <td><input type="checkbox" checked={features[name]} aria-label={name} onChange={(event) => change(name, event.target.checked)} /></td>
+                <td><button type="button" onClick={() => change(name, null)} aria-label={'<#= FeatureScreenWords.ResetButton #> ' + name}><#= FeatureScreenWords.ResetButton #></button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+@@@FILE src/<#= pagesFolder #>/__tests__/FeaturesPage.test.tsx@@@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { FeaturesPage } from '../FeaturesPage';
+
+const answer = (body: unknown, status = <#= HttpStatus.Ok #>) => () => Promise.resolve(new Response(JSON.stringify(body), { status }));
+
+describe('FeaturesPage', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('lists every flag with a check box that shows whether it is on', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(answer({ 'csv-export': true, 'new-invoice-screen': false }));
+    render(<FeaturesPage />);
+    expect(await screen.findByRole('checkbox', { name: 'csv-export' })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: 'new-invoice-screen' })).not.toBeChecked();
+  });
+
+  it('switches a flag on for the tenant and shows the answer', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((_, init) => answer(init?.method === 'PUT' ? { 'new-invoice-screen': true } : { 'new-invoice-screen': false })());
+    render(<FeaturesPage />);
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'new-invoice-screen' }));
+    expect(await screen.findByRole('checkbox', { name: 'new-invoice-screen' })).toBeChecked();
+    const put = spy.mock.calls.find(([, init]) => init?.method === 'PUT');
+    expect(String(put?.[0])).toContain('<#= FeatureScreenWords.Path #>/new-invoice-screen');
+    expect(JSON.parse(String(put?.[1]?.body))).toEqual({ enabled: true });
+  });
+
+  it('removes the tenant\'s override with the default button', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(answer({ 'csv-export': true }));
+    render(<FeaturesPage />);
+    fireEvent.click(await screen.findByRole('button', { name: '<#= FeatureScreenWords.ResetButton #> csv-export' }));
+    await screen.findByRole('checkbox', { name: 'csv-export' });
+    const put = spy.mock.calls.find(([, init]) => init?.method === 'PUT');
+    expect(JSON.parse(String(put?.[1]?.body))).toEqual({ enabled: null });
+  });
+
+  it('shows the sentence when a change is refused', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_, init) => init?.method === 'PUT' ? answer({ title: 'Platform administrators only', detail: 'Only a platform administrator changes a feature for another tenant.' }, <#= HttpStatus.Forbidden #>)() : answer({ 'csv-export': true })());
+    render(<FeaturesPage />);
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'csv-export' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Only a platform administrator/);
+  });
+
+  it('says so when there is no flag', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(answer({}));
+    render(<FeaturesPage />);
+    expect(await screen.findByText('<#= FeatureScreenWords.NoFeatures #>')).toBeInTheDocument();
+  });
+
+  it('explains when the flags cannot be read', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(answer({}, <#= HttpStatus.Forbidden #>));
+    render(<FeaturesPage />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('<#= FeatureScreenWords.LoadFailed #>');
+  });
+});
+<#
+    }
+#>

@@ -1,0 +1,15 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestFeatures_v1.tt
+    // Generates: tests/api/feature_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // Tests of the feature flag routes of the Rust API (FeatureTables, with a tenant column on the override table). Each test makes tenants (make_tenant of RS_TestTenants) and flags of its own with SQL, and takes
+    // both out again: the defaults, a tenant override that reaches that tenant only, who may change a flag and what a platform administrator may name. Written only with RustTests=true; not for SQL Server.
+    // RS_TestBodies lists the modules. Full notes: Docs/TemplateNotes/API_Features_v1.md
+    // ==========================================================================================
+    if (RustFeatureTests.Applies(Database, Project))
+        Write("@@@FILE tests/api/feature_routes.rs@@@\n" + RustFeatureTests.File(Database, Project));
+#>

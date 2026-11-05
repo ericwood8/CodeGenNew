@@ -20,6 +20,7 @@
     bool caller = TenantPlan.DesktopSetsCaller(Project);
     bool roles = TenantPlan.HasDesktopRoles(Project);
     bool session = TenantPlan.HasDesktopSignIn(Project);
+    bool features = signIn && FeatureScreens.Reads(Project);   // FeatureTables: the menu hides the screens a flag switches off (WinUI3_Features reads the flags from the database)
 #>
 @@@FILE MainWindow.xaml@@@
 <Window
@@ -80,10 +81,16 @@ public sealed partial class MainWindow : Window
 <# if (switcher) { #>
     private bool _showingTenants;
 <# } #>
+<# if (features) { #>
+    private bool _rebuilding;
+<# } #>
 
     public MainWindow()
     {
         InitializeComponent();
+<# if (features) { #>
+        DesktopFeatures.Changed += RebuildMenu;
+<# } #>
         ShowSignIn();
     }
 
@@ -96,7 +103,7 @@ public sealed partial class MainWindow : Window
         SignInHost.Visibility = Visibility.Visible;
     }
 
-    private void OnSignedIn(SignedInUser user)
+    private <#= features ? "async void" : "void" #> OnSignedIn(SignedInUser user)
     {
         _user = user;
 <# if (caller) { #>
@@ -109,6 +116,9 @@ public sealed partial class MainWindow : Window
         NavView.Visibility = Visibility.Visible;
 <# if (session) { #>
         DesktopSession.User = user;
+<# } #>
+<# if (features) { #>
+        await LoadFeaturesAsync();
 <# } #>
         AddScreens();
         ShowFirstScreen();
@@ -182,16 +192,48 @@ public sealed partial class MainWindow : Window
         DesktopSession.User = switched;
 <# } #>
         UseContext();
-<# if (roles) { #>
+<# if (features) { #>
+        await LoadFeaturesAsync();
+<# } #>
+<# if (roles || features) { #>
         AddScreens();
 <# } #>
         ShowFirstScreen();
+    }
+<# } #>
+<# if (features) { #>
+
+    // The flags of the person in the tenant they work in, read from the database the app uses.
+    private async Task LoadFeaturesAsync()
+    {
+        using var context = new <#= contextType #>();
+        await DesktopFeatures.LoadAsync(context, _user);
+    }
+
+    // A flag was switched on the features page: the menu is made again with the screens the flags now allow, and the page on show stays.
+    private void RebuildMenu()
+    {
+        string? current = (NavView.SelectedItem as NavigationViewItem)?.Tag as string;
+        _rebuilding = true;
+        try
+        {
+            AddScreens();
+            NavView.SelectedItem = NavView.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(i => (string?)i.Tag == current);
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
     }
 <# } #>
 <# } #>
 
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
+<# if (features) { #>
+        if (_rebuilding)
+            return;
+<# } #>
         if (args.SelectedItem is NavigationViewItem { Tag: string tag })
             ShowPage(tag);
     }

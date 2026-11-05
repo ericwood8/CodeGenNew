@@ -378,7 +378,11 @@
                 H("            </div>");
                 continue;
             }
-            H("            <div class=\"form-group\"" + (userScreen?.IsAdminOnly(c) == true ? " *ngIf=\"isAdmin\"" : "") + ">");   // the administrator flag is shown to administrators only
+            // the administrator flag is shown to administrators only; a field FeatureFields names is in the form only while its flag is on
+            var shownWhen = new List<string>();
+            if (userScreen?.IsAdminOnly(c) == true) shownWhen.Add("isAdmin");
+            if (form.FeatureOf(c) is { } fieldFlag) shownWhen.Add($"features.enabled('{fieldFlag.Replace("\\", "\\\\").Replace("'", "\\'")}')");
+            H("            <div class=\"form-group\"" + (shownWhen.Count > 0 ? $" *ngIf=\"{string.Join(" && ", shownWhen)}\"" : "") + ">");
             H($"                <label for=\"{id}\">{Labels.Field(c)}{RequiredMark.Html(form.IsMarked(c))}</label>");
             // a guarded column is a control only for a person who may change it (the guards answer); everyone else sees its value as text and why
             var guard = form.GuardOf(c);
@@ -818,6 +822,7 @@
             T($"import {{ readOData }} from '../../{servicesFolder}/odata-crud.service';");
             T($"import {{ odataLiteral, queryString }} from '../../{servicesFolder}/odata-query';");
         }
+        if (form.FeatureFlags.Count > 0) T($"import {{ FeatureService }} from '../../{servicesFolder}/features.service';");
         T("import { CommonModule } from '@angular/common';");
         T("import { FormsModule } from '@angular/forms';");
         if (UsesCurrencyBox()) T("import { CurrencyInputDirective } from '../currency-input';");
@@ -839,6 +844,8 @@
         T("})");
         T($"export class {cls} extends {(nameActive ? "NameActiveCrudScreen" : odata ? "ODataPagedScreen" : "PagedCrudScreen")}<{baseName}{keyGeneric}> {{");
         T($"  protected readonly service = inject({serviceClass});");
+        if (form.FeatureFlags.Count > 0)
+            T("  protected readonly features = inject(FeatureService);   // FeatureFields: the fields a flag hides show only while it is on");
         if (userScreen is not null)
         {
             T("  private readonly authSession = inject(AuthService);");

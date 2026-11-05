@@ -1,7 +1,7 @@
 namespace CodeGenNew.Core;
 
 /// <summary> One link of the Blazor menu: where it goes, the words on it and the roles that may see it (none: every signed-in person, or everyone without sign-in). </summary>
-public sealed record BlazorMenuEntry(string Route, string Label, IReadOnlyList<string> Roles);
+public sealed record BlazorMenuEntry(string Route, string Label, IReadOnlyList<string> Roles, string? Feature = null);
 
 /// <summary> The links of the Blazor menu in menu order, so the menu BLZ_Screens writes and the menu test BLZ_TestMenu writes read one list: the dashboard, the REST screens, the OData screens that take no
 /// REST screen's place, then a page for each junction table. </summary>
@@ -19,7 +19,7 @@ public static class BlazorMenu
                 ScreenMenuKind.Screen => ScreenNames.Route(m.Table!.TableName),
                 ScreenMenuKind.Junction => JunctionPlan.Route(m.Table!.TableName),
                 _ => AngularNames.ODataRoute(m.Table!.TableName)
-            }, m.Label, m.Roles))
+            }, m.Label, m.Roles, m.Kind == ScreenMenuKind.Screen ? FeatureScreens.FlagOf(project, m.Table!.TableName) : null))
             .ToList();
         // administrators say who works in the tenant (BLZ_People)
         if (project.Auth && PeoplePlan.For(database, project) is { HasMembers: true })
@@ -27,6 +27,9 @@ public static class BlazorMenu
         // administrators see the plan, the status and the limits of their tenant (BLZ_Subscription)
         if (SubscriptionFeature.HasPage(database, project))
             entries.Add(new BlazorMenuEntry("subscription", SubscriptionScreenWords.Menu, [project.AuthAdminRole]));
+        // administrators switch the flags of their tenant (BLZ_Features)
+        if (FeatureScreens.HasPage(database, project))
+            entries.Add(new BlazorMenuEntry("features", FeatureScreenWords.Menu, [project.AuthAdminRole]));
         return entries;
     }
 }

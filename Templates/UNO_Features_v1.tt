@@ -1,0 +1,33 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // UNO_Features_v1.tt
+    // Generates: Services/FeatureFlags.cs, Views/FeaturesPage.xaml and Views/FeaturesPage.xaml.cs   (the template writes its own paths with @@@FILE markers)
+    // Feature flags in an Uno app that signs in (Auth=true, ApiAuth, FeatureTables): FeatureFlags reads every flag as the signed-in person sees it (GET api/features) after sign-in and again when the session
+    // changes; the menu hides the screens FeatureScreens names while their flag is off. With a tenant column on the override table the page for the administrator of a tenant switches a flag for the tenant
+    // (PUT api/features/{name}).
+    // Full notes: Docs/TemplateNotes/API_Features_v1.md
+    // ==========================================================================================
+    string servicesNamespace = UnoNames.ServicesNamespace(Project);
+    string viewNamespace = Project.ViewNamespace ?? Project.AppNamespace + ".Views";
+    if (FeatureScreens.Reads(Project))
+    {
+#>
+@@@FILE Services/FeatureFlags.cs@@@
+<#= FeatureScreenCode.UnoFlags(servicesNamespace) #>
+<#
+    }
+    if (FeatureScreens.HasPage(Database, Project))
+    {
+#>
+@@@FILE Views/FeaturesPage.xaml@@@
+<#= FeatureScreenCode.Xaml(viewNamespace) #>
+@@@FILE Views/FeaturesPage.xaml.cs@@@
+<#= FeatureScreenCode.UnoPage(viewNamespace, servicesNamespace) #>
+<#
+    }
+#>

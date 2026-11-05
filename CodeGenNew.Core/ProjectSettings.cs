@@ -27,7 +27,7 @@ public partial class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode", "MaxGridColumns",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "TypeAheadRows", "TypeAheadParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "ApiAnnotations", "NonNegativeColumns", "NotFutureDateColumns", "DatePairs", "NoDatePairs", "PlainTextColumns", "EmailColumns", "UrlColumns", "MoneyColumns", "NotMoneyColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "DesktopTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "RowApprovals", "ApproverTable", "LogTables", "QueueTables", "QueueMaxRetries", "QueueClaimMinutes", "ArchiveTables", "ArchiveBatchSize", "ArchiveRunAt", "TreeTables", "SoftDeleteTables", "EffectiveDatedTables", "TenantTable", "TenantColumn", "NoTenantTables", "TenantMembership", "TenantHostColumn", "SubscriptionTable", "PlanTable", "PlanLimitTable", "PlanLimits", "SubscriptionActiveStatuses", "SubscriptionRequired", "SubscriptionWebhookSecret", "SubscriptionPlanChoice", "SubscriptionPeriodDays", "WriteRoles", "TableWriteRoles", "Permissions", "PermissionTables", "ReadRoles", "TableReadRoles", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "KeyColumns", "SingleRowTables", "ListingName", "ListingFolder", "ListingPattern",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "TypeAheadRows", "TypeAheadParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "ApiAnnotations", "NonNegativeColumns", "NotFutureDateColumns", "DatePairs", "NoDatePairs", "PlainTextColumns", "EmailColumns", "UrlColumns", "MoneyColumns", "NotMoneyColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "DesktopTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "RowApprovals", "ApproverTable", "LogTables", "QueueTables", "QueueMaxRetries", "QueueClaimMinutes", "ArchiveTables", "ArchiveBatchSize", "ArchiveRunAt", "TreeTables", "SoftDeleteTables", "EffectiveDatedTables", "TenantTable", "TenantColumn", "NoTenantTables", "TenantMembership", "TenantHostColumn", "SubscriptionTable", "PlanTable", "PlanLimitTable", "PlanLimits", "SubscriptionActiveStatuses", "SubscriptionRequired", "SubscriptionWebhookSecret", "SubscriptionPlanChoice", "SubscriptionPeriodDays", "WriteRoles", "TableWriteRoles", "Permissions", "PermissionTables", "FeatureTables", "FeaturePlanTable", "FeatureScreens", "FeatureFields", "FeatureCacheSeconds", "ReadRoles", "TableReadRoles", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "KeyColumns", "SingleRowTables", "ListingName", "ListingFolder", "ListingPattern",
         "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputUno", "OutputRust", "OutputPython", "OutputApiTests", "OutputBlazorTests", "OutputWinUI3Tests", "OutputUnoTests", "RustCrateName", "RustPort", "RustTests", "PythonTests", "OutputSql", "AppNamespace", "DatabaseProvider", "MySqlFlavour", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildUno", "BuildPython", "BuildRust", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestUno", "TestPython", "TestRust"
     ];
@@ -326,6 +326,16 @@ public partial class ProjectSettings
             if (ApiAuth && ApiTests && TenantTable is not null) yield return "API_TestTenants";
             if (TenantTable is not null) yield return "SP_TenantIndex";
             if (ApiAuth && SubscriptionTable is not null && TenantTable is not null) yield return "API_Subscriptions";
+            if (FeatureFlagTables.IsConfigured(this)) yield return "API_Features";
+            if (FeatureFlagTables.IsConfigured(this)) yield return "PY_Features";
+            if (FeatureFlagTables.IsConfigured(this)) yield return "RS_Features";
+            if (RustTests && FeatureFlagTables.IsConfigured(this)) yield return "RS_TestFeatures";
+            if (Auth && FeatureFlagTables.IsConfigured(this)) yield return "TSX_Features";
+            if (Auth && FeatureFlagTables.IsConfigured(this)) yield return "TS_Features";
+            if (Auth && FeatureFlagTables.IsConfigured(this)) yield return "UNO_Features";
+            if (TenantPlan.HasDesktopSignIn(this) && FeatureFlagTables.IsConfigured(this)) yield return "WinUI3_Features";
+            if (Auth && FeatureFlagTables.IsConfigured(this)) { yield return "BLZ_Features"; if (BlazorTests) yield return "BLZ_FeaturesTest"; }
+            if (ApiAuth && ApiTests && FeatureFlagTables.IsConfigured(this)) yield return "API_TestFeatures";
             if (ApiAuth && ApiTests && SubscriptionTable is not null && TenantTable is not null) yield return "API_TestSubscriptions";
             if (Auth && ApiAuth && SubscriptionTable is not null && TenantTable is not null) { yield return "TSX_Subscription"; yield return "TS_Subscription"; yield return "BLZ_Subscription"; if (BlazorTests) yield return "BLZ_SubscriptionTest"; yield return "UNO_Subscription"; }
             if (TenantPlan.HasDesktopTenants(this) && SubscriptionTable is not null) yield return "WinUI3_Subscription";
@@ -358,6 +368,7 @@ public partial class ProjectSettings
             if (PythonTests && QueueTables.Length > 0) yield return "PY_TestQueue";
             if (PythonTests && ApiAuth && TenantTable is not null) yield return "PY_TestTenants";
             if (PythonTests && ApiAuth && TenantTable is not null && SubscriptionTable is not null) yield return "PY_TestSubscriptions";
+            if (PythonTests && FeatureFlagTables.IsConfigured(this)) yield return "PY_TestFeatures";
             if (ProjectDocs) { yield return "MD_DataDictionary"; yield return "MD_Erd"; }
             if (ApiAnnotations) yield return "CS_Validation";
             if (ApiValidation) { yield return "CS_Validator"; yield return "RS_Validate"; yield return "PY_Validate"; }
@@ -487,6 +498,23 @@ public partial class ProjectSettings
 
     /// <summary> The tables that keep roles and permissions (<c>PermissionTables=Role,Permission,RolePermission,UserRole</c>); see <see cref="PermissionTables"/>. Empty: roles come from the user table and <see cref="Permissions"/> only. </summary>
     public string[] PermissionTables => Items("PermissionTables");
+
+    /// <summary> The tables that keep feature flags (<c>FeatureTables=Feature,FeatureOverride</c>); see <see cref="FeatureFlagTables"/>. Empty: no flags. </summary>
+    public string[] FeatureTables => Items("FeatureTables");
+
+    /// <summary> The screens a flag hides (<c>FeatureScreens=Invoice:new-invoice-screen,Report:beta-reports</c>): the table's entry is in the menu only while the flag is on for the signed-in person. Needs <c>FeatureTables</c> and <c>Auth</c>. </summary>
+    public string[] FeatureScreens => Items("FeatureScreens");
+
+    /// <summary> The fields a flag hides (<c>FeatureFields=Invoice.Notes:beta-notes</c>): the field is in the edit form of the table only while the flag is on for the signed-in person. Needs <c>FeatureTables</c> and <c>Auth</c>. </summary>
+    public string[] FeatureFields => Items("FeatureFields");
+
+    public const int DefaultFeatureCacheSeconds = 0;
+
+    /// <summary> How many seconds the API keeps the flags it read for a tenant and a person (<c>FeatureCacheSeconds</c>, default 0: the tables are read on every call). A change through the feature routes forgets them at once. </summary>
+    public int FeatureCacheSeconds => Explicit("FeatureCacheSeconds") is { } text && int.TryParse(text.Trim(), out int seconds) && seconds > 0 ? seconds : DefaultFeatureCacheSeconds;
+
+    /// <summary> The table that says which flags a plan switches on (<c>FeaturePlanTable=PlanFeature</c>): a row per plan and flag. Needs <c>FeatureTables</c> and <c>SubscriptionTable</c>. Null: plans switch nothing. </summary>
+    public string? FeaturePlanTable => Explicit("FeaturePlanTable") is { } text && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null;
 
     /// <summary> The roles that may read the rows of every table (<c>ReadRoles=Administrator,Manager</c>); blank: any signed-in person. Needs <c>ApiAuth</c>; see <see cref="WriteRolePlan"/>. </summary>
     public string[] ReadRoles => Items("ReadRoles");
@@ -986,7 +1014,7 @@ public partial class ProjectSettings
         : IsEnumTable(table, shape);
 
     /// <summary> No API / TypeScript model or screen for this table. Null: no project, use the template's own list. </summary>
-    public bool? NoApi(string table, LookupShape shape) => IsApprovalSide(table) || IsSubscriptionManaged(table) ? true : Resolve("NoApiTables", table, shape);
+    public bool? NoApi(string table, LookupShape shape) => IsApprovalSide(table) || IsSubscriptionManaged(table) || FeatureFlagTables.IsFeatureTable(this, table) || FeatureFlagTables.IsPlanLinkTable(this, table) ? true : Resolve("NoApiTables", table, shape);
 
     /// <summary> The plan, plan limit and subscription tables (<c>PlanTable</c>, <c>PlanLimitTable</c>, <c>SubscriptionTable</c>): they get no ordinary API, since a list and edit screen would let a tenant's administrator change a plan, a limit or
     /// their own subscription. The subscription routes (<see cref="SubscriptionFeature"/>) are the only way to read or change them. </summary>

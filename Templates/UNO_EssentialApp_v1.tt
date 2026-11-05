@@ -13,6 +13,7 @@
     string servicesNamespace = UnoNames.ServicesNamespace(Project);
     string viewNamespace = Project.ViewNamespace ?? appNamespace + ".Views";
     bool tenants = TenantPlan.HasSwitcher(Project);   // TenantTable and TenantMembership: the pane shows the tenant and, for a person in several, a drop-down to switch
+    bool features = FeatureScreens.Reads(Project);   // FeatureTables: the menu hides the screens a flag switches off (UNO_Features reads the flags)
 #>
 @@@FILE App.xaml@@@
 <Application
@@ -125,6 +126,9 @@ public sealed partial class MainPage : Page
 <# if (tenants) { #>
     private bool _showingTenants;
 <# } #>
+<# if (features) { #>
+    private bool _rebuilding;
+<# } #>
 
     public MainPage()
     {
@@ -132,11 +136,14 @@ public sealed partial class MainPage : Page
         _api = new ApiClients(_http, _session);
         InitializeComponent();
         _session.Changed += () => DispatcherQueue.TryEnqueue(Refresh);
+<# if (features) { #>
+        _api.Features.Changed += RebuildMenu;
+<# } #>
         Refresh();
     }
 
-    // Signed in: the menu of the screens the role may read, and the first of them. Signed out: the sign-in page.
-    private void Refresh()
+    // Signed in: the menu of the screens the role may read<#= features ? " and whose flag is on" : "" #>, and the first of them. Signed out: the sign-in page.
+    private <#= features ? "async void" : "void" #> Refresh()
     {
         if (!_session.IsSignedIn)
         {
@@ -153,6 +160,11 @@ public sealed partial class MainPage : Page
 <# if (tenants) { #>
         _ = ShowTenantsAsync();
 <# } #>
+<# if (features) { #>
+        await _api.Features.LoadAsync();
+        if (!_session.IsSignedIn)
+            return;
+<# } #>
         string? first = AddScreens();
         if (first is null)
         {
@@ -162,9 +174,31 @@ public sealed partial class MainPage : Page
         NavView.SelectedItem = NavView.MenuItems[0];
         ShowPage(first);
     }
+<# if (features) { #>
+
+    // A flag was switched on the features page: the menu is made again with the screens the flags now allow, and the page on show stays.
+    private void RebuildMenu()
+    {
+        string? current = (NavView.SelectedItem as NavigationViewItem)?.Tag as string;
+        _rebuilding = true;
+        try
+        {
+            AddScreens();
+            NavView.SelectedItem = NavView.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(i => (string?)i.Tag == current);
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
+    }
+<# } #>
 
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
+<# if (features) { #>
+        if (_rebuilding)
+            return;
+<# } #>
         if (args.SelectedItem is NavigationViewItem { Tag: string tag })
             ShowPage(tag);
     }

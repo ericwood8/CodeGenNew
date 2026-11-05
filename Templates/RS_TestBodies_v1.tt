@@ -49,6 +49,8 @@
         }
         if (RustSubscriptionTests.Applies(Database, Project))
             modules.Add("subscription_routes");
+        if (RustFeatureTests.Applies(Database, Project))
+            modules.Add("feature_routes");
         foreach (string module in modules.Order(StringComparer.Ordinal))
             Line($"mod {module};");
         Line();

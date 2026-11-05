@@ -33,7 +33,7 @@ public static class RustTestBodies
 
     /// <summary> Whether the junction routes of a many-to-many table get a test module: both sides have a REST API, whose rows the test links. </summary>
     public static bool JunctionTested(TableModel table, ProjectSettings project) =>
-        project.RustTests && table.IsJunctionTable && table.Junction is { } j && j.BothSidesHaveApi(project);
+        project.RustTests && table.IsJunctionTable && !FeatureFlagTables.IsPlanLinkTable(project, table.TableName) && table.Junction is { } j && j.BothSidesHaveApi(project);
 
     /// <summary> The tables whose junction routes get a test module, in name order. </summary>
     public static IReadOnlyList<TableModel> JunctionTables(DatabaseModel database, ProjectSettings project) =>

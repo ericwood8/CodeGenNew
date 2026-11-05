@@ -34,6 +34,7 @@
     var missingChildren = DatabaseModel.ChildrenWithoutScreen(screens, Project);
     var odataScreens = ODataPlan.ReactScreenTables(Database, Project);
     // Auth=true with ReadRoles: a screen of a table whose reads are limited to some roles carries them (the shell hides it from the menu and the route sends another role to the start page)
+    string FeatureOf(TableModel t) => FeatureScreens.FlagOf(Project, t.TableName) is { } flag ? ", feature: '" + flag.Replace("'", "") + "'" : "";   // FeatureScreens: the shell hides the entry while the flag is off
     string RolesOf(TableModel t) => ScreenMenu.RolesOf(Project, t) is { Count: > 0 } roles ? ", roles: [" + WriteRolePlan.Literal(roles, (char)39) + "]" : "";
 
     string PageName(TableModel t) => ReactNames.PageName(t, Project);
@@ -69,6 +70,9 @@
     bool subscriptionPage = SubscriptionFeature.HasPage(Database, Project);   // the administrator sees the plan, the status and the limits (TSX_Subscription)
     if (subscriptionPage)
         Line($"import {{ SubscriptionPage }} from './{pagesFolder}/SubscriptionPage';");
+    bool featuresPage = FeatureScreens.HasPage(Database, Project);   // the administrator switches the flags of the tenant (TSX_Features)
+    if (featuresPage)
+        Line($"import {{ FeaturesPage }} from './{pagesFolder}/FeaturesPage';");
     Line();
     // the OData pages are loaded when their route is first opened (a separate chunk each), so they do not add to the first download
     foreach (var t in odataScreens)
@@ -85,7 +89,7 @@
     if (Project.Dashboard)
         Line("  { path: 'dashboard', label: 'Dashboard', element: <DashboardPage /> },");
     foreach (var t in screens)
-        Line($"  {{ path: '{ScreenNames.Route(t.TableName)}', label: '{ScreenNames.Label(t.TableName)}', element: {(Replaced(t) ? ODataElement(t) : Element(t))}{RolesOf(t)} }},");
+        Line($"  {{ path: '{ScreenNames.Route(t.TableName)}', label: '{ScreenNames.Label(t.TableName)}', element: {(Replaced(t) ? ODataElement(t) : Element(t))}{RolesOf(t)}{FeatureOf(t)} }},");
     foreach (var t in odataScreens.Where(t => !Replaced(t)))
         Line($"  {{ path: '{AngularNames.ODataRoute(t.TableName)}', label: '{AngularNames.ODataLabel(t.TableName)}', element: {ODataElement(t)}{RolesOf(t)} }},");
     if (approvals)
@@ -101,6 +105,11 @@
     {
         string adminRole = WriteRolePlan.Literal([Project.AuthAdminRole], (char)39);
         Line($"  {{ path: 'subscription', label: '{SubscriptionScreenWords.Menu}', element: <SubscriptionPage />, roles: [{adminRole}] }},");
+    }
+    if (featuresPage)
+    {
+        string adminRole = WriteRolePlan.Literal([Project.AuthAdminRole], (char)39);
+        Line($"  {{ path: 'features', label: '{FeatureScreenWords.Menu}', element: <FeaturesPage />, roles: [{adminRole}] }},");
     }
     Line("];");
     Write(sb.ToString());

@@ -1,0 +1,228 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TS_Features_v1.tt
+    // Generates: <ServicesFolder>/features.service.ts and <ComponentsFolder>/features/features.component.ts, .html, .css and .spec.ts   (the template writes its own paths with @@@FILE markers)
+    // Feature flags in an Angular app that signs in (Auth=true, ApiAuth, FeatureTables with a tenant column on the override table): FeatureService reads every flag as the signed-in person sees it (once after
+    // sign-in and again on a switch of tenant; the shell hides the screens FeatureScreens names), and the screen for the administrator of a tenant switches a flag for the tenant (PUT api/features/{name}).
+    // Full notes: Docs/TemplateNotes/API_Features_v1.md
+    // ==========================================================================================
+    string servicesFolder = Project.ServicesFolder;
+    string componentsFolder = Project.ComponentsFolder;
+    bool controlFlow = Project.AngularControlFlow;
+    string path = FeatureScreenWords.Path.TrimStart('/');
+    {
+        string html = @"<div class=""features"">
+  <h1>" + FeatureScreenWords.Title + @"</h1>
+  <p>" + FeatureScreenWords.Hint + @"</p>
+  <p class=""error"" role=""alert"" *ngIf=""message"">{{ message }}</p>
+  <p *ngIf=""loaded && names.length === 0"">" + FeatureScreenWords.NoFeatures + @"</p>
+  <table *ngIf=""names.length > 0"" aria-label=""" + FeatureScreenWords.Title + @""">
+    <thead>
+      <tr>
+        <th>" + FeatureScreenWords.FeatureColumn + @"</th>
+        <th>" + FeatureScreenWords.OnColumn + @"</th>
+        <th>" + FeatureScreenWords.ResetColumn + @"</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor=""let name of names"">
+        <td>{{ name }}</td>
+        <td><input type=""checkbox"" [checked]=""flags[name]"" [attr.aria-label]=""name"" (change)=""change(name, $any($event.target).checked)"" /></td>
+        <td><button type=""button"" (click)=""change(name, null)"" [attr.aria-label]=""'" + FeatureScreenWords.ResetButton + @" ' + name"">" + FeatureScreenWords.ResetButton + @"</button></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+";
+        if (FeatureScreens.Reads(Project))
+        {
+#>
+@@@FILE src/app/<#= servicesFolder #>/features.service.ts@@@
+import { Injectable, effect, inject, signal } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable, tap } from 'rxjs';
+import { AuthService } from './auth.service';
+
+/** Every flag by name, as the signed-in person sees it: the default, their tenant's plan, their tenant's override and their own override applied. */
+export type Features = Record<string, boolean>;
+
+@Injectable({ providedIn: 'root' })
+export class FeatureService {
+  private readonly http = inject(HttpClient);
+  private readonly auth = inject(AuthService);
+
+  /** The flags of the signed-in person: read once after sign-in and again when they switch tenant; empty while signed out. */
+  readonly flags = signal<Features>({});
+
+  constructor() {
+    effect(() => {
+      if (!this.auth.isLoggedIn()) {
+        this.flags.set({});
+        return;
+      }
+      this.auth.user()?.['tenantId'];   // a switch of tenant reads the flags again
+      this.get().subscribe({ next: (flags) => this.flags.set(flags), error: () => this.flags.set({}) });
+    });
+  }
+
+  /** Whether the flag is on for the signed-in person; a name that is not a flag is off. */
+  enabled(name: string): boolean {
+    return this.flags()[name] === true;
+  }
+
+  get(): Observable<Features> {
+    return this.http.get<Features>('<#= path #>').pipe(tap((flags) => this.flags.set(flags)));
+  }
+
+  /** Switches a flag for the person's tenant; null removes the tenant's override. The answer is every flag as it is now, and the menu follows it at once. */
+  set(name: string, enabled: boolean | null): Observable<Features> {
+    return this.http.put<Features>('<#= path #>/' + encodeURIComponent(name), { enabled }).pipe(tap((flags) => this.flags.set(flags)));
+  }
+}
+<#
+        }
+        if (FeatureScreens.HasPage(Database, Project))
+        {
+#>
+@@@FILE src/app/<#= componentsFolder #>/features/features.component.ts@@@
+import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
+<# if (!controlFlow) { #>
+import { NgFor, NgIf } from '@angular/common';
+<# } #>
+import { Features, FeatureService } from '../../<#= servicesFolder #>/features.service';
+
+@Component({
+  selector: 'app-features',
+<# if (Project.AngularStandaloneFlag) { #>
+  standalone: true,
+<# } #>
+  changeDetection: ChangeDetectionStrategy.<#= Project.AngularEagerStrategy #>, // plain properties change inside subscribe callbacks
+  imports: [<#= controlFlow ? "" : "NgFor, NgIf" #>],
+  templateUrl: './features.component.html',
+  styleUrl: './features.component.css'
+})
+export class FeaturesComponent implements OnInit {
+  private readonly service = inject(FeatureService);
+
+  flags: Features = {};
+  loaded = false;
+  message = '';
+
+  get names(): string[] {
+    return Object.keys(this.flags).sort();
+  }
+
+  /** Switches a flag for the tenant (null removes the tenant's override); a refusal shows the API's sentence. */
+  change(name: string, enabled: boolean | null): void {
+    this.message = '';
+    this.service.set(name, enabled).subscribe({
+      next: (flags) => { this.flags = flags; },
+      error: (error: { error?: { detail?: unknown } }) => { this.message = typeof error.error?.detail === 'string' ? error.error.detail : '<#= FeatureScreenWords.SaveFailed #>'; }
+    });
+  }
+
+  ngOnInit(): void {
+    this.service.get().subscribe({
+      next: (flags) => { this.flags = flags; this.loaded = true; },
+      error: () => { this.message = '<#= FeatureScreenWords.LoadFailed #>'; }
+    });
+  }
+}
+@@@FILE src/app/<#= componentsFolder #>/features/features.component.html@@@
+<#= Project.AdaptAngularHtml(html) #>@@@FILE src/app/<#= componentsFolder #>/features/features.component.css@@@
+.features table { border-collapse: collapse; }
+.features th, .features td { padding: 4px 12px; text-align: left; }
+@@@FILE src/app/<#= componentsFolder #>/features/features.component.spec.ts@@@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { FeaturesComponent } from './features.component';
+
+describe('FeaturesComponent', () => {
+  let component: FeaturesComponent;
+  let fixture: ComponentFixture<FeaturesComponent>;
+  let http: HttpTestingController;
+
+  const create = () => {
+    http = TestBed.inject(HttpTestingController);
+    fixture = TestBed.createComponent(FeaturesComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  };
+
+  const text = () => (fixture.nativeElement as HTMLElement).textContent ?? '';
+  const boxes = () => Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLInputElement>('input[type=checkbox]'));
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [FeaturesComponent],
+      providers: [provideHttpClient(), provideHttpClientTesting()]
+    }).compileComponents();
+  });
+
+  afterEach(() => http.verify());
+
+  it('lists every flag with a check box that shows whether it is on', () => {
+    create();
+    http.expectOne('<#= path #>').flush({ 'csv-export': true, 'new-invoice-screen': false });
+    fixture.detectChanges();
+    expect(boxes().map((box) => box.getAttribute('aria-label'))).toEqual(['csv-export', 'new-invoice-screen']);
+    expect(boxes().map((box) => box.checked)).toEqual([true, false]);
+  });
+
+  it('switches a flag on for the tenant and shows the answer', () => {
+    create();
+    http.expectOne('<#= path #>').flush({ 'new-invoice-screen': false });
+    fixture.detectChanges();
+    boxes()[0].click();
+    const put = http.expectOne('<#= path #>/new-invoice-screen');
+    expect(put.request.method).toBe('PUT');
+    expect(put.request.body).toEqual({ enabled: true });
+    put.flush({ 'new-invoice-screen': true });
+    fixture.detectChanges();
+    expect(boxes()[0].checked).toBe(true);
+  });
+
+  it('removes the tenant\'s override with the default button', () => {
+    create();
+    http.expectOne('<#= path #>').flush({ 'csv-export': true });
+    fixture.detectChanges();
+    (fixture.nativeElement as HTMLElement).querySelector('button')!.click();
+    const put = http.expectOne('<#= path #>/csv-export');
+    expect(put.request.body).toEqual({ enabled: null });
+    put.flush({ 'csv-export': true });
+  });
+
+  it('shows the sentence when a change is refused', () => {
+    create();
+    http.expectOne('<#= path #>').flush({ 'csv-export': true });
+    fixture.detectChanges();
+    boxes()[0].click();
+    http.expectOne('<#= path #>/csv-export').flush({ detail: 'Only a platform administrator changes a feature for another tenant.' }, { status: <#= HttpStatus.Forbidden #>, statusText: 'Forbidden' });
+    fixture.detectChanges();
+    expect(component.message).toContain('Only a platform administrator');
+  });
+
+  it('says so when there is no flag', () => {
+    create();
+    http.expectOne('<#= path #>').flush({});
+    fixture.detectChanges();
+    expect(text()).toContain('<#= FeatureScreenWords.NoFeatures #>');
+  });
+
+  it('explains when the flags cannot be read', () => {
+    create();
+    http.expectOne('<#= path #>').flush(null, { status: <#= HttpStatus.Forbidden #>, statusText: 'Forbidden' });
+    fixture.detectChanges();
+    expect(component.message).toBe('<#= FeatureScreenWords.LoadFailed #>');
+  });
+});
+<#
+        }
+    }
+#>

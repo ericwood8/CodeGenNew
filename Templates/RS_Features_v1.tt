@@ -1,0 +1,20 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_Features_v1.tt
+    // Generates: src/features.rs   (whole-database; the path is written by the template)
+    // The Rust counterpart of API_Features (feature flags in two tables, FeatureTables): all_flags and is_enabled for the API's own code, GET /api/features and PUT /api/features/{name}. The rules and sentences
+    // are FeatureFlagTables in Core, the text is RustFeatureWriter. Needs ApiAuth=true. Full notes: Docs/TemplateNotes/API_Features_v1.md
+    // ==========================================================================================
+    var (plan, problem) = FeatureFlagTables.Resolve(Database, Project);
+    if (problem is not null)
+        Error(problem);
+    else if (plan is not null && RustFeatureWriter.PlanOf(Database, Project) is null)
+        Error("FeatureTables: the Rust API needs a tenant column (with TenantTable) or a person column on the override table.");
+    else if (plan is not null)
+        Write("@@@FILE src/features.rs@@@\n" + RustFeatureWriter.File(Database, Project));
+#>

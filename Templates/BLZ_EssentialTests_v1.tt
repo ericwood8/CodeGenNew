@@ -142,6 +142,9 @@ public abstract class PageTestContext : BunitContext
         Services.AddAuthorizationCore();
         Services.AddCascadingAuthenticationState();
         Services.AddScoped<AuthSession>();
+<# if (FeatureScreens.Reads(Project)) { #>
+        Services.AddScoped<FeatureFlags>();
+<# } #>
         Services.AddScoped<AuthenticationStateProvider, SessionAuthenticationStateProvider>();
 <# } #>
     }

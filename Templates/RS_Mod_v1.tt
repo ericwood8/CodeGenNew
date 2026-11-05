@@ -35,7 +35,7 @@
     Line("use crate::support::Pool;");
     Line();
     // the dashboard (RS_Dashboard) is one route file for the whole database, merged with the tables' routers
-    var routeModules = modules.Concat(Database.Tables.Where(t => t.IsJunctionTable).Select(t => RustNames.Snake(t.TableName) + "_junction")).ToList();
+    var routeModules = modules.Concat(Database.Tables.Where(t => t.IsJunctionTable && !FeatureFlagTables.IsPlanLinkTable(Project, t.TableName)).Select(t => RustNames.Snake(t.TableName) + "_junction")).ToList();
     if (Project.Dashboard)
         routeModules.Add("dashboard");
     routeModules = routeModules.OrderBy(m => m, StringComparer.Ordinal).ToList();
@@ -64,6 +64,9 @@
     // SubscriptionTable: GET /api/subscription and PUT /api/subscription/{tenant_id} (RS_Subscriptions, src/subscriptions.rs)
     if (RustSubscriptionWriter.Applies(Project) && TenantPlan.TenantTableOf(Database, Project) is not null)
         Line("        .merge(crate::subscriptions::router())");
+    // FeatureTables: GET /api/features and PUT /api/features/{name} (RS_Features, src/features.rs)
+    if (RustFeatureWriter.PlanOf(Database, Project) is not null)
+        Line("        .merge(crate::features::router())");
     // UserTable: PUT /api/auth/password and the members of a tenant (RS_UserDirectory, src/people.rs)
     if (Project.ApiAuth && Project.UserTable is not null)
         Line("        .merge(crate::people::router())");

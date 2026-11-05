@@ -35,7 +35,7 @@ public static class TenantBypassPlan
         if (!TenantPlan.HasApiTenancy(project))
             return [];
         var cases = new List<JunctionCase>();
-        foreach (var table in database.Tables.Where(t => t.IsJunctionTable && t.Junction is not null).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
+        foreach (var table in database.Tables.Where(t => t.IsJunctionTable && t.Junction is not null && !FeatureFlagTables.IsPlanLinkTable(project, t.TableName)).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
         {
             var junction = table.Junction!;
             if (!junction.BothSidesHaveApi(project) || TenantPlan.OwnedBy(table, database, project) is not null)

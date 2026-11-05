@@ -37,6 +37,9 @@ mod models;
 mod repos;
 mod routes;
 mod support;
+<# if (auth && FeatureFlagTables.IsConfigured(Project)) { #>
+mod features;
+<# } #>
 <#
     if (auth && TenantPlan.HasApiTenancy(Project))
     {

@@ -64,7 +64,7 @@
     Line();
     foreach (var t in Database.AspNetSearchApiTables(Project).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
         Line($"        new {t.TableName}SearchApi<{t.TableName}>().Register(app);");
-    var junctions = Database.Tables.Where(t => t.IsJunctionTable).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    var junctions = Database.Tables.Where(t => t.IsJunctionTable && !FeatureFlagTables.IsPlanLinkTable(Project, t.TableName)).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList();
     if (junctions.Count > 0)
         Line();
     foreach (var t in junctions)
@@ -93,6 +93,11 @@
     {
         Line();
         Line("        SubscriptionRoutes.Register(app);");
+    }
+    if (FeatureFlagTables.Resolve(Database, Project).Plan is not null)
+    {
+        Line();
+        Line("        FeatureRoutes.Register(app);");
     }
     if (Database.Tables.Any(t => RowShapePlan.Has(t, Project)))
     {

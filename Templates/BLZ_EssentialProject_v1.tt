@@ -56,6 +56,9 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<AuthSession>();
 builder.Services.AddScoped<AuthenticationStateProvider, SessionAuthenticationStateProvider>();
 builder.Services.AddScoped<AuthHandler>();
+<# if (FeatureScreens.Reads(Project)) { #>
+builder.Services.AddScoped<FeatureFlags>();   // the feature flags of the signed-in person (BLZ_Features)
+<# } #>
 builder.Services.AddScoped(sp => new HttpClient(sp.GetRequiredService<AuthHandler>()) { BaseAddress = new Uri(apiBase) });
 <# } else { #>
 builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(apiBase) });

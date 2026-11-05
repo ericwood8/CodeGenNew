@@ -12,6 +12,7 @@
     // ==========================================================================================
     bool controlFlow = Project.AngularControlFlow;
     bool auth = Project.Auth;
+    bool features = FeatureScreens.Reads(Project);   // the flags are read once after sign-in (FeatureService); a screen with a feature: in app.routes.ts shows only while its flag is on
     bool tenants = TenantPlan.HasSwitcher(Project);   // the top bar also shows the TenantSwitcherComponent of the Auth group
     string imports = "RouterOutlet, RouterLink, RouterLinkActive" + (controlFlow ? "" : ", NgFor, NgIf") + (tenants ? ", TenantSwitcherComponent" : "");
     string html = @"<div class=""app"" [class.menu-closed]=""!menuOpen"">
@@ -75,6 +76,9 @@ import { RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { screens } from './app.routes';
 <# if (auth) { #>
 import { AuthService } from './<#= Project.ServicesFolder #>/auth.service';
+<# if (features) { #>
+import { FeatureService } from './<#= Project.ServicesFolder #>/features.service';
+<# } #>
 <# if (tenants) { #>
 import { TenantSwitcherComponent } from './<#= Project.ComponentsFolder #>/tenant-switcher/tenant-switcher.component';
 <# } #>
@@ -100,11 +104,23 @@ function readMenuOpen(): boolean {
 export class App {
 <# if (auth) { #>
   protected readonly auth = inject(AuthService);
+<# if (features) { #>
+  private readonly features = inject(FeatureService);
+
+  // a screen the person's role may not read (the roles a screen carries come from ReadRoles) or whose flag is off (FeatureScreens) is not in the menu
+  protected get screens() {
+    return screens.filter((s) => {
+      const { roles, feature } = s as { roles?: readonly string[]; feature?: string };
+      return (!roles || this.auth.hasRole(roles)) && (!feature || this.features.enabled(feature));
+    });
+  }
+<# } else { #>
 
   // a screen the person's role may not read (the roles a screen carries come from ReadRoles) is not in the menu
   protected get screens() {
     return screens.filter((s) => { const roles = (s as { roles?: readonly string[] }).roles; return !roles || this.auth.hasRole(roles); });
   }
+<# } #>
 <# } else { #>
   protected readonly screens = screens;
 <# } #>

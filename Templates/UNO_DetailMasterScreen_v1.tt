@@ -151,7 +151,7 @@
         foreach (var c in page.Columns)
         {
             string field = DesktopFormXaml.Field(form, Project, Model, c, textKey, withGuards: true);
-            Write(userScreen?.IsAdminOnly(c) == true ? UserScreenPlan.WithAttribute(field, "Visibility=\"{x:Bind ViewModel.AdminOnlyVisibility}\"") : field);
+            Write(userScreen?.IsAdminOnly(c) == true ? UserScreenPlan.WithAttribute(field, "Visibility=\"{x:Bind ViewModel.AdminOnlyVisibility}\"") : form.FeatureOf(c) is { } fieldFlag ? UserScreenPlan.WithAttribute(field, FeatureScreenCode.VisibilityAttribute(fieldFlag)) : field);
         }
             if (tabbed)
             {
@@ -812,6 +812,8 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         Write(DesktopFormCode.GuardProperties(form));
         if (userScreen is not null)
             Write(userScreen.UnoViewModelMembers(Project));
+        if (form.FeatureFlags.Count > 0)
+            Write(FeatureScreenCode.UnoViewModelMembers());
 #>
 
 <#
@@ -1148,7 +1150,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         foreach (var c in shown)
         {
             string saveLines = DesktopFormCode.SaveLines(form, Project, c);
-            Write(userScreen?.IsAdminOnly(c) == true ? UserScreenPlan.AdminOnlySaveLines(saveLines) : saveLines);
+            Write(userScreen?.IsAdminOnly(c) == true ? UserScreenPlan.AdminOnlySaveLines(saveLines) : form.FeatureOf(c) is { } saveFlag ? FeatureScreenCode.SaveLines(saveLines, saveFlag) : saveLines);
         }
         if (userScreen is not null)
             Write(UserScreenPlan.PasswordCheckLines());

@@ -1,0 +1,50 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string viewNamespace = "MyApp.Desktop.Views";
+    string repositoryNamespace = "MyApp.Common.Repositories";
+    string contextType = "MyAppContext";
+    string[] usings = { };   // namespaces the generated files must "using" (the context's)
+    string viewsFolder = "Views";   // under the WinUI3 project root (where -o points)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    viewNamespace = Project.ViewNamespace ?? viewNamespace;
+    repositoryNamespace = Project.RepoNamespace ?? repositoryNamespace;
+    contextType = Project.ContextName ?? contextType;
+    usings = Project.Usings ?? usings;
+    viewsFolder = Project.ViewsFolder ?? viewsFolder;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // WinUI3_Features_v1.tt
+    // Generates: Repositories/FeatureFlags.cs, <ViewsFolder>/FeaturesPage.xaml and <ViewsFolder>/FeaturesPage.xaml.cs   (the paths are written by the template)
+    // Feature flags in the WinUI3 app, for a project with the desktop sign-in and FeatureTables. The app reads the database itself and never meets the API, so FeatureFlags is the rule of the API (the default, the
+    // plan of the tenant, the tenant's override, the person's override) written for its context, and DesktopFeatures keeps the flags of the signed-in person: the window reads them at sign-in and at a switch of tenant
+    // and WinUI3_Screens hides the screens FeatureScreens names while their flag is off. The page for the administrator of a tenant (a tenant column on the override table) switches a flag for the tenant.
+    // A check in the client: anyone who writes to the database directly bypasses it, and the API is where it is enforced. Full notes: Docs/TemplateNotes/API_Features_v1.md
+    // ==========================================================================================
+    if (FeatureScreenCode.DesktopReads(Database, Project))
+    {
+#>
+@@@FILE Repositories/FeatureFlags.cs@@@
+namespace <#= repositoryNamespace #>;
+
+<#= FeatureScreenCode.DesktopFile(Database, Project, contextType, usings) #>
+<#
+    }
+    if (FeatureScreenCode.DesktopHasPage(Database, Project))
+    {
+#>
+@@@FILE <#= viewsFolder #>/FeaturesPage.xaml@@@
+<#= FeatureScreenCode.Xaml(viewNamespace) #>
+@@@FILE <#= viewsFolder #>/FeaturesPage.xaml.cs@@@
+<#= FeatureScreenCode.DesktopPage(viewNamespace, repositoryNamespace, contextType, usings) #>
+<#
+    }
+#>

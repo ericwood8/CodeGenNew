@@ -1,0 +1,83 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_FeaturesTest_v1.tt
+    // Generates: FeaturesTests.cs   (the template writes its own path with an @@@FILE marker; the file goes to the Blazor test project)
+    // The bUnit tests of the page BLZ_Features writes: every flag with a check box, a flag switched on for the tenant, the tenant's override removed, a refused change and the page refused.
+    // Full notes: Docs/TemplateNotes/API_Features_v1.md
+    // ==========================================================================================
+    string ns = BlazorNames.Namespace(Project);
+    if (FeatureScreens.HasPage(Database, Project))
+    {
+#>
+@@@FILE FeaturesTests.cs@@@
+using Bunit;
+using <#= ns #>.Pages;
+
+namespace <#= ns #>.Tests;
+
+[TestClass]
+public class FeaturesTests : PageTestContext
+{
+    private IRenderedComponent<Features> RenderFeatures(string json)
+    {
+        SignIn("<#= Project.AuthAdminRole #>");
+        Api.Answer("<#= FeatureScreenWords.Path #>", json);
+        return Render<Features>();
+    }
+
+    [TestMethod]
+    public void Lists_every_flag_with_a_check_box_that_shows_whether_it_is_on()
+    {
+        var page = RenderFeatures("""{ "csv-export": true, "new-invoice-screen": false }""");
+        page.WaitForAssertion(() => Assert.AreEqual(2, page.FindAll("input[type=checkbox]").Count));
+        Assert.IsTrue(page.Find("input[aria-label='csv-export']").HasAttribute("checked"));
+        Assert.IsFalse(page.Find("input[aria-label='new-invoice-screen']").HasAttribute("checked"));
+    }
+
+    [TestMethod]
+    public void Switches_a_flag_on_for_the_tenant_and_shows_the_answer()
+    {
+        Api.AnswerWrite(HttpMethod.Put, "<#= FeatureScreenWords.Path #>/new-invoice-screen", """{ "new-invoice-screen": true }""");
+        var page = RenderFeatures("""{ "new-invoice-screen": false }""");
+        page.WaitForAssertion(() => Assert.AreEqual(1, page.FindAll("input[type=checkbox]").Count));
+        page.Find("input[aria-label='new-invoice-screen']").Change(true);
+        page.WaitForAssertion(() => Assert.IsTrue(page.Find("input[aria-label='new-invoice-screen']").HasAttribute("checked")));
+        Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Put && r.Path.EndsWith("<#= FeatureScreenWords.Path #>/new-invoice-screen") && r.Body.Contains("\"enabled\":true")));
+    }
+
+    [TestMethod]
+    public void Removes_the_tenants_override_with_the_default_button()
+    {
+        Api.AnswerWrite(HttpMethod.Put, "<#= FeatureScreenWords.Path #>/csv-export", """{ "csv-export": true }""");
+        var page = RenderFeatures("""{ "csv-export": false }""");
+        page.WaitForAssertion(() => Assert.AreEqual(1, page.FindAll("button[aria-label]").Count));
+        page.Find("button[aria-label]").Click();
+        page.WaitForAssertion(() => Assert.IsTrue(page.Find("input[aria-label='csv-export']").HasAttribute("checked")));
+        Assert.IsTrue(Api.Requests.Any(r => r.Method == HttpMethod.Put && r.Path.EndsWith("<#= FeatureScreenWords.Path #>/csv-export") && r.Body.Contains("\"enabled\":null")));
+    }
+
+    [TestMethod]
+    public void Shows_a_sentence_when_a_change_is_refused()
+    {
+        Api.FailWrite(HttpMethod.Put, "<#= FeatureScreenWords.Path #>/csv-export", System.Net.HttpStatusCode.Forbidden);
+        var page = RenderFeatures("""{ "csv-export": true }""");
+        page.WaitForAssertion(() => Assert.AreEqual(1, page.FindAll("input[type=checkbox]").Count));
+        page.Find("input[aria-label='csv-export']").Change(false);
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "<#= FeatureScreenWords.SaveFailed #>"));
+    }
+
+    [TestMethod]
+    public void Says_so_when_there_is_no_flag()
+    {
+        var page = RenderFeatures("{}");
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "<#= FeatureScreenWords.NoFeatures #>"));
+    }
+}
+<#
+    }
+#>

@@ -38,17 +38,21 @@
     {
         L("@implements IDisposable");
         L("@inject AuthSession Session");
+        if (FeatureScreens.Reads(Project))
+            L("@inject FeatureFlags Features");
         L();
         L("<nav class=\"rail\">");
         L("    @if (Session.IsSignedIn)");
         L("    {");
         foreach (var e in entries)
         {
-            if (e.Roles.Count == 0)
+            // FeatureScreens: the link shows only while the flag is on for the signed-in person
+            string condition = string.Join(" && ", new[] { e.Roles.Count == 0 ? null : $"Session.HasRole([{WriteRolePlan.Literal(e.Roles)}])", e.Feature is null ? null : $"Features.Enabled(\"{e.Feature.Replace("\"", "")}\")" }.Where(c => c is not null));
+            if (condition.Length == 0)
                 L($"        <NavLink href=\"{e.Route}\">{e.Label}</NavLink>");
             else
             {
-                L($"        @if (Session.HasRole([{WriteRolePlan.Literal(e.Roles)}]))");
+                L($"        @if ({condition})");
                 L("        {");
                 L($"            <NavLink href=\"{e.Route}\">{e.Label}</NavLink>");
                 L("        }");
@@ -58,11 +62,30 @@
         L("</nav>");
         L();
         L("@code {");
-        L("    protected override void OnInitialized() => Session.Changed += Refresh;");
-        L();
-        L("    private void Refresh() => InvokeAsync(StateHasChanged);");
-        L();
-        L("    public void Dispose() => Session.Changed -= Refresh;");
+        if (FeatureScreens.Reads(Project))
+        {
+            L("    protected override void OnInitialized()");
+            L("    {");
+            L("        Session.Changed += Refresh;");
+            L("        Features.Changed += Refresh;");
+            L("    }");
+            L();
+            L("    private void Refresh() => InvokeAsync(StateHasChanged);");
+            L();
+            L("    public void Dispose()");
+            L("    {");
+            L("        Session.Changed -= Refresh;");
+            L("        Features.Changed -= Refresh;");
+            L("    }");
+        }
+        else
+        {
+            L("    protected override void OnInitialized() => Session.Changed += Refresh;");
+            L();
+            L("    private void Refresh() => InvokeAsync(StateHasChanged);");
+            L();
+            L("    public void Dispose() => Session.Changed -= Refresh;");
+        }
         L("}");
     }
     else

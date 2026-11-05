@@ -1,0 +1,158 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_Features_v1.tt
+    // Generates: Services/FeatureFlags.cs and Pages/Features.razor   (the template writes its own paths with @@@FILE markers)
+    // Feature flags in a Blazor app that signs in (Auth=true, ApiAuth, FeatureTables): FeatureFlags reads every flag as the signed-in person sees it (GET api/features) once after sign-in and again when the session
+    // changes (a switch of tenant); BlazorMenu hides the screens FeatureScreens names while their flag is off. With a tenant column on the override table the page for the administrator of a tenant switches a flag
+    // for the tenant (PUT api/features/{name}).
+    // Full notes: Docs/TemplateNotes/API_Features_v1.md
+    // ==========================================================================================
+    string ns = BlazorNames.Namespace(Project);
+    if (FeatureScreens.Reads(Project))
+    {
+#>
+@@@FILE Services/FeatureFlags.cs@@@
+using System.Net.Http.Json;
+
+namespace <#= ns #>.Services;
+
+/// <summary> The feature flags of the signed-in person: every flag by name with its value for them (the default, their tenant's plan, their tenant's override and their own override applied). Read once after
+/// sign-in and again when the session changes (a switch of tenant); empty while signed out or when the API cannot say. </summary>
+public class FeatureFlags
+{
+    private readonly HttpClient http;
+    private readonly AuthSession session;
+    private Dictionary<string, bool> flags = new(StringComparer.OrdinalIgnoreCase);
+    private string? loadedFor;
+
+    public FeatureFlags(HttpClient http, AuthSession session)
+    {
+        this.http = http;
+        this.session = session;
+        session.Changed += () => _ = LoadAsync();
+        _ = LoadAsync();
+    }
+
+    /// <summary> Raised when the flags have been read again. </summary>
+    public event Action? Changed;
+
+    public IReadOnlyDictionary<string, bool> All => flags;
+
+    /// <summary> Whether the flag is on for the signed-in person; a name that is not a flag is off. </summary>
+    public bool Enabled(string name) => flags.TryGetValue(name, out bool on) && on;
+
+    /// <summary> Replaces the flags (the page that switches a flag shows the API's answer). </summary>
+    public void Set(Dictionary<string, bool> now)
+    {
+        flags = new Dictionary<string, bool>(now, StringComparer.OrdinalIgnoreCase);
+        Changed?.Invoke();
+    }
+
+    public async Task LoadAsync()
+    {
+        await session.InitializeAsync();
+        string key = session.IsSignedIn ? session.User?.Name + "|" + session.Token : "";
+        if (key == loadedFor)
+            return;
+        loadedFor = key;
+        var now = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        if (session.IsSignedIn)
+        {
+            try
+            {
+                now = new Dictionary<string, bool>(await http.GetFromJsonAsync<Dictionary<string, bool>>("<#= FeatureScreenWords.Path #>") ?? [], StringComparer.OrdinalIgnoreCase);
+            }
+            catch (HttpRequestException)
+            {
+            }
+        }
+        flags = now;
+        Changed?.Invoke();
+    }
+}
+<#
+    }
+    if (FeatureScreens.HasPage(Database, Project))
+    {
+#>
+@@@FILE Pages/Features.razor@@@
+@page "/features"
+@using System.Net.Http.Json
+@using <#= ns #>.Services
+@attribute [Authorize(Roles = "<#= Project.AuthAdminRole #>")]
+@inject HttpClient Http
+@inject FeatureFlags Flags
+
+<PageTitle><#= FeatureScreenWords.Title #></PageTitle>
+
+<h1><#= FeatureScreenWords.Title #></h1>
+<p><#= FeatureScreenWords.Hint #></p>
+@if (message is not null)
+{
+    <p class="error" role="alert">@message</p>
+}
+@if (features is not null && features.Count == 0)
+{
+    <p><#= FeatureScreenWords.NoFeatures #></p>
+}
+@if (features is not null && features.Count > 0)
+{
+    <table aria-label="<#= FeatureScreenWords.Title #>">
+        <thead>
+            <tr>
+                <th><#= FeatureScreenWords.FeatureColumn #></th>
+                <th><#= FeatureScreenWords.OnColumn #></th>
+                <th><#= FeatureScreenWords.ResetColumn #></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var (name, on) in features.OrderBy(f => f.Key, StringComparer.Ordinal))
+            {
+                <tr>
+                    <td>@name</td>
+                    <td><input type="checkbox" checked="@on" aria-label="@name" @onchange="e => ChangeAsync(name, (bool?)(e.Value is true))" /></td>
+                    <td><button type="button" aria-label="<#= FeatureScreenWords.ResetButton #> @name" @onclick="() => ChangeAsync(name, null)"><#= FeatureScreenWords.ResetButton #></button></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private Dictionary<string, bool>? features;
+    private string? message;
+
+    /// <summary> Switches a flag for the tenant (null removes the tenant's override); a refusal shows the API's sentence. </summary>
+    private async Task ChangeAsync(string name, bool? enabled)
+    {
+        message = null;
+        var response = await Http.PutAsJsonAsync("<#= FeatureScreenWords.Path #>/" + Uri.EscapeDataString(name), new { enabled });
+        if (response.IsSuccessStatusCode)
+        {
+            features = await response.Content.ReadFromJsonAsync<Dictionary<string, bool>>();
+            Flags.Set(features ?? []);
+        }
+        else
+            message = await ApiSupport.ProblemDetailAsync(response) ?? "<#= FeatureScreenWords.SaveFailed #>";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            features = await Http.GetFromJsonAsync<Dictionary<string, bool>>("<#= FeatureScreenWords.Path #>");
+        }
+        catch (HttpRequestException)
+        {
+            message = "<#= FeatureScreenWords.LoadFailed #>";
+        }
+    }
+}
+<#
+    }
+#>

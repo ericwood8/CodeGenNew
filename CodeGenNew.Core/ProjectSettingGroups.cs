@@ -35,7 +35,7 @@ public static class ProjectSettingGroups
         new("Sign-in", "This tab has the API sign-in, the owned tables and claim names, and the user table the people sign in against.",
             ["ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "RowApprovals", "ApproverTable"]),
         new("Roles", "This tab has the roles that may read and the roles that may write, for every table and for single tables.",
-            ["ReadRoles", "TableReadRoles", "WriteRoles", "TableWriteRoles", "Permissions", "PermissionTables"]),
+            ["ReadRoles", "TableReadRoles", "WriteRoles", "TableWriteRoles", "Permissions", "PermissionTables", "FeatureTables", "FeaturePlanTable", "FeatureScreens", "FeatureFields", "FeatureCacheSeconds"]),
         new("Dashboard", "This tab has Dashboard, Dashboard Strip, Dashboard Measures and No Dashboard Tables.",
             ["Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables"]),
         new("WinUI3", "This tab has the view and view-model namespaces and folders, detail-master tables, single-row tables and the directory listing.",

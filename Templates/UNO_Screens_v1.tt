@@ -29,17 +29,24 @@
     // with DashboardStrip=true each table that has cards shows them above its list page (UNO_Dashboard writes the strip)
     var stripTables = Project.DashboardStrip ? DashboardPlan.Build(Database, Project).StripTables.Where(name => screens.Any(t => t.TableName.EqualsIgnoreCase(name))).ToHashSet(StringComparer.OrdinalIgnoreCase) : new HashSet<string>();
     // the menu in order (the dashboard, the screens, the OData pages) and the tag each entry is selected by
+    // FeatureScreens names the flag that hides the screen of a table (UNO_Features reads the flags)
+    bool features = FeatureScreens.Reads(Project);
     var menu = ScreenMenu.For(Project, screens, odataScreens, JunctionPlan.Tables(Database, Project), ApprovalScreens.For(Database, Project).Count > 0)
-        .Select(m => (Tag: m.Kind switch { ScreenMenuKind.Dashboard => "Dashboard", ScreenMenuKind.Approvals => "Approvals", ScreenMenuKind.Screen => m.Table!.TableName, ScreenMenuKind.Junction => m.Table!.TableName + "Links", _ => m.Table!.TableName + "OData" }, m.Label, m.Roles))
+        .Select(m => (Tag: m.Kind switch { ScreenMenuKind.Dashboard => "Dashboard", ScreenMenuKind.Approvals => "Approvals", ScreenMenuKind.Screen => m.Table!.TableName, ScreenMenuKind.Junction => m.Table!.TableName + "Links", _ => m.Table!.TableName + "OData" }, m.Label, m.Roles,
+            Feature: m.Kind == ScreenMenuKind.Screen ? FeatureScreens.FlagOf(Project, m.Table!.TableName) : null))
         .ToList();
     // administrators say who works in the tenant on the members page, the last screen (UNO_People)
     bool membersPage = Project.Auth && PeoplePlan.For(Database, Project) is { HasMembers: true };
     if (membersPage)
-        menu.Add((Tag: "Members", Label: MemberWords.Menu, Roles: (IReadOnlyList<string>)new[] { Project.AuthAdminRole }));
+        menu.Add((Tag: "Members", Label: MemberWords.Menu, Roles: (IReadOnlyList<string>)new[] { Project.AuthAdminRole }, Feature: (string?)null));
     // administrators see the plan, the status and the limits of their tenant (UNO_Subscription)
     bool subscriptionPage = SubscriptionFeature.HasPage(Database, Project);
     if (subscriptionPage)
-        menu.Add((Tag: "Subscription", Label: SubscriptionScreenWords.Menu, Roles: (IReadOnlyList<string>)new[] { Project.AuthAdminRole }));
+        menu.Add((Tag: "Subscription", Label: SubscriptionScreenWords.Menu, Roles: (IReadOnlyList<string>)new[] { Project.AuthAdminRole }, Feature: (string?)null));
+    // administrators switch the flags of their tenant (UNO_Features)
+    bool featuresPage = FeatureScreens.HasPage(Database, Project);
+    if (featuresPage)
+        menu.Add((Tag: "Features", Label: FeatureScreenWords.Menu, Roles: (IReadOnlyList<string>)new[] { Project.AuthAdminRole }, Feature: (string?)null));
     foreach (string table in screens.Select(t => t.TableName).Where(n => !clients.Any(c => c.TableName.EqualsIgnoreCase(n))))
         Error($"UNO_Screens lists {table}, which has no API client (see UNO_Client): a screen needs the table's own CRUD API.");
 
@@ -61,21 +68,26 @@
     if (Project.Auth)
     {
         // the screens and the roles that may read each (none listed: any signed-in person); the menu holds only the ones the signed-in role may read
-        L("    private static readonly (string Tag, string Label, string[]? Roles)[] Screens =");
+        L(features ? "    private static readonly (string Tag, string Label, string[]? Roles, string? Feature)[] Screens =" : "    private static readonly (string Tag, string Label, string[]? Roles)[] Screens =");
         L("    [");
         foreach (var e in menu)
-            L($"        (\"{e.Tag}\", \"{e.Label}\", {(e.Roles.Count == 0 ? "null" : "[" + WriteRolePlan.Literal(e.Roles) + "]")}),");
+            L($"        (\"{e.Tag}\", \"{e.Label}\", {(e.Roles.Count == 0 ? "null" : "[" + WriteRolePlan.Literal(e.Roles) + "]")}{(features ? ", " + (e.Feature is null ? "null" : CSharpText.Quote(e.Feature)) : "")}),");
         L("    ];");
         L();
-        L("    // Fills the menu with the screens the signed-in role may read and returns the first of them, or null when there is none.");
+        L(features ? "    // Fills the menu with the screens the signed-in role may read and whose flag is on, and returns the first of them, or null when there is none." : "    // Fills the menu with the screens the signed-in role may read and returns the first of them, or null when there is none.");
         L("    private string? AddScreens()");
         L("    {");
         L("        NavView.MenuItems.Clear();");
         L("        string? first = null;");
-        L("        foreach (var (tag, label, roles) in Screens)");
+        L(features ? "        foreach (var (tag, label, roles, feature) in Screens)" : "        foreach (var (tag, label, roles) in Screens)");
         L("        {");
         L("            if (roles is not null && !_session.HasRole(roles))");
         L("                continue;");
+        if (features)
+        {
+            L("            if (feature is not null && !_api.Features.Enabled(feature))");
+            L("                continue;");
+        }
         L("            NavView.MenuItems.Add(new NavigationViewItem { Content = label, Tag = tag });");
         L("            first ??= tag;");
         L("        }");
@@ -142,6 +154,8 @@
         L("            \"Members\" => new MembersPage(_api),");
     if (subscriptionPage)
         L("            \"Subscription\" => new SubscriptionPage(_api),");
+    if (featuresPage)
+        L("            \"Features\" => new FeaturesPage(_api),");
     L("            _ => MainContent.Content");
     L("        };");
     L("    }");
@@ -160,6 +174,13 @@
         L("    /// <summary> The HttpClient of the app, for the calls that belong to no table (a person's new password, the members of the tenant). </summary>");
         L("    public HttpClient Http => http;");
         L();
+        if (features)
+        {
+            L("    private FeatureFlags? _features;");
+            L("    /// <summary> The feature flags of the signed-in person (UNO_Features). </summary>");
+            L("    public FeatureFlags Features => _features ??= new(http, session);");
+            L();
+        }
     }
     else
     {
@@ -177,7 +198,7 @@
         L("    public DashboardClient Dashboard => _dashboard ??= new(http);");
     }
     // the junction tables of the database: the client of each one's API_Junction routes (UNO_JunctionEditor writes the class)
-    foreach (var t in Database.Tables.Where(t => t.IsJunctionTable).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
+    foreach (var t in Database.Tables.Where(t => t.IsJunctionTable && !FeatureFlagTables.IsPlanLinkTable(Project, t.TableName)).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase))
     {
         L($"    private {t.TableName}JunctionClient? _{TemplateHelpers.LowerFirst(t.TableName)}Junction;");
         L($"    public {t.TableName}JunctionClient {t.TableName}Junction => _{TemplateHelpers.LowerFirst(t.TableName)}Junction ??= new(http);");

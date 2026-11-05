@@ -1,0 +1,14 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_TestFeatures_v1.tt
+    // Generates: tests/test_features.py   (whole-database; the path is written by the template)
+    // The pytest tests of the feature flag routes (FeatureTables, with a tenant column on the override table): the defaults, a tenant override, who may change a flag and what a platform administrator may name.
+    // The same cases and words as the ASP.NET tests. Written only with PythonTests, over a database the shared conftest can open. Full notes: Docs/TemplateNotes/API_Features_v1.md
+    // ==========================================================================================
+    if (PythonFeatureTests.Applies(Database, Project))
+        Write("@@@FILE tests/test_features.py@@@\n" + PythonFeatureTests.File(Database, Project));
+#>

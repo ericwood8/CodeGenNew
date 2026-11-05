@@ -35,7 +35,7 @@
     }
     // the dashboard (PY_Dashboard) is one route file for the whole database, listed with the tables' routers
     // and so are the routes of the many-to-many junction tables (PY_Junction)
-    var junctionModules = Database.Tables.Where(t => t.IsJunctionTable).Select(t => PythonNames.Snake(t.TableName) + "_junction");
+    var junctionModules = Database.Tables.Where(t => t.IsJunctionTable && !FeatureFlagTables.IsPlanLinkTable(Project, t.TableName)).Select(t => PythonNames.Snake(t.TableName) + "_junction");
     var modules = tables.Select(t => t.Module).Concat(junctionModules).ToList();
     if (Project.Dashboard)
         modules.Add("dashboard");
@@ -52,6 +52,9 @@
     // the subscription routes (PY_Subscriptions) are one more router
     if (PythonSubscriptionWriter.Applies(Project) && TenantPlan.TenantTableOf(Database, Project) is not null)
         modules.Insert(0, "subscriptions");
+    // the feature flag routes (PY_Features) are one more router
+    if (PythonFeatureWriter.PlanOf(Database, Project) is not null)
+        modules.Insert(0, "features");
     // and the queue routes (PY_Queue): /api/<table>/stats and /claim would be read as a key and refused
     if (Database.Tables.Any(t => TableShapes.For(t, Project).Queue is not null))
         modules.Insert(0, "queue");

@@ -259,6 +259,8 @@
             L($"@inject {ch.ClientType} {ch.Var}Client");
         foreach (var l in childLookups)
             L($"@inject {l.Type}Client {l.Field}Client");
+        if (form.FeatureFlags.Count > 0)
+            L("@inject FeatureFlags Features");   // FeatureFields: a field shows only while its flag is on
         L("@inject IJSRuntime Js");
         L("@inject NavigationManager Navigation");
         L();
@@ -552,8 +554,15 @@
                 input = $"@if (guards.GetValueOrDefault(\"{guard.Json}\")) {{ {input} }} else {{ <span id=\"{id}\">{shown2}</span> <small class=\"guard-note\">{note}</small> }}";
             }
             string fieldHtml = $"<div class=\"field\"><label for=\"{id}\">{label}{RequiredMark.Html(form.IsMarked(c))}</label>{input}</div>";
-            // the administrator flag is shown to administrators only
-            L(userScreen?.IsAdminOnly(c) == true ? $"            @if (IsAdmin) {{ {fieldHtml} }}" : $"            {fieldHtml}");
+            // the administrator flag is shown to administrators only; a field FeatureFields names is in the form only while its flag is on
+            if (userScreen?.IsAdminOnly(c) == true)
+                fieldHtml = $"@if (IsAdmin) {{ {fieldHtml} }}";
+            if (form.FeatureOf(c) is { } fieldFlag)
+            {
+                string flagText = CSharpText.Escape(fieldFlag);
+                fieldHtml = $"@if (Features.Enabled(\"{flagText}\")) {{ {fieldHtml} }}";
+            }
+            L($"            {fieldHtml}");
         }
         if (userScreen is not null)
         {

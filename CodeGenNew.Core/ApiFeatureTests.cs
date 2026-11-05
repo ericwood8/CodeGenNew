@@ -1,0 +1,215 @@
+using System.Text;
+
+namespace CodeGenNew.Core;
+
+/// <summary> The generated ASP.NET tests of the feature flag routes (<c>FeatureApiTests.cs</c>): the defaults, a tenant's override that reaches that tenant only, who may change a flag, what a platform administrator may name,
+/// and the removal of an override. Each test makes a tenant and a flag of its own and removes them again. Written only for a project whose override table has a tenant column. </summary>
+public static class ApiFeatureTests
+{
+    public static bool Applies(DatabaseModel database, ProjectSettings project) =>
+        project.ApiTests && project.ApiAuth && FeatureFlagTables.Resolve(database, project).Plan is { OverrideTenant: not null } plan && FeatureFlagTables.FlagRowsAreSimple(plan);
+
+    public static string ClassText(DatabaseModel database, ProjectSettings project)
+    {
+        var plan = FeatureFlagTables.Resolve(database, project).Plan!;
+        var o = new StringBuilder();
+        void L(string text = "") => o.Append(text).Append('\n');
+        var tenantTable = TenantPlan.TenantTableOf(database, project)!;
+        var tenantKey = JsonNames.Camel(tenantTable.PrimaryKeyColumns[0].Name);
+        string tenantRoute = ApiRequests.Route(tenantTable), admin = project.AuthAdminRole, apis = project.ApiNamespace ?? (project.ProjectName ?? "MyApp") + ".Api.Apis";
+        string activeLine = tenantTable.IsActiveColumn is { } flag ? $"        body[\"{JsonNames.Camel(flag.Name)}\"] = true;\n" : "";
+        bool person = plan.OverridePerson is not null;
+
+        L($"namespace {project.ProjectName ?? "MyApp"}.Api.Tests;");
+        L();
+        L("/// <summary> Feature flags. Each test makes a tenant and a flag of its own and removes them again. </summary>");
+        L("[TestClass]");
+        L("public class FeatureApiTests");
+        L("{");
+        L($"    private const string TenantRoute = \"{tenantRoute}\";");
+        L();
+        L("    private static async Task<int> MakeTenantAsync()");
+        L("    {");
+        L($"        var body = await {tenantTable.TableName}ApiTests.NewBodyAsync();");
+        o.Append(activeLine);
+        L("        using var platform = ApiFixture.PlatformClient();");
+        L("        using var made = await platform.PostAsJsonAsync(TenantRoute, body);");
+        L("        Assert.AreEqual(HttpStatusCode.Created, made.StatusCode, await made.Content.ReadAsStringAsync());");
+        L($"        return (await made.Content.ReadFromJsonAsync<JsonObject>())![\"{tenantKey}\"]!.GetValue<int>();");
+        L("    }");
+        L();
+        L("    private static Task RemoveTenantAsync(int tenant) => " + apis + ".TenantTestSupport.RemoveAsync(ApiFixture.Services, tenant);");
+        L();
+        L("    private static string NewName() => \"test-\" + Guid.NewGuid().ToString(\"N\")[..12];");
+        L();
+        L("    private static async Task<bool?> SeenAsync(HttpClient client, string name)");
+        L("    {");
+        L("        using var response = await client.GetAsync(\"/api/features\");");
+        L("        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());");
+        L("        var all = (await response.Content.ReadFromJsonAsync<JsonObject>())!;");
+        L("        return all.TryGetPropertyValue(name, out var value) ? value!.GetValue<bool>() : null;");
+        L("    }");
+        L();
+        L("    [TestMethod]");
+        L("    public async Task A_flag_is_read_with_its_default()");
+        L("    {");
+        L("        ApiFixture.RequireDatabase();");
+        L("        string on = NewName(), off = NewName();");
+        L($"        int onId = await {apis}.FeatureTestSupport.AddFlagAsync(ApiFixture.Services, on, true);");
+        L($"        int offId = await {apis}.FeatureTestSupport.AddFlagAsync(ApiFixture.Services, off, false);");
+        L("        int tenant = await MakeTenantAsync();");
+        L("        try");
+        L("        {");
+        L("            using var client = ApiFixture.ClientInTenant(tenant, \"Nobody\");");
+        L("            Assert.AreEqual(true, await SeenAsync(client, on));");
+        L("            Assert.AreEqual(false, await SeenAsync(client, off));");
+        L("            Assert.IsNull(await SeenAsync(client, NewName()), \"a name that is not a flag is not listed\");");
+        L("        }");
+        L("        finally");
+        L("        {");
+        L($"            await {apis}.FeatureTestSupport.RemoveFlagAsync(ApiFixture.Services, onId);");
+        L($"            await {apis}.FeatureTestSupport.RemoveFlagAsync(ApiFixture.Services, offId);");
+        L("            await RemoveTenantAsync(tenant);");
+        L("        }");
+        L("    }");
+        L();
+        L("    [TestMethod]");
+        L("    public async Task A_tenants_override_reaches_that_tenant_only_and_a_null_removes_it()");
+        L("    {");
+        L("        ApiFixture.RequireDatabase();");
+        L("        string name = NewName();");
+        L($"        int flag = await {apis}.FeatureTestSupport.AddFlagAsync(ApiFixture.Services, name, false);");
+        L("        int first = await MakeTenantAsync();");
+        L("        int second = await MakeTenantAsync();");
+        L("        try");
+        L("        {");
+        L($"            using var admin = ApiFixture.ClientInTenant(first, \"{admin}\");");
+        L("            using var other = ApiFixture.ClientInTenant(second, \"Nobody\");");
+        L("            using var on = await admin.PutAsJsonAsync(\"/api/features/\" + name, new { enabled = true });");
+        L("            Assert.AreEqual(HttpStatusCode.OK, on.StatusCode, await on.Content.ReadAsStringAsync());");
+        L("            Assert.AreEqual(true, await SeenAsync(admin, name));");
+        L("            Assert.AreEqual(false, await SeenAsync(other, name));");
+        L("            using var again = await admin.PutAsJsonAsync(\"/api/features/\" + name, new { enabled = true });");
+        L("            Assert.AreEqual(HttpStatusCode.OK, again.StatusCode);");
+        L("            using var off = await admin.PutAsJsonAsync(\"/api/features/\" + name, new { enabled = (bool?)null });");
+        L("            Assert.AreEqual(HttpStatusCode.OK, off.StatusCode, await off.Content.ReadAsStringAsync());");
+        L("            Assert.AreEqual(false, await SeenAsync(admin, name));");
+        L("        }");
+        L("        finally");
+        L("        {");
+        L($"            await {apis}.FeatureTestSupport.RemoveFlagAsync(ApiFixture.Services, flag);");
+        L("            await RemoveTenantAsync(first);");
+        L("            await RemoveTenantAsync(second);");
+        L("        }");
+        L("    }");
+        L();
+        L("    [TestMethod]");
+        L("    public async Task Only_an_administrator_changes_a_flag_and_only_for_their_own_tenant()");
+        L("    {");
+        L("        ApiFixture.RequireDatabase();");
+        L("        string name = NewName();");
+        L($"        int flag = await {apis}.FeatureTestSupport.AddFlagAsync(ApiFixture.Services, name, false);");
+        L("        int tenant = await MakeTenantAsync();");
+        L("        int other = await MakeTenantAsync();");
+        L("        try");
+        L("        {");
+        L("            using var employee = ApiFixture.ClientInTenant(tenant, \"Nobody\");");
+        L("            using var refused = await employee.PutAsJsonAsync(\"/api/features/\" + name, new { enabled = true });");
+        L("            Assert.AreEqual(HttpStatusCode.Forbidden, refused.StatusCode);");
+        L($"            using var admin = ApiFixture.ClientInTenant(tenant, \"{admin}\");");
+        L("            using var elsewhere = await admin.PutAsJsonAsync(\"/api/features/\" + name, new { enabled = true, tenantId = other });");
+        L("            Assert.AreEqual(HttpStatusCode.Forbidden, elsewhere.StatusCode);");
+        L("            using var unknown = await admin.PutAsJsonAsync(\"/api/features/\" + NewName(), new { enabled = true });");
+        L("            Assert.AreEqual(HttpStatusCode.NotFound, unknown.StatusCode);");
+        if (person)
+        {
+            L("            using var somebody = await admin.PutAsJsonAsync(\"/api/features/\" + name, new { enabled = true, personId = 1 });");
+            L("            Assert.AreEqual(HttpStatusCode.Forbidden, somebody.StatusCode);");
+        }
+        L("            Assert.AreEqual(false, await SeenAsync(admin, name), \"nothing was changed\");");
+        L("        }");
+        L("        finally");
+        L("        {");
+        L($"            await {apis}.FeatureTestSupport.RemoveFlagAsync(ApiFixture.Services, flag);");
+        L("            await RemoveTenantAsync(tenant);");
+        L("            await RemoveTenantAsync(other);");
+        L("        }");
+        L("    }");
+        L();
+        L("    [TestMethod]");
+        L("    public async Task A_platform_administrator_names_the_tenant_and_exactly_one_target()");
+        L("    {");
+        L("        ApiFixture.RequireDatabase();");
+        L("        string name = NewName();");
+        L($"        int flag = await {apis}.FeatureTestSupport.AddFlagAsync(ApiFixture.Services, name, false);");
+        L("        int tenant = await MakeTenantAsync();");
+        L("        try");
+        L("        {");
+        L("            using var platform = ApiFixture.PlatformClient();");
+        L("            using var neither = await platform.PutAsJsonAsync(\"/api/features/\" + name, new { enabled = true });");
+        L("            Assert.AreEqual(HttpStatusCode.BadRequest, neither.StatusCode);");
+        L("            using var missing = await platform.PutAsJsonAsync(\"/api/features/\" + name, new { enabled = true, tenantId = int.MaxValue });");
+        L("            Assert.AreEqual(HttpStatusCode.NotFound, missing.StatusCode);");
+        L("            using var named = await platform.PutAsJsonAsync(\"/api/features/\" + name, new { enabled = true, tenantId = tenant });");
+        L("            Assert.AreEqual(HttpStatusCode.OK, named.StatusCode, await named.Content.ReadAsStringAsync());");
+        L("            using var inside = ApiFixture.ClientInTenant(tenant, \"Nobody\");");
+        L("            Assert.AreEqual(true, await SeenAsync(inside, name));");
+        L("        }");
+        L("        finally");
+        L("        {");
+        L($"            await {apis}.FeatureTestSupport.RemoveFlagAsync(ApiFixture.Services, flag);");
+        L("            await RemoveTenantAsync(tenant);");
+        L("        }");
+        L("    }");
+        L();
+        if (plan.PlanLink is not null && SubscriptionFeature.SubscriptionOf(database, project) is { } subscription)
+        {
+            L("    [TestMethod]");
+            L("    public async Task A_flag_the_plan_lists_is_on_for_a_tenant_on_that_plan_and_the_tenants_override_wins()");
+            L("    {");
+            L("        ApiFixture.RequireDatabase();");
+            L("        string name = NewName();");
+            L($"        int flag = await {apis}.FeatureTestSupport.AddFlagAsync(ApiFixture.Services, name, false);");
+            L($"        int plan = await {apis}.SubscriptionTestSupport.AddPlanAsync(ApiFixture.Services, new JsonObject");
+            L("        {");
+            foreach (var c in ApiSampleValues.BodyColumns(subscription.PlanTable).Where(c => c != subscription.PlanKey))
+                L($"            [{ApiSampleValues.Json(JsonNames.Camel(c.Name))}] = {TenantTests.Value(subscription.PlanTable, c, project)},");
+            L("        }.ToJsonString());");
+            L("        int tenant = await MakeTenantAsync();");
+            L("        try");
+            L("        {");
+            L($"            await {apis}.FeatureTestSupport.LinkPlanAsync(ApiFixture.Services, plan, flag);");
+            L("            using var platform = ApiFixture.PlatformClient();");
+            L("            using var subscribed = await platform.PutAsJsonAsync($\"/api/subscription/{tenant}\", new { planId = plan, status = \"active\" });");
+            L("            Assert.AreEqual(HttpStatusCode.OK, subscribed.StatusCode, await subscribed.Content.ReadAsStringAsync());");
+            L($"            using var admin = ApiFixture.ClientInTenant(tenant, \"{admin}\");");
+            L("            Assert.AreEqual(true, await SeenAsync(admin, name), \"the tenant's plan lists the flag\");");
+            L("            using var off = await admin.PutAsJsonAsync(\"/api/features/\" + name, new { enabled = false });");
+            L("            Assert.AreEqual(HttpStatusCode.OK, off.StatusCode, await off.Content.ReadAsStringAsync());");
+            L("            Assert.AreEqual(false, await SeenAsync(admin, name), \"the tenant's override wins over its plan\");");
+            L("            using var back = await admin.PutAsJsonAsync(\"/api/features/\" + name, new { enabled = (bool?)null });");
+            L("            Assert.AreEqual(HttpStatusCode.OK, back.StatusCode, await back.Content.ReadAsStringAsync());");
+            L("            Assert.AreEqual(true, await SeenAsync(admin, name), \"without the override the plan decides again\");");
+            L("        }");
+            L("        finally");
+            L("        {");
+            L($"            await {apis}.FeatureTestSupport.RemoveFlagAsync(ApiFixture.Services, flag);");
+            L($"            await {apis}.SubscriptionTestSupport.ClearAsync(ApiFixture.Services, tenant);");
+            L($"            await {apis}.SubscriptionTestSupport.RemovePlanAsync(ApiFixture.Services, plan, tenant);");
+            L("            await RemoveTenantAsync(tenant);");
+            L("        }");
+            L("    }");
+            L();
+        }
+        L("    [TestMethod]");
+        L("    public async Task A_signed_out_caller_reads_nothing()");
+        L("    {");
+        L("        ApiFixture.RequireDatabase();");
+        L("        using var anonymous = ApiFixture.Anonymous();");
+        L("        using var response = await anonymous.GetAsync(\"/api/features\");");
+        L("        Assert.AreEqual(HttpStatusCode.Unauthorized, response.StatusCode);");
+        L("    }");
+        L("}");
+        return o.ToString();
+    }
+}

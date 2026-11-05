@@ -41,7 +41,7 @@ public static class ProjectPlan
             PlanTableSet.ScreenDialog => Screens().ToList(),
             PlanTableSet.Seed => database.SeedTables(project),
             PlanTableSet.Dto => database.DtoTables(project),
-            PlanTableSet.Junction => database.Tables.Where(t => t.IsJunctionTable).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),
+            PlanTableSet.Junction => database.Tables.Where(t => t.IsJunctionTable && !FeatureFlagTables.IsPlanLinkTable(project, t.TableName)).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),
             PlanTableSet.Enum => database.EnumTables(project),
             PlanTableSet.Audit => database.Tables.Where(t => t.IsAuditTable).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),
             PlanTableSet.Temporal => database.Tables.Where(t => project.TemporalTables.Contains(t.TableName, StringComparer.OrdinalIgnoreCase)).OrderBy(t => t.TableName, StringComparer.OrdinalIgnoreCase).ToList(),

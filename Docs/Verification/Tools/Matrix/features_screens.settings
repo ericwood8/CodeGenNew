@@ -1,0 +1,21 @@
+# feature flags in the front ends (screens and fields hidden by a flag): python matrix_check.py FlagsUi --settings-file Matrix/features_screens.settings --frontend
+@schema=features
+@stack=api,blazor,uno,winui3
+Auth=true
+ApiAuth=true
+TenantTable=Tenant
+TenantMembership=EmployeeTenant:EmployeeId:TenantId:Role
+UserTable=Employee
+UserNameColumn=Login
+UserRoleColumn=IsManager
+UserAdminColumn=IsAdministrator
+UserOwnerColumn=EmployeeId
+SubscriptionTable=Subscription
+PlanTable=Plan
+FeatureTables=Feature,FeatureOverride
+FeaturePlanTable=PlanFeature
+FeatureScreens=Project:new-invoice-screen
+FeatureFields=Project.StartedOn:csv-export
+BlazorTests=true
+DesktopTests=true
+SubscriptionPlanChoice=true

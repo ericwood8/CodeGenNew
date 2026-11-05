@@ -84,7 +84,7 @@ public class MenuTests : PageTestContext
             o.Append("\n    [TestMethod]\n");
             foreach (string role in roles)
             {
-                string allowed = Expected(entries.Where(e => e.Roles.Count == 0 || e.Roles.Contains(role)));
+                string allowed = Expected(entries.Where(e => e.Feature is null && (e.Roles.Count == 0 || e.Roles.Contains(role))));   // a screen a flag hides is not in the menu until the flag is on
                 o.Append($"    [DataRow({Literal(role)}, {Literal(allowed)})]\n");
             }
             o.Append("""

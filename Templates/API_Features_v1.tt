@@ -1,0 +1,38 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string apiNamespace = "MyApp.ApiService.Apis";
+    string contextType = "MyAppContext";
+    string[] usings = { };   // namespaces the generated file must "using" (the context's)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    contextType = Project.ContextName ?? contextType;
+    apiNamespace = Project.ApiNamespace ?? apiNamespace;
+    usings = Project.Usings ?? usings;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // API_Features_v1.tt
+    // Generates: Features.cs   (see OutputName in API_Features_v1.tt.config)
+    // Feature flags kept in two tables (FeatureTables=Feature,FeatureOverride, with ApiAuth): a flag is on or off by default, a tenant's override replaces the default and a person's override replaces both.
+    // FeatureFlags.EnabledAsync and http.FeatureEnabledAsync("name") for the API's own code, GET /api/features for a front end to read once after sign-in, and PUT /api/features/{name} for an administrator.
+    // Full notes: Docs/TemplateNotes/API_Features_v1.md
+    // ==========================================================================================
+
+    var (plan, problem) = FeatureFlagTables.Resolve(Database, Project);
+    if (problem is not null)
+    {
+        Error(problem);
+    }
+    else if (plan is not null)
+    {
+        Write("namespace " + apiNamespace + ";" + "\n\n");
+        Write(FeatureFlagWriter.File(Database, Project, contextType, usings));
+    }
+#>

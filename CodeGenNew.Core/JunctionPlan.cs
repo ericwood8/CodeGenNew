@@ -11,7 +11,7 @@ public static class JunctionPlan
     public static string Label(string table) => ScreenNames.Label(table) + " Links";
 
     /// <summary> Whether the junction table gets a page: it is a many-to-many junction table and its anchor table has a lookup endpoint to pick a row from. </summary>
-    public static bool HasPage(TableModel table, ProjectSettings project) => table.IsJunctionTable && table.Junction!.AnchorHasLookup(project);
+    public static bool HasPage(TableModel table, ProjectSettings project) => table.IsJunctionTable && !FeatureFlagTables.IsPlanLinkTable(project, table.TableName) && table.Junction!.AnchorHasLookup(project);
 
     /// <summary> The junction tables that get a page, in menu order (by name). </summary>
     public static List<TableModel> Tables(DatabaseModel database, ProjectSettings project) =>

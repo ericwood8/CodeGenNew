@@ -75,6 +75,15 @@ public sealed class FormModel
     /// <summary> The columns of the form, in the order they appear. </summary>
     public IReadOnlyList<ColumnModel> Columns { get; }
 
+    /// <summary> The flag that hides a field of the form (<c>FeatureFields</c>), or null: the field is in the form only while the flag is on for the signed-in person. </summary>
+    public string? FeatureOf(ColumnModel column) => FeatureScreens.Reads(_project) ? FeatureScreens.FieldFlagOf(_project, Table.TableName, column.Name) : null;
+
+    /// <summary> The flags that hide a field of the form, each once in the order of the fields; the screen keeps one value per flag (<see cref="FeatureIndex"/> numbers them). </summary>
+    public IReadOnlyList<string> FeatureFlags => Columns.Select(FeatureOf).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+
+    /// <summary> The place of a flag in <see cref="FeatureFlags"/>, for the name of the variable that holds its value. </summary>
+    public int FeatureIndex(string flag) => FeatureFlags.ToList().IndexOf(flag);
+
     /// <summary> The parent a column's drop-down reads, or null when the column is a plain box (see <see cref="LookupOf"/>). </summary>
     public FormParent? ParentOf(ColumnModel column) =>
         LookupOf(column) is { } foreignKey ? Parents.FirstOrDefault(p => p.Table.Equals(foreignKey.ReferencedTable, StringComparison.OrdinalIgnoreCase)) : null;
