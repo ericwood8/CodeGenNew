@@ -24,7 +24,7 @@ public static class PeopleWords
 
 /// <summary> What the people routes of an API are made of: the user table, the first person, and with a tenant table and a membership table the members of a tenant. One rule for the ASP.NET, Python and Rust
 /// APIs, so the routes and the screens that call them cannot drift apart. </summary>
-public sealed record PeoplePlan(UserTablePlan User, ColumnModel Key, ColumnModel? NameColumn, FirstPersonPlan? First, TenantMembership? Membership, TableModel? TenantTable, ColumnModel? TenantKey)
+public sealed record PeoplePlan(UserTableShape User, ColumnModel Key, ColumnModel? NameColumn, FirstPersonPlan? First, TenantMembershipShape? Membership, TableModel? TenantTable, ColumnModel? TenantKey)
 {
     /// <summary> The columns of the user table that name a person for a list, in the order they are looked for. </summary>
     public static readonly string[] NameColumns = ["Name", "FullName", "DisplayName", "PersonName", "EmployeeName", "Title"];

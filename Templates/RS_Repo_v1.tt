@@ -48,7 +48,7 @@
     var linkField = ownerLink is null ? null : t.Fields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(ownerLink.ForeignKey));
     bool scoped = ownerField is not null || (ownerColumn is null && linkField is not null);
     var scopeField = ownerField ?? linkField;
-    // a table with a Name and an IsActive column (NameActivePlan): the list by name, the active list, find by name and the duplicate-name test
+    // a table with a Name and an IsActive column (NameActiveShape): the list by name, the active list, find by name and the duplicate-name test
     var nameActive = TableShapes.For(Model, Project).NameActive;
     bool filtered = scoped || tenanted || nameActive is not null;
     string activeTest = nameActive is null ? "" : $"t.{qd.Quote(nameActive.Active.DbName)} = {qd.BooleanLiteral(true)}";
@@ -440,9 +440,9 @@
         }
         if (logStamp is not null)
         {
-            Line($"    #[serde(rename = \"{LogTable.FromParameter}\")]");
+            Line($"    #[serde(rename = \"{LogShape.FromParameter}\")]");
             Line("    pub range_from: Option<NaiveDate>,");
-            Line($"    #[serde(rename = \"{LogTable.ToParameter}\")]");
+            Line($"    #[serde(rename = \"{LogShape.ToParameter}\")]");
             Line("    pub range_to: Option<NaiveDate>,");
         }
         Line("    #[serde(rename = \"pageNumber\")]");

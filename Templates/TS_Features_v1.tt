@@ -60,13 +60,18 @@ export class FeatureService {
   readonly flags = signal<Features>({});
 
   constructor() {
-    effect(() => {
+    effect((onCleanup) => {
       if (!this.auth.isLoggedIn()) {
         this.flags.set({});
         return;
       }
       this.auth.user()?.['tenantId'];   // a switch of tenant reads the flags again
       this.get().subscribe({ next: (flags) => this.flags.set(flags), error: () => this.flags.set({}) });
+<# if (Project.FeatureRefreshSeconds > 0) { #>
+      // FeatureRefreshSeconds: a flag switched by someone else shows without a new sign-in; a read that fails keeps the flags the service has
+      const timer = setInterval(() => this.get().subscribe({ error: () => undefined }), <#= Project.FeatureRefreshSeconds * 1000 #>);
+      onCleanup(() => clearInterval(timer));
+<# } #>
     });
   }
 

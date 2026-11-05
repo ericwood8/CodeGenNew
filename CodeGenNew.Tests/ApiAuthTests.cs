@@ -226,7 +226,7 @@ public class ApiAuthTests
     {
         var project = Project(On, Owned);
         var link = OwnedTable.Through(Detail(), project)!;
-        Assert.AreEqual(new OwnerLink("TimeSheet", "TimeSheetId", "TimeSheetId", "EmployeeId"), link);
+        Assert.AreEqual(new OwnerLinkShape("TimeSheet", "TimeSheetId", "TimeSheetId", "EmployeeId"), link);
         Assert.IsNull(OwnedTable.OwnerColumn(Detail(), project), "it has no owner column of its own");
         Assert.IsTrue(OwnedTable.IsScoped(Detail(), project));
         Assert.IsFalse(OwnedTable.IsListedButUnusable(Detail(), Project(On, ("OwnedTables", "TimeSheet, TimeSheetDetail"))));

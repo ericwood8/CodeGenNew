@@ -499,6 +499,7 @@
                     string answer = ("[" + ChildTestRow.Json(child, parentKeyJson) + "]").Replace("\\", "\\\\").Replace("\"", "\\\"");
                     string id = BlazorNames.Identifier(child.Name).ToLowerInvariant();
                     string words = child.Words;
+                    string boxes = child.EditFlags.Count > 0 ? "input, [role=dialog] fieldset.child-rows tbody tr select" : "input";   // a column a flag hides leaves the row with its other boxes
                     o.Append($$"""
 
     [TestMethod]
@@ -508,7 +509,7 @@
         var page = OpenWithRow();
         page.FindAll("button").First(b => b.TextContent.Trim() == "Edit").Click();
         page.WaitForAssertion(() => Assert.AreEqual(1, page.FindAll("[role=dialog] fieldset.child-rows tbody tr").Count));
-        Assert.IsTrue(page.FindAll("[role=dialog] fieldset.child-rows tbody tr input").Count > 0, "the row is made of boxes");
+        Assert.IsTrue(page.FindAll("[role=dialog] fieldset.child-rows tbody tr {{boxes}}").Count > 0, "the row is made of boxes");
     }
 
     [TestMethod]

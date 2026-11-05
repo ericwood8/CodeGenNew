@@ -17,12 +17,12 @@ public static class NameActiveWords
 
 /// <summary> A table with a Name and an IsActive column that the Python and Rust APIs serve: the list by name, the active list (<c>GET &lt;route&gt;/active</c>), the lookup, one row, find by name (<c>GET &lt;route&gt;/{name}</c>,
 /// the active rows whose name contains the text), create, update and delete, with the duplicate-name rule of <see cref="NameActiveWords"/>. It has no search, no paging and no clone, like the ASP.NET API. </summary>
-public sealed record NameActivePlan(TableModel Table, ColumnModel Name, ColumnModel Active)
+public sealed record NameActiveShape(TableModel Table, ColumnModel Name, ColumnModel Active)
 {
-    public static NameActivePlan? For(TableModel table, ProjectSettings project)
+    public static NameActiveShape? For(TableModel table, ProjectSettings project)
     {
         if (!table.HasNameActiveApi(project) || TableModel.FindRequiredName(table.Columns) is not { } name || TableModel.FindIsActive(table.Columns) is not { } active)
             return null;
-        return new NameActivePlan(table, name, active);
+        return new NameActiveShape(table, name, active);
     }
 }

@@ -9,7 +9,7 @@ public static class PythonTreeWriter
     public sealed record Names(string Class, string Key, string Parent, string? Text, string TenantFilter);
 
     /// <summary> The helpers placed above the routes: the depth limit, <c>check_tree</c> and <c>refuse_children</c>. </summary>
-    public static string Helpers(TreeTable tree, Names n)
+    public static string Helpers(TreeShape tree, Names n)
     {
         var o = new StringBuilder();
         o.Append($"TREE_MAX_DEPTH = {tree.MaxDepth}\n\n\n");
@@ -25,7 +25,7 @@ public static class PythonTreeWriter
     public static string PromoteRoute(Names n, string route, string keyType, string writeDepends, string userParameter) =>
         Fill(PromoteText, n, null, ("§ROUTE", route), ("§KT", keyType), ("§WRITE", writeDepends), ("§USER", userParameter));
 
-    private static string Fill(string text, Names n, TreeTable? tree, params (string Token, string Value)[] more)
+    private static string Fill(string text, Names n, TreeShape? tree, params (string Token, string Value)[] more)
     {
         var values = new List<(string, string)>
         {

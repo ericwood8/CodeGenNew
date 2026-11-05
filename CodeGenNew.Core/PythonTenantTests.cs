@@ -78,7 +78,7 @@ public static class PythonTenantTests
     }
 
     /// <summary> The cases of what the query filter does not reach: the dashboard and the junction tables. The tenant of a request is replaced, so a key no row belongs to stands for a tenant that holds nothing. </summary>
-    private static string Bypass(DatabaseModel database, ProjectSettings project, IReadOnlyList<TenantOwned> tables)
+    private static string Bypass(DatabaseModel database, ProjectSettings project, IReadOnlyList<TenantOwnedShape> tables)
     {
         var dashboard = TenantBypassPlan.Dashboard(database, project);
         var junctions = TenantBypassPlan.Junctions(database, project);

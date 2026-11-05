@@ -72,7 +72,7 @@ public class TableModel
     public bool HasNameActiveApi(ProjectSettings project) =>
         PrimaryKeyShape == PrimaryKeyShape.SingleInt && IsNameActiveTable && project.NoRepository(TableName, LookupShape) != true && project.NoApi(TableName, LookupShape) != true;
 
-    /// <summary> True when the Python and Rust APIs serve the table: a plain CRUD API of any key type, or a name/active API (<see cref="NameActivePlan"/>). </summary>
+    /// <summary> True when the Python and Rust APIs serve the table: a plain CRUD API of any key type, or a name/active API (<see cref="NameActiveShape"/>). </summary>
     public bool HasPythonRustApi(ProjectSettings project) => HasCrudApiOfAnyKey(project) || HasNameActiveApi(project);
 
     /// <summary> True when the table also gets a search endpoint (API_Search): it has an API and is not a bare lookup table. </summary>

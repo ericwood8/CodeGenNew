@@ -117,7 +117,7 @@ pub fn public_router() -> Router<Pool> {
 """";
 
     /// <summary> <c>check_new_admin</c> and <c>attach_new_admin</c>: the first administrator of an onboarded tenant as a new person, saved with the tenant through the user table's own repository, the password hashed the way <c>set-password</c> does. </summary>
-    private static string NewPerson(UserTablePlan? userPlan, ProjectSettings project, TenantMembership? membership, TenantOwned? userOwned, DialectInfo di, Func<string, string> raw)
+    private static string NewPerson(UserTableShape? userPlan, ProjectSettings project, TenantMembershipShape? membership, TenantOwnedShape? userOwned, DialectInfo di, Func<string, string> raw)
     {
         if (userPlan is null)
             return NoPerson;

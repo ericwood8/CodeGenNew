@@ -11,7 +11,7 @@ public sealed class JunctionEf
     private readonly ForeignKeyModel _anchorForeignKey;
     private readonly ForeignKeyModel _targetForeignKey;
     private readonly bool _tenanted;
-    private readonly TenantOwned? _owned;
+    private readonly TenantOwnedShape? _owned;
 
     /// <summary> With a <paramref name="project"/> that has a tenant API the calls check that the rows they name are visible to the caller (the context shows only the caller's tenant's rows) and stamp the
     /// caller's tenant on a link row of a tenant-owned junction table; without one the statements are the plain ones. </summary>

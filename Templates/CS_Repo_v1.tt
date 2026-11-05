@@ -147,8 +147,8 @@
             bool logRange = ef && !nameActive && TableShapes.For(Model, Project).Log is not null;
             if (logRange)
             {
-                signatureParams.Add($"DateTime? {LogTable.FromParameter} = null");
-                signatureParams.Add($"DateTime? {LogTable.ToParameter} = null");
+                signatureParams.Add($"DateTime? {LogShape.FromParameter} = null");
+                signatureParams.Add($"DateTime? {LogShape.ToParameter} = null");
             }
             if (nameActive)
             {
@@ -195,7 +195,7 @@
             else if (ef)
             {
                 string filterArguments = string.Concat(filters.Select(f => ", " + f.ParamName).Concat(searchKeys.Select(k => ", " + CSharpIdentifier(LowerFirst(k.Name)))))
-                    + (logRange ? $", {LogTable.FromParameter}: {LogTable.FromParameter}, {LogTable.ToParameter}: {LogTable.ToParameter}" : "");
+                    + (logRange ? $", {LogShape.FromParameter}: {LogShape.FromParameter}, {LogShape.ToParameter}: {LogShape.ToParameter}" : "");
                 string queryClass = Model.TableName + "SearchQuery";
                 methods.Add(new[]
                 {

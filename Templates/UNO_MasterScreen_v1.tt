@@ -755,7 +755,7 @@ public partial class <#= stemName #>ListViewModel : ViewModelBase
 
     public bool HasSort => _sortColumn is not null;
 
-<#= DesktopGridColumns.ViewModelMembers(chosen, userScreen?.AdminFlag?.Name, userScreen is null ? null : "_api.Session.HasRole([" + CSharpText.Quote(Project.AuthAdminRole) + "])") #><#
+<#= DesktopGridColumns.ViewModelMembers(chosen, userScreen?.AdminFlag?.Name, userScreen is null ? null : "_api.Session.HasRole([" + CSharpText.Quote(Project.AuthAdminRole) + "])", chosen.Offered.Where(c => form.FeatureOf(c.Column) is not null).Select(c => (c.Name, form.FeatureOf(c.Column)!)).ToList(), "_api.Features.Enabled") #><#
         if (gated)
         {
 #>

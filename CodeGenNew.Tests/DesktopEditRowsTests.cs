@@ -96,17 +96,38 @@ public class DesktopEditRowsTests
     [TestMethod]
     public async Task Both_stacks_write_the_same_boxes_and_the_same_checks()
     {
-        var winui3 = (await Run("WinUI3_DetailMasterScreen_v1.tt", Parent(Task())))["ProjectDetailMasterEditRows.cs"];
-        var uno = (await Run("UNO_DetailMasterScreen_v1.tt", Parent(Task())))["ProjectDetailMasterEditRows.cs"];
+        var winui3Files = await Run("WinUI3_DetailMasterScreen_v1.tt", Parent(Task()));
+        var unoFiles = await Run("UNO_DetailMasterScreen_v1.tt", Parent(Task()));
+        string winui3 = winui3Files["ProjectDetailMasterEditRows.cs"], uno = unoFiles["ProjectDetailMasterEditRows.cs"];
+        string winui3Panels = winui3Files["ProjectDetailMasterEditPanels.cs"], unoPanels = unoFiles["ProjectDetailMasterEditPanels.cs"];
 
         Assert.AreEqual(winui3, uno.Replace("using Acme.App.Models;\n", ""), "only the using of the models differs");
+        Assert.AreEqual(winui3Panels, unoPanels.Replace("using Acme.App.Models;\n", ""), "only the using of the models differs");
         Expect.Contains(winui3, "if (OwnerId is null) return \"Owner is required.\";");
         Expect.Contains(winui3, "if (string.IsNullOrWhiteSpace(Title)) return \"Title is required.\";");
         Expect.Contains(winui3, "if (!double.IsNaN(Hours) && Hours != Math.Floor(Hours)) return \"Hours must be a whole number.\";");
         Expect.Contains(winui3, "e.DueOn = DueOn is null ? null : DueOn.Value.Date + _dueOnTime;");
-        Expect.Contains(winui3, "var boxOwnerId = new ComboBox");
-        Expect.Contains(winui3, "boxDone.Checked += (_, _) => row.Done = true;");
-        Expect.Contains(winui3, "AutomationProperties.SetName(boxTitle, \"Title\");");
+        Expect.Contains(winui3Panels, "var boxOwnerId = new ComboBox");
+        Expect.Contains(winui3Panels, "boxDone.Checked += (_, _) => row.Done = true;");
+        Expect.Contains(winui3Panels, "AutomationProperties.SetName(boxTitle, \"Title\");");
+    }
+
+    [TestMethod]
+    public async Task The_rows_and_lookups_are_apart_from_the_panels_so_a_test_project_can_compile_them_without_the_ui()
+    {
+        foreach (var template in new[] { "WinUI3_DetailMasterScreen_v1.tt", "UNO_DetailMasterScreen_v1.tt" })
+        {
+            var files = await Run(template, Parent(Task()));
+            string rows = files["ProjectDetailMasterEditRows.cs"], panels = files["ProjectDetailMasterEditPanels.cs"];
+
+            Expect.Contains(rows, "public sealed class ProjectProjectTaskEditRow");
+            Expect.Contains(rows, "public sealed class ProjectProjectTaskEditLookups");
+            Expect.Contains(rows, "public sealed class ProjectEditOption");
+            Assert.IsFalse(rows.Contains("Microsoft.UI"), "the rows file needs no UI types");
+            Assert.IsFalse(rows.Contains("StackPanel"));
+            Expect.Contains(panels, "public sealed class ProjectProjectTaskEditPanel : StackPanel");
+            Assert.IsFalse(panels.Contains("class ProjectProjectTaskEditRow"));
+        }
     }
 
     [TestMethod]

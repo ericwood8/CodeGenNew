@@ -333,11 +333,11 @@ public static class SubscriptionFeature
     }
 
     /// <summary> The table the generated tests write to in a tenant of their own: the first limited table with an API, else a tenant-owned table with an API whose only foreign key is the tenant. Null when there is none. </summary>
-    public static TenantOwned? TestWriteTable(DatabaseModel database, ProjectSettings project)
+    public static TenantOwnedShape? TestWriteTable(DatabaseModel database, ProjectSettings project)
     {
-        bool Simple(TenantOwned o) => o.Table.HasCrudApiOfAnyKey(project) && o.Table.ForeignKeys.All(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0].EqualsIgnoreCase(o.Column.Name))
+        bool Simple(TenantOwnedShape o) => o.Table.HasCrudApiOfAnyKey(project) && o.Table.ForeignKeys.All(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0].EqualsIgnoreCase(o.Column.Name))
             && o.Table.PrimaryKeyColumns is [{ IsIdentity: true }];
-        var simpleLimited = LimitedTables(database, project).Where(l => !l.IsMembership).Select(l => TenantPlan.OwnedBy(l.Table, database, project)).OfType<TenantOwned>().FirstOrDefault(Simple);
+        var simpleLimited = LimitedTables(database, project).Where(l => !l.IsMembership).Select(l => TenantPlan.OwnedBy(l.Table, database, project)).OfType<TenantOwnedShape>().FirstOrDefault(Simple);
         return simpleLimited ?? TenantPlan.OwnedTables(database, project).FirstOrDefault(o => Simple(o) && o.Table != SubscriptionOf(database, project)?.Table);
     }
 

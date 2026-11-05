@@ -27,7 +27,7 @@ public static class RowShapeWords
 }
 
 /// <summary> A self-referencing table the project lists in <c>TreeTables</c>: <c>Parent</c> is the nullable column that points at the table's own key; <c>MaxDepth</c> is 0 for no limit (a root is depth 1). </summary>
-public sealed record TreeTable(TableModel Table, ColumnModel Key, ColumnModel Parent, int MaxDepth, ColumnModel? Text);
+public sealed record TreeShape(TableModel Table, ColumnModel Key, ColumnModel Parent, int MaxDepth, ColumnModel? Text);
 
 /// <summary> <c>TreeTables=Category:ParentCategoryId:4</c> (a table, optionally its parent column, optionally the deepest level allowed): a comment with a parent, a category, an organization chart. The write routes refuse a parent that is
 /// the row itself or one of its descendants (a cycle) and a level past the depth limit, the delete is refused while the row has children (<c>POST {id}/promote-children</c> hands them to the row's own parent first),
@@ -39,7 +39,7 @@ public static class TreePlan
 
     public static bool IsListed(string table, ProjectSettings project) => Entries(project).Any(e => e.Table.EqualsIgnoreCase(table));
 
-    public static TreeTable? For(TableModel table, ProjectSettings project) => IsListed(table.TableName, project) && Resolve(table, project, out _) is { } tree ? tree : null;
+    public static TreeShape? For(TableModel table, ProjectSettings project) => IsListed(table.TableName, project) && Resolve(table, project, out _) is { } tree ? tree : null;
 
     /// <summary> Why a listed table cannot be a tree, or null when it can (or is not listed). </summary>
     public static string? Problem(TableModel table, ProjectSettings project)
@@ -50,7 +50,7 @@ public static class TreePlan
         return problem;
     }
 
-    private static TreeTable? Resolve(TableModel table, ProjectSettings project, out string? problem)
+    private static TreeShape? Resolve(TableModel table, ProjectSettings project, out string? problem)
     {
         problem = null;
         var entry = Entries(project).First(e => e.Table.EqualsIgnoreCase(table.TableName));
@@ -84,12 +84,12 @@ public static class TreePlan
         }
         var text = table.Columns.FirstOrDefault(c => c.IsStringColumn && !c.IsPrimaryKey && (c.Name.EqualsIgnoreCase("Name") || c.Name.EqualsIgnoreCase("Title")))
             ?? table.DisplayColumns.FirstOrDefault(c => c.IsStringColumn);
-        return new TreeTable(table, key, parent, maxDepth, text);
+        return new TreeShape(table, key, parent, maxDepth, text);
     }
 }
 
 /// <summary> A table whose rows are flagged instead of removed (<c>SoftDeleteTables=Customer</c> or <c>Customer:IsRemoved</c>). <c>DeletedOn</c> and <c>DeletedBy</c> are optional and filled when the table has them. </summary>
-public sealed record SoftDeleteTable(TableModel Table, ColumnModel Key, ColumnModel Flag, ColumnModel? DeletedOn, ColumnModel? DeletedBy);
+public sealed record SoftDeleteShape(TableModel Table, ColumnModel Key, ColumnModel Flag, ColumnModel? DeletedOn, ColumnModel? DeletedBy);
 
 /// <summary> <c>SoftDeleteTables=Customer</c>: the delete route sets the flag (<c>IsDeleted</c>, else the column named after the colon) and the stamps instead of removing the row, the context filters flagged rows out of every list, look-up and
 /// read, <c>GET deleted</c> lists them and <c>POST {id}/restore</c> brings one back. </summary>
@@ -102,7 +102,7 @@ public static class SoftDeletePlan
 
     public static bool IsListed(string table, ProjectSettings project) => Entries(project).Any(e => e.Table.EqualsIgnoreCase(table));
 
-    public static SoftDeleteTable? For(TableModel table, ProjectSettings project) => IsListed(table.TableName, project) && Resolve(table, project, out _) is { } soft ? soft : null;
+    public static SoftDeleteShape? For(TableModel table, ProjectSettings project) => IsListed(table.TableName, project) && Resolve(table, project, out _) is { } soft ? soft : null;
 
     public static string? Problem(TableModel table, ProjectSettings project)
     {
@@ -112,7 +112,7 @@ public static class SoftDeletePlan
         return problem;
     }
 
-    private static SoftDeleteTable? Resolve(TableModel table, ProjectSettings project, out string? problem)
+    private static SoftDeleteShape? Resolve(TableModel table, ProjectSettings project, out string? problem)
     {
         problem = null;
         var entry = Entries(project).First(e => e.Table.EqualsIgnoreCase(table.TableName));
@@ -135,13 +135,13 @@ public static class SoftDeletePlan
         }
         var on = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase("DeletedOn") && LogTablePlan.HasTimeOfDay(c) && c.IsNullable);
         var by = table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase("DeletedBy") && c.IsStringColumn && c.IsNullable);
-        return new SoftDeleteTable(table, key, flag, on, by);
+        return new SoftDeleteShape(table, key, flag, on, by);
     }
 }
 
 /// <summary> A table whose rows are valid for a period (<c>EffectiveDatedTables=Price:ValidFrom:ValidTo:ItemId</c>: the first and the last day, then the columns that say what the row is a price of). <c>To</c> allows NULL for an open end.
 /// <c>Groups</c> are those columns (default: the table's single-column foreign keys); rows of one group may not overlap. </summary>
-public sealed record EffectiveTable(TableModel Table, ColumnModel Key, ColumnModel From, ColumnModel To, IReadOnlyList<ColumnModel> Groups);
+public sealed record EffectiveShape(TableModel Table, ColumnModel Key, ColumnModel From, ColumnModel To, IReadOnlyList<ColumnModel> Groups);
 
 /// <summary> <c>EffectiveDatedTables=Price:ValidFrom:ValidTo[:ItemId+CurrencyId]</c>: a save is refused when the period runs backwards or overlaps another row of the same group, and <c>GET current?on=</c> answers the rows in effect on a
 /// date. The end is inclusive; an empty end is open. </summary>
@@ -152,7 +152,7 @@ public static class EffectiveDatePlan
 
     public static bool IsListed(string table, ProjectSettings project) => Entries(project).Any(e => e.Table.EqualsIgnoreCase(table));
 
-    public static EffectiveTable? For(TableModel table, ProjectSettings project) => IsListed(table.TableName, project) && Resolve(table, project, out _) is { } effective ? effective : null;
+    public static EffectiveShape? For(TableModel table, ProjectSettings project) => IsListed(table.TableName, project) && Resolve(table, project, out _) is { } effective ? effective : null;
 
     public static string? Problem(TableModel table, ProjectSettings project)
     {
@@ -162,7 +162,7 @@ public static class EffectiveDatePlan
         return problem;
     }
 
-    private static EffectiveTable? Resolve(TableModel table, ProjectSettings project, out string? problem)
+    private static EffectiveShape? Resolve(TableModel table, ProjectSettings project, out string? problem)
     {
         problem = null;
         var entry = Entries(project).First(e => e.Table.EqualsIgnoreCase(table.TableName));
@@ -209,7 +209,7 @@ public static class EffectiveDatePlan
             groups = table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1).Select(f => table.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(f.ReferencingColumns[0])))
                 .OfType<ColumnModel>().Where(c => !c.Name.EqualsIgnoreCase(from.Name) && !c.Name.EqualsIgnoreCase(to.Name)).DistinctBy(c => c.Name).ToList();
         }
-        return new EffectiveTable(table, key, from, to, groups);
+        return new EffectiveShape(table, key, from, to, groups);
     }
 }
 

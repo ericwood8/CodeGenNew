@@ -145,7 +145,7 @@
         foreach (var c in page.Columns)
         {
             string field = DesktopFormXaml.Field(form, Project, Model, c, textKey, withGuards: true);
-            Write(userScreen?.IsAdminOnly(c) == true ? UserScreenPlan.WithAttribute(field, "Visibility=\"{x:Bind ViewModel.AdminOnlyVisibility}\"") : FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } fieldFlag ? UserScreenPlan.WithAttribute(field, FeatureScreenCode.VisibilityAttribute(fieldFlag)) : field);
+            Write(userScreen?.IsAdminOnly(c) == true ? UserScreenPlan.WithAttribute(field, FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } adminFlag ? FeatureScreenCode.AdminOnlyVisibilityAttribute(adminFlag) : "Visibility=\"{x:Bind ViewModel.AdminOnlyVisibility}\"") : FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } fieldFlag ? UserScreenPlan.WithAttribute(field, FeatureScreenCode.VisibilityAttribute(fieldFlag)) : field);
         }
             if (tabbed)
             {
@@ -825,7 +825,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         if (userScreen is not null)
             Write(userScreen.ViewModelMembers(Project));
         if (FeatureScreenCode.DesktopHasFieldFlags(form, Project))
-            Write(FeatureScreenCode.DesktopViewModelMembers());
+            Write(FeatureScreenCode.DesktopViewModelMembers(userScreen is not null));
 #>
 
     public <#= table #>DetailMasterViewModel(<#= contextType #> context, <#= table #>? editing)
@@ -958,6 +958,9 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         var propertyNames = entityType.GetProperties().Select(p => p.Name)
             .Where(name => !HideFrom<#= child.Member #>Grid.Contains(name, StringComparer.OrdinalIgnoreCase))
             .Where(name => !LongTextIn<#= child.Member #>Grid.Contains(name, StringComparer.OrdinalIgnoreCase)) // long text never shows in a grid
+<# if (child.Grid.FlaggedNames.Count > 0) { #>
+            .Where(name => name switch { <#= string.Join(", ", child.Grid.FlaggedNames.Select(f => "\"" + f.Name + "\" => DesktopFeatures.Enabled(" + CSharpText.Quote(f.Flag) + ")")) #>, _ => true }) // FeatureFields: a column whose flag is off is not drawn
+<# } #>
             .Take(<#= Project.MaxGridColumns #>).ToList();
         _<#= child.Var #>Columns = propertyNames;
         _<#= child.Var #>Captions = propertyNames.Select(name => HeaderLabelFor<#= child.Member #>Grid.TryGetValue(name, out string? label) ? label : SpacedHeader(name)).ToList();
@@ -1079,6 +1082,9 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
     private async Task Load<#= child.Member #>Async()
     {
         <#= child.Var #>Edit.Clear();
+<# if (grid.EditFlags.Count > 0) { #>
+        <#= child.Var #>Lookups.FeatureOn = DesktopFeatures.Enabled;
+<# } #>
 <#
             foreach (var c in grid.EditColumns.Where(c => grid.EditLookupOf(c) is not null))
             {
@@ -1189,7 +1195,7 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
         foreach (var c in shown)
         {
             string saveLines = DesktopFormCode.SaveLines(form, Project, c);
-            Write(userScreen?.IsAdminOnly(c) == true ? UserScreenPlan.AdminOnlySaveLines(saveLines) : FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } saveFlag ? FeatureScreenCode.SaveLines(saveLines, saveFlag) : saveLines);
+            Write(userScreen?.IsAdminOnly(c) == true ? (FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } adminSaveFlag ? FeatureScreenCode.AdminOnlySaveLines(saveLines, adminSaveFlag) : UserScreenPlan.AdminOnlySaveLines(saveLines)) : FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } saveFlag ? FeatureScreenCode.SaveLines(saveLines, saveFlag) : saveLines);
         }
         if (userScreen is not null)
             Write(userScreen.PasswordSaveLines());
@@ -1292,6 +1298,8 @@ public partial class <#= table #>DetailMasterViewModel : ViewModelBase
 #>
 @@@FILE <#= viewsFolder #>/<#= table #>DetailMasterEditRows.cs@@@
 <#= DesktopEditRows.File(viewNamespace, table, "", Project, editChildren.Select(ch => (ch, ch.Grid)).ToList(), ch => ch.Table) #>
+@@@FILE <#= viewsFolder #>/<#= table #>DetailMasterEditPanels.cs@@@
+<#= DesktopEditRows.File(viewNamespace, table, "", Project, editChildren.Select(ch => (ch, ch.Grid)).ToList(), ch => ch.Table, panels: true) #>
 <#
         }
     }

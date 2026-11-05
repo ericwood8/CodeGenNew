@@ -133,15 +133,15 @@ async fn the_search_takes_a_first_and_a_last_day() {
     let all = api.get(&format!("{ROUTE}/search?pageNumber=1&pageSize=5")).await;
     assert_eq!(all.status, StatusCode::OK, "{}", all.body);
 
-    let later = api.get(&format!("{ROUTE}/search?{}=2999-01-01", "<#= LogTable.FromParameter #>")).await;
+    let later = api.get(&format!("{ROUTE}/search?{}=2999-01-01", "<#= LogShape.FromParameter #>")).await;
     assert_eq!(later.status, StatusCode::OK, "{}", later.body);
     assert_eq!(later.json()["totalCount"], 0, "nothing is logged after the year 2999");
 
-    let earlier = api.get(&format!("{ROUTE}/search?{}=1900-01-01", "<#= LogTable.ToParameter #>")).await;
+    let earlier = api.get(&format!("{ROUTE}/search?{}=1900-01-01", "<#= LogShape.ToParameter #>")).await;
     assert_eq!(earlier.status, StatusCode::OK, "{}", earlier.body);
     assert_eq!(earlier.json()["totalCount"], 0, "nothing is logged before the year 1900");
 
-    let bad = api.get(&format!("{ROUTE}/search?{}=not-a-date", "<#= LogTable.FromParameter #>")).await;
+    let bad = api.get(&format!("{ROUTE}/search?{}=not-a-date", "<#= LogShape.FromParameter #>")).await;
     assert_eq!(bad.status, StatusCode::BAD_REQUEST, "{}", bad.body);
 }
 <#

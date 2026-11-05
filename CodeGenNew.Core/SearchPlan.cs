@@ -50,7 +50,7 @@ public sealed class SearchPlan
 
     /// <summary> The plan for a table. <paramref name="navigations"/> are the entity's navigation properties (<see cref="EntityNavigations.Of"/>), so a foreign key sorts by its parent's display
     /// column only when the entity can reach it; without one it sorts by its own value. </summary>
-    public static SearchPlan For(TableModel model, IReadOnlyList<EntityNavigation> navigations, LogTable? log = null)
+    public static SearchPlan For(TableModel model, IReadOnlyList<EntityNavigation> navigations, LogShape? log = null)
     {
         string LowerFirst(string name) => name.Length == 0 ? name : char.ToLowerInvariant(name[0]) + name[1..];
         var filters = model.SearchableColumns.Select(c => new SearchFilter(c, LowerFirst(c.Name))).ToList();
@@ -74,7 +74,7 @@ public sealed class SearchPlan
         {
             // a log opens newest first: the timestamp, then the key, both descending
             order = [log.Timestamp, .. model.PrimaryKeyColumns.Where(pk => pk != log.Timestamp)];
-            return new SearchPlan(filters, keyFilters, sorts, order, new SearchRange(log.Timestamp, LogTable.FromParameter, LogTable.ToParameter), true);
+            return new SearchPlan(filters, keyFilters, sorts, order, new SearchRange(log.Timestamp, LogShape.FromParameter, LogShape.ToParameter), true);
         }
         return new SearchPlan(filters, keyFilters, sorts, order, null, false);
     }

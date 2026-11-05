@@ -55,7 +55,7 @@
             : Model.SearchableColumns.Concat(Model.SearchKeyColumns.Where(c => c.IsStringColumn)).OrderBy(c => c.OrdinalPosition).Select(c => new { ParamName = LowerFirst(c.Name), c.Name }).ToList();
         // a table in LogTables also takes the first and the last day of the rows to list
         if (!Project.ListSearchProtocol && TableShapes.For(Model, Project).Log is not null)
-            filters.AddRange(new[] { new { ParamName = LogTable.FromParameter, Name = LogTable.FromParameter }, new { ParamName = LogTable.ToParameter, Name = LogTable.ToParameter } });
+            filters.AddRange(new[] { new { ParamName = LogShape.FromParameter, Name = LogShape.FromParameter }, new { ParamName = LogShape.ToParameter, Name = LogShape.ToParameter } });
 
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');

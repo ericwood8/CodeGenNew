@@ -153,7 +153,7 @@
         foreach (var c in page.Columns)
         {
             string field = DesktopFormXaml.Field(form, Project, Model, c, textKey, withGuards: true);
-            Write(userScreen?.IsAdminOnly(c) == true ? UserScreenPlan.WithAttribute(field, "Visibility=\"{x:Bind ViewModel.AdminOnlyVisibility}\"") : FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } fieldFlag ? UserScreenPlan.WithAttribute(field, FeatureScreenCode.VisibilityAttribute(fieldFlag)) : field);
+            Write(userScreen?.IsAdminOnly(c) == true ? UserScreenPlan.WithAttribute(field, FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } adminFlag ? FeatureScreenCode.AdminOnlyVisibilityAttribute(adminFlag) : "Visibility=\"{x:Bind ViewModel.AdminOnlyVisibility}\"") : FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } fieldFlag ? UserScreenPlan.WithAttribute(field, FeatureScreenCode.VisibilityAttribute(fieldFlag)) : field);
         }
             if (tabbed)
             {
@@ -449,7 +449,7 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
         if (userScreen is not null)
             Write(userScreen.ViewModelMembers(Project));
         if (FeatureScreenCode.DesktopHasFieldFlags(form, Project))
-            Write(FeatureScreenCode.DesktopViewModelMembers());
+            Write(FeatureScreenCode.DesktopViewModelMembers(userScreen is not null));
 #>
 
     public <#= table #>DetailViewModel(<#= contextType #> context, <#= table #>? editing)
@@ -564,7 +564,7 @@ public partial class <#= table #>DetailViewModel : ViewModelBase
         foreach (var c in shown)
         {
             string saveLines = DesktopFormCode.SaveLines(form, Project, c);
-            Write(userScreen?.IsAdminOnly(c) == true ? UserScreenPlan.AdminOnlySaveLines(saveLines) : FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } saveFlag ? FeatureScreenCode.SaveLines(saveLines, saveFlag) : saveLines);
+            Write(userScreen?.IsAdminOnly(c) == true ? (FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } adminSaveFlag ? FeatureScreenCode.AdminOnlySaveLines(saveLines, adminSaveFlag) : UserScreenPlan.AdminOnlySaveLines(saveLines)) : FeatureScreenCode.DesktopFieldFlag(form, Project, c) is { } saveFlag ? FeatureScreenCode.SaveLines(saveLines, saveFlag) : saveLines);
         }
         if (userScreen is not null)
             Write(userScreen.PasswordSaveLines());

@@ -76,7 +76,7 @@ public static class DesktopApprovalsCode
         return o.ToString();
     }
 
-    private static string PerTable(ApprovalTable t, string contextType, bool tenantOwned)
+    private static string PerTable(ApprovalTableShape t, string contextType, bool tenantOwned)
     {
         string Now(ColumnModel c) => c.SqlType == System.Data.SqlDbType.DateTimeOffset ? "DateTimeOffset.Now" : "DateTime.Now";
         return FillAll(TableText,

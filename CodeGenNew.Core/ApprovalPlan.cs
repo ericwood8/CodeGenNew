@@ -10,7 +10,7 @@ public static class ApprovalStatus
 }
 
 /// <summary> A table whose rows each need their own decision, and the side table that holds one row per request cycle. </summary>
-public sealed record ApprovalTable(TableModel Table, ColumnModel Key, TableModel Side, ColumnModel SideKey, ColumnModel Link, ColumnModel Status, ColumnModel Reason, ColumnModel RequestedBy, ColumnModel RequestedOn,
+public sealed record ApprovalTableShape(TableModel Table, ColumnModel Key, TableModel Side, ColumnModel SideKey, ColumnModel Link, ColumnModel Status, ColumnModel Reason, ColumnModel RequestedBy, ColumnModel RequestedOn,
     ColumnModel DecidedBy, ColumnModel DecidedOn, ColumnModel DecisionNote, ColumnModel Revision);
 
 /// <summary> <c>ApproverTable=Approver:EmployeeId,TableName</c>: the rows that say who may decide. <c>Person</c> holds the user table's key; <c>ForTable</c>, when named, holds the <c>RowApprovals</c> table the person may decide (blank: every table). </summary>
@@ -18,7 +18,7 @@ public sealed record ApproverPlan(TableModel Table, ColumnModel Person, ColumnMo
 
 /// <summary> <c>RowApprovals=TimeSheet,Expense</c>: for each table a <c>&lt;Table&gt;Approval</c> side table, one row per request cycle (Pending, Approved, Rejected, Withdrawn). The requester is the signed-in person,
 /// matched to the user table by name; the approver is an administrator or a person whose user-table role flag is set (or, with <c>ApproverTable</c>, a person with a row in that table), never the requester. </summary>
-public sealed record ApprovalPlan(IReadOnlyList<ApprovalTable> Tables, UserTablePlan? User, IReadOnlyList<string> Problems, ApproverPlan? Approvers = null)
+public sealed record ApprovalPlan(IReadOnlyList<ApprovalTableShape> Tables, UserTableShape? User, IReadOnlyList<string> Problems, ApproverPlan? Approvers = null)
 {
     public const string SuffixOfSide = "Approval";
 
@@ -26,7 +26,7 @@ public sealed record ApprovalPlan(IReadOnlyList<ApprovalTable> Tables, UserTable
 
     public static ApprovalPlan Resolve(DatabaseModel database, ProjectSettings project)
     {
-        var tables = new List<ApprovalTable>();
+        var tables = new List<ApprovalTableShape>();
         var problems = new List<string>();
         if (project.RowApprovals.Length == 0)
             return new ApprovalPlan(tables, null, problems);
@@ -78,7 +78,7 @@ public sealed record ApprovalPlan(IReadOnlyList<ApprovalTable> Tables, UserTable
                 problems.Add($"RowApprovals: {sideName} needs a single whole-number key.");
                 continue;
             }
-            var plan = new ApprovalTable(table, key, side, side.PrimaryKeyColumns[0],
+            var plan = new ApprovalTableShape(table, key, side, side.PrimaryKeyColumns[0],
                 Need(table.TableName + "Id", c => c.IsIntegerColumn && !c.IsNullable, "whole number"),
                 Need("ApprovalStatusId", c => c.IsIntegerColumn && !c.IsNullable, "whole number"),
                 Need("Reason", c => c.IsStringColumn && c.IsNullable, "nullable text"),
@@ -96,7 +96,7 @@ public sealed record ApprovalPlan(IReadOnlyList<ApprovalTable> Tables, UserTable
         return new ApprovalPlan(tables, user, problems, approvers);
     }
 
-    private static ApproverPlan? ResolveApprovers(DatabaseModel database, ProjectSettings project, UserTablePlan user, List<string> problems)
+    private static ApproverPlan? ResolveApprovers(DatabaseModel database, ProjectSettings project, UserTableShape user, List<string> problems)
     {
         string setting = project.ApproverTable!;
         int colon = setting.IndexOf(':');

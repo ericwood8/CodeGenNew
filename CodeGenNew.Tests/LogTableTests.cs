@@ -99,7 +99,7 @@ public class LogTableTests
     {
         var table = Table(("EntryId", System.Data.SqlDbType.Int, false), ("LoggedOn", System.Data.SqlDbType.DateTime, false), ("Message", System.Data.SqlDbType.NVarChar, false));
         var plain = SearchPlan.For(table, []);
-        var log = SearchPlan.For(table, [], new LogTable(table, table.Columns[1]));
+        var log = SearchPlan.For(table, [], new LogShape(table, table.Columns[1]));
 
         Assert.IsNull(plain.Range);
         Assert.IsFalse(plain.DefaultDescending);

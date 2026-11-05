@@ -49,7 +49,7 @@
     // a table the project lists in LogTables also filters by a date range on its timestamp (from, to: the first and last day)
     var log = TableShapes.For(Model, Project).Log;
     var efFilters = string.Concat(filters.Select(f => ", " + f.ParamName).Concat(searchKeys.Select(k => ", " + CSharpIdentifier(LowerFirst(k.Name)))))
-        + (log is not null && ef ? ", " + LogTable.FromParameter + ", " + LogTable.ToParameter : "");
+        + (log is not null && ef ? ", " + LogShape.FromParameter + ", " + LogShape.ToParameter : "");
     // ApiAuth with OwnedTables: only the rows of the owners the caller may act for. The routines cannot take an owner, so the routine form answers 403 to a caller who is limited to some owners.
     // ReadRoles: the search refuses a role the table's ReadRoles does not list
     var readRoles = WriteRolePlan.ReadFor(Project, Model);
@@ -107,8 +107,8 @@ public class <#= entity #>SearchApi<T> : BaseApi<T> where T : class
     if (log is not null && ef)
     {
 #>
-        [FromQuery] DateTime? <#= LogTable.FromParameter #>,
-        [FromQuery] DateTime? <#= LogTable.ToParameter #>,
+        [FromQuery] DateTime? <#= LogShape.FromParameter #>,
+        [FromQuery] DateTime? <#= LogShape.ToParameter #>,
 <#
     }
 #>

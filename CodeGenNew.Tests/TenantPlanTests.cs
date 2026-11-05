@@ -6,7 +6,7 @@ using Microsoft.Data.Sqlite;
 
 namespace CodeGenNew.Tests;
 
-/// <summary> TenantTable, TenantColumn, NoTenantTables and TenantMembership: shared-schema multi-tenancy (a query filter on the context, the tenant in the token, the tenant column written by the server). </summary>
+/// <summary> TenantTable, TenantColumn, NoTenantTables and TenantMembershipShape: shared-schema multi-tenancy (a query filter on the context, the tenant in the token, the tenant column written by the server). </summary>
 [TestClass]
 public class TenantPlanTests
 {

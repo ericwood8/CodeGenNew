@@ -170,6 +170,8 @@ public static class TestJson
         L("  <ItemGroup>");
         foreach (string folder in stack == DesktopTestStack.Uno ? new[] { "ViewModels", "Models", "Services" } : new[] { "ViewModels", "Data", "Entities", "Repositories" })
             L($"    <Compile Include=\"{app}/{folder}/**/*.cs\" LinkBase=\"App/{folder}\" />");
+        string views = project.ViewsFolder ?? "Views";
+        L($"    <Compile Include=\"{app}/{views}/*EditRows.cs\" LinkBase=\"App/{views}\" />");
         L($"    <Compile Include=\"{app}/GlobalUsings.cs\" LinkBase=\"App\" />");
         L("  </ItemGroup>");
         L();

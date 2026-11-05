@@ -38,7 +38,7 @@
     var ownerColumn = auth ? TableShapes.For(Model, Project).Owner : null;
     var ownerLink = auth ? TableShapes.For(Model, Project).OwnerThrough : null;
     var userPlan = auth ? TableShapes.For(Model, Project).User : null;
-    // a table with a Name and an IsActive column (NameActivePlan): the list is by name, GET active and GET {name} are added, a name is trimmed, may not be empty and may not be that of another active row
+    // a table with a Name and an IsActive column (NameActiveShape): the list is by name, GET active and GET {name} are added, a name is trimmed, may not be empty and may not be that of another active row
     var nameActive = TableShapes.For(Model, Project).NameActive;
     // TenantTable (RS_Tenants, src/tenancy.rs): a tenant-owned table shows and changes only the rows of the caller's tenant (another tenant's row is a 404) and stamps the caller's tenant on create and update;
     // the tenant table shows the caller's own tenant (a platform administrator every one), only a platform administrator creates one and nobody deletes one

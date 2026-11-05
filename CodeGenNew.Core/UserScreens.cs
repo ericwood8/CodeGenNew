@@ -19,7 +19,7 @@ public static class UserScreenWords
 
 /// <summary> What a screen of the project's user table (<c>UserTable</c>) does beyond an ordinary table screen: the password hash is never shown, a "Set password" box writes a new one, and the administrator flag is
 /// shown to administrators only. The rules are written here once so the front ends cannot drift apart. </summary>
-public sealed record UserScreenPlan(UserTablePlan User)
+public sealed record UserScreenPlan(UserTableShape User)
 {
     /// <summary> The shortest password the "Set password" box and the first person accept (the same as <c>set-password</c>). </summary>
     public const int MinimumPasswordLength = 8;

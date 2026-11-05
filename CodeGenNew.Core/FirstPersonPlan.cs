@@ -25,7 +25,7 @@ public enum FirstPersonKind
 public sealed record FirstPersonPlan(IReadOnlyList<FirstPersonValue> Values)
 {
     /// <summary> The plan for <paramref name="user"/>, or the reason there is none. </summary>
-    public static (FirstPersonPlan? Plan, string? Problem) For(UserTablePlan user, ProjectSettings project)
+    public static (FirstPersonPlan? Plan, string? Problem) For(UserTableShape user, ProjectSettings project)
     {
         var table = user.Table;
         var values = new List<FirstPersonValue>

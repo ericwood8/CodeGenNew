@@ -142,7 +142,7 @@ public sealed class CrudApiPlan
 
     public ColumnModel? OwnerColumn { get; }
     public bool OwnerUnusable { get; }
-    public OwnerLink? OwnerLink { get; }
+    public OwnerLinkShape? OwnerLink { get; }
 
     public IReadOnlyList<ChildForeignKeyModel> EditableChildren { get; } = [];
 
@@ -179,7 +179,7 @@ public sealed class CrudApiPlan
     /// <summary> Whether the API calls <c>&lt;Table&gt;Shape.CheckDeleteAsync</c> before a delete (a tree or a soft-delete table). </summary>
     public bool RowShapeDelete { get; }
 
-    public UserTablePlan? UserPlan { get; }
+    public UserTableShape? UserPlan { get; }
     public ColumnModel? UserAdmin { get; }
     public ColumnModel? UserRole { get; }
 

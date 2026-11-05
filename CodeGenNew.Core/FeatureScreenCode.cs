@@ -65,10 +65,23 @@ public static class FeatureScreenCode
         $"        if (FeatureOn({CSharpText.Quote(flag)}))\n        {{\n" + string.Concat(lines.TrimEnd('\n').Split('\n').Select(l => "    " + l + "\n")) + "        }\n";
 
     /// <summary> The members the Uno view model of an edit dialog gains when a flag hides one of its fields. </summary>
-    public static string UnoViewModelMembers() => ViewModelMembersText.Replace("§SOURCE", "_api.Features.Enabled(flag)");
+    public static string UnoViewModelMembers(bool withAdminOnly = false) => ViewModelMembersText.Replace("§SOURCE", "_api.Features.Enabled(flag)") + (withAdminOnly ? AdminOnlyMembersText : "");
 
     /// <summary> The same for the WinUI3 view model, which reads the flags the window keeps. </summary>
-    public static string DesktopViewModelMembers() => ViewModelMembersText.Replace("§SOURCE", "DesktopFeatures.Enabled(flag)");
+    public static string DesktopViewModelMembers(bool withAdminOnly = false) => ViewModelMembersText.Replace("§SOURCE", "DesktopFeatures.Enabled(flag)") + (withAdminOnly ? AdminOnlyMembersText : "");
+
+    /// <summary> The attribute for the administrator flag of the user table when a flag also hides it: shown to an administrator while the flag is on. </summary>
+    public static string AdminOnlyVisibilityAttribute(string flag) => $"Visibility=\"{{x:Bind ViewModel.AdminOnlyFeatureVisibility('{flag.Replace("&", "&amp;").Replace("\"", "&quot;")}')}}\"";
+
+    /// <summary> The save lines of the administrator flag when a flag also hides it. </summary>
+    public static string AdminOnlySaveLines(string lines, string flag) =>
+        $"        if (SignedInIsAdministrator() && FeatureOn({CSharpText.Quote(flag)}))\n        {{\n" + string.Concat(lines.TrimEnd('\n').Split('\n').Select(l => "    " + l + "\n")) + "        }\n";
+
+    private const string AdminOnlyMembersText = """
+
+    public Microsoft.UI.Xaml.Visibility AdminOnlyFeatureVisibility(string flag) => SignedInIsAdministrator() && FeatureOn(flag) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+""";
 
     private const string ViewModelMembersText = """
 
@@ -258,6 +271,24 @@ public sealed class FeatureFlags(HttpClient http, AuthSession session)
             }
         }
         _flags = now;
+    }
+
+    /// <summary> Reads the flags again while the person works. A read that fails keeps the flags the app has; answers whether any flag changed (the caller draws the menu again). </summary>
+    public async Task<bool> RefreshAsync()
+    {
+        if (!session.IsSignedIn)
+            return false;
+        try
+        {
+            var now = new Dictionary<string, bool>(await http.GetFromJsonAsync<Dictionary<string, bool>>("§PATH") ?? [], StringComparer.OrdinalIgnoreCase);
+            bool same = now.Count == _flags.Count && now.All(p => _flags.TryGetValue(p.Key, out bool on) && on == p.Value);
+            _flags = now;
+            return !same;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException)
+        {
+            return false;
+        }
     }
 }
 """;

@@ -92,6 +92,28 @@ public sealed partial class MainWindow : Window
         DesktopFeatures.Changed += RebuildMenu;
 <# } #>
         ShowSignIn();
+<# if (features && Project.FeatureRefreshSeconds > 0) { #>
+        // FeatureRefreshSeconds: a flag switched by someone else shows without a new sign-in; a read that fails keeps the flags the app has
+        var flagTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(<#= Project.FeatureRefreshSeconds #>) };
+        flagTimer.Tick += async (_, _) =>
+        {
+            if (_user is null || SignInHost.Visibility == Visibility.Visible)
+                return;
+            var before = DesktopFeatures.All.ToDictionary(p => p.Key, p => p.Value);
+            try
+            {
+                await LoadFeaturesAsync();
+            }
+            catch (Exception)
+            {
+                return;
+            }
+            var after = DesktopFeatures.All;
+            if (after.Count != before.Count || after.Any(p => !before.TryGetValue(p.Key, out bool on) || on != p.Value))
+                RebuildMenu();
+        };
+        flagTimer.Start();
+<# } #>
     }
 
     private void ShowSignIn()

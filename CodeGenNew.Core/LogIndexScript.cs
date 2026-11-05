@@ -6,10 +6,10 @@ namespace CodeGenNew.Core;
 /// an index starting with the timestamp gets none. Written for the project to review and run; the generator never applies it. </summary>
 public static class LogIndexScript
 {
-    public static string IndexName(TableModel table, LogTable log) => $"IX_{table.TableName}_{log.Timestamp.DbName}";
+    public static string IndexName(TableModel table, LogShape log) => $"IX_{table.TableName}_{log.Timestamp.DbName}";
 
-    public static IReadOnlyList<LogTable> Missing(DatabaseModel database, ProjectSettings project) =>
-        database.Tables.Select(t => TableShapes.For(t, project).Log).OfType<LogTable>()
+    public static IReadOnlyList<LogShape> Missing(DatabaseModel database, ProjectSettings project) =>
+        database.Tables.Select(t => TableShapes.For(t, project).Log).OfType<LogShape>()
             .Where(log => !log.Table.IsIndexed([log.Timestamp.DbName]))
             .OrderBy(log => log.Table.TableName, StringComparer.OrdinalIgnoreCase).ToList();
 

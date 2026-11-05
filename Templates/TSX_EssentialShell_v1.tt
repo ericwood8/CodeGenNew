@@ -82,6 +82,14 @@ export function App() {
     if (!auth.isLoggedIn) { clearFeatures(); return; }
     getFeatures().catch(() => clearFeatures());
   }, [auth.isLoggedIn, auth.user?.['tenantId']]);
+<# if (Project.FeatureRefreshSeconds > 0) { #>
+  // FeatureRefreshSeconds: a flag switched by someone else shows without a new sign-in; a read that fails keeps the flags the app has
+  useEffect(() => {
+    if (!auth.isLoggedIn) return;
+    const timer = setInterval(() => { getFeatures().catch(() => undefined); }, <#= Project.FeatureRefreshSeconds * 1000 #>);
+    return () => clearInterval(timer);
+  }, [auth.isLoggedIn]);
+<# } #>
   // a person sees the screens their role may read and whose flag is on
   const open = screens.filter((s) => { const roles = rolesOf(s); const feature = featureOf(s); return (!roles || auth.hasRole(roles)) && (!feature || flags[feature] === true); });
 <# } else { #>

@@ -49,7 +49,7 @@ public static class DesktopEditRows
 
     /// <summary> The file of the row, lookups and panel classes of every editable child of <paramref name="parent"/>. <paramref name="entityOf"/> names the class of a child's row in the stack (the EF entity or the API model);
     /// <paramref name="usings"/> are whole <c>using</c> lines for it. </summary>
-    public static string File(string viewNamespace, string parent, string usings, ProjectSettings project, IReadOnlyList<(DesktopChild Child, ChildGrid Grid)> children, Func<DesktopChild, string> entityOf)
+    public static string File(string viewNamespace, string parent, string usings, ProjectSettings project, IReadOnlyList<(DesktopChild Child, ChildGrid Grid)> children, Func<DesktopChild, string> entityOf, bool panels = false)
     {
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
@@ -58,20 +58,26 @@ public static class DesktopEditRows
         L("using System.Collections.ObjectModel;");
         L("using System.Linq;");
         L("using System.Threading.Tasks;");
-        L("using Microsoft.UI.Xaml;");
-        L("using Microsoft.UI.Xaml.Automation;");
-        L("using Microsoft.UI.Xaml.Controls;");
+        if (panels)
+        {
+            L("using Microsoft.UI.Xaml;");
+            L("using Microsoft.UI.Xaml.Automation;");
+            L("using Microsoft.UI.Xaml.Controls;");
+        }
         o.Append(usings);
         L();
         L($"namespace {viewNamespace};");
-        L();
-        L($"/// <summary> One entry of a drop-down of a {parent} dialog's editable rows: the id of the parent row and the text to show for it. </summary>");
-        L($"public sealed class {OptionClass(parent)}(object? id, string text)");
-        L("{");
-        L("    public object? Id { get; } = id;");
-        L("    public string Text { get; } = text;");
-        L("    public override string ToString() => Text;");
-        L("}");
+        if (!panels)
+        {
+            L();
+            L($"/// <summary> One entry of a drop-down of a {parent} dialog's editable rows: the id of the parent row and the text to show for it. </summary>");
+            L($"public sealed class {OptionClass(parent)}(object? id, string text)");
+            L("{");
+            L("    public object? Id { get; } = id;");
+            L("    public string Text { get; } = text;");
+            L("    public override string ToString() => Text;");
+            L("}");
+        }
         foreach (var (child, grid) in children)
         {
             string row = RowClass(parent, child.Member), option = OptionClass(parent), entity = entityOf(child);
@@ -80,6 +86,8 @@ public static class DesktopEditRows
             string Label(ColumnModel c) => Labels.Field(c).Replace("\"", "'");
             string Time(ColumnModel c) => "_" + TemplateHelpers.LowerFirst(P(c)) + "Time";
 
+            var written = o;
+            if (panels) o = new StringBuilder();
             L();
             L($"/// <summary> One line of the {child.Title} rows: what the boxes hold, checked and copied into the child's class on Save. </summary>");
             L($"public sealed class {row}");
@@ -253,6 +261,8 @@ public static class DesktopEditRows
             L($"/// <summary> The lists the {child.Title} rows choose from: the parents' rows for a drop-down, a way to find them by what is typed for a type-ahead box. </summary>");
             L($"public sealed class {LookupsClass(parent, child.Member)}");
             L("{");
+            if (grid.EditFlags.Count > 0)
+                L("    public Func<string, bool> FeatureOn { get; set; } = _ => true;   // FeatureFields: a column whose flag is off is not drawn");
             foreach (var c in columns.Where(c => Kind(grid, c) == Cell.Lookup))
             {
                 if (grid.EditTypeAhead(c))
@@ -262,6 +272,7 @@ public static class DesktopEditRows
             }
             L("}");
 
+            o = panels ? written : new StringBuilder();
             L();
             L($"/// <summary> The {child.Title} rows as a table of boxes with Remove on each line and an Add button, built in code; it follows the rows collection. </summary>");
             L($"public sealed class {PanelClass(parent, child.Member)} : StackPanel");
@@ -297,14 +308,18 @@ public static class DesktopEditRows
             L("        }");
             L("        var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };");
             foreach (var c in columns)
-                L($"        header.Children.Add(new TextBlock {{ Text = \"{(GridCaption.For(c, Labels.Field(c)) + (grid.IsMarked(c) ? " *" : "")).Replace("\"", "'")}\", Width = CellWidth, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }});");
+                L($"        {FlagIf(grid, c)}header.Children.Add(new TextBlock {{ Text = \"{(GridCaption.For(c, Labels.Field(c)) + (grid.IsMarked(c) ? " *" : "")).Replace("\"", "'")}\", Width = CellWidth, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold }});");
             L("        header.Children.Add(new TextBlock { Text = \"\", Width = 80 });");
             L("        _lines.Children.Add(header);");
             L("        foreach (var row in _rows.ToList())");
             L("        {");
             L("            var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };");
             foreach (var c in columns)
+            {
+                if (FlagIf(grid, c) is { Length: > 0 } guard)
+                    o.Append("            ").Append(guard.TrimEnd()).Append((char)10);
                 Cell1(o, grid, c, project, option);
+            }
             L($"            var remove = new Button {{ Content = \"Remove\", Width = 80 }};");
             L($"            AutomationProperties.SetName(remove, \"Remove {grid.Words.Replace("\"", "'")}\");");
             L("            remove.Click += (_, _) => _rows.Remove(row);");
@@ -313,9 +328,13 @@ public static class DesktopEditRows
             L("        }");
             L("    }");
             L("}");
+            o = written;
         }
         return o.ToString();
     }
+
+    private static string FlagIf(ChildGrid grid, ColumnModel c) =>
+        grid.FeatureOf(c.Name) is { } flag ? $"if (_lookups.FeatureOn(\"{flag.Replace("\\", "\\\\").Replace("\"", "\\\"")}\")) " : "";
 
     // The control of one column in a line (the line is `line`, the row is `row`): it shows the row's value and writes what is typed or picked back into it.
     private static void Cell1(StringBuilder o, ChildGrid grid, ColumnModel c, ProjectSettings project, string option)

@@ -40,7 +40,7 @@ namespace <#= repositoryNamespace #>;
 @@@FILE <#= viewsFolder #>/SubscriptionPage.xaml@@@
 <#= DesktopSubscriptionCode.Xaml(viewNamespace, repositoryNamespace) #>
 @@@FILE <#= viewsFolder #>/SubscriptionPage.xaml.cs@@@
-<#= DesktopSubscriptionCode.Code(viewNamespace, repositoryNamespace, contextType, usings) #>
+<#= DesktopSubscriptionCode.Code(viewNamespace, repositoryNamespace, contextType, usings, Project.SubscriptionPlanChoice) #>
 <#
     }
 #>

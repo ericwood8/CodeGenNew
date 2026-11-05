@@ -2,7 +2,7 @@ using static CodeGenNew.Core.TemplateText;
 
 namespace CodeGenNew.Core;
 
-/// <summary> The members page of the Uno app (<c>TenantMembership</c> with the sign-in): the same page as the WinUI3 one (<see cref="DesktopMembersCode"/>), reading and changing the memberships over the API routes
+/// <summary> The members page of the Uno app (<c>TenantMembershipShape</c> with the sign-in): the same page as the WinUI3 one (<see cref="DesktopMembersCode"/>), reading and changing the memberships over the API routes
 /// <c>/api/auth/members</c> instead of the database. The page is in the menu for administrators. </summary>
 public static class UnoMembersCode
 {

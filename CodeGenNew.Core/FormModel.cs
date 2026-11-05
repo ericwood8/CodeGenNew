@@ -50,7 +50,7 @@ public sealed class FormModel
         SearchFields = table.SearchableColumns.Concat(TextKeyBoxes).OrderBy(c => c.OrdinalPosition)
             .Select(c => new SearchField(c, c.Name, TemplateHelpers.LowerFirst(c.Name), GridCaption.For(c, Labels.Field(c)))).ToList();
         Log = TableShapes.For(table, project).Log;
-        DateRange = Log is null ? [] : [new SearchField(Log.Timestamp, "From", LogTable.FromParameter, "From", true), new SearchField(Log.Timestamp, "To", LogTable.ToParameter, "To", true)];
+        DateRange = Log is null ? [] : [new SearchField(Log.Timestamp, "From", LogShape.FromParameter, "From", true), new SearchField(Log.Timestamp, "To", LogShape.ToParameter, "To", true)];
         DateColumns = Columns.Where(c => TemplateHelpers.IsDate(c) && !c.IsSystemStampColumn && !IsGuardStamp(c)).ToList();
         NewRowTypeScript = NewRowMembers(table, TypedKey, KeyColumn, KeyType);
     }
@@ -155,7 +155,7 @@ public sealed class FormModel
     public IReadOnlyList<SearchField> WebSearchFields => _project.ListSearchProtocol ? [new SearchField(null, "search", "search", "")] : [.. SearchFields, .. DateRange];
 
     /// <summary> The table the project lists in LogTables (a read-only, newest-first list with a date range), or null. </summary>
-    public LogTable? Log { get; }
+    public LogShape? Log { get; }
 
     /// <summary> True for a log table: no Add, Edit, Clone or Delete and no form. </summary>
     public bool ReadOnly => Log is not null;

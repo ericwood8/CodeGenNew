@@ -3,7 +3,7 @@ using System.Data;
 namespace CodeGenNew.Core;
 
 /// <summary> A table the application only reads: an insert-only ledger (errors, sessions, data changes) shown newest first with a date range, no Add, Edit, Clone or Delete and no write routes. </summary>
-public sealed record LogTable(TableModel Table, ColumnModel Timestamp)
+public sealed record LogShape(TableModel Table, ColumnModel Timestamp)
 {
     /// <summary> The query parameters of the date range: the first and the last day (inclusive) of the rows to list. </summary>
     public const string FromParameter = "from";
@@ -44,8 +44,8 @@ public static class LogTablePlan
     public static bool IsListed(string table, ProjectSettings project) => Entries(project).Any(e => e.Table.EqualsIgnoreCase(table));
 
     /// <summary> The log table the project lists, or null (not listed, or a problem: see <see cref="Problem"/>). </summary>
-    public static LogTable? For(TableModel table, ProjectSettings project) =>
-        Problem(table, project) is null && IsListed(table, project) && TimestampOf(table, project) is { } stamp ? new LogTable(table, stamp) : null;
+    public static LogShape? For(TableModel table, ProjectSettings project) =>
+        Problem(table, project) is null && IsListed(table, project) && TimestampOf(table, project) is { } stamp ? new LogShape(table, stamp) : null;
 
     /// <summary> Why a listed table cannot be a log table, or null when it can (or is not listed). </summary>
     public static string? Problem(TableModel table, ProjectSettings project)

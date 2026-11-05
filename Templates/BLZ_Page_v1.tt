@@ -113,6 +113,7 @@
         // The Columns list: the grid starts with the columns GridColumns picks and offers every column of the form
         var chosen = ChosenGridColumns.For(form);
         var columnList = chosen.Offered;
+        var flaggedColumns = columnList.Where(c => form.FeatureOf(c.Column) is not null).ToList();   // FeatureFields: a column the grid draws and offers only while its flag is on
         var filterFields = odata ? columnList.Select(c => c.Filter).ToList() : null;   // the filter row's control of each of those columns (null: none)
         // the parent columns of the OData filter row that are type-aheads: the key is held as text in the column's ColumnFilter.Value
         var filterAheads = (filterFields ?? []).OfType<ODataFilterField>().Where(f => f.Kind == ODataFilterKind.Parent && Ahead(f.Parent!)).ToList();
@@ -126,6 +127,9 @@
         bool gated = writeRoles.Count > 0;
         string? approvalSegment = ApprovalScreens.PanelSegment(Model, Project);   // a table of RowApprovals: its saved row's form carries the approval panel (BLZ_Approvals writes it)
         string RolesExpression(IReadOnlyList<string> roles) => "[" + WriteRolePlan.Literal(roles) + "]";
+        // FeatureFields: a child grid draws a column only while its flag is on
+        string ChildFlagged(ChildGrid grid, ColumnModel c, string markup, string indent) =>
+            grid.FeatureOf(c.Name) is { } flag ? $"{indent}@if (Features.Enabled({CSharpText.Quote(flag)})) {{ {markup} }}" : indent + markup;
         // a button that changes rows: wrapped so that only a role that may write sees it
         string Gate(string indent, string markup) => gated ? $"{indent}@if (CanWrite)\n{indent}{{\n{indent}    {markup.Trim()}\n{indent}}}" : indent + markup.Trim();
 
@@ -259,7 +263,7 @@
             L($"@inject {ch.ClientType} {ch.Var}Client");
         foreach (var l in childLookups)
             L($"@inject {l.Type}Client {l.Field}Client");
-        if (form.FeatureFlags.Count > 0)
+        if (form.FeatureFlags.Count > 0 || children.Any(ch => ch.Grid.FlaggedNames.Count > 0 || ch.Grid.EditFlags.Count > 0))
             L("@inject FeatureFlags Features");   // FeatureFields: a field shows only while its flag is on
         L("@inject IJSRuntime Js");
         L("@inject NavigationManager Navigation");
@@ -324,7 +328,7 @@
         L("<details class=\"column-picker\">");
         L("    <summary>Columns</summary>");
         L("    <div class=\"column-list\" style=\"display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 4px 0\">");
-        L("        @foreach (var column in AllColumns)");
+        L("        @foreach (var column in AllColumns" + (flaggedColumns.Count > 0 ? ".Where(c => !FlagOff(c.Name))" : "") + ")");
         L("        {");
         L("            <label><input type=\"checkbox\" checked=\"@Shown(column.Name)\" disabled=\"@IsLastColumn(column.Name)\" @onchange=\"() => ToggleColumnAsync(column.Name)\" /> @column.Label</label>");
         L("        }");
@@ -586,7 +590,7 @@
             L("                        <thead>");
             L("                            <tr>");
             foreach (var c in ch.EditColumns)
-                L($"                                <th>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Html(ch.Grid.IsMarked(c))}</th>");
+                L(ChildFlagged(ch.Grid, c, $"<th>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Html(ch.Grid.IsMarked(c))}</th>", "                                "));
             L("                                <th></th>");
             L("                            </tr>");
             L("                        </thead>");
@@ -595,7 +599,7 @@
             L("                            {");
             L("                                <tr>");
             foreach (var c in ch.EditColumns)
-                L($"                                    <td>{ChildInput(ch.Grid, ch.Var, c)}</td>");
+                L(ChildFlagged(ch.Grid, c, $"<td>{ChildInput(ch.Grid, ch.Var, c)}</td>", "                                    "));
             L($"                                    <td><button type=\"button\" @onclick=\"() => Remove{ch.Var}(line)\">Remove</button></td>");
             L("                                </tr>");
             L("                            }");
@@ -646,7 +650,7 @@
                 L("                    <thead>");
                 L("                        <tr>");
                 foreach (var c in ch.Columns)
-                    L($"                            <th>{GridCaption.For(c, Labels.Field(c))}</th>");
+                    L(ChildFlagged(ch.Grid, c, $"<th>{GridCaption.For(c, Labels.Field(c))}</th>", "                            "));
                 L("                            <th>Actions</th>");
                 L("                        </tr>");
                 L("                    </thead>");
@@ -660,7 +664,7 @@
                 {
                     string prop = $"line.{c.CSharpName()}";
                     var l = ch.Lookups.FirstOrDefault(x => x.Column.EqualsIgnoreCase(c.Name));
-                    L($"                                <td>{Cell(c, prop, l.Field is not null ? $"Name{l.Field}({prop})" : null)}</td>");
+                    L(ChildFlagged(ch.Grid, c, $"<td>{Cell(c, prop, l.Field is not null ? $"Name{l.Field}({prop})" : null)}</td>", "                                "));
                 }
                 L("                                <td>");
                 if (ch.HasPage)
@@ -812,7 +816,16 @@
         L($"    private static readonly string[] InitialColumns = [{string.Join(", ", columnList.Where(c => c.Initial).Select(c => "\"" + c.Name + "\""))}];");
         L($"    private const string ColumnsKey = \"{(Project.ProjectName ?? "MyApp").ToLowerInvariant()}.columns.{pageClass.ToLowerInvariant()}\";");
         L("    private List<string> chosen = [];   // the columns shown; kept in the browser under ColumnsKey");
-        L("    private bool Shown(string name) => chosen.Contains(name);");
+        if (flaggedColumns.Count > 0)
+        {
+            L("    private bool FlagOff(string name) => name switch");
+            L("    {");
+            foreach (var c in flaggedColumns)
+                L($"        \"{c.Name}\" => !Features.Enabled(\"{CSharpText.Escape(form.FeatureOf(c.Column)!)}\"),");
+            L("        _ => false");
+            L("    };");
+        }
+        L("    private bool Shown(string name) => chosen.Contains(name)" + (flaggedColumns.Count > 0 ? " && !FlagOff(name)" : "") + ";");
         L("    private bool IsLastColumn(string name) => chosen.Count == 1 && chosen[0] == name;");
         }
         if (gated)

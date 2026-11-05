@@ -118,6 +118,9 @@
         // every other child keeps its read-only grid under the form
         var gridChildren = children.Where(g => !g.IsEditable).ToList();
         var editableChildren = children.Where(g => g.IsEditable).ToList();
+        // FeatureFields: a cell of an editable child grid is drawn only while its flag is on; the row keeps the value
+        string EditIf(ChildGrid child, ColumnModel c) =>
+            child.FeatureOf(c.Name) is { } flag ? $" *ngIf=\"features.enabled('{flag.Replace("\\", "\\\\").Replace("'", "\\'")}')\"" : "";
         string ChildInput(ChildGrid child, ColumnModel c)
         {
             string childVar = child.Variable;
@@ -234,7 +237,7 @@
             H("    <details class=\"column-picker\">");
             H("        <summary>Columns</summary>");
             H("        <div class=\"column-list\">");
-            H("            <label *ngFor=\"let column of columns.offered\"><input type=\"checkbox\" [checked]=\"columns.has(column.name)\" [disabled]=\"columns.isLast(column.name)\" (change)=\"toggleColumn(column.name)\" /> {{ column.label }}</label>");
+            H("            <label *ngFor=\"let column of columns.available\"><input type=\"checkbox\" [checked]=\"columns.has(column.name)\" [disabled]=\"columns.isLast(column.name)\" (change)=\"toggleColumn(column.name)\" /> {{ column.label }}</label>");
             H("            <button type=\"button\" class=\"btn btn-outline-secondary\" (click)=\"resetColumns()\">Reset</button>");
             H("        </div>");
             H("    </details>");
@@ -503,7 +506,7 @@
                 H("                    </div>");
                 H("                    <div class=\"child-card-fields\">");
                 foreach (var c in editColumns)
-                    H($"                        <label class=\"child-field{(IsMultiline(c) ? " child-field-wide" : "")}\"><span>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Html(child.IsMarked(c))}</span>{ChildInput(child, c)}</label>");
+                    H($"                        <label{EditIf(child, c)} class=\"child-field{(IsMultiline(c) ? " child-field-wide" : "")}\"><span>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Html(child.IsMarked(c))}</span>{ChildInput(child, c)}</label>");
                 H("                    </div>");
                 H("                </div>");
                 H($"                <button type=\"button\" class=\"btn btn-outline\" (click)=\"add{child.Name}()\">Add {child.Words}</button>");
@@ -512,12 +515,12 @@
             }
             H("                <table>");
             H("                    <thead>");
-            H("                        <tr>" + string.Concat(editColumns.Select(c => $"<th>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Html(child.IsMarked(c))}</th>")) + "<th></th></tr>");
+            H("                        <tr>" + string.Concat(editColumns.Select(c => $"<th{EditIf(child, c)}>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Html(child.IsMarked(c))}</th>")) + "<th></th></tr>");
             H("                    </thead>");
             H("                    <tbody>");
             H($"                        <tr *ngFor=\"let row of {child.Variable}Rows\">");
             foreach (var c in editColumns)
-                H($"                            <td>{ChildInput(child, c)}</td>");
+                H($"                            <td{EditIf(child, c)}>{ChildInput(child, c)}</td>");
             H($"                            <td><button type=\"button\" class=\"btn-action delete\" (click)=\"remove{child.Name}(row)\">Remove</button></td>");
             H("                        </tr>");
             H("                    </tbody>");
@@ -548,7 +551,7 @@
             // The grid holds all its rows, so a header click sorts them in the browser; a right-click opens the Clear sort menu.
             H($"            <table (contextmenu)=\"openChildSortMenu($event, '{child.Variable}')\">");
             H("                <thead>");
-            H($"                    <tr><th *ngFor=\"let col of {child.Variable}Columns\" [attr.aria-sort]=\"childAriaSort('{child.Variable}', col)\"><button type=\"button\" class=\"sort-header\" (click)=\"sortChildBy('{child.Variable}', col)\">{{{{caption(col)}}}}{{{{ childSortMark('{child.Variable}', col) }}}}</button></th>{(child.KeyJson is not null ? "<th>Actions</th>" : "")}</tr>");
+            H($"                    <tr><th *ngFor=\"let col of {child.Variable}{(child.FlaggedJson.Count > 0 ? "Shown" : "Columns")}\" [attr.aria-sort]=\"childAriaSort('{child.Variable}', col)\"><button type=\"button\" class=\"sort-header\" (click)=\"sortChildBy('{child.Variable}', col)\">{{{{caption(col)}}}}{{{{ childSortMark('{child.Variable}', col) }}}}</button></th>{(child.KeyJson is not null ? "<th>Actions</th>" : "")}</tr>");
             H("                </thead>");
             H("                <tbody>");
             // Clicking a row, or its Edit button, opens that row on its own page.
@@ -556,7 +559,7 @@
             H(child.KeyJson is not null
                 ? $"                    <tr *ngFor=\"let row of {shownRows}\" (click)=\"edit{child.Name}(row)\" style=\"cursor: pointer\">"
                 : $"                    <tr *ngFor=\"let row of {shownRows}\">");
-            H($"                        <td *ngFor=\"let col of {child.Variable}Columns\">{{{{cell(row[col], col{(child.Lookups.Count > 0 ? $", {child.Variable}Names[col]" : "")})}}}}</td>");
+            H($"                        <td *ngFor=\"let col of {child.Variable}{(child.FlaggedJson.Count > 0 ? "Shown" : "Columns")}\">{{{{cell(row[col], col{(child.Lookups.Count > 0 ? $", {child.Variable}Names[col]" : "")})}}}}</td>");
             if (child.KeyJson is not null)
             {
                 H("                        <td>");
@@ -822,7 +825,7 @@
             T($"import {{ readOData }} from '../../{servicesFolder}/odata-crud.service';");
             T($"import {{ odataLiteral, queryString }} from '../../{servicesFolder}/odata-query';");
         }
-        if (form.FeatureFlags.Count > 0) T($"import {{ FeatureService }} from '../../{servicesFolder}/features.service';");
+        if (form.FeatureFlags.Count > 0 || gridChildren.Any(ch => ch.FlaggedJson.Count > 0) || editableChildren.Any(ch => ch.EditFlags.Count > 0)) T($"import {{ FeatureService }} from '../../{servicesFolder}/features.service';");
         T("import { CommonModule } from '@angular/common';");
         T("import { FormsModule } from '@angular/forms';");
         if (UsesCurrencyBox()) T("import { CurrencyInputDirective } from '../currency-input';");
@@ -844,7 +847,7 @@
         T("})");
         T($"export class {cls} extends {(nameActive ? "NameActiveCrudScreen" : odata ? "ODataPagedScreen" : "PagedCrudScreen")}<{baseName}{keyGeneric}> {{");
         T($"  protected readonly service = inject({serviceClass});");
-        if (form.FeatureFlags.Count > 0)
+        if (form.FeatureFlags.Count > 0 || gridChildren.Any(ch => ch.FlaggedJson.Count > 0) || editableChildren.Any(ch => ch.EditFlags.Count > 0))
             T("  protected readonly features = inject(FeatureService);   // FeatureFields: the fields a flag hides show only while it is on");
         if (userScreen is not null)
         {
@@ -887,7 +890,9 @@
                 var column = columnList[i];
                 T($"    {{ name: '{column.Name}', label: '{column.Label.Replace("\\", "\\\\").Replace("'", "\\'")}', property: '{column.Property}', sortable: {(column.Sortable ? "true" : "false")} }}{(i < columnList.Count - 1 ? "," : "")}");
             }
-            T($"  ], [{string.Join(", ", columnList.Where(c => c.Initial).Select(c => "'" + c.Name + "'"))}]);");
+            var flagged = columnList.Where(c => form.FeatureOf(c.Column) is not null).ToList();   // FeatureFields: a column the grid draws and offers only while its flag is on
+            string hiddenArg = flagged.Count == 0 ? "" : $", () => [{string.Join(", ", flagged.Select(c => $"...(this.features.enabled('{form.FeatureOf(c.Column)!.Replace("\\", "\\\\").Replace("'", "\\'")}') ? [] : ['{c.Name}'])"))}]";
+            T($"  ], [{string.Join(", ", columnList.Where(c => c.Initial).Select(c => "'" + c.Name + "'"))}]{hiddenArg});");
             T("  readonly sortableColumns = this.columns.sortable; // the shown columns whose header sorts the grid (one array, kept up to date)");
             if (columnList.Any(c => c.Cut))
                 T("  readonly cut = cutText; // a long or multi-line text shows its first characters in the grid");
@@ -953,6 +958,8 @@
         {
             T($"  {child.Variable}Rows: any[] = [];");
             T($"  {child.Variable}Columns: string[] = [];");
+            if (child.FlaggedJson.Count > 0)
+                T($"  get {child.Variable}Shown(): string[] {{ return this.{child.Variable}Columns.filter((col) => ![{string.Join(", ", child.FlaggedJson.Select(f => $"...(this.features.enabled('{f.Flag.Replace("\\", "\\\\").Replace("'", "\\'")}') ? [] : ['{f.Json}'])"))}].includes(col)); }}   // FeatureFields: a column whose flag is off is not drawn");
             T($"  private readonly {child.Variable}Hidden: string[] = [" + string.Join(", ", child.HiddenJson.Select(n => "'" + n + "'")) + "];");
             if (child.Lookups.Count > 0)
                 T($"  {child.Variable}Names: Record<string, Record<string, string>> = {{}};");

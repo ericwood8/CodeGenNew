@@ -141,6 +141,25 @@ public sealed partial class ChildGrid
     /// <summary> <see cref="HiddenColumns"/> by their JSON names. </summary>
     public IReadOnlyList<string> HiddenJson => HiddenColumns.Select(JsonNames.Camel).ToList();
 
+    /// <summary> The flag of <c>FeatureFields</c> that hides a column of the child table (the grid draws it only while the flag is on), or null. </summary>
+    public string? FeatureOf(string column) => FeatureScreens.Reads(_project) ? FeatureScreens.FieldFlagOf(_project, Link.ReferencingTable, column) : null;
+
+    /// <summary> The child's columns a flag hides, by their JSON name, with the flag. </summary>
+    public IReadOnlyList<(string Json, string Flag)> FlaggedJson => Link.ReferencingTableColumns
+        .Select(c => (Json: JsonNames.Camel(c.Name), Flag: FeatureOf(c.Name)))
+        .Where(x => x.Flag is not null).Select(x => (x.Json, x.Flag!)).ToList();
+
+    /// <summary> The flags that hide a cell of the editable child grid, each once. </summary>
+    public IReadOnlyList<string> EditFlags => EditColumns.Select(c => FeatureOf(c.Name)).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+
+    /// <summary> The place of the flag in <see cref="EditFlags"/>, which names the variable that holds it. </summary>
+    public int EditFlagIndex(string flag) => EditFlags.ToList().IndexOf(flag);
+
+    /// <summary> The child's columns a flag hides, by their name in the entity, with the flag. </summary>
+    public IReadOnlyList<(string Name, string Flag)> FlaggedNames => Link.ReferencingTableColumns
+        .Select(c => (Name: c.CSharpName(), Flag: FeatureOf(c.Name)))
+        .Where(x => x.Flag is not null).Select(x => (x.Name, x.Flag!)).ToList();
+
     /// <summary> The child's amounts of money (JSON name and decimal places): the grid shows them as currency. </summary>
     public IReadOnlyList<(string Name, int Digits)> MoneyColumns => Link.ReferencingTableColumns.Where(c => c.IsMoneyAmount).Select(c => (JsonNames.Camel(c.Name), NumericClassifier.CurrencyDigits(c))).ToList();
 

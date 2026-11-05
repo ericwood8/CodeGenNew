@@ -10,7 +10,7 @@ public static class RustTreeWriter
         $"        .route(\"{route}/tree\", get(tree){(roles ? readLayer : "")})\n        .route(\"{route}/{{id}}/promote-children\", post(promote_children){(roles ? writeLayer : "")})\n";
 
     /// <summary> The constants, <c>check_tree</c>, <c>refuse_children</c>, <c>tree</c> and <c>promote_children</c>. <paramref name="text"/> is the name column's field, or null. </summary>
-    public static string Code(TreeTable tree, DialectInfo di, string keyType, bool hasText, string liveAnd = "", string liveWhere = "")
+    public static string Code(TreeShape tree, DialectInfo di, string keyType, bool hasText, string liveAnd = "", string liveWhere = "")
     {
         string table = di.QuoteTable(tree.Table.SchemaName, tree.Table.DbTableName);
         string key = di.Quote(tree.Key.DbName), parent = di.Quote(tree.Parent.DbName);

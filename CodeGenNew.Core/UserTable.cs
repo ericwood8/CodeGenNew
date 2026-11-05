@@ -1,7 +1,7 @@
 namespace CodeGenNew.Core;
 
 /// <summary> The user table the sign-in reads, resolved against the schema: the name, password hash, owner and role columns. </summary>
-public sealed record UserTablePlan(TableModel Table, ColumnModel UserName, ColumnModel PasswordHash, ColumnModel? Owner, ColumnModel? Role, string RoleWhenTrue, string RoleWhenFalse, ColumnModel? Admin)
+public sealed record UserTableShape(TableModel Table, ColumnModel UserName, ColumnModel PasswordHash, ColumnModel? Owner, ColumnModel? Role, string RoleWhenTrue, string RoleWhenFalse, ColumnModel? Admin)
 {
     /// <summary> True when the role column is a yes/no column (a manager flag), so the role is one of two fixed names; otherwise the column holds the role's name. </summary>
     public bool RoleIsFlag => Role is { IsBooleanColumn: true };
@@ -29,7 +29,7 @@ public static class UserTable
     public static bool IsConfigured(ProjectSettings project) => project.UserTable is not null;
 
     /// <summary> The plan, or the reason there is none. The reason is a sentence for the person who wrote the settings. </summary>
-    public static (UserTablePlan? Plan, string? Problem) Resolve(DatabaseModel database, ProjectSettings project)
+    public static (UserTableShape? Plan, string? Problem) Resolve(DatabaseModel database, ProjectSettings project)
     {
         if (project.UserTable is not { } tableName)
             return (null, null);
@@ -64,11 +64,11 @@ public static class UserTable
     }
 
     /// <summary> The plan when <paramref name="table"/> is the user table and the settings fit it; null otherwise (API_UserDirectory is the template that reports the problem). </summary>
-    public static UserTablePlan? PlanOf(TableModel table, ProjectSettings project) =>
+    public static UserTableShape? PlanOf(TableModel table, ProjectSettings project) =>
         IsUserTable(table, project) ? ResolveTable(table, project).Plan : null;
 
     /// <summary> The plan for the user table itself, without the rest of the database. </summary>
-    public static (UserTablePlan? Plan, string? Problem) ResolveTable(TableModel table, ProjectSettings project)
+    public static (UserTableShape? Plan, string? Problem) ResolveTable(TableModel table, ProjectSettings project)
     {
         if (FindOrInfer(table, "UserNameColumn", project.UserNameColumn, UserNameNames, out var name) is { } nameProblem)
             return (null, nameProblem);
@@ -117,7 +117,7 @@ public static class UserTable
             admin = found.FirstOrDefault();
         }
 
-        return (new UserTablePlan(table, name, hash, owner, role, project.UserRoleWhenTrue, project.UserRoleWhenFalse, admin), null);
+        return (new UserTableShape(table, name, hash, owner, role, project.UserRoleWhenTrue, project.UserRoleWhenFalse, admin), null);
     }
 
     private static IEnumerable<ColumnModel> Matches(TableModel table, IReadOnlyList<string> names) =>

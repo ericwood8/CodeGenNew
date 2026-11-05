@@ -16,7 +16,7 @@ public static class MemberWords
     public const string PersonLabel = "Person";
 }
 
-/// <summary> The members page of the WinUI3 app (<c>TenantMembership</c> with the desktop sign-in): the people of the current tenant with their role, Add member, Edit role and Remove. The membership table has a
+/// <summary> The members page of the WinUI3 app (<c>TenantMembershipShape</c> with the desktop sign-in): the people of the current tenant with their role, Add member, Edit role and Remove. The membership table has a
 /// role column besides its two keys, so the two-list junction editor does not fit it. The page is in the menu for administrators; it reads the membership and the user table by hand with the query filters off,
 /// since a person of another tenant is not visible to the tenant's own filter, and always names the current tenant. </summary>
 public static class DesktopMembersCode

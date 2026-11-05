@@ -408,6 +408,22 @@ public class SubscriptionFeatureTests
         Expect.Contains(read("SubscriptionPage.xaml"), "x:DataType=\"rows:LimitRow\"");
     }
 
+    [TestMethod]
+    public async Task The_winui3_app_writes_the_plan_choice_only_when_the_setting_is_on_and_fills_every_token()
+    {
+        var on = await TenantPlanTests.GenerateAsync(WithSignIn(new() { ["Stacks"] = "winui3", ["SubscriptionPlanChoice"] = "true" }), stack: "winui3", more: PlanTables);
+        Assert.IsTrue(on.Success, string.Join(" | ", on.Errors));
+        Expect.Contains(on.Read("SubscriptionGuard.cs"), "public static async Task<string?> ChooseAsync(");
+        Expect.Contains(on.Read("SubscriptionPage.xaml.cs"), "SubscriptionGuard.ChooseAsync(_context, (int)((Button)sender).Tag)");
+        Expect.DoesNotContain(on.Read("SubscriptionGuard.cs"), "§");
+
+        var off = await TenantPlanTests.GenerateAsync(WithSignIn(new() { ["Stacks"] = "winui3" }), stack: "winui3", more: PlanTables);
+        Assert.IsTrue(off.Success, string.Join(" | ", off.Errors));
+        Expect.DoesNotContain(off.Read("SubscriptionGuard.cs"), "ChooseAsync");
+        Expect.DoesNotContain(off.Read("SubscriptionPage.xaml.cs"), "ChooseAsync");
+        Expect.Contains(off.Read("SubscriptionPage.xaml.cs"), "private async void OnChooseClick(object sender, RoutedEventArgs e)");
+    }
+
     private const string Secret = "GATEWAY_WEBHOOK_SECRET";
 
     [TestMethod]

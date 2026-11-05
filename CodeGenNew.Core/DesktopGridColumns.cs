@@ -145,7 +145,7 @@ public sealed class GridCells : Grid
 
     /// <summary> The members a list view model gains: the columns offered and the ones it starts with, the shown ones (chosen and kept), toggling and resetting, and the texts of the shown cells of a row.
     /// The view model has the constants <c>GridKey</c> and the fields <c>_sortColumn</c> and <c>_sortDescending</c>, and sets <c>_chosenColumns</c> in its constructor from <c>GridColumnStore.Load</c>. </summary>
-    public static string ViewModelMembers(ChosenGridColumns chosen, string? adminOnlyColumn = null, string? adminExpression = null)
+    public static string ViewModelMembers(ChosenGridColumns chosen, string? adminOnlyColumn = null, string? adminExpression = null, IReadOnlyList<(string Column, string Flag)>? flagged = null, string? flagSource = null)
     {
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
@@ -160,7 +160,19 @@ public sealed class GridCells : Grid
         L("    private static readonly string[] OfferedNames = [.. OfferedColumns.Select(c => c.Name)];");
         L("    private List<string> _chosenColumns = [.. InitialColumns];");
         L();
-        if (adminOnlyColumn is null)
+        if (flagged is { Count: > 0 })
+        {
+            // FeatureFields: a column whose flag is off is neither drawn nor offered in the Columns list
+            L("    public bool IsOffered(string name) => name switch");
+            L("    {");
+            if (adminOnlyColumn is not null && flagged.All(f => f.Column != adminOnlyColumn))
+                L($"        {Quote(adminOnlyColumn)} => {adminExpression},");
+            foreach (var (column, flag) in flagged)
+                L($"        {Quote(column)} => {(column == adminOnlyColumn ? adminExpression + " && " : "")}{flagSource}({Quote(flag)}),");
+            L("        _ => true");
+            L("    };");
+        }
+        else if (adminOnlyColumn is null)
             L("    public bool IsOffered(string name) => true;");
         else
             L($"    public bool IsOffered(string name) => name != {Quote(adminOnlyColumn)} || {adminExpression};");

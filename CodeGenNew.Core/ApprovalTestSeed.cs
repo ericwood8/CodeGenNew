@@ -6,7 +6,7 @@ namespace CodeGenNew.Core;
 /// <summary> The rows the generated approval tests of the Python and Rust APIs (PY_TestApprovals, RS_TestApprovals) put in a scratch copy of the database, and the statements that take them out again: the people of the
 /// user table (a requester and two approvers, with <c>ApproverTable</c> also a person approved for another table only), the approver rows, and one row of the first table of <c>RowApprovals</c>. The keys are fixed
 /// numbers far above the usual ones, so a second run first clears what the first left. </summary>
-public sealed record ApprovalTestSeed(ApprovalTable Table, IReadOnlyList<string> Setup, IReadOnlyList<string> Cleanup, long RowKey, string? TenantSql = null)
+public sealed record ApprovalTestSeed(ApprovalTableShape Table, IReadOnlyList<string> Setup, IReadOnlyList<string> Cleanup, long RowKey, string? TenantSql = null)
 {
     public const string Requester = "zz_ann";
     public const string Approver = "zz_bob";

@@ -280,8 +280,8 @@
     Line($"    @router.get(spec.route + \"/export.csv\", name=\"Export \" + spec.file + \" Csv\"{(auth ? ", dependencies=[Depends(administrator_only)] if spec.owned else None" : "")})");
     Line("    def export(");
     Line("        session: Session = Depends(get_session),");
-    Line($"        range_from: date | None = Query(None, alias=\"{LogTable.FromParameter}\"),");
-    Line($"        range_to: date | None = Query(None, alias=\"{LogTable.ToParameter}\"),");
+    Line($"        range_from: date | None = Query(None, alias=\"{LogShape.FromParameter}\"),");
+    Line($"        range_to: date | None = Query(None, alias=\"{LogShape.ToParameter}\"),");
     Line("    ):");
     Line("        stamp = getattr(spec.model, spec.log_stamp)");
     Line("        statement = select(spec.model)");

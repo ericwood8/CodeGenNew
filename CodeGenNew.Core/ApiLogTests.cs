@@ -12,7 +12,7 @@ public static class ApiLogTests
         string absent = plan.AbsentKey;
         var o = new StringBuilder();
         void L(string s = "") => o.Append(s).Append('\n');
-        string from = LogTable.FromParameter, to = LogTable.ToParameter;
+        string from = LogShape.FromParameter, to = LogShape.ToParameter;
 
         L($"namespace {project.ProjectName ?? "MyApp"}.Api.Tests;");
         L();

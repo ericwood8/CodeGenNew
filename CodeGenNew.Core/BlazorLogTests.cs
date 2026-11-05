@@ -91,10 +91,10 @@ public static class BlazorLogTests
         L("        page.Find(\"input[aria-label='From']\").Input(\"2026-10-01\");");
         L("        page.Find(\"input[aria-label='To']\").Input(\"2026-10-31\");");
         L("        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Search\").Click();");
-        L($"        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Path.Contains(\"{LogTable.FromParameter}=2026-10-01\") && r.Path.Contains(\"{LogTable.ToParameter}=2026-10-31\"))));");
+        L($"        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Path.Contains(\"{LogShape.FromParameter}=2026-10-01\") && r.Path.Contains(\"{LogShape.ToParameter}=2026-10-31\"))));");
         L("        Api.Requests.Clear();");
         L("        page.FindAll(\"button\").First(b => b.TextContent.Trim() == \"Clear\").Click();");
-        L($"        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Path.Contains(\"/search?\") && !r.Path.Contains(\"{LogTable.FromParameter}=2026\"))));");
+        L($"        page.WaitForAssertion(() => Assert.IsTrue(Api.Requests.Any(r => r.Path.Contains(\"/search?\") && !r.Path.Contains(\"{LogShape.FromParameter}=2026\"))));");
         L("    }");
         if (queue is not null)
         {

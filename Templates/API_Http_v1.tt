@@ -57,7 +57,7 @@
             L();
             L("### Search " + plural + ", a page at a time" + (search.Count > 0 ? " (each text box filters by part of the text)" : ""));
             // a log table also takes the first and last day of the rows to list
-            string range = TableShapes.For(Model, Project).Log is not null ? LogTable.FromParameter + "=2026-01-01&" + LogTable.ToParameter + "=2026-01-31&" : "";
+            string range = TableShapes.For(Model, Project).Log is not null ? LogShape.FromParameter + "=2026-01-01&" + LogShape.ToParameter + "=2026-01-31&" : "";
             L("GET {{host}}" + route + "/search?" + filters + range + "pageNumber=1&pageSize=20" + sort);
             L("Accept: application/json");
         }

@@ -51,7 +51,7 @@ public static class ApprovalWriter
 
     private static string Now(ColumnModel column) => column.SqlType == System.Data.SqlDbType.DateTimeOffset ? "DateTimeOffset.Now" : "DateTime.Now";
 
-    private static string PerTable(ApprovalTable t, string contextType, bool tenantOwned)
+    private static string PerTable(ApprovalTableShape t, string contextType, bool tenantOwned)
     {
         string keyType = t.Key.CSharpBase();
         return FillAll(Table,

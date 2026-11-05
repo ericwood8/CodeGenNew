@@ -34,25 +34,25 @@ public sealed class TableShapes
     private static readonly ConditionalWeakTable<ProjectSettings, ConditionalWeakTable<TableModel, TableShapes>> Made = new();
 
     /// <summary> The tenant column of the table and the tenant table it points at, or null when the project has no tenants or the table is not owned by one. </summary>
-    public TenantOwned? Tenant => Shape<TenantOwned>();
+    public TenantOwnedShape? Tenant => Shape<TenantOwnedShape>();
 
     /// <summary> The table as a work queue, a soft deleted table, a tree, an effective dated table, a log or a table with a Name and an IsActive column; null when it is not. </summary>
     public QueueShape? Queue => Shape<QueueShape>();
-    public SoftDeleteTable? SoftDelete => Shape<SoftDeleteTable>();
-    public TreeTable? Tree => Shape<TreeTable>();
-    public EffectiveTable? Effective => Shape<EffectiveTable>();
-    public ExtensionTable? Extension => Shape<ExtensionTable>();
-    public LogTable? Log => Shape<LogTable>();
-    public NameActivePlan? NameActive => Shape<NameActivePlan>();
+    public SoftDeleteShape? SoftDelete => Shape<SoftDeleteShape>();
+    public TreeShape? Tree => Shape<TreeShape>();
+    public EffectiveShape? Effective => Shape<EffectiveShape>();
+    public ExtensionShape? Extension => Shape<ExtensionShape>();
+    public LogShape? Log => Shape<LogShape>();
+    public NameActiveShape? NameActive => Shape<NameActiveShape>();
 
     /// <summary> The plan of the table when it is the user table and the settings fit it. </summary>
-    public UserTablePlan? User => Shape<UserTablePlan>();
+    public UserTableShape? User => Shape<UserTableShape>();
 
     /// <summary> The column that says which person owns a row of the table, or null. </summary>
     public ColumnModel? Owner => Shape<OwnerColumnShape>()?.Column;
 
     /// <summary> The parent that says which person owns a row of the table (an owner through a link), or null. </summary>
-    public OwnerLink? OwnerThrough => Shape<OwnerLink>();
+    public OwnerLinkShape? OwnerThrough => Shape<OwnerLinkShape>();
 
     /// <summary> The table's shape of type <typeparamref name="T"/>, or null when the table does not have it. </summary>
     public T? Shape<T>() where T : class
@@ -60,8 +60,8 @@ public sealed class TableShapes
         return (T?)ShapeOf(typeof(T));
     }
 
-    private static readonly Type[] Known = [typeof(SoftDeleteTable), typeof(QueueShape), typeof(LogTable), typeof(TreeTable), typeof(EffectiveTable), typeof(ExtensionTable), typeof(NameActivePlan), typeof(TenantOwned), typeof(JunctionShape), typeof(UserTablePlan), typeof(OwnerLink), typeof(OwnerColumnShape), typeof(TenantTableShape)];
-    private static readonly Type[] NeedDatabase = [typeof(TenantMembership), typeof(ApprovalTable), typeof(ApprovalSide)];
+    private static readonly Type[] Known = [typeof(SoftDeleteShape), typeof(QueueShape), typeof(LogShape), typeof(TreeShape), typeof(EffectiveShape), typeof(ExtensionShape), typeof(NameActiveShape), typeof(TenantOwnedShape), typeof(JunctionShape), typeof(UserTableShape), typeof(OwnerLinkShape), typeof(OwnerColumnShape), typeof(TenantTableShape)];
+    private static readonly Type[] NeedDatabase = [typeof(TenantMembershipShape), typeof(ApprovalTableShape), typeof(ApprovalSide)];
 
     /// <summary> Every shape the table has, in a fixed order; a table with none gives an empty list. </summary>
     public IReadOnlyList<object> All => (_database is null ? Known : [.. Known, .. NeedDatabase]).Select(t => ShapeOf(t)).OfType<object>().ToList();
@@ -81,25 +81,25 @@ public sealed class TableShapes
 
     private object? Work(Type shape)
     {
-        if (shape == typeof(SoftDeleteTable)) return SoftDeletePlan.For(_table, _project);
+        if (shape == typeof(SoftDeleteShape)) return SoftDeletePlan.For(_table, _project);
         if (shape == typeof(QueueShape)) return QueuePlan.For(_table, _project);
-        if (shape == typeof(LogTable)) return LogTablePlan.For(_table, _project);
-        if (shape == typeof(TreeTable)) return TreePlan.For(_table, _project);
-        if (shape == typeof(EffectiveTable)) return EffectiveDatePlan.For(_table, _project);
-        if (shape == typeof(ExtensionTable)) return ExtensionPlan.For(_table, _project);
-        if (shape == typeof(NameActivePlan)) return NameActivePlan.For(_table, _project);
-        if (shape == typeof(TenantOwned)) return TenantPlan.OwnedBy(_table, _project);
+        if (shape == typeof(LogShape)) return LogTablePlan.For(_table, _project);
+        if (shape == typeof(TreeShape)) return TreePlan.For(_table, _project);
+        if (shape == typeof(EffectiveShape)) return EffectiveDatePlan.For(_table, _project);
+        if (shape == typeof(ExtensionShape)) return ExtensionPlan.For(_table, _project);
+        if (shape == typeof(NameActiveShape)) return NameActiveShape.For(_table, _project);
+        if (shape == typeof(TenantOwnedShape)) return TenantPlan.OwnedBy(_table, _project);
         if (shape == typeof(JunctionShape)) return _table.Junction;
-        if (shape == typeof(UserTablePlan)) return UserTable.PlanOf(_table, _project);
+        if (shape == typeof(UserTableShape)) return UserTable.PlanOf(_table, _project);
         if (shape == typeof(OwnerColumnShape)) return OwnedTable.OwnerColumn(_table, _project) is { } owner ? new OwnerColumnShape(owner) : null;
-        if (shape == typeof(OwnerLink)) return OwnedTable.Through(_table, _project);
+        if (shape == typeof(OwnerLinkShape)) return OwnedTable.Through(_table, _project);
         if (shape == typeof(TenantTableShape)) return TenantPlan.IsTenantTable(_table, _project) ? new TenantTableShape(_table) : null;
         if (NeedDatabase.Contains(shape))
         {
             var database = _database ?? throw new InvalidOperationException($"{shape.Name} needs the database: make the shapes with TableShapes.For(table, project, database).");
-            if (shape == typeof(TenantMembership)) return TenantPlan.MembershipOf(database, _project) is { } membership && membership.Table.TableName.EqualsIgnoreCase(_table.TableName) ? membership : null;
+            if (shape == typeof(TenantMembershipShape)) return TenantPlan.MembershipOf(database, _project) is { } membership && membership.Table.TableName.EqualsIgnoreCase(_table.TableName) ? membership : null;
             var approvals = ApprovalPlan.Resolve(database, _project).Tables;
-            if (shape == typeof(ApprovalTable)) return approvals.FirstOrDefault(a => a.Table.TableName.EqualsIgnoreCase(_table.TableName));
+            if (shape == typeof(ApprovalTableShape)) return approvals.FirstOrDefault(a => a.Table.TableName.EqualsIgnoreCase(_table.TableName));
             return approvals.FirstOrDefault(a => a.Side.TableName.EqualsIgnoreCase(_table.TableName)) is { } approval ? new ApprovalSide(approval) : null;
         }
         throw new ArgumentException($"{shape.Name} is not a shape of a table.");
@@ -110,7 +110,7 @@ public sealed class TableShapes
 public sealed record TenantTableShape(TableModel Table);
 
 /// <summary> The table is the side table that holds the request cycles of an approval table. </summary>
-public sealed record ApprovalSide(ApprovalTable Approval);
+public sealed record ApprovalSide(ApprovalTableShape Approval);
 
 /// <summary> The table is owned through a column of its own (<c>OwnedTables</c>). </summary>
 public sealed record OwnerColumnShape(ColumnModel Column);

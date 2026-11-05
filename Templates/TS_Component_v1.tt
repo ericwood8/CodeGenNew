@@ -218,7 +218,7 @@
             H("    <details class=\"column-picker\">");
             H("        <summary>Columns</summary>");
             H("        <div class=\"column-list\">");
-            H("            <label *ngFor=\"let column of columns.offered\"><input type=\"checkbox\" [checked]=\"columns.has(column.name)\" [disabled]=\"columns.isLast(column.name)\" (change)=\"toggleColumn(column.name)\" /> {{ column.label }}</label>");
+            H("            <label *ngFor=\"let column of columns.available\"><input type=\"checkbox\" [checked]=\"columns.has(column.name)\" [disabled]=\"columns.isLast(column.name)\" (change)=\"toggleColumn(column.name)\" /> {{ column.label }}</label>");
             H("            <button type=\"button\" class=\"btn btn-outline-secondary\" (click)=\"resetColumns()\">Reset</button>");
             H("        </div>");
             H("    </details>");
@@ -795,7 +795,9 @@
                 var column = columnList[i];
                 T($"    {{ name: '{column.Name}', label: '{column.Label.Replace("\\", "\\\\").Replace("'", "\\'")}', property: '{column.Property}', sortable: {(column.Sortable ? "true" : "false")} }}{(i < columnList.Count - 1 ? "," : "")}");
             }
-            T($"  ], [{string.Join(", ", columnList.Where(c => c.Initial).Select(c => "'" + c.Name + "'"))}]);");
+            var flagged = columnList.Where(c => form.FeatureOf(c.Column) is not null).ToList();   // FeatureFields: a column the grid draws and offers only while its flag is on
+            string hiddenArg = flagged.Count == 0 ? "" : $", () => [{string.Join(", ", flagged.Select(c => $"...(this.features.enabled('{form.FeatureOf(c.Column)!.Replace("\\", "\\\\").Replace("'", "\\'")}') ? [] : ['{c.Name}'])"))}]";
+            T($"  ], [{string.Join(", ", columnList.Where(c => c.Initial).Select(c => "'" + c.Name + "'"))}]{hiddenArg});");
             T("  readonly sortableColumns = this.columns.sortable; // the shown columns whose header sorts the grid (one array, kept up to date)");
             if (columnList.Any(c => c.Cut))
                 T("  readonly cut = cutText; // a long or multi-line text shows its first characters in the grid");

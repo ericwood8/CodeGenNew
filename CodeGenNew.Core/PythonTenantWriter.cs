@@ -66,7 +66,7 @@ public static class PythonTenantWriter
     }
 
     /// <summary> <c>new_person</c>: the first administrator of an onboarded tenant as a new person, saved with the tenant (the user table's own model and schema, the password hashed the way <c>set-password</c> does). </summary>
-    private static string NewPerson(UserTablePlan? userPlan, ProjectSettings project, TenantMembership? membership, TenantOwned? userOwned)
+    private static string NewPerson(UserTableShape? userPlan, ProjectSettings project, TenantMembershipShape? membership, TenantOwnedShape? userOwned)
     {
         if (userPlan is null)
             return "";
@@ -165,7 +165,7 @@ def new_person(session: Session, admin: dict[str, Any], password: str | None, te
 §MEMBERLINE
 """";
 
-    private static string Tables(TableModel tenantTable, ColumnModel key, ColumnModel? active, ColumnModel? text, ColumnModel? host, TenantMembership? membership, UserTablePlan? userPlan, ColumnModel? soft, TenantOwned? userOwned)
+    private static string Tables(TableModel tenantTable, ColumnModel key, ColumnModel? active, ColumnModel? text, ColumnModel? host, TenantMembershipShape? membership, UserTableShape? userPlan, ColumnModel? soft, TenantOwnedShape? userOwned)
     {
         string Str(string value) => PythonNames.Str(value);
         var o = new StringBuilder("\n");

@@ -14,11 +14,11 @@ public static class TenantTestPlan
         stackTests && TenantPlan.HasApiTenancy(project) && TenantPlan.TenantTableOf(database, project) is not null;
 
     /// <summary> The tenant-owned tables with a plain CRUD API, in name order. </summary>
-    public static IReadOnlyList<TenantOwned> Owned(DatabaseModel database, ProjectSettings project) =>
+    public static IReadOnlyList<TenantOwnedShape> Owned(DatabaseModel database, ProjectSettings project) =>
         [.. TenantPlan.OwnedTables(database, project).Where(o => TableShapes.For(o.Table, project).NameActive is null && o.Table.HasCrudApiOfAnyKey(project) && o.Table.PrimaryKeyColumns.Count == 1)];
 
     /// <summary> The tenant-owned tables with a Name and an IsActive column, in name order. </summary>
-    public static IReadOnlyList<TenantOwned> OwnedNamed(DatabaseModel database, ProjectSettings project) =>
+    public static IReadOnlyList<TenantOwnedShape> OwnedNamed(DatabaseModel database, ProjectSettings project) =>
         [.. TenantPlan.OwnedTables(database, project).Where(o => TableShapes.For(o.Table, project).NameActive is not null && o.Table.PrimaryKeyColumns.Count == 1)];
 
     /// <summary> The key of the tenant table, which the tests need as a whole number. </summary>

@@ -140,6 +140,16 @@ public sealed partial class MainPage : Page
         _api.Features.Changed += RebuildMenu;
 <# } #>
         Refresh();
+<# if (features && Project.FeatureRefreshSeconds > 0) { #>
+        // FeatureRefreshSeconds: a flag switched by someone else shows without a new sign-in
+        var flagTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(<#= Project.FeatureRefreshSeconds #>) };
+        flagTimer.Tick += async (_, _) =>
+        {
+            if (await _api.Features.RefreshAsync())
+                RebuildMenu();
+        };
+        flagTimer.Start();
+<# } #>
     }
 
     // Signed in: the menu of the screens the role may read<#= features ? " and whose flag is on" : "" #>, and the first of them. Signed out: the sign-in page.

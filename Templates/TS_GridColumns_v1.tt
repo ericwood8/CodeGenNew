@@ -71,13 +71,19 @@ export class GridColumns {
   readonly sortable: string[] = [];
   readonly properties: string[] = [];
 
-  constructor(private readonly gridKey: string, readonly offered: readonly GridColumn[], readonly initial: readonly string[]) {
+  /** `hidden` names the columns a feature flag switches off: they are neither drawn nor offered in the Columns list. */
+  constructor(private readonly gridKey: string, readonly offered: readonly GridColumn[], readonly initial: readonly string[], private readonly hidden: () => readonly string[] = () => []) {
     this.chosen = loadColumns(gridKey, offered.map((column) => column.name), initial);
     this.refresh();
   }
 
   has(name: string): boolean {
-    return this.chosen.includes(name);
+    return this.chosen.includes(name) && !this.hidden().includes(name);
+  }
+
+  /** The columns the Columns list offers: every one except those a feature flag switches off. */
+  get available(): readonly GridColumn[] {
+    return this.offered.filter((column) => !this.hidden().includes(column.name));
   }
 
   /** The only shown column: its check box is disabled, because a grid with no column shows nothing to open a row from. */

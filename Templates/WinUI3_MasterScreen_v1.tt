@@ -750,7 +750,7 @@ public partial class <#= table #>ListViewModel : ViewModelBase
     public Visibility CreateVisibility => <#= writeGated ? "WriteVisibility == Visibility.Visible && " : "" #>DesktopTenantScope.Current.IsPlatform ? Visibility.Visible : Visibility.Collapsed;
 
 <# } #>
-<#= DesktopGridColumns.ViewModelMembers(chosen, userScreen?.AdminFlag?.Name, userScreen is null ? null : UserScreenPlan.IsAdministratorExpression(Project)) #>
+<#= DesktopGridColumns.ViewModelMembers(chosen, userScreen?.AdminFlag?.Name, userScreen is null ? null : UserScreenPlan.IsAdministratorExpression(Project), chosen.Offered.Where(c => FeatureScreenCode.DesktopFieldFlag(form, Project, c.Column) is not null).Select(c => (c.Name, FeatureScreenCode.DesktopFieldFlag(form, Project, c.Column)!)).ToList(), "DesktopFeatures.Enabled") #>
     public <#= table #>ListViewModel(<#= contextType #> context)
     {
         _context = context;

@@ -39,9 +39,10 @@ public static class DesktopSubscriptionCode
         string pad = new(' ', indent);
         string extra = adding == "1" ? "" : $", {adding}";
         var o = new StringBuilder();
-        o.Append($"{pad}if (await SubscriptionGuard.RefusalAsync({context}, {(key.Length == 0 ? "null" : CSharpText.Quote(key))}, {isNew}{extra}) is {{ }} paused)\n");
+        string refused = adding == "1" ? "paused" : "pausedRows";   // the check of a row and the check of its editable rows sit in one method
+        o.Append($"{pad}if (await SubscriptionGuard.RefusalAsync({context}, {(key.Length == 0 ? "null" : CSharpText.Quote(key))}, {isNew}{extra}) is {{ }} {refused})\n");
         o.Append($"{pad}{{\n");
-        o.Append($"{pad}    {error} = paused;\n");
+        o.Append($"{pad}    {error} = {refused};\n");
         o.Append($"{pad}    {exit}\n");
         o.Append($"{pad}}}\n\n");
         return o.ToString();
@@ -82,17 +83,18 @@ public static class DesktopSubscriptionCode
             ("§NOTENANT_TEXT", CSharpText.Escape(SubscriptionScreenWords.NoTenant)), ("§UNKNOWNPLAN_TEXT", CSharpText.Escape(SubscriptionWords.UnknownPlan)), ("§TOOSMALL_TEXT", CSharpText.Escape(SubscriptionWords.PlanTooSmallText))
         ];
         string startInit = subscription.PeriodStart is null ? "" : $", {subscription.PeriodStart.CSharpName()} = " + (subscription.PeriodStart.CSharpBase() == "DateTimeOffset" ? "DateTimeOffset.UtcNow" : "DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)");
-        string choose = project.SubscriptionPlanChoice ? FillAll(FillAll(ChooseText, ("§TOOSMALL", limit is null ? "" : TooSmallText), ("§STARTINIT", startInit)), names) : "";
+        string tooSmall = limit is null ? "" : FillAll(TooSmallText, ("§TOOSMALL_TEXT", CSharpText.Escape(SubscriptionWords.PlanTooSmallText)));
+        string choose = project.SubscriptionPlanChoice ? FillAll(ChooseText, names.Concat([("§TOOSMALL", tooSmall), ("§STARTINIT", startInit)]).ToArray()) : "";
         o.Append(FillAll(limit is null ? GuardNoLimits : GuardText, names.Concat([("§CHOOSE", choose)]).ToArray()));
         return o.ToString();
     }
 
     public static string Xaml(string viewNamespace, string repositoryNamespace) => UnoSubscriptionCode.Xaml(viewNamespace, repositoryNamespace);
 
-    public static string Code(string viewNamespace, string repositoryNamespace, string contextType, string[] usings) => FillAll(PageText, ("§NS", viewNamespace), ("§REPO", repositoryNamespace), ("§CTX", contextType), ("§USINGS", string.Concat(usings.Select(u => $"using {u};\n"))),
+    public static string Code(string viewNamespace, string repositoryNamespace, string contextType, string[] usings, bool planChoice) => FillAll(PageText, ("§NS", viewNamespace), ("§REPO", repositoryNamespace), ("§CTX", contextType), ("§USINGS", string.Concat(usings.Select(u => $"using {u};\n"))),
         ("§PLANLABEL", SubscriptionScreenWords.PlanLabel), ("§STATUSLABEL", SubscriptionScreenWords.StatusLabel), ("§PERIODLABEL", SubscriptionScreenWords.PeriodEndLabel),
         ("§NOSUBSCRIPTION", SubscriptionScreenWords.NoSubscription), ("§NOTENANT", SubscriptionScreenWords.NoTenant), ("§PAUSED", SubscriptionScreenWords.PausedPrefix),
-        ("§ACTIVE", SubscriptionScreenWords.Active), ("§UNLIMITED", SubscriptionScreenWords.Unlimited), ("§PRICELABEL", SubscriptionScreenWords.PriceLabel));
+        ("§ACTIVE", SubscriptionScreenWords.Active), ("§UNLIMITED", SubscriptionScreenWords.Unlimited), ("§PRICELABEL", SubscriptionScreenWords.PriceLabel), ("§CHOOSEBODY", planChoice ? ChoosePageBody : ""));
 
     private const string GuardCommon = """
 /// <summary> One plan limit: what the plan allows (null when it is unlimited) and what the tenant has. </summary>
@@ -337,18 +339,22 @@ public sealed partial class SubscriptionPage : Page
         PlansHeading.Visibility = Plans.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // Choose moves the tenant to the plan of the row; a refusal shows its sentence.
+    // Choose moves the tenant to the plan of the row; a refusal shows its sentence. The button is hidden unless SubscriptionPlanChoice=true.
     private async void OnChooseClick(object sender, RoutedEventArgs e)
     {
+§CHOOSEBODY        await LoadAsync();
+    }
+}
+""";
+
+    private const string ChoosePageBody = """
         if (await SubscriptionGuard.ChooseAsync(_context, (int)((Button)sender).Tag) is { } refused)
         {
             Problem.Message = refused;
             Problem.IsOpen = true;
             return;
         }
-        await LoadAsync();
-    }
-}
+
 """;
 
     /// <summary> The text of <c>Repositories/SubscriptionGuard.cs</c> after its namespace line: the shared records and the guard. </summary>

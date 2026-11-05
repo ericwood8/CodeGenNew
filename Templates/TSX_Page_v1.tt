@@ -83,6 +83,8 @@
         var columnList = chooseColumns ? chosen.Offered : chosen.Initial;   // the columns the grid has a header and a cell for, in order; a hidden one is not drawn
         var odataFilters = odata ? columnList.Select(c => c.Filter).ToList() : null;   // the filter row's control of each of those columns (null: none)
         string Shown(ColumnModel c, string jsx) => chooseColumns ? "{show('" + c.Name + "') && " + jsx + "}" : jsx;   // JSX that is drawn only while its column is chosen
+        var flaggedColumns = chooseColumns ? columnList.Where(c => form.FeatureOf(c.Column) is not null).ToList() : [];   // FeatureFields: a column the grid draws only while its flag is on
+        string flaggedShow = flaggedColumns.Count > 0 ? " && !hiddenColumns.includes(name)" : "";
         string variable = form.Variable;        // holiday
         string listName = variable.Pluralize();        // holidays
         string setList = ReactNames.SetList(listName);  // setHolidays
@@ -280,14 +282,14 @@
         else if (odata)
         {
             T("  const [chosen, setChosen] = useState<string[]>(() => loadColumns(gridKey, columnNames, initialColumns)); // the columns shown; kept in the browser");
-            T("  const show = (name: string) => chosen.includes(name);");
+            T("  const show = (name: string) => chosen.includes(name)" + flaggedShow + ";");
             T("  const [sorts, setSorts] = useState<GridSort[]>(() => loadSorts(gridKey, sortableColumns.filter((name) => chosen.includes(name))));");
             T("  const [columnFilters, setColumnFilters] = useState<Record<string, ColumnFilter>>({});");
         }
         else
         {
             T("  const [chosen, setChosen] = useState<string[]>(() => loadColumns(gridKey, columnNames, initialColumns)); // the columns shown; kept in the browser");
-            T("  const show = (name: string) => chosen.includes(name);");
+            T("  const show = (name: string) => chosen.includes(name)" + flaggedShow + ";");
             T("  const [sort, setSort] = useState<GridSort | null>(() => loadSort(gridKey, sortableColumns.filter((name) => chosen.includes(name))));");
         }
         T("  // Opened from another page's grid (?edit=<id>&back=<that page>): open this row, and go back to that page when the form is saved or cancelled.");
@@ -310,6 +312,8 @@
         }
         foreach (string flag in form.FeatureFlags)
             T($"  const featureFlag{form.FeatureIndex(flag)} = useFeature('{flag.Replace("\\", "\\\\").Replace("'", "\\'")}'); // FeatureFields: the fields this flag hides show only while it is on");
+        if (flaggedColumns.Count > 0)
+            T($"  const hiddenColumns = [{string.Join(", ", flaggedColumns.Select(c => $"...(featureFlag{form.FeatureIndex(form.FeatureOf(c.Column)!)} ? [] : ['{c.Name}'])"))}]; // FeatureFields: the columns whose flag is off are not drawn and not offered");
         T();
         // The sort (like the filters) is read from state by default; a change passes its new value explicitly because state is not updated yet.
         if (oneRow)
@@ -699,7 +703,7 @@
         if (chooseColumns)
         {
             T();
-            T("      <ColumnPicker columns={columnList} chosen={chosen} initial={initialColumns} onChange={chooseColumns} />");
+            T("      <ColumnPicker columns={columnList" + (flaggedColumns.Count > 0 ? ".filter((column) => !hiddenColumns.includes(column.name))" : "") + "} chosen={chosen} initial={initialColumns} onChange={chooseColumns} />");
         }
         T();
         T("      {error && !selectedRow && <p>{error}</p>}"); // while the dialog is open the error shows inside it

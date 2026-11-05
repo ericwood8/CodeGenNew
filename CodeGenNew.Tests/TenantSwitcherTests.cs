@@ -2,7 +2,7 @@ using CodeGenNew.Core;
 
 namespace CodeGenNew.Tests;
 
-/// <summary> The tenant name and switcher in the top bar of the React, Angular and Blazor apps (Auth with TenantTable and TenantMembership). </summary>
+/// <summary> The tenant name and switcher in the top bar of the React, Angular and Blazor apps (Auth with TenantTable and TenantMembershipShape). </summary>
 [TestClass]
 public class TenantSwitcherTests
 {

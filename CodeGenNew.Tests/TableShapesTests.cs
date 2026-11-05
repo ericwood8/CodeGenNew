@@ -32,12 +32,12 @@ public class TableShapesTests
     {
         var table = Customer();
         var plain = TableShapes.For(table, Project());
-        Assert.IsFalse(plain.Has<SoftDeleteTable>());
+        Assert.IsFalse(plain.Has<SoftDeleteShape>());
         Assert.IsFalse(plain.Has<QueueShape>());
-        Assert.IsFalse(plain.Has<TenantOwned>());
+        Assert.IsFalse(plain.Has<TenantOwnedShape>());
 
         var soft = TableShapes.For(table, Project(("SoftDeleteTables", "E_SalesCustomer")));
-        Assert.IsTrue(soft.Has<SoftDeleteTable>());
+        Assert.IsTrue(soft.Has<SoftDeleteShape>());
         Assert.IsFalse(soft.Has<QueueShape>());
     }
 
@@ -74,7 +74,7 @@ public class TableShapesTests
     public void A_shape_is_worked_out_once_and_kept()
     {
         var shapes = TableShapes.For(Customer(), Project(("SoftDeleteTables", "E_SalesCustomer")));
-        Assert.AreSame(shapes.Shape<SoftDeleteTable>(), shapes.Shape<SoftDeleteTable>());
+        Assert.AreSame(shapes.Shape<SoftDeleteShape>(), shapes.Shape<SoftDeleteShape>());
     }
 
     [TestMethod]
@@ -96,11 +96,11 @@ public class TableShapesTests
     public void A_table_can_be_a_tree_and_soft_deleted_at_once()
     {
         var shapes = TableShapes.For(Category(), Project(("TreeTables", "Category:ParentCategoryId:3"), ("SoftDeleteTables", "Category")));
-        Assert.IsTrue(shapes.Has<TreeTable>());
-        Assert.IsTrue(shapes.Has<SoftDeleteTable>());
+        Assert.IsTrue(shapes.Has<TreeShape>());
+        Assert.IsTrue(shapes.Has<SoftDeleteShape>());
         Assert.IsFalse(shapes.Has<QueueShape>());
-        Assert.IsTrue(shapes.All.Any(x => x is TreeTable));
-        Assert.IsTrue(shapes.All.Any(x => x is SoftDeleteTable));
+        Assert.IsTrue(shapes.All.Any(x => x is TreeShape));
+        Assert.IsTrue(shapes.All.Any(x => x is SoftDeleteShape));
     }
 
     [TestMethod]
@@ -146,12 +146,12 @@ public class TableShapesTests
     {
         var database = Tenants();
         var shapes = TableShapes.For(database.Tables[1], TenantProject(), database);
-        Assert.IsTrue(shapes.Has<TenantOwned>());
+        Assert.IsTrue(shapes.Has<TenantOwnedShape>());
         Assert.AreEqual("Tenant", shapes.Tenant!.TenantTable);
-        Assert.IsTrue(shapes.Has<SoftDeleteTable>());
-        Assert.IsTrue(shapes.Has<NameActivePlan>());
+        Assert.IsTrue(shapes.Has<SoftDeleteShape>());
+        Assert.IsTrue(shapes.Has<NameActiveShape>());
         Assert.IsFalse(shapes.Has<TenantTableShape>());
-        Assert.IsFalse(shapes.Has<TenantMembership>());
+        Assert.IsFalse(shapes.Has<TenantMembershipShape>());
     }
 
     [TestMethod]
@@ -160,9 +160,9 @@ public class TableShapesTests
         var database = Tenants();
         var tenant = TableShapes.For(database.Tables[0], TenantProject(), database);
         Assert.IsTrue(tenant.Has<TenantTableShape>());
-        Assert.IsFalse(tenant.Has<TenantOwned>());
+        Assert.IsFalse(tenant.Has<TenantOwnedShape>());
         var membership = TableShapes.For(database.Tables[2], TenantProject(), database);
-        Assert.IsTrue(membership.Has<TenantMembership>());
+        Assert.IsTrue(membership.Has<TenantMembershipShape>());
         Assert.IsFalse(membership.Has<TenantTableShape>());
     }
 
@@ -170,7 +170,7 @@ public class TableShapesTests
     public void A_shape_that_needs_another_table_is_refused_without_the_database()
     {
         var database = Tenants();
-        Assert.ThrowsExactly<InvalidOperationException>(() => TableShapes.For(database.Tables[2], TenantProject()).Has<TenantMembership>());
+        Assert.ThrowsExactly<InvalidOperationException>(() => TableShapes.For(database.Tables[2], TenantProject()).Has<TenantMembershipShape>());
     }
 
     private static DatabaseModel Approvals() => new()
@@ -215,13 +215,13 @@ public class TableShapesTests
         var database = Approvals();
         var project = ApprovalProject();
         var table = TableShapes.For(database.Tables[1], project, database);
-        Assert.IsTrue(table.Has<ApprovalTable>());
+        Assert.IsTrue(table.Has<ApprovalTableShape>());
         Assert.IsFalse(table.Has<ApprovalSide>());
-        Assert.AreEqual("ProjectApproval", table.Shape<ApprovalTable>()!.Side.TableName);
+        Assert.AreEqual("ProjectApproval", table.Shape<ApprovalTableShape>()!.Side.TableName);
 
         var side = TableShapes.For(database.Tables[2], project, database);
         Assert.IsTrue(side.Has<ApprovalSide>());
-        Assert.IsFalse(side.Has<ApprovalTable>());
+        Assert.IsFalse(side.Has<ApprovalTableShape>());
         Assert.AreEqual("Project", side.Shape<ApprovalSide>()!.Approval.Table.TableName);
     }
 
@@ -230,9 +230,9 @@ public class TableShapesTests
     {
         var database = Approvals();
         var user = TableShapes.For(database.Tables[0], ApprovalProject(), database);
-        Assert.IsTrue(user.Has<UserTablePlan>());
-        Assert.IsFalse(user.Has<ApprovalTable>());
-        Assert.IsFalse(TableShapes.For(database.Tables[1], Project(), database).Has<ApprovalTable>());
+        Assert.IsTrue(user.Has<UserTableShape>());
+        Assert.IsFalse(user.Has<ApprovalTableShape>());
+        Assert.IsFalse(TableShapes.For(database.Tables[1], Project(), database).Has<ApprovalTableShape>());
     }
 
     [TestMethod]

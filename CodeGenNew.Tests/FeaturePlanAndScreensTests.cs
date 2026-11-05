@@ -32,9 +32,9 @@ public class FeaturePlanAndScreensTests
         return TenantPlanTests.Values(values);
     }
 
-    private static async Task<DatabaseModel> ReadAsync()
+    private static async Task<DatabaseModel> ReadAsync(params string[] more)
     {
-        string database = TenantPlanTests.CreateDatabase(Tables);
+        string database = TenantPlanTests.CreateDatabase([.. Tables, .. more]);
         try
         {
             var request = new ConnectionRequest { Provider = DatabaseProvider.Sqlite, ServerName = "", DatabaseName = database };
@@ -261,5 +261,122 @@ public class FeaturePlanAndScreensTests
         Assert.IsTrue(menu.Any(e => e.Route == "features" && e.Roles.SequenceEqual([project.AuthAdminRole])));
         Assert.IsFalse(BlazorMenu.Entries(database, ProjectSettings.FromValues(Values(new() { ["FeatureTables"] = "" }))).Any(e => e.Route == "features" || e.Feature is not null));
         CollectionAssert.IsSubsetOf(new[] { "TSX_Features", "TS_Features", "BLZ_Features", "API_Features", "PY_Features", "RS_Features" }, project.ImpliedPlanTemplates.ToList());
+    }
+
+    [TestMethod]
+    public async Task Every_front_end_leaves_a_column_out_of_its_grid_and_its_column_list_while_its_flag_is_off()
+    {
+        string react = await FormOf("TSX_Page_v1.tt", "Project", []);
+        StringAssert.Contains(react, "const hiddenColumns = [...(featureFlag0 ? [] : ['Description'])];");
+        StringAssert.Contains(react, "chosen.includes(name) && !hiddenColumns.includes(name)");
+        StringAssert.Contains(react, "columnList.filter((column) => !hiddenColumns.includes(column.name))");
+
+        string angular = await FormOf("TS_Component_v1.tt", "Project", []);
+        StringAssert.Contains(angular, "() => [...(this.features.enabled('beta-notes') ? [] : ['Description'])]");
+        StringAssert.Contains(await FormOf("TS_GridColumns_v1.tt", "Project", []), "!this.hidden().includes(name)");
+
+        string blazor = await FormOf("BLZ_Page_v1.tt", "Project", []);
+        StringAssert.Contains(blazor, "\"Description\" => !Features.Enabled(\"beta-notes\")");
+        StringAssert.Contains(blazor, "chosen.Contains(name) && !FlagOff(name)");
+        StringAssert.Contains(blazor, "AllColumns.Where(c => !FlagOff(c.Name))");
+
+        foreach (var (template, source) in new[] { ("UNO_MasterScreen_v1.tt", "_api.Features.Enabled"), ("WinUI3_MasterScreen_v1.tt", "DesktopFeatures.Enabled") })
+        {
+            string desktop = await FormOf(template, "Project", []);
+            StringAssert.Contains(desktop, "\"Description\" => " + source + "(\"beta-notes\")");
+            StringAssert.Contains(desktop, "IsOffered(name) && ");
+        }
+
+        string plain = await FormOf("TSX_Page_v1.tt", "Project", new() { ["FeatureFields"] = "" });
+        Assert.IsFalse(plain.Contains("hiddenColumns"), "without FeatureFields the grid is unchanged");
+        Assert.IsFalse((await FormOf("BLZ_Page_v1.tt", "Project", new() { ["FeatureFields"] = "" })).Contains("FlagOff"));
+    }
+
+    [TestMethod]
+    public async Task A_child_grid_of_a_master_detail_page_leaves_a_column_out_while_its_flag_is_off()
+    {
+        string database = TenantPlanTests.CreateDatabase(Tables);
+        string output = Path.Combine(Path.GetTempPath(), "codegen_childflags_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            async Task<string[]> Generate(string fields, string editable = "")
+            {
+                var values = Values(new() { ["FeatureFields"] = fields, ["DetailMasterTables"] = "Project", ["EditableChildren"] = editable, ["Stacks"] = "api,react,angular,blazor,uno,winui3", ["DatabaseProvider"] = "Sqlite", ["DatabaseName"] = database });
+                var request = new ConnectionRequest { Provider = DatabaseProvider.Sqlite, ServerName = "", DatabaseName = database };
+                var provider = SchemaProviderFactory.Create(request, Path.Combine(Repo.Root, "SpecialLogicColumns.config"));
+                var report = await Repo.GenerateAsync(provider, new GenerateOptions
+                {
+                    Project = ProjectSettings.FromValues(values), Stacks = ["React", "Angular", "Blazor", "Uno", "WinUI3"], OutputDirectory = output, DatabaseName = database, Schema = "main", Essentials = true, Force = true
+                });
+                Assert.IsTrue(report.Success, string.Join(" | ", report.Errors));
+                string Read(string name) => string.Concat(Directory.EnumerateFiles(output, name, SearchOption.AllDirectories).Where(f => !f.Contains("node_modules") && !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar)).Select(File.ReadAllText));
+                return [Read("ProjectDetailMasterPage.tsx"), Read("project-detail-master.component.ts") + Read("project-detail-master.component.html"), Read("ProjectPage.razor"), Read("ProjectDetailMasterViewModel.cs"), string.Concat(Directory.EnumerateFiles(output, "*.cs", SearchOption.AllDirectories).Where(f => !f.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar)).Select(File.ReadAllText).Where(s => s.Contains("FeatureOn")))];
+            }
+
+            var flagged = await Generate("ProjectTask.Hours:beta-notes");
+            StringAssert.Contains(flagged[0], "const projectTaskFlagHidden = [...(projectTaskFeature0 ? [] : ['hours'])];");
+            StringAssert.Contains(flagged[0], "projectTaskColumns.filter((col) => !projectTaskFlagHidden.includes(col))");
+            StringAssert.Contains(flagged[1], "get projectTaskShown(): string[]");
+            StringAssert.Contains(flagged[2], "@if (Features.Enabled(\"beta-notes\")) { <th>Hours</th> }");
+            StringAssert.Contains(flagged[3], "\"Hours\" => _api.Features.Enabled(\"beta-notes\")");
+            StringAssert.Contains(flagged[3], "\"Hours\" => DesktopFeatures.Enabled(\"beta-notes\")");
+
+            var editable = await Generate("ProjectTask.Hours:beta-notes", "Project.ProjectTask");
+            StringAssert.Contains(editable[0], "const projectTaskFeature0 = useFeature('beta-notes');");
+            StringAssert.Contains(editable[0], "{projectTaskFeature0 && (<th>Hours");
+            StringAssert.Contains(editable[1], "<th *ngIf=\"features.enabled('beta-notes')\">Hours");
+            StringAssert.Contains(editable[2], "@if (Features.Enabled(\"beta-notes\")) { <th>Hours");
+            StringAssert.Contains(editable[4], "FeatureOn(\"beta-notes\")");
+            StringAssert.Contains(editable[4], "public Func<string, bool> FeatureOn");
+
+            var plain = await Generate("Project.Description:beta-notes");
+            Assert.IsFalse(plain[0].Contains("FlagHidden"), "a flag on another table leaves the child grid unchanged");
+            Assert.IsFalse(plain[1].Contains("projectTaskShown"));
+            Assert.IsFalse(plain[2].Contains("<th>Hours</th> }"));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(database);
+            if (Directory.Exists(output))
+                Directory.Delete(output, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task The_odata_page_hides_a_field_and_its_column_like_the_ordinary_page()
+    {
+        string odata = await FormOf("TSX_Page_v1.tt", "Project", new() { ["OData"] = "true", ["ODataTables"] = "Project" });
+        StringAssert.Contains(odata, "useFeature('beta-notes')");
+        StringAssert.Contains(odata, "hiddenColumns");
+    }
+
+    private async Task<string> EssentialOf(string template, string refreshSeconds)
+    {
+        var database = await ReadAsync();
+        var project = ProjectSettings.FromValues(Values(new() { ["Stacks"] = "api,react,angular,blazor,uno,winui3", ["FeatureRefreshSeconds"] = refreshSeconds }));
+        var result = await Repo.Cache.RunAsync(Repo.Template(template), database, project);
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        return result.GeneratedText!.Replace("\r\n", "\n");
+    }
+
+    [TestMethod]
+    public async Task With_a_refresh_interval_every_front_end_reads_the_flags_again_on_a_timer_and_without_one_it_does_not()
+    {
+        StringAssert.Contains(await EssentialOf("TSX_EssentialShell_v1.tt", "30"), "setInterval(() => { getFeatures().catch(() => undefined); }, 30000)");
+        StringAssert.Contains(await EssentialOf("TS_Features_v1.tt", "30"), "setInterval(() => this.get().subscribe({ error: () => undefined }), 30000)");
+        string blazor = await EssentialOf("BLZ_Features_v1.tt", "30");
+        StringAssert.Contains(blazor, "new Timer(_ => _ = RefreshAsync(), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30))");
+        StringAssert.Contains(blazor, "public async Task RefreshAsync()");
+        string uno = await EssentialOf("UNO_EssentialApp_v1.tt", "30");
+        StringAssert.Contains(uno, "Interval = TimeSpan.FromSeconds(30)");
+        StringAssert.Contains(uno, "if (await _api.Features.RefreshAsync())");
+        StringAssert.Contains(await EssentialOf("WinUI3_EssentialMainWindow_v1.tt", "30"), "Interval = TimeSpan.FromSeconds(30)");
+
+        foreach (string template in new[] { "TSX_EssentialShell_v1.tt", "TS_Features_v1.tt", "BLZ_Features_v1.tt", "UNO_EssentialApp_v1.tt", "WinUI3_EssentialMainWindow_v1.tt" })
+        {
+            string off = await EssentialOf(template, "0");
+            Assert.IsFalse(off.Contains("FeatureRefreshSeconds") || off.Contains("flagTimer") || off.Contains("RefreshAsync"), template + " is unchanged without the setting");
+        }
     }
 }

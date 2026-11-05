@@ -150,7 +150,7 @@ public static class DesktopSession
 """;
 
     /// <summary> The roles of the person and the permissions those roles hold (PermissionTables), in the tenant they work in: the same reading as the API's sign-in. </summary>
-    private static string HeldQuery(PermissionTablesPlan held, string contextType, UserTablePlan user, ProjectSettings project)
+    private static string HeldQuery(PermissionTablesPlan held, string contextType, UserTableShape user, ProjectSettings project)
     {
         string Set(TableModel table, ColumnModel? tenantColumn) => $"context.Set<{table.TableName}>(){(tenantColumn is null ? "" : ".IgnoreQueryFilters()")}.AsNoTracking()";
         string InTenant(string alias, ColumnModel? tenantColumn) => tenantColumn is null ? "" : tenantColumn.IsNullable

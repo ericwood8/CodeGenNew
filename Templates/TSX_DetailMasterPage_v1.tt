@@ -78,6 +78,8 @@
         var columnList = chooseColumns ? chosen.Offered : chosen.Initial;   // the columns the grid has a header and a cell for, in order; a hidden one is not drawn
         var odataFilters = odata ? columnList.Select(c => c.Filter).ToList() : null;   // the filter row's control of each of those columns (null: none)
         string Shown(ColumnModel c, string jsx) => chooseColumns ? "{show('" + c.Name + "') && " + jsx + "}" : jsx;   // JSX that is drawn only while its column is chosen
+        var flaggedColumns = chooseColumns ? columnList.Where(c => form.FeatureOf(c.Column) is not null).ToList() : [];   // FeatureFields: a column the grid draws only while its flag is on
+        string flaggedShow = flaggedColumns.Count > 0 ? " && !hiddenColumns.includes(name)" : "";
         string variable = form.Variable;
         string listName = variable.Pluralize();
         string setList = ReactNames.SetList(listName);
@@ -118,6 +120,9 @@
         // every other child keeps its read-only grid under the form
         var gridChildren = children.Where(g => !g.IsEditable).ToList();
         var editableChildren = children.Where(g => g.IsEditable).ToList();
+        // FeatureFields: a cell of an editable child grid is drawn only while its flag is on; the row keeps the value
+        string EditOn(ChildGrid child, ColumnModel c, string jsx) =>
+            child.FeatureOf(c.Name) is { } flag ? $"{{{child.Variable}Feature{child.EditFlagIndex(flag)} && ({jsx})}}" : jsx;
         string ChildInput(ChildGrid child, ColumnModel c)
         {
             string childVar = child.Variable, method = child.Name;
@@ -177,7 +182,7 @@
         bool usesRequest = !odata || editableChildren.Count > 0 || gridChildren.Any(ch => ch.KeyJson is not null || ch.Lookups.Count > 0 || !servedChild(ch));
         if (gated || userScreen is not null) T($"import {{ useAuth }} from '../{apiFolder}/auth';");
         if (userScreen is not null) T($"import {{ changePassword }} from '../{apiFolder}/people';");
-        if (form.FeatureFlags.Count > 0) T($"import {{ useFeature }} from '../{apiFolder}/features';");   // FeatureFields: a field shows only while its flag is on
+        if (form.FeatureFlags.Count > 0 || gridChildren.Any(ch => ch.FlaggedJson.Count > 0) || editableChildren.Any(ch => ch.EditFlags.Count > 0)) T($"import {{ useFeature }} from '../{apiFolder}/features';");   // FeatureFields: a field shows only while its flag is on
         bool childAheads = editableChildren.Any(ch => ch.EditColumns.Any(ch.EditTypeAhead)) || gridChildren.Any(ch => ch.Lookups.Any(l => l.TypeAhead));   // an editable child's cell or a child grid's names asked of a parent with too many rows
         T($"import {{ ApiError{(childAheads ? ", lookupQuery" : "")}{(usesRequest ? ", request" : "")} }} from '../{apiFolder}/client';");
         if (approvalSegment is not null) T("import { ApprovalPanel } from './ApprovalPanel';");
@@ -397,14 +402,14 @@
         else if (odata)
         {
             T("  const [chosen, setChosen] = useState<string[]>(() => loadColumns(gridKey, columnNames, initialColumns)); // the columns shown; kept in the browser");
-            T("  const show = (name: string) => chosen.includes(name);");
+            T("  const show = (name: string) => chosen.includes(name)" + flaggedShow + ";");
             T("  const [sorts, setSorts] = useState<GridSort[]>(() => loadSorts(gridKey, sortableColumns.filter((name) => chosen.includes(name))));");
             T("  const [columnFilters, setColumnFilters] = useState<Record<string, ColumnFilter>>({});");
         }
         else
         {
             T("  const [chosen, setChosen] = useState<string[]>(() => loadColumns(gridKey, columnNames, initialColumns)); // the columns shown; kept in the browser");
-            T("  const show = (name: string) => chosen.includes(name);");
+            T("  const show = (name: string) => chosen.includes(name)" + flaggedShow + ";");
             T("  const [sort, setSort] = useState<GridSort | null>(() => loadSort(gridKey, sortableColumns.filter((name) => chosen.includes(name))));");
         }
         T("  // Opened from another page's grid (?edit=<id>&back=<that page>): open this row, and go back to that page when the form is saved or cancelled.");
@@ -427,8 +432,20 @@
         }
         foreach (string flag in form.FeatureFlags)
             T($"  const featureFlag{form.FeatureIndex(flag)} = useFeature('{flag.Replace("\\", "\\\\").Replace("'", "\\'")}'); // FeatureFields: the fields this flag hides show only while it is on");
+        if (flaggedColumns.Count > 0)
+            T($"  const hiddenColumns = [{string.Join(", ", flaggedColumns.Select(c => $"...(featureFlag{form.FeatureIndex(form.FeatureOf(c.Column)!)} ? [] : ['{c.Name}'])"))}]; // FeatureFields: the columns whose flag is off are not drawn and not offered");
+        foreach (var child in editableChildren)
+            for (int i = 0; i < child.EditFlags.Count; i++)
+                T($"  const {child.Variable}Feature{i} = useFeature('{child.EditFlags[i].Replace("\\", "\\\\").Replace("'", "\\'")}'); // FeatureFields: the cells of this grid this flag hides");
         foreach (var child in gridChildren)
         {
+            if (child.FlaggedJson.Count > 0)
+            {
+                var childFlags = child.FlaggedJson.Select(f => f.Flag).Distinct(StringComparer.Ordinal).ToList();
+                for (int i = 0; i < childFlags.Count; i++)
+                    T($"  const {child.Variable}Feature{i} = useFeature('{childFlags[i].Replace("\\", "\\\\").Replace("'", "\\'")}'); // FeatureFields: the columns of this grid this flag hides");
+                T($"  const {child.Variable}FlagHidden = [{string.Join(", ", child.FlaggedJson.Select(f => $"...({child.Variable}Feature{childFlags.IndexOf(f.Flag)} ? [] : ['{f.Json}'])"))}];");
+            }
             T($"  const [{child.Variable}Rows, set{child.Name}Rows] = useState<any[]>([]);");
             T($"  const [{child.Variable}Columns, set{child.Name}Columns] = useState<string[]>([]);");
             T($"  const [{child.Variable}Sort, set{child.Name}Sort] = useState<GridSort | null>(() => loadSort(gridKey + '.{child.Variable}'));");
@@ -925,7 +942,7 @@
         if (chooseColumns)
         {
             T();
-            T("      <ColumnPicker columns={columnList} chosen={chosen} initial={initialColumns} onChange={chooseColumns} />");
+            T("      <ColumnPicker columns={columnList" + (flaggedColumns.Count > 0 ? ".filter((column) => !hiddenColumns.includes(column.name))" : "") + "} chosen={chosen} initial={initialColumns} onChange={chooseColumns} />");
         }
         T();
         T("      {error && !selectedRow && <p>{error}</p>}"); // while the dialog is open the error shows inside it
@@ -1315,7 +1332,7 @@
                 T("                  </div>");
                 T("                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(11rem, 1fr))', gap: '0 12px' }}>");
                 foreach (var c in editColumns)
-                    T($"                    <label style={{{{ display: 'flex', flexDirection: 'column'{(IsMultiline(c) ? ", gridColumn: '1 / -1'" : "")} }}}}><span>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Jsx(child.IsMarked(c))}</span>{ChildInput(child, c)}</label>");
+                    T($"                    {EditOn(child, c, $"<label style={{{{ display: 'flex', flexDirection: 'column'{(IsMultiline(c) ? ", gridColumn: '1 / -1'" : "")} }}}}><span>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Jsx(child.IsMarked(c))}</span>{ChildInput(child, c)}</label>")}");
                 T("                  </div>");
                 T("                </div>");
                 T("              ))}");
@@ -1325,13 +1342,13 @@
             }
             T("              <table>");
             T("                <thead>");
-            T("                  <tr>" + string.Concat(editColumns.Select(c => $"<th>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Jsx(child.IsMarked(c))}</th>")) + "<th></th></tr>");
+            T("                  <tr>" + string.Concat(editColumns.Select(c => $"{EditOn(child, c, $"<th>{GridCaption.For(c, Labels.Field(c))}{RequiredMark.Jsx(child.IsMarked(c))}</th>")}")) + "<th></th></tr>");
             T("                </thead>");
             T("                <tbody>");
             T($"                  {{{child.Variable}Rows.map((row, index) => (");
             T("                    <tr key={index}>");
             foreach (var c in editColumns)
-                T($"                      <td>{ChildInput(child, c)}</td>");
+                T($"                      {EditOn(child, c, $"<td>{ChildInput(child, c)}</td>")}");
             T($"                      <td><button type=\"button\" onClick={{() => remove{child.Name}(row)}}>Remove</button></td>");
             T("                    </tr>");
             T("                  ))}");
@@ -1368,14 +1385,14 @@
             T($"              <GridMenu sort={{{child.Variable}Sort}} onClear={{clear{child.Name}Sort}}>");
             T("              <table>");
             T("                <thead>");
-            T($"                  <tr>{{{child.Variable}Columns.map((col) => <SortHeader key={{col}} label={{caption(col)}} column={{col}} sort={{{child.Variable}Sort}} onSort={{sort{child.Name}By}} />)}}{(child.KeyJson is not null ? "<th>Actions</th>" : "")}</tr>");
+            T($"                  <tr>{{{(child.FlaggedJson.Count > 0 ? $"{child.Variable}Columns.filter((col) => !{child.Variable}FlagHidden.includes(col))" : $"{child.Variable}Columns")}.map((col) => <SortHeader key={{col}} label={{caption(col)}} column={{col}} sort={{{child.Variable}Sort}} onSort={{sort{child.Name}By}} />)}}{(child.KeyJson is not null ? "<th>Actions</th>" : "")}</tr>");
             T("                </thead>");
             T("                <tbody>");
             T($"                  {{sortRows({(child.Filters.Count > 0 ? $"filterChildRows({child.Variable}Rows, {child.Variable}Filter)" : child.Variable + "Rows")}, {child.Variable}Sort{(child.Lookups.Count > 0 ? $", {child.Variable}Names[{child.Variable}Sort?.column ?? '']" : "")}).map((row, index) => (");
             // Clicking a row, or its Edit button, opens that row on its own page.
             T(child.KeyJson is not null ? $"                    <tr key={{index}} onClick={{() => edit{child.Name}(row)}} style={{{{ cursor: 'pointer' }}}}>" : "                    <tr key={index}>");
             // A date-and-time string from the API (2026-09-27T00:00:00) shows as its date only.
-            T("                      {" + child.Variable + "Columns.map((col) => <td key={col}>{formatChildCell(row[col], col" + (child.Lookups.Count > 0 ? ", " + child.Variable + "Names[col]" : "") + ")}</td>)}");
+            T("                      {" + (child.FlaggedJson.Count > 0 ? child.Variable + "Columns.filter((col) => !" + child.Variable + "FlagHidden.includes(col))" : child.Variable + "Columns") + ".map((col) => <td key={col}>{formatChildCell(row[col], col" + (child.Lookups.Count > 0 ? ", " + child.Variable + "Names[col]" : "") + ")}</td>)}");
             if (child.KeyJson is not null)
             {
                 T("                      <td>");

@@ -1,5 +1,5 @@
 param([string]$Exe, [string]$Db)
-# Clicks through a generated WinUI3 app over a scratch SQLite copy of Schemas/features_noplan.sql (seed the sign-ins first with a copy of features_check.py's hash).
+# Clicks through a generated WinUI3 app over a scratch SQLite copy of Schemas/features.sql (seed the sign-ins first with a copy of features_check.py's hash).
 # Settings: Auth, ApiAuth, TenantTable, TenantMembership, UserTable, UserOwnerColumn=EmployeeId, FeatureTables=Feature,FeatureOverride,
 # FeatureScreens=Project:new-invoice-screen, FeatureFields=Project.StartedOn:csv-export. Build the app with: dotnet build -p:Platform=x64
 Import-Module C:\Github\CodeGenNew\Docs\Verification\UiAutomation.psm1 -Force -WarningAction Ignore

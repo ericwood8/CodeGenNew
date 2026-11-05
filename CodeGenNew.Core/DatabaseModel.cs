@@ -56,7 +56,7 @@ public class DatabaseModel
     /// <summary> The tables with a plain CRUD API of any key type (<see cref="TableModel.HasCrudApiOfAnyKey"/>); not the name/active tables. </summary>
     public List<TableModel> CrudApiTables(ProjectSettings project) => EntityTables.Where(t => t.HasCrudApiOfAnyKey(project)).ToList();
 
-    /// <summary> The tables the Python and Rust APIs serve: <see cref="CrudApiTables"/> and the name/active tables (<see cref="NameActivePlan"/>). </summary>
+    /// <summary> The tables the Python and Rust APIs serve: <see cref="CrudApiTables"/> and the name/active tables (<see cref="NameActiveShape"/>). </summary>
     public List<TableModel> PythonRustApiTables(ProjectSettings project) => EntityTables.Where(t => t.HasPythonRustApi(project)).ToList();
 
     /// <summary> The tables the ASP.NET API serves:<see cref="ApiTables"/>, the name/active tables (<see cref="TableModel.HasNameActiveApi"/>) and the tables with a uniqueidentifier or text key (<see cref="TableModel.HasKeyedCrudApi"/>), which the other stacks do not handle yet. </summary>

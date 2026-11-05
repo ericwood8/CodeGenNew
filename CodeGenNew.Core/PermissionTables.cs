@@ -6,7 +6,7 @@ public sealed record PermissionTablesPlan(
     TableModel Permission, ColumnModel PermissionKey, ColumnModel PermissionName,
     TableModel RolePermission, ColumnModel RolePermissionRole, ColumnModel RolePermissionPermission,
     TableModel UserRole, ColumnModel UserRoleUser, ColumnModel UserRoleRole,
-    UserTablePlan User, ColumnModel UserKey,
+    UserTableShape User, ColumnModel UserKey,
     ColumnModel? UserRoleTenant = null, ColumnModel? RoleTenant = null)
 {
     /// <summary> Whether the roles depend on the tenant the person works in: a role is held in one tenant (a tenant column on the person's role rows), or a tenant keeps its own roles (a tenant column on the role table). </summary>

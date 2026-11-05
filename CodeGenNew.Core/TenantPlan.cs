@@ -24,13 +24,13 @@ public static class TenantWords
 }
 
 /// <summary> The membership table: which people belong to which tenant, optionally with a role per tenant. </summary>
-public sealed record TenantMembership(TableModel Table, ColumnModel User, ColumnModel Tenant, ColumnModel? Role);
+public sealed record TenantMembershipShape(TableModel Table, ColumnModel User, ColumnModel Tenant, ColumnModel? Role);
 
 /// <summary> The user table whose people belong to tenants by the membership table; <c>Key</c> is the person's whole-number key. </summary>
-public sealed record TenantPeople(UserTablePlan User, TenantMembership Membership, ColumnModel Key);
+public sealed record TenantPeople(UserTableShape User, TenantMembershipShape Membership, ColumnModel Key);
 
 /// <summary> A table whose rows belong to one tenant: <c>Column</c> is its NOT NULL whole-number tenant column. </summary>
-public sealed record TenantOwned(TableModel Table, ColumnModel Column)
+public sealed record TenantOwnedShape(TableModel Table, ColumnModel Column)
 {
     /// <summary> The name of the tenant table the tenant column points at. </summary>
     public string TenantTable => Table.ForeignKeys.First(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0].EqualsIgnoreCase(Column.Name)).ReferencedTable;
@@ -38,7 +38,7 @@ public sealed record TenantOwned(TableModel Table, ColumnModel Column)
 
 /// <summary> Shared-schema multi-tenancy (<c>TenantTable=Tenant</c>): every table with a NOT NULL whole-number <c>TenantColumn</c> (default <c>TenantId</c>) that is a foreign key to the tenant table is tenant-owned, and the caller's tenant (a claim in the
 /// token) decides which rows they reach. The context filters every read, the API fills the tenant column on create and writes the caller's tenant on update (a row never moves to another tenant), and the tenant table itself shows only the caller's own tenant.
-/// <c>NoTenantTables</c> leaves a table out; <c>TenantMembership=UserTenant:UserId:TenantId:Role</c> names the junction that lets one person work in several tenants. </summary>
+/// <c>NoTenantTables</c> leaves a table out; <c>TenantMembershipShape=UserTenant:UserId:TenantId:Role</c> names the junction that lets one person work in several tenants. </summary>
 public static class TenantPlan
 {
     /// <summary> The place in a dashboard statement (<see cref="DashboardPlan.BuildFor"/>) where the API puts the caller's tenant key, or NULL for a caller in no tenant. </summary>
@@ -58,7 +58,7 @@ public static class TenantPlan
     /// <summary> Whether the sign-in page of a web front end has a box for the tenant to sign in to: the login takes a <c>tenantId</c> from a person who belongs to several tenants (a membership table is named). </summary>
     public static bool HasSignInBox(ProjectSettings project) => HasSwitcher(project);
 
-    /// <summary> The people of the user table who belong to a tenant by a membership row: <c>TenantMembership</c> with a <c>UserTable</c>. A tenant then shows only its own members; a platform administrator shows all. Null when the project
+    /// <summary> The people of the user table who belong to a tenant by a membership row: <c>TenantMembershipShape</c> with a <c>UserTable</c>. A tenant then shows only its own members; a platform administrator shows all. Null when the project
     /// has no such pair, or the membership row could not be made for a person added inside a tenant (a column other than the key, the person and the tenant is required), or the people are tenant-owned by their own row already. </summary>
     public static TenantPeople? PeopleOf(DatabaseModel database, ProjectSettings project)
     {
@@ -117,11 +117,11 @@ public static class TenantPlan
     public static ColumnModel? KeyOf(TableModel tenantTable) => tenantTable.PrimaryKeyColumns is [{ IsInt32Column: true } key] ? key : null;
 
     /// <summary> The tenant column of a tenant-owned table, or null. </summary>
-    public static TenantOwned? OwnedBy(TableModel table, DatabaseModel database, ProjectSettings project) =>
+    public static TenantOwnedShape? OwnedBy(TableModel table, DatabaseModel database, ProjectSettings project) =>
         TenantTableOf(database, project) is null ? null : OwnedBy(table, project);
 
     /// <summary> The same without the database: the table has a NOT NULL int column named TenantColumn that is a foreign key to the tenant table. </summary>
-    public static TenantOwned? OwnedBy(TableModel table, ProjectSettings project)
+    public static TenantOwnedShape? OwnedBy(TableModel table, ProjectSettings project)
     {
         if (!project.ApiAuth || project.TenantTable is not { } tenantName || table.TableName.EqualsIgnoreCase(tenantName) || project.NoTenant(table.TableName))
             return null;
@@ -129,7 +129,7 @@ public static class TenantPlan
         if (column is not { IsInt32Column: true, IsNullable: false })
             return null;
         bool points = table.ForeignKeys.Any(f => f.ReferencingColumns.Count == 1 && f.ReferencingColumns[0].EqualsIgnoreCase(column.Name) && f.ReferencedTable.EqualsIgnoreCase(tenantName));
-        return points ? new TenantOwned(table, column) : null;
+        return points ? new TenantOwnedShape(table, column) : null;
     }
 
     /// <summary> The tenant column of an editable child table (<c>EditableChildren</c>), or null when the child is not tenant-owned. The parent's save stamps it on every child row, the way an ordinary create does. </summary>
@@ -144,15 +144,15 @@ public static class TenantPlan
         return points ? column : null;
     }
 
-    public static IReadOnlyList<TenantOwned> OwnedTables(DatabaseModel database, ProjectSettings project) =>
-        database.Tables.Select(t => OwnedBy(t, database, project)).OfType<TenantOwned>().OrderBy(o => o.Table.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    public static IReadOnlyList<TenantOwnedShape> OwnedTables(DatabaseModel database, ProjectSettings project) =>
+        database.Tables.Select(t => OwnedBy(t, database, project)).OfType<TenantOwnedShape>().OrderBy(o => o.Table.TableName, StringComparer.OrdinalIgnoreCase).ToList();
 
     /// <summary> The text column of the tenant table that names the tenant of a host name (<c>TenantHostColumn</c>), or null when the project names none or the column cannot be used (see <see cref="Problems"/>). </summary>
     public static ColumnModel? HostColumnOf(DatabaseModel database, ProjectSettings project) =>
         project.TenantHostColumn is { } name ? TenantTableOf(database, project)?.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(name) && c.IsStringColumn && !c.IsLongTextColumn) : null;
 
     /// <summary> The membership junction the project names, or null when it names none or cannot be used (see <see cref="Problems"/>). </summary>
-    public static TenantMembership? MembershipOf(DatabaseModel database, ProjectSettings project)
+    public static TenantMembershipShape? MembershipOf(DatabaseModel database, ProjectSettings project)
     {
         if (project.TenantMembership is not { } setting)
             return null;
@@ -166,7 +166,7 @@ public static class TenantPlan
         var role = parts.Length > 3 && parts[3].Length > 0 ? Named(parts[3]) : null;
         if (user is not { IsInt32Column: true } || tenant is not { IsInt32Column: true } || (parts.Length > 3 && parts[3].Length > 0 && role is not { IsStringColumn: true }))
             return null;
-        return new TenantMembership(table, user, tenant, role);
+        return new TenantMembershipShape(table, user, tenant, role);
     }
 
     /// <summary> Every reason the tenant settings cannot be served, empty when they can (or are not set). </summary>

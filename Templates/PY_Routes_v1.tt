@@ -40,7 +40,7 @@
     var ownerColumn = auth ? TableShapes.For(Model, Project).Owner : null;
     var ownerLink = auth ? TableShapes.For(Model, Project).OwnerThrough : null;
     var userPlan = auth ? TableShapes.For(Model, Project).User : null;
-    // a table with a Name and an IsActive column (NameActivePlan): the list is by name, GET active and GET {name} are added, a name is trimmed, may not be empty and may not be that of another active row
+    // a table with a Name and an IsActive column (NameActiveShape): the list is by name, GET active and GET {name} are added, a name is trimmed, may not be empty and may not be that of another active row
     var nameActive = TableShapes.For(Model, Project).NameActive;
     string idPath = nameActive is null ? "{id}" : "{id:int}";   // a name in that place is the start of a name, not a key
     // TenantTable (PY_Tenants, app/routes/tenancy.py): a tenant-owned table shows and changes only the rows of the caller's tenant (another tenant's row is a 404) and stamps the caller's tenant on create and update;
@@ -441,8 +441,8 @@
             Line($"    {k.Field.Name}: {k.Field.Annotation} | None = Query(None, alias=\"{k.Query}\"),");
         if (log)
         {
-            Line($"    range_from: date | None = Query(None, alias=\"{LogTable.FromParameter}\"),");
-            Line($"    range_to: date | None = Query(None, alias=\"{LogTable.ToParameter}\"),");
+            Line($"    range_from: date | None = Query(None, alias=\"{LogShape.FromParameter}\"),");
+            Line($"    range_to: date | None = Query(None, alias=\"{LogShape.ToParameter}\"),");
         }
         Line("):");
         Line("    if page_number < 1:");

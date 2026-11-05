@@ -142,8 +142,8 @@ public class PythonRustApprovalsTests
         {
             ["ProjectName"] = "Shop", ["ApiAuth"] = "true", ["UserTable"] = "Employee", ["UserNameColumn"] = "Login", ["PasswordHashColumn"] = "PasswordHash", ["UserRoleColumn"] = "IsManager", ["RowApprovals"] = "TimeSheet"
         });
-        var plan = new ApprovalPlan([new ApprovalTable(timeSheet, timeSheet.Columns[0], side, side.Columns[0], side.Columns[0], side.Columns[0], side.Columns[0], side.Columns[0], side.Columns[0], side.Columns[0], side.Columns[0], side.Columns[0], side.Columns[0])],
-            new UserTablePlan(employee, employee.Columns[1], employee.Columns[2], null, employee.Columns[3], "Manager", "Employee", null), []);
+        var plan = new ApprovalPlan([new ApprovalTableShape(timeSheet, timeSheet.Columns[0], side, side.Columns[0], side.Columns[0], side.Columns[0], side.Columns[0], side.Columns[0], side.Columns[0], side.Columns[0], side.Columns[0], side.Columns[0], side.Columns[0])],
+            new UserTableShape(employee, employee.Columns[1], employee.Columns[2], null, employee.Columns[3], "Manager", "Employee", null), []);
 
         var seed = ApprovalTestSeed.For(plan, database, project, out string reason);
 

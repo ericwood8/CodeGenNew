@@ -29,6 +29,9 @@ public class FeatureFlags
     private readonly AuthSession session;
     private Dictionary<string, bool> flags = new(StringComparer.OrdinalIgnoreCase);
     private string? loadedFor;
+<# if (Project.FeatureRefreshSeconds > 0) { #>
+    private readonly Timer refresh;   // FeatureRefreshSeconds
+<# } #>
 
     public FeatureFlags(HttpClient http, AuthSession session)
     {
@@ -36,6 +39,9 @@ public class FeatureFlags
         this.session = session;
         session.Changed += () => _ = LoadAsync();
         _ = LoadAsync();
+<# if (Project.FeatureRefreshSeconds > 0) { #>
+        refresh = new Timer(_ => _ = RefreshAsync(), null, TimeSpan.FromSeconds(<#= Project.FeatureRefreshSeconds #>), TimeSpan.FromSeconds(<#= Project.FeatureRefreshSeconds #>));
+<# } #>
     }
 
     /// <summary> Raised when the flags have been read again. </summary>
@@ -53,6 +59,26 @@ public class FeatureFlags
         Changed?.Invoke();
     }
 
+<# if (Project.FeatureRefreshSeconds > 0) { #>
+    /// <summary> Reads the flags again while the person works, so a flag switched by someone else shows without a new sign-in; a read that fails keeps the flags the app has. </summary>
+    public async Task RefreshAsync()
+    {
+        if (!session.IsSignedIn)
+            return;
+        try
+        {
+            var now = await http.GetFromJsonAsync<Dictionary<string, bool>>("<#= FeatureScreenWords.Path #>");
+            if (now is null)
+                return;
+            flags = new Dictionary<string, bool>(now, StringComparer.OrdinalIgnoreCase);
+            Changed?.Invoke();
+        }
+        catch (HttpRequestException)
+        {
+        }
+    }
+
+<# } #>
     public async Task LoadAsync()
     {
         await session.InitializeAsync();
