@@ -44,7 +44,7 @@ public static class DesktopMembersCode
         string personText = nameColumn is null
             ? $"(t.{user.UserName.CSharpName()} ?? \"\")"
             : $"({(nameColumn.IsNullable ? $"t.{nameColumn.CSharpName()} ?? \"\"" : $"t.{nameColumn.CSharpName()}")}) + \" (\" + t.{user.UserName.CSharpName()} + \")\"";
-        string seatKey = SubscriptionPlan.LimitedTables(database, project).FirstOrDefault(l => l.IsMembership)?.LimitKey ?? "";
+        string seatKey = SubscriptionFeature.LimitedTables(database, project).FirstOrDefault(l => l.IsMembership)?.LimitKey ?? "";
         bool seats = DesktopSubscriptionCode.Applies(database, project) && seatKey.Length > 0;   // the plan limits the people of a tenant: the Add member dialog checks it
         return FillAll(CodeText, ("§NS", viewNamespace), ("§CTX", contextType), ("§USINGS", string.Concat(usings.Select(u => $"using {u};\n")) + (seats ? $"using {project.RepoNamespace ?? "MyApp.Common.Repositories"};\n" : "")),
             ("§SEATCHECK", seats ? FillAll(SeatCheckText, ("§SEATKEY", CSharpText.Quote(seatKey))) : ""),

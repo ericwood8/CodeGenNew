@@ -180,9 +180,9 @@ public static class PeopleApi
         }
         else
         {
-<# if (SubscriptionPlan.IsEnabled(Project)) { #>
+<# if (SubscriptionFeature.IsEnabled(Project)) { #>
             if ((int)response.StatusCode == <#= HttpStatus.PaymentRequired #>)
-                message = await ApiSupport.ProblemDetailAsync(response) ?? "<#= SubscriptionPlan.PausedFallback #>";
+                message = await ApiSupport.ProblemDetailAsync(response) ?? "<#= SubscriptionFeature.PausedFallback #>";
             else
 <# } #>
             message = (int)response.StatusCode == <#= HttpStatus.Conflict #> ? "<#= PeopleWords.MemberExistsDetail #>" : "Problem while adding!";

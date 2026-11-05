@@ -92,7 +92,7 @@
         bool textKey = form.TypedKey;   // the key is a box on the form (typed on a new row, read-only on an existing one) and a column of the grid
         string title = form.Title;                // Time Sheet
         bool hasName = form.HasName; // just for showError's message wording below
-        bool planned = SubscriptionPlan.PausesWrites(Model, Project);   // a write can be answered 402 (subscription paused, plan limit reached): the form shows the API's sentence
+        bool planned = SubscriptionFeature.PausesWrites(Model, Project);   // a write can be answered 402 (subscription paused, plan limit reached): the form shows the API's sentence
         const int pageSize = 20;
         // Same order as Model.SearchableColumns (not "Name first" like the form fields below) - matches
         // TSX_Api.tt's own filters object property order exactly. Empty for a table with no searchable
@@ -182,9 +182,9 @@
             T("const planDetail = (error: unknown): string => {");
             T("  try {");
             T("    const body = JSON.parse((error as Error).message) as { detail?: unknown };");
-            T($"    return typeof body.detail === 'string' ? body.detail : '{SubscriptionPlan.PausedFallback}';");
+            T($"    return typeof body.detail === 'string' ? body.detail : '{SubscriptionFeature.PausedFallback}';");
             T("  } catch {");
-            T($"    return '{SubscriptionPlan.PausedFallback}';");
+            T($"    return '{SubscriptionFeature.PausedFallback}';");
             T("  }");
             T("};");
             T();

@@ -9,19 +9,19 @@ namespace CodeGenNew.Core;
 public static class PythonSubscriptionWriter
 {
     /// <summary> Whether the project asks for subscriptions over a Python API: <c>SubscriptionTable</c> with the tenants of the Python API. </summary>
-    public static bool Applies(ProjectSettings project) => SubscriptionPlan.IsEnabled(project) && PythonTenantWriter.Applies(project);
+    public static bool Applies(ProjectSettings project) => SubscriptionFeature.IsEnabled(project) && PythonTenantWriter.Applies(project);
 
     public static string File(DatabaseModel database, ProjectSettings project)
     {
-        var subscription = SubscriptionPlan.SubscriptionOf(database, project)!;
-        var limit = SubscriptionPlan.LimitTableOf(database, project);
-        var limited = limit is null ? [] : SubscriptionPlan.LimitedTables(database, project);
+        var subscription = SubscriptionFeature.SubscriptionOf(database, project)!;
+        var limit = SubscriptionFeature.LimitTableOf(database, project);
+        var limited = limit is null ? [] : SubscriptionFeature.LimitedTables(database, project);
         var tenantTable = TenantPlan.TenantTableOf(database, project)!;
         string Str(string value) => PythonNames.Str(value);
 
         var o = new StringBuilder();
         o.Append(FillAll(Head, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType), ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType), ("§TOOSMALL_TYPE", SubscriptionWords.PlanTooSmallType)));
-        o.Append($"\nACTIVE_STATUSES = ({string.Join(", ", SubscriptionPlan.ActiveStatuses(project).Select(s => Str(s.ToLowerInvariant())))},)\n");
+        o.Append($"\nACTIVE_STATUSES = ({string.Join(", ", SubscriptionFeature.ActiveStatuses(project).Select(s => Str(s.ToLowerInvariant())))},)\n");
         o.Append($"REQUIRED = {(project.SubscriptionRequired ? "True" : "False")}\n");
         o.Append($"S_KEY = {Str(subscription.Key.DbName)}\nS_TENANT = {Str(subscription.Tenant.DbName)}\nS_PLAN = {Str(subscription.Plan.DbName)}\nS_STATUS = {Str(subscription.Status.DbName)}\n");
         var typed = new List<string> { $"column(S_KEY, Integer)", "column(S_TENANT, Integer)", "column(S_PLAN, Integer)", "column(S_STATUS, String)" };
@@ -96,7 +96,7 @@ public static class PythonSubscriptionWriter
             ("§GATEWAYUPDATE", subscription.Gateway is null ? "" : "    if body.gatewayId is not None:\n        values[S_GATEWAY] = body.gatewayId.strip()\n"),
             ("§PRICEREAD", subscription.PlanPrice is null ? "null()" : "plans.c[P_PRICE]"), ("§PERIODREAD", subscription.PlanPeriod is null ? "null()" : "plans.c[P_PERIOD]"),
             ("§LIMITHELPERS", limit is null ? NoLimitHelpers : LimitHelpers)));
-        if (SubscriptionPlan.HasWebhook(database, project))
+        if (SubscriptionFeature.HasWebhook(database, project))
             o.Append(FillAll(Webhook, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§HEADER", SubscriptionWords.WebhookHeader), ("§TOLERANCE", SubscriptionWords.WebhookToleranceSeconds.ToString()),
                 ("§SIGNATURE_TYPE", SubscriptionWords.WebhookSignatureType), ("§EXPIRED_TYPE", SubscriptionWords.WebhookExpiredType), ("§WEBHOOKPATH", SubscriptionWords.WebhookPath),
                 ("§SIGNATURE_TEXT", SubscriptionWords.WebhookSignatureText), ("§EXPIRED_TEXT", SubscriptionWords.WebhookExpiredText), ("§UNCONFIGURED_TEXT", SubscriptionWords.WebhookUnconfiguredText),

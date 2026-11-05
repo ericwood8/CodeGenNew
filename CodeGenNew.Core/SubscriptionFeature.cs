@@ -88,7 +88,7 @@ public sealed record LimitedTable(TableModel Table, string LimitKey, ColumnModel
 /// <summary> Plans, subscriptions and entitlements for SaaS billing (<c>SubscriptionTable</c>, <c>PlanLimitTable</c>, <c>PlanLimits</c>), on top of the tenants (<c>TenantTable</c>). A tenant's writes stop while its subscription is not in
 /// <c>SubscriptionActiveStatuses</c> (default trialing and active; a trial also ends on its period end date), a create in a limited table is refused when the tenant already has what the plan allows, and
 /// <c>GET /api/subscription</c> and <c>PUT /api/subscription/{tenantId}</c> read and change the subscription. The payment gateway is outside the generator: the code holds only the ids and the status it reports. </summary>
-public static class SubscriptionPlan
+public static class SubscriptionFeature
 {
     public static readonly string[] DefaultActiveStatuses = ["trialing", "active"];
     public const string MembersPath = "/api/auth/members";

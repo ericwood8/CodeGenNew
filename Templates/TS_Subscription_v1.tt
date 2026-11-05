@@ -14,7 +14,7 @@
     string servicesFolder = Project.ServicesFolder;
     string componentsFolder = Project.ComponentsFolder;
     bool controlFlow = Project.AngularControlFlow;
-    if (SubscriptionPlan.HasPage(Database, Project))
+    if (SubscriptionFeature.HasPage(Database, Project))
     {
         string html = @"<div class=""subscription"">
   <h1>" + SubscriptionScreenWords.Title + @"</h1>

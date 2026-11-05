@@ -6,7 +6,7 @@ namespace CodeGenNew.Tests;
 
 /// <summary> SubscriptionTable, PlanTable, PlanLimitTable, PlanLimits, SubscriptionActiveStatuses and SubscriptionRequired: plans, subscriptions and entitlements on top of the tenants. </summary>
 [TestClass]
-public class SubscriptionPlanTests
+public class SubscriptionFeatureTests
 {
     private static readonly string[] PlanTables =
     [
@@ -48,25 +48,25 @@ public class SubscriptionPlanTests
         var database = await ReadAsync();
         var project = ProjectSettings.FromValues(Values());
 
-        Assert.IsEmpty(SubscriptionPlan.Problems(database, project));
-        var subscription = SubscriptionPlan.SubscriptionOf(database, project)!;
+        Assert.IsEmpty(SubscriptionFeature.Problems(database, project));
+        var subscription = SubscriptionFeature.SubscriptionOf(database, project)!;
         Assert.AreEqual("PlanId", subscription.Plan.Name);
         Assert.AreEqual("Status", subscription.Status.Name);
         Assert.AreEqual("CurrentPeriodEnd", subscription.PeriodEnd!.Name);
         Assert.AreEqual("CurrentPeriodStart", subscription.PeriodStart!.Name);
         Assert.AreEqual("GatewaySubscriptionId", subscription.Gateway!.Name);
         Assert.AreEqual("Name", subscription.PlanName!.Name);
-        var limit = SubscriptionPlan.LimitTableOf(database, project)!;
+        var limit = SubscriptionFeature.LimitTableOf(database, project)!;
         Assert.AreEqual("LimitKey", limit.Key.Name);
         Assert.AreEqual("LimitValue", limit.Value.Name);
-        var limited = SubscriptionPlan.LimitedTables(database, project);
+        var limited = SubscriptionFeature.LimitedTables(database, project);
         CollectionAssert.AreEqual(new[] { "Project", "EmployeeTenant" }, limited.Select(l => l.Table.TableName).ToArray());
         Assert.IsFalse(limited[0].IsMembership);
         Assert.AreEqual("IsDeleted", limited[0].Deleted!.Name, "a soft-deleted project is not counted");
         Assert.IsTrue(limited[1].IsMembership);
         Assert.AreEqual("/api/auth/members", limited[1].CreatePath);
-        Assert.AreEqual("Project", SubscriptionPlan.TestWriteTable(database, project)!.Table.TableName, "the first limited table whose only foreign key is the tenant");
-        Assert.AreEqual("Project", SubscriptionPlan.TestWriteTable(database, ProjectSettings.FromValues(Values(new() { ["PlanLimits"] = "ProjectTask:tasks" })))!.Table.TableName, "a limited table with another foreign key is not used; the next simple one is");
+        Assert.AreEqual("Project", SubscriptionFeature.TestWriteTable(database, project)!.Table.TableName, "the first limited table whose only foreign key is the tenant");
+        Assert.AreEqual("Project", SubscriptionFeature.TestWriteTable(database, ProjectSettings.FromValues(Values(new() { ["PlanLimits"] = "ProjectTask:tasks" })))!.Table.TableName, "a limited table with another foreign key is not used; the next simple one is");
     }
 
     [TestMethod]
@@ -90,7 +90,7 @@ public class SubscriptionPlanTests
     public async Task A_setting_that_cannot_be_served_is_named_with_the_reason()
     {
         var database = await ReadAsync();
-        string Problems(Dictionary<string, string> extra) => string.Join(" | ", SubscriptionPlan.Problems(database, ProjectSettings.FromValues(Values(extra))));
+        string Problems(Dictionary<string, string> extra) => string.Join(" | ", SubscriptionFeature.Problems(database, ProjectSettings.FromValues(Values(extra))));
 
         Assert.Contains("need SubscriptionTable", Problems(new() { ["SubscriptionTable"] = "" }));
         Assert.Contains("needs TenantTable and ApiAuth", Problems(new() { ["ApiAuth"] = "false" }));
@@ -106,7 +106,7 @@ public class SubscriptionPlanTests
         Assert.Contains("the limit name projects is used twice", Problems(new() { ["PlanLimits"] = "Project:projects,ProjectTask:projects" }));
         Assert.Contains("PlanLimits: Nope is not a table", Problems(new() { ["PlanLimits"] = "Nope:things" }));
         Assert.Contains("PlanLimitTable: PlanLimit needs a text column that names the limit (Missing)", Problems(new() { ["PlanLimitTable"] = "PlanLimit:PlanId:Missing" }));
-        Assert.IsEmpty(SubscriptionPlan.Problems(database, ProjectSettings.FromValues(TenantPlanTests.Values())), "no setting, no problem");
+        Assert.IsEmpty(SubscriptionFeature.Problems(database, ProjectSettings.FromValues(TenantPlanTests.Values())), "no setting, no problem");
     }
 
     [TestMethod]
@@ -121,7 +121,7 @@ public class SubscriptionPlanTests
         {
             var request = new CodeGenNew.Connections.ConnectionRequest { Provider = CodeGenNew.Connections.DatabaseProvider.Sqlite, ServerName = "", DatabaseName = database };
             var model = await CodeGenNew.SchemaIntrospection.SchemaProviderFactory.Create(request, Path.Combine(Repo.Root, "SpecialLogicColumns.config")).BuildAsync(database, "main");
-            Assert.Contains("SeatsBought cannot be NULL and has no default", string.Join(" | ", SubscriptionPlan.Problems(model, ProjectSettings.FromValues(Values()))));
+            Assert.Contains("SeatsBought cannot be NULL and has no default", string.Join(" | ", SubscriptionFeature.Problems(model, ProjectSettings.FromValues(Values()))));
         }
         finally
         {
@@ -133,8 +133,8 @@ public class SubscriptionPlanTests
     [TestMethod]
     public void The_statuses_a_tenant_may_write_in_default_to_trialing_and_active()
     {
-        CollectionAssert.AreEqual(new[] { "trialing", "active" }, SubscriptionPlan.ActiveStatuses(ProjectSettings.FromValues(Values())));
-        CollectionAssert.AreEqual(new[] { "paid", "grace" }, SubscriptionPlan.ActiveStatuses(ProjectSettings.FromValues(Values(new() { ["SubscriptionActiveStatuses"] = "paid,grace" }))));
+        CollectionAssert.AreEqual(new[] { "trialing", "active" }, SubscriptionFeature.ActiveStatuses(ProjectSettings.FromValues(Values())));
+        CollectionAssert.AreEqual(new[] { "paid", "grace" }, SubscriptionFeature.ActiveStatuses(ProjectSettings.FromValues(Values(new() { ["SubscriptionActiveStatuses"] = "paid,grace" }))));
         Assert.IsFalse(ProjectSettings.FromValues(Values()).SubscriptionRequired);
         Assert.IsTrue(ProjectSettings.FromValues(Values(new() { ["SubscriptionRequired"] = "true" })).SubscriptionRequired);
     }
@@ -414,9 +414,9 @@ public class SubscriptionPlanTests
     public async Task A_webhook_secret_needs_a_gateway_column()
     {
         var database = await ReadAsync();
-        Assert.IsEmpty(SubscriptionPlan.Problems(database, ProjectSettings.FromValues(Values(new() { ["SubscriptionWebhookSecret"] = Secret }))));
-        Assert.IsTrue(SubscriptionPlan.HasWebhook(database, ProjectSettings.FromValues(Values(new() { ["SubscriptionWebhookSecret"] = Secret }))));
-        Assert.IsFalse(SubscriptionPlan.HasWebhook(database, ProjectSettings.FromValues(Values())), "no secret named, no webhook");
+        Assert.IsEmpty(SubscriptionFeature.Problems(database, ProjectSettings.FromValues(Values(new() { ["SubscriptionWebhookSecret"] = Secret }))));
+        Assert.IsTrue(SubscriptionFeature.HasWebhook(database, ProjectSettings.FromValues(Values(new() { ["SubscriptionWebhookSecret"] = Secret }))));
+        Assert.IsFalse(SubscriptionFeature.HasWebhook(database, ProjectSettings.FromValues(Values())), "no secret named, no webhook");
         string[] noGateway = [PlanTables[0], PlanTables[1], PlanTables[2].Replace(", GatewaySubscriptionId VARCHAR(80) NULL", "")];
         string path = TenantPlanTests.CreateDatabase(noGateway);
         try
@@ -424,7 +424,7 @@ public class SubscriptionPlanTests
             var request = new CodeGenNew.Connections.ConnectionRequest { Provider = CodeGenNew.Connections.DatabaseProvider.Sqlite, ServerName = "", DatabaseName = path };
             var provider = CodeGenNew.SchemaIntrospection.SchemaProviderFactory.Create(request, Path.Combine(Repo.Root, "SpecialLogicColumns.config"));
             var bare = await provider.BuildAsync(path, "main");
-            var problems = SubscriptionPlan.Problems(bare, ProjectSettings.FromValues(Values(new() { ["SubscriptionWebhookSecret"] = Secret })));
+            var problems = SubscriptionFeature.Problems(bare, ProjectSettings.FromValues(Values(new() { ["SubscriptionWebhookSecret"] = Secret })));
             Expect.Contains(string.Join(" | ", problems), "SubscriptionWebhookSecret needs a gateway id column");
         }
         finally

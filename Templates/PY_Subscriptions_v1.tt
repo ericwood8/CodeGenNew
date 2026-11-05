@@ -8,13 +8,13 @@
     // PY_Subscriptions_v1.tt
     // Generates: app/routes/subscriptions.py   (whole-database; the path is written by the template)
     // The Python counterpart of API_Subscriptions (plans, subscriptions and entitlements, SubscriptionTable): the check that pauses a tenant's writes while its subscription is not active (require_user calls it), the plan
-    // limits on creates and on adding members, GET /api/subscription for the tenant's administrator and PUT /api/subscription/{tenant_id} for a platform administrator. The rules and sentences are SubscriptionPlan and
+    // limits on creates and on adding members, GET /api/subscription for the tenant's administrator and PUT /api/subscription/{tenant_id} for a platform administrator. The rules and sentences are SubscriptionFeature and
     // SubscriptionWords in Core, the text is PythonSubscriptionWriter. Needs ApiAuth=true and TenantTable. Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
     // ==========================================================================================
-    var problems = SubscriptionPlan.Problems(Database, Project);
+    var problems = SubscriptionFeature.Problems(Database, Project);
     if (problems.Count > 0)
         Error(string.Join(" | ", problems));
-    else if (PythonSubscriptionWriter.Applies(Project) && SubscriptionPlan.LookupProblem(Database, Project, "Python") is { } lookupProblem)
+    else if (PythonSubscriptionWriter.Applies(Project) && SubscriptionFeature.LookupProblem(Database, Project, "Python") is { } lookupProblem)
         Error(lookupProblem);
     else if (PythonSubscriptionWriter.Applies(Project))
         Write("@@@FILE app/routes/subscriptions.py@@@\n" + PythonSubscriptionWriter.File(Database, Project));

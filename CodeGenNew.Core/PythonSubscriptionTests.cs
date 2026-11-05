@@ -10,16 +10,16 @@ public static class PythonSubscriptionTests
 {
     /// <summary> Whether the tests are written: <c>PythonTests</c> over a Python API with subscriptions and a database the shared conftest can open (not SQL Server). </summary>
     public static bool Applies(DatabaseModel database, ProjectSettings project) =>
-        PythonTenantTests.Applies(database, project) && PythonSubscriptionWriter.Applies(project) && SubscriptionPlan.Problems(database, project).Count == 0
+        PythonTenantTests.Applies(database, project) && PythonSubscriptionWriter.Applies(project) && SubscriptionFeature.Problems(database, project).Count == 0
         && SubscriptionTestSql.For(database, project, "", out _) is not null;
 
     public static string File(DatabaseModel database, ProjectSettings project)
     {
         var sql = SubscriptionTestSql.For(database, project, "", out _)!;
-        var subscription = SubscriptionPlan.SubscriptionOf(database, project)!;
+        var subscription = SubscriptionFeature.SubscriptionOf(database, project)!;
         string Str(string value) => PythonNames.Str(value);
         string List(IEnumerable<string> statements) => "[" + string.Join(", ", statements.Select(Str)) + "]";
-        bool trialing = SubscriptionPlan.ActiveStatuses(project).Contains("trialing", StringComparer.OrdinalIgnoreCase);
+        bool trialing = SubscriptionFeature.ActiveStatuses(project).Contains("trialing", StringComparer.OrdinalIgnoreCase);
         var write = sql.WriteTable;
 
         var names = SubscriptionScenario.Tokens(project, s => s.PythonName);
@@ -57,8 +57,8 @@ public static class PythonSubscriptionTests
         }
         o.Append(WithNames(RouteCases, ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType)));
         o.Append(WithNames(PlansCase, ("§PRICELINE", subscription.PlanPrice is null ? "" : "    assert info[\"planPrice\"] == mine[\"price\"], \"the view shows the price of the tenant's plan\"\n"),
-            ("§LIMITCOUNT", SubscriptionPlan.LimitedTables(database, project).Count.ToString())));
-        if (SubscriptionPlan.HasWebhook(database, project))
+            ("§LIMITCOUNT", SubscriptionFeature.LimitedTables(database, project).Count.ToString())));
+        if (SubscriptionFeature.HasWebhook(database, project))
         {
             o.Append(WithNames(WebhookCase, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§WEBHOOKPATH", SubscriptionWords.WebhookPath), ("§HEADER", SubscriptionWords.WebhookHeader),
                 ("§EXPIRED_TYPE", SubscriptionWords.WebhookExpiredType), ("§INACTIVE_TYPE", SubscriptionWords.InactiveType),

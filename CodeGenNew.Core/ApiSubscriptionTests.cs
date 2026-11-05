@@ -7,23 +7,23 @@ namespace CodeGenNew.Core;
 public static class ApiSubscriptionTests
 {
     public static bool Applies(DatabaseModel database, ProjectSettings project) =>
-        project.ApiTests && project.ApiAuth && TenantPlan.IsEnabled(project) && SubscriptionPlan.IsEnabled(project) && SubscriptionPlan.Problems(database, project).Count == 0;
+        project.ApiTests && project.ApiAuth && TenantPlan.IsEnabled(project) && SubscriptionFeature.IsEnabled(project) && SubscriptionFeature.Problems(database, project).Count == 0;
 
     public static string ClassText(DatabaseModel database, ProjectSettings project)
     {
         var o = new StringBuilder();
         void L(string text = "") => o.Append(text).Append('\n');
         string Name(string key) => SubscriptionScenario.Get(project, key).CSharpName;
-        var subscription = SubscriptionPlan.SubscriptionOf(database, project)!;
-        var limit = SubscriptionPlan.LimitTableOf(database, project);
+        var subscription = SubscriptionFeature.SubscriptionOf(database, project)!;
+        var limit = SubscriptionFeature.LimitTableOf(database, project);
         var tenantTable = TenantPlan.TenantTableOf(database, project)!;
         var tenantKey = JsonNames.Camel(tenantTable.PrimaryKeyColumns[0].Name);
         string tenantRoute = ApiRequests.Route(tenantTable), admin = project.AuthAdminRole, apis = project.ApiNamespace ?? (project.ProjectName ?? "MyApp") + ".Api.Apis";
         string activeLine = tenantTable.IsActiveColumn is { } flag ? $"        body[\"{JsonNames.Camel(flag.Name)}\"] = true;\n" : "";
-        var write = SubscriptionPlan.TestWriteTable(database, project);
+        var write = SubscriptionFeature.TestWriteTable(database, project);
         string writeRoute = write is null ? "" : ApiRequests.Route(write.Table);
-        var limited = write is null || limit is null ? null : SubscriptionPlan.LimitedTables(database, project).FirstOrDefault(l => l.Table == write.Table && !l.IsMembership);
-        bool trialing = SubscriptionPlan.ActiveStatuses(project).Contains("trialing", StringComparer.OrdinalIgnoreCase);
+        var limited = write is null || limit is null ? null : SubscriptionFeature.LimitedTables(database, project).FirstOrDefault(l => l.Table == write.Table && !l.IsMembership);
+        bool trialing = SubscriptionFeature.ActiveStatuses(project).Contains("trialing", StringComparer.OrdinalIgnoreCase);
 
         L($"namespace {project.ProjectName ?? "MyApp"}.Api.Tests;");
         L();
@@ -343,14 +343,14 @@ public static class ApiSubscriptionTests
         L("            Assert.AreEqual(info[\"planName\"]!.GetValue<string>(), mine[\"name\"]!.GetValue<string>());");
         if (subscription.PlanPrice is not null)
             L("            Assert.AreEqual(mine[\"price\"]?.ToJsonString(), info[\"planPrice\"]?.ToJsonString(), \"the view shows the price of the tenant's plan\");");
-        L($"            Assert.AreEqual({SubscriptionPlan.LimitedTables(database, project).Count}, mine[\"limits\"]!.AsArray().Count, \"each plan lists every limit\");");
+        L($"            Assert.AreEqual({SubscriptionFeature.LimitedTables(database, project).Count}, mine[\"limits\"]!.AsArray().Count, \"each plan lists every limit\");");
         L("        }");
         L("        finally");
         L("        {");
         L("            await RemoveAsync(tenant, plan);");
         L("        }");
         L("    }");
-        if (SubscriptionPlan.HasWebhook(database, project))
+        if (SubscriptionFeature.HasWebhook(database, project))
         {
             string typeSignature = SubscriptionWords.WebhookSignatureType.Split('/').Last(), typeExpired = SubscriptionWords.WebhookExpiredType.Split('/').Last();
             L();

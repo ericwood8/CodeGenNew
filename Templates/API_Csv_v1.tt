@@ -36,7 +36,7 @@
     // a table in LogTables is only read: its export takes the date range, lists newest first and stops at MaxRows; it has no import
     bool anyLog = tables.Any(t => TableShapes.For(t, Project).Log is not null);
     // an import into a table with a plan limit counts every row of the file against the limit (SubscriptionLimits.ImportRefusalAsync, API_Subscriptions)
-    bool counted = SubscriptionPlan.IsEnabled(Project) && SubscriptionPlan.LimitedTables(Database, Project).Count > 0;
+    bool counted = SubscriptionFeature.IsEnabled(Project) && SubscriptionFeature.LimitedTables(Database, Project).Count > 0;
     string repositoryNamespace = Project.RepoNamespace ?? "MyApp.Common.Repositories";
 
     string Columns(TableModel table)

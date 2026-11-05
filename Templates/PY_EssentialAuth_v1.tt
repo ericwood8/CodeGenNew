@@ -196,7 +196,7 @@ def require_user(request: Request) -> CurrentUser:
         from app.routes.tenancy import <#= hosts ? "check_host, " : "" #>ensure_active
 
         ensure_active(tenant)
-<# if (SubscriptionPlan.IsEnabled(Project)) { #>
+<# if (SubscriptionFeature.IsEnabled(Project)) { #>
         from app.routes.subscriptions import check_write
 
         check_write(request, tenant)

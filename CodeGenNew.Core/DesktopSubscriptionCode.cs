@@ -9,7 +9,7 @@ namespace CodeGenNew.Core;
 public static class DesktopSubscriptionCode
 {
     public static bool Applies(DatabaseModel database, ProjectSettings project) =>
-        TenantPlan.HasDesktopTenants(project) && SubscriptionPlan.IsEnabled(project) && SubscriptionPlan.Problems(database, project).Count == 0;
+        TenantPlan.HasDesktopTenants(project) && SubscriptionFeature.IsEnabled(project) && SubscriptionFeature.Problems(database, project).Count == 0;
 
     /// <summary> The lines of <c>SaveAsync</c> that run the subscription check before a row is saved (eight spaces in): a paused subscription, or a new row past the plan's limit, is the dialog's error (any table: the API pauses every write of a tenant, so the app does too). Empty when the app has no
     /// subscription check. </summary>
@@ -20,22 +20,22 @@ public static class DesktopSubscriptionCode
     /// leaves the method, <paramref name="isNew"/> the expression that says rows are added (the plan's limit is checked then; "false" checks only that the subscription is active) and <paramref name="adding"/> how many.
     /// Empty when the app has no subscription check. </summary>
     public static string WriteLines(ProjectSettings project, TableModel table, string context, string error, string exit, string isNew = "false", string adding = "1", int indent = 8) =>
-        Lines(project, SubscriptionPlan.IsEnabled(project), table.TableName, context, error, exit, isNew, adding, indent);
+        Lines(project, SubscriptionFeature.IsEnabled(project), table.TableName, context, error, exit, isNew, adding, indent);
 
     /// <summary> The pause check alone, for a screen that writes through its own context and is not about one tenant-owned table (a junction editor, an approval button): a paused subscription is <paramref name="error"/>.
     /// Empty when the app has no subscription check. </summary>
     public static string AnyWriteLines(ProjectSettings project, string context, string error, string exit, int indent = 8) =>
-        Lines(project, SubscriptionPlan.IsEnabled(project), "", context, error, exit, "false", "1", indent);
+        Lines(project, SubscriptionFeature.IsEnabled(project), "", context, error, exit, "false", "1", indent);
 
     /// <summary> The same for the rows of a child grid: the child table is checked, not the row the dialog is about. </summary>
     public static string ChildLines(ProjectSettings project, DesktopChild child, string context, string error, string exit, string isNew = "false", string adding = "1", int indent = 8) =>
-        Lines(project, SubscriptionPlan.IsEnabled(project) && TenantPlan.ChildTenantColumn(child.Grid.Link, project) is not null, child.Table, context, error, exit, isNew, adding, indent);
+        Lines(project, SubscriptionFeature.IsEnabled(project) && TenantPlan.ChildTenantColumn(child.Grid.Link, project) is not null, child.Table, context, error, exit, isNew, adding, indent);
 
     private static string Lines(ProjectSettings project, bool tenantOwned, string tableName, string context, string error, string exit, string isNew, string adding, int indent)
     {
         if (!TenantPlan.HasDesktopTenants(project) || !tenantOwned)
             return "";
-        string key = isNew == "false" ? "" : SubscriptionPlan.Entries(project).FirstOrDefault(e => e.Table.EqualsIgnoreCase(tableName)).Key ?? "";
+        string key = isNew == "false" ? "" : SubscriptionFeature.Entries(project).FirstOrDefault(e => e.Table.EqualsIgnoreCase(tableName)).Key ?? "";
         string pad = new(' ', indent);
         string extra = adding == "1" ? "" : $", {adding}";
         var o = new StringBuilder();
@@ -50,12 +50,12 @@ public static class DesktopSubscriptionCode
     /// <summary> The guard class and the records the page shows, as the text of <c>Repositories/SubscriptionGuard.cs</c> (without the namespace line). </summary>
     public static string Guard(DatabaseModel database, ProjectSettings project, string contextType, string[] usings)
     {
-        var subscription = SubscriptionPlan.SubscriptionOf(database, project)!;
-        var limit = SubscriptionPlan.LimitTableOf(database, project);
-        var limited = limit is null ? [] : SubscriptionPlan.LimitedTables(database, project);
+        var subscription = SubscriptionFeature.SubscriptionOf(database, project)!;
+        var limit = SubscriptionFeature.LimitTableOf(database, project);
+        var limited = limit is null ? [] : SubscriptionFeature.LimitedTables(database, project);
         string planName = subscription.PlanName is null ? $"p.{subscription.PlanKey.CSharpName()}.ToString()"
             : subscription.PlanName.IsNullable ? $"p.{subscription.PlanName.CSharpName()} ?? \"\"" : $"p.{subscription.PlanName.CSharpName()}";
-        string statuses = string.Join(", ", SubscriptionPlan.ActiveStatuses(project).Select(s => CSharpText.Quote(s.ToLowerInvariant())));
+        string statuses = string.Join(", ", SubscriptionFeature.ActiveStatuses(project).Select(s => CSharpText.Quote(s.ToLowerInvariant())));
         string countCases = string.Join("", limited.Select(l =>
         {
             string deleted = l.Deleted is null ? "" : $" && !r.{l.Deleted.CSharpName()}";

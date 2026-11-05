@@ -10,14 +10,14 @@ public static class RustSubscriptionTests
 {
     /// <summary> Whether the tests are written: <c>RustTests</c> over a Rust API with subscriptions and a database the plan can be put in with SQL (not SQL Server). </summary>
     public static bool Applies(DatabaseModel database, ProjectSettings project) =>
-        RustTenantTests.Applies(database, project) && RustSubscriptionWriter.Applies(project) && SubscriptionPlan.Problems(database, project).Count == 0
+        RustTenantTests.Applies(database, project) && RustSubscriptionWriter.Applies(project) && SubscriptionFeature.Problems(database, project).Count == 0
         && SubscriptionTestSql.For(database, project, "", out _) is not null;
 
     public static string File(DatabaseModel database, ProjectSettings project)
     {
         var di = DialectInfo.For(database.Dialect);
         var sql = SubscriptionTestSql.For(database, project, di.Placeholder(1), out _)!;
-        var subscription = SubscriptionPlan.SubscriptionOf(database, project)!;
+        var subscription = SubscriptionFeature.SubscriptionOf(database, project)!;
         string Str(string value) => "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
         string Raw(string statement) => RustTable.Raw(statement);
         string List(IEnumerable<string> statements)
@@ -25,7 +25,7 @@ public static class RustSubscriptionTests
             var items = statements.Select(Raw).ToList();
             return $"[{string.Join(", ", items)}]";
         }
-        bool trialing = SubscriptionPlan.ActiveStatuses(project).Contains("trialing", StringComparer.OrdinalIgnoreCase);
+        bool trialing = SubscriptionFeature.ActiveStatuses(project).Contains("trialing", StringComparer.OrdinalIgnoreCase);
         var write = sql.WriteTable;
         string clearRows = sql.ClearRows is null ? "" : $"    sqlx::query(CLEAR_ROWS).bind(tenant).execute(&api.pool()).await.expect(\"the rows are removed\");\n";
 
@@ -60,8 +60,8 @@ public static class RustSubscriptionTests
         }
         o.Append(WithNames(RouteCases, ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType)));
         o.Append(WithNames(PlansCase, ("§PRICELINE", subscription.PlanPrice is null ? "" : "    assert_eq!(info[\"planPrice\"], mine[\"price\"], \"the view shows the price of the tenant's plan\");\n"),
-            ("§LIMITCOUNT", SubscriptionPlan.LimitedTables(database, project).Count.ToString())));
-        if (SubscriptionPlan.HasWebhook(database, project))
+            ("§LIMITCOUNT", SubscriptionFeature.LimitedTables(database, project).Count.ToString())));
+        if (SubscriptionFeature.HasWebhook(database, project))
         {
             o.Append(WithNames(WebhookCase, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§WEBHOOKPATH", SubscriptionWords.WebhookPath), ("§HEADER", SubscriptionWords.WebhookHeader),
                 ("§EXPIRED_TYPE", SubscriptionWords.WebhookExpiredType),

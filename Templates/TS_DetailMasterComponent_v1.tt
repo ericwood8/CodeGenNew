@@ -124,28 +124,29 @@
             string model = $"row.{JsonNames.Camel(c.Name)}";
             string name = $"[name]=\"'{childVar}{UpperFirst(JsonNames.Camel(c.Name))}' + {childVar}Rows.indexOf(row)\"";
             string req = c.IsNullable ? "" : " required";
-            if (child.EditTypeAhead(c))
+            var kind = child.InputKindOf(c);
+            if (kind == ChildInputKind.TypeAhead)
             {
                 string rowAhead = $"{childVar}{UpperFirst(JsonNames.Camel(c.Name))}Aheads.of(row)";
                 string cellBox = $"{childVar}{UpperFirst(JsonNames.Camel(c.Name))}Box";   // a required cell hands its input to the box, which fails the browser's check while text is typed and not picked
                 return $"<div class=\"type-ahead\"><input type=\"text\" {name}{(req.Length > 0 ? $" #{cellBox}" : "")} autocomplete=\"off\" role=\"combobox\" aria-autocomplete=\"list\" [attr.aria-expanded]=\"{rowAhead}.open\" [ngModel]=\"{rowAhead}.shown({model})\" (ngModelChange)=\"{rowAhead}.type($event{(req.Length > 0 ? ", " + cellBox : "")})\" (blur)=\"{rowAhead}.leave()\"{req}>"
                        + $"<ul class=\"type-ahead-list\" role=\"listbox\" *ngIf=\"{rowAhead}.open\"><li role=\"option\" *ngFor=\"let o of {rowAhead}.options\" (mousedown)=\"{rowAhead}.pick(o)\">{{{{o.name}}}}</li></ul></div>";
             }
-            if (child.EditLookupOf(c) is not null)
+            if (kind == ChildInputKind.Lookup)
                 return $"<select {name} [(ngModel)]=\"{model}\"{req}>{(c.IsNullable ? "<option [ngValue]=\"null\"></option>" : "")}<option *ngFor=\"let p of {childVar}Options['{JsonNames.Camel(c.Name)}']\" [ngValue]=\"p.id\">{{{{p.name}}}}</option></select>";
-            if (c.HasChoices)
+            if (kind == ChildInputKind.Choices)
                 return $"<select {name} [(ngModel)]=\"{model}\"{req}>{(c.IsNullable ? "<option [ngValue]=\"null\"></option>" : "<option value=\"\"></option>")}{string.Concat(c.Choices!.Select(choice => $"<option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>"))}</select>";
-            if (c.IsBooleanColumn)
+            if (kind == ChildInputKind.Boolean)
                 return $"<input type=\"checkbox\" {name} [(ngModel)]=\"{model}\">";
-            if (IsDate(c))
+            if (kind == ChildInputKind.Date)
                 return $"<input type=\"date\" {name} [(ngModel)]=\"{model}\"{req}>";
-            if (child.IsMoneyInput(c))
+            if (kind == ChildInputKind.Money)
             {
                 var money = child.MoneyBoxOf(c);
                 return $"<input type=\"text\" inputmode=\"decimal\" {name} appCurrency currencyCode=\"{money.Currency}\" [digits]=\"{money.Digits}\""
                        + (money.Min is { } lo ? $" [min]=\"{lo}\"" : "") + (money.Max is { } hi ? $" [max]=\"{hi}\"" : "") + $" [(ngModel)]=\"{model}\"{req}>";
             }
-            if (IsNumber(c))
+            if (kind == ChildInputKind.Number)
                 return $"<input type=\"number\" {name} [(ngModel)]=\"{model}\"{child.NumberBoxOf(c).Html}{req}>";
             string max = IsText(c) && Chars(c) > 0 ? $" maxlength=\"{Chars(c)}\"" : "";
             return $"<input type=\"text\" {name} [(ngModel)]=\"{model}\"{max}{req}>";

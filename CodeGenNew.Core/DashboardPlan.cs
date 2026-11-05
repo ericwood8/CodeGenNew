@@ -248,11 +248,11 @@ public sealed class DashboardPlan
         private string Number(string expression) => di.ToDouble(expression);
 
         /// <summary> The value of an empty sum: SQLite types a value by what it holds, so a plain 0 would reach the reader as an integer where every other value of the column is a real. </summary>
-        private string Zero => di.Dialect == SqlDialect.Sqlite ? "0.0" : "0";
+        private string Zero => di.NeedsRealZero ? "0.0" : "0";
 
         /// <summary> The column as a number an aggregate accepts: PostgreSQL's money type has no AVG and no cast to double, so it becomes numeric first. </summary>
         private string Amount(ColumnModel column, string? alias = null) =>
-            di.Dialect == SqlDialect.PostgreSql && column.IsMoneyColumn ? $"CAST({C(column, alias)} AS numeric)" : C(column, alias);
+            di.MoneyNeedsNumericCast && column.IsMoneyColumn ? $"CAST({C(column, alias)} AS numeric)" : C(column, alias);
 
         private string CountSql(TableModel table, string label) => $"SELECT {Lit(label)} AS {QLabel}, {Number("COUNT(*)")} AS {QValue} FROM {T(table)}";
 

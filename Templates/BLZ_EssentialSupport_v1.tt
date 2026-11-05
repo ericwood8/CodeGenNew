@@ -25,7 +25,7 @@ public class ApiException(int status, string message) : Exception(message)
     {
         <#= HttpStatus.BadRequest #> => action == "deleting" ? "It cannot be deleted because it is in use!" : "Some of the values are not acceptable!",
         <#= HttpStatus.NotFound #> => "It no longer exists!",
-<# if (SubscriptionPlan.IsEnabled(Project)) { #>
+<# if (SubscriptionFeature.IsEnabled(Project)) { #>
         <#= HttpStatus.PaymentRequired #> => Message,   // the subscription is paused or the plan allows no more: the API's own sentence
 <# } #>
         _ => $"Problem while {action}!"
@@ -48,9 +48,9 @@ public static class ApiSupport
         if (response.IsSuccessStatusCode)
             return;
         string message = $"{(int)response.StatusCode} {response.ReasonPhrase}";
-<# if (SubscriptionPlan.IsEnabled(Project)) { #>
+<# if (SubscriptionFeature.IsEnabled(Project)) { #>
         if ((int)response.StatusCode == <#= HttpStatus.PaymentRequired #>)
-            message = await ProblemDetailAsync(response) ?? "<#= SubscriptionPlan.PausedFallback #>";
+            message = await ProblemDetailAsync(response) ?? "<#= SubscriptionFeature.PausedFallback #>";
 <# } #>
         throw new ApiException((int)response.StatusCode, message);
     }

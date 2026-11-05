@@ -54,5 +54,9 @@ public class DialectFactsTests
         Assert.IsTrue(DialectInfo.For(SqlDialect.PostgreSql).SupportsCreateIfNotExists);
         Assert.IsTrue(DialectInfo.For(SqlDialect.SqlServer).RefusesKeyForIdentityColumn);
         Assert.IsFalse(DialectInfo.For(SqlDialect.MySql).RefusesKeyForIdentityColumn);
+        Assert.IsTrue(DialectInfo.For(SqlDialect.Sqlite).NeedsRealZero);
+        Assert.IsFalse(DialectInfo.For(SqlDialect.PostgreSql).NeedsRealZero);
+        Assert.IsTrue(DialectInfo.For(SqlDialect.PostgreSql).MoneyNeedsNumericCast);
+        Assert.IsFalse(DialectInfo.For(SqlDialect.Sqlite).MoneyNeedsNumericCast);
     }
 }

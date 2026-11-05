@@ -13,7 +13,7 @@
     // ==========================================================================================
     string servicesNamespace = UnoNames.ServicesNamespace(Project);
     string viewNamespace = Project.ViewNamespace ?? Project.AppNamespace + ".Views";
-    if (SubscriptionPlan.HasPage(Database, Project))
+    if (SubscriptionFeature.HasPage(Database, Project))
     {
 #>
 @@@FILE Views/SubscriptionPage.xaml@@@

@@ -165,6 +165,17 @@ public sealed partial class ChildGrid
     /// <summary> A money column of the child that is edited in a money box: not a foreign key drop-down or a list of choices. </summary>
     public bool IsMoneyInput(ColumnModel column) => column.IsMoneyAmount && TemplateHelpers.IsNumber(column) && EditLookupOf(column) is null && !column.HasChoices;
 
+    /// <summary> The control an Angular or React form gives one of the child's columns when its rows are edited inside the form; the first rule that fits decides. </summary>
+    public ChildInputKind InputKindOf(ColumnModel column) =>
+        EditTypeAhead(column) ? ChildInputKind.TypeAhead
+        : EditLookupOf(column) is not null ? ChildInputKind.Lookup
+        : column.HasChoices ? ChildInputKind.Choices
+        : column.IsBooleanColumn ? ChildInputKind.Boolean
+        : TemplateHelpers.IsDate(column) ? ChildInputKind.Date
+        : IsMoneyInput(column) ? ChildInputKind.Money
+        : TemplateHelpers.IsNumber(column) ? ChildInputKind.Number
+        : ChildInputKind.Text;
+
     /// <summary> The columns of the child a person edits inside the form (<see cref="EditableChild.Columns"/>). </summary>
     public IReadOnlyList<ColumnModel> EditColumns => EditableChild.Columns(Link);
 
@@ -213,3 +224,5 @@ public sealed partial class ChildGrid
     [System.Text.RegularExpressions.GeneratedRegex("Id$")]
     private static partial System.Text.RegularExpressions.Regex IdSuffix();
 }
+
+public enum ChildInputKind { TypeAhead, Lookup, Choices, Boolean, Date, Money, Number, Text }

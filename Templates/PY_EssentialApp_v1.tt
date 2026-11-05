@@ -361,7 +361,7 @@ from app.routes.tenancy import public_router as tenancy_public_router
 <# if (auth && Project.UserTable is not null) { #>
 from app.people import public_router as people_public_router, router as people_router
 <# } #>
-<# if (auth && TenantPlan.HasApiTenancy(Project) && SubscriptionPlan.IsEnabled(Project) && Project.SubscriptionWebhookSecret is not null) { #>
+<# if (auth && TenantPlan.HasApiTenancy(Project) && SubscriptionFeature.IsEnabled(Project) && Project.SubscriptionWebhookSecret is not null) { #>
 from app.routes.subscriptions import public_router as subscription_public_router
 <# } #>
 <#
@@ -394,7 +394,7 @@ app.include_router(auth_router)
 <# if (TenantPlan.HasApiTenancy(Project)) { #>
 app.include_router(tenancy_public_router)
 <# } #>
-<# if (TenantPlan.HasApiTenancy(Project) && SubscriptionPlan.IsEnabled(Project) && Project.SubscriptionWebhookSecret is not null) { #>
+<# if (TenantPlan.HasApiTenancy(Project) && SubscriptionFeature.IsEnabled(Project) && Project.SubscriptionWebhookSecret is not null) { #>
 app.include_router(subscription_public_router)
 <# } #>
 <# if (Project.UserTable is not null) { #>

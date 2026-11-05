@@ -622,7 +622,7 @@ public partial class ProjectSettings
     /// <summary> The junction that lets one person work in several tenants (<c>TenantMembership=UserTenant:UserId:TenantId:Role</c>: the table, its person column, its tenant column and optionally a text role column). </summary>
     public string? TenantMembership => Explicit("TenantMembership") is { } text && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null;
 
-    /// <summary> The table of subscriptions (<c>SubscriptionTable=Subscription:PlanId:Status:PeriodEnd:GatewayId</c>: a tenant-owned table and optionally its plan, status, period end and gateway id columns). See <see cref="SubscriptionPlan"/>. </summary>
+    /// <summary> The table of subscriptions (<c>SubscriptionTable=Subscription:PlanId:Status:PeriodEnd:GatewayId</c>: a tenant-owned table and optionally its plan, status, period end and gateway id columns). See <see cref="SubscriptionFeature"/>. </summary>
     public string? SubscriptionTable => Explicit("SubscriptionTable") is { } text && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null;
 
     /// <summary> The name of the environment variable (or configuration key) that holds the shared secret of the payment gateway's webhook (<c>SubscriptionWebhookSecret=GATEWAY_WEBHOOK_SECRET</c>). With a gateway column on the subscription table the
@@ -983,7 +983,7 @@ public partial class ProjectSettings
     public bool? NoApi(string table, LookupShape shape) => IsApprovalSide(table) || IsSubscriptionManaged(table) ? true : Resolve("NoApiTables", table, shape);
 
     /// <summary> The plan, plan limit and subscription tables (<c>PlanTable</c>, <c>PlanLimitTable</c>, <c>SubscriptionTable</c>): they get no ordinary API, since a list and edit screen would let a tenant's administrator change a plan, a limit or
-    /// their own subscription. The subscription routes (<see cref="SubscriptionPlan"/>) are the only way to read or change them. </summary>
+    /// their own subscription. The subscription routes (<see cref="SubscriptionFeature"/>) are the only way to read or change them. </summary>
     public bool IsSubscriptionManaged(string table) => SubscriptionTable is not null
         && new[] { SubscriptionTable, PlanTable, PlanLimitTable }.Any(s => s is not null && s.Split(':', 2)[0].Trim().EqualsIgnoreCase(table));
 

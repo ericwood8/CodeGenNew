@@ -182,6 +182,12 @@ public sealed class DialectInfo
     /// <summary> True for SQL Server: a row with a value for an identity column is refused unless identity insert is switched on, so a copy that keeps the key cannot go into one. </summary>
     public bool RefusesKeyForIdentityColumn => Dialect == SqlDialect.SqlServer;
 
+    /// <summary> True for SQLite: it types a value by what it holds, so an empty sum has to be written 0.0 to reach a reader as a real. </summary>
+    public bool NeedsRealZero => Dialect == SqlDialect.Sqlite;
+
+    /// <summary> True for PostgreSQL: the money type has no AVG and no cast to double, so an aggregate casts it to numeric first. </summary>
+    public bool MoneyNeedsNumericCast => Dialect == SqlDialect.PostgreSql;
+
     /// <summary> The namespace prefix of the ADO.NET driver's classes (<c>Npgsql.</c>), for generated code that names a driver type. </summary>
     public string DriverPrefix => Dialect switch { SqlDialect.PostgreSql => "Npgsql.", SqlDialect.MySql => "MySqlConnector.", _ => "Microsoft.Data.SqlClient." };
 

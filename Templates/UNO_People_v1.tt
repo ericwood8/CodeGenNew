@@ -38,7 +38,7 @@ public static class PeopleApi
 @@@FILE Views/MembersPage.xaml@@@
 <#= DesktopMembersCode.Xaml(viewNamespace, people.Membership!.Role is not null) #>
 @@@FILE Views/MembersPage.xaml.cs@@@
-<#= UnoMembersCode.Code(viewNamespace, servicesNamespace, people.Membership!.Role is not null, SubscriptionPlan.IsEnabled(Project)) #>
+<#= UnoMembersCode.Code(viewNamespace, servicesNamespace, people.Membership!.Role is not null, SubscriptionFeature.IsEnabled(Project)) #>
 <#
         }
     }

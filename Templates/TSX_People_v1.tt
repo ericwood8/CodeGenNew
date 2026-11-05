@@ -113,10 +113,10 @@ export function MembersPage() {
       setAdding(false);
       load();
     } catch (error) {
-<# if (SubscriptionPlan.IsEnabled(Project)) { #>
+<# if (SubscriptionFeature.IsEnabled(Project)) { #>
       if (error instanceof ApiError && error.status === <#= HttpStatus.PaymentRequired #>) {
         // the plan allows no more seats, or the subscription is paused: the API says which
-        try { setMessage((JSON.parse(error.message) as { detail?: string }).detail ?? '<#= SubscriptionPlan.PausedFallback #>'); } catch { setMessage('<#= SubscriptionPlan.PausedFallback #>'); }
+        try { setMessage((JSON.parse(error.message) as { detail?: string }).detail ?? '<#= SubscriptionFeature.PausedFallback #>'); } catch { setMessage('<#= SubscriptionFeature.PausedFallback #>'); }
         return;
       }
 <# } #>

@@ -66,7 +66,7 @@ public static class DesktopApprovalsCode
         o.Append("    public Task<List<ApprovalView>> ToApproveAsync(string table) => table switch\n    {\n" + Dispatch("ToApproveAsync(context)") + "\n        _ => throw new ArgumentException(table)\n    };\n\n");
         o.Append("    public Task<List<ApprovalView>> HistoryAsync(string table, int id) => table switch\n    {\n" + Dispatch("HistoryAsync(context, id)") + "\n        _ => throw new ArgumentException(table)\n    };\n\n");
         // with plans and subscriptions a paused subscription refuses a request, a decision and a withdrawal in the words of the API
-        bool paused = project is not null && TenantPlan.HasDesktopTenants(project) && SubscriptionPlan.IsEnabled(project);
+        bool paused = project is not null && TenantPlan.HasDesktopTenants(project) && SubscriptionFeature.IsEnabled(project);
         string Change(string signature, string call) => paused
             ? "    public async Task " + signature + "\n    {\n        if (await SubscriptionGuard.RefusalAsync(context, null, false) is { } paused)\n            throw new ApprovalRefused(402, paused);\n        await (table switch\n        {\n" + Dispatch(call) + "\n            _ => throw new ArgumentException(table)\n        });\n    }\n\n"
             : "    public Task " + signature + " => table switch\n    {\n" + Dispatch(call) + "\n        _ => throw new ArgumentException(table)\n    };\n\n";

@@ -15,12 +15,12 @@ public sealed record SubscriptionTestSql(long PlanKey, string AddPlan, IReadOnly
     public static SubscriptionTestSql? For(DatabaseModel database, ProjectSettings project, string tenantPlaceholder, out string reason)
     {
         reason = "";
-        if (database.Dialect == SqlDialect.SqlServer || SubscriptionPlan.SubscriptionOf(database, project) is not { } subscription)
+        if (database.Dialect == SqlDialect.SqlServer || SubscriptionFeature.SubscriptionOf(database, project) is not { } subscription)
         {
             reason = "no subscription table, or SQL Server";
             return null;
         }
-        var limit = SubscriptionPlan.LimitTableOf(database, project);
+        var limit = SubscriptionFeature.LimitTableOf(database, project);
         var di = DialectInfo.For(database.Dialect);
         string Name(TableModel t) => di.QuoteTable(t.SchemaName, t.DbTableName);
         string Q(ColumnModel c) => di.Quote(c.DbName);
@@ -97,8 +97,8 @@ public sealed record SubscriptionTestSql(long PlanKey, string AddPlan, IReadOnly
             };
         }
 
-        var write = SubscriptionPlan.TestWriteTable(database, project);
-        var limited = write is null || limit is null ? null : SubscriptionPlan.LimitedTables(database, project).FirstOrDefault(l => l.Table == write.Table && !l.IsMembership);
+        var write = SubscriptionFeature.TestWriteTable(database, project);
+        var limited = write is null || limit is null ? null : SubscriptionFeature.LimitedTables(database, project).FirstOrDefault(l => l.Table == write.Table && !l.IsMembership);
         string? clearRows = write is null ? null : $"DELETE FROM {Name(write.Table)} WHERE {Q(write.Column)} = {tenantPlaceholder}";
         string clearSubscription = $"DELETE FROM {Name(subscription.Table)} WHERE {Q(subscription.Tenant)} = {tenantPlaceholder}";
         return new SubscriptionTestSql(FirstKey, addPlan, removePlan, setLimit, clearSubscription, clearRows, limited?.LimitKey, write?.Table);

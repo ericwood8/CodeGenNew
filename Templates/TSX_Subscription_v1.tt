@@ -13,7 +13,7 @@
     // ==========================================================================================
     string apiFolder = Project.ApiFolder;
     string pagesFolder = Project.PagesFolder;
-    if (SubscriptionPlan.HasPage(Database, Project))
+    if (SubscriptionFeature.HasPage(Database, Project))
     {
 #>
 @@@FILE src/<#= apiFolder #>/subscription.ts@@@

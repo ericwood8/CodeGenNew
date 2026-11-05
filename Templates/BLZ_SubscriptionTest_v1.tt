@@ -11,7 +11,7 @@
     // Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
     // ==========================================================================================
     string ns = BlazorNames.Namespace(Project);
-    if (SubscriptionPlan.HasPage(Database, Project))
+    if (SubscriptionFeature.HasPage(Database, Project))
     {
 #>
 @@@FILE SubscriptionTests.cs@@@

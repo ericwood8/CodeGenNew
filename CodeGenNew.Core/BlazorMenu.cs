@@ -25,7 +25,7 @@ public static class BlazorMenu
         if (project.Auth && PeoplePlan.For(database, project) is { HasMembers: true })
             entries.Add(new BlazorMenuEntry("members", MemberWords.Menu, [project.AuthAdminRole]));
         // administrators see the plan, the status and the limits of their tenant (BLZ_Subscription)
-        if (SubscriptionPlan.HasPage(database, project))
+        if (SubscriptionFeature.HasPage(database, project))
             entries.Add(new BlazorMenuEntry("subscription", SubscriptionScreenWords.Menu, [project.AuthAdminRole]));
         return entries;
     }

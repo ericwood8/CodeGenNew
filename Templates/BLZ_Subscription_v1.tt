@@ -11,7 +11,7 @@
     // tenant has (GET api/subscription). BlazorMenu puts the page in the menu for the administrator role. A save refused with 402 shows the API's sentence (ApiSupport reads the problem detail).
     // Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
     // ==========================================================================================
-    if (SubscriptionPlan.HasPage(Database, Project))
+    if (SubscriptionFeature.HasPage(Database, Project))
     {
 #>
 @@@FILE Pages/Subscription.razor@@@

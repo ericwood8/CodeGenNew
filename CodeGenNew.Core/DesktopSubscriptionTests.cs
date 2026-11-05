@@ -10,14 +10,14 @@ public static class DesktopSubscriptionTests
 
     public static string File(DatabaseModel database, ProjectSettings project, string testNamespace, IEnumerable<string> usings, string contextType)
     {
-        var subscription = SubscriptionPlan.SubscriptionOf(database, project)!;
-        var limit = SubscriptionPlan.LimitTableOf(database, project);
+        var subscription = SubscriptionFeature.SubscriptionOf(database, project)!;
+        var limit = SubscriptionFeature.LimitTableOf(database, project);
         var tenantTable = TenantPlan.TenantTableOf(database, project)!;
         // the context keeps foreign keys unchecked, so any limited table with a key the database makes can hold the rows
-        var limited = limit is null ? null : SubscriptionPlan.LimitedTables(database, project).FirstOrDefault(l => !l.IsMembership && l.Table.PrimaryKeyColumns is [{ IsIdentity: true }]);
+        var limited = limit is null ? null : SubscriptionFeature.LimitedTables(database, project).FirstOrDefault(l => !l.IsMembership && l.Table.PrimaryKeyColumns is [{ IsIdentity: true }]);
         if (limited is null)
             limit = null;
-        bool trialing = SubscriptionPlan.ActiveStatuses(project).Contains("trialing", StringComparer.OrdinalIgnoreCase);
+        bool trialing = SubscriptionFeature.ActiveStatuses(project).Contains("trialing", StringComparer.OrdinalIgnoreCase);
         string Json(string text) => ApiSampleValues.Json(text);
         string Row(TableModel table, params (ColumnModel Column, string Value)[] overrides) =>
             DesktopApprovalTests.SampleJson(table, project, overrides.ToDictionary(o => o.Column.Name, o => o.Value));

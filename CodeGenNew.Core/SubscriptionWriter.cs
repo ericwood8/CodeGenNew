@@ -9,12 +9,12 @@ public static class SubscriptionWriter
 {
     public static string File(DatabaseModel database, ProjectSettings project, string contextType, string[] usings)
     {
-        var cleared = SubscriptionPlan.ClearedTables(database, project);
-        var subscription = SubscriptionPlan.SubscriptionOf(database, project)!;
+        var cleared = SubscriptionFeature.ClearedTables(database, project);
+        var subscription = SubscriptionFeature.SubscriptionOf(database, project)!;
         var tenantTable = TenantPlan.TenantTableOf(database, project)!;
         var tenantKey = TenantPlan.KeyOf(tenantTable)!;
-        var limit = SubscriptionPlan.LimitTableOf(database, project);
-        var limited = limit is null ? [] : SubscriptionPlan.LimitedTables(database, project);
+        var limit = SubscriptionFeature.LimitTableOf(database, project);
+        var limited = limit is null ? [] : SubscriptionFeature.LimitedTables(database, project);
         var gateway = subscription.Gateway;
         string planName = subscription.PlanName is null ? $"p.{subscription.PlanKey.CSharpName()}.ToString()"
             : subscription.PlanName.IsNullable ? $"p.{subscription.PlanName.CSharpName()} ?? \"\"" : $"p.{subscription.PlanName.CSharpName()}";
@@ -24,7 +24,7 @@ public static class SubscriptionWriter
             o.Append($"using {u};\n");
         o.Append("using System.Security.Claims;\nusing Microsoft.AspNetCore.Mvc;\nusing Microsoft.EntityFrameworkCore;\n\n");
 
-        string statuses = string.Join(", ", SubscriptionPlan.ActiveStatuses(project).Select(s => CSharpText.Quote(s.ToLowerInvariant())));
+        string statuses = string.Join(", ", SubscriptionFeature.ActiveStatuses(project).Select(s => CSharpText.Quote(s.ToLowerInvariant())));
         (string, string)[] names =
         [
             ("§CTX", contextType), ("§S", subscription.Table.TableName), ("§SKEY", subscription.Key.CSharpName()), ("§STENANT", subscription.Tenant.CSharpName()), ("§SPLAN", subscription.Plan.CSharpName()),
@@ -105,7 +105,7 @@ public static class SubscriptionWriter
         if (gateway is not null)
             o.Append(FillAll(Gateway, names.Concat([("§SGATEWAY", gateway.CSharpName()), ("§PERIODSET", subscription.PeriodEnd is null ? "" : $"        if (periodEnd is {{ }} end)\n            row.{subscription.PeriodEnd.CSharpName()} = {Stamp(subscription.PeriodEnd, "end")};\n")]).ToArray()));
 
-        bool webhook = SubscriptionPlan.HasWebhook(database, project);
+        bool webhook = SubscriptionFeature.HasWebhook(database, project);
         if (webhook)
             o.Append(FillAll(Webhook, names.Concat([("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§HEADER", SubscriptionWords.WebhookHeader), ("§TOLERANCE", SubscriptionWords.WebhookToleranceSeconds.ToString()),
                 ("§SIGNATURE_TYPE", SubscriptionWords.WebhookSignatureType), ("§EXPIRED_TYPE", SubscriptionWords.WebhookExpiredType), ("§SIGNATURE_TEXT", SubscriptionWords.WebhookSignatureText),

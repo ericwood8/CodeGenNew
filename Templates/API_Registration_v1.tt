@@ -89,7 +89,7 @@
         Line();
         Line("        TenantRoutes.Register(app);");
     }
-    if (SubscriptionPlan.IsEnabled(Project) && Project.ApiAuth && TenantPlan.IsEnabled(Project))
+    if (SubscriptionFeature.IsEnabled(Project) && Project.ApiAuth && TenantPlan.IsEnabled(Project))
     {
         Line();
         Line("        SubscriptionRoutes.Register(app);");

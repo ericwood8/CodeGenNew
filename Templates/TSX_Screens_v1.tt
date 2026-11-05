@@ -66,7 +66,7 @@
     bool membersPage = Project.Auth && PeoplePlan.For(Database, Project) is { HasMembers: true };   // administrators say who works in the tenant (TSX_People)
     if (membersPage)
         Line($"import {{ MembersPage }} from './{pagesFolder}/MembersPage';");
-    bool subscriptionPage = SubscriptionPlan.HasPage(Database, Project);   // the administrator sees the plan, the status and the limits (TSX_Subscription)
+    bool subscriptionPage = SubscriptionFeature.HasPage(Database, Project);   // the administrator sees the plan, the status and the limits (TSX_Subscription)
     if (subscriptionPage)
         Line($"import {{ SubscriptionPage }} from './{pagesFolder}/SubscriptionPage';");
     Line();

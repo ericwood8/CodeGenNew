@@ -89,7 +89,7 @@
         string keyInLink = form.TextKey ? $"encodeURIComponent(selectedRow?.{JsonNames.Camel(keyColumn.Name)} ?? '')" : $"selectedRow?.{JsonNames.Camel(keyColumn.Name)}";
         string title = form.Title;
         bool hasName = form.HasName; // just for showError's message wording below
-        bool planned = SubscriptionPlan.PausesWrites(Model, Project);   // a write can be answered 402 (subscription paused, plan limit reached): the form shows the API's sentence
+        bool planned = SubscriptionFeature.PausesWrites(Model, Project);   // a write can be answered 402 (subscription paused, plan limit reached): the form shows the API's sentence
         const int pageSize = 20;
         // The same paging and search bar as TSX_Page: one text box per searchable column (Model.SearchableColumns), paged by the API's /search endpoint.
         // The Search list protocol (ListProtocol=Search) has one search box for the whole table; the server decides which columns it matches.
@@ -126,26 +126,27 @@
             string req = c.IsNullable ? "" : " required";
             string change(string value) => $"change{method}(row, {{ {prop}: {value} }})";
             string number = "event.target.value === '' ? null : Number(event.target.value)";
-            if (child.EditTypeAhead(c))
+            var kind = child.InputKindOf(c);
+            if (kind == ChildInputKind.TypeAhead)
             {
                 string cellTs = IsNumber(c) ? "number" : "string";
                 return $"<TypeAheadBox<{cellTs}> label=\"{GridCaption.For(c, Labels.Field(c))}\" value={{row.{prop}}} names={{{childVar}{UpperFirst(prop)}Names}} find={{find{method}{UpperFirst(prop)}}} onChange={{(id) => {change("id")}}}{req} />";
             }
-            if (child.EditLookupOf(c) is not null)
+            if (kind == ChildInputKind.Lookup)
                 return $"<select {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change(IsNumber(c) ? number : "event.target.value || null")}}}{req}><option value=\"\"></option>{{({childVar}Options['{prop}'] ?? []).map((p) => <option key={{p.id}} value={{p.id}}>{{p.name}}</option>)}}</select>";
-            if (c.HasChoices)
+            if (kind == ChildInputKind.Choices)
                 return $"<select {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change(c.IsNullable ? "event.target.value || null" : "event.target.value")}}}{req}><option value=\"\"></option>{string.Concat(c.Choices!.Select(choice => $"<option value=\"{ChoiceFormat.Html(choice)}\">{ChoiceFormat.Html(choice)}</option>"))}</select>";
-            if (c.IsBooleanColumn)
+            if (kind == ChildInputKind.Boolean)
                 return $"<input type=\"checkbox\" {aria} checked={{!!row.{prop}}} onChange={{(event) => {change("event.target.checked")}}} />";
-            if (IsDate(c))
+            if (kind == ChildInputKind.Date)
                 return $"<input type=\"date\" {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change("event.target.value || null")}}}{req} />";
-            if (child.IsMoneyInput(c))
+            if (kind == ChildInputKind.Money)
             {
                 var money = child.MoneyBoxOf(c);
                 return $"<CurrencyInput label=\"{GridCaption.For(c, Labels.Field(c))}\" value={{row.{prop}}} onChange={{(value) => {change("value ?? " + (c.IsNullable ? "null" : "0"))}}} digits={{{money.Digits}}} currency=\"{money.Currency}\""
                        + (money.Min is { } lo ? $" min={{{lo}}}" : "") + (money.Max is { } hi ? $" max={{{hi}}}" : "") + $"{req} />";
             }
-            if (IsNumber(c))
+            if (kind == ChildInputKind.Number)
                 return $"<input type=\"number\" {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change(number)}}}{child.NumberBoxOf(c).Jsx}{req} />";
             string max = IsText(c) && Chars(c) > 0 ? $" maxLength={{{Chars(c)}}}" : "";
             return $"<input type=\"text\" {aria} value={{row.{prop} ?? ''}} onChange={{(event) => {change("event.target.value")}}}{max}{req} />";
@@ -239,9 +240,9 @@
             T("const planDetail = (error: unknown): string => {");
             T("  try {");
             T("    const body = JSON.parse((error as Error).message) as { detail?: unknown };");
-            T($"    return typeof body.detail === 'string' ? body.detail : '{SubscriptionPlan.PausedFallback}';");
+            T($"    return typeof body.detail === 'string' ? body.detail : '{SubscriptionFeature.PausedFallback}';");
             T("  } catch {");
-            T($"    return '{SubscriptionPlan.PausedFallback}';");
+            T($"    return '{SubscriptionFeature.PausedFallback}';");
             T("  }");
             T("};");
             T();

@@ -37,7 +37,7 @@
     if (membersPage)
         menu.Add((Tag: "Members", Label: MemberWords.Menu, Roles: (IReadOnlyList<string>)new[] { Project.AuthAdminRole }));
     // administrators see the plan, the status and the limits of their tenant (UNO_Subscription)
-    bool subscriptionPage = SubscriptionPlan.HasPage(Database, Project);
+    bool subscriptionPage = SubscriptionFeature.HasPage(Database, Project);
     if (subscriptionPage)
         menu.Add((Tag: "Subscription", Label: SubscriptionScreenWords.Menu, Roles: (IReadOnlyList<string>)new[] { Project.AuthAdminRole }));
     foreach (string table in screens.Select(t => t.TableName).Where(n => !clients.Any(c => c.TableName.EqualsIgnoreCase(n))))

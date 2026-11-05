@@ -9,7 +9,7 @@ namespace CodeGenNew.Core;
 public static class RustSubscriptionWriter
 {
     /// <summary> Whether the project asks for subscriptions over a Rust API: <c>SubscriptionTable</c> with the tenants of the Rust API. </summary>
-    public static bool Applies(ProjectSettings project) => SubscriptionPlan.IsEnabled(project) && RustTenantWriter.Applies(project);
+    public static bool Applies(ProjectSettings project) => SubscriptionFeature.IsEnabled(project) && RustTenantWriter.Applies(project);
 
     private static string IntType(ColumnModel column) => column.SqlType switch
     {
@@ -21,9 +21,9 @@ public static class RustSubscriptionWriter
 
     public static string File(DatabaseModel database, ProjectSettings project)
     {
-        var subscription = SubscriptionPlan.SubscriptionOf(database, project)!;
-        var limit = SubscriptionPlan.LimitTableOf(database, project);
-        var limited = limit is null ? [] : SubscriptionPlan.LimitedTables(database, project);
+        var subscription = SubscriptionFeature.SubscriptionOf(database, project)!;
+        var limit = SubscriptionFeature.LimitTableOf(database, project);
+        var limited = limit is null ? [] : SubscriptionFeature.LimitedTables(database, project);
         var tenantTable = TenantPlan.TenantTableOf(database, project)!;
         var tenantKey = TenantPlan.KeyOf(tenantTable)!;
         var di = DialectInfo.For(tenantTable.Dialect);
@@ -60,7 +60,7 @@ public static class RustSubscriptionWriter
 
         var o = new StringBuilder();
         o.Append(FillAll(Head, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType), ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType),
-            ("§ACTIVE_STATUSES", string.Join(", ", SubscriptionPlan.ActiveStatuses(project).Select(s => Str(s.ToLowerInvariant())))), ("§REQUIRED", project.SubscriptionRequired ? "true" : "false"),
+            ("§ACTIVE_STATUSES", string.Join(", ", SubscriptionFeature.ActiveStatuses(project).Select(s => Str(s.ToLowerInvariant())))), ("§REQUIRED", project.SubscriptionRequired ? "true" : "false"),
             ("§ROWTYPE", "(" + string.Join(", ", rowTypes) + ",)"), ("§READ_SQL", Raw(readSql)), ("§EXISTS_SQL", Raw(existsSql)), ("§PLANNAME_SQL", Raw(planNameSql)), ("§PLANS_SQL", Raw(plansSql)), ("§PLANEXISTS_SQL", Raw(planExistsSql)),
             ("§TENANTEXISTS_SQL", Raw(tenantExistsSql)),
             ("§ENDVALUE", endIndex < 0 ? "None" : $"row.{endIndex}"), ("§GATEWAYVALUE", gatewayIndex < 0 ? "None" : $"row.{gatewayIndex}"),
@@ -135,8 +135,8 @@ public static class RustSubscriptionWriter
             ("§RENEWROUTE", subscription.PeriodEnd is null ? "" : ".route(\"/api/subscription/{tenant_id}/renew\", axum::routing::post(renew_subscription))"),
             ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType), ("§PLATFORM_TEXT", Str(SubscriptionWords.OnlyPlatform).Trim('"')), ("§ADMIN_TEXT", Str(SubscriptionWords.OnlyAdministrator).Trim('"')),
             ("§NEEDS_TEXT", Str(SubscriptionWords.NeedsPlanAndStatus).Trim('"')), ("§UNKNOWNPLAN_TEXT", Str(SubscriptionWords.UnknownPlan).Trim('"')), ("§UNKNOWNTENANT_TEXT", Str(SubscriptionWords.UnknownTenant).Trim('"')),
-            ("§WEBHOOKROUTE", SubscriptionPlan.HasWebhook(database, project) ? $".route(\"{SubscriptionWords.WebhookPath}\", axum::routing::post(webhook))" : "")));
-        if (SubscriptionPlan.HasWebhook(database, project))
+            ("§WEBHOOKROUTE", SubscriptionFeature.HasWebhook(database, project) ? $".route(\"{SubscriptionWords.WebhookPath}\", axum::routing::post(webhook))" : "")));
+        if (SubscriptionFeature.HasWebhook(database, project))
         {
             string findSql = $"SELECT {Q(subscription.Key)}, {Q(subscription.Tenant)} FROM {Table(subscription.Table)} WHERE {Q(subscription.Gateway!)} = {di.Placeholder(1)} ORDER BY {Q(subscription.Key)} DESC";
             string webhookEnd = "";

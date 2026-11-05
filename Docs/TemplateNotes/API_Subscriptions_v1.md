@@ -1,6 +1,6 @@
 # API_Subscriptions_v1 and the SubscriptionTable, PlanTable, PlanLimitTable, PlanLimits, SubscriptionActiveStatuses, SubscriptionRequired and SubscriptionWebhookSecret settings
 
-Plans, subscriptions and entitlements for a SaaS API, on top of the tenants (`TenantTable`, `API_Tenants_v1.md`). A tenant is on a plan; its subscription has a status; the plan says how much of something the tenant may have. The payment gateway is outside the generator: the generated code holds only the ids and the status the gateway reports, and no card data is ever a column. The rule is `SubscriptionPlan` in Core, the text `SubscriptionWriter`.
+Plans, subscriptions and entitlements for a SaaS API, on top of the tenants (`TenantTable`, `API_Tenants_v1.md`). A tenant is on a plan; its subscription has a status; the plan says how much of something the tenant may have. The payment gateway is outside the generator: the generated code holds only the ids and the status the gateway reports, and no card data is ever a column. The rule is `SubscriptionFeature` in Core, the text `SubscriptionWriter`.
 
 ```
 TenantTable=Tenant

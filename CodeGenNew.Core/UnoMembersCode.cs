@@ -6,7 +6,7 @@ namespace CodeGenNew.Core;
 /// <c>/api/auth/members</c> instead of the database. The page is in the menu for administrators. </summary>
 public static class UnoMembersCode
 {
-    public static string Code(string viewNamespace, string servicesNamespace, bool hasRole, bool plans = false) => FillAll(CodeText, ("§PLANCHECK", plans ? FillAll(PlanCheckText, ("§FALLBACK", SubscriptionPlan.PausedFallback)) : ""), ("§NS", viewNamespace), ("§SERVICES", servicesNamespace),
+    public static string Code(string viewNamespace, string servicesNamespace, bool hasRole, bool plans = false) => FillAll(CodeText, ("§PLANCHECK", plans ? FillAll(PlanCheckText, ("§FALLBACK", SubscriptionFeature.PausedFallback)) : ""), ("§NS", viewNamespace), ("§SERVICES", servicesNamespace),
         ("§ROLEEDIT", hasRole ? FillAll(RoleEditText, RoleTokens) : ""), ("§ROLEBODY", hasRole ? ", role = newRole" : ""), ("§ROLEBOX", hasRole ? FillAll(RoleBoxText, RoleTokens) : ""), ("§ROLEPANEL", hasRole ? ", roleBox" : ""),
         ("§ROLEREAD", hasRole ? "\n        string newRole = roleBox.Text.Trim();" : ""),
         ("§MEMBERSPATH", PeopleWords.MembersPath), ("§CANDIDATESPATH", PeopleWords.CandidatesPath), ("§NOBODY", MemberWords.NobodyToAdd), ("§ADMINS", PeopleWords.MembersAdminsOnlyDetail),

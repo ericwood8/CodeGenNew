@@ -52,7 +52,7 @@
     // ReadRoles with the sign-in: a screen of a table whose reads are limited to some roles carries them (the menu hides it, the route sends the person to a screen they may open)
     string RolesOf(TableModel t) => auth && ScreenMenu.RolesOf(Project, t) is { Count: > 0 } roles ? ", roles: [" + WriteRolePlan.Literal(roles, (char)39) + "]" : "";
     bool membersScreen = auth && PeoplePlan.For(Database, Project) is { HasMembers: true };   // administrators say who works in the tenant (TS_People)
-    bool subscriptionScreen = auth && SubscriptionPlan.HasPage(Database, Project);   // the administrator sees the plan, the status and the limits (TS_Subscription)
+    bool subscriptionScreen = auth && SubscriptionFeature.HasPage(Database, Project);   // the administrator sees the plan, the status and the limits (TS_Subscription)
     bool anyRoles = auth && (membersScreen || subscriptionScreen || screens.Concat(odataScreens).Concat(junctions).Any(t => ScreenMenu.RolesOf(Project, t).Count > 0));
     string guard = auth ? (anyRoles ? ", canActivate: [canRead], data: { roles: s.roles }" : ", canActivate: [authGuard]") : "";
     string stripGuard = auth ? (anyRoles ? ", canActivate: [canRead]" : ", canActivate: [authGuard]") : "";

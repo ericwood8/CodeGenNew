@@ -26,12 +26,12 @@
     // Full notes: Docs/TemplateNotes/API_Subscriptions_v1.md
     // ==========================================================================================
 
-    var problems = SubscriptionPlan.Problems(Database, Project);
+    var problems = SubscriptionFeature.Problems(Database, Project);
     if (problems.Count > 0)
     {
         Error(string.Join(" | ", problems));
     }
-    else if (SubscriptionPlan.IsEnabled(Project))
+    else if (SubscriptionFeature.IsEnabled(Project))
     {
         Write("namespace " + apiNamespace + ";" + "\n\n");
         Write(SubscriptionWriter.File(Database, Project, contextType, usings));

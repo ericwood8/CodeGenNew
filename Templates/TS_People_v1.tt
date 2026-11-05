@@ -198,8 +198,8 @@ export class MembersComponent implements OnInit {
     this.message = '';
     this.people.addMember(this.chosen<#= role ? ", this.newRole" : "" #>).subscribe({
       next: () => { this.adding = false; this.load(); },
-<# if (SubscriptionPlan.IsEnabled(Project)) { #>
-      error: (error) => { this.message = error.status === <#= HttpStatus.PaymentRequired #> ? (error.error?.detail ?? '<#= SubscriptionPlan.PausedFallback #>') : error.status === <#= HttpStatus.Conflict #> ? '<#= PeopleWords.MemberExistsDetail #>' : 'Problem while adding!'; }
+<# if (SubscriptionFeature.IsEnabled(Project)) { #>
+      error: (error) => { this.message = error.status === <#= HttpStatus.PaymentRequired #> ? (error.error?.detail ?? '<#= SubscriptionFeature.PausedFallback #>') : error.status === <#= HttpStatus.Conflict #> ? '<#= PeopleWords.MemberExistsDetail #>' : 'Problem while adding!'; }
 <# } else { #>
       error: (error) => { this.message = error.status === <#= HttpStatus.Conflict #> ? '<#= PeopleWords.MemberExistsDetail #>' : 'Problem while adding!'; }
 <# } #>

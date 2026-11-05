@@ -173,6 +173,16 @@ public class TypeAheadTests
     }
 
     [TestMethod]
+    public void An_edited_child_cell_gets_the_control_its_column_asks_for()
+    {
+        var listed = ChildGrid.For(InvoiceWithLines(5000), Project(("EditableChildren", "SalesInvoice.SalesInvoiceLine"))).Single();
+
+        Assert.AreEqual(ChildInputKind.TypeAhead, listed.InputKindOf(listed.EditColumns.Single(c => c.Name == "ItemId")));
+        Assert.AreEqual(ChildInputKind.Lookup, listed.InputKindOf(listed.EditColumns.Single(c => c.Name == "UnitId")));
+        Assert.AreEqual(ChildInputKind.Number, listed.InputKindOf(listed.EditColumns.Single(c => c.Name == "Quantity")));
+    }
+
+    [TestMethod]
     public void A_child_row_and_a_child_grid_know_which_of_their_parents_are_too_big()
     {
         var listed = ChildGrid.For(InvoiceWithLines(5000), Project(("EditableChildren", "SalesInvoice.SalesInvoiceLine"))).Single();
