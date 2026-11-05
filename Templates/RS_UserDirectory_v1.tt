@@ -21,6 +21,9 @@
         Error(problem);
     if (plan == null)
         return GenerationEnvironment.ToString();
+    var (held, heldProblem) = PermissionTables.Resolve(Database, Project);
+    if (heldProblem != null)
+        Error(heldProblem);
 
     var di = DialectInfo.For(plan.Table.Dialect);
     string table = di.QuoteTable(plan.Table.SchemaName, plan.Table.DbTableName);
@@ -33,6 +36,8 @@
     if (plan.Owner != null) select.Add($"{Q(plan.Owner)} AS owner");
     if (plan.Role != null) select.Add($"{Q(plan.Role)} AS role");
     if (plan.Admin != null) select.Add($"{Q(plan.Admin)} AS admin");
+    if (held != null)
+        select.Add($"{Q(held.UserKey)} AS ukey");
     string find = $"SELECT {string.Join(", ", select)} FROM {table} WHERE {Q(plan.UserName)} = {di.Placeholder(1)} AND {Q(plan.PasswordHash)} IS NOT NULL AND {Q(plan.PasswordHash)} <> ''";
     string setPassword = $"UPDATE {table} SET {Q(plan.PasswordHash)} = {di.Placeholder(1)} WHERE {Q(plan.UserName)} = {di.Placeholder(2)}";
 
@@ -56,6 +61,24 @@
     Line();
     Line($"const FIND: &str = {RawSql(find)};");
     Line($"const SET_PASSWORD: &str = {RawSql(setPassword)};");
+    string tenantBinds = "";
+    bool tenancy = held != null && TenantPlan.HasApiTenancy(Project);
+    if (held != null)
+    {
+        string T(TableModel t) => di.QuoteTable(t.SchemaName, t.DbTableName);
+        // a tenant column on the person's role rows or on the role table adds a condition on the tenant of the token, one more bound value each
+        string Test(string alias, ColumnModel tenantColumn, int at) => tenantColumn.IsNullable ? $" AND ({alias}.{Q(tenantColumn)} = {di.Placeholder(at)} OR {alias}.{Q(tenantColumn)} IS NULL)" : $" AND {alias}.{Q(tenantColumn)} = {di.Placeholder(at)}";
+        string tenantTests = "";
+        int next = 2;
+        if (held.UserRoleTenant != null) tenantTests += Test("ur", held.UserRoleTenant, next++);
+        if (held.RoleTenant != null) tenantTests += Test("r", held.RoleTenant, next++);
+        tenantBinds = string.Concat(Enumerable.Repeat(".bind(tenant)", next - 2));
+        string permissionRoleJoin = held.RoleTenant == null ? "" : $" JOIN {T(held.Role)} r ON r.{Q(held.RoleKey)} = ur.{Q(held.UserRoleRole)}";
+        string rolesSql = $"SELECT r.{Q(held.RoleName)} FROM {T(held.Role)} r JOIN {T(held.UserRole)} ur ON ur.{Q(held.UserRoleRole)} = r.{Q(held.RoleKey)} WHERE ur.{Q(held.UserRoleUser)} = {di.Placeholder(1)}{tenantTests}";
+        string permissionsSql = $"SELECT DISTINCT p.{Q(held.PermissionName)} FROM {T(held.Permission)} p JOIN {T(held.RolePermission)} rp ON rp.{Q(held.RolePermissionPermission)} = p.{Q(held.PermissionKey)} JOIN {T(held.UserRole)} ur ON ur.{Q(held.UserRoleRole)} = rp.{Q(held.RolePermissionRole)}{permissionRoleJoin} WHERE ur.{Q(held.UserRoleUser)} = {di.Placeholder(1)}{tenantTests}";
+        Line($"const ROLES: &str = {RawSql(rolesSql)};");
+        Line($"const PERMISSIONS: &str = {RawSql(permissionsSql)};");
+    }
     Line("const PASSWORD_VARIABLE: &str = \"NEW_PASSWORD\";");
     Line("pub const MINIMUM_PASSWORD_LENGTH: usize = 8;");
     Line();
@@ -63,14 +86,49 @@
     Line("    let Some(row) = sqlx::query(FIND).bind(user_name.trim()).fetch_optional(pool).await? else {");
     Line("        return Ok(None);");
     Line("    };");
+    if (held != null && tenancy)
+    {
+        Line("    let (roles, permissions) = (Vec::new(), Vec::new());");
+    }
+    else if (held != null)
+    {
+        Line($"    let key: {Type(held.UserKey)} = row.try_get(\"ukey\")?;");
+        Line("    let roles: Vec<String> = sqlx::query_scalar(ROLES).bind(key).fetch_all(pool).await?;");
+        Line("    let permissions: Vec<String> = sqlx::query_scalar(PERMISSIONS).bind(key).fetch_all(pool).await?;");
+    }
     Line("    Ok(Some(DirectoryUser {");
     Line("        user_name: row.try_get(\"name\")?,");
     Line("        password_hash: row.try_get(\"hash\")?,");
     Line($"        role: {roleExpression},");
     Line($"        owner_id: {ownerExpression},");
+    if (held != null)
+    {
+        Line("        roles,");
+        Line("        permissions,");
+    }
     Line("    }))");
     Line("}");
     Line();
+    if (tenancy)
+    {
+        Line("/// The names of the roles and permissions the person holds in the tenant given (none for a person in no tenant), read at sign-in and at a switch of tenant.");
+        Line("pub async fn held_for(pool: &Pool, user_name: &str, tenant: Option<i32>) -> Result<(Vec<String>, Vec<String>), sqlx::Error> {");
+        Line("    let Some(row) = sqlx::query(FIND).bind(user_name.trim()).fetch_optional(pool).await? else {");
+        Line("        return Ok((Vec::new(), Vec::new()));");
+        Line("    };");
+        if (held!.PerTenant)
+        {
+            Line("    if tenant.is_none() {");
+            Line("        return Ok((Vec::new(), Vec::new()));");
+            Line("    }");
+        }
+        Line($"    let key: {Type(held!.UserKey)} = row.try_get(\"ukey\")?;");
+        Line($"    let roles: Vec<String> = sqlx::query_scalar(ROLES).bind(key){tenantBinds}.fetch_all(pool).await?;");
+        Line($"    let permissions: Vec<String> = sqlx::query_scalar(PERMISSIONS).bind(key){tenantBinds}.fetch_all(pool).await?;");
+        Line("    Ok((roles, permissions))");
+        Line("}");
+        Line();
+    }
     Line("/// Runs a command given as the arguments of the program (cargo run with the arguments after a double hyphen): Some(exit code) when the arguments named one, None to start the server.");
     Line("pub async fn command(args: &[String]) -> Option<i32> {");
     Line("    if args.first().is_none_or(|name| !name.eq_ignore_ascii_case(\"set-password\")) {");

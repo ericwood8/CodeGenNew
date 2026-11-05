@@ -53,6 +53,24 @@ public class WriteRolesTests
     }
 
     [TestMethod]
+    public void A_role_list_may_name_a_permission_and_gets_the_roles_that_hold_it()
+    {
+        var permissions = ("Permissions", "edit_billing:Billing,Manager;view_reports:Hr");
+        CollectionAssert.AreEqual(new[] { "Administrator", "Billing", "Manager" }, WriteRolePlan.For(Project(Api, permissions, ("WriteRoles", "@edit_billing")), "Holiday").ToArray());
+        CollectionAssert.AreEqual(new[] { "Administrator", "Hr", "Billing", "Manager" }, WriteRolePlan.For(Project(Api, permissions, ("TableWriteRoles", "Holiday:Hr,@edit_billing")), "Holiday").ToArray());
+        CollectionAssert.AreEqual(new[] { "Administrator", "Hr" }, WriteRolePlan.ReadFor(Project(Api, permissions, ("ReadRoles", "@view_reports")), "Holiday").ToArray());
+        CollectionAssert.AreEqual(new[] { "Administrator" }, WriteRolePlan.For(Project(Api, permissions, ("WriteRoles", "@nobody_holds_this")), "Holiday").ToArray());
+        CollectionAssert.AreEqual(new[] { "Billing", "Manager" }, PermissionPlan.RolesOf(Project(permissions), "EDIT_BILLING").ToArray());
+    }
+
+    [TestMethod]
+    public async Task A_permission_in_a_role_list_reaches_the_API_class_as_its_roles()
+    {
+        string api = await Run("API_Crud_v1.tt", Sample.Holiday(), Api, ("Permissions", "edit_billing:Billing,Manager"), ("WriteRoles", "@edit_billing"));
+        Expect.Contains(api, "protected override IReadOnlyList<string> WriteRoles => [\"Administrator\", \"Billing\", \"Manager\"];");
+    }
+
+    [TestMethod]
     public async Task A_table_with_a_rule_names_its_roles_in_its_API_class_and_other_projects_get_nothing()
     {
         string api = await Run("API_Crud_v1.tt", Sample.Holiday(), Api, ("WriteRoles", "Manager"));

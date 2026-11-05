@@ -22,6 +22,8 @@ public abstract class GateFlavor
     public abstract string Forbidden(ColumnGuard guard);
     /// <summary> An expression of type <c>string?</c>: the name of the person who changes the row. </summary>
     public abstract string CallerName { get; }
+    /// <summary> A C# condition: the caller holds the permission (PermissionTables). </summary>
+    public abstract string HoldsPermission(string permission, ProjectSettings project);
     /// <summary> The body of the method that says whether the caller may change a guarded column (eight spaces in, whole lines). </summary>
     public abstract IEnumerable<string> MayBody(ColumnGuard guard, ProjectSettings project, string contextType);
 }
@@ -35,6 +37,7 @@ public sealed class ApiGateFlavor : GateFlavor
     public override string CallerArgument => ", caller";
     public override string NotFound => "Results.NotFound()";
     public override string CallerName => "caller.FindFirstValue(AuthNames.NameClaim)";
+    public override string HoldsPermission(string permission, ProjectSettings project) => $"caller.HasClaim(AuthNames.PermissionClaim, {CSharpText.Quote(permission)})";
 
     public override string StartRefused(ChangeGate gate) =>
         $"Results.ValidationProblem(new Dictionary<string, string[]> {{ [{CSharpText.Quote(JsonNames.Camel(gate.Column.Name))}] = [{CSharpText.Quote(gate.StartRefusal!)}] }})";
@@ -47,6 +50,11 @@ public sealed class ApiGateFlavor : GateFlavor
 
     public override IEnumerable<string> MayBody(ColumnGuard guard, ProjectSettings project, string contextType)
     {
+        if (guard.Permission is { } permission)
+            return
+            [
+                $"        return await Task.FromResult(caller.IsInRole(AuthNames.AdminRole) || caller.HasClaim(AuthNames.PermissionClaim, {CSharpText.Quote(permission)}));"
+            ];
         string name = guard.UserNameColumn(project).CSharpName();
         return
         [
@@ -55,7 +63,7 @@ public sealed class ApiGateFlavor : GateFlavor
             "        string? name = caller.FindFirstValue(AuthNames.NameClaim);",
             "        if (string.IsNullOrEmpty(name))",
             "            return false;",
-            $"        return await context.Set<{guard.UserTable.TableName}>().AsNoTracking().Where(u => u.{name} == name).Select(u => u.{guard.By.CSharpName()} == true).FirstOrDefaultAsync();"
+            $"        return await context.Set<{guard.UserTable.TableName}>().AsNoTracking().Where(u => u.{name} == name).Select(u => u.{guard.By!.CSharpName()} == true).FirstOrDefaultAsync();"
         ];
     }
 }
@@ -70,6 +78,8 @@ public sealed class DesktopGateFlavor : GateFlavor
     public override string ResultType => "string?";
     public override string NotFound => CSharpText.Quote(NotFoundText);
     public override string CallerName => "DesktopCaller.Name";
+    public override string HoldsPermission(string permission, ProjectSettings project) =>
+        TenantPlan.HasDesktopSignIn(project) ? $"(DesktopSession.User?.Permissions.Contains({CSharpText.Quote(permission)}) == true)" : "false";
     public override string StartRefused(ChangeGate gate) => CSharpText.Quote(gate.StartRefusal!);
     public override string Conflict(ChangeGate gate, string text) => text;
     public override string Forbidden(ColumnGuard guard) => CSharpText.Quote(guard.RefusalText);
@@ -78,7 +88,8 @@ public sealed class DesktopGateFlavor : GateFlavor
     {
         var plan = UserTable.ResolveTable(guard.UserTable, project).Plan!;
         string name = plan.UserName.CSharpName();
-        string allowed = plan.Admin is { } admin ? $"u.{admin.CSharpName()} == true || u.{guard.By.CSharpName()} == true" : $"u.{guard.By.CSharpName()} == true";
+        string flag = guard.By is null ? "false" : $"u.{guard.By.CSharpName()} == true";   // a permission is read from the API's token, so the app lets only an administrator through
+        string allowed = plan.Admin is { } admin ? $"u.{admin.CSharpName()} == true || {flag}" : flag;
         return
         [
             "        string? name = DesktopCaller.Name;",
@@ -153,7 +164,7 @@ public static class GateWriter
         {
             if (check.Gate is { } checkedGate)
             {
-                Line($"        if (await Gate{checkedGate.Column.CSharpName()}Async(context, row, isNew) is {{ }} refused{checkedGate.Column.CSharpName()})");
+                Line($"        if (await Gate{checkedGate.Column.CSharpName()}Async(context{flavor.CallerArgument}, row, isNew) is {{ }} refused{checkedGate.Column.CSharpName()})");
                 Line($"            return refused{checkedGate.Column.CSharpName()};");
                 continue;
             }
@@ -207,11 +218,11 @@ public static class GateWriter
                 : $"(parent_{term.Via.ReferencingColumns[0]} is not null && {GateCode.Test($"parent_{term.Via.ReferencingColumns[0]}.{term.Column.CSharpName()}", term)})";
             string to = GateCode.Test(rowColumn, gate.To);
             string when = GateCode.Predicate(gate.When, TermTest);
-            string unless = gate.Unless is null ? "" : GateCode.Predicate(gate.Unless, TermTest);
+            string unless = string.Join(" || ", new[] { gate.Unless is null ? null : GateCode.Predicate(gate.Unless, TermTest), gate.Exempt is null ? null : flavor.HoldsPermission(gate.Exempt, project) }.Where(t => t is not null));
 
             Line();
             Line($"    // gate {entity}.{gate.Column.Name}: {gate.Description}");
-            Line($"    private static async Task<{result}> Gate{column}Async({contextType} context, {entity} row, bool isNew)");
+            Line($"    private static async Task<{result}> Gate{column}Async({contextType} context{flavor.CallerParameter}, {entity} row, bool isNew)");
             Line("    {");
             Line("        bool moves;");
             Line("        if (isNew)");
@@ -318,7 +329,7 @@ public static class GateWriter
         Line("        await context.SaveChangesAsync();");
         foreach (var gate in gates)
         {
-            Line($"        if (await Gate{gate.Column.CSharpName()}Async(context, copy, true) is {{ }} refused{gate.Column.CSharpName()})");
+            Line($"        if (await Gate{gate.Column.CSharpName()}Async(context{flavor.CallerArgument}, copy, true) is {{ }} refused{gate.Column.CSharpName()})");
             Line("        {");
             Line("            context.Remove(copy);");
             Line("            await context.SaveChangesAsync();");
@@ -331,7 +342,7 @@ public static class GateWriter
         {
             string column = guard.Column.CSharpName();
             Line();
-            Line($"    /// <summary> True when the caller is an administrator or has {guard.UserTable.TableName}.{guard.By.Name} set. </summary>");
+            Line($"    /// <summary> True when the caller is an administrator or has {guard.Holder} set. </summary>");
             Line($"    public static async Task<bool> May{column}Async({contextType} context{flavor.CallerParameter})");
             Line("    {");
             foreach (string body in flavor.MayBody(guard, project, contextType))

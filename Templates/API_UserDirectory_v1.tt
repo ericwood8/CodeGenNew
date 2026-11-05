@@ -17,6 +17,9 @@
     var (plan, problem) = UserTable.Resolve(Database, Project);
     if (problem != null)
         Error(problem);
+    var (permissions, permissionProblem) = PermissionTables.Resolve(Database, Project);
+    if (permissionProblem != null)
+        Error(permissionProblem);
     if (plan == null)
         return GenerationEnvironment.ToString();
 
@@ -86,6 +89,43 @@
     Line("    }");
     Line("}");
     Line();
+    if (permissions is not null)
+    {
+        string Set(TableModel table, ColumnModel? tenantColumn) => $"context.Set<{table.TableName}>(){(tenantColumn is null ? "" : ".IgnoreQueryFilters()")}.AsNoTracking()";
+        string InTenant(string alias, ColumnModel? tenantColumn) => tenantColumn is null ? "" : tenantColumn.IsNullable ? $" && ({alias}.{P(tenantColumn)} == tenantId || {alias}.{P(tenantColumn)} == null)" : $" && {alias}.{P(tenantColumn)} == tenantId";
+        string roleJoin = permissions.RoleTenant is null ? "" : $" join r in {Set(permissions.Role, permissions.RoleTenant)} on ur.{P(permissions.UserRoleRole)} equals r.{P(permissions.RoleKey)}";
+        Line("/// <summary> The role claims of a person (" + permissions.UserRole.TableName + ") and the permission claims those roles hold (" + permissions.RolePermission.TableName + "), so a role list entry <c>@name</c> is allowed for a person who holds that permission."
+            + (permissions.PerTenant ? " Only the roles of the tenant given count. " : " ") + "A role or permission changed in the tables reaches a person at their next sign-in or tenant switch. </summary>");
+        Line("public static class PermissionClaims");
+        Line("{");
+        Line("    public static async Task<List<Claim>> ForAsync(" + contextType + " context, string userName, int? tenantId, CancellationToken cancellationToken = default)");
+        Line("    {");
+        Line($"        var key = await context.Set<{entity}>(){filters}.AsNoTracking().Where(u => u.{P(plan.UserName)} == userName).Select(u => (int?)u.{P(permissions.UserKey)}).FirstOrDefaultAsync(cancellationToken);");
+        Line("        if (key is null)");
+        Line("            return [];");
+        if (permissions.PerTenant)
+        {
+            Line("        if (tenantId is null)");
+            Line("            return [];");
+        }
+        Line($"        var roles = await (from ur in {Set(permissions.UserRole, permissions.UserRoleTenant)} join r in {Set(permissions.Role, permissions.RoleTenant)} on ur.{P(permissions.UserRoleRole)} equals r.{P(permissions.RoleKey)}");
+        Line($"                           where ur.{P(permissions.UserRoleUser)} == key{InTenant("ur", permissions.UserRoleTenant)}{InTenant("r", permissions.RoleTenant)} select r.{P(permissions.RoleName)}).Distinct().ToListAsync(cancellationToken);");
+        Line($"        var held = await (from ur in {Set(permissions.UserRole, permissions.UserRoleTenant)}{roleJoin} join rp in {Set(permissions.RolePermission, null)} on ur.{P(permissions.UserRoleRole)} equals rp.{P(permissions.RolePermissionRole)}");
+        Line($"                          join p in context.Set<{permissions.Permission.TableName}>().AsNoTracking() on rp.{P(permissions.RolePermissionPermission)} equals p.{P(permissions.PermissionKey)}");
+        Line($"                          where ur.{P(permissions.UserRoleUser)} == key{InTenant("ur", permissions.UserRoleTenant)}{InTenant("r", permissions.RoleTenant)} select p.{P(permissions.PermissionName)}).Distinct().ToListAsync(cancellationToken);");
+        Line("        return roles.Where(r => !string.IsNullOrEmpty(r)).Select(r => new Claim(AuthNames.RoleClaim, r!))");
+        Line("            .Concat(held.Where(p => !string.IsNullOrEmpty(p)).Select(p => new Claim(AuthNames.PermissionClaim, p!))).ToList();");
+        Line("    }");
+        Line("}");
+        Line();
+        Line("/// <summary> Adds the claims of <see cref=\"PermissionClaims\"/> to the token at sign-in, for the tenant the person works in. </summary>");
+        Line("public class PermissionLoginClaims(" + contextType + " context) : ITenantLoginClaims");
+        Line("{");
+        Line("    public async Task<LoginClaims> ForAsync(DirectoryUser user, int? tenantId, CancellationToken cancellationToken = default) =>");
+        Line("        new(await PermissionClaims.ForAsync(context, user.UserName, tenantId, cancellationToken));");
+        Line("}");
+        Line();
+    }
     Line("/// <summary> The registration Program.cs calls before AddGeneratedAuth, so the sign-in finds the table and not the single bootstrap administrator. </summary>");
     Line("public static class TableUserDirectoryRegistration");
     Line("{");
@@ -93,6 +133,8 @@
     Line("    {");
     Line("        services.AddScoped<TableUserDirectory>();");
     Line("        services.AddScoped<IUserDirectory>(provider => provider.GetRequiredService<TableUserDirectory>());");
+    if (permissions is not null)
+        Line("        services.AddScoped<ITenantLoginClaims, PermissionLoginClaims>();");
     Line("        return services;");
     Line("    }");
     Line("}");

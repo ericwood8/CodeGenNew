@@ -26,7 +26,7 @@ using System.Text.Json;
 namespace <#= servicesNamespace #>;
 
 /// <summary> Who is signed in: the name, the role and the owner id<#= tenants ? " and tenant" : "" #> the API sent. </summary>
-public record SessionUser(string Name, string? Role, int? OwnerId<#= tenants ? ", int? TenantId = null" : "" #>);
+public record SessionUser(string Name, string? Role, int? OwnerId<#= tenants ? ", int? TenantId = null" : "" #><#= PermissionTables.IsConfigured(Project) ? ", string[]? Roles = null, string[]? Permissions = null" : "" #>);
 <# if (tenants) { #>
 
 /// <summary> One entry of the sign-in's tenant drop-down (GET api/auth/sign-in-tenants, no sign-in needed): the key to sign in to (null: the person's first tenant) and the name to show. </summary>
@@ -116,8 +116,12 @@ public class AuthSession
         Changed?.Invoke();
     }
 
-    /// <summary> Whether the signed-in person's role is one of <paramref name="roles"/>. </summary>
+    /// <summary> Whether the signed-in person's role is one of <paramref name="roles"/><#= PermissionTables.IsConfigured(Project) ? " or one of the roles they hold, or an entry @name names a permission the token carries (PermissionTables)" : "" #>. </summary>
+<# if (PermissionTables.IsConfigured(Project)) { #>
+    public bool HasRole(IEnumerable<string> roles) => User is { } user && roles.Any(r => r.StartsWith('@') ? user.Permissions?.Contains(r[1..]) == true : r == user.Role || user.Roles?.Contains(r) == true);
+<# } else { #>
     public bool HasRole(IEnumerable<string> roles) => User?.Role is { } role && roles.Contains(role);
+<# } #>
 }
 
 /// <summary> Sends the token with every call to the API and signs the person out when the API answers <#= HttpStatus.Unauthorized #> to a call that carried one. </summary>

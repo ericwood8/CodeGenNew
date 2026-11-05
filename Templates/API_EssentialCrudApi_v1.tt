@@ -135,6 +135,9 @@ public abstract class ChildRows<TKey> where TKey : notnull
     /// <summary> The property of the request body that holds the list. </summary>
     public abstract string Name { get; }
 
+    /// <summary> Whether the body's value under <see cref="Name"/> is one this list reads. </summary>
+    public virtual bool Takes(JsonElement rows) => rows.ValueKind == JsonValueKind.Array;
+
     /// <summary> Makes the child table hold exactly the rows of <paramref name="rows"/> for the parent: a row with a key is changed, a row without one is added and the parent's other rows are removed. Saves nothing: the caller saves everything in one transaction. </summary>
     public abstract Task ApplyAsync(DbContext context, TKey parentId, JsonElement rows, JsonSerializerOptions options<#= options.Tenants ? ", int? tenant = null" : "" #>);
 }
@@ -193,6 +196,42 @@ public sealed class ChildRows<TKey, TChild>(string name, Expression<Func<TChild,
     }
 }
 
+/// <summary>
+/// A one-to-one extension of the parent (its primary key is also its foreign key to the parent): the body holds its columns as one object under <see cref="Name"/> (<c>customerProfile</c>).
+/// An object makes the extension row hold exactly those values, adding it when the parent has none; null removes it; a body that leaves the property out leaves the row alone.
+/// </summary>
+public sealed class ExtensionRow<TKey, TChild>(string name, Expression<Func<TChild, TKey>> key) : ChildRows<TKey>
+    where TKey : notnull
+    where TChild : class, new()
+{
+    public override string Name => name;
+
+    public override bool Takes(JsonElement rows) => rows.ValueKind is JsonValueKind.Object or JsonValueKind.Null;
+
+    public override async Task ApplyAsync(DbContext context, TKey parentId, JsonElement rows, JsonSerializerOptions options<#= options.Tenants ? ", int? tenant = null" : "" #>)
+    {
+        var current = await context.Set<TChild>().FindAsync(parentId);
+        if (rows.ValueKind == JsonValueKind.Null)
+        {
+            if (current is not null)
+                context.Remove(current);
+            return;
+        }
+        var sent = rows.Deserialize<TChild>(options) ?? throw new ChildRowsException($"The value of {name} is not a row.");
+        var value = Expression.Parameter(typeof(TKey));
+        Expression.Lambda<Action<TChild, TKey>>(Expression.Assign(key.Body, value), key.Parameters[0], value).Compile()(sent, parentId);
+        if (current is not null)
+        {
+            context.Entry(current).CurrentValues.SetValues(sent);
+            return;
+        }
+        var entry = context.Entry(sent);
+        foreach (var navigation in entry.Navigations)
+            navigation.CurrentValue = null;
+        entry.State = EntityState.Added;
+    }
+}
+
 /// <summary> What CrudApi and NameActiveCrudApi share when the project has editable children: reading the body and saving the lists with the parent. </summary>
 public static class ChildRowsSupport
 {
@@ -234,7 +273,7 @@ public static class ChildRowsSupport
         try
         {
             foreach (var list in lists)
-                if (body.Json.TryGetProperty(list.Name, out var rows) && rows.ValueKind == JsonValueKind.Array)
+                if (body.Json.TryGetProperty(list.Name, out var rows) && list.Takes(rows))
                     await list.ApplyAsync(context, parentId, rows, body.Options<#= options.Tenants ? ", body.Tenant" : "" #>);
             await context.SaveChangesAsync();
             return null;

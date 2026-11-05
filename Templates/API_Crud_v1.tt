@@ -71,6 +71,7 @@
     var ownerLink = plan.OwnerLink;
     string ownerUsing = ownerLink is not null && !usings.Contains("Microsoft.EntityFrameworkCore") ? "using Microsoft.EntityFrameworkCore;\n" : "";
     var editableChildren = plan.EditableChildren;
+    var extensions = plan.Extensions;
     bool listSearch = plan.ListSearch;
     var searchPlan = plan.SearchPlan;
     var searchTerms = plan.SearchTerms;
@@ -159,7 +160,7 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
     // OwnedTables names this table, but it has no NOT NULL whole-number column named <#= Project.OwnerColumn #> (OwnerColumn), so its rows are not scoped to the signed-in person.
 <#
         }
-        if (editableChildren.Count > 0)
+        if (editableChildren.Count + extensions.Count > 0)
         {
 #>
 
@@ -170,6 +171,12 @@ public class <#= entity #>Api : <#= apiBase #><<#= entity #>, <#= entity #>Repo<
             {
 #>
         new ChildRows<<#= keyCSharp #>, <#= child.ReferencingTable #>>("<#= EditableChild.JsonName(child) #>", c => c.<#= child.ReferencingPrimaryKeyColumns[0] #>, c => c.<#= child.ReferencingColumns[0] #><#= TenantPlan.ChildTenantColumn(child, Project) is { } childTenant ? $", c => c.{childTenant.CSharpName()}" : "" #>),
+<#
+            }
+            foreach (var extension in extensions)
+            {
+#>
+        new ExtensionRow<<#= keyCSharp #>, <#= extension.ReferencingTable #>>("<#= EditableChild.ExtensionJsonName(extension) #>", c => c.<#= extension.ReferencingColumns[0] #>),
 <#
             }
 #>

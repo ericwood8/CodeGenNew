@@ -104,9 +104,9 @@
             {
                 string column = FieldOf(table, guard.Column).Name;
                 var userDi = DialectInfo.For(guard.UserTable.Dialect);
-                string sql = $"SELECT {userDi.Quote(guard.By.DbName)} FROM {userDi.QuoteTable(guard.UserTable.SchemaName, guard.UserTable.DbTableName)} WHERE {userDi.Quote(guard.UserNameColumn(Project).DbName)} = {userDi.Placeholder(1)}";
+                string sql = guard.By is null ? "" : $"SELECT {userDi.Quote(guard.By.DbName)} FROM {userDi.QuoteTable(guard.UserTable.SchemaName, guard.UserTable.DbTableName)} WHERE {userDi.Quote(guard.UserNameColumn(Project).DbName)} = {userDi.Placeholder(1)}";
                 Line();
-                Line($"/// True when the caller is an administrator or has {guard.UserTable.TableName}.{guard.By.Name} set.");
+                Line($"/// True when the caller is an administrator or has {guard.Holder} set.");
                 Line($"pub async fn may_{module}_{column}(pool: &Pool, user: &CurrentUser) -> ApiResult<bool> {{");
                 Line("    if user.is_admin() {");
                 Line("        return Ok(true);");
@@ -114,6 +114,13 @@
                 Line("    if user.name.is_empty() {");
                 Line("        return Ok(false);");
                 Line("    }");
+                if (guard.By is null)
+                {
+                    Line("    let _ = pool;");
+                    Line($"    Ok(user.permissions.iter().any(|held| held == {RustTable.Raw(guard.Permission!)}))");
+                    Line("}");
+                    continue;
+                }
                 Line($"    let flag: Option<Option<bool>> = sqlx::query_scalar({RustTable.Raw(sql)}).bind(&user.name).fetch_optional(pool).await?;");
                 Line("    Ok(flag.flatten().unwrap_or(false))");
                 Line("}");
@@ -152,7 +159,7 @@
                 }
                 string to = GateCode.RustTest("row." + column, gate.To, kind, gateField.IsOption);
                 string when = GateCode.RustPredicate(gate.When, TermTest);
-                string unless = gate.Unless is null ? "" : GateCode.RustPredicate(gate.Unless, TermTest);
+                string unless = string.Join(" || ", new[] { gate.Unless is null ? null : GateCode.RustPredicate(gate.Unless, TermTest), gate.Exempt is null ? null : $"user.permissions.iter().any(|held| held == {RustTable.Raw(gate.Exempt)})" }.Where(t => t is not null));
                 string toWords = gate.To.ValueWords();
                 string message = gate.RefusalText;
 

@@ -41,6 +41,7 @@ public sealed class TableShapes
     public SoftDeleteTable? SoftDelete => Shape<SoftDeleteTable>();
     public TreeTable? Tree => Shape<TreeTable>();
     public EffectiveTable? Effective => Shape<EffectiveTable>();
+    public ExtensionTable? Extension => Shape<ExtensionTable>();
     public LogTable? Log => Shape<LogTable>();
     public NameActivePlan? NameActive => Shape<NameActivePlan>();
 
@@ -59,7 +60,7 @@ public sealed class TableShapes
         return (T?)ShapeOf(typeof(T));
     }
 
-    private static readonly Type[] Known = [typeof(SoftDeleteTable), typeof(QueueShape), typeof(LogTable), typeof(TreeTable), typeof(EffectiveTable), typeof(NameActivePlan), typeof(TenantOwned), typeof(JunctionShape), typeof(UserTablePlan), typeof(OwnerLink), typeof(OwnerColumnShape), typeof(TenantTableShape)];
+    private static readonly Type[] Known = [typeof(SoftDeleteTable), typeof(QueueShape), typeof(LogTable), typeof(TreeTable), typeof(EffectiveTable), typeof(ExtensionTable), typeof(NameActivePlan), typeof(TenantOwned), typeof(JunctionShape), typeof(UserTablePlan), typeof(OwnerLink), typeof(OwnerColumnShape), typeof(TenantTableShape)];
     private static readonly Type[] NeedDatabase = [typeof(TenantMembership), typeof(ApprovalTable), typeof(ApprovalSide)];
 
     /// <summary> Every shape the table has, in a fixed order; a table with none gives an empty list. </summary>
@@ -85,6 +86,7 @@ public sealed class TableShapes
         if (shape == typeof(LogTable)) return LogTablePlan.For(_table, _project);
         if (shape == typeof(TreeTable)) return TreePlan.For(_table, _project);
         if (shape == typeof(EffectiveTable)) return EffectiveDatePlan.For(_table, _project);
+        if (shape == typeof(ExtensionTable)) return ExtensionPlan.For(_table, _project);
         if (shape == typeof(NameActivePlan)) return NameActivePlan.For(_table, _project);
         if (shape == typeof(TenantOwned)) return TenantPlan.OwnedBy(_table, _project);
         if (shape == typeof(JunctionShape)) return _table.Junction;

@@ -56,7 +56,12 @@
     string writeDepends = writeRoles.Count > 0 ? ", dependencies=[Depends(require_roles(WRITE_ROLES, True))]" : "";
     PythonField? FieldOf(ColumnModel? column) => column is null ? null : t.SchemaFields.FirstOrDefault(f => f.Column.Name.EqualsIgnoreCase(column.Name));
     var ownerField = FieldOf(ownerColumn);
-    var tenantField = FieldOf(tenantOwned?.Column);
+    // the role table with a nullable tenant column in NoTenantTables: a tenant reads its own roles and the shared ones (NULL)
+    var sharedColumn = tenancy ? PermissionTables.SharedRoleTenant(Model, Project) : null;
+    bool sharedTenant = sharedColumn is not null;
+    var tenantField = FieldOf(tenantOwned?.Column ?? sharedColumn);
+    string tenantOnly = sharedTenant ? "only_tenant_or_shared" : "only_tenant";
+    string tenantRefuse = sharedTenant ? "refuse_other_tenant_or_shared" : "refuse_other_tenant";
     // the people of the user table belong to a tenant by their membership rows (TenantMembership): a tenant shows only its own members and a person added inside a tenant becomes one (tenancy.py decides what applies)
     bool people = tenancy && userPlan is not null && Project.TenantMembership is not null && tenantField is null;
     bool tenanted = tenantField is not null || tenantTable || people;
@@ -81,7 +86,7 @@
     string TenantFilter(string statement) => tenantTable
         ? $"    {statement} = only_own_tenant({statement}, {t.Class}.{key}, user)"
         : people ? $"    {statement} = only_members({statement}, {t.Class}.{key}, user)"
-        : $"    {statement} = only_tenant({statement}, {t.Class}.{tenantField!.Name}, user)";
+        : $"    {statement} = {tenantOnly}({statement}, {t.Class}.{tenantField!.Name}, user)";
     var treePlan = TableShapes.For(Model, Project).Tree;
     var treeNames = treePlan is null ? null : new PythonTreeWriter.Names(t.Class, key, FieldOf(treePlan.Parent)!.Name, FieldOf(treePlan.Text)?.Name, tenanted ? TenantFilter("statement") : "");
     // SoftDeleteTables: a flagged row is hidden from every read of the table, the delete flags it, GET deleted lists the flagged rows and POST {id}/restore brings one back
@@ -100,7 +105,7 @@
         : new PythonEffectiveWriter.Names(t.Class, key, effFrom.Name, effTo.Name, effFrom.Annotation, effGroups.Select(g => new PythonEffectiveWriter.Group(g!.Name, g.Json, g.Annotation)).ToList(), tenanted ? TenantFilter("statement") : "", t.Schema);
     string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{key}, user)"
         : people ? $"    refuse_non_member(session, {row}.{key}, user)"
-        : $"    refuse_other_tenant({row}.{tenantField!.Name}, user)";
+        : $"    {tenantRefuse}({row}.{tenantField!.Name}, user)";
 
     Line($"@@@FILE app/routes/{t.Module}.py@@@");
     var clonedDates = new[] { "datetime", "date" }.Where(w => t.Clone?.Any(c => c.Value.StartsWith(w + ".")) == true
@@ -173,7 +178,7 @@
         var tenancyNames = tenantTable
             ? new List<string> { "attach_admin", "attach_creator", "is_platform", "never_deleted", "only_own_tenant", "only_platform", "refuse_other_tenant_row" }
             : people ? new List<string> { "attach_person", "detach_person", "only_members", "refuse_non_member" }
-            : new List<string> { "only_tenant", "refuse_other_tenant", "require_tenant" };
+            : new List<string> { tenantOnly, tenantRefuse, "require_tenant" };
         Line("from app.routes.tenancy import " + string.Join(", ", tenancyNames.OrderBy(n => n, StringComparer.Ordinal)));
     }
     Line($"from app.models.{t.Module} import {t.Class}");
@@ -299,7 +304,7 @@
         Line("        if key is not None:");
         Line($"            statement = statement.where({t.Class}.{key} != key)");
         if (tenantField is not null)
-            Line($"        statement = only_tenant(statement, {t.Class}.{tenantField.Name}, user)");
+            Line($"        statement = {tenantOnly}(statement, {t.Class}.{tenantField.Name}, user)");
         Line("        if (session.scalar(statement) or 0) > 0:");
         Line($"            raise ApiError({HttpStatus.Conflict}, {Str(NameActiveWords.DuplicateTitle)}, problem_type=\"{ProblemTypes.DuplicateName}\", detail=f{Str(NameActiveWords.DuplicateDetailFormat.Replace("{0}", "{body." + nameCol.Name + "}"))})");
         Line();
@@ -641,10 +646,12 @@
         Line($"    check_{t.Module}(session, user, body, row)");
     if (nameActive is not null)
         Line(tenanted ? "    check_name(session, body, id, user)" : "    check_name(session, body, id)");
+    if (sharedTenant)
+        Line($"    current_tenant = row.{tenantField!.Name}");
     Line("    for name, value in body.changes().items():");
     Line("        setattr(row, name, value)");
     if (tenantField is not null)
-        Line($"    row.{tenantField.Name} = user.tenant_id   # a row never moves to another tenant");
+        Line(sharedTenant ? $"    row.{tenantField.Name} = current_tenant   # a row never moves to another tenant, and a shared row stays shared" : $"    row.{tenantField.Name} = user.tenant_id   # a row never moves to another tenant");
     foreach (var f in t.StampedOnChange)
         Line($"    row.{f.Name} = {PythonTable.Now(f)}");
     Line("    try:");

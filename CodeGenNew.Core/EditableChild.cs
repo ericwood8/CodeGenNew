@@ -8,6 +8,21 @@ public static class EditableChild
     public static IReadOnlyList<ChildForeignKeyModel> Of(TableModel parent, ProjectSettings project) =>
         project.EditableChildren.Length == 0 ? [] : parent.ChildForeignKeys.Where(fk => IsEditable(parent, fk, project)).ToList();
 
+    /// <summary> The one-to-one extensions of <paramref name="parent"/> the project lists in <c>EditableChildren</c> (<c>Customer.CustomerProfile</c>): a child table whose one-column primary key is also its foreign key to the parent's key
+    /// (see <see cref="ExtensionPlan"/>). The create or update that carries the extension's object under <see cref="ExtensionJsonName"/> saves it with the parent. </summary>
+    public static IReadOnlyList<ChildForeignKeyModel> ExtensionsOf(TableModel parent, ProjectSettings project) =>
+        project.EditableChildren.Length == 0 ? [] : parent.ChildForeignKeys.Where(fk => IsExtension(parent, fk, project)).ToList();
+
+    public static bool IsExtension(TableModel parent, ChildForeignKeyModel fk, ProjectSettings project) =>
+        project.EditableChildren.Any(entry => Names(entry, parent, fk))
+        && parent.PrimaryKeyColumns.Count == 1 && fk.ReferencedColumns.Count == 1 && parent.PrimaryKeyColumns[0].Name.EqualsIgnoreCase(fk.ReferencedColumns[0])
+        && fk.ReferencingColumns.Count == 1 && fk.ReferencingPrimaryKeyColumns.Count == 1 && fk.ReferencingPrimaryKeyColumns[0].EqualsIgnoreCase(fk.ReferencingColumns[0])
+        && !fk.ReferencingTable.EqualsIgnoreCase(parent.TableName)
+        && parent.ChildForeignKeys.Count(o => o.ReferencingTable.EqualsIgnoreCase(fk.ReferencingTable)) == 1;
+
+    /// <summary> The property of the request body that holds the extension's columns as one object: the table's name, camel cased (<c>customerProfile</c>). </summary>
+    public static string ExtensionJsonName(ChildForeignKeyModel fk) => JsonNames.Camel(fk.ReferencingTable);
+
     /// <summary> The table is listed, hangs off the parent by one NOT NULL column of the parent's key type, has a single identity whole-number key of its own, and is the parent's only link to that table.
     /// A list entry is the child's name (<c>DepartmentTeam</c>), which counts only for a child that belongs to one table, or <c>Parent.Child</c> (<c>Department.DepartmentTeam</c>), which names the parent
     /// whose form edits the rows: a team also points at its region, and a region's form is not where teams are edited. </summary>

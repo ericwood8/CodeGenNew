@@ -47,7 +47,7 @@ public static class PythonTenantWriter
             o.Append(NewPerson(userPlan, project, membership, null));
             o.Append(TenantPlan.PeopleOf(database, project) is null ? PeoplePassThrough : PeopleScoped);
             string signInWhere = string.Join(", ", new[] { active is null ? null : "tenants.c[TENANT_ACTIVE].is_(True)", soft is null ? null : "tenants.c[TENANT_DELETED].is_(False)" }.OfType<string>());
-            o.Append(FillAll(Routes, ("§SIGNINPATH", TenantWords.SignInListPath), ("§TEXT", textExpression), ("§SIGNINWHERE", signInWhere.Length == 0 ? "" : $".where({signInWhere})"), ("§CURRENT", "user.tenant_id"), ("§REQUESTPARAM", host is null ? "" : ", request: Request"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines + "\n")));
+            o.Append(FillAll(Routes, ("§SIGNINPATH", TenantWords.SignInListPath), ("§TEXT", textExpression), ("§SIGNINWHERE", signInWhere.Length == 0 ? "" : $".where({signInWhere})"), ("§CURRENT", "user.tenant_id"), ("§REQUESTPARAM", host is null ? "" : ", request: Request"), ("§LISTS", PermissionTables.IsConfigured(project) ? ", held_roles, held_permissions" : ""), ("§HELD", PermissionTables.IsConfigured(project) ? HeldSwitch : ""), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines + "\n")));
         }
         else if (userOwned is not null && userPlan is not null)
         {
@@ -217,7 +217,7 @@ from typing import Any, NamedTuple
 
 from fastapi import APIRouter, Depends§REQUESTIMPORT
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import String, cast, column, false, §FUNCnull, select, table
+from sqlalchemy import String, cast, column, false, §FUNCnull, or_, select, table
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -280,6 +280,19 @@ def only_own_tenant(statement, key_column, user: CurrentUser):
 def refuse_other_tenant(row_tenant, user: CurrentUser) -> None:
     """Another tenant's row is not found."""
     if user.tenant_id is None or row_tenant != user.tenant_id:
+        raise ApiError(404, "Not found.")
+
+
+def only_tenant_or_shared(statement, tenant_column, user: CurrentUser):
+    """The rows of the caller's tenant and the shared ones (no tenant); a platform administrator sees every row."""
+    if is_platform(user):
+        return statement
+    return statement.where(tenant_column.is_(None)) if user.tenant_id is None else statement.where(or_(tenant_column == user.tenant_id, tenant_column.is_(None)))
+
+
+def refuse_other_tenant_or_shared(row_tenant, user: CurrentUser) -> None:
+    """Another tenant's row is not found; a shared row (no tenant) is."""
+    if row_tenant is not None and not is_platform(user) and row_tenant != user.tenant_id:
         raise ApiError(404, "Not found.")
 
 
@@ -380,8 +393,15 @@ def switch_tenant(body: SwitchRequest§REQUESTPARAM, session: Session = Depends(
     member = None if body.tenant_id is None else next((m for m in members_of(session, user.name) if m.tenant_id == body.tenant_id), None)
     if member is None:
         raise not_member()
-§HOSTSWITCH    person = DirectoryUser(user.name, "", member.role or user.role, user.owner_id)
+§HOSTSWITCH§HELD    person = DirectoryUser(user.name, "", member.role or user.role, user.owner_id§LISTS)
     return session_response(person, member.tenant_id)
+"""";
+
+    private const string HeldSwitch = """"
+    from app.users import held_for
+
+    held_roles, held_permissions = held_for(session, user.name, member.tenant_id)
+
 """";
 
     private const string Attach = """"

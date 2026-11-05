@@ -220,6 +220,8 @@ public sealed class DashboardPlan
                 return TenantPlan.KeyOf(table) is { } key ? $"{di.Quote(key.DbName)} = {tenantToken}" : null;
             if (TenantPlan.OwnedBy(table, database, project) is { } owned)
                 return $"{di.Quote(owned.Column.DbName)} = {tenantToken}";
+            if (PermissionTables.SharedRoleTenant(database, project) is { } shared && shared.Table.TableName.EqualsIgnoreCase(table.TableName))
+                return $"({di.Quote(shared.Column.DbName)} = {tenantToken} OR {di.Quote(shared.Column.DbName)} IS NULL)";
             if (TenantPlan.PeopleOf(database, project) is { } people && people.User.Table == table)
                 return $"{di.Quote(people.Key.DbName)} IN (SELECT {di.Quote(people.Membership.User.DbName)} FROM {di.QuoteTable(people.Membership.Table.SchemaName, people.Membership.Table.DbTableName)} WHERE {di.Quote(people.Membership.Tenant.DbName)} = {tenantToken})";
             foreach (var fk in table.ForeignKeys.Where(f => f.ReferencingColumns.Count == 1 && !table.IsSelfReferencing(f)))

@@ -58,6 +58,9 @@
     var creatorMember = tenancy && TenantPlan.HasDesktopSignIn(Project) && Project.TenantMembership is not null ? TenantPlan.MembershipOf(Database, Project) : null;
     var creatorUser = creatorMember is null ? null : UserTable.Resolve(Database, Project).Item1;
     bool creators = creatorMember is not null && creatorUser is not null;
+    // a role table with a nullable tenant column that is listed in NoTenantTables: a tenant reads its own roles and the shared ones
+    var sharedRoles = tenancy ? PermissionTables.SharedRoleTenant(Database, Project) : null;
+    var sharedRoleTenant = sharedRoles?.Column;
     var filterLines = new List<string>();
     foreach (var table in contextTables)
     {
@@ -66,6 +69,8 @@
             conditions.Add($"!e.{soft.Flag.CSharpName()}");
         if (tenancy && tenantOwned.TryGetValue(table.TableName, out var tenantColumn))
             conditions.Add($"e.{tenantColumn.CSharpName()} == CurrentTenantId");
+        else if (tenancy && sharedRoleTenant is not null && table == sharedRoles!.Value.Table)
+            conditions.Add($"(e.{sharedRoleTenant.CSharpName()} == CurrentTenantId || e.{sharedRoleTenant.CSharpName()} == null || IsPlatform)");
         else if (tenancy && table == tenantTable)
             conditions.Add($"(e.{tenantKey!.CSharpName()} == CurrentTenantId || IsPlatform)");
         else if (tenancy && people is not null && table == people.User.Table)

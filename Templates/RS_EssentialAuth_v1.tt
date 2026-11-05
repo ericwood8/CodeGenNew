@@ -16,6 +16,7 @@
     bool table = Project.UserTable is not null;
     bool hosts = TenantPlan.HasApiTenancy(Project) && Project.TenantHostColumn is not null;   // TenantHostColumn: a token works only on its own tenant's host name
     bool tenants = TenantPlan.HasApiTenancy(Project);   // TenantTable: the tenant is a claim of the token (src/tenancy.rs, RS_Tenants)
+    bool permissions = PermissionTables.IsConfigured(Project);   // PermissionTables: the roles and permissions of the person travel in the token
 #>
 @@@FILE src/auth.rs@@@
 // Sign-in: POST /api/auth/login, the bearer check every other route needs, password hashing and the owner scope. Written by RS_EssentialAuth; yours to change.
@@ -40,6 +41,10 @@ use sha2::Sha256;
 use crate::support::{ApiError, ApiJson, ApiResult, Pool};
 
 pub const ROLE_CLAIM: &str = "<#= Project.AuthRoleClaim #>";
+<# if (permissions) { #>
+const ROLES_CLAIM: &str = "roles";
+const PERMISSIONS_CLAIM: &str = "<#= PermissionTables.PermissionClaim #>";
+<# } #>
 pub const OWNER_CLAIM: &str = "<#= Project.AuthOwnerClaim #>";
 <# if (tenants) { #>
 pub const TENANT_CLAIM: &str = "tenant";
@@ -75,6 +80,10 @@ pub struct DirectoryUser {
     pub password_hash: String,
     pub role: Option<String>,
     pub owner_id: Option<i64>,
+<# if (permissions) { #>
+    pub roles: Vec<String>,
+    pub permissions: Vec<String>,
+<# } #>
 }
 
 /// The signed-in caller, as the token says. The middleware puts it in the request, a handler takes it as Extension&lt;CurrentUser&gt;.
@@ -86,6 +95,10 @@ pub struct CurrentUser {
     pub owner_id: Option<i64>,
 <# if (tenants) { #>
     pub tenant_id: Option<i32>,
+<# } #>
+<# if (permissions) { #>
+    pub roles: Vec<String>,
+    pub permissions: Vec<String>,
 <# } #>
 }
 
@@ -122,7 +135,16 @@ impl CurrentUser {
 
 /// A route layer: only a caller whose role is in `roles` (the administrator role is among them) gets through; ReadRoles and WriteRoles of the project.
 pub async fn check_roles(roles: &'static [&'static str], write: bool, request: Request, next: Next) -> Result<Response, ApiError> {
+<# if (permissions) { #>
+    let allowed = request.extensions().get::<CurrentUser>().is_some_and(|user| {
+        roles.iter().any(|entry| match entry.strip_prefix('@') {
+            Some(permission) => user.permissions.iter().any(|held| held == permission),
+            None => user.role.as_deref() == Some(*entry) || user.roles.iter().any(|held| held == entry),
+        })
+    });
+<# } else { #>
     let allowed = request.extensions().get::<CurrentUser>().and_then(|user| user.role.as_deref()).is_some_and(|role| roles.contains(&role));
+<# } #>
     if !allowed {
         let detail = if write { "Your role may read this table but not change it." } else { "Your role may not read this table." };
         return Err(ApiError::Problem(<#= HttpStatus.Forbidden #>, PROBLEM_ROLE_NOT_ALLOWED, "Not allowed", Some(detail)));
@@ -198,6 +220,14 @@ fn create_token(user: &DirectoryUser, expires: i64<#= tenants ? ", tenant: Optio
     if let Some(owner) = user.owner_id {
         claims[OWNER_CLAIM] = serde_json::json!(owner.to_string());
     }
+<# if (permissions) { #>
+    if !user.roles.is_empty() {
+        claims[ROLES_CLAIM] = serde_json::json!(user.roles);
+    }
+    if !user.permissions.is_empty() {
+        claims[PERMISSIONS_CLAIM] = serde_json::json!(user.permissions);
+    }
+<# } #>
 <# if (tenants) { #>
     if let Some(tenant) = tenant {
         claims[TENANT_CLAIM] = serde_json::json!(tenant.to_string());
@@ -234,6 +264,12 @@ fn read_token(token: &str) -> Option<serde_json::Value> {
 }
 
 /// The signed-in caller; a missing, bad or expired token is a 401. lib.rs puts this on every router but the sign-in.
+<# if (permissions) { #>
+fn strings(value: &serde_json::Value) -> Vec<String> {
+    value.as_array().map(|items| items.iter().filter_map(|item| item.as_str().map(str::to_string)).collect()).unwrap_or_default()
+}
+
+<# } #>
 pub async fn require_user(<#= tenants ? "State(pool): State<Pool>, " : "" #>mut request: Request, next: Next) -> Result<Response, ApiError> {
     let token = request
         .headers()
@@ -249,6 +285,10 @@ pub async fn require_user(<#= tenants ? "State(pool): State<Pool>, " : "" #>mut 
         owner_id: claims[OWNER_CLAIM].as_str().and_then(|owner| owner.parse().ok()),
 <# if (tenants) { #>
         tenant_id: claims[TENANT_CLAIM].as_str().and_then(|tenant| tenant.parse().ok()),
+<# } #>
+<# if (permissions) { #>
+        roles: strings(&claims[ROLES_CLAIM]),
+        permissions: strings(&claims[PERMISSIONS_CLAIM]),
 <# } #>
     };
 <# if (tenants) { #>
@@ -335,6 +375,10 @@ async fn find_user(_pool: &Pool, name: &str) -> Result<Option<DirectoryUser>, sq
             password_hash: hash_password(&password),
             role: Some(ADMIN_ROLE.to_string()),
             owner_id: None,
+<# if (permissions) { #>
+            roles: Vec::new(),
+            permissions: Vec::new(),
+<# } #>
         })
     });
     Ok(admin.clone().filter(|admin| admin.user_name.eq_ignore_ascii_case(name.trim())))
@@ -377,6 +421,9 @@ async fn login(State(pool): State<Pool>, ConnectInfo(address): ConnectInfo<Socke
     if tenant_role.is_some() {
         user.role = tenant_role;
     }
+<# if (permissions) { #>
+    (user.roles, user.permissions) = crate::users::held_for(&pool, &user.user_name, tenant).await?;
+<# } #>
     succeeded(&key);
     session_response(&user, tenant)
 }
@@ -393,6 +440,6 @@ pub fn session_response(user: &DirectoryUser<#= tenants ? ", tenant: Option<i32>
     Ok(Json(serde_json::json!({
         "token": token,
         "expiresUtc": expires.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
-        "user": { "name": user.user_name, "role": user.role, "ownerId": user.owner_id<#= tenants ? ", \"tenantId\": tenant" : "" #> },
+        "user": { "name": user.user_name, "role": user.role, "ownerId": user.owner_id<#= tenants ? ", \"tenantId\": tenant" : "" #><#= permissions ? ", \"roles\": user.roles, \"permissions\": user.permissions" : "" #> },
     })))
 }

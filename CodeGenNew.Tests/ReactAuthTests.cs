@@ -28,6 +28,23 @@ public class ReactAuthTests
     }
 
     [TestMethod]
+    public async Task With_PermissionTables_the_clients_read_roles_and_permissions_from_the_sign_in()
+    {
+        var tables = ("PermissionTables", "Role,Permission,RolePermission,UserRole");
+        string react = await Run("TSX_EssentialAuth_v1.tt", new object(), Auth, Api, tables);
+        Expect.Contains(react, "r.startsWith('@') ? !!permissions?.includes(r.slice(1)) : r === user.role || !!held?.includes(r)");
+        Expect.DoesNotContain(await Run("TSX_EssentialAuth_v1.tt", new object(), Auth), "permissions");
+
+        string angular = await Run("TS_EssentialAuth_v1.tt", new object(), Auth, Api, tables);
+        Expect.Contains(angular, "r.startsWith('@') ? !!permissions?.includes(r.slice(1)) : r === user.role || !!held?.includes(r)");
+        Expect.DoesNotContain(await Run("TS_EssentialAuth_v1.tt", new object(), Auth), "permissions");
+
+        string jwt = await Run("API_EssentialJwt_v1.tt", new object(), Auth, Api, tables);
+        Expect.Contains(jwt, "IReadOnlyList<string>? Roles = null, IReadOnlyList<string>? Permissions = null);");
+        Expect.Contains(jwt, "new AuthUser(user.UserName, role, user.OwnerId, tenantId, claims.Roles(), claims.Permissions())");
+    }
+
+    [TestMethod]
     public async Task The_Auth_group_writes_the_session_the_login_page_the_guard_and_their_tests()
     {
         string auth = await Run("TSX_EssentialAuth_v1.tt", new object(), Auth);

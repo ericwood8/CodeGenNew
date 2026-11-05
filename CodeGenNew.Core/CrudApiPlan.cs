@@ -60,6 +60,7 @@ public sealed class CrudApiPlan
 
         // EditableChildren: the child tables a form of this table saves in the same request (EditableChild, the one rule the Angular screen asks too)
         EditableChildren = EditableChild.Of(model, project);
+        Extensions = EditableChild.ExtensionsOf(model, project).Where(fk => TenantPlan.ChildTenantColumn(fk, project) is null).ToList();
 
         // ListProtocol=Search: the one search box matches SearchBox's columns and the grid sorts by SearchPlan's (the same names the Columns protocol sorts by)
         ListSearch = !NameActive && project.ListSearchProtocol;
@@ -144,6 +145,9 @@ public sealed class CrudApiPlan
     public OwnerLink? OwnerLink { get; }
 
     public IReadOnlyList<ChildForeignKeyModel> EditableChildren { get; } = [];
+
+    /// <summary> The one-to-one extension tables the create and update of this table save with its row (<see cref="EditableChild.ExtensionsOf"/>). </summary>
+    public IReadOnlyList<ChildForeignKeyModel> Extensions { get; } = [];
 
     public bool ListSearch { get; }
     public SearchPlan? SearchPlan { get; }

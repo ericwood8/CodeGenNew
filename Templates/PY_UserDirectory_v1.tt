@@ -21,6 +21,9 @@
         Error(problem);
     if (plan == null)
         return GenerationEnvironment.ToString();
+    var (held, heldProblem) = PermissionTables.Resolve(Database, Project);
+    if (heldProblem != null)
+        Error(heldProblem);
 
     string Str(string text) => PythonNames.Str(text);
     var t = plan.Table;
@@ -46,18 +49,56 @@
     Line("import os");
     Line("import sys");
     Line();
-    Line("from sqlalchemy import column, select, table, update");
+    Line(held != null && (held.UserRoleTenant?.IsNullable == true || held.RoleTenant?.IsNullable == true) ? "from sqlalchemy import column, or_, select, table, update" : "from sqlalchemy import column, select, table, update");
     Line("from sqlalchemy.orm import Session");
     Line();
     Line("from app.auth import ADMIN_ROLE, DirectoryUser, hash_password");
     Line("from app.db import SessionLocal");
     Line();
+    if (held != null)
+    {
+        string Lite(TableModel table, params ColumnModel[] columns)
+        {
+            bool named = table.Dialect is SqlDialect.SqlServer or SqlDialect.PostgreSql && !table.SchemaName.EqualsIgnoreCase(table.Dialect == SqlDialect.SqlServer ? "dbo" : "public");
+            return $"table({Str(table.DbTableName)}, {string.Join(", ", columns.Distinct().Select(c => $"column({Str(c.DbName)})"))}" + (named ? $", schema={Str(table.SchemaName)}" : "") + ")";
+        }
+        Line($"roles = {Lite(held.Role, new[] { held.RoleKey, held.RoleName }.Concat(new[] { held.RoleTenant }.OfType<ColumnModel>()).ToArray())}");
+        Line($"permissions = {Lite(held.Permission, held.PermissionKey, held.PermissionName)}");
+        Line($"role_permissions = {Lite(held.RolePermission, held.RolePermissionRole, held.RolePermissionPermission)}");
+        Line($"user_roles = {Lite(held.UserRole, new[] { held.UserRoleUser, held.UserRoleRole }.Concat(new[] { held.UserRoleTenant }.OfType<ColumnModel>()).ToArray())}");
+        Line();
+        Line();
+        string Match(string alias, ColumnModel tenantColumn) => tenantColumn.IsNullable ? $"or_({alias}.c[{Str(tenantColumn.DbName)}] == tenant_id, {alias}.c[{Str(tenantColumn.DbName)}].is_(None))" : $"{alias}.c[{Str(tenantColumn.DbName)}] == tenant_id";
+        string inTenant = (held.UserRoleTenant is null ? "" : $", {Match("user_roles", held.UserRoleTenant)}") + (held.RoleTenant is null ? "" : $", {Match("roles", held.RoleTenant)}");
+        string roleJoin = held.RoleTenant is null ? "" : $".join(roles, roles.c[{Str(held.RoleKey.DbName)}] == user_roles.c[{Str(held.UserRoleRole.DbName)}])";
+        Line("def roles_and_permissions(session: Session, key, tenant_id: int | None = None) -> tuple[tuple[str, ...], tuple[str, ...]]:");
+        Line("    \"\"\"The names of the roles the person holds (PermissionTables) and of the permissions those roles hold; read once at sign-in and kept in the token." + (held.PerTenant ? " Only the roles of the tenant given count." : "") + "\"\"\"");
+        Line($"    role_names = session.execute(select(roles.c[{Str(held.RoleName.DbName)}]).select_from(roles.join(user_roles, user_roles.c[{Str(held.UserRoleRole.DbName)}] == roles.c[{Str(held.RoleKey.DbName)}]))");
+        Line($"                                 .where(user_roles.c[{Str(held.UserRoleUser.DbName)}] == key{inTenant}).distinct()).scalars().all()");
+        Line($"    permission_names = session.execute(select(permissions.c[{Str(held.PermissionName.DbName)}])");
+        Line($"                                       .select_from(permissions.join(role_permissions, role_permissions.c[{Str(held.RolePermissionPermission.DbName)}] == permissions.c[{Str(held.PermissionKey.DbName)}])");
+        Line($"                                                    .join(user_roles, user_roles.c[{Str(held.UserRoleRole.DbName)}] == role_permissions.c[{Str(held.RolePermissionRole.DbName)}]){roleJoin})");
+        Line($"                                       .where(user_roles.c[{Str(held.UserRoleUser.DbName)}] == key{inTenant}).distinct()).scalars().all()");
+        Line("    return tuple(n for n in role_names if n), tuple(n for n in permission_names if n)");
+        Line();
+        Line();
+    }
     Line("PASSWORD_VARIABLE = \"NEW_PASSWORD\"");
     Line("MINIMUM_PASSWORD_LENGTH = 8");
     Line();
     Line($"users = table({Str(t.DbTableName)}, {string.Join(", ", columnList.Select(c => $"column({Str(c.DbName)})"))}" + (schemaNamed ? $", schema={Str(t.SchemaName)}" : "") + ")");
     Line();
     Line();
+    bool tenancy = TenantPlan.HasApiTenancy(Project);
+    if (held != null && tenancy)
+    {
+        Line("def held_for(session: Session, user_name: str, tenant_id: int | None) -> tuple[tuple[str, ...], tuple[str, ...]]:");
+        Line("    \"\"\"The roles and permissions of the person in the tenant they work in, read at sign-in and at a switch of tenant.\"\"\"");
+        Line($"    key = session.scalar(select(users.c[{Str(held.UserKey.DbName)}]).where({C("name")} == user_name))");
+        Line("    return ((), ()) if key is None" + (held.PerTenant ? " or tenant_id is None" : "") + " else roles_and_permissions(session, key, tenant_id)");
+        Line();
+        Line();
+    }
     Line("def find_user(session: Session, user_name: str) -> DirectoryUser | None:");
     Line($"    row = session.execute(select(users).where({C("name")} == user_name, {C("hash")}.is_not(None), {C("hash")} != \"\")).first()");
     Line("    if row is None:");
@@ -65,7 +106,15 @@
     if (plan.Owner != null)
         Line($"    owner = row._mapping[{Str(plan.Owner.DbName)}]");
     string ownerValue = plan.Owner == null ? "None" : "None if owner is None else int(owner)";
-    Line($"    return DirectoryUser(row._mapping[{Str(plan.UserName.DbName)}], row._mapping[{Str(plan.PasswordHash.DbName)}], {roleExpression}, {ownerValue})");
+    if (held != null && tenancy)
+        Line($"    return DirectoryUser(row._mapping[{Str(plan.UserName.DbName)}], row._mapping[{Str(plan.PasswordHash.DbName)}], {roleExpression}, {ownerValue})");
+    else if (held != null)
+    {
+        Line($"    held_roles, held_permissions = roles_and_permissions(session, row._mapping[{Str(held.UserKey.DbName)}])");
+        Line($"    return DirectoryUser(row._mapping[{Str(plan.UserName.DbName)}], row._mapping[{Str(plan.PasswordHash.DbName)}], {roleExpression}, {ownerValue}, held_roles, held_permissions)");
+    }
+    else
+        Line($"    return DirectoryUser(row._mapping[{Str(plan.UserName.DbName)}], row._mapping[{Str(plan.PasswordHash.DbName)}], {roleExpression}, {ownerValue})");
     Line();
     Line();
     Line("def set_password(session: Session, user_name: str, password: str) -> bool:");

@@ -81,11 +81,16 @@
                 Line();
                 Line();
                 Line($"def may_{module}_{column}(session: Session, user: CurrentUser) -> bool:");
-                Line($"    \"\"\"True when the caller is an administrator or has {guard.UserTable.TableName}.{guard.By.Name} set.\"\"\"");
+                Line($"    \"\"\"True when the caller is an administrator or has {guard.Holder} set.\"\"\"");
                 Line("    if user.is_admin:");
                 Line("        return True");
                 Line("    if not user.name:");
                 Line("        return False");
+                if (guard.By is null)
+                {
+                    Line($"    return {PythonNames.Str(guard.Permission!)} in user.permissions");
+                    continue;
+                }
                 Line($"    return bool(session.scalar(select({userClass}.{Attr(guard.UserTable, guard.By)}).where({userClass}.{Attr(guard.UserTable, guard.UserNameColumn(Project))} == user.name)))");
             }
 
@@ -110,7 +115,7 @@
                     : $"(parent_{term.Via.ReferencingColumns[0].ToLowerInvariant()} is not None and {GateCode.PythonTest($"parent_{term.Via.ReferencingColumns[0].ToLowerInvariant()}.{Attr(term.Table, term.Column)}", term)})";
                 string to = GateCode.PythonTest("row." + column, gate.To);
                 string when = GateCode.PythonPredicate(gate.When, TermTest);
-                string unless = gate.Unless is null ? "" : GateCode.PythonPredicate(gate.Unless, TermTest);
+                string unless = string.Join(" or ", new[] { gate.Unless is null ? null : GateCode.PythonPredicate(gate.Unless, TermTest), gate.Exempt is null ? null : $"{PythonNames.Str(gate.Exempt)} in user.permissions" }.Where(t => t is not null));
                 string toWords = gate.To.ValueWords();
                 string message = gate.RefusalText;
 

@@ -121,6 +121,57 @@ public class EditableChildrenTests
         Expect.DoesNotContain(unlisted.GeneratedText!, "EditableChildren");
     }
 
+    private static ChildForeignKeyModel Profile() => new()
+    {
+        ConstraintName = "FK_CustomerProfile_Customer",
+        ReferencingSchema = "dbo",
+        ReferencingTable = "CustomerProfile",
+        ReferencingColumns = ["CustomerId"],
+        ReferencedColumns = ["CustomerId"],
+        ReferencingPrimaryKeyColumns = ["CustomerId"],
+        ReferencingTableColumns =
+        [
+            Sample.Column("CustomerId", SqlDbType.Int, primaryKey: true, ordinal: 1),
+            Sample.Column("Language", SqlDbType.NVarChar, characters: 10, ordinal: 2)
+        ],
+        ReferencingTableForeignKeys = [Sample.ForeignKey("CustomerId", "Customer", "CustomerId", "Name")]
+    };
+
+    private static TableModel Customer(params ChildForeignKeyModel[] children) => Sample.Table("Customer",
+    [
+        Sample.Column("CustomerId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1),
+        Sample.Column("Name", SqlDbType.NVarChar, characters: 100, ordinal: 2)
+    ], childForeignKeys: [.. children]);
+
+    [TestMethod]
+    public void A_listed_one_to_one_extension_is_saved_with_its_parent_and_is_not_a_child_list()
+    {
+        var profile = Profile();
+        var customer = Customer(profile);
+        var project = Project(("EditableChildren", "Customer.CustomerProfile"));
+        Assert.IsTrue(EditableChild.IsExtension(customer, profile, project));
+        Assert.IsFalse(EditableChild.IsEditable(customer, profile, project));
+        Assert.AreEqual("customerProfile", EditableChild.ExtensionJsonName(profile));
+        Assert.HasCount(1, EditableChild.ExtensionsOf(customer, project));
+        Assert.IsEmpty(EditableChild.Of(customer, project));
+        Assert.IsFalse(EditableChild.IsExtension(customer, profile, Project()), "not listed");
+        Assert.IsFalse(EditableChild.IsExtension(customer, Team(), project), "a child with a key of its own");
+    }
+
+    [TestMethod]
+    public async Task The_API_class_of_a_table_with_an_extension_names_it_beside_its_child_lists()
+    {
+        var result = await Repo.Cache.RunAsync(Repo.Template("API_Crud_v1.tt"), Customer(Profile()), Project(("EditableChildren", "Customer.CustomerProfile")));
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string api = result.GeneratedText!.ReplaceLineEndings("\n");
+        Expect.Contains(api, "new ExtensionRow<int, CustomerProfile>(\"customerProfile\", c => c.CustomerId),");
+        Expect.DoesNotContain(api, "new ChildRows<int, CustomerProfile>");
+
+        string essential = await CrudApiTests.Essential(("EditableChildren", "Customer.CustomerProfile"));
+        Expect.Contains(essential, "public sealed class ExtensionRow<TKey, TChild>(string name, Expression<Func<TChild, TKey>> key) : ChildRows<TKey>");
+        Expect.Contains(essential, "public override bool Takes(JsonElement rows) => rows.ValueKind is JsonValueKind.Object or JsonValueKind.Null;");
+    }
+
     [TestMethod]
     public async Task CrudApi_reads_the_child_lists_only_when_the_project_has_editable_children()
     {
@@ -131,7 +182,7 @@ public class EditableChildrenTests
         Expect.Contains(with, "context.RemoveRange(existing.Where(row => !kept.Contains(keyOf(row))));");
         Expect.Contains(with, "entry.State = EntityState.Added;");
         Expect.Contains(with, "foreach (var navigation in entry.Navigations)");
-        Expect.Contains(with, "if (body.Json.TryGetProperty(list.Name, out var rows) && rows.ValueKind == JsonValueKind.Array)");
+        Expect.Contains(with, "if (body.Json.TryGetProperty(list.Name, out var rows) && list.Takes(rows))");
 
         // both bases read the body as JSON, save the lists with the row in one transaction and answer 400 for a refused list
         Assert.AreEqual(2, CountOf(with, "protected virtual IReadOnlyList<ChildRows<"));

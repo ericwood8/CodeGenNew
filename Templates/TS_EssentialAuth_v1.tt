@@ -131,10 +131,20 @@ export class AuthService {
   }
 
   /** True when the signed-in person has one of these roles (the API compares the role exactly, so does this). */
+<# if (PermissionTables.IsConfigured(Project)) { #>
+  hasRole(roles: readonly string[]): boolean {
+    const user = this.user();
+    if (!user) return false;
+    const held = user['roles'] as string[] | undefined;
+    const permissions = user['permissions'] as string[] | undefined;
+    return roles.some((r) => (r.startsWith('@') ? !!permissions?.includes(r.slice(1)) : r === user.role || !!held?.includes(r)));
+  }
+<# } else { #>
   hasRole(roles: readonly string[]): boolean {
     const role = this.user()?.role;
     return !!role && roles.includes(role);
   }
+<# } #>
 
 <# if (tenants) { #>
   /** Signs in; with a tenant (the key of one the person belongs to) the token works in that tenant, else in the first one. */

@@ -51,11 +51,11 @@ public sealed record GatePredicate(IReadOnlyList<IReadOnlyList<GateTerm>> AnyOf)
 }
 
 /// <summary> A named column may not change to certain values while the <see cref="When"/> condition holds, unless <see cref="Unless"/> holds. A new row always starts as <see cref="Start"/> when that is given. </summary>
-public sealed record ChangeGate(TableModel Table, ColumnModel Column, GateTerm To, GatePredicate When, GatePredicate? Unless, string? Start, string? Message, string Text, bool RequiresApproval = false)
+public sealed record ChangeGate(TableModel Table, ColumnModel Column, GateTerm To, GatePredicate When, GatePredicate? Unless, string? Start, string? Message, string Text, bool RequiresApproval = false, string? Exempt = null)
 {
     /// <summary> The exemption as a message says it: the <c>unless</c> condition, and <c>approved</c> when the row's latest request (RowApprovals) was approved; null when there is none. </summary>
     private string? UnlessWords(Func<GateTerm, string, string>? say) =>
-        Unless is null && !RequiresApproval ? null : string.Join(" or ", new[] { Unless?.Words(say), RequiresApproval ? "the row is approved" : null }.Where(w => w is not null));
+        Unless is null && !RequiresApproval && Exempt is null ? null : string.Join(" or ", new[] { Unless?.Words(say), RequiresApproval ? "the row is approved" : null, Exempt is null ? null : $"the caller has the {Exempt} permission" }.Where(w => w is not null));
 
     /// <summary> What the gate says in a comment: <c>not to 2, 3 while Customer Status = 2 unless Customer Ignore Bad Status = true</c>. </summary>
     public string Description => $"not to {To.ValueWords()} while {When.Words()}" + (UnlessWords(null) is { } unlessWords ? $" unless {unlessWords}" : "");
@@ -85,13 +85,18 @@ public sealed record ChangeGate(TableModel Table, ColumnModel Column, GateTerm T
 public sealed record ParentRead(ForeignKeyModel Via, TableModel Holder, IReadOnlyList<ColumnModel> Columns);
 
 /// <summary> Only a person whose row in the user table has the yes/no column <see cref="By"/> set (or an administrator) may change the column. The optional stamp columns say who did it and when. </summary>
-public sealed record ColumnGuard(TableModel Table, ColumnModel Column, TableModel UserTable, ColumnModel By, ColumnModel? StampBy, ColumnModel? StampOn, string Text)
+public sealed record ColumnGuard(TableModel Table, ColumnModel Column, TableModel UserTable, ColumnModel? By, ColumnModel? StampBy, ColumnModel? StampOn, string Text, string? Permission = null)
 {
+    /// <summary> What lets a person change the column: the user table's flag, or (<c>by @edit_billing</c>, with PermissionTables) a permission in the token. </summary>
+    public string Holder => Permission is null ? $"{UserTable.TableName}.{By!.Name}" : $"the {Permission} permission";
+
     /// <summary> What the guard says in a comment: <c>only a person with Employee.IsManager (or an administrator) changes it</c>. </summary>
-    public string Description => $"only a person with {UserTable.TableName}.{By.Name} (or an administrator) changes it";
+    public string Description => $"only a person with {Holder} (or an administrator) changes it";
 
     /// <summary> The sentence of the 403 answer. </summary>
-    public string RefusalText => $"Only a person with {By.CaseWords} set on {Labels.Words(UserTable.TableName)} (or an administrator) may change {Column.CaseWords}.";
+    public string RefusalText => Permission is null
+        ? $"Only a person with {By!.CaseWords} set on {Labels.Words(UserTable.TableName)} (or an administrator) may change {Column.CaseWords}."
+        : $"Only a person with the {Permission} permission (or an administrator) may change {Column.CaseWords}.";
 
     /// <summary> The user table's column that holds the sign-in name the guard looks the caller up by. </summary>
     public ColumnModel UserNameColumn(ProjectSettings project) => CodeGenNew.Core.UserTable.ResolveTable(UserTable, project).Plan!.UserName;
@@ -199,7 +204,7 @@ public sealed partial record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnly
         {
             if (setting == "ChangeGates")
             {
-                var (gate, problem) = ParseGate(rule, database, apiTables);
+                var (gate, problem) = ParseGate(rule, database, project, apiTables);
                 if (gate is not null) gates.Add(gate); else problems.Add($"{setting}: \"{rule}\": {problem}");
             }
             else
@@ -227,8 +232,8 @@ public sealed partial record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnly
         return new GatePlan(gates, guards, problems);
     }
 
-    // ChangeGates: SalesInvoice.InvoiceStatusId; to 2,3,4,5,6; when Customer.CustomerStatusId=2; unless Customer.IgnoreBadStatus=1; start 1; message "Customer is in bad standing."
-    private static (ChangeGate? Gate, string? Problem) ParseGate(string rule, DatabaseModel database, List<TableModel> apiTables)
+    // ChangeGates: SalesInvoice.InvoiceStatusId; to 2,3,4,5,6; exempt @override_status; when Customer.CustomerStatusId=2; unless Customer.IgnoreBadStatus=1; start 1; message "Customer is in bad standing."
+    private static (ChangeGate? Gate, string? Problem) ParseGate(string rule, DatabaseModel database, ProjectSettings project, List<TableModel> apiTables)
     {
         var clauses = SplitOutsideQuotes(rule, ';');
         if (FindColumn(clauses[0], database, apiTables, out var table, out var column) is { } where)
@@ -240,6 +245,7 @@ public sealed partial record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnly
         GatePredicate? when = null, unless = null;
         string? start = null, message = null;
         bool approval = false;
+        string? exempt = null;
         foreach (string clause in clauses.Skip(1))
         {
             var (keyword, rest) = Keyword(clause);
@@ -265,15 +271,20 @@ public sealed partial record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnly
                 case "approval":
                     approval = true;
                     break;
+                case "exempt":
+                    if (!rest.StartsWith(PermissionPlan.Marker) || rest.Length == PermissionPlan.Marker.Length || !PermissionTables.IsConfigured(project))
+                        return (null, "exempt: 'exempt @permission' needs PermissionTables: the permission is read from the token.");
+                    exempt = rest[PermissionPlan.Marker.Length..].Trim();
+                    break;
                 default:
-                    return (null, $"'{clause.Trim()}' is not to, when, unless, start, approval or message.");
+                    return (null, $"'{clause.Trim()}' is not to, when, unless, exempt, start, approval or message.");
             }
         }
         if (to is null)
             return (null, "it needs 'to', the values the column may not change to (to 2,3,4 or to > 1).");
         if (when is null)
             return (null, "it needs 'when', the condition that holds the change (when Customer.CustomerStatusId=2).");
-        return (new ChangeGate(table!, column, to, when, unless, start, message, rule, approval), null);
+        return (new ChangeGate(table!, column, to, when, unless, start, message, rule, approval, exempt), null);
     }
 
     // GuardedColumns: Customer.IgnoreBadStatus; by Employee.IsManager; stampBy IgnoreBadStatusBy; stampOn IgnoreBadStatusOn
@@ -306,14 +317,25 @@ public sealed partial record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnly
         var userTable = database.Tables.FirstOrDefault(t => t.TableName.EqualsIgnoreCase(userTableName));
         if (userTable is null)
             return (null, $"UserTable names {userTableName}, which is not a table of the database.");
-        string[] parts = byText.Split('.', 2, StringSplitOptions.TrimEntries);
-        if (parts.Length != 2 || !parts[0].EqualsIgnoreCase(userTable.TableName))
-            return (null, $"'by {byText}' must name a column of the user table ({userTable.TableName}.Column).");
-        var by = userTable.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(parts[1]));
-        if (by is null)
-            return (null, $"{userTable.TableName} has no column {parts[1]}.");
-        if (!by.IsBooleanColumn)
-            return (null, $"{userTable.TableName}.{by.Name} must be a yes/no column.");
+        ColumnModel? by = null;
+        string? permission = null;
+        if (byText.StartsWith(PermissionPlan.Marker))
+        {
+            permission = byText[PermissionPlan.Marker.Length..].Trim();
+            if (permission.Length == 0 || !PermissionTables.IsConfigured(project))
+                return (null, "'by @permission' needs PermissionTables: the permission is read from the token.");
+        }
+        else
+        {
+            string[] parts = byText.Split('.', 2, StringSplitOptions.TrimEntries);
+            if (parts.Length != 2 || !parts[0].EqualsIgnoreCase(userTable.TableName))
+                return (null, $"'by {byText}' must name a column of the user table ({userTable.TableName}.Column).");
+            by = userTable.Columns.FirstOrDefault(c => c.Name.EqualsIgnoreCase(parts[1]));
+            if (by is null)
+                return (null, $"{userTable.TableName} has no column {parts[1]}.");
+            if (!by.IsBooleanColumn)
+                return (null, $"{userTable.TableName}.{by.Name} must be a yes/no column.");
+        }
 
         ColumnModel? stampBy = null, stampOn = null;
         if (stampByText is not null)
@@ -328,7 +350,7 @@ public sealed partial record GatePlan(IReadOnlyList<ChangeGate> Gates, IReadOnly
             if (stampOn is null || !stampOn.IsDateColumn)
                 return (null, $"stampOn {stampOnText} must be a date column of {table.TableName}.");
         }
-        return (new ColumnGuard(table, column, userTable, by, stampBy, stampOn, rule), null);
+        return (new ColumnGuard(table, column, userTable, by, stampBy, stampOn, rule, permission), null);
     }
 
     private static string? FindColumn(string text, DatabaseModel database, List<TableModel> apiTables, out TableModel? table, out ColumnModel? column)

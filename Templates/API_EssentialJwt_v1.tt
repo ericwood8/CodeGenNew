@@ -37,7 +37,19 @@ using Microsoft.IdentityModel.Tokens;
 public record LoginRequest(string? UserName, string? Password, int? TenantId = null);
 
 /// <summary> Who signed in, as the front end shows it: the name, the role and the owner id (the person's employee id) when the user has one. </summary>
+<# if (PermissionTables.IsConfigured(Project)) { #>
+public record AuthUser(string Name, string? Role, int? OwnerId, int? TenantId = null, IReadOnlyList<string>? Roles = null, IReadOnlyList<string>? Permissions = null);
+
+/// <summary> The roles and permissions a token carries (PermissionTables), as the front ends read them to show or hide a screen or a button. </summary>
+public static class AuthClaimLists
+{
+    public static IReadOnlyList<string> Roles(this IEnumerable<Claim> claims) => claims.Where(c => c.Type == AuthNames.RoleClaim).Select(c => c.Value).Distinct().ToList();
+
+    public static IReadOnlyList<string> Permissions(this IEnumerable<Claim> claims) => claims.Where(c => c.Type == AuthNames.PermissionClaim).Select(c => c.Value).Distinct().ToList();
+}
+<# } else { #>
 public record AuthUser(string Name, string? Role, int? OwnerId, int? TenantId = null);
+<# } #>
 
 /// <summary> What POST /api/auth/login answers: the bearer token, when it stops being good and who it is for. </summary>
 public record LoginResponse(string Token, DateTime ExpiresUtc, AuthUser User);
@@ -53,6 +65,14 @@ public interface ILoginClaims
 {
     Task<LoginClaims> ForAsync(DirectoryUser user, LoginRequest request, CancellationToken cancellationToken = default);
 }
+<# if (PermissionTables.IsConfigured(Project)) { #>
+
+/// <summary> Something that adds to the token what depends on the tenant the person works in, once the contributors above have chosen it (roles and permissions kept in tables: a tenant's roles are not another's). The tenant is null for a person in none. </summary>
+public interface ITenantLoginClaims
+{
+    Task<LoginClaims> ForAsync(DirectoryUser user, int? tenantId, CancellationToken cancellationToken = default);
+}
+<# } #>
 
 /// <summary> Where the people who can sign in are kept. Register your own (a user table) before AddGeneratedAuth; the default knows only the bootstrap administrator. </summary>
 public interface IUserDirectory
@@ -86,12 +106,21 @@ public static class AuthNames
     public const string NameClaim = "name";
     public const string AdminRole = "<#= adminRole #>";
     public const string AdministratorPolicy = "Administrator";
+<# if (PermissionTables.IsConfigured(Project)) { #>
+    public const string PermissionClaim = "<#= PermissionTables.PermissionClaim #>";
+<# } #>
 }
 
 /// <summary> The role rules of a table (the project's ReadRoles, TableReadRoles, WriteRoles and TableWriteRoles): only the roles a rule names, and the administrator role, may read or create, change and delete rows. </summary>
 public static class RoleGate
 {
+<# if (PermissionTables.IsConfigured(Project)) { #>
+    /// <summary> An entry of the list is a role, or <c>@name</c> for a permission the token carries (PermissionTables). </summary>
+    public static bool Allows(ClaimsPrincipal caller, IReadOnlyList<string> roles) =>
+        roles.Count == 0 || roles.Any(role => role.StartsWith('@') ? caller.HasClaim(AuthNames.PermissionClaim, role[1..]) : caller.IsInRole(role));
+<# } else { #>
     public static bool Allows(ClaimsPrincipal caller, IReadOnlyList<string> roles) => roles.Count == 0 || roles.Any(caller.IsInRole);
+<# } #>
 
     public static IResult Refusal() => Results.Problem(statusCode: <#= HttpStatus.Forbidden #>, type: "<#= ProblemTypes.RoleNotAllowed #>", title: "Not allowed", detail: "Your role may read this table but not change it.");
 
@@ -262,6 +291,15 @@ public static class AuthEndpoints
             tenantId ??= extra.TenantId;
         }
         if (!string.IsNullOrEmpty(role)) claims.Add(new Claim(AuthNames.RoleClaim, role));
+<# if (PermissionTables.IsConfigured(Project)) { #>
+        foreach (var contributor in http.RequestServices.GetServices<ITenantLoginClaims>())
+        {
+            var extra = await contributor.ForAsync(user, tenantId, http.RequestAborted);
+            if (extra.Refusal is not null)
+                return extra.Refusal;
+            if (extra.Claims is not null) claims.AddRange(extra.Claims);
+        }
+<# } #>
         if (user.OwnerId is int owner) claims.Add(new Claim(AuthNames.OwnerClaim, owner.ToString()));
 
         DateTime expires = DateTime.UtcNow.AddMinutes(jwt.ExpiresMinutes);
@@ -273,7 +311,11 @@ public static class AuthEndpoints
             Expires = expires,
             SigningCredentials = new SigningCredentials(AuthSetup.SigningKey(jwt), SecurityAlgorithms.HmacSha256)
         });
+<# if (PermissionTables.IsConfigured(Project)) { #>
+        return Results.Ok(new LoginResponse(token, expires, new AuthUser(user.UserName, role, user.OwnerId, tenantId, claims.Roles(), claims.Permissions())));
+<# } else { #>
         return Results.Ok(new LoginResponse(token, expires, new AuthUser(user.UserName, role, user.OwnerId, tenantId)));
+<# } #>
     }
 }
 @@@FILE Apis/OwnerScope.cs@@@

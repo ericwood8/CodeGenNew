@@ -53,7 +53,10 @@
     string writeLayer = writeRoles.Count > 0 ? ".route_layer(middleware::from_fn(|request, next| check_roles(WRITE_ROLES, true, request, next)))" : "";
     RustField? FieldOf(ColumnModel? column) => column is null ? null : t.Fields.FirstOrDefault(f => f != t.HashField && f.Column.Name.EqualsIgnoreCase(column.Name));
     var ownerField = FieldOf(ownerColumn);
-    var tenantField = FieldOf(tenantOwned?.Column);
+    // the role table with a nullable tenant column in NoTenantTables: a tenant reads its own roles and the shared ones (NULL)
+    var sharedColumn = tenancy ? PermissionTables.SharedRoleTenant(Model, Project) : null;
+    bool sharedTenant = sharedColumn is not null;
+    var tenantField = FieldOf(tenantOwned?.Column ?? sharedColumn);
     // the people of the user table belong to a tenant by their membership rows (TenantMembership): a tenant shows only its own members and a person added inside a tenant becomes one
     bool people = tenancy && userPlan is not null && Project.TenantMembership is not null && tenantField is null;
     bool tenanted = tenantField is not null || tenantTable || people;
@@ -86,13 +89,13 @@
     string userArgument = auth && (scoped || userPlan is not null || gated || tenanted) ? ", Extension(user): Extension<CurrentUser>" : "";
     string userRead = scoped || tenanted ? userArgument : "";   // the reading handlers need the caller only to scope the rows
     // what a repository function that filters takes after the pool: the owner scope and the tenant
-    string tenancyArgument = tenantTable ? "&Tenancy::of_tenants(&user)" : people ? "&Tenancy::of_members(&user)" : "&Tenancy::of(&user)";
+    string tenancyArgument = tenantTable ? "&Tenancy::of_tenants(&user)" : people ? "&Tenancy::of_members(&user)" : sharedTenant ? "&Tenancy::of_shared(&user)" : "&Tenancy::of(&user)";
     string filterArguments = (scoped ? ", &scope_of(&pool, &user).await?" : "") + (tenanted ? ", " + tenancyArgument : "");
     string getById = nameActive is null ? "get_by_id" : "get_by_key";   // a name in that place is the start of a name, not a key
     string namedTenancy = tenanted ? ", " + tenancyArgument : "";
     string TenantRefusal(string row) => tenantTable ? $"    refuse_other_tenant_row({row}.{t.Key.Name}, &user)?;"
         : people ? $"    refuse_non_member(&pool, {row}.{t.Key.Name}, &user).await?;"
-        : $"    refuse_other_tenant({row}.{tenantField!.Name}, &user)?;";
+        : $"    {(sharedTenant ? "refuse_other_tenant_or_shared" : "refuse_other_tenant")}({row}.{tenantField!.Name}, &user)?;";
 
     Line($"@@@FILE src/routes/{t.Module}.rs@@@");
     Line("use axum::{");
@@ -118,7 +121,7 @@
         var tenancyNames = tenantTable
             ? new List<string> { "Person", "Tenancy", "attach_admin", "attach_creator", "attach_new_admin", "check_new_admin", "never_deleted", "only_platform", "refuse_other_tenant_row", "require_person" }
             : people ? new List<string> { "Tenancy", "attach_person", "detach_person", "refuse_non_member" }
-            : new List<string> { "Tenancy", "refuse_other_tenant", "require_tenant" };
+            : new List<string> { "Tenancy", sharedTenant ? "refuse_other_tenant_or_shared" : "refuse_other_tenant", "require_tenant" };
         Line("use crate::tenancy::{" + string.Join(", ", tenancyNames.OrderBy(n => n, StringComparer.Ordinal)) + "};");
     }
     if (userArgument.Length > 0)
@@ -168,7 +171,7 @@
         Line($"        .route(\"{t.Route}/{{id}}\", get({getById}){readLayer})");
         if (!log)
             Line($"        .route(\"{t.Route}/{{id}}\", MethodRouter::new().put(update).delete(delete){writeLayer})");
-        if (t.Clone is not null && !log)
+        if (t.Clone is not null && !log && !tenantTable)
             Line($"        .route(\"{t.Route}/{{id}}/clone\", post(clone_row){writeLayer})");
     }
     else
@@ -183,7 +186,7 @@
         if (nameActive is not null)
             Line($"        .route(\"{t.Route}/active\", get(get_all_active))");
         Line(log ? $"        .route(\"{t.Route}/{{id}}\", get({getById}))" : $"        .route(\"{t.Route}/{{id}}\", get({getById}).put(update).delete(delete))");
-        if (t.Clone is not null && !log)
+        if (t.Clone is not null && !log && !tenantTable)
             Line($"        .route(\"{t.Route}/{{id}}/clone\", post(clone_row))");
     }
     if (treePlan is not null)
@@ -368,7 +371,7 @@
             Line($"    if row.{nameCol.Name}.is_empty() {{");
             Line($"        return Err(ApiError::Rejected({HttpStatus.BadRequest}, \"{ProblemTypes.NameRequired}\", \"{NameActiveWords.RequiredTitle}\", \"{NameActiveWords.RequiredDetail}\".into()));");
             Line("    }");
-            Line($"    if row.{activeCol.Name} && repo::name_taken(pool, &row.{nameCol.Name}, key{(tenantField is not null ? ", &Tenancy::of(user)" : "")}).await? {{");
+            Line($"    if row.{activeCol.Name} && repo::name_taken(pool, &row.{nameCol.Name}, key{(tenantField is not null ? (sharedTenant ? ", &Tenancy::of_shared(user)" : ", &Tenancy::of(user)") : "")}).await? {{");
             Line($"        return Err(ApiError::Rejected({HttpStatus.Conflict}, \"{ProblemTypes.DuplicateName}\", \"{NameActiveWords.DuplicateTitle}\", format!(\"{NameActiveWords.DuplicateDetailFormat.Replace("{0}", "{}")}\", row.{nameCol.Name})));");
             Line("    }");
             Line("    Ok(())");
@@ -400,7 +403,7 @@
         Line("    }");
     }
     if (tenantField is not null)
-        Line($"    row.{tenantField.Name} = require_tenant(&user)?;");
+        Line(sharedTenant ? $"    row.{tenantField.Name} = Some(require_tenant(&user)?);" : $"    row.{tenantField.Name} = require_tenant(&user)?;");
     if (validate)
     {
         Line("    validate(&row, None)?;");

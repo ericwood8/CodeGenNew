@@ -36,9 +36,12 @@
     // TenantTable (src/tenancy.rs): the filter of the tenant column (the key of the tenant table itself) joins the owner scope in the filtering functions
     var tenantOwned = RustTenantWriter.Applies(Project) ? TableShapes.For(Model, Project).Tenant : null;
     bool tenantTable = RustTenantWriter.Applies(Project) && TenantPlan.IsTenantTable(Model, Project);
+    // the role table with a nullable tenant column in NoTenantTables: a tenant reads its own roles and the shared ones (NULL)
+    var sharedColumn = RustTenantWriter.Applies(Project) ? PermissionTables.SharedRoleTenant(Model, Project) : null;
+    var tenantColumnModel = tenantOwned?.Column ?? sharedColumn;
     // the people of the user table belong to a tenant by their membership rows (TenantMembership): the filter is on the person's key
-    bool people = RustTenantWriter.Applies(Project) && userPlan is not null && Project.TenantMembership is not null && tenantOwned is null;
-    bool tenanted = tenantOwned is not null || tenantTable || people;
+    bool people = RustTenantWriter.Applies(Project) && userPlan is not null && Project.TenantMembership is not null && tenantColumnModel is null;
+    bool tenanted = tenantColumnModel is not null || tenantTable || people;
     var qd = DialectInfo.For(Model.Dialect);
     RustField? FieldOf(ColumnModel? column) => column is null ? null : t.Fields.FirstOrDefault(f => f != t.HashField && f.Column.Name.EqualsIgnoreCase(column.Name));
     var ownerField = FieldOf(ownerColumn);
@@ -50,7 +53,7 @@
     bool filtered = scoped || tenanted || nameActive is not null;
     string activeTest = nameActive is null ? "" : $"t.{qd.Quote(nameActive.Active.DbName)} = {qd.BooleanLiteral(true)}";
     string nameColumn = nameActive is null ? "" : $"t.{qd.Quote(nameActive.Name.DbName)}";
-    string tenantColumn = tenantTable || people ? qd.Quote(t.Key.Column.DbName) : tenantOwned is null ? "" : qd.Quote(tenantOwned.Column.DbName);
+    string tenantColumn = tenantTable || people ? qd.Quote(t.Key.Column.DbName) : tenantColumnModel is null ? "" : qd.Quote(tenantColumnModel.DbName);
     string filterParameters = (scoped ? ", scope: &Scoped" : "") + (tenanted ? ", tenancy: &Tenancy" : "");
     var adminColumn = FieldOf(userPlan?.Admin);
     var activeColumn = t.ActiveField;
@@ -280,15 +283,15 @@
             Line($"    builder.build_query_as::<{t.Struct}>().fetch_all(pool).await");
             Line("}");
             Line();
-            Line("/// True when an active row other than `key` already has the name" + (tenantOwned is not null ? " (among the rows the tenancy shows)" : "") + ".");
-            Line($"pub async fn name_taken(pool: &Pool, name: &str, key: Option<{keyType}>{(tenantOwned is not null ? ", tenancy: &Tenancy" : "")}) -> Result<bool, sqlx::Error> {{");
+            Line("/// True when an active row other than `key` already has the name" + (tenantColumnModel is not null ? " (among the rows the tenancy shows)" : "") + ".");
+            Line($"pub async fn name_taken(pool: &Pool, name: &str, key: Option<{keyType}>{(tenantColumnModel is not null ? ", tenancy: &Tenancy" : "")}) -> Result<bool, sqlx::Error> {{");
             Line($"    let mut builder = QueryBuilder::<Db>::new({RustTable.Raw($"SELECT COUNT(*) FROM {t.Table} AS t WHERE {nameColumn} = ")});");
             Line("    builder.push_bind(name.to_string());");
             Line($"    builder.push({RustTable.Raw(" AND " + activeTest)});");
             Line("    if let Some(key) = key {");
             Line($"        builder.push({RustTable.Raw($" AND t.{qd.Quote(t.Key.Column.DbName)} <> ")}).push_bind(key);");
             Line("    }");
-            if (tenantOwned is not null)
+            if (tenantColumnModel is not null)
                 Line($"    tenancy.apply(&mut builder, {RustTable.Raw("t." + tenantColumn)});");
             Line("    Ok(builder.build_query_scalar::<i64>().fetch_one(pool).await? > 0)");
             Line("}");

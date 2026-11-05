@@ -5,7 +5,12 @@ namespace CodeGenNew.Core;
 public static class WriteRolePlan
 {
     /// <summary> The roles allowed to write the table, the administrator role first; empty when any signed-in person may (no rule, or no <c>ApiAuth</c>). </summary>
-    public static IReadOnlyList<string> For(ProjectSettings project, string table) => Resolve(project, table, project.WriteRoles, project.TableWriteRoles);
+    public static IReadOnlyList<string> For(ProjectSettings project, string table) =>
+        IsPermissionTable(project, table) && TableEntry(project.TableWriteRoles, table) is null ? [project.AuthAdminRole] : Resolve(project, table, project.WriteRoles, project.TableWriteRoles);
+
+    /// <summary> The tables that hold roles and permissions (<c>PermissionTables</c>) are written by the administrator role unless <c>TableWriteRoles</c> says otherwise: whoever changes them decides who may do what. </summary>
+    private static bool IsPermissionTable(ProjectSettings project, string table) =>
+        PermissionTables.IsConfigured(project) && project.PermissionTables.Contains(table, StringComparer.OrdinalIgnoreCase);
 
     public static IReadOnlyList<string> For(ProjectSettings project, TableModel table) => For(project, table.TableName);
 
@@ -28,6 +33,7 @@ public static class WriteRolePlan
         IReadOnlyList<string> roles = TableEntry(perTable, table) ?? (IReadOnlyList<string>)wholeProject;
         if (roles.Count == 0)
             return [];
+        roles = PermissionPlan.Expand(project, roles);
         return new[] { project.AuthAdminRole }.Concat(roles).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 

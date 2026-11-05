@@ -70,7 +70,7 @@ public static class RustTenantWriter
             string attachAdmin = $"INSERT INTO {members} ({Q(membership.User)}, {Q(membership.Tenant)}" + (membership.Role is null ? "" : $", {Q(membership.Role)}") + ")"
                 + $" VALUES ({di.Placeholder(1)}, {di.Placeholder(2)}" + (membership.Role is null ? "" : $", {di.Placeholder(3)}") + ")";
             o.Append(FillAll(Members, ("§PERSON_SQL", Raw(personExists)), ("§ADMIN_SQL", Raw(attachAdmin)), ("§HOSTARG", hostArg), ("§HEADERSNAME", host is null ? "_headers" : "headers"),
-                ("§HOSTLOGIN", host is null ? "" : HostLoginLines + "\n"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines + "\n"), ("§MEMBERS_SQL", Raw(select)), ("§ATTACH_SQL", Raw(insert)), ("§ROWTYPE", "(i32, " + textType + (membership.Role is null ? "" : ", Option<String>") + ")"),
+                ("§HOSTLOGIN", host is null ? "" : HostLoginLines + "\n"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines + "\n"), ("§LISTS", PermissionTables.IsConfigured(project) ? ", roles: held_roles, permissions: held_permissions" : ""), ("§HELD", PermissionTables.IsConfigured(project) ? "    let (held_roles, held_permissions) = crate::users::held_for(&pool, &user.name, Some(member.tenant_id)).await?;\n" : ""), ("§MEMBERS_SQL", Raw(select)), ("§ATTACH_SQL", Raw(insert)), ("§ROWTYPE", "(i32, " + textType + (membership.Role is null ? "" : ", Option<String>") + ")"),
                 ("§TEXTCONVERSION", textConversion), ("§ROLECONVERSION", membership.Role is null ? "None" : "row.2"), ("§ROLEBIND", membership.Role is null ? "" : ".bind(ADMIN_ROLE)")));
             o.Append(NewPerson(userPlan, project, membership, null, di, Raw));
             o.Append(People(people, di, Raw));
@@ -309,6 +309,11 @@ pub fn refuse_other_tenant(row_tenant: i32, user: &CurrentUser) -> ApiResult<()>
     if user.tenant_id == Some(row_tenant) { Ok(()) } else { Err(ApiError::NotFound) }
 }
 
+/// Another tenant's row is not found; a shared row (no tenant) is.
+pub fn refuse_other_tenant_or_shared(row_tenant: Option<i32>, user: &CurrentUser) -> ApiResult<()> {
+    if row_tenant.is_none() || user.is_platform() || user.tenant_id == row_tenant { Ok(()) } else { Err(ApiError::NotFound) }
+}
+
 /// The tenant table: the row is the caller's own tenant, or any one for a platform administrator.
 pub fn refuse_other_tenant_row(row_key: i32, user: &CurrentUser) -> ApiResult<()> {
     if user.is_platform() || user.tenant_id == Some(row_key) { Ok(()) } else { Err(ApiError::NotFound) }
@@ -322,6 +327,10 @@ pub enum Tenancy {
     Only(i32),
     /// Only the people who belong to this tenant (the user table, by its membership rows).
     Members(i32),
+    /// The rows of this tenant and the shared ones (no tenant).
+    OnlyOrShared(i32),
+    /// Only the shared rows (no tenant).
+    SharedOnly,
     /// A caller in no tenant: no row.
     Nothing,
 }
@@ -339,6 +348,11 @@ impl Tenancy {
         if user.is_platform() { Tenancy::Any } else { Tenancy::of(user) }
     }
 
+    /// A table with shared rows: the caller's tenant and the shared rows, or every row for a platform administrator.
+    pub fn of_shared(user: &CurrentUser) -> Tenancy {
+        if user.is_platform() { Tenancy::Any } else { user.tenant_id.map_or(Tenancy::SharedOnly, Tenancy::OnlyOrShared) }
+    }
+
     /// The people of the user table: the members of the caller's tenant, or everyone for a platform administrator.
     pub fn of_members(user: &CurrentUser) -> Tenancy {
         §OF_MEMBERS
@@ -353,6 +367,12 @@ impl Tenancy {
             }
             Tenancy::Only(tenant) => {
                 builder.push(" AND ").push(column).push(" = ").push_bind(*tenant);
+            }
+            Tenancy::OnlyOrShared(tenant) => {
+                builder.push(" AND (").push(column).push(" = ").push_bind(*tenant).push(" OR ").push(column).push(" IS NULL)");
+            }
+            Tenancy::SharedOnly => {
+                builder.push(" AND ").push(column).push(" IS NULL");
             }
             Tenancy::Members(tenant) => {
                 builder.push(" AND ").push(column).push(" IN (").push(PEOPLE_OF_TENANT).push_bind(*tenant).push(")");
@@ -559,7 +579,7 @@ async fn switch_tenant(State(pool): State<Pool>, Extension(user): Extension<Curr
         None => None,
     }
     .ok_or_else(not_member)?;
-§HOSTSWITCH    let person = DirectoryUser { user_name: user.name.clone(), password_hash: String::new(), role: member.role.clone().or(user.role.clone()), owner_id: user.owner_id };
+§HOSTSWITCH§HELD    let person = DirectoryUser { user_name: user.name.clone(), password_hash: String::new(), role: member.role.clone().or(user.role.clone()), owner_id: user.owner_id§LISTS };
     session_response(&person, Some(member.tenant_id))
 }
 """";

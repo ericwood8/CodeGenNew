@@ -27,6 +27,7 @@ public static class DesktopSignInCode
         bool tenants = tenantKey is not null && (membership is not null || userOwned is not null);
         var active = tenantTable?.IsActiveColumn;
 
+        var held = PermissionTables.Resolve(database, project).Plan;
         string roleExpression = plan.Role == null ? "null"
             : plan.RoleIsFlag ? $"row.Role == true ? {CSharpText.Quote(plan.RoleWhenTrue)} : {CSharpText.Quote(plan.RoleWhenFalse)}"
             : "row.Role";
@@ -40,8 +41,8 @@ public static class DesktopSignInCode
         o.Append($"using System.Security.Cryptography;\nusing Microsoft.EntityFrameworkCore;\n\nnamespace {ns};\n\n");
         string platform = $"\n{{\n    /// <summary> A platform administrator: the administrator role, working in no tenant. </summary>\n    public bool IsPlatform => TenantId is null && Role == {CSharpText.Quote(project.AuthAdminRole)};\n}}";
         o.Append(FillAll(User, ("§TENANTDOC", tenants ? ", the tenant they work in and their own role (a membership of the tenant may replace the role)" : ""),
-            ("§TENANT", tenants ? ", int? TenantId, string? OwnRole" : ""), ("§BODY", tenants ? platform : ";")));
-        o.Append(SessionText);
+            ("§TENANT", (tenants ? ", int? TenantId, string? OwnRole" : "") + (held is null ? "" : ", string[] HeldRoles, string[] Permissions")), ("§BODY", tenants ? platform : ";")));
+        o.Append(FillAll(SessionText, ("§HASROLE", held is null ? PlainHasRole : PermissionHasRole)));
         string firstText = FirstPersonMethods(database, project, contextType);
         string tenantLines = "";
         if (tenants)
@@ -72,7 +73,12 @@ public static class DesktopSignInCode
                 ("§UOWNER", plan.Owner == null ? "(int?)null" : "u." + plan.Owner.CSharpName()), ("§ROLE", roleExpression), ("§OWNER", ownerExpression),
                 ("§TENANTLINES", ""), ("§TENANTSELECT", ""), ("§MEMBERS", ""), ("§SWITCH", ""), ("§TENANTRESULT", ""), ("§TENANTPARAM", ""), ("§FIRST", firstText)));
         }
-        return FillAll(o.ToString(), ("§MINLEN", UserScreenPlan.MinimumPasswordLength.ToString()), ("§TOOSHORT", UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength)));
+        string tenantArgument = tenants ? "tenant" : "null";
+        return FillAll(o.ToString(),
+            ("§HELDLINES", held is null ? "" : $"        var (heldRoles, heldPermissions) = await HeldAsync(context, name, {tenantArgument}, cancellationToken);\n"), ("§HELDRESULT", held is null ? "" : ", heldRoles, heldPermissions"),
+            ("§HELDQUERY", held is null ? "" : HeldQuery(held, contextType, plan, project)),
+            ("§HELDSWITCH", held is null ? "" : "        var (heldRoles, heldPermissions) = await HeldAsync(context, user.Name, tenantId, cancellationToken);\n"), ("§HELDWITH", held is null ? "" : ", HeldRoles = heldRoles, Permissions = heldPermissions"),
+            ("§MINLEN", UserScreenPlan.MinimumPasswordLength.ToString()), ("§TOOSHORT", UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength)));
     }
 
     /// <summary> Whether the sign-in offers to create the first administrator when the user table is empty: the table's required columns can all be given a value (<see cref="FirstPersonPlan"/>), and a tenant
@@ -137,11 +143,43 @@ public static class DesktopSession
 {
     public static SignedInUser? User { get; set; }
 
-    public static bool HasRole(IEnumerable<string> roles) => User?.Role is { } role && roles.Contains(role);
+§HASROLE
 }
 
 
 """;
+
+    /// <summary> The roles of the person and the permissions those roles hold (PermissionTables), in the tenant they work in: the same reading as the API's sign-in. </summary>
+    private static string HeldQuery(PermissionTablesPlan held, string contextType, UserTablePlan user, ProjectSettings project)
+    {
+        string Set(TableModel table, ColumnModel? tenantColumn) => $"context.Set<{table.TableName}>(){(tenantColumn is null ? "" : ".IgnoreQueryFilters()")}.AsNoTracking()";
+        string InTenant(string alias, ColumnModel? tenantColumn) => tenantColumn is null ? "" : tenantColumn.IsNullable
+            ? $" && ({alias}.{tenantColumn.CSharpName()} == tenantId || {alias}.{tenantColumn.CSharpName()} == null)" : $" && {alias}.{tenantColumn.CSharpName()} == tenantId";
+        string roleJoin = held.RoleTenant is null ? "" : $" join r in {Set(held.Role, held.RoleTenant)} on ur.{held.UserRoleRole.CSharpName()} equals r.{held.RoleKey.CSharpName()}";
+        string tests = $"ur.{held.UserRoleUser.CSharpName()} == key{InTenant("ur", held.UserRoleTenant)}{InTenant("r", held.RoleTenant)}";
+        string noTenant = held.PerTenant ? "        if (tenantId is null)\n            return ([], []);\n" : "";
+        return $$"""
+
+    /// <summary> The names of the roles the person holds and of the permissions those roles hold{{(held.PerTenant ? " in the tenant" : "")}}; read at sign-in and at a switch of tenant. </summary>
+    public static async Task<(string[] Roles, string[] Permissions)> HeldAsync({{contextType}} context, string userName, int? tenantId, CancellationToken cancellationToken = default)
+    {
+        var key = await context.Set<{{user.Table.TableName}}>().IgnoreQueryFilters().AsNoTracking().Where(u => u.{{user.UserName.CSharpName()}} == userName).Select(u => (int?)u.{{held.UserKey.CSharpName()}}).FirstOrDefaultAsync(cancellationToken);
+        if (key is null)
+            return ([], []);
+{{noTenant}}        var roles = await (from ur in {{Set(held.UserRole, held.UserRoleTenant)}} join r in {{Set(held.Role, held.RoleTenant)}} on ur.{{held.UserRoleRole.CSharpName()}} equals r.{{held.RoleKey.CSharpName()}}
+                           where {{tests}} select r.{{held.RoleName.CSharpName()}}).Distinct().ToListAsync(cancellationToken);
+        var permissions = await (from ur in {{Set(held.UserRole, held.UserRoleTenant)}}{{roleJoin}} join rp in {{Set(held.RolePermission, null)}} on ur.{{held.UserRoleRole.CSharpName()}} equals rp.{{held.RolePermissionRole.CSharpName()}}
+                          join p in {{Set(held.Permission, null)}} on rp.{{held.RolePermissionPermission.CSharpName()}} equals p.{{held.PermissionKey.CSharpName()}}
+                          where {{tests}} select p.{{held.PermissionName.CSharpName()}}).Distinct().ToListAsync(cancellationToken);
+        return (roles.Where(r => !string.IsNullOrEmpty(r)).Select(r => r!).ToArray(), permissions.Where(p => !string.IsNullOrEmpty(p)).Select(p => p!).ToArray());
+    }
+""";
+    }
+
+    private const string PlainHasRole = "    public static bool HasRole(IEnumerable<string> roles) => User?.Role is { } role && roles.Contains(role);";
+
+    private const string PermissionHasRole = "    /// <summary> Whether the person's role, or a role they hold (PermissionTables), is one of <paramref name=\"roles\"/>; an entry <c>@name</c> asks for a permission those roles hold. </summary>\n"
+        + "    public static bool HasRole(IEnumerable<string> roles) => User is { } user && roles.Any(r => r.StartsWith('@') ? user.Permissions.Contains(r[1..]) : r == user.Role || user.HeldRoles.Contains(r));";
 
     private const string Choice = """
 /// <summary> A tenant the person belongs to: the name to show and the role they have in it (null: their own role stays). </summary>
@@ -254,9 +292,9 @@ public static class DesktopSignIn
             Failures.Remove(key);
         string? role = §ROLE;
         int? owner = §OWNER;
-§TENANTLINES        return new SignedInUser(row.Name!, role, owner§TENANTRESULT);
+§TENANTLINES§HELDLINES        return new SignedInUser(row.Name!, role, owner§TENANTRESULT§HELDRESULT);
     }
-§MEMBERS§SWITCH§FIRST}
+§MEMBERS§SWITCH§HELDQUERY§FIRST}
 
 """;
 
@@ -293,7 +331,9 @@ public static class DesktopSignIn
     public static async Task<SignedInUser?> SwitchAsync(§CTX context, SignedInUser user, int tenantId, CancellationToken cancellationToken = default)
     {
         var members = await TenantsAsync(context, user.Name, cancellationToken);
-        return members.FirstOrDefault(m => m.Id == tenantId) is { } chosen ? user with { TenantId = chosen.Id, Role = chosen.Role ?? user.OwnRole } : null;
+        if (members.FirstOrDefault(m => m.Id == tenantId) is not { } chosen)
+            return null;
+§HELDSWITCH        return user with { TenantId = chosen.Id, Role = chosen.Role ?? user.OwnRole§HELDWITH };
     }
 
 """;

@@ -38,7 +38,9 @@ public static class TenantWriter
                 ("§TT", tenantTable.TableName), ("§TKEY", tenantKey.CSharpName()), ("§ACTIVEJOIN", activeJoin), ("§TEXT", textExpression), ("§HOSTPARAM", hostParam),
                 ("§HOSTLINES", host is null ? "" : HostLoginLines)));
             register = "        services.AddScoped<ILoginClaims, TenantLoginClaims>();\n";
-            o.Append(FillAll(Switch, ("§CTX", contextType), ("§ROLEPARAM", membership.Role is null ? "null" : "member.Role"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines)));
+            o.Append(FillAll(Switch, ("§CTX", contextType), ("§ROLEPARAM", membership.Role is null ? "null" : "member.Role"), ("§LISTS", PermissionTables.IsConfigured(project) ? ", claims.Roles(), claims.Permissions()" : ""), ("§PERMISSIONS", PermissionTables.IsConfigured(project) ? PermissionSwitch : ""),
+                ("§DIRPARAM", PermissionTables.IsConfigured(project) ? ", [FromServices] IUserDirectory directory" : ""),
+                ("§CARRY", PermissionTables.IsConfigured(project) ? "(await directory.FindAsync(http.User.Identity?.Name ?? \"\", http.RequestAborted))?.Role" : "http.User.FindFirstValue(AuthNames.RoleClaim)"), ("§HOSTSWITCH", host is null ? "" : HostSwitchLines)));
             routes.Append("        app.MapGet(\"/api/auth/tenants\", TenantSwitching.ListAsync);\n        app.MapPost(\"/api/auth/switch-tenant\", TenantSwitching.SwitchAsync);\n");
             // the sign-in screens pick the tenant by name: the tenants that can be signed in to (not switched off, not soft deleted), answered without a sign-in
             string softWhere = TenantPlan.DeletedFlagOf(tenantTable) is { } soft ? $".Where(t => !t.{soft.CSharpName()})" : "";
@@ -264,7 +266,7 @@ public static class TenantSwitching
     }
 
     /// <summary> A new token for the same person, working in another tenant they belong to. </summary>
-    public static async Task<IResult> SwitchAsync([FromBody] SwitchTenantRequest request, §CTX context, HttpContext http, JwtOptions jwt)
+    public static async Task<IResult> SwitchAsync([FromBody] SwitchTenantRequest request, §CTX context, HttpContext http, JwtOptions jwt§DIRPARAM)
     {
         if (request.TenantId is not int wanted)
             return TenantProblems.NotMember();
@@ -273,12 +275,12 @@ public static class TenantSwitching
         if (member is null)
             return TenantProblems.NotMember();
 §HOSTSWITCH
-        string? role = §ROLEPARAM ?? http.User.FindFirstValue(AuthNames.RoleClaim);
+        string? role = §ROLEPARAM ?? §CARRY;
         var claims = http.User.Claims.Where(c => c.Type != ClaimsTenantScope.ClaimName && c.Type != AuthNames.RoleClaim && c.Type is not ("exp" or "iat" or "nbf" or "iss" or "aud")).ToList();
         claims.Add(new Claim(ClaimsTenantScope.ClaimName, wanted.ToString()));
         if (!string.IsNullOrEmpty(role))
             claims.Add(new Claim(AuthNames.RoleClaim, role));
-        DateTime expires = DateTime.UtcNow.AddMinutes(jwt.ExpiresMinutes);
+§PERMISSIONS        DateTime expires = DateTime.UtcNow.AddMinutes(jwt.ExpiresMinutes);
         string token = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(claims),
@@ -288,9 +290,15 @@ public static class TenantSwitching
             SigningCredentials = new SigningCredentials(AuthSetup.SigningKey(jwt), SecurityAlgorithms.HmacSha256)
         });
         int? owner = int.TryParse(http.User.FindFirstValue(AuthNames.OwnerClaim), out int ownerId) ? ownerId : null;
-        return Results.Ok(new LoginResponse(token, expires, new AuthUser(http.User.Identity?.Name ?? "", role, owner, wanted)));
+        return Results.Ok(new LoginResponse(token, expires, new AuthUser(http.User.Identity?.Name ?? "", role, owner, wanted§LISTS)));
     }
 }
+
+""";
+
+    private const string PermissionSwitch = """
+        claims.RemoveAll(c => c.Type == AuthNames.PermissionClaim);
+        claims.AddRange(await PermissionClaims.ForAsync(context, http.User.Identity?.Name ?? "", wanted, http.RequestAborted));
 
 """;
 

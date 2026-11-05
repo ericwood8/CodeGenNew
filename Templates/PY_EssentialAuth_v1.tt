@@ -17,6 +17,7 @@
     bool table = Project.UserTable is not null;
     bool hosts = PythonTenantWriter.Applies(Project) && Project.TenantHostColumn is not null;   // TenantHostColumn: a token works only on its own tenant's host name
     bool tenants = PythonTenantWriter.Applies(Project);   // TenantTable: the tenant is a claim of the token (app/routes/tenancy.py, PY_Tenants)
+    bool permissions = PermissionTables.IsConfigured(Project);   // PermissionTables: the roles and permissions of the person travel in the token
 #>
 @@@FILE app/auth.py@@@
 """Sign-in: POST /api/auth/login, the bearer check every other route needs, password hashing and the owner scope."""
@@ -40,6 +41,10 @@ from app.db import get_session
 from app.support import ApiError
 
 ROLE_CLAIM = <#= Str(Project.AuthRoleClaim) #>
+<# if (permissions) { #>
+ROLES_CLAIM = "roles"
+PERMISSIONS_CLAIM = "<#= PermissionTables.PermissionClaim #>"
+<# } #>
 OWNER_CLAIM = <#= Str(Project.AuthOwnerClaim) #>
 <# if (tenants) { #>
 TENANT_CLAIM = "tenant"
@@ -72,6 +77,10 @@ class DirectoryUser:
     password_hash: str
     role: str | None
     owner_id: int | None
+<# if (permissions) { #>
+    roles: tuple[str, ...] = ()
+    permissions: tuple[str, ...] = ()
+<# } #>
 
 
 @dataclass(frozen=True)
@@ -83,6 +92,10 @@ class CurrentUser:
     owner_id: int | None
 <# if (tenants) { #>
     tenant_id: int | None = None
+<# } #>
+<# if (permissions) { #>
+    roles: tuple[str, ...] = ()
+    permissions: tuple[str, ...] = ()
 <# } #>
 
     @property
@@ -144,6 +157,12 @@ def create_token(user: DirectoryUser, expires: datetime<#= tenants ? ", tenant_i
         claims[ROLE_CLAIM] = user.role
     if user.owner_id is not None:
         claims[OWNER_CLAIM] = str(user.owner_id)
+<# if (permissions) { #>
+    if user.roles:
+        claims[ROLES_CLAIM] = list(user.roles)
+    if user.permissions:
+        claims[PERMISSIONS_CLAIM] = list(user.permissions)
+<# } #>
 <# if (tenants) { #>
     if tenant_id is not None:
         claims[TENANT_CLAIM] = str(tenant_id)
@@ -176,6 +195,12 @@ def read_token(token: str) -> dict | None:
     return claims
 
 
+<# if (permissions) { #>
+def _strings(value) -> tuple[str, ...]:
+    return tuple(v for v in value if isinstance(v, str)) if isinstance(value, list) else ()
+
+
+<# } #>
 def require_user(request: Request) -> CurrentUser:
     """The signed-in caller; a missing, bad or expired token is a 401. main.py puts this on every router but the sign-in."""
     scheme, _, token = request.headers.get("authorization", "").partition(" ")
@@ -204,9 +229,17 @@ def require_user(request: Request) -> CurrentUser:
 <# if (hosts) { #>
         check_host(request, tenant)
 <# } #>
+<# if (permissions) { #>
+    return CurrentUser(str(claims.get(NAME_CLAIM) or claims.get("sub") or ""), role if isinstance(role, str) else None, owner, tenant, _strings(claims.get(ROLES_CLAIM)), _strings(claims.get(PERMISSIONS_CLAIM)))
+<# } else { #>
     return CurrentUser(str(claims.get(NAME_CLAIM) or claims.get("sub") or ""), role if isinstance(role, str) else None, owner, tenant)
+<# } #>
+<# } else { #>
+<# if (permissions) { #>
+    return CurrentUser(str(claims.get(NAME_CLAIM) or claims.get("sub") or ""), role if isinstance(role, str) else None, owner, _strings(claims.get(ROLES_CLAIM)), _strings(claims.get(PERMISSIONS_CLAIM)))
 <# } else { #>
     return CurrentUser(str(claims.get(NAME_CLAIM) or claims.get("sub") or ""), role if isinstance(role, str) else None, owner)
+<# } #>
 <# } #>
 
 
@@ -220,7 +253,11 @@ def visible_owners(user: CurrentUser) -> list[int] | None:
 def require_roles(roles: tuple[str, ...], write: bool):
     """A route dependency: only these roles (the administrator role is among them) may call the route; ReadRoles and WriteRoles of the project."""
     def check(user: CurrentUser = Depends(require_user)) -> None:
+<# if (permissions) { #>
+        if not any(r.startswith("@") and r[1:] in user.permissions or r == user.role or r in user.roles for r in roles):
+<# } else { #>
         if user.role not in roles:
+<# } #>
             detail = "Your role may read this table but not change it." if write else "Your role may not read this table."
             raise ApiError(<#= HttpStatus.Forbidden #>, "Not allowed", problem_type=PROBLEM_ROLE_NOT_ALLOWED, detail=detail)
     return check
@@ -304,7 +341,7 @@ def session_response(user: DirectoryUser<#= tenants ? ", tenant_id: int | None =
     return {
         "token": create_token(user, expires<#= tenants ? ", tenant_id" : "" #>),
         "expiresUtc": expires.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
-        "user": {"name": user.user_name, "role": user.role, "ownerId": user.owner_id<#= tenants ? ", \"tenantId\": tenant_id" : "" #>},
+        "user": {"name": user.user_name, "role": user.role, "ownerId": user.owner_id<#= tenants ? ", \"tenantId\": tenant_id" : "" #><#= permissions ? ", \"roles\": list(user.roles), \"permissions\": list(user.permissions)" : "" #>},
     }
 
 
@@ -332,6 +369,12 @@ def login(body: LoginRequest, request: Request, session: Session = Depends(get_s
     tenant_id, tenant_role = login_tenant(session, user, body.tenant_id<#= hosts ? ", request.url.hostname" : "" #>)
     if tenant_role:
         user = replace(user, role=tenant_role)
+<# if (permissions) { #>
+    from app.users import held_for
+
+    held_roles, held_permissions = held_for(session, user.user_name, tenant_id)
+    user = replace(user, roles=held_roles, permissions=held_permissions)
+<# } #>
     _throttle.succeeded(key)
     return session_response(user, tenant_id)
 <# } else { #>

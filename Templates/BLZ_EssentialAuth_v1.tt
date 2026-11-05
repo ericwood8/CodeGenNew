@@ -29,7 +29,7 @@ using Microsoft.JSInterop;
 namespace <#= ns #>.Services;
 
 /// <summary> Who is signed in: the name, the role and the owner id the API sent. </summary>
-public record SessionUser(string Name, string? Role, int? OwnerId<#= tenants ? ", int? TenantId = null" : "" #>);
+public record SessionUser(string Name, string? Role, int? OwnerId<#= tenants ? ", int? TenantId = null" : "" #><#= PermissionTables.IsConfigured(Project) ? ", string[]? Roles = null, string[]? Permissions = null" : "" #>);
 
 /// <summary> What POST api/auth/login answers; also what is kept in sessionStorage. </summary>
 public record SessionData(string Token, DateTime? ExpiresUtc, SessionUser User);
@@ -116,8 +116,12 @@ public class AuthSession(IJSRuntime js)
         Changed?.Invoke();
     }
 
-    /// <summary> Whether the signed-in person's role is one of <paramref name="roles"/>. </summary>
+    /// <summary> Whether the signed-in person's role is one of <paramref name="roles"/><#= PermissionTables.IsConfigured(Project) ? " or one of the roles they hold, or an entry @name names a permission the token carries (PermissionTables)" : "" #>. </summary>
+<# if (PermissionTables.IsConfigured(Project)) { #>
+    public bool HasRole(IEnumerable<string> roles) => User is { } user && roles.Any(r => r.StartsWith('@') ? user.Permissions?.Contains(r[1..]) == true : r == user.Role || user.Roles?.Contains(r) == true);
+<# } else { #>
     public bool HasRole(IEnumerable<string> roles) => User?.Role is { } role && roles.Contains(role);
+<# } #>
 }
 
 /// <summary> The authentication state that <c>[Authorize]</c> and <c>AuthorizeView</c> read, made from the session. </summary>
@@ -141,6 +145,11 @@ public class SessionAuthenticationStateProvider : AuthenticationStateProvider, I
         var claims = new List<Claim> { new(ClaimTypes.Name, user.Name) };
         if (user.Role is { Length: > 0 } role)
             claims.Add(new Claim(ClaimTypes.Role, role));
+<# if (PermissionTables.IsConfigured(Project)) { #>
+        // a permission is a role named @permission, so [Authorize(Roles = "@edit_billing")] works
+        claims.AddRange((user.Roles ?? []).Select(held => new Claim(ClaimTypes.Role, held)));
+        claims.AddRange((user.Permissions ?? []).Select(held => new Claim(ClaimTypes.Role, "@" + held)));
+<# } #>
         return new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity(claims, "jwt")));
     }
 

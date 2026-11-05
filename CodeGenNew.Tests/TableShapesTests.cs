@@ -42,6 +42,35 @@ public class TableShapesTests
     }
 
     [TestMethod]
+    public void A_table_whose_key_is_also_its_foreign_key_extends_that_table()
+    {
+        var profile = Sample.Table("CustomerProfile",
+            [Sample.Column("CustomerId", SqlDbType.Int, primaryKey: true, ordinal: 1), Sample.Column("Language", SqlDbType.NVarChar, characters: 10, ordinal: 2)],
+            [Sample.ForeignKey("CustomerId", "Customer", "CustomerId", "Name")]);
+        var extension = TableShapes.For(profile, Project()).Extension;
+        Assert.IsNotNull(extension);
+        Assert.AreEqual("CustomerId", extension.Key.Name);
+        Assert.AreEqual("Customer", extension.Base.ReferencedTable);
+    }
+
+    [TestMethod]
+    public void A_table_with_its_own_key_or_a_composite_key_or_a_key_to_itself_extends_nothing()
+    {
+        var own = Sample.Table("Note",
+            [Sample.Column("NoteId", SqlDbType.Int, primaryKey: true, identity: true, ordinal: 1), Sample.Column("CustomerId", SqlDbType.Int, ordinal: 2)],
+            [Sample.ForeignKey("CustomerId", "Customer", "CustomerId", "Name")]);
+        var composite = Sample.Table("CustomerTag",
+            [Sample.Column("CustomerId", SqlDbType.Int, primaryKey: true, ordinal: 1), Sample.Column("TagId", SqlDbType.Int, primaryKey: true, ordinal: 2)],
+            [Sample.ForeignKey("CustomerId", "Customer", "CustomerId", "Name"), Sample.ForeignKey("TagId", "Tag", "TagId", "Name")]);
+        var itself = Sample.Table("Node",
+            [Sample.Column("NodeId", SqlDbType.Int, primaryKey: true, ordinal: 1)],
+            [Sample.ForeignKey("NodeId", "Node", "NodeId", "NodeId")]);
+        Assert.IsNull(TableShapes.For(own, Project()).Extension);
+        Assert.IsNull(TableShapes.For(composite, Project()).Extension);
+        Assert.IsNull(TableShapes.For(itself, Project()).Extension);
+    }
+
+    [TestMethod]
     public void A_shape_is_worked_out_once_and_kept()
     {
         var shapes = TableShapes.For(Customer(), Project(("SoftDeleteTables", "E_SalesCustomer")));

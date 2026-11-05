@@ -121,7 +121,7 @@ public class GatedChangesTests
     [DataRow("SalesInvoice.InvoiceStatusId; to 2.5; when Customer.CustomerStatusId=2", "whole-number")]
     [DataRow("SalesInvoice.InvoiceStatusId; to 2; when Customer.CustomerStatusId ~ 2", "is not Column = value")]
     [DataRow("SalesInvoice.InvoiceStatusId; to 2; when Customer.IgnoreBadStatus > 0", "is not a number")]
-    [DataRow("SalesInvoice.InvoiceStatusId; to 2; when Customer.CustomerStatusId=2; soon 3", "is not to, when, unless, start, approval or message")]
+    [DataRow("SalesInvoice.InvoiceStatusId; to 2; when Customer.CustomerStatusId=2; soon 3", "is not to, when, unless, exempt, start, approval or message")]
     [DataRow("SalesInvoice.SalesInvoiceId; to 2; when Customer.CustomerStatusId=2", "key or a computed column")]
     public void A_rule_that_does_not_fit_is_a_sentence_and_not_a_half_built_rule(string rule, string expected)
     {
@@ -194,6 +194,56 @@ public class GatedChangesTests
     }
 
     [TestMethod]
+    public async Task A_guard_may_name_a_permission_the_token_carries()
+    {
+        const string rule = "Customer.IgnoreBadStatus; by @edit_customers; stampBy IgnoreBadStatusBy; stampOn IgnoreBadStatusOn";
+        var tables = ("PermissionTables", "Role,Permission,RolePermission,UserRole");
+        var plan = GatePlan.Resolve(Database(), Project(("ChangeGates", ""), ("GuardedColumns", rule), tables));
+        Assert.IsEmpty(plan.Problems);
+        var guard = plan.Tables.Single().Guards.Single();
+        Assert.IsNull(guard.By);
+        Assert.AreEqual("edit_customers", guard.Permission);
+        Expect.Contains(guard.RefusalText, "the edit_customers permission");
+
+        Expect.Contains(string.Join(" | ", GatePlan.Resolve(Database(), Project(("ChangeGates", ""), ("GuardedColumns", rule))).Problems), "needs PermissionTables");
+
+        string text = await Gates(Project(("ChangeGates", ""), ("GuardedColumns", rule), tables));
+        Expect.Contains(text, "return await Task.FromResult(caller.IsInRole(AuthNames.AdminRole) || caller.HasClaim(AuthNames.PermissionClaim, \"edit_customers\"));");
+        Expect.DoesNotContain(text, "Set<Employee>");
+    }
+
+    [TestMethod]
+    public async Task A_change_gate_may_be_exempt_for_a_permission_the_token_carries()
+    {
+        const string gate = Gate + "; exempt @override_status";
+        var tables = ("PermissionTables", "Role,Permission,RolePermission,UserRole");
+        Expect.Contains(string.Join(" | ", GatePlan.Resolve(Database(), Project(("ChangeGates", gate))).Problems), "needs PermissionTables");
+        var plan = GatePlan.Resolve(Database(), Project(("ChangeGates", gate), tables));
+        Assert.IsEmpty(plan.Problems);
+        Assert.AreEqual("override_status", plan.Tables.Single(t => t.Gates.Count > 0).Gates.Single().Exempt);
+
+        string text = await Gates(Project(("ChangeGates", gate), tables));
+        Expect.Contains(text, "GateInvoiceStatusIdAsync(ShopContext context, ClaimsPrincipal caller, SalesInvoice row, bool isNew)");
+        Expect.Contains(text, "await GateInvoiceStatusIdAsync(context, caller, row, isNew)");
+        Expect.Contains(text, " && !((parent_CustomerId is not null && parent_CustomerId.IgnoreBadStatus == true) || caller.HasClaim(AuthNames.PermissionClaim, \"override_status\")))");
+        Expect.Contains(text, "unless Customer Ignore Bad Status = true or the caller has the override_status permission.");
+    }
+
+    [TestMethod]
+    public async Task The_Python_and_Rust_gates_and_the_desktop_gate_honour_the_exemption_permission()
+    {
+        var project = Project(("ChangeGates", Gate + "; exempt @override_status"), ("PermissionTables", "Role,Permission,RolePermission,UserRole"));
+        var python = await Repo.Cache.RunAsync(Repo.Template("PY_Gates_v1.tt"), Database(), project);
+        Assert.IsTrue(python.Success, string.Join(" | ", python.Errors));
+        Expect.Contains(python.GeneratedText!, "or \"override_status\" in user.permissions");
+        var rust = await Repo.Cache.RunAsync(Repo.Template("RS_Gates_v1.tt"), Database(), project);
+        Assert.IsTrue(rust.Success, string.Join(" | ", rust.Errors));
+        Expect.Contains(rust.GeneratedText!, "|| user.permissions.iter().any(|held| held == r#\"override_status\"#)");
+        Assert.AreEqual("false", new DesktopGateFlavor().HoldsPermission("x", project));
+        Expect.Contains(new DesktopGateFlavor().HoldsPermission("x", Project(("Auth", "true"), ("Stacks", "WinUI3"), ("ChangeGates", ""))), "DesktopSession.User?.Permissions.Contains(\"x\")");
+    }
+
+    [TestMethod]
     public async Task The_guard_checks_the_caller_stamps_the_change_and_keeps_the_stored_stamp_otherwise()
     {
         string text = await Gates(Project());
@@ -252,7 +302,7 @@ public class GatedChangesTests
         Expect.Contains(text, "copy.InvoiceStatusId = 1;");
         Expect.Contains(text, "copy.IgnoreBadStatus = default!;");
         Expect.Contains(text, "copy.IgnoreBadStatusBy = default!;");
-        Expect.Contains(text, "if (await GateInvoiceStatusIdAsync(context, copy, true) is { } refusedInvoiceStatusId)");
+        Expect.Contains(text, "if (await GateInvoiceStatusIdAsync(context, caller, copy, true) is { } refusedInvoiceStatusId)");
         Expect.Contains(text, "context.Remove(copy);");
 
         string invoice = await Api(SalesInvoice(), Project());
