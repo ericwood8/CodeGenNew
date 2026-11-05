@@ -95,14 +95,14 @@ public static class RustPeopleWriter
             string candidateType = "(i32, Option<String>" + (plan.NameColumn is null ? "" : ", Option<String>") + ")";
             string listName = plan.NameColumn is null ? "None" : "row.2";
             string listRole = membership.Role is null ? "None" : (plan.NameColumn is null ? "row.2" : "row.3");
-            string text = Fill(MembersText, ("§LIST_SQL", Raw(list)), ("§CANDIDATES_SQL", Raw(candidates)), ("§PERSON_SQL", Raw(personExists)), ("§ISMEMBER_SQL", Raw(isMember)), ("§ADD_SQL", Raw(add)), ("§REMOVE_SQL", Raw(remove)), ("§LOGIN_SQL", Raw(login)),
+            string text = FillAll(MembersText, ("§ROLEJSON", membership.Role is null ? "" : ", \"role\": row_role"),("§LIST_SQL", Raw(list)), ("§CANDIDATES_SQL", Raw(candidates)), ("§PERSON_SQL", Raw(personExists)), ("§ISMEMBER_SQL", Raw(isMember)), ("§ADD_SQL", Raw(add)), ("§REMOVE_SQL", Raw(remove)), ("§LOGIN_SQL", Raw(login)),
                 ("§LISTTYPE", listType), ("§CANDIDATETYPE", candidateType), ("§LISTNAME", listName), ("§CANDIDATENAME", plan.NameColumn is null ? "None" : "row.2"), ("§LISTROLE", listRole),
                 ("§ROLEBINDADD", membership.Role is null ? "" : ".bind(body.role.as_deref().map(str::trim).filter(|role| !role.is_empty()))"),
                 ("§ADMINS_TYPE", ProblemTypes.RoleNotAllowed), ("§ADMINS_TITLE", PeopleWords.MembersAdminsOnlyTitle), ("§ADMINS_DETAIL", PeopleWords.MembersAdminsOnlyDetail),
                 ("§EXISTS_TYPE", ProblemTypes.MemberExists), ("§EXISTS_TITLE", PeopleWords.MemberExistsTitle), ("§EXISTS_DETAIL", PeopleWords.MemberExistsDetail),
                 ("§SELF_TYPE", ProblemTypes.MemberSelf), ("§SELF_TITLE", PeopleWords.MemberSelfTitle), ("§SELF_DETAIL", PeopleWords.MemberSelfDetail),
                 ("§ROLEFIELD", membership.Role is null ? "" : ",\n    role: Option<String>"));
-            Add(text.Replace("§ROLEJSON", membership.Role is null ? "" : ", \"role\": row_role"));
+            Add(text);
             if (membership.Role is not null)
                 Add(FillAll(RoleText, ("§SETROLE_SQL", Raw(setRole))));
             router += $"\n        .route(\"{PeopleWords.MembersPath}\", get(list_members).post(add_member))\n        .route(\"{PeopleWords.CandidatesPath}\", get(list_candidates))";

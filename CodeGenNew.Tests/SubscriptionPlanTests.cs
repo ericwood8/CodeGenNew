@@ -451,6 +451,37 @@ public class SubscriptionPlanTests
     }
 
     [TestMethod]
+    [DataRow(false)]
+    [DataRow(true)]
+    public async Task Each_stack_writes_the_scenarios_the_list_gives_it_and_no_others(bool required)
+    {
+        var extra = new Dictionary<string, string> { ["SubscriptionWebhookSecret"] = Secret, ["ApiTests"] = "true", ["PythonTests"] = "true", ["RustTests"] = "true", ["SubscriptionRequired"] = required ? "true" : "false", ["SubscriptionPlanChoice"] = "true" };
+        var project = ProjectSettings.FromValues(WithSignIn(extra));
+        var scenarios = SubscriptionScenario.For(project);
+        var files = new Dictionary<string, (string Stack, string File, Func<SubscriptionScenario, string> Name)>
+        {
+            ["api"] = (SubscriptionScenario.Api, "SubscriptionApiTests.cs", s => s.CSharpName + "()"),
+            ["python"] = (SubscriptionScenario.Python, "tests/test_subscriptions.py", s => "def " + s.PythonName + "("),
+            ["rust"] = (SubscriptionScenario.Rust, "subscription_routes.rs", s => "async fn " + s.SnakeName + "()")
+        };
+
+        foreach (var (stack, (name, file, named)) in files)
+        {
+            var (success, errors, read, _) = await TenantPlanTests.GenerateAsync(WithSignIn(extra), stack: stack, more: PlanTables);
+            Assert.IsTrue(success, string.Join(" | ", errors));
+            string text = read(file);
+            string marker = stack == "api" ? "[TestMethod]" : stack == "python" ? "\ndef test_" : "#[tokio::test]";
+            int written = text.Split(marker).Length - 1;
+            Assert.AreEqual(scenarios.Count(s => s.Stacks.Contains(name)), written, $"{name}: a test is written that the scenario list does not name");
+            foreach (var scenario in scenarios)
+            {
+                bool served = scenario.Stacks.Contains(name);
+                Assert.AreEqual(served, text.Contains(named(scenario), StringComparison.Ordinal), $"{name}: {scenario.Key} should {(served ? "" : "not ")}be written ({named(scenario)})");
+            }
+        }
+    }
+
+    [TestMethod]
     public async Task The_aspnet_api_has_no_webhook_without_a_secret()
     {
         var (success, errors, read, _) = await TenantPlanTests.GenerateAsync(WithSignIn(new() { ["ApiTests"] = "true" }), stack: "api", more: PlanTables);

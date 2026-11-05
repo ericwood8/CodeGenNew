@@ -72,7 +72,7 @@ public static class DesktopSignInCode
                 ("§UOWNER", plan.Owner == null ? "(int?)null" : "u." + plan.Owner.CSharpName()), ("§ROLE", roleExpression), ("§OWNER", ownerExpression),
                 ("§TENANTLINES", ""), ("§TENANTSELECT", ""), ("§MEMBERS", ""), ("§SWITCH", ""), ("§TENANTRESULT", ""), ("§TENANTPARAM", ""), ("§FIRST", firstText)));
         }
-        return o.ToString().Replace("§MINLEN", UserScreenPlan.MinimumPasswordLength.ToString()).Replace("§TOOSHORT", UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength));
+        return FillAll(o.ToString(), ("§MINLEN", UserScreenPlan.MinimumPasswordLength.ToString()), ("§TOOSHORT", UserScreenWords.TooShort(UserScreenPlan.MinimumPasswordLength)));
     }
 
     /// <summary> Whether the sign-in offers to create the first administrator when the user table is empty: the table's required columns can all be given a value (<see cref="FirstPersonPlan"/>), and a tenant

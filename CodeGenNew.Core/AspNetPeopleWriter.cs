@@ -25,9 +25,8 @@ public record MemberBody(int? PersonId, string? Role);
     {
         var membership = plan.Membership!;
         string name = plan.NameColumn is null ? "(string?)null" : $"p.{plan.NameColumn.CSharpName()}";
-        string nameNullable = plan.NameColumn is null ? "(string?)null" : $"p.{plan.NameColumn.CSharpName()}";
         string roleProperty = membership.Role is null ? "" : membership.Role.CSharpName();
-        string text = Fill(HandlersText, ("§CTX", contextType), ("§U", plan.User.Table.TableName), ("§UKEY", plan.Key.CSharpName()), ("§ULOGIN", plan.User.UserName.CSharpName()), ("§UNAME", nameNullable),
+        return FillAll(HandlersText, ("§CTX", contextType), ("§U", plan.User.Table.TableName), ("§UKEY", plan.Key.CSharpName()), ("§ULOGIN", plan.User.UserName.CSharpName()), ("§UNAME", name), ("§NAMEVALUE", name),
             ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()),
             ("§MROLEVALUE", membership.Role is null ? "(string?)null" : $"m.{roleProperty}"), ("§MROLEASSIGN", membership.Role is null ? "" : $", {roleProperty} = (body.Role ?? \"\").Trim() is {{ Length: > 0 }} role ? role : null"),
             ("§ROLEHANDLER", membership.Role is null ? "" : FillAll(RoleHandler, ("§CTX", contextType), ("§M", membership.Table.TableName), ("§MUSER", membership.User.CSharpName()), ("§MTENANT", membership.Tenant.CSharpName()), ("§MROLE", roleProperty))),
@@ -36,7 +35,6 @@ public record MemberBody(int? PersonId, string? Role);
             ("§NOTENANT_TYPE", TenantWords.NoTenantType), ("§NOTENANT_TEXT", TenantWords.NoTenant),
             ("§EXISTS_TYPE", ProblemTypes.MemberExists), ("§EXISTS_TITLE", PeopleWords.MemberExistsTitle), ("§EXISTS_DETAIL", PeopleWords.MemberExistsDetail),
             ("§SELF_TYPE", ProblemTypes.MemberSelf), ("§SELF_TITLE", PeopleWords.MemberSelfTitle), ("§SELF_DETAIL", PeopleWords.MemberSelfDetail));
-        return text.Replace("§NAMEVALUE", name);
     }
 
     private const string MappingText = """

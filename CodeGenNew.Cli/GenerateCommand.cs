@@ -46,6 +46,12 @@ public static class GenerateCommand
         if (options.ProjectOverrides.Count > 0)
             project = project.WithOverrides(options.ProjectOverrides);
 
+        if (options.Command == "feature-coverage")
+        {
+            Console.Write(FeatureCoverage.Text(project));
+            return ExitCodes.Success;
+        }
+
         if (options.Command == "check-data")
             return await CheckDataAsync(options, project, specialLogicColumnsConfigPath);
 

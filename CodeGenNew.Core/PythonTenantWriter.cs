@@ -25,7 +25,7 @@ public static class PythonTenantWriter
         var soft = TenantPlan.DeletedFlagOf(tenantTable);   // the sign-in drop-down leaves out a soft-deleted tenant
 
         var o = new StringBuilder();
-        o.Append(Shared.Replace("§HOSTIMPORT", host is null ? "" : "import ipaddress\n").Replace("§REQUESTIMPORT", host is null ? "" : ", Request").Replace("§FUNC", host is null ? "" : "func, "));
+        o.Append(FillAll(Shared, ("§HOSTIMPORT", host is null ? "" : "import ipaddress\n"), ("§REQUESTIMPORT", host is null ? "" : ", Request"), ("§FUNC", host is null ? "" : "func, ")));
         o.Append(Tables(tenantTable, key, active, text, host, membership, userPlan, soft, userOwned));
         if (host is not null)
             o.Append(FillAll(HostLookup, ("§HOST_TYPE", TenantWords.HostType), ("§HOST_TEXT", TenantWords.Host)));

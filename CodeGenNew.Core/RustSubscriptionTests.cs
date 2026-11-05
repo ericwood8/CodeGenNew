@@ -29,6 +29,8 @@ public static class RustSubscriptionTests
         var write = sql.WriteTable;
         string clearRows = sql.ClearRows is null ? "" : $"    sqlx::query(CLEAR_ROWS).bind(tenant).execute(&api.pool()).await.expect(\"the rows are removed\");\n";
 
+        var names = SubscriptionScenario.Tokens(project, s => s.SnakeName);
+        string WithNames(string text, params (string Token, string Value)[] more) => FillAll(text, [.. names, .. more]);
         var o = new StringBuilder();
         o.Append(FillAll(Head, ("§CRATE", project.RustCrateName), ("§PLAN", sql.PlanKey.ToString()), ("§ADDPLAN", Raw(sql.AddPlan)),
             ("§REMOVEPLAN_COUNT", sql.RemovePlan.Count.ToString()), ("§REMOVEPLAN", List(sql.RemovePlan)), ("§CLEARSUBSCRIPTION", Raw(sql.ClearSubscription)),
@@ -37,32 +39,31 @@ public static class RustSubscriptionTests
         if (write is not null)
         {
             o.Append("\n#[allow(dead_code)]\n").Append(RustTenantTests.BodyFunction("write_body", write, project, "")).Append('\n');
-            o.Append(FillAll(WriteCases, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType),
+            o.Append(WithNames(WriteCases, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType),
                 ("§NOSUBSCRIPTION", project.SubscriptionRequired
                     ? $"    assert_eq!(refused.status, StatusCode::PAYMENT_REQUIRED, \"{{}}\", refused.body);\n    assert_eq!(refused.json()[\"type\"], \"{SubscriptionWords.InactiveType}\");\n"
-                    : "    assert_eq!(refused.status, StatusCode::CREATED, \"{}\", refused.body);\n"),
-                ("§NOSUBSCRIPTION_NAME", project.SubscriptionRequired ? "cannot_write_when_a_subscription_is_required" : "is_on_no_plan_and_may_write")));
+                    : "    assert_eq!(refused.status, StatusCode::CREATED, \"{}\", refused.body);\n")));
             if (sql.LimitKey is { } key)
-                o.Append(FillAll(LimitCase, ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§KEY", Str(key)), ("§ONE", List(sql.SetLimit(key, 1))), ("§TWO", List(sql.SetLimit(key, 2)))));
+                o.Append(WithNames(LimitCase, ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§KEY", Str(key)), ("§ONE", List(sql.SetLimit(key, 1))), ("§TWO", List(sql.SetLimit(key, 2)))));
             if (subscription.PeriodEnd is not null && trialing)
-                o.Append(FillAll(TrialCase, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType)));
+                o.Append(WithNames(TrialCase, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType)));
         }
         if (subscription.PeriodEnd is not null)
-            o.Append(RenewCase);
+            o.Append(WithNames(RenewCase));
         if (project.SubscriptionPlanChoice)
         {
             string tooSmall = write is null || sql.LimitKey is not { } limitKey ? ""
                 : "    run(&api, &" + List(sql.SetLimit(limitKey, 5)) + ").await;\n    let made = inside.post(WRITE, &write_body()).await;\n    assert_eq!(made.status, StatusCode::CREATED, \"{}\", made.body);\n"
                 + "    run(&api, &" + List(sql.SetLimit(limitKey, 0)) + ").await;\n    let refused = inside.put(\"/api/subscription/plan\", &json!({ \"planId\": PLAN })).await;\n"
                 + "    assert_eq!(refused.status, StatusCode::CONFLICT, \"{}\", refused.body);\n    assert_eq!(refused.json()[\"type\"], \"" + SubscriptionWords.PlanTooSmallType + "\");\n    run(&api, &" + List(sql.SetLimit(limitKey, 1)) + ").await;\n";
-            o.Append(FillAll(ChooseCase, ("§TOOSMALL", tooSmall)));
+            o.Append(WithNames(ChooseCase, ("§TOOSMALL", tooSmall)));
         }
-        o.Append(FillAll(RouteCases, ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType)));
-        o.Append(FillAll(PlansCase, ("§PRICELINE", subscription.PlanPrice is null ? "" : "    assert_eq!(info[\"planPrice\"], mine[\"price\"], \"the view shows the price of the tenant's plan\");\n"),
+        o.Append(WithNames(RouteCases, ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType)));
+        o.Append(WithNames(PlansCase, ("§PRICELINE", subscription.PlanPrice is null ? "" : "    assert_eq!(info[\"planPrice\"], mine[\"price\"], \"the view shows the price of the tenant's plan\");\n"),
             ("§LIMITCOUNT", SubscriptionPlan.LimitedTables(database, project).Count.ToString())));
         if (SubscriptionPlan.HasWebhook(database, project))
         {
-            o.Append(FillAll(WebhookCase, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§WEBHOOKPATH", SubscriptionWords.WebhookPath), ("§HEADER", SubscriptionWords.WebhookHeader),
+            o.Append(WithNames(WebhookCase, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§WEBHOOKPATH", SubscriptionWords.WebhookPath), ("§HEADER", SubscriptionWords.WebhookHeader),
                 ("§EXPIRED_TYPE", SubscriptionWords.WebhookExpiredType),
                 ("§PAUSEDLINES", write is null ? "" : "    let paused = inside.post(WRITE, &write_body()).await;\n    assert_eq!(paused.status, StatusCode::PAYMENT_REQUIRED, \"{}\", paused.body);\n    assert_eq!(paused.json()[\"type\"], \"" + SubscriptionWords.InactiveType + "\");\n")));
         }
@@ -117,7 +118,7 @@ async fn set(api: &Client, tenant: i32, change: Value) {
     private const string WriteCases = """"
 
 #[tokio::test]
-async fn writes_are_paused_while_the_subscription_is_not_active_and_reads_go_on() {
+async fn §NAME_PAUSED() {
     let Some(api) = Client::start().await else { return };
     let tenant = start(&api).await;
     set(&api, tenant, json!({ "planId": PLAN, "status": "cancelled" })).await;
@@ -133,7 +134,7 @@ async fn writes_are_paused_while_the_subscription_is_not_active_and_reads_go_on(
 }
 
 #[tokio::test]
-async fn a_tenant_with_no_subscription_§NOSUBSCRIPTION_NAME() {
+async fn §NAME_NOSUBSCRIPTION() {
     let Some(api) = Client::start().await else { return };
     let tenant = start(&api).await;
     let refused = api.in_tenant(tenant, ADMIN_ROLE).post(WRITE, &write_body()).await;
@@ -144,7 +145,7 @@ async fn a_tenant_with_no_subscription_§NOSUBSCRIPTION_NAME() {
     private const string LimitCase = """"
 
 #[tokio::test]
-async fn a_create_past_the_plan_limit_is_refused_until_the_limit_is_raised() {
+async fn §NAME_LIMIT() {
     let Some(api) = Client::start().await else { return };
     let tenant = start(&api).await;
     run(&api, &§ONE).await;
@@ -171,7 +172,7 @@ async fn a_create_past_the_plan_limit_is_refused_until_the_limit_is_raised() {
     private const string RenewCase = """"
 
 #[tokio::test]
-async fn a_renewal_adds_a_period_that_starts_when_the_old_one_ends() {
+async fn §NAME_RENEWAL() {
     let Some(api) = Client::start().await else { return };
     let tenant = start(&api).await;
     set(&api, tenant, json!({ "planId": PLAN, "status": "active", "periodEnd": (chrono::Utc::now() + chrono::Duration::days(5)).to_rfc3339() })).await;
@@ -194,7 +195,7 @@ async fn a_renewal_adds_a_period_that_starts_when_the_old_one_ends() {
     private const string ChooseCase = """"
 
 #[tokio::test]
-async fn an_administrator_chooses_a_plan_unless_it_allows_less_than_the_tenant_has() {
+async fn §NAME_PLANCHOICE() {
     let Some(api) = Client::start().await else { return };
     let tenant = start(&api).await;
     set(&api, tenant, json!({ "planId": PLAN, "status": "active" })).await;
@@ -211,7 +212,7 @@ async fn an_administrator_chooses_a_plan_unless_it_allows_less_than_the_tenant_h
     private const string TrialCase = """"
 
 #[tokio::test]
-async fn a_trial_ends_at_its_period_end() {
+async fn §NAME_TRIAL() {
     let Some(api) = Client::start().await else { return };
     let tenant = start(&api).await;
     let day = chrono::Duration::days(1);
@@ -230,7 +231,7 @@ async fn a_trial_ends_at_its_period_end() {
     private const string PlansCase = """"
 
 #[tokio::test]
-async fn the_view_lists_every_plan_with_what_it_allows_and_marks_the_tenants_own() {
+async fn §NAME_VIEWPLANS() {
     let Some(api) = Client::start().await else { return };
     let tenant = start(&api).await;
     set(&api, tenant, json!({ "planId": PLAN, "status": "active" })).await;
@@ -281,7 +282,7 @@ async fn status_of(client: &Client) -> String {
 }
 
 #[tokio::test]
-async fn the_webhook_sets_the_status_of_the_subscription_the_gateway_names_and_refuses_what_is_not_signed() {
+async fn §NAME_WEBHOOK() {
     let Some(api) = Client::start().await else { return };
     let secret = "test-secret";
     // the secret is read from the environment at each request; every test sets the same value, so the tests do not disturb each other
@@ -321,7 +322,7 @@ async fn the_webhook_sets_the_status_of_the_subscription_the_gateway_names_and_r
     private const string RouteCases = """"
 
 #[tokio::test]
-async fn only_a_platform_administrator_changes_a_subscription() {
+async fn §NAME_PLATFORMADMIN() {
     let Some(api) = Client::start().await else { return };
     let tenant = start(&api).await;
     let inside = api.in_tenant(tenant, ADMIN_ROLE);
@@ -336,7 +337,7 @@ async fn only_a_platform_administrator_changes_a_subscription() {
 }
 
 #[tokio::test]
-async fn the_administrator_sees_the_subscription_and_a_member_does_not() {
+async fn §NAME_ADMINSEES() {
     let Some(api) = Client::start().await else { return };
     let tenant = start(&api).await;
     set(&api, tenant, json!({ "planId": PLAN, "status": "active" })).await;

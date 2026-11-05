@@ -28,7 +28,7 @@ public static class ArgumentParser
         for (int i = 0; i < args.Length; i++)
         {
             string arg = args[i];
-            if (i == 0 && arg is "generate" or "essentials" or "check-data")
+            if (i == 0 && arg is "generate" or "essentials" or "check-data" or "feature-coverage")
             {
                 command = arg;
                 continue;

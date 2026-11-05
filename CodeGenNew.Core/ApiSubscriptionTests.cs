@@ -13,6 +13,7 @@ public static class ApiSubscriptionTests
     {
         var o = new StringBuilder();
         void L(string text = "") => o.Append(text).Append('\n');
+        string Name(string key) => SubscriptionScenario.Get(project, key).CSharpName;
         var subscription = SubscriptionPlan.SubscriptionOf(database, project)!;
         var limit = SubscriptionPlan.LimitTableOf(database, project);
         var tenantTable = TenantPlan.TenantTableOf(database, project)!;
@@ -74,7 +75,7 @@ public static class ApiSubscriptionTests
             L("    }");
             L();
             L("    [TestMethod]");
-            L("    public async Task Writes_are_paused_while_the_subscription_is_not_active_and_reads_go_on()");
+            L($"    public async Task {Name("Paused")}()");
             L("    {");
             L("        ApiFixture.RequireDatabase();");
             L("        int tenant = await MakeTenantAsync();");
@@ -98,7 +99,7 @@ public static class ApiSubscriptionTests
             L("    }");
             L();
             L("    [TestMethod]");
-            L(project.SubscriptionRequired ? "    public async Task A_tenant_with_no_subscription_cannot_write_when_a_subscription_is_required()" : "    public async Task A_tenant_with_no_subscription_is_on_no_plan_and_may_write()");
+            L($"    public async Task {Name("NoSubscription")}()");
             L("    {");
             L("        ApiFixture.RequireDatabase();");
             L("        int tenant = await MakeTenantAsync();");
@@ -122,7 +123,7 @@ public static class ApiSubscriptionTests
                 string key = CSharpText.Quote(limited.LimitKey);
                 L();
                 L("    [TestMethod]");
-                L("    public async Task A_create_past_the_plan_limit_is_refused_until_the_limit_is_raised()");
+                L($"    public async Task {Name("Limit")}()");
                 L("    {");
                 L("        ApiFixture.RequireDatabase();");
                 L("        int tenant = await MakeTenantAsync();");
@@ -153,7 +154,7 @@ public static class ApiSubscriptionTests
                 L("    }");
                 L();
                 L("    [TestMethod]");
-                L("    public async Task Two_creates_at_the_same_moment_cannot_both_pass_the_plan_limit()");
+                L($"    public async Task {Name("Concurrent")}()");
                 L("    {");
                 L("        ApiFixture.RequireDatabase();");
                 L("        int tenant = await MakeTenantAsync();");
@@ -177,7 +178,7 @@ public static class ApiSubscriptionTests
             {
                 L();
                 L("    [TestMethod]");
-                L("    public async Task A_trial_ends_at_its_period_end()");
+                L($"    public async Task {Name("Trial")}()");
                 L("    {");
                 L("        ApiFixture.RequireDatabase();");
                 L("        int tenant = await MakeTenantAsync();");
@@ -201,7 +202,7 @@ public static class ApiSubscriptionTests
         }
         L();
         L("    [TestMethod]");
-        L("    public async Task Only_a_platform_administrator_changes_a_subscription()");
+        L($"    public async Task {Name("PlatformAdmin")}()");
         L("    {");
         L("        ApiFixture.RequireDatabase();");
         L("        int tenant = await MakeTenantAsync();");
@@ -228,7 +229,7 @@ public static class ApiSubscriptionTests
         {
             L();
             L("    [TestMethod]");
-            L("    public async Task A_renewal_adds_a_period_that_starts_when_the_old_one_ends()");
+            L($"    public async Task {Name("Renewal")}()");
             L("    {");
             L("        ApiFixture.RequireDatabase();");
             L("        int tenant = await MakeTenantAsync();");
@@ -259,7 +260,7 @@ public static class ApiSubscriptionTests
         {
             L();
             L("    [TestMethod]");
-            L("    public async Task An_administrator_chooses_a_plan_from_the_list_unless_it_allows_less_than_the_tenant_has()");
+            L($"    public async Task {Name("PlanChoice")}()");
             L("    {");
             L("        ApiFixture.RequireDatabase();");
             L("        int tenant = await MakeTenantAsync();");
@@ -297,7 +298,7 @@ public static class ApiSubscriptionTests
         }
         L();
         L("    [TestMethod]");
-        L("    public async Task The_administrator_sees_the_subscription_and_a_member_does_not()");
+        L($"    public async Task {Name("AdminSees")}()");
         L("    {");
         L("        ApiFixture.RequireDatabase();");
         L("        int tenant = await MakeTenantAsync();");
@@ -323,7 +324,7 @@ public static class ApiSubscriptionTests
         L("    }");
         L();
         L("    [TestMethod]");
-        L("    public async Task The_view_lists_every_plan_with_what_it_allows_and_marks_the_tenants_own()");
+        L($"    public async Task {Name("ViewPlans")}()");
         L("    {");
         L("        ApiFixture.RequireDatabase();");
         L("        int tenant = await MakeTenantAsync();");
@@ -366,7 +367,7 @@ public static class ApiSubscriptionTests
             L("        System.Text.Json.JsonSerializer.Serialize(new { id, gatewayId = gateway, status }, new System.Text.Json.JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });");
             L();
             L("    [TestMethod]");
-            L("    public async Task The_webhook_sets_the_status_of_the_subscription_the_gateway_names_and_refuses_what_is_not_signed()");
+            L($"    public async Task {Name("Webhook")}()");
             L("    {");
             L("        ApiFixture.RequireDatabase();");
             L($"        string? secret = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>(ApiFixture.Services)[\"{project.SubscriptionWebhookSecret}\"];");

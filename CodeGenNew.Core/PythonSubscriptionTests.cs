@@ -22,6 +22,8 @@ public static class PythonSubscriptionTests
         bool trialing = SubscriptionPlan.ActiveStatuses(project).Contains("trialing", StringComparer.OrdinalIgnoreCase);
         var write = sql.WriteTable;
 
+        var names = SubscriptionScenario.Tokens(project, s => s.PythonName);
+        string WithNames(string text, params (string Token, string Value)[] more) => FillAll(text, [.. names, .. more]);
         var o = new StringBuilder();
         o.Append(FillAll(Head, ("§ADMIN_IMPORT", ""), ("§PLAN", sql.PlanKey.ToString()), ("§ADDPLAN", Str(sql.AddPlan)), ("§REMOVEPLAN", List(sql.RemovePlan)),
             ("§CLEARSUBSCRIPTION", Str(sql.ClearSubscription)), ("§CLEARROWS", sql.ClearRows is null ? "None" : Str(sql.ClearRows)),
@@ -31,35 +33,34 @@ public static class PythonSubscriptionTests
         if (write is not null)
         {
             o.Append("\n\n").Append(PythonTenantTests.BodyFunction("write_body", write, project)).Append('\n');
-            o.Append(FillAll(WriteCases, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType),
+            o.Append(WithNames(WriteCases, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType),
                 ("§NOSUBSCRIPTION", project.SubscriptionRequired
                     ? "    assert refused.status_code == 402, refused.text\n    assert refused.json()[\"type\"] == \"" + SubscriptionWords.InactiveType + "\"\n"
-                    : "    assert refused.status_code == 201, refused.text\n"),
-                ("§NOSUBSCRIPTION_NAME", project.SubscriptionRequired ? "cannot_write_when_a_subscription_is_required" : "is_on_no_plan_and_may_write")));
+                    : "    assert refused.status_code == 201, refused.text\n")));
             if (sql.LimitKey is { } key)
             {
-                o.Append(FillAll(LimitCase, ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§KEY", Str(key)),
+                o.Append(WithNames(LimitCase, ("§LIMIT_TYPE", SubscriptionWords.LimitType), ("§KEY", Str(key)),
                     ("§ONE", List(sql.SetLimit(key, 1))), ("§TWO", List(sql.SetLimit(key, 2)))));
             }
             if (subscription.PeriodEnd is not null && trialing)
-                o.Append(FillAll(TrialCase, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType)));
+                o.Append(WithNames(TrialCase, ("§INACTIVE_TYPE", SubscriptionWords.InactiveType)));
         }
         if (subscription.PeriodEnd is not null)
-            o.Append(RenewCase);
+            o.Append(WithNames(RenewCase));
         if (project.SubscriptionPlanChoice)
         {
             string tooSmall = write is null || sql.LimitKey is not { } limitKey ? ""
                 : "    run(engine, " + List(sql.SetLimit(limitKey, 5)) + ")\n    made = api(tenant, \"POST\", WRITE, json=write_body(api, tenant))\n    assert made.status_code == 201, made.text\n"
                 + "    run(engine, " + List(sql.SetLimit(limitKey, 0)) + ")\n    refused = api(tenant, \"PUT\", \"/api/subscription/plan\", json={\"planId\": PLAN})\n    assert refused.status_code == 409, refused.text\n"
                 + "    assert refused.json()[\"type\"] == \"" + SubscriptionWords.PlanTooSmallType + "\"\n    run(engine, " + List(sql.SetLimit(limitKey, 1)) + ")\n";
-            o.Append(FillAll(ChooseCase, ("§TOOSMALL", tooSmall)));
+            o.Append(WithNames(ChooseCase, ("§TOOSMALL", tooSmall)));
         }
-        o.Append(FillAll(RouteCases, ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType)));
-        o.Append(FillAll(PlansCase, ("§PRICELINE", subscription.PlanPrice is null ? "" : "    assert info[\"planPrice\"] == mine[\"price\"], \"the view shows the price of the tenant's plan\"\n"),
+        o.Append(WithNames(RouteCases, ("§PLATFORM_TYPE", SubscriptionWords.OnlyPlatformType)));
+        o.Append(WithNames(PlansCase, ("§PRICELINE", subscription.PlanPrice is null ? "" : "    assert info[\"planPrice\"] == mine[\"price\"], \"the view shows the price of the tenant's plan\"\n"),
             ("§LIMITCOUNT", SubscriptionPlan.LimitedTables(database, project).Count.ToString())));
         if (SubscriptionPlan.HasWebhook(database, project))
         {
-            o.Append(FillAll(WebhookCase, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§WEBHOOKPATH", SubscriptionWords.WebhookPath), ("§HEADER", SubscriptionWords.WebhookHeader),
+            o.Append(WithNames(WebhookCase, ("§SECRETNAME", project.SubscriptionWebhookSecret!), ("§WEBHOOKPATH", SubscriptionWords.WebhookPath), ("§HEADER", SubscriptionWords.WebhookHeader),
                 ("§EXPIRED_TYPE", SubscriptionWords.WebhookExpiredType), ("§INACTIVE_TYPE", SubscriptionWords.InactiveType),
                 ("§PAUSEDLINES", write is null ? "" : "    paused = api(tenant, \"POST\", WRITE, json=write_body(api, tenant))\n    assert paused.status_code == 402, paused.text\n    assert paused.json()[\"type\"] == \"" + SubscriptionWords.InactiveType + "\"\n")));
         }
@@ -136,7 +137,7 @@ def set_subscription(api, tenant, **change):
     private const string WriteCases = """"
 
 
-def test_writes_are_paused_while_the_subscription_is_not_active_and_reads_go_on(world, tenant):
+def §NAME_PAUSED(world, tenant):
     api, _ = world
     set_subscription(api, tenant, planId=PLAN, status="cancelled")
     refused = api(tenant, "POST", WRITE, json=write_body(api, tenant))
@@ -148,7 +149,7 @@ def test_writes_are_paused_while_the_subscription_is_not_active_and_reads_go_on(
     assert created.status_code == 201, created.text
 
 
-def test_a_tenant_with_no_subscription_§NOSUBSCRIPTION_NAME(world, tenant):
+def §NAME_NOSUBSCRIPTION(world, tenant):
     api, _ = world
     refused = api(tenant, "POST", WRITE, json=write_body(api, tenant))
 §NOSUBSCRIPTION
@@ -157,7 +158,7 @@ def test_a_tenant_with_no_subscription_§NOSUBSCRIPTION_NAME(world, tenant):
     private const string LimitCase = """"
 
 
-def test_a_create_past_the_plan_limit_is_refused_until_the_limit_is_raised(world, tenant):
+def §NAME_LIMIT(world, tenant):
     api, engine = world
     run(engine, §ONE)
     set_subscription(api, tenant, planId=PLAN, status="active")
@@ -179,7 +180,7 @@ def test_a_create_past_the_plan_limit_is_refused_until_the_limit_is_raised(world
     private const string RenewCase = """"
 
 
-def test_a_renewal_adds_a_period_that_starts_when_the_old_one_ends(world, tenant):
+def §NAME_RENEWAL(world, tenant):
     api, _ = world
     set_subscription(api, tenant, planId=PLAN, status="active", periodEnd=(datetime.now(timezone.utc) + timedelta(days=5)).isoformat())
     refused = api(tenant, "POST", f"/api/subscription/{tenant}/renew", json={"days": 10})
@@ -197,7 +198,7 @@ def test_a_renewal_adds_a_period_that_starts_when_the_old_one_ends(world, tenant
     private const string ChooseCase = """"
 
 
-def test_an_administrator_chooses_a_plan_unless_it_allows_less_than_the_tenant_has(world, tenant):
+def §NAME_PLANCHOICE(world, tenant):
     api, engine = world
     set_subscription(api, tenant, planId=PLAN, status="active")
     shown = api(tenant, "GET", "/api/subscription")
@@ -211,7 +212,7 @@ def test_an_administrator_chooses_a_plan_unless_it_allows_less_than_the_tenant_h
     private const string TrialCase = """"
 
 
-def test_a_trial_ends_at_its_period_end(world, tenant):
+def §NAME_TRIAL(world, tenant):
     api, _ = world
     set_subscription(api, tenant, planId=PLAN, status="trialing", periodEnd=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat())
     ended = api(tenant, "POST", WRITE, json=write_body(api, tenant))
@@ -225,7 +226,7 @@ def test_a_trial_ends_at_its_period_end(world, tenant):
     private const string PlansCase = """"
 
 
-def test_the_view_lists_every_plan_with_what_it_allows_and_marks_the_tenants_own(world, tenant):
+def §NAME_VIEWPLANS(world, tenant):
     api, _ = world
     set_subscription(api, tenant, planId=PLAN, status="active")
     info = api(tenant, "GET", "/api/subscription").json()
@@ -254,7 +255,7 @@ def message(gateway, status, event=None):
     return json.dumps(body).encode()
 
 
-def test_the_webhook_sets_the_status_of_the_subscription_the_gateway_names_and_refuses_what_is_not_signed(world, tenant, application, monkeypatch):
+def §NAME_WEBHOOK(world, tenant, application, monkeypatch):
     app, _ = application
     api, _ = world
     secret = "test-secret"
@@ -295,7 +296,7 @@ def test_the_webhook_sets_the_status_of_the_subscription_the_gateway_names_and_r
     private const string RouteCases = """"
 
 
-def test_only_a_platform_administrator_changes_a_subscription(world, tenant):
+def §NAME_PLATFORMADMIN(world, tenant):
     api, _ = world
     refused = api(tenant, "PUT", f"/api/subscription/{tenant}", json={"planId": PLAN, "status": "active"})
     assert refused.status_code == 403, "an administrator inside a tenant cannot give themselves a plan: " + refused.text
@@ -305,7 +306,7 @@ def test_only_a_platform_administrator_changes_a_subscription(world, tenant):
     assert api(None, "PUT", f"/api/subscription/{tenant}", json={"planId": 2147483000, "status": "active"}).status_code == 400, "an unknown plan is refused"
 
 
-def test_the_administrator_sees_the_subscription_and_a_member_does_not(world, tenant):
+def §NAME_ADMINSEES(world, tenant):
     api, _ = world
     set_subscription(api, tenant, planId=PLAN, status="active")
     shown = api(tenant, "GET", "/api/subscription")
