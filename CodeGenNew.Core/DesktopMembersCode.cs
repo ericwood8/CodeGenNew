@@ -32,7 +32,7 @@ public static class DesktopMembersCode
     private static readonly string[] NameColumns = ["Name", "FullName", "DisplayName", "PersonName", "EmployeeName", "Title"];
 
     public static string Xaml(string viewNamespace, bool hasRole) => FillAll(XamlText, ("§NS", viewNamespace),
-        ("§ROLECOLUMN", hasRole ? RoleColumnXaml : ""), ("§ROLECELL", hasRole ? RoleCellXaml : ""), ("§ACTIONCOLUMN", hasRole ? "2" : "1"), ("§ROLEBUTTON", hasRole ? "<Button Content=\"Edit role\" Tag=\"{x:Bind PersonId}\" Click=\"OnEditRoleClick\" />" : ""),
+        ("§ROLECOLUMN", hasRole ? RoleColumnXaml : ""), ("§ROLECELL", hasRole ? RoleCellXaml : ""), ("§ACTIONCOLUMN", hasRole ? "2" : "1"), ("§ROLEBUTTON", hasRole ? "<Button Content=\"Edit role\" FontWeight=\"Bold\" Background=\"{ThemeResource SystemControlBackgroundBaseLowBrush}\" Tag=\"{x:Bind PersonId}\" Click=\"OnEditRoleClick\" />" : ""),
         ("§ROLEGRIDCOLUMN", hasRole ? "<ColumnDefinition Width=\"200\" />" : ""));
 
     public static string Code(DatabaseModel database, ProjectSettings project, string viewNamespace, string contextType, IEnumerable<string> usings)
@@ -92,15 +92,20 @@ public static class DesktopMembersCode
         <TextBlock Grid.Row="0" Text="Members" Style="{ThemeResource TitleTextBlockStyle}" />
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
-            <Button x:Name="AddButton" Content="Add member" Click="OnAddClick" />
-            <Button Content="Refresh" Click="OnRefreshClick" />
+            <Button x:Name="AddButton" Content="Add member" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnAddClick" />
+            <Button Content="Refresh" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnRefreshClick" />
         </StackPanel>
 
         <InfoBar x:Name="Problem" Grid.Row="2" Severity="Error" IsOpen="False" IsClosable="False" />
 
-        <ListView Grid.Row="3" ItemsSource="{x:Bind Rows}" SelectionMode="None">
-            <ListView.Header>
-                <Grid ColumnSpacing="8" Padding="12,0,12,8">
+        <Border Grid.Row="3" BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4" Background="Transparent">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Border Grid.Row="0" BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="0,0,0,1" Padding="8">
+                <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         §ROLEGRIDCOLUMN
@@ -109,9 +114,16 @@ public static class DesktopMembersCode
                     <TextBlock Grid.Column="0" Text="Person" FontWeight="SemiBold" />
                     §ROLECOLUMN
                 </Grid>
-            </ListView.Header>
+            </Border>
+        <ListView Grid.Row="1" ItemsSource="{x:Bind Rows}" SelectionMode="None" Padding="0">
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                    <Setter Property="MinHeight" Value="0" />
+                </Style>
+            </ListView.ItemContainerStyle>
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="local:MemberRow">
+                    <Border BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="0,0,0,1" Padding="8,4">
                     <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -122,12 +134,15 @@ public static class DesktopMembersCode
                         §ROLECELL
                         <StackPanel Grid.Column="§ACTIONCOLUMN" Orientation="Horizontal" Spacing="8">
                             §ROLEBUTTON
-                            <Button Content="Remove" Tag="{x:Bind PersonId}" Click="OnRemoveClick" />
+                            <Button Content="Remove" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Tag="{x:Bind PersonId}" Click="OnRemoveClick" />
                         </StackPanel>
                     </Grid>
+                    </Border>
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
+        </Grid>
+        </Border>
     </Grid>
 </Page>
 """;

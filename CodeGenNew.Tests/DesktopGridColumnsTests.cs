@@ -66,7 +66,7 @@ public class DesktopGridColumnsTests
         Expect.Contains(text, "new(\"Notes\", \"Notes\", false),");   // long text is offered and does not sort
         Expect.Contains(text, "private static readonly string[] InitialColumns = [\"ItemNumber\"];");
         Expect.Contains(text, "GridColumnStore.Cut(e.Notes");
-        Expect.Contains(text, "<Button Content=\"Columns\" Click=\"OnColumnsClick\" />");
+        Expect.Contains(text, "<Button Content=\"Columns\" FontWeight=\"Bold\" Background=\"{ThemeResource SystemControlBackgroundBaseLowBrush}\" Click=\"OnColumnsClick\" />");
         Expect.Contains(text, "<Grid x:Name=\"HeaderCells\"");
         Expect.Contains(text, "_chosenColumns = GridColumnStore.Load(GridKey, OfferedNames, InitialColumns);");
         Expect.Contains(text, "GridSortStore.Load(GridKey, SortableColumns.Where(IsShown).ToList());");

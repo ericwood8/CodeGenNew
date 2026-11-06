@@ -138,8 +138,10 @@ public class FormModelTests
     {
         Assert.AreEqual("Customer", Labels.Column("CustomerId"));
         Assert.AreEqual("Role", Labels.Column("SY_RoleId"));
-        Assert.AreEqual("Is Taxable?", Labels.Field(Sample.Column("IsTaxable", SqlDbType.Bit)));
+        Assert.AreEqual("Taxable?", Labels.Field(Sample.Column("IsTaxable", SqlDbType.Bit)));
         Assert.AreEqual("Credit Limit", Labels.Field(Sample.Column("CreditLimit", SqlDbType.Decimal)));
+        Assert.AreEqual("Customer Item #", Labels.Field(Sample.Column("CustomerItemNumber", SqlDbType.VarChar, characters: 20)));
+        Assert.AreEqual("Number", Labels.Field(Sample.Column("Number", SqlDbType.VarChar, characters: 20)), "a lone Number keeps its word");
         Assert.AreEqual("Enter credit limit", Labels.Placeholder(Sample.Column("CreditLimit", SqlDbType.Decimal)));
         Assert.AreEqual("sales-invoice", ScreenNames.Route("SalesInvoice"));
         Assert.AreEqual("salesinvoices", ScreenNames.ApiRoute("SalesInvoice"));

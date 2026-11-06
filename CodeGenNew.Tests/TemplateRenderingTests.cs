@@ -434,7 +434,7 @@ public class TemplateRenderingTests
         Expect.Contains(codeBehind, "new E_DonateLeaveDetailDialog(_context, entity)");
         // The XAML's own Refresh button (Click="OnRefreshClick") had no matching handler at all until this was
         // caught by actually compiling a generated project for real (2026-09-27) -- every table was affected.
-        Expect.Contains(xaml, "Button Content=\"Refresh\" Click=\"OnRefreshClick\"");
+        Expect.Contains(xaml, "Button Content=\"Refresh\" FontWeight=\"Bold\" Background=\"{ThemeResource SystemControlBackgroundBaseLowBrush}\" Click=\"OnRefreshClick\"");
         Expect.Contains(codeBehind, "private async void OnRefreshClick(object sender, RoutedEventArgs e) => await ViewModel.LoadAsync();");
 
         Expect.Contains(viewModel, "public class E_DonateLeaveListRow");
@@ -490,7 +490,7 @@ public class TemplateRenderingTests
 
         Expect.Contains(xaml, "Text=\"{x:Bind ViewModel.SY_IsoCountry_Alpha3CodeFilter, Mode=TwoWay}\"");
         Expect.Contains(xaml, "Text=\"{x:Bind ViewModel.NameFilter, Mode=TwoWay}\"");
-        Expect.Contains(xaml, "Button Content=\"Search\" Click=\"OnSearchClick\"");
+        Expect.Contains(xaml, "Button Content=\"Search\" FontWeight=\"Bold\" Background=\"{ThemeResource SystemControlBackgroundBaseLowBrush}\" Click=\"OnSearchClick\"");
 
         Expect.Contains(codeBehind, "private async void OnSearchClick(object sender, RoutedEventArgs e)");
         Expect.Contains(codeBehind, "ViewModel.PageNumber = 1;");

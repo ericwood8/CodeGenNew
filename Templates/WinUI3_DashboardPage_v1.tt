@@ -79,7 +79,9 @@ public sealed class DashboardPage : Page
     public DashboardPage(Action<string>? navigate = null)
     {
         _navigate = navigate;
-        var refresh = new Button { Content = "Refresh" };
+        var refresh = new Button { Content = "Refresh", FontWeight = Microsoft.UI.Text.FontWeights.Bold };
+        if (Application.Current.Resources.TryGetValue("SystemControlBackgroundBaseLowBrush", out var shade) && shade is Microsoft.UI.Xaml.Media.Brush shadeBrush)
+            refresh.Background = shadeBrush;
         refresh.Click += async (_, _) => await LoadAsync();
 
         var cardScroller = new ScrollViewer { Content = _cards, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalScrollMode = ScrollMode.Enabled };

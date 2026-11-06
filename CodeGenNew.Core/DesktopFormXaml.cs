@@ -26,7 +26,7 @@ public static class DesktopFormXaml
         var kind = form.KindOf(column);
         var value = form.ValueOf(column);
         string prop = column.Name;
-        string label = Labels.Column(column.Name);
+        string label = Labels.Field(column);
         string required = RequiredMark.XamlAttributes(form.IsRequired(column), form.IsMarked(column));
         var o = new StringBuilder();
         void L(string s) => o.Append(s).Append('\n');
@@ -99,7 +99,7 @@ public static class DesktopFormXaml
         }
         else if (kind == FieldKind.Boolean)
         {
-            L(I + $"<CheckBox Content=\"{label}?\" IsChecked=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\" />");
+            L(I + $"<CheckBox Content=\"{label}\" IsChecked=\"{{x:Bind ViewModel.{prop}, Mode=TwoWay}}\" />");
         }
         else if (kind == FieldKind.Date)
         {

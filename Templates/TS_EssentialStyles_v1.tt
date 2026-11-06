@@ -28,6 +28,10 @@ button { font-weight: 700; }
 .btn, .btn-action, .btn-outline, .btn-outline-secondary { padding: 4px 12px; font: inherit; font-weight: 700; cursor: pointer; }
 .btn-action { margin-right: 4px; padding: 2px 10px; }
 .btn.btn-outline, .btn-outline { background: none; }
+/* The page buttons (Add New, Refresh, Columns, Search, Previous, Next, Edit links, Members): shaded like the Edit / Clone / Delete buttons on a row. */
+button:not(.hamburger, .sort, .sort-header, [role='tab'], [role='menuitem'], th *, dialog *, .editor *, .topbar *), .column-picker > summary { background: #8883; border: 1px solid #8886; border-radius: 4px; cursor: pointer; }
+button:not(.hamburger, .sort, .sort-header, [role='tab'], [role='menuitem'], th *, dialog *, .editor *, .topbar *):hover:not(:disabled), .column-picker > summary:hover { background: #8885; }
+.column-picker > summary { display: inline-block; padding: 4px 12px; font-weight: 700; }
 
 
 .form-container { margin-top: 16px; max-width: 640px; }

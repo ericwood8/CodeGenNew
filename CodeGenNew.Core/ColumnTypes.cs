@@ -134,8 +134,29 @@ public static partial class Labels
     /// <summary> The caption of a column: <c>SY_</c> and a trailing <c>Id</c> dropped, then as words (<c>CustomerId</c> is "Customer", <c>BillingAddress</c> is "Billing Address"). </summary>
     public static string Column(string columnName) => Words(IdSuffix().Replace(SystemPrefix().Replace(columnName, ""), ""));
 
-    /// <summary> The caption of a field on a form: the column's caption, with a question mark for a yes / no column (<c>IsTaxable</c> is "Is Taxable?"). </summary>
-    public static string Field(ColumnModel column) => column.IsBooleanColumn ? Column(column.Name) + "?" : Column(column.Name);
+    /// <summary> The caption of a field on a form: the column's caption, with a question mark for a yes / no column and its leading "Is" dropped, as on the grids
+    /// (<c>IsTaxable</c> is "Taxable?"). </summary>
+    public static string Field(ColumnModel column)
+    {
+        string caption = NumberSign(Column(column.Name));
+        if (!column.IsBooleanColumn)
+            return caption;
+        if (caption.StartsWith("Is ", StringComparison.OrdinalIgnoreCase) && caption.Length > 3)
+            caption = caption[3..];
+        return caption + "?";
+    }
+
+    /// <summary> "Customer Item Number" is "Customer Item #", as on the grids; a caption that is only "Number" keeps its word. </summary>
+    private static string NumberSign(string caption)
+    {
+        var words = caption.Split(' ');
+        if (words.Length < 2)
+            return caption;
+        for (int i = 0; i < words.Length; i++)
+            if (words[i].EqualsIgnoreCase("Number") || words[i].EqualsIgnoreCase("Num"))
+                words[i] = "#";
+        return string.Join(' ', words);
+    }
 
     /// <summary> The hint inside an empty text box: "Enter credit limit". </summary>
     public static string Placeholder(ColumnModel column) => "Enter " + Column(column.Name).ToLowerInvariant();

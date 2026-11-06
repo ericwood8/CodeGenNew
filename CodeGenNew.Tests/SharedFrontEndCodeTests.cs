@@ -132,9 +132,9 @@ public class SharedFrontEndCodeTests
             var form = FormModel.For(customer, project);
             string Xaml(string name) => DesktopFormXaml.Field(form, project, customer, customer.Columns.First(c => c.Name == name), textKey: false);
 
-            StringAssert.Contains(Xaml("AccountNumber"), "<TextBox Header=\"Account Number\"");
+            StringAssert.Contains(Xaml("AccountNumber"), "<TextBox Header=\"Account #\"");
             StringAssert.Contains(Xaml("AccountNumber"), "Text=\"{x:Bind ViewModel.AccountNumber, Mode=TwoWay}\" MaxLength=\"20\"");
-            StringAssert.Contains(Xaml("IsTaxable"), "<CheckBox Content=\"Is Taxable?\" IsChecked=\"{x:Bind ViewModel.IsTaxable, Mode=TwoWay}\" />");
+            StringAssert.Contains(Xaml("IsTaxable"), "<CheckBox Content=\"Taxable?\" IsChecked=\"{x:Bind ViewModel.IsTaxable, Mode=TwoWay}\" />");
             StringAssert.Contains(Xaml("AddedOn"), "<CalendarDatePicker Header=\"Added On\"");
             StringAssert.Contains(Xaml("RegionId"), "ItemsSource=\"{x:Bind ViewModel.RegionOptions}\"");
             Assert.IsTrue(Xaml("AccountNumber").StartsWith("            <TextBox"));

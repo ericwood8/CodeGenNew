@@ -713,6 +713,24 @@ public class ProjectSettingsTests
     }
 
     [TestMethod]
+    public void FormPages_puts_the_audit_columns_on_an_Audit_tab_after_the_notes()
+    {
+        var columns = new List<ColumnModel>
+        {
+            Sample.Column("CustomerName", System.Data.SqlDbType.NVarChar, characters: 50),
+            Sample.Column("LineMemo", System.Data.SqlDbType.NVarChar, characters: 50, nullable: true),
+            Sample.Column("CreateDate", System.Data.SqlDbType.DateTime, nullable: true),
+            Sample.Column("ModifiedBy", System.Data.SqlDbType.NVarChar, characters: 30, nullable: true)
+        };
+
+        var pages = FormPages.For(columns);
+
+        CollectionAssert.AreEqual(new[] { "Main", "Notes", "Audit" }, pages.Select(p => p.Header).ToArray());
+        CollectionAssert.AreEqual(new[] { "CreateDate", "ModifiedBy" }, pages[2].Columns.Select(c => c.Name).ToArray());
+        Assert.HasCount(1, pages[0].Columns);
+    }
+
+    [TestMethod]
     [DataRow("TS_Component_v1.tt")]
     [DataRow("TS_DetailMasterComponent_v1.tt")]
     [DataRow("TSX_Page_v1.tt")]
@@ -733,6 +751,21 @@ public class ProjectSettingsTests
             Expect.Contains(text, "const broken = firstBroken(event.currentTarget, storedValues.current);");
             Expect.Contains(text, "const panel = broken.closest('[role=\"tabpanel\"]');");
         }
+    }
+
+    [TestMethod]
+    public async Task A_Blazor_form_has_the_same_tabs_as_the_other_front_ends()
+    {
+        var result = await Repo.Cache.RunAsync(Repo.Template("BLZ_Page_v1.tt"), TabbedTable(), With());
+
+        Assert.IsTrue(result.Success, string.Join(" | ", result.Errors));
+        string text = result.GeneratedText!.Replace("\r\n", "\n");
+        Expect.Contains(text, "role=\"tablist\"");
+        Expect.Contains(text, ">Main</button>");
+        Expect.Contains(text, ">Billing &amp; Shipping</button>");
+        Expect.Contains(text, ">Notes</button>");
+        Expect.Contains(text, "<div role=\"tabpanel\" hidden=\"@(editTab != 2)\">");
+        Expect.Contains(text, "editTab = 0;");
     }
 
     [TestMethod]

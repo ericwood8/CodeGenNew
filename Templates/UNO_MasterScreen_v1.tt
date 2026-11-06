@@ -156,10 +156,10 @@
                 BorderBrush="{ThemeResource ControlStrokeColorSecondaryBrush}" BorderThickness="1" CornerRadius="4" Padding="8">
             <StackPanel Orientation="Horizontal" Spacing="8">
 <# if (!logOnly) { #>
-                <Button Content="Add New" Click="OnAddClick"<#= gated ? " Visibility=\"{x:Bind ViewModel.WriteVisibility}\"" : "" #> />
+                <Button Content="Add New" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnAddClick"<#= gated ? " Visibility=\"{x:Bind ViewModel.WriteVisibility}\"" : "" #> />
 <# } #>
-                <Button Content="Refresh" Click="OnRefreshClick" />
-                <Button Content="Columns" Click="OnColumnsClick" />
+                <Button Content="Refresh" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnRefreshClick" />
+                <Button Content="Columns" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnColumnsClick" />
 <# if (softScreen) { #>
                 <ToggleButton Content="Show deleted" IsChecked="{x:Bind ViewModel.ShowDeleted, Mode=TwoWay}" Click="OnShapeViewClick" />
 <# } #>
@@ -213,7 +213,7 @@
 <#
             }
 #>
-                <Button Content="Search" Click="OnSearchClick" />
+                <Button Content="Search" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnSearchClick" />
             </VariableSizedWrapGrid>
         </Border>
 <#

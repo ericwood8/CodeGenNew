@@ -175,9 +175,9 @@ public static class GridSortStore
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <StackPanel Orientation="Horizontal" Spacing="8">
-        <Button Content="Previous" Click="OnPreviousClick" IsEnabled="{x:Bind CanGoPrevious, Mode=OneWay}" />
+        <Button Content="Previous" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnPreviousClick" IsEnabled="{x:Bind CanGoPrevious, Mode=OneWay}" />
         <TextBlock Text="{x:Bind PageLabel, Mode=OneWay}" VerticalAlignment="Center" />
-        <Button Content="Next" Click="OnNextClick" IsEnabled="{x:Bind CanGoNext, Mode=OneWay}" />
+        <Button Content="Next" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" Click="OnNextClick" IsEnabled="{x:Bind CanGoNext, Mode=OneWay}" />
         <TextBlock Text="Rows per page" VerticalAlignment="Center" Margin="16,0,0,0" />
         <ComboBox x:Name="PageSizeBox" Width="80" AutomationProperties.Name="Rows per page" SelectionChanged="OnPageSizeSelected" />
     </StackPanel>

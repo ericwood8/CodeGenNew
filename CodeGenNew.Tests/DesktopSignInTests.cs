@@ -203,7 +203,7 @@ public class DesktopSignInTests
         Expect.Contains(project, "public Visibility WriteVisibility => DesktopSession.HasRole([\"Administrator\"]) ? Visibility.Visible : Visibility.Collapsed;");
         Expect.Contains(project, "WriteVisibility = WriteVisibility");
         string page = read("Views/ProjectListPage.xaml");
-        Expect.Contains(page, "<Button Content=\"Add New\" Click=\"OnAddClick\" Visibility=\"{x:Bind ViewModel.WriteVisibility}\" />");
+        Expect.Contains(page, "<Button Content=\"Add New\" FontWeight=\"Bold\" Background=\"{ThemeResource SystemControlBackgroundBaseLowBrush}\" Click=\"OnAddClick\" Visibility=\"{x:Bind ViewModel.WriteVisibility}\" />");
         Expect.Contains(page, "Click=\"OnEditClick\" Visibility=\"{x:Bind WriteVisibility}\" />");
         Expect.Contains(page, "Click=\"OnDeleteClick\" Visibility=\"{x:Bind WriteVisibility}\" />");
 
@@ -244,7 +244,7 @@ public class DesktopSignInTests
         Expect.Contains(list, "public Visibility CreateVisibility => DesktopTenantScope.Current.IsPlatform ? Visibility.Visible : Visibility.Collapsed;");
         Expect.Contains(list, "CreateVisibility = CreateVisibility");
         string page = read("Views/TenantListPage.xaml");
-        Expect.Contains(page, "<Button Content=\"Add New\" Click=\"OnAddClick\" Visibility=\"{x:Bind ViewModel.CreateVisibility}\" />");
+        Expect.Contains(page, "<Button Content=\"Add New\" FontWeight=\"Bold\" Background=\"{ThemeResource SystemControlBackgroundBaseLowBrush}\" Click=\"OnAddClick\" Visibility=\"{x:Bind ViewModel.CreateVisibility}\" />");
         Expect.DoesNotContain(read("Views/ProjectListPage.xaml"), "CreateVisibility");
 
         string context = read("Data/ShopContext.cs");

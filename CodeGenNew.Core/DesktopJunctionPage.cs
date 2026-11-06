@@ -28,7 +28,7 @@ public static class DesktopJunctionPage
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
             <ComboBox x:Name="AnchorBox" Width="320" AutomationProperties.Name="{{anchor}}" PlaceholderText="Choose a {{anchor.ToLowerInvariant()}}" DisplayMemberPath="Name" SelectionChanged="OnAnchorChanged" />
-            <Button x:Name="EditButton" Content="Edit links" IsEnabled="False" Click="OnEditClick" />
+            <Button x:Name="EditButton" Content="Edit links" FontWeight="Bold" Background="{ThemeResource SystemControlBackgroundBaseLowBrush}" IsEnabled="False" Click="OnEditClick" />
         </StackPanel>
 
         <InfoBar x:Name="Problem" Grid.Row="2" Severity="Error" IsOpen="False" IsClosable="False" />

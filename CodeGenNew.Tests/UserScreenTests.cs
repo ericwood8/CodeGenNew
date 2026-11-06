@@ -39,7 +39,7 @@ public class UserScreenTests
         var (success, errors, read, _) = await TenantPlanTests.GenerateAsync(Winui(), "winui3");
 
         Assert.IsTrue(success, string.Join(" | ", errors));
-        Expect.Contains(read("Views/EmployeeDetailMasterDialog.xaml"), "<CheckBox Visibility=\"{x:Bind ViewModel.AdminOnlyVisibility}\" Content=\"Is Administrator?\"");
+        Expect.Contains(read("Views/EmployeeDetailMasterDialog.xaml"), "<CheckBox Visibility=\"{x:Bind ViewModel.AdminOnlyVisibility}\" Content=\"Administrator?\"");
         string model = read("ViewModels/EmployeeDetailMasterViewModel.cs");
         Expect.Contains(model, "private static bool SignedInIsAdministrator() => DesktopSession.User?.Role == \"Administrator\";");
         Expect.Contains(model, "if (SignedInIsAdministrator())\n        {\n            entity.IsAdministrator = IsAdministrator ?? false;\n        }");

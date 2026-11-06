@@ -15,7 +15,7 @@
     // Generates: Pages/<Table>Page.razor   (the path is written by the template; point the output folder at the Blazor app's folder)
     // The Blazor counterpart of TSX_Page: a grid with Edit, Clone and Delete, Add New, a search bar with a box per searchable column, paging, sortable headers, and an add / edit form
     // (EditForm with the Input components) with a drop-down for each foreign key that has a lookup. Calls the table's BLZ_Client. A foreign key to the table itself stays a plain box and a column
-    // with no input (binary) is left off the form; the form is one panel, not tabs.
+    // with no input (binary) is left off the form; the form has the same tabs as the other front ends (Main, Billing & Shipping, Notes, Audit) when it has fields for more than one.
     // BLZ_ODataPage is this template run with Variant=OData (its config says Base=BLZ_Page_v1.tt): the same page over the table's OData client (BLZ_ODataClient) instead of the REST one, with several sorts
     // (Shift-click adds a column) and a filter row under the headers; the REST page is not touched, unless ODataScreens=Replace gives its route to the OData page.
     // A table with a NOT NULL Name and a NOT NULL IsActive column (its API is the NameActiveCrudApi: the whole list, no search, no paging) gets a page that reads the whole list and narrows it with a name box and an
@@ -82,6 +82,8 @@
         var searchKeys = (odata ? [] : form.SearchKeys).Select(k => (k.Parent, k.ParamName, Field: "filter" + Ident(k.Column.Name), k.Label)).ToList();
 
         var shown = form.Columns;
+        var formPages = FormPages.For(shown);   // Main, Billing & Shipping, Notes and Audit tabs, as on the other front ends; one untitled page keeps a narrow table plain
+        bool tabbed = formPages.Count > 1 || formPages[0].Header != "";
 
         var parents = form.Parents;
         // a parent with too many rows for a drop-down is found by typing (Components/TypeAhead.razor); its list then holds only the rows the page has seen
@@ -473,10 +475,21 @@
         L("            <p class=\"error\" role=\"alert\">@message</p>");
         L("        }");
         // With the attributes in the model the form is checked here, field by field and only where the value changed (the browser's own check would stop a stored value that breaks a rule)
-        L(Project.ApiAnnotations ? "        <EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\" novalidate>" : "        <EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\">");
+        L(Project.ApiAnnotations || tabbed ? "        <EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\" novalidate>" : "        <EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\">");
         if (Project.ApiAnnotations)
             L("            <StoredValueValidator Original=\"stored\" />");
-        foreach (var c in shown)
+        if (tabbed)
+        {
+            L("            <div role=\"tablist\">");
+            for (int t = 0; t < formPages.Count; t++)
+                L($"                <button type=\"button\" role=\"tab\" aria-selected=\"@(editTab == {t} ? \"true\" : \"false\")\" @onclick=\"() => editTab = {t}\">{formPages[t].Header.Replace("&", "&amp;")}</button>");
+            L("            </div>");
+        }
+        for (int pageIndex = 0; pageIndex < formPages.Count; pageIndex++)
+        {
+        if (tabbed)
+            L($"            <div role=\"tabpanel\" hidden=\"@(editTab != {pageIndex})\">");
+        foreach (var c in formPages[pageIndex].Columns)
         {
             string id = form.FieldId(c);
             string label = Labels.Field(c);
@@ -567,6 +580,9 @@
                 fieldHtml = $"@if (Features.Enabled(\"{flagText}\")) {{ {fieldHtml} }}";
             }
             L($"            {fieldHtml}");
+        }
+        if (tabbed)
+            L("            </div>");
         }
         if (userScreen is not null)
         {
@@ -783,6 +799,8 @@
         if (Project.ApiAnnotations || shapedForm)
             L("    private §T? stored;   // the row as it was when it opened; a field is checked only when it differs from it");
         L("    private bool isNew;");
+        if (tabbed)
+            L("    private int editTab;   // the tab of the form that is open");
         L("    private string? message;");
         if (form.Guards.Count > 0 && !nameActive)
             L("    private Dictionary<string, bool> guards = new();   // which guarded columns the signed-in person may change (GET guards)");
@@ -1246,6 +1264,7 @@
             if (Project.ApiAnnotations || shapedForm)
                 L("        stored = add ? null : item.Copy();");
             L("        isNew = add;");
+            if (tabbed) L("        editTab = 0;");
             L("        message = null;");
             if (userScreen is not null) L("        newPassword = \"\";");
             L("    }");
@@ -1260,6 +1279,7 @@
             if (Project.ApiAnnotations || shapedForm)
                 L("        stored = add ? null : item.Copy();");
             L("        isNew = add;");
+            if (tabbed) L("        editTab = 0;");
             L("        message = null;");
             if (userScreen is not null) L("        newPassword = \"\";");
             foreach (var ch in children)

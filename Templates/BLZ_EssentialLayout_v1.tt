@@ -94,6 +94,10 @@ td button:hover { background: #8885; }
 /* every button's caption is bold */
 button { font-weight: 700; }
 main button { padding: 4px 12px; font: inherit; font-weight: 700; }
+/* The page buttons (Add New, Refresh, Columns, Search, Previous, Next, Edit links, Members): shaded like the Edit / Clone / Delete buttons on a row. */
+button:not(.hamburger, .sort, .sort-header, [role='tab'], [role='menuitem'], th *, dialog *, .editor *, .topbar *), .column-picker > summary { background: #8883; border: 1px solid #8886; border-radius: 4px; cursor: pointer; }
+button:not(.hamburger, .sort, .sort-header, [role='tab'], [role='menuitem'], th *, dialog *, .editor *, .topbar *):hover:not(:disabled), .column-picker > summary:hover { background: #8885; }
+.column-picker > summary { display: inline-block; padding: 4px 12px; font-weight: 700; }
 .search { margin: 8px 0; }
 .search input, .search select { margin: 4px 6px 4px 0; padding: 6px 8px; font: inherit; }
 /* The type-ahead of a parent with too many rows for a drop-down: a box with the matches listed under it. */
@@ -117,6 +121,11 @@ main button { padding: 4px 12px; font: inherit; font-weight: 700; }
 .editor textarea { min-height: 80px; resize: vertical; }
 .editor input[type='checkbox'] { align-self: flex-start; width: 18px; height: 18px; }
 .editor .actions { display: flex; gap: 8px; margin-top: 16px; }
+/* The tabs of an edit form (Main, Billing & Shipping, Notes, Audit). */
+.editor [role='tablist'] { display: flex; gap: 4px; margin: 12px 0 4px; border-bottom: 1px solid #8884; }
+.editor [role='tab'] { padding: 6px 14px; border: 0; background: none; color: inherit; font: inherit; font-weight: 700; cursor: pointer; border-bottom: 2px solid transparent; }
+.editor [role='tab'][aria-selected='true'] { border-bottom-color: currentColor; }
+.editor [role='tabpanel'][hidden] { display: none; }
 .validation-message { color: #c62828; }
 <# if (Project.Auth) { #>
 
