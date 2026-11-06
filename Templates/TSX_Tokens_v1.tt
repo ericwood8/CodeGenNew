@@ -1,0 +1,152 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TSX_Tokens_v1.tt
+    // Generates: src/pages/<Table>TokensPage.tsx and its test for every table of TokenTables   (the template writes its own paths with @@@FILE markers)
+    // The sessions and tokens page of a React app that signs in (Auth=true, ApiAuth, TokenTables), for the administrator: the rows the API lists without the hash, a Revoke button on an active row and, when the
+    // table points at a person, a Sign out everywhere button that ends every active row of that person.
+    // Full notes: Docs/TemplateNotes/API_Token_v1.md
+    // ==========================================================================================
+    string pagesFolder = Project.PagesFolder;
+    string apiFolder = Project.ApiFolder;
+    foreach (var page in TokenScreens.Pages(Database, Project))
+    {
+        string columns = string.Join(", ", page.Columns.Select(c => $"{{ json: '{c.Json}', label: '{c.Label}', kind: '{c.Kind}' }}"));
+        string personJson = page.PersonJson is null ? "null" : $"'{page.PersonJson}'";
+#>
+@@@FILE src/<#= pagesFolder #>/<#= page.Name #>Page.tsx@@@
+import { useEffect, useState } from 'react';
+import { request } from '../<#= apiFolder #>/client';
+
+type Row = Record<string, unknown> & { active: boolean };
+
+const columns = [<#= columns #>];
+const keyColumn = '<#= page.KeyJson #>';
+const personColumn: string | null = <#= personJson #>;
+
+const show = (kind: string, value: unknown): string => {
+  if (value === null || value === undefined) return '';
+  if (kind === 'flag') return value ? '<#= TokenScreenWords.Yes #>' : '<#= TokenScreenWords.No #>';
+  if (kind === 'date') return new Date(String(value)).toLocaleString();
+  return String(value);
+};
+
+export function <#= page.Name #>Page() {
+  const [rows, setRows] = useState<Row[] | null>(null);
+  const [message, setMessage] = useState('');
+
+  const load = () => request<Row[]>('<#= page.ApiRoute #>').then(setRows).catch(() => setMessage('<#= TokenScreenWords.LoadFailed #>'));
+
+  useEffect(() => { void load(); }, []);
+
+  const act = (path: string, done?: (answer: Record<string, unknown>) => string) => {
+    setMessage('');
+    request<Record<string, unknown>>(path, { method: 'POST' })
+      .then((answer) => { if (done) setMessage(done(answer)); return load(); })
+      .catch(() => setMessage('<#= TokenScreenWords.ChangeFailed #>'));
+  };
+
+  return (
+    <div>
+      <h1><#= page.Label #></h1>
+      <p><#= TokenScreenWords.Hint #></p>
+      {message && <p role="alert">{message}</p>}
+      {rows && rows.length === 0 && <p><#= TokenScreenWords.NoRows #></p>}
+      {rows && rows.length > 0 && (
+        <table aria-label="<#= page.Label #>">
+          <thead>
+            <tr>
+              {columns.map((column) => <th key={column.json}>{column.label}</th>)}
+              <th><#= TokenScreenWords.ActiveColumn #></th>
+              <th><#= TokenScreenWords.ActionsColumn #></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const key = String(row[keyColumn]);
+              return (
+                <tr key={key}>
+                  {columns.map((column) => <td key={column.json}>{show(column.kind, row[column.json])}</td>)}
+                  <td>{row.active ? '<#= TokenScreenWords.Yes #>' : '<#= TokenScreenWords.No #>'}</td>
+                  <td>
+                    <button type="button" disabled={!row.active} aria-label={'<#= TokenScreenWords.Revoke #> ' + key} onClick={() => act('<#= page.ApiRoute #>/' + key + '/revoke')}><#= TokenScreenWords.Revoke #></button>
+                    {personColumn && row[personColumn] != null && (
+                      <button type="button" aria-label={'<#= TokenScreenWords.SignOut #> ' + key} onClick={() => act('<#= page.ApiRoute #>/revoke-person/' + String(row[personColumn]), (answer) => String(answer.revoked) + '<#= TokenScreenWords.EndedSuffix #>')}><#= TokenScreenWords.SignOut #></button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+@@@FILE src/<#= pagesFolder #>/__tests__/<#= page.Name #>Page.test.tsx@@@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { <#= page.Name #>Page } from '../<#= page.Name #>Page';
+
+const rows = [
+  { <#= page.KeyJson #>: 1,<#= page.PersonJson is null ? "" : $" {page.PersonJson}: 7," #> active: true },
+  { <#= page.KeyJson #>: 2,<#= page.PersonJson is null ? "" : $" {page.PersonJson}: 7," #> active: false },
+];
+
+const answer = (body: unknown, status = <#= HttpStatus.Ok #>) => () => Promise.resolve(new Response(JSON.stringify(body), { status }));
+
+describe('<#= page.Name #>Page', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('lists the rows and offers Revoke on an active row only', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(answer(rows));
+    render(<<#= page.Name #>Page />);
+    expect(await screen.findByRole('button', { name: '<#= TokenScreenWords.Revoke #> 1' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '<#= TokenScreenWords.Revoke #> 2' })).toBeDisabled();
+  });
+
+  it('revokes a row and reads the list again', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation(answer(rows));
+    render(<<#= page.Name #>Page />);
+    fireEvent.click(await screen.findByRole('button', { name: '<#= TokenScreenWords.Revoke #> 1' }));
+    await vi.waitFor(() => expect(spy.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1));
+    const post = spy.mock.calls.find(([, init]) => init?.method === 'POST');
+    expect(String(post?.[0])).toContain('<#= page.ApiRoute #>/1/revoke');
+    await vi.waitFor(() => expect(spy.mock.calls.filter(([, init]) => init?.method !== 'POST')).toHaveLength(2));
+  });
+<#
+        if (page.PersonJson is not null)
+        {
+#>
+
+  it('signs a person out everywhere and says how many rows ended', async () => {
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((_, init) => answer(init?.method === 'POST' ? { revoked: 3 } : rows)());
+    render(<<#= page.Name #>Page />);
+    fireEvent.click(await screen.findByRole('button', { name: '<#= TokenScreenWords.SignOut #> 1' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('3 ended.');
+    const post = spy.mock.calls.find(([, init]) => init?.method === 'POST');
+    expect(String(post?.[0])).toContain('<#= page.ApiRoute #>/revoke-person/7');
+  });
+<#
+        }
+#>
+
+  it('says so when there is nothing to show', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(answer([]));
+    render(<<#= page.Name #>Page />);
+    expect(await screen.findByText('<#= TokenScreenWords.NoRows #>')).toBeInTheDocument();
+  });
+
+  it('explains when the list cannot be read', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(answer({}, <#= HttpStatus.Forbidden #>));
+    render(<<#= page.Name #>Page />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('<#= TokenScreenWords.LoadFailed #>');
+  });
+});
+<#
+    }
+#>

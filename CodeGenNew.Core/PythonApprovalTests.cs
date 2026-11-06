@@ -20,10 +20,10 @@ public static class PythonApprovalTests
         string open = dialect switch
         {
             SqlDialect.Sqlite => FillAll(SqliteOpen, ("§FILE", PythonNames.Str(project.DatabaseName ?? "")), ("§PREFIX", new string((project.ProjectName ?? "app").ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray()))),
-            SqlDialect.SqlServer => "    pytest.skip(\"the approval tests run over SQLite, PostgreSQL or MySQL\")\n    folder = None",
+            SqlDialect.SqlServer => "SKIP = \"the approval tests run over SQLite, PostgreSQL or MySQL\"\nFOLDER = None",
             _ => FillAll(UrlOpen, ("§VARIABLE", connection))
         };
-        return FillAll(ConftestText, ("§OPEN", open), ("§CLEAN", dialect == SqlDialect.Sqlite ? "    engine.dispose()\n    shutil.rmtree(folder, ignore_errors=True)" : "    engine.dispose()")) + "\n";
+        return FillAll(ConftestText, ("§OPEN", open), ("§CLEAN", dialect == SqlDialect.Sqlite ? "    engine.dispose()\n    shutil.rmtree(FOLDER, ignore_errors=True)" : "    engine.dispose()")) + "\n";
     }
 
     public static string Tests(ApprovalPlan plan, ApprovalTestSeed seed, ProjectSettings project)
@@ -66,12 +66,18 @@ from pathlib import Path
 import pytest
 from sqlalchemy import text
 
+# the database is chosen here, when pytest loads this file, because the test files import the application (and so make its engine) while they are collected, which is before any fixture runs
+os.environ.setdefault("Jwt__Key", uuid.uuid4().hex + uuid.uuid4().hex)
+SKIP = None
+FOLDER = None
+§OPEN
+
 
 @pytest.fixture(scope="session")
 def application():
     """The application and its engine, over a scratch copy of the database (the original is never written)."""
-    os.environ.setdefault("Jwt__Key", uuid.uuid4().hex + uuid.uuid4().hex)
-§OPEN
+    if SKIP:
+        pytest.skip(SKIP)
     from app.db import engine
     from app.main import app
 
@@ -87,19 +93,21 @@ def run(engine, statements):
 """";
 
     private const string SqliteOpen = """"
-    source = Path(os.environ.get("DATABASE_FILE", §FILE))
-    if not source.is_file():
-        pytest.skip(f"there is no database file {source}: set DATABASE_FILE to the SQLite file the tests may copy")
-    folder = tempfile.mkdtemp(prefix="§PREFIX_test_")
-    copy = Path(folder) / "scratch.db"
+source = Path(os.environ.get("DATABASE_FILE", §FILE))
+if not source.is_file():
+    SKIP = f"there is no database file {source}: set DATABASE_FILE to the SQLite file the tests may copy"
+else:
+    FOLDER = tempfile.mkdtemp(prefix="§PREFIX_test_")
+    copy = Path(FOLDER) / "scratch.db"
     shutil.copy(source, copy)
     os.environ["DATABASE_FILE"] = str(copy)
 """";
 
     private const string UrlOpen = """"
-    url = os.environ.get("§VARIABLE")
-    if not url:
-        pytest.skip("set §VARIABLE to the URL of a scratch copy of the database (the tests add and remove rows)")
+url = os.environ.get("§VARIABLE")
+if not url:
+    SKIP = "set §VARIABLE to the URL of a scratch copy of the database (the tests add and remove rows)"
+else:
     os.environ["DATABASE_URL"] = url
 """";
 

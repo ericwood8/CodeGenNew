@@ -42,6 +42,8 @@
             modules.Add("approval_routes");
         if (RustQueueTests.Applies(Database, Project))
             modules.Add("queue_routes");
+        if (RustTokenTests.Applies(Database, Project))
+            modules.AddRange(RustTokenTests.Tables(Database, Project).Select(token => RustTokenTests.Module(token, Project)));
         if (RustTenantTests.Applies(Database, Project))
         {
             modules.Add("tenant_support");

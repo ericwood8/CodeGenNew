@@ -1,0 +1,21 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // RS_TestTokens_v1.tt
+    // Generates: tests/api/token_<table>_routes.rs   (whole-database; the output folder is the Rust crate's folder)
+    // Integration tests of the routes RS_Token writes for TokenTables, run in process over a scratch database like RS_Test. Each test inserts rows of its own with plain SQL and removes them before it
+    // asserts. The cases are the ones of the generated ASP.NET tests: no sign-in, a role that is not the administrator's, a token spent once, an expired or unknown or blank one, a hash in capitals, a
+    // revoked token and the list without the hash, and, when the table has them, an anonymous spend, a family ended by a reused token and a person's tokens.
+    // Written only for a project with RustTests=true and ApiAuth and a token table whose other columns the generator can fill.
+    // Needs Client.start_signed_out and Client.pool of tests/api/test_support.rs (RS_EssentialTests); RS_TestBodies lists the module.
+    // Full notes: Docs/TemplateNotes/API_Token_v1.md
+    // ==========================================================================================
+    if (RustTokenTests.Applies(Database, Project))
+    {
+        foreach (var token in RustTokenTests.Tables(Database, Project))
+            Write($"@@@FILE tests/api/{RustTokenTests.Module(token, Project)}.rs@@@\n" + RustTokenTests.File(token, Database, Project));
+    }
+#>

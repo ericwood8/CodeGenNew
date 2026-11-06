@@ -1,0 +1,139 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_Tokens_v1.tt
+    // Generates: Pages/<Table>Tokens.razor for every table of TokenTables   (the template writes its own paths with @@@FILE markers)
+    // The sessions and tokens page of a Blazor app that signs in (Auth=true, ApiAuth, TokenTables), for the administrator: the rows the API lists without the hash, a Revoke button on an active row and, when the
+    // table points at a person, a Sign out everywhere button that ends every active row of that person. BlazorMenu lists the page.
+    // Full notes: Docs/TemplateNotes/API_Token_v1.md
+    // ==========================================================================================
+    string ns = BlazorNames.Namespace(Project);
+    foreach (var page in TokenScreens.Pages(Database, Project))
+    {
+        string columns = string.Join(", ", page.Columns.Select(c => $"(\"{c.Json}\", \"{c.Label}\", \"{c.Kind}\")"));
+        string personJson = page.PersonJson is null ? "null" : $"\"{page.PersonJson}\"";
+#>
+@@@FILE Pages/<#= page.Name #>.razor@@@
+@page "/<#= page.Path #>"
+@using System.Net.Http.Json
+@using System.Text.Json
+@using <#= ns #>.Services
+@attribute [Authorize(Roles = "<#= Project.AuthAdminRole #>")]
+@inject HttpClient Http
+
+<PageTitle><#= page.Label #></PageTitle>
+
+<h1><#= page.Label #></h1>
+<p><#= TokenScreenWords.Hint #></p>
+@if (message is not null)
+{
+    <p role="alert">@message</p>
+}
+@if (rows is not null && rows.Count == 0)
+{
+    <p><#= TokenScreenWords.NoRows #></p>
+}
+@if (rows is not null && rows.Count > 0)
+{
+    <table aria-label="<#= page.Label #>">
+        <thead>
+            <tr>
+                @foreach (var column in Columns)
+                {
+                    <th>@column.Label</th>
+                }
+                <th><#= TokenScreenWords.ActiveColumn #></th>
+                <th><#= TokenScreenWords.ActionsColumn #></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in rows)
+            {
+                string key = Text(row, KeyColumn);
+                bool active = row.TryGetValue("active", out var flag) && flag.ValueKind == JsonValueKind.True;
+                <tr>
+                    @foreach (var column in Columns)
+                    {
+                        <td>@Show(column.Kind, row.GetValueOrDefault(column.Json))</td>
+                    }
+                    <td>@(active ? "<#= TokenScreenWords.Yes #>" : "<#= TokenScreenWords.No #>")</td>
+                    <td>
+                        <button type="button" disabled="@(!active)" aria-label="<#= TokenScreenWords.Revoke #> @key" @onclick="() => RevokeAsync(key)"><#= TokenScreenWords.Revoke #></button>
+                        @if (PersonColumn is not null && Text(row, PersonColumn).Length > 0)
+                        {
+                            string person = Text(row, PersonColumn);
+                            <button type="button" aria-label="<#= TokenScreenWords.SignOut #> @key" @onclick="() => SignOutAsync(person)"><#= TokenScreenWords.SignOut #></button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private const string KeyColumn = "<#= page.KeyJson #>";
+    private static readonly string? PersonColumn = <#= personJson #>;
+    private static readonly (string Json, string Label, string Kind)[] Columns = [<#= columns #>];
+
+    private List<Dictionary<string, JsonElement>>? rows;
+    private string? message;
+
+    private static string Text(Dictionary<string, JsonElement> row, string column) =>
+        row.TryGetValue(column, out var value) && value.ValueKind != JsonValueKind.Null ? value.ToString() : "";
+
+    private static string Show(string kind, JsonElement value)
+    {
+        if (value.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+            return "";
+        if (kind == "flag")
+            return value.ValueKind == JsonValueKind.True ? "<#= TokenScreenWords.Yes #>" : "<#= TokenScreenWords.No #>";
+        if (kind == "date" && DateTime.TryParse(value.ToString(), out var when))
+            return when.ToString("g");
+        return value.ToString();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            rows = await Http.GetFromJsonAsync<List<Dictionary<string, JsonElement>>>("<#= page.ApiRoute #>");
+        }
+        catch (HttpRequestException)
+        {
+            message = "<#= TokenScreenWords.LoadFailed #>";
+        }
+    }
+
+    private async Task RevokeAsync(string key)
+    {
+        message = null;
+        var response = await Http.PostAsync("<#= page.ApiRoute #>/" + Uri.EscapeDataString(key) + "/revoke", null);
+        if (!response.IsSuccessStatusCode)
+            message = "<#= TokenScreenWords.ChangeFailed #>";
+        await LoadAsync();
+    }
+
+    private async Task SignOutAsync(string person)
+    {
+        message = null;
+        var response = await Http.PostAsync("<#= page.ApiRoute #>/revoke-person/" + Uri.EscapeDataString(person), null);
+        if (response.IsSuccessStatusCode)
+        {
+            var answer = await response.Content.ReadFromJsonAsync<Dictionary<string, int>>();
+            message = (answer?.GetValueOrDefault("revoked") ?? 0) + "<#= TokenScreenWords.EndedSuffix #>";
+        }
+        else
+            message = "<#= TokenScreenWords.ChangeFailed #>";
+        await LoadAsync();
+    }
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+}
+<#
+    }
+#>

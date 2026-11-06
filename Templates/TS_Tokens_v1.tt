@@ -1,0 +1,201 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TS_Tokens_v1.tt
+    // Generates: <ComponentsFolder>/<table>-tokens/<table>-tokens.component.ts, .html, .css and .spec.ts for every table of TokenTables   (the template writes its own paths with @@@FILE markers)
+    // The sessions and tokens screen of an Angular app that signs in (Auth=true, ApiAuth, TokenTables), for the administrator: the rows the API lists without the hash, a Revoke button on an active row and, when the
+    // table points at a person, a Sign out everywhere button that ends every active row of that person.
+    // Full notes: Docs/TemplateNotes/API_Token_v1.md
+    // ==========================================================================================
+    string componentsFolder = Project.ComponentsFolder;
+    bool controlFlow = Project.AngularControlFlow;
+    foreach (var page in TokenScreens.Pages(Database, Project))
+    {
+        string folder = page.Path + "-tokens";
+        string path = page.ApiRoute.TrimStart('/');
+        string columns = string.Join(", ", page.Columns.Select(c => $"{{ json: '{c.Json}', label: '{c.Label}', kind: '{c.Kind}' }}"));
+        string personJson = page.PersonJson is null ? "null" : $"'{page.PersonJson}'";
+        string html = @"<div class=""tokens"">
+  <h1>" + page.Label + @"</h1>
+  <p>" + TokenScreenWords.Hint + @"</p>
+  <p role=""alert"" *ngIf=""message"">{{ message }}</p>
+  <p *ngIf=""rows && rows.length === 0"">" + TokenScreenWords.NoRows + @"</p>
+  <table *ngIf=""rows && rows.length > 0"" aria-label=""" + page.Label + @""">
+    <thead>
+      <tr>
+        <th *ngFor=""let column of columns"">{{ column.label }}</th>
+        <th>" + TokenScreenWords.ActiveColumn + @"</th>
+        <th>" + TokenScreenWords.ActionsColumn + @"</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor=""let row of rows"">
+        <td *ngFor=""let column of columns"">{{ show(column.kind, row[column.json]) }}</td>
+        <td>{{ row['active'] ? '" + TokenScreenWords.Yes + @"' : '" + TokenScreenWords.No + @"' }}</td>
+        <td>
+          <button type=""button"" [disabled]=""!row['active']"" [attr.aria-label]=""'" + TokenScreenWords.Revoke + @" ' + row[keyColumn]"" (click)=""revoke(row)"">" + TokenScreenWords.Revoke + @"</button>
+          <button type=""button"" *ngIf=""personColumn && row[personColumn] != null"" [attr.aria-label]=""'" + TokenScreenWords.SignOut + @" ' + row[keyColumn]"" (click)=""signOut(row)"">" + TokenScreenWords.SignOut + @"</button>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+";
+#>
+@@@FILE src/app/<#= componentsFolder #>/<#= folder #>/<#= folder #>.component.ts@@@
+import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+<# if (!controlFlow) { #>
+import { NgFor, NgIf } from '@angular/common';
+<# } #>
+
+type Row = Record<string, unknown>;
+
+@Component({
+  selector: 'app-<#= folder #>',
+<# if (Project.AngularStandaloneFlag) { #>
+  standalone: true,
+<# } #>
+  changeDetection: ChangeDetectionStrategy.<#= Project.AngularEagerStrategy #>, // plain properties change inside subscribe callbacks
+  imports: [<#= controlFlow ? "" : "NgFor, NgIf" #>],
+  templateUrl: './<#= folder #>.component.html',
+  styleUrl: './<#= folder #>.component.css'
+})
+export class <#= page.Name #>Component implements OnInit {
+  private readonly http = inject(HttpClient);
+
+  readonly columns = [<#= columns #>];
+  readonly keyColumn = '<#= page.KeyJson #>';
+  readonly personColumn: string | null = <#= personJson #>;
+  rows: Row[] | null = null;
+  message = '';
+
+  show(kind: string, value: unknown): string {
+    if (value === null || value === undefined) return '';
+    if (kind === 'flag') return value ? '<#= TokenScreenWords.Yes #>' : '<#= TokenScreenWords.No #>';
+    if (kind === 'date') return new Date(String(value)).toLocaleString();
+    return String(value);
+  }
+
+  load(): void {
+    this.http.get<Row[]>('<#= path #>').subscribe({
+      next: (rows) => { this.rows = rows; },
+      error: () => { this.message = '<#= TokenScreenWords.LoadFailed #>'; }
+    });
+  }
+
+  revoke(row: Row): void {
+    this.post('<#= path #>/' + String(row[this.keyColumn]) + '/revoke');
+  }
+
+  signOut(row: Row): void {
+    this.post('<#= path #>/revoke-person/' + String(row[this.personColumn!]), (answer) => String(answer['revoked']) + '<#= TokenScreenWords.EndedSuffix #>');
+  }
+
+  private post(path: string, done?: (answer: Row) => string): void {
+    this.message = '';
+    this.http.post<Row>(path, null).subscribe({
+      next: (answer) => { if (done) this.message = done(answer); this.load(); },
+      error: () => { this.message = '<#= TokenScreenWords.ChangeFailed #>'; }
+    });
+  }
+
+  ngOnInit(): void {
+    this.load();
+  }
+}
+@@@FILE src/app/<#= componentsFolder #>/<#= folder #>/<#= folder #>.component.html@@@
+<#= Project.AdaptAngularHtml(html) #>@@@FILE src/app/<#= componentsFolder #>/<#= folder #>/<#= folder #>.component.css@@@
+.tokens table { border-collapse: collapse; }
+.tokens th, .tokens td { padding: 4px 12px; text-align: left; }
+@@@FILE src/app/<#= componentsFolder #>/<#= folder #>/<#= folder #>.component.spec.ts@@@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { <#= page.Name #>Component } from './<#= folder #>.component';
+
+describe('<#= page.Name #>Component', () => {
+  let component: <#= page.Name #>Component;
+  let fixture: ComponentFixture<<#= page.Name #>Component>;
+  let http: HttpTestingController;
+
+  const rows = [
+    { <#= page.KeyJson #>: 1,<#= page.PersonJson is null ? "" : $" {page.PersonJson}: 7," #> active: true },
+    { <#= page.KeyJson #>: 2,<#= page.PersonJson is null ? "" : $" {page.PersonJson}: 7," #> active: false },
+  ];
+
+  const create = () => {
+    http = TestBed.inject(HttpTestingController);
+    fixture = TestBed.createComponent(<#= page.Name #>Component);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  };
+
+  const buttons = () => Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('button'));
+  const named = (label: string) => buttons().find((button) => button.getAttribute('aria-label') === label)!;
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [<#= page.Name #>Component],
+      providers: [provideHttpClient(), provideHttpClientTesting()]
+    }).compileComponents();
+  });
+
+  afterEach(() => http.verify());
+
+  it('lists the rows and offers Revoke on an active row only', () => {
+    create();
+    http.expectOne('<#= path #>').flush(rows);
+    fixture.detectChanges();
+    expect(named('<#= TokenScreenWords.Revoke #> 1').disabled).toBe(false);
+    expect(named('<#= TokenScreenWords.Revoke #> 2').disabled).toBe(true);
+  });
+
+  it('revokes a row and reads the list again', () => {
+    create();
+    http.expectOne('<#= path #>').flush(rows);
+    fixture.detectChanges();
+    named('<#= TokenScreenWords.Revoke #> 1').click();
+    const post = http.expectOne('<#= path #>/1/revoke');
+    expect(post.request.method).toBe('POST');
+    post.flush({});
+    http.expectOne('<#= path #>').flush(rows);
+  });
+<#
+        if (page.PersonJson is not null)
+        {
+#>
+
+  it('signs a person out everywhere and says how many rows ended', () => {
+    create();
+    http.expectOne('<#= path #>').flush(rows);
+    fixture.detectChanges();
+    named('<#= TokenScreenWords.SignOut #> 1').click();
+    http.expectOne('<#= path #>/revoke-person/7').flush({ revoked: 3 });
+    http.expectOne('<#= path #>').flush(rows);
+    expect(component.message).toBe('3<#= TokenScreenWords.EndedSuffix #>');
+  });
+<#
+        }
+#>
+
+  it('says so when there is nothing to show', () => {
+    create();
+    http.expectOne('<#= path #>').flush([]);
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('<#= TokenScreenWords.NoRows #>');
+  });
+
+  it('explains when the list cannot be read', () => {
+    create();
+    http.expectOne('<#= path #>').flush(null, { status: <#= HttpStatus.Forbidden #>, statusText: 'Forbidden' });
+    expect(component.message).toBe('<#= TokenScreenWords.LoadFailed #>');
+  });
+});
+<#
+    }
+#>

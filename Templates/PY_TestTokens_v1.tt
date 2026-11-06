@@ -1,0 +1,22 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_TestTokens_v1.tt
+    // Generates: tests/conftest.py and tests/test_tokens_<table>.py   (whole-database; the output folder is the Python API's folder)
+    // pytest tests of the routes PY_Token writes for TokenTables, over the scratch database of the shared conftest.py (a temporary copy of the SQLite file, or the URL in <PROJECT>_TEST_CONNECTION for
+    // PostgreSQL and MySQL; with none the tests are skipped with the reason). Each test inserts rows of its own with plain SQL and removes them after it. The cases are the ones of the generated ASP.NET
+    // tests: no sign-in, a role that is not the administrator's, a token spent once, an expired or unknown or blank one, a hash in capitals, a revoked token and the list without the hash, and, when the
+    // table has them, an anonymous spend, a family ended by a reused token and a person's tokens.
+    // Written only for a project with PythonTests=true and ApiAuth and a token table whose other columns the generator can fill; not for SQL Server.
+    // Full notes: Docs/TemplateNotes/API_Token_v1.md
+    // ==========================================================================================
+    if (PythonTokenTests.Applies(Database, Project))
+    {
+        Write("@@@FILE tests/conftest.py@@@\n" + PythonTokenTests.Conftest(Project, Database.Dialect));
+        foreach (var token in PythonTokenTests.Tables(Database, Project))
+            Write($"@@@FILE {PythonTokenTests.FileName(token)}@@@\n" + PythonTokenTests.File(token, Database, Project));
+    }
+#>

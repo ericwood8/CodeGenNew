@@ -230,7 +230,15 @@ public static class ApiFixture
         _factory = new WebApplicationFactory<Program>();
         Client = _factory.CreateClient();
 <#
-            if (!tenants)
+            if (!tenants && Project.UserTable is not null)
+            {
+#>
+        // UserTable: the people who sign in are rows of the database, so the tests make their token with the key of the run instead of signing in
+        Client.Dispose();
+        Client = ClientInRole("<#= Project.AuthAdminRole #>");
+<#
+            }
+            if (!tenants && Project.UserTable is null)
             {
 #>
         var login = await Client.PostAsJsonAsync("/api/auth/login", new { userName = AdminUserName, password });
@@ -325,6 +333,13 @@ public static class ApiFixture
         }
 #>
 <#
+        if (!tenants && Project.ApiAuth && Project.TokenTables.Length > 0)
+        {
+#>
+    public static IServiceProvider Services => _factory!.Services;
+
+<#
+        }
         if (tenants)
         {
 #>

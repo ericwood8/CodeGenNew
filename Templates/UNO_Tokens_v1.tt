@@ -1,0 +1,25 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // UNO_Tokens_v1.tt
+    // Generates: Views/<Table>TokensPage.xaml and Views/<Table>TokensPage.xaml.cs for every table of TokenTables   (the template writes its own paths with @@@FILE markers)
+    // The sessions and tokens page of an Uno app that signs in (Auth=true, ApiAuth, TokenTables), for the administrator: the rows the API lists without the hash, a Revoke button on an active row and, when the table
+    // points at a person, a Sign out everywhere button. UNO_Screens lists the page.
+    // Full notes: Docs/TemplateNotes/API_Token_v1.md
+    // ==========================================================================================
+    string servicesNamespace = UnoNames.ServicesNamespace(Project);
+    string viewNamespace = Project.ViewNamespace ?? Project.AppNamespace + ".Views";
+    foreach (var page in TokenScreens.Pages(Database, Project))
+    {
+#>
+@@@FILE Views/<#= TokenDesktopCode.PageClass(page) #>.xaml@@@
+<#= TokenDesktopCode.Xaml(viewNamespace, page) #>
+@@@FILE Views/<#= TokenDesktopCode.PageClass(page) #>.xaml.cs@@@
+<#= TokenDesktopCode.UnoPage(viewNamespace, servicesNamespace, page) #>
+<#
+    }
+#>

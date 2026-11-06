@@ -73,6 +73,9 @@
     bool featuresPage = FeatureScreens.HasPage(Database, Project);   // the administrator switches the flags of the tenant (TSX_Features)
     if (featuresPage)
         Line($"import {{ FeaturesPage }} from './{pagesFolder}/FeaturesPage';");
+    var tokenPages = TokenScreens.Pages(Database, Project);   // the administrator sees the sessions and tokens (TSX_Tokens)
+    foreach (var tokenPage in tokenPages)
+        Line($"import {{ {tokenPage.Name}Page }} from './{pagesFolder}/{tokenPage.Name}Page';");
     Line();
     // the OData pages are loaded when their route is first opened (a separate chunk each), so they do not add to the first download
     foreach (var t in odataScreens)
@@ -110,6 +113,11 @@
     {
         string adminRole = WriteRolePlan.Literal([Project.AuthAdminRole], (char)39);
         Line($"  {{ path: 'features', label: '{FeatureScreenWords.Menu}', element: <FeaturesPage />, roles: [{adminRole}] }},");
+    }
+    foreach (var tokenPage in tokenPages)
+    {
+        string adminRole = WriteRolePlan.Literal([Project.AuthAdminRole], (char)39);
+        Line($"  {{ path: '{tokenPage.Path}', label: '{tokenPage.Label}', element: <{tokenPage.Name}Page />, roles: [{adminRole}] }},");
     }
     Line("];");
     Write(sb.ToString());

@@ -48,6 +48,9 @@
     // the queue routes (RS_Queue) too; axum prefers their fixed paths (stats, claim) to a table's /{id}
     if (Database.Tables.Any(t => TableShapes.For(t, Project).Queue is not null))
         routeModules.Add("queue");
+    // and the token routes (RS_Token)
+    if (Project.ApiAuth && Database.Tables.Any(t => TableShapes.For(t, Project).Token is not null))
+        routeModules.Add("tokens");
     if (Project.ApiAuth && ApprovalPlan.Resolve(Database, Project).Tables.Count > 0)
         routeModules.Add("approvals");
     foreach (string m in routeModules)

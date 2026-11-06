@@ -30,6 +30,9 @@ public static class BlazorMenu
         // administrators switch the flags of their tenant (BLZ_Features)
         if (FeatureScreens.HasPage(database, project))
             entries.Add(new BlazorMenuEntry("features", FeatureScreenWords.Menu, [project.AuthAdminRole]));
+        // administrators see the sessions and tokens (BLZ_Tokens)
+        foreach (var page in TokenScreens.Pages(database, project))
+            entries.Add(new BlazorMenuEntry(page.Path, page.Label, [project.AuthAdminRole]));
         return entries;
     }
 }

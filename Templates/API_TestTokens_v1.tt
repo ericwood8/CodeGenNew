@@ -1,0 +1,33 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string apiNamespace = "MyApp.ApiService.Apis";
+    string contextType = "MyAppContext";
+    string[] usings = { };   // namespaces the generated file must "using" (the context's)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    contextType = Project.ContextName ?? contextType;
+    apiNamespace = Project.ApiNamespace ?? apiNamespace;
+    usings = Project.Usings ?? usings;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // API_TestTokens_v1.tt
+    // Generates: <Table>TokenApiTests.cs   (the test project; see OutputRoot in API_TestTokens_v1.tt.config)
+    // The tests of the token routes (TokenTables): a call without a token is a 401, a role that is not the administrator's is a 403, a token is spent once, an expired, unknown or revoked token is not spent, the
+    // list never shows the hash, and revoking a person ends their tokens. Each test adds a row of its own and removes it again. Writes nothing without TokenTables, ApiAuth and ApiTests.
+    // Full notes: Docs/TemplateNotes/API_Token_v1.md
+    // ==========================================================================================
+
+    foreach (var table in ApiTokenTests.Tables(Database, Project))
+    {
+        Write("@@@FILE " + table.Table.TableName + "TokenApiTests.cs@@@" + "\n" + ApiTokenTests.ClassText(table, Project));
+    }
+#>

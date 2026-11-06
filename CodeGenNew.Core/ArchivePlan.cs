@@ -52,7 +52,7 @@ public static class ArchivePlan
                 continue;
             }
             var queue = TableShapes.For(table, project).Queue;
-            var age = queue?.Processed ?? (LogTablePlan.IsListed(table, project) ? TableShapes.For(table, project).Log?.Timestamp : null) ?? LogTablePlan.Guess(table);
+            var age = queue?.Processed ?? TableShapes.For(table, project).Token?.Expiry ?? (LogTablePlan.IsListed(table, project) ? TableShapes.For(table, project).Log?.Timestamp : null) ?? LogTablePlan.Guess(table);
             if (age is null)
             {
                 problems.Add($"{prefix} has no date and time column to measure age by.");
