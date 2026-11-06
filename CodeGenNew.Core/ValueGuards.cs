@@ -13,7 +13,7 @@ public sealed record ValueGuard(ColumnModel Column, ValueGuardKind Kind)
 
     /// <summary> The test, true when the value breaks the rule; a NULL parameter (nothing supplied, or "leave the column as it is") never does. <paramref name="textParameter"/> is for the SQL Server
     /// update procedure, whose parameters are all text: the value is converted first, and a value that is no number or date is left to the statement that stores it. </summary>
-    /// <param name="storedRow">For an update: the <c>FROM table WHERE key = parameter</c> that finds the row being changed. A value equal to the one the row already holds is not judged again, so a
+    /// <param name="storedRow">WriteFor an update: the <c>FROM table WHERE key = parameter</c> that finds the row being changed. A value equal to the one the row already holds is not judged again, so a
     /// stored value that breaks the rule does not stop an edit that leaves it alone; only a value the caller changes is checked. Null for an insert, which has no stored row.</param>
     public string Condition(string parameter, SqlDialect dialect, bool textParameter = false, string? storedRow = null)
     {

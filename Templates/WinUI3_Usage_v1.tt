@@ -1,0 +1,40 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string viewNamespace = "MyApp.Desktop.Views";
+    string repositoryNamespace = "MyApp.Common.Repositories";
+    string contextType = "MyAppContext";
+    string[] usings = { };   // namespaces the generated files must "using" (the context's)
+    string viewsFolder = "Views";   // under the WinUI3 project root (where -o points)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    viewNamespace = Project.ViewNamespace ?? viewNamespace;
+    repositoryNamespace = Project.RepoNamespace ?? repositoryNamespace;
+    contextType = Project.ContextName ?? contextType;
+    usings = Project.Usings ?? usings;
+    viewsFolder = Project.ViewsFolder ?? viewsFolder;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // WinUI3_Usage_v1.tt
+    // Generates: <ViewsFolder>/<Table>SummaryPage.xaml and <ViewsFolder>/<Table>SummaryPage.xaml.cs for every table of UsageTables   (the template writes its own paths with @@@FILE markers)
+    // The usage page of the WinUI3 app, for a project with the desktop sign-in and tenants: the app reads the database itself, so the page adds up the events (and the monthly totals of UsageRollup) of the tenant the
+    // person works in over the app's own context. Shown to the administrator by WinUI3_Screens. The text is UsageDesktopCode in Core.
+    // Full notes: Docs/TemplateNotes/API_Usage_v1.md
+    // ==========================================================================================
+    foreach (var page in UsageScreens.DesktopPages(Database, Project))
+    {
+#>
+@@@FILE <#= viewsFolder #>/<#= page.PageClass #>.xaml@@@
+<#= UsageDesktopCode.Xaml(viewNamespace, page) #>
+@@@FILE <#= viewsFolder #>/<#= page.PageClass #>.xaml.cs@@@
+<#= UsageDesktopCode.DesktopPage(viewNamespace, repositoryNamespace, contextType, usings, page) #>
+<#
+    }
+#>

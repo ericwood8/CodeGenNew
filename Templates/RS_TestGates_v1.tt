@@ -67,7 +67,7 @@
             var table = gated.Table;
             var t = RustTable.Of(table, Project);
             string keyJson = JsonNames.Camel(table.PrimaryKeyColumns[0].Name);
-            string roleName = RustTestBodies.PlainRole(Project, WriteRolePlan.ReadFor(Project, table), WriteRolePlan.For(Project, table)) ?? "";
+            string roleName = RustTestBodies.PlainRole(Project, WriteRolePlan.ReadFor(Project, table), WriteRolePlan.WriteFor(Project, table)) ?? "";
             bool scoped = OwnedTable.IsScoped(table, Project);
 
             Line();

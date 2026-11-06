@@ -51,7 +51,7 @@ public sealed class ApiTestPlan
             .FirstOrDefault(c => c is not null);
 
         // ReadRoles and WriteRoles: the roles a rule lists (the administrator role first); a table scoped to a person is not written by a role with no owner
-        WriteRoles = WriteRolePlan.For(project, model);
+        WriteRoles = WriteRolePlan.WriteFor(project, model);
         ReadRoles = WriteRolePlan.ReadFor(project, model);
         ScopedToPerson = OwnedTable.IsScoped(model, project);
 

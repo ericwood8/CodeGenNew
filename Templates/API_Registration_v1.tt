@@ -89,6 +89,13 @@
         Line();
         Line("        TokenApi.Register(app);");
     }
+    if (Project.ApiAuth && Database.Tables.Any(t => TableShapes.For(t, Project).Usage is not null))
+    {
+        Line();
+        Line("        UsageApi.Register(app);");
+        if (UsagePlan.HasSchedule(Database, Project))
+            Line("        UsageRollupSchedule.Start(app);");
+    }
     if (TenantPlan.IsEnabled(Project) && Project.ApiAuth && TenantPlan.TenantTableOf(Database, Project) is not null)
     {
         Line();

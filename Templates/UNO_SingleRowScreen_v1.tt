@@ -55,7 +55,7 @@
         string type = BlazorNames.TypeName(table);   // the model class (UNO_Model): the table without an E_ or SY_ prefix
         string title = form.Title;
         // With Auth=true: Save shows only to the roles WriteRoles names for this table (none named: every signed-in person)
-        var writeRoles = Project.Auth ? WriteRolePlan.For(Project, Model) : new List<string>();
+        var writeRoles = Project.Auth ? WriteRolePlan.WriteFor(Project, Model) : new List<string>();
         bool gated = writeRoles.Count > 0;
         string keyProp = keyColumn.Name;
 

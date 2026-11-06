@@ -22,6 +22,7 @@
     if (stacks.Count == 0) stacks = ["React"];
     string origins = string.Join(", ", stacks.Select(s => Str($"http://localhost:{Project.DevPort(s)}")));
     bool auth = Project.ApiAuth;
+    bool schedule = Project.WantsUsageSchedule;
 #>
 @@@FILE app/__init__.py@@@
 # The generated API: app.main is the FastAPI application (uvicorn app.main:app).
@@ -344,6 +345,10 @@ def matches_pattern(value: str, pattern: str) -> bool:
 <# } #>
 @@@FILE app/main.py@@@
 """The API: every table's router, the error forms and CORS for the front ends' dev servers. Run it with: uvicorn app.main:app <#= portFlag #> <#= Project.ApiPort #>"""
+<# if (schedule) { #>
+import asyncio
+from contextlib import asynccontextmanager
+<# } #>
 import os
 
 from fastapi import <#= auth ? "Depends, " : "" #>FastAPI
@@ -381,7 +386,18 @@ signing_key()   # stops the start-up when Jwt__Key is missing or shorter than 32
 <#
     }
 #>
-app = FastAPI(title=<#= Str(Project.ProjectTitle + " API") #>)
+<# if (schedule) { #>
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Starts the jobs of the routes (the scheduled roll-up of the usage ledger, UsageRollupHours) and stops them with the API."""
+    tasks = [asyncio.create_task(job()) for job in getattr(routes, "startup", [])]
+    yield
+    for task in tasks:
+        task.cancel()
+
+
+<# } #>
+app = FastAPI(title=<#= Str(Project.ProjectTitle + " API") #><#= schedule ? ", lifespan=lifespan" : "" #>)
 register_error_handlers(app)
 
 # The front ends' dev servers call this API from another origin; CORS_ORIGINS (comma separated) names the origins of a deployment.

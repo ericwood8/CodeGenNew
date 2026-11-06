@@ -43,7 +43,7 @@ public class TableModel
     /// <summary> What stands in for a primary key the database does not declare ("the unique index IX_X", "the identity column", "the KeyColumns setting"); null when the key is the declared one or there is none. </summary>
     public string? KeySource { get; init; }
 
-    /// <summary> For a table with no key: why none was found and what to do about it; for one whose key stands in for a declared primary key: why a KeyColumns entry was not used. Null otherwise. </summary>
+    /// <summary> WriteFor a table with no key: why none was found and what to do about it; for one whose key stands in for a declared primary key: why a KeyColumns entry was not used. Null otherwise. </summary>
     public string? KeyAdvice { get; init; }
 
     /// <summary> See PrimaryKeyShape and TemplateConfig.RequiresSingleKey (Docs/Reference.md section 3) --
@@ -60,12 +60,12 @@ public class TableModel
 
     /// <summary> True when API_Crud writes an API for the table under these project settings: a single whole-number key, not a name/active table, not one the project says has no repository (an enum). </summary>
     public bool HasCrudApi(ProjectSettings project) =>
-        PrimaryKeyShape == PrimaryKeyShape.SingleInt && !IsNameActiveTable && project.NoRepository(TableName, LookupShape) != true && !project.IsApprovalSide(TableName) && !project.IsSubscriptionManaged(TableName) && !FeatureFlagTables.IsFeatureTable(project, TableName) && !FeatureFlagTables.IsPlanLinkTable(project, TableName) && !TokenPlan.IsListed(TableName, project);
+        PrimaryKeyShape == PrimaryKeyShape.SingleInt && !IsNameActiveTable && project.NoRepository(TableName, LookupShape) != true && !project.IsApprovalSide(TableName) && !project.IsSubscriptionManaged(TableName) && !FeatureFlagTables.IsFeatureTable(project, TableName) && !FeatureFlagTables.IsPlanLinkTable(project, TableName) && !TokenPlan.IsListed(TableName, project) && !UsagePlan.IsListed(TableName, project) && !UsagePlan.IsRollupTable(TableName, project);
 
     /// <summary> True when API_Crud writes an API for a table whose single key is a uniqueidentifier or text (<c>CrudApi&lt;TEntity, TRepo, TKey&gt;</c>), under the same exclusions as <see cref="HasCrudApi"/>.
     /// Only the ASP.NET API handles these tables so far; the other stacks (<see cref="HasCrudApi"/> is false for them) are moved to <see cref="KeyType"/> one at a time (spec item 103). </summary>
     public bool HasKeyedCrudApi(ProjectSettings project) =>
-        PrimaryKeyShape is PrimaryKeyShape.SingleUniqueIdentifier or PrimaryKeyShape.SingleText && !IsNameActiveTable && project.NoRepository(TableName, LookupShape) != true && !project.IsSubscriptionManaged(TableName) && !FeatureFlagTables.IsFeatureTable(project, TableName) && !TokenPlan.IsListed(TableName, project);
+        PrimaryKeyShape is PrimaryKeyShape.SingleUniqueIdentifier or PrimaryKeyShape.SingleText && !IsNameActiveTable && project.NoRepository(TableName, LookupShape) != true && !project.IsSubscriptionManaged(TableName) && !FeatureFlagTables.IsFeatureTable(project, TableName) && !TokenPlan.IsListed(TableName, project) && !UsagePlan.IsListed(TableName, project) && !UsagePlan.IsRollupTable(TableName, project);
 
     /// <summary> True when API_Crud writes a name/active API for the table (a <c>NameActiveCrudApi</c> over its <c>NameActiveRepo</c>): a single whole-number key, the Name and IsActive shape, not an enum and not a table the project lists in <c>NoApiTables</c> (a user table with password hashes stays out).and not a table the project lists in <c>NoApiTables</c> (a user table with password hashes stays out).
     /// Only the ASP.NET API and the Angular templates handle these tables; the other stacks still leave them out (<see cref="HasCrudApi"/> is false for them). </summary>

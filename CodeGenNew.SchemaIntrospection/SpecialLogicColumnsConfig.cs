@@ -16,7 +16,7 @@ public class SpecialLogicRule
     private static string? FindMatchingColumn(IEnumerable<string> columnNames, SpecialLogicRule rule, IReadOnlyList<string> patterns) =>
         columnNames.FirstOrDefault(name => patterns.Any(pattern => name.MatchesPattern(pattern, rule.IgnoreCase)));
 
-    /// <summary> For a table-level pair rule, returns the matching (flagColumn, companionColumn) names if both are present. </summary>
+    /// <summary> WriteFor a table-level pair rule, returns the matching (flagColumn, companionColumn) names if both are present. </summary>
     public (string FlagColumn, string CompanionColumn)? EvaluatePairRule(IEnumerable<string> columnNames)
     {
         if (!IsPairRule)
@@ -29,7 +29,7 @@ public class SpecialLogicRule
         return (flag is not null && companion is not null) ? (flag, companion) : null;
     }
 
-    /// <summary> For a per-column rule whose pattern ORDER is a priority (DisplayColumn): the index of the first pattern
+    /// <summary> WriteFor a per-column rule whose pattern ORDER is a priority (DisplayColumn): the index of the first pattern
     /// this name matches, or null. Lower = higher priority. </summary>
     public int? MatchRank(string columnName)
     {
@@ -45,7 +45,7 @@ public class SpecialLogicRule
         return null;
     }
 
-    /// <summary> For a per-column classification rule (blank companion patterns), does this single column name match? </summary>
+    /// <summary> WriteFor a per-column classification rule (blank companion patterns), does this single column name match? </summary>
     public bool MatchesColumnRule(string columnName)
     {
         if (IsPairRule)

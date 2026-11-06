@@ -49,7 +49,7 @@ public sealed class CrudApiPlan
         LookupItem = KeyCSharp == "int" ? "LookupItem" : "LookupItem<" + KeyCSharp + ">";
 
         // ApiAuth with WriteRoles or TableWriteRoles: the roles that may write this table (empty: any signed-in person)
-        WriteRoles = WriteRolePlan.For(project, model);
+        WriteRoles = WriteRolePlan.WriteFor(project, model);
         ReadRoles = WriteRolePlan.ReadFor(project, model);
 
         // ApiAuth with OwnedTables: a caller reaches only the rows of the owners the IOwnerScope allows (the owner column; a Name and IsActive table is never scoped)

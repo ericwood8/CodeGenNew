@@ -15,7 +15,7 @@ public sealed record ColumnRule
     /// <summary> The only values a text column accepts (a CHECK list or an enum); null for any text. </summary>
     public IReadOnlyList<string>? Choices { get; init; }
     public TextShape Shape { get; init; }
-    /// <summary> For <see cref="TextShape.Custom"/>: the regular expression the whole text must match (an array, interval, range or shape of PostgreSQL), and what a value is called in a message. </summary>
+    /// <summary> WriteFor <see cref="TextShape.Custom"/>: the regular expression the whole text must match (an array, interval, range or shape of PostgreSQL), and what a value is called in a message. </summary>
     public string? Pattern { get; init; }
     public string? Noun { get; init; }
     public double? Min { get; init; }

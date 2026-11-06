@@ -69,7 +69,7 @@ public static class RustSubscriptionWriter
             ("§NEEDS_TEXT", Str(SubscriptionWords.NeedsPlanAndStatus).Trim('"')), ("§UNKNOWNPLAN_TEXT", Str(SubscriptionWords.UnknownPlan).Trim('"')), ("§UNKNOWNTENANT_TEXT", Str(SubscriptionWords.UnknownTenant).Trim('"'))));
 
         // the limits
-        o.Append("\n/// The names of the limits the project counts.\npub const LIMIT_KEYS: &[&str] = &[" + string.Join(", ", limited.Select(l => Str(l.LimitKey))) + "];\n");
+        o.Append("\n/// The names of the limits the project counts.\npub const LIMIT_KEYS: &[&str] = &[" + string.Join(", ", limited.Select(l => Str(l.LimitKey)).Concat(limit is null ? [] : project.UsageLimits.Select(Str))) + "];\n");
         if (limit is not null)
         {
             string allowedSql = $"SELECT {Q(limit.Value)} FROM {Table(limit.Table)} WHERE {Q(limit.Plan)} = {di.Placeholder(1)} AND {Q(limit.Key)} = {di.Placeholder(2)}";
@@ -82,6 +82,10 @@ public static class RustSubscriptionWriter
                 string count = $"SELECT COUNT(*) FROM {Table(l.Table)} WHERE {Q(l.Tenant)} = {di.Placeholder(1)}" + (l.Deleted is null ? "" : $" AND {Q(l.Deleted)} = {di.BooleanLiteral(false)}");
                 o.Append($"        {Str(l.LimitKey)} => {Raw(count)},\n");
             }
+            // a limit of UsageLimits is counted from the month's events of the usage ledger (src/routes/usage.rs), not from the rows of a table
+            foreach (var usageKey in project.UsageLimits)
+                if (UsagePlan.LedgerOfLimit(database, project, usageKey) is { } owner)
+                    o.Append($"        {Str(usageKey)} => return crate::routes::usage::used_this_month{UsagePlan.RustSuffix(database, project, owner)}(pool, tenant, key).await.map(|used| used.ceil() as i64),\n");
             o.Append("        _ => return Ok(0),\n    };\n    Ok(sqlx::query_scalar::<_, i64>(sql).bind(tenant).fetch_one(pool).await?)\n}\n");
             o.Append("\n/// The limit a create route is counted against, or None when the path adds no row to a limited table.\nfn limit_key(path: &str) -> Option<&'static str> {\n");
             foreach (var l in limited)
@@ -284,7 +288,7 @@ pub async fn check_write(pool: &Pool, method: &Method, path: &str, tenant: i32) 
 }
 
 /// The problem answers hold a static sentence, so a sentence made at run time is kept for the life of the process; the same sentence is kept once (there are few: one per status and per limit state).
-fn leak(text: &str) -> &'static str {
+pub(crate) fn leak(text: &str) -> &'static str {
     static SENTENCES: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
     let mut map = SENTENCES.get_or_init(Default::default).lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     map.entry(text.to_string()).or_insert_with(|| Box::leak(text.to_string().into_boxed_str()))
@@ -296,7 +300,7 @@ fn leak(text: &str) -> &'static str {
 const ALLOWED_SQL: &str = §ALLOWED_SQL;
 
 /// What the plan allows for a limit, or None when it is unlimited (no row, or a NULL value).
-async fn allowed(pool: &Pool, plan: i32, key: &str) -> ApiResult<Option<i64>> {
+pub async fn allowed(pool: &Pool, plan: i32, key: &str) -> ApiResult<Option<i64>> {
     let value = sqlx::query_scalar::<_, Option<§VALUETYPE>>(ALLOWED_SQL).bind(plan).bind(key).fetch_optional(pool).await?;
     Ok(value.flatten().map(|v| v as i64))
 }

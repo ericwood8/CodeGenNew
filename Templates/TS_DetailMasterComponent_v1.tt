@@ -161,7 +161,7 @@
         var formPages = form.Pages;
         bool tabbed = form.IsTabbed;
         // WriteRoles with the Angular sign-in: only the roles that may write see Add, Edit, Clone and Delete (the API refuses the others with a 403 anyway)
-        IReadOnlyList<string> writeRoles = Project.Auth ? WriteRolePlan.For(Project, Model) : new List<string>();
+        IReadOnlyList<string> writeRoles = Project.Auth ? WriteRolePlan.WriteFor(Project, Model) : new List<string>();
         string? approvalSegment = ApprovalScreens.PanelSegment(Model, Project);   // a table of RowApprovals: its saved row's form carries the approval panel (TS_Approvals writes it)
         string writeOnly = writeRoles.Count > 0 ? " *ngIf=\"canWrite\"" : "";
 

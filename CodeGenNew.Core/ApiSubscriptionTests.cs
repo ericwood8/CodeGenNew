@@ -343,7 +343,7 @@ public static class ApiSubscriptionTests
         L("            Assert.AreEqual(info[\"planName\"]!.GetValue<string>(), mine[\"name\"]!.GetValue<string>());");
         if (subscription.PlanPrice is not null)
             L("            Assert.AreEqual(mine[\"price\"]?.ToJsonString(), info[\"planPrice\"]?.ToJsonString(), \"the view shows the price of the tenant's plan\");");
-        L($"            Assert.AreEqual({SubscriptionFeature.LimitedTables(database, project).Count}, mine[\"limits\"]!.AsArray().Count, \"each plan lists every limit\");");
+        L($"            Assert.AreEqual({SubscriptionFeature.LimitedTables(database, project).Count + (database.Tables.Any(t => TableShapes.For(t, project).Usage is not null) ? project.UsageLimits.Length : 0)}, mine[\"limits\"]!.AsArray().Count, \"each plan lists every limit\");");
         L("        }");
         L("        finally");
         L("        {");

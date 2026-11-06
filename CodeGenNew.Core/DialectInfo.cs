@@ -43,7 +43,7 @@ public sealed class DialectInfo
     /// <summary> A table as a statement names it: schema and table where there are schemas, else the table alone. </summary>
     public string QuoteTable(string schema, string table) => HasSchemas ? Quote(schema) + "." + Quote(table) : Quote(table);
 
-    /// <summary> The Nth (1-based) positional placeholder: <c>$1</c> for PostgreSQL, <c>?</c> for MySQL and SQLite, <c>@p1</c> for SQL Server. For a driver, such as Rust's sqlx, that binds by position. </summary>
+    /// <summary> The Nth (1-based) positional placeholder: <c>$1</c> for PostgreSQL, <c>?</c> for MySQL and SQLite, <c>@p1</c> for SQL Server. WriteFor a driver, such as Rust's sqlx, that binds by position. </summary>
     public string Placeholder(int index) => Dialect switch
     {
         SqlDialect.PostgreSql => "$" + index,

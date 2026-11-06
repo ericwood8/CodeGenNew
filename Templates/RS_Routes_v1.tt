@@ -47,7 +47,7 @@
     bool tenantTable = tenancy && TenantPlan.IsTenantTable(Model, Project);
     // ReadRoles and WriteRoles: the routes refuse a role the table's rules do not list (the administrator role is always listed); the lookup stays open
     var readRoles = WriteRolePlan.ReadFor(Project, Model);
-    var writeRoles = WriteRolePlan.For(Project, Model);
+    var writeRoles = WriteRolePlan.WriteFor(Project, Model);
     bool roles = readRoles.Count > 0 || (!log && writeRoles.Count > 0);
     string readLayer = readRoles.Count > 0 ? ".route_layer(middleware::from_fn(|request, next| check_roles(READ_ROLES, false, request, next)))" : "";
     string writeLayer = writeRoles.Count > 0 ? ".route_layer(middleware::from_fn(|request, next| check_roles(WRITE_ROLES, true, request, next)))" : "";

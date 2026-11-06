@@ -27,7 +27,7 @@ public partial class ProjectSettings
     [
         "ProjectName", "ViewNamespace", "ViewModelNamespace", "ContextName", "ContextNamespace", "ApiNamespace",
         "EnumNamespace", "RepoNamespace", "EntityNamespace", "MinYear", "MaxYear", "ViewsFolder", "ViewModelsFolder", "CurrencyCode", "MaxGridColumns",
-        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "TypeAheadRows", "TypeAheadParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "ApiAnnotations", "NonNegativeColumns", "NotFutureDateColumns", "DatePairs", "NoDatePairs", "PlainTextColumns", "EmailColumns", "UrlColumns", "MoneyColumns", "NotMoneyColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "DesktopTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "RowApprovals", "ApproverTable", "LogTables", "QueueTables", "TokenTables", "TokenAnonymousSpend", "QueueMaxRetries", "QueueClaimMinutes", "ArchiveTables", "ArchiveBatchSize", "ArchiveRunAt", "TreeTables", "SoftDeleteTables", "EffectiveDatedTables", "TenantTable", "TenantColumn", "NoTenantTables", "TenantMembership", "TenantHostColumn", "SubscriptionTable", "PlanTable", "PlanLimitTable", "PlanLimits", "SubscriptionActiveStatuses", "SubscriptionRequired", "SubscriptionWebhookSecret", "SubscriptionPlanChoice", "SubscriptionPeriodDays", "WriteRoles", "TableWriteRoles", "Permissions", "PermissionTables", "FeatureTables", "FeaturePlanTable", "FeatureScreens", "FeatureFields", "FeatureCacheSeconds", "FeatureRefreshSeconds", "ReadRoles", "TableReadRoles", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "KeyColumns", "SingleRowTables", "ListingName", "ListingFolder", "ListingPattern",
+        "Usings", "DetailMasterTables", "EnumTables", "EnumMaxRows", "EnumNameSuffixes", "HiddenParents", "ModelFileOverrides", "ChildGridTitles", "EditableChildren", "SeedTables", "BaseEntity", "BaseNameActiveEntity", "NoLookupParents", "TypeAheadRows", "TypeAheadParents", "NoRepositoryTables", "NoApiTables", "NoNavigationTables", "NamingStyle", "Acronyms", "Screens", "NoCloneTables", "ApiAnnotations", "NonNegativeColumns", "NotFutureDateColumns", "DatePairs", "NoDatePairs", "PlainTextColumns", "EmailColumns", "UrlColumns", "MoneyColumns", "NotMoneyColumns", "ValidatorNamespace", "ApplicationNamespace", "FakerNamespace", "ErdTables", "ApiDocs", "ApiHttp", "ApiFakers", "ProjectDocs", "ApiValidation", "ApiCsv", "OData", "ODataTables", "ODataMaxTop", "ODataPageSize", "ODataExpandDepth", "ODataScreens", "EfConfigurations", "ApiProduction", "ApiTelemetry", "ApiTests", "ApiTestContainers", "ApiTestSchema", "BlazorTests", "DesktopTests", "ApiAuth", "OwnedTables", "OwnerColumn", "OwnedChildren", "RequiredMarks","AuthRoleClaim", "AuthOwnerClaim", "AuthAdminRole", "UserTable", "UserNameColumn", "PasswordHashColumn", "UserOwnerColumn", "UserRoleColumn", "UserAdminColumn", "UserRoleWhenTrue", "UserRoleWhenFalse", "ChangeGates", "GuardedColumns", "RowApprovals", "ApproverTable", "LogTables", "QueueTables", "TokenTables", "TokenAnonymousSpend", "UsageTables", "UsageLimits", "UsageRollup", "UsageRollupDays", "UsageRollupHours", "UsageRefuse", "QueueMaxRetries", "QueueClaimMinutes", "ArchiveTables", "ArchiveBatchSize", "ArchiveRunAt", "TreeTables", "SoftDeleteTables", "EffectiveDatedTables", "TenantTable", "TenantColumn", "NoTenantTables", "TenantMembership", "TenantHostColumn", "SubscriptionTable", "PlanTable", "PlanLimitTable", "PlanLimits", "SubscriptionActiveStatuses", "SubscriptionRequired", "SubscriptionWebhookSecret", "SubscriptionPlanChoice", "SubscriptionPeriodDays", "WriteRoles", "TableWriteRoles", "Permissions", "PermissionTables", "FeatureTables", "FeaturePlanTable", "FeatureScreens", "FeatureFields", "FeatureCacheSeconds", "FeatureRefreshSeconds", "ReadRoles", "TableReadRoles", "Dtos", "Dashboard", "DashboardStrip", "DashboardMeasures", "NoDashboardTables", "AccessMode", "DtoNamespace", "FSharpNamespace", "ReplicationTargets", "TemporalTables", "KeySequenceTables", "KeySequenceTable", "BulkUpdateColumns", "BulkUpdateExpression", "ApiFolder", "ModelsFolder", "ServicesFolder", "ComponentsFolder", "PagesFolder", "DbSetNames", "AngularVersion", "Toasts", "Auth", "DockerUpstreamVariable", "ListProtocol", "PageParameter", "PageSizeParameter", "SortParameter", "SearchParameter", "PageBase", "ItemsMember", "TotalMember", "DefaultSorts", "SearchColumns", "IgnoredColumns", "KeyColumns", "SingleRowTables", "ListingName", "ListingFolder", "ListingPattern",
         "Stacks", "PlanAlso", "OutputApi", "OutputWinUI3", "OutputReact", "OutputAngular", "OutputBlazor", "OutputUno", "OutputRust", "OutputPython", "OutputApiTests", "OutputBlazorTests", "OutputWinUI3Tests", "OutputUnoTests", "RustCrateName", "RustPort", "RustTests", "PythonTests", "OutputSql", "AppNamespace", "DatabaseProvider", "MySqlFlavour", "DatabaseServer", "DatabaseName", "DatabaseUser", "ApiPort", "DevPort", "ProjectTitle",
         "BuildApi", "BuildWinUI3", "BuildReact", "BuildAngular", "BuildBlazor", "BuildUno", "BuildPython", "BuildRust", "TestApi", "TestWinUI3", "TestReact", "TestAngular", "TestBlazor", "TestUno", "TestPython", "TestRust"
     ];
@@ -319,9 +319,13 @@ public partial class ProjectSettings
             if (LogTablePlan.Entries(this).Count > 0) yield return "SP_LogIndex";
             if (QueueTables.Length > 0) { yield return "API_Queue"; yield return "PY_Queue"; yield return "RS_Queue"; }
             if (ApiAuth && TokenTables.Length > 0) { yield return "API_Token"; yield return "PY_Token"; yield return "RS_Token"; }
+            if (ApiAuth && UsageTables.Length > 0) { yield return "API_Usage"; yield return "PY_Usage"; yield return "RS_Usage"; }
             if (Auth && ApiAuth && TokenTables.Length > 0) { yield return "TSX_Tokens"; yield return "TS_Tokens"; yield return "BLZ_Tokens"; yield return "UNO_Tokens"; }
             if (TenantPlan.HasDesktopSignIn(this) && TokenTables.Length > 0) yield return "WinUI3_Tokens";
             if (ApiAuth && ApiTests && TokenTables.Length > 0) yield return "API_TestTokens";
+            if (ApiAuth && ApiTests && UsageTables.Length > 0) yield return "API_TestUsage";
+            if (Auth && ApiAuth && UsageTables.Length > 0 && TenantPlan.IsEnabled(this)) { yield return "TSX_Usage"; yield return "TS_Usage"; yield return "BLZ_Usage"; yield return "UNO_Usage"; }
+            if (TenantPlan.HasDesktopTenants(this) && UsageTables.Length > 0) yield return "WinUI3_Usage";
             if (ArchiveTables.Length > 0) yield return "SP_ArchiveJob";
             if (RowShapePlan.Any(this)) yield return "API_RowShapes";
             if (ApiAuth && TenantTable is not null) { yield return "API_Tenants"; yield return "PY_Tenants"; yield return "RS_Tenants"; }
@@ -368,12 +372,14 @@ public partial class ProjectSettings
                 if (ApiAuth && TokenTables.Length > 0) yield return "RS_TestTokens";
                 if (ApiAuth && TenantTable is not null) yield return "RS_TestTenants";
                 if (ApiAuth && TenantTable is not null && SubscriptionTable is not null) yield return "RS_TestSubscriptions";
+                if (ApiAuth && TenantTable is not null && UsageTables.Length > 0) yield return "RS_TestUsage";
             }
             if (PythonTests && ApiAuth && RowApprovals.Length > 0) yield return "PY_TestApprovals";
             if (PythonTests && QueueTables.Length > 0) yield return "PY_TestQueue";
             if (PythonTests && ApiAuth && TokenTables.Length > 0) yield return "PY_TestTokens";
             if (PythonTests && ApiAuth && TenantTable is not null) yield return "PY_TestTenants";
             if (PythonTests && ApiAuth && TenantTable is not null && SubscriptionTable is not null) yield return "PY_TestSubscriptions";
+            if (PythonTests && ApiAuth && TenantTable is not null && UsageTables.Length > 0) yield return "PY_TestUsage";
             if (PythonTests && FeatureFlagTables.IsConfigured(this)) yield return "PY_TestFeatures";
             if (ProjectDocs) { yield return "MD_DataDictionary"; yield return "MD_Erd"; }
             if (ApiAnnotations) yield return "CS_Validation";
@@ -637,6 +643,30 @@ public partial class ProjectSettings
 
     /// <summary> The token tables whose <c>spend</c> route needs no sign-in (<c>TokenAnonymousSpend=PasswordReset,EmailCode</c>): a reset or verification code is spent before the person is signed in. Each must be in <see cref="TokenTables"/>. A short code can be guessed, so use it for tokens that are long and random. </summary>
     public string[] TokenAnonymousSpend => Items("TokenAnonymousSpend");
+
+    /// <summary> Usage ledger tables (<c>UsageTables=UsageEvent:Kind:Quantity:OccurredOn</c>: a table and optionally its kind, quantity and occurred-on columns, found by name when left out): append-only events of a tenant, summed per kind and month; no ordinary API or screen, only the routes and the recorder of <see cref="UsagePlan"/>. </summary>
+    public string[] UsageTables => Items("UsageTables");
+
+    /// <summary> The plan limits that are counted from the month's usage events (<c>UsageLimits=api_calls,emails</c>): each name is a kind of the usage table and a <c>LimitKey</c> of the plan limit table. </summary>
+    public string[] UsageLimits => UsageLimitEntries.Select(e => e.Split(':', StringSplitOptions.TrimEntries)[0]).ToArray();
+
+    /// <summary> The entries of <c>UsageLimits</c> as written: a kind, or <c>kind:UsageTable</c> when the kind belongs to a usage table other than the first one listed (<see cref="UsagePlan.LedgerOfLimit"/>). </summary>
+    public string[] UsageLimitEntries => Items("UsageLimits");
+
+    /// <summary> The monthly total table of the usage ledger (<c>UsageRollup=UsageMonthly:UsageMonth:Quantity</c>: a table and optionally its month and quantity columns): the events of whole months older than <see cref="UsageRollupDays"/> are added into it and removed, and the summary reads both. See <see cref="UsagePlan"/>. </summary>
+    public string[] UsageRollup => Items("UsageRollup");
+
+    /// <summary> How many days old an event is before it is rolled up into the monthly totals (<c>UsageRollupDays</c>, default 60): events before the first day of the month that contains that day. </summary>
+    public int UsageRollupDays => PositiveInt("UsageRollupDays", 60);
+
+    /// <summary> How often, in hours, the generated API rolls the old events up on its own (<c>UsageRollupHours=24</c>; none by default: the owner's scheduler calls the roll-up). The first run is one interval after the start. </summary>
+    public int UsageRollupHours => PositiveInt("UsageRollupHours", 0);
+
+    /// <summary> Whether the project asks for the scheduled roll-up of the usage ledger (<c>UsageRollupHours</c> with the sign-in, usage tables and monthly totals), judged from the settings alone; <see cref="UsagePlan.HasSchedule"/> also needs the tables to fit. </summary>
+    public bool WantsUsageSchedule => ApiAuth && UsageRollupHours > 0 && UsageTables.Length > 0 && UsageRollup.Length > 0;
+
+    /// <summary> Whether recording usage past the plan limit of a kind is refused (<c>UsageRefuse=true</c>): the event is not written and the record route answers 409. Otherwise the event is always written and the answer says the tenant is over. </summary>
+    public bool UsageRefuse => Flag("UsageRefuse");
 
     /// <summary> How many times a queue row may fail before it stays failed (<c>QueueMaxRetries</c>, default 3). </summary>
     public int QueueMaxRetries => PositiveInt("QueueMaxRetries", DefaultQueueMaxRetries);
@@ -1031,7 +1061,7 @@ public partial class ProjectSettings
         : IsEnumTable(table, shape);
 
     /// <summary> No API / TypeScript model or screen for this table. Null: no project, use the template's own list. </summary>
-    public bool? NoApi(string table, LookupShape shape) => IsApprovalSide(table) || IsSubscriptionManaged(table) || FeatureFlagTables.IsFeatureTable(this, table) || FeatureFlagTables.IsPlanLinkTable(this, table) || TokenPlan.IsListed(table, this) ? true : Resolve("NoApiTables", table, shape);
+    public bool? NoApi(string table, LookupShape shape) => IsApprovalSide(table) || IsSubscriptionManaged(table) || FeatureFlagTables.IsFeatureTable(this, table) || FeatureFlagTables.IsPlanLinkTable(this, table) || TokenPlan.IsListed(table, this) || UsagePlan.IsListed(table, this) || UsagePlan.IsRollupTable(table, this) ? true : Resolve("NoApiTables", table, shape);
 
     /// <summary> The plan, plan limit and subscription tables (<c>PlanTable</c>, <c>PlanLimitTable</c>, <c>SubscriptionTable</c>): they get no ordinary API, since a list and edit screen would let a tenant's administrator change a plan, a limit or
     /// their own subscription. The subscription routes (<see cref="SubscriptionFeature"/>) are the only way to read or change them. </summary>

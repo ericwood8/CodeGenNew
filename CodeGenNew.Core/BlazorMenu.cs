@@ -33,6 +33,9 @@ public static class BlazorMenu
         // administrators see the sessions and tokens (BLZ_Tokens)
         foreach (var page in TokenScreens.Pages(database, project))
             entries.Add(new BlazorMenuEntry(page.Path, page.Label, [project.AuthAdminRole]));
+        // administrators see the usage of their tenant (BLZ_Usage)
+        foreach (var page in UsageScreens.Pages(database, project))
+            entries.Add(new BlazorMenuEntry(page.Path, page.Label, [project.AuthAdminRole]));
         return entries;
     }
 }

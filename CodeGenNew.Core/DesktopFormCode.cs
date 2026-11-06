@@ -37,7 +37,7 @@ public static class DesktopFormCode
             ? "else if (" + prop + ".Value.Date > DateTime.Today && ((DateTime?)entity." + prop + ")?.Date != " + prop + ".Value.Date) { ErrorMessage = \"" + label + " must not be later than today.\"; return false; }"
             : null;
 
-    /// <summary> For each date that must not be earlier than another (<see cref="DatePairs"/>): the earliest date the end's calendar offers, which follows the start, and the notice that tells the calendar when the start changes
+    /// <summary> WriteFor each date that must not be earlier than another (<see cref="DatePairs"/>): the earliest date the end's calendar offers, which follows the start, and the notice that tells the calendar when the start changes
     /// (four spaces in). Empty when the table has no pair. </summary>
     public static string PairProperties(FormModel form, ProjectSettings project)
     {

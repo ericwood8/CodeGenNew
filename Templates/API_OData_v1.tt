@@ -40,7 +40,7 @@
     string listGate = auth ? "            if (!RoleGate.Allows(http.User, rules.ReadRoles))" + ((char)10) + "                throw new ODataRoleRefusedException();" + ((char)10) : "";
     var scopedTables = auth ? tables.Where(t => ODataPlan.IsScoped(t, Project)).ToList() : [];
     // a name/active table (a Name and an IsActive column) keeps the REST routes' rules: the name is required and trimmed and no two active rows share it
-    var ruleTables = tables.Where(t => t.IsNameActiveTable || (auth && (ODataPlan.IsScoped(t, Project) || GatePlan.HasRules(Project, t) || WriteRolePlan.For(Project, t).Count > 0 || WriteRolePlan.ReadFor(Project, t).Count > 0))).ToList();
+    var ruleTables = tables.Where(t => t.IsNameActiveTable || (auth && (ODataPlan.IsScoped(t, Project) || GatePlan.HasRules(Project, t) || WriteRolePlan.WriteFor(Project, t).Count > 0 || WriteRolePlan.ReadFor(Project, t).Count > 0))).ToList();
 
     string Names(IEnumerable<string> items) => string.Join(", ", items.Select(i => "\"" + i + "\""));
 
@@ -120,7 +120,7 @@ public class ODataRules<T, TContext> where T : class where TContext : DbContext
 public sealed class <#= entity #>ODataRules : ODataRules<<#= entity #>, <#= contextType #>>
 {
 <#
-        IReadOnlyList<string> writeRoles = auth ? WriteRolePlan.For(Project, t) : new List<string>();
+        IReadOnlyList<string> writeRoles = auth ? WriteRolePlan.WriteFor(Project, t) : new List<string>();
         if (writeRoles.Count > 0)
         {
 #>

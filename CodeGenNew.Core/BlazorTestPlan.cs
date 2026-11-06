@@ -16,7 +16,7 @@ public sealed class BlazorTestPlan
         KeyText = Row is null ? "1" : Uri.EscapeDataString(Row.KeyText);
 
         IReadOnlyList<string> readRoles = project.Auth ? WriteRolePlan.ReadFor(project, model) : [];
-        IReadOnlyList<string> writeRoles = project.Auth ? WriteRolePlan.For(project, model) : [];
+        IReadOnlyList<string> writeRoles = project.Auth ? WriteRolePlan.WriteFor(project, model) : [];
         Role = writeRoles.Count > 0 ? WriteRoleSpec.AllowedRole(writeRoles) : readRoles.Count > 0 ? readRoles[0] : "Tester";
         SignIn = project.Auth ? $"        SignIn(\"{Role.Replace("\\", "\\\\").Replace("\"", "\\\"")}\");\n" : "";
         ParentKeyJson = Form.TextKey && Row is not null ? "\"" + Row.KeyText + "\"" : "1";

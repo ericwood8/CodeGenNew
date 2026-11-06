@@ -45,7 +45,7 @@
     var anchorFk = Model.JunctionForeignKeys[0];
 
     var readRoles = WriteRolePlan.ReadFor(Project, Model);
-    var writeRoles = WriteRolePlan.For(Project, Model);
+    var writeRoles = WriteRolePlan.WriteFor(Project, Model);
     string RoleTuple(IReadOnlyList<string> roles) => "(" + string.Join(", ", roles.Select(Str)) + (roles.Count == 1 ? "," : "") + ")";
     string readDepends = readRoles.Count > 0 ? ", dependencies=[Depends(require_roles(READ_ROLES, False))]" : "";
     string writeDepends = writeRoles.Count > 0 ? ", dependencies=[Depends(require_roles(WRITE_ROLES, True))]" : "";

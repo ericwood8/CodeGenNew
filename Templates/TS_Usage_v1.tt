@@ -1,0 +1,29 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TS_Usage_v1.tt
+    // Generates: <ComponentsFolder>/<table>-summary/<table>-summary.component.ts, .html, .css and .spec.ts for every table of UsageTables   (the template writes its own paths with @@@FILE markers)
+    // The usage screen of an Angular app that signs in (Auth=true, ApiAuth, UsageTables with TenantTable), for the administrator: the months and kinds the API adds up, with a filter on the kind.
+    // The text is UsageWebCode in Core. TS_Screens puts the screen in the menu.
+    // Full notes: Docs/TemplateNotes/API_Usage_v1.md
+    // ==========================================================================================
+    string componentsFolder = Project.ComponentsFolder;
+    foreach (var page in UsageScreens.Pages(Database, Project))
+    {
+        string folder = page.Path + "-summary";
+#>
+@@@FILE src/app/<#= componentsFolder #>/<#= folder #>/<#= folder #>.component.ts@@@
+<#= UsageWebCode.AngularComponent(page, Project, folder) #>
+@@@FILE src/app/<#= componentsFolder #>/<#= folder #>/<#= folder #>.component.html@@@
+<#= UsageWebCode.AngularHtml(page, Project) #>
+@@@FILE src/app/<#= componentsFolder #>/<#= folder #>/<#= folder #>.component.css@@@
+<#= UsageWebCode.AngularCss #>
+@@@FILE src/app/<#= componentsFolder #>/<#= folder #>/<#= folder #>.component.spec.ts@@@
+<#= UsageWebCode.AngularSpec(page, folder) #>
+<#
+    }
+#>

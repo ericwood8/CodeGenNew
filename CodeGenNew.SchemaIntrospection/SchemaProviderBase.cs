@@ -320,7 +320,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
     private static bool IsDisplayEligibleType(SqlDbType t) =>
         t is SqlDbType.Char or SqlDbType.VarChar or SqlDbType.NChar or SqlDbType.NVarChar;
 
-    /// <summary> For each foreign key, reads the referenced table's columns (one catalog query per distinct table) and
+    /// <summary> WriteFor each foreign key, reads the referenced table's columns (one catalog query per distinct table) and
     /// records which of them are its display columns. </summary>
     private async Task<List<ForeignKeyModel>> AttachReferencedDisplayColumnsAsync(
         DbConnection connection, List<ForeignKeyModel> foreignKeys, SpecialLogicRuleSet rules, bool includeDisplayColumns, CancellationToken cancellationToken)
@@ -375,7 +375,7 @@ public abstract class SchemaProviderBase : ISchemaProvider
         return result;
     }
 
-    /// <summary> For each child (referencing) table, reads its own primary key and its own full foreign-key list
+    /// <summary> WriteFor each child (referencing) table, reads its own primary key and its own full foreign-key list
     /// (with THEIR referenced display columns resolved too) so a generated child grid can hide the child's
     /// identity column and resolve its OTHER foreign keys to a display name -- the same building blocks
     /// AttachReferencedDisplayColumnsAsync already uses for the primary table's own drop-downs, reused per child

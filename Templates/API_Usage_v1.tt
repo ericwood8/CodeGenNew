@@ -1,0 +1,41 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PROJECT SETTINGS - the lines to change to use this template in your own project (namespaces, names).
+    // Everything below this block describes and implements the template itself.
+    // ==========================================================================================
+    string apiNamespace = "MyApp.ApiService.Apis";
+    string contextType = "MyAppContext";
+    string[] usings = { };   // namespaces the generated file must "using" (the context's)
+    // A project settings file (Projects\<ProjectName>.config, chosen with the project CLI parameter or in the app) overrides the values above.
+    contextType = Project.ContextName ?? contextType;
+    apiNamespace = Project.ApiNamespace ?? apiNamespace;
+    usings = Project.Usings ?? usings;
+    // ==========================================================================================
+
+    // ==========================================================================================
+    // API_Usage_v1.tt
+    // Generates: Usage.cs   (see OutputName in API_Usage_v1.tt.config)
+    // The usage ledger tables (UsageTables, with ApiAuth and TenantTable): per table UsageLedger.RecordAsync (the only writer of an event: the ledger is append-only and the table gets no ordinary API or screen),
+    // UsedThisMonthAsync (what the plan limits of UsageLimits read), RemainingAsync, GET (an administrator reads the events of their tenant summed per month and kind) and POST (a platform administrator
+    // records an event for a tenant).
+    // Full notes: Docs/TemplateNotes/API_Usage_v1.md
+    // ==========================================================================================
+
+    var tables = Database.Tables.Select(t => TableShapes.For(t, Project).Usage).OfType<UsageShape>()
+        .OrderBy(q => q.Table.TableName, StringComparer.OrdinalIgnoreCase).ToList();
+    var problems = UsagePlan.Problems(Database, Project);
+    if (problems.Count > 0)
+    {
+        Error(string.Join(" | ", problems));
+    }
+    else if (tables.Count > 0)
+    {
+        Write("namespace " + apiNamespace + ";" + "\n\n");
+        Write(UsageWriter.File(tables, Database, Project, contextType, usings));
+    }
+#>

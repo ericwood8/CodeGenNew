@@ -1,0 +1,18 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // PY_TestUsage_v1.tt
+    // Generates: tests/test_usage_<table>.py   (whole-database; the output folder is the Python API's folder)
+    // pytest tests of the usage ledgers (UsageTables) of the Python API: no token is a 401, a role that is not the administrator's a 403, the summary adds the events per month and kind (and can be limited by
+    // kind and dates), another tenant's events are not in it, a platform administrator names the tenant and is the one who records usage, a roll-up totals the old events into the months, and nothing edits or
+    // deletes an event. Each test records its events through the record route and removes them again. The words are the ones of the ASP.NET tests (API_TestUsage).
+    // Written only for a project with PythonTests=true, ApiAuth=true, TenantTable and UsageTables; not for SQL Server. Needs tests/conftest.py of PY_TestTenants.
+    // Full notes: Docs/TemplateNotes/API_Usage_v1.md
+    // ==========================================================================================
+    if (PythonUsageTests.Applies(Database, Project))
+        foreach (var table in UsageTestPlan.Ledgers(Database, Project))
+            Write("@@@FILE " + PythonUsageTests.FileName(table) + "@@@\n" + PythonUsageTests.File(table, Database, Project, UsagePlan.RollupFor(Database, Project, table)));
+#>

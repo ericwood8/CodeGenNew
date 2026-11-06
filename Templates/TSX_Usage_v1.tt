@@ -1,0 +1,23 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // TSX_Usage_v1.tt
+    // Generates: src/pages/<Table>SummaryPage.tsx and its test for every table of UsageTables   (the template writes its own paths with @@@FILE markers)
+    // The usage page of a React app that signs in (Auth=true, ApiAuth, UsageTables with TenantTable), for the administrator: the months and kinds the API adds up, with a filter on the kind.
+    // The text is UsageWebCode in Core. TSX_Screens puts the page in the menu.
+    // Full notes: Docs/TemplateNotes/API_Usage_v1.md
+    // ==========================================================================================
+    foreach (var page in UsageScreens.Pages(Database, Project))
+    {
+#>
+@@@FILE src/<#= Project.PagesFolder #>/<#= page.Name #>Page.tsx@@@
+<#= UsageWebCode.React(page, Project.ApiFolder) #>
+@@@FILE src/<#= Project.PagesFolder #>/__tests__/<#= page.Name #>Page.test.tsx@@@
+<#= UsageWebCode.ReactTest(page) #>
+<#
+    }
+#>

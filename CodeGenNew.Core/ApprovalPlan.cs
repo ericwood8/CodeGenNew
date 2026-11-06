@@ -130,7 +130,7 @@ public sealed record ApprovalPlan(IReadOnlyList<ApprovalTableShape> Tables, User
             problems.Add($"ApproverTable needs {user.Table.TableName} to have a single whole-number key.");
             return null;
         }
-        if (WriteRolePlan.For(project, table).Count == 0)
+        if (WriteRolePlan.WriteFor(project, table).Count == 0)
             problems.Add($"ApproverTable: set TableWriteRoles={table.TableName}:{project.AuthAdminRole} (or WriteRoles) so that only trusted people change who may approve.");
         return new ApproverPlan(table, person, forTable, user.Table.PrimaryKeyColumns[0]);
     }

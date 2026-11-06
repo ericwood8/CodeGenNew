@@ -1,0 +1,22 @@
+<#@ template language="C#" #>
+<#@ parameter name="Database" type="CodeGenNew.Core.DatabaseModel" #>
+<#@ parameter name="Project" type="CodeGenNew.Core.ProjectSettings" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="CodeGenNew.Core" #>
+<#
+    // ==========================================================================================
+    // BLZ_Usage_v1.tt
+    // Generates: Pages/<Table>Summary.razor for every table of UsageTables   (the template writes its own paths with @@@FILE markers)
+    // The usage page of a Blazor app that signs in (Auth=true, ApiAuth, UsageTables with TenantTable), for the administrator: the months and kinds the API adds up, with a filter on the kind.
+    // The text is UsageWebCode in Core. BlazorMenu lists the page.
+    // Full notes: Docs/TemplateNotes/API_Usage_v1.md
+    // ==========================================================================================
+    string ns = BlazorNames.Namespace(Project);
+    foreach (var page in UsageScreens.Pages(Database, Project))
+    {
+#>
+@@@FILE Pages/<#= page.Name #>.razor@@@
+<#= UsageWebCode.Blazor(page, ns, Project.AuthAdminRole) #>
+<#
+    }
+#>

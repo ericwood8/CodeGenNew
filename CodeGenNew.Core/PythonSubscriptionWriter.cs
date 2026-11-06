@@ -69,7 +69,12 @@ public static class PythonSubscriptionWriter
         o.Append("\n# the limits: the name of each, the table whose rows of a tenant are counted, the column that says whose they are and the soft-delete flag (None: every row counts)\nLIMITS = {\n");
         foreach (var l in limited)
             o.Append($"    {Str(l.LimitKey)}: (table({Str(l.Table.DbTableName)}, column({Str(l.Tenant.DbName)}, Integer){(l.Deleted is null ? "" : $", column({Str(l.Deleted.DbName)}, Boolean)")}{Schema(l.Table)}), {Str(l.Tenant.DbName)}, {(l.Deleted is null ? "None" : Str(l.Deleted.DbName))}),\n");
+        // a limit of UsageLimits is counted from the month's events of the usage ledger (app/routes/usage.py), not from the rows of a table
+        var usageKinds = limit is null ? [] : project.UsageLimits.Select(k => (Key: k, Table: UsagePlan.LedgerOfLimit(database, project, k)?.Table.TableName)).Where(k => k.Table is not null).ToList();
+        foreach (var (kind, _) in usageKinds)
+            o.Append($"    {Str(kind)}: (None, None, None),\n");
         o.Append("}\n");
+        o.Append("\n# the limits counted from the usage ledger: the name of each and the usage table whose events are counted\nUSAGE_KINDS = {" + string.Join(", ", usageKinds.Select(k => $"{Str(k.Key)}: {Str(k.Table!)}")) + "}\n");
         o.Append("\n# the paths that add a row to a limited table: the create, its clone and its import; the membership table is added through the members route\nCREATE_PATHS = (\n");
         foreach (var l in limited)
             o.Append($"    ({Str(l.CreatePath.ToLowerInvariant())}, {Str(l.LimitKey)}, {(l.IsMembership ? "True" : "False")}),\n");
@@ -162,7 +167,14 @@ def allowed(session: Session, plan: int, key: str) -> int | None:
 
 
 def used(session: Session, tenant: int, key: str) -> int:
-    """What the tenant has of the limit: its rows of the table, not counting a soft-deleted row."""
+    """What the tenant has of the limit: its rows of the table, not counting a soft-deleted row; for a usage limit, the units of the kind used this month."""
+    if key in USAGE_KINDS:
+        from app.routes.usage import SPECS, used_this_month
+
+        import math
+
+        spec = next(s for s in SPECS if s.name == USAGE_KINDS[key])
+        return min(math.ceil(used_this_month(session, tenant, key, spec)), 2147483647)
     source, tenant_column, deleted_column = LIMITS[key]
     statement = select(func.count()).select_from(source).where(source.c[tenant_column] == tenant)
     if deleted_column is not None:
@@ -239,14 +251,18 @@ def read_state(session: Session, tenant: int) -> dict[str, Any]:
     return {"exists": True, "plan": None if row[0] is None else int(row[0]), "status": str(row[1]), "end": row[2], "gateway": row[3], "writable": writable, "why": why}
 
 
-def current_state(tenant: int) -> dict[str, Any]:
-    """The tenant's subscription (its newest row), remembered for STATE_SECONDS so a status change reaches a request in use after that long unless forget_state is called."""
+def current_state(tenant: int, session: Session | None = None) -> dict[str, Any]:
+    """The tenant's subscription (its newest row), remembered for STATE_SECONDS so a status change reaches a request in use after that long unless forget_state is called. A caller that holds a session reads with it: a request
+    that waits for a lock while it holds a connection must not ask the pool for a second one, or the requests that wait take every connection and the one that holds the lock waits for the pool."""
     now = time.time()
     with _known_lock:
         known = _known.get(tenant)
     if known is None or now - known[1] >= STATE_SECONDS:
-        with SessionLocal() as session:
+        if session is not None:
             state = read_state(session, tenant)
+        else:
+            with SessionLocal() as own:
+                state = read_state(own, tenant)
         with _known_lock:
             _known[tenant] = known = (state, now)
     return known[0]

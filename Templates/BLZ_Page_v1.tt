@@ -125,7 +125,7 @@
 
         // Auth=true: the page asks for a signed-in person (and, with ReadRoles, one of the roles); with WriteRoles only the roles that may write see Add New, Edit, Clone and Delete
         IReadOnlyList<string> readRoles = Project.Auth ? WriteRolePlan.ReadFor(Project, Model) : new List<string>();
-        IReadOnlyList<string> writeRoles = Project.Auth ? WriteRolePlan.For(Project, Model) : new List<string>();
+        IReadOnlyList<string> writeRoles = Project.Auth ? WriteRolePlan.WriteFor(Project, Model) : new List<string>();
         bool gated = writeRoles.Count > 0;
         string? approvalSegment = ApprovalScreens.PanelSegment(Model, Project);   // a table of RowApprovals: its saved row's form carries the approval panel (BLZ_Approvals writes it)
         string RolesExpression(IReadOnlyList<string> roles) => "[" + WriteRolePlan.Literal(roles) + "]";

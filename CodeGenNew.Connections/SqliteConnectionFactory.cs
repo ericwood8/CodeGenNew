@@ -4,7 +4,7 @@ namespace CodeGenNew.Connections;
 
 public static class SqliteConnectionFactory
 {
-    /// <summary> For SQLite the database is a file: <see cref="ConnectionRequest.DatabaseName"/> is its path, and the server, login and password are not used. The file is opened read-only and without
+    /// <summary> WriteFor SQLite the database is a file: <see cref="ConnectionRequest.DatabaseName"/> is its path, and the server, login and password are not used. The file is opened read-only and without
     /// a connection pool (a pooled connection keeps the file locked after the reader is done), so reading the schema can never change the database. </summary>
     public static string BuildSqliteConnectionString(this ConnectionRequest request)
     {

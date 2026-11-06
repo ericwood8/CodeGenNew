@@ -63,7 +63,7 @@
             .FirstOrDefault(c => c is not null);
 
         // ReadRoles and WriteRoles: the roles a rule lists (the administrator role first); a table scoped to a person is not written by a role with no owner
-        var writeRoles = WriteRolePlan.For(Project, Model);
+        var writeRoles = WriteRolePlan.WriteFor(Project, Model);
         var readRoles = WriteRolePlan.ReadFor(Project, Model);
         bool scopedToPerson = OwnedTable.IsScoped(Model, Project);
 

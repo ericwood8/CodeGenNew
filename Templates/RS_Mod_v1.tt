@@ -51,6 +51,9 @@
     // and the token routes (RS_Token)
     if (Project.ApiAuth && Database.Tables.Any(t => TableShapes.For(t, Project).Token is not null))
         routeModules.Add("tokens");
+    // and the usage ledger routes (RS_Usage)
+    if (Project.ApiAuth && Database.Tables.Any(t => TableShapes.For(t, Project).Usage is not null))
+        routeModules.Add("usage");
     if (Project.ApiAuth && ApprovalPlan.Resolve(Database, Project).Tables.Count > 0)
         routeModules.Add("approvals");
     foreach (string m in routeModules)
@@ -74,5 +77,13 @@
     if (Project.ApiAuth && Project.UserTable is not null)
         Line("        .merge(crate::people::router())");
     Line("}");
+    if (Project.WantsUsageSchedule)
+    {
+        Line();
+        Line("/// Starts the work that runs while the API is up (UsageRollupHours).");
+        Line("pub fn start_background(pool: Pool) {");
+        Line(UsagePlan.HasSchedule(Database, Project) && routeModules.Contains("usage") ? "    usage::start_roll_up(pool);" : "    let _ = pool;");
+        Line("}");
+    }
     Write(sb.ToString());
 #>

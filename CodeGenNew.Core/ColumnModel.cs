@@ -106,7 +106,7 @@ public class ColumnModel
     /// <summary> The notation a CHECK constraint of the database puts on this text column (<c>CHECK (len(code) = 5)</c>, <c>CHECK (code LIKE 'AB%')</c>); null when it has none or the check is not that plain. </summary>
     public TextNotation? CheckNotation { get; init; }
 
-    /// <summary> For a date column: the name of another date column of the table that a CHECK constraint says this one must not be earlier than (<c>CHECK (start_date &lt;= end_date)</c> on end_date gives start_date); null otherwise. </summary>
+    /// <summary> WriteFor a date column: the name of another date column of the table that a CHECK constraint says this one must not be earlier than (<c>CHECK (start_date &lt;= end_date)</c> on end_date gives start_date); null otherwise. </summary>
     public string? NotBeforeColumn { get; init; }
 
     public TextNotation? Notation => PgText is { } pg ? new TextNotation(pg.Pattern, pg.Description, pg.Sample)
@@ -184,8 +184,6 @@ public class ColumnModel
     /// <summary> The project says this is a credential whatever it is called: the password hash column of the user table (<see cref="UserTable.MarkCredentials(TableModel, ProjectSettings)"/>, set before each template runs). </summary>
     public bool IsUserCredential { get; set; }
 
-    private static readonly string[] CredentialNameEndings = ["Salt", "Secret", "ApiKey", "Token"];
-
     /// <summary> Name-pattern match for create/modify/delete/activate/inactivate tracking columns
     /// (e.g. CreateDate, ModifiedBy, InactivatedDate). </summary>
     public bool IsAuditColumn { get; init; }
@@ -254,8 +252,6 @@ public class ColumnModel
         IsStampColumn
         || (IsAuditColumn && Array.Exists(StampNameStarts, s => Name.StartsWithIgnoreCase(s)));
 
-    private static readonly string[] StampNameStarts = ["Create", "Modif", "Updated", "LastChang", "LastUpdat"];
-
     /// <summary> Matches SpecialLogicColumns.config category "InactiveReasonColumn" -- e.g.
     /// InactiveReasonNoteText. Excluded from Insert parameters and left NULL (see Docs/Reference.md section 5). </summary>
     public bool IsInactiveReasonColumn { get; init; }
@@ -276,4 +272,9 @@ public class ColumnModel
 
     /// <summary> Hungarian-prefixed SQL parameter name, e.g. "@pstrDescription", "@plngID". See Docs/Reference.md section 7. </summary>
     public required string ParameterName { get; init; }
+
+    #region Privates
+    private static readonly string[] CredentialNameEndings = ["Salt", "Secret", "ApiKey", "Token"];
+    private static readonly string[] StampNameStarts = ["Create", "Modif", "Updated", "LastChang", "LastUpdat"];
+    #endregion
 }

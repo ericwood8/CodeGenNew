@@ -51,6 +51,10 @@
     var tokenPages = TokenScreens.Pages(Database, Project);
     foreach (var tokenPage in tokenPages)
         menu.Add((Tag: tokenPage.Name, Label: tokenPage.Label, Roles: (IReadOnlyList<string>)new[] { Project.AuthAdminRole }, Feature: (string?)null));
+    // administrators see the usage of their tenant (UNO_Usage)
+    var usagePages = UsageScreens.Pages(Database, Project);
+    foreach (var usagePage in usagePages)
+        menu.Add((Tag: usagePage.Name, Label: usagePage.Label, Roles: (IReadOnlyList<string>)new[] { Project.AuthAdminRole }, Feature: (string?)null));
     foreach (string table in screens.Select(t => t.TableName).Where(n => !clients.Any(c => c.TableName.EqualsIgnoreCase(n))))
         Error($"UNO_Screens lists {table}, which has no API client (see UNO_Client): a screen needs the table's own CRUD API.");
 
@@ -162,6 +166,8 @@
         L("            \"Features\" => new FeaturesPage(_api),");
     foreach (var tokenPage in tokenPages)
         L($"            \"{tokenPage.Name}\" => new {TokenDesktopCode.PageClass(tokenPage)}(_api),");
+    foreach (var usagePage in usagePages)
+        L($"            \"{usagePage.Name}\" => new {usagePage.PageClass}(_api),");
     L("            _ => MainContent.Content");
     L("        };");
     L("    }");

@@ -64,7 +64,7 @@
     var shown = displayDb.Select(d => $"CAST({di.Quote(d)} AS {textType})").Append(di.Quote(targetKeyDb));
 
     var readRoles = WriteRolePlan.ReadFor(Project, Model);
-    var writeRoles = WriteRolePlan.For(Project, Model);
+    var writeRoles = WriteRolePlan.WriteFor(Project, Model);
     string readLayer = readRoles.Count > 0 ? ".route_layer(middleware::from_fn(|request, next| check_roles(READ_ROLES, false, request, next)))" : "";
     string writeLayer = writeRoles.Count > 0 ? ".route_layer(middleware::from_fn(|request, next| check_roles(WRITE_ROLES, true, request, next)))" : "";
     bool roles = readRoles.Count > 0 || writeRoles.Count > 0;

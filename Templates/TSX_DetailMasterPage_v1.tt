@@ -62,7 +62,7 @@
         string stem = form.Stem;
         bool odata = Variant == "OData";
         // WriteRoles with the sign-in: only the roles that may write see Add New, Edit, Clone and Delete (the API refuses the others with a 403 anyway)
-        IReadOnlyList<string> writeRoles = Project.Auth ? WriteRolePlan.For(Project, Model) : new List<string>();
+        IReadOnlyList<string> writeRoles = Project.Auth ? WriteRolePlan.WriteFor(Project, Model) : new List<string>();
         bool gated = writeRoles.Count > 0;
         string? approvalSegment = ApprovalScreens.PanelSegment(Model, Project);   // a table of RowApprovals: its saved row's form carries the approval panel (TSX_Approvals writes it)
         string Gate(string jsx) => gated ? "{canWrite && " + jsx + "}" : jsx;

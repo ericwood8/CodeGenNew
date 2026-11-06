@@ -12,7 +12,7 @@ public static class WriteRolePlan
     private static bool IsPermissionTable(ProjectSettings project, string table) =>
         PermissionTables.IsConfigured(project) && project.PermissionTables.Contains(table, StringComparer.OrdinalIgnoreCase);
 
-    public static IReadOnlyList<string> For(ProjectSettings project, TableModel table) => For(project, table.TableName);
+    public static IReadOnlyList<string> WriteFor(ProjectSettings project, TableModel table) => For(project, table.TableName);
 
     /// <summary> The roles allowed to read the table, the administrator role first; empty when any signed-in person may. </summary>
     public static IReadOnlyList<string> ReadFor(ProjectSettings project, string table) => Resolve(project, table, project.ReadRoles, project.TableReadRoles);
@@ -20,7 +20,7 @@ public static class WriteRolePlan
     public static IReadOnlyList<string> ReadFor(ProjectSettings project, TableModel table) => ReadFor(project, table.TableName);
 
     /// <summary> The write roles the WinUI3 screens apply: those of the table when the app signs in, else none. </summary>
-    public static IReadOnlyList<string> ForDesktop(ProjectSettings project, TableModel table) => TenantPlan.HasDesktopSignIn(project) ? For(project, table) : [];
+    public static IReadOnlyList<string> ForDesktop(ProjectSettings project, TableModel table) => TenantPlan.HasDesktopSignIn(project) ? WriteFor(project, table) : [];
 
     /// <summary> The roles as the items of a C# or TypeScript array: <c>"Administrator", "Manager"</c>, or with single quotes for TypeScript. </summary>
     public static string Literal(IReadOnlyList<string> roles, char quote = '"') =>

@@ -64,7 +64,9 @@ public static class SubscriptionWriter
         string gatewaySelect = gateway is null ? "(string?)null" : $"s.{gateway.CSharpName()}";
         o.Append(FillAll(State, names.Concat([("§ENDSELECT", endSelect), ("§GATEWAYSELECT", gatewaySelect)]).ToArray()));
 
-        string keysArray = string.Join(", ", limited.Select(l => CSharpText.Quote(l.LimitKey)));
+        // a limit of UsageLimits is counted from the month's events of the usage table that owns the kind (UsageLedger), not from the rows of a table
+        var usageKinds = limit is null ? [] : project.UsageLimits.Select(k => (Key: k, Ledger: UsagePlan.LedgerOfLimit(database, project, k))).Where(k => k.Ledger is not null).ToList();
+        string keysArray = string.Join(", ", limited.Select(l => CSharpText.Quote(l.LimitKey)).Concat(usageKinds.Select(k => CSharpText.Quote(k.Key))));
         string keyCases = string.Join("", limited.Select(l => l.IsMembership
             ? $"        if (path.Equals({CSharpText.Quote(l.CreatePath)}, StringComparison.OrdinalIgnoreCase))\n            return {CSharpText.Quote(l.LimitKey)};\n"
             : $"        if (IsCreate(path, {CSharpText.Quote(l.CreatePath)}))\n            return {CSharpText.Quote(l.LimitKey)};\n"));
@@ -73,6 +75,7 @@ public static class SubscriptionWriter
             string deleted = l.Deleted is null ? "" : $" && !r.{l.Deleted.CSharpName()}";
             return $"            {CSharpText.Quote(l.LimitKey)} => context.Set<{l.Table.TableName}>().IgnoreQueryFilters().AsNoTracking().CountAsync(r => r.{l.Tenant.CSharpName()} == tenant{deleted}, cancellationToken),\n";
         }));
+        countCases += string.Concat(usageKinds.Select(k => $"            {CSharpText.Quote(k.Key)} => {k.Ledger!.Table.TableName}Usage.UsedThisMonthAsIntAsync(context, tenant, {CSharpText.Quote(k.Key)}, cancellationToken),\n"));
         if (limit is null)
             o.Append(FillAll(NoLimits, names));
         else

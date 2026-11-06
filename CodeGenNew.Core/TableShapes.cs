@@ -39,6 +39,7 @@ public sealed class TableShapes
     /// <summary> The table as a work queue, a soft deleted table, a tree, an effective dated table, a log or a table with a Name and an IsActive column; null when it is not. </summary>
     public QueueShape? Queue => Shape<QueueShape>();
     public TokenShape? Token => Shape<TokenShape>();
+    public UsageShape? Usage => Shape<UsageShape>();
     public SoftDeleteShape? SoftDelete => Shape<SoftDeleteShape>();
     public TreeShape? Tree => Shape<TreeShape>();
     public EffectiveShape? Effective => Shape<EffectiveShape>();
@@ -61,7 +62,7 @@ public sealed class TableShapes
         return (T?)ShapeOf(typeof(T));
     }
 
-    private static readonly Type[] Known = [typeof(SoftDeleteShape), typeof(QueueShape), typeof(TokenShape), typeof(LogShape), typeof(TreeShape), typeof(EffectiveShape), typeof(ExtensionShape), typeof(NameActiveShape), typeof(TenantOwnedShape), typeof(JunctionShape), typeof(UserTableShape), typeof(OwnerLinkShape), typeof(OwnerColumnShape), typeof(TenantTableShape)];
+    private static readonly Type[] Known = [typeof(SoftDeleteShape), typeof(QueueShape), typeof(TokenShape), typeof(UsageShape), typeof(LogShape), typeof(TreeShape), typeof(EffectiveShape), typeof(ExtensionShape), typeof(NameActiveShape), typeof(TenantOwnedShape), typeof(JunctionShape), typeof(UserTableShape), typeof(OwnerLinkShape), typeof(OwnerColumnShape), typeof(TenantTableShape)];
     private static readonly Type[] NeedDatabase = [typeof(TenantMembershipShape), typeof(ApprovalTableShape), typeof(ApprovalSide)];
 
     /// <summary> Every shape the table has, in a fixed order; a table with none gives an empty list. </summary>
@@ -85,6 +86,7 @@ public sealed class TableShapes
         if (shape == typeof(SoftDeleteShape)) return SoftDeletePlan.For(_table, _project);
         if (shape == typeof(QueueShape)) return QueuePlan.For(_table, _project);
         if (shape == typeof(TokenShape)) return TokenPlan.For(_table, _project);
+        if (shape == typeof(UsageShape)) return UsagePlan.For(_table, _project);
         if (shape == typeof(LogShape)) return LogTablePlan.For(_table, _project);
         if (shape == typeof(TreeShape)) return TreePlan.For(_table, _project);
         if (shape == typeof(EffectiveShape)) return EffectiveDatePlan.For(_table, _project);

@@ -51,6 +51,8 @@
         }
         if (RustSubscriptionTests.Applies(Database, Project))
             modules.Add("subscription_routes");
+        if (RustUsageTests.Applies(Database, Project))
+            modules.AddRange(UsageTestPlan.Ledgers(Database, Project).Select(RustUsageTests.Module));
         if (RustFeatureTests.Applies(Database, Project))
             modules.Add("feature_routes");
         foreach (string module in modules.Order(StringComparer.Ordinal))

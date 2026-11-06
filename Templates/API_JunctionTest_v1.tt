@@ -28,7 +28,7 @@
     {
         string projectName = Project.ProjectName ?? "MyApp";
         string route = BlazorNames.ApiRoute(Model.TableName);
-        var writeRoles = WriteRolePlan.For(Project, Model);
+        var writeRoles = WriteRolePlan.WriteFor(Project, Model);
         string anchorJson = ApiSampleValues.Json(JsonNames.Camel(junction.AnchorForeignKey.ReferencedColumns[0]));
         string targetJson = ApiSampleValues.Json(JsonNames.Camel(junction.TargetForeignKey.ReferencedColumns[0]));
         string Existing(string role, string keyJson, bool text) =>

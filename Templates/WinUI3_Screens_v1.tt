@@ -50,7 +50,8 @@
     string featuresLine = $"        if (DesktopSession.HasRole([{CSharpText.Quote(Project.AuthAdminRole)}]))\n            NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{FeatureScreenWords.Menu}\", Tag = \"Features\" }});";
     // the administrator sees the sessions and tokens of TokenTables (WinUI3_Tokens)
     var tokenPages = TokenDesktopCode.DesktopPages(Database, Project);
-    bool roleMenu = TenantPlan.HasDesktopRoles(Project) || features || tokenPages.Count > 0;
+    var usagePages = UsageScreens.DesktopPages(Database, Project);   // the administrator sees the usage of the tenant (WinUI3_Usage)
+    bool roleMenu = TenantPlan.HasDesktopRoles(Project) || features || tokenPages.Count > 0 || usagePages.Count > 0;
     var sb = new StringBuilder();
     void Line(string text = "") => sb.Append(text).Append('\n');
 
@@ -99,6 +100,8 @@
             Line(featuresLine);
         foreach (var tokenPage in tokenPages)
             Line($"        if (DesktopSession.HasRole([{CSharpText.Quote(Project.AuthAdminRole)}]))\n            NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{tokenPage.Label}\", Tag = \"{tokenPage.Name}\" }});");
+        foreach (var usagePage in usagePages)
+            Line($"        if (DesktopSession.HasRole([{CSharpText.Quote(Project.AuthAdminRole)}]))\n            NavView.MenuItems.Add(new NavigationViewItem {{ Content = \"{usagePage.Label}\", Tag = \"{usagePage.Name}\" }});");
         Line("    }");
     }
     else
@@ -172,6 +175,8 @@
         Line("            \"Features\" => new FeaturesPage(_context),");
     foreach (var tokenPage in tokenPages)
         Line($"            \"{tokenPage.Name}\" => new {TokenDesktopCode.PageClass(tokenPage)}(_context),");
+    foreach (var usagePage in usagePages)
+        Line($"            \"{usagePage.Name}\" => new {usagePage.PageClass}(_context),");
     Line("            _ => MainContent.Content");
     Line("        };");
     Line("    }");

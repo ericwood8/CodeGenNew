@@ -151,7 +151,7 @@ public partial class PostgresSchemaProvider : SchemaProviderBase
         ORDER BY t.table_schema, t.table_name;
         """;
 
-    // For every table: its columns with identity/primary-key/generated flags (the junction-table rule), and every table that is the parent in a foreign key.
+    // WriteFor every table: its columns with identity/primary-key/generated flags (the junction-table rule), and every table that is the parent in a foreign key.
     private const string AllColumnsForJunctionCheckQuery = """
         SELECT c.table_schema AS schema_name, c.table_name AS table_name, c.column_name AS column_name,
                (c.is_identity = 'YES' OR COALESCE(c.column_default LIKE 'nextval(%', false)) AS is_identity,

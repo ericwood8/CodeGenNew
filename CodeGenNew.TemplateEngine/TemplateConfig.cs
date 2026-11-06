@@ -136,7 +136,7 @@ public class TemplateConfig
     public bool PrimaryKeyShapeSatisfies(PrimaryKeyShape shape) =>
         !RequiresSingleKey || shape is PrimaryKeyShape.SingleInt or PrimaryKeyShape.SingleUniqueIdentifier or PrimaryKeyShape.SingleText;
 
-    /// <summary> Explains why this template does not apply to <paramref name="model"/> (the reason spelled out for a person), or null when every restriction is satisfied. For the one table a caller has already
+    /// <summary> Explains why this template does not apply to <paramref name="model"/> (the reason spelled out for a person), or null when every restriction is satisfied. WriteFor the one table a caller has already
     /// committed to generating against; a menu uses <see cref="Check"/> on the cheaper table summary. </summary>
     public string? Refuse(TableModel model) => Check(TableFacts.Of(model));
 

@@ -76,6 +76,9 @@
     var tokenPages = TokenScreens.Pages(Database, Project);   // the administrator sees the sessions and tokens (TSX_Tokens)
     foreach (var tokenPage in tokenPages)
         Line($"import {{ {tokenPage.Name}Page }} from './{pagesFolder}/{tokenPage.Name}Page';");
+    var usagePages = UsageScreens.Pages(Database, Project);   // the administrator sees the usage of the tenant (TSX_Usage)
+    foreach (var usagePage in usagePages)
+        Line($"import {{ {usagePage.Name}Page }} from './{pagesFolder}/{usagePage.Name}Page';");
     Line();
     // the OData pages are loaded when their route is first opened (a separate chunk each), so they do not add to the first download
     foreach (var t in odataScreens)
@@ -118,6 +121,11 @@
     {
         string adminRole = WriteRolePlan.Literal([Project.AuthAdminRole], (char)39);
         Line($"  {{ path: '{tokenPage.Path}', label: '{tokenPage.Label}', element: <{tokenPage.Name}Page />, roles: [{adminRole}] }},");
+    }
+    foreach (var usagePage in usagePages)
+    {
+        string adminRole = WriteRolePlan.Literal([Project.AuthAdminRole], (char)39);
+        Line($"  {{ path: '{usagePage.Path}', label: '{usagePage.Label}', element: <{usagePage.Name}Page />, roles: [{adminRole}] }},");
     }
     Line("];");
     Write(sb.ToString());

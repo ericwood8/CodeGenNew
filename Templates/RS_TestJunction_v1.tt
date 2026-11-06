@@ -26,7 +26,7 @@
             var junction = table.Junction!;
             string route = BlazorNames.ApiRoute(table.TableName);
             var readRoles = WriteRolePlan.ReadFor(Project, table);
-            var writeRoles = WriteRolePlan.For(Project, table);
+            var writeRoles = WriteRolePlan.WriteFor(Project, table);
             string anchorJson = Json(JsonNames.Camel(junction.AnchorForeignKey.ReferencedColumns[0]));
             string targetJson = Json(JsonNames.Camel(junction.TargetForeignKey.ReferencedColumns[0]));
             string absentTarget = junction.TargetColumn.SqlType switch
