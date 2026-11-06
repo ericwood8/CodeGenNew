@@ -63,6 +63,34 @@ public sealed class JunctionEf
         return lines.Select(l => indent + l).ToList();
     }
 
+    /// <summary> Fills <c>rows</c> with a <paramref name="itemType"/> per existing link (<c>AnchorId</c>, <c>Anchor</c>, <c>TargetId</c>, <c>Target</c>: the keys and the texts of the two rows), in the order of the two texts. The
+    /// context shows the caller's tenant's rows only, so a tenant API lists its own links. </summary>
+    public List<string> All(string itemType, string contextExpression, string indent)
+    {
+        string anchorEntity = _anchorForeignKey.ReferencedTable, targetEntity = _targetForeignKey.ReferencedTable;
+        string anchorKey = _anchorForeignKey.ReferencedColumns[0], targetKey = _targetForeignKey.ReferencedColumns[0];
+        string Text(string alias, ForeignKeyModel side, string key)
+        {
+            var display = side.ReferencedDisplayColumns.Count > 0 ? side.ReferencedDisplayColumns : [key];
+            return string.Join(" + \" \" + ", display.Select(d => $"{alias}.{d}"));
+        }
+        var lines = new List<string>
+        {
+            $"var rows = await {contextExpression}.Set<{Entity}>()",
+            $"    .Join({contextExpression}.Set<{anchorEntity}>(), j => j.{_anchor.CSharpName()}, a => a.{anchorKey}, (j, a) => new {{ j, a }})",
+            $"    .Join({contextExpression}.Set<{targetEntity}>(), x => x.j.{_target.CSharpName()}, t => t.{targetKey}, (x, t) => new {itemType}",
+            "    {",
+            $"        AnchorId = x.j.{_anchor.CSharpName()},",
+            $"        Anchor = {Text("x.a", _anchorForeignKey, anchorKey)},",
+            $"        TargetId = x.j.{_target.CSharpName()},",
+            $"        Target = {Text("t", _targetForeignKey, targetKey)}",
+            "    })",
+            "    .OrderBy(r => r.Anchor).ThenBy(r => r.Target)",
+            "    .ToListAsync();"
+        };
+        return lines.Select(l => indent + l).ToList();
+    }
+
     /// <summary> Adds the link unless it exists (the routine is idempotent), recording the create date and an empty create user where the table has them. </summary>
     public List<string> Link(string contextExpression, string anchorExpression, string targetExpression, string indent)
     {

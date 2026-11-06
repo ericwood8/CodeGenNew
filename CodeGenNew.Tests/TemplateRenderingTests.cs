@@ -2106,7 +2106,7 @@ public class TemplateRenderingTests
         Assert.IsTrue(files.Any(f => f.RelativePath == "components/NameBaseGroupXrefJunction.tsx"));
         Assert.IsTrue(files.Any(f => f.RelativePath == "components/__tests__/NameBaseGroupXrefJunction.test.tsx"));
         Expect.Contains(tsx, "export interface NameBaseGroupXrefJunctionItem {");
-        Expect.Contains(tsx, "export function NameBaseGroupXrefJunction({ anchorId }: { anchorId: number }) {");
+        Expect.Contains(tsx, "export function NameBaseGroupXrefJunction({ anchorId, onChanged }: { anchorId: number; onChanged?: () => void }) {");
         Expect.Contains(tsx, "shortDescr?: string;"); // Groups' display column, camelCased like TS_Model
         Expect.Contains(tsx, "request<NameBaseGroupXrefJunctionItem[]>(`${apiUrl}/${anchorId}`)");
         Expect.Contains(tsx, "request(`${apiUrl}/link`, { method: 'POST', body: JSON.stringify({ anchorId, targetId: item.targetId }) })");

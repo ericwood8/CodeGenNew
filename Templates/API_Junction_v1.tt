@@ -21,7 +21,7 @@
     // ==========================================================================================
     // API_Junction_v1.tt
     // Generates: <TableName>JunctionApi.cs   (see OutputName in API_Junction_v1.tt.config)
-    // The HTTP side of a many-to-many junction table: GET /<plural>/junction/{anchorId} (every target row with IsSelected), POST .../junction/link
+    // The HTTP side of a many-to-many junction table: GET /<plural>/junction (every existing link, for the grid of the links page), GET /<plural>/junction/{anchorId} (every target row with IsSelected), POST .../junction/link
     // and POST .../junction/unlink, calling the three routines SP_Junction writes (generate that first). Needs a table detected as a junction
     // table (TableModel.IsJunctionTable) and the target table's display columns; anything else stops with an error.
     // Full notes: Docs/TemplateNotes/API_Junction_v1.md
@@ -73,6 +73,15 @@ public class <#= entity #>JunctionItem
     public bool IsSelected { get; set; }
 }
 
+/// <summary> One existing link, for the grid of the links page: the keys and the texts of the two rows. </summary>
+public class <#= entity #>JunctionLinkRow
+{
+    public <#= anchorType #> AnchorId { get; set; }
+    public string? Anchor { get; set; }
+    public <#= targetType #> TargetId { get; set; }
+    public string? Target { get; set; }
+}
+
 public record <#= entity #>JunctionLinkRequest(<#= anchorType #> AnchorId, <#= targetType #> TargetId);
 
 public class <#= entity #>JunctionApi<T> : BaseApi<T> where T : class
@@ -80,6 +89,12 @@ public class <#= entity #>JunctionApi<T> : BaseApi<T> where T : class
     public override void Register(WebApplication app)
     {
         BreakIntoStrings(out string _singular, out string plural, out string _apiSubDir);
+
+        app.MapGet(_apiSubDir + "/junction", GetJunctionLinks)
+        .WithName($"Get{plural}JunctionLinks")
+        .WithOpenApi()
+        .Produces<IEnumerable<<#= entity #>JunctionLinkRow>>()
+        .ProducesProblem(<#= HttpStatus.InternalServerError #>);
 
         app.MapGet(_apiSubDir + "/junction/{anchorId}", GetJunctionList)
         .WithName($"Get{plural}JunctionList")
@@ -96,6 +111,23 @@ public class <#= entity #>JunctionApi<T> : BaseApi<T> where T : class
         .WithName($"Unlink{plural}Junction")
         .WithOpenApi()
         .ProducesProblem(<#= HttpStatus.InternalServerError #>);
+    }
+
+    private static async Task<IResult> GetJunctionLinks([FromServices] <#= contextType #> context)
+    {
+<#
+    if (ef)
+        Emit(efJunction.All(entity + "JunctionLinkRow", "context", "        "));
+    else
+    {
+#>
+        var rows = await context.Database
+            .SqlQueryRaw<<#= entity #>JunctionLinkRow>("<#= CSharpText.Escape(new JunctionAllSql(Model).Sql) #>")
+            .ToListAsync();
+<#
+    }
+#>
+        return Ok(rows);
     }
 
     private static async Task<IResult> GetJunctionList([FromServices] <#= contextType #> context, <#= anchorType #> anchorId)

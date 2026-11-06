@@ -87,11 +87,15 @@
     Line($"LINKS = table({Str(Model.DbTableName)}, {string.Join(", ", linkColumns.Select(c => $"column({c})"))}{SchemaArgument(Model.SchemaName)})");
     var targetColumns = display.Select((d, i) => Str(displayDb[i])).Append(Str(targetKeyDb)).Distinct().ToList();
     Line($"TARGETS = table({Str(junction.TargetForeignKey.ReferencedDbTable)}, {string.Join(", ", targetColumns.Select(c => $"column({c})"))}{(tenanted ? ", column(TENANT_COLUMN)" : "")}{SchemaArgument(junction.TargetForeignKey.ReferencedSchema)})");
+    var anchorDisplay = anchorFk.ReferencedDisplayColumns;
+    var anchorDisplayDb = anchorFk.ReferencedDisplayDbColumns;
+    string anchorKeyDb = anchorFk.ReferencedDbColumns[0];
+    var anchorColumns = anchorDisplayDb.Select(Str).Prepend(Str(anchorKeyDb)).Distinct().ToList();
+    Line($"ANCHORS = table({Str(anchorFk.ReferencedDbTable)}, {string.Join(", ", anchorColumns.Select(c => $"column({c})"))}{(tenanted ? ", column(TENANT_COLUMN)" : "")}{SchemaArgument(anchorFk.ReferencedSchema)})");
     if (tenanted)
     {
         Line($"TARGET_TABLE = {Str(junction.TargetForeignKey.ReferencedDbTable)}");
         Line($"TARGET_KEY = {Str(targetKeyDb)}");
-        Line($"ANCHORS = table({Str(anchorFk.ReferencedDbTable)}, column({Str(anchorFk.ReferencedDbColumns[0])}), column(TENANT_COLUMN){SchemaArgument(anchorFk.ReferencedSchema)})");
         Line($"ANCHOR_TABLE = {Str(anchorFk.ReferencedDbTable)}");
         Line($"ANCHOR_KEY = {Str(anchorFk.ReferencedDbColumns[0])}");
     }
@@ -106,6 +110,17 @@
         Line($"    {PythonNames.Ident(PythonNames.Snake(d))}: str | None = Field(None, alias={Str(JsonNames.Camel(d))})");
     Line($"    target_id: {targetKey.Python} = Field(alias=\"targetId\")");
     Line("    is_selected: bool = Field(alias=\"isSelected\")");
+    Line();
+    Line();
+    Line($"class {stem}JunctionLink(BaseModel):");
+    Line("    \"\"\"One existing link, for the grid of the links page: the keys and the texts of the two rows.\"\"\"");
+    Line();
+    Line("    model_config = ConfigDict(populate_by_name=True)");
+    Line();
+    Line($"    anchor_id: {anchorKey.Python} = Field(alias=\"anchorId\")");
+    Line("    anchor: str | None = None");
+    Line($"    target_id: {targetKey.Python} = Field(alias=\"targetId\")");
+    Line("    target: str | None = None");
     Line();
     Line();
     Line($"class {stem}JunctionLinkRequest(BaseModel):");
@@ -132,6 +147,38 @@
         Line("def require_sides(session: Session, user: CurrentUser, anchor_id, target_id=None) -> None:");
         Line("    if not sees(session, user, ANCHORS, ANCHOR_TABLE, ANCHOR_KEY, anchor_id) or (target_id is not None and not sees(session, user, TARGETS, TARGET_TABLE, TARGET_KEY, target_id)):");
         Line($"        raise ApiError({HttpStatus.NotFound}, \"Not found.\")");
+        Line();
+        Line();
+    }
+    Line("def joined(row, start: int, count: int) -> str | None:");
+    Line("    \"\"\"The text of a row of one side: its display columns joined by a space.\"\"\"");
+    Line("    parts = [str(value) for value in row[start:start + count] if value is not None]");
+    Line("    return \" \".join(parts) if parts else None");
+    Line();
+    Line();
+    {
+        int anchorCount = Math.Max(anchorDisplayDb.Count, 1), targetCount = Math.Max(displayDb.Count, 1);
+        var anchorSelect = (anchorDisplayDb.Count > 0 ? anchorDisplayDb : [anchorKeyDb]).Select(d => $"ANCHORS.c[{Str(d)}]");
+        var targetSelect = (displayDb.Count > 0 ? displayDb : [targetKeyDb]).Select(d => $"TARGETS.c[{Str(d)}]");
+        Line($"@router.get(\"{route}/junction\", response_model=list[{stem}JunctionLink]{readDepends})");
+        Line($"def list_all_links(session: Session = Depends(get_session){(tenanted ? ", user: CurrentUser = Depends(require_user)" : "")}):");
+        Line("    \"\"\"Every existing link, ordered by the text of the anchor and then the target.\"\"\"");
+        Line($"    statement = select(LINKS.c[{Str(junction.AnchorColumn.DbName)}], {string.Join(", ", anchorSelect)}, LINKS.c[{Str(junction.TargetColumn.DbName)}], {string.Join(", ", targetSelect)}).select_from(");
+        Line($"        LINKS.join(ANCHORS, ANCHORS.c[{Str(anchorKeyDb)}] == LINKS.c[{Str(junction.AnchorColumn.DbName)}]).join(TARGETS, TARGETS.c[{Str(targetKeyDb)}] == LINKS.c[{Str(junction.TargetColumn.DbName)}])");
+        Line("    )");
+        if (tenanted)
+        {
+            Line("    if ANCHOR_TABLE in TENANT_OWNED:");
+            Line("        statement = only_tenant(statement, ANCHORS.c[TENANT_COLUMN], user)");
+            Line("    if TARGET_TABLE in TENANT_OWNED:");
+            Line("        statement = only_tenant(statement, TARGETS.c[TENANT_COLUMN], user)");
+        }
+        Line("    rows = session.execute(statement).all()");
+        Line("    links = [");
+        Line($"        {stem}JunctionLink(anchor_id=row[0], anchor=joined(row, 1, {anchorCount}), target_id=row[{1 + anchorCount}], target=joined(row, {2 + anchorCount}, {targetCount}))");
+        Line("        for row in rows");
+        Line("    ]");
+        Line("    return sorted(links, key=lambda link: ((link.anchor or \"\").lower(), (link.target or \"\").lower()))");
         Line();
         Line();
     }

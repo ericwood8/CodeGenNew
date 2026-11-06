@@ -47,6 +47,10 @@ main button { padding: 4px 12px; font: inherit; font-weight: 700; }
 button:not(.hamburger, .sort, .sort-header, [role='tab'], [role='menuitem'], th *, dialog *, .editor *, .topbar *), .column-picker > summary { background: #8883; border: 1px solid #8886; border-radius: 4px; cursor: pointer; }
 button:not(.hamburger, .sort, .sort-header, [role='tab'], [role='menuitem'], th *, dialog *, .editor *, .topbar *):hover:not(:disabled), .column-picker > summary:hover { background: #8885; }
 .column-picker > summary { display: inline-block; padding: 4px 12px; font-weight: 700; }
+/* The grid of every existing link on a links page: a line around it and a line between the rows. */
+.junction-grid { border: 1px solid #8886; border-radius: 4px; margin-top: 12px; overflow: hidden; }
+.junction-grid table { margin: 0; }
+.junction-grid tbody tr:last-child td { border-bottom: 0; }
 main > div > div > input { margin: 4px 6px 4px 0; padding: 6px 8px; font: inherit; }
 tbody tr:hover { background: #8881; }
 /* The type-ahead of a parent with too many rows for a drop-down: a box with the matches listed under it. */

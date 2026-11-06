@@ -100,6 +100,36 @@ public class <#= Model.TableName #>JunctionApiTests
     }
 
     [TestMethod]
+    public async Task The_links_list_has_a_link_while_it_exists_and_not_after_it_is_removed()
+    {
+        ApiFixture.RequireDatabase();
+        var client = ApiFixture.Client;
+        var (anchor, target) = await APairAsync();
+        using var first = await client.PostAsJsonAsync($"{Route}/junction/unlink", Link(anchor, target));
+        Assert.IsFalse(await HasLinkRowAsync(client, anchor, target), "the link is not listed");
+        try
+        {
+            using var linked = await client.PostAsJsonAsync($"{Route}/junction/link", Link(anchor, target));
+            Assert.AreEqual(HttpStatusCode.OK, linked.StatusCode, await linked.Content.ReadAsStringAsync());
+            Assert.IsTrue(await HasLinkRowAsync(client, anchor, target), "the link is listed");
+        }
+        finally
+        {
+            using var unlinked = await client.PostAsJsonAsync($"{Route}/junction/unlink", Link(anchor, target));
+            Assert.AreEqual(HttpStatusCode.OK, unlinked.StatusCode, await unlinked.Content.ReadAsStringAsync());
+        }
+        Assert.IsFalse(await HasLinkRowAsync(client, anchor, target), "the link is no longer listed");
+    }
+
+    private static async Task<bool> HasLinkRowAsync(HttpClient client, <#= anchorType #> anchor, <#= targetType #> target)
+    {
+        using var response = await client.GetAsync($"{Route}/junction");
+        Assert.AreEqual(HttpStatusCode.OK, response.StatusCode, await response.Content.ReadAsStringAsync());
+        var rows = (await response.Content.ReadFromJsonAsync<JsonArray>())!;
+        return rows.Any(r => r!["anchorId"]!.ToString() == anchor.ToString() && r["targetId"]!.ToString() == target.ToString());
+    }
+
+    [TestMethod]
     public async Task The_list_names_every_target_with_its_display_columns()
     {
         ApiFixture.RequireDatabase();

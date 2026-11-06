@@ -95,7 +95,9 @@ public class JunctionPlanTests
 
         Expect.Contains(page, "request<Anchor[]>('/api/namebases/lookup')");
         Expect.Contains(page, "<h1>Groups by Name Base</h1>");
-        Expect.Contains(page, "<NameBaseGroupXrefJunction key={anchorId} anchorId={Number(anchorId)} />");
+        Expect.Contains(page, "<NameBaseGroupXrefJunction key={anchorId} anchorId={Number(anchorId)} onChanged={loadLinks} />");
+        Expect.Contains(page, "<div className=\"junction-grid\">");
+        Expect.Contains(page, "onChanged={loadLinks}");
     }
 
     [TestMethod]
@@ -106,7 +108,13 @@ public class JunctionPlanTests
         string links = files["namebasegroupxref-links.component.ts"].Content;
         Expect.Contains(links, "this.http.get<{ id: number; name: string }[]>('api/namebases/lookup')");
         Expect.Contains(links, "this.anchorId = index > 0 ? this.anchors[index - 1].id : null;");
-        Expect.Contains(files["namebasegroupxref-links.component.html"].Content, "*ngIf=\"anchorId !== null\"");
+        string html = files["namebasegroupxref-links.component.html"].Content;
+        Expect.Contains(html, "*ngIf=\"anchorId !== null && editing\"");
+        Expect.Contains(html, "class=\"junction-grid\"");
+        Expect.Contains(html, "(changed)=\"loadLinks()\"");
+        Expect.Contains(files["namebasegroupxref-junction.component.ts"].Content, "this.changed.emit();");
+        Expect.Contains(html, "[disabled]=\"hasLinks !== false\" (click)=\"startEditing()\">Create</button>");
+        Expect.Contains(html, "[disabled]=\"hasLinks !== true\" (click)=\"startEditing()\">Edit links</button>");
         string shuttle = files["namebasegroupxref-junction.component.ts"].Content;
         Expect.Contains(shuttle, "implements OnInit, OnChanges");
         Expect.Contains(shuttle, "if (changes['anchorId'] && !changes['anchorId'].firstChange) {");
@@ -122,6 +130,16 @@ public class JunctionPlanTests
         Expect.Contains(winui3["NameBaseGroupXrefLinksPage.xaml.cs"].Content, "_context.Set<NameBase>().AsNoTracking()");
         Expect.Contains(uno["NameBaseGroupXrefLinksPage.xaml.cs"].Content, "var dialog = new NameBaseGroupXrefJunctionEditor(_api, anchor.Id) { XamlRoot = XamlRoot };");
         Expect.Contains(uno["NameBaseGroupXrefLinksPage.xaml.cs"].Content, "_api.NameBase.GetLookupAsync()");
+        foreach (var page in new[] { winui3, uno })
+        {
+            Expect.Contains(page["NameBaseGroupXrefLinksPage.xaml"].Content, "<Button x:Name=\"CreateButton\" Content=\"Create\" FontWeight=\"Bold\" Background=\"{ThemeResource SystemControlBackgroundBaseLowBrush}\" IsEnabled=\"False\" Click=\"OnCreateClick\" />");
+            Expect.Contains(page["NameBaseGroupXrefLinksPage.xaml.cs"].Content, "CreateButton.IsEnabled = !hasLinks;");
+            Expect.Contains(page["NameBaseGroupXrefLinksPage.xaml.cs"].Content, "EditButton.IsEnabled = hasLinks;");
+            Expect.Contains(page["NameBaseGroupXrefLinksPage.xaml.cs"].Content, "return viewModel.Selected.Count > 0;");
+            Expect.Contains(page["NameBaseGroupXrefLinksPage.xaml"].Content, "ItemsSource=\"{x:Bind Links}\"");
+            Expect.Contains(page["NameBaseGroupXrefLinksPage.xaml"].Content, "BorderThickness=\"0,0,0,1\"");
+            Expect.Contains(page["NameBaseGroupXrefLinksPage.xaml.cs"].Content, "Links.Add(row);");
+        }
         // the same page: the XAML differs only in nothing
         Assert.AreEqual(winui3["NameBaseGroupXrefLinksPage.xaml"].Content.Replace("Acme.App.Views", "X"), uno["NameBaseGroupXrefLinksPage.xaml"].Content.Replace("Acme.App.Views", "X"));
     }

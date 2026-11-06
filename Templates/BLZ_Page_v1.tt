@@ -475,7 +475,7 @@
         L("            <p class=\"error\" role=\"alert\">@message</p>");
         L("        }");
         // With the attributes in the model the form is checked here, field by field and only where the value changed (the browser's own check would stop a stored value that breaks a rule)
-        L(Project.ApiAnnotations || tabbed ? "        <EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\" novalidate>" : "        <EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\">");
+        L(Project.ApiAnnotations ? "        <EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\" novalidate>" : "        <EditForm Model=\"row\" OnValidSubmit=\"SaveAsync\">");
         if (Project.ApiAnnotations)
             L("            <StoredValueValidator Original=\"stored\" />");
         if (tabbed)
@@ -494,7 +494,8 @@
             string id = form.FieldId(c);
             string label = Labels.Field(c);
             string bind = $"row.{c.CSharpName()}";
-            string required = c.IsNullable ? "" : " required";
+            // a required field on a tab that is not open would stop the Save with no message (the browser cannot show it), so it is checked by the browser only while its tab is open
+            string required = c.IsNullable ? "" : pageIndex > 0 ? $" required=\"@(editTab == {pageIndex})\"" : " required";
             string input;
             var kind = form.KindOf(c);
             if (kind == FieldKind.SystemStamp)

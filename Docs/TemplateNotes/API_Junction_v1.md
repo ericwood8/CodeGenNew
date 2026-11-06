@@ -8,8 +8,9 @@ Generates: <TableName>JunctionApi.cs   (see OutputName in API_Junction_v1.tt.con
 The HTTP companion to SP_Junction.tt for a many-to-many junction table (TableModel.IsJunctionTable,
 Requires=JunctionTable) - what WinUI3_JunctionEditor.tt's ViewModel reaches directly via EF Core
 (it's in the same process as the database), a browser-based screen (TS_JunctionComponent.tt) cannot,
-so this exposes the same three operations over HTTP instead:
+so this exposes the same operations over HTTP, and the list of every link instead:
     GET  /<plural>/junction/{anchorId}          every target row + IsSelected  (calls <Table>_List)
+    GET  /<plural>/junction                    every existing link: both ids and both display texts, ordered by the two texts
     POST /<plural>/junction/link                { anchorId, targetId }          (calls <Table>_Link)
     POST /<plural>/junction/unlink               { anchorId, targetId }          (calls <Table>_Unlink)
 

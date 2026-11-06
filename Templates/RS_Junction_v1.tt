@@ -102,12 +102,24 @@
     }
     else
         Line($"const TARGETS: &str = {RustTable.Raw($"SELECT {string.Join(", ", shown)} FROM {targets} ORDER BY {di.Quote(orderColumn)}, {di.Quote(targetKeyDb)}")};");
+    {
+        var all = new JunctionAllSql(Model);
+        if (tenanted)
+        {
+            Line($"const ALL_LINKS: &str = {RustTable.Raw(all.Base)};");
+            Line($"const ALL_LINKS_ORDER: &str = {RustTable.Raw(JunctionAllSql.OrderBy.TrimStart())};");
+            Line($"const TENANT_PLACEHOLDERS: [&str; 2] = [\"{di.Placeholder(1)}\", \"{di.Placeholder(2)}\"];");
+        }
+        else
+            Line($"const ALL_LINKS: &str = {RustTable.Raw(all.Sql)};");
+    }
     Line($"const LINK_COUNT: &str = {RustTable.Raw($"SELECT COUNT(*) FROM {links} WHERE {anchorColumn} = {di.Placeholder(1)} AND {targetColumn} = {di.Placeholder(2)}")};");
     Line($"const LINK: &str = {RustTable.Raw($"INSERT INTO {links} ({string.Join(", ", insertColumns)}) VALUES ({string.Join(", ", insertValues)})")};");
     Line($"const UNLINK: &str = {RustTable.Raw($"DELETE FROM {links} WHERE {anchorColumn} = {di.Placeholder(1)} AND {targetColumn} = {di.Placeholder(2)}")};");
     Line();
     Line("pub fn router() -> Router<Pool> {");
     Line("    Router::new()");
+    Line($"        .route(\"{route}/junction\", get(list_all_links){readLayer})");
     Line($"        .route(\"{route}/junction/{{anchor_id}}\", get(list_links){readLayer})");
     Line($"        .route(\"{route}/junction/link\", post(link){writeLayer})");
     Line($"        .route(\"{route}/junction/unlink\", post(unlink){writeLayer})");
@@ -125,6 +137,17 @@
     Line($"    target_id: {targetType},");
     Line("    #[serde(rename = \"isSelected\")]");
     Line("    is_selected: bool,");
+    Line("}");
+    Line();
+    Line("/// One existing link, for the grid of the links page: the keys and the texts of the two rows.");
+    Line("#[derive(Serialize)]");
+    Line("struct JunctionLink {");
+    Line("    #[serde(rename = \"anchorId\")]");
+    Line($"    anchor_id: {anchorType},");
+    Line("    anchor: Option<String>,");
+    Line("    #[serde(rename = \"targetId\")]");
+    Line($"    target_id: {targetType},");
+    Line("    target: Option<String>,");
     Line("}");
     Line();
     Line("#[derive(Deserialize)]");
@@ -158,6 +181,41 @@
         Line("}");
         Line();
     }
+    Line($"async fn list_all_links(State(pool): State<Pool>{(tenanted ? ", Extension(user): Extension<CurrentUser>" : "")}) -> ApiResult<Json<Vec<JunctionLink>>> {{");
+    if (tenanted)
+    {
+        Line("    // the text is built from constants and the tenant column name, never from the request");
+        Line("    let mut conditions: Vec<String> = Vec::new();");
+        Line("    let mut binds = 0;");
+        Line("    if crate::tenancy::owns(ANCHOR_TABLE) {");
+        Line("        conditions.push(format!(\"a.{} = {}\", crate::tenancy::TENANT_COLUMN, TENANT_PLACEHOLDERS[binds]));");
+        Line("        binds += 1;");
+        Line("    }");
+        Line("    if crate::tenancy::owns(TARGET_TABLE) {");
+        Line("        conditions.push(format!(\"t.{} = {}\", crate::tenancy::TENANT_COLUMN, TENANT_PLACEHOLDERS[binds]));");
+        Line("        binds += 1;");
+        Line("    }");
+        Line("    let filter = if conditions.is_empty() { String::new() } else { format!(\" WHERE {}\", conditions.join(\" AND \")) };");
+        Line("    let mut query = sqlx::query(sqlx::AssertSqlSafe(format!(\"{ALL_LINKS}{filter} {ALL_LINKS_ORDER}\")));");
+        Line("    for _ in 0..binds {");
+        Line("        query = query.bind(user.tenant_id);");
+        Line("    }");
+        Line("    let rows = query.fetch_all(&pool).await?;");
+    }
+    else
+        Line("    let rows = sqlx::query(ALL_LINKS).fetch_all(&pool).await?;");
+    Line("    let mut links = Vec::with_capacity(rows.len());");
+    Line("    for row in rows {");
+    Line("        links.push(JunctionLink {");
+    Line("            anchor_id: row.try_get(0)?,");
+    Line("            anchor: row.try_get(1)?,");
+    Line("            target_id: row.try_get(2)?,");
+    Line("            target: row.try_get(3)?,");
+    Line("        });");
+    Line("    }");
+    Line("    Ok(Json(links))");
+    Line("}");
+    Line();
     Line($"async fn list_links(State(pool): State<Pool>, {(tenanted ? "Extension(user): Extension<CurrentUser>, " : "")}Path(anchor_id): Path<{anchorType}>) -> ApiResult<Json<Vec<JunctionItem>>> {{");
     if (tenanted)
         Line("    require_sides(&pool, &user, &anchor_id, None).await?;");

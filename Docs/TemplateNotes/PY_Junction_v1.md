@@ -5,6 +5,7 @@
 | Route | Answer |
 |---|---|
 | `GET /api/<plural>/junction/{anchorId}` | every row of the target table as `{ <display columns>, targetId, isSelected }`, ordered by the first display column |
+| `GET /api/<plural>/junction` | every existing link as `{ anchorId, anchor, targetId, target }`, the texts built from the display columns, ordered by the two texts |
 | `POST /api/<plural>/junction/link` | body `{ anchorId, targetId }`; adds the link unless it exists (200 either way) |
 | `POST /api/<plural>/junction/unlink` | the same body; removes the link, 200 when there is none |
 

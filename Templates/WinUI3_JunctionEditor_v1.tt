@@ -315,10 +315,20 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
             + "            await ViewModelBase.InTurnAsync(async () => { await viewModel.LoadAsync(); return 0; });\n"
             + $"            var dialog = new {stem}JunctionEditor(viewModel) {{ XamlRoot = XamlRoot }};\n"
             + "            await dialog.ShowAsync();";
-        var junctionWriteRoles = WriteRolePlan.ForDesktop(Project, Model);   // the Edit links button shows only to the roles that may write the junction table
+        string hasLinks =
+            $"            var viewModel = new {stem}JunctionEditorViewModel(_context, anchor.Id);\n"
+            + "            await ViewModelBase.InTurnAsync(async () => { await viewModel.LoadAsync(); return 0; });\n"
+            + "            return viewModel.Selected.Count > 0;";
+        string linksRow = Model.TableName + "LinksRow";
+        string readLinks = ef
+            ? "        return await ViewModelBase.InTurnAsync(async () =>\n        {\n"
+                + string.Concat(efJunction!.All(linksRow, "_context", "            ").Select(l => l + "\n"))
+                + "            return rows;\n        });"
+            : $"        return await ViewModelBase.InTurnAsync(async () => await _context.Database.SqlQueryRaw<{linksRow}>(\"{CSharpText.Escape(new JunctionAllSql(Model).Sql)}\").ToListAsync());";
+        var junctionWriteRoles = WriteRolePlan.ForDesktop(Project, Model);   // the Create and Edit links buttons show only to the roles that may write the junction table
         Write("@@@FILE " + viewsFolder + "/" + DesktopJunctionPage.PageName(stem) + ".xaml@@@\n" + DesktopJunctionPage.Xaml(Model, viewNamespace) + "\n");
         Write("@@@FILE " + viewsFolder + "/" + DesktopJunctionPage.PageName(stem) + ".xaml.cs@@@\n"
-            + DesktopJunctionPage.CodeBehind(Model, viewNamespace, [viewModelNamespace, contextNamespace, "Microsoft.EntityFrameworkCore", .. usings], "private readonly " + contextType + " _context;", contextType + " context", "_context = context;", read, open, "Exception ex",
+            + DesktopJunctionPage.CodeBehind(Model, viewNamespace, [viewModelNamespace, contextNamespace, "Microsoft.EntityFrameworkCore", .. usings], "private readonly " + contextType + " _context;", contextType + " context", "_context = context;", read, open, hasLinks, readLinks, "Exception ex",
                 junctionWriteRoles.Count == 0 ? null : "DesktopSession.HasRole([" + WriteRolePlan.Literal(junctionWriteRoles) + "])") + "\n");
     }
 #>

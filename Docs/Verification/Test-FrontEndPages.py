@@ -14,7 +14,7 @@ exits 1 on a failure. Everything it started is stopped at the end; the generated
 
 --prove-failure aborts the browser's POST to the API, so the add and everything after it must fail: it shows that the checks can fail.
 --stack react|angular|blazor|uno picks the front end (Angular is generated for version 22). The Uno app draws on a canvas, so it is driven through the semantic page that its accessibility switch builds, by focus and keys.
---schema junction generates the many-to-many sample (Region, Customer, Tag, CustomerTag) and walks the Customer dialog of React, Angular or Blazor: the junction table has no grid there and the page asks the API for nothing that is refused.
+--schema junction generates the many-to-many sample (Region, Customer, Tag, CustomerTag) and walks the Customer dialog of React, Angular or Blazor: the junction table has no grid there and the page asks the API for nothing that is refused. The links page of the table (customer-tag-links) lists every link in its boxed grid, with a line around it and between the rows.
 --schema owner_scoped generates an API with sign-in (ApiAuth, Auth, the Employee user table, OData screens) over Employee and Expense, an expense belonging to the employee in EmployeeId, sets passwords for three people (ann, bob and root, the administrator) and walks the Expense screen of React, Angular, Blazor or Uno signed in as each: the sign-in page, each person's own rows only, add (not on Uno, whose calendar date picker cannot be driven), edit and delete of one's own row, a row for someone else refused (not on Uno), and the API's refusals of another person's row.
 --out <folder> uses an already generated project (the folder that holds the Api project and the frontend folder or Blazor project) instead of generating one.
 --build-cli builds the command-line tool before generating (a fresh checkout, as in CI, has not built it).
@@ -536,6 +536,26 @@ def drive_junction(page, prove_failure):
         check("the dialog shows no grid of the junction table", form.get_by_text("Customer Tag", exact=True).count() == 0)
         check("the page asked the API for nothing that was refused", not refused, "; ".join(refused)[:200])
         form.get_by_role("button", name="Cancel").click()
+
+        page.goto(f"{DEV}/customer-tag-links")
+        grid = page.locator(".junction-grid")
+        grid.wait_for(timeout=30000)
+        page.wait_for_timeout(1500)
+        rows = grid.locator("tbody tr", has_text="Harness Customer")
+        check("the links page lists every existing link in its grid", rows.count() == 2 and "Harness Red" in grid.inner_text() and "Harness Green" in grid.inner_text(), grid.inner_text()[:200])
+        look = page.evaluate("""() => {
+            const box = document.querySelector('.junction-grid');
+            const cell = box.querySelector('tbody tr td');
+            return { box: getComputedStyle(box).borderTopWidth, row: getComputedStyle(cell).borderBottomWidth };
+        }""")
+        check("the grid has a line around it and lines between the rows", look["box"] != "0px" and look["row"] != "0px", str(look))
+        page.locator("select").first.select_option(label="Harness Customer")
+        page.get_by_role("button", name="Edit links").click()
+        page.get_by_title("Remove all").click()
+        page.wait_for_timeout(1500)
+        check("the grid drops the links as they are removed, before Done", rows.count() == 0, grid.inner_text()[:200])
+        page.get_by_role("button", name="Done").click()
+        check("the page asked the API for nothing that was refused on the links page", not refused, "; ".join(refused)[:200])
     finally:
         clean()
 

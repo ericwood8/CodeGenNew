@@ -77,11 +77,22 @@ public class <#= stem #>JunctionItem
     public string DisplayText => <#= displayColumns.Count > 0 ? DisplayExpr() : "TargetId.ToString()" #>;
 }
 
+/// <summary> One existing link, for the grid of the links page: the keys and the texts of the two rows (GET <#= BlazorNames.ApiRoute(Model.TableName) #>/junction). </summary>
+public class <#= stem #>JunctionLinkRow
+{
+    public <#= anchorType #> AnchorId { get; set; }
+    public string? Anchor { get; set; }
+    public <#= targetType #> TargetId { get; set; }
+    public string? Target { get; set; }
+}
+
 public record <#= stem #>JunctionLinkRequest(<#= anchorType #> AnchorId, <#= targetType #> TargetId);
 
 public class <#= stem #>JunctionClient(HttpClient http)
 {
     private const string Url = "<#= BlazorNames.ApiRoute(Model.TableName) #>/junction";
+
+    public async Task<List<<#= stem #>JunctionLinkRow>> GetLinksAsync() => await (await http.GetAsync(Url)).ReadAsync<List<<#= stem #>JunctionLinkRow>>();
 
     public async Task<List<<#= stem #>JunctionItem>> GetAsync(<#= anchorType #> anchorId) => await (await http.GetAsync($"{Url}/{anchorId}")).ReadAsync<List<<#= stem #>JunctionItem>>();
 
@@ -300,8 +311,16 @@ public partial class <#= stem #>JunctionEditorViewModel : ObservableObject
         string open =
             $"            var dialog = new {stem}JunctionEditor(_api, anchor.Id) {{ XamlRoot = XamlRoot }};\n"
             + "            await dialog.ShowAsync();";
+        string linksRow = stem + "LinksRow";
+        string readLinks =
+            $"        var rows = await _api.{stem}Junction.GetLinksAsync();\n"
+            + $"        return rows.Select(r => new {linksRow} {{ AnchorId = r.AnchorId, Anchor = r.Anchor, TargetId = r.TargetId, Target = r.Target }}).ToList();";
+        string hasLinks =
+            $"        var viewModel = new {stem}JunctionEditorViewModel(_api.{stem}Junction, anchor.Id);\n"
+            + "        await viewModel.LoadAsync();\n"
+            + "        return viewModel.Selected.Count > 0;";
         Write("@@@FILE " + viewsFolder + "/" + DesktopJunctionPage.PageName(stem) + ".xaml@@@\n" + DesktopJunctionPage.Xaml(Model, viewNamespace) + "\n");
         Write("@@@FILE " + viewsFolder + "/" + DesktopJunctionPage.PageName(stem) + ".xaml.cs@@@\n"
-            + DesktopJunctionPage.CodeBehind(Model, viewNamespace, [viewModelNamespace, servicesNamespace, "System.Linq", .. usings], "private readonly ApiClients _api;", "ApiClients api", "_api = api;", read, open, "Exception ex) when (ex is ApiException or HttpRequestException") + "\n");
+            + DesktopJunctionPage.CodeBehind(Model, viewNamespace, [viewModelNamespace, servicesNamespace, "System.Linq", .. usings], "private readonly ApiClients _api;", "ApiClients api", "_api = api;", read, open, hasLinks, readLinks, "Exception ex) when (ex is ApiException or HttpRequestException") + "\n");
     }
 #>

@@ -83,6 +83,15 @@ if "junction" in sections:
     check("link to another tenant's tag is 404", client.post("/api/projecttags/junction/link", headers=ada1, json={"anchorId": 1, "targetId": 2}).status_code == 404)
     check("unlink of another tenant's link is 404", client.post("/api/projecttags/junction/unlink", headers=ada1, json={"anchorId": 3, "targetId": 2}).status_code == 404)
     check("link of own rows works", client.post("/api/projecttags/junction/link", headers=ada1, json={"anchorId": 2, "targetId": 1}).status_code == 200)
+    def pairs(headers):
+        rows = client.get("/api/projecttags/junction", headers=headers)
+        return rows, sorted((r["anchorId"], r["targetId"]) for r in rows.json()) if rows.status_code == 200 else None
+    client.post("/api/projecttags/junction/link", headers=ada1, json={"anchorId": 2, "targetId": 1})
+    listed, found = pairs(ada1)
+    check("every-link list answers", listed.status_code == 200, (listed.status_code, listed.text))
+    check("every-link list holds the tenant's links only, with texts", found is not None and (2, 1) in found and not any(a == 3 for a, _ in found) and all(r["anchor"] and r["target"] for r in listed.json()), listed.text)
+    client.post("/api/projecttags/junction/unlink", headers=ada1, json={"anchorId": 2, "targetId": 1})
+    check("every-link list drops a removed link", (2, 1) not in (pairs(ada1)[1] or []))
     check("unlink of own rows works", client.post("/api/projecttags/junction/unlink", headers=ada1, json={"anchorId": 2, "targetId": 1}).status_code == 200)
     check("another tenant's link row is still there", sqlite3.connect(db).execute("SELECT COUNT(*) FROM ProjectTag WHERE ProjectId = 3 AND TagId = 2").fetchone()[0] == 1)
 

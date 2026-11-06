@@ -57,8 +57,51 @@ public class <#= stem #>JunctionPageTests : PageTestContext
         var page = Render<<#= page #>>();
         page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "Anchor one"));
         page.Find("#junction-anchor").Change("<#= anchorValue #>");
+        page.WaitForAssertion(() => Assert.IsFalse(Button(page, "Edit links").HasAttribute("disabled")));
+        Button(page, "Edit links").Click();
         page.WaitForAssertion(() => StringAssert.Contains(page.Find("[aria-label=Selected]").TextContent, "<#= second #>"));
         return page;
+    }
+
+    private static AngleSharp.Dom.IElement Button(IRenderedComponent<<#= page #>> page, string caption) =>
+        page.FindAll("button").First(b => b.TextContent.Trim() == caption);
+
+    [TestMethod]
+    public void Lists_every_existing_link_in_a_grid_under_the_buttons()
+    {
+        Api.Answer("<#= anchorLookup #>", "[ { \"id\": <#= Key(junction.AnchorCs, 1) #>, \"name\": \"Anchor one\" } ]");
+        Api.Answer("<#= junctionPath #>", "[ { \"anchorId\": <#= Key(junction.AnchorCs, 1) #>, \"anchor\": \"Anchor one\", \"targetId\": <#= Key(junction.TargetCs, 2) #>, \"target\": \"Target two\" } ]");
+        var page = Render<<#= page #>>();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Find(".junction-grid tbody").TextContent, "Target two"));
+        StringAssert.Contains(page.Find(".junction-grid tbody").TextContent, "Anchor one");
+        Assert.HasCount(2, page.FindAll(".junction-grid thead th"));
+    }
+
+    [TestMethod]
+    public void Offers_Create_for_a_row_with_no_links_and_opens_the_lists_with_it()
+    {
+        Api.Answer("<#= anchorLookup #>", "[ { \"id\": <#= Key(junction.AnchorCs, 1) #>, \"name\": \"Anchor one\" } ]");
+        Api.Answer("<#= junctionPath #>/<#= anchorValue #>", "[ <#= Item("Target one", 1, false) #>, <#= Item("Target two", 2, false) #> ]");
+        var page = Render<<#= page #>>();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "Anchor one"));
+        page.Find("#junction-anchor").Change("<#= anchorValue #>");
+        page.WaitForAssertion(() => Assert.IsFalse(Button(page, "Create").HasAttribute("disabled")));
+        Assert.IsTrue(Button(page, "Edit links").HasAttribute("disabled"));
+        Assert.IsEmpty(page.FindAll("[aria-label=Selected]"));
+        Button(page, "Create").Click();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Find("[aria-label=Available]").TextContent, "<#= first #>"));
+    }
+
+    [TestMethod]
+    public void Offers_Edit_links_and_not_Create_for_a_row_that_has_links()
+    {
+        Api.Answer("<#= anchorLookup #>", "[ { \"id\": <#= Key(junction.AnchorCs, 1) #>, \"name\": \"Anchor one\" } ]");
+        Api.Answer("<#= junctionPath #>/<#= anchorValue #>", "[ <#= Item("Target one", 1, false) #>, <#= Item("Target two", 2, true) #> ]");
+        var page = Render<<#= page #>>();
+        page.WaitForAssertion(() => StringAssert.Contains(page.Markup, "Anchor one"));
+        page.Find("#junction-anchor").Change("<#= anchorValue #>");
+        page.WaitForAssertion(() => Assert.IsFalse(Button(page, "Edit links").HasAttribute("disabled")));
+        Assert.IsTrue(Button(page, "Create").HasAttribute("disabled"));
     }
 
     [TestMethod]

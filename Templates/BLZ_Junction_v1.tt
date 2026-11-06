@@ -63,11 +63,22 @@ public class <#= stem #>JunctionItem
     public string DisplayText => <#= displayColumns.Count > 0 ? DisplayExpr() : "TargetId.ToString()" #>;
 }
 
+/// <summary> One existing link, for the grid of the links page: the keys and the texts of the two rows (GET <#= BlazorNames.ApiRoute(Model.TableName) #>/junction). </summary>
+public class <#= stem #>JunctionLinkRow
+{
+    public <#= anchorType #> AnchorId { get; set; }
+    public string? Anchor { get; set; }
+    public <#= targetType #> TargetId { get; set; }
+    public string? Target { get; set; }
+}
+
 public record <#= stem #>JunctionLinkRequest(<#= anchorType #> AnchorId, <#= targetType #> TargetId);
 
 public class <#= stem #>JunctionClient(HttpClient http)
 {
     private const string Url = "<#= BlazorNames.ApiRoute(Model.TableName) #>/junction";
+
+    public async Task<List<<#= stem #>JunctionLinkRow>> GetLinksAsync() => await (await http.GetAsync(Url)).ReadAsync<List<<#= stem #>JunctionLinkRow>>();
 
     public async Task<List<<#= stem #>JunctionItem>> GetAsync(<#= anchorType #> anchorId) => await (await http.GetAsync($"{Url}/{anchorId}")).ReadAsync<List<<#= stem #>JunctionItem>>();
 
@@ -111,6 +122,21 @@ public class <#= stem #>JunctionClient(HttpClient http)
 
 @if (HasAnchor)
 {
+    <div class="junction-actions">
+        @if (editing)
+        {
+            <button type="button" @onclick="Done">Done</button>
+        }
+        else
+        {
+            <button type="button" disabled="@(selected.Count > 0)" @onclick="StartEditing">Create</button>
+            <button type="button" disabled="@(selected.Count == 0)" @onclick="StartEditing">Edit links</button>
+        }
+    </div>
+}
+
+@if (HasAnchor && editing)
+{
     <div class="junction-shuttle">
         <div>
             <label>Available</label>
@@ -139,7 +165,25 @@ public class <#= stem #>JunctionClient(HttpClient http)
     </div>
 }
 
+<div class="junction-grid">
+    <table>
+        <thead>
+            <tr><th><#= anchorLabel #></th><th><#= targetLabel #></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var link in links)
+            {
+                <tr><td>@link.Anchor</td><td>@link.Target</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
 <style>
+    .junction-grid { border: 1px solid #8886; border-radius: 4px; margin-top: 12px; overflow: hidden; }
+    .junction-grid table { margin: 0; }
+    .junction-grid tbody tr:last-child td { border-bottom: 0; }
+    .junction-actions { display: flex; gap: 8px; margin-bottom: 12px; }
     .junction-anchor { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
     .junction-shuttle { display: flex; gap: 12px; align-items: center; }
     .junction-list { min-width: 240px; min-height: 240px; max-height: 360px; overflow-y: auto; border: 1px solid #8886; }
@@ -156,6 +200,8 @@ public class <#= stem #>JunctionClient(HttpClient http)
     private List<<#= stem #>JunctionItem> selected = [];
     private readonly HashSet<<#= targetType #>> picked = [];
     private string? message;
+    private List<<#= stem #>JunctionLinkRow> links = [];   // every existing link, in the grid under the buttons
+    private bool editing;   // the two lists are open: Create (the row has no links yet) or Edit links opened them
 
     private bool HasAnchor => anchorId is not null<#= anchorType == "string" ? " && anchorId.Length > 0" : "" #>;
 
@@ -163,12 +209,20 @@ public class <#= stem #>JunctionClient(HttpClient http)
     {
         try { anchors = await AnchorClient.GetLookupAsync(); }
         catch (Exception ex) when (ex is ApiException or HttpRequestException) { message = "Failed to load the <#= anchorLabel.ToLowerInvariant().Pluralize() #>."; }
+        await LoadLinksAsync();
+    }
+
+    private async Task LoadLinksAsync()
+    {
+        try { links = await Client.GetLinksAsync(); }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException) { message ??= "The links could not be read."; }
     }
 
     // the two lists of the chosen row; a move the API refuses leaves them as they are and says why
     private async Task LoadAsync()
     {
         message = null;
+        editing = false;
         picked.Clear();
         available = [];
         selected = [];
@@ -181,6 +235,14 @@ public class <#= stem #>JunctionClient(HttpClient http)
             selected = rows.Where(r => r.IsSelected).ToList();
         }
         catch (Exception ex) when (ex is ApiException or HttpRequestException) { message = "Failed to load the <#= targetLabel.ToLowerInvariant().Pluralize() #>."; }
+    }
+
+    private void StartEditing() => editing = true;
+
+    private async Task Done()
+    {
+        editing = false;
+        await LoadLinksAsync();
     }
 
     private void Toggle(<#= stem #>JunctionItem item)
@@ -213,5 +275,6 @@ public class <#= stem #>JunctionClient(HttpClient http)
             (link ? selected : available).Add(item);
             picked.Remove(item.TargetId);
         }
+        await LoadLinksAsync();
     }
 }
